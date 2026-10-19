@@ -5,8 +5,9 @@ import {ExecutionPaused,MAX_REQUEST_ALLOWANCE} from '../../execution/state'
 import {EXECUTION_INSTRUCTIONS} from '../../execution/controller'
 import {managedContext,contextOf} from '../../context/managed'
 import { readDelegationRequest } from '../../delegationContract'
-import { assistantLanguageInstructions } from '../../host'
+import { assistantLanguageInstructions, criticModelFor } from '../../host'
 import { DATA_RULE, readingTool } from '../../framing'
+import { GateViolation } from '../../toolGate'
 /**
  * The `vercel` engine's loop: the Vercel AI SDK v7, behind the desk's contract.
  *
@@ -89,6 +90,7 @@ import {
   offersProposeTool,
   readProposedPack,
   twoProposals,
+  refusedUnoffered,
   type Proposal
 } from '../contract'
 import { decodedBytes, separateImages, type HeldImage, type ImageRouting } from '../../images'
@@ -99,10 +101,15 @@ import {
   CRITIC_SYSTEM,
   MAX_CRITIC_TURNS,
   criticCannotRun,
+  criticMayCall,
+  criticMayRead,
   criticMessage,
+  criticRuns,
+  compareTheRest,
   critiqueEvent,
   critiqueOnProposal,
   criticNote,
+  modelCriticFigures,
   proposalNote,
   openCritique
 } from '../../refutation'
@@ -822,7 +829,7 @@ function runVercelLoop(
     /** A reading tool's bounded answer, with the data block the model is shown for it. */
     const asData = (name: string, result: McpToolResult, images: HeldImage[]): Ran => ({ result, images, framed: context.frame(name, JSON.stringify(result)) })
     /** One runtime call, wherever the model made it: natively, or in text (agent#4). */
-    const runRuntime = async (name: string, input: unknown): Promise<Ran> => {
+    const runRuntime = async (name: string, input: unknown, origin?: 'harness'): Promise<Ran> => {
       // **The desk's gate is handed the call the model made.** The hook below
       // has already rewritten what the SDK carries; what leaves the page is
       // rewritten by the ToolGate, which is the layer that reports it. A gate
@@ -837,7 +844,8 @@ function runVercelLoop(
       executionSignal.throwIfAborted()
       const refusal=await rejectToolStep(name,args)
       if(refusal)return bare(refusal)
-      const correlation = session.interactive ? { callId: crypto.randomUUID() } : {}
+      // A call the harness made itself is marked on both its events (agent#10 review row 8).
+      const correlation = { ...(session.interactive ? { callId: crypto.randomUUID() } : {}), ...(origin === undefined ? {} : { origin }) }
       await deliver({ type: 'tool_call', ...correlation, name, args })
       let answer: McpToolResult
       try {
@@ -869,7 +877,7 @@ function runVercelLoop(
       // **Only what the runtime answered**, and this is the only place it is
       // reached: the refusal path above returns before it, so a call the gate
       // refused is a `guardrail` line and never a check.
-      recording?.saw(name, said.text)
+      recording?.saw(name, said.text, args, said.structured)
       // Its images, out of the text the model is shown and routed by the record's
       // vision flag (agent#5); then the text, bounded, and shown as data (agent#12).
       const separated = await separateImages(answer, routing)
@@ -890,6 +898,8 @@ function runVercelLoop(
       if (!tool.interaction) await deliver({ type: 'tool_call', ...correlation, name: tool.name, args })
       let answer: McpToolResult
       try {
+        // agent#10: no host tool is the critic's; refused before anything of the host's runs.
+        context.admit(tool.name, 'host')
         if (tool.interaction === 'delegation') {
           const request = readDelegationRequest(args)
           awaitingInput = true
@@ -920,7 +930,7 @@ function runVercelLoop(
           const text = 'the session was stopped before this call was made; nothing was written'
           return bare({ content: [{ type: 'text', text }], isError: true })
         }
-        if (tool.interaction === 'question') {
+        if (tool.interaction === 'question' && !(cause instanceof GateViolation)) {
           const result = questionFailureResult(cause)
           await deliver({type:'tool_result',...correlation,name:tool.name,isError:true,text:result.content[0]!.text,structured:result.structuredContent})
           return bare(result)
@@ -976,18 +986,7 @@ function runVercelLoop(
      */
     const refuseUnoffered = async (unoffered: string, input: unknown): Promise<McpToolResult> => {
       await deliver({ type: 'tool_call', name: unoffered, args: input ?? {} })
-      let refusal = 'the call did not leave the page and nothing was written'
-      try {
-        await callTool(unoffered, (input ?? {}) as Record<string, unknown>)
-      } catch (cause) {
-        // A cancelled run stops here rather than reporting a refusal that
-        // never happened.
-        if (isCancelled(cause)) throw cause
-        refusal = (cause as Error).message
-      }
-      const text =
-        `refused: ${refusal}. This assistant proposes; it never writes a file and ` +
-        `never calls a tool it was not offered.`
+      const text = await refusedUnoffered(callTool, unoffered, (input ?? {}) as Record<string, unknown>)
       await deliver({ type: 'tool_result', name: unoffered, isError: true, text })
       return { content: [{ type: 'text', text }], isError: true }
     }
@@ -1397,38 +1396,62 @@ function runVercelLoop(
     let note: ProposalNote | null = null
     // **No runtime prompt, no critic.** The instructions are the runtime's; this
     // desk adds one sentence and has none of its own to fall back on.
-    const review = session.adversarialReview ?? slot.runsRefutation()
+    // agent#10: one rule on both engines, the session's choice or the policy table's.
+    const review = criticRuns(session, context.policy)
     const cannot = review ? criticCannotRun(session.testPrompt) : null
     if (cannot !== null) {
       critique = cannot
       await deliver(critiqueEvent(cannot))
     } else if (review) {
-      const recorder = openCritique()
+      const recorder = openCritique({ cases: context.criticCases, document: proposal.document })
       recording = recorder
       toolsClosed=false
       // A fresh conversation: its history carries none of the loop's blocks.
       ledger.conversation()
-      context.beginIsolatedPhase()
+      // agent#10: from here every call is held to the critic's allow-list, below this engine.
+      context.beginCriticPhase()
+      // What the critic costs is counted from here (agent#10).
+      const before = { used: context.execution.state.used, rows: (context.execution.state.completions ?? []).length }
+      // The critic's model: the host's for this connection, or the run's (agent#10),
+      // read inside the pass so a host answer it refuses is the critic's note.
+      let criticModelId = session.model.model
+      let criticModel = model
+      /** The runtime calls the harness made itself in this pass (review row 8). */
+      let harnessCalls = 0
+      const figures = () => ({ ...modelCriticFigures(criticModelId, before, context.execution.state), ...(harnessCalls === 0 ? {} : { harnessCalls }) })
       let criticText = ''
       let criticReasoning = ''
-      // The critic's tools: the loop's, less the host tools a review may not use.
-      const criticTools = Object.fromEntries(Object.entries(tools).filter(([name]) => !session.hostTools?.some(tool => tool.name === name && (tool.interaction || tool.effect === 'memory' || ['update_plan','request_budget_increase',PROPOSE_PACK_TOOL].includes(tool.name)))))
+      // The critic's tools (agent#10): an allow-list of the runtime's reads, and
+      // of the host tools only the harness's own context readers (review row 6).
+      // A call to any other name is refused as unoffered, and the boundary
+      // refuses it before the gate.
+      const criticTools = Object.fromEntries(Object.entries(tools).filter(([name]) =>
+        criticMayCall(name) ? session.tools.some(tool => tool.name === name) : criticMayRead(name) && session.hostTools.some(tool => tool.name === name)))
       const criticOffered = new Set(Object.keys(criticTools))
       // The critic's system text, set once: the call and every step use it.
       const criticSystem = CRITIC_SYSTEM + DATA_RULE + assistantLanguageInstructions(session.replyLanguage) + (nativeTools ? '' : '\n\n' + described(criticOffered))
       // On the text path the critic, like the loop, asks once per call (agent#4).
-      let criticMessages: ModelMessage[] = [
-        { role: 'user', content: await context.prompt(criticMessage(session.testPrompt, proposal.document),criticSystem,schemas) }
-      ]
+      let criticMessages: ModelMessage[] = []
       let criticHeld = criticMessages
       let criticSteps = 0
       /** Why the critic did not finish: its failure, never raised ahead of the proposal. */
       let unfinished: unknown = null
       try {
+       // A first message that does not fit even as a retained preview refuses
+       // the pass with a note, the proposal still delivered (review row 6).
+       criticMessages = [
+         { role: 'user', content: await context.prompt(criticMessage(session.testPrompt, proposal.document, context.criticCases),criticSystem,schemas) }
+       ]
+       criticHeld = criticMessages
+       criticModelId = criticModelFor({ engine: id, family: session.model.family, model: session.model.model })
+       if (criticModelId !== session.model.model) {
+         // The same connection, relay and capability record: only the model id differs.
+         criticModel = modelFor({ ...session, model: { ...session.model, model: criticModelId } }, call, executionSignal, ledger, onTruncated, slot, capabilities.streamingQuirks)
+       }
        for (;;) {
         const critic = streamText({
           telemetry: { isEnabled: false },
-          model,
+          model: criticModel,
           instructions: cachedInstructions(session.model.family, criticSystem),
           ...(nativeTools ? { tools: criticTools } : {}),
           messages: criticMessages,
@@ -1511,6 +1534,13 @@ function runVercelLoop(
             continue
           }
           if(part.type==='tool-error'&&await rejectToolStep(part.toolName,part.input??{}))continue
+          // agent#10: a name the critic was not offered is put through the gate
+          // and refused, as the loop's is; the boundary refuses it first.
+          const unoffered = unofferedTool(part, criticOffered)
+          if (unoffered !== undefined) {
+            await refuseUnoffered(unoffered, (part as { input?: unknown }).input)
+            continue
+          }
           if (part.type === 'text-delta') criticText += (part as { text?: string }).text ?? ''
         }
         if (nativeTools || streamed !== null) break
@@ -1531,6 +1561,17 @@ function runVercelLoop(
         }
         criticSteps += 1
        }
+        if (streamed === null) {
+          // agent#10: the declared cases the critic's own calls left
+          // uncompared, run once each by the harness through the same
+          // dispatch, gate and recorder; no model request.
+          toolsClosed = false
+          asked.length = 0
+          await compareTheRest(recorder, proposal.document, criticOffered, (name, args) => {
+            harnessCalls += 1
+            return runRuntime(name, args, 'harness')
+          })
+        }
         const ended = slot.turnEnded(criticText !== '')
         if (ended !== null) await deliver(ended)
       } catch (cause) {
@@ -1542,13 +1583,14 @@ function runVercelLoop(
         // Whatever happened, the main loop's dispatch stops feeding a recorder
         // nobody is reading.
         recording = null
+        context.endCriticPhase()
       }
       unfinished ??= streamed
       if (unfinished === null) {
-        critique = recorder.critique(criticText)
+        critique = { ...recorder.critique(criticText), figures: figures() }
         await deliver(critiqueEvent(critique))
       } else {
-        note = criticNote(overTime ? turnTimeFailure() : unfinished, 'model')
+        note = criticNote(overTime ? turnTimeFailure() : unfinished, 'model', figures())
       }
     }
 

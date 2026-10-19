@@ -21,8 +21,8 @@ root is not.
 
 | Schema | What it describes | Root | Closed parts | Read from (Desk file, symbol) |
 | --- | --- | --- | --- | --- |
-| `run-event.json` | Every event a run emits, 18 kinds discriminated by `type`, in the union's order; the proposal's `note` where something after it did not finish | open | none | `web/src/assistant/engine.ts`, `AssistantEvent` |
-| `tool-offer.json` | The tools offered to a run, as the session's two members: `tools` (runtime tools as served, each named within the ceiling) and `hostTools` (host tools' declarations); the agent-wire alias form; the runtime ceiling (the Desk's five and `experimental_test_cases`) and reserved names; `propose_pack`, the proposal as a host tool call; a host tool's context policy, `runtime` among it (agent#8) | open | `$defs/agentWireTool` | `web/src/assistant/engine.ts`, `McpTool`, `HostTool`; `context/session.ts`, `contextualSession`; `internal/codexbridge/contract.go`, `Tool` |
+| `run-event.json` | Every event a run emits, 18 kinds discriminated by `type`, in the union's order; the proposal's `note` where something after it did not finish; the critic's comparison of declared outcomes with the runtime's, and the cases a host declares for it (agent#10) | open | `$defs/criticCase` | `web/src/assistant/engine.ts`, `AssistantEvent` |
+| `tool-offer.json` | The tools offered to a run, as the session's two members: `tools` (runtime tools as served, each named within the ceiling) and `hostTools` (host tools' declarations); the agent-wire alias form; the runtime ceiling (the Desk's five and `experimental_test_cases`) and reserved names; `propose_pack`, the proposal as a host tool call; a host tool's context policy, `runtime` among it (agent#8); the critic's allow-list (agent#10) | open | `$defs/agentWireTool` | `web/src/assistant/engine.ts`, `McpTool`, `HostTool`; `context/session.ts`, `contextualSession`; `internal/codexbridge/contract.go`, `Tool` |
 | `tool-call.json` | The `tool_call` event; the `tools/call` params the gate inspects; the arguments `experimental_test_cases` may leave with; the agent-wire call; a call made in text, the JSON inside its fence | open | `$defs/testCasesArguments`, `$defs/textToolCall` | `web/src/assistant/engine.ts`, `AssistantEvent`; `toolGate.ts`, `inspectOutboundFrame`; `agentTransport.ts`, `bindAgentRun` |
 | `tool-result.json` | The `tool_result` event; the MCP result shape, image parts included; the bound, the read-back reference and its envelopes; `read_context` arguments; the reader's arguments and result (`read_window`, and every reading tool's window, its lines numbered); an image item read whole, or the line saying why it cannot be shown; an attachment; `search`'s arguments and result; the agent-wire answer; a reading tool's answer as the model is shown it, framed; the message that carries a text call's result back; the index of earlier results a chat-scoped run is shown, and the key a chat's read cache keeps a read under (agent#8) | open | `$defs/readContextArguments`, `$defs/readArguments`, `$defs/imagePart`, `$defs/searchArguments`, `$defs/agentWireAnswer`, `$defs/turnIndex`, `$defs/readCacheKey` | `web/src/assistant/engine.ts`, `McpToolResult`; `context/session.ts`, `SessionContext.result`; `context/ledger.ts`, `ContextLedger.reference`, `ContextLedger.tools`, `ContextDocument`; the reader, the search and images are this repository's, `packages/harness/context/reader.ts`, `context/search.ts`, `context/pattern.ts`, `images.ts` and `context/policy.ts`, `readWindowBytes` (agent#1, agent#5); the chat-scoped context is this repository's, `context/chat.ts`, `ChatTurn.index`, `canonicalJSON`, `readCacheKey` (agent#8) |
 | `approval.json` | The host's approval state for a chat and the one grant a user decision mints, for one of the server's four actions; the grant request | open | `$defs/request` | `web/src/assistant/approvals/client.ts`, `ActionApproval`, `ActionGrant`; `internal/desk/assistant_approval.go`, `assistantActionGrant`, `assistantApprovalRequest` |
@@ -30,8 +30,8 @@ root is not.
 | `delegated-task.json` | One child task's state; the delegation request; a task profile | open | `$defs/request`, `$defs/taskRequest` | `web/src/assistant/delegationContract.ts`, `DelegatedTask`, `validDelegatedTask`, `readDelegationRequest`, `TaskProfile` |
 | `checkpoint.json` | The execution checkpoint: allowance, grants, plan, operations, completions, retained context (for a chat-scoped run, the entries it retained or read, agent#8); the turn's test-call count | open | none | `web/src/assistant/execution/state.ts`, `ExecutionCheckpoint`, `readExecution` |
 | `failure.json` | One failure: the catalogue's 23 classes, source, the `not-started`/`refused`/`unknown` outcome, HTTP metadata; a catalogue entry; a failed tool's content | open | none | `web/src/assistant/failures.ts`, `AIFailure`, `readFailure`; `internal/aifailure/failure.go`, `Failure`; `internal/aifailure/catalog.json` |
-| `budget.json` | The context budget table; the per-model override and profile configuration; the request allowance the model is told; the budget-increase answer; the fixed limits by their Desk names; the harness's turn clock and tool-call deadline; where the execution state sits on each wire (the two capability-record members that place it are `capability.json`'s); its bounds on the test tool, on the images one request carries and on a chat's index of earlier results; where the request text sits on each wire and the rule that finds it on any request (agent#11); the memory reserve, kept only while memory may be on | open | `$defs/modelBudget`, `$defs/configuration`, `$defs/recallQuery` | `internal/aicontext/policy.json`; `web/src/assistant/context/policy.ts`, `ContextPolicy`, `contextConfiguration`; `internal/aicontext/policy.go`, `Policy`, `Decode`; `execution/controller.ts`, `guidance`, `budgetTool`; the placement is this repository's, `packages/harness/engines/vercel/loop.ts`, `STATE_HEADER`, `statePlacement` (agent#9); so are the recall rule, `packages/harness/certification/recall.ts`, `recallQuery` (agent#11), and the memory reserve, `context/policy.ts`, `contextPolicy` |
-| `provenance.json` | One model request's record: request number, phase, normalized completion, and for a request sent again its attempt, a refused attempt's failure and wait; the digests and engine id the Desk holds | open | none | `web/src/assistant/execution/state.ts`, `ExecutionCheckpoint.completions`; `completion.ts`, `ModelCompletion`, `readCompletion` |
+| `budget.json` | The context budget table, with the critic's default (agent#10); the per-model override and profile configuration; the request allowance the model is told; the budget-increase answer; the fixed limits by their Desk names; the harness's turn clock and tool-call deadline; where the execution state sits on each wire (the two capability-record members that place it are `capability.json`'s); its bounds on the test tool, on the images one request carries and on a chat's index of earlier results; where the request text sits on each wire and the rule that finds it on any request (agent#11); the memory reserve, kept only while memory may be on | open | `$defs/modelBudget`, `$defs/configuration`, `$defs/recallQuery` | `internal/aicontext/policy.json`; `web/src/assistant/context/policy.ts`, `ContextPolicy`, `contextConfiguration`; `internal/aicontext/policy.go`, `Policy`, `Decode`; `execution/controller.ts`, `guidance`, `budgetTool`; the placement is this repository's, `packages/harness/engines/vercel/loop.ts`, `STATE_HEADER`, `statePlacement` (agent#9); so are the recall rule, `packages/harness/certification/recall.ts`, `recallQuery` (agent#11), and the memory reserve, `context/policy.ts`, `contextPolicy` |
+| `provenance.json` | One model request's record: request number, phase, normalized completion, and for a request sent again its attempt, a refused attempt's failure and wait; the digests and engine id the Desk holds; what one critic pass cost (agent#10) | open | `$defs/criticFigures` | `web/src/assistant/execution/state.ts`, `ExecutionCheckpoint.completions`; `completion.ts`, `ModelCompletion`, `readCompletion` |
 | `capability.json` | What one endpoint and model can do, as the `vercel` adapter reads it wherever it decides: window and output cap, native and parallel tool calls, vision, the reasoning kind (and whether the endpoint ignores it), streaming quirks, the tool-schema subset, and where the execution state goes; what a host answers for an endpoint (any members of the record) | closed | the root, `$defs/reasoning`, `$defs/streamingQuirks`, `$defs/endpointCapabilities` | none at the pinned commit (the Desk decides by its three families: `web/src/assistant/thinking.ts`, `firstDialect`; `geminiSchema.ts`; `context/policy.ts`); the record is this repository's, `packages/harness/capabilities.ts`, `ModelCapabilities`, `FAMILY_CAPABILITIES`, `readCapabilities`, `capabilitiesFor` (agent#4, agent#9) |
 
 ## Vectors
@@ -66,15 +66,27 @@ files they were rendered from.
   `host-tools.json`), and the same offer as the `codex` engine puts it on the agent wire
   (`agent-wire-offer.json`); and the runtime ceiling the gate applies (`runtime-ceiling.json`): the
   Desk's five and `experimental_test_cases`.
-- `budget/desk-defaults.json` and `budget/desk-limits.json`: the budget table verbatim, and the fixed
-  limits by their constant names; `budget/harness-defaults.json`: the policy a harness session works
-  under, the table, the two time bounds, the two image bounds, the three test-tool bounds and the
-  two bounds on a chat's index of earlier results.
+- `budget/desk-defaults.json` and `budget/desk-limits.json`: the budget table verbatim with the one
+  member the harness adds (`adversarialReview`, agent#10), and the fixed limits by their constant
+  names; `budget/harness-defaults.json`: the policy a harness session works under, the table, the two
+  time bounds, the two image bounds, the three test-tool bounds and the two bounds on a chat's index
+  of earlier results.
 - `proposal/`: the proposal through `propose_pack` (`propose-pack.json`), a proposal whose critic
-  failed, delivered with its `note` (`critic-unfinished.json`), a `propose_pack` proposal whose
-  closing request failed, delivered with its `note` (`turn-unfinished.json`), and an answer whose
-  proposal could not be read, kept whole before the failure (`unreadable.json`); and
+  failed, delivered with its `note` and the critic's figures (`critic-unfinished.json`), a
+  `propose_pack` proposal whose closing request failed, delivered with its `note`
+  (`turn-unfinished.json`), and an answer whose proposal could not be read, kept whole before the
+  failure after the one reformat, on both engines since agent#29 (`unreadable.json`); and
   `tool-offer/propose-pack.json`, the tool as a host declares it.
+- `critic/` (agent#10), written by hand from the schemas: cases a host declares for the critic,
+  partial and whole (`declared-cases.json`); a critique that refutes a seeded wrong outcome, naming
+  the case and the one left incomplete (`outcome-refuted.json`), and one that reads a test run's rows
+  of the saved tests stating a whole disposition (`test-run-compared.json`); and what a critic pass
+  cost on each engine, with the harness's own calls (`figures.json`). `critic.test.ts` holds the
+  critiques and the cases to what `refutation.ts` writes, and the figures, `proposal/unreadable.json`
+  and `proposal/critic-unfinished.json` to what the engines emit. `tool-offer/critic-tools.json` is
+  the critic's allow-list and `tool-offer/critic-offer.json` what the critic is offered in the
+  scenario's session (its runtime reads and the harness's two readers), which the conformance
+  session and the agent-engine leg assert.
 - `bounds/`: a 429 retried once, with the attempts in the completion record
   (`rate-limited-retried.json`), the turn's wall clock pausing the run (`turn-clock.json`), a tool
   past its deadline answered as a failed result (`tool-timeout.json`), and a turn whose test calls
@@ -127,7 +139,9 @@ no vector carries an event the Desk or the harness does not emit.
 ## The Desk's own lists
 
 `desk/catalog.json` and `desk/policy.json` are byte-for-byte copies of the Desk's failure catalogue
-(`internal/aifailure/catalog.json`) and budget table (`internal/aicontext/policy.json`), and
+(`internal/aifailure/catalog.json`) and budget table (`internal/aicontext/policy.json`), the table with
+one member the harness adds, `adversarialReview` (agent#10: the critic's default, which both engines
+read; the Desk's table takes it in its swap, and its Go reader ignores a member it does not name), and
 `desk/inventory.json` lists, by source and symbol, the event kinds, failure sources and outcomes,
 completion reasons, engine ids, runtime tool ceiling and approval actions at the pinned commit. The
 tests hold the schemas and the budget vector to them. When the Desk changes one of them, copy it again
@@ -144,6 +158,8 @@ one vector per catalogue class, a failed tool's failure validated as one; a run 
 ends once, last; every capability record names a family whose wire speaks its reasoning kind, with
 one default record per family, and a host's answer may carry any members of the record and no
 other; the recall rule finds the request text in each wire's vector and the delegated child's; each read cache key is the
-digest of its canonical JSON; each row of the chat index follows from the vector's fixture; the scenario's order is the one the conformance session asserts; and this table's
+digest of its canonical JSON; each row of the chat index follows from the vector's fixture; the critic's allow-list is four of
+the ceiling's reads and two reserved readers, its default is off, and its offer in the scenario is the scenario's runtime
+tools on the list; the scenario's order is the one the conformance session asserts; and this table's
 *Root* and *Closed parts* columns match each schema (*Closed parts* lists the closed top-level
 `$defs`).

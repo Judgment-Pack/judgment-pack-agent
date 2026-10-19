@@ -370,6 +370,22 @@ class VectorTests(unittest.TestCase):
             set(self.schemas["capability.json"]["properties"]),
         )
 
+    def test_the_critic_reads_within_the_ceiling_and_runs_only_where_asked(self):
+        # agent#10: the critic's allow-list is four of the ceiling's reads and two of the harness's
+        # reserved context readers (review row 6), and the table's default is off.
+        offer = self.schemas["tool-offer.json"]["$defs"]
+        critic = offer["criticTools"]["enum"]
+        self.assertEqual(critic, ["validate", "experimental_evaluate", "get_schema", "experimental_test_cases", "read_window", "search"])
+        self.assertTrue(set(critic[:4]) <= set(offer["runtimeCeiling"]["enum"]))
+        self.assertTrue(set(critic[4:]) <= set(offer["reservedName"]["enum"]))
+        self.assertIs(load(CONTRACT / "desk" / "policy.json")["adversarialReview"], False)
+        self.assertEqual(self.vectors["tool-offer/critic-tools.json"]["items"], critic)
+        offered = self.vectors["tool-offer/critic-offer.json"]["items"][0]
+        scenario = self.vectors["tool-offer/scenario-offer.json"]["items"][0]
+        for member in ("tools", "hostTools"):
+            with self.subTest(member=member):
+                self.assertEqual(offered[member], [tool for tool in scenario[member] if tool["name"] in critic])
+
     def test_the_recall_rule_finds_the_request_text_in_one_vector_per_wire(self):
         recall = {name: vector for name, vector in self.vectors.items() if vector["schema"] == "budget.json#/$defs/recallQuery"}
         # One per wire, and a delegated child's first request, whose request text is its objective.

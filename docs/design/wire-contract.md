@@ -11,8 +11,11 @@ answer kept, the proposal's `note`, the `propose_pack` tool), the model-request 
 turn's wall clock and the tool-call deadline. Amended again for agent#7 (the Runtime's test tool on
 the ceiling, under an argument allow-list and a per-turn cap), agent#3 (the failure paths, recorded
 in [AI error handling](ai-error-handling.md)) and the harness side of agent#12 (retrieved text
-framed as data). These are the harness package's behaviour, not yet the Desk's; their vectors name
-the package's files as their source.
+framed as data). Amended for agent#10 (the critic: an allow-list of reads, its outcomes compared with
+the declared ones, one default, a critic model per connection and its figures), agent#25 (the
+agent-engine certification leg's offer and refused write) and agent#29 (the Codex adapter's reformat
+run, and its turn clock recorded as a disagreement). These are the harness package's behaviour, not
+yet the Desk's; their vectors name the package's files as their source.
 
 ## Host, adapter, and the slot between them
 
@@ -29,7 +32,8 @@ runs. Everything an engine needs is decided by the host before the session start
 - a model capability (`model.call(suffix, request)`: a path suffix and a body, no address, no
   credential) or, for `codex`, an agent capability (`agent.run`);
 - the reasoning tier, normalized by the host's table; an abort signal; and the session's options
-  (purpose, reply language, conversation, interactive presentation, critic, context inputs).
+  (purpose, reply language, conversation, interactive presentation, critic, context inputs), and,
+  for the critic, the cases whose outcomes the host declares (`criticCases`, agent#10).
 
 Both engines run inside one shared boundary (`context/managed.ts`, `managedContext`) that owns the
 execution's context ledger (or its turn on a chat's, [The chat-scoped context](#the-chat-scoped-context)),
@@ -61,14 +65,15 @@ rehearsal rule stay the host's (ADR-0001). Nothing below moves them.
   proposals), `execution_checkpoint` (state to save, `durable` where it must be saved before the
   next operation), `delegated_task` (a child's state, whole, at each transition).
 - **Provider recovery:** `retry` (attempt one or two: on `codex` relayed from the subscription
-  agent, on `vercel` before a refused model request is sent again), `response_recovery` (one
-  tool-free request to finish a response cut short, or to ask once for a proposal that could not be
-  read),
+  agent, on `vercel` before a refused model request is sent again), `response_recovery` (on
+  `vercel` one tool-free request to finish a response cut short; on both engines the one tool-free
+  request, or on `codex` agent run, that asks for a proposal that could not be read),
   `thinking_unavailable` (the tier could not be expressed here, said once).
-- **Outcome:** `critique` (the critic's checks, decided from the runtime's results and never its
-  prose, before the proposal), `proposal` (one document out of exactly one fenced JSON envelope or
-  the model's `propose_pack` call, with its unknowns, the critique's verdict where the critic
-  reached a check, and a `note` where the critic started and did not finish), `error` (the
+- **Outcome:** `critique` (the critic's checks and its comparisons of declared outcomes, decided
+  from the runtime's results and never its prose, and what it cost, before the proposal; see [The
+  critic](#the-critic)), `proposal` (one document out of exactly one fenced JSON envelope or the
+  model's `propose_pack` call, with its unknowns, the critique's verdict where the critic reached a
+  check or compared a case, and a `note` where the critic started and did not finish), `error` (the
   catalogue's sentence and the classified failure), `end` (exactly once, last).
 
 A consumer that leaves gets no `end`; nothing is delivered after the run closes. A cancelled run
@@ -77,9 +82,14 @@ the adapter's last word on the document, and accepting or rejecting it is the ho
 
 Nothing the model finished is lost. A proposal that cannot be read (two marked blocks; none,
 outside a conversation; a block not marked `json`, one not closed, or one that is not valid JSON,
-the last classed `invalid-response` like the rest) earns `vercel` one tool-free reformat request
-within the allowance; whatever that request returns, the first answer is delivered whole, prose and raw
-fence, before the `invalid-response` error. In a conversation the reformat may come back as prose
+the last classed `invalid-response` like the rest) earns one tool-free reformat: on `vercel` a
+request within the allowance, which shows the model its own answer in the history; on `codex`
+(agent#29) one agent run, which the bridge starts on a new thread, so its prompt shows the model its
+own answer between two marked lines, under the author's instructions, offered no tool, with every
+call refused at the boundary while it runs (review row 5). Either way a
+`response_recovery` event comes first, and whatever the reformat returns, the first answer is
+delivered whole, prose and raw fence, before the `invalid-response` error; where the reformat itself
+fails, its failure is reported after the first answer. In a conversation the reformat may come back as prose
 with no proposal: the first answer is still delivered whole, that prose after it, and then the first
 answer's failure. A critic that fails after a valid proposal (its provider error, its length cutoff,
 the allowance or the turn's wall clock) does not raise an error ahead of the proposal: the proposal
@@ -144,6 +154,86 @@ fenced proposals are. The critic is not offered it. For `propose_pack` and the h
 the model may call, retrieved text that asks for it included, and what holds is that a proposal is
 shown for the person's review and nothing is written or applied until the person acts. The gate
 holds the tools that are not offered.
+
+## The critic
+
+The refutation pass, after the proposal exists and before it is delivered (`refutation.ts`; agent#10,
+with the fixes of its clean-room review, rows 1 to 11).
+
+- **When it runs.** One rule on both engines (`criticRuns`): the session's `adversarialReview`, and
+  otherwise the policy table's `adversarialReview` (`budget.json`; `contract/desk/policy.json`), which
+  is `false`. The host passes `adversarialReview` on the session for each run, from its own settings;
+  the table's member is the harness's default where a session leaves it unset. So a critic runs only
+  where the host asks for one, at any reasoning tier; a tier no longer starts one. The runtime's
+  `test_pack` prompt is still required: with none, the pass does not run and says so.
+- **What it may call.** An allow-list (`tool-offer.json#/$defs/criticTools`): four of the runtime's
+  reads, `validate`, `experimental_evaluate` (a rehearsal, by the gate's rewrite), `get_schema` and
+  `experimental_test_cases` (within its argument and byte bounds, and the turn's `testCallsPerTurn`,
+  which the critic shares with the loop); and two of the harness's own context readers,
+  `read_window` and `search`, whose names a host tool may not take and which reach no Runtime tool
+  and no action. It is offered those the session offers, and no other host tool
+  (`tool-offer/critic-offer.json`). The boundary is the shared one: while the critic runs, the
+  `admit` on the boundary's wrapped `callTool` and host tools (`context/session.ts`) refuses any other
+  name before the tool gate and before a host tool's `execute`. Each engine also calls `admit` ahead
+  of its own handling of a question, a delegation or `propose_pack`; that is a redundant first
+  check, since the critic is offered none of those. A refused call is not made, the model reads a
+  `permission` failure, and a `guardrail` `refused` event names the tool, between the call and its
+  result where the gate's own refusal would be. A name the critic was not offered is put through
+  the same refusal as the loop's unoffered call; on `codex` a name the session serves but the run
+  was not offered is refused before any call, with its own `guardrail` event (review row 5).
+- **Its first message.** It is the runtime's testing prompt, the desk's sentence, the document and
+  the declared cases. Where it does not fit the critic's request, it is retained, and the critic is
+  told to read it with `read_window` (by its `contextId`) or `search`. Where it does not fit even as
+  that preview, the pass is refused with a `critic-unfinished` note (`context-limit`), and the
+  proposal is delivered.
+- **What it compares.** Where the host declares cases (`criticCases`: the pack's saved tests,
+  `source` `test`, and cases the request declares, `source` `declared`, each a row of the runtime's
+  matrix, `run-event.json#/$defs/criticCase`), each outcome the runtime gives is compared with the
+  declared one (`$defs/caseComparison`).
+  - The critic is shown the cases that state the whole §8.3 disposition (`kind`, `reasons` and
+    `handoff`) or an error class as that matrix, to run with `experimental_test_cases` as it is, and
+    the cases that state part of a disposition apart, to rehearse. The test tool compares a
+    disposition byte for byte, so a partial case is compared by rehearsal only (review row 2).
+  - A rehearsal of the proposed document with a case's facts, evidence and extensions agrees where
+    each member the case's disposition states is the rehearsal's, the sets `reasons` and
+    `handoff.triggeredBy` in any order (review row 3), or the error class (and phase where stated)
+    is the case's.
+  - A row of `experimental_test_cases` over the proposed document, for a case stating a whole
+    disposition or an error class, sent with the case as declared, agrees where the runtime's row
+    passed.
+  - A comparison against another pack, a `pack_id`, other inputs or a case the critic rewrote is
+    not made.
+  - After the critic's turns, each declared case nothing compared yet is run once by the harness,
+    through the same gated dispatch and recorder: one `experimental_test_cases` call over the whole
+    ones where the critic is offered it, then one rehearsal each of the rest, at most
+    `CRITIC_REHEARSALS` (eight), where it is offered `experimental_evaluate`. Each is a `tool_call`
+    and a `tool_result` marked `origin` `harness`, counted in the critic's figures (`harnessCalls`),
+    and none is a model request. On `vercel` they run under the turn's clock; on `codex` inside the
+    critic's phase and its boundary, under the pass's clock, the bridge's ten minutes from the critic
+    run's start, past which no further call is made (review row 8).
+  - `refuted` is true where a check did not come back as the runtime's settled word, a compared case
+    disagrees, or a declared case was not compared at all: an uncompared case is unsettled (review
+    row 1). So a rehearsal that says `evaluated` with the wrong outcome refutes, and a critique that
+    did not reach every declared case is never "not refuted". The critique lists the comparisons
+    (`cases`) and the cases nothing compared (`incomplete`), which the proposal's `critique` names
+    too; its text names each case that disagrees and each left incomplete. A test run is not a
+    status check: only its rows of declared cases count. A declared case the reader refuses (a
+    member it does not name, a repeated id, no `facts` object, not exactly one expectation) ends the
+    run before any request, as a `configuration` failure.
+- **What it runs on.** The host may name a cheaper model the same connection serves
+  (`configureHarness({ criticModel })`, asked once per pass with the run's engine, family and model;
+  null for the run's own). It is an injection point rather than a member of the capability record
+  because the record states what one endpoint and model can do, is read closed and is filled by a
+  probe, while this is the host's choice for a connection; and because `codex` reads no record. On
+  `vercel` the critic's requests name that model on the same relay capability, and the run's
+  capability record and tier hold for them. On `codex` the engine passes the host's one answer down
+  on the critic's agent run (review row 10); the agent transport sends a model other than the bound
+  one only on a critic run, and the bridge then admits only a model the subscription lists. A host
+  answer that is not a model name is the critic's note.
+- **What it cost.** The critique carries `figures` (`provenance.json#/$defs/criticFigures`), and so
+  does a `critic-unfinished` note: the model, and on `vercel` the model requests the critic claimed
+  against the allowance with the token counts its completion rows (`phase` `review`) reported,
+  summed; on `codex` its agent runs; and on both the harness's own calls (`harnessCalls`).
 
 ## Tool calls
 
@@ -363,6 +453,10 @@ makes, never above a hundred. The model is told the counts in its execution guid
 for more with `request_budget_increase`, which never grants: with two or fewer requests left it
 pauses the run for the person.
 
+The table also states the critic's default, `adversarialReview` (`false`; agent#10), which the
+harness adds to the Desk's table (`contract/desk/policy.json`) and both engines read; see [The
+critic](#the-critic).
+
 The harness adds two time bounds the Desk's table does not carry, each taken from the table where it
 does. `turnMilliseconds` (fifteen minutes): on `vercel`, when one turn's wall clock passes, what is
 in flight is stopped and the run pauses as `budget_paused` does, the checkpoint's `reason` saying
@@ -559,7 +653,9 @@ context, the index adding 2,146 bytes of text; the turn's requests come to 21,23
 and reasoning token counts the provider reported, and, since agent#9 in this harness, the prompt
 cache's reads and writes where the provider reports them), in the checkpoint; a request the provider
 refused and that was sent again has a row per attempt, the refused one with its `attempt`,
-`failure` and `waitMs`, the one that answered with its `attempt`. A failure carries the status,
+`failure` and `waitMs`, the one that answered with its `attempt`. Since agent#10 the critic's own
+figures (its model, its requests and their token counts) are on its critique, and on its note where
+it did not finish (`$defs/criticFigures`). A failure carries the status,
 request id and completion it was classified from. The checkpoint's `requestKey` and every retained
 entry are SHA-256 digests; the server writes the project brief's digest into the brief itself.
 That is all: see the open question on provenance below.
@@ -610,9 +706,13 @@ the host's model capability so the host keeps counting; whether the adapter emit
 
 ### Where the two engines disagree
 
-- **The critic's default.** `vercel` runs the critic when the session leaves `adversarialReview`
-  unset and the reasoning tier is on (`adversarialReview ?? runsRefutation()`); `codex` runs it
-  only when `adversarialReview` is `true`.
+- **The critic's model and figures.** Both read the host's `criticModel` once per pass (agent#10).
+  `vercel` puts it in the critic's request bodies on the relay capability the run holds, and its
+  figures count model requests and the tokens the completions reported; `codex` sends it on the
+  critic's agent run, where the bridge admits it only if the subscription lists it, and its figures
+  count agent runs, with no tokens. Both count the harness's own calls. The harness's calls run
+  under the turn's clock on `vercel` and under the critic pass's ten minutes on `codex`. (The critic's default is no longer a disagreement: one rule, the policy
+  table's.)
 - **Retries.** `vercel` keeps the SDK's own retries off (`maxRetries: 0`) and sends a model request
   again only after a `refused` outcome whose recovery is `wait` or `retry`, at most twice, with a
   `retry` event each time (see Failures); separately, it starts the whole session again only for a
@@ -621,12 +721,23 @@ the host's model capability so the host keeps counting; whether the adapter emit
   delegation coordinator retries every agent run under it, the parent's included, on `busy`,
   `not-started` and nothing else, three attempts in all, within five agent runs shared by the
   parent and its children.
-- **Deadlines.** `codex`: the Codex bridge bounds a whole run at ten minutes and the server reports
-  it as a `timeout` failure; the browser's agent transport ends a run at twelve minutes, a backstop
-  behind the bridge's deadline. `vercel`: no deadline for a whole run, and a turn's wall clock
-  (`turnMilliseconds`) that pauses the run rather than failing it; the relay bounds each relayed
-  request at ten minutes, and two minutes without a write. Both: a tool call past
-  `toolCallMilliseconds` is a failed result, not a failed run.
+- **Deadlines.** `codex`: the Codex bridge bounds each agent run at ten minutes and the server
+  reports it as a `timeout` failure; the browser's agent transport ends a run at twelve minutes, a
+  backstop behind the bridge's deadline. A turn is up to three agent runs (the author's, one
+  reformat run and the critic's), each with its own ten minutes. `vercel`: no deadline for a whole
+  run, and a turn's wall clock (`turnMilliseconds`) that pauses the run rather than failing it; the
+  relay bounds each relayed request at ten minutes, and two minutes without a write. Both: a tool
+  call past `toolCallMilliseconds` is a failed result, not a failed run.
+- **The turn clock on `codex` (agent#29, recorded, not built).** `codex` has no turn clock that
+  pauses. The bridge owns the agent loop: each agent run is one `thread/start` and one `turn/start`
+  on an ephemeral thread under the bridge's own ten-minute deadline (`internal/codexbridge/run.go`),
+  and the wire has no frame that pauses a turn or continues a thread; the browser can only cancel a
+  run. A pause is also continued by a request grant, and the `codex` allowance is
+  `provider-managed` (limit 1, no grant possible), so a paused `codex` run could not be continued.
+  What the bridge's deadline gives instead is the failure path: `timeout` with source `agent`, the
+  checkpoint kept with every completed call, and Retry resuming from it
+  ([AI error handling](ai-error-handling.md)). A harness clock shorter than the bridge's could only
+  end the run the same way, so none is added; `turnMilliseconds` is not read by `codex`.
 - **Budgets.** `vercel` counts model requests (`unit: "model-requests"`, twenty, grants of ten up to
   a hundred). `codex` is `provider-managed`: the limit stays 1, no grant is possible,
   `request_budget_increase` answers `unavailable`, `budget_paused` cannot arise in the loop, and the
@@ -634,18 +745,28 @@ the host's model capability so the host keeps counting; whether the adapter emit
 - **Call ids.** `codex` sets `callId` on every call and result. `vercel` sets it on an interactive
   session, and always on its refusal of a repeated call or of a call on the final, tool-free
   request; never on a call to a tool the model was not offered.
-- **An unoffered tool.** `vercel` reports the call and a refused result, and the run goes on;
-  `codex`'s transport treats it as a protocol failure and the run ends with `connection-lost`.
+- **An unoffered tool.** Both engines put a call to a tool the phase did not offer through the gate
+  as the model made it, report the call and a refused result, and go on (on `codex` since agent#25,
+  by the tool's real name where the alias names one). On `codex` a name the session serves, by its
+  alias or its real name, is refused before any call instead, with its own `guardrail` event
+  (review row 5). On `codex` the Desk's agent transport and the
+  bridge refuse an unoffered name first, as a protocol failure that ends the run with
+  `connection-lost`, so on the Desk's wire the engine's path is reached only by another agent
+  capability.
 - **Framed answers.** Both frame a reading tool's answer the same way; the data inside differs as
   the wires do: on `vercel` the bounded answer's JSON, on `codex` the agent-wire answer's text (a
   text-only answer as its text).
 - **Messages.** `codex` emits a `message` for each commentary-phase message during the run as well
   as the final prose; `vercel` emits one `message`, at the end.
-- **Kinds only one engine emits.** `reasoning`, `thinking_unavailable`, `response_recovery` and
-  `guardrail` `narrowed` are `vercel`'s only. Both emit `retry`, for different recoveries.
-- **An unreadable proposal.** `vercel` asks once more, with a tool-free reformat request, before it
-  reports `invalid-response`; `codex` reports it at once. Both deliver the whole answer first. The
-  reformat request and the turn clock on `codex` are agent#29.
+- **Kinds only one engine emits.** `reasoning`, `thinking_unavailable` and `guardrail` `narrowed`
+  are `vercel`'s only. Both emit `retry`, for different recoveries, and `response_recovery`:
+  `vercel` before its reformat request and its request that finishes a response cut short, `codex`
+  before its reformat run only.
+- **An unreadable proposal.** Both ask once more before they report `invalid-response`, and both
+  deliver the whole answer first. `vercel` sends a tool-free request in the same history, counted
+  against the allowance; `codex` (agent#29) starts one more agent run, offered no tool, phase
+  `author` on the wire, its prompt showing the answer, which the delegation coordinator counts among
+  its five agent runs and no request allowance counts.
 - **Failure source.** A loop failure is `source: "model"` from `vercel` and `"agent"` from
   `codex`.
 - **The capability record.** `vercel` reads it; `codex` has no model capability and reads none: its
@@ -653,9 +774,13 @@ the host's model capability so the host keeps counting; whether the adapter emit
   are always the agent's own.
 - **Certification.** `vercel` is held to the conformance session's exact event order on six legs
   (three wire families, each streamed and whole), and to the same order through the text tool path
-  on the same six; `codex` to a separate leg that runs T1 to T6 only, with the critic on, and asserts a subset (no
-  error, the proposal, the gate's events in place, one `end`). The two are not held to one
-  sequence.
+  on the same six; `codex` to a separate leg that runs T1 to T7, with the critic on, and asserts a
+  subset (no error, the proposal, the gate's events in place, one `end`). Since agent#25 that leg
+  also holds K2 and K3b as the model engine's legs do: the offer on the agent wire, read back by real
+  name, is the contract's `tool-offer/scenario-offer.json`, both members, and the critic's is
+  `tool-offer/critic-offer.json`; and T7's `write_file`, which the agent was never offered, reaches
+  the gate and is refused there, never the runtime, so a gate that admitted a sixth name fails
+  `certify (codex)` as it fails `certify (vercel)`. The two are not held to one sequence.
 
 ### Other departures
 

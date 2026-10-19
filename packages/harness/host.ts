@@ -177,6 +177,17 @@ export interface HarnessHost {
    * host's render adapter. New with agent#5.
    */
   renderImageToText(image: HeldImage, signal: AbortSignal): Promise<string>
+  /**
+   * The model the critic runs on for this run's connection, or null for the
+   * run's own model (agent#10): a cheaper model the same connection serves,
+   * named by the host from its connection settings. Asked once per critic pass
+   * with the run's engine, family (a model engine's) and model, and the answer
+   * passed down. Like `endpointCapabilities` it has an answer before the host
+   * supplies it: null. The critic's requests go through the same capability as
+   * the run's (the model relay, or the agent transport), so a model the
+   * connection does not serve is refused there.
+   */
+  criticModel(run: { engine: AssistantEngine; family?: EndpointKind; model: string }): string | null
 }
 
 /** What an injection point does until the host supplies it. */
@@ -223,6 +234,22 @@ export let readFile: HarnessHost['readFile'] = () => unsupplied('readFile')
 export let dialectAPI: HarnessHost['dialectAPI'] = () => unsupplied('dialectAPI')
 export let endpointCapabilities: HarnessHost['endpointCapabilities'] = () => ({})
 export let renderImageToText: HarnessHost['renderImageToText'] = () => unsupplied('renderImageToText')
+export let criticModel: HarnessHost['criticModel'] = () => null
+
+/**
+ * The critic's model for a run (agent#10): the host's answer where it names a
+ * model, the run's own otherwise. An answer that is not a model name (empty,
+ * longer than 128 characters, or carrying a line break or NUL) is refused
+ * rather than sent.
+ */
+export function criticModelFor(run: { engine: AssistantEngine; family?: EndpointKind; model: string }): string {
+  const named = criticModel(run)
+  if (named === null || named === undefined) return run.model
+  if (typeof named !== 'string' || named === '' || named.length > 128 || /[\r\n\0]/.test(named)) {
+    throw new Error('the host named a critic model that is not a model name: 1 to 128 characters, no line break or NUL')
+  }
+  return named
+}
 
 /**
  * Supply the host's injection points. Members left out keep what they had, so
@@ -252,4 +279,5 @@ export function configureHarness(host: Partial<HarnessHost>): void {
   if (host.dialectAPI) dialectAPI = host.dialectAPI
   if (host.endpointCapabilities) endpointCapabilities = host.endpointCapabilities
   if (host.renderImageToText) renderImageToText = host.renderImageToText
+  if (host.criticModel) criticModel = host.criticModel
 }

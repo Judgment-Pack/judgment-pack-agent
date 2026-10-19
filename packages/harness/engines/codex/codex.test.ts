@@ -9,6 +9,19 @@ import { openAssistantConnection } from '../../session'
 import { CERTIFIED_ENGINES, AGENT_ENGINES, loadEngine } from '../index'
 import { failureError } from '../../failures'
 import { PROPOSAL_RECEIVED, PROPOSE_PACK_SCHEMA, PROPOSE_PACK_TOOL } from '../contract'
+// agent#25: the offer this leg asserts is the contract's, not the session's own.
+import offerVector from '../../../../contract/vectors/tool-offer/scenario-offer.json'
+import criticOfferVector from '../../../../contract/vectors/tool-offer/critic-offer.json'
+import type { AgentTool } from '../../agent'
+
+/** An agent-wire offer read back to the tools it aliases: the real name, its description and schema. */
+const offered = (tools: AgentTool[], kind: 'runtime' | 'host') =>
+  tools.filter(tool => tool.name.startsWith(`desk_${kind}_`)).map(tool => {
+    const at = tool.description.indexOf(': ')
+    return { name: tool.description.slice(0, at), description: tool.description.slice(at + 2), inputSchema: tool.inputSchema }
+  })
+const asOffered = (tools: readonly { name: string; description?: string; inputSchema?: unknown }[]) =>
+  tools.map(({ name, description, inputSchema }) => ({ name, description: description ?? '', inputSchema }))
 
 const proposal = (document: unknown = { id: 'pack' }) => 'Ready.\n\n```json\n' + JSON.stringify({ proposal: { document, unknowns: ['Who reviews?'] } }) + '\n```'
 function session(run: AgentRun, changes: Partial<CodexSession> = {}): CodexSession {
@@ -34,17 +47,35 @@ describe.each(AGENT_ENGINES)('agent engine %s', engineId => {
     try {
       const loaded = await loadEngine(engineId)
       const ready = await connection.ready
+      const offer = offerVector.items[0]!
       let passes = 0
+      let writeAnswer: { text: string; isError: boolean } | undefined
       const run: AgentRun = async (request, callbacks) => {
         passes++
         expect(request.phase).toBe(passes === 1 ? 'author' : 'critic')
-        expect(request.tools.filter(tool=>tool.name.startsWith('desk_runtime_')).map(tool => tool.inputSchema)).toEqual(ready.tools.map(tool => tool.inputSchema))
+        if (passes === 1) {
+          // **K2, on the agent wire (agent#25).** The offer is compared with the
+          // contract's scenario offer, both members, by real name, description
+          // and served schema: the runtime's five, then the context tools.
+          expect(offered(request.tools, 'runtime')).toEqual(asOffered(offer.tools))
+          expect(offered(request.tools, 'host')).toEqual(asOffered(offer.hostTools))
+        } else {
+          // The critic is offered its allow-list: the scenario's runtime reads and the harness's two readers (agent#10).
+          expect(offered(request.tools, 'runtime')).toEqual(asOffered(criticOfferVector.items[0]!.tools))
+          expect(offered(request.tools, 'host')).toEqual(asOffered(criticOfferVector.items[0]!.hostTools))
+        }
         const calls = passes === 1 ? recording.calls : recording.calls.filter(call => call.step === 'T5' || call.step === 'T6')
         for (const [index, call] of calls.entries()) {
           const route = ready.tools.findIndex(tool => tool.name === call.tool)
           const args = structuredClone(call.arguments) as Record<string, unknown>
           if (call.tool === 'experimental_evaluate') args.rehearsal = false
           await callbacks.tool({ id: `p${passes}-c${index}`, name: `desk_runtime_${route}`, arguments: args }, callbacks.signal)
+        }
+        if (passes === 1) {
+          // **K3b, on the agent wire (agent#25).** The scenario's T7: a write_file
+          // the agent was never offered, which must reach the gate and be refused.
+          const write = scenario.steps.find(step => step.id === 'T7')!
+          writeAnswer = await callbacks.tool({ id: 'p1-write', name: write.tool!, arguments: structuredClone(write.arguments) as Record<string, unknown> }, callbacks.signal)
         }
         const text = passes === 1 ? proposal(scenario.documents.DRAFT_V2) : 'I claim this was refuted.'
         await callbacks.event({ type: 'message', id: `p${passes}`, text, phase: 'final' })
@@ -63,9 +94,52 @@ describe.each(AGENT_ENGINES)('agent engine %s', engineId => {
       const guardIndex = events.findIndex(event => event.type === 'guardrail' && event.tool === 'experimental_evaluate')
       expect(events[guardIndex - 1]?.type).toBe('tool_call')
       expect(events[guardIndex + 1]?.type).toBe('tool_result')
+      // K3b: write_file never reached the runtime; the gate refused it on the
+      // wire, between its call and its result, and the agent was told.
+      expect(runtime.seen.map(call => call.name)).not.toContain('write_file')
+      expect(runtime.seen.filter(call => call.refusal !== '')).toEqual([])
+      const refused = events.filter((event): event is Extract<AssistantEvent, { type: 'guardrail' }> => event.type === 'guardrail' && event.action === 'refused')
+      expect(refused.map(event => event.tool)).toEqual(['write_file'])
+      const refusedAt = events.indexOf(refused[0]!)
+      expect(events[refusedAt - 1]).toMatchObject({ type: 'tool_call', name: 'write_file' })
+      expect(events[refusedAt + 1]).toMatchObject({ type: 'tool_result', name: 'write_file', isError: true })
+      expect(writeAnswer).toMatchObject({ isError: true })
+      expect(writeAnswer!.text).toContain('never calls a tool it was not offered')
       expect(events.filter(event => event.type === 'end')).toHaveLength(1)
     } finally {
       vi.unstubAllGlobals()
+      await connection.close()
+      await runtime.close()
+    }
+  })
+
+  it('refutes a seeded wrong outcome in the recorded scenario: the rehearsal says evaluated, the declared case disagrees (agent#10)', async () => {
+    const runtime = await scriptedRuntime()
+    const events: AssistantEvent[] = []
+    const connection = openAssistantConnection({ allowed: scenario.scenarioTools, transport: runtime.transport, onEvent: event => events.push(event) })
+    try {
+      const loaded = await loadEngine(engineId)
+      const ready = await connection.ready
+      const run: AgentRun = async (request, callbacks) => {
+        if (request.phase === 'critic') {
+          for (const [index, call] of recording.calls.filter(call => call.step === 'T5' || call.step === 'T6').entries()) {
+            const route = ready.tools.findIndex(tool => tool.name === call.tool)
+            await callbacks.tool({ id: `c${index}`, name: `desk_runtime_${route}`, arguments: structuredClone(call.arguments) as Record<string, unknown> }, callbacks.signal)
+          }
+        }
+        await callbacks.event({ type: 'message', id: request.phase, text: request.phase === 'critic' ? 'No refutation found.' : proposal(scenario.documents.DRAFT_V2), phase: 'final' })
+      }
+      // The recorded rehearsal of FACTS approves; the declared case says decline.
+      const criticCases = [{ source: 'declared' as const, id: 'receipted-120', facts: scenario.documents.FACTS as Record<string, unknown>, expectedDisposition: { kind: 'outcome', outcomeId: 'decline' } }]
+      for await (const event of loaded.start(session(run, { ...ready, adversarialReview: true, criticCases }))) events.push(event)
+      expect(events.find(event => event.type === 'critique')).toMatchObject({
+        refuted: true,
+        checks: [{ tool: 'validate', status: 'valid' }, { tool: 'experimental_evaluate', status: 'evaluated' }],
+        cases: [{ case: 'receipted-120', source: 'declared', tool: 'experimental_evaluate', agrees: false, actual: { disposition: { kind: 'outcome', outcomeId: 'approve' } } }],
+        incomplete: []
+      })
+      expect(events.find(event => event.type === 'proposal')).toMatchObject({ document: scenario.documents.DRAFT_V2, critique: { refuted: true } })
+    } finally {
       await connection.close()
       await runtime.close()
     }
@@ -111,12 +185,17 @@ describe.each(AGENT_ENGINES)('agent engine %s', engineId => {
     const events = await collect(session(run, { tools: [tool], hostTools: [{ ...tool, description: '', execute: vi.fn() }] }))
     expect(run).not.toHaveBeenCalled()
     expect(events[0]?.type).toBe('error')
-    const callTool = vi.fn()
+    // agent#25: an unoffered tool is put through the session's gate as the
+    // agent named it, refused there, and answered refused; the run goes on.
+    const callTool = vi.fn(async () => { throw new Error('write_file is not one of the tools this assistant may call') })
+    let answered: { text: string; isError: boolean } | undefined
     const refused = await collect(session(async (_r, c) => {
-      await c.tool({ id: 'unknown', name: 'write_file', arguments: {} }, c.signal)
+      answered = await c.tool({ id: 'unknown', name: 'write_file', arguments: { path: 'x' } }, c.signal)
+      await c.event({ type: 'message', id: 'm', text: proposal(), phase: 'final' })
     }, { callTool }))
-    expect(callTool).not.toHaveBeenCalled()
-    expect(refused[0]?.type).toBe('error')
+    expect(callTool).toHaveBeenCalledExactlyOnceWith('write_file', { path: 'x' })
+    expect(answered).toEqual({ isError: true, text: expect.stringContaining('refused: write_file is not one of the tools') })
+    expect(refused.map(event => event.type)).toEqual(['tool_call', 'tool_result', 'message', 'proposal', 'end'])
     expect(CERTIFIED_ENGINES).toContain(engineId)
   })
 
@@ -210,10 +289,13 @@ const dataOf=(text:string)=>{
 it('retains full tool results for the UI, sends bounded references to Codex, and isolates the critic',async()=>{
  const value={records:Array.from({length:1000},(_,i)=>({id:i,decimal:'50',flag:false,note:'evidence '.repeat(40)}))}
  let passes=0
+ let listAlias=''
+ let critic:{offered:string[];refused?:{text:string;isError:boolean}}={offered:[]}
  const run:AgentRun=async(request,callbacks)=>{
   passes++
   const find=(name:string)=>request.tools.find(t=>t.description.startsWith(name+':'))!.name
   if(passes===1){
+   listAlias=find('list_context')
    const result=await callbacks.tool({id:'large',name:find('read_records'),arguments:{}},callbacks.signal)
    expect(result.text.length).toBeLessThan(12000)
    const ref=JSON.parse(result.text).structuredContent
@@ -221,8 +303,10 @@ it('retains full tool results for the UI, sends bounded references to Codex, and
    const page=await callbacks.tool({id:'page',name:find('read_context'),arguments:{id:ref.contextId,path:'/structuredContent/records/999'}},callbacks.signal)
    expect(JSON.parse(dataOf(page.text)).structuredContent.value).toEqual(value.records[999])
   }else{
-   const refs=await callbacks.tool({id:'list',name:find('list_context'),arguments:{}},callbacks.signal)
-   expect(JSON.parse(refs.text).structuredContent.items).toEqual([])
+   // agent#10: the critic is offered no host tool but the harness's two
+   // readers, over its own isolated ledger; asked by the author's alias,
+   // list_context is refused before any call (review row 5).
+   critic={offered:request.tools.map(t=>t.description.split(':')[0]!),refused:await callbacks.tool({id:'list',name:listAlias,arguments:{}},callbacks.signal)}
   }
   await callbacks.event({type:'message',id:'answer-'+passes,phase:'final',text:passes===1?proposal({id:'p'}):'No change recommended.'})
  }
@@ -231,6 +315,9 @@ it('retains full tool results for the UI, sends bounded references to Codex, and
  expect(events.filter(e=>e.type==='error')).toEqual([])
  expect(passes).toBe(2)
  expect(events.find(e=>e.type==='tool_result'&&e.name==='read_records')).toMatchObject({structured:value})
+ expect(critic.offered).toEqual(['read_window','search'])
+ expect(critic.refused).toMatchObject({isError:true,text:expect.stringContaining('list_context is served to this session but was not offered to this run')})
+ expect(events.filter(e=>e.type==='guardrail')).toEqual([{type:'guardrail',tool:'list_context',action:'refused',detail:expect.stringContaining('was not offered to this run')}])
 })
 
 it('preserves the current question and reads searchable context through the subscription adapter',async()=>{
@@ -262,12 +349,16 @@ it('uses shared task progress without inventing subscription model-request usage
 })
 
 describe('nothing finished is lost, on the agent wire (agent#6)', () => {
-  it('keeps the prose and the raw fence where the proposal cannot be read', async () => {
+  it('keeps the prose and the raw fence where the proposal cannot be read, after one reformat run (agent#29)', async () => {
     const answer = 'Here is the pack.\n\n```json\n{"proposal":{"document":{"id":"p",},"unknowns":[]}}\n```'
-    const events = await collect(session(reply(answer)))
-    expect(events.map(event => event.type)).toEqual(['message', 'error', 'end'])
-    expect(events[0]).toEqual({ type: 'message', text: answer })
-    expect(events[1]).toMatchObject({ failure: { code: 'invalid-response' } })
+    const run = vi.fn(reply(answer))
+    const events = await collect(session(run))
+    // The reformat run answered the same unreadable block: the first answer is
+    // delivered whole, then the first answer's failure.
+    expect(run).toHaveBeenCalledTimes(2)
+    expect(events.map(event => event.type)).toEqual(['response_recovery', 'message', 'error', 'end'])
+    expect(events[1]).toEqual({ type: 'message', text: answer })
+    expect(events[2]).toMatchObject({ failure: { code: 'invalid-response', detail: 'the fenced proposal block is not valid JSON' } })
   })
 
   it('delivers the proposal with a note when the critic fails', async () => {
@@ -321,12 +412,17 @@ describe('nothing finished is lost, on the agent wire (agent#6)', () => {
   it('refuses a tool proposal beside a fenced one as ambiguous, keeping the answer whole', async () => {
     const answer = 'Final.\n\n```json\n' + JSON.stringify({ proposal: { document: { id: 'fence' }, unknowns: [] } }) + '\n```'
     const run: AgentRun = async (request, callbacks) => {
+      // The reformat run (agent#29) is offered no tool and answers in prose only.
+      if (request.tools.length === 0) {
+        await callbacks.event({ type: 'message', id: 'r', text: 'I cannot choose between them.', phase: 'final' })
+        return
+      }
       await callPropose(request, callbacks)
       await callbacks.event({ type: 'message', id: 'm', text: answer, phase: 'final' })
     }
     const events = await collect(session(run, { hostTools: [proposeTool] }))
-    expect(events.map(event => event.type)).toEqual(['tool_call', 'tool_result', 'message', 'error', 'end'])
-    expect(events[2]).toEqual({ type: 'message', text: answer })
-    expect(events[3]).toMatchObject({ failure: { code: 'invalid-response' } })
+    expect(events.map(event => event.type)).toEqual(['tool_call', 'tool_result', 'response_recovery', 'message', 'error', 'end'])
+    expect(events[3]).toEqual({ type: 'message', text: answer })
+    expect(events[4]).toMatchObject({ failure: { code: 'invalid-response' } })
   })
 })

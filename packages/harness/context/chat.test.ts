@@ -558,17 +558,18 @@ describe('the critic, a failed start and a resume, with a chat', () => {
       answer: (request) => {
         const text = JSON.stringify(request.body)
         const called = calledIn(request)
-        if (text.includes('REFUTATION PASS')) return called.includes('list_examples') ? streamed(sseTurn({ text: 'Nothing refutes it.' })) : streamed(sseTurn({ tool: { name: 'list_examples', args: {}, id: 'call_critic_list' } }))
+        // The critic reads with validate, one of the tools its allow-list admits (agent#10).
+        if (text.includes('REFUTATION PASS')) return called.includes('validate') ? streamed(sseTurn({ text: 'Nothing refutes it.' })) : streamed(sseTurn({ tool: { name: 'validate', args: { document: JSON.stringify(pack) }, id: 'call_critic_validate' } }))
         return called.includes('get_schema') ? streamed(sseTurn({ text: '```json\n' + JSON.stringify({ proposal: { kind: 'create', document: pack, unknowns: [] } }) + '\n```' })) : streamed(sseTurn({ tool: { name: 'get_schema', args: {}, id: 'call_schema' } }))
       },
       handle: runtimeAnswers,
       session: { allowConversation: false, adversarialReview: true, testPrompt: 'THE RUNTIME’S TEST_PACK GUIDANCE', context: { currentRequest: { message: 'Write it.', input: 'Write it.' }, chat, runtime: RUNTIME } }
     })
     expect(ofType(turn.events, 'critique')).toHaveLength(1)
-    expect(turn.seen.map((call) => call.name)).toEqual(['get_schema', 'list_examples'])
+    expect(turn.seen.map((call) => call.name)).toEqual(['get_schema', 'validate'])
     const kept = [...chat.entries.values()].filter((entry) => entry.kind === 'tool').map((entry) => entry.label)
     expect(kept).toContain('get_schema')
-    expect(kept).not.toContain('list_examples')
+    expect(kept).not.toContain('validate')
   })
 
   it('closes the turn of a run that fails at its start, so what it retained can be evicted', async () => {

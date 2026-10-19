@@ -8,7 +8,6 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  REFUTE_ON_A_DEGRADED_ENDPOINT,
   RESPONSE_TOKENS,
   ALWAYS_FROM_ABSENCE,
   GEMINI_BUDGET,
@@ -360,26 +359,12 @@ describe('the five states', () => {
   })
 })
 
-describe('the refutation pass’s gate, and the ruling on a degraded endpoint', () => {
-  it('does not run at tier off', () => {
-    expect(slot('off').runsRefutation()).toBe(false)
-  })
-
-  it('runs at on and ultra', () => {
-    expect(slot('on').runsRefutation()).toBe(true)
-    expect(slot('ultra').runsRefutation()).toBe(true)
-  })
-
-  it('follows the ruling on a degraded endpoint, whichever way it is set', () => {
-    // **The open ruling, and the whole of what changes with it.** The value of
-    // the pass is the runtime's checks over the proposed document, not the
-    // model's thinking — so the default is that it runs. The alternative is
-    // this constant set to `false` **and nothing else**: no test names a value,
-    // every one of them asks the constant.
-    const it0 = slot('on')
-    it0.refused(400, 'Unsupported parameter: reasoning_effort')
-    expect(it0.state()).toBe('unavailable')
-    expect(it0.runsRefutation()).toBe(REFUTE_ON_A_DEGRADED_ENDPOINT)
+describe('the refutation pass is not the tier’s to start (agent#10)', () => {
+  it('has no gate on the slot: one rule, the policy table’s, decides on both engines', () => {
+    // The tier used to decide (on at on and ultra, off at off, on at a degraded
+    // endpoint by a ruling). `refutation.ts`'s `criticRuns` decides now, and
+    // the slot has nothing to say about it at any tier or state.
+    for (const tier of ['off', 'on', 'ultra'] as const) expect('runsRefutation' in slot(tier)).toBe(false)
   })
 })
 
