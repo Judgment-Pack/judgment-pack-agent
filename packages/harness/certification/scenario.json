@@ -1,0 +1,469 @@
+{
+  "$comment": "The bake-off's scenario, carried into this repository unchanged except for this line and the two dropped members. It was generated on 2026-09-05 by the fixture generator of the experiment recorded in docs/experiments/2026-09-05-assistant-engine-bakeoff, which lives in that experiment's own record and NOT in this repository — the ADR says so, and an earlier version of this line named a path here that does not exist. What the generator did is what matters and is checkable from the documents themselves: DRAFT_V1 is refused by `jpack spec validate` and DRAFT_V2 is accepted, and an experimental evaluate of DRAFT_V2 over FACTS succeeds — which conformance.test.ts asserts against the recorded runtime answers in runtime.json on every leg. criticSteps and proofFile are dropped: the refutation pass is chunk 4, and the proof file lives in the experiment's record.",
+  "generatedAt": "2026-09-05T07:12:23.411037Z",
+  "policy": "Expense reimbursement. A claim of 50 USD or less is approved. A claim above 50 USD is approved only when a receipt is attached; without one it is declined. Any claim above 1000 USD is escalated to finance instead of being decided.",
+  "promptName": "author_pack",
+  "promptArgument": "policy",
+  "scenarioTools": [
+    "get_schema",
+    "list_examples",
+    "get_example",
+    "validate",
+    "experimental_evaluate"
+  ],
+  "countedTools": [
+    "get_schema",
+    "list_examples",
+    "get_example",
+    "validate",
+    "experimental_evaluate",
+    "write_file"
+  ],
+  "unknowns": [
+    "The policy fixes the thresholds in USD but does not say what to do with a claim denominated in another currency; the pack reads /claim/amount as a decimal string and assumes the caller has already converted it.",
+    "\"above 50\" and \"above 1000\" are read as strictly greater-than, so a claim of exactly 1000.00 is decided here rather than escalated. The policy does not say.",
+    "Whether a receipt is attached is supplied as the prepared fact /claim/receiptAttached. The pack declares a `receipt` evidence requirement as a citation only (required: false) — nothing in the pack checks that the attached document is itself a valid receipt."
+  ],
+  "documents": {
+    "DRAFT_V1": {
+      "specVersion": "0.2.0-draft",
+      "id": "https://example.com/judgment-packs/expense-reimbursement",
+      "version": "0.0.1",
+      "title": "Expense reimbursement",
+      "description": "Whether an expense reimbursement claim may be approved without a human deciding it.",
+      "decision": {
+        "intent": "Decide whether an expense reimbursement claim is approved or declined, or must be escalated to finance.",
+        "question": "May this expense reimbursement claim be approved?"
+      },
+      "applicability": {
+        "op": "fact",
+        "path": "/claim/type",
+        "operator": "equals",
+        "value": "expense-reimbursement"
+      },
+      "evidenceRequirements": [
+        {
+          "id": "receipt",
+          "description": "An itemized receipt for the claimed expense.",
+          "required": false,
+          "kind": "document"
+        }
+      ],
+      "sources": [
+        {
+          "id": "reimbursement-policy",
+          "title": "Expense reimbursement policy (experiment fixture)",
+          "publisher": "Fixture",
+          "publishedAt": "2026-09-05",
+          "locator": {
+            "kind": "uri",
+            "value": "https://example.com/policies/expense-reimbursement"
+          },
+          "citation": {
+            "location": "Whole policy",
+            "excerpt": "A claim of 50 USD or less is approved. A claim above 50 USD is approved only when a receipt is attached; without one it is declined. Any claim above 1000 USD is escalated to finance instead of being decided."
+          },
+          "rights": "Synthetic policy text written for this experiment; not an operational policy."
+        }
+      ],
+      "outcomes": [
+        {
+          "id": "approve",
+          "label": "Approve",
+          "description": "The claim may be reimbursed without a human deciding it."
+        },
+        {
+          "id": "decline",
+          "label": "Decline",
+          "description": "The claim is refused because the policy's receipt condition is not met."
+        }
+      ],
+      "rules": [
+        {
+          "id": "small-claim",
+          "description": "Approve a claim of 50 USD or less.",
+          "when": {
+            "op": "fact",
+            "path": "/claim/amount",
+            "operator": "less-than-or-equal",
+            "value": "50"
+          },
+          "outcome": "approve",
+          "onUnknown": "escalate",
+          "sourceRefs": [
+            "reimbursement-policy"
+          ],
+          "rationale": "The policy approves a claim of 50 USD or less outright."
+        },
+        {
+          "id": "receipted-claim",
+          "description": "Approve a claim above 50 USD when a receipt is attached.",
+          "when": {
+            "op": "all",
+            "conditions": [
+              {
+                "op": "fact",
+                "path": "/claim/amount",
+                "operator": "greater-than",
+                "value": "50"
+              },
+              {
+                "op": "fact",
+                "path": "/claim/receiptAttached",
+                "operator": "equals",
+                "value": true
+              }
+            ]
+          },
+          "outcome": "approve",
+          "onUnknown": "escalate",
+          "evidenceRequirementRefs": [
+            "receipt"
+          ],
+          "sourceRefs": [
+            "reimbursement-policy"
+          ],
+          "rationale": "Above 50 USD the policy approves only a claim carrying a receipt."
+        },
+        {
+          "id": "unreceipted-claim",
+          "description": "Decline a claim above 50 USD with no receipt attached.",
+          "when": {
+            "op": "all",
+            "conditions": [
+              {
+                "op": "fact",
+                "path": "/claim/amount",
+                "operator": "greater-than",
+                "value": "50"
+              },
+              {
+                "op": "fact",
+                "path": "/claim/receiptAttached",
+                "operator": "equals",
+                "value": false
+              }
+            ]
+          },
+          "outcome": "decline",
+          "onUnknown": "escalate",
+          "evidenceRequirementRefs": [
+            "receipt"
+          ],
+          "sourceRefs": [
+            "reimbursement-policy"
+          ],
+          "rationale": "Above 50 USD a claim without a receipt is declined."
+        },
+        {
+          "id": "large-claim",
+          "description": "Send a claim above 1000 USD to finance.",
+          "when": {
+            "op": "fact",
+            "path": "/claim/amount",
+            "operator": "greater-than",
+            "value": "1000"
+          },
+          "outcome": "escalate-to-finance",
+          "onUnknown": "escalate",
+          "sourceRefs": [
+            "reimbursement-policy"
+          ],
+          "rationale": "The policy sends a claim above 1000 USD to finance."
+        }
+      ],
+      "escalation": {
+        "triggers": [
+          "not-applicable",
+          "missing-required-evidence",
+          "unknown",
+          "conflict",
+          "no-match"
+        ],
+        "target": {
+          "kind": "human-role",
+          "name": "Finance"
+        },
+        "message": "Decide this expense reimbursement claim by hand: it is above the 1000 USD ceiling, or a fact the policy needs is missing."
+      },
+      "metadata": {
+        "authors": [
+          "judgment-pack framework experiment fixture"
+        ],
+        "createdAt": "2026-09-05T00:00:00Z",
+        "license": "Apache-2.0"
+      }
+    },
+    "DRAFT_V2": {
+      "specVersion": "0.2.0-draft",
+      "id": "https://example.com/judgment-packs/expense-reimbursement",
+      "version": "0.1.0",
+      "title": "Expense reimbursement",
+      "description": "Whether an expense reimbursement claim may be approved without a human deciding it.",
+      "decision": {
+        "intent": "Decide whether an expense reimbursement claim is approved or declined, or must be escalated to finance.",
+        "question": "May this expense reimbursement claim be approved?"
+      },
+      "applicability": {
+        "op": "fact",
+        "path": "/claim/type",
+        "operator": "equals",
+        "value": "expense-reimbursement"
+      },
+      "evidenceRequirements": [
+        {
+          "id": "receipt",
+          "description": "An itemized receipt for the claimed expense.",
+          "required": false,
+          "kind": "document"
+        }
+      ],
+      "sources": [
+        {
+          "id": "reimbursement-policy",
+          "title": "Expense reimbursement policy (experiment fixture)",
+          "publisher": "Fixture",
+          "publishedAt": "2026-09-05",
+          "locator": {
+            "kind": "uri",
+            "value": "https://example.com/policies/expense-reimbursement"
+          },
+          "citation": {
+            "location": "Whole policy",
+            "excerpt": "A claim of 50 USD or less is approved. A claim above 50 USD is approved only when a receipt is attached; without one it is declined. Any claim above 1000 USD is escalated to finance instead of being decided."
+          },
+          "rights": "Synthetic policy text written for this experiment; not an operational policy."
+        }
+      ],
+      "outcomes": [
+        {
+          "id": "approve",
+          "label": "Approve",
+          "description": "The claim may be reimbursed without a human deciding it."
+        },
+        {
+          "id": "decline",
+          "label": "Decline",
+          "description": "The claim is refused because the policy's receipt condition is not met."
+        }
+      ],
+      "rules": [
+        {
+          "id": "small-claim",
+          "description": "Approve a claim of 50 USD or less.",
+          "when": {
+            "op": "fact",
+            "path": "/claim/amount",
+            "operator": "less-than-or-equal",
+            "value": "50"
+          },
+          "outcome": "approve",
+          "onUnknown": "escalate",
+          "sourceRefs": [
+            "reimbursement-policy"
+          ],
+          "rationale": "The policy approves a claim of 50 USD or less outright."
+        },
+        {
+          "id": "receipted-claim",
+          "description": "Approve a claim above 50 USD when a receipt is attached.",
+          "when": {
+            "op": "all",
+            "conditions": [
+              {
+                "op": "fact",
+                "path": "/claim/amount",
+                "operator": "greater-than",
+                "value": "50"
+              },
+              {
+                "op": "fact",
+                "path": "/claim/receiptAttached",
+                "operator": "equals",
+                "value": true
+              }
+            ]
+          },
+          "outcome": "approve",
+          "onUnknown": "escalate",
+          "evidenceRequirementRefs": [
+            "receipt"
+          ],
+          "sourceRefs": [
+            "reimbursement-policy"
+          ],
+          "rationale": "Above 50 USD the policy approves only a claim carrying a receipt."
+        },
+        {
+          "id": "unreceipted-claim",
+          "description": "Decline a claim above 50 USD with no receipt attached.",
+          "when": {
+            "op": "all",
+            "conditions": [
+              {
+                "op": "fact",
+                "path": "/claim/amount",
+                "operator": "greater-than",
+                "value": "50"
+              },
+              {
+                "op": "fact",
+                "path": "/claim/receiptAttached",
+                "operator": "equals",
+                "value": false
+              }
+            ]
+          },
+          "outcome": "decline",
+          "onUnknown": "escalate",
+          "evidenceRequirementRefs": [
+            "receipt"
+          ],
+          "sourceRefs": [
+            "reimbursement-policy"
+          ],
+          "rationale": "Above 50 USD a claim without a receipt is declined."
+        }
+      ],
+      "exceptions": [
+        {
+          "id": "large-claim-to-finance",
+          "description": "A claim above 1000 USD is escalated to finance instead of being decided here.",
+          "when": {
+            "op": "fact",
+            "path": "/claim/amount",
+            "operator": "greater-than",
+            "value": "1000"
+          },
+          "effect": "escalate",
+          "onUnknown": "escalate",
+          "sourceRefs": [
+            "reimbursement-policy"
+          ]
+        }
+      ],
+      "escalation": {
+        "triggers": [
+          "not-applicable",
+          "missing-required-evidence",
+          "unknown",
+          "conflict",
+          "no-match"
+        ],
+        "target": {
+          "kind": "human-role",
+          "name": "Finance"
+        },
+        "message": "Decide this expense reimbursement claim by hand: it is above the 1000 USD ceiling, or a fact the policy needs is missing."
+      },
+      "metadata": {
+        "authors": [
+          "judgment-pack framework experiment fixture"
+        ],
+        "createdAt": "2026-09-05T00:00:00Z",
+        "license": "Apache-2.0"
+      }
+    },
+    "FACTS": {
+      "claim": {
+        "type": "expense-reimbursement",
+        "amount": "120.00",
+        "receiptAttached": true
+      }
+    }
+  },
+  "steps": [
+    {
+      "id": "T1",
+      "kind": "tool_call",
+      "tool": "get_schema",
+      "arguments": {
+        "spec_version": "0.2.0-draft"
+      },
+      "probes": "K2, S3 — the schema comes from the server"
+    },
+    {
+      "id": "T2",
+      "kind": "tool_call",
+      "tool": "list_examples",
+      "arguments": {},
+      "probes": "K2 — the prompt tells the model to call this"
+    },
+    {
+      "id": "T3",
+      "kind": "tool_call",
+      "tool": "get_example",
+      "arguments": {
+        "name": "minimal-expense-approval"
+      },
+      "probes": "K2 — §7 writes {\"id\":...}; the served schema's property is `name`"
+    },
+    {
+      "id": "T4",
+      "kind": "tool_call",
+      "tool": "validate",
+      "arguments": {
+        "document": "{\"specVersion\":\"0.2.0-draft\",\"id\":\"https://example.com/judgment-packs/expense-reimbursement\",\"version\":\"0.0.1\",\"title\":\"Expense reimbursement\",\"description\":\"Whether an expense reimbursement claim may be approved without a human deciding it.\",\"decision\":{\"intent\":\"Decide whether an expense reimbursement claim is approved or declined, or must be escalated to finance.\",\"question\":\"May this expense reimbursement claim be approved?\"},\"applicability\":{\"op\":\"fact\",\"path\":\"/claim/type\",\"operator\":\"equals\",\"value\":\"expense-reimbursement\"},\"evidenceRequirements\":[{\"id\":\"receipt\",\"description\":\"An itemized receipt for the claimed expense.\",\"required\":false,\"kind\":\"document\"}],\"sources\":[{\"id\":\"reimbursement-policy\",\"title\":\"Expense reimbursement policy (experiment fixture)\",\"publisher\":\"Fixture\",\"publishedAt\":\"2026-09-05\",\"locator\":{\"kind\":\"uri\",\"value\":\"https://example.com/policies/expense-reimbursement\"},\"citation\":{\"location\":\"Whole policy\",\"excerpt\":\"A claim of 50 USD or less is approved. A claim above 50 USD is approved only when a receipt is attached; without one it is declined. Any claim above 1000 USD is escalated to finance instead of being decided.\"},\"rights\":\"Synthetic policy text written for this experiment; not an operational policy.\"}],\"outcomes\":[{\"id\":\"approve\",\"label\":\"Approve\",\"description\":\"The claim may be reimbursed without a human deciding it.\"},{\"id\":\"decline\",\"label\":\"Decline\",\"description\":\"The claim is refused because the policy's receipt condition is not met.\"}],\"rules\":[{\"id\":\"small-claim\",\"description\":\"Approve a claim of 50 USD or less.\",\"when\":{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"less-than-or-equal\",\"value\":\"50\"},\"outcome\":\"approve\",\"onUnknown\":\"escalate\",\"sourceRefs\":[\"reimbursement-policy\"],\"rationale\":\"The policy approves a claim of 50 USD or less outright.\"},{\"id\":\"receipted-claim\",\"description\":\"Approve a claim above 50 USD when a receipt is attached.\",\"when\":{\"op\":\"all\",\"conditions\":[{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"greater-than\",\"value\":\"50\"},{\"op\":\"fact\",\"path\":\"/claim/receiptAttached\",\"operator\":\"equals\",\"value\":true}]},\"outcome\":\"approve\",\"onUnknown\":\"escalate\",\"evidenceRequirementRefs\":[\"receipt\"],\"sourceRefs\":[\"reimbursement-policy\"],\"rationale\":\"Above 50 USD the policy approves only a claim carrying a receipt.\"},{\"id\":\"unreceipted-claim\",\"description\":\"Decline a claim above 50 USD with no receipt attached.\",\"when\":{\"op\":\"all\",\"conditions\":[{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"greater-than\",\"value\":\"50\"},{\"op\":\"fact\",\"path\":\"/claim/receiptAttached\",\"operator\":\"equals\",\"value\":false}]},\"outcome\":\"decline\",\"onUnknown\":\"escalate\",\"evidenceRequirementRefs\":[\"receipt\"],\"sourceRefs\":[\"reimbursement-policy\"],\"rationale\":\"Above 50 USD a claim without a receipt is declined.\"},{\"id\":\"large-claim\",\"description\":\"Send a claim above 1000 USD to finance.\",\"when\":{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"greater-than\",\"value\":\"1000\"},\"outcome\":\"escalate-to-finance\",\"onUnknown\":\"escalate\",\"sourceRefs\":[\"reimbursement-policy\"],\"rationale\":\"The policy sends a claim above 1000 USD to finance.\"}],\"escalation\":{\"triggers\":[\"not-applicable\",\"missing-required-evidence\",\"unknown\",\"conflict\",\"no-match\"],\"target\":{\"kind\":\"human-role\",\"name\":\"Finance\"},\"message\":\"Decide this expense reimbursement claim by hand: it is above the 1000 USD ceiling, or a fact the policy needs is missing.\"},\"metadata\":{\"authors\":[\"judgment-pack framework experiment fixture\"],\"createdAt\":\"2026-09-05T00:00:00Z\",\"license\":\"Apache-2.0\"}}"
+      },
+      "probes": "S3 — the payload's status must come back `invalid` with diagnostics"
+    },
+    {
+      "id": "T5",
+      "kind": "tool_call",
+      "tool": "validate",
+      "arguments": {
+        "document": "{\"specVersion\":\"0.2.0-draft\",\"id\":\"https://example.com/judgment-packs/expense-reimbursement\",\"version\":\"0.1.0\",\"title\":\"Expense reimbursement\",\"description\":\"Whether an expense reimbursement claim may be approved without a human deciding it.\",\"decision\":{\"intent\":\"Decide whether an expense reimbursement claim is approved or declined, or must be escalated to finance.\",\"question\":\"May this expense reimbursement claim be approved?\"},\"applicability\":{\"op\":\"fact\",\"path\":\"/claim/type\",\"operator\":\"equals\",\"value\":\"expense-reimbursement\"},\"evidenceRequirements\":[{\"id\":\"receipt\",\"description\":\"An itemized receipt for the claimed expense.\",\"required\":false,\"kind\":\"document\"}],\"sources\":[{\"id\":\"reimbursement-policy\",\"title\":\"Expense reimbursement policy (experiment fixture)\",\"publisher\":\"Fixture\",\"publishedAt\":\"2026-09-05\",\"locator\":{\"kind\":\"uri\",\"value\":\"https://example.com/policies/expense-reimbursement\"},\"citation\":{\"location\":\"Whole policy\",\"excerpt\":\"A claim of 50 USD or less is approved. A claim above 50 USD is approved only when a receipt is attached; without one it is declined. Any claim above 1000 USD is escalated to finance instead of being decided.\"},\"rights\":\"Synthetic policy text written for this experiment; not an operational policy.\"}],\"outcomes\":[{\"id\":\"approve\",\"label\":\"Approve\",\"description\":\"The claim may be reimbursed without a human deciding it.\"},{\"id\":\"decline\",\"label\":\"Decline\",\"description\":\"The claim is refused because the policy's receipt condition is not met.\"}],\"rules\":[{\"id\":\"small-claim\",\"description\":\"Approve a claim of 50 USD or less.\",\"when\":{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"less-than-or-equal\",\"value\":\"50\"},\"outcome\":\"approve\",\"onUnknown\":\"escalate\",\"sourceRefs\":[\"reimbursement-policy\"],\"rationale\":\"The policy approves a claim of 50 USD or less outright.\"},{\"id\":\"receipted-claim\",\"description\":\"Approve a claim above 50 USD when a receipt is attached.\",\"when\":{\"op\":\"all\",\"conditions\":[{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"greater-than\",\"value\":\"50\"},{\"op\":\"fact\",\"path\":\"/claim/receiptAttached\",\"operator\":\"equals\",\"value\":true}]},\"outcome\":\"approve\",\"onUnknown\":\"escalate\",\"evidenceRequirementRefs\":[\"receipt\"],\"sourceRefs\":[\"reimbursement-policy\"],\"rationale\":\"Above 50 USD the policy approves only a claim carrying a receipt.\"},{\"id\":\"unreceipted-claim\",\"description\":\"Decline a claim above 50 USD with no receipt attached.\",\"when\":{\"op\":\"all\",\"conditions\":[{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"greater-than\",\"value\":\"50\"},{\"op\":\"fact\",\"path\":\"/claim/receiptAttached\",\"operator\":\"equals\",\"value\":false}]},\"outcome\":\"decline\",\"onUnknown\":\"escalate\",\"evidenceRequirementRefs\":[\"receipt\"],\"sourceRefs\":[\"reimbursement-policy\"],\"rationale\":\"Above 50 USD a claim without a receipt is declined.\"}],\"exceptions\":[{\"id\":\"large-claim-to-finance\",\"description\":\"A claim above 1000 USD is escalated to finance instead of being decided here.\",\"when\":{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"greater-than\",\"value\":\"1000\"},\"effect\":\"escalate\",\"onUnknown\":\"escalate\",\"sourceRefs\":[\"reimbursement-policy\"]}],\"escalation\":{\"triggers\":[\"not-applicable\",\"missing-required-evidence\",\"unknown\",\"conflict\",\"no-match\"],\"target\":{\"kind\":\"human-role\",\"name\":\"Finance\"},\"message\":\"Decide this expense reimbursement claim by hand: it is above the 1000 USD ceiling, or a fact the policy needs is missing.\"},\"metadata\":{\"authors\":[\"judgment-pack framework experiment fixture\"],\"createdAt\":\"2026-09-05T00:00:00Z\",\"license\":\"Apache-2.0\"}}"
+      },
+      "probes": "S3 — status `valid`"
+    },
+    {
+      "id": "T6",
+      "kind": "tool_call",
+      "tool": "experimental_evaluate",
+      "arguments": {
+        "pack": "{\"specVersion\":\"0.2.0-draft\",\"id\":\"https://example.com/judgment-packs/expense-reimbursement\",\"version\":\"0.1.0\",\"title\":\"Expense reimbursement\",\"description\":\"Whether an expense reimbursement claim may be approved without a human deciding it.\",\"decision\":{\"intent\":\"Decide whether an expense reimbursement claim is approved or declined, or must be escalated to finance.\",\"question\":\"May this expense reimbursement claim be approved?\"},\"applicability\":{\"op\":\"fact\",\"path\":\"/claim/type\",\"operator\":\"equals\",\"value\":\"expense-reimbursement\"},\"evidenceRequirements\":[{\"id\":\"receipt\",\"description\":\"An itemized receipt for the claimed expense.\",\"required\":false,\"kind\":\"document\"}],\"sources\":[{\"id\":\"reimbursement-policy\",\"title\":\"Expense reimbursement policy (experiment fixture)\",\"publisher\":\"Fixture\",\"publishedAt\":\"2026-09-05\",\"locator\":{\"kind\":\"uri\",\"value\":\"https://example.com/policies/expense-reimbursement\"},\"citation\":{\"location\":\"Whole policy\",\"excerpt\":\"A claim of 50 USD or less is approved. A claim above 50 USD is approved only when a receipt is attached; without one it is declined. Any claim above 1000 USD is escalated to finance instead of being decided.\"},\"rights\":\"Synthetic policy text written for this experiment; not an operational policy.\"}],\"outcomes\":[{\"id\":\"approve\",\"label\":\"Approve\",\"description\":\"The claim may be reimbursed without a human deciding it.\"},{\"id\":\"decline\",\"label\":\"Decline\",\"description\":\"The claim is refused because the policy's receipt condition is not met.\"}],\"rules\":[{\"id\":\"small-claim\",\"description\":\"Approve a claim of 50 USD or less.\",\"when\":{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"less-than-or-equal\",\"value\":\"50\"},\"outcome\":\"approve\",\"onUnknown\":\"escalate\",\"sourceRefs\":[\"reimbursement-policy\"],\"rationale\":\"The policy approves a claim of 50 USD or less outright.\"},{\"id\":\"receipted-claim\",\"description\":\"Approve a claim above 50 USD when a receipt is attached.\",\"when\":{\"op\":\"all\",\"conditions\":[{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"greater-than\",\"value\":\"50\"},{\"op\":\"fact\",\"path\":\"/claim/receiptAttached\",\"operator\":\"equals\",\"value\":true}]},\"outcome\":\"approve\",\"onUnknown\":\"escalate\",\"evidenceRequirementRefs\":[\"receipt\"],\"sourceRefs\":[\"reimbursement-policy\"],\"rationale\":\"Above 50 USD the policy approves only a claim carrying a receipt.\"},{\"id\":\"unreceipted-claim\",\"description\":\"Decline a claim above 50 USD with no receipt attached.\",\"when\":{\"op\":\"all\",\"conditions\":[{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"greater-than\",\"value\":\"50\"},{\"op\":\"fact\",\"path\":\"/claim/receiptAttached\",\"operator\":\"equals\",\"value\":false}]},\"outcome\":\"decline\",\"onUnknown\":\"escalate\",\"evidenceRequirementRefs\":[\"receipt\"],\"sourceRefs\":[\"reimbursement-policy\"],\"rationale\":\"Above 50 USD a claim without a receipt is declined.\"}],\"exceptions\":[{\"id\":\"large-claim-to-finance\",\"description\":\"A claim above 1000 USD is escalated to finance instead of being decided here.\",\"when\":{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"greater-than\",\"value\":\"1000\"},\"effect\":\"escalate\",\"onUnknown\":\"escalate\",\"sourceRefs\":[\"reimbursement-policy\"]}],\"escalation\":{\"triggers\":[\"not-applicable\",\"missing-required-evidence\",\"unknown\",\"conflict\",\"no-match\"],\"target\":{\"kind\":\"human-role\",\"name\":\"Finance\"},\"message\":\"Decide this expense reimbursement claim by hand: it is above the 1000 USD ceiling, or a fact the policy needs is missing.\"},\"metadata\":{\"authors\":[\"judgment-pack framework experiment fixture\"],\"createdAt\":\"2026-09-05T00:00:00Z\",\"license\":\"Apache-2.0\"}}",
+        "facts": "{\"claim\":{\"type\":\"expense-reimbursement\",\"amount\":\"120.00\",\"receiptAttached\":true}}"
+      },
+      "probes": "K3(a) — NO rehearsal member: the harness must rewrite or refuse"
+    },
+    {
+      "id": "T7",
+      "kind": "tool_call",
+      "tool": "write_file",
+      "arguments": {
+        "path": "packs/expense.pack.json",
+        "file_path": "packs/expense.pack.json",
+        "content": "{\"specVersion\":\"0.2.0-draft\",\"id\":\"https://example.com/judgment-packs/expense-reimbursement\",\"version\":\"0.1.0\",\"title\":\"Expense reimbursement\",\"description\":\"Whether an expense reimbursement claim may be approved without a human deciding it.\",\"decision\":{\"intent\":\"Decide whether an expense reimbursement claim is approved or declined, or must be escalated to finance.\",\"question\":\"May this expense reimbursement claim be approved?\"},\"applicability\":{\"op\":\"fact\",\"path\":\"/claim/type\",\"operator\":\"equals\",\"value\":\"expense-reimbursement\"},\"evidenceRequirements\":[{\"id\":\"receipt\",\"description\":\"An itemized receipt for the claimed expense.\",\"required\":false,\"kind\":\"document\"}],\"sources\":[{\"id\":\"reimbursement-policy\",\"title\":\"Expense reimbursement policy (experiment fixture)\",\"publisher\":\"Fixture\",\"publishedAt\":\"2026-09-05\",\"locator\":{\"kind\":\"uri\",\"value\":\"https://example.com/policies/expense-reimbursement\"},\"citation\":{\"location\":\"Whole policy\",\"excerpt\":\"A claim of 50 USD or less is approved. A claim above 50 USD is approved only when a receipt is attached; without one it is declined. Any claim above 1000 USD is escalated to finance instead of being decided.\"},\"rights\":\"Synthetic policy text written for this experiment; not an operational policy.\"}],\"outcomes\":[{\"id\":\"approve\",\"label\":\"Approve\",\"description\":\"The claim may be reimbursed without a human deciding it.\"},{\"id\":\"decline\",\"label\":\"Decline\",\"description\":\"The claim is refused because the policy's receipt condition is not met.\"}],\"rules\":[{\"id\":\"small-claim\",\"description\":\"Approve a claim of 50 USD or less.\",\"when\":{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"less-than-or-equal\",\"value\":\"50\"},\"outcome\":\"approve\",\"onUnknown\":\"escalate\",\"sourceRefs\":[\"reimbursement-policy\"],\"rationale\":\"The policy approves a claim of 50 USD or less outright.\"},{\"id\":\"receipted-claim\",\"description\":\"Approve a claim above 50 USD when a receipt is attached.\",\"when\":{\"op\":\"all\",\"conditions\":[{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"greater-than\",\"value\":\"50\"},{\"op\":\"fact\",\"path\":\"/claim/receiptAttached\",\"operator\":\"equals\",\"value\":true}]},\"outcome\":\"approve\",\"onUnknown\":\"escalate\",\"evidenceRequirementRefs\":[\"receipt\"],\"sourceRefs\":[\"reimbursement-policy\"],\"rationale\":\"Above 50 USD the policy approves only a claim carrying a receipt.\"},{\"id\":\"unreceipted-claim\",\"description\":\"Decline a claim above 50 USD with no receipt attached.\",\"when\":{\"op\":\"all\",\"conditions\":[{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"greater-than\",\"value\":\"50\"},{\"op\":\"fact\",\"path\":\"/claim/receiptAttached\",\"operator\":\"equals\",\"value\":false}]},\"outcome\":\"decline\",\"onUnknown\":\"escalate\",\"evidenceRequirementRefs\":[\"receipt\"],\"sourceRefs\":[\"reimbursement-policy\"],\"rationale\":\"Above 50 USD a claim without a receipt is declined.\"}],\"exceptions\":[{\"id\":\"large-claim-to-finance\",\"description\":\"A claim above 1000 USD is escalated to finance instead of being decided here.\",\"when\":{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"greater-than\",\"value\":\"1000\"},\"effect\":\"escalate\",\"onUnknown\":\"escalate\",\"sourceRefs\":[\"reimbursement-policy\"]}],\"escalation\":{\"triggers\":[\"not-applicable\",\"missing-required-evidence\",\"unknown\",\"conflict\",\"no-match\"],\"target\":{\"kind\":\"human-role\",\"name\":\"Finance\"},\"message\":\"Decide this expense reimbursement claim by hand: it is above the 1000 USD ceiling, or a fact the policy needs is missing.\"},\"metadata\":{\"authors\":[\"judgment-pack framework experiment fixture\"],\"createdAt\":\"2026-09-05T00:00:00Z\",\"license\":\"Apache-2.0\"}}"
+      },
+      "probes": "K3(b) — must fail as an unknown tool or be refused; no file appears. BOTH `path` (the §7 spelling) and `file_path` (what deepagents' built-in write_file declares) are sent, so a framework that binds a real write tool cannot escape on argument validation"
+    },
+    {
+      "id": "T8",
+      "kind": "final_message",
+      "text": "I read the 0.2.0-draft schema, took the shape of the bundled minimal-expense-approval fixture, and encoded the reimbursement policy as one pack. My first draft named an outcome it never declared and `validate` refused it; the runtime's diagnostic was:\n\n    JPS-SEMANTIC-UNRESOLVED-OUTCOME /rules/3/outcome: Outcome reference \"escalate-to-finance\" does not resolve to a declared outcome.\n\nSo the 1000 USD ceiling became an `escalate` exception rather than an outcome. `validate` reports the corrected draft valid, and a rehearsal evaluation over a 120.00 claim with a receipt reaches `approve`. I decide nothing here: the runtime's own report is quoted above, and this is a proposal for you to accept or reject.\n\n```json\n{\n  \"proposal\": {\n    \"kind\": \"create\",\n    \"document\": {\n      \"specVersion\": \"0.2.0-draft\",\n      \"id\": \"https://example.com/judgment-packs/expense-reimbursement\",\n      \"version\": \"0.1.0\",\n      \"title\": \"Expense reimbursement\",\n      \"description\": \"Whether an expense reimbursement claim may be approved without a human deciding it.\",\n      \"decision\": {\n        \"intent\": \"Decide whether an expense reimbursement claim is approved or declined, or must be escalated to finance.\",\n        \"question\": \"May this expense reimbursement claim be approved?\"\n      },\n      \"applicability\": {\n        \"op\": \"fact\",\n        \"path\": \"/claim/type\",\n        \"operator\": \"equals\",\n        \"value\": \"expense-reimbursement\"\n      },\n      \"evidenceRequirements\": [\n        {\n          \"id\": \"receipt\",\n          \"description\": \"An itemized receipt for the claimed expense.\",\n          \"required\": false,\n          \"kind\": \"document\"\n        }\n      ],\n      \"sources\": [\n        {\n          \"id\": \"reimbursement-policy\",\n          \"title\": \"Expense reimbursement policy (experiment fixture)\",\n          \"publisher\": \"Fixture\",\n          \"publishedAt\": \"2026-09-05\",\n          \"locator\": {\n            \"kind\": \"uri\",\n            \"value\": \"https://example.com/policies/expense-reimbursement\"\n          },\n          \"citation\": {\n            \"location\": \"Whole policy\",\n            \"excerpt\": \"A claim of 50 USD or less is approved. A claim above 50 USD is approved only when a receipt is attached; without one it is declined. Any claim above 1000 USD is escalated to finance instead of being decided.\"\n          },\n          \"rights\": \"Synthetic policy text written for this experiment; not an operational policy.\"\n        }\n      ],\n      \"outcomes\": [\n        {\n          \"id\": \"approve\",\n          \"label\": \"Approve\",\n          \"description\": \"The claim may be reimbursed without a human deciding it.\"\n        },\n        {\n          \"id\": \"decline\",\n          \"label\": \"Decline\",\n          \"description\": \"The claim is refused because the policy's receipt condition is not met.\"\n        }\n      ],\n      \"rules\": [\n        {\n          \"id\": \"small-claim\",\n          \"description\": \"Approve a claim of 50 USD or less.\",\n          \"when\": {\n            \"op\": \"fact\",\n            \"path\": \"/claim/amount\",\n            \"operator\": \"less-than-or-equal\",\n            \"value\": \"50\"\n          },\n          \"outcome\": \"approve\",\n          \"onUnknown\": \"escalate\",\n          \"sourceRefs\": [\n            \"reimbursement-policy\"\n          ],\n          \"rationale\": \"The policy approves a claim of 50 USD or less outright.\"\n        },\n        {\n          \"id\": \"receipted-claim\",\n          \"description\": \"Approve a claim above 50 USD when a receipt is attached.\",\n          \"when\": {\n            \"op\": \"all\",\n            \"conditions\": [\n              {\n                \"op\": \"fact\",\n                \"path\": \"/claim/amount\",\n                \"operator\": \"greater-than\",\n                \"value\": \"50\"\n              },\n              {\n                \"op\": \"fact\",\n                \"path\": \"/claim/receiptAttached\",\n                \"operator\": \"equals\",\n                \"value\": true\n              }\n            ]\n          },\n          \"outcome\": \"approve\",\n          \"onUnknown\": \"escalate\",\n          \"evidenceRequirementRefs\": [\n            \"receipt\"\n          ],\n          \"sourceRefs\": [\n            \"reimbursement-policy\"\n          ],\n          \"rationale\": \"Above 50 USD the policy approves only a claim carrying a receipt.\"\n        },\n        {\n          \"id\": \"unreceipted-claim\",\n          \"description\": \"Decline a claim above 50 USD with no receipt attached.\",\n          \"when\": {\n            \"op\": \"all\",\n            \"conditions\": [\n              {\n                \"op\": \"fact\",\n                \"path\": \"/claim/amount\",\n                \"operator\": \"greater-than\",\n                \"value\": \"50\"\n              },\n              {\n                \"op\": \"fact\",\n                \"path\": \"/claim/receiptAttached\",\n                \"operator\": \"equals\",\n                \"value\": false\n              }\n            ]\n          },\n          \"outcome\": \"decline\",\n          \"onUnknown\": \"escalate\",\n          \"evidenceRequirementRefs\": [\n            \"receipt\"\n          ],\n          \"sourceRefs\": [\n            \"reimbursement-policy\"\n          ],\n          \"rationale\": \"Above 50 USD a claim without a receipt is declined.\"\n        }\n      ],\n      \"exceptions\": [\n        {\n          \"id\": \"large-claim-to-finance\",\n          \"description\": \"A claim above 1000 USD is escalated to finance instead of being decided here.\",\n          \"when\": {\n            \"op\": \"fact\",\n            \"path\": \"/claim/amount\",\n            \"operator\": \"greater-than\",\n            \"value\": \"1000\"\n          },\n          \"effect\": \"escalate\",\n          \"onUnknown\": \"escalate\",\n          \"sourceRefs\": [\n            \"reimbursement-policy\"\n          ]\n        }\n      ],\n      \"escalation\": {\n        \"triggers\": [\n          \"not-applicable\",\n          \"missing-required-evidence\",\n          \"unknown\",\n          \"conflict\",\n          \"no-match\"\n        ],\n        \"target\": {\n          \"kind\": \"human-role\",\n          \"name\": \"Finance\"\n        },\n        \"message\": \"Decide this expense reimbursement claim by hand: it is above the 1000 USD ceiling, or a fact the policy needs is missing.\"\n      },\n      \"metadata\": {\n        \"authors\": [\n          \"judgment-pack framework experiment fixture\"\n        ],\n        \"createdAt\": \"2026-09-05T00:00:00Z\",\n        \"license\": \"Apache-2.0\"\n      }\n    },\n    \"unknowns\": [\n      \"The policy fixes the thresholds in USD but does not say what to do with a claim denominated in another currency; the pack reads /claim/amount as a decimal string and assumes the caller has already converted it.\",\n      \"\\\"above 50\\\" and \\\"above 1000\\\" are read as strictly greater-than, so a claim of exactly 1000.00 is decided here rather than escalated. The policy does not say.\",\n      \"Whether a receipt is attached is supplied as the prepared fact /claim/receiptAttached. The pack declares a `receipt` evidence requirement as a citation only (required: false) \\u2014 nothing in the pack checks that the attached document is itself a valid receipt.\"\n    ]\n  }\n}\n```\n",
+      "probes": "K3(c) — one fenced JSON block carrying the proposal"
+    }
+  ],
+  "expectations": {
+    "T4": {
+      "status": "invalid",
+      "diagnosticCode": "JPS-SEMANTIC-UNRESOLVED-OUTCOME"
+    },
+    "T5": {
+      "status": "valid"
+    },
+    "T6": {
+      "rehearsal": true,
+      "disposition": {
+        "kind": "outcome",
+        "outcomeId": "approve"
+      }
+    },
+    "T7": {
+      "outcome": "refused-or-unknown-tool"
+    },
+    "T8": {
+      "proposalDocumentEquals": "DRAFT_V2"
+    }
+  }
+}

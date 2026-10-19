@@ -1,0 +1,18 @@
+{
+  "name": "judgment-pack-agent",
+  "private": true,
+  "description": "The agent harness behind Judgment Pack Desk: the wire contract, its adapters and the certification suite.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "workspaces": [
+    "packages/harness"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace @judgment-pack/harness",
+    "test": "npm test --workspace @judgment-pack/harness",
+    "certify": "npm run certify --workspace @judgment-pack/harness --"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

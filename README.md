@@ -24,15 +24,24 @@ framework's own guardrails are a convenience inside an adapter, never the bounda
 
 - `contract/`: the wire contract, schemas and vectors, extracted from the Desk's engine slot; see
   [`contract/README.md`](contract/README.md).
+- `packages/harness/`: the harness as an npm workspace package, `@judgment-pack/harness`, extracted
+  from the Desk's `web/src/assistant` with no behaviour change: the Vercel AI SDK adapter
+  (`engines/vercel`) and the Codex adapter (`engines/codex`) behind the engine slot, the context
+  budget and ledger, execution and planning, delegation, the memory client, the tool gate, the
+  failure catalogue, and the certification suite (`certification/`). What it needs from a host
+  comes through one module, `host.ts`; see [its README](packages/harness/README.md).
+- `scripts/parity.sh`: diffs the package against a Desk checkout and names every difference.
+- `tests/`: the contract's checks, and the package's copies of the Desk's JSON held to them.
 - `docs/adr/`: decisions. `docs/design/`: designs, starting with the
   [wire contract](docs/design/wire-contract.md).
-- Adapters live beside the contract once extracted, one directory per framework, each with the
-  certification suite run against it.
+- An adapter is one directory of a package, certified by the suite:
+  `npm ci && npm run certify -- --adapter <id>`.
 
 ## Status and plan
 
-The contract is extracted (`contract/`, #19); the harness code itself still lives in the Desk's
-`web/src/assistant` and the Go server. The order of work, from the audit recorded on the Desk's
+The contract is extracted (`contract/`, #19), and the harness is extracted as a package
+(`packages/harness`, #20, #21); the Desk runs its in-tree copy until its swap
+(judgment-pack-desk#515), and the Go server's share stays in the Desk. The order of work, from the audit recorded on the Desk's
 `assistant-harness` issues:
 
 1. The contract, extracted from the Desk's engine slot (#19).
