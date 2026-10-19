@@ -1,0 +1,95 @@
+{
+  "description": "The critic ran the declared saved tests that state a whole disposition (declared-cases.json, unreceipted-120 and small-40) with experimental_test_cases over the proposed document, the matrix as declared: each row is a comparison, the runtime's row status its verdict. unreceipted-120 failed (the runtime gave approve where the test declares decline), so the critique refutes; a test run is not a status check, so checks is empty. codex engine, whose figures count agent runs. Written by hand from the schema.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/refutation.ts (compareTestRun, critiqueEvent)",
+      "packages/harness/engines/codex/index.ts (the critic run)"
+    ]
+  },
+  "items": [
+    {
+      "type": "critique",
+      "refuted": true,
+      "checks": [],
+      "text": "compared with the declared outcomes: case unreceipted-120 (test) disagrees: declared {\"handoff\":{\"state\":\"none\"},\"kind\":\"outcome\",\"outcomeId\":\"decline\",\"reasons\":[]}, experimental_test_cases gave {\"handoff\":{\"state\":\"none\"},\"kind\":\"outcome\",\"outcomeId\":\"approve\",\"reasons\":[]}; 1 declared case(s) agree",
+      "cases": [
+        {
+          "case": "small-40",
+          "source": "test",
+          "tool": "experimental_test_cases",
+          "agrees": true,
+          "expected": {
+            "disposition": {
+              "handoff": {
+                "state": "none"
+              },
+              "kind": "outcome",
+              "outcomeId": "approve",
+              "reasons": []
+            }
+          },
+          "actual": {
+            "disposition": {
+              "handoff": {
+                "state": "none"
+              },
+              "kind": "outcome",
+              "outcomeId": "approve",
+              "reasons": []
+            }
+          }
+        },
+        {
+          "case": "unreceipted-120",
+          "source": "test",
+          "tool": "experimental_test_cases",
+          "agrees": false,
+          "expected": {
+            "disposition": {
+              "handoff": {
+                "state": "none"
+              },
+              "kind": "outcome",
+              "outcomeId": "decline",
+              "reasons": []
+            }
+          },
+          "actual": {
+            "disposition": {
+              "handoff": {
+                "state": "none"
+              },
+              "kind": "outcome",
+              "outcomeId": "approve",
+              "reasons": []
+            }
+          }
+        }
+      ],
+      "incomplete": [],
+      "figures": {
+        "model": "agent-model",
+        "unit": "agent-runs",
+        "requests": 1
+      }
+    },
+    {
+      "type": "proposal",
+      "document": {
+        "id": "https://example.com/judgment-packs/expense-reimbursement"
+      },
+      "unknowns": [],
+      "critique": {
+        "refuted": true
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

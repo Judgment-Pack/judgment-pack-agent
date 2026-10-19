@@ -123,7 +123,7 @@ export interface TaskThread {
  * A complete child's result, kept for an identical task of the same chat (agent#17): the task it came
  * from, the whole text its child wrote and the open questions its run returned, from which the
  * coordinator gives the parent the same result again without a model request. Identical: the same
- * profile, the same objective (its digest) and the same references.
+ * profile, the same objective and the same references.
  */
 export interface ReusableResult {
  task:string

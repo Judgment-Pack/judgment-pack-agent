@@ -36,6 +36,10 @@
         }
       },
       "additionalProperties": true
+    },
+    "origin": {
+      "description": "harness: the harness made this call itself, not the model: the critic pass's own run of a declared case nothing compared yet (agent#10 review row 8; refutation.ts, compareTheRest). Absent on every call a model made.",
+      "const": "harness"
     }
   },
   "additionalProperties": true,

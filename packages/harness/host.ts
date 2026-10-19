@@ -177,7 +177,23 @@ export interface HarnessHost {
    * host's render adapter. New with agent#5.
    */
   renderImageToText(image: HeldImage, signal: AbortSignal): Promise<string>
+  /**
+   * The models a run's connection names for its subordinate work: `child`, the model delegated
+   * children run on (agent#15), and `critic`, the critic's (agent#10). Each is a cheaper model the same
+   * connection serves, named by the host from its connection settings, or absent or null for the
+   * run's own model. Asked once per run, with the connection the run is bound to (the run's
+   * `context.connection`), its engine, its family (a model engine's) and its model; a host keyed on
+   * the connection answers each connection for itself. Like `endpointCapabilities` it has an answer
+   * before the host supplies it: none. A child's or the critic's requests go through the same
+   * capability as the run's, so a model the connection does not serve is refused there.
+   */
+  modelsFor(run: RunIdentity): { critic?: string | null; child?: string | null }
 }
+
+/** What `modelsFor` is asked with: the run's connection, engine, family (a model engine's) and model. */
+export interface RunIdentity { connection?: AITarget; engine: AssistantEngine; family?: EndpointKind; model: string }
+/** The models a run's subordinate work runs on: each the host's answer, or the run's own model. */
+export interface RunModels { critic: string; child: string }
 
 /** What an injection point does until the host supplies it. */
 function unsupplied(name: keyof HarnessHost): never {
@@ -223,6 +239,26 @@ export let readFile: HarnessHost['readFile'] = () => unsupplied('readFile')
 export let dialectAPI: HarnessHost['dialectAPI'] = () => unsupplied('dialectAPI')
 export let endpointCapabilities: HarnessHost['endpointCapabilities'] = () => ({})
 export let renderImageToText: HarnessHost['renderImageToText'] = () => unsupplied('renderImageToText')
+export let modelsFor: HarnessHost['modelsFor'] = () => ({})
+
+/**
+ * The host's `modelsFor` answer for one run, read: each member a model name, or the run's own model
+ * where the host names none. An answer that is not an object, or a member that is not a model name
+ * (empty, longer than 128 characters, or carrying a line break or NUL), is refused rather than sent.
+ */
+export function runModels(run: RunIdentity): RunModels {
+  const named = modelsFor(run) as unknown
+  if (named === null || typeof named !== 'object' || Array.isArray(named)) throw new Error('the host answered modelsFor with something other than an object')
+  const pick = (member: 'critic' | 'child'): string => {
+    const value = (named as Record<string, unknown>)[member]
+    if (value === undefined || value === null) return run.model
+    if (typeof value !== 'string' || value === '' || value.length > 128 || /[\r\n\0]/.test(value)) {
+      throw new Error(`the host named a ${member} model that is not a model name: 1 to 128 characters, no line break or NUL`)
+    }
+    return value
+  }
+  return { critic: pick('critic'), child: pick('child') }
+}
 
 /**
  * Supply the host's injection points. Members left out keep what they had, so
@@ -252,4 +288,5 @@ export function configureHarness(host: Partial<HarnessHost>): void {
   if (host.dialectAPI) dialectAPI = host.dialectAPI
   if (host.endpointCapabilities) endpointCapabilities = host.endpointCapabilities
   if (host.renderImageToText) renderImageToText = host.renderImageToText
+  if (host.modelsFor) modelsFor = host.modelsFor
 }

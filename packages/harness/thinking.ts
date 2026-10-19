@@ -320,23 +320,11 @@ export function unsupportedThinking(
   return namesSent(members).some((name) => message.includes(name))
 }
 
-/**
- * **The ruling this chunk carries, as one boolean.**
- *
- * ADR-0001's open questions include *"whether the refutation pass should still
- * run its `validate` check on a degraded endpoint (every prototype silently
- * dropped it; a ruling is needed before the tier chunk merges)"*.
- *
- * The default built here is **true**: the pass runs. Its value is the
- * runtime's checks over the proposed document, not the model's thinking, and a
- * `validate` costs one call. The alternative — the pass is skipped where the
- * endpoint degraded — is this constant set to `false` and nothing else, and
- * the tab's line then says the pass did not run.
- *
- * The maintainer has not ruled. Until they do, this is a default and the PR
- * that carries it says so in its first paragraph.
- */
-export const REFUTE_ON_A_DEGRADED_ENDPOINT = true
+// ADR-0001's open question "whether the refutation pass should still run its
+// validate check on a degraded endpoint" no longer arises here: since agent#10
+// the tier does not decide whether the critic runs. One rule does, on both
+// engines, from the policy table (refutation.ts, criticRuns), and a critic the
+// host asks for runs whatever state the tier is in.
 
 /**
  * How many consecutive turns an **inference from absence** takes.
@@ -515,8 +503,6 @@ export interface ThinkingSlot {
   turnEnded(hadText: boolean): AssistantEvent | null
   /** A carried signature came back short. Degrades, once, with the reason. */
   truncated(reason: string): AssistantEvent | null
-  /** Whether the refutation pass runs, under the ruling above. */
-  runsRefutation(): boolean
   /**
    * The notice owed before the first request, once, or null (agent#4): where the
    * capability record says the endpoint has no reasoning parameter, or ignores
@@ -656,10 +642,6 @@ export function openThinking(session: Pick<AssistantSession, 'thinking' | 'model
       if (unavailable) return null
       unavailable = true
       return notice('unavailable', reason)
-    },
-    runsRefutation() {
-      if (tier === 'off') return false
-      return REFUTE_ON_A_DEGRADED_ENDPOINT || (!unavailable && !always)
     },
     opening() {
       if (!silent || tier === 'off' || announced) return null

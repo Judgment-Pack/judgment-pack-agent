@@ -41,6 +41,10 @@
  *   started from, on every certified leg: 21 legs in four families (six
  *   plain, six text-path, three strict-alternation, and the six thinking
  *   legs' authoring requests).
+ * - **the refutation pass**, where the session asks for it (agent#10): the
+ *   verdict from the runtime's results, the critic offered its allow-list, and
+ *   a seeded wrong outcome refuted with the case named; no pass where the
+ *   session does not ask, at any tier.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CERTIFIED_ENGINES, MODEL_ENGINES, loadEngine } from '../engines'
@@ -58,7 +62,6 @@ import { recallQuery } from './recall'
 import { REFUTATION_MARKER } from '../refutation'
 import {
   ALWAYS_FROM_ABSENCE,
-  REFUTE_ON_A_DEGRADED_ENDPOINT,
   RESPONSE_TOKENS,
   normalize,
   stateFromEvents,
@@ -76,10 +79,12 @@ import { servedSchemaFor } from '../engines/contract'
 import { ASSISTANT_TOOLS, configureHarness, type EndpointCapabilities, type EndpointKind, type ThinkingTier } from '../host'
 import { TEST_CONFORMANCE_TOOL, gatedRuntime, runtimeAnswer } from '../testing/scripted'
 import runtime from './runtime.json'
+import type { CriticCase } from '../refutation'
 // The contract's vectors, where the contract states what this session asserts: the event
 // sequence a model-engine leg emits, and the tools the scenario's session offers (K2).
 import scenarioVector from '../../../contract/vectors/scenario/expense-reimbursement.json'
 import offerVector from '../../../contract/vectors/tool-offer/scenario-offer.json'
+import criticOfferVector from '../../../contract/vectors/tool-offer/critic-offer.json'
 import type { AssistantEvent, Engine, McpTool } from '../engine'
 
 const FIVE = scenario.scenarioTools
@@ -672,6 +677,10 @@ async function runLeg(
     strict?: boolean
     /** How the scripted endpoint takes tool calls: natively, or only in text. */
     toolCalls?: 'native' | 'text'
+    /** Whether the session asks for the critic (agent#10). Unset leaves it to the policy table. */
+    review?: boolean
+    /** The cases whose outcomes the host declares for the critic (agent#10). */
+    cases?: CriticCase[]
   } = {}
 ): Promise<Run> {
   const model = scriptedModel({
@@ -730,6 +739,8 @@ async function runLeg(
         hostTools: [],
         model: { family: leg.api, model: 'scripted-model', call },
         thinking: normalize(how.tier ?? 'off', leg.api),
+        ...(how.review === undefined ? {} : { adversarialReview: how.review }),
+        ...(how.cases === undefined ? {} : { criticCases: how.cases }),
         signal: new AbortController().signal
       },
       (event) => events.push(event)
@@ -1340,7 +1351,10 @@ describe.each(MODEL_ENGINES)('engine %s · text tool calls', (engineId) => {
  * parameter on every request, thinking blocks carried back verbatim after every
  * tool result, reasoning streamed as events, the refutation pass run **only**
  * when the tier is on), the no-thinking leg (a 400 on the parameter degrades
- * once and the session completes)"*.
+ * once and the session completes)"*. Since agent#10 the refutation pass runs
+ * where the session asks for it and at no tier by default (the policy table's
+ * `adversarialReview`, on both engines), so the refutation legs ask for it, and
+ * one leg holds that a tier on its own starts no critic.
  *
  * The scripted endpoint's thinking half is `fixture/THINKING-SPEC.md` carried
  * into the repository: the gate per wire format, deterministic reasoning text
@@ -1409,7 +1423,7 @@ describe.each(MODEL_ENGINES)('engine %s · thinking', (engineId) => {
     }) => {
       // Frameworks lose the setting on later steps. Every row, including the
       // critic's own, or the row fails naming the first that did not.
-      const { requests } = await runLeg(fromRegistry(engineId), leg, { tier: 'on', mode: 'on' })
+      const { requests } = await runLeg(fromRegistry(engineId), leg, { tier: 'on', mode: 'on', review: true })
       expect(requests.length).toBeGreaterThan(7)
       const missing = requests
         .map((request, at) => ({ request, at }))
@@ -1427,7 +1441,8 @@ describe.each(MODEL_ENGINES)('engine %s · thinking', (engineId) => {
     })
 
     it('agent#11 — the recall rule finds the request text on every authoring request', async () => {
-      const { bodies } = await runLeg(fromRegistry(engineId), leg, { tier: 'on', mode: 'on' })
+      // The session asks for the critic (agent#10), so its requests are among the bodies.
+      const { bodies } = await runLeg(fromRegistry(engineId), leg, { tier: 'on', mode: 'on', review: true })
       // The critic's requests are a second conversation, its own first user turn: left aside.
       expect(bodies.some((body) => body.includes(REFUTATION_MARKER))).toBe(true)
       expect(bodies.filter((body) => !body.includes(REFUTATION_MARKER)).length).toBeGreaterThan(7)
@@ -1435,7 +1450,7 @@ describe.each(MODEL_ENGINES)('engine %s · thinking', (engineId) => {
     })
 
     it('ultra sends the deeper member, and the same on every request', async () => {
-      const { requests } = await runLeg(fromRegistry(engineId), leg, { tier: 'ultra', mode: 'on' })
+      const { requests } = await runLeg(fromRegistry(engineId), leg, { tier: 'ultra', mode: 'on', review: true })
       const expected = normalize('ultra', leg.api).wire!.expect
       for (const request of requests) {
         expect(request.thinkingParam!.value).toEqual(expected.value)
@@ -1445,7 +1460,8 @@ describe.each(MODEL_ENGINES)('engine %s · thinking', (engineId) => {
     it('streams the model’s reasoning to the tab, and sends none of it to the runtime', async () => {
       const { events, seen } = await runLeg(fromRegistry(engineId), leg, {
         tier: 'on',
-        mode: 'on'
+        mode: 'on',
+        review: true
       })
       const passages = reasoningEvents(events).filter((event) => event.done)
       expect(passages.length).toBeGreaterThan(0)
@@ -1483,11 +1499,15 @@ describe.each(MODEL_ENGINES)('engine %s · thinking', (engineId) => {
     }) => {
       const { events, seen, requests } = await runLeg(fromRegistry(engineId), leg, {
         tier: 'on',
-        mode: 'on'
+        mode: 'on',
+        review: true
       })
       // The pass is a second conversation, and the endpoint saw it.
       const marked = requests.filter((request) => request.refutation)
       expect(marked.length).toBeGreaterThan(0)
+      // Offered its allow-list: the session's runtime reads and the harness's two readers (agent#10).
+      const criticOffer = criticOfferVector.items[0]!
+      for (const request of marked) expect(request.toolNames).toEqual([...criticOffer.hostTools, ...criticOffer.tools].map((tool) => tool.name))
       const critique = criticEvents(events)
       expect(critique).toHaveLength(1)
       // **The verdict is the runtime's.** The critic's prose on this leg says
@@ -1524,7 +1544,8 @@ describe.each(MODEL_ENGINES)('engine %s · thinking', (engineId) => {
       const { events } = await runLeg(fromRegistry(engineId), leg, {
         tier: 'on',
         mode: 'on',
-        refuted: true
+        refuted: true,
+        review: true
       })
       const critique = criticEvents(events)
       expect(critique).toHaveLength(1)
@@ -1539,11 +1560,52 @@ describe.each(MODEL_ENGINES)('engine %s · thinking', (engineId) => {
       expect(events.some((event) => event.type === 'error')).toBe(false)
     })
 
-    it('runs no refutation pass at all where the tier is off', async () => {
-      const { events, requests } = await runLeg(fromRegistry(engineId), leg)
-      expect(requests.filter((request) => request.refutation)).toEqual([])
-      expect(criticEvents(events)).toEqual([])
-      expect(proposals(events)[0]!.critique).toBeUndefined()
+    it('runs no refutation pass where the session does not ask for one, at any tier (agent#10)', async () => {
+      for (const tier of ['off', 'on'] as const) {
+        const { events, requests } = await runLeg(fromRegistry(engineId), leg, { tier, mode: tier })
+        expect(requests.filter((request) => request.refutation), tier).toEqual([])
+        expect(criticEvents(events), tier).toEqual([])
+        expect(proposals(events)[0]!.critique, tier).toBeUndefined()
+      }
+    })
+
+    it('refutes a seeded wrong outcome: the rehearsal says evaluated, and the declared case disagrees (agent#10)', async () => {
+      // **The case the old rule could not see.** The critic's rehearsal of the
+      // recorded facts says `evaluated` with the outcome approve; the declared
+      // case says decline. Status alone reads this as not refuted.
+      const facts = scenario.documents.FACTS as Record<string, unknown>
+      const wrong: CriticCase = { source: 'declared', id: 'receipted-120', facts, expectedDisposition: { kind: 'outcome', outcomeId: 'decline' } }
+      const { events } = await runLeg(fromRegistry(engineId), leg, { tier: 'on', mode: 'on', review: true, cases: [wrong] })
+      const critique = criticEvents(events)
+      expect(critique).toHaveLength(1)
+      expect(critique[0]!.checks).toEqual([
+        { tool: 'validate', status: 'valid' },
+        { tool: 'experimental_evaluate', status: 'evaluated' }
+      ])
+      expect(critique[0]!.refuted).toBe(true)
+      expect(critique[0]!.cases).toEqual([
+        {
+          case: 'receipted-120',
+          source: 'declared',
+          tool: 'experimental_evaluate',
+          agrees: false,
+          expected: { disposition: { kind: 'outcome', outcomeId: 'decline' } },
+          actual: { disposition: { handoff: { state: 'none' }, kind: 'outcome', outcomeId: 'approve', reasons: [] } }
+        }
+      ])
+      expect(critique[0]!.incomplete).toEqual([])
+      expect(critique[0]!.text).toContain('case receipted-120 (declared) disagrees')
+      expect(proposals(events)[0]!.critique).toEqual({ refuted: true })
+      // The same rehearsal, declared as approve, agrees; a second case the
+      // scenario's runtime has no answer for stays incomplete, and that alone
+      // keeps the verdict from "not refuted" (review row 1).
+      const small: CriticCase = { source: 'test', id: 'small-40', facts: { claim: { type: 'expense-reimbursement', amount: '40.00', receiptAttached: false } }, expectedDisposition: { kind: 'outcome', outcomeId: 'approve' } }
+      const agreed = await runLeg(fromRegistry(engineId), leg, {
+        tier: 'on', mode: 'on', review: true, cases: [{ ...wrong, expectedDisposition: { kind: 'outcome', outcomeId: 'approve' } }, small]
+      })
+      expect(criticEvents(agreed.events)[0]).toMatchObject({ refuted: true, incomplete: ['small-40'] })
+      expect(proposals(agreed.events)[0]!.critique).toEqual({ refuted: true, incomplete: ['small-40'] })
+      expect(criticEvents(agreed.events)[0]!.cases!.map((item) => item.agrees)).toEqual([true])
     })
 
     it('the no-thinking leg — degrades once, and the session completes', async () => {
@@ -1575,19 +1637,16 @@ describe.each(MODEL_ENGINES)('engine %s · thinking', (engineId) => {
       expect(asked.slice(prefix).filter(Boolean)).toEqual([])
     })
 
-    it('the ruling — the refutation pass still runs on a degraded endpoint', async () => {
-      // The default this chunk carries, and the thing the maintainer may flip:
-      // the pass's value is the runtime's checks, not the model's thinking.
+    it('a critic the session asks for runs on a degraded endpoint too: the tier does not decide (agent#10)', async () => {
+      // The pass's value is the runtime's checks, not the model's thinking.
       const { events, requests } = await runLeg(fromRegistry(engineId), leg, {
         tier: 'on',
-        mode: 'nothink'
+        mode: 'nothink',
+        review: true
       })
-      const ran = requests.some((request) => request.refutation)
-      expect(ran).toBe(REFUTE_ON_A_DEGRADED_ENDPOINT)
-      expect(criticEvents(events).length === 1).toBe(REFUTE_ON_A_DEGRADED_ENDPOINT)
-      if (REFUTE_ON_A_DEGRADED_ENDPOINT) {
-        expect(criticEvents(events)[0]!.checks).toHaveLength(2)
-      }
+      expect(requests.some((request) => request.refutation)).toBe(true)
+      expect(criticEvents(events)).toHaveLength(1)
+      expect(criticEvents(events)[0]!.checks).toHaveLength(2)
     })
   })
 
@@ -1606,7 +1665,8 @@ describe.each(MODEL_ENGINES)('engine %s · thinking', (engineId) => {
       const { events, seen } = await runLeg(fromRegistry(engineId), leg, {
         tier: 'on',
         mode: 'on',
-        allowed: READS_ONLY
+        allowed: READS_ONLY,
+        review: true
       })
       // Nothing the gate refused reached `jpack mcp` at all.
       expect(seen.map((call) => call.name)).not.toContain('validate')

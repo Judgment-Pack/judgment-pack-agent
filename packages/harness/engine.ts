@@ -188,16 +188,28 @@ export interface AssistantSession {
    * other prompt is read: an engine cannot ask the runtime for a prompt —
    * `callTool` is the whole of its reach and `prompts/get` is not a tool — and
    * giving it one would be a second door beside the gate. Empty where the
-   * runtime advertises no `test_pack`, or where the tier is off and no critic
-   * will run; the critic then works from the desk's one fixed sentence alone.
+   * runtime advertises no `test_pack`, or where no critic will run; a critic
+   * with no testing prompt does not run (`criticCannotRun`).
    */
   testPrompt: string
   /** Permit a prose-only clarification; proposals still require the same explicit fenced envelope. */
   allowConversation?: boolean
   /** Optional presentation events; adapters without them still deliver final messages. */
   interactive?: boolean
-  /** Independent of reasoning effort; undefined preserves legacy authoring behavior. */
+  /**
+   * Whether the critic runs. Independent of reasoning effort. Undefined takes
+   * the policy table's `adversarialReview`, which is `false`, on both engines
+   * (`refutation.ts`, `criticRuns`; agent#10).
+   */
   adversarialReview?: boolean
+  /**
+   * The cases whose outcomes the host declares for the critic to compare
+   * (agent#10): the pack's saved tests and any the request declares, each a row
+   * of the runtime's matrix with its `source`. Read closed at the start of the
+   * run (`readCriticCases`); a case the reader refuses ends the run before any
+   * request.
+   */
+  criticCases?: import('./refutation').CriticCase[]
   /** The allow-listed tools, exactly as `tools/list` served them. */
   tools: McpTool[]
   /** Bound through the ToolGate. */
@@ -254,8 +266,12 @@ export type AssistantEvent =
    * task; absent, the run's own answer.
    */
   | { type: 'message_progress'; text: string; taskId?: string }
-  | { type: 'tool_call'; callId?: string; name: string; args: unknown; presentation?: { provider: string } }
-  | { type: 'tool_result'; callId?: string; name: string; isError: boolean; text: string; structured?: unknown }
+  /**
+   * `origin` `harness` on a call the harness made itself, not the model: the
+   * critic pass's own comparison of a declared case (agent#10 review row 8).
+   */
+  | { type: 'tool_call'; callId?: string; name: string; args: unknown; presentation?: { provider: string }; origin?: 'harness' }
+  | { type: 'tool_result'; callId?: string; name: string; isError: boolean; text: string; structured?: unknown; origin?: 'harness' }
   /**
    * `rewrote` and `refused` are the ToolGate's, on the wire. `narrowed` is the
    * desk's own report on the **contract it showed the model**: on a wire whose
@@ -266,9 +282,14 @@ export type AssistantEvent =
    */
   | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string }
   | { type: 'thinking_unavailable'; detail: string }
-  | { type: 'critique'; refuted: boolean; checks: { tool: string; status: string }[]; text: string }
+  /**
+   * `cases` and `incomplete` where the host declared cases (agent#10): each
+   * comparison of a declared outcome with the runtime's, and the cases nothing
+   * compared, each of which leaves `refuted` true. `figures`: what the critic cost.
+   */
+  | { type: 'critique'; refuted: boolean; checks: { tool: string; status: string }[]; text: string; cases?: import('./refutation').CaseComparison[]; incomplete?: string[]; figures?: import('./refutation').CriticFigures }
   /** `note` where something that ran after the proposal existed did not finish. */
-  | { type: 'proposal'; document: unknown; unknowns: string[]; critique?: { refuted: boolean }; note?: ProposalNote }
+  | { type: 'proposal'; document: unknown; unknowns: string[]; critique?: { refuted: boolean; incomplete?: string[] }; note?: ProposalNote }
   | { type: 'error'; message: string; failure?: import('./failures').AIFailure }
   | { type: 'end' }
 
@@ -284,6 +305,8 @@ export interface ProposalNote {
   kind: 'critic-unfinished' | 'turn-unfinished'
   message: string
   failure: import('./failures').AIFailure
+  /** On `critic-unfinished`: what the critic cost before it stopped (agent#10). */
+  figures?: import('./refutation').CriticFigures
 }
 
 export type AgentAssistantSession = Omit<AssistantSession, 'model' | 'thinking'> & {

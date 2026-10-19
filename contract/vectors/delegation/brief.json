@@ -1,0 +1,50 @@
+{
+  "description": "Two children's briefs, the JSON line each prompt ends with (review of agent#35, row 9): a research task given a page the parent read and a document of the host's by reference, and a resumed analyze task with its earlier objective and its long finding's head and cursor. Written by hand from the schema; delegation.test.ts holds a child's brief to the schema's members.",
+  "schema": "delegated-task.json#/$defs/brief",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/delegation.ts (brief)",
+      "packages/harness/delegation.test.ts (a child given a parent document by reference; a resumed child)"
+    ]
+  },
+  "items": [
+    {
+      "objective": "Find the mileage rate the policy pays and the receipts it asks for.",
+      "references": [
+        {
+          "id": "chat-1:result-read_page-4f1c9e0a7b2d6c35a8e1f0b9d2c7e6a4f3b8c1d0e9a7b6c5d4e3f2a1b0c9d8e7:4f1c9e0a7b2d6c35",
+          "label": "read_page",
+          "kind": "tool",
+          "bytes": 2310
+        },
+        {
+          "id": "chat-1:mileage-policy:2c9d4e1f7a3b5c60",
+          "label": "Mileage policy",
+          "kind": "artifact",
+          "bytes": 884
+        }
+      ],
+      "timeLimitSeconds": 360
+    },
+    {
+      "objective": "Is the cap per day or per trip?",
+      "earlierWork": [
+        {
+          "objective": "Check the receipts of every trip.",
+          "result": "Trip 1: receipts match.\nTrip 2: receipts match.\nTrip 3: receipts match.\nTrip 4: receipts match.",
+          "more": {
+            "readWith": "read_window",
+            "id": "chat-1:task-result-9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9:7d7ffdcce5123230",
+            "cursor": "line:4",
+            "totalCharacters": 143
+          }
+        }
+      ],
+      "timeLimitSeconds": 120
+    }
+  ]
+}

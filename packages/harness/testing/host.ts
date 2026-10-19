@@ -108,7 +108,9 @@ export function testHost(): HarnessHost {
     readFile: () => Promise.reject(new Error('no host file in this test')),
     dialectAPI: () => Promise.reject(new Error('no host preparation in this test')),
     endpointCapabilities: () => ({}),
+    // agent#10: no critic model named, so the critic runs on the run's own.
     // A render adapter that says what it was given, so a test can find the rendering.
-    renderImageToText: async (image) => `TEST RENDERING of a ${image.mediaType} image, ${decodedBytes(image.bytes)} bytes`
+    renderImageToText: async (image) => `TEST RENDERING of a ${image.mediaType} image, ${decodedBytes(image.bytes)} bytes`,
+    modelsFor: () => ({})
   }
 }
