@@ -455,8 +455,10 @@ resolved in the parent's chat alone; one the parent's context does not hold fail
 any task starts. The child is handed a view of the parent's chat (`ChatContext.childScope`) that
 shows it its references and what it retains or reads itself, and nothing else of the chat; it reads
 them with `read_window` and `search`. The view shares the chat's read cache, so an immutable read
-the parent made is served to the child without a call, and the child's reads are kept for the
-parent. Its first message carries no index.
+the parent made is served to the child without a call where the child's profile offers that tool,
+and the child's reads are kept for the parent. A name the profile does not offer is never served
+from the cache: the call goes to the offer check and the gate and is refused, and no cached entry
+joins the child's view. Its first message carries no index.
 
 **Profiles** (`$defs/profile`, `vectors/delegation/profiles.json`). Each declares a `model`, a
 `budget` (model requests, tool calls, milliseconds) and its tools:
@@ -834,8 +836,11 @@ one `ChatContext` per chat and hand it to every run of that chat as `context.cha
   arguments, runtime}`. `runtime` is present for every runtime tool and for a host tool that
   declares `contextPolicy.runtime`, and is what the host gives as the run's `context.runtime` (an
   identity, such as the Runtime's pinned digest, and a version); without it such a read is cached
-  for the run only. A mutable tool is never served from the cache. A cached result is the ledger's
-  entry for it: evicted, it is no longer served.
+  for the run only. A mutable tool is never served from the cache. The cache serves only a name the
+  run's session offers: for a name it does not offer (a delegated child's profile that lacks the
+  tool), the call goes on to the offer check and the gate as any other, and the cached entry is not
+  added to the run's view. A cached result is the ledger's entry for it: evicted, it is no longer
+  served.
 - **One byte bound across the runs.** `retainedBytes` (8 MiB) holds for the chat as it held for a
   run. Each run is one turn of the chat, and an entry it retains or reads is referenced by its turn
   until the run ends. When an entry would take the chat past the bound, the entries no open turn

@@ -266,7 +266,8 @@ later run's `read_window`, `read_context` and `search` find it. A read the tool 
 served again from the chat's read cache without a call, keyed by the tool, its arguments and, for a
 Runtime-served read (every runtime tool, and a host tool that declares `contextPolicy.runtime`), the
 `context.runtime` the host names; without that, such a read is cached for the run only. A mutable
-read never is. `retainedBytes` bounds the chat: the oldest entries no running run references are
+read never is, and the cache serves only a name the run's session offers: a delegated child is never
+served a read its profile was not offered. `retainedBytes` bounds the chat: the oldest entries no running run references are
 evicted first. Each run's first message carries, after the request text, an index of the results
 earlier runs kept (`read_window` id, tool, arguments digest, size, first line), bounded by
 `turnIndexEntries` and `turnIndexBytes` and cut to the room the message leaves in the prompt's
