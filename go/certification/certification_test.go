@@ -227,7 +227,11 @@ type openAIToolCall struct {
 func referenceLoop(ctx context.Context, run *certification.Run) error {
 	var declared []map[string]any
 	hosts := map[string]bool{}
-	for _, tool := range run.HostTools {
+	boundaryTools, err := certification.BoundaryHostTools()
+	if err != nil {
+		return err
+	}
+	for _, tool := range boundaryTools {
 		hosts[tool.Name] = true
 		declared = append(declared, map[string]any{"type": "function", "function": map[string]any{"name": tool.Name, "description": tool.Description, "parameters": tool.InputSchema}})
 	}

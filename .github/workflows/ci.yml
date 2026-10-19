@@ -107,6 +107,12 @@ jobs:
       - name: go test (every vector round-trips; the runner against the shared scripted server)
         working-directory: go
         run: go test -count=1 ./...
+      - name: go test -race (the context and the adapters, the delegation scenario's two children on one chat among them)
+        working-directory: go
+        run: go test -count=1 -race ./context/... ./adapter/...
+      - name: The Go certification of the Eino adapter (every leg and scenario, one line each)
+        working-directory: go
+        run: go run ./cmd/harness-check
 
   certify:
     # One check per adapter, so branch protection can require each by name.

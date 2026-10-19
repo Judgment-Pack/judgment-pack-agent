@@ -7,36 +7,35 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
+
+	"github.com/Judgment-Pack/judgment-pack-agent/go/relay"
 )
 
 // RelayPrefix is the Desk's relay mount (RELAY_PREFIX in packages/harness/session.ts).
 const RelayPrefix = "/api/assistant/relay/v1"
 
 // ModelRequestHeaders are the only headers a model request may carry, the chassis' outbound
-// allow-list (MODEL_REQUEST_HEADERS in packages/harness/session.ts). A credential is not among them.
-var ModelRequestHeaders = []string{
-	"accept", "accept-language", "content-type", "anthropic-version", "anthropic-beta",
-	"openai-beta", "openai-organization", "openai-project",
-}
+// allow-list (relay.ModelRequestHeaders). A credential is not among them.
+var ModelRequestHeaders = relay.ModelRequestHeaders
 
-// sessionBearer is the certification's stand-in for the Desk session the relay route is gated by.
-const sessionBearer = "certification-session"
+// sessionBearer is the certification's stand-in for the Desk session the relay route is gated by,
+// and hostBearer the host's own bearer on the in-process call (the relay handler's guard).
+const (
+	sessionBearer = "certification-session"
+	hostBearer    = "certification-host"
+)
 
 // ModelRequest is one model request as an adapter hands it to the host: the protocol's headers and
-// the body, never an address and never a credential.
-type ModelRequest struct {
-	Method  string // POST unless GET
-	Headers map[string]string
-	Body    []byte
-}
+// the body, never an address and never a credential (relay.Request).
+type ModelRequest = relay.Request
 
 // ModelCall is the host's relay capability, session.model.call in the TypeScript package: a path
-// suffix after the relay's mount, and a request. The host builds the address and writes its own
-// session as the bearer; the relay attaches the provider's key on the far side. An adapter's only
-// reach to a model is this.
-type ModelCall func(ctx context.Context, suffix string, request ModelRequest) (*http.Response, error)
+// suffix after the relay's mount, and a request (relay.Call). An adapter's only reach to a model
+// is this.
+type ModelCall = relay.Call
 
 // RuntimeCall sends one JSON-RPC message to the runtime and returns its reply, or nil for a
 // notification. It is the runtime's transport before any gate: the runner puts it behind the gate
@@ -53,69 +52,70 @@ type Session struct {
 
 	mu     sync.Mutex
 	bodies [][]byte
+	seam   []SeamRequest
+	call   ModelCall
 }
 
-// Bodies are the model requests' bodies the relay capability sent, in order: what the TypeScript
-// legs' fetch stub records, for the checks that read a request's own text.
+// Bodies are the model requests' bodies the relay capability was handed, in order, as they crossed
+// the in-process seam: what the TypeScript legs' fetch stub records, for the checks that read a
+// request's own text.
 func (s *Session) Bodies() [][]byte {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([][]byte(nil), s.bodies...)
 }
 
+// Seam are the requests the adapter handed the relay, as they crossed the in-process seam: each
+// one's header names (lower-cased) and its address, for K1 at the seam.
+func (s *Session) Seam() []SeamRequest {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]SeamRequest(nil), s.seam...)
+}
+
+// SeamRequest is one request at the in-process seam.
+type SeamRequest struct {
+	Path        string
+	HeaderNames []string
+}
+
 // Endpoint is how this session's model answers.
 func (s *Session) Endpoint() Endpoint { return s.endpoint }
 
-// suffixProblem holds a suffix to the chassis' rule (suffixProblem in session.ts), in short: one
-// or more non-empty, non-dot segments, at most 256 bytes, and no query but alt=sse on Gemini.
-func suffixProblem(suffix, api string) string {
-	if suffix == "" || len(suffix) > 256 {
-		return "a model call's path is one to 256 bytes"
-	}
-	path, query, hasQuery := strings.Cut(strings.TrimPrefix(suffix, "/"), "?")
-	if hasQuery && (api != "gemini" || query != "alt=sse") {
-		return "a model call's query may only be alt=sse, on the Gemini wire"
-	}
-	for _, segment := range strings.Split(path, "/") {
-		if segment == "" || segment == "." || segment == ".." {
-			return "a model call's path may not carry an empty or dot segment"
-		}
-	}
-	return ""
-}
-
-// ModelCall binds the relay capability for this session's wire.
+// ModelCall binds the relay capability for this session's wire: the in-process relay client
+// (go/relay) in front of the relay handler's path, whose upstream is this session's scripted
+// endpoint on the shared server. The handler presents the session bearer as the endpoint's
+// credential, on every wire, which is what the scripted endpoint records as the TypeScript legs'
+// Desk session (K1: authorization once, no other credential); it takes that value back out of every
+// answer's headers (WithoutReflectedCredentials) as it would a provider key.
 func (s *Session) ModelCall() ModelCall {
-	return func(ctx context.Context, suffix string, request ModelRequest) (*http.Response, error) {
-		if problem := suffixProblem(suffix, s.endpoint.API); problem != "" {
-			return nil, fmt.Errorf("%s", problem)
-		}
-		method := request.Method
-		if method == "" {
-			method = http.MethodPost
-		}
-		var body io.Reader
-		if method != http.MethodGet {
-			body = bytes.NewReader(request.Body)
-			s.mu.Lock()
-			s.bodies = append(s.bodies, append([]byte(nil), request.Body...))
-			s.mu.Unlock()
-		}
-		address := s.server.URL + "/s/" + s.id + RelayPrefix + "/" + strings.TrimPrefix(suffix, "/")
-		outbound, err := http.NewRequestWithContext(ctx, method, address, body)
-		if err != nil {
-			return nil, err
-		}
-		for name, value := range request.Headers {
-			for _, allowed := range ModelRequestHeaders {
-				if strings.EqualFold(name, allowed) {
-					outbound.Header.Set(allowed, value)
-				}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.call == nil {
+		handler := relay.NewHandler(relay.Upstream{
+			Base:      s.server.URL + "/s/" + s.id + RelayPrefix,
+			Kind:      s.endpoint.API,
+			Transport: s.server.client.Transport,
+			Credential: func() (string, string, string) {
+				return "Authorization", "Bearer " + sessionBearer, sessionBearer
+			},
+		}, hostBearer)
+		client := &relay.Client{Handler: handler, Family: s.endpoint.API, Bearer: hostBearer, Seen: func(request *http.Request, body []byte) {
+			names := make([]string, 0, len(request.Header))
+			for name := range request.Header {
+				names = append(names, strings.ToLower(name))
 			}
-		}
-		outbound.Header.Set("Authorization", "Bearer "+sessionBearer)
-		return s.server.client.Do(outbound)
+			sort.Strings(names)
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			if request.Method != http.MethodGet {
+				s.bodies = append(s.bodies, append([]byte(nil), body...))
+			}
+			s.seam = append(s.seam, SeamRequest{Path: request.URL.RequestURI(), HeaderNames: names})
+		}}
+		s.call = client.Call()
 	}
+	return s.call
 }
 
 // RuntimeCall binds the recorded runtime's transport.
@@ -148,17 +148,40 @@ func (s *Session) RuntimeCall() RuntimeCall {
 // RecordedRequest is one model request as the scripted model recorded it (RecordedRequest in
 // certification/scriptedModel.ts), as far as the Go legs read it.
 type RecordedRequest struct {
-	URL               string   `json:"url"`
-	HeaderNames       []string `json:"headerNames"`
-	API               string   `json:"api"`
-	StreamRequested   bool     `json:"streamRequested"`
-	ToolNames         []string `json:"toolNames"`
-	MessageCount      int      `json:"messageCount"`
-	Step              string   `json:"step"`
-	Results           int      `json:"results"`
-	BodyMembers       []string `json:"bodyMembers"`
-	ThinkingRequested bool     `json:"thinkingRequested"`
-	Refutation        bool     `json:"refutation"`
+	URL                 string            `json:"url"`
+	HeaderNames         []string          `json:"headerNames"`
+	API                 string            `json:"api"`
+	StreamRequested     bool              `json:"streamRequested"`
+	ToolNames           []string          `json:"toolNames"`
+	MessageCount        int               `json:"messageCount"`
+	Step                string            `json:"step"`
+	Results             int               `json:"results"`
+	BodyMembers         []string          `json:"bodyMembers"`
+	ThinkingRequested   bool              `json:"thinkingRequested"`
+	ThinkingParam       *ThinkingParam    `json:"thinkingParam"`
+	Refutation          bool              `json:"refutation"`
+	SignaturesCarried   []string          `json:"signaturesCarried"`
+	SignaturesExpected  []string          `json:"signaturesExpected"`
+	SignaturesMissing   []string          `json:"signaturesMissing"`
+	SignaturesTruncated []string          `json:"signaturesTruncated"`
+	SignaturesMalformed []string          `json:"signaturesMalformed"`
+	ReasoningIn         []string          `json:"reasoningIn"`
+	SchemaKeywords      []string          `json:"schemaKeywords"`
+	Schemas             []json.RawMessage `json:"schemas"`
+	ModelParts          []json.RawMessage `json:"modelParts"`
+}
+
+// ThinkingParam is the tier parameter a request carried, with its path, verbatim.
+type ThinkingParam struct {
+	Path  string          `json:"path"`
+	Value json.RawMessage `json:"value"`
+}
+
+// EndpointRequest is one request as a scenario's endpoint read it (EndpointRequest in
+// testing/scripted.ts): its number from 1 and its body.
+type EndpointRequest struct {
+	Number int             `json:"number"`
+	Body   json.RawMessage `json:"body"`
 }
 
 // ServerObservation is one runtime call as the recorded runtime saw it.
@@ -172,6 +195,13 @@ type ServerObservation struct {
 type Observations struct {
 	Requests []RecordedRequest   `json:"requests"`
 	Seen     []ServerObservation `json:"seen"`
+	// Endpoint is a scenario session's requests as its endpoint read them.
+	Endpoint []EndpointRequest `json:"endpoint"`
+}
+
+// Advance moves a scenario session of several responses or turns to its next.
+func (s *Session) Advance(ctx context.Context) error {
+	return s.server.do(ctx, http.MethodPost, "/s/"+s.id+"/advance", map[string]any{}, nil)
 }
 
 // Observations reads what this session saw so far.

@@ -1,0 +1,439 @@
+package runcontext
+
+import (
+	"context"
+	"encoding/json"
+
+	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
+)
+
+// Content is one part of a tool result's content (an item of McpToolResult.content in engine.ts):
+// its type, its text, and every other member it carries, in the order it carries them, so the
+// part's JSON is the bytes the TypeScript's is. An image part carries kind, mediaType and bytes
+// instead of a type and a text.
+type Content struct{ value *Value }
+
+// NewContent is one content part from the object it is.
+func NewContent(value *Value) Content { return Content{value} }
+
+// TextContent is {type:'text',text}.
+func TextContent(text string) Content {
+	return Content{ObjectOf("type", String("text"), "text", String(text))}
+}
+
+// Type is the part's type member, or "" where it carries none.
+func (c Content) Type() string {
+	if held := c.value.Get("type"); held.IsString() {
+		return held.Str()
+	}
+	return ""
+}
+
+// Text is the part's text member, or "" where it carries none.
+func (c Content) Text() string {
+	if held := c.value.Get("text"); held.IsString() {
+		return held.Str()
+	}
+	return ""
+}
+
+// HasText reports a part that carries a text member of type string (the filter the chat's index
+// and the compaction use).
+func (c Content) HasText() bool { return c.value.Get("text").IsString() }
+
+// Value is the part as it is.
+func (c Content) Value() *Value { return c.value }
+
+// ToolResult is an MCP tool result (McpToolResult in engine.ts): its content parts, its
+// structured content and its isError, each kept absent where the result does not carry it,
+// because what the budget counts is the bytes of the result's JSON.
+type ToolResult struct {
+	// Content are the result's content parts; nil where it carries no content member.
+	Content []Content
+	// StructuredContent is the result's structured content; nil where it carries none.
+	StructuredContent *Value
+	// IsError is the result's isError; nil where it carries none.
+	IsError *bool
+	// order is the member order the result was written in, so its JSON is the TypeScript's bytes;
+	// empty means content, structuredContent, isError, this struct's own order.
+	order []string
+}
+
+// ResultOf is a tool result written content first, as a tool's own answer is.
+func ResultOf(content []Content, structured *Value) ToolResult {
+	return ToolResult{Content: content, StructuredContent: structured}
+}
+
+// Answer is answer in context/ledger.ts: one value as a tool result, its structured content and
+// the same value as the one text part, in that order.
+func Answer(value *Value) ToolResult {
+	return ToolResult{
+		Content:           []Content{TextContent(value.Text())},
+		StructuredContent: value,
+		order:             []string{"structuredContent", "content", "isError"},
+	}
+}
+
+// WithIsError is the result with its isError set, after the members it already carries.
+func (r ToolResult) WithIsError(isError bool) ToolResult {
+	order := r.order
+	if len(order) == 0 {
+		order = []string{"content", "structuredContent", "isError"}
+	}
+	r.order = append(append([]string{}, order...), "isError")
+	r.IsError = &isError
+	return r
+}
+
+// Err reports isError === true.
+func (r ToolResult) Err() bool { return r.IsError != nil && *r.IsError }
+
+// Value is the result as one JSON value, its members in the order it was written in.
+func (r ToolResult) Value() *Value {
+	out := Object()
+	written := map[string]bool{}
+	order := r.order
+	if len(order) == 0 {
+		order = []string{"content", "structuredContent", "isError"}
+	}
+	for _, name := range order {
+		if written[name] {
+			continue
+		}
+		written[name] = true
+		switch name {
+		case "content":
+			if r.Content != nil {
+				parts := Array()
+				for _, part := range r.Content {
+					parts.Append(part.Value())
+				}
+				out.Set("content", parts)
+			}
+		case "structuredContent":
+			if r.StructuredContent != nil {
+				out.Set("structuredContent", r.StructuredContent)
+			}
+		case "isError":
+			if r.IsError != nil {
+				out.Set("isError", Bool(*r.IsError))
+			}
+		}
+	}
+	return out
+}
+
+// JSON is the result as JSON.stringify writes it.
+func (r ToolResult) JSON() []byte { return r.Value().JSON() }
+
+// ReadToolResult is one tool result read from the JSON a tool answered with, its member order
+// kept.
+func ReadToolResult(value *Value) ToolResult {
+	out := ToolResult{order: value.Keys()}
+	if content := value.Get("content"); content.IsArray() {
+		out.Content = []Content{}
+		for _, part := range content.Items() {
+			out.Content = append(out.Content, NewContent(part))
+		}
+	}
+	if structured := value.Get("structuredContent"); structured != nil {
+		out.StructuredContent = structured
+	}
+	if isError := value.Get("isError"); isError != nil && isError.Kind() == KindBool {
+		held := isError.Truth()
+		out.IsError = &held
+	}
+	return out
+}
+
+// Clone copies a result deeply, as structuredClone does.
+func (r ToolResult) Clone() ToolResult {
+	return ReadToolResult(r.Value().Clone())
+}
+
+// HostTool is a host tool's declaration and its implementation (HostTool in engine.ts). Effect,
+// Interaction and Delegation are "" where the host declares none.
+type HostTool struct {
+	Name          string
+	Description   string
+	InputSchema   json.RawMessage
+	Effect        string
+	Interaction   string
+	Delegation    string
+	ContextPolicy *ToolContextPolicy
+	Presentation  *contract.ToolOfferHostToolPresentation
+	Execute       func(ctx context.Context, args json.RawMessage) (ToolResult, error)
+}
+
+// Declaration is the tool as the offer declares it to the model (tool-offer.json#/$defs/hostTool).
+func (t HostTool) Declaration() contract.ToolOfferHostTool {
+	out := contract.ToolOfferHostTool{Name: t.Name, Description: t.Description, InputSchema: t.InputSchema}
+	if t.Effect != "" {
+		effect := t.Effect
+		out.Effect = &effect
+	}
+	if t.Interaction != "" {
+		interaction := t.Interaction
+		out.Interaction = &interaction
+	}
+	if t.Delegation != "" {
+		delegation := t.Delegation
+		out.Delegation = &delegation
+	}
+	if t.ContextPolicy != nil {
+		policy := &contract.ToolOfferHostToolContextPolicy{}
+		if t.ContextPolicy.Immutable {
+			held := true
+			policy.Immutable = &held
+		}
+		if t.ContextPolicy.Reference {
+			held := true
+			policy.Reference = &held
+		}
+		if t.ContextPolicy.Runtime {
+			held := true
+			policy.Runtime = &held
+		}
+		out.ContextPolicy = policy
+	}
+	out.Presentation = t.Presentation
+	return out
+}
+
+// RuntimeTool is one tool of the Runtime this session serves, by name (the member of
+// session.tools this package reads).
+type RuntimeTool struct{ Name string }
+
+// CurrentRequest is the person's latest message and the workspace context supplied with it
+// (CurrentRequest in session.ts).
+type CurrentRequest struct {
+	Message string `json:"message"`
+	Input   string `json:"input"`
+}
+
+// Value is the request as the preview encodes it: message, then input.
+func (r CurrentRequest) Value() *Value {
+	return ObjectOf("message", String(r.Message), "input", String(r.Input))
+}
+
+// Document is one immutable source copy a host hands the run to retain (ContextDocument in
+// context/ledger.ts). Kind is history, artifact, request or tool.
+type Document struct {
+	ID       string
+	Kind     string
+	Label    string
+	Value    *Value
+	Revision string
+}
+
+// RuntimeIdentity is what the host knows the Runtime by: an identity (its pinned digest, or the
+// name its initialize answer gave) and its version (RuntimeIdentity in context/chat.ts).
+type RuntimeIdentity struct {
+	Identity string `json:"identity"`
+	Version  string `json:"version"`
+}
+
+// Input is the context a host gives one run (ContextInput in session.ts).
+//
+// CurrentState is host-authored text that changes between requests or responses (the chat's draft
+// snapshot, the latest check). An adapter sends it after the history, at the end of every
+// request, with the execution state, so a change to it invalidates no cached prefix.
+//
+// Chat (agent#8) is the chat-scoped context the host made for this run's chat: the ledger and the
+// read cache kept across the chat's runs; absent, the run's are its own and end with it. Runtime
+// is what the host knows the Runtime this run's tools reach by, which keys a Runtime-served read
+// in the chat's read cache. Memory (agent#11) is whether the server behind the adapter adds
+// recalled project memory to this run's requests: only false frees the memoryBytes reserve.
+// Objective (agent#11) is a delegated child's objective, its request text, sent as the first text
+// part of its first message. Link (agent#14) is set by the delegation coordinator on a run it
+// starts. Connection is the AI connection the run's model or agent capability is bound to, as the
+// host names it (host.ts's AITarget, a string here). DelegationReuse (agent#17) is false where
+// this response's delegated tasks reuse no earlier result of the chat.
+type Input struct {
+	CurrentState      string
+	ArtifactProposals *bool
+	Authorize         func(ctx context.Context) error
+	Checkpoint        func(ctx context.Context, state contract.Checkpoint) error
+	Execution         *contract.Checkpoint
+	CurrentRequest    *CurrentRequest
+	Phase             string
+	Plan              *Value
+	Configuration     *Configuration
+	Documents         []Document
+	Chat              ChatScope
+	Runtime           *RuntimeIdentity
+	Memory            *bool
+	Objective         string
+	Link              ExecutionLink
+	Connection        string
+	DelegationReuse   *bool
+}
+
+// ExecutionLink is how the delegation coordinator reaches a run it starts (agent#14): told the
+// run's context once its execution is initialized, before its first request.
+type ExecutionLink interface{ Attach(c *SessionContext) }
+
+// ModelSession is a run on a model capability (the model member of EngineSession): the family and
+// the model the host named, and the capability record's two budget members where the host
+// resolved them (capabilitiesFor belongs to the wire package).
+type ModelSession struct {
+	Family string
+	Model  string
+	Budget *ModelBudget
+}
+
+// AgentSession is a run on an agent capability (the agent member of EngineSession): the provider
+// runs its own model loop.
+type AgentSession struct{ Model string }
+
+// Session is one run as the harness is handed it (EngineSession in engine.ts), in the members
+// this package reads. Model and Agent are exclusive: a run is on one capability or the other.
+type Session struct {
+	Prompt            string
+	TestPrompt        string
+	Tools             []RuntimeTool
+	HostTools         []HostTool
+	CallTool          func(ctx context.Context, name string, args json.RawMessage) (ToolResult, error)
+	Model             *ModelSession
+	Agent             *AgentSession
+	Context           *Input
+	Purpose           string
+	AllowConversation bool
+	AdversarialReview bool
+	Interactive       bool
+	// ModelsFor is the host's injection point for the models a connection names for its critic
+	// and its delegated children (modelsFor in host.ts), asked once per run through
+	// SessionContext.Models. Absent, the run's own model is both.
+	ModelsFor func(RunIdentity) (NamedModels, error)
+}
+
+// ModelName is the model the run is on, whichever capability it is.
+func (s Session) ModelName() string {
+	if s.Model != nil {
+		return s.Model.Model
+	}
+	if s.Agent != nil {
+		return s.Agent.Model
+	}
+	return ""
+}
+
+// Output is a tool-result part's output (the output member of a tool-result part): its type and
+// its value.
+type Output struct {
+	Type  string
+	Value *Value
+}
+
+// JSONValue is the output as JSON.stringify writes it.
+func (o Output) JSONValue() *Value {
+	out := ObjectOf("type", String(o.Type))
+	if o.Value != nil {
+		out.Set("value", o.Value)
+	}
+	return out
+}
+
+// Part is one part of a message's content, in the projection the compaction reads (the parts of
+// ModelMessage session.ts uses: text, reasoning, tool-call and tool-result).
+type Part struct {
+	Type       string
+	Text       string
+	ToolCallID string
+	ToolName   string
+	Input      *Value
+	Output     *Output
+	// ProviderOptions is the transport state a provider carries on a part (a signed reasoning
+	// block among it); the compaction keeps it out of what it retains.
+	ProviderOptions *Value
+	// Other is a part this projection does not name, kept whole (an approval request among them).
+	Other *Value
+}
+
+// TextPart, ReasoningPart, ToolCallPart and ToolResultPart are the four parts by name.
+func TextPart(text string) Part { return Part{Type: "text", Text: text} }
+func ReasoningPart(text string) Part {
+	return Part{Type: "reasoning", Text: text}
+}
+func ToolCallPart(id, name string, input *Value) Part {
+	return Part{Type: "tool-call", ToolCallID: id, ToolName: name, Input: input}
+}
+func ToolResultPart(id, name string, output Output) Part {
+	return Part{Type: "tool-result", ToolCallID: id, ToolName: name, Output: &output}
+}
+
+// Value is the part as JSON.stringify writes it, its members in the order the TypeScript's
+// literal writes them.
+func (p Part) Value() *Value {
+	if p.Other != nil {
+		return p.Other
+	}
+	out := ObjectOf("type", String(p.Type))
+	switch p.Type {
+	case "text", "reasoning":
+		out.Set("text", String(p.Text))
+	case "tool-call":
+		out.Set("toolCallId", String(p.ToolCallID))
+		out.Set("toolName", String(p.ToolName))
+		out.Set("input", orNull(p.Input))
+	case "tool-result":
+		out.Set("toolCallId", String(p.ToolCallID))
+		out.Set("toolName", String(p.ToolName))
+		out.Set("output", p.Output.JSONValue())
+	}
+	if p.ProviderOptions != nil {
+		out.Set("providerOptions", p.ProviderOptions)
+	}
+	return out
+}
+
+func orNull(v *Value) *Value {
+	if v == nil {
+		return Null()
+	}
+	return v
+}
+
+// Message is one message of the model's history as the compaction reads it (ModelMessage of the
+// ai package as session.ts uses it): a role (user, assistant or tool) and a content that is one
+// text or a list of parts.
+type Message struct {
+	Role string
+	// Text is the content where the content is one string (Parts nil).
+	Text string
+	// Parts is the content where the content is a list of parts.
+	Parts []Part
+}
+
+// TextMessage is a message whose content is one string.
+func TextMessage(role, text string) Message { return Message{Role: role, Text: text} }
+
+// PartsMessage is a message whose content is a list of parts.
+func PartsMessage(role string, parts ...Part) Message { return Message{Role: role, Parts: parts} }
+
+// IsText reports a message whose content is one string.
+func (m Message) IsText() bool { return m.Parts == nil }
+
+// Value is the message as JSON.stringify writes it: role, then content.
+func (m Message) Value() *Value {
+	out := ObjectOf("role", String(m.Role))
+	if m.Parts == nil {
+		out.Set("content", String(m.Text))
+		return out
+	}
+	parts := Array()
+	for _, part := range m.Parts {
+		parts.Append(part.Value())
+	}
+	out.Set("content", parts)
+	return out
+}
+
+// MessagesValue is a list of messages as one JSON value.
+func MessagesValue(messages []Message) *Value {
+	out := Array()
+	for _, message := range messages {
+		out.Append(message.Value())
+	}
+	return out
+}

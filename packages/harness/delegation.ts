@@ -252,6 +252,19 @@ interface ChildMeter {started: number; firstByte?: number; contexts: SessionCont
 interface ChildRun {text: string; progress: string; questions: OpenQuestion[]; failed: string; paused: boolean; error?: unknown; streamed?: string}
 
 /**
+ * What a delegated child is offered of its parent's session (agent#15): the Runtime tools its profile
+ * names (`runtimeTools`, none where absent), and the host tools with no interaction whose
+ * `delegation` member is a capability the profile lists. The boundary then adds its own context tools
+ * to the child's run (`contextualSession`). `offered` false (a child the batch did not start) offers
+ * nothing. `runChild` calls this; `toolGate.test.ts` holds it to `tool-offer/phase-offers.json`.
+ */
+export function childOffer<T extends {name: string}, H extends {name: string; interaction?: string; delegation?: string}>(profile: Pick<TaskProfile, 'capabilities' | 'runtimeTools'>, session: {tools: readonly T[]; hostTools: readonly H[]}, offered = true): {tools: T[]; hostTools: H[]} {
+  const hostTools = offered ? session.hostTools.filter(t=>!t.interaction && t.delegation !== undefined && (profile.capabilities as readonly string[]).includes(t.delegation)) : []
+  const runtime = new Set<string>(offered ? profile.runtimeTools ?? [] : [])
+  return {tools: session.tools.filter(t=>runtime.has(t.name)), hostTools}
+}
+
+/**
  * Framework-neutral coordinator. All provider traffic uses the supplied capabilities.
  *
  * **One parent run** (agent#14): `delegate_tasks` is a host tool whose call runs the batch, so an
@@ -542,9 +555,8 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
     }
     /** One run of a child's engine, into `run`: its messages, its prose so far, and what it asked of the parent. */
     const runChild = async (planned: Planned, profile: TaskProfile, task: DelegatedTask, objective: string, prompt: string, childSignal: AbortSignal, requestLimit: number, offered: boolean, meter: ChildMeter, run: ChildRun) => {
-      const hostTools = offered ? session.hostTools.filter(t=>!t.interaction && t.delegation && profile.capabilities.includes(t.delegation)) : []
-      const runtime = new Set(offered ? profile.runtimeTools ?? [] : [])
-      const tools = session.tools.filter(t=>runtime.has(t.name))
+      const {tools, hostTools} = childOffer(profile, session, offered)
+      const runtime = new Set(tools.map(t=>t.name))
       const link: ExecutionLink = {attach:context=>{
         if ('model' in session) context.execution.limitTo(requestLimit)
         context.execution.toolAllowance=()=>({used:task.toolCalls,limit:planned.budget.toolCalls,scope:'task'})

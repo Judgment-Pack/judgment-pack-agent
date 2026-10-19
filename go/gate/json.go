@@ -19,6 +19,18 @@ import (
 // ascending, then the rest in the order they were written; a repeated name keeps its first place
 // and its last value), numbers as float64 (a number too large for one is Infinity, which
 // JSON.stringify writes as null), and the texts JSON.stringify and String write.
+//
+// Two frames are decided otherwise than the TypeScript gate decides them (agent#56: a differential
+// of 91 frames found these two and no other):
+//
+//   - A request whose top level carries a __proto__ member. JSON.parse makes it an own member, and
+//     the TypeScript gate sends the frame; this gate refuses it as a JSON-RPC message the SDK's
+//     shapes do not name (jsonrpc.go). This gate is the stricter, and nothing leaves either way
+//     that the other would refuse to send.
+//   - A string holding a lone surrogate, written as an escape (\ud800). JSON.parse keeps the lone
+//     code unit and JSON.stringify writes the escape back; a Go string is UTF-8, so this gate holds
+//     and writes U+FFFD. The byte bounds count the two alike: three bytes, as TextEncoder counts a
+//     lone surrogate.
 
 type jkind int
 

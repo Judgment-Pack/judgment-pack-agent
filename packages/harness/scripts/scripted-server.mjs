@@ -13,16 +13,21 @@
 //
 // - On start, one line on stdout: {"listening": "http://127.0.0.1:<port>"}. The server ends when
 //   its stdin closes, so it never outlives the process that started it.
-// - POST /sessions {api, answerAs, thinking?, refuted?, signatures?, toolCalls?}: one scripted
-//   endpoint and one recorded runtime, as `scriptedModel(options)` and `recordedRuntime()`.
+// - POST /sessions {api, answerAs, thinking?, refuted?, signatures?, toolCalls?, strict?}: one
+//   scripted endpoint and one recorded runtime, as `scriptedModel(options)` and `recordedRuntime()`;
+//   `strict` puts the endpoint behind the strict turn order (`certification/strictAlternation.ts`).
 //   Answers {id, relay, mcp}: the paths of the session's relay and runtime.
+// - POST /sessions {scenario, answerAs, beforeCritic?}: one of the certified scenarios
+//   (`certification/scenarioServer.ts`): its scripted endpoint on the OpenAI-compatible wire and its
+//   runtime. POST /s/<id>/advance moves a scenario of several responses or turns to its next.
 // - Any method on /s/<id>/api/assistant/relay/v1/<suffix>: the relay. The stub is handed the
 //   address from /api/assistant/relay/v1 on, as the TypeScript legs hand it, and the request's
 //   headers less those the HTTP transport itself writes (TRANSPORT_HEADERS).
 // - POST /s/<id>/mcp: one JSON-RPC message; the reply frame, or 202 with no body for a
 //   notification.
 // - GET /s/<id>/observations: {requests, seen}, the scripted model's RecordedRequest list and the
-//   runtime's ServerObservation list, in arrival order.
+//   runtime's ServerObservation list, in arrival order; for a scenario session, {requests: [],
+//   endpoint, seen}, where endpoint is each request as the scenario's endpoint read it ({number, body}).
 // - GET /scenario: certification/scenario.json.
 import { createServer } from 'node:http'
 import { dirname, resolve } from 'node:path'
@@ -36,6 +41,8 @@ const load = async (path) =>
 const { scriptedModel } = await load('certification/scriptedModel.ts')
 const { recordedRuntime } = await load('certification/scriptedServer.ts')
 const scenario = (await load('certification/scenario.json')).default
+const { strictAlternation } = await load('certification/strictAlternation.ts')
+const { SCENARIOS, scenarioSession } = await load('certification/scenarioServer.ts')
 
 const RELAY = '/api/assistant/relay/v1/'
 
@@ -53,7 +60,11 @@ const TRANSPORT_HEADERS = new Set([
 
 const ENDPOINT_OPTIONS = ['api', 'answerAs', 'thinking', 'refuted', 'signatures', 'toolCalls']
 
-/** @type {Map<string, {model: ReturnType<typeof scriptedModel>, runtime: ReturnType<typeof recordedRuntime>}>} */
+/** A whole Response for a scenario endpoint's answer, read the way a fetch stub's caller reads it. */
+const scenarioFetch = (session) => async (_input, init) =>
+  session.answer({ number: session.requests.length + 1, body: JSON.parse(String(init?.body ?? '{}')), signal: undefined })
+
+/** @type {Map<string, {model: {fetch: typeof fetch, requests: unknown[]}, runtime: ReturnType<typeof recordedRuntime>, scenario?: ReturnType<typeof scenarioSession>}>} */
 const sessions = new Map()
 let next = 0
 
@@ -76,6 +87,16 @@ async function handle(request, response) {
   if (request.method === 'GET' && url.pathname === '/scenario') return json(response, 200, scenario)
   if (request.method === 'POST' && url.pathname === '/sessions') {
     const asked = JSON.parse((await readBody(request)) || '{}')
+    if (asked.scenario !== undefined) {
+      if (!SCENARIOS.includes(asked.scenario)) return json(response, 400, { error: `unknown scenario: ${String(asked.scenario)}` })
+      if (!['stream', 'whole'].includes(asked.answerAs)) {
+        return json(response, 400, { error: `answerAs must be stream or whole: ${String(asked.answerAs)}` })
+      }
+      const played = scenarioSession(asked.scenario, asked.answerAs, asked.beforeCritic === undefined ? {} : { beforeCritic: String(asked.beforeCritic) })
+      const id = String(++next)
+      sessions.set(id, { model: { fetch: scenarioFetch(played), requests: [] }, runtime: played.runtime, scenario: played })
+      return json(response, 201, { id, relay: `/s/${id}/api/assistant/relay/v1`, mcp: `/s/${id}/mcp` })
+    }
     const options = {}
     for (const name of ENDPOINT_OPTIONS) if (asked[name] !== undefined) options[name] = asked[name]
     if (!['openai-compatible', 'anthropic', 'gemini'].includes(options.api)) {
@@ -85,7 +106,9 @@ async function handle(request, response) {
       return json(response, 400, { error: `answerAs must be stream or whole: ${String(options.answerAs)}` })
     }
     const id = String(++next)
-    sessions.set(id, { model: scriptedModel(options), runtime: recordedRuntime() })
+    const model = scriptedModel(options)
+    const endpoint = asked.strict === true ? { fetch: strictAlternation(options.api, model.fetch), requests: model.requests } : model
+    sessions.set(id, { model: endpoint, runtime: recordedRuntime() })
     return json(response, 201, { id, relay: `/s/${id}/api/assistant/relay/v1`, mcp: `/s/${id}/mcp` })
   }
   const matched = /^\/s\/([0-9]+)(\/.*)$/.exec(url.pathname)
@@ -94,7 +117,15 @@ async function handle(request, response) {
   const rest = matched[2]
 
   if (request.method === 'GET' && rest === '/observations') {
+    if (session.scenario !== undefined) {
+      return json(response, 200, { requests: [], endpoint: session.scenario.requests.map(({ number, body }) => ({ number, body })), seen: session.runtime.seen })
+    }
     return json(response, 200, { requests: session.model.requests, seen: session.runtime.seen })
+  }
+  if (request.method === 'POST' && rest === '/advance') {
+    if (session.scenario === undefined) return json(response, 400, { error: 'only a scenario session advances' })
+    session.scenario.advance()
+    return json(response, 200, {})
   }
   if (request.method === 'POST' && rest === '/mcp') {
     const reply = session.runtime.answer(JSON.parse(await readBody(request)))

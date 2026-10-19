@@ -146,10 +146,22 @@ func StartServer(ctx context.Context) (*Server, error) {
 	}
 }
 
+// ConnectServer is a shared server already running at address (its first line's "listening"),
+// started by someone else; Close leaves it running.
+func ConnectServer(address string) *Server {
+	return &Server{URL: strings.TrimSuffix(address, "/"), client: &http.Client{
+		Transport:     http.DefaultTransport.(*http.Transport).Clone(),
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}}
+}
+
 // Close ends the server: its stdin is closed, which ends it, and the process this package started
 // is killed by its id if it has not ended within five seconds.
 func (s *Server) Close() {
 	s.once.Do(func() {
+		if s.cmd == nil {
+			return
+		}
 		_ = s.stdin.Close()
 		done := make(chan struct{})
 		go func() {
@@ -166,7 +178,12 @@ func (s *Server) Close() {
 }
 
 // Stderr is what the server wrote to its standard error, for a failure's report.
-func (s *Server) Stderr() string { return s.stderr.String() }
+func (s *Server) Stderr() string {
+	if s.stderr == nil {
+		return ""
+	}
+	return s.stderr.String()
+}
 
 func (s *Server) do(ctx context.Context, method, path string, body any, into any) error {
 	var reader io.Reader
@@ -207,6 +224,8 @@ type Endpoint struct {
 	Refuted    bool   `json:"refuted,omitempty"`
 	Signatures string `json:"signatures,omitempty"`
 	ToolCalls  string `json:"toolCalls,omitempty"`
+	// Strict puts the endpoint behind the strict turn order (certification/strictAlternation.ts).
+	Strict bool `json:"strict,omitempty"`
 }
 
 // Scenario is certification/scenario.json, as far as the runner reads it.
@@ -240,6 +259,31 @@ func (s *Server) Scenario(ctx context.Context) (*Scenario, error) {
 		return nil, err
 	}
 	return &scenario, nil
+}
+
+// ScenarioEndpoint is a certified scenario's session (agent#13): its name, the answer shape, and
+// for the correction loop the recorded step put first in the critic's script.
+type ScenarioEndpoint struct {
+	Scenario     string `json:"scenario"`
+	AnswerAs     string `json:"answerAs"`
+	BeforeCritic string `json:"beforeCritic,omitempty"`
+}
+
+// NewScenarioSession stands up one certified scenario's endpoint (the OpenAI-compatible wire) and
+// its runtime.
+func (s *Server) NewScenarioSession(ctx context.Context, endpoint ScenarioEndpoint) (*Session, error) {
+	var created struct {
+		ID    string `json:"id"`
+		Relay string `json:"relay"`
+		MCP   string `json:"mcp"`
+	}
+	if err := s.do(ctx, http.MethodPost, "/sessions", endpoint, &created); err != nil {
+		return nil, err
+	}
+	if created.ID == "" {
+		return nil, errors.New("the scripted server created a scenario session without its id")
+	}
+	return &Session{server: s, endpoint: Endpoint{API: "openai-compatible", AnswerAs: endpoint.AnswerAs}, id: created.ID, relay: created.Relay, mcp: created.MCP}, nil
 }
 
 // NewSession stands up one scripted endpoint and one recorded runtime.

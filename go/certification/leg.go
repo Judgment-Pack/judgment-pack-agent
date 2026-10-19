@@ -13,41 +13,21 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
 )
 
-// Run is what the runner hands an adapter for one leg, the Go form of the TypeScript session:
-// capabilities, never an address or a credential.
-//
-// Gate carries the gated call, never the runtime's transport (ADR-0004, as amended): the runner,
-// as the host, puts the session's runtime behind the gate (go/gate), runs the handshake through it
-// and keeps the gate's host handle; the adapter gets the narrow handle (gate.Calls). With it an
-// adapter calls a Runtime tool (CallTool), holds a host tool to the phase (AdmitHost) and narrows
-// the run to the critic's or the reformat run's phase and back; it cannot set the offer, enter Plan
-// mode or a child's phase, or reach the transport. The gate writes its guardrail events to Emit
-// while the call is in flight. Tools are the session's Runtime tools as tools/list served them
-// through the gate, those on the allow-list.
-type Run struct {
-	Wire      string
-	Model     ModelCall
-	Gate      *gate.Calls
-	Tools     []contract.ToolOfferRuntimeTool
-	HostTools []contract.ToolOfferHostTool
-	Prompt    string
-	Emit      func(contract.RunEvent)
-}
+// Run is what the runner hands an adapter for one leg (adapter.Run): capabilities, never an
+// address or a credential. Gate carries the gated call, never the runtime's transport (ADR-0004, as
+// amended).
+type Run = adapter.Run
 
 // Adapter is one Go adapter, as the runner drives it.
-type Adapter interface {
-	Run(ctx context.Context, run *Run) error
-}
+type Adapter = adapter.Adapter
 
 // AdapterFunc lets a function be an Adapter.
-type AdapterFunc func(ctx context.Context, run *Run) error
-
-// Run calls f.
-func (f AdapterFunc) Run(ctx context.Context, run *Run) error { return f(ctx, run) }
+type AdapterFunc = adapter.Func
 
 // LegResult is what one leg produced and what the shared server saw.
 type LegResult struct {
@@ -127,7 +107,29 @@ func ReadVector(name string) (schema string, items []json.RawMessage, err error)
 // ScenarioLeg runs the recorded scenario against an adapter on one endpoint: the leg the
 // TypeScript certification runs as `engine <id>` (certification/conformance.test.ts).
 func ScenarioLeg(ctx context.Context, server *Server, endpoint Endpoint, adapter Adapter) (*LegResult, error) {
-	return scenarioLeg(ctx, server, endpoint, adapter, "")
+	return scenarioLeg(ctx, server, endpoint, adapter, "", LegOptions{})
+}
+
+// TestPrompt is the stand-in for the runtime's test_pack prompt the TypeScript legs hand over
+// (TEST_PROMPT in conformance.test.ts).
+const TestPrompt = "THE RUNTIME’S TEST_PACK GUIDANCE, AS PROMPTS/GET SERVED IT"
+
+// LegOptions are what a leg asks of the host beside the endpoint (the TypeScript runLeg's `how`):
+// the tier the desk's file asked for, the endpoint's capability record as the host knows it,
+// whether the session asks for the critic and the cases it declares, the tools the desk's file
+// granted, and one tool set in place of the runtime's five (a schema probe).
+type LegOptions struct {
+	Tier         string
+	Capabilities *contract.CapabilityEndpointCapabilities
+	Review       *bool
+	Cases        []json.RawMessage
+	Allowed      []string
+	Tools        []contract.ToolOfferRuntimeTool
+}
+
+// Leg runs the recorded scenario against an adapter on one endpoint with the host's options.
+func Leg(ctx context.Context, server *Server, endpoint Endpoint, options LegOptions, adapter Adapter) (*LegResult, error) {
+	return scenarioLeg(ctx, server, endpoint, adapter, "", options)
 }
 
 // TracingKey is the key the traced leg puts in the environment's tracing variables.
@@ -171,10 +173,10 @@ func ScenarioLegTraced(ctx context.Context, server *Server, endpoint Endpoint, a
 			}
 		}
 	}()
-	return scenarioLeg(ctx, server, endpoint, adapter, TracingKey)
+	return scenarioLeg(ctx, server, endpoint, adapter, TracingKey, LegOptions{})
 }
 
-func scenarioLeg(ctx context.Context, server *Server, endpoint Endpoint, adapter Adapter, traced string) (*LegResult, error) {
+func scenarioLeg(ctx context.Context, server *Server, endpoint Endpoint, adapter Adapter, traced string, options LegOptions) (*LegResult, error) {
 	scenario, err := server.Scenario(ctx)
 	if err != nil {
 		return nil, err
@@ -212,19 +214,36 @@ func scenarioLeg(ctx context.Context, server *Server, endpoint Endpoint, adapter
 	}
 	// The host's side: the scenario's session grants the five, and the runtime is reached only
 	// through the gate, the handshake included.
-	gated := gate.New(gate.Options{Runtime: gate.Call(session.RuntimeCall()), Granted: scenario.ScenarioTools, Emit: emit})
+	granted := scenario.ScenarioTools
+	if options.Allowed != nil {
+		granted = options.Allowed
+	}
+	gated := gate.New(gate.Options{Runtime: gate.Call(session.RuntimeCall()), Granted: granted, Emit: emit})
 	offer, err := gated.Open(ctx, result.offer.HostTools)
 	if err != nil {
 		return nil, fmt.Errorf("the handshake through the gate: %w", err)
 	}
+	// The boundary adds its own context tools to the run (the offer vector's host tools); the
+	// session hands it none of its own.
 	run := &Run{
-		Wire:      endpoint.API,
-		Model:     session.ModelCall(),
-		Gate:      gated.Calls(),
-		Tools:     offer.Tools,
-		HostTools: offer.HostTools,
-		Prompt:    scenario.Policy,
-		Emit:      emit,
+		Wire:       endpoint.API,
+		ModelName:  "scripted-model",
+		Model:      session.ModelCall(),
+		Gate:       gated.Calls(),
+		Tools:      offer.Tools,
+		Prompt:     scenario.Policy,
+		TestPrompt: TestPrompt,
+		Thinking:   "off",
+		Emit:       emit,
+	}
+	if options.Tier != "" {
+		run.Thinking = options.Tier
+	}
+	run.Capabilities = options.Capabilities
+	run.Review = options.Review
+	run.Cases = options.Cases
+	if options.Tools != nil {
+		run.Tools = options.Tools
 	}
 	seal := sealNetwork()
 	result.RunError = adapter.Run(ctx, run)
@@ -575,4 +594,19 @@ func sameJSON(a, b []byte) bool {
 		return false
 	}
 	return reflect.DeepEqual(left, right)
+}
+
+// BoundaryHostTools are the host tools the boundary adds to a run of the scenario's session (the
+// offer vector's hostTools: the context tools), as the gate's offer holds them. A plain loop with no
+// boundary declares these itself.
+func BoundaryHostTools() ([]contract.ToolOfferHostTool, error) {
+	_, offers, err := ReadVector("tool-offer/scenario-offer.json")
+	if err != nil {
+		return nil, err
+	}
+	var offer contract.ToolOffer
+	if err := json.Unmarshal(offers[0], &offer); err != nil {
+		return nil, err
+	}
+	return offer.HostTools, nil
 }
