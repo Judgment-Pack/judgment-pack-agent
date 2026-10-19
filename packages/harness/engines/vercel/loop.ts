@@ -5,7 +5,7 @@ import {ExecutionPaused,MAX_REQUEST_ALLOWANCE} from '../../execution/state'
 import {EXECUTION_INSTRUCTIONS} from '../../execution/controller'
 import {managedContext,contextOf} from '../../context/managed'
 import { readDelegationRequest } from '../../delegationContract'
-import { assistantLanguageInstructions, criticModelFor } from '../../host'
+import { assistantLanguageInstructions } from '../../host'
 import { DATA_RULE, readingTool } from '../../framing'
 import { GateViolation } from '../../toolGate'
 /**
@@ -895,27 +895,29 @@ function runVercelLoop(
       const refusal=await rejectToolStep(tool.name,args)
       if(refusal)return bare(refusal)
       const correlation = session.interactive ? { callId: crypto.randomUUID() } : {}
-      if (!tool.interaction) await deliver({ type: 'tool_call', ...correlation, name: tool.name, args })
+      // A question pauses the turn and is reported as user_question; every other call, the
+      // delegation among them (agent#14), is a call and a result.
+      if (tool.interaction !== 'question') await deliver({ type: 'tool_call', ...correlation, name: tool.name, args })
       let answer: McpToolResult
       try {
         // agent#10: no host tool is the critic's; refused before anything of the host's runs.
         context.admit(tool.name, 'host')
         if (tool.interaction === 'delegation') {
-          const request = readDelegationRequest(args)
-          awaitingInput = true
-          await deliver({type:'delegation_requested',request})
-          inputPause.abort()
-          throw new DOMException('Delegation handoff', 'AbortError')
-        }
-        if (tool.interaction === 'question') {
+          // **An awaited call inside this step** (agent#14): the coordinator runs the batch while
+          // the call is open and its children's findings are the call's result, in this run, so
+          // this run's own messages and reasoning stay as they are. The tool-call deadline does not
+          // apply: the batch is bounded by its children's time limits, and by this run's signal
+          // (a Stop, the turn's wall clock), which stops the children with it.
+          readDelegationRequest(args)
+          answer = await withAbort(() => tool.execute(args, executionSignal), executionSignal)
+        } else if (tool.interaction === 'question') {
           const question = readModelQuestion(args)
           if (awaitingInput) throw new DOMException('Waiting for input', 'AbortError')
           awaitingInput = true
           await deliver({type:'user_question', id:crypto.randomUUID(), question})
           inputPause.abort()
           throw new DOMException('Waiting for input', 'AbortError')
-        }
-        if (tool.name === PROPOSE_PACK_TOOL) {
+        } else if (tool.name === PROPOSE_PACK_TOOL) {
           // **The proposal, delivered as a tool call.** Read here, by the
           // contract's reader; the host's own `execute` is never reached. The
           // latest call's document is the one proposed.
@@ -1443,7 +1445,8 @@ function runVercelLoop(
          { role: 'user', content: await context.prompt(criticMessage(session.testPrompt, proposal.document, context.criticCases),criticSystem,schemas) }
        ]
        criticHeld = criticMessages
-       criticModelId = criticModelFor({ engine: id, family: session.model.family, model: session.model.model })
+       // The host's modelsFor answer for the run's connection, asked once per run (review of agent#35, row 5).
+       criticModelId = context.models(id).critic
        if (criticModelId !== session.model.model) {
          // The same connection, relay and capability record: only the model id differs.
          criticModel = modelFor({ ...session, model: { ...session.model, model: criticModelId } }, call, executionSignal, ledger, onTruncated, slot, capabilities.streamingQuirks)

@@ -10,10 +10,20 @@ import {ExecutionPaused,MAX_CHECKPOINT_BYTES,readExecution,validTaskSteps,type E
 
 export const EXECUTION_INSTRUCTIONS = `TASK EXECUTION: For work requiring several stages, use update_plan to track concrete pending, in_progress and completed steps. Skip planning overhead for simple replies. Use the current accepted plan when present; do not repeatedly re-plan or ask the user to repeat an already authorized request. Update progress at meaningful boundaries, and preserve completed work across continuation. A task list is working state, not approval or proof: mark a step complete only when its required result exists, and distinguish a proposed change from a saved change. Keep a multi-stage task plan current; it estimates work but cannot grant more requests. An unsaved working object remains in the exact arguments of its completed operations. Continue from those retained arguments after validation or evaluation; rereading the saved workspace does not retrieve an unsaved proposal. Recheck the saved revision before applying changes. Use tool results already obtained; do not reread unchanged instructions or schemas or scan the entire conversation. On continuation, inspect the latest completed result and its exact arguments before doing more work. A newer saved workspace object takes precedence over an older chat draft when editing that object; preserve its identity. For a focused change, inspect the relevant contract once, make the smallest proposal, verify the affected behavior and return it. Do not restart discovery after context compaction. Before repeating a failed read, correct its arguments using the current context index. If blocked, state the exact missing information. When requests run low, finish the concrete result or call request_budget_increase with the reason and next concrete step. Desk owns budget extensions; this tool requests but never grants one. Never modify expected tests merely to match actual results. Current user instructions and host permissions remain authoritative.`
 
+/** A tool-call cap as the request state states it (agent#13): `response`, a parent's and its children's together; `task`, one child's. */
+export interface ToolAllowance {used:number;limit:number;scope:'response'|'task'}
+
 export class ExecutionController {
  readonly progress=new ExecutionProgressTracker()
  state!:ExecutionCheckpoint
  pauseRequested=false
+ /**
+  * agent#13: the tool-call cap this run works under, where a delegation coordinator holds one (set
+  * through its link, `delegation.ts`): the response's, shared by a parent and its children, or a
+  * child's own budget. Stated in the request state as `toolCalls`.
+  */
+ toolAllowance?:()=>ToolAllowance
+ private restored=false
  private attempt=1
  private operationsReference:unknown
  private restoredResults:unknown[]=[]
@@ -30,6 +40,7 @@ export class ExecutionController {
    await this.ledger.restore(restored.context)
    this.progress.seed(restored.operations)
    this.state={...restored,operations:restored.operations.map(op=>op.status==='running'?{...op,status:'interrupted'}:op),status:'running'}
+   this.restored=true
   }else{
    this.state={version:1,id:crypto.randomUUID(),requestKey,phase:this.session.context?.phase??'work',status:'running',unit:'model'in this.session?'model-requests':'provider-managed',used:0,limit:'model'in this.session?MAX_TURNS:1,grants:[],plan:[],explanation:'',operations:[],context:{scope:this.ledger.scope,entries:[]}}
    const plan=this.session.context?.plan
@@ -38,12 +49,18 @@ export class ExecutionController {
  }
  get remaining(){return this.state.limit-this.state.used}
  claim(){if(this.remaining<=0)throw new ExecutionPaused();this.state.used++}
+ /**
+  * A first allowance below MAX_TURNS, for a delegated child (agent#15): its profile's request budget,
+  * held further to what the response's shared allowance can still give it, so its loop plans its
+  * final answer within what it may spend. A restored execution keeps its own.
+  */
+ limitTo(requests:number){if(!this.restored)this.state.limit=Math.max(1,Math.min(this.state.limit,Math.floor(requests)))}
  /** The instructions and the state together, as an agent's prompt carries them. */
  guidance(){return EXECUTION_INSTRUCTIONS+'\n'+this.requestState()}
  /** The part of the guidance that changes between requests: the repetition note, the request
   * counters, the plan, the operations index. A model loop sends it after the history, at the end
   * of every request, and EXECUTION_INSTRUCTIONS once in its stable system text. */
- requestState(){return this.progress.guidance+'\n'+JSON.stringify({requests:this.state.unit==='model-requests'?{unit:this.state.unit,used:this.state.used,limit:this.state.limit,remaining:this.remaining}:{unit:this.state.unit,note:'The subscription provider manages its internal model loop; tool calls are not model-request counts.'},tasks:this.state.plan,explanation:this.state.explanation,retainedOperations:this.operationsReference,...(this.restoredResults.length?{resumeFromCompletedResults:this.restoredResults}:{}),completedOperationCount:this.state.operations.length})}
+ requestState(){const tools=this.toolAllowance?.();return this.progress.guidance+'\n'+JSON.stringify({requests:this.state.unit==='model-requests'?{unit:this.state.unit,used:this.state.used,limit:this.state.limit,remaining:this.remaining}:{unit:this.state.unit,note:'The subscription provider manages its internal model loop; tool calls are not model-request counts.'},...(tools?{toolCalls:{unit:'tool-calls',used:tools.used,limit:tools.limit,remaining:Math.max(0,tools.limit-tools.used),scope:tools.scope,note:tools.scope==='response'?'Tool calls this response may make, yours and your delegated children’s together; the context tools are not counted.':'Tool calls this task may make; the context tools are not counted.'}}:{}),tasks:this.state.plan,explanation:this.state.explanation,retainedOperations:this.operationsReference,...(this.restoredResults.length?{resumeFromCompletedResults:this.restoredResults}:{}),completedOperationCount:this.state.operations.length})}
  async retainProgress(includeIndex=true){
   if(!this.state.operations.length)return
   const rows=[]

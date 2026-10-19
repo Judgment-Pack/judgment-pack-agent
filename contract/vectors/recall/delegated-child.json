@@ -1,5 +1,5 @@
 {
-  "description": "Where the request text sits in a delegated child's first request (agent#11): the child's request text is its objective, which delegation.ts hands the child as context.objective and the adapter sends as the first text part of the child's first message, before the child's prompt (its profile's instructions and the JSON of its objective and context) and the state. So the rule (budget.json#/$defs/recallQuery) finds the objective, not the end of the supplied context. Written by hand from the schema on the OpenAI-compatible wire, the body abbreviated; memory/recall.test.ts runs a child of the review profile and holds its first request to the item. This harness's.",
+  "description": "Where the request text sits in a delegated child's first request (agent#11): the child's request text is its objective, which delegation.ts hands the child as context.objective and the adapter sends as the first text part of the child's first message, before the child's prompt (its profile's instructions, its rules and the JSON of its objective, its references and its time limit; agent#15 passes material by reference, not as copied context) and the state. So the rule (budget.json#/$defs/recallQuery) finds the objective. Written by hand from the schema on the OpenAI-compatible wire, the body abbreviated; memory/recall.test.ts runs a child of the review profile and holds its first request to the item. This harness's.",
   "schema": "budget.json#/$defs/recallQuery",
   "source": {
     "harness": {
@@ -34,7 +34,7 @@
               },
               {
                 "type": "text",
-                "text": "Review the supplied work for concrete gaps, inconsistencies and unsupported claims. … Complete this read-only task and return a concise findings summary with source references and limitations. …\n{\"objective\":\"Check whether the expense pack declines a claim above 50 USD that has no receipt.\",\"context\":\"…\"}"
+                "text": "Review the supplied work for concrete gaps, inconsistencies and unsupported claims. … Complete this read-only task and return a concise findings summary with source references and limitations. …\n{\"objective\":\"Check whether the expense pack declines a claim above 50 USD that has no receipt.\",\"timeLimitSeconds\":120}"
               },
               {
                 "type": "text",

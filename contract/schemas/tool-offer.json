@@ -72,7 +72,7 @@
           ]
         },
         "interaction": {
-          "description": "A tool that pauses the run for the person (question: ask_user) or for the host's coordinator (delegation: delegate_tasks). The adapter emits user_question or delegation_requested, pauses, and returns no answer of its own.",
+          "description": "A tool the adapter handles itself. question (ask_user): the adapter emits user_question, pauses, and returns no answer of its own. delegation (delegate_tasks): the host's coordinator runs the batch; an engine that awaits a tool call (vercel) executes it in the run's step with no tool-call deadline and reports a tool_call and a tool_result, the children's findings its result (agent#14); an engine whose run cannot wait for one (codex) emits delegation_requested and ends its run.",
           "enum": [
             "question",
             "delegation"

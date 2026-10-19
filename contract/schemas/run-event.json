@@ -158,7 +158,7 @@
       "additionalProperties": true
     },
     "delegation_requested": {
-      "description": "The model called delegate_tasks. The adapter emits this instead of a tool_call, pauses, and returns no result of its own; the host's coordinator runs the batch and continues the parent.",
+      "description": "The model called delegate_tasks on an engine whose run cannot wait for a tool call (codex: the provider account runs one agent run at a time, and the children need it). The adapter emits this instead of a tool_call and ends its run; the host's coordinator runs the batch and starts the response's next run with the call's result (delegated-task.json#/$defs/answer). An engine that awaits the call (vercel, agent#14) emits a tool_call and a tool_result for delegate_tasks instead, in the same run. The coordinator consumes this event: a host reading the coordinator's stream does not see it.",
       "type": "object",
       "required": [
         "type",
@@ -175,7 +175,7 @@
       "additionalProperties": true
     },
     "delegated_task": {
-      "description": "A child task's state, whole, at each transition. Emitted by the host's delegation coordinator.",
+      "description": "A child task's state, whole, at each transition. Emitted by the host's delegation coordinator; on an engine that awaits the delegate call, between that call's tool_call and its tool_result.",
       "type": "object",
       "required": [
         "type",

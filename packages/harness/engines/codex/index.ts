@@ -3,7 +3,7 @@ import {managedContext,contextOf} from '../../context/managed'
 import { readDelegationRequest } from '../../delegationContract'
 import { readModelQuestion } from '../../questions'
 import { questionFailureResult } from '../../questionFailure'
-import { assistantLanguageInstructions, criticModelFor } from '../../host'
+import { assistantLanguageInstructions } from '../../host'
 import { separateImages } from '../../images'
 import { DATA_RULE, readingTool } from '../../framing'
 import { GateViolation } from '../../toolGate'
@@ -321,7 +321,8 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
         const passStart = Date.now()
         try {
           // The host is asked once per pass, and its answer passed down (review row 10).
-          const model = criticModelFor({ engine: 'codex', model: session.agent.model })
+          // The host's modelsFor answer for the run's connection, asked once per run (review of agent#35, row 5).
+          const model = context.models('codex').critic
           figures = { model, unit: 'agent-runs', requests: 1 }
           const text = await run(criticMessage(session.testPrompt, proposal.document, context.criticCases), CRITIC_SYSTEM, 'critic', recorder, model === session.agent.model ? undefined : model)
           // agent#10: the declared cases the critic's run left uncompared, run once each by the harness.

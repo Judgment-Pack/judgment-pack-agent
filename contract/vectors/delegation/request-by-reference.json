@@ -1,0 +1,36 @@
+{
+  "description": "A delegate_tasks call (agent#14, agent#15, agent#13): one task given two entries of the parent's context by reference, a ledger entry id and a document id, and asking for a summary of long findings; one task resuming a finished task of the chat with a follow-up objective. No copied context: the request is closed and has no context member. Written by hand from the schema.",
+  "schema": "delegated-task.json#/$defs/request",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/delegationContract.ts (readDelegationRequest, delegationTool)",
+      "packages/harness/delegation.ts (plan: references resolved in the parent's chat, resume)"
+    ]
+  },
+  "items": [
+    {
+      "tasks": [
+        {
+          "title": "Mileage rate",
+          "objective": "Find the mileage rate the policy pays and the receipts it asks for.",
+          "profile": "research",
+          "references": [
+            "chat-1:result-read_page-4f1c9e0a7b2d6c35a8e1f0b9d2c7e6a4f3b8c1d0e9a7b6c5d4e3f2a1b0c9d8e7:4f1c9e0a7b2d6c35",
+            "mileage-policy"
+          ],
+          "summarize": true
+        },
+        {
+          "title": "Meal cap, again",
+          "objective": "Is the meal cap per day or per trip?",
+          "profile": "analyze",
+          "resume": "5d8e2f40-1a6b-4c3d-8e9f-0a1b2c3d4e5f"
+        }
+      ]
+    }
+  ]
+}

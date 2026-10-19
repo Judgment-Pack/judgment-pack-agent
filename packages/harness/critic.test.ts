@@ -618,10 +618,12 @@ describe('one default for both engines (agent#10)', () => {
   })
 })
 
+// The review of agent#35 (row 5) made the critic's model one member of the host's modelsFor answer,
+// asked once per run with the run's connection; these cases read it there.
 describe('the critic’s model, per connection (agent#10)', () => {
   it('vercel: the critic’s requests name the host’s critic model; the loop’s name the run’s', async () => {
     const asked: unknown[] = []
-    configureHarness({ criticModel: (run) => { asked.push(run); return 'cheaper-model' } })
+    configureHarness({ modelsFor: (run) => { asked.push(run); return { critic: 'cheaper-model' } } })
     const { requests, events } = await vercelCritic([])
     expect(asked).toEqual([{ engine: 'vercel', family: 'openai-compatible', model: 'scripted-model' }])
     const model = (request: EndpointRequest) => (request.body as { model?: string }).model
@@ -631,7 +633,7 @@ describe('the critic’s model, per connection (agent#10)', () => {
   })
 
   it('vercel: a critic model the host names wrongly is the critic’s note, and the proposal stands', async () => {
-    configureHarness({ criticModel: () => 'two\nlines' })
+    configureHarness({ modelsFor: () => ({ critic: 'two\nlines' }) })
     const { requests, events } = await vercelCritic([])
     expect(requests.filter(isCritic)).toEqual([])
     expect(ofType(events, 'error')).toEqual([])
@@ -639,7 +641,7 @@ describe('the critic’s model, per connection (agent#10)', () => {
   })
 
   it('codex: the critic run names the host’s critic model on the agent wire; the author run the bound one', async () => {
-    configureHarness({ criticModel: (run) => (run.engine === 'codex' ? 'cheaper-agent' : null) })
+    configureHarness({ modelsFor: (run) => (run.engine === 'codex' ? { critic: 'cheaper-agent' } : {}) })
     const { runs, events } = await codexTurn({
       script: async (bridge) => {
         bridge.started()
@@ -653,8 +655,8 @@ describe('the critic’s model, per connection (agent#10)', () => {
   })
 
   it('codex: the agent transport sends another model only on a critic run, and never asks the host itself', async () => {
-    const asked = vi.fn(() => 'cheaper-agent')
-    configureHarness({ criticModel: asked })
+    const asked = vi.fn(() => ({ critic: 'cheaper-agent' }))
+    configureHarness({ modelsFor: asked })
     const run = bindAgentRun('bound-agent')
     const callbacks = { signal: new AbortController().signal, event: async () => {}, tool: async () => ({ text: '', isError: false }) }
     const request = { prompt: 'p', instructions: 'i', tools: [] }
@@ -662,9 +664,9 @@ describe('the critic’s model, per connection (agent#10)', () => {
     expect(asked).not.toHaveBeenCalled()
   })
 
-  it('codex: the host is asked once per critic pass, and its answer passed down (review row 10)', async () => {
+  it('codex: the host is asked once per run, and its answer passed down (review row 10)', async () => {
     let answers = 0
-    configureHarness({ criticModel: (run) => (run.engine === 'codex' ? `cheaper-agent-${++answers}` : null) })
+    configureHarness({ modelsFor: (run) => (run.engine === 'codex' ? { critic: `cheaper-agent-${++answers}` } : {}) })
     const { runs, events } = await codexTurn({
       script: async (bridge) => {
         bridge.started()
@@ -883,7 +885,7 @@ describe('the proposal and figures vectors are what the engines emit (agent#10 r
 
   it('critic/figures.json: what each engine’s critique carries', async () => {
     // vercel: two critic requests on the host's cheaper model, each reporting its tokens.
-    configureHarness({ criticModel: () => 'cheaper-model' })
+    configureHarness({ modelsFor: () => ({ critic: 'cheaper-model' }) })
     const usage = { prompt_tokens: 1205, completion_tokens: 48, total_tokens: 1253, prompt_tokens_details: { cached_tokens: 900 } }
     const withUsage = (text: string) => whole(JSON.stringify({ ...JSON.parse(wholeTurn({ text })), usage }))
     let turn = 0
@@ -894,7 +896,7 @@ describe('the proposal and figures vectors are what the engines emit (agent#10 r
         return turn === 1 ? whole(JSON.stringify({ ...JSON.parse(wholeTurn({ tool: { name: 'validate', args: { document: '{}' } } })), usage })) : withUsage('Done.')
       }
     })
-    configureHarness({ criticModel: () => null })
+    configureHarness({ modelsFor: () => ({ critic: null }) })
     // codex: one agent run, and one with a harness rehearsal.
     const codexRun = await codexCritic([])
     const codexHarness = await codexCritic([], { cases: CASES.slice(0, 1) })

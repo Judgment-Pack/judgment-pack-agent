@@ -8,7 +8,7 @@
     },
     "files": [
       "packages/harness/refutation.ts (CriticFigures, modelCriticFigures)",
-      "packages/harness/host.ts (criticModel, criticModelFor)"
+      "packages/harness/host.ts (modelsFor, runModels)"
     ]
   },
   "items": [

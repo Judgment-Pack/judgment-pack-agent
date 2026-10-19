@@ -14,7 +14,8 @@ import {READ_TOOL} from './reader'
 import {SEARCH_TOOL} from './search'
 import {capabilitiesFor,type ModelCapabilities} from '../capabilities'
 import {contextPolicy,inputBytes,utf8Bytes,prefix,ContextBudgetError,type ContextConfiguration} from './policy'
-import {INDEX_SHARE,partBytes,type ChatContext,type ChatTurn,type RuntimeIdentity} from './chat'
+import {INDEX_SHARE,partBytes,type ChatScope,type ChatTurn,type RuntimeIdentity} from './chat'
+import {runModels,type AITarget,type AssistantEngine,type RunIdentity,type RunModels} from '../host'
 export interface CurrentRequest {message:string;input:string}
 /** `currentState`: host-authored text that changes between requests or responses (the chat's
  * draft snapshot, the latest check). An adapter sends it after the history, at the end of every
@@ -29,8 +30,18 @@ export interface CurrentRequest {message:string;input:string}
  * absent, the reserve stays, so a server that adds memory never receives a request the harness
  * left no room for. `objective` (agent#11): a delegated child's objective, its request text,
  * sent as the first text part of its first message (`delegation.ts` sets it).
+ *
+ * `chat` is a `ChatContext`, or the view of one a delegated child is handed (`ChatContext.childScope`,
+ * agent#15). `link` (agent#14): set by the delegation coordinator on a run it starts, so it reaches
+ * that run's execution (the parent's request count, which its children's requests are charged to, and
+ * a child's own budget); a host leaves it out. `connection`: the AI connection the run's model or
+ * agent capability is bound to, as the host names it (`AITarget`); the host's `modelsFor` is asked
+ * with it once per run, for the models the connection names for the critic and for delegated
+ * children (review of agent#35, row 5).
  */
-export interface ContextInput {currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatContext;runtime?:RuntimeIdentity;memory?:boolean;objective?:string}
+export interface ContextInput {currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatScope;runtime?:RuntimeIdentity;memory?:boolean;objective?:string;link?:ExecutionLink;connection?:AITarget}
+/** How the delegation coordinator reaches a run it starts (agent#14): told the run's context once its execution is initialized, before its first request. */
+export interface ExecutionLink {attach(context:SessionContext):void}
 export interface ContextUsage {inputBytes:number;estimatedInputTokens:number;inputBudgetBytes:number;outputReserveTokens:number;compactions:number;retainedItems:number}
 const encoded=(value:unknown)=>JSON.stringify(value)
 export class SessionContext {
@@ -56,7 +67,21 @@ export class SessionContext {
  private readonly turn?:ChatTurn
  /** A delegated child's objective (agent#11): its request text, sent as the first text part of its first message. */
  private readonly objective?:string
+ /** Who the run is, as the host's `modelsFor` is asked: its connection, family and model; and the answer, once asked. */
+ private readonly identity:Omit<RunIdentity,'engine'>
+ private named?:{models?:RunModels;error?:unknown}
+ /**
+  * The models the run's connection names for its critic and its delegated children (`modelsFor` in
+  * host.ts, read by `runModels`): asked once per run, the first time an engine or the delegation
+  * coordinator needs one; an answer the host gave that is refused is refused at each read.
+  */
+ models(engine:AssistantEngine):RunModels{
+  this.named??=(()=>{try{return {models:runModels({...this.identity,engine})}}catch(error){return {error}}})()
+  if(this.named.models===undefined)throw this.named.error
+  return this.named.models
+ }
  constructor(session:EngineSession){
+  this.identity={...(session.context?.connection?{connection:session.context.connection}:{}),...('model'in session?{family:session.model.family}:{}),model:'model'in session?session.model.model:session.agent.model}
   try{this.criticCases=readCriticCases(session.criticCases??[])}catch(cause){throw authoredFailure('configuration',(cause as Error).message,'context')}
   this.capabilities='model'in session?capabilitiesFor(session.model):undefined;this.policy=contextPolicy(session.context?.configuration,'model'in session?session.model.model:session.agent.model,this.capabilities,session.context?.memory);this.turn=session.context?.chat?.openTurn();this.objective=session.context?.objective;this.ledger=new ContextLedger(this.policy,this.turn);this.execution=new ExecutionController(session,this.ledger);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))}
  /**
@@ -348,6 +373,7 @@ export async function contextualSession<T extends EngineSession>(session:T):Prom
  await context.execution.retainProgress()
  if(session.context?.plan)await context.initialize([{id:'current-plan',kind:'artifact',label:'Current chat plan',value:session.context.plan}])
  if([...session.tools,...session.hostTools].some(t=>t.name==='read_context'||t.name==='list_context'||t.name===READ_TOOL||t.name===SEARCH_TOOL||t.name==='update_plan'||t.name==='request_budget_increase'))throw Error('Context tool names are reserved by Desk.')
+ session.context?.link?.attach(context)
  }catch(error){context.close();throw error}
  // The session's own tools that read (agent#8): what a chat-scoped context keeps across its runs.
  const own=new Set(session.hostTools.filter(tool=>readingTool(tool)).map(tool=>tool.name))

@@ -25,7 +25,8 @@ changes made here since the extraction, each by its issue (agent#1, the read win
 agent#9, the stable prefix and the state's placement; agent#4, the capability record and the text
 tool path; agent#5, search, numbered reads and images; agent#8, the chat-scoped context; agent#11,
 the request text on every request and the memory reserve; agent#10, the critic; agent#25, the
-agent-engine certification leg; agent#29, the Codex adapter's reformat run).
+agent-engine certification leg; agent#29, the Codex adapter's reformat run; agent#14, agent#15 and
+agent#13, delegation as one parent run with context by reference and per-profile budgets).
 
 ## Entry points
 
@@ -59,8 +60,8 @@ reaches (none passes a `count`).
 **Injection points**, what only a host can do. Each one throws, naming itself, until the host
 supplies it with `configureHarness`. (`NO_SESSION_MESSAGE` is a sentence and cannot throw; it is
 read only to build a `NoSession`, which does. `endpointCapabilities` has an answer of its own,
-nothing known, so a host that knows nothing about its endpoints may leave it out, and so does
-`criticModel`: null, the run's own model.)
+nothing known, so a host that knows nothing about its endpoints may leave it out; so does
+`modelsFor`, none, every run's subordinate work on its own model.)
 
 | Injection point | What the host supplies | The Desk feature it replaces | Read by |
 | --- | --- | --- | --- |
@@ -84,7 +85,7 @@ nothing known, so a host that knows nothing about its endpoints may leave it out
 | `dialectAPI(path, …)` | A request to the host's input-preparation API | `dialects/client` | `planning/tools.ts` |
 | `endpointCapabilities({ family, model })` | What the host knows about an endpoint and model: any members of its capability record (see The capability record), its probe result. Answers `{}`, nothing known, until supplied | none (new, agent#9, agent#4: the Desk decides by its three families) | `capabilities.ts`, read once per run by `context/session.ts` |
 | `renderImageToText(image, signal)` | An image as text, for a model whose record says no vision: the host's render adapter | none (new, agent#5) | `images.ts`, from `engines/vercel/loop.ts` and `engines/codex/index.ts` |
-| `criticModel({ engine, family, model })` | The model the critic runs on for this run's connection, a cheaper one the same connection serves, or null for the run's own (see The critic); asked once per pass. Answers null until supplied | none (new, agent#10) | `host.ts` (`criticModelFor`), from `engines/vercel/loop.ts` and `engines/codex/index.ts` |
+| `modelsFor({ connection, engine, family, model })` | The models a run's connection names for its subordinate work: `child`, delegated children's, and `critic`, the critic's; each absent or null for the run's own model. Asked once per run with the run's connection (`context.connection`), engine, family and model. Answers none until supplied. It replaces agent#10's `criticModel` (see The critic) | none (new, agent#10; one seam since the review of agent#35) | `host.ts`, `runModels`, read by `context/session.ts`, `SessionContext.models`, for `engines/vercel/loop.ts`, `engines/codex/index.ts` and `delegation.ts` |
 
 The failure catalogue and the context budget table are the package's own copies of the Desk's
 Go-side files (`internal/aifailure/catalog.json`, `internal/aicontext/policy.json`), byte for byte,
@@ -102,7 +103,7 @@ configureHarness({
   sessionBearer, sessionEnded, whenSessionEnds, forgetSession, refusalCode, discardBody,
   NoSession, NO_SESSION_MESSAGE,
   chassisUrl, deskHeaders, deskSocketURL, aiHeaders, socketURL, socketProtocols, DeskWebSocketTransport,
-  deskFetch, answer, readFile, dialectAPI, endpointCapabilities, renderImageToText, criticModel
+  deskFetch, answer, readFile, dialectAPI, endpointCapabilities, renderImageToText, modelsFor
 })
 ```
 
@@ -216,8 +217,8 @@ runtime's `test_pack` prompt as `testPrompt`.
   `CRITIC_PASS_MILLISECONDS`). A disagreeing case refutes the proposal, and so does a declared case
   nothing compared: the critique's `cases` and `incomplete` say which, and the proposal's `critique`
   names the incomplete ones.
-- **Its model** is the host's `criticModel` answer for the connection, asked once per pass, or the
-  run's.
+- **Its model** is the `critic` member of the host's `modelsFor` answer for the run's connection,
+  asked once per run, or the run's.
 - **Its cost** is on the critique, and on a `critic-unfinished` note: `figures`, the model and the
   requests (model requests and their token counts on `vercel`, agent runs on `codex`), and the
   harness's own calls (`harnessCalls`).
@@ -266,7 +267,8 @@ earlier runs kept (`read_window` id, tool, arguments digest, size, first line), 
 allowance, at most a quarter of it, so the request is never previewed and a run never fails because
 of the index; results evicted since the last index was sent are listed there. A run's checkpoint carries the entries it retained or read, not the
 chat's. Nothing is global: a run reaches only the chat context it was handed, and a delegated child
-gets none. `wire-contract.md` has the rules; `tool-result.json` the index and the cache key.
+gets a view of its parent's that shows it its references and what it reads itself (see Delegation).
+`wire-contract.md` has the rules; `tool-result.json` the index and the cache key.
 
 ### The request text and project memory
 
@@ -279,6 +281,51 @@ contract states the rule a server applies to find it (`budget.json#/$defs/recall
 certified leg, 21 legs in four families.
 The host says per run whether the project's memory is on (`context.memory`): `false` frees the
 `memoryBytes` reserve, and a run whose host says nothing keeps it.
+
+### Delegation
+
+`withDelegation(engine, options)` (`delegation.ts`) wraps either engine for a conversation and
+offers the model `delegate_tasks` (`delegationContract.ts`; the contract's `delegated-task.json`;
+agent#13, agent#14, agent#15):
+
+- **One parent run.** The call runs the batch. The `vercel` engine awaits it in the parent's step,
+  with no tool-call deadline (the batch is bounded by its children's time limits and the run's own
+  signal), and the children's findings are the call's tool result in the same run. The `codex`
+  engine ends its run at the call, since the provider account runs one agent run at a time and the
+  children need it; the coordinator runs the batch and starts the response's next run with the
+  call's result alone, as one data block, the earlier run's reads listed in its index. Up to four
+  batches per response (`MAX_BATCHES`), one at a time; on an agent capability only while a child
+  run and the parent's next run both remain (`MAX_AGENT_RUNS`, five).
+- **Context by reference.** A task names `references`, ledger entry ids or document ids of the
+  parent's context, resolved in the parent's chat alone. The child gets a view of the chat
+  (`ChatContext.childScope`) showing it those entries and what it reads itself, sharing the chat's
+  read cache, and reads them with `read_window` and `search`; nothing is copied into its brief. The
+  coordinator makes a chat context for the response where the host handed none, and disposes of it
+  when the response ends.
+- **Profiles.** `TASK_PROFILES`: `analyze`, `review`, `research` and `author-test`, each with a
+  `model`, a `budget` (model requests, tool calls, milliseconds) and its tools; `author-test` is
+  offered the gate's six Runtime tools and no host tool, and its test calls count against the
+  parent's turn. A feature adapter may add a profile through `options.profiles`
+  (`[...TASK_PROFILES, its own]`), held by `readProfiles` within `TASK_BUDGET_CEILING` and the
+  gate's ceiling. Each task's record carries its `budget` and the `model` it ran on.
+- **A child model.** A host names a cheaper model for children of a connection with `modelsFor`
+  (see Host injection points), asked once per run with the run's connection (`context.connection`);
+  a child whose profile asks for the parent's model (`author-test`) stays on it. On `vercel` the
+  host answers `endpointCapabilities` for the child model as for any other, and its relay must admit
+  it; on `codex` the child's agent run carries it (`AgentRequest.model`), and the bridge must admit
+  it on a child's run as it does on a critic run.
+- **Shared limits.** The parent's execution owns the response's model requests once its run starts
+  (`ContextInput.link`), a child's are charged to it, and the last is kept for the parent. Children
+  running at once share what is left by grants, so each finishes within its own; a finished child's
+  rest goes to the next. A child's call of a name it was not offered is refused before it counts. Twenty
+  host and Runtime tool calls per response, the parent's and its children's together, stated in
+  the instructions and in the execution state as `toolCalls`.
+- **Long findings and resume.** Findings past a task's share of the answer are retained whole in the
+  chat's ledger and the parent gets their head and a `read_window` cursor (`more`); a task may ask
+  to `summarize` them in one request of its budget. A complete task's context is kept in the chat
+  under its task id, and a later batch resumes it with `resume`.
+- **Kept:** `options.checkpoint` before each task transition, the durable checkpoint of the shared
+  count before each child request, cancellation with the parent, and the research hand-back.
 
 ## Certification
 

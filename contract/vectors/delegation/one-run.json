@@ -1,0 +1,157 @@
+{
+  "description": "A delegating turn on vercel, interactive (agent#14): the model calls delegate_tasks, the coordinator publishes the child's records between the call and its result, and the call's result carries the findings, in the same run; then the model answers. No delegation_requested reaches the host, and no second parent run starts. The message_progress clears at each step and before the batch, and the checkpoints of a tracked run, are left out. Written by hand from the schema.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/engines/vercel/loop.ts (runHost: the delegation as an awaited call)",
+      "packages/harness/delegation.ts (withDelegation)",
+      "packages/harness/delegation.test.ts (one parent run with native tool messages)"
+    ]
+  },
+  "items": [
+    {
+      "type": "tool_call",
+      "callId": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "name": "delegate_tasks",
+      "args": {
+        "tasks": [
+          {
+            "title": "Receipts",
+            "objective": "Check the receipts of every trip.",
+            "profile": "analyze"
+          }
+        ]
+      }
+    },
+    {
+      "type": "delegated_task",
+      "task": {
+        "id": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9",
+        "parentRunId": "0b6f3c1e-7d2a-4c8e-9f10-2a3b4c5d6e7f",
+        "title": "Receipts",
+        "objective": "Check the receipts of every trip.",
+        "profile": "analyze",
+        "state": "queued",
+        "createdAt": "2026-10-19T09:00:00.000Z",
+        "modelRequests": 0,
+        "toolCalls": 0,
+        "attempts": 0,
+        "steps": [],
+        "budget": {
+          "modelRequests": 6,
+          "toolCalls": 6,
+          "milliseconds": 120000
+        },
+        "model": "fixture-small"
+      }
+    },
+    {
+      "type": "delegated_task",
+      "task": {
+        "id": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9",
+        "parentRunId": "0b6f3c1e-7d2a-4c8e-9f10-2a3b4c5d6e7f",
+        "title": "Receipts",
+        "objective": "Check the receipts of every trip.",
+        "profile": "analyze",
+        "state": "running",
+        "createdAt": "2026-10-19T09:00:00.000Z",
+        "modelRequests": 0,
+        "toolCalls": 0,
+        "attempts": 0,
+        "steps": [],
+        "budget": {
+          "modelRequests": 6,
+          "toolCalls": 6,
+          "milliseconds": 120000
+        },
+        "model": "fixture-small"
+      }
+    },
+    {
+      "type": "delegated_task",
+      "task": {
+        "id": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9",
+        "parentRunId": "0b6f3c1e-7d2a-4c8e-9f10-2a3b4c5d6e7f",
+        "title": "Receipts",
+        "objective": "Check the receipts of every trip.",
+        "profile": "analyze",
+        "state": "running",
+        "createdAt": "2026-10-19T09:00:00.000Z",
+        "modelRequests": 1,
+        "toolCalls": 0,
+        "attempts": 0,
+        "steps": [],
+        "budget": {
+          "modelRequests": 6,
+          "toolCalls": 6,
+          "milliseconds": 120000
+        },
+        "model": "fixture-small"
+      }
+    },
+    {
+      "type": "delegated_task",
+      "task": {
+        "id": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9",
+        "parentRunId": "0b6f3c1e-7d2a-4c8e-9f10-2a3b4c5d6e7f",
+        "title": "Receipts",
+        "objective": "Check the receipts of every trip.",
+        "profile": "analyze",
+        "state": "complete",
+        "createdAt": "2026-10-19T09:00:00.000Z",
+        "finishedAt": "2026-10-19T09:00:03.000Z",
+        "modelRequests": 1,
+        "toolCalls": 0,
+        "attempts": 0,
+        "steps": [],
+        "result": "Every trip's receipts match.",
+        "budget": {
+          "modelRequests": 6,
+          "toolCalls": 6,
+          "milliseconds": 120000
+        },
+        "model": "fixture-small"
+      }
+    },
+    {
+      "type": "tool_result",
+      "callId": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "name": "delegate_tasks",
+      "isError": false,
+      "text": "{\"tasks\":[{\"id\":\"9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9\",\"title\":\"Receipts\",\"objective\":\"Check the receipts of every trip.\",\"profile\":\"analyze\",\"state\":\"complete\",\"result\":\"Every trip's receipts match.\",\"used\":{\"modelRequests\":1,\"toolCalls\":0},\"budget\":{\"modelRequests\":6,\"toolCalls\":6,\"milliseconds\":120000}}],\"note\":\"Findings are the children’s unverified working material, never approval or verification. A result cut at its head continues with read_window at its more cursor. Resume a complete task by giving its id in resume.\"}",
+      "structured": {
+        "tasks": [
+          {
+            "id": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9",
+            "title": "Receipts",
+            "objective": "Check the receipts of every trip.",
+            "profile": "analyze",
+            "state": "complete",
+            "result": "Every trip's receipts match.",
+            "used": {
+              "modelRequests": 1,
+              "toolCalls": 0
+            },
+            "budget": {
+              "modelRequests": 6,
+              "toolCalls": 6,
+              "milliseconds": 120000
+            }
+          }
+        ],
+        "note": "Findings are the children’s unverified working material, never approval or verification. A result cut at its head continues with read_window at its more cursor. Resume a complete task by giving its id in resume."
+      }
+    },
+    {
+      "type": "message",
+      "text": "Every trip's receipts match the policy."
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

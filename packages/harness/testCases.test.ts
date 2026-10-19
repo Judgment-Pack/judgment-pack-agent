@@ -252,43 +252,61 @@ describe('the per-turn cap on test calls', () => {
   })
 
   /**
-   * A delegation is one turn of the person's: the parent pauses, the children
-   * run, the parent continues as a new run. The count carries across, through
-   * the checkpoint where the run keeps one and through the coordinator's own
-   * count where it does not.
+   * A delegation is one turn of the person's, and since agent#14 one parent run: the parent's test
+   * calls before its delegate call and after it are counted together, through the checkpoint where
+   * the run keeps one and through the run's own count where it does not. agent#14 rewrote this case:
+   * there is no continuation run, so the fourth call is the same run's.
    */
   it.each([
     ['with its checkpoint', { context: { currentRequest: { message: 'Test the draft.', input: PACK } } }],
-    ['with no checkpoint, the coordinator’s count alone', { context: undefined }]
-  ])('carries the count across a delegation (%s): the parent’s three calls and the continuation’s fourth are one turn', async (_how, session) => {
-    const roleOf = (request: EndpointRequest) => {
-      const said = JSON.stringify(request.body.messages)
-      return said.includes('PARENT CONTINUATION') ? 'continuation' : said.includes('Complete this read-only task') ? 'child' : 'parent'
-    }
+    ['with no checkpoint', { context: undefined }]
+  ])('carries the count across a delegation (%s): the parent’s three calls before its delegate call and its fourth after it are one turn', async (_how, session) => {
+    const isChild = (request: EndpointRequest) => JSON.stringify(request.body.messages).includes('Complete this read-only task')
     const { events, requests, seen } = await runTurn({
       engine: withDelegation(vercel),
       session: { interactive: true, ...session },
       script: (_number, texts, request) => {
-        const role = roleOf(request)
-        if (role === 'parent') {
-          if (texts.length < 3) return sseTurn({ tool: { name: TEST_TOOL, args: { pack: PACK.replace('Expense', `Expense p${texts.length}`), matrix: MATRIX }, id: `call_p${texts.length}` } })
-          return sseTurn({ tool: { name: DELEGATE_TOOL, args: { tasks: [{ title: 'Read the cases', objective: 'Say which case is weakest.', context: MATRIX, profile: 'analyze' }] }, id: 'call_delegate' } })
-        }
-        if (role === 'child') return sseTurn({ text: 'Case c1 is the weakest.' })
-        if (texts.length === 0) return sseTurn({ tool: { name: TEST_TOOL, args: { pack: PACK.replace('Expense', 'Expense c1'), matrix: MATRIX }, id: 'call_c0' } })
+        if (isChild(request)) return sseTurn({ text: 'Case c1 is the weakest.' })
+        if (texts.length < 3) return sseTurn({ tool: { name: TEST_TOOL, args: { pack: PACK.replace('Expense', `Expense p${texts.length}`), matrix: MATRIX }, id: `call_p${texts.length}` } })
+        if (texts.length === 3) return sseTurn({ tool: { name: DELEGATE_TOOL, args: { tasks: [{ title: 'Read the cases', objective: 'Say which case is weakest.', profile: 'analyze' }] }, id: 'call_delegate' } })
+        if (texts.length === 4) return sseTurn({ tool: { name: TEST_TOOL, args: { pack: PACK.replace('Expense', 'Expense c1'), matrix: MATRIX }, id: 'call_c0' } })
         return sseTurn({ text: 'The draft passes its cases.' })
       }
     })
-    // The child ran, and the continuation's call was the turn's fourth.
+    // The child ran, and the parent's call after it was the turn's fourth.
     expect(ofType(events, 'delegated_task').at(-1)?.task).toMatchObject({ state: 'complete' })
     expect(seen.map((call) => call.name)).toEqual([TEST_TOOL, TEST_TOOL, TEST_TOOL])
     const fourth = ofType(events, 'tool_result').filter((result) => result.name === TEST_TOOL).at(-1)!
     expect(fourth).toMatchObject({ isError: true, structured: { failure: { code: 'tool-failed', source: 'tool', outcome: 'not-started' } } })
     expect(fourth.text).toContain('the most one turn may (testCallsPerTurn)')
-    // The continuation's model read it.
-    const after = requests.filter((request) => roleOf(request) === 'continuation').at(-1)!
+    // The parent's model read it, in the same run.
+    const after = requests.filter((request) => !isChild(request)).at(-1)!
     expect(toolTexts(after).at(-1)).toContain('the most one turn may (testCallsPerTurn)')
     expect(ofType(events, 'error')).toEqual([])
+  })
+
+  it('charges a delegated child’s test calls to its parent’s turn (agent#15)', async () => {
+    const isChild = (request: EndpointRequest) => JSON.stringify(request.body.messages).includes('Complete this read-only task')
+    const { events, requests, seen } = await runTurn({
+      engine: withDelegation(vercel),
+      session: { interactive: true },
+      script: (_number, texts, request) => {
+        if (isChild(request)) {
+          if (texts.length < 2) return sseTurn({ tool: { name: TEST_TOOL, args: { pack: PACK.replace('Expense', `Expense k${texts.length}`), matrix: MATRIX }, id: `call_k${texts.length}` } })
+          return sseTurn({ text: 'The second run was not made: the turn had used its test calls.' })
+        }
+        if (texts.length < 2) return sseTurn({ tool: { name: TEST_TOOL, args: { pack: PACK.replace('Expense', `Expense p${texts.length}`), matrix: MATRIX }, id: `call_p${texts.length}` } })
+        if (texts.length === 2) return sseTurn({ tool: { name: DELEGATE_TOOL, args: { tasks: [{ title: 'Run the tests', objective: 'Run the draft’s cases.', profile: 'author-test' }] }, id: 'call_delegate' } })
+        return sseTurn({ text: 'Done.' })
+      }
+    })
+    // Two calls of the parent's and one of the child's reached the runtime; the child's second was the
+    // turn's fourth, and the child's model read the refusal.
+    expect(seen.map((call) => call.name)).toEqual([TEST_TOOL, TEST_TOOL, TEST_TOOL])
+    const child = requests.filter(isChild)
+    expect(child).toHaveLength(3)
+    expect(toolTexts(child.at(-1)!).at(-1)).toContain('the most one turn may (testCallsPerTurn)')
+    expect(ofType(events, 'delegated_task').at(-1)?.task).toMatchObject({ state: 'complete', profile: 'author-test' })
   })
 
   it('carries the count through Retry: a run resumed from its checkpoint goes on counting', async () => {
