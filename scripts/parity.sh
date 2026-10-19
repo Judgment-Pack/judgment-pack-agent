@@ -140,6 +140,7 @@ $pkg/context/chat.ts
 $pkg/context/chat.test.ts
 $pkg/certification/recall.ts
 $pkg/memory/recall.test.ts
+$pkg/delegationResults.test.ts
 EOF
 }
 

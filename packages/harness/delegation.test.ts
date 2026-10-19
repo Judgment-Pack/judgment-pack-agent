@@ -14,7 +14,8 @@ import taskSchema from '../../contract/schemas/delegated-task.json'
 import budgetSchema from '../../contract/schemas/budget.json'
 import profilesVector from '../../contract/vectors/delegation/profiles.json'
 
-const task=(title='Check evidence',profile='review')=>({title,profile,objective:'Check the supplied claims.'})
+// agent#17: each title its own objective, so tasks of one batch are not identical (an identical task is reused).
+const task=(title='Check evidence',profile='review')=>({title,profile,objective:`Check the supplied claims (${title}).`})
 const request:DelegationRequest={tasks:[task()]}
 const apiSession=(patch:Partial<AssistantSession>={}):AssistantSession=>({prompt:'PARENT PRIVATE HISTORY',testPrompt:'',tools:[],callTool:vi.fn(),hostTools:[],signal:new AbortController().signal,allowConversation:true,interactive:true,adversarialReview:false,model:{family:'openai-compatible',model:'fixture',call:vi.fn(async()=>new Response('{}'))},thinking:normalize('off','openai-compatible'),...patch})
 const collect=async(engine:Engine,session:EngineSession)=>{const events:AssistantEvent[]=[];for await(const e of engine.start(session))events.push(e);return events}

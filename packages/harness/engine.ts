@@ -249,7 +249,11 @@ export type AssistantEvent =
    * where the model wrote nothing but the fence.
    */
   | { type: 'message'; text: string }
-  | { type: 'message_progress'; text: string }
+  /**
+   * The prose so far, whole each time. `taskId` (agent#16): a delegated child's prose so far, under its
+   * task; absent, the run's own answer.
+   */
+  | { type: 'message_progress'; text: string; taskId?: string }
   | { type: 'tool_call'; callId?: string; name: string; args: unknown; presentation?: { provider: string } }
   | { type: 'tool_result'; callId?: string; name: string; isError: boolean; text: string; structured?: unknown }
   /**

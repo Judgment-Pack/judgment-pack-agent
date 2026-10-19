@@ -119,7 +119,18 @@ export interface TaskThread {
  exchanges:{objective:string;result:string;more?:{readWith:'read_window';id:string;cursor:string;totalCharacters:number}}[]
  visible:Set<string>
 }
-/** The most finished tasks a chat keeps to resume; the oldest goes first. */
+/**
+ * A complete child's result, kept for an identical task of the same chat (agent#17): the task it came
+ * from, the whole text its child wrote and the open questions its run returned, from which the
+ * coordinator gives the parent the same result again without a model request. Identical: the same
+ * profile, the same objective (its digest) and the same references.
+ */
+export interface ReusableResult {
+ task:string
+ text:string
+ questions:import('../delegationContract').OpenQuestion[]
+}
+/** The most finished tasks a chat keeps to resume, and the most results it keeps to reuse; the oldest goes first. */
 const KEPT_TASKS=64
 /** What a child's turn answers for an entry it was not given. */
 export const NOT_REFERENCED='This entry is not among this task’s references. Read the references in your brief, and what you read yourself.'
@@ -146,6 +157,7 @@ export class ChatContext {
  private turns=0
  private disposed=false
  private tasks=new Map<string,TaskThread>()
+ private reusableResults=new Map<string,ReusableResult>()
  /** `scope`: for a test that needs fixed ids; a host leaves it out. */
  constructor(options:{scope?:string}={}){this.scope=options.scope??crypto.randomUUID()}
  /** Whether `dispose` has been called. */
@@ -178,6 +190,14 @@ export class ChatContext {
  }
  /** The kept context of a finished task of this chat, by any of its task ids. */
  task(id:string):TaskThread|undefined{return this.tasks.get(id)}
+ /** A complete result kept under its task's reuse key (agent#17); the oldest past KEPT_TASKS goes. */
+ keepResult(key:string,kept:ReusableResult){
+  this.live()
+  this.reusableResults.delete(key);this.reusableResults.set(key,structuredClone(kept))
+  while(this.reusableResults.size>KEPT_TASKS)this.reusableResults.delete(this.reusableResults.keys().next().value!)
+ }
+ /** The result an identical earlier task of this chat completed, by its reuse key. */
+ reusable(key:string):ReusableResult|undefined{const kept=this.reusableResults.get(key);return kept&&structuredClone(kept)}
  /** @internal Ends a run's turn: what it referenced may now be evicted. */
  close(turn:ChatTurn){this.open.delete(turn)}
  /** @internal Room for `bytes` more within `bound`, evicting what no open turn references, the oldest first. */
@@ -197,7 +217,7 @@ export class ChatContext {
  /** @internal */
  wasEvicted(id:string){return this.gone.has(id)}
  /** @internal Everything this chat holds, gone; its scope stays. */
- clear(){this.entries.clear();this.size=0;this.ages.clear();this.results.clear();this.cache.clear();this.evicted=[];this.gone.clear();this.tasks.clear()}
+ clear(){this.entries.clear();this.size=0;this.ages.clear();this.results.clear();this.cache.clear();this.evicted=[];this.gone.clear();this.tasks.clear();this.reusableResults.clear()}
  /** @internal */
  record(row:KeptResult,key?:string){this.results.set(row.tool+'\n'+row.arguments,row);if(key!==undefined)this.cache.set(key,row.entry)}
  /** @internal The entry a read cache key names, where it is still held. */

@@ -115,6 +115,13 @@ export interface ModelCapabilities {
    * host's `endpointCapabilities` answer for it over the family's default.
    */
   childModel?: string
+  /**
+   * How many model requests the connection serves at once (agent#17), as the host knows it for the
+   * connection (its relay's slots, a provider's concurrency limit). A delegation batch runs that many
+   * children at a time, at most its three tasks. Absent: two. An agent capability runs one at a time
+   * whatever this says.
+   */
+  concurrentRequests?: number
 }
 
 /**
@@ -168,7 +175,7 @@ export const FAMILY_CAPABILITIES: Readonly<Record<EndpointKind, Readonly<ModelCa
 /** Every member a record may carry, and the whole of them. The contract's `capability.json` properties. */
 export const CAPABILITY_MEMBERS: readonly (keyof ModelCapabilities)[] = [
   'contextWindowTokens', 'outputTokens', 'nativeToolCalls', 'parallelToolCalls', 'vision',
-  'reasoning', 'streamingQuirks', 'toolSchemas', 'statePlacement', 'strictAlternation', 'childModel'
+  'reasoning', 'streamingQuirks', 'toolSchemas', 'statePlacement', 'strictAlternation', 'childModel', 'concurrentRequests'
 ]
 
 const object = (value: unknown): value is Record<string, unknown> =>
@@ -215,6 +222,7 @@ export function readCapabilities(value: unknown): ModelCapabilities {
   if (value.statePlacement !== undefined && !STATE_PLACEMENTS.includes(value.statePlacement as StatePlacement)) refuse(`statePlacement must be one of ${STATE_PLACEMENTS.join(', ')}`)
   if (value.strictAlternation !== undefined && typeof value.strictAlternation !== 'boolean') refuse('strictAlternation must be true or false')
   if (value.childModel !== undefined && (typeof value.childModel !== 'string' || !value.childModel.trim() || value.childModel.length > 200 || /[\u0000-\u001f]/.test(value.childModel))) refuse('childModel must be a model name of at most 200 characters')
+  if (value.concurrentRequests !== undefined && (!Number.isInteger(value.concurrentRequests) || Number(value.concurrentRequests) < 1 || Number(value.concurrentRequests) > 16)) refuse('concurrentRequests must be an integer from 1 to 16')
   return value as unknown as ModelCapabilities
 }
 
