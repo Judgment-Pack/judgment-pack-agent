@@ -35,6 +35,12 @@
  *   and a file grants it (agent#7).
  * - **T8** the unknowns arrive as the scenario wrote them.
  * - the event stream's shape and order, and `end` exactly once.
+ * - **the recall rule** (agent#11): on every request of the scenario, the rule
+ *   the contract states for a server that reads the request text
+ *   (`budget.json#/$defs/recallQuery`, `recall.ts`) finds the text the run
+ *   started from, on every certified leg: 21 legs in four families (six
+ *   plain, six text-path, three strict-alternation, and the six thinking
+ *   legs' authoring requests).
  * - **the refutation pass**, where the session asks for it (agent#10): the
  *   verdict from the runtime's results, the critic offered its allow-list, and
  *   a seeded wrong outcome refuted with the case named; no pass where the
@@ -52,6 +58,8 @@ import {
   type ThinkingMode
 } from './scriptedModel'
 import { RECORDED_TOOLS, scriptedRuntime, type ServerObservation } from './scriptedServer'
+import { recallQuery } from './recall'
+import { REFUTATION_MARKER } from '../refutation'
 import {
   ALWAYS_FROM_ABSENCE,
   RESPONSE_TOKENS,
@@ -618,6 +626,8 @@ const SPELLINGS: Record<Leg['api'], number> = {
 interface Run {
   events: AssistantEvent[]
   requests: RecordedRequest[]
+  /** Every request body the engine sent, in order, refused ones included. */
+  bodies: string[]
   seen: ServerObservation[]
   /** Every network global the engine reached for, deferred reaches included. */
   violations: string[]
@@ -681,7 +691,12 @@ async function runLeg(
     signatures: how.signatures ?? 'thought',
     toolCalls: how.toolCalls ?? 'native'
   })
-  vi.stubGlobal('fetch', how.strict === true ? strictAlternation(leg.api, model.fetch) : model.fetch)
+  const bodies: string[] = []
+  const endpoint = how.strict === true ? strictAlternation(leg.api, model.fetch) : model.fetch
+  vi.stubGlobal('fetch', (async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (typeof init?.body === 'string') bodies.push(init.body)
+    return endpoint(input, init)
+  }) as typeof fetch)
   configureHarness({ endpointCapabilities: () => how.capabilities ?? {} })
   const runtime = await scriptedRuntime()
   const events: AssistantEvent[] = []
@@ -765,6 +780,7 @@ async function runLeg(
   return {
     events,
     requests: model.requests,
+    bodies,
     seen: runtime.seen,
     violations: seal?.violations ?? [],
     leftPending,
@@ -813,6 +829,20 @@ function strictAlternation(api: EndpointKind, inner: typeof fetch): typeof fetch
     }
     return inner(input, init)
   }) as typeof fetch
+}
+
+/**
+ * The recall rule (agent#11) on every request a leg sent, the critic's second
+ * conversation aside: what it finds where it does not find the text the run
+ * started from, one line per request. Empty where it holds.
+ */
+function recallMisses(api: EndpointKind, bodies: string[]): string[] {
+  return bodies
+    .filter((body) => !body.includes(REFUTATION_MARKER))
+    .flatMap((body, at) => {
+      const found = recallQuery(api, JSON.parse(body) as Record<string, unknown>)
+      return found?.text === scenario.policy ? [] : [`request ${at + 1}: ${found === null ? 'nothing' : `${found.pointer} ${found.text.slice(0, 80)}`}`]
+    })
 }
 
 /** The registry's own loader, for the engines this build certifies. */
@@ -1082,6 +1112,12 @@ describe.each(MODEL_ENGINES)('engine %s', (engineId) => {
       expect(evaluated.disposition.outcomeId).toBe(scenario.expectations.T6.disposition.outcomeId)
     })
 
+    it('agent#11 — the recall rule finds the request text on every request', async () => {
+      const { bodies } = await runLeg(fromRegistry(engineId), leg)
+      expect(bodies.length).toBeGreaterThan(7)
+      expect(recallMisses(leg.api, bodies)).toEqual([])
+    })
+
     it('K1a — the engine touches no network global, at load, during or after', async () => {
       // The sentinels are up from before the engine's chunk is imported until
       // after deferred work has been drained, and they **record** as well as
@@ -1290,6 +1326,12 @@ describe.each(MODEL_ENGINES)('engine %s · text tool calls', (engineId) => {
       expect(events.map((event) => event.type)).toEqual(scenarioVector.items.map((item) => item.type))
     })
 
+    it('agent#11 — the recall rule finds the request text on every request, every result a user text', async () => {
+      const { bodies } = await runLeg(fromRegistry(engineId), leg, text)
+      expect(bodies.length).toBeGreaterThan(7)
+      expect(recallMisses(leg.api, bodies)).toEqual([])
+    })
+
     it('runs it on an endpoint that also keeps a strict turn order: each result is the user turn after the call', async () => {
       const { events, requests } = await runLeg(fromRegistry(engineId), leg, {
         capabilities: { nativeToolCalls: false, strictAlternation: true }, toolCalls: 'text', strict: true
@@ -1356,6 +1398,12 @@ describe.each(MODEL_ENGINES)('engine %s · strict alternation', (engineId) => {
     expect(requests.length).toBeGreaterThan(7)
   })
 
+  it.each(legs)('agent#11 — the recall rule finds the request text on every request, the state in the system tail ($api)', async (leg) => {
+    const { bodies } = await runLeg(fromRegistry(engineId), leg, { strict: true, capabilities: { strictAlternation: true } })
+    expect(bodies.length).toBeGreaterThan(7)
+    expect(recallMisses(leg.api, bodies)).toEqual([])
+  })
+
   it.each(legs)('is refused there with the state trailing, so the leg is not vacuous ($api)', async (leg) => {
     const { events } = await runLeg(fromRegistry(engineId), leg, {
       strict: true,
@@ -1390,6 +1438,15 @@ describe.each(MODEL_ENGINES)('engine %s · thinking', (engineId) => {
         expect(request.thinkingParam!.path).toBe(expected.path)
         expect(request.thinkingParam!.value).toEqual(expected.value)
       }
+    })
+
+    it('agent#11 — the recall rule finds the request text on every authoring request', async () => {
+      // The session asks for the critic (agent#10), so its requests are among the bodies.
+      const { bodies } = await runLeg(fromRegistry(engineId), leg, { tier: 'on', mode: 'on', review: true })
+      // The critic's requests are a second conversation, its own first user turn: left aside.
+      expect(bodies.some((body) => body.includes(REFUTATION_MARKER))).toBe(true)
+      expect(bodies.filter((body) => !body.includes(REFUTATION_MARKER)).length).toBeGreaterThan(7)
+      expect(recallMisses(leg.api, bodies)).toEqual([])
     })
 
     it('ultra sends the deeper member, and the same on every request', async () => {

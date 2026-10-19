@@ -3,7 +3,7 @@ import {failureError,AIFailureError,authoredFailure} from '../failures'
 import {criticMayCall,criticMayRead,criticRefusalDetail,readCriticCases,type CriticCase} from '../refutation'
 import {GateViolation} from '../toolGate'
 import {TEST_TOOL} from '../toolGate'
-import {dataMarker,frameBlock,frameData,unframeData} from '../framing'
+import {dataMarker,frameBlock,frameData,readingTool,unframeData} from '../framing'
 import {ExecutionController} from '../execution/controller'
 import {planningSession} from '../planning/policy'
 import type {ChatPlan} from '../planning/model'
@@ -14,11 +14,23 @@ import {READ_TOOL} from './reader'
 import {SEARCH_TOOL} from './search'
 import {capabilitiesFor,type ModelCapabilities} from '../capabilities'
 import {contextPolicy,inputBytes,utf8Bytes,prefix,ContextBudgetError,type ContextConfiguration} from './policy'
+import {INDEX_SHARE,partBytes,type ChatContext,type ChatTurn,type RuntimeIdentity} from './chat'
 export interface CurrentRequest {message:string;input:string}
 /** `currentState`: host-authored text that changes between requests or responses (the chat's
  * draft snapshot, the latest check). An adapter sends it after the history, at the end of every
- * request, with the execution state, so a change to it invalidates no cached prefix. */
-export interface ContextInput {currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;configuration?:ContextConfiguration;documents?:ContextDocument[]}
+ * request, with the execution state, so a change to it invalidates no cached prefix.
+ *
+ * `chat` (agent#8): the chat-scoped context the host made for this run's chat (`context/chat.ts`):
+ * the ledger and the read cache kept across the chat's runs. Absent, the run's are its own and end
+ * with it. `runtime`: what the host knows the Runtime this run's tools reach by, which keys a
+ * Runtime-served read in the chat's read cache; without it such a read is cached for the run only.
+ * `memory` (agent#11): whether the server behind the adapter adds recalled project memory to this
+ * run's requests (the project's memory setting). Only `false` frees the `memoryBytes` reserve:
+ * absent, the reserve stays, so a server that adds memory never receives a request the harness
+ * left no room for. `objective` (agent#11): a delegated child's objective, its request text,
+ * sent as the first text part of its first message (`delegation.ts` sets it).
+ */
+export interface ContextInput {currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatContext;runtime?:RuntimeIdentity;memory?:boolean;objective?:string}
 export interface ContextUsage {inputBytes:number;estimatedInputTokens:number;inputBudgetBytes:number;outputReserveTokens:number;compactions:number;retainedItems:number}
 const encoded=(value:unknown)=>JSON.stringify(value)
 export class SessionContext {
@@ -40,12 +52,32 @@ export class SessionContext {
  private narrowed:'critic'|'reformat'|null=null
  /** agent#10: the guardrail events the critic's refusals earned, for the boundary to put on the stream. */
  private notices:AssistantEvent[]=[]
- constructor(session:EngineSession){this.capabilities='model'in session?capabilitiesFor(session.model):undefined;this.policy=contextPolicy(session.context?.configuration,'model'in session?session.model.model:session.agent.model,this.capabilities);this.ledger=new ContextLedger(this.policy);this.execution=new ExecutionController(session,this.ledger);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))
-  try{this.criticCases=readCriticCases(session.criticCases??[])}catch(cause){throw authoredFailure('configuration',(cause as Error).message,'context')}}
+ /** This run's turn on its chat (agent#8), or none. */
+ private readonly turn?:ChatTurn
+ /** A delegated child's objective (agent#11): its request text, sent as the first text part of its first message. */
+ private readonly objective?:string
+ constructor(session:EngineSession){
+  try{this.criticCases=readCriticCases(session.criticCases??[])}catch(cause){throw authoredFailure('configuration',(cause as Error).message,'context')}
+  this.capabilities='model'in session?capabilitiesFor(session.model):undefined;this.policy=contextPolicy(session.context?.configuration,'model'in session?session.model.model:session.agent.model,this.capabilities,session.context?.memory);this.turn=session.context?.chat?.openTurn();this.objective=session.context?.objective;this.ledger=new ContextLedger(this.policy,this.turn);this.execution=new ExecutionController(session,this.ledger);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))}
+ /**
+  * The index of the results earlier runs in this chat kept (agent#8, `ChatTurn.index`), cut to
+  * `room` bytes and to INDEX_SHARE of the prompt's `allowance`. Made only while this run's ledger
+  * is its chat's turn: a run resumed from another chat's checkpoint works in a ledger of its own,
+  * and an index of ids it cannot read is not sent. Once made, it is sent: the evictions it lists
+  * are said. Empty with no chat context, with nothing to list, or with no room.
+  */
+ private indexWithin(allowance:number,room:number):string{
+  if(this.turn===undefined||this.ledger.chat!==this.turn)return ''
+  const index=this.turn.index(this.policy,this.marker,Math.min(Math.floor(allowance*INDEX_SHARE),room))
+  if(index)this.turn.sent()
+  return index
+ }
+ /** The run ended: a ledger of its own is cleared, a chat's turn closes and the chat keeps what it holds. */
+ close(){this.ledger.release()}
  /** Independent reviewers get a new retrieval scope and no author's working
   * summaries or cached reads. Request accounting and original journals stay. */
  beginIsolatedPhase(){
-  this.ledger.clear();this.ledger.scope=crypto.randomUUID()
+  this.ledger.isolate()
   this.compactedSteps.clear();this.summaries.clear();this.contracts.clear()
   this.execution.clearReadCache()
   this.execution.progress.beginPhase()
@@ -97,10 +129,45 @@ export class SessionContext {
  /** `attachments`: the host's documents for the run, which search scopes as attachments (agent#5). */
  async initialize(documents:ContextDocument[]=[],attachments=false){for(const doc of documents)await this.ledger.retain(doc,attachments)}
  private budget(instructions:string,tools:unknown){return inputBytes(this.policy)-utf8Bytes(instructions)-utf8Bytes(encoded(tools))-this.policy.briefBytes-this.policy.memoryBytes-1536}
- async prompt(text:string,instructions:string,tools:unknown,currentRequest?:CurrentRequest):Promise<string>{
+ /** The prompt's allowance: what the first message may take, leaving headroom for later tool results. */
+ private allowance(instructions:string,tools:unknown){
   // Leave headroom for subsequent tool results; fitting the first request alone is insufficient.
   const budget=Math.floor(this.budget(instructions,tools)*0.6)
   if(budget<2000)throw new ContextBudgetError()
+  return budget
+ }
+ async prompt(text:string,instructions:string,tools:unknown,currentRequest?:CurrentRequest):Promise<string>{return this.fit(text,this.allowance(instructions,tools),currentRequest)}
+ /**
+  * The text parts of the run's first user message (agent#8, agent#11). The request text comes
+  * first: the host's prompt, sent whole where it fits the allowance; where it does not, the
+  * person's message (`currentRequest.message`) as its own first part and the preview after it, so
+  * the first text part is always the request. A delegated child's objective (`context.objective`)
+  * is its own first part either way. Then a chat's index of earlier results, cut to the room left
+  * and to INDEX_SHARE of the allowance: the request is never previewed and the run never fails
+  * because of the index.
+  */
+ async opening(text:string,instructions:string,tools:unknown,currentRequest?:CurrentRequest):Promise<string[]>{
+  const allowance=this.allowance(instructions,tools)
+  const size=(parts:string[])=>utf8Bytes(encoded([{role:'user',content:parts.length===1?parts[0]:parts.map(part=>({type:'text',text:part}))}]))
+  const lead=(value:string|undefined)=>{const held=value===undefined?'':prefix(value,Math.floor(allowance/4));return held.trim()?held:undefined}
+  const objective=lead(this.objective)
+  let parts:string[]
+  if(size(objective===undefined?[text]:[objective,text])<=allowance)parts=objective===undefined?[text]:[objective,text]
+  else{
+   const first=objective??lead(currentRequest?.message)
+   parts=first===undefined?[await this.fit(text,allowance,currentRequest)]:[first,await this.fit(text,allowance-partBytes(first),currentRequest)]
+  }
+  const index=this.indexWithin(allowance,allowance-size(parts))
+  return index?[...parts,index]:parts
+ }
+ /** The agent wire's prompt with a chat's index after it (agent#8), cut to the room the allowance leaves. */
+ indexed(prompt:string,instructions:string,tools:unknown):string{
+  const allowance=this.allowance(instructions,tools)
+  const index=this.indexWithin(allowance,allowance-utf8Bytes(encoded([{role:'user',content:prompt}])))
+  return index?prompt+'\n\n'+index:prompt
+ }
+ /** `text` within `budget`: whole where it fits, otherwise retained and previewed. */
+ private async fit(text:string,budget:number,currentRequest?:CurrentRequest):Promise<string>{
   if(utf8Bytes(encoded([{role:'user',content:text}]))<=budget)return text
   const e=await this.ledger.retain({id:'request',kind:'request',label:'Complete current request',value:text})
   this.compactions++
@@ -274,13 +341,18 @@ export async function contextualSession<T extends EngineSession>(session:T):Prom
  session=planningSession(session)
  await session.context?.authorize?.(session.signal)
  const context=new SessionContext(session)
+ // A chat's turn is open from here: a run that cannot start closes it again.
+ try{
  await context.execution.initialize()
  await context.initialize(session.context?.documents,true)
  await context.execution.retainProgress()
  if(session.context?.plan)await context.initialize([{id:'current-plan',kind:'artifact',label:'Current chat plan',value:session.context.plan}])
  if([...session.tools,...session.hostTools].some(t=>t.name==='read_context'||t.name==='list_context'||t.name===READ_TOOL||t.name===SEARCH_TOOL||t.name==='update_plan'||t.name==='request_budget_increase'))throw Error('Context tool names are reserved by Desk.')
- const hostTools=[...session.hostTools,...context.ledger.tools(),...(session.allowConversation?[context.execution.tool(),context.execution.budgetTool()]:[])].map(tool=>({...tool,execute:async(args:Record<string,unknown>,signal:AbortSignal)=>{context.admit(tool.name,'host');await session.context?.authorize?.(signal);return context.execution.wrapRead(tool.name,a=>tool.execute(a,signal),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read')(args)}}))
+ }catch(error){context.close();throw error}
+ // The session's own tools that read (agent#8): what a chat-scoped context keeps across its runs.
+ const own=new Set(session.hostTools.filter(tool=>readingTool(tool)).map(tool=>tool.name))
+ const hostTools=[...session.hostTools,...context.ledger.tools(),...(session.allowConversation?[context.execution.tool(),context.execution.budgetTool()]:[])].map(tool=>({...tool,execute:async(args:Record<string,unknown>,signal:AbortSignal)=>{context.admit(tool.name,'host');await session.context?.authorize?.(signal);return context.execution.wrapRead(tool.name,a=>tool.execute(a,signal),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read',own.has(tool.name)?{runtime:false}:undefined)(args)}}))
  const model='model'in session?{...session.model,call:async(suffix:string,request:import('../engine').ModelRequest)=>{await session.context?.authorize?.(session.signal);if(request.method!=='GET'){context.execution.claim();try{await session.context?.checkpoint?.(context.execution.snapshot())}catch{throw failureError('storage','storage','not-started')}}return session.model.call(suffix,request)}}:undefined
  const agent='agent'in session?{...session.agent,run:async(request:import('../agent').AgentRequest,callbacks:import('../agent').AgentCallbacks)=>{await session.context?.authorize?.(callbacks.signal);return session.agent.run(request,callbacks)}}:undefined
- return {context,session:{...session,...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{context.admit(name,'runtime');await session.context?.authorize?.(session.signal);context.claimTestCall(name);return context.execution.wrapRead(name,a=>session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true)(args)}}}
+ return {context,session:{...session,...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{context.admit(name,'runtime');await session.context?.authorize?.(session.signal);context.claimTestCall(name);return context.execution.wrapRead(name,a=>session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true,{runtime:true})(args)}}}
 }

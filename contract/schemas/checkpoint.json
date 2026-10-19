@@ -97,6 +97,7 @@
       }
     },
     "context": {
+      "description": "The retained context to restore on resume: the ledger's scope and entries. For a run of its own, every entry its ledger holds. For a run handed a chat-scoped context (agent#8), the chat's scope and the entries this run retained or read, never the chat's whole ledger, so the checkpoint's size is the run's: resumed in the same chat, the entries the chat no longer holds are retained again; resumed under another chat context or none, they make a ledger of the run's own, as before.",
       "type": "object",
       "required": [
         "scope",

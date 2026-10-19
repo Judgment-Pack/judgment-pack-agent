@@ -86,13 +86,16 @@
           ]
         },
         "contextPolicy": {
-          "description": "Host-declared context retention (ContextToolPolicy), independent of topic, provider and action permission. immutable: the same arguments return the same value for this execution, so a read may be cached. reference: prefer this material in the bounded working summary.",
+          "description": "Host-declared context retention (ContextToolPolicy), independent of topic, provider and action permission. immutable: the same arguments return the same value, so a read may be served from the read cache: the run's own, or a chat-scoped context's across the chat's runs (agent#8, tool-result.json#/$defs/readCacheKey); declare it only for a value that does not change for the same arguments while the chat lasts. reference: prefer this material in the bounded working summary. runtime: the result depends on the Runtime that serves it (its identity and version), so a chat's read cache keys it by the Runtime the host names for the run; every runtime tool is.",
           "type": "object",
           "properties": {
             "immutable": {
               "type": "boolean"
             },
             "reference": {
+              "type": "boolean"
+            },
+            "runtime": {
               "type": "boolean"
             }
           },

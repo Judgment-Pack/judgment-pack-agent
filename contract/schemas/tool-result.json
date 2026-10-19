@@ -687,6 +687,161 @@
         }
       },
       "additionalProperties": true
+    },
+    "turnIndex": {
+      "description": "The index of the tool results earlier runs in the same chat kept, which a run handed a chat-scoped context (context.chat, ChatContext in packages/harness/context/chat.ts; agent#8) is shown so it knows what it already has and reads nothing twice. This object is the JSON inside the index's data block. The index is the second text part of the run's first user message, after the request text (on the agent wire, the prompt's text after the request text): the line Earlier runs in this chat kept these tool results. … (INDEX_NOTICE), then one data block ($defs/framedData) from the earlier runs in this chat, closed by the run's marker. It has the compaction summary's shape: each step names its tool, where to read it (read.id, a read_window id into the chat's ledger) and its arguments, here by digest, with the result's size and first line. A chat keeps the answers of the session's tools that read (every runtime tool, and a host tool declared a read), not the ledger's own tools' or the plan tools'. Bounded by turnIndexEntries (the newest rows; older ones counted in omitted) and turnIndexBytes (its whole text), and cut to the room the message leaves in the prompt's allowance, at most a quarter of it: rows go, oldest first, until it fits. The request is never previewed and a run never fails because of the index. Absent where earlier runs kept nothing and nothing was evicted, where there is no room for it, and in a run resumed from another chat's checkpoint, whose ledger is its own. The evictions it lists are taken from the chat only once it is sent. Closed: the harness writes every member.",
+      "type": "object",
+      "required": [
+        "steps",
+        "omitted",
+        "evicted",
+        "evictedOmitted",
+        "olderResults"
+      ],
+      "properties": {
+        "steps": {
+          "description": "The results earlier runs kept that the chat still holds, oldest first.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "tool",
+              "read",
+              "arguments",
+              "bytes",
+              "firstLine"
+            ],
+            "properties": {
+              "tool": {
+                "type": "string"
+              },
+              "read": {
+                "description": "Where to read the result: the id of its entry in the chat's ledger, for read_window or read_context.",
+                "type": "object",
+                "required": [
+                  "id"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "arguments": {
+                "description": "The call's arguments by the SHA-256 of their canonical JSON (as $defs/readCacheKey writes it).",
+                "type": "object",
+                "required": [
+                  "sha256"
+                ],
+                "properties": {
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "bytes": {
+                "description": "The result's size: the UTF-8 bytes of its JSON, as the ledger counts it.",
+                "type": "integer",
+                "minimum": 0
+              },
+              "firstLine": {
+                "description": "The result's text parts, or with none its structured content as JSON, up to the first line break, at most 120 bytes.",
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "omitted": {
+          "description": "How many more results the chat holds than steps lists; list_context lists them.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "evicted": {
+          "description": "Results the chat evicted since the last index was sent, to stay within retainedBytes: the oldest entries no open run referenced went first. Each is listed or counted in one index that is sent; its tool must be called again for the value.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "tool",
+              "arguments",
+              "bytes"
+            ],
+            "properties": {
+              "tool": {
+                "type": "string"
+              },
+              "arguments": {
+                "type": "object",
+                "required": [
+                  "sha256"
+                ],
+                "properties": {
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "evictedOmitted": {
+          "description": "How many more evicted results there were than evicted lists.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "olderResults": {
+          "const": "list_context lists every entry this chat retains, the ones omitted here among them."
+        }
+      },
+      "additionalProperties": false
+    },
+    "readCacheKey": {
+      "description": "The key under which a chat-scoped context (agent#8) serves a read again across the chat's runs without a call: the SHA-256, as lower-case hex, of this object's canonical JSON (every object's members sorted by name in UTF-16 code units, no whitespace, each string and number as JSON.stringify writes it; canonicalJSON and readCacheKey in packages/harness/context/chat.ts). Which reads are cached is the tool's own declaration: a host tool that reads and declares contextPolicy.immutable (tool-offer.json#/$defs/hostTool), a runtime tool the gate's catalogue marks immutable (runtimeToolContextPolicy in context/toolPolicy.ts: get_schema among the six on the ceiling). A mutable tool is never served from the cache; its answers are kept and listed in the index ($defs/turnIndex) all the same. runtime is present for every runtime tool and for a host tool that declares contextPolicy.runtime, whose result depends on the Runtime serving it; it carries what the host gave as the run's context.runtime, and without that such a read is cached for the run only. A cached result is the entry the chat's ledger holds for it: evicted, it is no longer served. The ledger's own tools (read_context, read_window, search, list_context) and the plan tools are never kept across runs: their answers are windows of what the chat holds, or working state. Without a chat-scoped context the read cache is the run's own, keyed by the tool's name and its arguments as JSON.stringify writes them, and ends with the run.",
+      "type": "object",
+      "required": [
+        "tool",
+        "arguments"
+      ],
+      "properties": {
+        "tool": {
+          "type": "string"
+        },
+        "arguments": {
+          "description": "The call's arguments, exactly as the model gave them.",
+          "type": "object"
+        },
+        "runtime": {
+          "description": "What the host knows the Runtime by (the run's context.runtime): an identity, such as its pinned digest or the name its initialize answer gave, and its version.",
+          "type": "object",
+          "required": [
+            "identity",
+            "version"
+          ],
+          "properties": {
+            "identity": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     }
   },
   "allOf": [

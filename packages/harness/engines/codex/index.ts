@@ -90,6 +90,7 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
       try {
       instructions += DATA_RULE + assistantLanguageInstructions(session.replyLanguage)
       prompt = await context.prompt(prompt,instructions,offeredHere,phase==='author'?session.context?.currentRequest:undefined)
+      if(phase==='author')prompt=context.indexed(prompt,instructions,offeredHere)
       context.check(instructions,prompt,offeredHere)
       const partial = new Map<string, string>()
       let final = ''
@@ -229,7 +230,8 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
       : session.purpose === 'test-design' ? TEST_DESIGN_SYSTEM
       : session.allowConversation ? CONVERSATION_SYSTEM : SYSTEM
     // The agent's prompt carries the host's changing state and the execution guidance at its end;
-    // its instructions stay the stable system text.
+    // its instructions stay the stable system text. A chat's index of the results earlier runs kept
+    // (agent#8) is added at its end, in the room it leaves (`run`).
     const prompt = session.prompt + (session.context?.currentState ? '\n\n' + session.context.currentState : '') + (session.allowConversation ? '\n\n' + context.execution.guidance() : '')
     let final: string
     try {

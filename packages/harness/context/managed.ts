@@ -8,8 +8,9 @@ export function contextOf(session:EngineSession):SessionContext {
  const context=contexts.get(session);if(!context)throw Error('AI execution requires the shared Desk context boundary.');return context
 }
 /** All adapters enter here, including direct tests, critics and delegated runs.
- * Derived context lives only as long as the execution. Originals remain in the
- * owning chat/research journal. Rebuilding cannot resurrect deleted snapshots. */
+ * Derived context lives only as long as the execution, or, where the host hands
+ * the run a chat-scoped context, as long as the chat (agent#8). Originals remain in
+ * the owning chat/research journal. Rebuilding cannot resurrect deleted snapshots. */
 export function managedContext<T extends EngineSession>(session:T,run:(session:T)=>AsyncIterable<AssistantEvent>):AsyncIterable<AssistantEvent>{
  const gate=openRun(session,()=>{})
  return eventIterator({gate,open:()=>execute({...session,signal:gate.signal},run)})
@@ -51,5 +52,5 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
   if(ended)throw error
   if(!session.signal.aborted)yield failureEvent(error,'context')
   yield {type:'end'}
- } finally {context?.ledger.clear()}
+ } finally {context?.close()}
 }
