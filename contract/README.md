@@ -123,6 +123,15 @@ files they were rendered from.
   `delegation/connection-models.json` (the model a task ran on under two connections,
   `context.connection`). The TypeScript tests that read them are named in each file's `source`.
 - `tool-call/test-cases-arguments.json`: the arguments `experimental_test_cases` leaves the page with.
+- The gate's own vectors (agent#53), written by hand: `tool-call/gate-frames.json`, what the host's
+  gate decides about outbound frames (each item the params of a `tools/call` frame, each of its
+  `frames` a whole frame, with the verdict, the guardrail notice and what left, under the vector's
+  allow-list and bounds or a case's own); `tool-offer/phase-offers.json`, what each phase of a run is
+  offered of one session (the loop's, the critic's, Plan mode's, the reformat run's and a delegated
+  child's of each closed profile); and `approval/grant-states.json`, a chat's approval state and
+  what it admits (the mode shown, whether a commit is admitted, the grant's state after). The
+  TypeScript gate (`toolGate.test.ts`) and the Go gate (`go/gate`) are held to the first two; the
+  harness carries no approval reader, so the third holds the Go gate and the schema.
 - `delegation/`: the four closed task profiles with their models, budgets and tools
   (`profiles.json`; `delegation.test.ts` holds `TASK_PROFILES` equal to it); a delegate call with
   material by reference, a summary asked for and a resumed task (`request-by-reference.json`); one

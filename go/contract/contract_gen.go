@@ -1163,6 +1163,23 @@ func (v DelegatedTask) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), v.AdditionalMembers)
 }
 
+// ReportFor decodes Report in the shape key's report member names (DecodeDelegatedTaskReport): the value alone
+// cannot say which (delegated-task.json#/$defs/report).
+func (v DelegatedTask) ReportFor(key DelegatedTaskProfile) (*DelegatedTaskReport, error) {
+	if v.Report == nil {
+		return nil, nil
+	}
+	data, err := json.Marshal(v.Report)
+	if err != nil {
+		return nil, err
+	}
+	decoded, err := DecodeDelegatedTaskReport(key, data)
+	if err != nil {
+		return nil, err
+	}
+	return &decoded, nil
+}
+
 // From delegated-task.json#/$defs/analyzeFinding.
 type DelegatedTaskAnalyzeFinding struct {
 	Text      string   `json:"text"`
@@ -1302,6 +1319,23 @@ func (v *DelegatedTaskAnswerTask) UnmarshalJSON(data []byte) error {
 func (v DelegatedTaskAnswerTask) MarshalJSON() ([]byte, error) {
 	type plain DelegatedTaskAnswerTask
 	return encodeObject(plain(v), nil)
+}
+
+// ReportFor decodes Report in the shape key's report member names (DecodeDelegatedTaskReport): the value alone
+// cannot say which (delegated-task.json#/$defs/report).
+func (v DelegatedTaskAnswerTask) ReportFor(key DelegatedTaskProfile) (*DelegatedTaskReport, error) {
+	if v.Report == nil {
+		return nil, nil
+	}
+	data, err := json.Marshal(v.Report)
+	if err != nil {
+		return nil, err
+	}
+	decoded, err := DecodeDelegatedTaskReport(key, data)
+	if err != nil {
+		return nil, err
+	}
+	return &decoded, nil
 }
 
 // From delegated-task.json#/$defs/answerTask/properties/used.
@@ -1659,47 +1693,90 @@ func (v DelegatedTaskProfile) MarshalJSON() ([]byte, error) {
 // From delegated-task.json#/$defs/report. A task's report, in its profile's shape: one of the four
 // (agent#16). The record names its profile; profile.report says which shape.
 //
-// A union: exactly one member is set.
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole. Its branches cannot be told apart by the value: DecodeDelegatedTaskReport decodes it by the report that decides it, and a type that holds it reads it with its <member>For method.
 type DelegatedTaskReport struct {
 	DelegatedTaskAnalyzeReport    *DelegatedTaskAnalyzeReport
 	DelegatedTaskReviewReport     *DelegatedTaskReviewReport
 	DelegatedTaskResearchReport   *DelegatedTaskResearchReport
 	DelegatedTaskAuthorTestReport *DelegatedTaskAuthorTestReport
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
 }
 
 // UnmarshalJSON sets the one member the value decodes as.
 func (v *DelegatedTaskReport) UnmarshalJSON(data []byte) error {
 	*v = DelegatedTaskReport{}
 	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
 	if kind == "object" && hasMembers(data, "citations", "confidence", "findings", "notDone", "openQuestions", "summary") {
 		var candidate DelegatedTaskAnalyzeReport
 		if err := json.Unmarshal(data, &candidate); err == nil {
-			v.DelegatedTaskAnalyzeReport = &candidate
-			return nil
+			set := func() { v.DelegatedTaskAnalyzeReport = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
 		}
 	}
 	if kind == "object" && hasMembers(data, "citations", "confidence", "findings", "notDone", "openQuestions", "summary") {
 		var candidate DelegatedTaskReviewReport
 		if err := json.Unmarshal(data, &candidate); err == nil {
-			v.DelegatedTaskReviewReport = &candidate
-			return nil
+			set := func() { v.DelegatedTaskReviewReport = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
 		}
 	}
 	if kind == "object" && hasMembers(data, "citations", "confidence", "findings", "notDone", "openQuestions", "summary") {
 		var candidate DelegatedTaskResearchReport
 		if err := json.Unmarshal(data, &candidate); err == nil {
-			v.DelegatedTaskResearchReport = &candidate
-			return nil
+			set := func() { v.DelegatedTaskResearchReport = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
 		}
 	}
 	if kind == "object" && hasMembers(data, "citations", "confidence", "findings", "notDone", "openQuestions", "summary") {
 		var candidate DelegatedTaskAuthorTestReport
 		if err := json.Unmarshal(data, &candidate); err == nil {
-			v.DelegatedTaskAuthorTestReport = &candidate
-			return nil
+			set := func() { v.DelegatedTaskAuthorTestReport = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
 		}
 	}
-	return errorf("DelegatedTaskReport: the value is none of the union's members")
+	switch {
+	case decoded == 0:
+		return errorf("DelegatedTaskReport: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = DelegatedTaskReport{Raw: append(json.RawMessage(nil), data...)}
+	return nil
 }
 
 // MarshalJSON encodes the one member that is set.
@@ -1717,10 +1794,50 @@ func (v DelegatedTaskReport) MarshalJSON() ([]byte, error) {
 	if v.DelegatedTaskAuthorTestReport != nil {
 		set = append(set, v.DelegatedTaskAuthorTestReport)
 	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
 	if len(set) != 1 {
 		return nil, errorf("DelegatedTaskReport: %d members are set; a union holds exactly one", len(set))
 	}
 	return json.Marshal(set[0])
+}
+
+// DecodeDelegatedTaskReport decodes a DelegatedTaskReport in the shape a DelegatedTaskProfile's report member names ("analyze" where it is absent): the
+// branches carry the same member names, so the value cannot say which it is (delegated-task.json#/$defs/report).
+func DecodeDelegatedTaskReport(key DelegatedTaskProfile, data []byte) (DelegatedTaskReport, error) {
+	kind := "analyze"
+	if key.Report != nil {
+		kind = *key.Report
+	}
+	var v DelegatedTaskReport
+	switch kind {
+	case "analyze":
+		v.DelegatedTaskAnalyzeReport = new(DelegatedTaskAnalyzeReport)
+		if err := json.Unmarshal(data, v.DelegatedTaskAnalyzeReport); err != nil {
+			return DelegatedTaskReport{}, errorf("DelegatedTaskReport as %s: %w", kind, err)
+		}
+		return v, nil
+	case "review":
+		v.DelegatedTaskReviewReport = new(DelegatedTaskReviewReport)
+		if err := json.Unmarshal(data, v.DelegatedTaskReviewReport); err != nil {
+			return DelegatedTaskReport{}, errorf("DelegatedTaskReport as %s: %w", kind, err)
+		}
+		return v, nil
+	case "research":
+		v.DelegatedTaskResearchReport = new(DelegatedTaskResearchReport)
+		if err := json.Unmarshal(data, v.DelegatedTaskResearchReport); err != nil {
+			return DelegatedTaskReport{}, errorf("DelegatedTaskReport as %s: %w", kind, err)
+		}
+		return v, nil
+	case "author-test":
+		v.DelegatedTaskAuthorTestReport = new(DelegatedTaskAuthorTestReport)
+		if err := json.Unmarshal(data, v.DelegatedTaskAuthorTestReport); err != nil {
+			return DelegatedTaskReport{}, errorf("DelegatedTaskReport as %s: %w", kind, err)
+		}
+		return v, nil
+	}
+	return DelegatedTaskReport{}, errorf("DelegatedTaskReport: report %q names none of its shapes", kind)
 }
 
 // From delegated-task.json#/$defs/request. What the model asks for with delegate_tasks
@@ -2885,31 +3002,60 @@ func (v RunEventCaseComparison) MarshalJSON() ([]byte, error) {
 // disposition as the runtime gave it, or a §8.4 evaluation error by its class and, where known,
 // its phase.
 //
-// A union: exactly one member is set.
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
 type RunEventCaseOutcome struct {
 	Option1 *RunEventCaseOutcomeOption1
 	Option2 *RunEventCaseOutcomeOption2
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
 }
 
 // UnmarshalJSON sets the one member the value decodes as.
 func (v *RunEventCaseOutcome) UnmarshalJSON(data []byte) error {
 	*v = RunEventCaseOutcome{}
 	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
 	if kind == "object" && hasMembers(data, "disposition") {
 		var candidate RunEventCaseOutcomeOption1
 		if err := json.Unmarshal(data, &candidate); err == nil {
-			v.Option1 = &candidate
-			return nil
+			set := func() { v.Option1 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
 		}
 	}
 	if kind == "object" && hasMembers(data, "errorClass") {
 		var candidate RunEventCaseOutcomeOption2
 		if err := json.Unmarshal(data, &candidate); err == nil {
-			v.Option2 = &candidate
-			return nil
+			set := func() { v.Option2 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
 		}
 	}
-	return errorf("RunEventCaseOutcome: the value is none of the union's members")
+	switch {
+	case decoded == 0:
+		return errorf("RunEventCaseOutcome: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = RunEventCaseOutcome{Raw: append(json.RawMessage(nil), data...)}
+	return nil
 }
 
 // MarshalJSON encodes the one member that is set.
@@ -2920,6 +3066,9 @@ func (v RunEventCaseOutcome) MarshalJSON() ([]byte, error) {
 	}
 	if v.Option2 != nil {
 		set = append(set, v.Option2)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
 	}
 	if len(set) != 1 {
 		return nil, errorf("RunEventCaseOutcome: %d members are set; a union holds exactly one", len(set))
@@ -4316,39 +4465,67 @@ func (v ToolResultAttachment) MarshalJSON() ([]byte, error) {
 
 // From tool-result.json#/$defs/attachment/properties/value.
 //
-// A union: exactly one member is set.
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
 type ToolResultAttachmentValue struct {
 	String              *string
 	Option2             *ToolResultAttachmentValueOption2
 	ToolResultImagePart *ToolResultImagePart
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
 }
 
 // UnmarshalJSON sets the one member the value decodes as.
 func (v *ToolResultAttachmentValue) UnmarshalJSON(data []byte) error {
 	*v = ToolResultAttachmentValue{}
 	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
 	if kind == "string" {
 		var candidate string
 		if err := json.Unmarshal(data, &candidate); err == nil {
-			v.String = &candidate
-			return nil
+			set := func() { v.String = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
 		}
 	}
 	if kind == "object" && hasMembers(data, "pages") {
 		var candidate ToolResultAttachmentValueOption2
 		if err := json.Unmarshal(data, &candidate); err == nil {
-			v.Option2 = &candidate
-			return nil
+			set := func() { v.Option2 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
 		}
 	}
 	if kind == "object" && hasMembers(data, "kind", "mediaType") {
 		var candidate ToolResultImagePart
 		if err := json.Unmarshal(data, &candidate); err == nil {
-			v.ToolResultImagePart = &candidate
-			return nil
+			set := func() { v.ToolResultImagePart = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
 		}
 	}
-	return errorf("ToolResultAttachmentValue: the value is none of the union's members")
+	switch {
+	case decoded == 0:
+		return errorf("ToolResultAttachmentValue: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = ToolResultAttachmentValue{Raw: append(json.RawMessage(nil), data...)}
+	return nil
 }
 
 // MarshalJSON encodes the one member that is set.
@@ -4362,6 +4539,9 @@ func (v ToolResultAttachmentValue) MarshalJSON() ([]byte, error) {
 	}
 	if v.ToolResultImagePart != nil {
 		set = append(set, v.ToolResultImagePart)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
 	}
 	if len(set) != 1 {
 		return nil, errorf("ToolResultAttachmentValue: %d members are set; a union holds exactly one", len(set))
@@ -4510,31 +4690,56 @@ func (v ToolResultMCPToolResult) MarshalJSON() ([]byte, error) {
 
 // From tool-result.json#/$defs/mcpToolResult/properties/content/items.
 //
-// A union: exactly one member is set.
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
 type ToolResultMCPToolResultContentItem struct {
 	Option1             *ToolResultMCPToolResultContentItemOption1
 	ToolResultImagePart *ToolResultImagePart
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
 }
 
 // UnmarshalJSON sets the one member the value decodes as.
 func (v *ToolResultMCPToolResultContentItem) UnmarshalJSON(data []byte) error {
 	*v = ToolResultMCPToolResultContentItem{}
 	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
 	if kind == "object" {
 		var candidate ToolResultMCPToolResultContentItemOption1
 		if err := json.Unmarshal(data, &candidate); err == nil {
-			v.Option1 = &candidate
-			return nil
+			set := func() { v.Option1 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
 		}
 	}
 	if kind == "object" && hasMembers(data, "kind", "mediaType") {
 		var candidate ToolResultImagePart
 		if err := json.Unmarshal(data, &candidate); err == nil {
-			v.ToolResultImagePart = &candidate
-			return nil
+			set := func() { v.ToolResultImagePart = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
 		}
 	}
-	return errorf("ToolResultMCPToolResultContentItem: the value is none of the union's members")
+	switch {
+	case decoded == 0:
+		return errorf("ToolResultMCPToolResultContentItem: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = ToolResultMCPToolResultContentItem{Raw: append(json.RawMessage(nil), data...)}
+	return nil
 }
 
 // MarshalJSON encodes the one member that is set.
@@ -4545,6 +4750,9 @@ func (v ToolResultMCPToolResultContentItem) MarshalJSON() ([]byte, error) {
 	}
 	if v.ToolResultImagePart != nil {
 		set = append(set, v.ToolResultImagePart)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
 	}
 	if len(set) != 1 {
 		return nil, errorf("ToolResultMCPToolResultContentItem: %d members are set; a union holds exactly one", len(set))
@@ -5026,31 +5234,52 @@ func (v ToolResultSearchResultNotShownItem) MarshalJSON() ([]byte, error) {
 
 // From tool-result.json#/$defs/searchResult/properties/scope.
 //
-// A union: exactly one member is set.
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
 type ToolResultSearchResultScope struct {
 	String  *string
 	Option2 *ToolResultSearchResultScopeOption2
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
 }
 
 // UnmarshalJSON sets the one member the value decodes as.
 func (v *ToolResultSearchResultScope) UnmarshalJSON(data []byte) error {
 	*v = ToolResultSearchResultScope{}
 	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
 	if kind == "string" {
 		var candidate string
 		if err := json.Unmarshal(data, &candidate); err == nil {
-			v.String = &candidate
-			return nil
+			set := func() { v.String = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
 		}
 	}
 	if kind == "object" && hasMembers(data, "id") {
 		var candidate ToolResultSearchResultScopeOption2
 		if err := json.Unmarshal(data, &candidate); err == nil {
-			v.Option2 = &candidate
-			return nil
+			set := func() { v.Option2 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
 		}
 	}
-	return errorf("ToolResultSearchResultScope: the value is none of the union's members")
+	switch {
+	case decoded == 0:
+		return errorf("ToolResultSearchResultScope: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = ToolResultSearchResultScope{Raw: append(json.RawMessage(nil), data...)}
+	return nil
 }
 
 // MarshalJSON encodes the one member that is set.
@@ -5061,6 +5290,9 @@ func (v ToolResultSearchResultScope) MarshalJSON() ([]byte, error) {
 	}
 	if v.Option2 != nil {
 		set = append(set, v.Option2)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
 	}
 	if len(set) != 1 {
 		return nil, errorf("ToolResultSearchResultScope: %d members are set; a union holds exactly one", len(set))

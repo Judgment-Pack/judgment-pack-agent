@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 )
 
 // RelayPrefix is the Desk's relay mount (RELAY_PREFIX in packages/harness/session.ts).
@@ -38,8 +39,8 @@ type ModelRequest struct {
 type ModelCall func(ctx context.Context, suffix string, request ModelRequest) (*http.Response, error)
 
 // RuntimeCall sends one JSON-RPC message to the runtime and returns its reply, or nil for a
-// notification. It is the runtime's transport, as the TypeScript session's transport is, before
-// any gate.
+// notification. It is the runtime's transport before any gate: the runner puts it behind the gate
+// (go/gate) and an adapter is handed only the gated call.
 type RuntimeCall func(ctx context.Context, message json.RawMessage) (json.RawMessage, error)
 
 // Session is one scripted endpoint and one recorded runtime on the shared server.
@@ -49,6 +50,17 @@ type Session struct {
 	id       string
 	relay    string
 	mcp      string
+
+	mu     sync.Mutex
+	bodies [][]byte
+}
+
+// Bodies are the model requests' bodies the relay capability sent, in order: what the TypeScript
+// legs' fetch stub records, for the checks that read a request's own text.
+func (s *Session) Bodies() [][]byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([][]byte(nil), s.bodies...)
 }
 
 // Endpoint is how this session's model answers.
@@ -85,6 +97,9 @@ func (s *Session) ModelCall() ModelCall {
 		var body io.Reader
 		if method != http.MethodGet {
 			body = bytes.NewReader(request.Body)
+			s.mu.Lock()
+			s.bodies = append(s.bodies, append([]byte(nil), request.Body...))
+			s.mu.Unlock()
 		}
 		address := s.server.URL + "/s/" + s.id + RelayPrefix + "/" + strings.TrimPrefix(suffix, "/")
 		outbound, err := http.NewRequestWithContext(ctx, method, address, body)

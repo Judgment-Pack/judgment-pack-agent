@@ -12,7 +12,13 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
 import { describe, expect, it } from 'vitest'
+import gateFramesVector from '../../contract/vectors/tool-call/gate-frames.json'
+import phaseOffersVector from '../../contract/vectors/tool-offer/phase-offers.json'
+import { TASK_PROFILES } from './delegationContract'
+import type { HostTool, McpTool } from './engine'
 import { ASSISTANT_TOOLS } from './host'
+import { PLAN_RUNTIME_READS, planningTool } from './planning/policy'
+import { criticMayCall, criticMayRead } from './refutation'
 import {
   GateViolation,
   allowedTools,
@@ -746,5 +752,102 @@ describe('an ordinary session, every frame of it', () => {
 
     await client.close()
     await serverSide.close()
+  })
+})
+
+/**
+ * **The contract's gate vectors** (agent#53): the same items the Go gate (`go/gate`) is held to,
+ * so both gates are held to one set. Each item of `tool-call/gate-frames.json` is the params of a
+ * `tools/call` frame and each of its `frames` a whole frame; the verdict, the notice and what left
+ * are the vector's. `tool-offer/phase-offers.json` is what each phase of a run is offered of one
+ * session, by the rules the boundary applies (refutation.ts, planning/policy.ts, delegation.ts).
+ */
+describe('the contract’s gate vectors', () => {
+  type Notice = { tool: string; action: string; detail: string } | null
+  type Outcome = {
+    what: string
+    verdict: 'send' | 'refused'
+    notice: Notice
+    sent?: unknown
+    allowed?: string[]
+    bounds?: { testPackBytes: number; testMatrixBytes: number }
+  }
+  const vector = gateFramesVector as unknown as {
+    allowed: string[]
+    bounds: { testPackBytes: number; testMatrixBytes: number }
+    items: Record<string, unknown>[]
+    outcomes: Outcome[]
+    frames: (Outcome & { frame: unknown })[]
+  }
+  const held = (frame: unknown, outcome: Outcome, sent: (frame: Record<string, unknown>) => unknown) => {
+    const allowed = allowedTools(outcome.allowed ?? vector.allowed)
+    const bounds = outcome.bounds ?? vector.bounds
+    const decided = inspectOutboundFrame(frame as JSONRPCMessage, allowed, bounds)
+    expect(decided.verdict).toBe(outcome.verdict)
+    expect(decided.notice).toEqual(outcome.notice)
+    if (decided.verdict === 'send') expect(sent(decided.frame as unknown as Record<string, unknown>)).toEqual(outcome.sent)
+    else {
+      expect(decided.violation.message).toBe(`refused on the wire: ${outcome.notice!.detail}`)
+      expect(decided.violation.tool).toBe(outcome.notice!.tool)
+    }
+  }
+
+  it('has one outcome for each item', () => {
+    expect(vector.outcomes).toHaveLength(vector.items.length)
+  })
+
+  it.each(vector.items.map((params, at) => [vector.outcomes[at]!.what, params, vector.outcomes[at]!] as const))(
+    'decides a tools/call frame: %s',
+    (_what, params, outcome) => {
+      held({ jsonrpc: '2.0', id: 1, method: 'tools/call', params }, outcome, (frame) => frame.params)
+    }
+  )
+
+  it.each(vector.frames.map((frame) => [frame.what, frame] as const))('decides a whole frame: %s', (_what, frame) => {
+    held(frame.frame, frame, (sent) => sent)
+  })
+
+  it('offers each phase what the vector says, of one session', () => {
+    const phases = phaseOffersVector as unknown as {
+      phases: { phase: string; profile?: string; within?: string }[]
+      items: { tools: McpTool[]; hostTools: HostTool[] }[]
+    }
+    const session = phases.items[0]!
+    // The boundary's own context tools, which it adds to a run after a phase's filter of the
+    // session's host tools (contextualSession), in every phase but the critic's and the reformat run's.
+    const context = new Set(['list_context', 'read_context', 'read_window', 'search', 'update_plan', 'request_budget_increase'])
+    const offered = (phase: { phase: string; profile?: string; within?: string }): { tools: McpTool[]; hostTools: HostTool[] } => {
+      switch (phase.phase) {
+        case 'loop':
+          return session
+        case 'critic':
+          return { tools: session.tools.filter((tool) => criticMayCall(tool.name)), hostTools: session.hostTools.filter((tool) => criticMayRead(tool.name)) }
+        case 'plan':
+          return {
+            tools: session.tools.filter((tool) => PLAN_RUNTIME_READS.includes(tool.name)),
+            hostTools: session.hostTools.filter((tool) => context.has(tool.name) || planningTool(tool))
+          }
+        case 'reformat':
+          return { tools: [], hostTools: [] }
+        case 'child': {
+          // A child's session is its parent's in the parent's phase (delegation.ts passes the
+          // phase on, and planningSession applies to children), narrowed by its profile.
+          const parent = offered({ phase: phase.within ?? 'loop' })
+          const profile = TASK_PROFILES.find((candidate) => candidate.id === phase.profile)!
+          const runtime = new Set(profile.runtimeTools ?? [])
+          return {
+            tools: parent.tools.filter((tool) => runtime.has(tool.name)),
+            hostTools: parent.hostTools.filter(
+              (tool) => context.has(tool.name) || (!tool.interaction && tool.delegation !== undefined && profile.capabilities.includes(tool.delegation))
+            )
+          }
+        }
+      }
+      throw new Error(`no phase ${phase.phase}`)
+    }
+    expect(phases.phases).toHaveLength(phases.items.length)
+    phases.phases.forEach((phase, at) => {
+      expect(offered(phase), `${phase.phase} ${phase.profile ?? ''} ${phase.within ?? ''}`).toEqual(phases.items[at])
+    })
   })
 })

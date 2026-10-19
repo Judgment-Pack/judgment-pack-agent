@@ -7,14 +7,15 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/certification"
-	"github.com/Judgment-Pack/judgment-pack-agent/go/certification/standin"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
 )
 
 var server *certification.Server
@@ -84,20 +85,20 @@ func TestTheRelayCapabilityReachesTheScriptedModel(t *testing.T) {
 	}
 }
 
-// The recorded runtime answers tools/list with the runtime's five, and records an unguarded
-// evaluate as the refusal K3a measures.
+// The recorded runtime answers tools/list, through the gate, with the runtime's five, and records
+// an evaluate sent past the gate as the refusal K3a measures.
 func TestTheRecordedRuntimeRecordsWhatReachesIt(t *testing.T) {
 	ctx := context30s(t)
 	session, err := server.NewSession(ctx, certification.Endpoint{API: "openai-compatible", AnswerAs: "whole"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	tools, err := standin.ListTools(ctx, session.RuntimeCall())
+	offer, err := gate.New(gate.Options{Runtime: gate.Call(session.RuntimeCall()), Granted: gate.Ceiling}).Open(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var names []string
-	for _, tool := range tools {
+	for _, tool := range offer.Tools {
 		names = append(names, tool.Name)
 	}
 	if !slices.Equal(names, []string{"get_schema", "list_examples", "get_example", "validate", "experimental_evaluate"}) {
@@ -131,16 +132,16 @@ func TestAnIdleAdapterFailsTheLeg(t *testing.T) {
 	for _, finding := range result.Checks() {
 		failed[finding.Check] = true
 	}
-	for _, check := range []string{"K1", "K3a", "K3b", "K3c", "sequence"} {
+	for _, check := range []string{"scenario", "agent#11", "K1a", "K1", "K3a", "K3b", "K3c", "sequence", "steps"} {
 		if !failed[check] {
 			t.Errorf("an idle adapter passed %s", check)
 		}
 	}
 }
 
-// The reference loop: a plain Go loop on the OpenAI-compatible wire, no framework, behind the
-// stand-in gate. It passes every check of the leg, so a framework's spike that fails one has
-// failed it in the framework.
+// The reference loop: a plain Go loop on the OpenAI-compatible wire, no framework, every Runtime
+// call through the gated call the run carries. It passes every check of the leg, plain and under
+// the tracing variables, so a framework's adapter that fails one has failed it in the framework.
 func TestAReferenceLoopPassesTheLeg(t *testing.T) {
 	ctx := context30s(t)
 	result, err := certification.ScenarioLeg(ctx, server, certification.Endpoint{API: "openai-compatible", AnswerAs: "whole"}, certification.AdapterFunc(referenceLoop))
@@ -149,6 +150,61 @@ func TestAReferenceLoopPassesTheLeg(t *testing.T) {
 	}
 	for _, finding := range result.Checks() {
 		t.Error(finding)
+	}
+	traced, err := certification.ScenarioLegTraced(ctx, server, certification.Endpoint{API: "openai-compatible", AnswerAs: "whole"}, certification.AdapterFunc(referenceLoop))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, finding := range traced.Checks() {
+		t.Error("traced:", finding)
+	}
+}
+
+// An adapter that sends the tracing key on a request fails K1b, and only on the traced leg.
+func TestAKeySentUnderTracingFailsK1b(t *testing.T) {
+	ctx := context30s(t)
+	leaking := certification.AdapterFunc(func(ctx context.Context, run *certification.Run) error {
+		run.Prompt += " " + os.Getenv("LANGSMITH_API_KEY")
+		return referenceLoop(ctx, run)
+	})
+	traced, err := certification.ScenarioLegTraced(ctx, server, certification.Endpoint{API: "openai-compatible", AnswerAs: "whole"}, leaking)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed := map[string]bool{}
+	for _, finding := range traced.Checks() {
+		failed[finding.Check] = true
+	}
+	if !failed["K1b"] {
+		t.Fatalf("the key reached the relay and K1b held: %v", traced.Checks())
+	}
+	if _, set := os.LookupEnv("LANGSMITH_API_KEY"); set {
+		t.Fatal("the traced leg left its variables in the environment")
+	}
+}
+
+// The recall rule in Go finds what the contract's recall vectors say it finds, on each wire.
+func TestTheRecallRuleIsTheVectors(t *testing.T) {
+	for _, name := range []string{"openai-compatible", "anthropic", "gemini", "agent", "delegated-child"} {
+		_, items, err := certification.ReadVector("recall/" + name + ".json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, raw := range items {
+			var item struct {
+				Family  string          `json:"family"`
+				Body    json.RawMessage `json:"body"`
+				Pointer string          `json:"pointer"`
+				Text    string          `json:"text"`
+			}
+			if err := json.Unmarshal(raw, &item); err != nil {
+				t.Fatal(err)
+			}
+			found := certification.Recall(item.Family, item.Body)
+			if found == nil || found.Pointer != item.Pointer || found.Text != item.Text {
+				t.Errorf("%s item %d: the rule found %+v", name, i, found)
+			}
+		}
 	}
 }
 
@@ -169,20 +225,15 @@ type openAIToolCall struct {
 }
 
 func referenceLoop(ctx context.Context, run *certification.Run) error {
-	tools, err := standin.ListTools(ctx, run.Runtime)
-	if err != nil {
-		return err
-	}
 	var declared []map[string]any
-	var offered []string
+	hosts := map[string]bool{}
 	for _, tool := range run.HostTools {
+		hosts[tool.Name] = true
 		declared = append(declared, map[string]any{"type": "function", "function": map[string]any{"name": tool.Name, "description": tool.Description, "parameters": tool.InputSchema}})
 	}
-	for _, tool := range tools {
-		offered = append(offered, tool.Name)
+	for _, tool := range run.Tools {
 		declared = append(declared, map[string]any{"type": "function", "function": map[string]any{"name": tool.Name, "description": tool.Description, "parameters": tool.InputSchema}})
 	}
-	gate := &standin.Gate{Runtime: run.Runtime, Offered: offered, Emit: run.Emit}
 	prompt := run.Prompt
 	messages := []openAIMessage{{Role: "user", Content: &prompt}}
 	for step := 0; step < 20; step++ {
@@ -210,22 +261,28 @@ func referenceLoop(ctx context.Context, run *certification.Run) error {
 			if message.Content != nil {
 				text = *message.Content
 			}
-			run.Emit(standin.Message(text))
-			if proposal := standin.Proposal(text); proposal != nil {
+			run.Emit(certification.Message(text))
+			if proposal := certification.Proposal(text); proposal != nil {
 				run.Emit(contract.RunEvent{Proposal: proposal})
 			}
-			run.Emit(standin.End())
+			run.Emit(certification.End())
 			return nil
 		}
 		messages = append(messages, message)
 		for _, call := range message.ToolCalls {
-			args := json.RawMessage(call.Function.Arguments)
-			run.Emit(standin.ToolCall(call.Function.Name, args))
-			result, err := gate.Call(ctx, call.Function.Name, args)
-			if err != nil {
+			name, args := call.Function.Name, json.RawMessage(call.Function.Arguments)
+			run.Emit(certification.ToolCall(name, args))
+			var result gate.Result
+			if hosts[name] {
+				if refused := run.Gate.AdmitHost(name); refused != nil {
+					result = *refused
+				} else {
+					result = gate.Result{Text: name + " has nothing to read in this run", IsError: true}
+				}
+			} else if result, err = run.Gate.CallTool(ctx, name, args); err != nil {
 				return err
 			}
-			run.Emit(standin.ToolResult(call.Function.Name, result))
+			run.Emit(certification.ToolResult(name, result))
 			text := result.Text
 			messages = append(messages, openAIMessage{Role: "tool", ToolCallID: call.ID, Content: &text})
 		}
@@ -255,5 +312,28 @@ func TestADefaultTransportReachFailsK1a(t *testing.T) {
 	}
 	if !slices.Equal(checks, []string{"K1a"}) {
 		t.Fatalf("the reach was reported as %v", result.Checks())
+	}
+}
+
+// The run carries the adapter's handle on the gate and nothing of the host's: no field of Run is the
+// host's gate, and no field's type can set the offer, enter a phase or reach the transport.
+var _ *gate.Calls = (&certification.Run{}).Gate
+
+func TestTheRunCarriesOnlyTheAdapterHandle(t *testing.T) {
+	run := reflect.TypeOf(certification.Run{})
+	host := reflect.TypeOf(&gate.Gate{})
+	for i := range run.NumField() {
+		field := run.Field(i)
+		if field.Type == host || field.Type == host.Elem() {
+			t.Errorf("Run.%s is the host's gate", field.Name)
+		}
+		for _, method := range []string{"Enter", "SetOffer", "Transport", "Open"} {
+			if _, ok := field.Type.MethodByName(method); ok {
+				t.Errorf("Run.%s can %s", field.Name, method)
+			}
+		}
+	}
+	if field, ok := run.FieldByName("Gate"); !ok || field.Type != reflect.TypeOf(&gate.Calls{}) {
+		t.Fatal("Run.Gate is not the adapter's handle")
 	}
 }

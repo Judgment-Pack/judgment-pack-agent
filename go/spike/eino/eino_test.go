@@ -1,7 +1,7 @@
 // The Eino spike (ADR-0004): CloudWeGo Eino's ADK, one ChatModelAgent on its ReAct loop under a
 // Runner, run on the certification's scenario leg against the shared scripted server, with the
 // model as the host's relay capability and every tool call answered by one middleware that puts it
-// through the stand-in gate. Not shipped; what it measured is in the ADR.
+// through the gate the run carries (go/gate). Not shipped; what it measured is in the ADR.
 package eino_test
 
 import (
@@ -23,8 +23,8 @@ import (
 	"github.com/eino-contrib/jsonschema"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/certification"
-	"github.com/Judgment-Pack/judgment-pack-agent/go/certification/standin"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/spike/internal/openai"
 )
 
@@ -141,24 +141,32 @@ func (d *declared) InvokableRun(context.Context, string, ...tool.Option) (string
 // the contract's events around it.
 type boundary struct {
 	*adk.BaseChatModelAgentMiddleware
-	run  *certification.Run
-	gate *standin.Gate
-	m    *measured
+	run *certification.Run
+	m   *measured
 }
 
 func (b *boundary) dispatch(ctx context.Context, name, arguments string) (string, error) {
 	args := json.RawMessage(arguments)
-	b.run.Emit(standin.ToolCall(name, args))
-	result, err := b.gate.Call(ctx, name, args)
-	for _, host := range b.run.HostTools {
-		if host.Name == name {
-			result, err = standin.Result{Text: name + " has nothing to read in this run", IsError: true}, nil
+	b.run.Emit(certification.ToolCall(name, args))
+	var result gate.Result
+	var err error
+	host := false
+	for _, offered := range b.run.HostTools {
+		host = host || offered.Name == name
+	}
+	if host {
+		if refused := b.run.Gate.AdmitHost(name); refused != nil {
+			result = *refused
+		} else {
+			result = gate.Result{Text: name + " has nothing to read in this run", IsError: true}
 		}
+	} else {
+		result, err = b.run.Gate.CallTool(ctx, name, args)
 	}
 	if err != nil {
 		return "", err
 	}
-	b.run.Emit(standin.ToolResult(name, result))
+	b.run.Emit(certification.ToolResult(name, result))
 	return result.Text, nil
 }
 
@@ -196,11 +204,7 @@ func toolInfo(name, description string, raw json.RawMessage, m *measured) (*sche
 
 func einoAdapter(stream bool, m *measured) certification.Adapter {
 	return certification.AdapterFunc(func(ctx context.Context, run *certification.Run) error {
-		served, err := standin.ListTools(ctx, run.Runtime)
-		if err != nil {
-			return err
-		}
-		var offered []string
+		served := run.Tools
 		var tools []tool.BaseTool
 		for _, host := range run.HostTools {
 			info, err := toolInfo(host.Name, host.Description, host.InputSchema, m)
@@ -210,14 +214,13 @@ func einoAdapter(stream bool, m *measured) certification.Adapter {
 			tools = append(tools, &declared{info})
 		}
 		for _, runtimeTool := range served {
-			offered = append(offered, runtimeTool.Name)
 			info, err := toolInfo(runtimeTool.Name, derefString(runtimeTool.Description), runtimeTool.InputSchema, m)
 			if err != nil {
 				return err
 			}
 			tools = append(tools, &declared{info})
 		}
-		edge := &boundary{run: run, gate: &standin.Gate{Runtime: run.Runtime, Offered: offered, Emit: run.Emit}, m: m}
+		edge := &boundary{run: run, m: m}
 		agent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
 			Name:        "judgment-pack",
 			Description: "The Judgment Pack assistant's loop.",
@@ -254,11 +257,11 @@ func einoAdapter(stream bool, m *measured) certification.Adapter {
 				}
 			}
 		}
-		run.Emit(standin.Message(final))
-		if proposal := standin.Proposal(final); proposal != nil {
+		run.Emit(certification.Message(final))
+		if proposal := certification.Proposal(final); proposal != nil {
 			run.Emit(contract.RunEvent{Proposal: proposal})
 		}
-		run.Emit(standin.End())
+		run.Emit(certification.End())
 		return nil
 	})
 }
