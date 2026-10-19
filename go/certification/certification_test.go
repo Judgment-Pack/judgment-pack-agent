@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -311,5 +312,28 @@ func TestADefaultTransportReachFailsK1a(t *testing.T) {
 	}
 	if !slices.Equal(checks, []string{"K1a"}) {
 		t.Fatalf("the reach was reported as %v", result.Checks())
+	}
+}
+
+// The run carries the adapter's handle on the gate and nothing of the host's: no field of Run is the
+// host's gate, and no field's type can set the offer, enter a phase or reach the transport.
+var _ *gate.Calls = (&certification.Run{}).Gate
+
+func TestTheRunCarriesOnlyTheAdapterHandle(t *testing.T) {
+	run := reflect.TypeOf(certification.Run{})
+	host := reflect.TypeOf(&gate.Gate{})
+	for i := range run.NumField() {
+		field := run.Field(i)
+		if field.Type == host || field.Type == host.Elem() {
+			t.Errorf("Run.%s is the host's gate", field.Name)
+		}
+		for _, method := range []string{"Enter", "SetOffer", "Transport", "Open"} {
+			if _, ok := field.Type.MethodByName(method); ok {
+				t.Errorf("Run.%s can %s", field.Name, method)
+			}
+		}
+	}
+	if field, ok := run.FieldByName("Gate"); !ok || field.Type != reflect.TypeOf(&gate.Calls{}) {
+		t.Fatal("Run.Gate is not the adapter's handle")
 	}
 }

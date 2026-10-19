@@ -809,14 +809,14 @@ describe('the contract’s gate vectors', () => {
 
   it('offers each phase what the vector says, of one session', () => {
     const phases = phaseOffersVector as unknown as {
-      phases: { phase: string; profile?: string }[]
+      phases: { phase: string; profile?: string; within?: string }[]
       items: { tools: McpTool[]; hostTools: HostTool[] }[]
     }
     const session = phases.items[0]!
     // The boundary's own context tools, which it adds to a run after a phase's filter of the
     // session's host tools (contextualSession), in every phase but the critic's and the reformat run's.
     const context = new Set(['list_context', 'read_context', 'read_window', 'search', 'update_plan', 'request_budget_increase'])
-    const offered = (phase: { phase: string; profile?: string }) => {
+    const offered = (phase: { phase: string; profile?: string; within?: string }): { tools: McpTool[]; hostTools: HostTool[] } => {
       switch (phase.phase) {
         case 'loop':
           return session
@@ -830,11 +830,14 @@ describe('the contract’s gate vectors', () => {
         case 'reformat':
           return { tools: [], hostTools: [] }
         case 'child': {
+          // A child's session is its parent's in the parent's phase (delegation.ts passes the
+          // phase on, and planningSession applies to children), narrowed by its profile.
+          const parent = offered({ phase: phase.within ?? 'loop' })
           const profile = TASK_PROFILES.find((candidate) => candidate.id === phase.profile)!
           const runtime = new Set(profile.runtimeTools ?? [])
           return {
-            tools: session.tools.filter((tool) => runtime.has(tool.name)),
-            hostTools: session.hostTools.filter(
+            tools: parent.tools.filter((tool) => runtime.has(tool.name)),
+            hostTools: parent.hostTools.filter(
               (tool) => context.has(tool.name) || (!tool.interaction && tool.delegation !== undefined && profile.capabilities.includes(tool.delegation))
             )
           }
@@ -844,7 +847,7 @@ describe('the contract’s gate vectors', () => {
     }
     expect(phases.phases).toHaveLength(phases.items.length)
     phases.phases.forEach((phase, at) => {
-      expect(offered(phase), `${phase.phase} ${phase.profile ?? ''}`).toEqual(phases.items[at])
+      expect(offered(phase), `${phase.phase} ${phase.profile ?? ''} ${phase.within ?? ''}`).toEqual(phases.items[at])
     })
   })
 })

@@ -30,6 +30,11 @@ type Options struct {
 
 // Gate is the host's boundary for one session: the gated transport, the session's offer, the
 // phase the run is in and the turn's test-call count. Its methods are safe for concurrent use.
+//
+// It is the host's handle and never an adapter's: it sets the offer, enters Plan mode and a
+// child's phase, and holds the transport (which inspects frames and counts nothing). An adapter is
+// handed Calls, the narrow handle, which can call, admit a host tool, and narrow the run to the
+// critic's or the reformat run's phase and back, and nothing else (ADR-0004, decision 3).
 type Gate struct {
 	transport Call
 	allowed   []string
@@ -38,9 +43,78 @@ type Gate struct {
 
 	mu        sync.Mutex
 	offer     contract.ToolOffer
-	phase     Phase
+	phase     Phase     // the phase the host entered
+	narrowed  PhaseKind // the critic's or the reformat run's narrowing of it, or ""
 	testCalls int
 	nextID    int64
+	calls     *Calls
+}
+
+// Calls is the adapter's handle on the gate: the gated call, a host tool's admission, and the
+// critic's and the reformat run's phases, each only a narrowing of the phase the host entered.
+// It sets no offer, enters no other phase and holds no transport.
+type Calls struct{ g *Gate }
+
+// Calls is the narrow handle the host gives an adapter.
+func (g *Gate) Calls() *Calls { return g.calls }
+
+// CallTool is Gate.CallTool: the gated call.
+func (c *Calls) CallTool(ctx context.Context, name string, args json.RawMessage) (Result, error) {
+	return c.g.CallTool(ctx, name, args)
+}
+
+// AdmitHost is Gate.AdmitHost: a host tool held to the phase's offer.
+func (c *Calls) AdmitHost(name string) *Result { return c.g.AdmitHost(name) }
+
+// BeginCritic narrows the run to the critic's phase (agent#10): of the entered phase's offer, the
+// critic's tools and readers.
+func (c *Calls) BeginCritic() { c.g.narrow(PhaseCritic) }
+
+// EndCritic ends the critic's phase, where the run is in it.
+func (c *Calls) EndCritic() { c.g.widen(PhaseCritic) }
+
+// BeginReformat narrows the run to the tool-free reformat run, which is offered nothing.
+func (c *Calls) BeginReformat() { c.g.narrow(PhaseReformat) }
+
+// EndReformat ends the reformat run's phase, where the run is in it.
+func (c *Calls) EndReformat() { c.g.widen(PhaseReformat) }
+
+func (g *Gate) narrow(kind PhaseKind) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.narrowed = kind
+}
+
+func (g *Gate) widen(kind PhaseKind) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.narrowed == kind {
+		g.narrowed = ""
+	}
+}
+
+// current is the phase a call is held to: the entered phase, narrowed where the adapter narrowed
+// it. A narrowing only takes names away.
+func (g *Gate) current() Phase {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	switch g.narrowed {
+	case PhaseCritic:
+		return Phase{Kind: PhaseCritic, Runtime: intersect(g.phase.Runtime, CriticTools), Host: intersect(g.phase.Host, CriticReaders)}
+	case PhaseReformat:
+		return ReformatPhase()
+	}
+	return g.phase
+}
+
+func intersect(list, within []string) []string {
+	out := []string{}
+	for _, name := range list {
+		if contains(within, name) {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // New puts a session's runtime transport behind the gate.
@@ -54,6 +128,7 @@ func New(options Options) *Gate {
 	}
 	g.transport = Transport(options.Runtime, g.allowed, g.bounds, func(notice Notice) { g.emit(notice.Event()) })
 	g.phase = LoopPhase(contract.ToolOffer{})
+	g.calls = &Calls{g: g}
 	return g
 }
 
@@ -150,6 +225,7 @@ func (g *Gate) SetOffer(offer contract.ToolOffer) {
 	defer g.mu.Unlock()
 	g.offer = offer
 	g.phase = LoopPhase(offer)
+	g.narrowed = ""
 }
 
 // Offer is the session's offer.
@@ -159,19 +235,17 @@ func (g *Gate) Offer() contract.ToolOffer {
 	return g.offer
 }
 
-// Enter moves the run into a phase; the phase's offer is what a call is held to from here.
+// Enter moves the run into a phase (Plan mode, a child's, the loop's): the host's, never the
+// adapter's. The phase's offer is what a call is held to from here; a narrowing is ended.
 func (g *Gate) Enter(phase Phase) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.phase = phase
+	g.narrowed = ""
 }
 
-// Phase is the phase the run is in.
-func (g *Gate) Phase() Phase {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	return g.phase
-}
+// Phase is the phase a call is held to now.
+func (g *Gate) Phase() Phase { return g.current() }
 
 // Result is a call's answer as the model is shown it and the tool_result event carries it.
 type Result struct {
@@ -246,9 +320,7 @@ func (g *Gate) refuse(name, detail string) Result {
 // An error is returned only where the call could not be completed at all (the context ended, the
 // transport failed); every refusal is a Result the model reads.
 func (g *Gate) CallTool(ctx context.Context, name string, args json.RawMessage) (Result, error) {
-	g.mu.Lock()
-	phase := g.phase
-	g.mu.Unlock()
+	phase := g.current()
 	if !contains(phase.Runtime, name) {
 		switch phase.Kind {
 		case PhaseCritic:
@@ -263,15 +335,14 @@ func (g *Gate) CallTool(ctx context.Context, name string, args json.RawMessage) 
 		if contains(g.allowed, name) {
 			return g.refuse(name, ServedNotOffered(name)), nil
 		}
-		result, err := g.send(ctx, name, args)
-		if err != nil {
-			return Result{}, err
+		// Off the allow-list: decided by the gate on the wire, as the model wrote it, and never
+		// sent; Inspect is the decision without the transport.
+		verdict := Inspect(g.frame(name, args), g.allowed, g.bounds)
+		if verdict.Send {
+			return Result{}, errors.New("the gate would send a call its phase did not offer; it was not sent")
 		}
-		if !result.IsError {
-			// Unreachable: a name off the allow-list never leaves. Held here so that it never could.
-			return Result{}, errors.New("the gate sent a call the phase did not offer")
-		}
-		return Result{Text: UnofferedRefusal(result.Text), IsError: true}, nil
+		g.emit(verdict.Notice.Event())
+		return Result{Text: UnofferedRefusal(verdict.Violation.Error()), IsError: true}, nil
 	}
 	if name == TestTool {
 		g.mu.Lock()
@@ -286,21 +357,23 @@ func (g *Gate) CallTool(ctx context.Context, name string, args json.RawMessage) 
 	return g.send(ctx, name, args)
 }
 
-// send puts one tools/call frame through the gated transport.
-func (g *Gate) send(ctx context.Context, name string, args json.RawMessage) (Result, error) {
+// frame is one tools/call frame for a call as the model wrote it; arguments that are not JSON
+// make a frame the gate cannot read, which it refuses as it refuses any such frame.
+func (g *Gate) frame(name string, args json.RawMessage) json.RawMessage {
 	params := map[string]any{"name": name}
 	if len(strings.TrimSpace(string(args))) > 0 {
 		params["arguments"] = args
 	}
 	frame, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": g.id(), "method": ToolsCall, "params": params})
 	if err != nil {
-		// Arguments that are not JSON: the frame cannot be read, and is refused as the gate refuses
-		// any frame it cannot read.
-		verdict := Inspect(nil, g.allowed, g.bounds)
-		g.emit(verdict.Notice.Event())
-		return failed(verdict.Violation.Failure()), nil
+		return json.RawMessage("unreadable")
 	}
-	reply, err := g.transport(ctx, frame)
+	return frame
+}
+
+// send puts one tools/call frame through the gated transport.
+func (g *Gate) send(ctx context.Context, name string, args json.RawMessage) (Result, error) {
+	reply, err := g.transport(ctx, g.frame(name, args))
 	var violation *Violation
 	if errors.As(err, &violation) {
 		result := failed(violation.Failure())
@@ -344,9 +417,7 @@ func (g *Gate) send(ctx context.Context, name string, args json.RawMessage) (Res
 // phase offered it; otherwise the refusal the model is told, after the guardrail event (critic,
 // reformat and loop) or with the phase's own words (Plan mode, a child).
 func (g *Gate) AdmitHost(name string) *Result {
-	g.mu.Lock()
-	phase := g.phase
-	g.mu.Unlock()
+	phase := g.current()
 	if contains(phase.Host, name) {
 		return nil
 	}

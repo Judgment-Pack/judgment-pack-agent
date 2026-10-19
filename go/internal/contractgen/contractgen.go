@@ -569,6 +569,24 @@ func (g *generator) emitStruct(l loc, name string) {
 	} else {
 		b.WriteString("\treturn encodeObject(plain(v), v.AdditionalMembers)\n}\n")
 	}
+	for _, f := range fields {
+		for _, keyed := range keyedUnions {
+			file, ptr, _ := strings.Cut(keyed.union, "#")
+			union := g.typeExpr(loc{file, ptr})
+			if f.expr != union {
+				continue
+			}
+			file, ptr, _ = strings.Cut(keyed.key, "#")
+			key := g.typeExpr(loc{file, ptr})
+			goName := pascal(f.member)
+			fmt.Fprintf(&b, "\n// %sFor decodes %s in the shape key's %s member names (Decode%s): the value alone\n// cannot say which (%s).\n", goName, goName, keyed.member, union, keyed.union)
+			fmt.Fprintf(&b, "func (v %s) %sFor(key %s) (*%s, error) {\n", name, goName, key, union)
+			if !f.required {
+				fmt.Fprintf(&b, "\tif v.%s == nil {\n\t\treturn nil, nil\n\t}\n", goName)
+			}
+			fmt.Fprintf(&b, "\tdata, err := json.Marshal(v.%s)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tdecoded, err := Decode%s(key, data)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\treturn &decoded, nil\n}\n", goName, union)
+		}
+	}
 	g.decls[name] = strings.Replace(b.String(), "fmt.Errorf", "errorf", -1)
 }
 
@@ -710,14 +728,27 @@ func (g *generator) emitUnion(l loc, name string) {
 	}
 
 	keyed, isKeyed := keyedUnionAt(l)
+	untagged := 0
+	for _, br := range branches {
+		if br.tag == "" {
+			untagged++
+		}
+	}
+	// Where two members could both decode one value, the decode tries every one. One that decodes
+	// it is set; of several, the one closed branch among them (it describes the value exactly, an
+	// open one only admits it); otherwise none is set and Raw keeps the value whole.
+	ambiguous := untagged > 1
 	var b strings.Builder
 	b.WriteString(g.describe(l))
 	fmt.Fprintf(&b, "//\n// A union: exactly one member is set.")
 	if discriminator != "" {
 		fmt.Fprintf(&b, " An object is decoded by its %q member.", discriminator)
 	}
+	if ambiguous {
+		b.WriteString(" Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.")
+	}
 	if isKeyed {
-		fmt.Fprintf(&b, " Its branches cannot be told apart by the value: UnmarshalJSON takes the first that decodes, and Decode%s decodes it by the %s that decides it.", name, keyed.member)
+		fmt.Fprintf(&b, " Its branches cannot be told apart by the value: Decode%s decodes it by the %s that decides it, and a type that holds it reads it with its <member>For method.", name, keyed.member)
 	}
 	b.WriteString("\n")
 	fmt.Fprintf(&b, "type %s struct {\n", name)
@@ -726,6 +757,9 @@ func (g *generator) emitUnion(l loc, name string) {
 			fmt.Fprintf(&b, "\t// %s is set where %s is %q.\n", br.goName, discriminator, br.tag)
 		}
 		fmt.Fprintf(&b, "\t%s *%s\n", br.goName, br.expr)
+	}
+	if ambiguous {
+		b.WriteString("\t// Raw is the value where more than one member decodes it; no member is set then.\n\tRaw json.RawMessage\n")
 	}
 	b.WriteString("}\n\n")
 	fmt.Fprintf(&b, "// UnmarshalJSON sets the one member the value decodes as.\nfunc (v *%s) UnmarshalJSON(data []byte) error {\n", name)
@@ -739,6 +773,9 @@ func (g *generator) emitUnion(l loc, name string) {
 			fmt.Fprintf(&b, "\t\tcase %q:\n\t\t\tv.%s = new(%s)\n\t\t\treturn json.Unmarshal(data, v.%s)\n", br.tag, br.goName, br.expr, br.goName)
 		}
 		fmt.Fprintf(&b, "\t\t}\n\t\treturn errorf(\"%s: no member has %s %%q\", tag)\n\t}\n", name, discriminator)
+	}
+	if ambiguous {
+		b.WriteString("\tdecoded, closed := 0, 0\n\tvar first, firstClosed func()\n")
 	}
 	for _, br := range branches {
 		if br.tag != "" {
@@ -761,12 +798,27 @@ func (g *generator) emitUnion(l loc, name string) {
 				cond += " && hasMembers(data, " + strings.Join(names, ", ") + ")"
 			}
 		}
-		fmt.Fprintf(&b, "\tif %s {\n\t\tvar candidate %s\n\t\tif err := json.Unmarshal(data, &candidate); err == nil {\n\t\t\tv.%s = &candidate\n\t\t\treturn nil\n\t\t}\n\t}\n", cond, br.expr, br.goName)
+		if ambiguous {
+			isClosed := ""
+			if g.node(g.resolve(br.l))["additionalProperties"] == false && br.jsonKind == "object" {
+				isClosed = "\t\t\tclosed++\n\t\t\tif firstClosed == nil {\n\t\t\t\tfirstClosed = set\n\t\t\t}\n"
+			}
+			fmt.Fprintf(&b, "\tif %s {\n\t\tvar candidate %s\n\t\tif err := json.Unmarshal(data, &candidate); err == nil {\n\t\t\tset := func() { v.%s = &candidate }\n\t\t\tdecoded++\n\t\t\tif first == nil {\n\t\t\t\tfirst = set\n\t\t\t}\n%s\t\t}\n\t}\n", cond, br.expr, br.goName, isClosed)
+		} else {
+			fmt.Fprintf(&b, "\tif %s {\n\t\tvar candidate %s\n\t\tif err := json.Unmarshal(data, &candidate); err == nil {\n\t\t\tv.%s = &candidate\n\t\t\treturn nil\n\t\t}\n\t}\n", cond, br.expr, br.goName)
+		}
 	}
-	fmt.Fprintf(&b, "\treturn errorf(\"%s: the value is none of the union's members\")\n}\n\n", name)
+	if ambiguous {
+		fmt.Fprintf(&b, "\tswitch {\n\tcase decoded == 0:\n\t\treturn errorf(\"%s: the value is none of the union's members\")\n\tcase decoded == 1:\n\t\tfirst()\n\t\treturn nil\n\tcase closed == 1:\n\t\tfirstClosed()\n\t\treturn nil\n\t}\n\t*v = %s{Raw: append(json.RawMessage(nil), data...)}\n\treturn nil\n}\n\n", name, name)
+	} else {
+		fmt.Fprintf(&b, "\treturn errorf(\"%s: the value is none of the union's members\")\n}\n\n", name)
+	}
 	fmt.Fprintf(&b, "// MarshalJSON encodes the one member that is set.\nfunc (v %s) MarshalJSON() ([]byte, error) {\n\tvar set []any\n", name)
 	for _, br := range branches {
 		fmt.Fprintf(&b, "\tif v.%s != nil {\n\t\tset = append(set, v.%s)\n\t}\n", br.goName, br.goName)
+	}
+	if ambiguous {
+		b.WriteString("\tif len(set) == 0 && v.Raw != nil {\n\t\treturn v.Raw, nil\n\t}\n")
 	}
 	fmt.Fprintf(&b, "\tif len(set) != 1 {\n\t\treturn nil, errorf(\"%s: %%d members are set; a union holds exactly one\", len(set))\n\t}\n\treturn json.Marshal(set[0])\n}\n", name)
 	if isKeyed {

@@ -137,26 +137,29 @@ func TestTheGatedCallHoldsThePhase(t *testing.T) {
 	offer.HostTools = []contract.ToolOfferHostTool{{Name: "read_window"}, {Name: "propose_pack"}}
 	g.SetOffer(offer)
 	ctx := context.Background()
+	c := g.Calls()
 	test := json.RawMessage(`{"pack":"{}","matrix":"{}"}`)
-	if result, _ := g.CallTool(ctx, TestTool, test); result.IsError || frames != 1 {
+	if result, _ := c.CallTool(ctx, TestTool, test); result.IsError || frames != 1 {
 		t.Fatalf("the first test call: %+v", result)
 	}
-	if result, _ := g.CallTool(ctx, TestTool, test); !result.IsError || !strings.Contains(result.Text, "testCallsPerTurn") || frames != 1 {
+	if result, _ := c.CallTool(ctx, TestTool, test); !result.IsError || !strings.Contains(result.Text, "testCallsPerTurn") || frames != 1 {
 		t.Fatalf("the second test call: %+v", result)
 	}
-	g.Enter(CriticPhase(offer))
-	if result, _ := g.CallTool(ctx, "list_examples", nil); !result.IsError || frames != 1 {
+	c.BeginCritic()
+	if result, _ := c.CallTool(ctx, "list_examples", nil); !result.IsError || frames != 1 {
 		t.Fatalf("the critic called list_examples: %+v", result)
 	}
-	if refused := g.AdmitHost("propose_pack"); refused == nil || g.AdmitHost("read_window") != nil {
+	if refused := c.AdmitHost("propose_pack"); refused == nil || c.AdmitHost("read_window") != nil {
 		t.Fatal("the critic's host tools are not its readers")
 	}
-	g.Enter(ReformatPhase())
-	if result, _ := g.CallTool(ctx, "validate", nil); !result.IsError || frames != 1 {
+	c.EndCritic()
+	c.BeginReformat()
+	if result, _ := c.CallTool(ctx, "validate", nil); !result.IsError || frames != 1 {
 		t.Fatalf("the reformat run called validate: %+v", result)
 	}
+	c.EndReformat()
 	g.Enter(PlanPhase(offer))
-	if result, _ := g.CallTool(ctx, RehearsalTool, nil); !result.IsError || frames != 1 {
+	if result, _ := c.CallTool(ctx, RehearsalTool, nil); !result.IsError || frames != 1 {
 		t.Fatalf("Plan mode evaluated: %+v", result)
 	}
 	var refusals []string
@@ -170,5 +173,132 @@ func TestTheGatedCallHoldsThePhase(t *testing.T) {
 	}
 	if g.TestCalls() != 1 {
 		t.Fatalf("%d test calls counted", g.TestCalls())
+	}
+}
+
+// A session whose runtime serves the scenario's five, counting what reaches it.
+func fiveServed(t *testing.T, granted []string, bounds Bounds) (*Gate, *[]string, *[]contract.RunEvent) {
+	t.Helper()
+	var calls []string
+	var events []contract.RunEvent
+	runtime := func(_ context.Context, frame json.RawMessage) (json.RawMessage, error) {
+		var request struct {
+			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
+			Params struct {
+				Name string `json:"name"`
+			} `json:"params"`
+		}
+		if err := json.Unmarshal(frame, &request); err != nil {
+			return nil, err
+		}
+		switch request.Method {
+		case "initialize":
+			return json.RawMessage(`{"jsonrpc":"2.0","id":` + string(request.ID) + `,"result":{}}`), nil
+		case "notifications/initialized":
+			return nil, nil
+		case "tools/list":
+			return json.RawMessage(`{"jsonrpc":"2.0","id":` + string(request.ID) + `,"result":{"tools":[{"name":"get_schema"},{"name":"list_examples"},{"name":"get_example"},{"name":"validate"},{"name":"experimental_evaluate"}]}}`), nil
+		}
+		calls = append(calls, request.Params.Name)
+		return json.RawMessage(`{"jsonrpc":"2.0","id":` + string(request.ID) + `,"result":{"content":[{"type":"text","text":"ok"}]}}`), nil
+	}
+	g := New(Options{Runtime: runtime, Granted: granted, Bounds: bounds, Emit: func(event contract.RunEvent) { events = append(events, event) }})
+	if _, err := g.Open(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	return g, &calls, &events
+}
+
+// The loop refuses a name the host granted and the runtime did not serve before any call: the
+// grant is the ceiling, tools/list serves five, and experimental_test_cases is refused with its
+// guardrail, the runtime not reached.
+func TestAGrantedNameTheLoopWasNotOfferedIsRefusedBeforeAnyCall(t *testing.T) {
+	g, calls, events := fiveServed(t, Ceiling, DefaultBounds)
+	result, err := g.Calls().CallTool(context.Background(), TestTool, json.RawMessage(`{"pack":"{}","matrix":"{}"}`))
+	if err != nil || !result.IsError || result.Text != UnofferedRefusal(ServedNotOffered(TestTool)) {
+		t.Fatalf("answered %+v (%v)", result, err)
+	}
+	if len(*calls) != 0 {
+		t.Fatalf("the runtime was reached by %v", *calls)
+	}
+	if len(*events) != 1 || (*events)[0].Guardrail == nil || (*events)[0].Guardrail.Detail != ServedNotOffered(TestTool) {
+		t.Fatalf("events %+v", *events)
+	}
+	if g.TestCalls() != 0 {
+		t.Fatalf("%d test calls counted for a call never made", g.TestCalls())
+	}
+}
+
+// Test calls made through the adapter's handle count, and past the cap they are not made.
+func TestTheAdapterHandleCountsTestCalls(t *testing.T) {
+	var reached int
+	g := New(Options{
+		Runtime: func(_ context.Context, frame json.RawMessage) (json.RawMessage, error) {
+			reached++
+			return json.RawMessage(`{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"ok"}]}}`), nil
+		},
+		Granted: Ceiling,
+	})
+	offer := contract.ToolOffer{}
+	for _, name := range Ceiling {
+		offer.Tools = append(offer.Tools, contract.ToolOfferRuntimeTool{Name: name})
+	}
+	g.SetOffer(offer)
+	c := g.Calls()
+	var refused int
+	for range 5 {
+		result, err := c.CallTool(context.Background(), TestTool, json.RawMessage(`{"pack":"{}","matrix":"{}"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.IsError && strings.Contains(result.Text, "testCallsPerTurn") {
+			refused++
+		}
+	}
+	if reached != 3 || refused != 2 || g.TestCalls() != 3 {
+		t.Fatalf("%d reached the runtime, %d refused, %d counted", reached, refused, g.TestCalls())
+	}
+}
+
+// Plan mode, entered by the host, cannot be lifted from the adapter's handle: whatever it begins
+// and ends, an evaluate is refused and the runtime is not reached.
+func TestPlanModeCannotBeLiftedFromTheAdapterHandle(t *testing.T) {
+	g, calls, _ := fiveServed(t, Ceiling, DefaultBounds)
+	g.Enter(PlanPhase(g.Offer()))
+	c := g.Calls()
+	ctx := context.Background()
+	for _, step := range []func(){c.BeginCritic, c.EndCritic, c.BeginReformat, c.EndReformat, c.EndCritic} {
+		step()
+		if result, _ := c.CallTool(ctx, RehearsalTool, json.RawMessage(`{"pack":"{}"}`)); !result.IsError {
+			t.Fatalf("an evaluate under Plan mode was answered %+v", result)
+		}
+	}
+	c.BeginCritic()
+	if result, _ := c.CallTool(ctx, RehearsalTool, json.RawMessage(`{"pack":"{}"}`)); !result.IsError {
+		t.Fatalf("the critic widened Plan mode: %+v", result)
+	}
+	if len(*calls) != 0 {
+		t.Fatalf("the runtime was reached by %v", *calls)
+	}
+	if g.Phase().Kind != PhaseCritic || len(g.Phase().Runtime) != 2 {
+		t.Fatalf("the critic under Plan mode holds %+v", g.Phase())
+	}
+}
+
+// The adapter's handle is the gated call, a host tool's admission and the two narrowings, and
+// nothing that sets an offer, enters a phase or reaches the transport.
+func TestTheAdapterHandleHasOnlyItsMethods(t *testing.T) {
+	var methods []string
+	handle := reflect.TypeOf(&Calls{})
+	for i := range handle.NumMethod() {
+		methods = append(methods, handle.Method(i).Name)
+	}
+	want := []string{"AdmitHost", "BeginCritic", "BeginReformat", "CallTool", "EndCritic", "EndReformat"}
+	if !reflect.DeepEqual(methods, want) {
+		t.Fatalf("the adapter's handle has %v", methods)
+	}
+	if reflect.TypeOf(Calls{}).NumField() != 1 || reflect.TypeOf(Calls{}).Field(0).IsExported() {
+		t.Fatal("the adapter's handle exposes a field")
 	}
 }

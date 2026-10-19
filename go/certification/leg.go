@@ -21,15 +21,17 @@ import (
 // capabilities, never an address or a credential.
 //
 // Gate carries the gated call, never the runtime's transport (ADR-0004, as amended): the runner,
-// as the host, puts the session's runtime behind the gate (go/gate) and runs the handshake
-// through it, and an adapter calls a Runtime tool with Gate.CallTool, holds a host tool to
-// Gate.AdmitHost and moves the run through its phases with Gate.Enter. The gate writes its
-// guardrail events to Emit while the call is in flight. Tools are the session's Runtime tools as
-// tools/list served them through the gate, those on the allow-list.
+// as the host, puts the session's runtime behind the gate (go/gate), runs the handshake through it
+// and keeps the gate's host handle; the adapter gets the narrow handle (gate.Calls). With it an
+// adapter calls a Runtime tool (CallTool), holds a host tool to the phase (AdmitHost) and narrows
+// the run to the critic's or the reformat run's phase and back; it cannot set the offer, enter Plan
+// mode or a child's phase, or reach the transport. The gate writes its guardrail events to Emit
+// while the call is in flight. Tools are the session's Runtime tools as tools/list served them
+// through the gate, those on the allow-list.
 type Run struct {
 	Wire      string
 	Model     ModelCall
-	Gate      *gate.Gate
+	Gate      *gate.Calls
 	Tools     []contract.ToolOfferRuntimeTool
 	HostTools []contract.ToolOfferHostTool
 	Prompt    string
@@ -218,7 +220,7 @@ func scenarioLeg(ctx context.Context, server *Server, endpoint Endpoint, adapter
 	run := &Run{
 		Wire:      endpoint.API,
 		Model:     session.ModelCall(),
-		Gate:      gated,
+		Gate:      gated.Calls(),
 		Tools:     offer.Tools,
 		HostTools: offer.HostTools,
 		Prompt:    scenario.Policy,

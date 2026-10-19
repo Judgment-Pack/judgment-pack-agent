@@ -52,6 +52,7 @@ type vectorFile struct {
 	Phases   []struct {
 		Phase   PhaseKind `json:"phase"`
 		Profile string    `json:"profile"`
+		Within  PhaseKind `json:"within"`
 	} `json:"phases"`
 	Checks []approvalCheck `json:"checks"`
 }
@@ -312,12 +313,20 @@ func phaseOffersVector(t *testing.T, _ string, vector vectorFile) int {
 			if !ok {
 				t.Fatalf("item %d: no profile %q", i, named.Profile)
 			}
-			phase = ChildPhase(profile, session)
+			parent := LoopPhase(session)
+			switch named.Within {
+			case PhasePlan:
+				parent = PlanPhase(session)
+			case "", PhaseLoop:
+			default:
+				t.Fatalf("item %d: a child within %q", i, named.Within)
+			}
+			phase = ChildPhase(profile, session, parent)
 		default:
 			t.Fatalf("item %d: no phase %q", i, named.Phase)
 		}
 		if got := phase.Offer(session); !sameJSON(t, encode(t, got), vector.Items[i]) {
-			t.Errorf("item %d (%s %s): offered %v and %v", i, named.Phase, named.Profile, phase.Runtime, phase.Host)
+			t.Errorf("item %d (%s %s within %s): offered %v and %v", i, named.Phase, named.Profile, named.Within, phase.Runtime, phase.Host)
 		}
 	}
 	return len(vector.Items)

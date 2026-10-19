@@ -124,14 +124,20 @@ func ReformatPhase() Phase {
 	return Phase{Kind: PhaseReformat, Runtime: []string{}, Host: []string{}}
 }
 
-// ChildPhase is a delegated child's (agent#15, delegation.ts runChild): of the session's Runtime
-// tools those its profile names (runtimeTools, none where absent); of its host tools those with no
-// interaction whose delegation member is a capability the profile lists, and the host's context
-// tools.
-func ChildPhase(profile contract.DelegatedTaskProfile, offer contract.ToolOffer) Phase {
+// ChildPhase is a delegated child's (agent#15, delegation.ts runChild), started from its parent's
+// phase: of the session's Runtime tools those its profile names (runtimeTools, none where absent);
+// of its host tools those with no interaction whose delegation member is a capability the profile
+// lists, and the host's context tools; and of these only what the parent's phase offers, so a child
+// started in Plan mode holds Plan's reads and no more.
+func ChildPhase(profile contract.DelegatedTaskProfile, offer contract.ToolOffer, parent Phase) Phase {
 	r, h := names(offer,
-		func(tool contract.ToolOfferRuntimeTool) bool { return contains(profile.RuntimeTools, tool.Name) },
+		func(tool contract.ToolOfferRuntimeTool) bool {
+			return contains(profile.RuntimeTools, tool.Name) && contains(parent.Runtime, tool.Name)
+		},
 		func(tool contract.ToolOfferHostTool) bool {
+			if !contains(parent.Host, tool.Name) {
+				return false
+			}
 			if contains(ContextTools, tool.Name) {
 				return true
 			}

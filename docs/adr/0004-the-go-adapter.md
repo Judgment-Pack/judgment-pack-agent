@@ -153,10 +153,14 @@ that had no vector are vectors now (`tool-call/gate-frames.json`, `tool-offer/ph
 `approval/grant-states.json`), and `toolGate.test.ts` holds the TypeScript gate to the first two.
 
 `Run` carries the gated call, not the runtime's transport (amended): the runner, as the host, puts
-the session's runtime behind the gate and runs the handshake through it, and an adapter calls
-`Run.Gate.CallTool`, holds a host tool to `Run.Gate.AdmitHost` and moves the run through its
-phases with `Run.Gate.Enter`. The stand-in gate of PR 1 is removed, and K3a, K3b and K3c run
-through the real gate.
+the session's runtime behind the gate, runs the handshake through it and keeps the gate's host
+handle (`gate.Gate`: the offer, Plan mode's and a child's phase, the transport). `Run.Gate` is the
+adapter's narrow handle (`gate.Calls`): an adapter calls `Run.Gate.CallTool`, holds a host tool to
+`Run.Gate.AdmitHost`, and begins and ends the critic's and the reformat run's phases, each only a
+narrowing of the phase the host entered; it cannot lift Plan mode, widen a child's offer, reset the
+offer or reach the transport past the test-call cap. A child's phase is its profile's tools within
+its parent's phase, so a child started in Plan mode holds Plan's reads only. The stand-in gate of
+PR 1 is removed, and K3a, K3b and K3c run through the real gate.
 
 Eino's per-phase offer is not native to its dispatch (the table above): the gate is the check its
 dispatch makes, on both entry points.
@@ -195,17 +199,21 @@ it does not name and writes them back; a closed one refuses them; `oneOf` and `a
 branches are a union with one member per branch, chosen by the member every object branch fixes to
 a distinct constant where there is one (the run event's `type`); `allOf` over objects is one
 struct; a type and `null` is `Nullable`. The schemas stay the validator (`tests/test_contract.py`).
-Every vector item, 315 in 102 files, decodes into the type its schema address names and encodes
+Every vector item, 316 in 102 files, decodes into the type its schema address names and encodes
 back to the same value (`go/contract/roundtrip_test.go`), and no decoded value keeps, among an open
 object's unnamed members, a member its schema names (read from the schema, its `properties` and
 those of its `allOf` branches): an open type that dropped a member fails there.
 
 One union the generator cannot tell apart by its value: `delegated-task.json#/$defs/report`, four
 closed branches with the same member names, whose shape is the one the task's profile names
-(`profile.report`, analyze where absent). The generated `UnmarshalJSON` takes the first branch that
-decodes, so a research report reads as an analyze report; `contractgen` therefore also writes
-`DecodeDelegatedTaskReport(profile, data)`, keyed by the profile, which is the one to read a report
-with, and a test decodes each closed profile's report vector by its profile. A union decided by a
+(`profile.report`, analyze where absent). Where more than one branch of a union decodes a value,
+the generated `UnmarshalJSON` sets the one closed branch among them and otherwise sets none and
+keeps the value whole (`Raw`); a research report, which decodes as an analyze report too, is kept
+whole. `contractgen` writes `DecodeDelegatedTaskReport(profile, data)`, keyed by the profile, and
+`ReportFor(profile)` on the two types that hold a report (`DelegatedTask`, `DelegatedTaskAnswerTask`);
+a test decodes each closed profile's report vector by its profile and each task's report in the
+record and answer vectors by its own profile, and the round trip fails where any other union keeps
+a value whole. A union decided by a
 member of another object is named in `contractgen`'s table of such unions, and the generator fails
 where that member's values and the branches do not match one to one.
 

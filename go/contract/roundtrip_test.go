@@ -72,6 +72,11 @@ func TestEveryVectorRoundTrips(t *testing.T) {
 			for _, problem := range keptAsUnnamed(reflect.ValueOf(value), named, "") {
 				t.Errorf("%s item %d: %s", name, i, problem)
 			}
+			for _, kept := range keptRaw(reflect.ValueOf(value)) {
+				if kept != "DelegatedTaskReport" {
+					t.Errorf("%s item %d: more than one member of %s decodes it, and only a report is expected to be read by another object", name, i, kept)
+				}
+			}
 		}
 		return nil
 	})
@@ -278,6 +283,45 @@ func keptAsUnnamed(value reflect.Value, named map[string]map[string]bool, path s
 	return out
 }
 
+// keptRaw names the unions in a decoded value that more than one member decoded, so none was set.
+func keptRaw(value reflect.Value) []string {
+	switch value.Kind() {
+	case reflect.Pointer, reflect.Interface:
+		if value.IsNil() {
+			return nil
+		}
+		return keptRaw(value.Elem())
+	case reflect.Slice, reflect.Array:
+		if value.Type().Elem() == reflect.TypeOf(byte(0)) {
+			return nil
+		}
+		var out []string
+		for i := 0; i < value.Len(); i++ {
+			out = append(out, keptRaw(value.Index(i))...)
+		}
+		return out
+	case reflect.Map:
+		var out []string
+		for _, key := range value.MapKeys() {
+			out = append(out, keptRaw(value.MapIndex(key))...)
+		}
+		return out
+	case reflect.Struct:
+	default:
+		return nil
+	}
+	var out []string
+	if raw := value.FieldByName("Raw"); raw.IsValid() && raw.Len() > 0 {
+		out = append(out, value.Type().Name())
+	}
+	for i := 0; i < value.NumField(); i++ {
+		if value.Type().Field(i).IsExported() && value.Type().Field(i).Name != "Raw" {
+			out = append(out, keptRaw(value.Field(i))...)
+		}
+	}
+	return out
+}
+
 // TestTheDroppedMemberCheckSeesADroppedMember is the check above on a value built to fail it: a
 // tool_call whose name sits among the unnamed members.
 func TestTheDroppedMemberCheckSeesADroppedMember(t *testing.T) {
@@ -290,8 +334,9 @@ func TestTheDroppedMemberCheckSeesADroppedMember(t *testing.T) {
 
 // TestEachProfilesReportDecodesByItsProfile decodes each closed profile's report vector by that
 // profile (DecodeDelegatedTaskReport): the branch is the one the profile's report names, and the
-// value round-trips. The value alone cannot say: a research report decodes as an analyze report
-// too, and only the profile tells them apart.
+// value round-trips. The value alone cannot say (a research report decodes as an analyze report
+// too), so the generic decode keeps it whole, and a task reads its report by its own profile
+// (ReportFor).
 func TestEachProfilesReportDecodesByItsProfile(t *testing.T) {
 	var profiles struct {
 		Items []DelegatedTaskProfile `json:"items"`
@@ -341,9 +386,54 @@ func TestEachProfilesReportDecodesByItsProfile(t *testing.T) {
 	if report, err := DecodeDelegatedTaskReport(analyze, research); err != nil || branch(report) != "analyze" {
 		t.Fatalf("a research report read by a profile with no report member: %v, %v", branch(report), err)
 	}
+	// The value alone does not choose: a research report decodes as two of the four, so the
+	// union keeps it whole in Raw and sets none.
 	var byValue DelegatedTaskReport
-	if err := json.Unmarshal(research, &byValue); err != nil || branch(byValue) != "analyze" {
-		t.Fatalf("the value alone decoded a research report as %s (%v): the case the keyed decode is for has changed", branch(byValue), err)
+	if err := json.Unmarshal(research, &byValue); err != nil || branch(byValue) != "" || byValue.Raw == nil {
+		t.Fatalf("the value alone decoded a research report as %q (%v)", branch(byValue), err)
+	}
+	// Inside its containers, a report reads by the task's own profile: each task of the record and
+	// answer vectors gets the branch its profile names.
+	byID := map[string]DelegatedTaskProfile{}
+	for _, profile := range profiles.Items {
+		byID[profile.ID] = profile
+	}
+	held := 0
+	check := func(where, profileID string, read func(DelegatedTaskProfile) (*DelegatedTaskReport, error)) {
+		profile, ok := byID[profileID]
+		if !ok {
+			t.Fatalf("%s: no profile %q", where, profileID)
+		}
+		report, err := read(profile)
+		if err != nil {
+			t.Fatalf("%s: %v", where, err)
+		}
+		if report == nil {
+			return
+		}
+		held++
+		if got := branch(*report); got != *profile.Report {
+			t.Errorf("%s: a %s task's report reads as %s", where, profileID, got)
+		}
+	}
+	var records struct {
+		Items []DelegatedTask `json:"items"`
+	}
+	readJSON(t, filepath.Join(vectorsDir, "delegation", "record.json"), &records)
+	for i, task := range records.Items {
+		check(fmt.Sprintf("record item %d", i), task.Profile, task.ReportFor)
+	}
+	var answers struct {
+		Items []DelegatedTaskAnswer `json:"items"`
+	}
+	readJSON(t, filepath.Join(vectorsDir, "delegation", "answer.json"), &answers)
+	for i, answer := range answers.Items {
+		for j, task := range answer.Tasks {
+			check(fmt.Sprintf("answer item %d task %d", i, j), task.Profile, task.ReportFor)
+		}
+	}
+	if held < 6 {
+		t.Fatalf("%d reports read inside their containers", held)
 	}
 	if _, err := DecodeDelegatedTaskReport(analyze, readItem(t, "report-review.json")); err == nil {
 		t.Fatal("a review report, whose findings carry a severity, decoded as an analyze report")
@@ -352,7 +442,7 @@ func TestEachProfilesReportDecodesByItsProfile(t *testing.T) {
 	if _, err := DecodeDelegatedTaskReport(DelegatedTaskProfile{ID: "x", Report: &unknown}, research); err == nil {
 		t.Fatal("a report kind outside the four decoded")
 	}
-	t.Logf("%d report items decoded by their profiles", decoded)
+	t.Logf("%d report items decoded by their profiles, %d inside their containers", decoded, held)
 }
 
 func readJSON(t *testing.T, path string, into any) {
