@@ -22,6 +22,7 @@ describe('an injection point the host has not supplied', () => {
     expect(() => fresh.chassisUrl('/api')).toThrow(/has not supplied chassisUrl/)
     await expect(async () => fresh.sessionBearer()).rejects.toThrow(/has not supplied sessionBearer/)
     expect(() => new fresh.NoSession('ended')).toThrow(/has not supplied NoSession/)
+    expect(() => fresh.renderImageToText({ kind: 'image', mediaType: 'image/png', bytes: 'QUJD' }, new AbortController().signal)).toThrow(/has not supplied renderImageToText/)
     fresh.configureHarness({ chassisUrl: (path) => `host:${path}` })
     expect(fresh.chassisUrl('/api')).toBe('host:/api')
   })

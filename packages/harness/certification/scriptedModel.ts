@@ -145,6 +145,49 @@ function criticSteps(refuted: boolean): ScenarioStep[] {
   ]
 }
 
+/**
+ * The head of a text tool call's result, as the harness writes it
+ * (`textToolResultHeader` in `engines/contract.ts`): what this endpoint counts
+ * as a step's result when it takes no native tool calls.
+ */
+export const TEXT_RESULT = /^TOOL (?:RESULT|ERROR) from (\S+) \(/
+
+/** Every text a request's user turns carry, on any of the three wires. */
+function userTexts(api: EndpointKind, messages: unknown[]): string[] {
+  const texts: string[] = []
+  for (const raw of messages ?? []) {
+    const message = raw as { role?: string; content?: unknown; parts?: unknown }
+    if (message?.role !== 'user') continue
+    const held = api === 'gemini' ? message.parts : message.content
+    if (typeof held === 'string') texts.push(held)
+    else if (Array.isArray(held)) {
+      for (const part of held) {
+        const text = (part as { text?: unknown })?.text
+        if (typeof text === 'string' && (api === 'gemini' || (part as { type?: unknown }).type === 'text')) texts.push(text)
+      }
+    }
+  }
+  return texts
+}
+
+/** Count text tool results for counted tools: what n is on an endpoint without native tool calls. */
+export function countText(api: EndpointKind, messages: unknown[]): number {
+  return userTexts(api, messages).filter((text) => {
+    const name = TEXT_RESULT.exec(text)?.[1]
+    return name !== undefined && COUNTED.has(name)
+  }).length
+}
+
+/** A tool call written as text, as an endpoint without native tool calls answers one (agent#4). */
+export function textCallStep(step: ScenarioStep): ScenarioStep {
+  if (step.kind !== 'tool_call') return step
+  return {
+    id: step.id,
+    kind: 'final_message',
+    text: '```json\n' + JSON.stringify({ tool: step.tool, arguments: step.arguments ?? {} }) + '\n```'
+  }
+}
+
 /** One request the page made, as the checker reads it. */
 export interface RecordedRequest {
   url: string
@@ -1009,6 +1052,13 @@ export function scriptedModel(options: {
    *   against.
    */
   signatures?: 'thought' | 'call' | 'parallel' | 'empty'
+  /**
+   * How this endpoint takes tool calls (agent#4). `native` (the default) is
+   * each wire's own. `text` is an endpoint with none: a request that carries
+   * tools is refused, a call is answered as one fenced JSON block, and a step's
+   * result is counted from the text the harness sends it back in.
+   */
+  toolCalls?: 'native' | 'text'
 }): ScriptedModel {
   const requests: RecordedRequest[] = []
   const state = { lastBase: undefined as number | undefined, repeats: 0 }
@@ -1064,15 +1114,19 @@ export function scriptedModel(options: {
     // **The refutation pass is a second conversation**, and the marker is how
     // this endpoint tells the two apart. THINKING-SPEC §9.2.
     const refutation = raw.includes(MARKER)
-    const n =
-      options.api === 'anthropic'
+    const inText = options.toolCalls === 'text'
+    const n = inText
+      ? countText(options.api, messages)
+      : options.api === 'anthropic'
         ? countAnthropic(messages)
         : options.api === 'gemini'
           ? countGemini(messages)
           : countOpenAi(messages)
-    const step = refutation
+    const chosen = refutation
       ? critic[Math.min(n, critic.length - 1)]!
       : chooseStep(state, n)
+    // The step as this endpoint answers it: a call in text where it takes none natively.
+    const step = inText ? { ...textCallStep(chosen), id: chosen.id } : chosen
 
     const lane = refutation ? emitted.critic : emitted.loop
     const expected = lane.map((id) => thinkSignature({ id }))
@@ -1155,6 +1209,12 @@ export function scriptedModel(options: {
             `'tools[0].function_declarations[0].parameters': Cannot find field.`
         )
       }
+    }
+
+    // **An endpoint without native tool calls refuses a request that carries
+    // some**, which is what proves the harness sent it none (agent#4).
+    if (inText && Array.isArray(body.tools) && body.tools.length > 0) {
+      return refuse('this model does not support tools')
     }
 
     // **The refusals, before anything is answered.** `nothink` is the degrade's

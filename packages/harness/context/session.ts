@@ -9,6 +9,8 @@ import type {ModelMessage} from 'ai'
 import type {EngineSession,McpToolResult} from '../engine'
 import {ContextLedger,answer,contextDigest,type ContextDocument} from './ledger'
 import {READ_TOOL} from './reader'
+import {SEARCH_TOOL} from './search'
+import {capabilitiesFor,type ModelCapabilities} from '../capabilities'
 import {contextPolicy,inputBytes,utf8Bytes,prefix,ContextBudgetError,type ContextConfiguration} from './policy'
 export interface CurrentRequest {message:string;input:string}
 /** `currentState`: host-authored text that changes between requests or responses (the chat's
@@ -19,13 +21,15 @@ export interface ContextUsage {inputBytes:number;estimatedInputTokens:number;inp
 const encoded=(value:unknown)=>JSON.stringify(value)
 export class SessionContext {
  readonly policy;readonly ledger;readonly execution:ExecutionController;private compactions=0
+ /** The model's capability record (agent#4), resolved once for the run; none for an agent session. */
+ readonly capabilities?:ModelCapabilities
  /** agent#12: this run's closing marker for retrieved data, drawn once, never written into the instructions. */
  readonly marker=dataMarker()
  private compactedSteps=new Map<string,Record<string,unknown>>()
  private summaries=new Set<string>()
  private contracts=new Map<string,unknown>()
  private referenceTools:Set<string>
- constructor(session:EngineSession){this.policy=contextPolicy(session.context?.configuration,'model'in session?session.model.model:session.agent.model);this.ledger=new ContextLedger(this.policy);this.execution=new ExecutionController(session,this.ledger);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))}
+ constructor(session:EngineSession){this.capabilities='model'in session?capabilitiesFor(session.model):undefined;this.policy=contextPolicy(session.context?.configuration,'model'in session?session.model.model:session.agent.model,this.capabilities);this.ledger=new ContextLedger(this.policy);this.execution=new ExecutionController(session,this.ledger);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))}
  /** Independent reviewers get a new retrieval scope and no author's working
   * summaries or cached reads. Request accounting and original journals stay. */
  beginIsolatedPhase(){
@@ -35,7 +39,8 @@ export class SessionContext {
   this.execution.progress.beginPhase()
  }
  reserveOutput(tokens:unknown){if(typeof tokens==='number'&&Number.isInteger(tokens)&&tokens>this.policy.outputTokens){if(tokens>this.policy.contextWindowTokens/2)throw new ContextBudgetError();this.policy.outputTokens=tokens}}
- async initialize(documents:ContextDocument[]=[]){for(const doc of documents)await this.ledger.retain(doc)}
+ /** `attachments`: the host's documents for the run, which search scopes as attachments (agent#5). */
+ async initialize(documents:ContextDocument[]=[],attachments=false){for(const doc of documents)await this.ledger.retain(doc,attachments)}
  private budget(instructions:string,tools:unknown){return inputBytes(this.policy)-utf8Bytes(instructions)-utf8Bytes(encoded(tools))-this.policy.briefBytes-this.policy.memoryBytes-1536}
  async prompt(text:string,instructions:string,tools:unknown,currentRequest?:CurrentRequest):Promise<string>{
   // Leave headroom for subsequent tool results; fitting the first request alone is insufficient.
@@ -213,10 +218,10 @@ export async function contextualSession<T extends EngineSession>(session:T):Prom
  await session.context?.authorize?.(session.signal)
  const context=new SessionContext(session)
  await context.execution.initialize()
- await context.initialize(session.context?.documents)
+ await context.initialize(session.context?.documents,true)
  await context.execution.retainProgress()
  if(session.context?.plan)await context.initialize([{id:'current-plan',kind:'artifact',label:'Current chat plan',value:session.context.plan}])
- if([...session.tools,...session.hostTools].some(t=>t.name==='read_context'||t.name==='list_context'||t.name===READ_TOOL||t.name==='update_plan'||t.name==='request_budget_increase'))throw Error('Context tool names are reserved by Desk.')
+ if([...session.tools,...session.hostTools].some(t=>t.name==='read_context'||t.name==='list_context'||t.name===READ_TOOL||t.name===SEARCH_TOOL||t.name==='update_plan'||t.name==='request_budget_increase'))throw Error('Context tool names are reserved by Desk.')
  const hostTools=[...session.hostTools,...context.ledger.tools(),...(session.allowConversation?[context.execution.tool(),context.execution.budgetTool()]:[])].map(tool=>({...tool,execute:async(args:Record<string,unknown>,signal:AbortSignal)=>{await session.context?.authorize?.(signal);return context.execution.wrapRead(tool.name,a=>tool.execute(a,signal),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read')(args)}}))
  const model='model'in session?{...session.model,call:async(suffix:string,request:import('../engine').ModelRequest)=>{await session.context?.authorize?.(session.signal);if(request.method!=='GET'){context.execution.claim();try{await session.context?.checkpoint?.(context.execution.snapshot())}catch{throw failureError('storage','storage','not-started')}}return session.model.call(suffix,request)}}:undefined
  const agent='agent'in session?{...session.agent,run:async(request:import('../agent').AgentRequest,callbacks:import('../agent').AgentCallbacks)=>{await session.context?.authorize?.(callbacks.signal);return session.agent.run(request,callbacks)}}:undefined

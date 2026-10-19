@@ -22,6 +22,7 @@
  */
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { ChatPlan } from './planning/model'
+import type { HeldImage } from './images'
 
 /** The endpoint families a model connection speaks (the Desk's `EndpointKind`). */
 export type EndpointKind = 'openai-compatible' | 'anthropic' | 'gemini'
@@ -105,26 +106,14 @@ export function sourceMessage(source: string, values: Record<string, unknown> = 
 }
 
 /**
- * Where a model loop puts what changes between requests (the execution state)
- * after the first request, which always carries it as a second text part of
- * the person's own message. `trailing-user`: one user message after the
- * history. `system-tail`: the end of the system text, after the cache
- * breakpoint on its head. The contract's `budget.json#/$defs/endpointCapabilities`.
+ * Where a model loop puts the execution state after the first request, and
+ * what the host knows about one endpoint and model: both are the capability
+ * record's (`capabilities.ts`, the contract's `capability.json`), re-exported
+ * here where agent#9 first stated them. The host answers with any members of
+ * the record; the harness completes the rest from the family's default record.
  */
-export type StatePlacement = 'trailing-user' | 'system-tail'
-
-/**
- * What the host knows about one endpoint and model, as far as the harness
- * reads it. Every member is optional; an endpoint the host knows nothing about
- * gets the defaults by family and tier (`statePlacement` in
- * `engines/vercel/loop.ts`). `strictAlternation`: the endpoint refuses two user
- * turns in a row and a user text after a tool result, so it always gets
- * `system-tail`.
- */
-export interface EndpointCapabilities {
-  statePlacement?: StatePlacement
-  strictAlternation?: boolean
-}
+export type { StatePlacement } from './capabilities'
+export type EndpointCapabilities = Partial<import('./capabilities').ModelCapabilities>
 
 /** What a host supplies. Every member is an injection point; see the package README. */
 export interface HarnessHost {
@@ -175,11 +164,19 @@ export interface HarnessHost {
   dialectAPI<T>(path?: string, method?: string, body?: unknown, revision?: string, signal?: AbortSignal): Promise<T>
 
   /**
-   * What the host knows about an endpoint and model (new here, agent#9). Unlike
-   * the others this has an answer before the host supplies it: nothing known,
-   * so the defaults apply.
+   * What the host knows about one endpoint and model: its capability record,
+   * or any members of it (agent#9 placed the state by two; agent#4 made it the
+   * whole record). Unlike the others this has an answer before the host
+   * supplies it, nothing known, and the harness completes whatever the host
+   * leaves out from the family's default record (`FAMILY_CAPABILITIES` in
+   * `capabilities.ts`, the Desk's three families as records).
    */
   endpointCapabilities(endpoint: { family: EndpointKind; model: string }): EndpointCapabilities
+  /**
+   * An image as text, for a model whose record says it is not shown images: the
+   * host's render adapter. New with agent#5.
+   */
+  renderImageToText(image: HeldImage, signal: AbortSignal): Promise<string>
 }
 
 /** What an injection point does until the host supplies it. */
@@ -225,6 +222,7 @@ export let answer: HarnessHost['answer'] = () => unsupplied('answer')
 export let readFile: HarnessHost['readFile'] = () => unsupplied('readFile')
 export let dialectAPI: HarnessHost['dialectAPI'] = () => unsupplied('dialectAPI')
 export let endpointCapabilities: HarnessHost['endpointCapabilities'] = () => ({})
+export let renderImageToText: HarnessHost['renderImageToText'] = () => unsupplied('renderImageToText')
 
 /**
  * Supply the host's injection points. Members left out keep what they had, so
@@ -253,4 +251,5 @@ export function configureHarness(host: Partial<HarnessHost>): void {
   if (host.readFile) readFile = host.readFile
   if (host.dialectAPI) dialectAPI = host.dialectAPI
   if (host.endpointCapabilities) endpointCapabilities = host.endpointCapabilities
+  if (host.renderImageToText) renderImageToText = host.renderImageToText
 }

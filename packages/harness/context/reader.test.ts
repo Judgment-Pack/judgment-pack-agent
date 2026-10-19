@@ -134,8 +134,10 @@ describe('the ledger’s reader, read_window', () => {
       const window = await read(context, args)
       windows += 1
       expect(window).toMatchObject({ type: 'read', id: entry.id, unit: 'line', total: lines.length })
-      // A window that continues a line part way through carries no separator before it.
-      rebuilt += (windows > 1 && window.column === undefined ? '\n' : '') + window.text
+      // A window that continues a line part way through carries no separator before it. Each
+      // line shown starts with its number and a tab (agent#5), which the rebuild takes off.
+      expect(window.text.split('\n')[0]).toMatch(new RegExp(`^${window.offset + 1}\t`))
+      rebuilt += (windows > 1 && window.column === undefined ? '\n' : '') + window.text.split('\n').map((line) => line.replace(/^\d+\t/, '')).join('\n')
       if (window.more === null) break
       expect(window.more).toMatch(/^line:\d+(\+\d+)?$/)
       args = { id: entry.id, cursor: window.more }
@@ -150,9 +152,9 @@ describe('the ledger’s reader, read_window', () => {
     const context = new SessionContext(session())
     const entry = await context.ledger.retain({ id: 'lines', kind: 'request', label: 'Lines', value: 'zero\none\ntwo\nthree\nfour\nfive' })
     expect(await read(context, { id: entry.id, offset: 2, limit: 2 })).toEqual({
-      type: 'read', id: entry.id, unit: 'line', offset: 2, count: 2, total: 6, text: 'two\nthree', more: 'line:4'
+      type: 'read', id: entry.id, unit: 'line', offset: 2, count: 2, total: 6, text: '3\ttwo\n4\tthree', more: 'line:4'
     })
-    expect(await read(context, { id: entry.id, cursor: 'line:4' })).toMatchObject({ offset: 4, count: 2, text: 'four\nfive', more: null })
+    expect(await read(context, { id: entry.id, cursor: 'line:4' })).toMatchObject({ offset: 4, count: 2, text: '5\tfour\n6\tfive', more: null })
   })
 
   it('reads a paged document by page, pages separated by a form feed', async () => {
@@ -161,7 +163,7 @@ describe('the ledger’s reader, read_window', () => {
     const entry = await context.ledger.retain({ id: 'document', kind: 'artifact', label: 'An attachment', value: { pages } })
     expect(await read(context, { id: entry.id, unit: 'page', limit: 1 })).toMatchObject({ offset: 0, count: 1, total: 3, text: 'Page one.', more: 'page:1' })
     expect(await read(context, { id: entry.id, cursor: 'page:1' })).toMatchObject({ count: 2, text: 'Page two.\nSecond line.\fPage three.', more: null })
-    expect(await read(context, { id: entry.id, offset: 1, limit: 2 })).toMatchObject({ unit: 'line', text: 'Page two.\nSecond line.' })
+    expect(await read(context, { id: entry.id, offset: 1, limit: 2 })).toMatchObject({ unit: 'line', text: '2\tPage two.\n3\tSecond line.' })
   })
 
   it('refuses what it cannot read, saying how to read it', async () => {

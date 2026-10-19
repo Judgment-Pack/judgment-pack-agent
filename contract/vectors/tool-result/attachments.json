@@ -1,0 +1,46 @@
+{
+  "description": "Documents a host hands a run to retain (ContextInput.documents), which search scopes as attachments (agent#5): a text, read by line; a processed document, by page or line; and an image, read whole. The Desk hands its research runs documents in this shape today (web/src/research/useResearchRun.ts); the image is this harness's.",
+  "schema": "tool-result.json#/$defs/attachment",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "web/src/assistant/context/ledger.ts (ContextDocument)",
+      "web/src/research/useResearchRun.ts (context.documents)",
+      "packages/harness/context/session.ts (SessionContext.initialize), in this repository"
+    ]
+  },
+  "items": [
+    {
+      "id": "policy",
+      "kind": "artifact",
+      "label": "The expense policy",
+      "value": "Expense policy\nA claim of 50 USD or less is approved.\nA claim over 50 USD needs a receipt."
+    },
+    {
+      "id": "receipt-text",
+      "kind": "artifact",
+      "label": "A processed receipt",
+      "value": {
+        "pages": [
+          "Receipt",
+          "Hotel: 180 USD",
+          "Paid by card"
+        ]
+      }
+    },
+    {
+      "id": "receipt-scan",
+      "kind": "artifact",
+      "label": "A scanned receipt",
+      "value": {
+        "kind": "image",
+        "mediaType": "image/png",
+        "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+      }
+    }
+  ]
+}

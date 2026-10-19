@@ -656,10 +656,12 @@ async function runLeg(
     allowed?: readonly string[]
     /** One tool set in place of the runtime's five, for a schema probe. */
     tools?: McpTool[]
-    /** What the host says about this endpoint (agent#9). Defaults to nothing known. */
+    /** What the host says about this endpoint (agent#9): any members of its capability record (agent#4). Defaults to nothing known. */
     capabilities?: EndpointCapabilities
     /** The endpoint refuses a turn order a strict chat template refuses (`strictAlternation`). */
     strict?: boolean
+    /** How the scripted endpoint takes tool calls: natively, or only in text. */
+    toolCalls?: 'native' | 'text'
   } = {}
 ): Promise<Run> {
   const model = scriptedModel({
@@ -667,7 +669,8 @@ async function runLeg(
     answerAs: leg.answerAs,
     thinking: how.mode ?? 'off',
     refuted: how.refuted === true,
-    signatures: how.signatures ?? 'thought'
+    signatures: how.signatures ?? 'thought',
+    toolCalls: how.toolCalls ?? 'native'
   })
   vi.stubGlobal('fetch', how.strict === true ? strictAlternation(leg.api, model.fetch) : model.fetch)
   configureHarness({ endpointCapabilities: () => how.capabilities ?? {} })
@@ -1225,6 +1228,64 @@ describe.each(MODEL_ENGINES)('engine %s', (engineId) => {
         'T8'
       ])
       expect(requests.map((request) => request.results)).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
+    })
+  })
+})
+
+/**
+ * The scenario through the text path (agent#4): an endpoint whose capability
+ * record says it takes no native tool calls. The scripted endpoint refuses any
+ * request that carries tools, answers each call as one fenced JSON block, and
+ * counts a step's result from the text the harness sends it back in. The run
+ * must be the same run: the same calls, the same gate, the same events, the
+ * same proposal.
+ */
+describe.each(MODEL_ENGINES)('engine %s · text tool calls', (engineId) => {
+  describe.each(LEGS)('leg $api answered as $answerAs', (leg) => {
+    // The host says this endpoint takes no native tool calls; the rest of its record is the family's.
+    const text = { capabilities: { nativeToolCalls: false }, toolCalls: 'text' as const }
+
+    it('runs the whole scenario through the text path, behind the same gate, and ends with the proposal', async () => {
+      const { events, seen, requests, violations } = await runLeg(fromRegistry(engineId), leg, text)
+      expect(violations).toEqual([])
+      expect(events.filter((event) => event.type === 'error')).toEqual([])
+      // Every step ran, in order, and every result went back in text: the script never repeated a step.
+      expect(requests.map((request) => request.step)).toEqual(['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8'])
+      expect(requests.map((request) => request.results)).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
+      // No request carried a tool: the endpoint would have refused it.
+      for (const request of requests) {
+        expect(request.toolNames).toEqual([])
+        expect(request.bodyMembers).not.toContain('tools')
+      }
+      // The calls the model made in text are the scenario's, and the runtime saw the five it may.
+      expect(toolCalls(events).map((event) => event.name)).toEqual([
+        'get_schema', 'list_examples', 'get_example', 'validate', 'validate', 'experimental_evaluate', 'write_file'
+      ])
+      expect(seen.map((call) => call.name)).toEqual(['get_schema', 'list_examples', 'get_example', 'validate', 'validate', 'experimental_evaluate'])
+      expect(seen.filter((call) => call.refusal !== '')).toEqual([])
+      // K3a: the gate rewrote the evaluate the model wrote in text.
+      expect(seen.find((call) => call.name === 'experimental_evaluate')!.args.rehearsal).toBe(true)
+      expect(guardrails(events).filter((event) => event.action === 'rewrote').map((event) => event.tool)).toEqual(['experimental_evaluate'])
+      // K3b: write_file, named in text and never offered, was refused by the gate and never reached the runtime.
+      expect(guardrails(events).filter((event) => event.action === 'refused').map((event) => event.tool)).toEqual(['write_file'])
+      const refused = events.find((event): event is Extract<AssistantEvent, { type: 'tool_result' }> => event.type === 'tool_result' && event.name === 'write_file')!
+      expect(refused.isError).toBe(true)
+      expect(refused.text).toContain('never calls a tool it was not offered')
+      // K3c: the proposal, whole.
+      expect(proposals(events)).toHaveLength(1)
+      expect(proposals(events)[0]!.document).toEqual(DRAFT_V2)
+      expect(proposals(events)[0]!.unknowns).toEqual(scenario.unknowns)
+      // The same event stream the contract's scenario vector states.
+      expect(events.map((event) => event.type)).toEqual(scenarioVector.items.map((item) => item.type))
+    })
+
+    it('runs it on an endpoint that also keeps a strict turn order: each result is the user turn after the call', async () => {
+      const { events, requests } = await runLeg(fromRegistry(engineId), leg, {
+        capabilities: { nativeToolCalls: false, strictAlternation: true }, toolCalls: 'text', strict: true
+      })
+      expect(events.filter((event) => event.type === 'error')).toEqual([])
+      expect(requests.map((request) => request.step)).toEqual(['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8'])
+      expect(proposals(events)[0]!.document).toEqual(DRAFT_V2)
     })
   })
 })

@@ -1,0 +1,94 @@
+{
+  "description": "Two searches (agent#5) over a run that retains an attachment (a processed receipt, by pages) and a policy: a regular expression over every item, held to three matches, with the cursor that goes on from the fourth; a case-insensitive search of the attachments alone; and, once a receipt sent as a GIF is retained too, a search of every item, which names the GIF in notShown with the line that says why it cannot be shown (written by hand). Rendered from the code the tests run (packages/harness/context/search.test.ts), with a fixed ledger scope.",
+  "schema": "tool-result.json#/$defs/searchResult",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "packages/harness/context/search.ts (search, SearchResult), in this repository",
+      "packages/harness/context/pattern.ts (compilePattern, firstMatch), in this repository"
+    ]
+  },
+  "items": [
+    {
+      "type": "search",
+      "pattern": "\\b\\d+ USD\\b",
+      "ignoreCase": false,
+      "scope": "all",
+      "matches": [
+        {
+          "id": "7b3e1c52-0d6f-4a8e-9c21-5f4d2a6b8e90:receipt-scan:4fbff349ea607e08",
+          "label": "A scanned receipt",
+          "line": 2,
+          "offset": 1,
+          "column": 7,
+          "page": 2,
+          "text": "1\tReceipt\n2\tHotel: 180 USD\n3\tPaid by card"
+        },
+        {
+          "id": "7b3e1c52-0d6f-4a8e-9c21-5f4d2a6b8e90:policy:a2ca86ce509e4095",
+          "label": "The policy",
+          "line": 2,
+          "offset": 1,
+          "column": 11,
+          "text": "1\tExpense policy\n2\tA claim of 50 USD or less is approved.\n3\tA claim over 50 USD needs a receipt.\n4\tTravel is reimbursed at cost."
+        },
+        {
+          "id": "7b3e1c52-0d6f-4a8e-9c21-5f4d2a6b8e90:policy:a2ca86ce509e4095",
+          "label": "The policy",
+          "line": 3,
+          "offset": 2,
+          "column": 13,
+          "text": "1\tExpense policy\n2\tA claim of 50 USD or less is approved.\n3\tA claim over 50 USD needs a receipt.\n4\tTravel is reimbursed at cost.\n5\tMeals are capped at 30 USD a day."
+        }
+      ],
+      "more": "1:4:d029acfb"
+    },
+    {
+      "type": "search",
+      "pattern": "usd",
+      "ignoreCase": true,
+      "scope": "attachments",
+      "matches": [
+        {
+          "id": "7b3e1c52-0d6f-4a8e-9c21-5f4d2a6b8e90:receipt-scan:4fbff349ea607e08",
+          "label": "A scanned receipt",
+          "line": 2,
+          "offset": 1,
+          "column": 11,
+          "page": 2,
+          "text": "1\tReceipt\n2\tHotel: 180 USD\n3\tPaid by card"
+        }
+      ],
+      "more": null
+    },
+    {
+      "type": "search",
+      "pattern": "Hotel",
+      "ignoreCase": false,
+      "scope": "all",
+      "matches": [
+        {
+          "id": "7b3e1c52-0d6f-4a8e-9c21-5f4d2a6b8e90:receipt-scan:4fbff349ea607e08",
+          "label": "A scanned receipt",
+          "line": 2,
+          "offset": 1,
+          "column": 0,
+          "page": 2,
+          "text": "1\tReceipt\n2\tHotel: 180 USD\n3\tPaid by card"
+        }
+      ],
+      "more": null,
+      "notShown": [
+        {
+          "id": "7b3e1c52-0d6f-4a8e-9c21-5f4d2a6b8e90:receipt-gif:2abc694da1ff73a5",
+          "label": "A receipt sent as a GIF",
+          "text": "[image 1 (image/gif): not shown, because an image must be image/png, image/jpeg, image/webp]"
+        }
+      ]
+    }
+  ]
+}

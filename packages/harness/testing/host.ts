@@ -13,6 +13,7 @@
  * A host's real values come from the host; see the package README.
  */
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
+import { decodedBytes } from '../images'
 import type { HarnessHost, Language } from '../host'
 
 /** BCP 47 language identifiers are preferences, never protocol/schema values. */
@@ -106,6 +107,8 @@ export function testHost(): HarnessHost {
     answer: () => Promise.reject(new Error('no host request in this test')),
     readFile: () => Promise.reject(new Error('no host file in this test')),
     dialectAPI: () => Promise.reject(new Error('no host preparation in this test')),
-    endpointCapabilities: () => ({})
+    endpointCapabilities: () => ({}),
+    // A render adapter that says what it was given, so a test can find the rendering.
+    renderImageToText: async (image) => `TEST RENDERING of a ${image.mediaType} image, ${decodedBytes(image.bytes)} bytes`
   }
 }

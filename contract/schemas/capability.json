@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/capability.json",
+  "title": "Capability record",
+  "description": "What one endpoint and model can do, and the whole of what the vercel adapter reads where it decides (ModelCapabilities in packages/harness/capabilities.ts, readCapabilities; agent#4, with agent#9's two members that place the state). The family stays the wire (which provider speaks the request, where a signature rides, where a cache breakpoint goes); the record says what the endpoint behind it does. The run's record is the family's default (FAMILY_CAPABILITIES, the vectors under vectors/capability/), then the host's answer for the endpoint and model ($defs/endpointCapabilities, configureHarness's endpointCapabilities, the Desk's probe result member by member), then the session's own (session.model.capabilities), read whole and closed. A record whose reasoning kind the session's wire does not speak is refused before any request: openai-effort or none on openai-compatible, anthropic-thinking or none on anthropic, gemini-thinking or none on gemini. Closed: readCapabilities refuses a member it does not name. Rules JSON Schema does not state: outputTokens is at most half of contextWindowTokens.",
+  "type": "object",
+  "required": [
+    "nativeToolCalls",
+    "parallelToolCalls",
+    "vision",
+    "reasoning",
+    "streamingQuirks",
+    "toolSchemas"
+  ],
+  "properties": {
+    "contextWindowTokens": {
+      "description": "The model's window in tokens. With outputTokens, replaces the budget table's window and output reserve for the run (contextPolicy; budget.json); an assistant profile's own override for the model (budget.json#/$defs/configuration) stays the last word. Absent: the table's.",
+      "type": "integer",
+      "minimum": 4096,
+      "maximum": 2000000
+    },
+    "outputTokens": {
+      "description": "The output reserve in tokens, sent as each request's maximum. At most half the window.",
+      "type": "integer",
+      "minimum": 1024
+    },
+    "nativeToolCalls": {
+      "description": "The endpoint takes the wire's own tool calls. False: no tool is sent; the tools are described at the end of the system text (name, description, the schema the model is shown), and the model calls one per answer as one fenced JSON block shaped {\"tool\": name, \"arguments\": {…}} (tool-call.json#/$defs/textToolCall), read with the proposal fence's closed reader (extractToolCall), run through the same dispatch and gate as a native call (a name the phase did not offer is refused, never looked up) and answered in the next user message, headed TOOL RESULT from <name> or TOOL ERROR from <name> (tool-result.json#/$defs/textToolResultMessage).",
+      "type": "boolean"
+    },
+    "parallelToolCalls": {
+      "description": "The endpoint takes several calls in one turn. False: a request that offers tools asks for one call per turn where the wire has a member for it (parallel_tool_calls false on openai-compatible; tool_choice.disable_parallel_tool_use on anthropic; gemini has none).",
+      "type": "boolean"
+    },
+    "vision": {
+      "description": "The model is shown images. True: an image part in a tool result reaches it as an image, beside its result (tool-result.json#/$defs/imagePart). False: the host's text rendering of it (renderImageToText) takes its place in the result. An endpoint marked strictAlternation off the anthropic wire that takes native tool calls is shown the rendering either way: a native call's image is a user turn after its result there. On the text path (nativeToolCalls false) the image rides inside the result's own user message (tool-result.json#/$defs/textToolResultMessage), so the turn order holds and a vision model is shown it: vision && (!nativeToolCalls || strictAlternation !== true || family === anthropic).",
+      "type": "boolean"
+    },
+    "reasoning": {
+      "$ref": "#/$defs/reasoning"
+    },
+    "streamingQuirks": {
+      "$ref": "#/$defs/streamingQuirks"
+    },
+    "toolSchemas": {
+      "description": "What the endpoint takes for a tool's parameters: json-schema, the served schema as served; gemini-subset, the served schema less the closed removal list of geminiSchema.ts, on any wire (a Gemini model behind an OpenAI-compatible proxy included). A 400 naming a keyword the desk sent is reported by name, never stripped, where the record says gemini-subset.",
+      "enum": [
+        "json-schema",
+        "gemini-subset"
+      ]
+    },
+    "statePlacement": {
+      "description": "Where the execution state goes after the first request, which always carries it as a second text part of the person's own message (agent#9; budget.json#/$defs/stateLocation): trailing-user, one user message after the history, or system-tail, the end of the system text after the cache breakpoint on its head. Absent: system-tail for anthropic with a thinking tier on, trailing-user otherwise.",
+      "enum": [
+        "trailing-user",
+        "system-tail"
+      ]
+    },
+    "strictAlternation": {
+      "description": "The endpoint refuses two user turns in a row and a user text after a tool result (agent#9): it gets system-tail whatever statePlacement says.",
+      "type": "boolean"
+    }
+  },
+  "dependentRequired": {
+    "contextWindowTokens": [
+      "outputTokens"
+    ],
+    "outputTokens": [
+      "contextWindowTokens"
+    ]
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "reasoning": {
+      "description": "How the endpoint is asked to reason. kind picks the dialect the tier is spelled in (thinking.ts, dialectFor): anthropic-thinking (adaptive, then the token budget), gemini-thinking (the budget, then the level), openai-effort (reasoning_effort), none (no parameter: a tier other than off is unavailable from the start, said once). ignored: the endpoint takes the parameter and does nothing with it, so none is sent at any tier and a tier other than off is unavailable from the start, said once. Closed.",
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "anthropic-thinking",
+            "gemini-thinking",
+            "openai-effort",
+            "none"
+          ]
+        },
+        "ignored": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "streamingQuirks": {
+      "description": "How the endpoint's answer arrives. reasoningField: on the openai-compatible wire, the member reasoning streams in and is carried back in; the other member is not read as reasoning (an empty reasoning_content beside the real reasoning no longer hides it). Null: not pinned, read as the SDK reads it (reasoning_content, else reasoning) and carried back as reasoning_content. wholeJsonAnswer: the endpoint answers whole whatever it is asked, so it is asked for a whole answer (stream false and no stream_options; the :generateContent method on gemini) and the answer is re-framed into the stream the adapter reads. Closed.",
+      "type": "object",
+      "required": [
+        "reasoningField",
+        "wholeJsonAnswer"
+      ],
+      "properties": {
+        "reasoningField": {
+          "enum": [
+            "reasoning",
+            "reasoning_content",
+            null
+          ]
+        },
+        "wholeJsonAnswer": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "endpointCapabilities": {
+      "description": "What a host answers for one endpoint and model (configureHarness's endpointCapabilities, EndpointCapabilities in packages/harness/host.ts), and what a session may carry as session.model.capabilities: any members of the record, each as the record states it. The harness completes the rest from the family's default record. An endpoint the host knows nothing about answers {}. Closed, as the record is.",
+      "type": "object",
+      "properties": {
+        "contextWindowTokens": {
+          "$ref": "#/properties/contextWindowTokens"
+        },
+        "outputTokens": {
+          "$ref": "#/properties/outputTokens"
+        },
+        "nativeToolCalls": {
+          "$ref": "#/properties/nativeToolCalls"
+        },
+        "parallelToolCalls": {
+          "$ref": "#/properties/parallelToolCalls"
+        },
+        "vision": {
+          "$ref": "#/properties/vision"
+        },
+        "reasoning": {
+          "$ref": "#/properties/reasoning"
+        },
+        "streamingQuirks": {
+          "$ref": "#/properties/streamingQuirks"
+        },
+        "toolSchemas": {
+          "$ref": "#/properties/toolSchemas"
+        },
+        "statePlacement": {
+          "$ref": "#/properties/statePlacement"
+        },
+        "strictAlternation": {
+          "$ref": "#/properties/strictAlternation"
+        }
+      },
+      "dependentRequired": {
+        "contextWindowTokens": [
+          "outputTokens"
+        ],
+        "outputTokens": [
+          "contextWindowTokens"
+        ]
+      },
+      "additionalProperties": false
+    }
+  }
+}

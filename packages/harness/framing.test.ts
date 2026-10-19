@@ -31,6 +31,8 @@ import { REFUTATION_MARKER } from './refutation'
 import { PROPOSE_PACK_SCHEMA, PROPOSE_PACK_TOOL } from './engines/contract'
 import { toolInputFailure } from './failures'
 import { READ_TOOL } from './context/reader'
+import { SEARCH_TOOL } from './context/search'
+import { bindModelCall } from './session'
 import {
   codexTurn,
   ofType,
@@ -201,6 +203,52 @@ describe('what the model is shown, on vercel', () => {
     expect(critic).toBeDefined()
     expect(systemText(critic!)).toContain(DATA_RULE.trim())
   })
+})
+
+describe('search and read_window, natively and in text', () => {
+  const documents = [{ id: 'policy', kind: 'artifact' as const, label: 'The policy', value: 'Expense policy\nA claim over 50 USD needs a receipt.' }]
+  const context = { currentRequest: { message: 'Check the expense pack.', input: 'The expense pack.' }, documents }
+  const fenced = (tool: string, args: unknown) => '```json\n' + JSON.stringify({ tool, arguments: args }) + '\n```'
+  /** The text of each message that carries a text call's result back, without its header line. */
+  const textResults = (request: EndpointRequest, tool: string) => (request.body.messages ?? [])
+    .filter((message) => message.role === 'user')
+    .map((message) => typeof message.content === 'string' ? message.content : (message.content as { type: string; text?: string }[])[0]?.text ?? '')
+    .filter((text) => text.startsWith(`TOOL RESULT from ${tool} (`))
+    .map((text) => text.slice(text.indexOf('\n') + 1))
+
+  for (const path of ['native', 'text'] as const) {
+    it(`frames both answers as data on the ${path} path, with the run’s one marker`, async () => {
+      let id = ''
+      const { requests, events } = await vercelTurn({
+        session: {
+          context,
+          ...(path === 'text'
+            ? { model: { family: 'openai-compatible' as const, model: 'scripted-model', call: (suffix, request) => bindModelCall('openai-compatible')(suffix, request), capabilities: { nativeToolCalls: false } } }
+            : {})
+        },
+        answer: (request) => {
+          const call = (tool: string, args: unknown) => streamed(sseTurn(path === 'native' ? { tool: { name: tool, args } } : { text: fenced(tool, args) }))
+          if (request.number === 1) return call(SEARCH_TOOL, { pattern: 'USD', scope: 'attachments' })
+          if (request.number === 2) {
+            const shown = path === 'native' ? toolTexts(request)[0]! : textResults(request, SEARCH_TOOL)[0]!
+            id = (JSON.parse(expectFramed(shown, SEARCH_TOOL).data) as { structuredContent: { matches: { id: string }[] } }).structuredContent.matches[0]!.id
+            return call(READ_TOOL, { id, offset: 1, limit: 1 })
+          }
+          return streamed(sseTurn({ text: 'The policy asks for a receipt over 50 USD.' }))
+        }
+      })
+      expect(ofType(events, 'error')).toEqual([])
+      expect(id).toMatch(/:policy:[0-9a-f]{16}$/)
+      const [searched, read] = path === 'native' ? toolTexts(requests[2]!) : [textResults(requests[2]!, SEARCH_TOOL)[0]!, textResults(requests[2]!, READ_TOOL)[0]!]
+      const one = expectFramed(searched!, SEARCH_TOOL)
+      const two = expectFramed(read!, READ_TOOL)
+      expect(JSON.parse(one.data).structuredContent).toMatchObject({ type: 'search', matches: [{ id, line: 2 }] })
+      expect(JSON.parse(two.data).structuredContent).toMatchObject({ type: 'read', id, text: '2\tA claim over 50 USD needs a receipt.' })
+      expect(two.marker).toBe(one.marker)
+      // The events carry the answers unframed.
+      expect(ofType(events, 'tool_result').map((event) => event.text.startsWith(OPENING))).toEqual([false, false])
+    })
+  }
 })
 
 describe('what the agent is shown, on codex', () => {

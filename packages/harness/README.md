@@ -22,13 +22,14 @@ Beyond that, one type is exported so declarations can be emitted (`Entry` in `co
 and tests that exercise a Desk feature stay in the Desk (see Tests). `scripts/parity.sh` at the
 repository root prints every difference from the Desk's files and names its reason, including the
 changes made here since the extraction, each by its issue (agent#1, the read window and the reader;
-agent#9, the stable prefix and the state's placement).
+agent#9, the stable prefix and the state's placement; agent#4, the capability record and the text
+tool path; agent#5, search, numbered reads and images).
 
 ## Entry points
 
 | Import | What it is |
 | --- | --- |
-| `@judgment-pack/harness/contract` | The engine slot's types and events (`engine.ts`), what every adapter shares (`engines/contract.ts`), the registry (`engines/index.ts`) and the host's side (`host.ts`). |
+| `@judgment-pack/harness/contract` | The engine slot's types and events (`engine.ts`), what every adapter shares (`engines/contract.ts`), the registry (`engines/index.ts`), the host's side (`host.ts`), the capability record (`capabilities.ts`) and the image part (`images.ts`). |
 | `@judgment-pack/harness/vercel` | The Vercel AI SDK adapter, `engines/vercel/index.ts`. |
 | `@judgment-pack/harness/codex` | The Codex adapter, `engines/codex/index.ts`. |
 | `@judgment-pack/harness/certification` | The scripted model and runtime server, and the recorded scenario and runtime the suite runs on. |
@@ -78,7 +79,8 @@ nothing known, so a host that knows nothing about its endpoints may leave it out
 | `deskFetch(input, init)`, `answer(response)` | An authenticated request to the host, and its answer read | `files/client` | `memory/client.ts` |
 | `readFile(path, signal)` | A saved file's current revision | `files/client` | `planning/tools.ts` |
 | `dialectAPI(path, …)` | A request to the host's input-preparation API | `dialects/client` | `planning/tools.ts` |
-| `endpointCapabilities({ family, model })` | What the host knows about an endpoint: `statePlacement`, `strictAlternation` (see What changes between requests). Answers `{}`, nothing known, until supplied | none (new, agent#9) | `engines/vercel/loop.ts` |
+| `endpointCapabilities({ family, model })` | What the host knows about an endpoint and model: any members of its capability record (see The capability record), its probe result. Answers `{}`, nothing known, until supplied | none (new, agent#9, agent#4: the Desk decides by its three families) | `capabilities.ts`, read once per run by `context/session.ts` |
+| `renderImageToText(image, signal)` | An image as text, for a model whose record says no vision: the host's render adapter | none (new, agent#5) | `images.ts`, from `engines/vercel/loop.ts` and `engines/codex/index.ts` |
 
 The failure catalogue and the context budget table are the package's own copies of the Desk's
 Go-side files (`internal/aifailure/catalog.json`, `internal/aicontext/policy.json`), byte for byte,
@@ -96,7 +98,7 @@ configureHarness({
   sessionBearer, sessionEnded, whenSessionEnds, forgetSession, refusalCode, discardBody,
   NoSession, NO_SESSION_MESSAGE,
   chassisUrl, deskHeaders, deskSocketURL, aiHeaders, socketURL, socketProtocols, DeskWebSocketTransport,
-  deskFetch, answer, readFile, dialectAPI, endpointCapabilities
+  deskFetch, answer, readFile, dialectAPI, endpointCapabilities, renderImageToText
 })
 ```
 
@@ -119,7 +121,61 @@ The ledger offers its own reader, `read_window` (`context/reader.ts`), over ever
 by line, or by page for an item whose `pages` are strings, with `offset`, `limit` and a `more` cursor
 in each result. The reference envelope of a result over the limit names it (`readWith`). A host's readers keep the same argument and result shape (`ReadArguments`, `ReadResult`;
 the contract's `tool-result.json`), and a host that retains an attached document in the ledger as
-`{ pages: [...] }` gives the model a reader over it at no prompt cost until a part is read.
+`{ pages: [...] }` gives the model a reader over it at no prompt cost until a part is read. A read
+by line numbers its lines, each `<number><tab><line>` counted from 1 (line n is at offset n − 1), and
+shows two hundred lines where the model names no limit (agent#5).
+
+Beside it the ledger offers `search` (`context/search.ts`, agent#5): a regular expression over one
+retained item, every item, or the attachments the host retained for the run (`context.documents`),
+line by line; each match with its item's id and label, its line, offset and column, the page of a
+paged item, and the line with two either side, numbered as `read_window` numbers them; as many as fit
+in one result, at most `limit`, with a `more` cursor. The pattern is the subset RE2 accepts
+(backreferences, lookaround, Unicode property classes and inline flags refused; at most 256
+characters), compiled to a small program and run as a Pike VM (`context/pattern.ts`): every position
+of a line is read once, so no pattern backtracks, and one search's work is bounded, stopping with a
+cursor rather than holding the page. Compiling is bounded too (every node built and every repetition
+counted), and each line is charged the program's size, so millions of short lines stop at the bound
+as one long line does. `$` also matches just before a line's final carriage return, and
+`ignoreCase` folds a letter through every case mapping it reaches, as `RegExp`'s `iu` does. An image
+item is not searched; one that cannot be shown is named in the result's `notShown`.
+
+**Images** (`images.ts`, agent#5). A tool result's `content` may carry an image part, `{ kind:
+'image', mediaType, bytes }` (base64, PNG, JPEG or WebP, at most 16 MiB) or `{ kind: 'image',
+mediaType, reference }` (an image the execution retains, by its attachment or ledger id), and an
+attachment's value may be one; MCP's own image item is read as one too. A model whose capability
+record says `vision` is shown it as an image beside its result; any other is shown the host's
+rendering (`renderImageToText`) in its place. An image is never dropped in silence: one that cannot
+be shown is a line in the result saying why. Its bytes are never part of the text the result limit
+counts, so a result with an image stays within `toolResultBytes`. `read_window` reads an image item
+whole, as the image (a reference followed to the image it names), or answers the line saying why it
+cannot be shown. One request carries at most `imagesPerRequest` images and `imageBytesPerRequest`
+bytes of them (8 and 16 MiB by default; `context/policy.ts`, `IMAGE_DEFAULTS`), the newest; an older
+one is a line saying it is no longer shown. An endpoint that keeps a strict turn order off Anthropic
+is shown the rendering where it takes native tool calls, and the image on the text path, where the
+image rides in the result's own message. The `codex` engine's agent wire carries text, so it always
+gets the rendering.
+
+### The capability record
+
+What one endpoint and model can do (`capabilities.ts`, the contract's `capability.json`; agent#4),
+and the whole of what the `vercel` adapter reads where it decides, in place of the three families:
+the window and output cap (`contextPolicy`), native tool calls, one call per turn, vision, the
+reasoning kind and whether the endpoint ignores it (`thinking.ts`), the reasoning member a stream
+uses and whether the endpoint answers whole (`engines/vercel/relay.ts`), the Gemini schema subset,
+and where the execution state goes. The family stays the wire. A run's record is the family's
+default (`FAMILY_CAPABILITIES`, the Desk's three families as records, which change nothing), then
+the host's `endpointCapabilities` answer member by member, then `session.model.capabilities` where
+the host puts its endpoint's own on the session; read closed, and refused where the reasoning kind
+is not one the wire speaks.
+
+An endpoint without native tool calls is sent none: its tools are described at the end of the
+system text, the model calls one per answer as one fenced JSON block, `{"tool": name, "arguments":
+{…}}`, read by the proposal fence's own closed reader (`extractToolCall` in `engines/contract.ts`),
+and the call runs through the same dispatch and gate as a native one; a name the phase did not offer
+is refused, never looked up. Its result goes back as the next user message, headed `TOOL RESULT from
+<name>` or `TOOL ERROR from <name>`, a reading tool's answer framed as data there as it is natively
+(`framing.ts`). On the request reserved for a final answer a call made in text is refused and never
+run.
 
 ### What changes between requests
 
@@ -132,7 +188,7 @@ the first request it is a second text part of the person's message, on every wir
 goes where the endpoint's placement says: `trailing-user`, one user message after the history (the
 default), or `system-tail`, the end of the system text (for an endpoint marked `strictAlternation`,
 and by default for Anthropic when a thinking tier is on). A host sets both through
-`endpointCapabilities`. On the Anthropic wire the adapter marks cache breakpoints after the system
+`endpointCapabilities`; they are two members of the capability record. On the Anthropic wire the adapter marks cache breakpoints after the system
 head and after the tools. The tier is held for the run, changed only where the endpoint refused it
 or a thinking signature came back truncated. The provider's cache reads and writes are recorded with
 each completion (`cacheReadTokens`, `cacheWriteTokens`). The contract states the header and where it
@@ -158,7 +214,10 @@ scenario otherwise. Each adapter runs the suite's own checks of the scenario and
 checks the Desk runs over every engine of its kind: a model engine (`vercel`) the conformance legs,
 six wire legs plus the thinking and refutation legs, and, added here (agent#9), the strict-alternation
 leg: an endpoint that answers 400 to two user turns in a row or a user text after a tool result,
-which the loop passes with the state in the system tail; an agent engine (`codex`) the recorded
+which the loop passes with the state in the system tail; and (agent#4) the text tool calls legs: the
+whole scenario, on each of the six wire legs, at an endpoint whose record says it takes no native
+tool calls and which refuses any request that carries tools, with the same calls, gate events and
+proposal, and once more where it also keeps a strict turn order; an agent engine (`codex`) the recorded
 scenario behind the real tool gate and the agent-engine checks in `engines/codex/codex.test.ts`.
 
 Tests and certification run on `testing/host.ts`, a host that supplies each injection point the way

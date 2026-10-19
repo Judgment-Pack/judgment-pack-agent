@@ -6,6 +6,12 @@ import defaults from '../contract/policy.json'
  */
 export const TIME_DEFAULTS = Object.freeze({turnMilliseconds:15*60_000,toolCallMilliseconds:120_000})
 /**
+ * How many images, and how many of their bytes decoded, one model request may carry (agent#5): the
+ * newest are shown, and an older one past either bound is left out with a line saying so. Not in
+ * the Desk's table; a table that carries them wins. Sixteen MiB is one image at its own bound.
+ */
+export const IMAGE_DEFAULTS = Object.freeze({imagesPerRequest:8,imageBytesPerRequest:16*1024*1024})
+/**
  * The bounds the harness puts on the Runtime's test tool, experimental_test_cases (agent#7), which the Desk's table
  * does not carry either: how many test calls one turn may make (each re-sends the whole pack, so a test, fix and
  * retest loop is held to a few rounds rather than to the request allowance), and the most bytes the pack text and the
@@ -13,10 +19,10 @@ export const TIME_DEFAULTS = Object.freeze({turnMilliseconds:15*60_000,toolCallM
  */
 export const TEST_DEFAULTS = Object.freeze({testCallsPerTurn:3,testPackBytes:65_536,testMatrixBytes:65_536})
 export type TestBounds = {testCallsPerTurn:number;testPackBytes:number;testMatrixBytes:number}
-export type ContextPolicy = typeof defaults & {turnMilliseconds:number;toolCallMilliseconds:number} & TestBounds
+export type ContextPolicy = typeof defaults & {turnMilliseconds:number;toolCallMilliseconds:number;imagesPerRequest:number;imageBytesPerRequest:number} & TestBounds
 export interface ModelContextBudget {contextWindowTokens:number;outputTokens:number}
 export interface ContextConfiguration {version:1;projectBrief?:string;models?:Record<string,ModelContextBudget>}
-export const CONTEXT_DEFAULTS:Readonly<ContextPolicy> = Object.freeze({...TIME_DEFAULTS,...TEST_DEFAULTS,...defaults})
+export const CONTEXT_DEFAULTS:Readonly<ContextPolicy> = Object.freeze({...TIME_DEFAULTS,...IMAGE_DEFAULTS,...TEST_DEFAULTS,...defaults})
 export function contextConfiguration(value:unknown):ContextConfiguration {
  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid assistant context configuration')
  const c=value as Record<string,unknown>
@@ -28,8 +34,12 @@ export function contextConfiguration(value:unknown):ContextConfiguration {
  }}
  return value as ContextConfiguration
 }
-export function contextPolicy(config:ContextConfiguration|undefined,model:string):ContextPolicy {
- return {...CONTEXT_DEFAULTS,...(config?contextConfiguration(config).models?.[model]:undefined)}
+/** The budget one model runs under: the table's, then the window and output cap of the model's
+ * capability record where it carries them (agent#4), then the assistant profile's own override for
+ * the model, which a person wrote and which therefore stays the last word. */
+export function contextPolicy(config:ContextConfiguration|undefined,model:string,capabilities?:Partial<ModelContextBudget>):ContextPolicy {
+ const record=capabilities?.contextWindowTokens!==undefined&&capabilities.outputTokens!==undefined?{contextWindowTokens:capabilities.contextWindowTokens,outputTokens:capabilities.outputTokens}:undefined
+ return {...CONTEXT_DEFAULTS,...record,...(config?contextConfiguration(config).models?.[model]:undefined)}
 }
 export const utf8Bytes=(text:string)=>new TextEncoder().encode(text).length
 export const inputBytes=(policy:ContextPolicy)=>Math.min(policy.maxInputBytes,Math.max(1024,(policy.contextWindowTokens-policy.outputTokens)*3))

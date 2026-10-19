@@ -679,7 +679,7 @@ describe('the tools this engine offers, and the schemas it writes', () => {
       )
     )
     const tools = seen[0]!.body.tools as { function: { name: string; parameters: unknown } }[]
-    expect(tools.map((tool) => tool.function.name)).toEqual(['list_context', 'read_context', 'read_window', 'validate'])
+    expect(tools.map((tool) => tool.function.name)).toEqual(['list_context', 'read_context', 'read_window', 'search', 'validate'])
     expect(tools.find(t=>t.function.name==='validate')!.function.parameters).toEqual(served)
   })
 
@@ -2087,7 +2087,7 @@ describe('host tools: the desk’s own, executed on the page', () => {
     expect(events[1]).toMatchObject({ type: 'tool_result', name: 'search_sources', isError: false, text: 'src-1: a hit' })
     // The model was offered the host tool beside the runtime's, under the desk's schema.
     const offered = (seen[0]!.body.tools as { function: { name: string } }[]).map((tool) => tool.function.name)
-    expect(offered).toEqual(['search_sources', 'list_context', 'read_context', 'read_window', 'validate', 'experimental_evaluate'])
+    expect(offered).toEqual(['search_sources', 'list_context', 'read_context', 'read_window', 'search', 'validate', 'experimental_evaluate'])
   })
 
   it('reports a host tool that threw as a refused result, and goes on', async () => {
@@ -2170,7 +2170,7 @@ describe('host tools: the desk’s own, executed on the page', () => {
     const { call, seen } = scriptedCall([turn({ text: PROPOSAL_TEXT })])
     await drain(vercel.start(session(call)))
     const offered = (seen[0]!.body.tools as { function: { name: string } }[]).map((tool) => tool.function.name)
-    expect(offered).toEqual(['list_context', 'read_context', 'read_window', 'validate', 'experimental_evaluate'])
+    expect(offered).toEqual(['list_context', 'read_context', 'read_window', 'search', 'validate', 'experimental_evaluate'])
   })
 })
 

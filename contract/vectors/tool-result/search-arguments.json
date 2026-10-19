@@ -1,0 +1,34 @@
+{
+  "description": "Arguments a model gives search (agent#5): a pattern over every item; one item by id, case-insensitive, with a limit; the attachments alone; and a cursor a previous search returned, passed back with the same pattern and scope.",
+  "schema": "tool-result.json#/$defs/searchArguments",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "packages/harness/context/search.ts (searchInputSchema, searchArguments), in this repository"
+    ]
+  },
+  "items": [
+    {
+      "pattern": "\\b\\d+ USD\\b"
+    },
+    {
+      "pattern": "claim (of|over)",
+      "id": "7b3e1c52-0d6f-4a8e-9c21-5f4d2a6b8e90:policy:a2ca86ce509e4095",
+      "ignoreCase": true,
+      "limit": 5
+    },
+    {
+      "pattern": "receipt",
+      "scope": "attachments"
+    },
+    {
+      "pattern": "\\b\\d+ USD\\b",
+      "limit": 3,
+      "cursor": "1:4:d029acfb"
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import { readDelegationRequest } from '../../delegationContract'
 import { readModelQuestion } from '../../questions'
 import { questionFailureResult } from '../../questionFailure'
 import { assistantLanguageInstructions } from '../../host'
+import { separateImages } from '../../images'
 import { DATA_RULE, readingTool } from '../../framing'
 import type { AssistantEvent, AgentAssistantSession, EngineSession, Engine, McpToolResult, ProposalNote } from '../../engine'
 import type { AgentTool, AgentEvent } from '../../agent'
@@ -129,7 +130,9 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
           if (runtimeAnswered) recorder?.saw(route.name, text)
           // Text-only host callback wire, including structured results in a
           // JSON envelope. The visible result keeps its existing Desk shape.
-          const projected = await context.result(route.name,result)
+          // The agent wire carries text only: an image is shown as the host's text rendering of it (agent#5).
+          const shown = await separateImages(result, { vision: false, resolve: (reference) => context.ledger.image(reference), signal: toolSignal })
+          const projected = await context.result(route.name,shown.result)
           const answer = projected.structuredContent===undefined?textOf(projected):JSON.stringify(projected)
           // A reading tool's own answer travels as one data block closed by
           // this run's marker, as the vercel engine shows it (agent#12).

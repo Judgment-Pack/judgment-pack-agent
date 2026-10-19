@@ -78,9 +78,12 @@ export interface McpTool {
   inputSchema?: unknown
 }
 
-/** One `tools/call` answer, in the shape the wire carries it. */
+/**
+ * One `tools/call` answer, in the shape the wire carries it. A content item is
+ * open: beside text parts it may be an image part (`images.ts`).
+ */
 export interface McpToolResult {
-  content?: { type?: string; text?: string }[]
+  content?: { type?: string; text?: string; [member: string]: unknown }[]
   isError?: boolean
   structuredContent?: unknown
 }
@@ -201,8 +204,13 @@ export interface AssistantSession {
   callTool: CallTool
   /** The desk's own tools, executed on the page. Empty where the desk offers none. */
   hostTools: HostTool[]
-  /** A capability and a name. No address, and no credential. */
-  model: { family: EndpointKind; model: string; call: ModelCall }
+  /**
+   * A capability and a name. No address, and no credential. `capabilities`:
+   * members of the endpoint's own capability record where the host has them on
+   * the session (agent#4), over its `endpointCapabilities` answer and the
+   * family's default record.
+   */
+  model: { family: EndpointKind; model: string; call: ModelCall; capabilities?: Partial<import('./capabilities').ModelCapabilities> }
   /**
    * The tier, **normalized by the desk** — the tier the file asked for, the
    * wire members that expresses on this endpoint's family, and the state the

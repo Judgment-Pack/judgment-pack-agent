@@ -1,0 +1,45 @@
+{
+  "description": "Tool calls made in text (agent#4), on an endpoint whose capability record says it takes no native tool calls. Each item is the JSON inside the one fenced block an answer carries, and answers holds, item by item, an answer that makes it. notCalls are answers that make no call, each with the reason the model is told after The call was not made: (tool-result/text-result.json). Written by hand from the schema; engines/vercel/capabilities.test.ts holds extractToolCall to each.",
+  "schema": "tool-call.json#/$defs/textToolCall",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/engines/contract.ts (extractToolCall, textToolInstructions)",
+      "packages/harness/engines/vercel/loop.ts"
+    ]
+  },
+  "answers": [
+    "I will check the draft before proposing it.\n\n```json\n{\"tool\": \"validate\", \"arguments\": {\"pack\": {\"id\": \"expense-reimbursement\"}}}\n```",
+    "```json\n{\"tool\": \"search\", \"arguments\": {\"pattern\": \"\\\\b\\\\d+ USD\\\\b\", \"scope\": \"attachments\"}}\n```"
+  ],
+  "notCalls": [
+    {
+      "answer": "```json\n{\"tool\": \"validate\", \"arguments\": {}}\n```\n\n```json\n{\"tool\": \"get_schema\", \"arguments\": {}}\n```",
+      "problem": "one tool call per answer: this answer made 2. Make one, and wait for its result"
+    },
+    {
+      "answer": "```json\n{\"tool\": \"validate\", \"arguments\": {}, \"also\": 1}\n```",
+      "problem": "a tool call carries tool and arguments and nothing else, not \"also\""
+    }
+  ],
+  "items": [
+    {
+      "tool": "validate",
+      "arguments": {
+        "pack": {
+          "id": "expense-reimbursement"
+        }
+      }
+    },
+    {
+      "tool": "search",
+      "arguments": {
+        "pattern": "\\b\\d+ USD\\b",
+        "scope": "attachments"
+      }
+    }
+  ]
+}

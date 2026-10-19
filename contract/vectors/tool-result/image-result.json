@@ -1,0 +1,64 @@
+{
+  "description": "Tool results that carry images (agent#5): a host tool's answer with a text part and an image by its bytes; one that names an image the execution retains, by the id the host gave its attachment; and read_window's answer for an image item, the line about it and the image. Not the Desk's today: its attachments are text and PDF, and nothing it runs answers with an image.",
+  "schema": "tool-result.json#/$defs/mcpToolResult",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "internal/desk/attachments.go (the 16 MiB bound on an attached original)",
+      "packages/harness/images.ts (ImagePart, readImagePart, separateImages), in this repository",
+      "packages/harness/context/ledger.ts (ContextLedger.readItem), in this repository"
+    ]
+  },
+  "items": [
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "the expense form as it is now"
+        },
+        {
+          "kind": "image",
+          "mediaType": "image/png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+        }
+      ]
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "the receipt in question"
+        },
+        {
+          "kind": "image",
+          "mediaType": "image/png",
+          "reference": "receipt-scan"
+        }
+      ]
+    },
+    {
+      "structuredContent": {
+        "type": "image",
+        "id": "7b3e1c52-0d6f-4a8e-9c21-5f4d2a6b8e90:receipt-scan:c6bce38c7d41b7a4",
+        "label": "A scanned receipt",
+        "mediaType": "image/png",
+        "bytes": 70
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"type\":\"image\",\"id\":\"7b3e1c52-0d6f-4a8e-9c21-5f4d2a6b8e90:receipt-scan:c6bce38c7d41b7a4\",\"label\":\"A scanned receipt\",\"mediaType\":\"image/png\",\"bytes\":70}"
+        },
+        {
+          "kind": "image",
+          "mediaType": "image/png",
+          "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+        }
+      ]
+    }
+  ]
+}
