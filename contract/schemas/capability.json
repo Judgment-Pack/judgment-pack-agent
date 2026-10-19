@@ -59,13 +59,6 @@
     "strictAlternation": {
       "description": "The endpoint refuses two user turns in a row and a user text after a tool result (agent#9): it gets system-tail whatever statePlacement says.",
       "type": "boolean"
-    },
-    "childModel": {
-      "description": "A model the same connection serves for delegated children (agent#13, agent#15): a child whose profile does not ask for the parent's model (delegated-task.json#/$defs/profile, model child) runs on it, its requests carrying this name on the same model capability, and its task record names it (model). Absent, children run on the session's model. The child model's own record is the host's endpointCapabilities answer for it over the family's default; the session's own members describe the parent's model and are not carried over. The agent capability names no model per request, so an agent's children run on the parent's agent.",
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 200,
-      "pattern": "^[^\\u0000-\\u001f]*\\S[^\\u0000-\\u001f]*$"
     }
   },
   "dependentRequired": {
@@ -153,9 +146,6 @@
         },
         "strictAlternation": {
           "$ref": "#/properties/strictAlternation"
-        },
-        "childModel": {
-          "$ref": "#/properties/childModel"
         }
       },
       "dependentRequired": {

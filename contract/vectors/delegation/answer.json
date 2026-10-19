@@ -17,6 +17,7 @@
         {
           "id": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9",
           "title": "Receipts",
+          "objective": "Check the receipts of every trip.",
           "profile": "analyze",
           "state": "complete",
           "result": "Trip 1: receipts match.\nTrip 2: receipts match.\nTrip 3: receipts match.\nTrip 4: receipts match.",
@@ -39,6 +40,7 @@
         {
           "id": "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
           "title": "Mileage rate",
+          "objective": "Find the mileage rate the policy pays and the receipts it asks for.",
           "profile": "research",
           "state": "failed",
           "problem": "The task reached its time limit. No automatic retry was made.",

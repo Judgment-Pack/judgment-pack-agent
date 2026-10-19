@@ -59,7 +59,8 @@ reaches (none passes a `count`).
 **Injection points**, what only a host can do. Each one throws, naming itself, until the host
 supplies it with `configureHarness`. (`NO_SESSION_MESSAGE` is a sentence and cannot throw; it is
 read only to build a `NoSession`, which does. `endpointCapabilities` has an answer of its own,
-nothing known, so a host that knows nothing about its endpoints may leave it out.)
+nothing known, so a host that knows nothing about its endpoints may leave it out; so does
+`modelsFor`, none, every run's subordinate work on its own model.)
 
 | Injection point | What the host supplies | The Desk feature it replaces | Read by |
 | --- | --- | --- | --- |
@@ -83,6 +84,7 @@ nothing known, so a host that knows nothing about its endpoints may leave it out
 | `dialectAPI(path, …)` | A request to the host's input-preparation API | `dialects/client` | `planning/tools.ts` |
 | `endpointCapabilities({ family, model })` | What the host knows about an endpoint and model: any members of its capability record (see The capability record), its probe result. Answers `{}`, nothing known, until supplied | none (new, agent#9, agent#4: the Desk decides by its three families) | `capabilities.ts`, read once per run by `context/session.ts` |
 | `renderImageToText(image, signal)` | An image as text, for a model whose record says no vision: the host's render adapter | none (new, agent#5) | `images.ts`, from `engines/vercel/loop.ts` and `engines/codex/index.ts` |
+| `modelsFor({ connection, engine, family, model })` | The models a run's connection names for its subordinate work: `child`, delegated children's, and `critic`, the critic's; each absent or null for the run's own model. Asked once per run with the run's connection (`context.connection`), engine, family and model. Answers none until supplied | none (new, review of agent#35) | `host.ts`, `runModels`, read by `context/session.ts`, `SessionContext.models`, for `delegation.ts` |
 
 The failure catalogue and the context budget table are the package's own copies of the Desk's
 Go-side files (`internal/aifailure/catalog.json`, `internal/aicontext/policy.json`), byte for byte,
@@ -100,7 +102,7 @@ configureHarness({
   sessionBearer, sessionEnded, whenSessionEnds, forgetSession, refusalCode, discardBody,
   NoSession, NO_SESSION_MESSAGE,
   chassisUrl, deskHeaders, deskSocketURL, aiHeaders, socketURL, socketProtocols, DeskWebSocketTransport,
-  deskFetch, answer, readFile, dialectAPI, endpointCapabilities, renderImageToText
+  deskFetch, answer, readFile, dialectAPI, endpointCapabilities, renderImageToText, modelsFor
 })
 ```
 
@@ -168,8 +170,7 @@ and where the execution state goes. The family stays the wire. A run's record is
 default (`FAMILY_CAPABILITIES`, the Desk's three families as records, which change nothing), then
 the host's `endpointCapabilities` answer member by member, then `session.model.capabilities` where
 the host puts its endpoint's own on the session; read closed, and refused where the reasoning kind
-is not one the wire speaks. One member is not about the endpoint's own model: `childModel`, a cheaper
-model the connection serves for delegated children (see Delegation).
+is not one the wire speaks.
 
 An endpoint without native tool calls is sent none: its tools are described at the end of the
 system text, the model calls one per answer as one fenced JSON block, `{"tool": name, "arguments":
@@ -250,8 +251,9 @@ agent#13, agent#14, agent#15):
   signal), and the children's findings are the call's tool result in the same run. The `codex`
   engine ends its run at the call, since the provider account runs one agent run at a time and the
   children need it; the coordinator runs the batch and starts the response's next run with the
-  call's result alone, the earlier run's reads listed in its index. Up to four batches per response
-  (`MAX_BATCHES`), one at a time.
+  call's result alone, as one data block, the earlier run's reads listed in its index. Up to four
+  batches per response (`MAX_BATCHES`), one at a time; on an agent capability only while a child
+  run and the parent's next run both remain (`MAX_AGENT_RUNS`, five).
 - **Context by reference.** A task names `references`, ledger entry ids or document ids of the
   parent's context, resolved in the parent's chat alone. The child gets a view of the chat
   (`ChatContext.childScope`) showing it those entries and what it reads itself, sharing the chat's
@@ -264,12 +266,14 @@ agent#13, agent#14, agent#15):
   parent's turn. A feature adapter may add a profile through `options.profiles`
   (`[...TASK_PROFILES, its own]`), held by `readProfiles` within `TASK_BUDGET_CEILING` and the
   gate's ceiling. Each task's record carries its `budget` and the `model` it ran on.
-- **A child model.** A host names a cheaper model for children in the capability record,
-  `childModel`, through `endpointCapabilities` or `session.model.capabilities`; a child whose
-  profile asks for the parent's model (`author-test`) stays on it. The host answers
+- **A child model.** A host names a cheaper model for children of a connection with `modelsFor`
+  (see Host injection points), asked once per run with the run's connection (`context.connection`);
+  a child whose profile asks for the parent's model (`author-test`) stays on it. The host answers
   `endpointCapabilities` for the child model as for any other, and its relay must admit it.
 - **Shared limits.** The parent's execution owns the response's model requests once its run starts
-  (`ContextInput.link`), a child's are charged to it, and the last is kept for the parent. Twenty
+  (`ContextInput.link`), a child's are charged to it, and the last is kept for the parent. Children
+  running at once share what is left by grants, so each finishes within its own; a finished child's
+  rest goes to the next. A child's call of a name it was not offered is refused before it counts. Twenty
   host and Runtime tool calls per response, the parent's and its children's together, stated in
   the instructions and in the execution state as `toolCalls`.
 - **Long findings and resume.** Findings past a task's share of the answer are retained whole in the

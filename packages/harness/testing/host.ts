@@ -109,6 +109,7 @@ export function testHost(): HarnessHost {
     dialectAPI: () => Promise.reject(new Error('no host preparation in this test')),
     endpointCapabilities: () => ({}),
     // A render adapter that says what it was given, so a test can find the rendering.
-    renderImageToText: async (image) => `TEST RENDERING of a ${image.mediaType} image, ${decodedBytes(image.bytes)} bytes`
+    renderImageToText: async (image) => `TEST RENDERING of a ${image.mediaType} image, ${decodedBytes(image.bytes)} bytes`,
+    modelsFor: () => ({})
   }
 }

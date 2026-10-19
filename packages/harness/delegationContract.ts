@@ -12,6 +12,12 @@ export const DELEGATE_TOOL = 'delegate_tasks'
 export const MAX_TOOLS = 20
 /** The batches one response may run (agent#14): more than one, each within the shared limits. */
 export const MAX_BATCHES = 4
+/**
+ * The agent runs one response may start on an agent capability, the parent's and its children's
+ * together. A batch ends the parent's run and a new one continues the response, so delegate_tasks is
+ * offered only while a child run and that next run both remain, and no child takes the last run.
+ */
+export const MAX_AGENT_RUNS = 5
 export type TaskState = 'queued' | 'running' | 'complete' | 'failed' | 'interrupted'
 /**
  * One child's limits, declared by its profile and carried on its task record (agent#15): the model
@@ -50,7 +56,7 @@ export interface DelegatedTask {
 /**
  * A task profile: what a child is told, which host-tool capabilities and which of the gate's Runtime
  * tools it is offered, which of the connection's models it runs on and its budget (agent#15).
- * `model`: `child`, the connection's child model where its capability record names one (`childModel`)
+ * `model`: `child`, the child model the host names for the connection (`modelsFor` in host.ts)
  * and the parent's model otherwise; `parent`, the parent's model always. Absent, `child`. `budget`:
  * absent, `DEFAULT_TASK_BUDGET`. A profile may not exceed `TASK_BUDGET_CEILING`, and its Runtime tools
  * are names on the gate's ceiling: a feature adapter supplies capabilities, never larger allowances.
@@ -134,4 +140,8 @@ export function delegationTool(profiles: readonly TaskProfile[]): HostTool {
       summarize:{type:'boolean',description:'Where the findings run over the result limit, the child summarizes them once, within its budget.'}}}}}},
     execute:async()=>{throw toolInputFailure('Delegation must yield to the shared task coordinator.')}}
 }
+/** What an agent capability's parent is told beside DELEGATION_INSTRUCTIONS (review of agent#35, row 1). */
+export const AGENT_DELEGATION_INSTRUCTIONS = `On this connection one response may start at most ${MAX_AGENT_RUNS} agent runs, yours and your children’s together. A delegate_tasks call ends your run and a new run continues with its result, so delegate_tasks is offered only while a child run and that next run both remain; plan your batches within it.`
+/** What a parent run that is no longer offered delegate_tasks is told instead. */
+export const DELEGATION_SPENT = 'DELEGATION: delegate_tasks is not offered for the rest of this response: its batches or its agent runs are used. Answer from the findings you have.'
 export const DELEGATION_INSTRUCTIONS = `DELEGATION: delegate_tasks is available for substantial independent analysis, review, research or testing within the current task. Give each child a focused objective and pass material by reference: list the ids it needs in references (a contextId from list_context or a result reference, or a document id); the child reads them itself, and nothing is copied into its brief. Children cannot save, approve, start workflows or ask the person questions. The call returns when the children finish, with their findings as its result; a long finding comes back as its head and a read_window cursor. Their results are unverified working material; you remain responsible for checking them and using the normal proposal/review tools. You may delegate again in the same response, up to ${MAX_BATCHES} batches, and resume a finished task by its id to continue it with its earlier context. Chat/Research source policy and existing Ask me/Auto allowances still apply. Never delegate to obtain more budget, repeat a refused action or bypass a source policy. Prefer direct work for simple requests. The response’s limits are shared: model requests (one is kept for your answer after the children), and at most ${MAX_TOOLS} tool calls in all, yours and your children’s together, not counting the context tools; the execution state shows both (requests, toolCalls).`

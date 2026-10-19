@@ -122,12 +122,13 @@
       "callId": "0f1e2d3c-4b5a-4968-8776-655443322110",
       "name": "delegate_tasks",
       "isError": false,
-      "text": "{\"tasks\":[{\"id\":\"9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9\",\"title\":\"Receipts\",\"profile\":\"analyze\",\"state\":\"complete\",\"result\":\"Every trip's receipts match.\",\"used\":{\"modelRequests\":1,\"toolCalls\":0},\"budget\":{\"modelRequests\":6,\"toolCalls\":6,\"milliseconds\":120000}}],\"note\":\"Findings are the children’s unverified working material, never approval or verification. A result cut at its head continues with read_window at its more cursor. Resume a complete task by giving its id in resume.\"}",
+      "text": "{\"tasks\":[{\"id\":\"9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9\",\"title\":\"Receipts\",\"objective\":\"Check the receipts of every trip.\",\"profile\":\"analyze\",\"state\":\"complete\",\"result\":\"Every trip's receipts match.\",\"used\":{\"modelRequests\":1,\"toolCalls\":0},\"budget\":{\"modelRequests\":6,\"toolCalls\":6,\"milliseconds\":120000}}],\"note\":\"Findings are the children’s unverified working material, never approval or verification. A result cut at its head continues with read_window at its more cursor. Resume a complete task by giving its id in resume.\"}",
       "structured": {
         "tasks": [
           {
             "id": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9",
             "title": "Receipts",
+            "objective": "Check the receipts of every trip.",
             "profile": "analyze",
             "state": "complete",
             "result": "Every trip's receipts match.",

@@ -13,6 +13,7 @@ import {SEARCH_TOOL} from './search'
 import {capabilitiesFor,type ModelCapabilities} from '../capabilities'
 import {contextPolicy,inputBytes,utf8Bytes,prefix,ContextBudgetError,type ContextConfiguration} from './policy'
 import {INDEX_SHARE,partBytes,type ChatScope,type ChatTurn,type RuntimeIdentity} from './chat'
+import {runModels,type AITarget,type AssistantEngine,type RunIdentity,type RunModels} from '../host'
 export interface CurrentRequest {message:string;input:string}
 /** `currentState`: host-authored text that changes between requests or responses (the chat's
  * draft snapshot, the latest check). An adapter sends it after the history, at the end of every
@@ -31,9 +32,12 @@ export interface CurrentRequest {message:string;input:string}
  * `chat` is a `ChatContext`, or the view of one a delegated child is handed (`ChatContext.childScope`,
  * agent#15). `link` (agent#14): set by the delegation coordinator on a run it starts, so it reaches
  * that run's execution (the parent's request count, which its children's requests are charged to, and
- * a child's own budget); a host leaves it out.
+ * a child's own budget); a host leaves it out. `connection`: the AI connection the run's model or
+ * agent capability is bound to, as the host names it (`AITarget`); the host's `modelsFor` is asked
+ * with it once per run, for the models the connection names for the critic and for delegated
+ * children (review of agent#35, row 5).
  */
-export interface ContextInput {currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatScope;runtime?:RuntimeIdentity;memory?:boolean;objective?:string;link?:ExecutionLink}
+export interface ContextInput {currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatScope;runtime?:RuntimeIdentity;memory?:boolean;objective?:string;link?:ExecutionLink;connection?:AITarget}
 /** How the delegation coordinator reaches a run it starts (agent#14): told the run's context once its execution is initialized, before its first request. */
 export interface ExecutionLink {attach(context:SessionContext):void}
 export interface ContextUsage {inputBytes:number;estimatedInputTokens:number;inputBudgetBytes:number;outputReserveTokens:number;compactions:number;retainedItems:number}
@@ -52,7 +56,20 @@ export class SessionContext {
  private readonly turn?:ChatTurn
  /** A delegated child's objective (agent#11): its request text, sent as the first text part of its first message. */
  private readonly objective?:string
- constructor(session:EngineSession){this.capabilities='model'in session?capabilitiesFor(session.model):undefined;this.policy=contextPolicy(session.context?.configuration,'model'in session?session.model.model:session.agent.model,this.capabilities,session.context?.memory);this.turn=session.context?.chat?.openTurn();this.objective=session.context?.objective;this.ledger=new ContextLedger(this.policy,this.turn);this.execution=new ExecutionController(session,this.ledger);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))}
+ /** Who the run is, as the host's `modelsFor` is asked: its connection, family and model; and the answer, once asked. */
+ private readonly identity:Omit<RunIdentity,'engine'>
+ private named?:{models?:RunModels;error?:unknown}
+ /**
+  * The models the run's connection names for its critic and its delegated children (`modelsFor` in
+  * host.ts, read by `runModels`): asked once per run, the first time an engine or the delegation
+  * coordinator needs one; an answer the host gave that is refused is refused at each read.
+  */
+ models(engine:AssistantEngine):RunModels{
+  this.named??=(()=>{try{return {models:runModels({...this.identity,engine})}}catch(error){return {error}}})()
+  if(this.named.models===undefined)throw this.named.error
+  return this.named.models
+ }
+ constructor(session:EngineSession){this.identity={...(session.context?.connection?{connection:session.context.connection}:{}),...('model'in session?{family:session.model.family}:{}),model:'model'in session?session.model.model:session.agent.model};this.capabilities='model'in session?capabilitiesFor(session.model):undefined;this.policy=contextPolicy(session.context?.configuration,'model'in session?session.model.model:session.agent.model,this.capabilities,session.context?.memory);this.turn=session.context?.chat?.openTurn();this.objective=session.context?.objective;this.ledger=new ContextLedger(this.policy,this.turn);this.execution=new ExecutionController(session,this.ledger);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))}
  /**
   * The index of the results earlier runs in this chat kept (agent#8, `ChatTurn.index`), cut to
   * `room` bytes and to INDEX_SHARE of the prompt's `allowance`. Made only while this run's ledger

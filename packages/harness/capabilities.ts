@@ -108,13 +108,6 @@ export interface ModelCapabilities {
    * result, so it gets `system-tail` whatever `statePlacement` says (agent#9).
    */
   strictAlternation?: boolean
-  /**
-   * A model the same connection serves for delegated children (agent#13, agent#15): a child whose
-   * profile does not ask for the parent's model runs on it, the request carrying its name on the
-   * same model capability. Absent, children run on the session's model. Its own record is the
-   * host's `endpointCapabilities` answer for it over the family's default.
-   */
-  childModel?: string
 }
 
 /**
@@ -168,7 +161,7 @@ export const FAMILY_CAPABILITIES: Readonly<Record<EndpointKind, Readonly<ModelCa
 /** Every member a record may carry, and the whole of them. The contract's `capability.json` properties. */
 export const CAPABILITY_MEMBERS: readonly (keyof ModelCapabilities)[] = [
   'contextWindowTokens', 'outputTokens', 'nativeToolCalls', 'parallelToolCalls', 'vision',
-  'reasoning', 'streamingQuirks', 'toolSchemas', 'statePlacement', 'strictAlternation', 'childModel'
+  'reasoning', 'streamingQuirks', 'toolSchemas', 'statePlacement', 'strictAlternation'
 ]
 
 const object = (value: unknown): value is Record<string, unknown> =>
@@ -214,7 +207,6 @@ export function readCapabilities(value: unknown): ModelCapabilities {
   if (!TOOL_SCHEMAS.includes(value.toolSchemas as ToolSchemas)) refuse(`toolSchemas must be one of ${TOOL_SCHEMAS.join(', ')}`)
   if (value.statePlacement !== undefined && !STATE_PLACEMENTS.includes(value.statePlacement as StatePlacement)) refuse(`statePlacement must be one of ${STATE_PLACEMENTS.join(', ')}`)
   if (value.strictAlternation !== undefined && typeof value.strictAlternation !== 'boolean') refuse('strictAlternation must be true or false')
-  if (value.childModel !== undefined && (typeof value.childModel !== 'string' || !value.childModel.trim() || value.childModel.length > 200 || /[\u0000-\u001f]/.test(value.childModel))) refuse('childModel must be a model name of at most 200 characters')
   return value as unknown as ModelCapabilities
 }
 

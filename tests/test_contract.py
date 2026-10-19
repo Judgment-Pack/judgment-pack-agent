@@ -450,6 +450,19 @@ class VectorTests(unittest.TestCase):
         answered = self.vectors["delegation/answer.json"]["items"][0]["tasks"][0]
         self.assertEqual((answered["result"], answered["more"]), (done["result"], done["more"]))
 
+    def test_the_codex_continuation_carries_the_answer_as_one_data_block(self):
+        # delegated-task.json#/$defs/continuation (review of agent#35, rows 4 and 9): a line, then one
+        # block opened and closed by the same marker, whose data is a batch's answer.
+        text = self.vectors["delegation/continuation.json"]["items"][0]
+        line, opening, rest = text.split("\n", 2)
+        self.assertTrue(line.startswith("DELEGATION RESULT: "))
+        marker = re.match(r"^BEGIN RETRIEVED DATA ([0-9a-f]{32}) from tool \"delegate_tasks\"; ", opening).group(1)
+        closing = f"\nEND RETRIEVED DATA {marker}"
+        self.assertTrue(rest.endswith(closing))
+        data = rest[: -len(closing)]
+        self.assertNotIn(marker, data)
+        self.assertEqual(problems(validator(self.schemas, "delegated-task.json#/$defs/answer"), [json.loads(data)]), [])
+
     def test_the_scenario_is_the_order_the_conformance_session_asserts(self):
         vector = self.vectors["scenario/expense-reimbursement.json"]
         self.assertEqual(

@@ -36,3 +36,27 @@ describe('an injection point the host has not supplied', () => {
     expect(fresh.endpointCapabilities(endpoint)).toEqual({ strictAlternation: true })
   })
 })
+
+describe('the models a run’s connection names (review of agent#35, row 5)', () => {
+  it('answers none until the host says more, and then each connection for itself', async () => {
+    vi.resetModules()
+    const fresh = await import('./host')
+    const run = { connection: { connectionId: 'first' }, engine: 'vercel' as const, family: 'openai-compatible' as const, model: 'a-model' }
+    expect(fresh.runModels(run)).toEqual({ critic: 'a-model', child: 'a-model' })
+    fresh.configureHarness({ modelsFor: (asked) => asked.connection?.connectionId === 'first' ? { critic: 'a-small-model', child: null } : {} })
+    expect(fresh.runModels(run)).toEqual({ critic: 'a-small-model', child: 'a-model' })
+    expect(fresh.runModels({ ...run, connection: { connectionId: 'second' } })).toEqual({ critic: 'a-model', child: 'a-model' })
+  })
+
+  it('refuses an answer that is not an object, and a member that is not a model name', async () => {
+    vi.resetModules()
+    const fresh = await import('./host')
+    const run = { engine: 'codex' as const, model: 'an-agent-model' }
+    for (const child of ['', 'two\nlines', 'm'.repeat(129), 7]) {
+      fresh.configureHarness({ modelsFor: () => ({ child } as unknown as { child: string }) })
+      expect(() => fresh.runModels(run)).toThrow('the host named a child model that is not a model name')
+    }
+    fresh.configureHarness({ modelsFor: () => 'a-model' as unknown as { child: string } })
+    expect(() => fresh.runModels(run)).toThrow('the host answered modelsFor with something other than an object')
+  })
+})
