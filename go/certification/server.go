@@ -215,6 +215,22 @@ type Scenario struct {
 	ScenarioTools []string                   `json:"scenarioTools"`
 	Unknowns      []string                   `json:"unknowns"`
 	Documents     map[string]json.RawMessage `json:"documents"`
+	Expectations  struct {
+		T4 struct {
+			Status         string `json:"status"`
+			DiagnosticCode string `json:"diagnosticCode"`
+		} `json:"T4"`
+		T5 struct {
+			Status string `json:"status"`
+		} `json:"T5"`
+		T6 struct {
+			Rehearsal   bool `json:"rehearsal"`
+			Disposition struct {
+				Kind      string `json:"kind"`
+				OutcomeID string `json:"outcomeId"`
+			} `json:"disposition"`
+		} `json:"T6"`
+	} `json:"expectations"`
 }
 
 // Scenario reads the scenario the server's scripted model plays.

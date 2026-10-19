@@ -1,0 +1,256 @@
+{
+  "description": "The Go certification runner's checks held in step with the TypeScript suite's (agent#53): every check of the describe.each(MODEL_ENGINES) blocks of packages/harness/certification/conformance.test.ts, by its block and its name, mapped to the Go leg's checks that make it (LegResult.Checks, by the names in CheckNames) or to the reason Go does not run it yet. Every check of the engine leg, the scenario leg the Go runner runs, has its Go counterpart. parity_test.go reads the TypeScript file and fails where it has a check this table lacks, where this table names one it does not have, or where a Go check is named that the runner does not make.",
+  "source": "packages/harness/certification/conformance.test.ts",
+  "checks": [
+    {
+      "block": "engine %s",
+      "check": "runs the whole scenario and ends with a proposal",
+      "go": [
+        "run",
+        "scenario"
+      ]
+    },
+    {
+      "block": "engine %s",
+      "check": "agent#11 \u2014 the recall rule finds the request text on every request",
+      "go": [
+        "agent#11"
+      ]
+    },
+    {
+      "block": "engine %s",
+      "check": "K1a \u2014 the engine touches no network global, at load, during or after",
+      "go": [
+        "K1a"
+      ]
+    },
+    {
+      "block": "engine %s",
+      "check": "K1 \u2014 sends no credential, and calls nothing but the relay",
+      "go": [
+        "K1"
+      ]
+    },
+    {
+      "block": "engine %s",
+      "check": "K1b \u2014 the environment\u2019s tracing variables reach nothing: no network global, and nothing but the relay",
+      "go": [
+        "K1b"
+      ]
+    },
+    {
+      "block": "engine %s",
+      "check": "K2 \u2014 offers exactly the five, out of tools/list",
+      "go": [
+        "K2"
+      ]
+    },
+    {
+      "block": "engine %s",
+      "check": "K3a \u2014 the evaluate reaches the runtime rewritten, and is reported",
+      "go": [
+        "K3a"
+      ]
+    },
+    {
+      "block": "engine %s",
+      "check": "K3b \u2014 write_file never reaches the runtime, and the model is told",
+      "go": [
+        "K3b"
+      ]
+    },
+    {
+      "block": "engine %s",
+      "check": "K3c \u2014 the proposal is DRAFT_V2, and T8\u2019s unknowns arrive whole",
+      "go": [
+        "K3c"
+      ]
+    },
+    {
+      "block": "engine %s",
+      "check": "emits the event stream the ADR names, in order, ending once",
+      "go": [
+        "sequence"
+      ]
+    },
+    {
+      "block": "engine %s",
+      "check": "sends what the wire format defines, and records the rest for a reviewer",
+      "go": [
+        "wire"
+      ]
+    },
+    {
+      "block": "engine %s",
+      "check": "carries every result back, so the script never repeats a step",
+      "go": [
+        "steps"
+      ]
+    },
+    {
+      "block": "engine %s \u00b7 text tool calls",
+      "check": "runs the whole scenario through the text path, behind the same gate, and ends with the proposal",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (toolCalls), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 text tool calls",
+      "check": "agent#11 \u2014 the recall rule finds the request text on every request, every result a user text",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (toolCalls), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 text tool calls",
+      "check": "runs it on an endpoint that also keeps a strict turn order: each result is the user turn after the call",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (toolCalls), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 strict alternation",
+      "check": "runs the whole scenario on an endpoint that refuses a broken turn order ($api)",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (the strict turn order), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 strict alternation",
+      "check": "agent#11 \u2014 the recall rule finds the request text on every request, the state in the system tail ($api)",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (the strict turn order), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 strict alternation",
+      "check": "is refused there with the state trailing, so the leg is not vacuous ($api)",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (the strict turn order), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "T-a \u2014 every request carries the tier parameter, not only the first",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "agent#11 \u2014 the recall rule finds the request text on every authoring request",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "ultra sends the deeper member, and the same on every request",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "streams the model\u2019s reasoning to the tab, and sends none of it to the runtime",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "T-b \u2014 signatures carried back, verbatim and well formed",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "runs the refutation pass, takes its verdict from the runtime, and shows it",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "renders refuted: true where the runtime refuses the document",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "runs no refutation pass where the session does not ask for one, at any tier (agent#10)",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "refutes a seeded wrong outcome: the rehearsal says evaluated, and the declared case disagrees (agent#10)",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "the no-thinking leg \u2014 degrades once, and the session completes",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "a critic the session asks for runs on a degraded endpoint too: the tier does not decide (agent#10)",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "refuses it at the wire, and the pass reports no check rather than a verdict",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "shows the model exactly what the desk says it shows ($answerAs)",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "has the desk\u2019s statement about what it removes derived from the wire ($answerAs)",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "carries exactly the recorded runtime\u2019s own schema vocabulary",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "says nothing about the removals the README already declares ($answerAs)",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "preserves the runtime vocabulary without false narrowing notices ($answerAs)",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "reports a keyword the removal list does not name, and strips nothing ($answerAs)",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "falls back once to the level spelling, and says nothing about it ($answerAs)",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "carries every thought signature back across a tool turn, byte-equal ($answerAs)",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "replays a signature wherever the wire put it ($signatures, $leg.answerAs)",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "replays two empty signed thought parts exactly as they arrived ($answerAs)",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "reaches \"always thinks\" from empty signed thoughts alone ($answerAs)",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "reports \"always thinks\" from two turns of unasked-for reasoning ($answerAs)",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "reports \"always thinks\" at once where the endpoint refuses to be turned off ($answerAs)",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "falls back once to the token-budget spelling, and says nothing about it",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    },
+    {
+      "block": "engine %s \u00b7 thinking",
+      "check": "never sends a fragment of a signature back, even when one arrives split",
+      "reason": "a leg the Go runner does not run yet: the shared server already takes the endpoint options it needs (thinking, signatures and refuted), and the Eino adapter's pull request (ADR-0004, PR 3) runs the leg in Go"
+    }
+  ]
+}

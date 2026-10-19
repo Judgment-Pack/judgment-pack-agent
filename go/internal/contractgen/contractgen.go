@@ -1,6 +1,6 @@
 // Package contractgen writes the Go types of the wire contract from the JSON schemas in
 // contract/schemas. It is the generator ADR-0004 names: it lives in this module, so the module's
-// own commit pins it, and contract/generate_test.go holds the committed output to what it writes.
+// own commit pins it, and contract/roundtrip_test.go holds the committed output to what it writes.
 //
 // It writes types, not a validator. The schemas stay the validator (tests/test_contract.py holds
 // every vector to its schema); what the types keep is the shape, and they keep it whole:
@@ -14,6 +14,9 @@
 //     on decode by the member every object branch fixes with a distinct const where there is one,
 //     and otherwise by the JSON kind and the first branch that decodes; branches that only add
 //     constraints (required, not, if/then) are not types and are left to the schema;
+//   - a union whose branches the value cannot tell apart, because a member of another object
+//     decides it (keyedUnions: the delegated task's report, decided by its profile's report), also
+//     gets a decode keyed by that object, Decode<Union>, which is the one to read it with;
 //   - allOf over a $ref and object branches is one struct with the members of all of them;
 //   - a type list of one type and "null" is Nullable[T]; a node with no type is json.RawMessage.
 //
@@ -36,6 +39,32 @@ import (
 
 // Generate reads every *.json schema in dir and returns the formatted Go source of package pkg.
 func Generate(dir, pkg string) ([]byte, error) {
+	g, err := load(dir)
+	if err != nil {
+		return nil, err
+	}
+	return g.run(pkg)
+}
+
+// Addresses returns, for every struct and union type Generate writes, the schema node it is
+// written from, as a file and a JSON pointer ("tool-call.json#", "tool-result.json#/$defs/imagePart").
+// It is how a test reads a type's members from the schema itself rather than from the type.
+func Addresses(dir string) (map[string]string, error) {
+	g, err := load(dir)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := g.run("contract"); err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(g.named))
+	for key, name := range g.named {
+		out[name] = key
+	}
+	return out, nil
+}
+
+func load(dir string) (*generator, error) {
 	g := &generator{schemas: map[string]*schemaFile{}, named: map[string]string{}, emitted: map[string]bool{}}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -61,7 +90,7 @@ func Generate(dir, pkg string) ([]byte, error) {
 		g.files = append(g.files, entry.Name())
 	}
 	sort.Strings(g.files)
-	return g.run(pkg)
+	return g, nil
 }
 
 type schemaFile struct {
@@ -680,11 +709,15 @@ func (g *generator) emitUnion(l loc, name string) {
 		}
 	}
 
+	keyed, isKeyed := keyedUnionAt(l)
 	var b strings.Builder
 	b.WriteString(g.describe(l))
 	fmt.Fprintf(&b, "//\n// A union: exactly one member is set.")
 	if discriminator != "" {
 		fmt.Fprintf(&b, " An object is decoded by its %q member.", discriminator)
+	}
+	if isKeyed {
+		fmt.Fprintf(&b, " Its branches cannot be told apart by the value: UnmarshalJSON takes the first that decodes, and Decode%s decodes it by the %s that decides it.", name, keyed.member)
 	}
 	b.WriteString("\n")
 	fmt.Fprintf(&b, "type %s struct {\n", name)
@@ -736,7 +769,91 @@ func (g *generator) emitUnion(l loc, name string) {
 		fmt.Fprintf(&b, "\tif v.%s != nil {\n\t\tset = append(set, v.%s)\n\t}\n", br.goName, br.goName)
 	}
 	fmt.Fprintf(&b, "\tif len(set) != 1 {\n\t\treturn nil, errorf(\"%s: %%d members are set; a union holds exactly one\", len(set))\n\t}\n\treturn json.Marshal(set[0])\n}\n", name)
+	if isKeyed {
+		g.emitKeyedDecode(&b, l, name, keyed, branches)
+	}
 	g.decls[name] = b.String()
+}
+
+// keyedUnion is a union decided by a member of another object, not by its value.
+type keyedUnion struct {
+	union   string // the union's address
+	key     string // the address of the object whose member decides it
+	member  string // that member: a string enum, one value per branch
+	absent  string // the value the member stands for where it is absent
+	pattern string // the $defs name of a value's branch, from the value in lower camel case
+}
+
+// keyedUnions are the contract's unions whose branches only another object tells apart: the
+// delegated task's report (agent#16), whose four closed branches carry the same member names, and
+// whose shape is the one its profile's report member names, analyze where absent.
+var keyedUnions = []keyedUnion{{
+	union:   "delegated-task.json#/$defs/report",
+	key:     "delegated-task.json#/$defs/profile",
+	member:  "report",
+	absent:  "analyze",
+	pattern: "%sReport",
+}}
+
+func keyedUnionAt(l loc) (keyedUnion, bool) {
+	for _, keyed := range keyedUnions {
+		if keyed.union == l.key() {
+			return keyed, true
+		}
+	}
+	return keyedUnion{}, false
+}
+
+// emitKeyedDecode writes Decode<Union>(key, data): the branch the key object's member names.
+func (g *generator) emitKeyedDecode(b *strings.Builder, l loc, name string, keyed keyedUnion, branches []branch) {
+	file, ptr, _ := strings.Cut(keyed.key, "#")
+	keyLoc := loc{file, ptr}
+	keyType := g.typeExpr(keyLoc)
+	member := g.node(g.resolve(loc{file, ptr + "/properties/" + escape(keyed.member)}))
+	values, _ := member["enum"].([]any)
+	required := false
+	if list, ok := g.node(keyLoc)["required"].([]any); ok {
+		for _, item := range list {
+			required = required || item == keyed.member
+		}
+	}
+	field := pascal(keyed.member)
+	fmt.Fprintf(b, "\n// Decode%s decodes a %s in the shape a %s's %s member names (%q where it is absent): the\n", name, name, keyType, keyed.member, keyed.absent)
+	fmt.Fprintf(b, "// branches carry the same member names, so the value cannot say which it is (%s).\n", keyed.union)
+	fmt.Fprintf(b, "func Decode%s(key %s, data []byte) (%s, error) {\n", name, keyType, name)
+	if required {
+		fmt.Fprintf(b, "\tkind := key.%s\n", field)
+	} else {
+		fmt.Fprintf(b, "\tkind := %q\n\tif key.%s != nil {\n\t\tkind = *key.%s\n\t}\n", keyed.absent, field, field)
+	}
+	fmt.Fprintf(b, "\tvar v %s\n\tswitch kind {\n", name)
+	matched := map[int]bool{}
+	absentNamed := false
+	for _, raw := range values {
+		value, _ := raw.(string)
+		absentNamed = absentNamed || value == keyed.absent
+		lower := pascal(value)
+		lower = strings.ToLower(lower[:1]) + lower[1:]
+		want := "/$defs/" + fmt.Sprintf(keyed.pattern, lower)
+		found := -1
+		for i, br := range branches {
+			if target := g.resolve(br.l); target.file == l.file && target.ptr == want {
+				found = i
+			}
+		}
+		if found < 0 || matched[found] {
+			g.fail("%s: %s %q names no branch of its own (%s)", keyed.union, keyed.member, value, want)
+			continue
+		}
+		matched[found] = true
+		br := branches[found]
+		fmt.Fprintf(b, "\tcase %q:\n\t\tv.%s = new(%s)\n\t\tif err := json.Unmarshal(data, v.%s); err != nil {\n\t\t\treturn %s{}, errorf(\"%s as %%s: %%w\", kind, err)\n\t\t}\n\t\treturn v, nil\n",
+			value, br.goName, br.expr, br.goName, name, name)
+	}
+	if len(matched) != len(branches) || !absentNamed {
+		g.fail("%s: the %s values and the branches do not match one to one", keyed.union, keyed.member)
+	}
+	fmt.Fprintf(b, "\t}\n\treturn %s{}, errorf(\"%s: %s %%q names none of its shapes\", kind)\n}\n", name, name, keyed.member)
 }
 
 // keyOrder records, for every object in a JSON document, its keys in document order.

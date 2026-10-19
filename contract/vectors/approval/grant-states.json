@@ -1,0 +1,353 @@
+{
+  "description": "A chat's approval state as the host holds it (agent#53), and what it admits: no grant; a ready grant for a pack update; the same grant used, stale and revoked; and a ready grant for a Dialect publication of one named target. checks holds, for one item (state, its index) at one time (now), a commit request and the resource as the host resolves it then: the mode the host shows (auto only where a grant is ready and not past expiresAt), whether the commit is admitted, the grant's state after (used where admitted, consumed before the commit runs and never replayed; expired at or past expiresAt; stale where the request's or the resource's revision is not the grant's) and the refusal's words where it is not. A commit is admitted only for one of the four actions, by the grant's own id, for its action, path, name and target, on its revision, before it expires. No run mints a grant: the person's decision does, and no approval crosses the engine slot. Written by hand from the Desk server's transaction; the harness carries no approval reader (the host's), so go/gate is held to it, and the schema.",
+  "schema": "approval.json",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "internal/desk/assistant_approval.go (assistantApprovalTransaction)",
+      "web/src/assistant/approvals/client.ts (ActionApproval, ActionGrant)"
+    ]
+  },
+  "items": [
+    {
+      "mode": "manual"
+    },
+    {
+      "mode": "auto",
+      "grant": {
+        "id": "g1",
+        "action": "pack-update",
+        "chatId": "chat-1",
+        "path": "packs/expense.json",
+        "revision": "r1",
+        "name": "Expense reimbursement",
+        "state": "ready",
+        "expiresAt": "2026-10-19T12:15:00Z"
+      }
+    },
+    {
+      "mode": "manual",
+      "grant": {
+        "id": "g1",
+        "action": "pack-update",
+        "chatId": "chat-1",
+        "path": "packs/expense.json",
+        "revision": "r1",
+        "name": "Expense reimbursement",
+        "state": "used",
+        "expiresAt": "2026-10-19T12:15:00Z"
+      }
+    },
+    {
+      "mode": "manual",
+      "grant": {
+        "id": "g1",
+        "action": "pack-update",
+        "chatId": "chat-1",
+        "path": "packs/expense.json",
+        "revision": "r1",
+        "name": "Expense reimbursement",
+        "state": "stale",
+        "expiresAt": "2026-10-19T12:15:00Z"
+      }
+    },
+    {
+      "mode": "manual",
+      "grant": {
+        "id": "g1",
+        "action": "pack-update",
+        "chatId": "chat-1",
+        "path": "packs/expense.json",
+        "revision": "r1",
+        "name": "Expense reimbursement",
+        "state": "revoked",
+        "expiresAt": "2026-10-19T12:15:00Z"
+      }
+    },
+    {
+      "mode": "auto",
+      "grant": {
+        "target": "dialect:expense-rates",
+        "id": "g2",
+        "action": "dialect-publish",
+        "chatId": "chat-1",
+        "path": "dialects/expense-rates.json",
+        "revision": "r1",
+        "name": "Expense rates",
+        "state": "ready",
+        "expiresAt": "2026-10-19T12:15:00Z"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "what": "a ready grant admits its own commit once, and is used",
+      "state": 1,
+      "now": "2026-10-19T12:10:00Z",
+      "request": {
+        "action": "pack-update",
+        "id": "g1",
+        "revision": "r1"
+      },
+      "resource": {
+        "path": "packs/expense.json",
+        "name": "Expense reimbursement",
+        "revision": "r1"
+      },
+      "mode": "auto",
+      "admitted": true,
+      "after": "used"
+    },
+    {
+      "what": "at its expiry the grant has expired",
+      "state": 1,
+      "now": "2026-10-19T12:15:00Z",
+      "request": {
+        "action": "pack-update",
+        "id": "g1",
+        "revision": "r1"
+      },
+      "resource": {
+        "path": "packs/expense.json",
+        "name": "Expense reimbursement",
+        "revision": "r1"
+      },
+      "mode": "manual",
+      "admitted": false,
+      "after": "expired",
+      "refusal": "Review and allow this action before saving automatically."
+    },
+    {
+      "what": "the resource changed since the grant",
+      "state": 1,
+      "now": "2026-10-19T12:10:00Z",
+      "request": {
+        "action": "pack-update",
+        "id": "g1",
+        "revision": "r1"
+      },
+      "resource": {
+        "path": "packs/expense.json",
+        "name": "Expense reimbursement",
+        "revision": "r2"
+      },
+      "mode": "auto",
+      "admitted": false,
+      "after": "stale",
+      "refusal": "The resource or its checks changed. Review a new allowance."
+    },
+    {
+      "what": "the request names another revision",
+      "state": 1,
+      "now": "2026-10-19T12:10:00Z",
+      "request": {
+        "action": "pack-update",
+        "id": "g1",
+        "revision": "r2"
+      },
+      "resource": {
+        "path": "packs/expense.json",
+        "name": "Expense reimbursement",
+        "revision": "r1"
+      },
+      "mode": "auto",
+      "admitted": false,
+      "after": "stale",
+      "refusal": "The resource or its checks changed. Review a new allowance."
+    },
+    {
+      "what": "another grant's id",
+      "state": 1,
+      "now": "2026-10-19T12:10:00Z",
+      "request": {
+        "action": "pack-update",
+        "id": "g9",
+        "revision": "r1"
+      },
+      "resource": {
+        "path": "packs/expense.json",
+        "name": "Expense reimbursement",
+        "revision": "r1"
+      },
+      "mode": "auto",
+      "admitted": false,
+      "after": "ready",
+      "refusal": "Review and allow this action before saving automatically."
+    },
+    {
+      "what": "another of the four actions than the grant's",
+      "state": 1,
+      "now": "2026-10-19T12:10:00Z",
+      "request": {
+        "action": "policy-update",
+        "id": "g1",
+        "revision": "r1"
+      },
+      "resource": {
+        "path": "packs/expense.json",
+        "name": "Expense reimbursement",
+        "revision": "r1"
+      },
+      "mode": "auto",
+      "admitted": false,
+      "after": "ready",
+      "refusal": "Review and allow this action before saving automatically."
+    },
+    {
+      "what": "an action outside the four",
+      "state": 1,
+      "now": "2026-10-19T12:10:00Z",
+      "request": {
+        "action": "write_file",
+        "id": "g1",
+        "revision": "r1"
+      },
+      "resource": {
+        "path": "packs/expense.json",
+        "name": "Expense reimbursement",
+        "revision": "r1"
+      },
+      "mode": "auto",
+      "admitted": false,
+      "after": "ready",
+      "refusal": "This action requires explicit review."
+    },
+    {
+      "what": "another path",
+      "state": 1,
+      "now": "2026-10-19T12:10:00Z",
+      "request": {
+        "action": "pack-update",
+        "id": "g1",
+        "revision": "r1"
+      },
+      "resource": {
+        "path": "packs/other.json",
+        "name": "Expense reimbursement",
+        "revision": "r1"
+      },
+      "mode": "auto",
+      "admitted": false,
+      "after": "ready",
+      "refusal": "Review and allow this action before saving automatically."
+    },
+    {
+      "what": "no grant",
+      "state": 0,
+      "now": "2026-10-19T12:10:00Z",
+      "request": {
+        "action": "pack-update",
+        "id": "g1",
+        "revision": "r1"
+      },
+      "resource": {
+        "path": "packs/expense.json",
+        "name": "Expense reimbursement",
+        "revision": "r1"
+      },
+      "mode": "manual",
+      "admitted": false,
+      "after": "",
+      "refusal": "Review and allow this action before saving automatically."
+    },
+    {
+      "what": "a used grant is never replayed",
+      "state": 2,
+      "now": "2026-10-19T12:10:00Z",
+      "request": {
+        "action": "pack-update",
+        "id": "g1",
+        "revision": "r1"
+      },
+      "resource": {
+        "path": "packs/expense.json",
+        "name": "Expense reimbursement",
+        "revision": "r1"
+      },
+      "mode": "manual",
+      "admitted": false,
+      "after": "used",
+      "refusal": "Review and allow this action before saving automatically."
+    },
+    {
+      "what": "a stale grant",
+      "state": 3,
+      "now": "2026-10-19T12:10:00Z",
+      "request": {
+        "action": "pack-update",
+        "id": "g1",
+        "revision": "r1"
+      },
+      "resource": {
+        "path": "packs/expense.json",
+        "name": "Expense reimbursement",
+        "revision": "r1"
+      },
+      "mode": "manual",
+      "admitted": false,
+      "after": "stale",
+      "refusal": "Review and allow this action before saving automatically."
+    },
+    {
+      "what": "a revoked grant",
+      "state": 4,
+      "now": "2026-10-19T12:10:00Z",
+      "request": {
+        "action": "pack-update",
+        "id": "g1",
+        "revision": "r1"
+      },
+      "resource": {
+        "path": "packs/expense.json",
+        "name": "Expense reimbursement",
+        "revision": "r1"
+      },
+      "mode": "manual",
+      "admitted": false,
+      "after": "revoked",
+      "refusal": "Review and allow this action before saving automatically."
+    },
+    {
+      "what": "a grant for a named target admits that target",
+      "state": 5,
+      "now": "2026-10-19T12:10:00Z",
+      "request": {
+        "action": "dialect-publish",
+        "id": "g2",
+        "revision": "r1",
+        "target": "dialect:expense-rates"
+      },
+      "resource": {
+        "path": "dialects/expense-rates.json",
+        "name": "Expense rates",
+        "revision": "r1"
+      },
+      "mode": "auto",
+      "admitted": true,
+      "after": "used"
+    },
+    {
+      "what": "and no other",
+      "state": 5,
+      "now": "2026-10-19T12:10:00Z",
+      "request": {
+        "action": "dialect-publish",
+        "id": "g2",
+        "revision": "r1"
+      },
+      "resource": {
+        "path": "dialects/expense-rates.json",
+        "name": "Expense rates",
+        "revision": "r1"
+      },
+      "mode": "auto",
+      "admitted": false,
+      "after": "ready",
+      "refusal": "Review and allow this action before saving automatically."
+    }
+  ]
+}

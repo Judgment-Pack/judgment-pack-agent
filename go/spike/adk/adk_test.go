@@ -1,7 +1,7 @@
 // The ADK for Go spike (ADR-0004): Google's Agent Development Kit for Go, one llmagent under a
 // runner with an in-memory session service, run on the certification's scenario leg against the
 // shared scripted server, with the model as the host's relay capability (a model.LLM on the
-// OpenAI-compatible wire) and every tool call put through the stand-in gate. Not shipped; what it
+// OpenAI-compatible wire) and every tool call put through the gate the run carries (go/gate). Not shipped; what it
 // measured is in the ADR.
 package adk_test
 
@@ -28,8 +28,8 @@ import (
 	"google.golang.org/genai"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/certification"
-	"github.com/Judgment-Pack/judgment-pack-agent/go/certification/standin"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/spike/internal/openai"
 )
 
@@ -163,9 +163,8 @@ func sameJSON(a, b []byte) bool {
 }
 
 type boundary struct {
-	run  *certification.Run
-	gate *standin.Gate
-	m    *measured
+	run *certification.Run
+	m   *measured
 }
 
 func (b *boundary) dispatch(ctx context.Context, name string, args map[string]any) (map[string]any, error) {
@@ -173,17 +172,25 @@ func (b *boundary) dispatch(ctx context.Context, name string, args map[string]an
 	if err != nil {
 		return nil, err
 	}
-	b.run.Emit(standin.ToolCall(name, encoded))
-	result, err := b.gate.Call(ctx, name, encoded)
-	for _, host := range b.run.HostTools {
-		if host.Name == name {
-			result, err = standin.Result{Text: name + " has nothing to read in this run", IsError: true}, nil
+	b.run.Emit(certification.ToolCall(name, encoded))
+	var result gate.Result
+	host := false
+	for _, offered := range b.run.HostTools {
+		host = host || offered.Name == name
+	}
+	if host {
+		if refused := b.run.Gate.AdmitHost(name); refused != nil {
+			result = *refused
+		} else {
+			result = gate.Result{Text: name + " has nothing to read in this run", IsError: true}
 		}
+	} else {
+		result, err = b.run.Gate.CallTool(ctx, name, encoded)
 	}
 	if err != nil {
 		return nil, err
 	}
-	b.run.Emit(standin.ToolResult(name, result))
+	b.run.Emit(certification.ToolResult(name, result))
 	return map[string]any{"result": result.Text}, nil
 }
 
@@ -207,13 +214,9 @@ func (b *boundary) unknown(ctx tool.Context, called tool.Tool, args map[string]a
 
 func adkAdapter(stream bool, m *measured) certification.Adapter {
 	return certification.AdapterFunc(func(ctx context.Context, run *certification.Run) error {
-		served, err := standin.ListTools(ctx, run.Runtime)
-		if err != nil {
-			return err
-		}
+		served := run.Tools
 		edge := &boundary{run: run, m: m}
 		schemas := map[string]json.RawMessage{}
-		var offered []string
 		var tools []tool.Tool
 		for _, host := range run.HostTools {
 			declared, err := edge.tool(host.Name, host.Description, host.InputSchema)
@@ -233,10 +236,8 @@ func adkAdapter(stream bool, m *measured) certification.Adapter {
 				return fmt.Errorf("runtime tool %s: %w", runtimeTool.Name, err)
 			}
 			schemas[runtimeTool.Name] = runtimeTool.InputSchema
-			offered = append(offered, runtimeTool.Name)
 			tools = append(tools, declared)
 		}
-		edge.gate = &standin.Gate{Runtime: run.Runtime, Offered: offered, Emit: run.Emit}
 		loop, err := llmagent.New(llmagent.Config{
 			Name:                 "judgment_pack",
 			Model:                &relayLLM{call: run.Model, stream: stream, m: m, served: schemas},
@@ -268,11 +269,11 @@ func adkAdapter(stream bool, m *measured) certification.Adapter {
 				}
 			}
 		}
-		run.Emit(standin.Message(final))
-		if proposal := standin.Proposal(final); proposal != nil {
+		run.Emit(certification.Message(final))
+		if proposal := certification.Proposal(final); proposal != nil {
 			run.Emit(contract.RunEvent{Proposal: proposal})
 		}
-		run.Emit(standin.End())
+		run.Emit(certification.End())
 		return nil
 	})
 }

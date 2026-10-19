@@ -14,18 +14,23 @@ import (
 	"sync"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
 )
 
 // Run is what the runner hands an adapter for one leg, the Go form of the TypeScript session:
 // capabilities, never an address or a credential.
 //
-// Runtime is the runtime's transport before any gate. The gate is the host's (ADR-0001); until
-// the Go gate exists (ADR-0004), an adapter under test puts this transport behind the gate it is
-// given by its own test, and the leg measures at the runtime what got through.
+// Gate carries the gated call, never the runtime's transport (ADR-0004, as amended): the runner,
+// as the host, puts the session's runtime behind the gate (go/gate) and runs the handshake
+// through it, and an adapter calls a Runtime tool with Gate.CallTool, holds a host tool to
+// Gate.AdmitHost and moves the run through its phases with Gate.Enter. The gate writes its
+// guardrail events to Emit while the call is in flight. Tools are the session's Runtime tools as
+// tools/list served them through the gate, those on the allow-list.
 type Run struct {
 	Wire      string
 	Model     ModelCall
-	Runtime   RuntimeCall
+	Gate      *gate.Gate
+	Tools     []contract.ToolOfferRuntimeTool
 	HostTools []contract.ToolOfferHostTool
 	Prompt    string
 	Emit      func(contract.RunEvent)
@@ -52,6 +57,8 @@ type LegResult struct {
 	offer        contract.ToolOffer
 	sequence     []string
 	reached      []string
+	bodies       [][]byte
+	traced       string
 }
 
 // sealed is http.DefaultTransport while a leg runs: an adapter's only reach to a model is the
@@ -118,6 +125,54 @@ func ReadVector(name string) (schema string, items []json.RawMessage, err error)
 // ScenarioLeg runs the recorded scenario against an adapter on one endpoint: the leg the
 // TypeScript certification runs as `engine <id>` (certification/conformance.test.ts).
 func ScenarioLeg(ctx context.Context, server *Server, endpoint Endpoint, adapter Adapter) (*LegResult, error) {
+	return scenarioLeg(ctx, server, endpoint, adapter, "")
+}
+
+// TracingKey is the key the traced leg puts in the environment's tracing variables.
+const TracingKey = "lsv2-a-key-this-leg-was-given"
+
+// TracingEnvironment is what the traced leg sets (K1b): LangSmith's and LangChain's tracing
+// variables, a key and an endpoint, as a host's environment may carry them.
+var TracingEnvironment = map[string]string{
+	"LANGSMITH_TRACING":    "true",
+	"LANGSMITH_TRACING_V2": "true",
+	"LANGCHAIN_TRACING_V2": "true",
+	"LANGCHAIN_TRACING":    "true",
+	"LANGSMITH_API_KEY":    TracingKey,
+	"LANGCHAIN_API_KEY":    TracingKey,
+	"LANGSMITH_ENDPOINT":   "http://127.0.0.1:9",
+	"LANGCHAIN_ENDPOINT":   "http://127.0.0.1:9",
+}
+
+// ScenarioLegTraced runs the same leg with TracingEnvironment set in the process's environment
+// for its length (the TypeScript leg's K1b): the adapter must reach nothing but the relay and
+// send the key nowhere. It changes the process's environment, so it is not run beside another leg.
+func ScenarioLegTraced(ctx context.Context, server *Server, endpoint Endpoint, adapter Adapter) (*LegResult, error) {
+	type held struct {
+		value string
+		set   bool
+	}
+	before := map[string]held{}
+	for name, value := range TracingEnvironment {
+		previous, set := os.LookupEnv(name)
+		before[name] = held{previous, set}
+		if err := os.Setenv(name, value); err != nil {
+			return nil, err
+		}
+	}
+	defer func() {
+		for name, was := range before {
+			if was.set {
+				_ = os.Setenv(name, was.value)
+			} else {
+				_ = os.Unsetenv(name)
+			}
+		}
+	}()
+	return scenarioLeg(ctx, server, endpoint, adapter, TracingKey)
+}
+
+func scenarioLeg(ctx context.Context, server *Server, endpoint Endpoint, adapter Adapter, traced string) (*LegResult, error) {
 	scenario, err := server.Scenario(ctx)
 	if err != nil {
 		return nil, err
@@ -126,7 +181,7 @@ func ScenarioLeg(ctx context.Context, server *Server, endpoint Endpoint, adapter
 	if err != nil {
 		return nil, err
 	}
-	result := &LegResult{Endpoint: endpoint, scenario: scenario}
+	result := &LegResult{Endpoint: endpoint, scenario: scenario, traced: traced}
 	if err := json.Unmarshal(offers[0], &result.offer); err != nil {
 		return nil, fmt.Errorf("the scenario's offer vector: %w", err)
 	}
@@ -148,21 +203,31 @@ func ScenarioLeg(ctx context.Context, server *Server, endpoint Endpoint, adapter
 		return nil, err
 	}
 	var mu sync.Mutex
+	emit := func(event contract.RunEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		result.Events = append(result.Events, event)
+	}
+	// The host's side: the scenario's session grants the five, and the runtime is reached only
+	// through the gate, the handshake included.
+	gated := gate.New(gate.Options{Runtime: gate.Call(session.RuntimeCall()), Granted: scenario.ScenarioTools, Emit: emit})
+	offer, err := gated.Open(ctx, result.offer.HostTools)
+	if err != nil {
+		return nil, fmt.Errorf("the handshake through the gate: %w", err)
+	}
 	run := &Run{
 		Wire:      endpoint.API,
 		Model:     session.ModelCall(),
-		Runtime:   session.RuntimeCall(),
-		HostTools: result.offer.HostTools,
+		Gate:      gated,
+		Tools:     offer.Tools,
+		HostTools: offer.HostTools,
 		Prompt:    scenario.Policy,
-		Emit: func(event contract.RunEvent) {
-			mu.Lock()
-			defer mu.Unlock()
-			result.Events = append(result.Events, event)
-		},
+		Emit:      emit,
 	}
 	seal := sealNetwork()
 	result.RunError = adapter.Run(ctx, run)
 	result.reached = seal.lift()
+	result.bodies = session.Bodies()
 	result.Observations, err = session.Observations(ctx)
 	if err != nil {
 		return nil, err
@@ -190,9 +255,32 @@ var firstSuffix = map[string]string{
 	"gemini":            "/v1beta/models/scripted-model:streamGenerateContent",
 }
 
-// Checks holds a leg to the checks of the TypeScript `engine <id>` leg that read the events and
-// the server's records: K1a (as http.DefaultTransport), K1, K2, K3a, K3b, K3c, and the event
-// sequence the contract's scenario vector states. It returns the checks that did not hold, each by its name.
+// WireMembers are the members each wire format defines, which every adapter must send
+// (WIRE_MEMBERS in certification/conformance.test.ts): what the format itself defines, not the
+// union of what the adapters send.
+var WireMembers = map[string][]string{
+	"openai-compatible": {"messages", "model", "stream", "tools"},
+	"anthropic":         {"max_tokens", "messages", "model", "stream", "system", "tools"},
+	"gemini":            {"contents", "generationConfig", "systemInstruction", "tools"},
+}
+
+// The names the scenario's calls are made by and the names the runtime is reached by, in order.
+var (
+	scenarioCalls   = []string{"get_schema", "list_examples", "get_example", "validate", "validate", "experimental_evaluate", "write_file"}
+	scenarioReached = []string{"get_schema", "list_examples", "get_example", "validate", "validate", "experimental_evaluate"}
+	scenarioSteps   = []string{"T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8"}
+)
+
+// CheckNames are the checks a leg reports by name, in the order Checks makes them; parity.json
+// maps each TypeScript check of the `engine <id>` leg to these.
+var CheckNames = []string{"run", "scenario", "agent#11", "K1a", "K1", "K1b", "K2", "K3a", "K3b", "K3c", "sequence", "wire", "steps"}
+
+// Checks holds a leg to the checks of the TypeScript `engine <id>` leg that read the events, the
+// request bodies and the server's records (certification/parity.json says which is which): the
+// scenario's calls, reaches and answers; the recall rule (agent#11); K1a (as
+// http.DefaultTransport), K1, K1b (on the traced leg), K2, K3a, K3b, K3c; the event sequence the
+// contract's scenario vector states, with no error event and one end; the wire's body members;
+// and the eight steps with no repeat. It returns the checks that did not hold, each by its name.
 func (r *LegResult) Checks() []Finding {
 	var findings []Finding
 	fail := func(check, format string, args ...any) {
@@ -201,11 +289,99 @@ func (r *LegResult) Checks() []Finding {
 	if r.RunError != nil {
 		fail("run", "the adapter's run failed: %v", r.RunError)
 	}
+	requests := r.Observations.Requests
+	seen := r.Observations.Seen
+	types := make([]string, len(r.Events))
+	for i, event := range r.Events {
+		types[i] = EventType(event)
+	}
+	var proposals []*contract.RunEventProposal
+	var errorEvents []string
+	var results []*contract.ToolResult
+	var calls []string
+	for _, event := range r.Events {
+		switch {
+		case event.Proposal != nil:
+			proposals = append(proposals, event.Proposal)
+		case event.Error != nil:
+			errorEvents = append(errorEvents, event.Error.Message)
+		case event.ToolResult != nil:
+			results = append(results, event.ToolResult)
+		case event.ToolCall != nil:
+			calls = append(calls, event.ToolCall.Name)
+		}
+	}
+
+	// The whole scenario: every step's call in order, the two it provokes kept from the runtime,
+	// and the runtime's own answers back in the loop (T4 invalid with its diagnostic, T5 valid,
+	// T6 a rehearsal with its disposition).
+	if !slices.Equal(calls, scenarioCalls) {
+		fail("scenario", "the calls were %v, not %v", calls, scenarioCalls)
+	}
+	var reachedNames []string
+	for _, call := range seen {
+		reachedNames = append(reachedNames, call.Name)
+		if call.Refusal != "" {
+			fail("scenario", "the runtime refused %s: %s", call.Name, call.Refusal)
+		}
+	}
+	if !slices.Equal(reachedNames, scenarioReached) {
+		fail("scenario", "the runtime was reached by %v, not %v", reachedNames, scenarioReached)
+	}
+	expect := r.scenario.Expectations
+	var validates []map[string]any
+	var evaluated map[string]any
+	for _, result := range results {
+		var answer map[string]any
+		if json.Unmarshal([]byte(result.Text), &answer) != nil {
+			continue
+		}
+		switch result.Name {
+		case "validate":
+			validates = append(validates, answer)
+		case "experimental_evaluate":
+			evaluated = answer
+		}
+	}
+	diagnostic := func(answer map[string]any) any {
+		list, _ := answer["diagnostics"].([]any)
+		if len(list) == 0 {
+			return nil
+		}
+		first, _ := list[0].(map[string]any)
+		return first["code"]
+	}
+	if len(validates) != 2 || validates[0]["status"] != expect.T4.Status || diagnostic(validates[0]) != expect.T4.DiagnosticCode || validates[1]["status"] != expect.T5.Status {
+		fail("scenario", "the two validate results are not T4 %s (%s) then T5 %s", expect.T4.Status, expect.T4.DiagnosticCode, expect.T5.Status)
+	}
+	disposition, _ := evaluated["disposition"].(map[string]any)
+	if evaluated == nil || evaluated["rehearsal"] != expect.T6.Rehearsal || disposition["kind"] != expect.T6.Disposition.Kind || disposition["outcomeId"] != expect.T6.Disposition.OutcomeID {
+		fail("scenario", "the evaluate result is not T6's rehearsal with %s %s", expect.T6.Disposition.Kind, expect.T6.Disposition.OutcomeID)
+	}
+
+	// agent#11: the recall rule finds the request text on every request but the critic's.
+	if len(r.bodies) <= 7 {
+		fail("agent#11", "%d request bodies, not more than seven", len(r.bodies))
+	}
+	for i, body := range r.bodies {
+		if strings.Contains(string(body), RefutationMarker) {
+			continue
+		}
+		if found := Recall(r.Endpoint.API, body); found == nil || found.Text != r.scenario.Policy {
+			fail("agent#11", "request %d: the recall rule found %v", i+1, found)
+		}
+	}
+
+	// K1a: nothing reached for the process's default transport; no error event, and a proposal.
 	for _, reach := range r.reached {
 		fail("K1a", "the adapter reached for http.DefaultTransport: %s", reach)
 	}
-	requests := r.Observations.Requests
-	seen := r.Observations.Seen
+	if len(errorEvents) > 0 {
+		fail("K1a", "error events: %v", errorEvents)
+	}
+	if len(proposals) == 0 {
+		fail("K1a", "no proposal")
+	}
 
 	// K1: no credential, and nothing called but the relay.
 	if len(requests) == 0 {
@@ -238,6 +414,9 @@ func (r *LegResult) Checks() []Finding {
 		admitted := []string{}
 		if r.Endpoint.API == "gemini" && request.StreamRequested {
 			admitted = []string{"alt"}
+			if parsed.Query().Get("alt") != "sse" {
+				fail("K1", "request %d asked for its stream as %q", i, parsed.Query().Get("alt"))
+			}
 		}
 		if !reflect.DeepEqual(append([]string{}, keys...), admitted) {
 			fail("K1", "request %d carried the query %v", i, keys)
@@ -246,6 +425,24 @@ func (r *LegResult) Checks() []Finding {
 	if len(requests) > 0 {
 		if parsed, err := url.Parse(requests[0].URL); err != nil || parsed.Path != RelayPrefix+firstSuffix[r.Endpoint.API] {
 			fail("K1", "the first request went to %q", requests[0].URL)
+		}
+	}
+
+	// K1b, on the traced leg: the environment's tracing variables reach nothing. Nothing but the
+	// relay, the key in no body, no error event, one proposal, and the run ends.
+	if r.traced != "" {
+		for i, request := range requests {
+			if !strings.HasPrefix(request.URL, RelayPrefix+"/") {
+				fail("K1b", "request %d went to %q", i, request.URL)
+			}
+		}
+		for i, body := range r.bodies {
+			if strings.Contains(string(body), r.traced) {
+				fail("K1b", "request %d carried the tracing key", i+1)
+			}
+		}
+		if len(r.reached) > 0 || len(errorEvents) > 0 || len(proposals) != 1 || len(types) == 0 || types[len(types)-1] != "end" {
+			fail("K1b", "under the tracing variables: %d reaches, errors %v, %d proposals, last event %v", len(r.reached), errorEvents, len(proposals), types)
 		}
 	}
 
@@ -264,29 +461,28 @@ func (r *LegResult) Checks() []Finding {
 	}
 
 	// K3a: the evaluate reaches the runtime with rehearsal: true, reported between call and result.
-	evaluated := false
+	evaluatedAtRuntime := false
 	for _, call := range seen {
 		if call.Name == "experimental_evaluate" {
-			evaluated = true
+			evaluatedAtRuntime = true
 			if call.Args["rehearsal"] != true {
 				fail("K3a", "experimental_evaluate reached the runtime without rehearsal: true")
 			}
 		}
 	}
-	if !evaluated {
+	if !evaluatedAtRuntime {
 		fail("K3a", "experimental_evaluate never reached the runtime")
 	}
-	types := make([]string, len(r.Events))
-	for i, event := range r.Events {
-		types[i] = EventType(event)
-	}
-	guard := func(check, tool, action string) {
+	guard := func(check, tool, action, detail string) {
 		matched := 0
 		for i, event := range r.Events {
 			if event.Guardrail == nil || event.Guardrail.Tool != tool || event.Guardrail.Action != action {
 				continue
 			}
 			matched++
+			if !strings.Contains(event.Guardrail.Detail, detail) {
+				fail(check, "the %s guardrail for %s says %q", action, tool, event.Guardrail.Detail)
+			}
 			if i == 0 || i+1 >= len(types) || types[i-1] != "tool_call" || types[i+1] != "tool_result" {
 				fail(check, "the %s guardrail for %s is not between its call and its result", action, tool)
 			}
@@ -295,21 +491,18 @@ func (r *LegResult) Checks() []Finding {
 			fail(check, "%d %s guardrails for %s, not one", matched, action, tool)
 		}
 	}
-	guard("K3a", "experimental_evaluate", "rewrote")
+	guard("K3a", "experimental_evaluate", "rewrote", "no rehearsal member")
 
 	// K3b: write_file never reaches the runtime, and the model is told.
 	for _, call := range seen {
 		if call.Name == "write_file" {
 			fail("K3b", "write_file reached the runtime")
 		}
-		if call.Refusal != "" && call.Name != "write_file" {
-			fail("K3b", "the runtime refused %s: %s", call.Name, call.Refusal)
-		}
 	}
-	guard("K3b", "write_file", "refused")
+	guard("K3b", "write_file", "refused", "write_file")
 	told := false
-	for _, event := range r.Events {
-		if event.ToolResult != nil && event.ToolResult.Name == "write_file" && event.ToolResult.IsError {
+	for _, result := range results {
+		if result.Name == "write_file" && result.IsError {
 			told = true
 		}
 	}
@@ -318,12 +511,6 @@ func (r *LegResult) Checks() []Finding {
 	}
 
 	// K3c: one proposal, DRAFT_V2 member for member, and the unknowns whole.
-	var proposals []*contract.RunEventProposal
-	for _, event := range r.Events {
-		if event.Proposal != nil {
-			proposals = append(proposals, event.Proposal)
-		}
-	}
 	if len(proposals) != 1 {
 		fail("K3c", "%d proposals, not one", len(proposals))
 	} else {
@@ -336,9 +523,46 @@ func (r *LegResult) Checks() []Finding {
 		}
 	}
 
-	// The sequence the scenario vector states, one end, no error.
+	// The sequence the scenario vector states, ending once, with no error event, nothing
+	// narrowed and nothing degraded (the tier is off).
 	if !reflect.DeepEqual(types, r.sequence) {
 		fail("sequence", "the events were %v, not %v", types, r.sequence)
+	}
+	ends := 0
+	for i, kind := range types {
+		switch kind {
+		case "end":
+			ends++
+		case "error", "thinking_unavailable":
+			fail("sequence", "a %s event", kind)
+		case "guardrail":
+			if r.Events[i].Guardrail.Action == "narrowed" {
+				fail("sequence", "a narrowed guardrail for %s", r.Events[i].Guardrail.Tool)
+			}
+		}
+	}
+	if ends != 1 {
+		fail("sequence", "%d end events, not one", ends)
+	}
+
+	// The wire's own members, on every request.
+	for i, request := range requests {
+		for _, member := range WireMembers[r.Endpoint.API] {
+			if !slices.Contains(request.BodyMembers, member) {
+				fail("wire", "request %d (%s) sent {%s}, without %s", i, request.Step, strings.Join(request.BodyMembers, ", "), member)
+			}
+		}
+	}
+
+	// Every result carried back, so the script never repeats a step: T1 to T8, results 0 to 7.
+	var steps []string
+	var carried []int
+	for _, request := range requests {
+		steps = append(steps, request.Step)
+		carried = append(carried, request.Results)
+	}
+	if !slices.Equal(steps, scenarioSteps) || !slices.Equal(carried, []int{0, 1, 2, 3, 4, 5, 6, 7}) {
+		fail("steps", "the steps were %v with %v results carried back", steps, carried)
 	}
 	return findings
 }

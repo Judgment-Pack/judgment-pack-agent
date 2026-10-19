@@ -1659,7 +1659,7 @@ func (v DelegatedTaskProfile) MarshalJSON() ([]byte, error) {
 // From delegated-task.json#/$defs/report. A task's report, in its profile's shape: one of the four
 // (agent#16). The record names its profile; profile.report says which shape.
 //
-// A union: exactly one member is set.
+// A union: exactly one member is set. Its branches cannot be told apart by the value: UnmarshalJSON takes the first that decodes, and DecodeDelegatedTaskReport decodes it by the report that decides it.
 type DelegatedTaskReport struct {
 	DelegatedTaskAnalyzeReport    *DelegatedTaskAnalyzeReport
 	DelegatedTaskReviewReport     *DelegatedTaskReviewReport
@@ -1721,6 +1721,43 @@ func (v DelegatedTaskReport) MarshalJSON() ([]byte, error) {
 		return nil, errorf("DelegatedTaskReport: %d members are set; a union holds exactly one", len(set))
 	}
 	return json.Marshal(set[0])
+}
+
+// DecodeDelegatedTaskReport decodes a DelegatedTaskReport in the shape a DelegatedTaskProfile's report member names ("analyze" where it is absent): the
+// branches carry the same member names, so the value cannot say which it is (delegated-task.json#/$defs/report).
+func DecodeDelegatedTaskReport(key DelegatedTaskProfile, data []byte) (DelegatedTaskReport, error) {
+	kind := "analyze"
+	if key.Report != nil {
+		kind = *key.Report
+	}
+	var v DelegatedTaskReport
+	switch kind {
+	case "analyze":
+		v.DelegatedTaskAnalyzeReport = new(DelegatedTaskAnalyzeReport)
+		if err := json.Unmarshal(data, v.DelegatedTaskAnalyzeReport); err != nil {
+			return DelegatedTaskReport{}, errorf("DelegatedTaskReport as %s: %w", kind, err)
+		}
+		return v, nil
+	case "review":
+		v.DelegatedTaskReviewReport = new(DelegatedTaskReviewReport)
+		if err := json.Unmarshal(data, v.DelegatedTaskReviewReport); err != nil {
+			return DelegatedTaskReport{}, errorf("DelegatedTaskReport as %s: %w", kind, err)
+		}
+		return v, nil
+	case "research":
+		v.DelegatedTaskResearchReport = new(DelegatedTaskResearchReport)
+		if err := json.Unmarshal(data, v.DelegatedTaskResearchReport); err != nil {
+			return DelegatedTaskReport{}, errorf("DelegatedTaskReport as %s: %w", kind, err)
+		}
+		return v, nil
+	case "author-test":
+		v.DelegatedTaskAuthorTestReport = new(DelegatedTaskAuthorTestReport)
+		if err := json.Unmarshal(data, v.DelegatedTaskAuthorTestReport); err != nil {
+			return DelegatedTaskReport{}, errorf("DelegatedTaskReport as %s: %w", kind, err)
+		}
+		return v, nil
+	}
+	return DelegatedTaskReport{}, errorf("DelegatedTaskReport: report %q names none of its shapes", kind)
 }
 
 // From delegated-task.json#/$defs/request. What the model asks for with delegate_tasks
