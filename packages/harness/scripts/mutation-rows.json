@@ -2898,6 +2898,48 @@
    ],
    "status": "caught",
    "origin": "agent#38"
+  },
+  {
+   "name": "the deepagents boundary hands a tool call to LangChain's tool node",
+   "file": "engines/deepagents/loop.ts",
+   "find": "    wrapToolCall: async (request) => phase().call(request.toolCall)",
+   "replace": "    wrapToolCall: async (request, handler) => handler(request)",
+   "tests": [
+    "certification/conformance.test.ts",
+    "certification/delegation.test.ts",
+    "certification/scenarios.test.ts",
+    "engines/deepagents/deepagents.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0003",
+   "note": "the gate wrapper removed: an unoffered name must reach the gate and be refused there"
+  },
+  {
+   "name": "a Deep Agents built-in is left on",
+   "file": "engines/deepagents/loop.ts",
+   "find": "export const BUILT_INS_OFF = ['FilesystemMiddleware', 'subAgentMiddleware', 'SummarizationMiddleware', 'patchToolCallsMiddleware'] as const",
+   "replace": "export const BUILT_INS_OFF = ['subAgentMiddleware', 'SummarizationMiddleware', 'patchToolCallsMiddleware'] as const",
+   "tests": [
+    "certification/conformance.test.ts",
+    "certification/delegation.test.ts",
+    "certification/scenarios.test.ts",
+    "engines/deepagents/deepagents.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0003",
+   "note": "Deep Agents' filesystem middleware mounted: its tools are offered beside the gate's"
+  },
+  {
+   "name": "the deepagents question pause runs the host's ask_user",
+   "file": "engines/deepagents/loop.ts",
+   "find": "          awaitingInput = true\n          await deliver({ type: 'user_question', id: crypto.randomUUID(), question })\n          inputPause.abort()\n          throw new DOMException('Waiting for input', 'AbortError')",
+   "replace": "          void question\n          answer = await tool.execute(args, executionSignal)",
+   "tests": [
+    "engines/deepagents/deepagents.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0003",
+   "note": "the approval pause bypassed: a well-formed question must end the turn unanswered"
   }
  ]
 }

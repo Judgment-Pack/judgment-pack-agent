@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import inventory from '../../contract/desk/inventory.json'
 import toolOffer from '../../contract/schemas/tool-offer.json'
+import provenance from '../../contract/schemas/provenance.json'
 import { ASSISTANT_ENGINES, ASSISTANT_TOOLS } from './host'
 
 describe('the host contract values', () => {
@@ -9,8 +10,9 @@ describe('the host contract values', () => {
     expect([...ASSISTANT_TOOLS]).toEqual(toolOffer.$defs.runtimeCeiling.enum)
   })
 
-  it('are the contract’s engine ids', () => {
-    expect([...ASSISTANT_ENGINES]).toEqual(inventory.engines.values)
+  it('are the contract’s engine ids: the Desk’s two, then the one this package adds (ADR-0003)', () => {
+    expect([...ASSISTANT_ENGINES]).toEqual([...inventory.engines.values, 'deepagents'])
+    expect([...ASSISTANT_ENGINES]).toEqual(provenance.$defs.engine.enum)
   })
 })
 

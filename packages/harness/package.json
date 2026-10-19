@@ -2,7 +2,7 @@
   "name": "@judgment-pack/harness",
   "version": "0.1.0",
   "private": false,
-  "description": "The Judgment Pack Desk's assistant harness behind the wire contract: the Vercel AI SDK and Codex adapters, the context budget and ledger, delegation, the tool gate, the failure catalogue and the certification suite.",
+  "description": "The Judgment Pack Desk's assistant harness behind the wire contract: the Vercel AI SDK, Codex and Deep Agents adapters, the context budget and ledger, delegation, the tool gate, the failure catalogue and the certification suite.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -23,6 +23,10 @@
     "./codex": {
       "types": "./dist/engines/codex/index.d.ts",
       "default": "./dist/engines/codex/index.js"
+    },
+    "./deepagents": {
+      "types": "./dist/engines/deepagents/index.d.ts",
+      "default": "./dist/engines/deepagents/index.js"
     },
     "./certification": {
       "types": "./dist/certification/index.d.ts",
@@ -51,8 +55,15 @@
     "@ai-sdk/anthropic": "4.0.73",
     "@ai-sdk/google": "4.0.89",
     "@ai-sdk/openai-compatible": "3.0.64",
+    "@langchain/core": "1.2.14",
+    "@langchain/langgraph": "1.4.19",
+    "@langchain/langgraph-checkpoint": "1.1.5",
+    "@langchain/langgraph-sdk": "1.12.1",
     "@modelcontextprotocol/sdk": "1.30.0",
     "ai": "7.0.129",
+    "deepagents": "1.14.1",
+    "langchain": "1.5.15",
+    "langsmith": "0.9.0",
     "zod": "4.4.3"
   },
   "devDependencies": {

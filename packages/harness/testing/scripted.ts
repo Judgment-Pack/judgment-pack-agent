@@ -26,7 +26,7 @@ import { vercel } from '../engines/vercel'
 import { codex } from '../engines/codex'
 import { RECORDED_TOOLS } from '../certification/scriptedServer'
 import type { AgentRequest } from '../agent'
-import type { AgentAssistantSession, AssistantEvent, AssistantSession, HostTool, McpTool, McpToolResult } from '../engine'
+import type { AgentAssistantSession, AssistantEvent, AssistantSession, Engine, HostTool, McpTool, McpToolResult } from '../engine'
 
 /**
  * `experimental_test_cases` as `jpack mcp` serves it: its description and its
@@ -346,13 +346,15 @@ const CURRENT_REQUEST = { message: 'Check the expense pack.', input: 'The expens
 /**
  * One `vercel` turn: the endpoint answers each request with `answer`, the
  * runtime serves the recorded five and the test tool behind the real gate.
- * A current request makes the run keep its checkpoint on the stream.
+ * A current request makes the run keep its checkpoint on the stream. `engine`
+ * runs the same turn on another model engine (`deepagents`, ADR-0003).
  */
 export async function vercelTurn(options: {
   answer: (request: EndpointRequest) => Response | Promise<Response>
   handle?: (call: RuntimeCall, control: RuntimeControl) => unknown
   hostTools?: HostTool[]
   session?: Partial<AssistantSession>
+  engine?: Engine
 }): Promise<TurnRecord & { requests: EndpointRequest[] }> {
   const events: AssistantEvent[] = []
   const endpoint = scriptedEndpoint(options.answer)
@@ -365,7 +367,7 @@ export async function vercelTurn(options: {
   })
   try {
     await runAssistantSession(
-      vercel,
+      options.engine ?? vercel,
       {
         prompt: 'Check the expense pack.',
         testPrompt: '',
