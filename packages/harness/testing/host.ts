@@ -105,6 +105,7 @@ export function testHost(): HarnessHost {
     deskFetch: () => Promise.reject(new Error('no host request in this test')),
     answer: () => Promise.reject(new Error('no host request in this test')),
     readFile: () => Promise.reject(new Error('no host file in this test')),
-    dialectAPI: () => Promise.reject(new Error('no host preparation in this test'))
+    dialectAPI: () => Promise.reject(new Error('no host preparation in this test')),
+    endpointCapabilities: () => ({})
   }
 }

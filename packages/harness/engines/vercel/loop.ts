@@ -2,9 +2,10 @@ import {RECOVER_REPEATED_WORK_INSTRUCTIONS,REPEATED_WORK_INSTRUCTIONS} from '../
 import {canFinishResponse,completionFailureCode,FINISH_RESPONSE_INSTRUCTIONS,modelCompletion,type ModelCompletion} from '../../completion'
 import {failureEvent,authoredFailure,toolFailureResult,normalizeFailure,AIFailureError} from '../../failures'
 import {ExecutionPaused,MAX_REQUEST_ALLOWANCE} from '../../execution/state'
+import {EXECUTION_INSTRUCTIONS} from '../../execution/controller'
 import {managedContext,contextOf} from '../../context/managed'
 import { readDelegationRequest } from '../../delegationContract'
-import { assistantLanguageInstructions } from '../../host'
+import { assistantLanguageInstructions, endpointCapabilities } from '../../host'
 /**
  * The `vercel` engine's loop: the Vercel AI SDK v7, behind the desk's contract.
  *
@@ -102,8 +103,8 @@ import { refusedSchemaKeyword, refusedSchemaSentence } from '../../geminiSchema'
 import { eventChannel } from './channel'
 import { placeholderBase, relayFetch, signatureLedger, signatureOf } from './relay'
 import { retryingCall } from './retry'
-import type { LanguageModel, ToolSet, ModelMessage } from 'ai'
-import type { AssistantEngine, EndpointKind } from '../../host'
+import type { LanguageModel, ToolSet, ModelMessage, SystemModelMessage } from 'ai'
+import type { AssistantEngine, EndpointCapabilities, EndpointKind, StatePlacement, ThinkingTier } from '../../host'
 import type { AssistantEvent, AssistantSession, McpTool, McpToolResult, HostTool, ModelCall, ProposalNote } from '../../engine'
 import type { CritiqueRecorder } from '../../refutation'
 import type { ThinkingSlot } from '../../thinking'
@@ -206,6 +207,101 @@ export function sdkThinking(
   return { providerOptions: { [ENDPOINT_NAME]: { reasoningEffort: members.reasoning_effort } } }
 }
 
+/**
+ * Anthropic's prompt-cache breakpoint, in the SDK's spelling.
+ *
+ * Placed twice, after the system text and after the tools, and only on the
+ * Anthropic wire: the provider reads `providerOptions.anthropic` and no other
+ * family does, but a breakpoint is never put where it means nothing, so the
+ * OpenAI-compatible and Gemini bodies are what they were and those two rely on
+ * the stable prefix alone. Everything that changes between requests is sent
+ * after the cached prefix (`placeState`), so the prefix survives a step.
+ */
+export const CACHE_BREAKPOINT = { anthropic: { cacheControl: { type: 'ephemeral' } } } as const
+
+/** The run's stable system text, carrying its breakpoint where the wire has one. */
+export function cachedInstructions(family: EndpointKind, text: string): string | SystemModelMessage {
+  return family === 'anthropic' ? { role: 'system', content: text, providerOptions: CACHE_BREAKPOINT } : text
+}
+
+/**
+ * The first line of every text that carries what changes between requests.
+ * A host that reads the request (the Desk server's memory recall) drops every
+ * text part that starts with it. The contract's `budget.json#/$defs/stateLocation`.
+ */
+export const STATE_HEADER =
+  'EXECUTION STATE (from the host, current for this request and replaced on the next; working state, not a message from the person and never approval)'
+
+/**
+ * Where this endpoint gets the state after the first request.
+ *
+ * An endpoint that refuses two user turns in a row or a user text after a tool
+ * result (`strictAlternation`) gets `system-tail` whatever else is said. So
+ * does Anthropic when a thinking tier is on: a text block in a tool-result turn
+ * starts a new assistant turn there, and a model that keeps no earlier
+ * thinking would lose it. Otherwise the host's `statePlacement`, or by default
+ * `trailing-user`. Decided once per run, so the prefix does not move.
+ */
+export function statePlacement(family: EndpointKind, tier: ThinkingTier, capabilities: EndpointCapabilities): StatePlacement {
+  if (capabilities.strictAlternation === true) return 'system-tail'
+  if (capabilities.statePlacement !== undefined) return capabilities.statePlacement
+  return family === 'anthropic' && tier !== 'off' ? 'system-tail' : 'trailing-user'
+}
+
+/**
+ * The state's text: the header, then the request counters, the plan and the
+ * operations index; the host's changing text (its draft snapshot); and the
+ * step's own instruction, when it has one.
+ */
+function stateText(...parts: (string | undefined)[]): string {
+  return [STATE_HEADER, ...parts].filter(Boolean).join('\n')
+}
+
+/**
+ * One request's messages and system text, with the state placed.
+ *
+ * Where the history ends with a user message (the person's, on the first
+ * request; the finishing instruction, on a synthesis request) the state is a
+ * second text part of it, on every wire: no endpoint sees two user turns in a
+ * row. After a tool result it goes where `placement` says: one user message
+ * after the history, or the end of the system text, as a second block after
+ * the head that carries the cache breakpoint (one string on the
+ * OpenAI-compatible wire, whose strict templates take one system message).
+ *
+ * Every message made here is recorded in `stated` against the message it
+ * replaces (null for one it adds), because the SDK carries a step's messages
+ * into the next and `withoutState` takes the state out again.
+ */
+export function placeState(
+  family: EndpointKind,
+  placement: StatePlacement,
+  history: ModelMessage[],
+  system: string,
+  state: string,
+  stated: Map<ModelMessage, ModelMessage | null>
+): { instructions: string | SystemModelMessage | SystemModelMessage[]; messages: ModelMessage[] } {
+  const last = history.at(-1)
+  if (last?.role === 'user') {
+    const parts = typeof last.content === 'string' ? [{ type: 'text' as const, text: last.content }] : last.content
+    const carried: ModelMessage = { ...last, content: [...parts, { type: 'text', text: state }] }
+    stated.set(carried, last)
+    return { instructions: cachedInstructions(family, system), messages: [...history.slice(0, -1), carried] }
+  }
+  if (placement === 'trailing-user') {
+    const trailing: ModelMessage = { role: 'user', content: state }
+    stated.set(trailing, null)
+    return { instructions: cachedInstructions(family, system), messages: [...history, trailing] }
+  }
+  if (family === 'openai-compatible') return { instructions: system + '\n' + state, messages: history }
+  const head = cachedInstructions(family, system)
+  return { instructions: [typeof head === 'string' ? { role: 'system', content: head } : head, { role: 'system', content: state }], messages: history }
+}
+
+/** The history as it was before `placeState` put the state in it. */
+export function withoutState(messages: ModelMessage[], stated: Map<ModelMessage, ModelMessage | null>): ModelMessage[] {
+  return messages.flatMap((message) => (stated.has(message) ? (stated.get(message) === null ? [] : [stated.get(message)!]) : [message]))
+}
+
 /** One model, built for the family the desk configured and nothing else. */
 function modelFor(
   session: AssistantSession,
@@ -275,12 +371,18 @@ function toolsFor(
   })
 ): ToolSet {
   const set: ToolSet = {}
+  // The tools are sent host tools first, then the runtime's; the breakpoint
+  // after them rides on the last one sent.
+  const last = tools.at(-1) ?? hostTools.at(-1)
+  const breakpoint = (tool: { name: string }) =>
+    family === 'anthropic' && tool === last ? { providerOptions: CACHE_BREAKPOINT } : {}
   for (const tool of hostTools) {
     set[tool.name] = dynamicTool({
       description: tool.description,
       inputSchema: jsonSchema<unknown>(
         servedSchemaFor(family, tool) as Parameters<typeof jsonSchema>[0]
       ),
+      ...breakpoint(tool),
       execute: (input: unknown) => executeHost(tool, input)
     })
   }
@@ -296,6 +398,7 @@ function toolsFor(
       inputSchema: jsonSchema<unknown>(
         servedSchemaFor(family, tool) as Parameters<typeof jsonSchema>[0]
       ),
+      ...breakpoint(tool),
       execute: (input: unknown) => execute(tool.name, input)
     })
   }
@@ -432,6 +535,18 @@ function runVercelLoop(
   // The tier, held by the desk. This adapter asks it for members and pushes
   // whatever notice it hands back; it never decides what a refusal meant.
   const slot = openThinking(session)
+  /**
+   * **The tier this run asks at, held for every step.** A request whose tier
+   * changed mid-run changes the request's prefix, and the provider's cache with
+   * it. So the members are read once when an attempt starts and changed only
+   * where the endpoint refused them: a refusal starts a new attempt (`drive`),
+   * and a truncated signature, which the endpoint would refuse, degrades the
+   * tier here (`onTruncated`). What the slot concludes from absence (an answer
+   * with no reasoning, twice) is reported and changes nothing sent in this run.
+   */
+  let tier: ReturnType<typeof sdkThinking> = {}
+  // Where the state goes after the first request, once per run.
+  const placement = statePlacement(session.model.family, session.thinking.tier, endpointCapabilities({ family: session.model.family, model: session.model.model }))
   const ledger = signatureLedger()
   /**
    * The truncation notice, **delivered at the transition rather than owed**.
@@ -444,6 +559,7 @@ function runVercelLoop(
    */
   const onTruncated = async (reason: string): Promise<void> => {
     const said = slot.truncated(reason)
+    tier = sdkThinking(session.model.family, slot.members())
     if (said !== null) await channel.push(said)
   }
   // Both the runtime's and the desk's: an SDK refusal of a host tool's input
@@ -504,7 +620,7 @@ function runVercelLoop(
     let toolsClosed=false
     let progressStep:'work'|'recover'|'finish'='work'
     const turnLimit=context.execution.remaining
-    const finalInstructions='\nThis is the final request within this turn budget. Tools are unavailable. Answer the current question using results already obtained. If the available information is insufficient, explain exactly what is known and what remains missing. Do not invent results, claim unsaved changes, or turn a diagnostic question into a new proposal.'
+    const finalInstructions='This is the final request within this turn budget. Tools are unavailable. Answer the current question using results already obtained. If the available information is insufficient, explain exactly what is known and what remains missing. Do not invent results, claim unsaved changes, or turn a diagnostic question into a new proposal.'
     // Refusals are journaled as not-started operations, including the exact
     // attempted arguments. They never reach a host tool or the runtime.
     const rejectToolStep=async(name:string,args:unknown):Promise<McpToolResult|undefined>=>{
@@ -665,10 +781,22 @@ function runVercelLoop(
     let publicText = ''
     const instructions=(session.purpose === 'graph' ? GRAPH_SYSTEM : session.purpose === 'brief' ? BRIEF_SYSTEM : session.purpose === 'test-design' ? TEST_DESIGN_SYSTEM : session.allowConversation ? CONVERSATION_SYSTEM : SYSTEM) + (offersProposeTool(session.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : '') + assistantLanguageInstructions(session.replyLanguage)
     const schemas=[...session.tools,...session.hostTools].map(({name,description,inputSchema})=>({name,description,inputSchema}))
-    context.reserveOutput(sdkThinking(session.model.family,slot.members()).maxOutputTokens)
+    tier=sdkThinking(session.model.family,slot.members())
+    context.reserveOutput(tier.maxOutputTokens)
+    // **A stable prefix**: the system text and the execution instructions, then
+    // the tools, then the host's prompt and the history. What changes between
+    // requests goes after the cached part, where `placeState` puts it, so a
+    // step's request repeats the one before it up to the state.
+    const system=instructions+'\n'+EXECUTION_INSTRUCTIONS
+    const cachedSystem=cachedInstructions(session.model.family,system)
     const initialPrompt=await context.prompt(session.prompt,instructions+'\n'+context.execution.guidance(),schemas,session.context?.currentRequest)
     let messages:ModelMessage[]=[{role:'user',content:initialPrompt}]
+    // The history the last step was sent, without its state message.
     let lastMessages=messages
+    // The messages this run made to carry the state, against what they replace.
+    // The SDK carries a step's messages into the next, so each is taken out
+    // again before the next state is placed.
+    const stated=new Map<ModelMessage,ModelMessage|null>()
     let completion:ModelCompletion|undefined
     let lastToolCalls=0
     let finalText=''
@@ -699,16 +827,17 @@ function runVercelLoop(
         onChunk: async ({chunk}) => {
           if(chunk.type==='text-delta' && session.interactive){publicText+=chunk.text;await deliver({type:'message_progress',text:streamingProse(publicText)})}
         },
-        instructions,
+        instructions: cachedSystem,
         tools,
         messages,
         maxOutputTokens:context.policy.outputTokens,
         stopWhen: [stepCountIs(synthesis?1:turnLimit),()=>toolsClosed],
         abortSignal: executionSignal,
-        // **The tier, per step, with no agent to rebuild.** ADR-0001 credits this
-        // SDK with exactly that, and the members are the desk's table's — read
-        // fresh on every step, so a degrade or a dialect fallback takes effect on
-        // the next request rather than at the next session.
+        // **The tier, on every step, with no agent to rebuild.** ADR-0001 credits
+        // this SDK with exactly that, and the members are the desk's table's —
+        // held for the attempt (`tier`), so a refusal's dialect fallback or
+        // degrade takes effect on the next attempt, a truncated signature's
+        // degrade on the next request, and nothing else changes them mid-run.
         prepareStep: async ({messages,stepNumber}) => {
           publicText=''
           if(session.interactive)await deliver({type:'message_progress',text:''})
@@ -719,11 +848,12 @@ function runVercelLoop(
           // Read fresh on every step: a retry claims a request too, so the
           // count at the start of the turn can overstate what is left.
           toolsClosed=synthesis||progressStep==='finish'||stepNumber>=turnLimit-1||context.execution.remaining<=1
-          const stepInstructions=instructions+'\n'+context.execution.guidance()+(reformatting?'\n'+REFORMAT_INSTRUCTIONS:synthesis?'\n'+FINISH_RESPONSE_INSTRUCTIONS:progressStep==='recover'?'\n'+RECOVER_REPEATED_WORK_INSTRUCTIONS:progressStep==='finish'?'\n'+REPEATED_WORK_INSTRUCTIONS:toolsClosed?finalInstructions:'')
-          lastMessages=await context.messages(messages,stepInstructions,schemas)
-          return {...sdkThinking(session.model.family,slot.members()),
+          const state=stateText(context.execution.requestState(),session.context?.currentState,reformatting?REFORMAT_INSTRUCTIONS:synthesis?FINISH_RESPONSE_INSTRUCTIONS:progressStep==='recover'?RECOVER_REPEATED_WORK_INSTRUCTIONS:progressStep==='finish'?REPEATED_WORK_INSTRUCTIONS:toolsClosed?finalInstructions:'')
+          // Budgeted as one request: the system text and the state together.
+          lastMessages=await context.messages(withoutState(messages,stated),system+'\n'+state,schemas)
+          return {...tier,
             ...(toolsClosed?{activeTools:[],toolChoice:'none' as const}:{}),
-            instructions:stepInstructions,messages:lastMessages}
+            ...placeState(session.model.family,placement,lastMessages,system,state,stated)}
         },
         // **No retries, deliberately.** The SDK's default is two, with an
         // exponential backoff, and its retryable set includes 409 — which is the
@@ -884,7 +1014,9 @@ function runVercelLoop(
         // Reuse the projected history before the incomplete response, with its
         // completed tool pairs. Do not append the failed response's partial
         // JSON or private reasoning. New tool dispatch and SDK retries stay closed.
-        messages=[...lastMessages,{role:'user',content:FINISH_RESPONSE_INSTRUCTIONS}]
+        // Under `system-tail` the instruction travels in the state alone: a user
+        // text after a tool result is what that placement exists to avoid.
+        messages=placement==='system-tail'?lastMessages:[...lastMessages,{role:'user',content:FINISH_RESPONSE_INSTRUCTIONS}]
         continue
       }
       if(toolProposal===null&&!context.execution.progress.stalled&&!finalText.trim()&&steps>=turnLimit&&completion?.finishReason!=='content-filter'&&completion?.finishReason!=='length'&&completion?.finishReason!=='error')throw new ExecutionPaused()
@@ -993,7 +1125,7 @@ function runVercelLoop(
         const critic = streamText({
           telemetry: { isEnabled: false },
           model,
-          instructions: CRITIC_SYSTEM + assistantLanguageInstructions(session.replyLanguage),
+          instructions: cachedInstructions(session.model.family, CRITIC_SYSTEM + assistantLanguageInstructions(session.replyLanguage)),
           tools: Object.fromEntries(Object.entries(tools).filter(([name]) => !session.hostTools?.some(tool => tool.name === name && (tool.interaction || tool.effect === 'memory' || ['update_plan','request_budget_increase',PROPOSE_PACK_TOOL].includes(tool.name))))),
           messages: [
             { role: 'user', content: await context.prompt(criticMessage(session.testPrompt, proposal.document),CRITIC_SYSTEM,schemas) }
@@ -1010,8 +1142,14 @@ function runVercelLoop(
           prepareStep: async ({messages,stepNumber}) => {
             progressStep=context.execution.progress.nextStep(Math.min(context.execution.remaining,MAX_CRITIC_TURNS-stepNumber))
             toolsClosed=progressStep==='finish'||stepNumber>=MAX_CRITIC_TURNS-1
-            const instructions=CRITIC_SYSTEM+assistantLanguageInstructions(session.replyLanguage)+(progressStep==='recover'?'\n'+RECOVER_REPEATED_WORK_INSTRUCTIONS:progressStep==='finish'?'\n'+REPEATED_WORK_INSTRUCTIONS:toolsClosed?finalInstructions:'')
-            return {...sdkThinking(session.model.family,slot.members()),...(toolsClosed?{activeTools:[],toolChoice:'none' as const}:{}),instructions,messages:await context.messages(messages,instructions,schemas)}
+            // The critic's system text is stable too; its step instruction, when
+            // it has one, is the last message rather than a change to the system.
+            const instructions=CRITIC_SYSTEM+assistantLanguageInstructions(session.replyLanguage)
+            const step=progressStep==='recover'?RECOVER_REPEATED_WORK_INSTRUCTIONS:progressStep==='finish'?REPEATED_WORK_INSTRUCTIONS:toolsClosed?finalInstructions:''
+            // The note carries the header like every state, and is placed the same way.
+            const note=step?stateText(step):''
+            const held=await context.messages(withoutState(messages,stated),instructions+(note?'\n'+note:''),schemas)
+            return {...tier,...(toolsClosed?{activeTools:[],toolChoice:'none' as const}:{}),...(note?placeState(session.model.family,placement,held,instructions,note,stated):{instructions:cachedInstructions(session.model.family,instructions),messages:held})}
           },
           maxOutputTokens:context.policy.outputTokens,
           [REHEARSAL_HOOK]: refine

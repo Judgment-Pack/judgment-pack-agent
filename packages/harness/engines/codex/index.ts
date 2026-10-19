@@ -133,9 +133,12 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
     const instructions = session.purpose === 'graph' ? GRAPH_SYSTEM : session.purpose === 'brief' ? BRIEF_SYSTEM
       : session.purpose === 'test-design' ? TEST_DESIGN_SYSTEM
       : session.allowConversation ? CONVERSATION_SYSTEM : SYSTEM
+    // The agent's prompt carries the host's changing state and the execution guidance at its end;
+    // its instructions stay the stable system text.
+    const prompt = session.prompt + (session.context?.currentState ? '\n\n' + session.context.currentState : '') + (session.allowConversation ? '\n\n' + context.execution.guidance() : '')
     let final: string
     try {
-      final = await run(session.prompt, instructions + (offersProposeTool(session.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : ''), 'author')
+      final = await run(prompt, instructions + (offersProposeTool(session.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : ''), 'author')
     } catch (cause) {
       // **A proposal made through propose_pack is finished work.** The run
       // failing after it (the bridge's deadline, a lost connection) does not
