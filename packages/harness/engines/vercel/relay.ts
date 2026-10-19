@@ -29,6 +29,7 @@ import { isEventStream, withAbort } from '../contract'
 import { TIER_MEMBERS, isTruncatedSignature } from '../../thinking'
 import type { EndpointKind } from '../../host'
 import type { ModelCall } from '../../engine'
+import type { ReasoningField } from '../../capabilities'
 
 /**
  * The origin the SDK composes against, and which nothing ever resolves.
@@ -616,6 +617,18 @@ export function relayFetch(options: {
    * was asking for a moment ago.
    */
   membersNow?: () => Record<string, unknown> | null
+  /**
+   * The member an OpenAI-compatible endpoint streams its reasoning in, where its
+   * capability record pins one (agent#4): only that member is read as
+   * reasoning, and reasoning is carried back under it. Null or absent: read as
+   * the SDK reads it.
+   */
+  reasoningField?: ReasoningField | null
+  /**
+   * The endpoint answers whole whatever it is asked (agent#4): it is asked for a
+   * whole answer, and the answer is re-framed into the stream the SDK reads.
+   */
+  wholeAnswer?: boolean
 }): typeof fetch {
   const base = placeholderBase(options.family)
   const run = options.signal
@@ -652,27 +665,34 @@ export function relayFetch(options: {
         ).body
       }
     }
+    // What the SDK asked for, before the record's quirks change what is sent.
+    const sdkStreams = asksToStream(options.family, suffix, composed)
+    const pinned = options.family === 'openai-compatible' ? (options.reasoningField ?? null) : null
+    if (pinned === 'reasoning') body = carriedAs(body, pinned)
+    let address = suffix
+    if (options.wholeAnswer === true && sdkStreams) ({ suffix: address, body } = askedWhole(options.family, address, body))
     // **Bounded by the run's own signal**, and a thunk, so a closed run makes no
     // request at all. The desk's capability is handed the signal too — an abort
     // has to reach the request the desk actually made — but a capability that
     // ignored it could otherwise hold this open.
     const answered = await withAbort(
       () =>
-        options.call(suffix, {
+        options.call(address, {
           headers,
           body,
           signal: (init?.signal ?? options.signal) ?? undefined
         }),
       run
     )
+    if (!answered.ok) return answered
+    if (isEventStream(answered)) return pinned === null ? answered : pinnedStream(answered, pinned)
     // The SDK asked to stream and the endpoint answered whole. See `reframe`.
-    if (!answered.ok || isEventStream(answered) || !asksToStream(options.family, suffix, body)) {
-      return answered
-    }
+    if (!sdkStreams) return answered
     // Reading a body is an await on the world like any other: a stalled body
     // must not outlive the run it belongs to.
     const payload: unknown = await withAbort(() => answered.json(), run).catch(() => undefined)
     if (payload === undefined) return answered
+    if (pinned !== null) unpin(payload, 'message', pinned)
     return new Response(reframe(options.family, payload), {
       status: answered.status,
       statusText: answered.statusText,
@@ -680,6 +700,95 @@ export function relayFetch(options: {
     })
   }
   return send as unknown as typeof fetch
+}
+
+/** The reasoning member that is not the pinned one. */
+const otherField = (field: ReasoningField): ReasoningField => (field === 'reasoning' ? 'reasoning_content' : 'reasoning')
+
+/**
+ * One OpenAI-compatible answer or chunk with only the pinned reasoning member
+ * left on each choice's `message` or `delta` (agent#4), so the SDK, which reads
+ * `reasoning_content` and then `reasoning`, reads the member the endpoint's
+ * record names and no other: an empty `reasoning_content` beside the real
+ * `reasoning`, for one, no longer hides it.
+ */
+function unpin(payload: unknown, holder: 'message' | 'delta', field: ReasoningField): void {
+  const choices = (payload as { choices?: unknown } | null)?.choices
+  if (!Array.isArray(choices)) return
+  for (const choice of choices) {
+    const held = (choice as Record<string, unknown> | null)?.[holder]
+    if (held !== null && typeof held === 'object') delete (held as Record<string, unknown>)[otherField(field)]
+  }
+}
+
+/** A streamed answer, its `data:` chunks re-read with only the pinned reasoning member left. */
+function pinnedStream(answered: Response, field: ReasoningField): Response {
+  if (answered.body === null) return answered
+  const decoder = new TextDecoder()
+  const encoder = new TextEncoder()
+  let buffered = ''
+  const rewrite = (line: string): string => {
+    if (!line.startsWith('data:')) return line
+    const data = line.slice(5).trim()
+    if (data === '' || data === '[DONE]') return line
+    try {
+      const chunk: unknown = JSON.parse(data)
+      unpin(chunk, 'delta', field)
+      return `data: ${JSON.stringify(chunk)}`
+    } catch {
+      return line
+    }
+  }
+  const body = answered.body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        buffered += decoder.decode(chunk, { stream: true })
+        const lines = buffered.split('\n')
+        buffered = lines.pop()!
+        if (lines.length > 0) controller.enqueue(encoder.encode(lines.map(rewrite).join('\n') + '\n'))
+      },
+      flush(controller) {
+        buffered += decoder.decode()
+        if (buffered !== '') controller.enqueue(encoder.encode(rewrite(buffered)))
+      }
+    })
+  )
+  return new Response(body, { status: answered.status, statusText: answered.statusText, headers: answered.headers })
+}
+
+/** The request with the reasoning the SDK carries back as `reasoning_content` carried under the pinned member. */
+function carriedAs(body: string, field: ReasoningField): string {
+  let payload: { messages?: Record<string, unknown>[] }
+  try {
+    payload = JSON.parse(body) as typeof payload
+  } catch {
+    return body
+  }
+  let changed = false
+  for (const message of payload.messages ?? []) {
+    if (message?.role !== 'assistant' || message.reasoning_content === undefined) continue
+    message[field] = message.reasoning_content
+    delete message.reasoning_content
+    changed = true
+  }
+  return changed ? JSON.stringify(payload) : body
+}
+
+/**
+ * A streamed request asked for a whole answer instead (agent#4), for an endpoint
+ * whose record says it answers whole whatever it is asked: `stream` false and no
+ * `stream_options` in the body, or the Gemini wire's whole-answer method.
+ */
+function askedWhole(family: EndpointKind, suffix: string, body: string): { suffix: string; body: string } {
+  if (family === 'gemini') return { suffix: suffix.replace(/:streamGenerateContent(\?alt=sse)?$/, ':generateContent'), body }
+  try {
+    const payload = JSON.parse(body) as Record<string, unknown>
+    payload.stream = false
+    delete payload.stream_options
+    return { suffix, body: JSON.stringify(payload) }
+  } catch {
+    return { suffix, body }
+  }
 }
 
 /**

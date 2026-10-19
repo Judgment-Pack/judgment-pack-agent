@@ -4,6 +4,7 @@ import { readDelegationRequest } from '../../delegationContract'
 import { readModelQuestion } from '../../questions'
 import { questionFailureResult } from '../../questionFailure'
 import { assistantLanguageInstructions } from '../../host'
+import { separateImages } from '../../images'
 import type { AssistantEvent, AgentAssistantSession, EngineSession, Engine, McpToolResult } from '../../engine'
 import type { AgentTool, AgentEvent } from '../../agent'
 import {
@@ -113,7 +114,9 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
           if (runtimeAnswered) recorder?.saw(route.name, text)
           // Text-only host callback wire, including structured results in a
           // JSON envelope. The visible result keeps its existing Desk shape.
-          const projected = await context.result(route.name,result)
+          // The agent wire carries text only: an image is shown as the host's text rendering of it (agent#5).
+          const shown = await separateImages(result, { vision: false, resolve: (reference) => context.ledger.image(reference), signal: toolSignal })
+          const projected = await context.result(route.name,shown.result)
           return {isError:result.isError===true,text:projected.structuredContent===undefined?textOf(projected):JSON.stringify(projected)}
         }
       }), executionSignal)

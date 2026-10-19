@@ -14,8 +14,12 @@ export function contextConfiguration(value:unknown):ContextConfiguration {
  }}
  return value as ContextConfiguration
 }
-export function contextPolicy(config:ContextConfiguration|undefined,model:string):ContextPolicy {
- return {...CONTEXT_DEFAULTS,...(config?contextConfiguration(config).models?.[model]:undefined)}
+/** The budget one model runs under: the table's, then the window and output cap of the model's
+ * capability record where it carries them (agent#4), then the assistant profile's own override for
+ * the model, which a person wrote and which therefore stays the last word. */
+export function contextPolicy(config:ContextConfiguration|undefined,model:string,capabilities?:Partial<ModelContextBudget>):ContextPolicy {
+ const record=capabilities?.contextWindowTokens!==undefined&&capabilities.outputTokens!==undefined?{contextWindowTokens:capabilities.contextWindowTokens,outputTokens:capabilities.outputTokens}:undefined
+ return {...CONTEXT_DEFAULTS,...record,...(config?contextConfiguration(config).models?.[model]:undefined)}
 }
 export const utf8Bytes=(text:string)=>new TextEncoder().encode(text).length
 export const inputBytes=(policy:ContextPolicy)=>Math.min(policy.maxInputBytes,Math.max(1024,(policy.contextWindowTokens-policy.outputTokens)*3))

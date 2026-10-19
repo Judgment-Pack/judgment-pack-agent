@@ -38,6 +38,7 @@ import { sourceMessage } from './host'
  */
 import type { EndpointKind, ThinkingTier } from './host'
 import type { AssistantEvent, AssistantSession } from './engine'
+import type { ReasoningCapability, ReasoningKind } from './capabilities'
 
 /**
  * The five states, three of which a person may select.
@@ -224,6 +225,22 @@ export function firstDialect(family: EndpointKind): ThinkingDialect {
     case 'gemini':
       return 'gemini-budget'
     default:
+      return 'openai'
+  }
+}
+
+/**
+ * The dialect a capability record's reasoning kind is tried at first (agent#4):
+ * the same first spelling `firstDialect` gives the family that speaks it. A
+ * record whose kind is `none` asks for nothing, and has no dialect.
+ */
+export function dialectFor(kind: Exclude<ReasoningKind, 'none'>): ThinkingDialect {
+  switch (kind) {
+    case 'anthropic-thinking':
+      return 'anthropic-adaptive'
+    case 'gemini-thinking':
+      return 'gemini-budget'
+    case 'openai-effort':
       return 'openai'
   }
 }
@@ -500,12 +517,30 @@ export interface ThinkingSlot {
   truncated(reason: string): AssistantEvent | null
   /** Whether the refutation pass runs, under the ruling above. */
   runsRefutation(): boolean
+  /**
+   * The notice owed before the first request, once, or null (agent#4): where the
+   * capability record says the endpoint has no reasoning parameter, or ignores
+   * the one it has, a tier other than off is unavailable from the start.
+   */
+  opening(): AssistantEvent | null
 }
 
-export function openThinking(session: Pick<AssistantSession, 'thinking' | 'model'>): ThinkingSlot {
+/** Why a record leaves the tier nothing to ask with, in the desk's own words. */
+const NO_PARAMETER = sourceMessage('its capability record names no reasoning parameter')
+const IGNORED_PARAMETER = sourceMessage('its capability record says the endpoint ignores the reasoning parameter')
+
+/**
+ * `reasoning` is the capability record's (agent#4): the dialect the tier is
+ * spelled in is the kind's, and a kind of `none`, or a parameter the endpoint
+ * ignores, sends no member at any tier. Absent, the family's first dialect, as
+ * before there was a record.
+ */
+export function openThinking(session: Pick<AssistantSession, 'thinking' | 'model'>, reasoning?: ReasoningCapability): ThinkingSlot {
   const tier = session.thinking.tier
-  let dialect = firstDialect(session.model.family)
-  let unavailable = false
+  /** The record leaves nothing to ask with: no parameter, or one the endpoint ignores. */
+  const silent = reasoning !== undefined && (reasoning.kind === 'none' || reasoning.ignored === true)
+  let dialect = reasoning === undefined || reasoning.kind === 'none' ? firstDialect(session.model.family) : dialectFor(reasoning.kind)
+  let unavailable = silent && tier !== 'off'
   let always = false
   /**
    * The endpoint refused the member that asks it **not** to think, at every
@@ -536,7 +571,7 @@ export function openThinking(session: Pick<AssistantSession, 'thinking' | 'model
   // `wireFor` already answers null at `off` on the two families where off is
   // omission, so there is no tier test here: what this adds is the two states
   // in which the desk has stopped asking at all.
-  const wire = () => (unavailable || offRefused ? null : wireFor(tier, dialect))
+  const wire = () => (silent || unavailable || offRefused ? null : wireFor(tier, dialect))
 
   return {
     tier,
@@ -625,6 +660,10 @@ export function openThinking(session: Pick<AssistantSession, 'thinking' | 'model
     runsRefutation() {
       if (tier === 'off') return false
       return REFUTE_ON_A_DEGRADED_ENDPOINT || (!unavailable && !always)
+    },
+    opening() {
+      if (!silent || tier === 'off' || announced) return null
+      return notice('unavailable', reasoning?.kind === 'none' ? NO_PARAMETER : IGNORED_PARAMETER)
     }
   }
 }
