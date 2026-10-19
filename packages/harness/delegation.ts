@@ -378,7 +378,9 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
     /** One batch: planned whole before any task exists, its children run within their limits and the batch's. */
     const runBatch = async (request: DelegationRequest, batchSignal: AbortSignal): Promise<DelegatedTask[]> => {
       batchSignal.throwIfAborted()
+      // Planned whole first: a reference or a resume the chat cannot honour fails the call, and no batch is spent.
       const planned = request.tasks.map(plan)
+      claimBatch()
       await deliver({type:'message_progress',text:''})
       const tasks: DelegatedTask[]=planned.map(p=>({id:crypto.randomUUID(),parentRunId,title:p.request.title,objective:p.request.objective,profile:p.request.profile,state:'queued',createdAt:new Date().toISOString(),modelRequests:0,toolCalls:0,attempts:0,steps:[],budget:{...p.budget},
         ...(p.profile?{model:childModel(p.profile).name}:{}),...(p.references.length?{references:p.references.map(entry=>entry.id)}:{}),...(p.request.resume?{resumes:p.request.resume}:{})}))
@@ -409,7 +411,6 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
     /** The delegation tool, executed in the parent's step: one batch at a time. */
     const delegate: HostTool = {...delegationTool(profiles),execute:async(args,toolSignal)=>{
       const request=readDelegationRequest(args)
-      claimBatch()
       const batchSignal=AbortSignal.any([signal,toolSignal])
       const run=batchTail.then(()=>runBatch(request,batchSignal))
       batchTail=run.catch(()=>undefined)
@@ -450,7 +451,7 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
         // The engine ended its run at the call (codex): the batch runs now, and the next run of the
         // response continues with the call's result. Nothing of the earlier run is copied into it.
         let result: McpToolResult
-        try { claimBatch(); result=batchAnswer(await runBatch(request,signal)) }
+        try { result=batchAnswer(await runBatch(request,signal)) }
         catch(error) { if(signal.aborted||isCancelled(error))return; if(fatal!==undefined)throw fatal; result=toolFailureResult(error) }
         if(signal.aborted)return
         execution=parentCheckpoint?shared.checkpoint(parentCheckpoint):undefined
