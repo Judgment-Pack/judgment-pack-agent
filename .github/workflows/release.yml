@@ -1,0 +1,380 @@
+name: Release
+
+# Publishes a release of the agent harness: the npm package
+# @judgment-pack/harness as a tarball, its checksums and a build-provenance
+# attestation, from a tag a person pushes on a commit already on main
+# (docs/releasing.md). No registry is involved: the Desk installs the
+# attested asset, pinned by digest in its component lock.
+#
+# A person decides there is a release and writes its notes
+# (docs/releases/<tag>.md) and sets the package version to the tag's. The
+# workflow holds the tagged commit to CI, builds the package from it, attests
+# the files, and publishes no release until a maintainer approves the
+# `release` environment.
+#
+# Not secret before that approval: the files (an artifact of the run), their
+# attestation (recorded in a public log when made), and the draft (visible to
+# those who can write to the repository).
+#
+# Every job works on the commit the run was started for, by digest. A tag is a
+# name and can be moved until its release is published, so the tag is compared
+# with that commit when the run begins, before the draft, and before publishing.
+
+on:
+  push:
+    tags:
+      # Narrowed here, held exactly to the grammar by the first step.
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions: {}
+
+env:
+  RELEASE_TAG: ${{ github.ref_name }}
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  admit:
+    name: Admit the tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # Reading an environment's protection rules.
+      actions: read
+    steps:
+      # vMAJOR.MINOR.PATCH in ASCII digits, no leading zeroes, nothing before
+      # or after: no prerelease and no build metadata.
+      - name: Validate release tag syntax
+        shell: bash
+        env:
+          LC_ALL: C
+        run: |
+          number='(0|[1-9][0-9]*)'
+          grammar="^v${number}\.${number}\.${number}$"
+          if [[ ! "${RELEASE_TAG}" =~ ${grammar} ]]; then
+            echo "Release tag is not vMAJOR.MINOR.PATCH with no leading zeroes: ${RELEASE_TAG}" >&2
+            exit 1
+          fi
+
+      - name: Check out the commit the run was started for
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      # A signed tag is an annotated tag; a lightweight tag is refused.
+      - name: Require an annotated tag
+        shell: bash
+        run: |
+          kind="$(git cat-file -t "refs/tags/${RELEASE_TAG}")" \
+            || { echo "refs/tags/${RELEASE_TAG} could not be read; releases need an annotated tag (docs/releasing.md)" >&2; exit 1; }
+          [ "${kind}" = "tag" ] || { echo "refs/tags/${RELEASE_TAG} is a ${kind} object; releases need an annotated tag (git tag -s), not a lightweight one" >&2; exit 1; }
+
+      - name: Require the tag to name that commit
+        shell: bash
+        run: |
+          # ls-remote patterns match the end of a name, so lines are selected
+          # by exact name. The peeled line is the commit an annotated tag
+          # points to; a lightweight tag has only its own line.
+          named="$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" "refs/tags/${RELEASE_TAG}" "refs/tags/${RELEASE_TAG}^{}" \
+            | awk -v tag="refs/tags/${RELEASE_TAG}" '$2 == tag { plain = $1 } $2 == tag "^{}" { peeled = $1 } END { print (peeled != "" ? peeled : plain) }')"
+          [ -n "${named}" ] && [ "${named}" = "${GITHUB_SHA}" ] || { echo "refs/tags/${RELEASE_TAG} names ${named:-nothing}; the run was started for ${GITHUB_SHA}" >&2; exit 1; }
+
+      # Only merged work is released: a tag on a branch commit names a state
+      # main may never hold. Any commit on main is admitted, not only its tip.
+      # Main is named in full: a tag called origin/main would answer the short
+      # name before the branch.
+      - name: Require the tagged commit on main
+        shell: bash
+        run: |
+          git merge-base --is-ancestor "${GITHUB_SHA}" refs/remotes/origin/main || { echo "Tagged commit ${GITHUB_SHA} is not on main" >&2; exit 1; }
+
+      - name: Require release notes
+        shell: bash
+        run: |
+          notes="docs/releases/${RELEASE_TAG}.md"
+          test -s "${notes}" || { echo "${notes} is missing or empty at the tag" >&2; exit 1; }
+          # A notes file written for another tag is not this release's notes:
+          # its first line must be exactly the tag's name on a line of its own
+          # after an optional heading marker.
+          first="$(head -n 1 "${notes}" | sed -E 's/^#+ +//; s/ +$//')"
+          [ "${first}" = "${RELEASE_TAG}" ] || { echo "${notes} must name ${RELEASE_TAG} on its first line (found: ${first})" >&2; exit 1; }
+
+      # GitHub creates a missing environment on first use, without protection.
+      # Read the rule before anything is written so the publish gate cannot be
+      # a bare name.
+      - name: Require a reviewer on the release environment
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          reviewers="$(gh api "repos/${GH_REPO}/environments/release" --jq '[.protection_rules[]? | select(.type == "required_reviewers")] | length')" \
+            || { echo "The release environment could not be read; create it with a required reviewer (docs/releasing.md)" >&2; exit 1; }
+          [ "${reviewers}" -ge 1 ] || { echo "The release environment requires no reviewer" >&2; exit 1; }
+
+  # The tagged commit's own ci.yml, called, so release.yml carries no second
+  # copy of the `contract`, `tests`, `harness` and `certify` jobs. A check main
+  # has gained since that commit is not run.
+  verify:
+    name: CI at the tag
+    needs: admit
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+
+  package:
+    name: Package
+    needs:
+      - admit
+      - verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Check out the commit the run was started for
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      # The package's version is the tag without its v, or the job refuses:
+      # the tarball's name and the version a consumer reads inside it must
+      # agree with the tag.
+      - name: Require the package version to equal the tag
+        id: version
+        shell: bash
+        run: |
+          version="${RELEASE_TAG#v}"
+          held="$(node -p 'require("./packages/harness/package.json").version')"
+          [ "${held}" = "${version}" ] || { echo "packages/harness/package.json is at version ${held}; the tag ${RELEASE_TAG} needs ${version}" >&2; exit 1; }
+          locked="$(node -p 'require("./package-lock.json").packages["packages/harness"].version')"
+          [ "${locked}" = "${version}" ] || { echo "package-lock.json holds the package at version ${locked}; the tag ${RELEASE_TAG} needs ${version}" >&2; exit 1; }
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Install the locked dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Pack the package and write its checksums
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir dist
+          npm pack --workspace @judgment-pack/harness --pack-destination dist
+          tarball="judgment-pack-harness-${VERSION}.tgz"
+          [ "$(ls dist)" = "${tarball}" ] || { echo "Expected dist to hold ${tarball} alone; it holds: $(ls dist)" >&2; exit 1; }
+          (cd dist && sha256sum "${tarball}" > checksums.txt && sha256sum --check --strict checksums.txt)
+          cat dist/checksums.txt
+
+      - name: Carry the release notes with the files
+        shell: bash
+        run: cp "docs/releases/${RELEASE_TAG}.md" dist/release-notes.md
+
+      - name: Upload the release's files
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-dist
+          path: |
+            dist/judgment-pack-harness-*.tgz
+            dist/checksums.txt
+            dist/release-notes.md
+          if-no-files-found: error
+          # As long as an approval may be waited for: the publish job reads
+          # the artifact again after the gate.
+          retention-days: 30
+
+  attest-and-draft:
+    name: Attest and draft release
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    env:
+      VERSION: ${{ needs.package.outputs.version }}
+    outputs:
+      # The draft this run made, by its id: the publish job reads and
+      # publishes that release, never whatever the tag names by then.
+      release-id: ${{ steps.draft.outputs.release-id }}
+    steps:
+      - name: Download the release's files
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-dist
+          path: dist
+
+      - name: Require the tag to still name that commit
+        shell: bash
+        run: |
+          named="$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" "refs/tags/${RELEASE_TAG}" "refs/tags/${RELEASE_TAG}^{}" \
+            | awk -v tag="refs/tags/${RELEASE_TAG}" '$2 == tag { plain = $1 } $2 == tag "^{}" { peeled = $1 } END { print (peeled != "" ? peeled : plain) }')"
+          [ -n "${named}" ] && [ "${named}" = "${GITHUB_SHA}" ] || { echo "refs/tags/${RELEASE_TAG} names ${named:-nothing}; the files were built from ${GITHUB_SHA}" >&2; exit 1; }
+
+      # An existing release, draft or published, is never replaced or completed
+      # from here. A person inspects what a failed run left (docs/releasing.md).
+      - name: Require that no release exists under this tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # List every release, drafts included, and match the tag exactly. A
+          # failed lookup fails the step; it is never read as absence.
+          state="$(gh api "repos/${GH_REPO}/releases" --paginate --jq '.[] | select(.tag_name == env.RELEASE_TAG) | if .draft then "a draft" else "published" end')"
+          if [ -n "${state}" ]; then
+            echo "A release under ${RELEASE_TAG} already exists, and it is $(echo "${state}" | sort -u | paste -sd, -)" >&2
+            exit 1
+          fi
+
+      # The organisation's attestation action, as the exchange, the Runner, the
+      # gateway and the runtime pin it, making a build-provenance attestation.
+      # Both files the release attaches are its subjects, each by its path;
+      # checksums.txt also names the tarball's digest.
+      - name: Attest the release's files
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            dist/judgment-pack-harness-${{ env.VERSION }}.tgz
+            dist/checksums.txt
+
+      - name: Create draft release
+        id: draft
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # No checkout in this job, so gh cannot infer the repository.
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "${RELEASE_TAG}" "dist/judgment-pack-harness-${VERSION}.tgz" dist/checksums.txt \
+            --draft \
+            --notes-file dist/release-notes.md \
+            --title "agent harness ${RELEASE_TAG}" \
+            --verify-tag
+          # The one draft under the tag, which this job has just made (no
+          # release existed under it before).
+          # The listing can lag the creation by a few seconds: read it again
+          # until the draft appears, at most twelve times.
+          release_id=""
+          for attempt in $(seq 1 12); do
+            release_id="$(gh api "repos/${GH_REPO}/releases" --paginate --jq '.[] | select(.tag_name == env.RELEASE_TAG and .draft) | .id')"
+            [[ "${release_id}" =~ ^[0-9]+$ ]] && break
+            sleep 5
+          done
+          [[ "${release_id}" =~ ^[0-9]+$ ]] || { echo "Expected one draft release under ${RELEASE_TAG}; found: ${release_id:-none}" >&2; exit 1; }
+          echo "release-id=${release_id}" >> "${GITHUB_OUTPUT}"
+
+  publish:
+    name: Publish release
+    needs:
+      - package
+      - attest-and-draft
+    runs-on: ubuntu-latest
+    environment: release
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      RELEASE_ID: ${{ needs.attest-and-draft.outputs.release-id }}
+      VERSION: ${{ needs.package.outputs.version }}
+    steps:
+      - name: Require the tag to still name that commit
+        shell: bash
+        run: |
+          named="$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" "refs/tags/${RELEASE_TAG}" "refs/tags/${RELEASE_TAG}^{}" \
+            | awk -v tag="refs/tags/${RELEASE_TAG}" '$2 == tag { plain = $1 } $2 == tag "^{}" { peeled = $1 } END { print (peeled != "" ? peeled : plain) }')"
+          [ -n "${named}" ] && [ "${named}" = "${GITHUB_SHA}" ] || { echo "refs/tags/${RELEASE_TAG} names ${named:-nothing}; the draft was written from ${GITHUB_SHA}" >&2; exit 1; }
+
+      - name: Download the files this run wrote
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-dist
+          path: run
+
+      # The run's own files, the bytes the draft must hold: checksums.txt in
+      # the one form this workflow writes it, naming the tarball alone.
+      - name: Hold the run's files to their checksums
+        shell: bash
+        working-directory: run
+        run: |
+          tarball="judgment-pack-harness-${VERSION}.tgz"
+          if grep -q -v -E '^[0-9a-f]{64}  [A-Za-z0-9._-]+$' checksums.txt; then
+            echo "checksums.txt holds a line that is not a digest, two spaces and a plain name" >&2
+            exit 1
+          fi
+          [ "$(awk '{ print $2 }' checksums.txt)" = "${tarball}" ] || { echo "checksums.txt does not name ${tarball} alone" >&2; exit 1; }
+          sha256sum --check --strict checksums.txt
+
+      # A draft can be changed while it waits at the gate, by anyone who can
+      # write to the repository. The release this run drafted is read through
+      # the API by its id, never downloaded: its state, title and notes, then
+      # the digest GitHub reports for each asset, compared with the run's
+      # files. The publish call follows that last read at once, by the same id.
+      # The moment between the two is the residual window docs/releasing.md
+      # states; the next step closes it after the fact.
+      - name: Require the draft to hold what this run wrote, and publish it
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          [[ "${RELEASE_ID}" =~ ^[0-9]+$ ]] || { echo "No release id from the draft job: ${RELEASE_ID:-none}" >&2; exit 1; }
+          tarball="judgment-pack-harness-${VERSION}.tgz"
+          written="$(cd run && for name in checksums.txt "${tarball}"; do printf '%s sha256:%s\n' "${name}" "$(sha256sum "${name}" | cut -d ' ' -f 1)"; done | LC_ALL=C sort)"
+
+          state="$(gh api "repos/${GH_REPO}/releases/${RELEASE_ID}" --jq '[.draft, .tag_name, .name] | @tsv')"
+          [ "${state}" = "$(printf 'true\t%s\tagent harness %s' "${RELEASE_TAG}" "${RELEASE_TAG}")" ] || { echo "Release ${RELEASE_ID} is not this run's draft of ${RELEASE_TAG}: ${state}" >&2; exit 1; }
+          # Both are taken without the newlines they end in, which the two
+          # ways of reading them do not agree on.
+          drafted_notes="$(gh api "repos/${GH_REPO}/releases/${RELEASE_ID}" --jq .body)"
+          written_notes="$(cat run/release-notes.md)"
+          [ "${drafted_notes}" = "${written_notes}" ] || { echo "The draft's notes are not the notes the commit holds:" >&2; diff <(echo "${written_notes}") <(echo "${drafted_notes}") >&2; exit 1; }
+
+          drafted="$(gh api "repos/${GH_REPO}/releases/${RELEASE_ID}/assets" --paginate --jq '.[] | "\(.name) \(.digest)"' | LC_ALL=C sort)"
+          if [ "${drafted}" != "${written}" ]; then
+            printf 'The draft does not hold what this run wrote.\nThis run wrote:\n%s\nThe draft holds:\n%s\n' "${written}" "${drafted}" >&2
+            exit 1
+          fi
+          gh api -X PATCH "repos/${GH_REPO}/releases/${RELEASE_ID}" -F draft=false -f make_latest=true --silent
+
+      # Published, the release is immutable once the repository's release
+      # immutability is on (docs/releasing.md). Its assets are read once more:
+      # a file replaced in the window is published only as a release this job
+      # fails, by name, with both digest sets.
+      - name: Require the published release to hold what this run wrote
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tarball="judgment-pack-harness-${VERSION}.tgz"
+          written="$(cd run && for name in checksums.txt "${tarball}"; do printf '%s sha256:%s\n' "${name}" "$(sha256sum "${name}" | cut -d ' ' -f 1)"; done | LC_ALL=C sort)"
+          draft="$(gh api "repos/${GH_REPO}/releases/${RELEASE_ID}" --jq .draft)" \
+            || { echo "Could not verify the published release ${RELEASE_TAG} (release ${RELEASE_ID}): reading it failed. Treat it as unverified (docs/releasing.md)" >&2; exit 1; }
+          published="$(gh api "repos/${GH_REPO}/releases/${RELEASE_ID}/assets" --paginate --jq '.[] | "\(.name) \(.digest)"')" \
+            || { echo "Could not verify the published release ${RELEASE_TAG} (release ${RELEASE_ID}): reading its assets failed. Treat it as unverified (docs/releasing.md)" >&2; exit 1; }
+          published="$(printf '%s\n' "${published}" | LC_ALL=C sort)"
+          if [ "${draft}" != "false" ] || [ "${published}" != "${written}" ]; then
+            printf 'The published release does not hold what this run wrote: %s (release %s, draft: %s).\nThis run wrote:\n%s\nThe release holds:\n%s\n' \
+              "${RELEASE_TAG}" "${RELEASE_ID}" "${draft}" "${written}" "${published}" >&2
+            exit 1
+          fi
+          echo "Published ${RELEASE_TAG} (release ${RELEASE_ID}):"
+          echo "${published}"
