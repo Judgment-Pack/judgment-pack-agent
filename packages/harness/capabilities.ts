@@ -158,6 +158,12 @@ export const FAMILY_CAPABILITIES: Readonly<Record<EndpointKind, Readonly<ModelCa
   })
 })
 
+/** Every member a record may carry, and the whole of them. The contract's `capability.json` properties. */
+export const CAPABILITY_MEMBERS: readonly (keyof ModelCapabilities)[] = [
+  'contextWindowTokens', 'outputTokens', 'nativeToolCalls', 'parallelToolCalls', 'vision',
+  'reasoning', 'streamingQuirks', 'toolSchemas', 'statePlacement', 'strictAlternation'
+]
+
 const object = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
 
@@ -177,7 +183,7 @@ function closed(value: Record<string, unknown>, members: readonly string[], wher
  */
 export function readCapabilities(value: unknown): ModelCapabilities {
   if (!object(value)) refuse('it is not an object')
-  closed(value, ['contextWindowTokens', 'outputTokens', 'nativeToolCalls', 'parallelToolCalls', 'vision', 'reasoning', 'streamingQuirks', 'toolSchemas', 'statePlacement', 'strictAlternation'], 'the record')
+  closed(value, CAPABILITY_MEMBERS, 'the record')
   for (const flag of ['nativeToolCalls', 'parallelToolCalls', 'vision'] as const) {
     if (typeof value[flag] !== 'boolean') refuse(`${flag} must be true or false`)
   }

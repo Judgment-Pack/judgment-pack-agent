@@ -30,6 +30,15 @@ EXPECTED_SCHEMAS = {
     "failure.json",
     "budget.json",
     "provenance.json",
+    "capability.json",
+}
+
+# The reasoning kinds each wire speaks (WIRE_REASONING in packages/harness/capabilities.ts): a
+# capability record whose kind its family's wire does not speak is refused before any request.
+WIRE_REASONING = {
+    "openai-compatible": {"openai-effort", "none"},
+    "anthropic": {"anthropic-thinking", "none"},
+    "gemini": {"gemini-thinking", "none"},
 }
 
 
@@ -100,7 +109,7 @@ def problems(check, items):
 
 
 class SchemaTests(unittest.TestCase):
-    def test_the_eleven_schemas_are_there_and_nothing_else(self):
+    def test_the_twelve_schemas_are_there_and_nothing_else(self):
         self.assertEqual(set(schemas()), EXPECTED_SCHEMAS)
 
     def test_every_schema_is_draft_2020_12_and_well_formed(self):
@@ -257,6 +266,39 @@ class VectorTests(unittest.TestCase):
                         self.assertEqual(item["text"], failure.get("detail", self.catalogue["failures"][code]["message"]))
                 if not vector["items"]:
                     self.assertEqual(code, "cancelled", "only a cancelled run emits nothing")
+
+    def test_every_capability_record_names_a_family_whose_wire_speaks_its_reasoning(self):
+        records = {name: vector for name, vector in self.vectors.items() if vector["schema"] == "capability.json"}
+        self.assertTrue(records)
+        for name, vector in records.items():
+            with self.subTest(vector=name):
+                self.assertIn(vector["family"], WIRE_REASONING)
+                for record in vector["items"]:
+                    self.assertIn(record["reasoning"]["kind"], WIRE_REASONING[vector["family"]])
+                    if "contextWindowTokens" in record:
+                        self.assertLessEqual(record["outputTokens"], record["contextWindowTokens"] / 2)
+
+    def test_one_default_record_per_family_and_an_open_weight_endpoint(self):
+        for family in WIRE_REASONING:
+            with self.subTest(family=family):
+                vector = self.vectors[f"capability/{family}.json"]
+                self.assertEqual(vector["family"], family)
+                self.assertEqual(len(vector["items"]), 1)
+                self.assertNotIn("contextWindowTokens", vector["items"][0], "a family default leaves the budget table's window")
+        local = self.vectors["capability/open-weight-local.json"]
+        self.assertEqual(local["family"], "openai-compatible")
+        self.assertFalse(local["items"][0]["nativeToolCalls"])
+
+    def test_a_host_may_answer_any_members_of_the_record_and_no_other(self):
+        check = validator(self.schemas, "capability.json#/$defs/endpointCapabilities")
+        record = self.vectors["capability/open-weight-local.json"]["items"][0]
+        self.assertEqual(problems(check, [{}, {"strictAlternation": True}, record, {"vision": True}]), [])
+        self.assertNotEqual(problems(check, [{"contextWindowTokens": 8192}]), [], "a window without its output cap")
+        self.assertNotEqual(problems(check, [{"supportsTools": True}]), [], "a member the record does not have")
+        self.assertEqual(
+            set(self.schemas["capability.json"]["$defs"]["endpointCapabilities"]["properties"]),
+            set(self.schemas["capability.json"]["properties"]),
+        )
 
     def test_the_scenario_is_the_order_the_conformance_session_asserts(self):
         vector = self.vectors["scenario/expense-reimbursement.json"]

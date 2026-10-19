@@ -1,0 +1,36 @@
+{
+  "description": "An illustrative record for an open-weight model on a local endpoint through the OpenAI-compatible wire (an Ollama- or vLLM-style server), as the Desk's endpoint probe would record one: a 32,768-token window with 4,096 for output, no native tool calls (its chat template has none, so the tools are described in text and called in a fenced JSON block), no parallel calls, no vision, a reasoning_effort it takes and ignores, and its reasoning streamed under reasoning. Written by hand, not measured against a live endpoint; the harness runs the recorded scenario on it (packages/harness/capabilities.test.ts). What the record replaces is listed in source: a key required where none is needed is the relay's and stays the Desk's.",
+  "schema": "capability.json",
+  "family": "openai-compatible",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "web/src/assistant/context/policy.ts (the 65,536-token default window the record replaces)",
+      "web/src/assistant/thinking.ts (reasoning_effort, sent whether or not the endpoint reads it)",
+      "web/src/assistant/engines/vercel/relay.ts (OpenAiWhole: reasoning_content or reasoning)",
+      "packages/harness/capabilities.ts (readCapabilities), in this repository"
+    ]
+  },
+  "items": [
+    {
+      "contextWindowTokens": 32768,
+      "outputTokens": 4096,
+      "nativeToolCalls": false,
+      "parallelToolCalls": false,
+      "vision": false,
+      "reasoning": {
+        "kind": "openai-effort",
+        "ignored": true
+      },
+      "streamingQuirks": {
+        "reasoningField": "reasoning",
+        "wholeJsonAnswer": false
+      },
+      "toolSchemas": "json-schema"
+    }
+  ]
+}

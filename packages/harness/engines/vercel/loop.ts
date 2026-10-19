@@ -612,12 +612,12 @@ function runVercelLoop(
   let awaitingInput = false
   /**
    * Images a result carried (agent#5), and where they are shown: a model whose
-   * record says `vision` is shown each result's images in one message right
-   * after the result; any other is shown the host's text rendering inside the
-   * result itself (`images.ts`). The image messages are kept out of the byte
-   * budget, which counts text, and put back after their result on every request
-   * that still carries it: by the SDK's call id, or by the text call's result
-   * message.
+   * record says `vision` is shown each result's images beside the result (one
+   * user message after a native call's tool message; parts of a text call's own
+   * result message); any other is shown the host's text rendering inside the
+   * result itself (`images.ts`). The images are kept out of the byte budget,
+   * which counts text, and put back beside their result on every request that
+   * still carries it: by the SDK's call id, or by the text call's result message.
    */
   const routing: ImageRouting = {
     // An image follows its result as a user turn, which an endpoint that keeps a

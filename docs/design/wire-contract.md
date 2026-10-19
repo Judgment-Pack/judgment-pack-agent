@@ -72,13 +72,22 @@ tools arrive as declarations (`name`, `description`, `inputSchema`) with host-de
 model never supplies: `effect` (`read`, `proposal`, `workflow`, `memory`, `plan`), `interaction`
 (`question` or `delegation`, the two that pause the run), `delegation` (the read-only capability a
 child may use), `contextPolicy` (`immutable`, `reference`) and `presentation`. The boundary adds
-`list_context`, `read_context` and `read_window` to every session and, in a conversation,
+`list_context`, `read_context`, `read_window` and `search` to every session and, in a conversation,
 `update_plan` and `request_budget_increase`; an offered tool may not take those names.
-(`read_window`, the reader below, is this harness's, agent#1; the Desk takes it in its swap.)
+(`read_window`, the reader below, is this harness's, agent#1, and so is `search`, agent#5; the Desk
+takes both in its swap.)
 
 An adapter shows the model the schema the runtime serves or nothing: a tool served without one ends
-the session. The one exception is the Gemini family, shown the schema less a closed list of
-keywords, with a `narrowed` guardrail per tool that lost one. On the agent wire the `codex` engine
+the session. The one exception is an endpoint whose capability record says it takes the Gemini
+subset (`toolSchemas`, by default the Gemini family), shown the schema less a closed list of
+keywords, with a `narrowed` guardrail per tool that lost one on the Gemini wire.
+
+An endpoint whose capability record says it takes no native tool calls (`nativeToolCalls` false;
+see [The capability record](#the-capability-record)) is offered the same tools in text: each one's
+name, description and shown schema at the end of the system text, and no tool on the wire. The
+model calls one per answer as one fenced JSON block, `{"tool": name, "arguments": {…}}`, read by
+the proposal fence's own closed reader: one block whose root is exactly `tool` and `arguments`, or
+the call is not made and the model is told why. On the agent wire the `codex` engine
 offers each tool under an alias (`desk_runtime_N`, `desk_host_N`) and reports the real name in its
 events.
 
@@ -94,6 +103,13 @@ Every runtime call leaves through the host's gate (`toolGate.ts`), which reads t
 and the call fails); `experimental_evaluate` always leaves with an own `rehearsal: true`
 (`guardrail` `rewrote` where the model's call lacked it), so a rehearsal never writes an audit
 record. The adapter neither applies nor skips this rule.
+
+A call made in text goes through the same dispatch, and so the same gate, as a native one, and
+emits the same `tool_call`, `guardrail` and `tool_result` events. A name the phase did not offer
+(the critic is offered fewer host tools than the loop) is put through the gate as the model wrote
+it and reported refused to the model whatever the gate answered, never looked up among the host's
+tools. The result goes back as the next user message, headed `TOOL RESULT from <name>` or `TOOL
+ERROR from <name>`, the bounded answer as JSON.
 
 ## Tool results
 
@@ -118,7 +134,29 @@ reader, `read_window`, reads a retained item in such windows by line, or a paged
 whose `pages` are strings) by page: arguments `id`, `unit`, `offset` (from 0) and `limit`, or the
 `cursor` a previous read returned; a result with the `text` (lines separated by a newline, pages by
 a form feed), the units shown, the item's `total` and `more`, the cursor that reads on, or null. A
-host's own readers keep the same shape.
+host's own readers keep the same shape. Since agent#5 a read by line numbers its lines,
+`<number><tab><line>` counted from 1 (line n is at offset n − 1), and shows 200 lines where the
+model names no limit; an item whose value is an image is read whole, as the image
+(`$defs/imageReadResult`).
+
+`search` (`$defs/searchArguments`, `$defs/searchResult`; agent#5) finds a regular expression in
+retained items, line by line: one item by `id`, every item (`scope` `all`, the default) or the
+documents the host handed the run (`attachments`, `$defs/attachment`). The pattern is the subset
+RE2 accepts (no backreferences, lookaround, Unicode property classes or inline flags; at most 256
+characters), run in time linear in each line with a bound on one search's work. Each match gives
+the item's `id` and `label`, its `line` (counted from 1), `offset` (the read offset), `column`, the
+`page` of a paged item, and `text`, the line with two either side, numbered. As many matches as fit
+in `readWindowBytes`, at most `limit` (20 by default, 100 at most), and `more`, a cursor bound to
+the same pattern and scope; a search that reaches its work bound stops with a cursor and a `note`.
+
+A result's `content` may carry image parts (`$defs/imagePart`: `kind` `image`, a PNG, JPEG or
+WebP `mediaType`, and either `bytes`, base64 up to 16 MiB decoded, or a `reference` to an image the
+execution retains), and so may an attachment's value; MCP's own image item is read as one. What the
+model is shown depends on its capability record: with `vision`, the image as an image beside its
+result; without, the host's text rendering of it (`renderImageToText`) in its place. The bytes are
+never part of the text the result limit counts. An image that cannot be shown is a line in the
+result saying why; none is dropped in silence. The agent wire carries text, so the `codex` engine
+always gets the rendering.
 
 A tool that throws is a failed result carrying `{"failure": …}` (or `{"questionFailure": …}` for
 `ask_user`), recoverable working data for the model. On the agent wire the answer travels as
@@ -198,9 +236,42 @@ makes, never above a hundred. The model is told the counts in its execution guid
 for more with `request_budget_increase`, which never grants: with two or fewer requests left it
 pauses the run for the person.
 
+## The capability record
+
+`capability.json`; the vectors `capability/`. Since agent#4 the `vercel` adapter reads one record per
+endpoint and model wherever it decided by the three families, which stay only the wire (the provider
+that speaks the request, where signatures ride, where a cache breakpoint goes):
+
+- `contextWindowTokens` and `outputTokens`: with both present, the run's window and output reserve,
+  in place of the budget table's; an assistant profile's own override for the model stays the last
+  word.
+- `nativeToolCalls`: false offers the tools in text (see Tool offers and Tool calls).
+- `parallelToolCalls`: false asks for one call per turn on a request that offers tools, where the
+  wire has a member for it (`parallel_tool_calls` on OpenAI-compatible, `disable_parallel_tool_use`
+  on Anthropic).
+- `vision`: whether an image reaches the model as an image or as the host's rendering. An endpoint
+  marked `strictAlternation` off the Anthropic wire gets the rendering either way, since an image
+  there is a user turn after the result.
+- `reasoning`: the `kind` the tier is spelled in (`anthropic-thinking`, `gemini-thinking`,
+  `openai-effort`, or `none`), which must be one the session's wire speaks, and `ignored`, an
+  endpoint that takes the parameter and does nothing with it. With `none` or `ignored` nothing is sent
+  at any tier, and a tier other than off is reported unavailable once, before the first request.
+- `streamingQuirks`: `reasoningField`, the OpenAI-compatible member reasoning streams in and is
+  carried back in (null: either, as the SDK reads it), and `wholeJsonAnswer`, an endpoint that answers
+  whole, which is asked for a whole answer.
+- `toolSchemas`: the served JSON Schema, or the Gemini subset, on any wire.
+- `statePlacement` and `strictAlternation` (agent#9): where the execution state goes; see below.
+
+A run's record is the family's default (the three vectors, which change nothing the loop did), then
+the host's `endpointCapabilities` answer for the endpoint and model, any members of the record
+(`$defs/endpointCapabilities`), then the session's own (`session.model.capabilities`), read whole and
+closed. Where the record comes from (an endpoint probe, a keyless local endpoint, a LAN address, a
+context-window field, a provider's header) is the host's.
+
 ## The execution state
 
-`budget.json`, `$defs/stateLocation` and `$defs/endpointCapabilities`; the vector
+`budget.json`, `$defs/stateLocation`, and the two members of the capability record that place it
+(`capability.json`); the vector
 `budget/state-placement.json`. Since agent#9 the `vercel` adapter sends a stable prefix (its system
 text with the execution instructions, the tools, the host's prompt, the history) and puts what
 changes between requests in one text, the **execution state**: the request counters, the plan and
@@ -217,7 +288,7 @@ says: `trailing-user`, one user message after the history (merged by the Anthrop
 tool-result turn it follows), or `system-tail`, the end of the system text after the head that
 carries the Anthropic cache breakpoint (one string with the head on the OpenAI-compatible wire, a
 second block or part on the other two). The host sets the placement through `configureHarness`
-(`endpointCapabilities`): `system-tail` for an endpoint marked `strictAlternation` (it refuses two
+(`endpointCapabilities`, members of the capability record): `system-tail` for an endpoint marked `strictAlternation` (it refuses two
 user turns in a row and a user text after a tool result), and by default for Anthropic when a
 thinking tier is on, where a text block in a tool-result turn starts a new assistant turn;
 `trailing-user` otherwise. The placement is chosen once per run. The critic's step note carries the
@@ -309,8 +380,12 @@ the host's model capability so the host keeps counting; whether the adapter emit
   `guardrail` `narrowed` are `vercel`'s only; `retry` is `codex`'s only.
 - **Failure source.** A loop failure is `source: "model"` from `vercel` and `"agent"` from
   `codex`.
+- **The capability record.** `vercel` reads it; `codex` has no model capability and reads none: its
+  agent wire carries text only, so an image always reaches it as the host's rendering, and its tools
+  are always the agent's own.
 - **Certification.** `vercel` is held to the conformance session's exact event order on six legs
-  (three wire families, each streamed and whole); `codex` to a separate leg that runs T1 to T6 only, with the critic on, and asserts a subset (no
+  (three wire families, each streamed and whole), and to the same order through the text tool path
+  on the same six; `codex` to a separate leg that runs T1 to T6 only, with the critic on, and asserts a subset (no
   error, the proposal, the gate's events in place, one `end`). The two are not held to one
   sequence.
 

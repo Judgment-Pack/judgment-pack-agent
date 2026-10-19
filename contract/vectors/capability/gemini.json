@@ -1,0 +1,35 @@
+{
+  "description": "The gemini family's default record: what the loop did for this family before it read a record, so a host that supplies it changes nothing. No window or output cap (the budget table's stand), native and parallel tool calls, the thinking budget then the level, a streamed answer asked for, and the served schema less the closed removal list (geminiSchema.ts). Vision: the Gemini models the Desk configures take images.",
+  "schema": "capability.json",
+  "family": "gemini",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "web/src/assistant/thinking.ts (firstDialect, wireFor)",
+      "web/src/assistant/engines/vercel/loop.ts (servedSchemaFor, sdkThinking, toolsFor)",
+      "web/src/assistant/engines/vercel/relay.ts (reframe)",
+      "internal/aicontext/policy.json",
+      "packages/harness/capabilities.ts (FAMILY_CAPABILITIES), in this repository",
+      "web/src/assistant/geminiSchema.ts (GEMINI_SCHEMA_REMOVALS)"
+    ]
+  },
+  "items": [
+    {
+      "nativeToolCalls": true,
+      "parallelToolCalls": true,
+      "vision": true,
+      "reasoning": {
+        "kind": "gemini-thinking"
+      },
+      "streamingQuirks": {
+        "reasoningField": null,
+        "wholeJsonAnswer": false
+      },
+      "toolSchemas": "gemini-subset"
+    }
+  ]
+}

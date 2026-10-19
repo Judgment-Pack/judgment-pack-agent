@@ -6,9 +6,13 @@
  */
 import { describe, expect, it } from 'vitest'
 import hostToolsVector from '../../../contract/vectors/tool-offer/host-tools.json'
+import toolResult from '../../../contract/schemas/tool-result.json'
+import searchVector from '../../../contract/vectors/tool-result/search.json'
+import imageReadVector from '../../../contract/vectors/tool-result/image-read.json'
+import attachmentsVector from '../../../contract/vectors/tool-result/attachments.json'
 import { normalize } from '../thinking'
 import { PATTERN_LENGTH, PatternError, compilePattern, firstMatch } from './pattern'
-import { SEARCH_STEPS, SEARCH_TOOL, type SearchResult } from './search'
+import { SEARCH_STEPS, SEARCH_TOOL, searchInputSchema, type SearchResult } from './search'
 import { READ_TOOL, READ_WINDOW_LINES, type ReadResult } from './reader'
 import { SessionContext } from './session'
 import { utf8Bytes } from './policy'
@@ -145,6 +149,27 @@ describe('search', () => {
     const context = new SessionContext(session())
     const entry = await context.ledger.retain({ id: 'one', kind: 'tool', label: 'One line', value: 'a'.repeat(1_000_000) })
     await expect(refused(context, { pattern: '[a-z]*[a-z]*[a-z]*[a-z]*[q!]', id: entry.id })).rejects.toThrow(/more work than one search does on line 1/)
+  })
+
+  it('takes exactly the arguments the contract states', () => {
+    const { description, ...schema } = toolResult.$defs.searchArguments
+    expect(description).toContain('exactly the input schema')
+    expect(schema).toEqual(searchInputSchema())
+  })
+
+  it('answers what the contract’s vectors state, rendered again from the code', async () => {
+    const context = new SessionContext(session())
+    context.ledger.scope = '7b3e1c52-0d6f-4a8e-9c21-5f4d2a6b8e90'
+    await context.initialize([attachmentsVector.items[1]!].map((item) => ({ ...item, kind: 'artifact' as const, id: 'receipt-scan', label: 'A scanned receipt' })), true)
+    await context.ledger.retain({ id: 'policy', kind: 'artifact', label: 'The policy', value: POLICY })
+    expect([
+      (await tool(context, SEARCH_TOOL).execute({ pattern: '\\b\\d+ USD\\b', limit: 3 }, signal)).structuredContent,
+      (await tool(context, SEARCH_TOOL).execute({ pattern: 'usd', ignoreCase: true, scope: 'attachments' }, signal)).structuredContent
+    ]).toEqual(searchVector.items)
+    const image = attachmentsVector.items[2]!
+    await context.ledger.retain({ ...image, kind: 'artifact', id: 'receipt-scan', label: 'A scanned receipt' })
+    const entry = context.ledger.list().items.find((item) => item.label === 'A scanned receipt' && item.contextId.endsWith(imageReadVector.items[0]!.id.slice(-16)))!
+    expect((await tool(context, READ_TOOL).execute({ id: entry.contextId }, signal)).structuredContent).toEqual(imageReadVector.items[0])
   })
 
   it('is declared to the model exactly as the contract’s host-tool vector states it', () => {

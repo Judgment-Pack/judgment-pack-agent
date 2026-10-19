@@ -1,0 +1,34 @@
+{
+  "description": "The openai-compatible family's default record: what the loop did for this family before it read a record, so a host that supplies it changes nothing. No window or output cap (the budget table's stand), native and parallel tool calls with nothing extra sent, reasoning_effort for the tier, the reasoning member read as the SDK reads it, a streamed answer asked for (a whole one is still re-framed), the served schema as served. No vision: an endpoint of this family is not known to take images, so an image reaches it as the host's text rendering until its own record says otherwise.",
+  "schema": "capability.json",
+  "family": "openai-compatible",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "web/src/assistant/thinking.ts (firstDialect, wireFor)",
+      "web/src/assistant/engines/vercel/loop.ts (servedSchemaFor, sdkThinking, toolsFor)",
+      "web/src/assistant/engines/vercel/relay.ts (reframe)",
+      "internal/aicontext/policy.json",
+      "packages/harness/capabilities.ts (FAMILY_CAPABILITIES), in this repository"
+    ]
+  },
+  "items": [
+    {
+      "nativeToolCalls": true,
+      "parallelToolCalls": true,
+      "vision": false,
+      "reasoning": {
+        "kind": "openai-effort"
+      },
+      "streamingQuirks": {
+        "reasoningField": null,
+        "wholeJsonAnswer": false
+      },
+      "toolSchemas": "json-schema"
+    }
+  ]
+}

@@ -34,28 +34,28 @@ $pkg/agentTransport.test.ts|$a/agentTransport.test.ts|df8c20487e36f88e9c14eea65b
 $pkg/completion.ts|$a/completion.ts|b2bf689ca718a8a8d1481fdce145d42b52f3b6f8ff20d64b54f35fe3d1d3d46e|agent#9: the prompt cache reads and writes (cacheReadTokens, cacheWriteTokens) read from the SDK usage and kept
 $pkg/completion.test.ts|$a/completion.test.ts|-|-
 $pkg/context/context.test.ts|$a/context/context.test.ts|4e3433cb73aa6bbe78b7225472198e6620d116ff3ff73df65740c5b9ce3e1128|agent#1: the reference envelope names read_window
-$pkg/context/ledger.ts|$a/context/ledger.ts|e7b17e98dc903b1036f636db8b06333d1d49249b1a5dbf4db013cba59287c34f|declaration emit: Entry exported (a type, no runtime change) so tsc can write controller.d.ts; agent#1: the reader, read_window, among the ledger tools and named in the reference envelope (readWith)
+$pkg/context/ledger.ts|$a/context/ledger.ts|3522f216a776360a342e81312f0182648025115d4e9fd8544da65169b5200a1c|declaration emit: Entry exported (a type, no runtime change) so tsc can write controller.d.ts; agent#1: the reader, read_window, among the ledger tools and named in the reference envelope (readWith); agent#5: search among the ledger tools, the attachments the host retained, an image item read whole, a retained image by reference
 $pkg/context/managed.ts|$a/context/managed.ts|-|-
-$pkg/context/policy.ts|$a/context/policy.ts|61223a8682799dcf2e84b37558899963610ca0a14f41a45d8699e5968994535a|the Go-side copy: policy.json read from the package's contract/; agent#1: readWindowBytes and encodedPrefix, the read window
+$pkg/context/policy.ts|$a/context/policy.ts|961420c0385db4a7fcbea4ff6e3d5e7c78affe37886889c77c91d7b502c630fd|the Go-side copy: policy.json read from the package's contract/; agent#1: readWindowBytes and encodedPrefix, the read window; agent#4: contextPolicy takes the capability record's window and output cap
 $pkg/context/recovery.integration.test.ts|$a/context/recovery.integration.test.ts|-|-
-$pkg/context/session.ts|$a/context/session.ts|13f336a37d5d281e2dbb9e937e9585fde210628eddfcb454f5f3ee5e52b47ced|agent#1: read_window reserved; agent#9: the execution guidance no longer appended to the prompt (each adapter places it), currentState
+$pkg/context/session.ts|$a/context/session.ts|040b461968977b6eabb6d057b866648b3677df58e299ce5e85d6a5559a260869|agent#1: read_window reserved; agent#9: the execution guidance no longer appended to the prompt (each adapter places it), currentState; agent#4: the capability record resolved once for the run, the budget from it; agent#5: search reserved, the host's documents retained as attachments
 $pkg/context/toolPolicy.ts|$a/context/toolPolicy.ts|-|-
 $pkg/context/toolPolicy.test.ts|$a/context/toolPolicy.test.ts|-|-
 $pkg/delegation.ts|$a/delegation.ts|-|-
 $pkg/delegation.test.ts|$a/delegation.test.ts|c2a97f7509cca43de3522ab5c2b00de6846f87fa54c00236d957eb4ed9aa4bb2|test kept in the Desk: the case over the Desk's response history; the Desk's chat-history reader replaced by a fold of delegated_task events with its interruption rule
 $pkg/delegationContract.ts|$a/delegationContract.ts|-|-
-$pkg/engine.ts|$a/engine.ts|68b25cb988d24686b5c335110823d1c2b3fc13cd3dab855575919fea60a81a7f|injection points: Language, AssistantEngine, EndpointKind (types)
+$pkg/engine.ts|$a/engine.ts|4394844726d7915f2420ec01ded5fe954f526b3d2e33b6ca9ccea74e38eeb1c7|injection points: Language, AssistantEngine, EndpointKind (types); agent#4: a session may carry members of its endpoint's capability record; agent#5: a result's content item is open (image parts)
 $pkg/engines/codex/codex.test.ts|$a/engines/codex/codex.test.ts|ee2310f6b4ec149d85a7d61631abc3510a75e95ba433ad9cbf29a063e17b9260|paths: conformance/ is certification/, testing/question reads the contract vector; test kept in the Desk: the case over the Desk's dialect chat tools; agent#1: the reference envelope names read_window
-$pkg/engines/codex/index.ts|$a/engines/codex/index.ts|78946ae6533096ed56b4442dad844e68c815a139c4cce7ab4eb31f9fc4657b24|injection points: assistantLanguageInstructions; agent#9: the agent prompt carries currentState and the execution guidance itself
-$pkg/engines/contract.ts|$a/engines/contract.ts|18552d59d52ddcae8d4b82738ddd4a21bdedf891d22a3bc6b95101363bd63abd|injection points: EndpointKind (type)
+$pkg/engines/codex/index.ts|$a/engines/codex/index.ts|2efff9b7657e8929f90ff3bc6b0103937b9a586140cd1d884d6c83fc65a2e14f|injection points: assistantLanguageInstructions; agent#9: the agent prompt carries currentState and the execution guidance itself; agent#5: an image in a result reaches the agent as the host's text rendering
+$pkg/engines/contract.ts|$a/engines/contract.ts|667a1b2c616e58e302bb91a91417c686b0efea0f8bb09028baf7999cd717dbf5|injection points: EndpointKind (type); agent#4: the schema shown by the record's tool-schema subset, the text tool call read by the proposal fence's closed reader, the tools described in text
 $pkg/engines/contract.test.ts|$a/engines/contract.test.ts|-|-
 $pkg/engines/index.ts|$a/engines/index.ts|6f19d51e6ae2890ff7ea6f7156ed0800ab9681c73e85d9c509d761b201813b58|injection points: AssistantEngine (type)
 $pkg/engines/vercel/channel.ts|$a/engines/vercel/channel.ts|-|-
 $pkg/engines/vercel/completion.test.ts|$a/engines/vercel/completion.test.ts|-|-
-$pkg/engines/vercel/engine.test.ts|$a/engines/vercel/engine.test.ts|b43d58b6df3579d6b90c4426ba834fa39f5d542d528b548e44a6b4a3433914b9|injection points: ASSISTANT_ENGINES, ASSISTANT_TOOLS; paths: LANGUAGES from the test host, testing/question reads the contract vector; agent#1: read_window in the offered tool lists
+$pkg/engines/vercel/engine.test.ts|$a/engines/vercel/engine.test.ts|8852ec798636fce4a24beefe708db8c010d3e09bd170ee38a036f2f64f006ee1|injection points: ASSISTANT_ENGINES, ASSISTANT_TOOLS; paths: LANGUAGES from the test host, testing/question reads the contract vector; agent#1: read_window in the offered tool lists; agent#5: search in the offered tool lists
 $pkg/engines/vercel/index.ts|$a/engines/vercel/index.ts|-|-
-$pkg/engines/vercel/loop.ts|$a/engines/vercel/loop.ts|ff98eccd0b30ce007ca1b39c1e87491d1cfe77f9a0ee8d5f9ffe4e89fb31f908|injection points: assistantLanguageInstructions, AssistantEngine and EndpointKind (types); agent#9: a stable prefix with the changing state placed by endpoint (the person's message on the first request, then a trailing user message or the system tail), the critic's note headed, Anthropic cache breakpoints, the tier held for the run
-$pkg/engines/vercel/relay.ts|$a/engines/vercel/relay.ts|a4cf2c7f1ab2de26ebc85fbca87774f86ea6a385d69e57fd66d2cf8a20b7ef88|injection points: EndpointKind (type)
+$pkg/engines/vercel/loop.ts|$a/engines/vercel/loop.ts|313565ff00806c894341ecbf727d26480cae1604265737bade82b693339ec4f3|injection points: assistantLanguageInstructions, AssistantEngine and EndpointKind (types); agent#9: a stable prefix with the changing state placed by endpoint (the person's message on the first request, then a trailing user message or the system tail), the critic's note headed, Anthropic cache breakpoints, the tier held for the run; agent#4: the capability record read wherever the loop decided by family (thinking, schema subset, native or text tool calls, one call per turn, streaming quirks, the state placement), the text tool path in the loop and the critic; agent#5: images routed by vision, beside their results
+$pkg/engines/vercel/relay.ts|$a/engines/vercel/relay.ts|1e06313bdf2ad96fbccdcba178118ddefc5f5815090b8399034f054311771709|injection points: EndpointKind (type); agent#4: the pinned reasoning member read and carried back, a whole answer asked of an endpoint that answers whole
 $pkg/execution/checkArtifact.ts|$a/execution/checkArtifact.ts|-|-
 $pkg/execution/checkArtifact.test.ts|$a/execution/checkArtifact.test.ts|-|-
 $pkg/execution/controller.ts|$a/execution/controller.ts|0adc37def64dbbe1b65c1dd19b054cf319c81d188efb081ce369bb51282c1391|agent#9: requestState, the part of the guidance that changes between requests
@@ -74,7 +74,7 @@ $pkg/memory/client.ts|$a/memory/client.ts|447add57ae764bb05abe84cdaf49c22420041d
 $pkg/memory/memory.test.ts|$a/memory/memory.test.tsx|86fa73104725e7beb66e2b68240f77135c9db0066288db093d36e546e2ff4634|tests kept in the Desk: the two cases over the Desk's memory settings screen
 $pkg/memory/tools.ts|$a/memory/tools.ts|-|-
 $pkg/planning/model.ts|$a/planning/model.ts|-|-
-$pkg/planning/planning.test.ts|$a/planning/planning.test.tsx|f071a06c39c415066fd50a9e82e4303d470999b1db53a4a8e33932c7db443c69|tests kept in the Desk: the three cases over the Desk's chat store and plan card; agent#1: read_window in the host tool list
+$pkg/planning/planning.test.ts|$a/planning/planning.test.tsx|7ed4ae9c9dcebc2dbf1d3e1258c963f149968706f7d5da8532898c064682a436|tests kept in the Desk: the three cases over the Desk's chat store and plan card; agent#1: read_window in the host tool list; agent#5: search in the host tool list
 $pkg/planning/policy.ts|$a/planning/policy.ts|-|-
 $pkg/planning/tools.ts|$a/planning/tools.ts|7797f4ceb26b22e216e973ea2d1206a0ac43218a89836496ee2b2e6ec62217ef|injection points: Chat and ChatStore (types), readFile, dialectAPI, PreparationReply (type)
 $pkg/questionFailure.ts|$a/questionFailure.ts|dba6a633523a01fc9499eaafd49a743b7c0c85fad7b7067309f114425f9c5da0|injection points: sourceMessage
@@ -83,7 +83,7 @@ $pkg/refutation.ts|$a/refutation.ts|0294ae873735fb5c177e6dd65f6859dc56c695ccb967
 $pkg/refutation.test.ts|$a/refutation.test.ts|-|-
 $pkg/session.ts|$a/session.ts|5b43df17b626eee3a98d06e959bff82eb6118ca8dd1605ca0621ba0fcef31605|injection points: aiHeaders, AITarget, deskHeaders, currentLanguage, chassisUrl, DeskWebSocketTransport, socketProtocols, socketURL, the session store (NO_SESSION_MESSAGE, NoSession, discardBody, forgetSession, refusalCode, sessionBearer, sessionEnded, whenSessionEnds), EndpointKind (type)
 $pkg/session.test.ts|$a/session.test.ts|f3400e960cab12b82f9f2491827268be9aabc1b5adfb5d5a1c1c70f40cc51133|injection points: the Desk's session store and language replaced by configureHarness with the test host's sessionBearer and currentLanguage; paths: conformance/ is certification/
-$pkg/thinking.ts|$a/thinking.ts|0a05ccb19f2f89cddf8efdaf4fb4fd03264219ac8469083a722b4b4a5151a892|injection points: sourceMessage, EndpointKind and ThinkingTier (types)
+$pkg/thinking.ts|$a/thinking.ts|a6fc264737190ac85f4a9de54323d12b9700b3a7abd2a6e7fd6782d94c3a5c54|injection points: sourceMessage, EndpointKind and ThinkingTier (types); agent#4: the tier spelled in the record's reasoning kind, nothing sent where it names none or the endpoint ignores it, said once
 $pkg/thinking.test.ts|$a/thinking.test.ts|95558d0f77c51b73671db0d36f50c00cfb0108959939f3131c10029746d6cd24|injection points: EndpointKind and ThinkingTier (types)
 $pkg/toolGate.ts|$a/toolGate.ts|ed7f72456dd7d84783628c57af30f405f00ef1276d2d36e3a921c1e6d91589a4|injection points: ASSISTANT_TOOLS
 $pkg/toolGate.test.ts|$a/toolGate.test.ts|052142bb695e6a249e68c316f1df2cd8167a94b8fa2e6a44125669dcd2b392b6|injection points: ASSISTANT_TOOLS; whitespace: the blank line at the end of the file, which the repository's whitespace check refuses
@@ -91,10 +91,10 @@ $pkg/certification/certification/clearsItsInterval.ts|$a/conformance/certificati
 $pkg/certification/certification/throwsWhileDraining.ts|$a/conformance/certification/throwsWhileDraining.ts|-|-
 $pkg/certification/certification/touchesAfterRun.ts|$a/conformance/certification/touchesAfterRun.ts|-|-
 $pkg/certification/certification/touchesOnLoad.ts|$a/conformance/certification/touchesOnLoad.ts|-|-
-$pkg/certification/conformance.test.ts|$a/conformance/conformance.test.ts|9a53f21c0236f9c22d75fdcb894db1856f66dd82fbf8e84dcc1499f2b62a0ed2|injection points: EndpointKind and ThinkingTier (types); contract vectors: the event order and K2's offer read from contract/vectors/; agent#1: the Gemini legs count the context tools from the offer vector; agent#9: the strict-alternation leg and the endpoint capabilities a leg sets
+$pkg/certification/conformance.test.ts|$a/conformance/conformance.test.ts|35156057017f78a6bc71ca153830fe35aaadb65982a1bfbf8a4f87cb59455202|injection points: EndpointKind and ThinkingTier (types); contract vectors: the event order and K2's offer read from contract/vectors/; agent#1: the Gemini legs count the context tools from the offer vector; agent#9: the strict-alternation leg and the endpoint capabilities a leg sets; agent#4: the text tool calls legs and the tool-call mode a leg sets
 $pkg/certification/runtime.json|$a/conformance/runtime.json|-|-
 $pkg/certification/scenario.json|$a/conformance/scenario.json|-|-
-$pkg/certification/scriptedModel.ts|$a/conformance/scriptedModel.ts|af92198d6032d82d4c0a57ac1aa7e1c044fc18d442b85f8ace19d3f5488e971e|injection points: EndpointKind (type)
+$pkg/certification/scriptedModel.ts|$a/conformance/scriptedModel.ts|e3d30840d69d8c277dc9adeb552b36c17c09ff98219814e543070d32a1144e14|injection points: EndpointKind (type); agent#4: an endpoint without native tool calls (toolCalls: text)
 $pkg/certification/scriptedModel.test.ts|$a/conformance/scriptedModel.test.ts|-|-
 $pkg/certification/scriptedServer.ts|$a/conformance/scriptedServer.ts|-|-
 $pkg/contract/catalog.json|internal/aifailure/catalog.json|-|-
@@ -121,6 +121,14 @@ $pkg/testing/setup.ts
 $pkg/context/reader.ts
 $pkg/context/reader.test.ts
 $pkg/engines/vercel/prefix.test.ts
+$pkg/capabilities.ts
+$pkg/capabilities.test.ts
+$pkg/images.ts
+$pkg/images.test.ts
+$pkg/context/pattern.ts
+$pkg/context/search.ts
+$pkg/context/search.test.ts
+$pkg/engines/vercel/capabilities.test.ts
 EOF
 }
 
