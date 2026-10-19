@@ -12,6 +12,9 @@ import { PROPOSAL_RECEIVED, PROPOSE_PACK_SCHEMA, PROPOSE_PACK_TOOL } from '../co
 // agent#25: the offer this leg asserts is the contract's, not the session's own.
 import offerVector from '../../../../contract/vectors/tool-offer/scenario-offer.json'
 import criticOfferVector from '../../../../contract/vectors/tool-offer/critic-offer.json'
+import recallVector from '../../../../contract/vectors/recall/agent.json'
+import { recallQuery } from '../../certification/recall'
+import { STATE_HEADER } from '../contract'
 import type { AgentTool } from '../../agent'
 
 /** An agent-wire offer read back to the tools it aliases: the real name, its description and schema. */
@@ -232,6 +235,36 @@ describe.each(AGENT_ENGINES)('agent engine %s', engineId => {
     stop.abort()
     await promise
     expect(events).toEqual([])
+  })
+
+  // agent#36: the state and guidance are headed by STATE_HEADER, as the relayed wires head the state
+  // part, so the contract's recall rule applied to this engine's prompt yields the person's message.
+  it('heads the state and guidance after the person’s message, and the contract’s recall rule yields the message', async () => {
+    const item = recallVector.items[0]!
+    const prompts: string[] = []
+    const run: AgentRun = async (request, callbacks) => {
+      prompts.push(request.prompt)
+      await callbacks.event({ type: 'message', id: 'done', text: proposal(), phase: 'final' })
+    }
+    const loaded = await loadEngine(engineId)
+    const events: AssistantEvent[] = []
+    // A conversation with a host state: both are appended.
+    for await (const event of loaded.start(session(run, { prompt: item.text, allowConversation: true, adversarialReview: false, context: { currentState: 'Draft snapshot: {"pack":"expense-reimbursement"}' } }) as never)) events.push(event)
+    // Neither a state nor a conversation: nothing is appended and nothing is headed.
+    for await (const event of loaded.start(session(run, { prompt: item.text, adversarialReview: false }) as never)) events.push(event)
+    expect(events.filter(event => event.type === 'error')).toEqual([])
+    expect(prompts).toHaveLength(2)
+    const [chat, plain] = prompts as [string, string]
+    // The shape is the vector's: the message, a blank line, the header, then the state and the guidance.
+    const [head] = item.body.prompt.split('\n… (the host')
+    expect(chat.startsWith(head!)).toBe(true)
+    expect(chat.slice(item.text.length, item.text.length + STATE_HEADER.length + 3)).toBe('\n\n' + STATE_HEADER + '\n')
+    expect(chat.split(STATE_HEADER)).toHaveLength(2)
+    expect(chat).toContain('Draft snapshot: {"pack":"expense-reimbursement"}')
+    expect(chat.indexOf('"requests"')).toBeGreaterThan(chat.indexOf('Draft snapshot'))
+    expect(recallQuery('agent', { prompt: chat })).toEqual({ pointer: item.pointer, text: item.text })
+    expect(plain).toBe(item.text)
+    expect(recallQuery('agent', { prompt: plain })).toEqual({ pointer: item.pointer, text: item.text })
   })
 })
 

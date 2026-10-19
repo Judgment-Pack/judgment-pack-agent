@@ -1,0 +1,84 @@
+name: Mutation check
+
+# Each row of packages/harness/scripts/mutation-rows.json breaks one safeguard on purpose, in a scratch
+# copy, and a test must fail (agent#37). A row costs a few test files, and the table has more than a
+# hundred, so CI time is bounded two ways: a pull request runs the rows whose file it changes, capped,
+# and a sample; the full table runs weekly, in shards, and on demand.
+on:
+  pull_request:
+    paths:
+      - 'packages/harness/**'
+      - '.github/workflows/mutation.yml'
+  schedule:
+    - cron: '23 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rows-apply:
+    # Cheap, and on every run: every row's text still occurs once in its file, and every test it names exists.
+    name: every row applies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: The table against the files
+        run: node packages/harness/scripts/mutation-check.mjs --check
+
+  sample:
+    name: rows of the files this pull request changes, and a sample
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Install the locked dependencies
+        run: npm ci
+      - name: Rows over the files changed (at most fifteen)
+        env:
+          BASE: origin/${{ github.base_ref }}
+          SEED: ${{ github.event.pull_request.number }}
+        run: node packages/harness/scripts/mutation-check.mjs --changed "$BASE" --sample 15 --seed "$SEED"
+      - name: Five rows chosen by the pull request's number
+        env:
+          SEED: ${{ github.event.pull_request.number }}
+        run: node packages/harness/scripts/mutation-check.mjs --sample 5 --seed "$SEED"
+
+  full:
+    name: every row (shard ${{ matrix.shard }} of 4)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Install the locked dependencies
+        run: npm ci
+      - name: The rows of this shard
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: node packages/harness/scripts/mutation-check.mjs --shard "$SHARD/4"

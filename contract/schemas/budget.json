@@ -353,7 +353,7 @@
       "additionalProperties": true
     },
     "stateLocation": {
-      "description": "Where the execution state sits in one request on one wire (agent#9). The state is one text: the header, then the request counters ($defs/requestAllowance, and in a conversation the delegation coordinator wraps the tool-call cap, $defs/toolCallAllowance), plan and operations index the model is told, the host's changing text and the step's own instruction. It is the text at pointer (a JSON pointer into the provider body the adapter composed) from the header, which starts a line, to the end of that text; the header occurs nowhere else in the request. The critic's step note carries the same header. A host that reads requests (the Desk server's memory recall) drops every text part that starts with the header, and finds the request text as $defs/recallQuery states.",
+      "description": "Where the execution state sits in one request on one wire (agent#9). The state is one text: the header, then the request counters ($defs/requestAllowance, and in a conversation the delegation coordinator wraps the tool-call cap, $defs/toolCallAllowance), plan and operations index the model is told, the host's changing text and the step's own instruction. It is the text at pointer (a JSON pointer into the provider body the adapter composed) from the header, which starts a line, to the end of that text; the header occurs nowhere else in the request. The critic's step note carries the same header. A host that reads requests (the Desk server's memory recall) drops every text part that starts with the header, and finds the request text as $defs/recallQuery states. On the agent wire (the Codex engine) the run is one request with one prompt string: the person's message, then, after a blank line, the header, the host's changing text and, in a conversation, the execution guidance; a chat's index of earlier results comes after them (agent#36). A host cuts the prompt at the header.",
       "type": "object",
       "required": [
         "family",
@@ -406,7 +406,7 @@
       "additionalProperties": true
     },
     "recallQuery": {
-      "description": "Where the request text a run started from sits on each model wire on any request of the run, and the rule a server applies to find it (agent#11; the Desk server's memory recall adopts it in its swap, judgment-pack-desk#515). The rule: take the request's first user turn, the first message with role user in messages (OpenAI-compatible, where system messages may come before it, and Anthropic) or the first content with role user in contents (Gemini); the request text is its first text part that does not start with STATE_HEADER ($defs/stateLocation), a string content being one text part and, on Gemini, a part being text when it carries text and is not a thought. The request text is the host's prompt where it fits the prompt's allowance; where it does not, the prompt is retained and previewed, and the person's message (currentRequest.message) is sent as its own first text part, before the preview; for a delegated child it is the child's objective (context.objective), sent as its own first text part before the child's prompt. It holds on every request of the run: the adapter puts the request text first in the run's first user message and never moves, replaces or drops that message. The state joins it only as a later part on the first request; a chat's index of earlier results (tool-result.json#/$defs/turnIndex) is its second part; compaction keeps it whole. Every other user text the loop adds comes after it: a text-path result, the images shown beside a result, the finishing and reformat instructions, the compaction summary, the state. So the newest user text is often not the request, and the first user turn always is. Measured on all three wires in the review of judgment-pack-agent#33: the newest-remaining-text rule fails on a text-path request, the finishing request, the reformat request and after compaction; the Desk's code as ported fails the same, except after compaction on Anthropic, where the first message and the compaction summary merge into one user turn. The critic's requests are a second conversation, whose first user turn is the critic's own message. On the agent wire the request text is the start of the agent request's prompt. An item is one request of a run with tool calls: body is the request as the adapter composed it, abbreviated to its turns (the system text, tool results and state shortened, the tools left out); pointer is the JSON pointer the rule resolves to in it, and text the request text found there. packages/harness/certification/recall.ts states the rule in code, memory/recall.test.ts checks every item against a run, and the certification suite applies it to every request of the recorded scenario on every certified leg: 21 legs in four families (the six plain legs, the six text-path legs, three strict-alternation legs and the six thinking legs' authoring requests).",
+      "description": "Where the request text a run started from sits on each model wire on any request of the run, and the rule a server applies to find it (agent#11; the Desk server's memory recall adopts it in its swap, judgment-pack-desk#515). The rule: take the request's first user turn, the first message with role user in messages (OpenAI-compatible, where system messages may come before it, and Anthropic) or the first content with role user in contents (Gemini); the request text is its first text part that does not start with STATE_HEADER ($defs/stateLocation), a string content being one text part and, on Gemini, a part being text when it carries text and is not a thought. The request text is the host's prompt where it fits the prompt's allowance; where it does not, the prompt is retained and previewed, and the person's message (currentRequest.message) is sent as its own first text part, before the preview; for a delegated child it is the child's objective (context.objective), sent as its own first text part before the child's prompt. It holds on every request of the run: the adapter puts the request text first in the run's first user message and never moves, replaces or drops that message. The state joins it only as a later part on the first request; a chat's index of earlier results (tool-result.json#/$defs/turnIndex) is its second part; compaction keeps it whole. Every other user text the loop adds comes after it: a text-path result, the images shown beside a result, the finishing and reformat instructions, the compaction summary, the state. So the newest user text is often not the request, and the first user turn always is. Measured on all three wires in the review of judgment-pack-agent#33: the newest-remaining-text rule fails on a text-path request, the finishing request, the reformat request and after compaction; the Desk's code as ported fails the same, except after compaction on Anthropic, where the first message and the compaction summary merge into one user turn. The critic's requests are a second conversation, whose first user turn is the critic's own message. On the agent wire (the Codex engine) the run sends one string, its prompt, and the request text is the prompt's text before the first blank line followed by STATE_HEADER, or the whole prompt where there is none; the prompt is the host's prompt, then the host's state and the execution guidance headed by STATE_HEADER, then a chat's index of earlier results (agent#36). A prompt that starts with STATE_HEADER has no request text. Where the prompt, state and guidance do not fit the prompt's allowance, the whole is retained and previewed and the preview is what is sent: the rule then finds the preview's own opening, not the person's message. An item is one request of a run with tool calls: body is the request as the adapter composed it, abbreviated to its turns (the system text, tool results and state shortened, the tools left out); pointer is the JSON pointer the rule resolves to in it, and text the request text found there. packages/harness/certification/recall.ts states the rule in code, memory/recall.test.ts checks every item against a run, and the certification suite applies it to every request of the recorded scenario on every certified leg: 21 legs in four families (the six plain legs, the six text-path legs, three strict-alternation legs and the six thinking legs' authoring requests).",
       "type": "object",
       "required": [
         "family",
@@ -421,14 +421,16 @@
           "enum": [
             "openai-compatible",
             "anthropic",
-            "gemini"
+            "gemini",
+            "agent"
           ]
         },
         "placement": {
-          "description": "Where the run places the state after its first request ($defs/stateLocation).",
+          "description": "Where the run places the state after its first request ($defs/stateLocation); appended on the agent wire, where the state follows the person's message in the one prompt.",
           "enum": [
             "trailing-user",
-            "system-tail"
+            "system-tail",
+            "appended"
           ]
         },
         "request": {
@@ -437,7 +439,7 @@
           "minimum": 1
         },
         "body": {
-          "description": "The request body as the adapter composed it, abbreviated: messages (or contents and systemInstruction, or system and messages), each turn's role and parts as the wire spells them, long texts shortened with an ellipsis, tools and settings left out.",
+          "description": "The request body as the adapter composed it, abbreviated: messages (or contents and systemInstruction, or system and messages), each turn's role and parts as the wire spells them, or on the agent wire the one member prompt; long texts shortened with an ellipsis, tools and settings left out.",
           "type": "object"
         },
         "pointer": {
@@ -446,7 +448,7 @@
           "pattern": "^(/[^/]*)+$"
         },
         "text": {
-          "description": "The request text: the value at pointer.",
+          "description": "The request text: the value at pointer; on the agent wire the part of it before the first blank line followed by STATE_HEADER.",
           "type": "string"
         }
       },

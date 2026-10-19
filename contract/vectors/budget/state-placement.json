@@ -8,7 +8,8 @@
       "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
     },
     "files": [
-      "packages/harness/engines/vercel/loop.ts (STATE_HEADER, statePlacement, placeState), in this repository",
+      "packages/harness/engines/contract.ts (STATE_HEADER), in this repository",
+      "packages/harness/engines/vercel/loop.ts (statePlacement, placeState), in this repository",
       "packages/harness/engines/vercel/prefix.test.ts (the run each item is checked against), in this repository"
     ]
   },

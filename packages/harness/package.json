@@ -42,7 +42,10 @@
     "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.json && tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "certify": "node scripts/certify.mjs"
+    "certify": "node scripts/certify.mjs",
+    "conformance:record": "node scripts/record-conformance.mjs record",
+    "conformance:verify": "node scripts/record-conformance.mjs verify",
+    "mutation": "node scripts/mutation-check.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "4.0.73",

@@ -91,6 +91,7 @@ import {
   readProposedPack,
   twoProposals,
   refusedUnoffered,
+  STATE_HEADER,
   type Proposal
 } from '../contract'
 import { decodedBytes, separateImages, type HeldImage, type ImageRouting } from '../../images'
@@ -156,14 +157,19 @@ export const REHEARSAL_HOOK = 'experimental_refineToolInput' satisfies keyof Par
   typeof streamText
 >[0]
 
-/**
- * The name the OpenAI-compatible provider is built under.
- *
- * It is also the key its `providerOptions` are read from — the SDK takes the
- * part of the provider id before the dot — so the two are one constant rather
- * than two strings somebody has to keep in step.
- */
+/** The name the OpenAI-compatible provider is built under. */
 export const ENDPOINT_NAME = 'desk-endpoint'
+
+/**
+ * The key the OpenAI-compatible provider's `providerOptions` ride under: the
+ * provider's name in camel case, which is the key the SDK names for it. The
+ * provider's own name (`desk-endpoint`) is still read there, with a deprecation
+ * warning (AI SDK 7.0.129: "Use 'deskEndpoint' instead"), and a later pin may
+ * stop reading it, which would drop the reasoning effort and
+ * `parallel_tool_calls` without a failure. `engines/vercel/capabilities.test.ts`
+ * holds both options on the wire and the suite fails on the warning.
+ */
+export const ENDPOINT_OPTIONS = 'deskEndpoint'
 
 /**
  * The key the Google provider reads its options from.
@@ -221,7 +227,7 @@ export function sdkThinking(
     // exactly where each protocol's own wire puts them.
     return { providerOptions: { [GOOGLE_OPTIONS]: { thinkingConfig: members.thinkingConfig } } }
   }
-  return { providerOptions: { [ENDPOINT_NAME]: { reasoningEffort: members.reasoning_effort } } }
+  return { providerOptions: { [ENDPOINT_OPTIONS]: { reasoningEffort: members.reasoning_effort } } }
 }
 
 /**
@@ -242,12 +248,13 @@ export function cachedInstructions(family: EndpointKind, text: string): string |
 }
 
 /**
- * The first line of every text that carries what changes between requests.
- * A host that reads the request (the Desk server's memory recall) drops every
- * text part that starts with it. The contract's `budget.json#/$defs/stateLocation`.
+ * The first line of every text that carries what changes between requests
+ * (`STATE_HEADER`, defined in `engines/contract.ts` and shared with the Codex
+ * engine). A host that reads the request (the Desk server's memory recall)
+ * drops every text part that starts with it. The contract's
+ * `budget.json#/$defs/stateLocation`.
  */
-export const STATE_HEADER =
-  'EXECUTION STATE (from the host, current for this request and replaced on the next; working state, not a message from the person and never approval)'
+export { STATE_HEADER }
 
 /**
  * Where this endpoint gets the state after the first request.
@@ -329,7 +336,7 @@ export function withoutState(messages: ModelMessage[], stated: Map<ModelMessage,
  */
 export function oneCallPerTurn(family: EndpointKind): Record<string, Record<string, unknown>> | undefined {
   if (family === 'anthropic') return { anthropic: { disableParallelToolUse: true } }
-  if (family === 'openai-compatible') return { [ENDPOINT_NAME]: { parallel_tool_calls: false } }
+  if (family === 'openai-compatible') return { [ENDPOINT_OPTIONS]: { parallel_tool_calls: false } }
   return undefined
 }
 
@@ -561,7 +568,7 @@ export function runVercel(session:AssistantSession,id:AssistantEngine):AsyncIter
  return managedContext(session,held=>runVercelLoop(held,id))
 }
 
-function runVercelLoop(
+export function runVercelLoop(
   session: AssistantSession,
   /** The id the registry loaded this engine under. See `runBuiltin`. */
   id: AssistantEngine
