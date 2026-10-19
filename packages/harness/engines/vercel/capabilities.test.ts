@@ -8,6 +8,7 @@ import { vercel } from './index'
 import { FAMILY_CAPABILITIES, type ModelCapabilities } from '../../capabilities'
 import { normalize } from '../../thinking'
 import type { EndpointKind, ThinkingTier } from '../../host'
+import { PROPOSE_PACK_SCHEMA, PROPOSE_PACK_TOOL } from '../contract'
 import type { AssistantEvent, AssistantSession, HostTool, McpTool, McpToolResult, ModelCall } from '../../engine'
 
 const SERVED = {
@@ -210,6 +211,15 @@ describe('whether to offer tools reads the record', () => {
     expect(systemText(sent[0]!.body)).toContain('- remember: ')
     expect(systemText(sent[1]!.body)).not.toContain('- remember: ')
     expect(of(events, 'critique')).toHaveLength(1)
+  })
+
+  it('takes a proposal made through propose_pack in text, as natively', async () => {
+    let executed = 0
+    const propose: HostTool = { name: PROPOSE_PACK_TOOL, effect: 'proposal', description: 'Propose the pack for review.', inputSchema: PROPOSE_PACK_SCHEMA, execute: async () => { executed += 1; return { content: [] } } }
+    const { call } = scripted([text(textCall(PROPOSE_PACK_TOOL, { document: { id: 'p' }, unknowns: ['who signs'] })), text('Proposed.')])
+    const events = await drain(vercel.start(session('openai-compatible', call, { nativeToolCalls: false }, { hostTools: [propose] })))
+    expect(executed).toBe(0)
+    expect(of(events, 'proposal')).toEqual([{ type: 'proposal', document: { id: 'p' }, unknowns: ['who signs'] }])
   })
 
   it('tells the model a call it could not read was not made, and goes on', async () => {
