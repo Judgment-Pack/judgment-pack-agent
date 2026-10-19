@@ -118,7 +118,7 @@ jobs:
           [ "${reviewers}" -ge 1 ] || { echo "The release environment requires no reviewer" >&2; exit 1; }
 
   # The tagged commit's own ci.yml, called, so release.yml carries no second
-  # copy of the `contract`, `tests`, `harness` and `certify` jobs. A check main
+  # copy of the `contract`, `tests`, `harness`, `go` and `certify` jobs. A check main
   # has gained since that commit is not run.
   verify:
     name: CI at the tag
