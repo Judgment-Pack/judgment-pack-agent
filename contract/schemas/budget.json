@@ -73,13 +73,13 @@
       "minimum": 0
     },
     "turnMilliseconds": {
-      "description": "One turn's wall clock, from the run's start, on the vercel engine: when it passes, what is in flight is stopped and the run pauses as budget_paused does, with its checkpoint and a reason; a proposal already made is delivered, with a note where the critic was cut. The codex engine has none of its own (the Codex bridge bounds a run at ten minutes). Not in the Desk's table; the harness's default is 900000 (fifteen minutes).",
+      "description": "One turn's wall clock, from the run's start, on the vercel engine: when it passes, what is in flight is stopped and the run pauses as budget_paused does, with its checkpoint and a reason; a proposal already made is delivered, with a note, and the run ends. Continuing the pause takes a request grant, so at the 100-request cap it cannot be continued; the reason says so. The codex engine has none of its own (the Codex bridge bounds a run at ten minutes). Not in the Desk's table; the harness's default is 900000 (fifteen minutes).",
       "type": "integer",
       "minimum": 1,
       "default": 900000
     },
     "toolCallMilliseconds": {
-      "description": "One runtime or host tool call's deadline, on both engines: a call past it is stopped and answered to the model as a failed result (failure code timeout, source tool, outcome unknown), and the run goes on. propose_pack, which the adapter reads itself, and a tool that pauses the run for the person or the coordinator have none. Not in the Desk's table; the harness's default is 120000 (two minutes).",
+      "description": "One runtime or host tool call's deadline, on both engines: a call past it is no longer waited for (it may still complete; a host tool is also handed the deadline's abort signal) and is answered to the model as a failed result (failure code timeout, source tool, outcome unknown), and the run goes on. propose_pack, which the adapter reads itself, and a tool that pauses the run for the person or the coordinator have none. Not in the Desk's table; the harness's default is 120000 (two minutes).",
       "type": "integer",
       "minimum": 1,
       "default": 120000

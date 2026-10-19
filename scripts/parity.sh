@@ -44,28 +44,28 @@ $pkg/context/toolPolicy.test.ts|$a/context/toolPolicy.test.ts|-|-
 $pkg/delegation.ts|$a/delegation.ts|-|-
 $pkg/delegation.test.ts|$a/delegation.test.ts|c2a97f7509cca43de3522ab5c2b00de6846f87fa54c00236d957eb4ed9aa4bb2|test kept in the Desk: the case over the Desk's response history; the Desk's chat-history reader replaced by a fold of delegated_task events with its interruption rule
 $pkg/delegationContract.ts|$a/delegationContract.ts|-|-
-$pkg/engine.ts|$a/engine.ts|19f0092de07bb35a1792a25cdb4a50c2c96b8c39569695ae05c0daa0f72614d8|injection points: Language, AssistantEngine, EndpointKind (types); agent#6: the proposal's note (ProposalNote)
-$pkg/engines/codex/codex.test.ts|$a/engines/codex/codex.test.ts|9ec9bd5d0fd269c06a29fbc6eecbe60b368b362f9cc192c84db71cef87b8f37a|paths: conformance/ is certification/, testing/question reads the contract vector; test kept in the Desk: the case over the Desk's dialect chat tools; agent#6: the whole answer kept, the critic's note, propose_pack
-$pkg/engines/codex/index.ts|$a/engines/codex/index.ts|0fc32f7a8b0f8a44299e490232bec20b0fc1007eef9f524f4fee442539369287|injection points: assistantLanguageInstructions; agent#6: the whole answer kept, the critic's note, propose_pack; agent#2: the tool-call deadline
-$pkg/engines/contract.ts|$a/engines/contract.ts|43c0d3e5f54feface45379f105bdbe34a6e96ac2f416d2389e2cfd8259d59ae7|injection points: EndpointKind (type); agent#6: why a proposal was not read, the whole answer, the reformat request, propose_pack; agent#2: withDeadline, toolTimeout, limitText
+$pkg/engine.ts|$a/engine.ts|232d695eac9dcdcda35f82880acabad78a3954816fe9241606a520f41166c46e|injection points: Language, AssistantEngine, EndpointKind (types); agent#6: the proposal's note (ProposalNote)
+$pkg/engines/codex/codex.test.ts|$a/engines/codex/codex.test.ts|f60fd74eca36578ed1df119eeeae842e13c1b9cebb8730d163bb52cbd556f507|paths: conformance/ is certification/, testing/question reads the contract vector; test kept in the Desk: the case over the Desk's dialect chat tools; agent#6: the whole answer kept, the critic's note, propose_pack
+$pkg/engines/codex/index.ts|$a/engines/codex/index.ts|46777f023f6c6d64a0b5c987f93eb2028872880c7403fc9f68654f8c93beee8f|injection points: assistantLanguageInstructions; agent#6: the whole answer kept, the critic's note, propose_pack; agent#2: the tool-call deadline
+$pkg/engines/contract.ts|$a/engines/contract.ts|3e7a3ec10a2af6f9fe14a972b0946279e6dcf71480b1b1ef3fb36c12b8e25ed5|injection points: EndpointKind (type); agent#6: why a proposal was not read, the whole answer, the reformat request, propose_pack; agent#2: withDeadline, toolTimeout, limitText
 $pkg/engines/contract.test.ts|$a/engines/contract.test.ts|-|-
 $pkg/engines/index.ts|$a/engines/index.ts|6f19d51e6ae2890ff7ea6f7156ed0800ab9681c73e85d9c509d761b201813b58|injection points: AssistantEngine (type)
 $pkg/engines/vercel/channel.ts|$a/engines/vercel/channel.ts|-|-
 $pkg/engines/vercel/completion.test.ts|$a/engines/vercel/completion.test.ts|-|-
-$pkg/engines/vercel/engine.test.ts|$a/engines/vercel/engine.test.ts|19277ccc1a1109f3110c5c03ef95f7c5e99374a09715f903804021fcec2dd4ee|injection points: ASSISTANT_ENGINES, ASSISTANT_TOOLS; paths: LANGUAGES from the test host, testing/question reads the contract vector; agent#6: the reformat request and the whole answer, the critic's note, propose_pack
+$pkg/engines/vercel/engine.test.ts|$a/engines/vercel/engine.test.ts|ee45c2ad5f92bf94f795a18a4d5a3709a3b9f55e1b9bd45572808557e685fc47|injection points: ASSISTANT_ENGINES, ASSISTANT_TOOLS; paths: LANGUAGES from the test host, testing/question reads the contract vector; agent#6: the reformat request and the whole answer, the critic's note, propose_pack
 $pkg/engines/vercel/index.ts|$a/engines/vercel/index.ts|-|-
-$pkg/engines/vercel/loop.ts|$a/engines/vercel/loop.ts|0ab4f2f6725fe1cbabef8880e4cca7683ab9313b5f3c433b4f57db86cb40b7c9|injection points: assistantLanguageInstructions, AssistantEngine and EndpointKind (types); agent#6: the reformat request, the whole answer kept, the critic's note, propose_pack; agent#2: the model-request retry, the turn clock, the tool-call deadline
+$pkg/engines/vercel/loop.ts|$a/engines/vercel/loop.ts|4a9e31f0533b7c6c094b2938668208e90fa16255cd383a9299ab94ade1048446|injection points: assistantLanguageInstructions, AssistantEngine and EndpointKind (types); agent#6: the reformat request, the whole answer kept, the critic's note, propose_pack; agent#2: the model-request retry, the turn clock, the tool-call deadline
 $pkg/engines/vercel/relay.ts|$a/engines/vercel/relay.ts|a4cf2c7f1ab2de26ebc85fbca87774f86ea6a385d69e57fd66d2cf8a20b7ef88|injection points: EndpointKind (type)
 $pkg/execution/checkArtifact.ts|$a/execution/checkArtifact.ts|-|-
 $pkg/execution/checkArtifact.test.ts|$a/execution/checkArtifact.test.ts|-|-
-$pkg/execution/controller.ts|$a/execution/controller.ts|fc41b8a2773d786f8e303841c574edf362325e30159a3b3e42ddb1f7254c9e26|agent#2: a refused attempt's row in the completion record (recordRefusal)
+$pkg/execution/controller.ts|$a/execution/controller.ts|86020c34b892cb1fbc8864464839c1028d0271bb3d8d7bd7e3bbc0bd4fda517f|agent#2: a refused attempt's row in the completion record and the attempt number per call (recordRefusal, beginAttempt)
 $pkg/execution/correctArtifact.ts|$a/execution/correctArtifact.ts|-|-
 $pkg/execution/correctArtifact.test.ts|$a/execution/correctArtifact.test.ts|-|-
 $pkg/execution/execution.test.ts|$a/execution/execution.test.ts|83b025c05b75843046bb03e0df56094a27fc9b680e32073583fa7db2e791161c|test kept in the Desk: the case over the Desk's chat checkpoint
 $pkg/execution/progress.ts|$a/execution/progress.ts|-|-
 $pkg/execution/progress.test.ts|$a/execution/progress.test.ts|-|-
 $pkg/execution/state.ts|$a/execution/state.ts|1bcc57a2aa31a7940fd32ae951aab294b66b78c893caa83dda72e90cb1930b1e|agent#2: the completion record's attempt, failure and waitMs (CompletionRecord, readExecution)
-$pkg/failures.ts|$a/failures.ts|01d509ac957709efd82cc435424590e344197392e22dc2cf80d2018511e1ced2|the Go-side copy: catalog.json read from the package's contract/; agent#2: canRetryRefusal
+$pkg/failures.ts|$a/failures.ts|b8deb6c05e890f1642f210dc36906267f2014a8b02586734cd0826950bd67a69|the Go-side copy: catalog.json read from the package's contract/; agent#2: the retried refusals by name (canRetryRefusal, refusalCode)
 $pkg/failures.test.ts|$a/failures.test.ts|-|-
 $pkg/failures.integration.test.ts|$a/failures.integration.test.ts|bade99f8d9b602b16789f9835f1e1abdb0a0ef7a749afc41ce43838ef0095a4c|agent#2: Retry-After 120, past the retry wait limit, so the refusal is still reported after one request
 $pkg/geminiSchema.ts|$a/geminiSchema.ts|-|-
@@ -79,7 +79,7 @@ $pkg/planning/policy.ts|$a/planning/policy.ts|-|-
 $pkg/planning/tools.ts|$a/planning/tools.ts|7797f4ceb26b22e216e973ea2d1206a0ac43218a89836496ee2b2e6ec62217ef|injection points: Chat and ChatStore (types), readFile, dialectAPI, PreparationReply (type)
 $pkg/questionFailure.ts|$a/questionFailure.ts|dba6a633523a01fc9499eaafd49a743b7c0c85fad7b7067309f114425f9c5da0|injection points: sourceMessage
 $pkg/questions.ts|$a/questions.ts|-|-
-$pkg/refutation.ts|$a/refutation.ts|2190ed3033286a5f20f1a0391cafba4d0491be6961c7579ecb4e87b0c594009a|injection points: sourceMessage; agent#6: criticNote
+$pkg/refutation.ts|$a/refutation.ts|63f7ede50e9c49c4a37d21d1e2b05edd20780d759ccc2344e70ba823b3cec4ed|injection points: sourceMessage; agent#6: proposalNote, criticNote
 $pkg/refutation.test.ts|$a/refutation.test.ts|-|-
 $pkg/session.ts|$a/session.ts|5b43df17b626eee3a98d06e959bff82eb6118ca8dd1605ca0621ba0fcef31605|injection points: aiHeaders, AITarget, deskHeaders, currentLanguage, chassisUrl, DeskWebSocketTransport, socketProtocols, socketURL, the session store (NO_SESSION_MESSAGE, NoSession, discardBody, forgetSession, refusalCode, sessionBearer, sessionEnded, whenSessionEnds), EndpointKind (type)
 $pkg/session.test.ts|$a/session.test.ts|f3400e960cab12b82f9f2491827268be9aabc1b5adfb5d5a1c1c70f40cc51133|injection points: the Desk's session store and language replaced by configureHarness with the test host's sessionBearer and currentLanguage; paths: conformance/ is certification/

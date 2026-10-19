@@ -1,7 +1,7 @@
 import {RECOVER_REPEATED_WORK_INSTRUCTIONS,REPEATED_WORK_INSTRUCTIONS} from '../../execution/progress'
 import {canFinishResponse,completionFailureCode,FINISH_RESPONSE_INSTRUCTIONS,modelCompletion,type ModelCompletion} from '../../completion'
 import {failureEvent,authoredFailure,toolFailureResult,normalizeFailure,AIFailureError} from '../../failures'
-import {ExecutionPaused} from '../../execution/state'
+import {ExecutionPaused,MAX_REQUEST_ALLOWANCE} from '../../execution/state'
 import {managedContext,contextOf} from '../../context/managed'
 import { readDelegationRequest } from '../../delegationContract'
 import { assistantLanguageInstructions } from '../../host'
@@ -84,6 +84,7 @@ import {
   PROPOSAL_RECEIVED,
   offersProposeTool,
   readProposedPack,
+  twoProposals,
   type Proposal
 } from '../contract'
 import { openThinking } from '../../thinking'
@@ -95,6 +96,7 @@ import {
   critiqueEvent,
   critiqueOnProposal,
   criticNote,
+  proposalNote,
   openCritique
 } from '../../refutation'
 import { refusedSchemaKeyword, refusedSchemaSentence } from '../../geminiSchema'
@@ -676,7 +678,11 @@ function runVercelLoop(
       onRefused: async (refused) => {
         context.execution.recordRefusal(recording !== null ? 'review' : synthesis ? 'synthesis' : 'work', refused)
         if (refused.waitMs !== undefined) await channel.push({ type: 'retry', attempt: refused.attempt })
-      }
+      },
+      onAttempt: (attempt) => context.execution.beginAttempt(attempt),
+      // The last request of the allowance is the turn's tool-free final
+      // answer: a retry never takes it, and the refusal is reported instead.
+      mayRetry: () => context.execution.remaining > 1
     })
     const model = modelFor(session, call, executionSignal, ledger, onTruncated, slot)
     // See REHEARSAL_HOOK. The key is the constant, never a literal.
@@ -743,7 +749,9 @@ function runVercelLoop(
           await context.execution.retainProgress(false)
           progressStep=synthesis?'finish':context.execution.progress.nextStep(context.execution.remaining)
           if(progressStep==='finish'&&context.execution.progress.stalled&&!synthesis)await deliver({type:'response_recovery'})
-          toolsClosed=synthesis||progressStep==='finish'||stepNumber>=turnLimit-1
+          // Read fresh on every step: a retry claims a request too, so the
+          // count at the start of the turn can overstate what is left.
+          toolsClosed=synthesis||progressStep==='finish'||stepNumber>=turnLimit-1||context.execution.remaining<=1
           const stepInstructions=instructions+'\n'+context.execution.guidance()+(reformatting?'\n'+REFORMAT_INSTRUCTIONS:synthesis?'\n'+FINISH_RESPONSE_INSTRUCTIONS:progressStep==='recover'?'\n'+RECOVER_REPEATED_WORK_INSTRUCTIONS:progressStep==='finish'?'\n'+REPEATED_WORK_INSTRUCTIONS:toolsClosed?finalInstructions:'')
           lastMessages=await context.messages(messages,stepInstructions,schemas)
           return {...sdkThinking(session.model.family,slot.members()),
@@ -921,6 +929,12 @@ function runVercelLoop(
       }
       if (toolProposal !== null || !session.allowConversation || hasProposalFence(finalText)) {
         try {
+          if (toolProposal !== null && hasProposalFence(finalText)) {
+            // Two proposals in one answer, one by the tool and one fenced:
+            // ambiguous, and refused as two fences are.
+            toolProposal = null
+            throw twoProposals()
+          }
           proposal = toolProposal ?? extractProposal(finalText)
         } catch (cause) {
           // **One reformat request, within the allowance**: tool-free, shown
@@ -940,7 +954,35 @@ function runVercelLoop(
     }
     } catch (cause) {
       await keepUnread()
+      // **A proposal made through propose_pack is finished work.** A later
+      // request of the turn that fails (the closing summary refused, cut off,
+      // over the allowance or past the turn's clock) does not take it with
+      // it: it is delivered, with a note naming the failure, as the critic's
+      // failure is, and the run ends. A person's Stop still stops; a question
+      // to the person leaves the proposal delivered and the turn waiting.
+      const made = toolProposal as Proposal | null
+      if (made !== null && !gate.signal.aborted && !gate.isClosed()) {
+        toolProposal = null
+        if (awaitingInput) {
+          await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns })
+          throw cause
+        }
+        await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns,
+          note: proposalNote('turn-unfinished', overTime ? turnTimeFailure() : cause, 'model') })
+        return
+      }
       throw cause
+    }
+    if (proposal === null && unread !== null) {
+      // The reformat request came back without a proposal, which a
+      // conversation allows: the first answer is still delivered whole, then
+      // what the reformat said, then why the first answer's proposal was not
+      // read.
+      const first = unread as { text: string; cause: unknown }
+      await keepUnread()
+      const said = proseOf(finalText)
+      if (said !== '') await deliver({ type: 'message', text: said })
+      throw first.cause
     }
     if (proposal === null) {
       await deliver({ type: 'message', text: proseOf(finalText) })
@@ -1094,7 +1136,7 @@ function runVercelLoop(
 
   /** What the turn's wall clock passing is, as a failure the catalogue can say. */
   const turnTimeFailure = (): AIFailureError =>
-    authoredFailure('timeout', `The turn reached its wall-clock limit of ${limitText(context.policy.turnMilliseconds)}.`)
+    authoredFailure('timeout', `The turn reached its wall-clock limit of ${limitText(context.policy.turnMilliseconds)}.`, 'model')
 
   /**
    * The status and the endpoint's own sentence out of an SDK error, or nothing.
@@ -1176,7 +1218,9 @@ function runVercelLoop(
       } catch (cause) {
         if (awaitingInput) return
         if (overTime && !gate.signal.aborted) {
-          context.execution.state.reason = `${turnTimeFailure().message} Completed work is kept; continue to resume it.`
+          // Continuing a pause takes a request grant, the clock's as much as
+          // the allowance's, so a run already at the cap cannot be continued.
+          context.execution.state.reason = `${turnTimeFailure().message} Completed work is kept. Continuing takes a grant of more requests, so a run already at the ${MAX_REQUEST_ALLOWANCE}-request limit cannot be continued; start a new response instead.`
           throw new ExecutionPaused()
         }
         const refusal = refusalOf(cause)

@@ -478,9 +478,19 @@ export function offersProposeTool(hostTools: readonly { name: string }[]): boole
 export function readProposedPack(args: unknown): Proposal {
   if (!object(args)) throw toolInputFailure('Call propose_pack with an object holding document and unknowns.')
   if (!object(args.document)) throw toolInputFailure('Pass the pack as the document object itself, not as a JSON string, an array or null.')
+  // The fence's rule, held on the tool path too: only a new pack is proposed.
+  if (args.kind !== undefined && args.kind !== 'create') throw toolInputFailure('Only a new pack can be proposed: leave kind out, or pass "create".')
   const unknowns = args.unknowns
   if (unknowns !== undefined && (!Array.isArray(unknowns) || unknowns.some(item => typeof item !== 'string'))) throw toolInputFailure('Pass unknowns as an array of strings.')
   return { document: args.document, unknowns: (unknowns as string[] | undefined) ?? [] }
+}
+/**
+ * A proposal made through `propose_pack` beside another in a fenced block of
+ * the same answer: ambiguous, refused as two fenced proposals are.
+ */
+export function twoProposals(): Error {
+  return authoredFailure('invalid-response',
+    'the answer carried a proposal through propose_pack and another in a fenced JSON block; it must carry exactly one')
 }
 
 /**
@@ -518,7 +528,7 @@ export function limitText(ms: number): string {
 /** The failure a tool call past its deadline earns: the model reads it and decides. */
 export function toolTimeout(ms: number): Error {
   return new AIFailureError({ version: 1, code: 'timeout', source: 'tool', outcome: 'unknown',
-    detail: `The tool did not answer within ${limitText(ms)} and was stopped. Its outcome is unknown; check it before repeating the call.` })
+    detail: `The tool did not answer within ${limitText(ms)} and is no longer waited for; it may still complete. Its outcome is unknown; check it before repeating the call.` })
 }
 
 /** A recovery action for old replies, never an automatic import of chat prose. */

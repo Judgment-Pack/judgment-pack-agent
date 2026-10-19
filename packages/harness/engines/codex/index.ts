@@ -12,10 +12,10 @@ import {
   openRun, eventIterator, guardedCallTool, withAbort, isCancelled,
   servedSchema, textOf, streamingProse, proseOf, hasProposalFence, extractProposal,
   wholeAnswer, withDeadline, toolTimeout, PROPOSE_PACK_TOOL, PROPOSE_PACK_INSTRUCTIONS, PROPOSAL_RECEIVED,
-  offersProposeTool, readProposedPack, type Proposal
+  offersProposeTool, readProposedPack, twoProposals, type Proposal
 } from '../contract'
 import { eventChannel } from '../vercel/channel'
-import { CRITIC_SYSTEM, criticMessage, criticCannotRun, critiqueEvent, critiqueOnProposal, criticNote, openCritique } from '../../refutation'
+import { CRITIC_SYSTEM, criticMessage, criticCannotRun, critiqueEvent, critiqueOnProposal, criticNote, proposalNote, openCritique } from '../../refutation'
 import type { CritiqueRecorder, Critique } from '../../refutation'
 
 /** Candidate contract. No fake model endpoint, and no selectable registry entry
@@ -142,13 +142,35 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
     const instructions = session.purpose === 'graph' ? GRAPH_SYSTEM : session.purpose === 'brief' ? BRIEF_SYSTEM
       : session.purpose === 'test-design' ? TEST_DESIGN_SYSTEM
       : session.allowConversation ? CONVERSATION_SYSTEM : SYSTEM
-    const final = await run(session.prompt, instructions + (offersProposeTool(session.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : ''), 'author')
+    let final: string
+    try {
+      final = await run(session.prompt, instructions + (offersProposeTool(session.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : ''), 'author')
+    } catch (cause) {
+      // **A proposal made through propose_pack is finished work.** The run
+      // failing after it (the bridge's deadline, a lost connection) does not
+      // take it with it: it is delivered with a note naming the failure, and
+      // the run ends. A person's Stop still stops; a question to the person
+      // leaves the proposal delivered and the turn waiting.
+      const made = toolProposal as Proposal | null
+      if (made === null || gate.signal.aborted) throw cause
+      toolProposal = null
+      if (awaitingInput) {
+        await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns })
+        throw cause
+      }
+      if (isCancelled(cause) || executionSignal.aborted) throw cause
+      await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns, note: proposalNote('turn-unfinished', cause, 'agent') })
+      return
+    }
     if (session.allowConversation && toolProposal === null && !hasProposalFence(final)) {
       await deliver({ type: 'message', text: proseOf(final) })
       return
     }
     let proposal: Proposal
     try {
+      // A tool proposal beside a fenced one is ambiguous, refused as two
+      // fenced proposals are.
+      if (toolProposal !== null && hasProposalFence(final)) throw twoProposals()
       proposal = toolProposal ?? extractProposal(final)
     } catch (cause) {
       // Nothing finished is lost: the answer is delivered whole, the prose and

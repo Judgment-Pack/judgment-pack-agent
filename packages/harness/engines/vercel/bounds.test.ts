@@ -7,7 +7,7 @@
  *
  * - the endpoint answers 429 with `Retry-After: 1`: retried once, and the run
  *   completes;
- * - the endpoint answers 503: not retried;
+ * - the endpoint answers 503 overloaded: not retried;
  * - the endpoint closes the connection after the first chunk: not retried;
  * - the turn's clock runs out: the run pauses as `budget_paused` does;
  * - a tool does not answer within its deadline: the model reads a `timeout`
@@ -23,6 +23,7 @@ import { scriptedRuntime, type ServerObservation } from '../../certification/scr
 import scenario from '../../certification/scenario.json'
 import { normalize } from '../../thinking'
 import { vercel } from './index'
+import { canRetryRefusal, normalizeFailure, refusalCode } from '../../failures'
 import type { AssistantEvent, McpToolResult } from '../../engine'
 import type { ExecutionCheckpoint } from '../../execution/state'
 
@@ -130,6 +131,23 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+describe('which refusals are sent again', () => {
+  it.each([
+    ['429 rate_limit_error', true, 429, { error: { type: 'rate_limit_error' } }],
+    ['400 overloaded_error', true, 400, { error: { type: 'overloaded_error' } }],
+    ['400 search-invalid-response, whose class says retry', false, 400, { error: { code: 'search-invalid-response' } }],
+    ['400 invalid_request_error', false, 400, { error: { type: 'invalid_request_error' } }],
+    ['409 stale', false, 409, { error: { code: 'stale' } }],
+    ['503 overloaded_error', false, 503, { error: { type: 'overloaded_error' } }],
+    ['529 overloaded_error', false, 529, { error: { type: 'overloaded_error' } }],
+    ['408', false, 408, {}]
+  ])('%s: sent again %s', (_name, retried, status, body) => {
+    const responseBody = JSON.stringify(body)
+    const failure = normalizeFailure({ statusCode: status, responseBody }, 'model')
+    expect(canRetryRefusal(failure, refusalCode(responseBody))).toBe(retried)
+  })
+})
+
 describe('model request retries', () => {
   it('the endpoint answers 429 with Retry-After 1: retried once, and the run completes', async () => {
     const { events, arrivals, model, elapsedMs } = await runScenario({
@@ -167,10 +185,12 @@ describe('model request retries', () => {
     expect(completions[1]).not.toHaveProperty('failure')
   })
 
-  it('the endpoint answers 503: not retried', async () => {
+  it('the endpoint answers 503 overloaded: not retried', async () => {
+    // The overload code is one a 4xx is retried for; on a 5xx the outcome is
+    // unknown, and that alone keeps it from being sent again.
     const { events, arrivals, model } = await runScenario({
       endpoint: async () =>
-        new Response(JSON.stringify({ error: { message: 'The service is unavailable', type: 'server_error', code: null } }), {
+        new Response(JSON.stringify({ error: { message: 'The service is overloaded', type: 'overloaded_error', code: null } }), {
           status: 503,
           headers: { 'content-type': 'application/json' }
         })
