@@ -62,11 +62,34 @@ export function failureEvent(cause:unknown,source:FailureSource='desk'):Extract<
 /** Automatic retry requires positive admission refusal; never infer replay safety from a 5xx or a timeout. */
 export function canRetryAdmission(value:AIFailure,attempt:number,maxAttempts:number):boolean {return value.code==='busy'&&value.outcome==='not-started'&&attempt<maxAttempts}
 /**
- * A model request the provider refused may be sent again: `refused` is a 4xx other than 408, which did nothing and was
- * not charged, and only a class whose catalogue recovery is waiting or trying again can change on a later attempt.
- * Never an `unknown` outcome (a 5xx, 408, 504 or transport failure may have run) and never one a person must fix.
+ * The refusals a model request is sent again after, by name (agent#2): the rate-limited class (a 429, or one of the
+ * catalogue's rate-limit aliases: rate_limit_exceeded, rate_limit_error, RESOURCE_EXHAUSTED, rate-limited), and the
+ * catalogue's overload alias, overloaded_error, on a 4xx. Nothing else: not a class whose recovery merely says to
+ * retry (a 4xx carrying search-invalid-response is invalid-response, and is not sent again).
  */
-export function canRetryRefusal(value:AIFailure):boolean {return value.outcome==='refused'&&['wait','retry'].includes(failureRecovery(value))}
+export const RETRYABLE_REFUSAL_CLASSES:readonly FailureCode[]=Object.freeze(['rate-limited'])
+export const RETRYABLE_OVERLOAD_CODES:readonly string[]=Object.freeze(['overloaded_error'])
+/**
+ * The code a refusal's body names that the catalogue aliases, read in the order `normalizeFailure` reads it
+ * (`error.code`, `error.type`, then the top-level `code`), or nothing. Only a catalogue alias is returned, never
+ * provider prose.
+ */
+export function refusalCode(responseBody:unknown):string|undefined {
+ if(typeof responseBody!=='string'||responseBody.length>16384)return
+ let body:unknown;try{body=JSON.parse(responseBody)}catch{return}
+ if(!object(body))return
+ const upstream=object(body.error)?body.error:body
+ return [upstream.code,upstream.type,body.code].find((value):value is string=>alias(value)!==undefined)
+}
+/**
+ * A model request the provider refused may be sent again: the outcome is `refused` (a 4xx other than 408, which did
+ * nothing and was not charged), and the refusal is one of those named above. Never an `unknown` outcome (a 5xx, 408,
+ * 504 or transport failure may have run), whatever its code.
+ */
+export function canRetryRefusal(value:AIFailure,code?:string):boolean {
+ if(value.outcome!=='refused')return false
+ return RETRYABLE_REFUSAL_CLASSES.includes(value.code)||code!==undefined&&RETRYABLE_OVERLOAD_CODES.includes(code)&&alias(code)===value.code
+}
 export function retryReady(value:AIFailure|undefined,now=Date.now()):boolean {return !value?.retryAt||Date.parse(value.retryAt)<=now}
 
 /** Host-authored validation only; never pass provider prose or arbitrary caught messages. */

@@ -65,9 +65,10 @@ export class ExecutionController {
   const attempt=this.attempt;this.attempt=1
   this.state.completions=[...(this.state.completions??[]),{request:this.state.used,phase,result,...(attempt>1?{attempt}:{})}]
  }
- /** A refused attempt at a model request: its own row, and the number the next attempt's row carries. */
+ /** Which attempt at a model request is being sent, said before each one, so a new call starts again at 1. */
+ beginAttempt(attempt:number){this.attempt=attempt}
+ /** A refused attempt at a model request: its own row. */
  recordRefusal(phase:'work'|'synthesis'|'review',refused:{attempt:number;failure:import('../failures').AIFailure;waitMs?:number}){
-  this.attempt=refused.waitMs===undefined?1:refused.attempt+1
   this.state.completions=[...(this.state.completions??[]),{request:this.state.used,phase,result:{finishReason:'error'},...refused}]
  }
  clearReadCache(){this.cache.clear()}

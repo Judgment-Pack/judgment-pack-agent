@@ -7,9 +7,9 @@
  * capability instead, below the SDK and above the relay, and holds one rule:
  *
  * - **only a refusal the failure catalogue classes `refused`** — a 4xx other
- *   than 408, which did nothing and charged nothing — and only of a class whose
- *   catalogue recovery a later attempt can change (`canRetryRefusal`: 429
- *   `rate-limited`, and a 4xx carrying an overload code). Never an `unknown`
+ *   than 408, which did nothing and charged nothing — and only one named in
+ *   `failures.ts` (`canRetryRefusal`: the 429 `rate-limited` class, and a 4xx
+ *   carrying the overload code `overloaded_error`). Never an `unknown`
  *   outcome: a 5xx, 408, 504 or a transport failure may have run;
  * - **never after any response byte.** The retry is decided on a response that
  *   was not `ok`; a response that was is handed to the SDK as it came, and a
@@ -19,10 +19,12 @@
  *   turn should wait — that refusal is reported with its `retryAt`;
  * - **each attempt is a model request**: it goes through the capability, so it
  *   is counted against the allowance and checkpointed like any other, and each
- *   refused one is handed to `onRefused` for the completion record.
+ *   refused one is handed to `onRefused` for the completion record. A retry the
+ *   caller cannot afford (`mayRetry`: the last request is the turn's
+ *   tool-free final answer) is not made, and the refusal is reported.
  */
 import { RunCancelled, withAbort } from '../contract'
-import { canRetryRefusal, normalizeFailure, type AIFailure } from '../../failures'
+import { canRetryRefusal, normalizeFailure, refusalCode, type AIFailure } from '../../failures'
 import type { ModelCall } from '../../engine'
 
 /** Retries after the first attempt: three attempts in all. */
@@ -73,6 +75,10 @@ export function retryingCall(
     /** The run's own signal: every wait and every read is bounded by it. */
     signal: AbortSignal
     onRefused?: (refused: RefusedAttempt) => void | Promise<void>
+    /** Said before every attempt, from 1, so a record is never left holding an earlier call's number. */
+    onAttempt?: (attempt: number) => void
+    /** Whether a retry may take another request now; a refusal is reported where it may not. */
+    mayRetry?: () => boolean
     wait?: (ms: number, signal: AbortSignal) => Promise<void>
     now?: () => number
   }
@@ -81,6 +87,7 @@ export function retryingCall(
   const now = options.now ?? Date.now
   return async (suffix, request) => {
     for (let attempt = 1; ; attempt += 1) {
+      options.onAttempt?.(attempt)
       const answered = await call(suffix, request)
       if (answered.ok) return answered
       // The refusal's own envelope, read from a copy, so the SDK still reads
@@ -95,8 +102,8 @@ export function retryingCall(
         'model',
         now()
       )
-      if (!canRetryRefusal(failure)) return answered
-      const waitMs = attempt <= MODEL_RETRIES ? delayFor(failure, attempt, now()) : undefined
+      if (!canRetryRefusal(failure, refusalCode(body))) return answered
+      const waitMs = attempt <= MODEL_RETRIES && (options.mayRetry?.() ?? true) ? delayFor(failure, attempt, now()) : undefined
       await options.onRefused?.({ attempt, failure, ...(waitMs === undefined ? {} : { waitMs }) })
       if (waitMs === undefined) return answered
       void answered.body?.cancel().catch(() => undefined)

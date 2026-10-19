@@ -1,5 +1,5 @@
 {
-  "description": "The first model request is never answered and the turn's wall clock passes (turnMilliseconds 1000 for this vector; 900000 by default): the request is stopped and the run pauses as budget_paused, the checkpoint's reason saying why. No error event. vercel engine; the ids and digest are the ones this run generated.",
+  "description": "The first model request is never answered and the turn's wall clock passes (turnMilliseconds 1000 for this vector; 900000 by default): the request is stopped and the run pauses as budget_paused, the checkpoint's reason saying why and that a run at the 100-request cap cannot be continued. No error event. vercel engine; the ids and digest are the ones this run generated.",
   "schema": "run-event.json",
   "source": {
     "harness": {
@@ -52,7 +52,7 @@
           "scope": "c8cb5fa6-5a94-4d93-beaa-cda8ea59f350",
           "entries": []
         },
-        "reason": "The turn reached its wall-clock limit of 1 second. Completed work is kept; continue to resume it."
+        "reason": "The turn reached its wall-clock limit of 1 second. Completed work is kept. Continuing takes a grant of more requests, so a run already at the 100-request limit cannot be continued; start a new response instead."
       }
     },
     {

@@ -261,12 +261,15 @@ export type AssistantEvent =
   | { type: 'end' }
 
 /**
- * The critic started and did not finish (`refutation.ts`, `criticNote`): its
- * failure, classified, and a host-authored sentence. The proposal is delivered
- * all the same, with no `critique`.
+ * Something that ran after the proposal existed did not finish
+ * (`refutation.ts`, `proposalNote`): its failure, classified, and a
+ * host-authored sentence. The proposal is delivered all the same, with no
+ * `critique`. `critic-unfinished`: the critic started and did not finish.
+ * `turn-unfinished`: a proposal made through `propose_pack`, and a later
+ * request of the turn failed, so nothing after the proposal ran.
  */
 export interface ProposalNote {
-  kind: 'critic-unfinished'
+  kind: 'critic-unfinished' | 'turn-unfinished'
   message: string
   failure: import('./failures').AIFailure
 }

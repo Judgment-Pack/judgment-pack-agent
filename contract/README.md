@@ -21,7 +21,7 @@ root is not.
 
 | Schema | What it describes | Root | Closed parts | Read from (Desk file, symbol) |
 | --- | --- | --- | --- | --- |
-| `run-event.json` | Every event a run emits, 18 kinds discriminated by `type`, in the union's order; the proposal's `note` where the critic did not finish | open | none | `web/src/assistant/engine.ts`, `AssistantEvent` |
+| `run-event.json` | Every event a run emits, 18 kinds discriminated by `type`, in the union's order; the proposal's `note` where something after it did not finish | open | none | `web/src/assistant/engine.ts`, `AssistantEvent` |
 | `tool-offer.json` | The tools offered to a run, as the session's two members: `tools` (runtime tools as served, each named within the ceiling) and `hostTools` (host tools' declarations); the agent-wire alias form; the runtime ceiling and reserved names; `propose_pack`, the proposal as a host tool call | open | `$defs/agentWireTool` | `web/src/assistant/engine.ts`, `McpTool`, `HostTool`; `context/session.ts`, `contextualSession`; `internal/codexbridge/contract.go`, `Tool` |
 | `tool-call.json` | The `tool_call` event; the `tools/call` params the gate inspects; the agent-wire call | open | none | `web/src/assistant/engine.ts`, `AssistantEvent`; `toolGate.ts`, `inspectOutboundFrame`; `agentTransport.ts`, `bindAgentRun` |
 | `tool-result.json` | The `tool_result` event; the MCP result shape; the bound, the read-back reference and its envelopes; `read_context` arguments; the agent-wire answer | open | `$defs/readContextArguments`, `$defs/agentWireAnswer` | `web/src/assistant/engine.ts`, `McpToolResult`; `context/session.ts`, `SessionContext.result`; `context/ledger.ts`, `ContextLedger.reference`, `ContextLedger.tools` |
@@ -68,9 +68,10 @@ files they were rendered from.
   limits by their constant names; `budget/harness-defaults.json`: the policy a harness session works
   under, the table and the two time bounds.
 - `proposal/`: the proposal through `propose_pack` (`propose-pack.json`), a proposal whose critic
-  failed, delivered with its `note` (`critic-unfinished.json`), and an answer whose proposal could not
-  be read, kept whole before the failure (`unreadable.json`); and `tool-offer/propose-pack.json`, the
-  tool as a host declares it.
+  failed, delivered with its `note` (`critic-unfinished.json`), a `propose_pack` proposal whose
+  closing request failed, delivered with its `note` (`turn-unfinished.json`), and an answer whose
+  proposal could not be read, kept whole before the failure (`unreadable.json`); and
+  `tool-offer/propose-pack.json`, the tool as a host declares it.
 - `bounds/`: a 429 retried once, with the attempts in the completion record
   (`rate-limited-retried.json`), the turn's wall clock pausing the run (`turn-clock.json`), and a
   tool past its deadline answered as a failed result (`tool-timeout.json`).

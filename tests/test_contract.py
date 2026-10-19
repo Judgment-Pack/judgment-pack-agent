@@ -217,7 +217,10 @@ class VectorTests(unittest.TestCase):
                     self.assertEqual(source["harness"], {"repository": "Judgment-Pack/judgment-pack-agent", "package": "packages/harness"})
                     self.assertTrue(source["files"])
                     for file in source["files"]:
-                        self.assertTrue(file.startswith("packages/harness/"), file)
+                        # "packages/harness/x.ts (symbol)": the path, without its annotation.
+                        path = file.split(" (", 1)[0]
+                        self.assertTrue(path.startswith("packages/harness/"), file)
+                        self.assertTrue((ROOT / path).is_file(), f"{name} names {path}, which does not exist")
 
     def test_every_vector_validates_against_its_schema(self):
         for name, vector in self.vectors.items():

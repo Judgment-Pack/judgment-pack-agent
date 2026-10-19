@@ -294,4 +294,32 @@ describe('nothing finished is lost, on the agent wire (agent#6)', () => {
     expect(events.find(event => event.type === 'proposal')).toEqual({ type: 'proposal', document: { id: 'p' }, unknowns: ['u'] })
     expect(events.filter(event => event.type === 'error')).toEqual([])
   })
+
+  const proposeTool = { name: PROPOSE_PACK_TOOL, effect: 'proposal' as const, description: 'Propose', inputSchema: PROPOSE_PACK_SCHEMA, execute: async () => ({ content: [] }) }
+  const callPropose = async (request: Parameters<AgentRun>[0], callbacks: Parameters<AgentRun>[1]) => {
+    const tool = request.tools.find(offered => offered.description.startsWith(`${PROPOSE_PACK_TOOL}:`))!
+    await callbacks.tool({ id: 'c1', name: tool.name, arguments: { document: { id: 'tool' }, unknowns: ['u'] } }, callbacks.signal)
+  }
+
+  it('delivers a propose_pack proposal with a note when the bridge times out after the call', async () => {
+    const run: AgentRun = async (request, callbacks) => {
+      await callPropose(request, callbacks)
+      throw failureError('timeout', 'agent')
+    }
+    const events = await collect(session(run, { hostTools: [proposeTool] }))
+    expect(events.map(event => event.type)).toEqual(['tool_call', 'tool_result', 'proposal', 'end'])
+    expect(events[2]).toMatchObject({ document: { id: 'tool' }, unknowns: ['u'], note: { kind: 'turn-unfinished', failure: { code: 'timeout', source: 'agent' } } })
+  })
+
+  it('refuses a tool proposal beside a fenced one as ambiguous, keeping the answer whole', async () => {
+    const answer = 'Final.\n\n```json\n' + JSON.stringify({ proposal: { document: { id: 'fence' }, unknowns: [] } }) + '\n```'
+    const run: AgentRun = async (request, callbacks) => {
+      await callPropose(request, callbacks)
+      await callbacks.event({ type: 'message', id: 'm', text: answer, phase: 'final' })
+    }
+    const events = await collect(session(run, { hostTools: [proposeTool] }))
+    expect(events.map(event => event.type)).toEqual(['tool_call', 'tool_result', 'message', 'error', 'end'])
+    expect(events[2]).toEqual({ type: 'message', text: answer })
+    expect(events[3]).toMatchObject({ failure: { code: 'invalid-response' } })
+  })
 })

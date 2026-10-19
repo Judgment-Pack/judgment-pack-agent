@@ -75,10 +75,17 @@ Nothing the model finished is lost. A proposal that cannot be read (two marked b
 outside a conversation; a block not marked `json`, one not closed, or one that is not valid JSON,
 the last classed `invalid-response` like the rest) earns `vercel` one tool-free reformat request
 within the allowance; whatever that request returns, the first answer is delivered whole, prose and raw
-fence, before the `invalid-response` error. A critic that fails after a valid proposal (its
-provider error, its length cutoff, a budget pause or the turn's wall clock) does not raise an error
-ahead of the proposal: the proposal is delivered with `note` `{kind: "critic-unfinished", message,
-failure}` and no `critique`. A person's Stop still ends the run.
+fence, before the `invalid-response` error. In a conversation the reformat may come back as prose
+with no proposal: the first answer is still delivered whole, that prose after it, and then the first
+answer's failure. A critic that fails after a valid proposal (its provider error, its length cutoff,
+the allowance or the turn's wall clock) does not raise an error ahead of the proposal: the proposal
+is delivered with `note` `{kind: "critic-unfinished", message, failure}` and no `critique`. A
+proposal made through `propose_pack` is kept the same way: where a later request of the turn fails
+(the closing summary refused or cut off, the allowance, the turn's wall clock, or on `codex` the
+run's own failure), the proposal is delivered with `note` `{kind: "turn-unfinished", …}`, nothing
+after it runs, the critic included, and the run ends. A note's `failure` carries the engine's
+source (`model` or `agent`), and for the allowance its sentence says the allowance was used up,
+not that work paused. A person's Stop still ends the run.
 
 The stream is open: it is an in-process union with no reader at run time that refuses a member.
 
@@ -104,8 +111,10 @@ A host may offer `propose_pack`, with the input schema the contract states (`doc
 `unknowns`, strings) and effect `proposal`. Where it does, the instructions tell the model to deliver
 the proposal by calling it; the adapter reads the call itself, answers the model that the proposal
 was received and will be shown for review, and never reaches the host's `execute`; arguments of
-another shape are a failed result naming what to correct. The latest call's document is the
-proposal, and the fenced block stays the fallback. The critic is not offered it.
+another shape are a failed result naming what to correct, under the fence's rules (`kind`, where
+given, must be `create`). The latest call's document is the proposal, and the fenced block stays the
+fallback; a fenced proposal in the same answer as a tool proposal is ambiguous and refused, as two
+fenced proposals are. The critic is not offered it.
 
 ## Tool calls
 
@@ -137,8 +146,9 @@ is told the operation returned and its output could not be retained, and not to 
 
 A tool that throws is a failed result carrying `{"failure": …}` (or `{"questionFailure": …}` for
 `ask_user`), recoverable working data for the model. So is a runtime or host tool call past the
-policy's `toolCallMilliseconds`: it is stopped and answered with class `timeout`, source `tool`,
-outcome `unknown`, and the run goes on. On the agent wire the answer travels as
+policy's `toolCallMilliseconds`: it is no longer waited for (it may still complete; a host tool is
+also handed the deadline's abort signal) and is answered with class `timeout`, source `tool`, outcome
+`unknown`, and the run goes on. On the agent wire the answer travels as
 `{text, isError}`, a structured answer as its JSON text.
 
 ## Approvals
@@ -204,13 +214,15 @@ timeout included). Optional `status`, `requestId`, `retryAt` (from the provider'
 `detail` (host-authored only, replacing the catalogue sentence) and `completion`. Provider prose,
 bodies, URLs and headers are never retained. Only `busy` with `not-started` proves an agent run safe
 to retry. A model request the provider refused is sent again by `vercel` only where the outcome is
-`refused` and the catalogue's recovery for the class is `wait` or `retry` (429 `rate-limited`, a 4xx
-carrying an overload code): at most twice, each after the longer of the backoff (one second, then
+`refused` and the refusal is one `failures.ts` names (the `rate-limited` class: a 429 or a
+rate-limit alias; and a 4xx carrying the overload code `overloaded_error`): at most twice, each after the longer of the backoff (one second, then
 two) and the provider's `Retry-After`; not at all where `Retry-After` asks for more than thirty
 seconds, when the refusal is reported at once with its `retryAt`; never on an `unknown` outcome (a
 5xx, 408, 504 or a transport failure); and never once a response has answered, so a stream that
-breaks after its first byte is reported. Each attempt is a model request, counted against the
-allowance and recorded, and each retry is said with a `retry` event.
+breaks after its first byte is reported; and never with the allowance's last request, which is the
+turn's tool-free final answer (tools close whenever one request is left, counted afresh on every
+step). Each attempt is a model request, counted against the allowance and recorded, each retry is
+said with a `retry` event, and the attempt number starts again at 1 on every new call.
 
 ## Budgets
 
@@ -226,9 +238,11 @@ pauses the run for the person.
 The harness adds two time bounds the Desk's table does not carry, each taken from the table where it
 does. `turnMilliseconds` (fifteen minutes): on `vercel`, when one turn's wall clock passes, what is
 in flight is stopped and the run pauses as `budget_paused` does, the checkpoint's `reason` saying
-so; a proposal already made is delivered, with a note where the critic was cut.
-`toolCallMilliseconds` (two minutes): on both engines, a runtime or host tool call past it is a
-failed result the model reads, never a failed run.
+so; a proposal already made is delivered, with a note, and the run ends. Continuing a clock pause
+takes a request grant, as any pause does, so a run already at the hundred-request cap cannot be
+continued and needs a new response; the reason says so. Continuing without a grant stays open under
+agent#2. `toolCallMilliseconds` (two minutes): on both engines, a runtime or host tool call past it
+is no longer waited for and is a failed result the model reads, never a failed run.
 
 ## Provenance
 
@@ -312,7 +326,8 @@ the host's model capability so the host keeps counting; whether the adapter emit
 - **Kinds only one engine emits.** `reasoning`, `thinking_unavailable`, `response_recovery` and
   `guardrail` `narrowed` are `vercel`'s only. Both emit `retry`, for different recoveries.
 - **An unreadable proposal.** `vercel` asks once more, with a tool-free reformat request, before it
-  reports `invalid-response`; `codex` reports it at once. Both deliver the whole answer first.
+  reports `invalid-response`; `codex` reports it at once. Both deliver the whole answer first. The
+  reformat request and the turn clock on `codex` are agent#29.
 - **Failure source.** A loop failure is `source: "model"` from `vercel` and `"agent"` from
   `codex`.
 - **Certification.** `vercel` is held to the conformance session's exact event order on six legs

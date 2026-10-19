@@ -25,14 +25,14 @@
       "type": "tool_result",
       "name": "validate",
       "isError": true,
-      "text": "The tool did not answer within 1 second and was stopped. Its outcome is unknown; check it before repeating the call.",
+      "text": "The tool did not answer within 1 second and is no longer waited for; it may still complete. Its outcome is unknown; check it before repeating the call.",
       "structured": {
         "failure": {
           "version": 1,
           "code": "timeout",
           "source": "tool",
           "outcome": "unknown",
-          "detail": "The tool did not answer within 1 second and was stopped. Its outcome is unknown; check it before repeating the call."
+          "detail": "The tool did not answer within 1 second and is no longer waited for; it may still complete. Its outcome is unknown; check it before repeating the call."
         }
       }
     },
