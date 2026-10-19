@@ -38,8 +38,9 @@
  * - **the recall rule** (agent#11): on every request of the scenario, the rule
  *   the contract states for a server that reads the request text
  *   (`budget.json#/$defs/recallQuery`, `recall.ts`) finds the text the run
- *   started from, on every leg: the plain legs, the text path, strict
- *   alternation and the thinking legs' authoring requests.
+ *   started from, on every certified leg: 21 legs in four families (six
+ *   plain, six text-path, three strict-alternation, and the six thinking
+ *   legs' authoring requests).
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CERTIFIED_ENGINES, MODEL_ENGINES, loadEngine } from '../engines'

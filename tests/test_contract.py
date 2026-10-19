@@ -372,11 +372,16 @@ class VectorTests(unittest.TestCase):
 
     def test_the_recall_rule_finds_the_request_text_in_one_vector_per_wire(self):
         recall = {name: vector for name, vector in self.vectors.items() if vector["schema"] == "budget.json#/$defs/recallQuery"}
-        self.assertEqual(sorted(recall), ["recall/anthropic.json", "recall/gemini.json", "recall/openai-compatible.json"])
+        # One per wire, and a delegated child's first request, whose request text is its objective.
+        self.assertEqual(sorted(recall), ["recall/anthropic.json", "recall/delegated-child.json", "recall/gemini.json", "recall/openai-compatible.json"])
         for name, vector in recall.items():
             for item in vector["items"]:
                 with self.subTest(vector=name):
-                    self.assertEqual(name, f"recall/{item['family']}.json")
+                    if name == "recall/delegated-child.json":
+                        # The child's prompt, the second part, carries the same objective in its JSON.
+                        self.assertIn('"objective":' + json.dumps(item["text"], ensure_ascii=False), item["body"]["messages"][1]["content"][1]["text"])
+                    else:
+                        self.assertEqual(name, f"recall/{item['family']}.json")
                     self.assertEqual(recall_query(item["family"], item["body"]), (item["pointer"], item["text"]))
                     self.assertEqual(at_pointer(item["body"], item["pointer"]), item["text"])
                     self.assertFalse(item["text"].startswith(STATE_HEADER))

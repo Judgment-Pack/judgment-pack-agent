@@ -12,7 +12,7 @@ import {READ_TOOL} from './reader'
 import {SEARCH_TOOL} from './search'
 import {capabilitiesFor,type ModelCapabilities} from '../capabilities'
 import {contextPolicy,inputBytes,utf8Bytes,prefix,ContextBudgetError,type ContextConfiguration} from './policy'
-import type {ChatScope,ChatTurn,RuntimeIdentity} from './chat'
+import {INDEX_SHARE,partBytes,type ChatScope,type ChatTurn,type RuntimeIdentity} from './chat'
 export interface CurrentRequest {message:string;input:string}
 /** `currentState`: host-authored text that changes between requests or responses (the chat's
  * draft snapshot, the latest check). An adapter sends it after the history, at the end of every
@@ -25,14 +25,15 @@ export interface CurrentRequest {message:string;input:string}
  * `memory` (agent#11): whether the server behind the adapter adds recalled project memory to this
  * run's requests (the project's memory setting). Only `false` frees the `memoryBytes` reserve:
  * absent, the reserve stays, so a server that adds memory never receives a request the harness
- * left no room for.
+ * left no room for. `objective` (agent#11): a delegated child's objective, its request text,
+ * sent as the first text part of its first message (`delegation.ts` sets it).
  *
  * `chat` is a `ChatContext`, or the view of one a delegated child is handed (`ChatContext.childScope`,
  * agent#15). `link` (agent#14): set by the delegation coordinator on a run it starts, so it reaches
  * that run's execution (the parent's request count, which its children's requests are charged to, and
  * a child's own budget); a host leaves it out.
  */
-export interface ContextInput {currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatScope;runtime?:RuntimeIdentity;memory?:boolean;link?:ExecutionLink}
+export interface ContextInput {currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatScope;runtime?:RuntimeIdentity;memory?:boolean;objective?:string;link?:ExecutionLink}
 /** How the delegation coordinator reaches a run it starts (agent#14): told the run's context once its execution is initialized, before its first request. */
 export interface ExecutionLink {attach(context:SessionContext):void}
 export interface ContextUsage {inputBytes:number;estimatedInputTokens:number;inputBudgetBytes:number;outputReserveTokens:number;compactions:number;retainedItems:number}
@@ -49,15 +50,22 @@ export class SessionContext {
  private referenceTools:Set<string>
  /** This run's turn on its chat (agent#8), or none. */
  private readonly turn?:ChatTurn
- private built?:string
- constructor(session:EngineSession){this.capabilities='model'in session?capabilitiesFor(session.model):undefined;this.policy=contextPolicy(session.context?.configuration,'model'in session?session.model.model:session.agent.model,this.capabilities,session.context?.memory);this.turn=session.context?.chat?.openTurn();this.ledger=new ContextLedger(this.policy,this.turn);this.execution=new ExecutionController(session,this.ledger);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))}
+ /** A delegated child's objective (agent#11): its request text, sent as the first text part of its first message. */
+ private readonly objective?:string
+ constructor(session:EngineSession){this.capabilities='model'in session?capabilitiesFor(session.model):undefined;this.policy=contextPolicy(session.context?.configuration,'model'in session?session.model.model:session.agent.model,this.capabilities,session.context?.memory);this.turn=session.context?.chat?.openTurn();this.objective=session.context?.objective;this.ledger=new ContextLedger(this.policy,this.turn);this.execution=new ExecutionController(session,this.ledger);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))}
  /**
-  * The index of the results earlier runs in this chat kept (agent#8, `ChatTurn.index`), which the
-  * run's first message carries after the request text; empty for a run with no chat context, and
-  * for a chat whose earlier runs kept nothing. Made when an adapter first reads it, so a run that
-  * never starts leaves the evictions it would list for the next.
+  * The index of the results earlier runs in this chat kept (agent#8, `ChatTurn.index`), cut to
+  * `room` bytes and to INDEX_SHARE of the prompt's `allowance`. Made only while this run's ledger
+  * is its chat's turn: a run resumed from another chat's checkpoint works in a ledger of its own,
+  * and an index of ids it cannot read is not sent. Once made, it is sent: the evictions it lists
+  * are said. Empty with no chat context, with nothing to list, or with no room.
   */
- get index():string{return this.built??=this.turn?this.turn.index(this.policy,this.marker):''}
+ private indexWithin(allowance:number,room:number):string{
+  if(this.turn===undefined||this.ledger.chat!==this.turn)return ''
+  const index=this.turn.index(this.policy,this.marker,Math.min(Math.floor(allowance*INDEX_SHARE),room))
+  if(index)this.turn.sent()
+  return index
+ }
  /** The run ended: a ledger of its own is cleared, a chat's turn closes and the chat keeps what it holds. */
  close(){this.ledger.release()}
  /** Independent reviewers get a new retrieval scope and no author's working
@@ -72,11 +80,45 @@ export class SessionContext {
  /** `attachments`: the host's documents for the run, which search scopes as attachments (agent#5). */
  async initialize(documents:ContextDocument[]=[],attachments=false){for(const doc of documents)await this.ledger.retain(doc,attachments)}
  private budget(instructions:string,tools:unknown){return inputBytes(this.policy)-utf8Bytes(instructions)-utf8Bytes(encoded(tools))-this.policy.briefBytes-this.policy.memoryBytes-1536}
- /** `beside`: text the same message carries after the prompt (the chat's index, agent#8), counted against the prompt's allowance. */
- async prompt(text:string,instructions:string,tools:unknown,currentRequest?:CurrentRequest,beside=''):Promise<string>{
+ /** The prompt's allowance: what the first message may take, leaving headroom for later tool results. */
+ private allowance(instructions:string,tools:unknown){
   // Leave headroom for subsequent tool results; fitting the first request alone is insufficient.
-  const budget=Math.floor(this.budget(instructions,tools)*0.6)-utf8Bytes(beside)
+  const budget=Math.floor(this.budget(instructions,tools)*0.6)
   if(budget<2000)throw new ContextBudgetError()
+  return budget
+ }
+ async prompt(text:string,instructions:string,tools:unknown,currentRequest?:CurrentRequest):Promise<string>{return this.fit(text,this.allowance(instructions,tools),currentRequest)}
+ /**
+  * The text parts of the run's first user message (agent#8, agent#11). The request text comes
+  * first: the host's prompt, sent whole where it fits the allowance; where it does not, the
+  * person's message (`currentRequest.message`) as its own first part and the preview after it, so
+  * the first text part is always the request. A delegated child's objective (`context.objective`)
+  * is its own first part either way. Then a chat's index of earlier results, cut to the room left
+  * and to INDEX_SHARE of the allowance: the request is never previewed and the run never fails
+  * because of the index.
+  */
+ async opening(text:string,instructions:string,tools:unknown,currentRequest?:CurrentRequest):Promise<string[]>{
+  const allowance=this.allowance(instructions,tools)
+  const size=(parts:string[])=>utf8Bytes(encoded([{role:'user',content:parts.length===1?parts[0]:parts.map(part=>({type:'text',text:part}))}]))
+  const lead=(value:string|undefined)=>{const held=value===undefined?'':prefix(value,Math.floor(allowance/4));return held.trim()?held:undefined}
+  const objective=lead(this.objective)
+  let parts:string[]
+  if(size(objective===undefined?[text]:[objective,text])<=allowance)parts=objective===undefined?[text]:[objective,text]
+  else{
+   const first=objective??lead(currentRequest?.message)
+   parts=first===undefined?[await this.fit(text,allowance,currentRequest)]:[first,await this.fit(text,allowance-partBytes(first),currentRequest)]
+  }
+  const index=this.indexWithin(allowance,allowance-size(parts))
+  return index?[...parts,index]:parts
+ }
+ /** The agent wire's prompt with a chat's index after it (agent#8), cut to the room the allowance leaves. */
+ indexed(prompt:string,instructions:string,tools:unknown):string{
+  const allowance=this.allowance(instructions,tools)
+  const index=this.indexWithin(allowance,allowance-utf8Bytes(encoded([{role:'user',content:prompt}])))
+  return index?prompt+'\n\n'+index:prompt
+ }
+ /** `text` within `budget`: whole where it fits, otherwise retained and previewed. */
+ private async fit(text:string,budget:number,currentRequest?:CurrentRequest):Promise<string>{
   if(utf8Bytes(encoded([{role:'user',content:text}]))<=budget)return text
   const e=await this.ledger.retain({id:'request',kind:'request',label:'Complete current request',value:text})
   this.compactions++

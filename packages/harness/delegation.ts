@@ -286,7 +286,7 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
         ...(planned.thread?{earlierWork:planned.thread.exchanges}:{}),
         timeLimitSeconds:Math.round(planned.budget.milliseconds/1000)})
     /** One run of a child's engine: its findings, or why it has none. */
-    const runChild = async (planned: Planned, profile: TaskProfile, task: DelegatedTask, prompt: string, childSignal: AbortSignal, requestLimit: number, offered: boolean) => {
+    const runChild = async (planned: Planned, profile: TaskProfile, task: DelegatedTask, objective: string, prompt: string, childSignal: AbortSignal, requestLimit: number, offered: boolean) => {
       const hostTools = offered ? session.hostTools.filter(t=>!t.interaction && t.delegation && profile.capabilities.includes(t.delegation)) : []
       const runtime = new Set(offered ? profile.runtimeTools ?? [] : [])
       const tools = session.tools.filter(t=>runtime.has(t.name))
@@ -296,7 +296,8 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
       }}
       const model = childModel(profile)
       const base = {...session,
-        context:{configuration:session.context?.configuration,phase:session.context?.phase,authorize:session.context?.authorize,artifactProposals:session.context?.artifactProposals,memory:session.context?.memory,runtime:session.context?.runtime,chat:chat.childScope(planned.visible),link},
+        // agent#11: the objective is the child's request text, the first text part of its first message.
+        context:{configuration:session.context?.configuration,phase:session.context?.phase,authorize:session.context?.authorize,artifactProposals:session.context?.artifactProposals,memory:session.context?.memory,objective,runtime:session.context?.runtime,chat:chat.childScope(planned.visible),link},
         purpose:undefined,prompt,testPrompt:'',allowConversation:true,interactive:true,adversarialReview:false,
         // agent#15: the gate's Runtime tools the profile names, and nothing beside them.
         tools,callTool:async(name:string,args:Record<string,unknown>)=>{if(!runtime.has(name))throw toolInputFailure('This task was not offered that Runtime tool.');return session.callTool(name,args)},
@@ -333,7 +334,7 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
         if (planned.request.summarize && full && requestsFor(task, planned.budget, 1) >= 1) {
           const limit = Math.floor(share * 0.8)
           const prompt = profile.instructions+'\n\n'+CHILD_RULES+' '+`Summarize the findings below for the parent task in at most ${limit} characters: keep every source reference and limitation, and say what the summary leaves out. The parent can still read the whole findings. Answer with the summary alone and call no tool.`+'\n'+JSON.stringify({objective:planned.request.objective,findings:text})
-          const ran = await runChild(planned, profile, task, prompt, childSignal, 1, false)
+          const ran = await runChild(planned, profile, task, `Summarize your findings for: ${planned.request.objective}`, prompt, childSignal, 1, false)
           if (!ran.failed && ran.text.trim() && fits(ran.text, share)) { shown = ran.text; more = {readWith:'read_window',id:full.id,cursor:'line:0',totalCharacters:text.length}; task.summarized = true }
         }
       }
@@ -356,7 +357,7 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
         childSignal.throwIfAborted()
         const limit=requestsFor(task,planned.budget,planned.budget.modelRequests)
         if(limit<1){task.state='failed';task.problem='No model request is left for this task: the response keeps its last request for the parent’s answer.';return}
-        const {text,failed,paused}=await runChild(planned,profile,task,brief(planned,profile),childSignal,limit,true)
+        const {text,failed,paused}=await runChild(planned,profile,task,planned.request.objective,brief(planned,profile),childSignal,limit,true)
         if(batch.parent.aborted){task.state='interrupted';task.problem='Stopped with the parent run.'}
         else if(timeout.signal.aborted){task.state='failed';task.problem=failed||task.problem||'The task reached its time limit. No automatic retry was made.'}
         else if(batch.signal.aborted){task.state='failed';task.problem='The batch reached its time limit, its children’s time limits end to end. No automatic retry was made.'}

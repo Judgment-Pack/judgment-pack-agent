@@ -216,9 +216,13 @@ const scripted=(answer:(sent:Sent)=>Response|Promise<Response>)=>{
 const texts=(one:Sent)=>one.body.messages.flatMap(m=>typeof m.content==='string'?[m.content]:Array.isArray(m.content)?(m.content as {text?:string}[]).map(part=>part.text??''):[])
 /** The first text part of a request's first user message: the request text. */
 const first=(one:Sent)=>{const message=one.body.messages.find(m=>m.role==='user');return typeof message?.content==='string'?message.content:String((message?.content as {text?:string}[]|undefined)?.[0]?.text??'')}
-const isChild=(one:Sent)=>first(one).includes('Complete this read-only task')
-/** The brief a child was sent, read back from the JSON line it ends with. */
-const briefOf=(one:Sent)=>{const text=first(one);const at=text.lastIndexOf('\n{"objective"');return JSON.parse(text.slice(at+1).split('\n')[0]!) as {objective:string;references?:{id:string;label:string}[];earlierWork?:{objective:string;result:string}[]}}
+/** The text parts of a request's first user message. */
+const opening=(one:Sent)=>{const message=one.body.messages.find(m=>m.role==='user');return typeof message?.content==='string'?[message.content]:((message?.content as {text?:string}[]|undefined)??[]).map(part=>part.text??'')}
+/** A child's prompt: the part of its first message after its objective (agent#11) that carries its rules. */
+const promptOf=(one:Sent)=>opening(one).find(text=>text.includes('Complete this read-only task'))??''
+const isChild=(one:Sent)=>promptOf(one)!==''
+/** The brief a child was sent, read back from the JSON line its prompt ends with. */
+const briefOf=(one:Sent)=>{const text=promptOf(one);const at=text.lastIndexOf('\n{"objective"');return JSON.parse(text.slice(at+1).split('\n')[0]!) as {objective:string;references?:{id:string;label:string}[];earlierWork?:{objective:string;result:string}[]}}
 const toolMessages=(one:Sent)=>one.body.messages.filter(m=>m.role==='tool').map(m=>String(m.content))
 /** The value inside one framed tool message (framing.ts): the line after the opening, up to the closing line. */
 const framed=(text:string)=>JSON.parse(text.slice(text.indexOf('\n')+1,text.lastIndexOf('\n'))) as {structuredContent:Answered}
@@ -301,7 +305,9 @@ describe('one parent run (agent#14)',()=>{
   const brief=briefOf(resumed)
   expect(brief.objective).toBe('Is the cap per day or per trip?')
   expect(brief.earlierWork).toEqual([{objective:'Find the meal cap.',result:'Finding A: the policy caps meals at 40.'}])
-  expect(first(resumed)).toContain('You are continuing this task')
+  expect(promptOf(resumed)).toContain('You are continuing this task')
+  // agent#11: the request text of the resumed child is its new objective.
+  expect(first(resumed)).toBe('Is the cap per day or per trip?')
   expect(results(secondEvents)[0]).toMatchObject({state:'complete',resumes:earlier.id,result:'Following up on Finding A: the cap applies per day.'})
   // An id this chat never finished is refused before any task starts.
   const three=scripted(sent=>toolMessages(sent).length===0?sse(undefined,{name:DELEGATE_TOOL,args:{tasks:[{title:'Unknown',objective:'Go on.',profile:'analyze',resume:crypto.randomUUID()}]}}):sse('Could not resume.'))
@@ -462,7 +468,7 @@ describe('the rest of agent#13',()=>{
  it('asks a child once to summarize long findings where the task asks, within its budget',async()=>{
   const LONG=Array.from({length:600},(_,i)=>`Observation ${i+1}: nothing unusual.`).join('\n')
   const {sent,call}=scripted(one=>{
-   if(isChild(one))return sse(first(one).includes('Summarize the findings below')?'Summary: 600 observations, nothing unusual.':LONG)
+   if(isChild(one))return sse(promptOf(one).includes('Summarize the findings below')?'Summary: 600 observations, nothing unusual.':LONG)
    return toolMessages(one).length===0?sse(undefined,{name:DELEGATE_TOOL,args:{tasks:[{title:'Scan',objective:'Scan everything.',profile:'analyze',summarize:true}]}}):sse('Nothing unusual.')
   })
   const events=await collect(withDelegation(vercel),apiSession({model:{family:'openai-compatible',model:'fixture',call}}))

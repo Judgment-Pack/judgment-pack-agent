@@ -1,6 +1,6 @@
 /** Host-declared context behavior; never model arguments or action permission. */
 export interface ContextToolPolicy {
- /** The same arguments return an immutable value for this execution only. */
+ /** The same arguments return the same value: for one run, and, where the run has a chat-scoped context, for as long as the chat lasts (agent#8), from the same Runtime where `runtime` is set. */
  immutable?:boolean
  /** Prefer this reference material in the bounded working summary. */
  reference?:boolean

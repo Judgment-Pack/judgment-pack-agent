@@ -11,15 +11,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import indexVector from '../../../contract/vectors/chat/turn-index.json'
 import keyVector from '../../../contract/vectors/chat/cache-key.json'
 import harnessDefaults from '../../../contract/vectors/budget/harness-defaults.json'
-import { ChatContext, EVICTED, INDEX_NOTICE, INDEX_SOURCE, canonicalJSON, readCacheKey, type RuntimeIdentity } from './chat'
+import { ChatContext, EVICTED, INDEX_NOTICE, INDEX_SHARE, INDEX_SOURCE, canonicalJSON, partBytes, readCacheKey, type RuntimeIdentity } from './chat'
 import { ContextLedger, contextDigest } from './ledger'
-import { CONTEXT_DEFAULTS, ContextBudgetError, utf8Bytes } from './policy'
+import { CONTEXT_DEFAULTS, ContextBudgetError, contextPolicy, inputBytes, utf8Bytes } from './policy'
 import { READ_TOOL } from './reader'
 import { SessionContext } from './session'
 import { OPENING, unframeData } from '../framing'
 import { codexTurn, ofType, runtimeAnswer, sseTurn, streamed, vercelTurn, type EndpointRequest } from '../testing/scripted'
 import { normalize } from '../thinking'
 import type { AssistantSession, HostTool, McpToolResult } from '../engine'
+import type { ExecutionCheckpoint } from '../execution/state'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -356,7 +357,8 @@ describe('the index of earlier results', () => {
     second.ledger.release()
     const third = fixtureRun(chat, bound)
     expect(indexData(third.store.index(CONTEXT_DEFAULTS, MARKER))).toEqual(indexVector.items[1])
-    // Each eviction is listed once.
+    // Each eviction is listed once: once an index that lists it is sent, the next lists it no more.
+    third.store.sent()
     third.ledger.release()
     expect(indexData(fixtureRun(chat, bound).store.index(CONTEXT_DEFAULTS, MARKER)).evicted).toEqual([])
   })
@@ -406,15 +408,207 @@ describe('the index of earlier results', () => {
     expect(bounded.steps.at(-1)!.firstLine).toBe('{"example":29}')
   })
 
-  it('is counted in the request budget: the prompt’s allowance is less by its bytes', async () => {
-    const session = { prompt: '', testPrompt: '', tools: [], callTool: async () => ({}), hostTools: [], model: { family: 'openai-compatible', model: 'scripted-model', call: async () => new Response() }, thinking: normalize('off', 'openai-compatible'), signal: new AbortController().signal } as AssistantSession
-    const context = new SessionContext(session)
-    let fits = 'p'
-    // The longest prompt that is sent whole with nothing beside it.
-    for (let step = 1 << 17; step > 0; step >>= 1) if ((await context.prompt(fits + 'p'.repeat(step), 'instructions', [])) === fits + 'p'.repeat(step)) fits += 'p'.repeat(step)
-    expect(await context.prompt(fits, 'instructions', [])).toBe(fits)
-    expect(await context.prompt(fits, 'instructions', [], undefined, 'an index')).not.toBe(fits)
-    context.close()
+})
+
+/** A session at a window of `window` tokens with a 1,024-token output reserve, and the chat, where given. */
+function windowed(window: number, chat?: ChatContext, extra: Partial<AssistantSession['context']> = {}): AssistantSession {
+  return {
+    prompt: '', testPrompt: '', tools: [], callTool: async () => ({}), hostTools: [],
+    model: { family: 'openai-compatible', model: 'scripted-model', call: async () => new Response() },
+    thinking: normalize('off', 'openai-compatible'), signal: new AbortController().signal,
+    context: { configuration: { version: 1, models: { 'scripted-model': { contextWindowTokens: window, outputTokens: 1024 } } }, ...(chat === undefined ? {} : { chat }), ...extra }
+  }
+}
+/** A chat whose first run kept `count` results, each a few hundred bytes. */
+async function chatWith(count: number): Promise<ChatContext> {
+  const chat = new ChatContext()
+  const run = fixtureRun(chat)
+  for (let at = 0; at < count; at++) await run.store.keep(run.ledger, 'get_example', { name: `example-${at}` }, runtimeAnswer({ example: at, text: 'An example the Runtime serves. '.repeat(6) }))
+  run.ledger.release()
+  return chat
+}
+/** The longest prompt `context` sends whole with `instructions` and no tools. */
+async function longestWhole(context: SessionContext, instructions: string): Promise<string> {
+  let fits = ''
+  for (let step = 1 << 17; step > 0; step >>= 1) if ((await context.prompt(fits + 'p'.repeat(step), instructions, [])) === fits + 'p'.repeat(step)) fits += 'p'.repeat(step)
+  return fits
+}
+
+describe('the index, cut to the room the prompt leaves', () => {
+  it('never previews a prompt or fails a run that is sent whole without a chat context (4,000-byte instructions, windows 8,192 to 12,288 tokens)', async () => {
+    const instructions = 'i'.repeat(4000)
+    const indexed: number[] = []
+    for (const window of [8192, 9216, 10240, 11264, 12288]) {
+      const plain = new SessionContext(windowed(window))
+      const fits = await longestWhole(plain, instructions)
+      expect(fits.length).toBeGreaterThan(1000)
+      expect(await plain.opening(fits, instructions, [])).toEqual([fits])
+      plain.close()
+      const chat = await chatWith(30)
+      // Untrimmed, the index would be most of the 8,000 bytes turnIndexBytes allows.
+      const whole = chat.openTurn().index(CONTEXT_DEFAULTS, MARKER)
+      expect(utf8Bytes(whole)).toBeGreaterThan(7000)
+      const kept = new SessionContext(windowed(window, chat))
+      const parts = await kept.opening(fits, instructions, [])
+      expect(parts[0]).toBe(fits)
+      // At the longest whole prompt nothing is left for an index: none is sent.
+      expect(parts).toEqual([fits])
+      kept.close()
+      // With room, an index is sent within a quarter of the allowance.
+      const policy = contextPolicy(windowed(window).context!.configuration, 'scripted-model')
+      const allowance = Math.floor((inputBytes(policy) - utf8Bytes(instructions) - 2 - policy.briefBytes - policy.memoryBytes - 1536) * 0.6)
+      const room = new SessionContext(windowed(window, chat))
+      const short = await room.opening('Change the pack.', instructions, [])
+      expect(short[0]).toBe('Change the pack.')
+      expect(short.length).toBeLessThanOrEqual(2)
+      if (short.length === 2) {
+        indexed.push(window)
+        expect(partBytes(short[1]!)).toBeLessThanOrEqual(Math.floor(allowance * INDEX_SHARE))
+        expect(indexData(short[1]!).omitted).toBeGreaterThan(0)
+      }
+      room.close()
+    }
+    // A quarter of the allowance holds an index from 9,216 tokens up; at 8,192, none is sent.
+    expect(indexed).toEqual([9216, 10240, 11264, 12288])
+  })
+
+  it('sends turn two with a chat context as without one at a 14,336-token window (twelve kept results, a 6,949-byte first message)', async () => {
+    const configuration = { version: 1 as const, models: { 'scripted-model': { contextWindowTokens: 14336, outputTokens: 1024 } } }
+    const send = (length: number, chat?: ChatContext) =>
+      vercelTurn({
+        answer: () => streamed(sseTurn({ text: 'Done.' })),
+        session: { prompt: 'p'.repeat(length), tools: [], hostTools: [], context: { currentRequest: { message: 'Change the pack.', input: 'Change the pack.' }, configuration, ...(chat === undefined ? {} : { chat }) } }
+      })
+    const firstMessage = (turn: Awaited<ReturnType<typeof send>>) => (turn.requests[0]!.body.messages as Message[]).find((message) => message.role === 'user')!
+    // The prompt whose first message, the state beside it, is 6,949 bytes.
+    const probe = await send(4000)
+    const length = 4000 + 6949 - utf8Bytes(JSON.stringify(firstMessage(probe)))
+    const without = await send(length)
+    expect(utf8Bytes(JSON.stringify(firstMessage(without)))).toBe(6949)
+    expect(ofType(without.events, 'error')).toEqual([])
+    expect(firstUserTexts(without.requests[0]!)[0]).toBe('p'.repeat(length))
+    const chat = await chatWith(12)
+    const kept = await send(length, chat)
+    expect(ofType(kept.events, 'error')).toEqual([])
+    expect(kept.requests).toHaveLength(1)
+    const texts = firstUserTexts(kept.requests[0]!)
+    expect(texts[0]).toBe('p'.repeat(length))
+    // Whatever index there was room for comes after the request, and the request is not previewed.
+    expect(texts.filter((text) => text.startsWith(INDEX_NOTICE)).length).toBeLessThanOrEqual(1)
+    expect(texts.some((text) => text.startsWith('Earlier context is retained'))).toBe(false)
+  })
+
+  it('takes the evictions only once an index that lists them is sent (turnIndexBytes 500)', async () => {
+    const chat = new ChatContext({ scope: indexVector.fixture.scope })
+    const bound = indexVector.fixture.retainedBytes
+    const first = fixtureRun(chat, bound + 10_000)
+    for (const result of indexVector.fixture.results.slice(0, 3)) await keep(first, result)
+    first.ledger.release()
+    const second = fixtureRun(chat, bound)
+    await keep(second, indexVector.fixture.results[3]!)
+    second.ledger.release()
+    // Too small for even an index with no rows: nothing is sent, nothing is taken.
+    const third = fixtureRun(chat, bound)
+    expect(third.store.index({ turnIndexEntries: 20, turnIndexBytes: 500 }, MARKER)).toBe('')
+    third.store.sent()
+    third.ledger.release()
+    expect(indexData(fixtureRun(chat, bound).store.index(CONTEXT_DEFAULTS, MARKER))).toEqual(indexVector.items[1])
+    // And through a run's first message: with no room the index is left out, and the evictions wait.
+    const tight = new SessionContext(windowed(8192, chat))
+    const fits = await longestWhole(new SessionContext(windowed(8192)), 'i'.repeat(4000))
+    expect(await tight.opening(fits, 'i'.repeat(4000), [])).toEqual([fits])
+    tight.close()
+    const roomy = new SessionContext(windowed(65536, chat))
+    const parts = await roomy.opening('Change the pack.', 'instructions', [])
+    expect(indexData(parts[1]!).evicted.map((row) => row.tool)).toEqual(['get_authoring_instructions', 'get_schema'])
+    roomy.close()
+    // Sent once: the next run's index lists them no more.
+    const after = new SessionContext(windowed(65536, chat))
+    expect(indexData((await after.opening('Again.', 'instructions', []))[1]!).evicted).toEqual([])
+    after.close()
+  })
+
+  it('is not sent to a run resumed from another chat’s checkpoint, which reads a ledger of its own', async () => {
+    const source = new ChatContext()
+    const resumed = await chatWith(3)
+    const session = (chat: ChatContext, execution?: ExecutionCheckpoint): AssistantSession => ({ ...windowed(65536, chat, { currentRequest: { message: 'Change the pack.', input: 'Change the pack.' }, ...(execution === undefined ? {} : { execution }) }), prompt: 'Change the pack.' })
+    const writer = new SessionContext(session(source))
+    await writer.execution.initialize()
+    await writer.ledger.retain({ id: 'page', kind: 'tool', label: 'page', value: 'A page the first chat read.' })
+    const saved = writer.execution.snapshot()
+    writer.close()
+    expect(saved.context.scope).toBe(source.scope)
+    const reader = new SessionContext(session(resumed, saved))
+    await reader.execution.initialize()
+    expect(reader.ledger.chat).toBeUndefined()
+    expect(await reader.opening('Change the pack.', 'instructions', [])).toEqual(['Change the pack.'])
+    reader.close()
+    // The chat it was handed still has its index for the next run.
+    const next = new SessionContext(session(resumed))
+    expect(indexData((await next.opening('Change the pack.', 'instructions', []))[1]!).steps).toHaveLength(3)
+    next.close()
+  })
+})
+
+describe('the critic, a failed start and a resume, with a chat', () => {
+  it('leaves the chat as the author left it: the critic neither clears it nor adds to it', async () => {
+    const chat = new ChatContext()
+    const pack = { specVersion: '0.2.0-draft', id: 'expense' }
+    const turn = await vercelTurn({
+      answer: (request) => {
+        const text = JSON.stringify(request.body)
+        const called = calledIn(request)
+        if (text.includes('REFUTATION PASS')) return called.includes('list_examples') ? streamed(sseTurn({ text: 'Nothing refutes it.' })) : streamed(sseTurn({ tool: { name: 'list_examples', args: {}, id: 'call_critic_list' } }))
+        return called.includes('get_schema') ? streamed(sseTurn({ text: '```json\n' + JSON.stringify({ proposal: { kind: 'create', document: pack, unknowns: [] } }) + '\n```' })) : streamed(sseTurn({ tool: { name: 'get_schema', args: {}, id: 'call_schema' } }))
+      },
+      handle: runtimeAnswers,
+      session: { allowConversation: false, adversarialReview: true, testPrompt: 'THE RUNTIME’S TEST_PACK GUIDANCE', context: { currentRequest: { message: 'Write it.', input: 'Write it.' }, chat, runtime: RUNTIME } }
+    })
+    expect(ofType(turn.events, 'critique')).toHaveLength(1)
+    expect(turn.seen.map((call) => call.name)).toEqual(['get_schema', 'list_examples'])
+    const kept = [...chat.entries.values()].filter((entry) => entry.kind === 'tool').map((entry) => entry.label)
+    expect(kept).toContain('get_schema')
+    expect(kept).not.toContain('list_examples')
+  })
+
+  it('closes the turn of a run that fails at its start, so what it retained can be evicted', async () => {
+    const chat = new ChatContext()
+    const { hostTools } = sources()
+    const failed = await vercelTurn({
+      answer: () => streamed(sseTurn({ text: 'unused' })),
+      // A host tool that takes a name the boundary reserves: the run fails after it has retained its documents.
+      hostTools: [...hostTools, { name: 'search', description: 'A reserved name.', inputSchema: { type: 'object' }, execute: async () => ({}) }],
+      session: { context: { currentRequest: { message: 'Write it.', input: 'Write it.' }, chat, documents: [{ id: 'conversation', kind: 'history', label: 'The conversation', value: 'Earlier turns. '.repeat(50) }] } }
+    })
+    expect(failed.requests).toHaveLength(0)
+    expect(ofType(failed.events, 'error')).toHaveLength(1)
+    expect(chat.entries.size).toBeGreaterThan(0)
+    // No turn is open: a bound of three bytes evicts everything the failed run retained.
+    const run = fixtureRun(chat, 3)
+    await run.ledger.retain({ id: 'new', kind: 'tool', label: 'new', value: 'n' })
+    expect([...chat.entries.values()].map((entry) => entry.label)).toEqual(['new'])
+  })
+
+  it('holds the chat to retainedBytes when a checkpoint is restored into it', async () => {
+    const chat = new ChatContext()
+    const document = (id: string) => ({ id, kind: 'tool' as const, label: id, value: 'x'.repeat(200) })
+    const first = fixtureRun(chat, 700)
+    await first.ledger.retain(document('a'))
+    const saved = first.ledger.snapshot()
+    first.ledger.release()
+    // The chat lets a go, then fills up with others.
+    const second = fixtureRun(chat, 202)
+    await second.ledger.retain(document('b'))
+    second.ledger.release()
+    const third = fixtureRun(chat, 404)
+    await third.ledger.retain(document('c'))
+    expect(chat.size).toBe(404)
+    third.ledger.release()
+    // Restored under a 404-byte bound: a comes back, and an older entry goes to make room.
+    const resumed = fixtureRun(chat, 404)
+    await resumed.ledger.restore(saved)
+    expect(chat.entries.has(saved.entries[0]!.id)).toBe(true)
+    expect(chat.size).toBeLessThanOrEqual(404)
   })
 })
 

@@ -85,9 +85,10 @@ files they were rendered from.
   item against a run.
 - `recall/`: one vector per wire (`openai-compatible.json`, `anthropic.json`, `gemini.json`), each
   the third request of the recorded scenario, after two tool calls and their results, abbreviated to
-  its turns, with the JSON pointer the recall rule resolves to and the request text there. Written
-  by hand from the schema; `memory/recall.test.ts` holds a run's third request to each, and the
-  contract tests apply the rule to each body. This harness's (agent#11).
+  its turns, with the JSON pointer the recall rule resolves to and the request text there; and a
+  delegated child's first request, whose request text is its objective, sent as the first text part
+  (`delegated-child.json`). Written by hand from the schema; `memory/recall.test.ts` holds a run's
+  request to each, and the contract tests apply the rule to each body. This harness's (agent#11).
 - `chat/`: the index of earlier results a chat-scoped run is shown (`turn-index.json`: the index
   after a first run kept three results, and after a second run's result evicted the two oldest), and
   the objects a chat's read cache keys a read by, with each one's canonical JSON and SHA-256
@@ -142,7 +143,7 @@ failure classes and approval actions equal the Desk's lists; the budget vector i
 one vector per catalogue class, a failed tool's failure validated as one; a run that ends or fails
 ends once, last; every capability record names a family whose wire speaks its reasoning kind, with
 one default record per family, and a host's answer may carry any members of the record and no
-other; the recall rule finds the request text in each wire's vector; each read cache key is the
+other; the recall rule finds the request text in each wire's vector and the delegated child's; each read cache key is the
 digest of its canonical JSON; each row of the chat index follows from the vector's fixture; the scenario's order is the one the conformance session asserts; and this table's
 *Root* and *Closed parts* columns match each schema (*Closed parts* lists the closed top-level
 `$defs`).

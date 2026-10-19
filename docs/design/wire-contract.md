@@ -443,7 +443,7 @@ recall does, finds the request text as the next section says.
 ## Where the request text sits
 
 `budget.json`, `$defs/recallQuery`; the vectors `recall/openai-compatible.json`,
-`recall/anthropic.json` and `recall/gemini.json`; the rule in code,
+`recall/anthropic.json`, `recall/gemini.json` and `recall/delegated-child.json`; the rule in code,
 `certification/recall.ts`. The Desk server recalls project memory for every request it relays, from
 the request text (agent#11). The rule a server applies, on any request of a run:
 
@@ -453,28 +453,41 @@ the request text (agent#11). The rule a server applies, on any request of a run:
 2. The request text is its first text part that does not start with `STATE_HEADER`. A string
    content is one text part; on Gemini a part is text when it carries `text` and is not a thought.
 
+The request text is the host's prompt where it fits the prompt's allowance. Where it does not, the
+prompt is retained and previewed, and the person's message (`currentRequest.message`) is sent as its
+own first text part, before the preview, so the first text part is still the person's request. A
+delegated child's request text is its objective: the coordinator hands it to the child as
+`context.objective`, and the adapter sends it as the first text part, before the child's prompt
+(`SessionContext.opening`).
+
 It holds on every request of a run, on every wire, because the `vercel` adapter puts the request
 text first in the run's first user message and never moves, replaces or drops that message: the
 state joins it only as a later part on the first request, a chat's index of earlier results is its
-second part, and compaction keeps it whole. Every other user text the loop adds comes after it: a
+last part, and compaction keeps it whole. Every other user text the loop adds comes after it: a
 text-path result (headed `TOOL RESULT` or `TOOL ERROR`), the images shown beside a result, the
 finishing and reformat instructions, the compaction summary and the trailing state. So the newest
-user text is often not the person's, and the first user turn always is. Where the text sits on the
+user text is often not the person's, and the first user turn always is. Measured on all three wires
+in the review of judgment-pack-agent#33: the newest-remaining-text rule fails on a text-path
+request, the finishing request, the reformat request and after compaction; the Desk's code as
+ported fails the same, except after compaction on Anthropic, where the first message and the
+compaction summary merge into one user turn. Where the text sits on the
 third request of the recorded scenario, after two tool calls:
 
 | Wire | First user turn | Pointer |
 | --- | --- | --- |
-| OpenAI-compatible | the second message, after the system message; its content a string (an array of parts when a chat's index is its second part) | `/messages/1/content` |
+| OpenAI-compatible | the second message, after the system message; its content a string (an array of parts when it has more than one: the person's message before a preview, or a chat's index after the request) | `/messages/1/content` |
 | Anthropic | the first message; a text block | `/messages/0/content/0/text` |
 | Gemini | the first content; a text part | `/contents/0/parts/0/text` |
 
 The critic's requests are a second conversation, whose first user turn is the critic's own
 message. On the agent wire (`codex`) the server recalls once per run from the agent request's
 prompt, which starts with the request text. The certification suite applies the rule to every
-request of the recorded scenario on every leg (the plain legs, the text path, strict alternation and
-the thinking legs' authoring requests) and expects the text the run started from;
-`memory/recall.test.ts` applies it on a finishing request, a reformat request, after compaction and
-with a chat's index. The recalled set itself, and carrying it through a run's steps, is the server's:
+request of the recorded scenario on every certified leg, 21 legs in four families (the six plain
+legs, the six text-path legs, three strict-alternation legs and the six thinking legs' authoring
+requests), and expects the text the run started from; `memory/recall.test.ts` applies it on a
+finishing request, a reformat request, after compaction, with a chat's index, where the prompt is
+previewed (a 400-turn transcript at a 32,768-token window) and on a delegated child's first
+request. The recalled set itself, and carrying it through a run's steps, is the server's:
 the package reads nothing new from memory.
 
 ## The chat-scoped context
@@ -510,9 +523,13 @@ one `ChatContext` per chat and hand it to every run of that chat as `context.cha
   results earlier runs kept, in the compaction summary's shape: one line, then one data block
   closed by the run's marker, whose JSON lists each result's `read_window` id, tool, arguments
   digest, size and first line, the count of older ones left out, and the results evicted since the
-  last index. It is bounded by `turnIndexEntries` and `turnIndexBytes` (the newest rows are kept)
-  and counted in the request budget: the prompt's allowance is less by its bytes. On the agent wire
-  it follows the request text in the prompt.
+  last index was sent. It is bounded by `turnIndexEntries` and `turnIndexBytes` (the newest rows
+  are kept) and cut to the room the first message leaves in the prompt's allowance, at most a
+  quarter of that allowance (`INDEX_SHARE`): rows go, oldest first, until it fits. The request is
+  never previewed and a run never fails because of the index; with no room it is not sent, and the
+  evictions it would have listed wait for the next index that is. A run resumed from another
+  chat's checkpoint, whose ledger is its own, is sent none. On the agent wire it is added at the end
+  of the prompt.
 
 **Where it lives and how it is bounded** (the open question this settles): in memory, in the host's
 `ChatContext` object; the package writes it nowhere, and it is bounded by `retainedBytes` alone. A
@@ -524,8 +541,10 @@ another chat context or none (after a reload, say), they make a ledger of the ru
 **When a chat is deleted** the host calls `dispose()` on its context, after its run has ended or
 been stopped: everything it holds is cleared and a later run handed it fails before any request.
 Nothing is global: a run reaches only the chat context it was handed, a delegated child is handed
-none, and an independent phase (the critic) works in a ledger of its own, so nothing retained in one
-chat is reachable from another.
+none, and an independent phase (the critic) works in a ledger of its own and neither clears nor adds
+to the chat's, so nothing retained in one chat is reachable from another. A run that fails at its
+start closes its turn, so what it retained can be evicted, and a checkpoint restored into the chat
+is held to `retainedBytes` as any retain is.
 
 Measured on a scripted two-turn chat (`context/chat.test.ts`: the instructions, the schema and the
 tests read on turn one, a new message on turn two), turn two makes no Runtime or host read and one

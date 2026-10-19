@@ -8,8 +8,9 @@
  * in `certification/recall.ts`), with one vector per wire, each checked here against a run. Then
  * the rule is applied to every request of runs that add a user text after the person's message
  * in each way the loop can: a text-path result, the finishing instruction, the reformat request,
- * the compaction summary and a chat's index. The certification suite applies it to every request
- * of the recorded scenario on every leg.
+ * the compaction summary and a chat's index; and where the prompt is previewed and for a delegated
+ * child, whose request text is sent as its own first text part. The certification suite applies it
+ * to every request of the recorded scenario on every certified leg (21 legs in four families).
  *
  * And the memory reserve: `memoryBytes` is left out of a run's input allowance only while the host
  * has not said memory is off.
@@ -18,6 +19,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import openaiVector from '../../../contract/vectors/recall/openai-compatible.json'
 import anthropicVector from '../../../contract/vectors/recall/anthropic.json'
 import geminiVector from '../../../contract/vectors/recall/gemini.json'
+import childVector from '../../../contract/vectors/recall/delegated-child.json'
 import { atPointer, recallQuery } from '../certification/recall'
 import { scenario, scriptedModel, scriptedRuntime } from '../certification'
 import { STATE_HEADER } from '../engines/vercel/loop'
@@ -30,7 +32,7 @@ import { CONTEXT_DEFAULTS, contextPolicy, inputBytes, utf8Bytes } from '../conte
 import { SessionContext } from '../context/session'
 import { FINISH_RESPONSE_INSTRUCTIONS } from '../completion'
 import { ContextLedger, answer } from '../context/ledger'
-import { runtimeAnswer, sseTurn, streamed, vercelTurn, type EndpointRequest } from '../testing/scripted'
+import { runtimeAnswer, scriptedEndpoint, sseTurn, streamed, vercelTurn, type EndpointRequest } from '../testing/scripted'
 import type { AssistantEvent, AssistantSession, Engine, EngineSession, ModelCall } from '../engine'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -122,6 +124,7 @@ function misses(api: EndpointKind, bodies: Json[], text: string): string[] {
   })
 }
 const APIS: EndpointKind[] = ['openai-compatible', 'anthropic', 'gemini']
+const texts = (requests: EndpointRequest[]) => requests.map((request) => request.body as Json)
 
 describe('the request text on every request of a run with tool calls', () => {
   it.each(APIS)('holds on %s with the state trailing, in the system tail, and on the text path', async (api) => {
@@ -141,7 +144,6 @@ describe('the request text on every request of a run with tool calls', () => {
   })
 
   const PROMPT = 'Check the expense pack.'
-  const texts = (requests: EndpointRequest[]) => requests.map((request) => request.body as Json)
 
   it('holds on the finishing request, whose instruction is a user text after the history', async () => {
     const turn = await vercelTurn({
@@ -207,14 +209,55 @@ describe('the request text on every request of a run with tool calls', () => {
   })
 })
 
-describe('the memory reserve', () => {
-  const session = (memory?: boolean): AssistantSession => ({
-    prompt: '', testPrompt: '', tools: [], callTool: async () => ({}), hostTools: [],
-    model: { family: 'openai-compatible', model: 'scripted-model', call: async () => new Response() },
-    thinking: normalize('off', 'openai-compatible'), signal: new AbortController().signal,
-    ...(memory === undefined ? {} : { context: { memory } })
+/** A session with no tools, and the host's word on memory where given. */
+const session = (memory?: boolean): AssistantSession => ({
+  prompt: '', testPrompt: '', tools: [], callTool: async () => ({}), hostTools: [],
+  model: { family: 'openai-compatible', model: 'scripted-model', call: async () => new Response() },
+  thinking: normalize('off', 'openai-compatible'), signal: new AbortController().signal,
+  ...(memory === undefined ? {} : { context: { memory } })
+})
+
+describe('the request text where the prompt is previewed, and for a delegated child', () => {
+  it('sends the person’s message as the first text part when the prompt is previewed (a 400-turn transcript at a 32,768-token window)', async () => {
+    const message = 'Add a rule that sends a claim above 1000 USD to finance.'
+    const transcript = Array.from({ length: 400 }, (_, at) => `PERSON: Turn ${at}: look at the expense pack again.\n\nASSISTANT: Turn ${at}: the pack holds; nothing changed.`).join('\n\n')
+    const prompt = `TRANSCRIPT SO FAR\n${transcript}\n\nTHE PERSON'S MESSAGE\n${message}`
+    const turn = await vercelTurn({
+      answer: (request) => (request.number === 1 ? streamed(sseTurn({ tool: { name: 'get_schema', args: {}, id: 'call_schema' } })) : streamed(sseTurn({ text: 'Done.' }))),
+      session: { prompt, context: { currentRequest: { message, input: message }, configuration: { version: 1, models: { 'scripted-model': { contextWindowTokens: 32768, outputTokens: 8192 } } } } }
+    })
+    expect(turn.events.filter((event) => event.type === 'error')).toEqual([])
+    expect(turn.requests).toHaveLength(2)
+    const first = turn.requests[0]!.body.messages!.find((message) => message.role === 'user')!
+    const parts = (first.content as { text: string }[]).map((part) => part.text)
+    expect(parts[0]).toBe(message)
+    expect(parts[1]).toMatch(/^Earlier context is retained/)
+    expect(misses('openai-compatible', texts(turn.requests), message)).toEqual([])
   })
 
+  // agent#14 rewrote this case: the parent is one run, so the child's first request is read as the
+  // child sends it, on the same scripted endpoint, rather than by running its session a second time.
+  it('sends a delegated child’s objective as the first text part of its first message, as the vector states', async () => {
+    const { withDelegation } = await import('../delegation')
+    const item = childVector.items[0]!
+    const isChild = (request: EndpointRequest) => JSON.stringify(request.body.messages).includes('Complete this read-only task')
+    const endpoint = scriptedEndpoint((request) => isChild(request) ? streamed(sseTurn({ text: 'Checked.' }))
+      : request.number === 1 ? streamed(sseTurn({ tool: { name: 'delegate_tasks', args: { tasks: [{ title: 'Check', profile: 'review', objective: item.text }] }, id: 'call_delegate' } }))
+      : streamed(sseTurn({ text: 'Done.' })))
+    vi.stubGlobal('fetch', endpoint.fetch)
+    const events: AssistantEvent[] = []
+    for await (const event of withDelegation(vercel).start({ ...session(), model: { family: 'openai-compatible', model: 'scripted-model', call: bindModelCall('openai-compatible') }, allowConversation: true, interactive: true, adversarialReview: false })) events.push(event)
+    expect(events.filter((event) => event.type === 'error')).toEqual([])
+    const child = endpoint.requests.filter(isChild)
+    expect(child).toHaveLength(1)
+    const body = child[0]!.body as Json
+    expect(turns('openai-compatible', body)).toEqual(turns('openai-compatible', item.body as Json))
+    expect(recallQuery('openai-compatible', body)).toEqual({ pointer: item.pointer, text: item.text })
+    expect(recallQuery('openai-compatible', item.body as Json)).toEqual({ pointer: item.pointer, text: item.text })
+  })
+})
+
+describe('the memory reserve', () => {
   it('is reserved only when memory may be on: off frees it, on and unsaid keep today’s', () => {
     expect(contextPolicy(undefined, 'scripted-model', undefined, false).memoryBytes).toBe(0)
     expect(contextPolicy(undefined, 'scripted-model', undefined, true).memoryBytes).toBe(CONTEXT_DEFAULTS.memoryBytes)
