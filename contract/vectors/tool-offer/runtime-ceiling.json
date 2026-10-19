@@ -1,0 +1,22 @@
+{
+  "description": "The runtime tool ceiling the harness's gate applies (ASSISTANT_TOOLS), in order: the Desk's five, then experimental_test_cases (agent#7). Every session's allow-list is a subset of these.",
+  "schema": "tool-offer.json#/$defs/runtimeCeiling",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/host.ts (ASSISTANT_TOOLS)",
+      "packages/harness/toolGate.ts (allowedTools)"
+    ]
+  },
+  "items": [
+    "get_schema",
+    "list_examples",
+    "get_example",
+    "validate",
+    "experimental_evaluate",
+    "experimental_test_cases"
+  ]
+}

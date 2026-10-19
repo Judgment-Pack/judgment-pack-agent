@@ -9,7 +9,8 @@ It holds the engine slot and its two adapters, the **Vercel AI SDK adapter** (`e
 the **Codex adapter** (`engines/codex`), and what they share: the context budget and ledger
 (`context/`), execution and planning (`execution/`, `planning/`), delegation, the memory client and
 its tools (`memory/`; the store stays in the host), questions, refutation, completion, the failure
-catalogue (`failures.ts`), the tool gate (`toolGate.ts`), thinking tiers, the Gemini schema rules,
+catalogue (`failures.ts`), the tool gate (`toolGate.ts`), the framing of retrieved text
+(`framing.ts`, agent#12), thinking tiers, the Gemini schema rules,
 the agent capability (`agent.ts`, `agentTransport.ts`) and the page side of a session
 (`session.ts`: the model call bound to the host's relay and the gated MCP connection; no key is
 ever in it). And it holds the **certification suite** (`certification/`).
@@ -41,8 +42,9 @@ through a bundler, as the Desk's Vite consumes them (`moduleResolution: bundler`
 `host.ts` holds two kinds of thing.
 
 **Contract values and types**, spelled as the contract spells them and held to it by `host.test.ts`
-and `tests/test_harness_copies.py`: the runtime tool ceiling `ASSISTANT_TOOLS` (the five reads the
-tool gate intersects every allow-list with), the engine ids `ASSISTANT_ENGINES`, and the types
+and `tests/test_harness_copies.py`: the runtime tool ceiling `ASSISTANT_TOOLS` (the six reads the
+tool gate intersects every allow-list with: the Desk's five and, since agent#7,
+`experimental_test_cases`), the engine ids `ASSISTANT_ENGINES`, and the types
 `EndpointKind`, `ThinkingTier`, `Language`, `AITarget`, and, for Plan mode, `Chat`, `ChatStore`,
 `FileRevision` and `PreparationReply`, each reduced to the members the harness touches. A host's
 own types for these are structurally the same. `sourceMessage` fills the harness's own messages from
@@ -107,11 +109,13 @@ npm run certify -- --adapter vercel
 npm run certify -- --adapter codex
 ```
 
-The suite is the Desk's conformance session and its certification checks, moved whole, with no
-check added: the recorded bake-off scenario on a scripted model and a recorded runtime, the relay-only
-rule (K1), the five-tool gate (K2), the rehearsal rewrite (K3a), the refused write (K3b), the
-proposal (K3c), event order, and the network and timer seal shown to fail on the four fixtures in
-`certification/certification/`. It reads the contract's vectors where the contract states what it
+The suite is the Desk's conformance session and its certification checks, moved whole: the recorded
+bake-off scenario on a scripted model and a recorded runtime, the relay-only rule (K1), the
+scenario's five-tool offer (K2), the rehearsal rewrite (K3a), the refused write (K3b), the proposal
+(K3c), event order, and the network and timer seal shown to fail on the four fixtures in
+`certification/certification/`. One check is added (agent#7), and every adapter runs it: the
+ceiling is exactly six names, and `test_conformance` is refused at the wire even where a runtime
+serves it and a file grants it. It reads the contract's vectors where the contract states what it
 asserts (the scenario's event sequence and K2's offer, from `contract/vectors/`) and the recorded
 scenario otherwise. Each adapter runs the suite's own checks of the scenario and the seal, then the
 checks the Desk runs over every engine of its kind: a model engine (`vercel`) the conformance legs,

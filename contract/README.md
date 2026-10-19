@@ -22,15 +22,15 @@ root is not.
 | Schema | What it describes | Root | Closed parts | Read from (Desk file, symbol) |
 | --- | --- | --- | --- | --- |
 | `run-event.json` | Every event a run emits, 18 kinds discriminated by `type`, in the union's order; the proposal's `note` where the critic did not finish | open | none | `web/src/assistant/engine.ts`, `AssistantEvent` |
-| `tool-offer.json` | The tools offered to a run, as the session's two members: `tools` (runtime tools as served, each named within the ceiling) and `hostTools` (host tools' declarations); the agent-wire alias form; the runtime ceiling and reserved names; `propose_pack`, the proposal as a host tool call | open | `$defs/agentWireTool` | `web/src/assistant/engine.ts`, `McpTool`, `HostTool`; `context/session.ts`, `contextualSession`; `internal/codexbridge/contract.go`, `Tool` |
-| `tool-call.json` | The `tool_call` event; the `tools/call` params the gate inspects; the agent-wire call | open | none | `web/src/assistant/engine.ts`, `AssistantEvent`; `toolGate.ts`, `inspectOutboundFrame`; `agentTransport.ts`, `bindAgentRun` |
-| `tool-result.json` | The `tool_result` event; the MCP result shape; the bound, the read-back reference and its envelopes; `read_context` arguments; the agent-wire answer | open | `$defs/readContextArguments`, `$defs/agentWireAnswer` | `web/src/assistant/engine.ts`, `McpToolResult`; `context/session.ts`, `SessionContext.result`; `context/ledger.ts`, `ContextLedger.reference`, `ContextLedger.tools` |
+| `tool-offer.json` | The tools offered to a run, as the session's two members: `tools` (runtime tools as served, each named within the ceiling) and `hostTools` (host tools' declarations); the agent-wire alias form; the runtime ceiling (the Desk's five and `experimental_test_cases`) and reserved names; `propose_pack`, the proposal as a host tool call | open | `$defs/agentWireTool` | `web/src/assistant/engine.ts`, `McpTool`, `HostTool`; `context/session.ts`, `contextualSession`; `internal/codexbridge/contract.go`, `Tool` |
+| `tool-call.json` | The `tool_call` event; the `tools/call` params the gate inspects; the arguments `experimental_test_cases` may leave with; the agent-wire call | open | `$defs/testCasesArguments` | `web/src/assistant/engine.ts`, `AssistantEvent`; `toolGate.ts`, `inspectOutboundFrame`; `agentTransport.ts`, `bindAgentRun` |
+| `tool-result.json` | The `tool_result` event; the MCP result shape; the bound, the read-back reference and its envelopes; `read_context` arguments; the agent-wire answer; a reading tool's answer as the model is shown it, framed | open | `$defs/readContextArguments`, `$defs/agentWireAnswer` | `web/src/assistant/engine.ts`, `McpToolResult`; `context/session.ts`, `SessionContext.result`; `context/ledger.ts`, `ContextLedger.reference`, `ContextLedger.tools` |
 | `approval.json` | The host's approval state for a chat and the one grant a user decision mints, for one of the server's four actions; the grant request | open | `$defs/request` | `web/src/assistant/approvals/client.ts`, `ActionApproval`, `ActionGrant`; `internal/desk/assistant_approval.go`, `assistantActionGrant`, `assistantApprovalRequest` |
 | `question.json` | One question to the person (`ask_user`); the answer draft; a saved question; the format-failure codes | closed | the root, `$defs/option`, `$defs/draft`, `$defs/saved` | `web/src/assistant/questions.ts`, `readUserQuestion`, `validQuestionDraft`, `readSavedQuestions`; `questionFailure.ts`, `QuestionFailureCode` |
 | `delegated-task.json` | One child task's state; the delegation request; a task profile | open | `$defs/request`, `$defs/taskRequest` | `web/src/assistant/delegationContract.ts`, `DelegatedTask`, `validDelegatedTask`, `readDelegationRequest`, `TaskProfile` |
 | `checkpoint.json` | The execution checkpoint: allowance, grants, plan, operations, completions, retained context | open | none | `web/src/assistant/execution/state.ts`, `ExecutionCheckpoint`, `readExecution` |
 | `failure.json` | One failure: the catalogue's 23 classes, source, the `not-started`/`refused`/`unknown` outcome, HTTP metadata; a catalogue entry; a failed tool's content | open | none | `web/src/assistant/failures.ts`, `AIFailure`, `readFailure`; `internal/aifailure/failure.go`, `Failure`; `internal/aifailure/catalog.json` |
-| `budget.json` | The context budget table; the per-model override and profile configuration; the request allowance the model is told; the budget-increase answer; the fixed limits by their Desk names; the harness's turn clock and tool-call deadline | open | `$defs/modelBudget`, `$defs/configuration` | `internal/aicontext/policy.json`; `web/src/assistant/context/policy.ts`, `ContextPolicy`, `contextConfiguration`; `internal/aicontext/policy.go`, `Policy`, `Decode`; `execution/controller.ts`, `guidance`, `budgetTool` |
+| `budget.json` | The context budget table; the per-model override and profile configuration; the request allowance the model is told; the budget-increase answer; the fixed limits by their Desk names; the harness's turn clock and tool-call deadline; its bounds on the test tool | open | `$defs/modelBudget`, `$defs/configuration` | `internal/aicontext/policy.json`; `web/src/assistant/context/policy.ts`, `ContextPolicy`, `contextConfiguration`; `internal/aicontext/policy.go`, `Policy`, `Decode`; `execution/controller.ts`, `guidance`, `budgetTool` |
 | `provenance.json` | One model request's record: request number, phase, normalized completion, and for a request sent again its attempt, a refused attempt's failure and wait; the digests and engine id the Desk holds | open | none | `web/src/assistant/execution/state.ts`, `ExecutionCheckpoint.completions`; `completion.ts`, `ModelCompletion`, `readCompletion` |
 
 ## Vectors
@@ -63,17 +63,23 @@ files they were rendered from.
 - `tool-offer/`: what the scenario's session offers, whole (`scenario-offer.json`, its `tools` and
   `hostTools`), then its runtime tools and its host tools one by one (`runtime-tools.json`,
   `host-tools.json`), and the same offer as the `codex` engine puts it on the agent wire
-  (`agent-wire-offer.json`).
+  (`agent-wire-offer.json`); and the runtime ceiling the gate applies (`runtime-ceiling.json`): the
+  Desk's five and `experimental_test_cases`.
 - `budget/desk-defaults.json` and `budget/desk-limits.json`: the budget table verbatim, and the fixed
   limits by their constant names; `budget/harness-defaults.json`: the policy a harness session works
-  under, the table and the two time bounds.
+  under, the table, the two time bounds and the three test-tool bounds.
 - `proposal/`: the proposal through `propose_pack` (`propose-pack.json`), a proposal whose critic
   failed, delivered with its `note` (`critic-unfinished.json`), and an answer whose proposal could not
   be read, kept whole before the failure (`unreadable.json`); and `tool-offer/propose-pack.json`, the
   tool as a host declares it.
 - `bounds/`: a 429 retried once, with the attempts in the completion record
-  (`rate-limited-retried.json`), the turn's wall clock pausing the run (`turn-clock.json`), and a
-  tool past its deadline answered as a failed result (`tool-timeout.json`).
+  (`rate-limited-retried.json`), the turn's wall clock pausing the run (`turn-clock.json`), a tool
+  past its deadline answered as a failed result (`tool-timeout.json`), and a turn whose test calls
+  pass `testCallsPerTurn` (`test-call-cap.json`).
+- `tool-call/test-cases-arguments.json`: the arguments `experimental_test_cases` leaves the page with.
+- `framing/`: a reading tool's answer as the model is shown it, one data block closed by the run's
+  marker (`framed-result.json`), and a page that asks for a crafted call, refused at the gate
+  (`injection-refused.json`).
 - `question/interview.json`: the Desk's interview-question fixture.
 
 Values the Desk generates afresh on every run (UUIDs, timestamps, digests) appear only where the

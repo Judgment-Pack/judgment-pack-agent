@@ -30,16 +30,21 @@ export type EndpointKind = 'openai-compatible' | 'anthropic' | 'gemini'
 export type ThinkingTier = 'off' | 'on' | 'ultra'
 
 /**
- * The runtime tool ceiling: the five tools an assistant may ever be allowed,
+ * The runtime tool ceiling: the six tools an assistant may ever be allowed,
  * every one a read. The tool gate intersects a session's allow-list with this.
- * The contract's `runtimeToolCeiling` (`contract/desk/inventory.json`).
+ * The contract's `runtimeCeiling` (`contract/schemas/tool-offer.json`): the
+ * Desk's five (`runtimeToolCeiling` in `contract/desk/inventory.json`), then
+ * `experimental_test_cases`, which the harness admits under an argument
+ * allow-list and a per-turn cap (agent#7; see `toolGate.ts` for the tools that
+ * stay refused and why).
  */
 export const ASSISTANT_TOOLS = [
   'get_schema',
   'list_examples',
   'get_example',
   'validate',
-  'experimental_evaluate'
+  'experimental_evaluate',
+  'experimental_test_cases'
 ] as const
 export type AssistantTool = (typeof ASSISTANT_TOOLS)[number]
 

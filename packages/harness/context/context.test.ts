@@ -5,6 +5,7 @@ import {normalize} from '../thinking'
 import {CONTEXT_DEFAULTS,contextPolicy,inputBytes,utf8Bytes,ContextBudgetError} from './policy'
 import {ContextLedger} from './ledger'
 import {contextualSession,SessionContext} from './session'
+import {unframeData} from '../framing'
 
 function session():AssistantSession{return {prompt:'Current request',testPrompt:'',tools:[],hostTools:[],callTool:async()=>({content:[]}),model:{family:'gemini',model:'small',call:async()=>{throw Error('No model call in context unit tests')}},thinking:normalize('off','gemini'),signal:new AbortController().signal,context:{configuration:{version:1,models:{small:{contextWindowTokens:16384,outputTokens:4096}}}}}}
 
@@ -162,7 +163,8 @@ it('compacts even the latest completed signed exchange while preserving exact ty
  const before=JSON.stringify(messages),projected=await c.messages(messages,'host',[])
  expect(JSON.stringify(messages)).toBe(before)
  expect(JSON.stringify(projected)).toContain('set-aside');expect(JSON.stringify(projected)).not.toContain(signature)
- const data=JSON.parse(String(projected[1]!.content).split('\n').slice(1).join('\n'))
+ // agent#12: the summary's steps are one data block closed by the run's marker.
+ const data=JSON.parse(unframeData(String(projected[1]!.content).split('\n').slice(1).join('\n'),c.marker)!)
  expect(c.ledger.read(data.steps[0].read)).toMatchObject({value:{type:'json',value:{outcome:'set-aside'}}})
  const ref=c.ledger.list().items[0]!
  expect(c.ledger.read({id:ref.contextId,path:'/0/content/0/input/facts'})).toMatchObject({value:{flag:false,zero:0,nothing:null,decimal:'24'}})
@@ -175,7 +177,7 @@ it('keeps a flat result index and the authoring contract across repeated compact
   messages.push({role:'assistant',content:[{type:'tool-call',toolCallId:'c'+i,toolName:name,input:{},providerOptions:{google:{thoughtSignature:'s'.repeat(40000)}}}]},{role:'tool',content:[{type:'tool-result',toolCallId:'c'+i,toolName:name,output:{type:'json',value:i===0?{content:[{type:'text',text:'Authoritative contract fixture'}]}:{outcome:'checked_'+i}}}]})
   messages=await c.messages(messages,'host',[])
  }
- const summary=String(messages[1]!.content),data=JSON.parse(summary.split('\n').slice(1).join('\n'))
+ const summary=String(messages[1]!.content),data=JSON.parse(unframeData(summary.split('\n').slice(1).join('\n'),c.marker)!)
  expect(summary).toContain('Authoritative contract fixture');expect(data.steps).toHaveLength(8)
  for(const step of data.steps)expect(c.ledger.read(step.read)).toHaveProperty('value')
  for(const entry of c.ledger.snapshot().entries)expect(JSON.stringify(entry.value)).not.toContain('Earlier completed steps were compacted')

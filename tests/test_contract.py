@@ -18,6 +18,9 @@ SCHEMAS = CONTRACT / "schemas"
 VECTORS = CONTRACT / "vectors"
 BASE = "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/"
 
+# Runtime tools the harness admits beyond the Desk's ceiling (contract/desk/inventory.json), in order.
+HARNESS_CEILING_ADDITIONS = ["experimental_test_cases"]
+
 EXPECTED_SCHEMAS = {
     "run-event.json",
     "tool-offer.json",
@@ -169,9 +172,11 @@ class DeskInventoryTests(unittest.TestCase):
         completion = self.schemas["provenance.json"]["$defs"]["completion"]["properties"]["finishReason"]["enum"]
         self.assertEqual(completion, self.inventory["completionReasons"]["values"])
         self.assertEqual(self.schemas["provenance.json"]["$defs"]["engine"]["enum"], self.inventory["engines"]["values"])
+        # The ceiling is the Desk's five, then the one tool the harness admits beyond them
+        # (agent#7: experimental_test_cases, under an argument allow-list and a per-turn cap).
         self.assertEqual(
             self.schemas["tool-offer.json"]["$defs"]["runtimeCeiling"]["enum"],
-            self.inventory["runtimeToolCeiling"]["values"],
+            self.inventory["runtimeToolCeiling"]["values"] + HARNESS_CEILING_ADDITIONS,
         )
 
     def test_approval_actions_are_the_servers_four(self):

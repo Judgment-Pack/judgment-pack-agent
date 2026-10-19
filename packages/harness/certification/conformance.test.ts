@@ -30,6 +30,9 @@
  *   measured at the scripted server rather than at the page.
  * - **K3b** `write_file` never reaches the runtime.
  * - **K3c** the proposal's document is DRAFT_V2, byte for byte.
+ * - **the ceiling** is exactly six names, the scenario's five granted, and
+ *   `test_conformance` is refused at the wire even where a runtime serves it
+ *   and a file grants it (agent#7).
  * - **T8** the unknowns arrive as the scenario wrote them.
  * - the event stream's shape and order, and `end` exactly once.
  */
@@ -62,7 +65,8 @@ import {
   schemaShown
 } from '../geminiSchema'
 import { servedSchemaFor } from '../engines/contract'
-import type { EndpointKind, ThinkingTier } from '../host'
+import { ASSISTANT_TOOLS, type EndpointKind, type ThinkingTier } from '../host'
+import { TEST_CONFORMANCE_TOOL, gatedRuntime, runtimeAnswer } from '../testing/scripted'
 import runtime from './runtime.json'
 // The contract's vectors, where the contract states what this session asserts: the event
 // sequence a model-engine leg emits, and the tools the scenario's session offers (K2).
@@ -929,6 +933,41 @@ describe('the scenario this session carries', () => {
     for (const tool of RECORDED_TOOLS) {
       expect(tool.inputSchema, `${tool.name} was recorded without its schema`).toBeDefined()
       expect(tool.description, `${tool.name} was recorded without its description`).toBeTruthy()
+    }
+  })
+})
+
+/**
+ * The ceiling every adapter runs under (agent#7). Not an engine's check: the
+ * gate is the host's and sits below every engine, so this runs in every
+ * adapter's certification.
+ */
+describe('the runtime tool ceiling', () => {
+  it('is exactly six names: the scenario’s five and experimental_test_cases', () => {
+    expect([...ASSISTANT_TOOLS]).toEqual([...FIVE, 'experimental_test_cases'])
+    expect(new Set(ASSISTANT_TOOLS).size).toBe(6)
+  })
+
+  it('refuses test_conformance at the wire, where a runtime serves it and a file grants it', async () => {
+    const events: AssistantEvent[] = []
+    const runtime = await gatedRuntime({
+      tools: [...RECORDED_TOOLS, TEST_CONFORMANCE_TOOL],
+      allowed: [...ASSISTANT_TOOLS, 'test_conformance'],
+      handle: () => runtimeAnswer({ status: 'passed' }),
+      onEvent: (event) => events.push(event)
+    })
+    try {
+      // Not offered: the model is never shown it.
+      expect(runtime.tools.map((tool) => tool.name)).toEqual(FIVE)
+      // Called anyway, with a path: refused on the wire, and nothing arrives.
+      await expect(runtime.callTool('test_conformance', { suite: '../../private/manifest.json' })).rejects.toMatchObject({
+        name: 'GateViolation',
+        failure: { code: 'permission', source: 'tool', outcome: 'not-started' }
+      })
+      expect(runtime.seen).toEqual([])
+      expect(guardrails(events)).toEqual([expect.objectContaining({ tool: 'test_conformance', action: 'refused' })])
+    } finally {
+      await runtime.close()
     }
   })
 })

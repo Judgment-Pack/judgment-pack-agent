@@ -189,13 +189,14 @@
       "additionalProperties": false
     },
     "runtimeCeiling": {
-      "description": "The runtime tools any session may be allowed (ASSISTANT_TOOLS). A session's allow-list is a subset; the gate refuses a call outside it on the wire.",
+      "description": "The runtime tools any session may be allowed (ASSISTANT_TOOLS in packages/harness/host.ts). A session's allow-list is a subset; the gate refuses a call outside it on the wire. The Desk's five (runtimeToolCeiling in contract/desk/inventory.json) and, from the harness (agent#7), experimental_test_cases, which takes pack text and a matrix and reads no project file; it leaves the page only with the arguments tool-call.json $defs/testCasesArguments states, and one turn may call it at most testCallsPerTurn times (budget.json). The Runtime's other test and project tools stay off it: test_conformance (its suite argument is a local path the runtime reads), experimental_test_packs and experimental_test_graphs (they test the saved tree, not the draft, outside the rehearsal rule), get_pack and list_packs (they read the saved tree); toolGate.ts, REFUSED_RUNTIME_TOOLS.",
       "enum": [
         "get_schema",
         "list_examples",
         "get_example",
         "validate",
-        "experimental_evaluate"
+        "experimental_evaluate",
+        "experimental_test_cases"
       ]
     },
     "reservedName": {

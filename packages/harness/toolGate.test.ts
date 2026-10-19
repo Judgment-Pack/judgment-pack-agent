@@ -21,6 +21,7 @@ import {
   type GuardrailNotice
 } from './toolGate'
 
+// The whole ceiling, under the Desk's name for it: the Desk's five and, since agent#7, the test tool.
 const FIVE = allowedTools([...ASSISTANT_TOOLS])
 
 /**
@@ -81,7 +82,7 @@ function wireArguments(onWire: () => Record<string, unknown>[]): Record<string, 
 }
 
 describe('the allow-list', () => {
-  it('is the configured subset intersected with the five', () => {
+  it('is the configured subset intersected with the ceiling', () => {
     expect([...allowedTools(['validate', 'get_schema'])]).toEqual(['validate', 'get_schema'])
     // The ceiling holds even where a caller wrote a longer list.
     expect([...allowedTools(['validate', 'write_file', 'bash'])]).toEqual(['validate'])

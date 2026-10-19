@@ -19,10 +19,18 @@ import {AIFailureError,failure} from './failures'
  * `client.callTool` away from being bypassed. There is exactly one door and it
  * is `send`.
  *
- * **The allow-list is the configured subset, intersected with the five.** The
+ * **The allow-list is the configured subset, intersected with the six.** The
  * desk's closed list (`ASSISTANT_TOOLS`) is the ceiling and `endpoint.tools`
  * is what this desk's file granted; a name in neither cannot be reached by
  * writing a longer list somewhere else.
+ *
+ * **One tool's arguments are allow-listed as well** (agent#7):
+ * `experimental_test_cases` leaves only with exactly the two members the
+ * Runtime's schema names, `pack` and `matrix`, each JSON text within the
+ * policy's bytes (`testPackBytes`, `testMatrixBytes`). It takes pack text and a
+ * matrix and reads no project file, which is why it is the one test tool on the
+ * ceiling; any other member, a path among them, is refused on the wire. The
+ * Runtime tools kept off the ceiling, and why, are `REFUSED_RUNTIME_TOOLS`.
  *
  * **Order is allow-list, then rewrite**, and it matters in one case only:
  * `experimental_evaluate` that the file did not grant is *refused*, not
@@ -37,6 +45,7 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { JSONRPCMessageSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
 import { ASSISTANT_TOOLS } from './host'
+import { CONTEXT_DEFAULTS, utf8Bytes, type TestBounds } from './context/policy'
 
 /** The one method this gate has an opinion about. */
 export const TOOLS_CALL = 'tools/call'
@@ -44,6 +53,37 @@ export const TOOLS_CALL = 'tools/call'
 /** The one tool whose arguments this gate rewrites, and the member it writes. */
 export const REHEARSAL_TOOL = 'experimental_evaluate'
 export const REHEARSAL_MEMBER = 'rehearsal'
+
+/**
+ * The Runtime's test tool the ceiling admits (agent#7), and the members its
+ * arguments may carry: exactly the two its served schema names, each JSON text.
+ */
+export const TEST_TOOL = 'experimental_test_cases'
+export const TEST_ARGUMENTS = ['pack', 'matrix'] as const
+
+/** The policy's byte bounds on the test tool's two members. */
+export type TestArgumentBounds = Pick<TestBounds, 'testPackBytes' | 'testMatrixBytes'>
+
+/**
+ * The Runtime tools that stay off the ceiling, each with its reason.
+ *
+ * Nothing here is a rule: the ceiling is a closed list, so a name not on it is
+ * refused whatever this says. It is written down where the ceiling is applied
+ * because each of these was proposed for it (agent#7) and the reason it was
+ * refused is the part a later proposal has to answer.
+ */
+export const REFUSED_RUNTIME_TOOLS = {
+  test_conformance:
+    'its suite argument is "a local suite directory or manifest.json", a path the runtime reads on the machine ' +
+    'that serves it: admitting it would give the model a file read, and the gate checks names, not paths',
+  experimental_test_packs:
+    'it tests the saved project tree, not the draft the model is proposing, and saved suites are not held by the ' +
+    'rehearsal rule that holds experimental_evaluate',
+  experimental_test_graphs:
+    'it tests the saved graphs, not the draft, under the same rule as experimental_test_packs',
+  get_pack: 'it reads the saved project tree; the draft travels in the arguments of the tools that test it',
+  list_packs: 'it lists the saved project tree, for the same reason as get_pack'
+} as const satisfies Record<string, string>
 
 /**
  * A call the gate would not let out of the page.
@@ -89,11 +129,12 @@ export type FrameVerdict =
 
 /**
  * The allow-list for a session: what the file granted, intersected with the
- * five the desk will ever serve.
+ * six the desk will ever serve.
  *
- * The intersection is not defensive tidying. `decodeDeskConfig` refuses a name
- * outside the five by name, so a file that reaches here cannot carry a sixth —
- * but this function is also called with a list a test wrote, and a gate whose
+ * The intersection is not defensive tidying. The Desk's `decodeDeskConfig`
+ * refuses a name outside its own list by name, so a file that reaches here
+ * cannot carry a name beyond it — but this function is also called with a list a
+ * test wrote, and a gate whose
  * ceiling depends on a decoder somewhere else having run is a gate with a
  * premise instead of a rule.
  */
@@ -143,6 +184,43 @@ function canonical(value: unknown): unknown {
   }
 }
 
+/**
+ * Why the test tool's arguments may not leave, or `''` where they may.
+ *
+ * The sentence names members and sizes and never a value: the pack and the
+ * matrix travel in these members and neither is ever quoted into a notice. A
+ * member the model invented is named, cut to sixty-four characters, at most
+ * five of them.
+ */
+function testArgumentsProblem(supplied: unknown, bounds: TestArgumentBounds): string {
+  const args = (supplied ?? {}) as Record<string, unknown>
+  const allowed = new Set<string>(TEST_ARGUMENTS)
+  const extra = Object.keys(args).filter((member) => !allowed.has(member))
+  if (extra.length > 0) {
+    const named = extra.slice(0, 5).map((member) => JSON.stringify(member.slice(0, 64))).join(', ')
+    return (
+      `${TEST_TOOL} takes exactly ${TEST_ARGUMENTS.join(' and ')}, and this call also carried ${named}` +
+      `${extra.length > 5 ? ' and more' : ''}: no path or other member reaches the runtime through this tool`
+    )
+  }
+  const limits: Record<(typeof TEST_ARGUMENTS)[number], [number, string]> = {
+    pack: [bounds.testPackBytes, 'testPackBytes'],
+    matrix: [bounds.testMatrixBytes, 'testMatrixBytes']
+  }
+  for (const member of TEST_ARGUMENTS) {
+    const value = args[member]
+    if (typeof value !== 'string') {
+      return `${TEST_TOOL} takes ${member} as JSON text, and this call's ${member} is ${value === undefined ? 'missing' : 'not a string'}`
+    }
+    const [limit, policy] = limits[member]
+    const bytes = utf8Bytes(value)
+    if (bytes > limit) {
+      return `${TEST_TOOL}'s ${member} is ${bytes} bytes, over the ${limit} the policy allows (${policy})`
+    }
+  }
+  return ''
+}
+
 /** The refusal every malformed frame gets, in one place. */
 function refuse(tool: string, detail: string): FrameVerdict {
   return {
@@ -181,13 +259,15 @@ function refuse(tool: string, detail: string): FrameVerdict {
  * 3. a method that is not `tools/call` but is a spelling of it to some other
  *    reader — `Tools/Call`, ` tools/call ` — is refused, on the chassis' own
  *    reasoning about its query;
- * 4. for `tools/call`: the tool is on the session's allow-list, and
- *    `experimental_evaluate` gets an own `rehearsal: true` written last onto
- *    the canonical arguments.
+ * 4. for `tools/call`: the tool is on the session's allow-list,
+ *    `experimental_test_cases` carries exactly `pack` and `matrix` within the
+ *    policy's bytes, and `experimental_evaluate` gets an own `rehearsal: true`
+ *    written last onto the canonical arguments.
  */
 export function inspectOutboundFrame(
   message: JSONRPCMessage,
-  allowed: ReadonlySet<string>
+  allowed: ReadonlySet<string>,
+  bounds: TestArgumentBounds = CONTEXT_DEFAULTS
 ): FrameVerdict {
   const unreadable = '(a frame this gate could not read)'
   const frame = canonical(message)
@@ -259,6 +339,11 @@ export function inspectOutboundFrame(
     return refuse(name, `a ${TOOLS_CALL} frame's arguments must be an object where it has any`)
   }
 
+  if (name === TEST_TOOL) {
+    const problem = testArgumentsProblem(supplied, bounds)
+    if (problem !== '') return refuse(name, `${problem}; the call did not leave the page`)
+  }
+
   if (name !== REHEARSAL_TOOL) {
     return { verdict: 'send', notice: null, frame: frame as unknown as JSONRPCMessage }
   }
@@ -314,14 +399,19 @@ export function inspectOutboundFrame(
  */
 export function gateTransport(
   inner: Transport,
-  options: { allowed: ReadonlySet<string>; onGuardrail?: (notice: GuardrailNotice) => void }
+  options: {
+    allowed: ReadonlySet<string>
+    onGuardrail?: (notice: GuardrailNotice) => void
+    /** The test tool's byte bounds; the policy's (`CONTEXT_DEFAULTS`) where absent. */
+    bounds?: TestArgumentBounds
+  }
 ): Transport {
   const send = inner.send.bind(inner) as (
     message: JSONRPCMessage,
     sendOptions?: unknown
   ) => Promise<void>
   inner.send = (message: JSONRPCMessage, sendOptions?: unknown): Promise<void> => {
-    const decided = inspectOutboundFrame(message, options.allowed)
+    const decided = inspectOutboundFrame(message, options.allowed, options.bounds)
     if (decided.verdict === 'refused') {
       options.onGuardrail?.(decided.notice)
       return Promise.reject(decided.violation)

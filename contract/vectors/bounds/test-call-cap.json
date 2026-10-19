@@ -1,0 +1,100 @@
+{
+  "description": "A turn whose model calls experimental_test_cases on every step, each time on a changed pack, with the policy's testCallsPerTurn of 3: three calls reach the runtime, the fourth is not made and the model reads a failed result naming the limit (request-limit, source tool, outcome not-started), and the turn ends with the model's answer. A non-interactive session, so no callId.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/context/session.ts (claimTestCall)",
+      "packages/harness/testCases.test.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "tool_call",
+      "name": "experimental_test_cases",
+      "args": {
+        "pack": "{\"specVersion\":\"0.4\",\"id\":\"expense\",\"title\":\"Expense v1\"}",
+        "matrix": "{\"matrixVersion\":\"3\",\"cases\":[{\"id\":\"c1\",\"facts\":{},\"expectedDisposition\":{\"kind\":\"decided\"}}]}"
+      }
+    },
+    {
+      "type": "tool_result",
+      "name": "experimental_test_cases",
+      "isError": false,
+      "text": "{\"status\":\"passed\",\"cases\":1}",
+      "structured": {
+        "status": "passed",
+        "cases": 1
+      }
+    },
+    {
+      "type": "tool_call",
+      "name": "experimental_test_cases",
+      "args": {
+        "pack": "{\"specVersion\":\"0.4\",\"id\":\"expense\",\"title\":\"Expense v2\"}",
+        "matrix": "{\"matrixVersion\":\"3\",\"cases\":[{\"id\":\"c1\",\"facts\":{},\"expectedDisposition\":{\"kind\":\"decided\"}}]}"
+      }
+    },
+    {
+      "type": "tool_result",
+      "name": "experimental_test_cases",
+      "isError": false,
+      "text": "{\"status\":\"passed\",\"cases\":1}",
+      "structured": {
+        "status": "passed",
+        "cases": 1
+      }
+    },
+    {
+      "type": "tool_call",
+      "name": "experimental_test_cases",
+      "args": {
+        "pack": "{\"specVersion\":\"0.4\",\"id\":\"expense\",\"title\":\"Expense v3\"}",
+        "matrix": "{\"matrixVersion\":\"3\",\"cases\":[{\"id\":\"c1\",\"facts\":{},\"expectedDisposition\":{\"kind\":\"decided\"}}]}"
+      }
+    },
+    {
+      "type": "tool_result",
+      "name": "experimental_test_cases",
+      "isError": false,
+      "text": "{\"status\":\"passed\",\"cases\":1}",
+      "structured": {
+        "status": "passed",
+        "cases": 1
+      }
+    },
+    {
+      "type": "tool_call",
+      "name": "experimental_test_cases",
+      "args": {
+        "pack": "{\"specVersion\":\"0.4\",\"id\":\"expense\",\"title\":\"Expense v4\"}",
+        "matrix": "{\"matrixVersion\":\"3\",\"cases\":[{\"id\":\"c1\",\"facts\":{},\"expectedDisposition\":{\"kind\":\"decided\"}}]}"
+      }
+    },
+    {
+      "type": "tool_result",
+      "name": "experimental_test_cases",
+      "isError": true,
+      "text": "This turn has called experimental_test_cases 3 times, the most one turn may (testCallsPerTurn); this call was not run. Use the reports already obtained: fix what they show and propose, or say what remains. The person can test again in a new turn.",
+      "structured": {
+        "failure": {
+          "version": 1,
+          "code": "request-limit",
+          "source": "tool",
+          "outcome": "not-started",
+          "detail": "This turn has called experimental_test_cases 3 times, the most one turn may (testCallsPerTurn); this call was not run. Use the reports already obtained: fix what they show and propose, or say what remains. The person can test again in a new turn."
+        }
+      }
+    },
+    {
+      "type": "message",
+      "text": "The draft passes its cases."
+    },
+    {
+      "type": "end"
+    }
+  ]
+}
