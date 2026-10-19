@@ -25,6 +25,7 @@ import {
 } from './framing'
 import { TEST_TOOL } from './toolGate'
 import { REFUTATION_MARKER } from './refutation'
+import { READ_TOOL } from './context/reader'
 import {
   codexTurn,
   ofType,
@@ -187,7 +188,8 @@ describe('what the model is shown, on vercel', () => {
     expect(ofType(events, 'error')).toEqual([])
     expect(ofType(events, 'proposal')).toHaveLength(1)
     const [paged, read] = toolTexts(requests[2]!)
-    expect(expectFramed(paged!, 'get_schema').data).toContain('"readWith":"read_context"')
+    // The envelope names the ledger's reader; read_context still reads a section.
+    expect(expectFramed(paged!, 'get_schema').data).toContain(`"readWith":"${READ_TOOL}"`)
     expect(reference).not.toBe('')
     expect(expectFramed(read!, 'read_context').data).toContain('field field')
     const critic = requests.find((request) => systemText(request).includes(REFUTATION_MARKER))

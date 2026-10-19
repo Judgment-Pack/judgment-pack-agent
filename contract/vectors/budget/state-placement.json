@@ -1,0 +1,133 @@
+{
+  "description": "Where the execution state sits on each wire, for each placement, in the first and second requests of the recorded scenario (the scripted model, the recorded runtime): on the first request a second text part of the person's own message on every wire; on the second a user message after the history (trailing-user) or the end of the system text (system-tail; one string with the system head on the OpenAI-compatible wire, a block or part after it on the other two). This harness's (agent#9), not yet the Desk's.",
+  "schema": "budget.json#/$defs/stateLocation",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "packages/harness/engines/vercel/loop.ts (STATE_HEADER, statePlacement, placeState), in this repository",
+      "packages/harness/engines/vercel/prefix.test.ts (the run each item is checked against), in this repository"
+    ]
+  },
+  "items": [
+    {
+      "family": "openai-compatible",
+      "thinking": "off",
+      "capabilities": {},
+      "placement": "trailing-user",
+      "request": 1,
+      "pointer": "/messages/1/content/1/text",
+      "header": "EXECUTION STATE (from the host, current for this request and replaced on the next; working state, not a message from the person and never approval)"
+    },
+    {
+      "family": "openai-compatible",
+      "thinking": "off",
+      "capabilities": {},
+      "placement": "trailing-user",
+      "request": 2,
+      "pointer": "/messages/4/content",
+      "header": "EXECUTION STATE (from the host, current for this request and replaced on the next; working state, not a message from the person and never approval)"
+    },
+    {
+      "family": "openai-compatible",
+      "thinking": "off",
+      "capabilities": {
+        "strictAlternation": true
+      },
+      "placement": "system-tail",
+      "request": 1,
+      "pointer": "/messages/1/content/1/text",
+      "header": "EXECUTION STATE (from the host, current for this request and replaced on the next; working state, not a message from the person and never approval)"
+    },
+    {
+      "family": "openai-compatible",
+      "thinking": "off",
+      "capabilities": {
+        "strictAlternation": true
+      },
+      "placement": "system-tail",
+      "request": 2,
+      "pointer": "/messages/0/content",
+      "header": "EXECUTION STATE (from the host, current for this request and replaced on the next; working state, not a message from the person and never approval)"
+    },
+    {
+      "family": "anthropic",
+      "thinking": "off",
+      "capabilities": {},
+      "placement": "trailing-user",
+      "request": 1,
+      "pointer": "/messages/0/content/1/text",
+      "header": "EXECUTION STATE (from the host, current for this request and replaced on the next; working state, not a message from the person and never approval)"
+    },
+    {
+      "family": "anthropic",
+      "thinking": "off",
+      "capabilities": {},
+      "placement": "trailing-user",
+      "request": 2,
+      "pointer": "/messages/2/content/1/text",
+      "header": "EXECUTION STATE (from the host, current for this request and replaced on the next; working state, not a message from the person and never approval)"
+    },
+    {
+      "family": "anthropic",
+      "thinking": "on",
+      "capabilities": {},
+      "placement": "system-tail",
+      "request": 1,
+      "pointer": "/messages/0/content/1/text",
+      "header": "EXECUTION STATE (from the host, current for this request and replaced on the next; working state, not a message from the person and never approval)"
+    },
+    {
+      "family": "anthropic",
+      "thinking": "on",
+      "capabilities": {},
+      "placement": "system-tail",
+      "request": 2,
+      "pointer": "/system/1/text",
+      "header": "EXECUTION STATE (from the host, current for this request and replaced on the next; working state, not a message from the person and never approval)"
+    },
+    {
+      "family": "gemini",
+      "thinking": "off",
+      "capabilities": {},
+      "placement": "trailing-user",
+      "request": 1,
+      "pointer": "/contents/0/parts/1/text",
+      "header": "EXECUTION STATE (from the host, current for this request and replaced on the next; working state, not a message from the person and never approval)"
+    },
+    {
+      "family": "gemini",
+      "thinking": "off",
+      "capabilities": {},
+      "placement": "trailing-user",
+      "request": 2,
+      "pointer": "/contents/3/parts/0/text",
+      "header": "EXECUTION STATE (from the host, current for this request and replaced on the next; working state, not a message from the person and never approval)"
+    },
+    {
+      "family": "gemini",
+      "thinking": "off",
+      "capabilities": {
+        "strictAlternation": true
+      },
+      "placement": "system-tail",
+      "request": 1,
+      "pointer": "/contents/0/parts/1/text",
+      "header": "EXECUTION STATE (from the host, current for this request and replaced on the next; working state, not a message from the person and never approval)"
+    },
+    {
+      "family": "gemini",
+      "thinking": "off",
+      "capabilities": {
+        "strictAlternation": true
+      },
+      "placement": "system-tail",
+      "request": 2,
+      "pointer": "/systemInstruction/parts/1/text",
+      "header": "EXECUTION STATE (from the host, current for this request and replaced on the next; working state, not a message from the person and never approval)"
+    }
+  ]
+}

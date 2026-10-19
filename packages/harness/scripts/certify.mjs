@@ -6,8 +6,10 @@
 // with the legs of every other adapter left out. Then, by the adapter's kind,
 // exactly the checks the Desk runs over every engine of that kind:
 //
-// - a model engine: the conformance session's legs, `engine <id>` and
-//   `engine <id> · thinking`, in certification/conformance.test.ts;
+// - a model engine: the conformance session's legs, `engine <id>`,
+//   `engine <id> · thinking` and `engine <id> · strict alternation` (an
+//   endpoint that refuses a broken turn order, agent#9), in
+//   certification/conformance.test.ts;
 // - an agent engine: the recorded scenario behind the real tool gate and the
 //   agent-engine checks, `agent engine <id>`, in engines/<id>/<id>.test.ts.
 //
@@ -66,7 +68,7 @@ function ownChecks(report) {
   const own =
     kind === 'agent'
       ? (top) => top === `agent engine ${adapter}`
-      : (top) => top === `engine ${adapter}` || top === `engine ${adapter} · thinking`
+      : (top) => [`engine ${adapter}`, `engine ${adapter} · thinking`, `engine ${adapter} · strict alternation`].includes(top)
   let count = 0
   for (const file of parsed.testResults ?? []) {
     for (const test of file.assertionResults ?? []) {

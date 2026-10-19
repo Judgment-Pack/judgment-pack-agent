@@ -23,6 +23,7 @@ import {
   type GuardrailNotice
 } from './toolGate'
 import { CONTEXT_DEFAULTS } from './context/policy'
+import { READ_TOOL } from './context/reader'
 import { bindModelCall, runAssistantSession } from './session'
 import { normalize } from './thinking'
 import { vercel } from './engines/vercel'
@@ -253,7 +254,7 @@ describe('the per-turn cap on test calls', () => {
 })
 
 describe('a test report longer than toolResultBytes', () => {
-  it('is retained and paged through read_context, never dropped, while the host sees it whole', async () => {
+  it('is retained and paged through the ledger’s readers, never dropped, while the host sees it whole', async () => {
     const failures = Array.from({ length: 400 }, (_, index) => ({ caseId: `case-${index}`, expected: 'decided', actual: 'escalated', note: 'mismatch '.repeat(4) }))
     const report = { status: 'failed', cases: 400, failures }
     let referenceId = ''
@@ -266,6 +267,11 @@ describe('a test report longer than toolResultBytes', () => {
           // block, not the report.
           const shown = texts.at(-1)!
           referenceId = /"contextId":"([^"]+)"/.exec(shown)?.[1] ?? ''
+          // The reader the envelope names, from the start, one window.
+          return sseTurn({ tool: { name: READ_TOOL, args: { id: referenceId } } })
+        }
+        if (number === 3) {
+          // One section by its pointer.
           return sseTurn({ tool: { name: 'read_context', args: { id: referenceId, path: '/structuredContent/failures/399' } } })
         }
         return sseTurn({ text: 'Case 399 fails.' })
@@ -273,13 +279,17 @@ describe('a test report longer than toolResultBytes', () => {
     })
     const shown = toolTexts(requests[1]!).at(-1)!
     expect(new TextEncoder().encode(shown).length).toBeLessThan(CONTEXT_DEFAULTS.toolResultBytes)
-    expect(shown).toContain('"readWith":"read_context"')
+    expect(shown).toContain(`"readWith":"${READ_TOOL}"`)
     expect(shown).toContain('"operationReturned":true')
     expect(shown).not.toContain('case-399')
     expect(referenceId).not.toBe('')
-    // The section came back on request.
-    const page = toolTexts(requests[2]!).at(-1)!
-    expect(page).toContain('case-399')
+    // A window of it came back, with the cursor that reads on, and then the section asked for.
+    const window = toolTexts(requests[2]!).at(-1)!
+    expect(new TextEncoder().encode(window).length).toBeLessThan(CONTEXT_DEFAULTS.toolResultBytes + 1024)
+    expect(window).toContain('case-0')
+    expect(window).toMatch(/\\?"more\\?":\\?"line:/)
+    const section = toolTexts(requests[3]!).at(-1)!
+    expect(section).toContain('case-399')
     // The host's event carries the whole report.
     const result = ofType(events, 'tool_result').find((event) => event.name === TEST_TOOL)!
     expect(result.structured).toEqual(report)

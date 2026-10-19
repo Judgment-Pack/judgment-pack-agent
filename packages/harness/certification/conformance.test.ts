@@ -65,7 +65,7 @@ import {
   schemaShown
 } from '../geminiSchema'
 import { servedSchemaFor } from '../engines/contract'
-import { ASSISTANT_TOOLS, type EndpointKind, type ThinkingTier } from '../host'
+import { ASSISTANT_TOOLS, configureHarness, type EndpointCapabilities, type EndpointKind, type ThinkingTier } from '../host'
 import { TEST_CONFORMANCE_TOOL, gatedRuntime, runtimeAnswer } from '../testing/scripted'
 import runtime from './runtime.json'
 // The contract's vectors, where the contract states what this session asserts: the event
@@ -75,6 +75,8 @@ import offerVector from '../../../contract/vectors/tool-offer/scenario-offer.jso
 import type { AssistantEvent, Engine, McpTool } from '../engine'
 
 const FIVE = scenario.scenarioTools
+/** The context tools the boundary adds, shown before the runtime's: the offer vector's host tools. */
+const CONTEXT_TOOLS = offerVector.items[0]!.hostTools.length
 
 /** The stand-in for the runtime's `test_pack` prompt. See `runLeg`. */
 const TEST_PROMPT = 'THE RUNTIME’S TEST_PACK GUIDANCE, AS PROMPTS/GET SERVED IT'
@@ -654,6 +656,10 @@ async function runLeg(
     allowed?: readonly string[]
     /** One tool set in place of the runtime's five, for a schema probe. */
     tools?: McpTool[]
+    /** What the host says about this endpoint (agent#9). Defaults to nothing known. */
+    capabilities?: EndpointCapabilities
+    /** The endpoint refuses a turn order a strict chat template refuses (`strictAlternation`). */
+    strict?: boolean
   } = {}
 ): Promise<Run> {
   const model = scriptedModel({
@@ -663,7 +669,8 @@ async function runLeg(
     refuted: how.refuted === true,
     signatures: how.signatures ?? 'thought'
   })
-  vi.stubGlobal('fetch', model.fetch)
+  vi.stubGlobal('fetch', how.strict === true ? strictAlternation(leg.api, model.fetch) : model.fetch)
+  configureHarness({ endpointCapabilities: () => how.capabilities ?? {} })
   const runtime = await scriptedRuntime()
   const events: AssistantEvent[] = []
   const connection = openAssistantConnection({
@@ -750,6 +757,48 @@ async function runLeg(
     liveIntervals,
     drainThrew
   }
+}
+
+/**
+ * The turn order a strict chat template refuses, on each wire: two user turns
+ * in a row, or a user text after a tool result. Such templates (Mistral's, for
+ * one) check that user and assistant alternate.
+ */
+function alternationRefused(api: EndpointKind, body: Record<string, unknown>): string {
+  type Turn = { role: string; parts: { kind: 'text' | 'result' | 'other' }[] }
+  const kind = (part: Record<string, unknown>): 'text' | 'result' | 'other' =>
+    part.type === 'tool_result' || 'functionResponse' in part ? 'result' : part.type === 'text' || (api === 'gemini' && typeof part.text === 'string' && part.thought !== true) ? 'text' : 'other'
+  const turns: Turn[] =
+    api === 'gemini'
+      ? ((body.contents ?? []) as { role: string; parts: Record<string, unknown>[] }[]).map((content) => ({ role: content.role, parts: content.parts.map((part) => ({ kind: kind(part) })) }))
+      : ((body.messages ?? []) as { role: string; content: unknown }[])
+          .filter((message) => message.role !== 'system')
+          .map((message) => ({
+            role: message.role,
+            parts: message.role === 'tool' ? [{ kind: 'result' as const }] : typeof message.content === 'string' ? [{ kind: 'text' as const }] : ((message.content ?? []) as Record<string, unknown>[]).map((part) => ({ kind: kind(part) }))
+          }))
+  for (const [at, turn] of turns.entries()) {
+    const before = turns[at - 1]
+    if (turn.role === 'user' && before?.role === 'user') return `two user turns in a row at ${at}`
+    if (turn.role === 'user' && before?.role === 'tool' && turn.parts.some((part) => part.kind === 'text')) return `a user text after a tool result at ${at}`
+    const result = turn.parts.findIndex((part) => part.kind === 'result')
+    if (result >= 0 && turn.parts.slice(result).some((part) => part.kind === 'text')) return `a user text after a tool result at ${at}`
+  }
+  return ''
+}
+
+/** A scripted endpoint behind a strict chat template: a 400 for a turn order it refuses. */
+function strictAlternation(api: EndpointKind, inner: typeof fetch): typeof fetch {
+  return (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const refused = typeof init?.body === 'string' ? alternationRefused(api, JSON.parse(init.body) as Record<string, unknown>) : ''
+    if (refused !== '') {
+      return new Response(JSON.stringify({ error: { message: `Conversation roles must alternate user/assistant/user/assistant: ${refused}` } }), {
+        status: 400,
+        headers: { 'content-type': 'application/json' }
+      })
+    }
+    return inner(input, init)
+  }) as typeof fetch
 }
 
 /** The registry's own loader, for the engines this build certifies. */
@@ -1210,6 +1259,40 @@ const notices = (events: AssistantEvent[]) =>
       event.type === 'thinking_unavailable'
   )
 
+describe.each(MODEL_ENGINES)('engine %s · strict alternation', (engineId) => {
+  const legs: Leg[] = [
+    { api: 'openai-compatible', answerAs: 'stream' },
+    { api: 'anthropic', answerAs: 'stream' },
+    { api: 'gemini', answerAs: 'stream' }
+  ]
+
+  it.each(legs)('runs the whole scenario on an endpoint that refuses a broken turn order ($api)', async (leg) => {
+    // **The first request carries the state in the person's own message, and
+    // every later one in the system tail**, so no request this endpoint sees
+    // has two user turns in a row or a user text after a tool result.
+    const { events, requests, seen } = await runLeg(fromRegistry(engineId), leg, {
+      strict: true,
+      capabilities: { strictAlternation: true }
+    })
+    expect(events.some((event) => event.type === 'error')).toBe(false)
+    expect(seen.map((call) => call.name)).toContain('experimental_evaluate')
+    expect(proposals(events)).toHaveLength(1)
+    expect(proposals(events)[0]!.document).toEqual(DRAFT_V2)
+    expect(requests.length).toBeGreaterThan(7)
+  })
+
+  it.each(legs)('is refused there with the state trailing, so the leg is not vacuous ($api)', async (leg) => {
+    const { events } = await runLeg(fromRegistry(engineId), leg, {
+      strict: true,
+      capabilities: { statePlacement: 'trailing-user' }
+    })
+    const failures = events.filter((event): event is Extract<AssistantEvent, { type: 'error' }> => event.type === 'error')
+    expect(failures).toHaveLength(1)
+    expect(failures[0]!.failure).toMatchObject({ status: 400 })
+    expect(proposals(events)).toEqual([])
+  })
+})
+
 describe.each(MODEL_ENGINES)('engine %s · thinking', (engineId) => {
   describe.each(LEGS)('leg $api answered as $answerAs', (leg) => {
     it('T-a — every request carries the tier parameter, not only the first', async ({
@@ -1444,7 +1527,7 @@ describe.each(MODEL_ENGINES)('engine %s · thinking', (engineId) => {
         schemaShown(engineId, leg.api, tool.inputSchema)
       )
       for (const request of requests) {
-        expect(request.schemas.slice(2), `${request.step} sent a different schema`).toEqual(shown)
+        expect(request.schemas.slice(CONTEXT_TOOLS), `${request.step} sent a different schema`).toEqual(shown)
       }
       // The runtime's own schemas all declare `additionalProperties: false`, so
       // this is a rule with a subject rather than one waiting for a
@@ -1477,7 +1560,7 @@ describe.each(MODEL_ENGINES)('engine %s · thinking', (engineId) => {
       // still missing from the wire is the **engine's** removal and nothing
       // else. That is what is derived and what is compared.
       const desk = servedSchemaFor(leg.api, VOCABULARY)
-      const carried = keywordsSent(requests[0]!.schemas[2])
+      const carried = keywordsSent(requests[0]!.schemas[CONTEXT_TOOLS])
       const derived = [...keywordsSent(desk)].filter((keyword) => !carried.has(keyword)).sort()
       const declared = keywordsNotShown(engineId, leg.api)
         .filter((keyword) => keywordsSent(desk).has(keyword))
@@ -1486,7 +1569,7 @@ describe.each(MODEL_ENGINES)('engine %s · thinking', (engineId) => {
       expect(derived).toEqual([])
       // Preserve values and references too, not only keyword names. This fails
       // if extraction reads the old `parameters` field and returns undefined.
-      for (const request of requests) expect(request.schemas.slice(2)).toEqual([desk])
+      for (const request of requests) expect(request.schemas.slice(CONTEXT_TOOLS)).toEqual([desk])
     })
 
     it('carries exactly the recorded runtime’s own schema vocabulary', () => {
@@ -1532,7 +1615,7 @@ describe.each(MODEL_ENGINES)('engine %s · thinking', (engineId) => {
       const { events, requests } = await runLeg(fromRegistry(engineId), leg, { tools: [VOCABULARY] })
       expect(requests.length).toBeGreaterThan(0)
       for (const request of requests) {
-        expect(request.schemas.slice(2)).toEqual([servedSchemaFor(leg.api, VOCABULARY)])
+        expect(request.schemas.slice(CONTEXT_TOOLS)).toEqual([servedSchemaFor(leg.api, VOCABULARY)])
       }
       expect(guardrails(events).filter((event) => event.action === 'narrowed')).toEqual([])
       expect(events.some((event) => event.type === 'error')).toBe(false)

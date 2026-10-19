@@ -71,6 +71,14 @@
         },
         "reasoningTokens": {
           "$ref": "#/$defs/tokens"
+        },
+        "cacheReadTokens": {
+          "description": "Input tokens the provider read from its prompt cache, where it reports them (the SDK's inputTokenDetails.cacheReadTokens). Recorded by this harness since agent#9; the Desk's Go reader drops it until its swap.",
+          "$ref": "#/$defs/tokens"
+        },
+        "cacheWriteTokens": {
+          "description": "Input tokens the provider wrote to its prompt cache, where it reports them (inputTokenDetails.cacheWriteTokens). Recorded by this harness since agent#9; the Desk's Go reader drops it until its swap.",
+          "$ref": "#/$defs/tokens"
         }
       },
       "additionalProperties": true

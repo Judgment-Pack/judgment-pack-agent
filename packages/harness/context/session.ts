@@ -8,9 +8,13 @@ import type {ChatPlan} from '../planning/model'
 import type {ModelMessage} from 'ai'
 import type {EngineSession,McpToolResult} from '../engine'
 import {ContextLedger,answer,contextDigest,type ContextDocument} from './ledger'
+import {READ_TOOL} from './reader'
 import {contextPolicy,inputBytes,utf8Bytes,prefix,ContextBudgetError,type ContextConfiguration} from './policy'
 export interface CurrentRequest {message:string;input:string}
-export interface ContextInput {artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;configuration?:ContextConfiguration;documents?:ContextDocument[]}
+/** `currentState`: host-authored text that changes between requests or responses (the chat's
+ * draft snapshot, the latest check). An adapter sends it after the history, at the end of every
+ * request, with the execution state, so a change to it invalidates no cached prefix. */
+export interface ContextInput {currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;configuration?:ContextConfiguration;documents?:ContextDocument[]}
 export interface ContextUsage {inputBytes:number;estimatedInputTokens:number;inputBudgetBytes:number;outputReserveTokens:number;compactions:number;retainedItems:number}
 const encoded=(value:unknown)=>JSON.stringify(value)
 export class SessionContext {
@@ -206,9 +210,9 @@ export async function contextualSession<T extends EngineSession>(session:T):Prom
  await context.initialize(session.context?.documents)
  await context.execution.retainProgress()
  if(session.context?.plan)await context.initialize([{id:'current-plan',kind:'artifact',label:'Current chat plan',value:session.context.plan}])
- if([...session.tools,...session.hostTools].some(t=>t.name==='read_context'||t.name==='list_context'||t.name==='update_plan'||t.name==='request_budget_increase'))throw Error('Context tool names are reserved by Desk.')
+ if([...session.tools,...session.hostTools].some(t=>t.name==='read_context'||t.name==='list_context'||t.name===READ_TOOL||t.name==='update_plan'||t.name==='request_budget_increase'))throw Error('Context tool names are reserved by Desk.')
  const hostTools=[...session.hostTools,...context.ledger.tools(),...(session.allowConversation?[context.execution.tool(),context.execution.budgetTool()]:[])].map(tool=>({...tool,execute:async(args:Record<string,unknown>,signal:AbortSignal)=>{await session.context?.authorize?.(signal);return context.execution.wrapRead(tool.name,a=>tool.execute(a,signal),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read')(args)}}))
  const model='model'in session?{...session.model,call:async(suffix:string,request:import('../engine').ModelRequest)=>{await session.context?.authorize?.(session.signal);if(request.method!=='GET'){context.execution.claim();try{await session.context?.checkpoint?.(context.execution.snapshot())}catch{throw failureError('storage','storage','not-started')}}return session.model.call(suffix,request)}}:undefined
  const agent='agent'in session?{...session.agent,run:async(request:import('../agent').AgentRequest,callbacks:import('../agent').AgentCallbacks)=>{await session.context?.authorize?.(callbacks.signal);return session.agent.run(request,callbacks)}}:undefined
- return {context,session:{...session,prompt:session.prompt+(session.allowConversation?'\n\n'+context.execution.guidance():''),...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{await session.context?.authorize?.(session.signal);context.claimTestCall(name);return context.execution.wrapRead(name,a=>session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true)(args)}}}
+ return {context,session:{...session,...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{await session.context?.authorize?.(session.signal);context.claimTestCall(name);return context.execution.wrapRead(name,a=>session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true)(args)}}}
 }
