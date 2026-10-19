@@ -1,0 +1,451 @@
+{
+  "$comment": "Recorded by web/scripts/record-conformance.mjs. Do not hand-edit: run `npm --prefix web run conformance:verify -- <binary> <project>` and it will say so. `tools` is tools/list filtered to the five the assistant may call, exactly as served; `calls` is one tools/call answer per scenario step T1-T6, recorded with the arguments the gate lets out of the page — which is why T6 carries rehearsal: true. T7 (write_file) is deliberately absent: a call that reaches the scripted server under that name is a test failure, which is the point of the step.",
+  "recorder": "web/scripts/record-conformance.mjs",
+  "runtime": {
+    "binarySha256": "7d849d0d8310b556d6c04485dea7dcfcc502ce0f0bca96862bab3ac4c728423f",
+    "serverInfo": {
+      "name": "jpack",
+      "version": "0.0.0-dev"
+    },
+    "protocolVersion": "2025-06-18",
+    "note": "A release build reports its own version; a binary built from a tagged tree without release ldflags reports 0.0.0-dev, so `binarySha256` and `sourceCommit` are what identify it. `sourceCommit` is stated by whoever ran the recorder — it is not read off the binary — and is the one member here that is a claim rather than a measurement.",
+    "sourceCommit": "533281492908c055dbb6a6f5a3585935b0f73bc1",
+    "project": "The directory named on the command line. It must declare an audit trail, so that a recording pass that wrote one would leave the evidence behind."
+  },
+  "tools": [
+    {
+      "description": "Return the exact bundled JPS JSON Schema for a specification version, with its digest and byte size.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "spec_version": {
+            "description": "Optional exact JPS version; defaults to the bundled draft.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "get_schema"
+    },
+    {
+      "description": "List the bundled valid JPS example documents: version-pinned conformance fixtures the runtime embeds and digest-locks, offered read-only as starting points for authoring. They are not authored templates. Use get_example to fetch one by name.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "name": "list_examples"
+    },
+    {
+      "description": "Return one bundled valid JPS example document by name, as JSON text, with its digest and byte size. These are version-pinned conformance fixtures, not authored templates; copy one into a document of your own to start authoring, then validate. Call list_examples for the available names.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "The example name, as reported by list_examples (for example, minimal-expense-approval).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "get_example"
+    },
+    {
+      "description": "Validate one JPS document for carrier, structural, and semantic conformance. It does not evaluate rules, choose an outcome, or authorize anything.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "document": {
+            "description": "The JPS document to validate, as JSON text.",
+            "type": "string"
+          },
+          "through": {
+            "description": "Last validation layer to run; defaults to semantic.",
+            "enum": [
+              "carrier",
+              "structural",
+              "semantic"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "document"
+        ],
+        "type": "object"
+      },
+      "name": "validate"
+    },
+    {
+      "description": "EXPERIMENTAL SURFACE (ADR-0007): apply the JPS Core §§7-8 resolution model to one conformant pack and one facts document, returning the §8.3 portable disposition (kind, outcomeId, reasons, handoff) and a trace. The disposition is serialized in its RFC 8785 canonical form; a refused evaluation reports its §8.4 error class and no disposition. Only a pack declaring specVersion 0.2.0-draft is evaluated: JPS §11 makes the value exact and requires an unedited 0.1.0-draft pack to be re-declared -- one edit, the specVersion string -- before an implementation claiming this draft evaluates it, so any other version is refused as pack-not-conformant in the preflight phase. The pack arrives either as text in \"pack\" or as a project decision id in \"pack_id\", which resolves through the jpack.json convention (ADR-0012); exactly one of the two is supplied, and supplying both is refused rather than given a precedence rule. Every payload echoes the evaluated pack's own id and version as packId and packVersion, read off the document that was evaluated. This is the one tool here that can write, and only where the project told it to (ADR-0018): in a project whose jpack.json declares an audit directory, each completed call appends one record to it -- the pack's identity and digest, the documents evaluated, and the disposition -- and in a project that declares none, nothing is written at all. A call declaring \"rehearsal\": true writes nothing even there and consults no reviewed set (ADR-0019) -- the standing a matrix row already has (ADR-0021), extended to one declared exploratory call (ADR-0028) -- and its payload carries \"rehearsal\": true, stating in band that this was not a decision. This runtime's conformance claim is stated, in full and only, in the repository's CONFORMANCE.md; this description states no claim, and the payload carries a conformanceClaimReference member pointing at that file. Whatever that claim says, it is about this implementation and NOT about the pack you pass, the facts you supply, or whether acting on the returned disposition is correct, permitted, or safe (§3.5). It authorizes nothing, executes nothing, and this surface may change or be removed without compatibility promise.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence": {
+            "description": "Optional tri-state evidence availability, as JSON text: an object mapping declared evidence-requirement ids to \"present\", \"absent\", or \"unknown\". An omitted id is unknown. Omit this key entirely to supply no document at all, which makes every declared requirement unknown; a key present with an empty string is a supplied empty document, which is not a JSON text and is refused as malformed-input.",
+            "type": "string"
+          },
+          "facts": {
+            "description": "One JSON facts document, as JSON text; fact.path pointers resolve against it. It is the NESTED document those pointers descend into: for the pointer /request/type write {\"request\":{\"type\":\"data-access\"}}. A flat member literally named \"/request/type\" does not resolve that pointer -- the shape mirrors how jpack.json fact hints are keyed, and every condition reading the pointer then evaluates unknown.",
+            "type": "string"
+          },
+          "pack": {
+            "description": "The JPS document to evaluate, as JSON text. It must have full document conformance; a non-conformant pack is refused. Mutually exclusive with pack_id.",
+            "type": "string"
+          },
+          "pack_id": {
+            "description": "A decision id declared in the project's jpack.json, resolved to that pack's document. Mutually exclusive with pack; call list_packs for the available ids.",
+            "type": "string"
+          },
+          "rehearsal": {
+            "description": "Declare this call a rehearsal, not a decision: the evaluation runs identically, but no audit record is appended (ADR-0018) and no reviewed set is consulted (ADR-0019) -- the standing a matrix row already has (ADR-0021) -- and the payload carries \"rehearsal\": true, stating in band that this was not a decision. Never inferred: omitting the key is the ordinary call, recorded exactly when the project declares a trail.",
+            "type": "boolean"
+          },
+          "supported_extensions": {
+            "description": "Extension names this consumer supports.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "facts"
+        ],
+        "type": "object"
+      },
+      "name": "experimental_evaluate"
+    }
+  ],
+  "calls": [
+    {
+      "step": "T1",
+      "tool": "get_schema",
+      "arguments": {
+        "spec_version": "0.2.0-draft"
+      },
+      "result": {
+        "content": [
+          {
+            "text": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"https://judgmentpack.org/schema/0.2.0-draft/judgment-pack-core.schema.json\",\n  \"title\": \"Judgment Pack Core\",\n  \"description\": \"Research-preview structural schema. Conformance does not establish truth, authority, safety, or operational fitness.\",\n  \"$comment\": \"JPS structural conformance requires uri, date, and date-time format assertions even when a general-purpose validator treats format as annotation-only.\",\n  \"type\": \"object\",\n  \"additionalProperties\": false,\n  \"required\": [\n    \"specVersion\",\n    \"id\",\n    \"version\",\n    \"title\",\n    \"decision\",\n    \"outcomes\",\n    \"rules\"\n  ],\n  \"properties\": {\n    \"specVersion\": {\n      \"const\": \"0.2.0-draft\"\n    },\n    \"id\": {\n      \"type\": \"string\",\n      \"format\": \"uri\",\n      \"minLength\": 1\n    },\n    \"version\": {\n      \"type\": \"string\",\n      \"pattern\": \"^(0|[1-9][0-9]*)\\\\.(0|[1-9][0-9]*)\\\\.(0|[1-9][0-9]*)$\"\n    },\n    \"title\": {\n      \"$ref\": \"#/$defs/nonEmptyString\"\n    },\n    \"description\": {\n      \"$ref\": \"#/$defs/nonEmptyString\"\n    },\n    \"decision\": {\n      \"$ref\": \"#/$defs/decision\"\n    },\n    \"applicability\": {\n      \"$ref\": \"#/$defs/condition\"\n    },\n    \"evidenceRequirements\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/evidenceRequirement\"\n      },\n      \"uniqueItems\": true\n    },\n    \"sources\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/source\"\n      },\n      \"uniqueItems\": true\n    },\n    \"outcomes\": {\n      \"type\": \"array\",\n      \"minItems\": 2,\n      \"items\": {\n        \"$ref\": \"#/$defs/outcome\"\n      },\n      \"uniqueItems\": true\n    },\n    \"rules\": {\n      \"type\": \"array\",\n      \"minItems\": 1,\n      \"items\": {\n        \"$ref\": \"#/$defs/rule\"\n      },\n      \"uniqueItems\": true\n    },\n    \"exceptions\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/exception\"\n      },\n      \"uniqueItems\": true\n    },\n    \"fallbackOutcome\": {\n      \"$ref\": \"#/$defs/localId\"\n    },\n    \"escalation\": {\n      \"$ref\": \"#/$defs/escalation\"\n    },\n    \"metadata\": {\n      \"$ref\": \"#/$defs/metadata\"\n    },\n    \"extensions\": {\n      \"$ref\": \"#/$defs/extensions\"\n    }\n  },\n  \"$defs\": {\n    \"nonEmptyString\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"localId\": {\n      \"type\": \"string\",\n      \"pattern\": \"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$\"\n    },\n    \"decimalString\": {\n      \"type\": \"string\",\n      \"pattern\": \"^-?(?:0|[1-9][0-9]*)(?:\\\\.[0-9]+)?$\"\n    },\n    \"extensions\": {\n      \"type\": \"object\",\n      \"propertyNames\": {\n        \"pattern\": \"^(?!org\\\\.judgmentpack\\\\.)[a-z][a-z0-9]*(?:\\\\.[a-z][a-z0-9-]*)+$\"\n      },\n      \"additionalProperties\": true\n    },\n    \"decision\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\"intent\", \"question\"],\n      \"properties\": {\n        \"intent\": {\n          \"$ref\": \"#/$defs/nonEmptyString\"\n        },\n        \"question\": {\n          \"$ref\": \"#/$defs/nonEmptyString\"\n        },\n        \"extensions\": {\n          \"$ref\": \"#/$defs/extensions\"\n        }\n      }\n    },\n    \"evidenceRequirement\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\"id\", \"description\", \"required\"],\n      \"properties\": {\n        \"id\": {\n          \"$ref\": \"#/$defs/localId\"\n        },\n        \"description\": {\n          \"$ref\": \"#/$defs/nonEmptyString\"\n        },\n        \"required\": {\n          \"type\": \"boolean\"\n        },\n        \"kind\": {\n          \"enum\": [\"document\", \"fact\", \"measurement\", \"attestation\"]\n        },\n        \"extensions\": {\n          \"$ref\": \"#/$defs/extensions\"\n        }\n      }\n    },\n    \"source\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\"id\", \"title\", \"locator\"],\n      \"properties\": {\n        \"id\": {\n          \"$ref\": \"#/$defs/localId\"\n        },\n        \"title\": {\n          \"$ref\": \"#/$defs/nonEmptyString\"\n        },\n        \"publisher\": {\n          \"$ref\": \"#/$defs/nonEmptyString\"\n        },\n        \"publishedAt\": {\n          \"type\": \"string\",\n          \"format\": \"date\"\n        },\n        \"locator\": {\n          \"type\": \"object\",\n          \"additionalProperties\": false,\n          \"required\": [\"kind\", \"value\"],\n          \"properties\": {\n            \"kind\": {\n              \"enum\": [\"uri\", \"repository\", \"path\", \"other\"]\n            },\n            \"value\": {\n              \"$ref\": \"#/$defs/nonEmptyString\"\n            }\n          }\n        },\n        \"citation\": {\n          \"type\": \"object\",\n          \"additionalProperties\": false,\n          \"required\": [\"location\", \"excerpt\"],\n          \"properties\": {\n            \"location\": {\n              \"$ref\": \"#/$defs/nonEmptyString\"\n            },\n            \"excerpt\": {\n              \"$ref\": \"#/$defs/nonEmptyString\"\n            }\n          }\n        },\n        \"rights\": {\n          \"$ref\": \"#/$defs/nonEmptyString\"\n        },\n        \"extensions\": {\n          \"$ref\": \"#/$defs/extensions\"\n        }\n      }\n    },\n    \"outcome\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\"id\", \"label\"],\n      \"properties\": {\n        \"id\": {\n          \"$ref\": \"#/$defs/localId\"\n        },\n        \"label\": {\n          \"$ref\": \"#/$defs/nonEmptyString\"\n        },\n        \"description\": {\n          \"$ref\": \"#/$defs/nonEmptyString\"\n        },\n        \"extensions\": {\n          \"$ref\": \"#/$defs/extensions\"\n        }\n      }\n    },\n    \"rule\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\"id\", \"description\", \"when\", \"outcome\", \"onUnknown\"],\n      \"properties\": {\n        \"id\": {\n          \"$ref\": \"#/$defs/localId\"\n        },\n        \"description\": {\n          \"$ref\": \"#/$defs/nonEmptyString\"\n        },\n        \"when\": {\n          \"$ref\": \"#/$defs/condition\"\n        },\n        \"outcome\": {\n          \"$ref\": \"#/$defs/localId\"\n        },\n        \"onUnknown\": {\n          \"enum\": [\"ignore\", \"escalate\"]\n        },\n        \"evidenceRequirementRefs\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/localId\"\n          },\n          \"uniqueItems\": true\n        },\n        \"sourceRefs\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/localId\"\n          },\n          \"uniqueItems\": true\n        },\n        \"rationale\": {\n          \"$ref\": \"#/$defs/nonEmptyString\"\n        },\n        \"extensions\": {\n          \"$ref\": \"#/$defs/extensions\"\n        }\n      }\n    },\n    \"exception\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\"id\", \"description\", \"when\", \"effect\", \"onUnknown\"],\n      \"properties\": {\n        \"id\": {\n          \"$ref\": \"#/$defs/localId\"\n        },\n        \"description\": {\n          \"$ref\": \"#/$defs/nonEmptyString\"\n        },\n        \"when\": {\n          \"$ref\": \"#/$defs/condition\"\n        },\n        \"effect\": {\n          \"enum\": [\"suppress-rule\", \"force-outcome\", \"escalate\"]\n        },\n        \"targetRule\": {\n          \"$ref\": \"#/$defs/localId\"\n        },\n        \"outcome\": {\n          \"$ref\": \"#/$defs/localId\"\n        },\n        \"onUnknown\": {\n          \"enum\": [\"ignore\", \"escalate\"]\n        },\n        \"sourceRefs\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/localId\"\n          },\n          \"uniqueItems\": true\n        },\n        \"extensions\": {\n          \"$ref\": \"#/$defs/extensions\"\n        }\n      },\n      \"allOf\": [\n        {\n          \"if\": {\n            \"properties\": {\n              \"effect\": {\n                \"const\": \"suppress-rule\"\n              }\n            },\n            \"required\": [\"effect\"]\n          },\n          \"then\": {\n            \"required\": [\"targetRule\"],\n            \"not\": {\n              \"required\": [\"outcome\"]\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"effect\": {\n                \"const\": \"force-outcome\"\n              }\n            },\n            \"required\": [\"effect\"]\n          },\n          \"then\": {\n            \"required\": [\"outcome\"],\n            \"not\": {\n              \"required\": [\"targetRule\"]\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"effect\": {\n                \"const\": \"escalate\"\n              }\n            },\n            \"required\": [\"effect\"]\n          },\n          \"then\": {\n            \"not\": {\n              \"anyOf\": [\n                { \"required\": [\"outcome\"] },\n                { \"required\": [\"targetRule\"] }\n              ]\n            }\n          }\n        }\n      ]\n    },\n    \"escalation\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\"triggers\", \"target\"],\n      \"properties\": {\n        \"triggers\": {\n          \"type\": \"array\",\n          \"minItems\": 1,\n          \"uniqueItems\": true,\n          \"items\": {\n            \"enum\": [\n              \"not-applicable\",\n              \"missing-required-evidence\",\n              \"unknown\",\n              \"conflict\",\n              \"no-match\"\n            ]\n          }\n        },\n        \"target\": {\n          \"type\": \"object\",\n          \"additionalProperties\": false,\n          \"required\": [\"kind\", \"name\"],\n          \"properties\": {\n            \"kind\": {\n              \"enum\": [\"human-role\", \"queue\", \"system\"]\n            },\n            \"name\": {\n              \"$ref\": \"#/$defs/nonEmptyString\"\n            }\n          }\n        },\n        \"message\": {\n          \"$ref\": \"#/$defs/nonEmptyString\"\n        },\n        \"extensions\": {\n          \"$ref\": \"#/$defs/extensions\"\n        }\n      }\n    },\n    \"metadata\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"properties\": {\n        \"authors\": {\n          \"type\": \"array\",\n          \"minItems\": 1,\n          \"items\": {\n            \"$ref\": \"#/$defs/nonEmptyString\"\n          },\n          \"uniqueItems\": true\n        },\n        \"createdAt\": {\n          \"type\": \"string\",\n          \"format\": \"date-time\"\n        },\n        \"license\": {\n          \"$ref\": \"#/$defs/nonEmptyString\"\n        },\n        \"requiredExtensions\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\",\n            \"pattern\": \"^(?!org\\\\.judgmentpack\\\\.)[a-z][a-z0-9]*(?:\\\\.[a-z][a-z0-9-]*)+$\"\n          },\n          \"uniqueItems\": true\n        },\n        \"reviews\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"object\",\n            \"additionalProperties\": false,\n            \"required\": [\"reviewer\", \"reviewedAt\", \"disposition\"],\n            \"properties\": {\n              \"reviewer\": {\n                \"$ref\": \"#/$defs/nonEmptyString\"\n              },\n              \"reviewedAt\": {\n                \"type\": \"string\",\n                \"format\": \"date-time\"\n              },\n              \"disposition\": {\n                \"enum\": [\"approved\", \"changes-requested\", \"rejected\"]\n              },\n              \"note\": {\n                \"$ref\": \"#/$defs/nonEmptyString\"\n              }\n            }\n          }\n        },\n        \"extensions\": {\n          \"$ref\": \"#/$defs/extensions\"\n        }\n      }\n    },\n    \"condition\": {\n      \"oneOf\": [\n        {\n          \"type\": \"object\",\n          \"additionalProperties\": false,\n          \"required\": [\"op\", \"value\"],\n          \"properties\": {\n            \"op\": {\n              \"const\": \"literal\"\n            },\n            \"value\": {\n              \"type\": \"boolean\"\n            }\n          }\n        },\n        {\n          \"type\": \"object\",\n          \"additionalProperties\": false,\n          \"required\": [\"op\", \"conditions\"],\n          \"properties\": {\n            \"op\": {\n              \"enum\": [\"all\", \"any\"]\n            },\n            \"conditions\": {\n              \"type\": \"array\",\n              \"minItems\": 1,\n              \"items\": {\n                \"$ref\": \"#/$defs/condition\"\n              }\n            }\n          }\n        },\n        {\n          \"type\": \"object\",\n          \"additionalProperties\": false,\n          \"required\": [\"op\", \"condition\"],\n          \"properties\": {\n            \"op\": {\n              \"const\": \"not\"\n            },\n            \"condition\": {\n              \"$ref\": \"#/$defs/condition\"\n            }\n          }\n        },\n        {\n          \"type\": \"object\",\n          \"additionalProperties\": false,\n          \"required\": [\"op\", \"path\", \"operator\", \"value\"],\n          \"properties\": {\n            \"op\": {\n              \"const\": \"fact\"\n            },\n            \"path\": {\n              \"type\": \"string\",\n              \"pattern\": \"^(?:/(?:[^~/]|~0|~1)*)*$\"\n            },\n            \"operator\": {\n              \"enum\": [\n                \"equals\",\n                \"not-equals\",\n                \"greater-than\",\n                \"greater-than-or-equal\",\n                \"less-than\",\n                \"less-than-or-equal\",\n                \"in\"\n              ]\n            },\n            \"value\": true\n          },\n          \"allOf\": [\n            {\n              \"if\": {\n                \"properties\": {\n                  \"operator\": {\n                    \"enum\": [\n                      \"greater-than\",\n                      \"greater-than-or-equal\",\n                      \"less-than\",\n                      \"less-than-or-equal\"\n                    ]\n                  }\n                },\n                \"required\": [\"operator\"]\n              },\n              \"then\": {\n                \"properties\": {\n                  \"value\": {\n                    \"$ref\": \"#/$defs/decimalString\"\n                  }\n                }\n              }\n            },\n            {\n              \"if\": {\n                \"properties\": {\n                  \"operator\": {\n                    \"const\": \"in\"\n                  }\n                },\n                \"required\": [\"operator\"]\n              },\n              \"then\": {\n                \"properties\": {\n                  \"value\": {\n                    \"type\": \"array\",\n                    \"minItems\": 1\n                  }\n                }\n              }\n            }\n          ]\n        },\n        {\n          \"type\": \"object\",\n          \"additionalProperties\": false,\n          \"required\": [\"op\", \"evidenceRequirement\"],\n          \"properties\": {\n            \"op\": {\n              \"const\": \"evidence-present\"\n            },\n            \"evidenceRequirement\": {\n              \"$ref\": \"#/$defs/localId\"\n            }\n          }\n        }\n      ]\n    }\n  }\n}\n",
+            "type": "text"
+          }
+        ],
+        "isError": false,
+        "structuredContent": {
+          "outputVersion": "2",
+          "tool": {
+            "name": "jpack",
+            "version": "0.0.0-dev"
+          },
+          "command": "mcp get_schema",
+          "status": "valid",
+          "specVersion": "0.2.0-draft",
+          "schemaId": "https://judgmentpack.org/schema/0.2.0-draft/judgment-pack-core.schema.json",
+          "bytes": 14268,
+          "sha256": "847910902fa202d9fb3a97062071b532f11649031c9dad32490bf191dca5b3b5",
+          "provenance": "immutable-git-ref"
+        }
+      }
+    },
+    {
+      "step": "T2",
+      "tool": "list_examples",
+      "arguments": {},
+      "result": {
+        "content": [
+          {
+            "text": "{\"outputVersion\":\"2\",\"tool\":{\"name\":\"jpack\",\"version\":\"0.0.0-dev\"},\"command\":\"mcp list_examples\",\"status\":\"valid\",\"specVersion\":\"0.1.0-draft\",\"provenance\":\"immutable-git-ref\",\"kind\":\"version-pinned-conformance-fixture\",\"examples\":[{\"name\":\"condition-branches\",\"focus\":\"literal, all, any, not, fact, and evidence-present condition shapes\",\"specSection\":\"§7\"},{\"name\":\"exception-escalate\",\"focus\":\"escalate exception branch without an outcome or target rule\",\"specSection\":\"§6.6\"},{\"name\":\"exception-force-outcome\",\"focus\":\"force-outcome exception branch and resolved outcome\",\"specSection\":\"§6.6\"},{\"name\":\"exception-suppress-rule\",\"focus\":\"suppress-rule exception branch and resolved target\",\"specSection\":\"§6.6\"},{\"name\":\"hostile-optional-extension-value\",\"focus\":\"hostile-looking optional extension content remains inert data\",\"specSection\":\"§§9–10\"},{\"name\":\"minimal-expense-approval\",\"focus\":\"complete cross-feature expense-approval example\",\"specSection\":\"§§4–9\"},{\"name\":\"minimal-literal\",\"focus\":\"minimal structurally and semantically conforming document\",\"specSection\":\"§§2–7\"},{\"name\":\"required-extension-supported\",\"focus\":\"consumer fully interprets a declared required extension it supports\",\"specSection\":\"§9\"}]}",
+            "type": "text"
+          }
+        ],
+        "isError": false,
+        "structuredContent": {
+          "outputVersion": "2",
+          "tool": {
+            "name": "jpack",
+            "version": "0.0.0-dev"
+          },
+          "command": "mcp list_examples",
+          "status": "valid",
+          "specVersion": "0.1.0-draft",
+          "provenance": "immutable-git-ref",
+          "kind": "version-pinned-conformance-fixture",
+          "examples": [
+            {
+              "name": "condition-branches",
+              "focus": "literal, all, any, not, fact, and evidence-present condition shapes",
+              "specSection": "§7"
+            },
+            {
+              "name": "exception-escalate",
+              "focus": "escalate exception branch without an outcome or target rule",
+              "specSection": "§6.6"
+            },
+            {
+              "name": "exception-force-outcome",
+              "focus": "force-outcome exception branch and resolved outcome",
+              "specSection": "§6.6"
+            },
+            {
+              "name": "exception-suppress-rule",
+              "focus": "suppress-rule exception branch and resolved target",
+              "specSection": "§6.6"
+            },
+            {
+              "name": "hostile-optional-extension-value",
+              "focus": "hostile-looking optional extension content remains inert data",
+              "specSection": "§§9–10"
+            },
+            {
+              "name": "minimal-expense-approval",
+              "focus": "complete cross-feature expense-approval example",
+              "specSection": "§§4–9"
+            },
+            {
+              "name": "minimal-literal",
+              "focus": "minimal structurally and semantically conforming document",
+              "specSection": "§§2–7"
+            },
+            {
+              "name": "required-extension-supported",
+              "focus": "consumer fully interprets a declared required extension it supports",
+              "specSection": "§9"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "T3",
+      "tool": "get_example",
+      "arguments": {
+        "name": "minimal-expense-approval"
+      },
+      "result": {
+        "content": [
+          {
+            "text": "{\n  \"specVersion\": \"0.1.0-draft\",\n  \"id\": \"https://example.com/judgment-packs/expense-approval\",\n  \"version\": \"0.1.0\",\n  \"title\": \"Expense approval\",\n  \"description\": \"Research example for deciding whether an employee expense may be automatically approved.\",\n  \"decision\": {\n    \"intent\": \"Determine whether an employee expense may be automatically approved, rejected, or sent to a human reviewer.\",\n    \"question\": \"What approval path should this expense follow?\"\n  },\n  \"applicability\": {\n    \"op\": \"fact\",\n    \"path\": \"/expense/type\",\n    \"operator\": \"equals\",\n    \"value\": \"employee-expense\"\n  },\n  \"evidenceRequirements\": [\n    {\n      \"id\": \"receipt\",\n      \"description\": \"An itemized receipt for the expense.\",\n      \"required\": true,\n      \"kind\": \"document\"\n    },\n    {\n      \"id\": \"cost-center\",\n      \"description\": \"A valid cost-center identifier.\",\n      \"required\": true,\n      \"kind\": \"fact\"\n    }\n  ],\n  \"sources\": [\n    {\n      \"id\": \"expense-policy\",\n      \"title\": \"Example expense policy\",\n      \"publisher\": \"Example Corporation\",\n      \"publishedAt\": \"2026-01-15\",\n      \"locator\": {\n        \"kind\": \"uri\",\n        \"value\": \"https://example.com/policies/expenses\"\n      },\n      \"citation\": {\n        \"location\": \"Section 4 — approval thresholds\",\n        \"excerpt\": \"Expenses above 5000 require finance review. Prohibited categories must be rejected.\"\n      },\n      \"rights\": \"Example content; not an operational policy.\"\n    }\n  ],\n  \"outcomes\": [\n    {\n      \"id\": \"approve\",\n      \"label\": \"Approve\",\n      \"description\": \"The evidence and declared rules support automatic approval.\"\n    },\n    {\n      \"id\": \"manual-review\",\n      \"label\": \"Manual review\",\n      \"description\": \"An accountable finance reviewer must decide.\"\n    },\n    {\n      \"id\": \"reject\",\n      \"label\": \"Reject\",\n      \"description\": \"The expense falls in a prohibited category.\"\n    }\n  ],\n  \"rules\": [\n    {\n      \"id\": \"prohibited-category\",\n      \"description\": \"Reject expenses in a prohibited category.\",\n      \"when\": {\n        \"op\": \"fact\",\n        \"path\": \"/expense/category\",\n        \"operator\": \"in\",\n        \"value\": [\"personal\", \"cash-equivalent\"]\n      },\n      \"outcome\": \"reject\",\n      \"onUnknown\": \"escalate\",\n      \"evidenceRequirementRefs\": [\"receipt\", \"cost-center\"],\n      \"sourceRefs\": [\"expense-policy\"],\n      \"rationale\": \"The example policy prohibits these categories.\"\n    },\n    {\n      \"id\": \"large-expense\",\n      \"description\": \"Send expenses above the declared threshold to finance review.\",\n      \"when\": {\n        \"op\": \"fact\",\n        \"path\": \"/expense/amount\",\n        \"operator\": \"greater-than\",\n        \"value\": \"5000\"\n      },\n      \"outcome\": \"manual-review\",\n      \"onUnknown\": \"escalate\",\n      \"evidenceRequirementRefs\": [\"receipt\", \"cost-center\"],\n      \"sourceRefs\": [\"expense-policy\"],\n      \"rationale\": \"The example policy requires finance review above 5000.\"\n    },\n    {\n      \"id\": \"ordinary-expense\",\n      \"description\": \"Approve a supported ordinary expense at or below the threshold.\",\n      \"when\": {\n        \"op\": \"all\",\n        \"conditions\": [\n          {\n            \"op\": \"fact\",\n            \"path\": \"/expense/amount\",\n            \"operator\": \"less-than-or-equal\",\n            \"value\": \"5000\"\n          },\n          {\n            \"op\": \"not\",\n            \"condition\": {\n              \"op\": \"fact\",\n              \"path\": \"/expense/category\",\n              \"operator\": \"in\",\n              \"value\": [\"personal\", \"cash-equivalent\"]\n            }\n          },\n          {\n            \"op\": \"evidence-present\",\n            \"evidenceRequirement\": \"receipt\"\n          },\n          {\n            \"op\": \"evidence-present\",\n            \"evidenceRequirement\": \"cost-center\"\n          }\n        ]\n      },\n      \"outcome\": \"approve\",\n      \"onUnknown\": \"escalate\",\n      \"evidenceRequirementRefs\": [\"receipt\", \"cost-center\"],\n      \"sourceRefs\": [\"expense-policy\"],\n      \"rationale\": \"Ordinary supported expenses may follow the automatic path.\"\n    }\n  ],\n  \"exceptions\": [\n    {\n      \"id\": \"active-investigation\",\n      \"description\": \"An expense connected to an active investigation requires human review.\",\n      \"when\": {\n        \"op\": \"fact\",\n        \"path\": \"/expense/activeInvestigation\",\n        \"operator\": \"equals\",\n        \"value\": true\n      },\n      \"effect\": \"force-outcome\",\n      \"outcome\": \"manual-review\",\n      \"onUnknown\": \"escalate\"\n    }\n  ],\n  \"fallbackOutcome\": \"manual-review\",\n  \"escalation\": {\n    \"triggers\": [\n      \"not-applicable\",\n      \"missing-required-evidence\",\n      \"unknown\",\n      \"conflict\",\n      \"no-match\"\n    ],\n    \"target\": {\n      \"kind\": \"human-role\",\n      \"name\": \"Finance reviewer\"\n    },\n    \"message\": \"Review the expense, cited policy, missing evidence, and conflicting rules.\"\n  },\n  \"metadata\": {\n    \"authors\": [\"Judgment Pack Specification contributors\"],\n    \"createdAt\": \"2026-07-22T00:00:00Z\",\n    \"license\": \"Apache-2.0\"\n  }\n}\n",
+            "type": "text"
+          }
+        ],
+        "isError": false,
+        "structuredContent": {
+          "outputVersion": "2",
+          "tool": {
+            "name": "jpack",
+            "version": "0.0.0-dev"
+          },
+          "command": "mcp get_example",
+          "status": "valid",
+          "specVersion": "0.1.0-draft",
+          "name": "minimal-expense-approval",
+          "focus": "complete cross-feature expense-approval example",
+          "specSection": "§§4–9",
+          "bytes": 4944,
+          "sha256": "713a5f5375e28c6c1bd34219530575715966dbe4a67bc8e226df14bd6db3c4b6",
+          "provenance": "immutable-git-ref",
+          "kind": "version-pinned-conformance-fixture"
+        }
+      }
+    },
+    {
+      "step": "T4",
+      "tool": "validate",
+      "arguments": {
+        "document": "{\"specVersion\":\"0.2.0-draft\",\"id\":\"https://example.com/judgment-packs/expense-reimbursement\",\"version\":\"0.0.1\",\"title\":\"Expense reimbursement\",\"description\":\"Whether an expense reimbursement claim may be approved without a human deciding it.\",\"decision\":{\"intent\":\"Decide whether an expense reimbursement claim is approved or declined, or must be escalated to finance.\",\"question\":\"May this expense reimbursement claim be approved?\"},\"applicability\":{\"op\":\"fact\",\"path\":\"/claim/type\",\"operator\":\"equals\",\"value\":\"expense-reimbursement\"},\"evidenceRequirements\":[{\"id\":\"receipt\",\"description\":\"An itemized receipt for the claimed expense.\",\"required\":false,\"kind\":\"document\"}],\"sources\":[{\"id\":\"reimbursement-policy\",\"title\":\"Expense reimbursement policy (experiment fixture)\",\"publisher\":\"Fixture\",\"publishedAt\":\"2026-09-05\",\"locator\":{\"kind\":\"uri\",\"value\":\"https://example.com/policies/expense-reimbursement\"},\"citation\":{\"location\":\"Whole policy\",\"excerpt\":\"A claim of 50 USD or less is approved. A claim above 50 USD is approved only when a receipt is attached; without one it is declined. Any claim above 1000 USD is escalated to finance instead of being decided.\"},\"rights\":\"Synthetic policy text written for this experiment; not an operational policy.\"}],\"outcomes\":[{\"id\":\"approve\",\"label\":\"Approve\",\"description\":\"The claim may be reimbursed without a human deciding it.\"},{\"id\":\"decline\",\"label\":\"Decline\",\"description\":\"The claim is refused because the policy's receipt condition is not met.\"}],\"rules\":[{\"id\":\"small-claim\",\"description\":\"Approve a claim of 50 USD or less.\",\"when\":{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"less-than-or-equal\",\"value\":\"50\"},\"outcome\":\"approve\",\"onUnknown\":\"escalate\",\"sourceRefs\":[\"reimbursement-policy\"],\"rationale\":\"The policy approves a claim of 50 USD or less outright.\"},{\"id\":\"receipted-claim\",\"description\":\"Approve a claim above 50 USD when a receipt is attached.\",\"when\":{\"op\":\"all\",\"conditions\":[{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"greater-than\",\"value\":\"50\"},{\"op\":\"fact\",\"path\":\"/claim/receiptAttached\",\"operator\":\"equals\",\"value\":true}]},\"outcome\":\"approve\",\"onUnknown\":\"escalate\",\"evidenceRequirementRefs\":[\"receipt\"],\"sourceRefs\":[\"reimbursement-policy\"],\"rationale\":\"Above 50 USD the policy approves only a claim carrying a receipt.\"},{\"id\":\"unreceipted-claim\",\"description\":\"Decline a claim above 50 USD with no receipt attached.\",\"when\":{\"op\":\"all\",\"conditions\":[{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"greater-than\",\"value\":\"50\"},{\"op\":\"fact\",\"path\":\"/claim/receiptAttached\",\"operator\":\"equals\",\"value\":false}]},\"outcome\":\"decline\",\"onUnknown\":\"escalate\",\"evidenceRequirementRefs\":[\"receipt\"],\"sourceRefs\":[\"reimbursement-policy\"],\"rationale\":\"Above 50 USD a claim without a receipt is declined.\"},{\"id\":\"large-claim\",\"description\":\"Send a claim above 1000 USD to finance.\",\"when\":{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"greater-than\",\"value\":\"1000\"},\"outcome\":\"escalate-to-finance\",\"onUnknown\":\"escalate\",\"sourceRefs\":[\"reimbursement-policy\"],\"rationale\":\"The policy sends a claim above 1000 USD to finance.\"}],\"escalation\":{\"triggers\":[\"not-applicable\",\"missing-required-evidence\",\"unknown\",\"conflict\",\"no-match\"],\"target\":{\"kind\":\"human-role\",\"name\":\"Finance\"},\"message\":\"Decide this expense reimbursement claim by hand: it is above the 1000 USD ceiling, or a fact the policy needs is missing.\"},\"metadata\":{\"authors\":[\"judgment-pack framework experiment fixture\"],\"createdAt\":\"2026-09-05T00:00:00Z\",\"license\":\"Apache-2.0\"}}"
+      },
+      "result": {
+        "content": [
+          {
+            "text": "{\"outputVersion\":\"2\",\"tool\":{\"name\":\"jpack\",\"version\":\"0.0.0-dev\"},\"command\":\"spec validate\",\"status\":\"invalid\",\"specVersion\":\"0.2.0-draft\",\"validationScope\":{\"requestedThrough\":\"semantic\",\"fullDocumentConformance\":true},\"layers\":[{\"name\":\"carrier\",\"status\":\"passed\"},{\"name\":\"structural\",\"status\":\"passed\"},{\"name\":\"semantic\",\"status\":\"failed\"}],\"extensions\":{\"required\":[],\"supported\":[],\"unsupported\":[]},\"diagnostics\":[{\"code\":\"JPS-SEMANTIC-UNRESOLVED-OUTCOME\",\"codeStability\":\"provisional\",\"layer\":\"semantic\",\"severity\":\"error\",\"instancePath\":\"/rules/3/outcome\",\"message\":\"Outcome reference \\\"escalate-to-finance\\\" does not resolve to a declared outcome. Declared outcome ids: approve, decline.\"}],\"diagnosticsTruncated\":false,\"artifact\":{\"specVersion\":\"0.2.0-draft\",\"bundleDigest\":\"081cf18af9fe667a5da5acab465f4cf6118a00742bb6e5527d4d45fc09f25185\",\"provenance\":\"immutable-git-ref\"}}",
+            "type": "text"
+          }
+        ],
+        "isError": false,
+        "structuredContent": {
+          "outputVersion": "2",
+          "tool": {
+            "name": "jpack",
+            "version": "0.0.0-dev"
+          },
+          "command": "spec validate",
+          "status": "invalid",
+          "specVersion": "0.2.0-draft",
+          "validationScope": {
+            "requestedThrough": "semantic",
+            "fullDocumentConformance": true
+          },
+          "layers": [
+            {
+              "name": "carrier",
+              "status": "passed"
+            },
+            {
+              "name": "structural",
+              "status": "passed"
+            },
+            {
+              "name": "semantic",
+              "status": "failed"
+            }
+          ],
+          "extensions": {
+            "required": [],
+            "supported": [],
+            "unsupported": []
+          },
+          "diagnostics": [
+            {
+              "code": "JPS-SEMANTIC-UNRESOLVED-OUTCOME",
+              "codeStability": "provisional",
+              "layer": "semantic",
+              "severity": "error",
+              "instancePath": "/rules/3/outcome",
+              "message": "Outcome reference \"escalate-to-finance\" does not resolve to a declared outcome. Declared outcome ids: approve, decline."
+            }
+          ],
+          "diagnosticsTruncated": false,
+          "artifact": {
+            "specVersion": "0.2.0-draft",
+            "bundleDigest": "081cf18af9fe667a5da5acab465f4cf6118a00742bb6e5527d4d45fc09f25185",
+            "provenance": "immutable-git-ref"
+          }
+        }
+      }
+    },
+    {
+      "step": "T5",
+      "tool": "validate",
+      "arguments": {
+        "document": "{\"specVersion\":\"0.2.0-draft\",\"id\":\"https://example.com/judgment-packs/expense-reimbursement\",\"version\":\"0.1.0\",\"title\":\"Expense reimbursement\",\"description\":\"Whether an expense reimbursement claim may be approved without a human deciding it.\",\"decision\":{\"intent\":\"Decide whether an expense reimbursement claim is approved or declined, or must be escalated to finance.\",\"question\":\"May this expense reimbursement claim be approved?\"},\"applicability\":{\"op\":\"fact\",\"path\":\"/claim/type\",\"operator\":\"equals\",\"value\":\"expense-reimbursement\"},\"evidenceRequirements\":[{\"id\":\"receipt\",\"description\":\"An itemized receipt for the claimed expense.\",\"required\":false,\"kind\":\"document\"}],\"sources\":[{\"id\":\"reimbursement-policy\",\"title\":\"Expense reimbursement policy (experiment fixture)\",\"publisher\":\"Fixture\",\"publishedAt\":\"2026-09-05\",\"locator\":{\"kind\":\"uri\",\"value\":\"https://example.com/policies/expense-reimbursement\"},\"citation\":{\"location\":\"Whole policy\",\"excerpt\":\"A claim of 50 USD or less is approved. A claim above 50 USD is approved only when a receipt is attached; without one it is declined. Any claim above 1000 USD is escalated to finance instead of being decided.\"},\"rights\":\"Synthetic policy text written for this experiment; not an operational policy.\"}],\"outcomes\":[{\"id\":\"approve\",\"label\":\"Approve\",\"description\":\"The claim may be reimbursed without a human deciding it.\"},{\"id\":\"decline\",\"label\":\"Decline\",\"description\":\"The claim is refused because the policy's receipt condition is not met.\"}],\"rules\":[{\"id\":\"small-claim\",\"description\":\"Approve a claim of 50 USD or less.\",\"when\":{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"less-than-or-equal\",\"value\":\"50\"},\"outcome\":\"approve\",\"onUnknown\":\"escalate\",\"sourceRefs\":[\"reimbursement-policy\"],\"rationale\":\"The policy approves a claim of 50 USD or less outright.\"},{\"id\":\"receipted-claim\",\"description\":\"Approve a claim above 50 USD when a receipt is attached.\",\"when\":{\"op\":\"all\",\"conditions\":[{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"greater-than\",\"value\":\"50\"},{\"op\":\"fact\",\"path\":\"/claim/receiptAttached\",\"operator\":\"equals\",\"value\":true}]},\"outcome\":\"approve\",\"onUnknown\":\"escalate\",\"evidenceRequirementRefs\":[\"receipt\"],\"sourceRefs\":[\"reimbursement-policy\"],\"rationale\":\"Above 50 USD the policy approves only a claim carrying a receipt.\"},{\"id\":\"unreceipted-claim\",\"description\":\"Decline a claim above 50 USD with no receipt attached.\",\"when\":{\"op\":\"all\",\"conditions\":[{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"greater-than\",\"value\":\"50\"},{\"op\":\"fact\",\"path\":\"/claim/receiptAttached\",\"operator\":\"equals\",\"value\":false}]},\"outcome\":\"decline\",\"onUnknown\":\"escalate\",\"evidenceRequirementRefs\":[\"receipt\"],\"sourceRefs\":[\"reimbursement-policy\"],\"rationale\":\"Above 50 USD a claim without a receipt is declined.\"}],\"exceptions\":[{\"id\":\"large-claim-to-finance\",\"description\":\"A claim above 1000 USD is escalated to finance instead of being decided here.\",\"when\":{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"greater-than\",\"value\":\"1000\"},\"effect\":\"escalate\",\"onUnknown\":\"escalate\",\"sourceRefs\":[\"reimbursement-policy\"]}],\"escalation\":{\"triggers\":[\"not-applicable\",\"missing-required-evidence\",\"unknown\",\"conflict\",\"no-match\"],\"target\":{\"kind\":\"human-role\",\"name\":\"Finance\"},\"message\":\"Decide this expense reimbursement claim by hand: it is above the 1000 USD ceiling, or a fact the policy needs is missing.\"},\"metadata\":{\"authors\":[\"judgment-pack framework experiment fixture\"],\"createdAt\":\"2026-09-05T00:00:00Z\",\"license\":\"Apache-2.0\"}}"
+      },
+      "result": {
+        "content": [
+          {
+            "text": "{\"outputVersion\":\"2\",\"tool\":{\"name\":\"jpack\",\"version\":\"0.0.0-dev\"},\"command\":\"spec validate\",\"status\":\"valid\",\"specVersion\":\"0.2.0-draft\",\"validationScope\":{\"requestedThrough\":\"semantic\",\"fullDocumentConformance\":true},\"layers\":[{\"name\":\"carrier\",\"status\":\"passed\"},{\"name\":\"structural\",\"status\":\"passed\"},{\"name\":\"semantic\",\"status\":\"passed\"}],\"extensions\":{\"required\":[],\"supported\":[],\"unsupported\":[]},\"diagnostics\":[],\"diagnosticsTruncated\":false,\"artifact\":{\"specVersion\":\"0.2.0-draft\",\"bundleDigest\":\"081cf18af9fe667a5da5acab465f4cf6118a00742bb6e5527d4d45fc09f25185\",\"provenance\":\"immutable-git-ref\"}}",
+            "type": "text"
+          }
+        ],
+        "isError": false,
+        "structuredContent": {
+          "outputVersion": "2",
+          "tool": {
+            "name": "jpack",
+            "version": "0.0.0-dev"
+          },
+          "command": "spec validate",
+          "status": "valid",
+          "specVersion": "0.2.0-draft",
+          "validationScope": {
+            "requestedThrough": "semantic",
+            "fullDocumentConformance": true
+          },
+          "layers": [
+            {
+              "name": "carrier",
+              "status": "passed"
+            },
+            {
+              "name": "structural",
+              "status": "passed"
+            },
+            {
+              "name": "semantic",
+              "status": "passed"
+            }
+          ],
+          "extensions": {
+            "required": [],
+            "supported": [],
+            "unsupported": []
+          },
+          "diagnostics": [],
+          "diagnosticsTruncated": false,
+          "artifact": {
+            "specVersion": "0.2.0-draft",
+            "bundleDigest": "081cf18af9fe667a5da5acab465f4cf6118a00742bb6e5527d4d45fc09f25185",
+            "provenance": "immutable-git-ref"
+          }
+        }
+      }
+    },
+    {
+      "step": "T6",
+      "tool": "experimental_evaluate",
+      "arguments": {
+        "pack": "{\"specVersion\":\"0.2.0-draft\",\"id\":\"https://example.com/judgment-packs/expense-reimbursement\",\"version\":\"0.1.0\",\"title\":\"Expense reimbursement\",\"description\":\"Whether an expense reimbursement claim may be approved without a human deciding it.\",\"decision\":{\"intent\":\"Decide whether an expense reimbursement claim is approved or declined, or must be escalated to finance.\",\"question\":\"May this expense reimbursement claim be approved?\"},\"applicability\":{\"op\":\"fact\",\"path\":\"/claim/type\",\"operator\":\"equals\",\"value\":\"expense-reimbursement\"},\"evidenceRequirements\":[{\"id\":\"receipt\",\"description\":\"An itemized receipt for the claimed expense.\",\"required\":false,\"kind\":\"document\"}],\"sources\":[{\"id\":\"reimbursement-policy\",\"title\":\"Expense reimbursement policy (experiment fixture)\",\"publisher\":\"Fixture\",\"publishedAt\":\"2026-09-05\",\"locator\":{\"kind\":\"uri\",\"value\":\"https://example.com/policies/expense-reimbursement\"},\"citation\":{\"location\":\"Whole policy\",\"excerpt\":\"A claim of 50 USD or less is approved. A claim above 50 USD is approved only when a receipt is attached; without one it is declined. Any claim above 1000 USD is escalated to finance instead of being decided.\"},\"rights\":\"Synthetic policy text written for this experiment; not an operational policy.\"}],\"outcomes\":[{\"id\":\"approve\",\"label\":\"Approve\",\"description\":\"The claim may be reimbursed without a human deciding it.\"},{\"id\":\"decline\",\"label\":\"Decline\",\"description\":\"The claim is refused because the policy's receipt condition is not met.\"}],\"rules\":[{\"id\":\"small-claim\",\"description\":\"Approve a claim of 50 USD or less.\",\"when\":{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"less-than-or-equal\",\"value\":\"50\"},\"outcome\":\"approve\",\"onUnknown\":\"escalate\",\"sourceRefs\":[\"reimbursement-policy\"],\"rationale\":\"The policy approves a claim of 50 USD or less outright.\"},{\"id\":\"receipted-claim\",\"description\":\"Approve a claim above 50 USD when a receipt is attached.\",\"when\":{\"op\":\"all\",\"conditions\":[{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"greater-than\",\"value\":\"50\"},{\"op\":\"fact\",\"path\":\"/claim/receiptAttached\",\"operator\":\"equals\",\"value\":true}]},\"outcome\":\"approve\",\"onUnknown\":\"escalate\",\"evidenceRequirementRefs\":[\"receipt\"],\"sourceRefs\":[\"reimbursement-policy\"],\"rationale\":\"Above 50 USD the policy approves only a claim carrying a receipt.\"},{\"id\":\"unreceipted-claim\",\"description\":\"Decline a claim above 50 USD with no receipt attached.\",\"when\":{\"op\":\"all\",\"conditions\":[{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"greater-than\",\"value\":\"50\"},{\"op\":\"fact\",\"path\":\"/claim/receiptAttached\",\"operator\":\"equals\",\"value\":false}]},\"outcome\":\"decline\",\"onUnknown\":\"escalate\",\"evidenceRequirementRefs\":[\"receipt\"],\"sourceRefs\":[\"reimbursement-policy\"],\"rationale\":\"Above 50 USD a claim without a receipt is declined.\"}],\"exceptions\":[{\"id\":\"large-claim-to-finance\",\"description\":\"A claim above 1000 USD is escalated to finance instead of being decided here.\",\"when\":{\"op\":\"fact\",\"path\":\"/claim/amount\",\"operator\":\"greater-than\",\"value\":\"1000\"},\"effect\":\"escalate\",\"onUnknown\":\"escalate\",\"sourceRefs\":[\"reimbursement-policy\"]}],\"escalation\":{\"triggers\":[\"not-applicable\",\"missing-required-evidence\",\"unknown\",\"conflict\",\"no-match\"],\"target\":{\"kind\":\"human-role\",\"name\":\"Finance\"},\"message\":\"Decide this expense reimbursement claim by hand: it is above the 1000 USD ceiling, or a fact the policy needs is missing.\"},\"metadata\":{\"authors\":[\"judgment-pack framework experiment fixture\"],\"createdAt\":\"2026-09-05T00:00:00Z\",\"license\":\"Apache-2.0\"}}",
+        "facts": "{\"claim\":{\"type\":\"expense-reimbursement\",\"amount\":\"120.00\",\"receiptAttached\":true}}",
+        "rehearsal": true
+      },
+      "result": {
+        "content": [
+          {
+            "text": "{\"outputVersion\":\"2\",\"tool\":{\"name\":\"jpack\",\"version\":\"0.0.0-dev\"},\"command\":\"mcp experimental_evaluate\",\"status\":\"evaluated\",\"experimental\":true,\"rehearsal\":true,\"conformanceClaimReference\":\"CONFORMANCE.md\",\"specVersion\":\"0.2.0-draft\",\"evaluatorSpecVersion\":\"0.2.0-draft\",\"packId\":\"https://example.com/judgment-packs/expense-reimbursement\",\"packVersion\":\"0.1.0\",\"disposition\":{\"handoff\":{\"state\":\"none\"},\"kind\":\"outcome\",\"outcomeId\":\"approve\",\"reasons\":[]},\"trace\":[{\"stage\":\"applicability\",\"condition\":\"true\"},{\"stage\":\"exception\",\"id\":\"large-claim-to-finance\",\"condition\":\"false\"},{\"stage\":\"rule\",\"id\":\"small-claim\",\"condition\":\"false\"},{\"stage\":\"rule\",\"id\":\"receipted-claim\",\"condition\":\"true\",\"outcome\":\"approve\"},{\"stage\":\"rule\",\"id\":\"unreceipted-claim\",\"condition\":\"false\"}],\"artifact\":{\"specVersion\":\"0.2.0-draft\",\"bundleDigest\":\"081cf18af9fe667a5da5acab465f4cf6118a00742bb6e5527d4d45fc09f25185\",\"provenance\":\"immutable-git-ref\"}}",
+            "type": "text"
+          }
+        ],
+        "isError": false,
+        "structuredContent": {
+          "outputVersion": "2",
+          "tool": {
+            "name": "jpack",
+            "version": "0.0.0-dev"
+          },
+          "command": "mcp experimental_evaluate",
+          "status": "evaluated",
+          "experimental": true,
+          "rehearsal": true,
+          "conformanceClaimReference": "CONFORMANCE.md",
+          "specVersion": "0.2.0-draft",
+          "evaluatorSpecVersion": "0.2.0-draft",
+          "packId": "https://example.com/judgment-packs/expense-reimbursement",
+          "packVersion": "0.1.0",
+          "disposition": {
+            "handoff": {
+              "state": "none"
+            },
+            "kind": "outcome",
+            "outcomeId": "approve",
+            "reasons": []
+          },
+          "trace": [
+            {
+              "stage": "applicability",
+              "condition": "true"
+            },
+            {
+              "stage": "exception",
+              "id": "large-claim-to-finance",
+              "condition": "false"
+            },
+            {
+              "stage": "rule",
+              "id": "small-claim",
+              "condition": "false"
+            },
+            {
+              "stage": "rule",
+              "id": "receipted-claim",
+              "condition": "true",
+              "outcome": "approve"
+            },
+            {
+              "stage": "rule",
+              "id": "unreceipted-claim",
+              "condition": "false"
+            }
+          ],
+          "artifact": {
+            "specVersion": "0.2.0-draft",
+            "bundleDigest": "081cf18af9fe667a5da5acab465f4cf6118a00742bb6e5527d4d45fc09f25185",
+            "provenance": "immutable-git-ref"
+          }
+        }
+      }
+    }
+  ]
+}

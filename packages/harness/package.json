@@ -1,0 +1,65 @@
+{
+  "name": "@judgment-pack/harness",
+  "version": "0.1.0-dev",
+  "private": false,
+  "description": "The Judgment Pack Desk's assistant harness behind the wire contract: the Vercel AI SDK and Codex adapters, the context budget and ledger, delegation, the tool gate, the failure catalogue and the certification suite.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Judgment-Pack/judgment-pack-agent.git",
+    "directory": "packages/harness"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./contract": {
+      "types": "./dist/entries/contract.d.ts",
+      "default": "./dist/entries/contract.js"
+    },
+    "./vercel": {
+      "types": "./dist/engines/vercel/index.d.ts",
+      "default": "./dist/engines/vercel/index.js"
+    },
+    "./codex": {
+      "types": "./dist/engines/codex/index.d.ts",
+      "default": "./dist/engines/codex/index.js"
+    },
+    "./certification": {
+      "types": "./dist/certification/index.d.ts",
+      "default": "./dist/certification/index.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "files": [
+    "dist",
+    "contract",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "certify": "node scripts/certify.mjs"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "4.0.73",
+    "@ai-sdk/google": "4.0.89",
+    "@ai-sdk/openai-compatible": "3.0.64",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "ai": "7.0.129",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "26.2.0",
+    "jsdom": "30.1.1",
+    "typescript": "7.0.2",
+    "vite": "8.2.2",
+    "vitest": "5.0.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

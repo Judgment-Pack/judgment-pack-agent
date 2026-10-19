@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": ".",
+    "outDir": "dist",
+    "declaration": true,
+    "sourceMap": true
+  },
+  "include": ["**/*.ts", "contract/*.json", "certification/*.json"],
+  "exclude": ["node_modules", "dist", "testing", "scripts", "**/*.test.ts", "vitest.config.ts"]
+}

@@ -1,0 +1,138 @@
+{
+  "version": 1,
+  "failures": {
+    "cancelled": {
+      "message": "The response was stopped.",
+      "recovery": "none"
+    },
+    "request-limit": {
+      "message": "Work paused at the approved request limit.",
+      "recovery": "increase"
+    },
+    "provider-limit": {
+      "message": "The AI provider stopped this run at its limit.",
+      "recovery": "review"
+    },
+    "context-limit": {
+      "message": "The current AI context exceeds its configured budget. Saved work is retained; reduce the current request or read smaller context sections.",
+      "recovery": "narrow"
+    },
+    "authentication": {
+      "message": "The AI connection needs authentication. Check its credentials or sign in again.",
+      "recovery": "configure"
+    },
+    "permission": {
+      "message": "This AI connection does not allow the requested operation. Check access and enabled models.",
+      "recovery": "configure"
+    },
+    "configuration": {
+      "message": "The AI connection is unavailable or needs configuration. Check it in Admin.",
+      "recovery": "configure"
+    },
+    "busy": {
+      "message": "The AI connection is busy. No new operation was admitted.",
+      "recovery": "wait"
+    },
+    "rate-limited": {
+      "message": "The AI provider is limiting requests. Wait before trying again.",
+      "recovery": "wait"
+    },
+    "unavailable": {
+      "message": "The AI service is temporarily unavailable. Completed work is retained.",
+      "recovery": "retry"
+    },
+    "connection-lost": {
+      "message": "The AI connection ended before completion. Review completed work before continuing.",
+      "recovery": "review"
+    },
+    "timeout": {
+      "message": "The AI request timed out. Its outcome may be uncertain; review completed work before continuing.",
+      "recovery": "review"
+    },
+    "invalid-request": {
+      "message": "The AI request was rejected. Check the selected model and request settings before trying again.",
+      "recovery": "configure"
+    },
+    "invalid-response": {
+      "message": "The AI returned no usable complete response. Completed work is retained.",
+      "recovery": "retry"
+    },
+    "storage": {
+      "message": "Progress could not be saved. Keep this window open and restore storage before continuing.",
+      "recovery": "storage"
+    },
+    "stale-state": {
+      "message": "The saved context or configuration changed. Reload the current state before continuing.",
+      "recovery": "reload"
+    },
+    "tool-failed": {
+      "message": "The tool could not complete this operation. Check its result before repeating it.",
+      "recovery": "review"
+    },
+    "unknown": {
+      "message": "The response could not complete. Review completed work before continuing.",
+      "recovery": "review"
+    },
+    "retries-exhausted": {
+      "message": "The AI connection could not recover after automatic retries. Review completed work before continuing.",
+      "recovery": "review"
+    },
+    "invalid-tool-input": {
+      "message": "The tool input needs correction before this operation can continue.",
+      "recovery": "review"
+    },
+    "output-limit": {
+      "message": "The AI reached its output-token limit before completing the response. Completed work is retained.",
+      "recovery": "review"
+    },
+    "content-filter": {
+      "message": "The AI provider blocked this response. Review the request before continuing.",
+      "recovery": "review"
+    },
+    "repeated-work": {
+      "message": "The assistant kept repeating completed work. Desk stopped this response and retained the results.",
+      "recovery": "review"
+    }
+  },
+  "aliases": {
+    "busy": "busy",
+    "assistant-relay-busy": "busy",
+    "sign-in-required": "authentication",
+    "assistant-no-key": "authentication",
+    "unauthorized": "authentication",
+    "assistant-key-unbound": "configuration",
+    "assistant-unconfigured": "configuration",
+    "model-not-allowed": "permission",
+    "forbidden": "permission",
+    "limit": "provider-limit",
+    "unavailable": "unavailable",
+    "retries-exhausted": "retries-exhausted",
+    "run-failed": "unknown",
+    "assistant-relay-upstream": "connection-lost",
+    "context_length_exceeded": "context-limit",
+    "context_window_exceeded": "context-limit",
+    "rate_limit_exceeded": "rate-limited",
+    "overloaded_error": "unavailable",
+    "authentication_error": "authentication",
+    "permission_error": "permission",
+    "permission_denied_error": "permission",
+    "invalid_api_key": "authentication",
+    "insufficient_quota": "configuration",
+    "billing_error": "configuration",
+    "stale": "stale-state",
+    "credentials-required": "authentication",
+    "rate-limited": "rate-limited",
+    "search-temporary": "unavailable",
+    "search-timeout": "timeout",
+    "search-invalid-response": "invalid-response",
+    "search-invalid-request": "invalid-request",
+    "search-storage-failed": "storage",
+    "source-changed": "stale-state",
+    "blocked-by-policy": "permission",
+    "rate_limit_error": "rate-limited",
+    "RESOURCE_EXHAUSTED": "rate-limited",
+    "api_error": "unavailable",
+    "server_error": "unavailable",
+    "context-limit": "context-limit"
+  }
+}
