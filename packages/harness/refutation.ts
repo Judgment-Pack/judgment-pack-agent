@@ -27,7 +27,8 @@ import { sourceMessage } from './host'
  * proposal and *before* the proposal event is emitted, and every call it makes
  * is a read.
  */
-import type { AssistantEvent } from './engine'
+import { failureMessage, normalizeFailure, type FailureSource } from './failures'
+import type { AssistantEvent, ProposalNote } from './engine'
 
 /**
  * The literal a critic's request carries, so a scripted endpoint — and a
@@ -294,6 +295,17 @@ export function critiqueEvent(critique: Critique): AssistantEvent {
  * critic reaching nothing is not a reason to withhold a document — and the
  * stream says what happened.
  */
+/**
+ * What the proposal carries where the critic started and did not finish: its
+ * provider error, length cutoff, budget pause or the turn's wall clock. The
+ * proposal is the finished work and is delivered; the critic's failure is a
+ * note on it, never an error raised ahead of it.
+ */
+export function criticNote(cause: unknown, source: FailureSource): ProposalNote {
+  const failure = normalizeFailure(cause, source)
+  return { kind: 'critic-unfinished', message: `The critic did not finish, so it checked nothing on this proposal. ${failureMessage(failure)}`, failure }
+}
+
 export function critiqueOnProposal(
   critique: Critique | null
 ): { critique: { refuted: boolean } } | Record<string, never> {

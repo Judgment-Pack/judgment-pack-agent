@@ -255,11 +255,23 @@ export type AssistantEvent =
   | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string }
   | { type: 'thinking_unavailable'; detail: string }
   | { type: 'critique'; refuted: boolean; checks: { tool: string; status: string }[]; text: string }
-  | { type: 'proposal'; document: unknown; unknowns: string[]; critique?: { refuted: boolean } }
+  /** `note` where something that ran after the proposal existed did not finish. */
+  | { type: 'proposal'; document: unknown; unknowns: string[]; critique?: { refuted: boolean }; note?: ProposalNote }
   | { type: 'error'; message: string; failure?: import('./failures').AIFailure }
   | { type: 'end' }
 
-export type AgentAssistantSession = Omit<AssistantSession, 'model' | 'thinking'> & {
+/**
+ * The critic started and did not finish (`refutation.ts`, `criticNote`): its
+ * failure, classified, and a host-authored sentence. The proposal is delivered
+ * all the same, with no `critique`.
+ */
+export interface ProposalNote {
+  kind: 'critic-unfinished'
+  message: string
+  failure: import('./failures').AIFailure
+}
+
+export type AgentAssistantSession =Omit<AssistantSession, 'model' | 'thinking'> & {
   agent: { model: string; run: import('./agent').AgentRun }
   effort?: import('./agent').CodexEffort
 }

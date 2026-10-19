@@ -61,6 +61,12 @@ export function normalizeFailure(cause:unknown,source:FailureSource='desk',now=D
 export function failureEvent(cause:unknown,source:FailureSource='desk'):Extract<AssistantEvent,{type:'error'}>{const value=normalizeFailure(cause,source);return {type:'error',message:failureMessage(value),failure:value}}
 /** Automatic retry requires positive admission refusal; never infer replay safety from a 5xx or a timeout. */
 export function canRetryAdmission(value:AIFailure,attempt:number,maxAttempts:number):boolean {return value.code==='busy'&&value.outcome==='not-started'&&attempt<maxAttempts}
+/**
+ * A model request the provider refused may be sent again: `refused` is a 4xx other than 408, which did nothing and was
+ * not charged, and only a class whose catalogue recovery is waiting or trying again can change on a later attempt.
+ * Never an `unknown` outcome (a 5xx, 408, 504 or transport failure may have run) and never one a person must fix.
+ */
+export function canRetryRefusal(value:AIFailure):boolean {return value.outcome==='refused'&&['wait','retry'].includes(failureRecovery(value))}
 export function retryReady(value:AIFailure|undefined,now=Date.now()):boolean {return !value?.retryAt||Date.parse(value.retryAt)<=now}
 
 /** Host-authored validation only; never pass provider prose or arbitrary caught messages. */

@@ -34,6 +34,7 @@ import {
 } from './relay'
 import { normalize, wireFor } from '../../thinking'
 import { REFUTATION_MARKER } from '../../refutation'
+import { PROPOSAL_RECEIVED, PROPOSE_PACK_SCHEMA, PROPOSE_PACK_TOOL } from '../contract'
 import type { streamText } from 'ai'
 import type { AssistantEvent, AssistantSession, McpTool, ModelCall, McpToolResult } from '../../engine'
 
@@ -783,11 +784,15 @@ describe('exactly one end, on every path', () => {
     expect(events).toEqual([])
   })
 
-  it('ends once where the final message carries no fenced block', async () => {
-    const { call } = scriptedCall([turn({ text: 'I could not write one.' })])
+  it('ends once where the final message carries no fenced block, keeping what it said', async () => {
+    // One reformat request (the recovery), then the answer is delivered as it
+    // was written, then the failure: nothing the model produced is lost.
+    const { call, seen } = scriptedCall([turn({ text: 'I could not write one.' })])
     const events = await drain(vercel.start(session(call)))
-    expect(events.map((event) => event.type)).toEqual(['error', 'end'])
-    expect((events[0] as { message: string }).message).toContain('exactly one fenced JSON block')
+    expect(events.map((event) => event.type)).toEqual(['response_recovery', 'message', 'error', 'end'])
+    expect(events[1]).toEqual({ type: 'message', text: 'I could not write one.' })
+    expect((events[2] as { message: string }).message).toContain('exactly one fenced JSON block')
+    expect(seen).toHaveLength(2)
   })
 })
 
@@ -2181,7 +2186,10 @@ describe('opt-in conversational authoring', () => {
     expect(events.find(event => event.type === 'proposal')).toMatchObject({ document: { id: 'p' } })
     const ambiguous = scriptedCall([turn({ text: PROPOSAL_TEXT + PROPOSAL_TEXT })])
     const refused = await drain(vercel.start(session(ambiguous.call, { allowConversation: true })))
-    expect(refused.map(event => event.type)).toEqual(['error', 'end'])
+    // The reformat request repeats the ambiguity, so the answer is kept whole
+    // and the failure follows it.
+    expect(refused.map(event => event.type)).toEqual(['response_recovery', 'message', 'error', 'end'])
+    expect(refused.find(event => event.type === 'error')).toMatchObject({ failure: { code: 'invalid-response' } })
   })
 })
 
@@ -2427,4 +2435,114 @@ it('honors a model-requested budget pause without spending the reserved final re
  expect(events.find(e=>e.type==='budget_paused')).toMatchObject({checkpoint:{used:19,limit:20,reason:'Boundary checks remain. Next: Verify the two boundaries.'}})
  expect(events.filter(e=>e.type==='end')).toHaveLength(1)
  expect(events.filter(e=>e.type==='error')).toEqual([])
+})
+
+describe('nothing finished is lost (agent#6)', () => {
+  const stream = (text: string) => new Response(text, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+  const fence = (body: string, label = 'json') => '```' + label + '\n' + body + '\n```'
+  const envelope = JSON.stringify({ proposal: { kind: 'create', document: { id: 'p' }, unknowns: [] } })
+
+  it.each([
+    ['two fences', 'Two drafts follow.\n\n' + fence(envelope) + '\n\n' + fence(envelope), 'carried 2'],
+    ['none', 'I read the schema and the policy, and I am not sure which outcome applies.', 'carried 0'],
+    ['a YAML fence', 'Here is the pack.\n\n' + fence('proposal:\n  document:\n    id: p', 'yaml'), 'not marked json'],
+    ['an unterminated fence', 'Here is the pack.\n\n```json\n' + envelope.slice(0, -2), 'not closed'],
+    ['malformed JSON in a marked fence', 'Here is the pack.\n\n' + fence('{"proposal":{"kind":"create","document":{"id":"p",},"unknowns":[]}}'), 'not valid JSON']
+  ])('%s: keeps the prose and the raw fence, and reports invalid-response after one reformat request', async (_shape, answer, detail) => {
+    const { call, seen } = scriptedCall([turn({ text: answer })])
+    const events = await drain(vercel.start(session(call)))
+    expect(events.map((event) => event.type)).toEqual(['response_recovery', 'message', 'error', 'end'])
+    // The whole answer, as written: prose and fence alike.
+    expect(events[1]).toEqual({ type: 'message', text: answer.trim() })
+    expect(events[2]).toMatchObject({ failure: { code: 'invalid-response', source: 'desk' } })
+    expect((events[2] as { message: string }).message).toContain(detail)
+    // One reformat request, tool-free, shown its own answer.
+    expect(seen).toHaveLength(2)
+    const last = (seen[1]!.body.messages as { role: string; content: unknown }[]).slice(-2)
+    expect(last[0]).toMatchObject({ role: 'assistant' })
+    expect(JSON.stringify(last[0]!.content)).toContain(answer.split('\n')[0]!)
+    expect(JSON.stringify(last[1])).toContain('could not be read')
+    expect(seen[1]!.body.tool_choice ?? 'none').toBe('none')
+  })
+
+  it('recovers the proposal on the reformat request and keeps the first answer’s prose', async () => {
+    const broken = 'I validated the draft; the runtime reports it valid.\n\n' + fence('{"proposal":{"document":{"id":"p"},"unknowns":[],}}')
+    const { call, seen } = scriptedCall([turn({ text: broken }), turn({ text: fence(JSON.stringify({ proposal: { document: { id: 'p' }, unknowns: ['who signs'] } })) })])
+    const events = await drain(vercel.start(session(call)))
+    expect(events.map((event) => event.type)).toEqual(['response_recovery', 'message', 'proposal', 'end'])
+    expect(events[1]).toEqual({ type: 'message', text: 'I validated the draft; the runtime reports it valid.' })
+    expect(events[2]).toMatchObject({ document: { id: 'p' }, unknowns: ['who signs'] })
+    expect(seen).toHaveLength(2)
+  })
+
+  it.each([
+    ['a provider error', () => new Response(JSON.stringify({ error: { type: 'overloaded_error', message: 'busy' } }), { status: 503, headers: { 'content-type': 'application/json' } }), 'unavailable'],
+    ['a length cutoff', () => stream(turn({ text: 'The first check' }).replace('"finish_reason":"stop"', '"finish_reason":"length"')), 'output-limit']
+  ])('delivers a valid proposal when the critic fails with %s, with a note instead of an error', async (_how, critic, code) => {
+    let criticRequests = 0
+    const call: ModelCall = async (_suffix, request) => {
+      if (request.body.includes(REFUTATION_MARKER)) {
+        criticRequests += 1
+        return critic()
+      }
+      return stream(turn({ text: PROPOSAL_TEXT }))
+    }
+    const events = await drain(vercel.start(session(call, { thinking: normalize('on', 'openai-compatible') })))
+    expect(criticRequests).toBe(1)
+    expect(events.filter((event) => event.type === 'error')).toEqual([])
+    expect(events.some((event) => event.type === 'critique')).toBe(false)
+    const proposal = events.find((event) => event.type === 'proposal')
+    expect(proposal).toMatchObject({
+      document: { id: 'p' },
+      unknowns: ['who signs'],
+      note: { kind: 'critic-unfinished', failure: { code } }
+    })
+    expect(proposal).not.toHaveProperty('critique')
+    expect((proposal as { note: { message: string } }).note.message).toContain('The critic did not finish')
+    expect(events.at(-1)).toEqual({ type: 'end' })
+  })
+
+  describe('a proposal through the propose_pack tool', () => {
+    const offer = (execute = vi.fn(async (): Promise<McpToolResult> => ({ content: [] }))) => ({
+      execute,
+      tool: { name: PROPOSE_PACK_TOOL, effect: 'proposal' as const, description: 'Propose the pack for review.', inputSchema: PROPOSE_PACK_SCHEMA, execute }
+    })
+
+    it('is accepted as the proposal, with the document as an object, and the instructions say to use it', async () => {
+      const { execute, tool } = offer()
+      const { call, seen } = scriptedCall([
+        turn({ tool: { name: PROPOSE_PACK_TOOL, args: { document: { id: 'p' }, unknowns: ['who signs'] } } }),
+        turn({ text: 'Proposed for your review.' })
+      ])
+      const events = await drain(vercel.start(session(call, { hostTools: [tool] })))
+      expect(events.map((event) => event.type)).toEqual(['tool_call', 'tool_result', 'message', 'proposal', 'end'])
+      expect(events[1]).toMatchObject({ name: PROPOSE_PACK_TOOL, isError: false, text: PROPOSAL_RECEIVED })
+      expect(events[3]).toEqual({ type: 'proposal', document: { id: 'p' }, unknowns: ['who signs'] })
+      // The engine reads the call; the host's own function is never reached.
+      expect(execute).not.toHaveBeenCalled()
+      expect(JSON.stringify(seen[0]!.body)).toContain(`calling ${PROPOSE_PACK_TOOL}`)
+      expect(JSON.stringify(seen[0]!.body.tools)).toContain(PROPOSE_PACK_TOOL)
+    })
+
+    it('needs no closing text, and tells the model to correct a document sent as a string', async () => {
+      const { tool } = offer()
+      const { call, seen } = scriptedCall([
+        turn({ tool: { name: PROPOSE_PACK_TOOL, args: { document: JSON.stringify({ id: 'p' }) } } }),
+        turn({ tool: { name: PROPOSE_PACK_TOOL, args: { document: { id: 'p' } } } }),
+        turn({ text: '' })
+      ])
+      const events = await drain(vercel.start(session(call, { hostTools: [tool] })))
+      expect(events.map((event) => event.type)).toEqual(['tool_call', 'tool_result', 'tool_call', 'tool_result', 'proposal', 'end'])
+      expect(events[1]).toMatchObject({ isError: true, structured: { failure: { code: 'invalid-tool-input' } } })
+      expect((events[1] as { text: string }).text).toContain('not as a JSON string')
+      expect(events[4]).toEqual({ type: 'proposal', document: { id: 'p' }, unknowns: [] })
+      expect(seen).toHaveLength(3)
+    })
+
+    it('says nothing about the tool where the host did not offer it', async () => {
+      const { call, seen } = scriptedCall([turn({ text: PROPOSAL_TEXT })])
+      await drain(vercel.start(session(call)))
+      expect(JSON.stringify(seen[0]!.body)).not.toContain(PROPOSE_PACK_TOOL)
+    })
+  })
 })

@@ -7,6 +7,8 @@ import recording from '../../certification/runtime.json'
 import scenario from '../../certification/scenario.json'
 import { openAssistantConnection } from '../../session'
 import { CERTIFIED_ENGINES, AGENT_ENGINES, loadEngine } from '../index'
+import { failureError } from '../../failures'
+import { PROPOSAL_RECEIVED, PROPOSE_PACK_SCHEMA, PROPOSE_PACK_TOOL } from '../contract'
 
 const proposal = (document: unknown = { id: 'pack' }) => 'Ready.\n\n```json\n' + JSON.stringify({ proposal: { document, unknowns: ['Who reviews?'] } }) + '\n```'
 function session(run: AgentRun, changes: Partial<CodexSession> = {}): CodexSession {
@@ -250,4 +252,46 @@ it('uses shared task progress without inventing subscription model-request usage
  const events=await collect(session(run,{allowConversation:true,interactive:true,context:{currentRequest:{message:'Inspect the rule',input:'Current pack'}}}))
  expect(events.filter(e=>e.type==='execution_checkpoint').at(-1)).toMatchObject({checkpoint:{unit:'provider-managed',plan:[{step:'Inspect the rule',status:'completed'}]}})
  expect(events.filter(e=>e.type==='error')).toEqual([])
+})
+
+describe('nothing finished is lost, on the agent wire (agent#6)', () => {
+  it('keeps the prose and the raw fence where the proposal cannot be read', async () => {
+    const answer = 'Here is the pack.\n\n```json\n{"proposal":{"document":{"id":"p",},"unknowns":[]}}\n```'
+    const events = await collect(session(reply(answer)))
+    expect(events.map(event => event.type)).toEqual(['message', 'error', 'end'])
+    expect(events[0]).toEqual({ type: 'message', text: answer })
+    expect(events[1]).toMatchObject({ failure: { code: 'invalid-response' } })
+  })
+
+  it('delivers the proposal with a note when the critic fails', async () => {
+    let passes = 0
+    const run: AgentRun = async (request, callbacks) => {
+      passes++
+      if (request.phase === 'critic') throw failureError('unavailable', 'agent')
+      await callbacks.event({ type: 'message', id: 'm', text: proposal(), phase: 'final' })
+    }
+    const events = await collect(session(run, { adversarialReview: true }))
+    expect(passes).toBe(2)
+    expect(events.filter(event => event.type === 'error' || event.type === 'critique')).toEqual([])
+    expect(events.find(event => event.type === 'proposal')).toMatchObject({ document: { id: 'pack' }, note: { kind: 'critic-unfinished', failure: { code: 'unavailable', source: 'agent' } } })
+    expect(events.at(-1)?.type).toBe('end')
+  })
+
+  it('accepts the proposal through propose_pack and never reaches the host’s execute', async () => {
+    const execute = vi.fn(async () => ({ content: [] }))
+    let instructions = ''
+    let answered = ''
+    const run: AgentRun = async (request, callbacks) => {
+      instructions = request.instructions
+      const tool = request.tools.find(offered => offered.description.startsWith(`${PROPOSE_PACK_TOOL}:`))!
+      answered = (await callbacks.tool({ id: 'c1', name: tool.name, arguments: { document: { id: 'p' }, unknowns: ['u'] } }, callbacks.signal)).text
+      await callbacks.event({ type: 'message', id: 'm', text: 'Proposed.', phase: 'final' })
+    }
+    const events = await collect(session(run, { hostTools: [{ name: PROPOSE_PACK_TOOL, effect: 'proposal', description: 'Propose', inputSchema: PROPOSE_PACK_SCHEMA, execute }] }))
+    expect(execute).not.toHaveBeenCalled()
+    expect(answered).toBe(PROPOSAL_RECEIVED)
+    expect(instructions).toContain(`calling ${PROPOSE_PACK_TOOL}`)
+    expect(events.find(event => event.type === 'proposal')).toEqual({ type: 'proposal', document: { id: 'p' }, unknowns: ['u'] })
+    expect(events.filter(event => event.type === 'error')).toEqual([])
+  })
 })

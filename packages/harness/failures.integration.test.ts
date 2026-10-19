@@ -4,8 +4,10 @@ import {normalize} from './thinking'
 import type {AssistantEvent,AssistantSession} from './engine'
 const families=['openai-compatible','anthropic','gemini'] as const
 it.each(families)('%s keeps structured failure metadata through the real SDK adapter',async family=>{
+ // Retry-After asks for longer than one turn waits (engines/vercel/retry.ts), so
+ // the refusal is reported after one request, with its retryAt.
  let calls=0
- const session:AssistantSession={prompt:'Explain this',context:{currentRequest:{message:'Explain this',input:'Supplied facts'}},testPrompt:'',tools:[],hostTools:[],callTool:async()=>({}),allowConversation:true,interactive:true,model:{family,model:'fixture',call:async()=>{calls++;return new Response(JSON.stringify({error:{message:'SECRET_PROMPT_DO_NOT_RETAIN',type:'rate_limit_error',code:429}}),{status:429,headers:{'Content-Type':'application/json','Retry-After':'2','request-id':'req_fixture'}})}},thinking:normalize('off',family),signal:new AbortController().signal}
+ const session:AssistantSession={prompt:'Explain this',context:{currentRequest:{message:'Explain this',input:'Supplied facts'}},testPrompt:'',tools:[],hostTools:[],callTool:async()=>({}),allowConversation:true,interactive:true,model:{family,model:'fixture',call:async()=>{calls++;return new Response(JSON.stringify({error:{message:'SECRET_PROMPT_DO_NOT_RETAIN',type:'rate_limit_error',code:429}}),{status:429,headers:{'Content-Type':'application/json','Retry-After':'120','request-id':'req_fixture'}})}},thinking:normalize('off',family),signal:new AbortController().signal}
  const events:AssistantEvent[]=[];for await(const e of vercel.start(session))events.push(e)
  expect(events.filter(e=>e.type==='error')).toHaveLength(1)
  expect(events.find(e=>e.type==='error')).toMatchObject({failure:{code:'rate-limited',source:'model',status:429,requestId:'req_fixture',retryAt:expect.any(String)}})
