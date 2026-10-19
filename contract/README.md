@@ -87,6 +87,9 @@ files they were rendered from.
   the critic's allow-list and `tool-offer/critic-offer.json` what the critic is offered in the
   scenario's session (its runtime reads and the harness's two readers), which the conformance
   session and the agent-engine leg assert.
+- `provenance/engine-ids.json`: the engine ids of `provenance.json#/$defs/engine`, in order: the Desk's
+  two, `deepagents` (ADR-0003) and `eino`, the Go adapter (ADR-0004), which the TypeScript registry does not
+  load. `host.test.ts` and `tests/test_contract.py` hold it to the schema.
 - `bounds/`: a 429 retried once, with the attempts in the completion record
   (`rate-limited-retried.json`), the turn's wall clock pausing the run (`turn-clock.json`), a tool
   past its deadline answered as a failed result (`tool-timeout.json`), and a turn whose test calls

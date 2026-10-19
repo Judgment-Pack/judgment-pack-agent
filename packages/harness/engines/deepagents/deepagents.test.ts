@@ -25,6 +25,7 @@ import { runOnModelEngine } from '../../testing/scenarioDriver'
 import { ofType, sseTurn, streamed, systemText, toolTexts, whole, wholeTurn, type EndpointRequest } from '../../testing/scripted'
 import { questionTool } from '../../questions'
 import { REFUTATION_MARKER } from '../../refutation'
+import { REFORMAT_INSTRUCTIONS } from '../contract'
 import { configureHarness } from '../../host'
 import { normalize } from '../../thinking'
 import type { AssistantEvent, HostTool, ModelRequest } from '../../engine'
@@ -151,6 +152,73 @@ describe('the critic’s offer', () => {
     expect(ran.seen).toEqual([])
     expect(ofType(ran.events, 'critique')).toHaveLength(1)
     expect(ofType(ran.events, 'proposal')).toHaveLength(1)
+  })
+})
+
+describe('a call on a request reserved for the final answer', () => {
+  // The final request of a turn budget and the reformat request are sent with the tools closed; a call
+  // the model makes on either anyway is refused at the boundary, not run (review of the v0.3.0 release, row 5).
+  const fence = (body: unknown) => '```json\n' + JSON.stringify(body) + '\n```'
+  const TWO_PROPOSALS =
+    'Two drafts.\n\n' +
+    fence({ proposal: { document: { id: 'first' }, unknowns: [] } }) +
+    '\n\n' +
+    fence({ proposal: { document: { id: 'second' }, unknowns: [] } })
+  const reserved = (events: AssistantEvent[]) => ofType(events, 'tool_result').filter((event) => event.isError && event.text.includes('reserved for a final answer'))
+  const asksReformat = (request: EndpointRequest) => JSON.stringify(request.body).includes(REFORMAT_INSTRUCTIONS.slice(0, 60))
+  const resultsSoFar = (request: EndpointRequest) => (request.body.messages ?? []).filter((message) => message.role === 'tool').length
+  const textResultsSoFar = (request: EndpointRequest) =>
+    (request.body.messages ?? []).filter((message) => message.role === 'user' && /^TOOL (RESULT|ERROR) from /.test(typeof message.content === 'string' ? message.content : String((message.content as { text?: unknown }[] | undefined)?.[0]?.text ?? ''))).length
+
+  it('refuses a native call on the final request, however many the model makes', async () => {
+    const calls = { count: 0 }
+    // A call with new arguments on every request, so the repeated-work check never refuses one first.
+    const ran = await runOnModelEngine(
+      (request) => streamed(sseTurn({ tool: { name: 'read_policy', args: { n: resultsSoFar(request) }, id: `call_${resultsSoFar(request) + 1}` } })),
+      { engine: deepagents, hostTools: [readPolicy(calls)] }
+    )
+    expect(reserved(ran.events)).toHaveLength(1)
+    expect(calls.count).toBeLessThan(ran.requests.length)
+    expect(ofType(ran.events, 'proposal')).toEqual([])
+    expect(ran.events.filter((event) => event.type === 'budget_paused' || event.type === 'error')).toHaveLength(1)
+  })
+
+  it('refuses a text call on the final request, however many the model makes', async () => {
+    configureHarness({ endpointCapabilities: () => ({ nativeToolCalls: false }) })
+    const calls = { count: 0 }
+    const ran = await runOnModelEngine(
+      (request) => streamed(sseTurn({ text: fence({ tool: 'read_policy', arguments: { n: textResultsSoFar(request) } }) })),
+      { engine: deepagents, hostTools: [readPolicy(calls)] }
+    )
+    expect(reserved(ran.events)).toHaveLength(1)
+    expect(calls.count).toBeLessThan(ran.requests.length)
+    expect(ofType(ran.events, 'proposal')).toEqual([])
+    expect(ran.events.filter((event) => event.type === 'budget_paused' || event.type === 'error')).toHaveLength(1)
+  })
+
+  it('refuses a native call on the reformat request', async () => {
+    const calls = { count: 0 }
+    const ran = await runOnModelEngine(
+      (request) => (asksReformat(request) ? streamed(sseTurn({ tool: { name: 'read_policy', args: {}, id: 'call_reformat' } })) : streamed(sseTurn({ text: TWO_PROPOSALS }))),
+      { engine: deepagents, hostTools: [readPolicy(calls)], session: { allowConversation: false } }
+    )
+    expect(ran.requests.filter(asksReformat)).toHaveLength(1)
+    expect(reserved(ran.events)).toHaveLength(1)
+    expect(calls.count).toBe(0)
+    expect(ofType(ran.events, 'proposal')).toEqual([])
+  })
+
+  it('refuses a text call on the reformat request', async () => {
+    configureHarness({ endpointCapabilities: () => ({ nativeToolCalls: false }) })
+    const calls = { count: 0 }
+    const ran = await runOnModelEngine(
+      (request) => streamed(sseTurn({ text: asksReformat(request) ? fence({ tool: 'read_policy', arguments: {} }) : TWO_PROPOSALS })),
+      { engine: deepagents, hostTools: [readPolicy(calls)], session: { allowConversation: false } }
+    )
+    expect(ran.requests.filter(asksReformat)).toHaveLength(1)
+    expect(reserved(ran.events)).toHaveLength(1)
+    expect(calls.count).toBe(0)
+    expect(ofType(ran.events, 'proposal')).toEqual([])
   })
 })
 

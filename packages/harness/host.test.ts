@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import inventory from '../../contract/desk/inventory.json'
 import toolOffer from '../../contract/schemas/tool-offer.json'
 import provenance from '../../contract/schemas/provenance.json'
+import engineIds from '../../contract/vectors/provenance/engine-ids.json'
 import { ASSISTANT_ENGINES, ASSISTANT_TOOLS } from './host'
 
 describe('the host contract values', () => {
@@ -12,7 +13,9 @@ describe('the host contract values', () => {
 
   it('are the contract’s engine ids: the Desk’s two, then the one this package adds (ADR-0003)', () => {
     expect([...ASSISTANT_ENGINES]).toEqual([...inventory.engines.values, 'deepagents'])
-    expect([...ASSISTANT_ENGINES]).toEqual(provenance.$defs.engine.enum)
+    // The contract's list is these, then the Go adapter's id (ADR-0004), which the registry does not load.
+    expect([...ASSISTANT_ENGINES, 'eino']).toEqual(provenance.$defs.engine.enum)
+    expect(engineIds.items).toEqual(provenance.$defs.engine.enum)
   })
 })
 

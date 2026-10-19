@@ -3,7 +3,7 @@
 The assistant harness of [Judgment Pack Desk](https://github.com/Judgment-Pack/judgment-pack-desk),
 extracted from the Desk's `web/src/assistant` as it is at `integration/v0.13`, `d9251ec`, with no
 behaviour change, behind the wire contract in [`contract/`](../../contract/README.md). Research
-preview; version `0.1.0-dev`, unreleased.
+preview; the version is the package's own (`package.json`), and the releases are on GitHub.
 
 It holds the engine slot and its three adapters, the **Vercel AI SDK adapter** (`engines/vercel`),
 the **Codex adapter** (`engines/codex`) and, added here, the **Deep Agents adapter**
@@ -471,8 +471,10 @@ npm run mutation --workspace @judgment-pack/harness -- --shard 1/4         # the
 
 The first 111 rows are the ones the Desk's `mutation-check.sh` held over the files that moved here,
 carried by the swap (judgment-pack-desk#516); the rest are this repository's own (agent#36 and
-agent#38 each add one, and ADR-0003 three for the Deep Agents adapter: its boundary, its built-ins
-off and its question pause). Nine of the Desk's needles no longer matched the moved code: eight were
+agent#38 each add one, ADR-0003 five for the Deep Agents adapter: its boundary, its built-ins
+off, its question pause, its tracing refusal and its critic dispatch; the review of #44 and the
+release review of v0.3.0 add more, for the chat's cache offer, the codex prompt's message head, the
+critic's allow-list, the tracing variables, and a call on a request with its tools closed). Nine of the Desk's needles no longer matched the moved code: eight were
 re-anchored on the same safeguard (a row's `note` says why), and one row is retired, with its
 reason in the table, because the code it broke is gone. A row's `tests` are the files that
 import the mutated file or a module that does, and those that name it in a string; a run in which
@@ -531,8 +533,9 @@ certification as `vercel`:
   reformat request and the turn clock are the contract's, and `interruptOn`, `checkpointer`,
   `permissions` and Deep Agents' subagents, memory and skills are not used; the ADR says why for
   each.
-- **It builds for the browser**; its own chunk adds 1,044.7 kB minified, 276.1 kB gzipped, beside
-  what it shares with `vercel`.
+- **It builds for the browser**; the chunks only it reaches add 1,308.0 kB minified, 367.6 kB gzipped,
+  beside the 212.8 kB it shares with `vercel` (`npm run bundle:size` builds the two engines as two
+  entries and prints these figures; ADR-0003, decision 6, gives the settings).
 
 Its own checks are `engines/deepagents/deepagents.test.ts`: the offer is the gate's alone, a
 built-in name is refused at the boundary on both tool-call paths, the question pause, a relay that

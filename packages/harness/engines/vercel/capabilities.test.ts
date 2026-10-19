@@ -241,6 +241,21 @@ describe('whether to offer tools reads the record', () => {
     expect(of(events, 'error')).toHaveLength(1)
   })
 
+  it('refuses a native call on the request reserved for the final answer, however many the model makes', async () => {
+    // The model calls a tool natively on every request, with new arguments each time.
+    const turns = Array.from({ length: 30 }, (_, n) => native('validate', { pack: { id: `p${n}` } }))
+    const { call, sent } = scripted(turns)
+    let calls = 0
+    const events = await drain(vercel.start(session('openai-compatible', call, {}, {
+      callTool: async () => { calls += 1; return { content: [{ type: 'text', text: '{"status":"valid"}' }] } }
+    })))
+    const refusals = of(events, 'tool_result').filter((event) => event.text.includes('reserved for a final answer'))
+    expect(refusals).toHaveLength(1)
+    expect(calls).toBeLessThan(sent.length)
+    expect(of(events, 'proposal')).toEqual([])
+    expect(of(events, 'error').length + of(events, 'budget_paused').length).toBe(1)
+  })
+
   it('reads the calls and writes the result messages the contract’s text-path vectors state', async () => {
     // The fence: each answer makes its item's call, and each of the others makes none, for the reason given.
     textCallVector.answers.forEach((answer, index) => expect(extractToolCall(answer)).toEqual({ call: textCallVector.items[index] }))

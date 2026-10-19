@@ -1,0 +1,20 @@
+{
+  "description": "The engine ids a session may run on (provenance.json $defs/engine), in order: the Desk's two, then deepagents (ADR-0003), then eino, the Go adapter (ADR-0004). The first three are the TypeScript registry's ids (ASSISTANT_ENGINES); eino is the Go module's (go/adapter/wire, EngineID) and is not loaded by the TypeScript registry.",
+  "schema": "provenance.json#/$defs/engine",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/host.ts (ASSISTANT_ENGINES)",
+      "packages/harness/host.test.ts (the contract's engine ids)"
+    ]
+  },
+  "items": [
+    "vercel",
+    "codex",
+    "deepagents",
+    "eino"
+  ]
+}

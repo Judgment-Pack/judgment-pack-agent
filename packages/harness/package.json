@@ -49,7 +49,8 @@
     "certify": "node scripts/certify.mjs",
     "conformance:record": "node scripts/record-conformance.mjs record",
     "conformance:verify": "node scripts/record-conformance.mjs verify",
-    "mutation": "node scripts/mutation-check.mjs"
+    "mutation": "node scripts/mutation-check.mjs",
+    "bundle:size": "node scripts/bundle-size.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "4.0.73",
