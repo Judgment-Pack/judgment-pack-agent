@@ -49,8 +49,11 @@ export const ASSISTANT_TOOLS = [
 ] as const
 export type AssistantTool = (typeof ASSISTANT_TOOLS)[number]
 
-/** The engines this package carries. The contract's `engines`. */
-export const ASSISTANT_ENGINES = ['vercel', 'codex'] as const
+/**
+ * The engines this package carries: the contract's `engines`, the Desk's two (`vercel`, `codex`,
+ * `contract/desk/inventory.json`) and then the one this package adds (`deepagents`, ADR-0003).
+ */
+export const ASSISTANT_ENGINES = ['vercel', 'codex', 'deepagents'] as const
 export type AssistantEngine = (typeof ASSISTANT_ENGINES)[number]
 
 /**

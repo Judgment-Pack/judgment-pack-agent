@@ -5,8 +5,10 @@ extracted from the Desk's `web/src/assistant` as it is at `integration/v0.13`, `
 behaviour change, behind the wire contract in [`contract/`](../../contract/README.md). Research
 preview; version `0.1.0-dev`, unreleased.
 
-It holds the engine slot and its two adapters, the **Vercel AI SDK adapter** (`engines/vercel`) and
-the **Codex adapter** (`engines/codex`), and what they share: the context budget and ledger
+It holds the engine slot and its three adapters, the **Vercel AI SDK adapter** (`engines/vercel`),
+the **Codex adapter** (`engines/codex`) and, added here, the **Deep Agents adapter**
+(`engines/deepagents`, [ADR-0003](../../docs/adr/0003-the-deep-agents-adapter.md)), and what they
+share: the context budget and ledger
 (`context/`), execution and planning (`execution/`, `planning/`), delegation, the memory client and
 its tools (`memory/`; the store stays in the host), questions, refutation, completion, the failure
 catalogue (`failures.ts`), the tool gate (`toolGate.ts`), the framing of retrieved text
@@ -35,6 +37,7 @@ agent#13, delegation as one parent run with context by reference and per-profile
 | `@judgment-pack/harness/contract` | The engine slot's types and events (`engine.ts`), what every adapter shares (`engines/contract.ts`), the registry (`engines/index.ts`), the host's side (`host.ts`), the capability record (`capabilities.ts`), the image part (`images.ts`), and the chat-scoped context a host makes once per chat (`ChatContext`, `context/chat.ts`) with the run's context inputs (`ContextInput`). |
 | `@judgment-pack/harness/vercel` | The Vercel AI SDK adapter, `engines/vercel/index.ts`. |
 | `@judgment-pack/harness/codex` | The Codex adapter, `engines/codex/index.ts`. |
+| `@judgment-pack/harness/deepagents` | The Deep Agents adapter, `engines/deepagents/index.ts` (see The Deep Agents adapter). |
 | `@judgment-pack/harness/certification` | The scripted model and runtime server, the recorded scenario and runtime the suite runs on, and the recall rule (`recallQuery`, `certification/recall.ts`). |
 | `@judgment-pack/harness/<path>` | Any module at its Desk path, for example `context/session` or `failures`. |
 
@@ -50,7 +53,7 @@ through a bundler, as the Desk's Vite consumes them (`moduleResolution: bundler`
 **Contract values and types**, spelled as the contract spells them and held to it by `host.test.ts`
 and `tests/test_harness_copies.py`: the runtime tool ceiling `ASSISTANT_TOOLS` (the six reads the
 tool gate intersects every allow-list with: the Desk's five and, since agent#7,
-`experimental_test_cases`), the engine ids `ASSISTANT_ENGINES`, and the types
+`experimental_test_cases`), the engine ids `ASSISTANT_ENGINES` (the Desk's two and `deepagents`), and the types
 `EndpointKind`, `ThinkingTier`, `Language`, `AITarget`, and, for Plan mode, `Chat`, `ChatStore`,
 `FileRevision` and `PreparationReply`, each reduced to the members the harness touches. A host's
 own types for these are structurally the same. `sourceMessage` fills the harness's own messages from
@@ -65,7 +68,7 @@ nothing known, so a host that knows nothing about its endpoints may leave it out
 
 | Injection point | What the host supplies | The Desk feature it replaces | Read by |
 | --- | --- | --- | --- |
-| `assistantLanguageInstructions(locale)` | The reply-language section a run's instructions end with | `i18n/assistantLanguage` | `engines/vercel/loop.ts`, `engines/codex/index.ts` |
+| `assistantLanguageInstructions(locale)` | The reply-language section a run's instructions end with | `i18n/assistantLanguage` | `engines/vercel/loop.ts`, `engines/codex/index.ts`, `engines/deepagents/loop.ts` |
 | `currentLanguage()` | The page's language, where a session names none | `i18n/locales` | `session.ts` |
 | `sessionBearer()` | The session id a request carries, or a throw of `NoSession` | `mcp/session` | `session.ts`, `agentTransport.ts` |
 | `sessionEnded()` | The sentence the session ended with, or null | `mcp/session` | `session.ts` |
@@ -84,8 +87,8 @@ nothing known, so a host that knows nothing about its endpoints may leave it out
 | `readFile(path, signal)` | A saved file's current revision | `files/client` | `planning/tools.ts` |
 | `dialectAPI(path, …)` | A request to the host's input-preparation API | `dialects/client` | `planning/tools.ts` |
 | `endpointCapabilities({ family, model })` | What the host knows about an endpoint and model: any members of its capability record (see The capability record), its probe result. Answers `{}`, nothing known, until supplied | none (new, agent#9, agent#4: the Desk decides by its three families) | `capabilities.ts`, read once per run by `context/session.ts` |
-| `renderImageToText(image, signal)` | An image as text, for a model whose record says no vision: the host's render adapter | none (new, agent#5) | `images.ts`, from `engines/vercel/loop.ts` and `engines/codex/index.ts` |
-| `modelsFor({ connection, engine, family, model })` | The models a run's connection names for its subordinate work: `child`, delegated children's, and `critic`, the critic's; each absent or null for the run's own model. Asked once per run with the run's connection (`context.connection`), engine, family and model. Answers none until supplied. It replaces agent#10's `criticModel` (see The critic) | none (new, agent#10; one seam since the review of agent#35) | `host.ts`, `runModels`, read by `context/session.ts`, `SessionContext.models`, for `engines/vercel/loop.ts`, `engines/codex/index.ts` and `delegation.ts` |
+| `renderImageToText(image, signal)` | An image as text, for a model whose record says no vision: the host's render adapter | none (new, agent#5) | `images.ts`, from `engines/vercel/loop.ts`, `engines/codex/index.ts` and `engines/deepagents/loop.ts` |
+| `modelsFor({ connection, engine, family, model })` | The models a run's connection names for its subordinate work: `child`, delegated children's, and `critic`, the critic's; each absent or null for the run's own model. Asked once per run with the run's connection (`context.connection`), engine, family and model. Answers none until supplied. It replaces agent#10's `criticModel` (see The critic) | none (new, agent#10; one seam since the review of agent#35) | `host.ts`, `runModels`, read by `context/session.ts`, `SessionContext.models`, for `engines/vercel/loop.ts`, `engines/codex/index.ts`, `engines/deepagents/loop.ts` and `delegation.ts` |
 
 The failure catalogue and the context budget table are the package's own copies of the Desk's
 Go-side files (`internal/aifailure/catalog.json`, `internal/aicontext/policy.json`), byte for byte,
@@ -297,11 +300,11 @@ The host says per run whether the project's memory is on (`context.memory`): `fa
 
 ### Delegation
 
-`withDelegation(engine, options)` (`delegation.ts`) wraps either engine for a conversation and
+`withDelegation(engine, options)` (`delegation.ts`) wraps any of the three engines for a conversation and
 offers the model `delegate_tasks` (`delegationContract.ts`; the contract's `delegated-task.json`;
 agent#13, agent#14, agent#15, agent#16, agent#17, agent#18):
 
-- **One parent run.** The call runs the batch. The `vercel` engine awaits it in the parent's step,
+- **One parent run.** The call runs the batch. The `vercel` and `deepagents` engines await it in the parent's step,
   with no tool-call deadline (the batch is bounded by its children's time limits and the run's own
   signal), and the children's findings are the call's tool result in the same run. The `codex`
   engine ends its run at the call, since the provider account runs one agent run at a time and the
@@ -385,6 +388,7 @@ connection's capacity setting, answered as `concurrentRequests` in `modelsFor`, 
 npm ci
 npm run certify -- --adapter vercel
 npm run certify -- --adapter codex
+npm run certify -- --adapter deepagents
 ```
 
 The suite is the Desk's conformance session and its certification checks, moved whole: the recorded
@@ -395,7 +399,8 @@ scenario's five-tool offer (K2), the rehearsal rewrite (K3a), the refused write 
 ceiling is exactly six names, and `test_conformance` is refused at the wire even where a runtime
 serves it and a file grants it.
 
-The checks, by adapter:
+The checks, by adapter. `deepagents` is a model engine and is held to every check in the `vercel`
+column, on the same legs:
 
 | Check | `vercel` (model engine) | `codex` (agent engine) |
 | --- | --- | --- |
@@ -466,7 +471,8 @@ npm run mutation --workspace @judgment-pack/harness -- --shard 1/4         # the
 
 The first 111 rows are the ones the Desk's `mutation-check.sh` held over the files that moved here,
 carried by the swap (judgment-pack-desk#516); the rest are this repository's own (agent#36 and
-agent#38 each add one). Nine of the Desk's needles no longer matched the moved code: eight were
+agent#38 each add one, and ADR-0003 three for the Deep Agents adapter: its boundary, its built-ins
+off and its question pause). Nine of the Desk's needles no longer matched the moved code: eight were
 re-anchored on the same safeguard (a row's `note` says why), and one row is retired, with its
 reason in the table, because the code it broke is gone. A row's `tests` are the files that
 import the mutated file or a module that does, and those that name it in a string; a run in which
@@ -485,7 +491,7 @@ the scripted endpoint; the agent engine runs each at its own seam (`AgentRun`), 
 it. The suite is `certification/scenarios.test.ts`; its turns and runs are driven by
 `testing/scenarioDriver.ts`. `npm run certify` prints the checks passed by scenario.
 
-| Scenario | Checks | `vercel` (per answer shape) | `codex` |
+| Scenario | Checks | `vercel` and `deepagents` (per answer shape) | `codex` |
 | --- | --- | --- | --- |
 | 1 Chat mode with host tools: a read, a proposal, a name never offered | the offer (two host tools beside the Runtime's six and the harness's six); the gate refuses the third name between its call and its result; the proposal reaches the review card and nothing is acted on; the answer is delivered | 4 | 4 |
 | 2 Delegation: a batch of a review and a research child, then a follow-up that resumes the research child | one parent run per response (vercel) or the next run's result and the chat's index (codex); the children's offers closed; a reference resolved within the chat; each result in its profile's shape and valid against the contract; the figures; the resumed child's earlier work | 7 | 7 |
@@ -496,13 +502,41 @@ it. The suite is `certification/scenarios.test.ts`; its turns and runs are drive
 
 The checks the adapters make differently are recorded here, with the reason, and not skipped:
 
-- **1** The agent transport refuses a name outside the agent's offer before the gate sees it (the run ends), so the agent engine is driven at `AgentRun`, where the gate refuses it and the agent's answer is the refusal (agent#25). On the model engine the SDK answers the unoffered call first, with its own no-such-tool error naming the tool, and the model reads that; the stream shows the gate's refusal on both.
+- **1** The agent transport refuses a name outside the agent's offer before the gate sees it (the run ends), so the agent engine is driven at `AgentRun`, where the gate refuses it and the agent's answer is the refusal (agent#25). On the `vercel` model engine the SDK answers the unoffered call first, with its own no-such-tool error naming the tool, and the model reads that; on the `deepagents` model engine the adapter's boundary answers every call before LangChain's tool node, so the model reads the gate's refusal, as the agent's does (ADR-0003); the stream shows the gate's refusal on all three.
 - **2** The agent's run ends at the delegate call, so a response is the call's run, the children's runs and the next run: four runs for a batch of two, three for the resumed child. The agent wire reports no usage and no model request, so a child's record carries no `tokens` and no model requests, and the batch's figures count `agentRuns` instead; its `firstByteMs` and `durationMs` are present.
 - **3** The agent engine sends the Desk's server no model request to recall for: its one request is the run's prompt, which opens with the person's message. The reserve checks are the same on both.
 - **5** The model engine's loop is five model requests (two authoring requests, the critic's three); the agent engine's is three agent runs (author, author, critic). The critic's boundary check runs the loop once more with a call of `write_file` first in the critic's script, on both adapters; the guardrail's detail, "is not one of the tools the critic may call", is what shows `admit` refused it.
 - **4** and **6** make the same checks on both. The index is a text part of the first message on the model engine and the end of the prompt on the agent engine.
 
-Not covered by these scenarios: the network seal (the recorded scenario's legs hold it), the other two wires (the recall rule's vectors and the recorded scenario cover them), and a model engine other than `vercel`, which a new adapter adds by registering.
+Not covered by these scenarios: the network seal (the recorded scenario's legs hold it) and the other two wires (the recall rule's vectors and the recorded scenario cover them). A model engine is added by registering it, as `deepagents` was, and then runs every scenario.
+
+### The Deep Agents adapter (ADR-0003)
+
+`engines/deepagents` runs the turn on LangChain's Deep Agents (`deepagents@1.14.1`, through its
+browser entry, `deepagents/browser`), with the same session, the same seams and the same
+certification as `vercel`:
+
+- **Its model is the relay's.** `model.ts` is a LangChain chat model whose only reach is
+  `session.model.call`, wrapped in the shared retry rule, and a run whose environment turns
+  LangChain's LangSmith tracer on (its other way out) is refused before it starts; `wire.ts` writes and reads the three wires
+  itself, because LangChain's provider classes cannot carry what the contract holds a model engine
+  to (the Gemini one cannot route through the relay at all; the ADR lists what was measured).
+- **The gate is its only tool boundary.** Deep Agents' own middleware (its file tools, the `task`
+  subagent tool, summarization, the tool-call patcher) is replaced by name with middleware that does
+  nothing. The tools it is given are declarations; every call is answered by its boundary middleware
+  (`wrapToolCall`), through the gate, with the contract's events, a name outside the phase's offer
+  refused there. Its `wrapModelCall` hook asks the package's context for each request's budget and
+  compaction, places the execution state and records the completion.
+- **The package keeps the rest.** Delegation is the package's (`withDelegation`), the critic, the
+  reformat request and the turn clock are the contract's, and `interruptOn`, `checkpointer`,
+  `permissions` and Deep Agents' subagents, memory and skills are not used; the ADR says why for
+  each.
+- **It builds for the browser**; its own chunk adds 1,044.7 kB minified, 276.1 kB gzipped, beside
+  what it shares with `vercel`.
+
+Its own checks are `engines/deepagents/deepagents.test.ts`: the offer is the gate's alone, a
+built-in name is refused at the boundary on both tool-call paths, the question pause, a relay that
+refuses the bearer fails closed, unreadable arguments are never run, and the browser entry.
 
 Tests and certification run on `testing/host.ts`, a host that supplies each injection point the way
 the Desk's own test ground does: a session already in hand, a relay addressed by path, no socket.

@@ -99,10 +99,11 @@
       "$ref": "#/$defs/sha256"
     },
     "engine": {
-      "description": "The engine id a session ran on (Engine.id, the AssistantEngine identifier). Held by the host, never carried on an event.",
+      "description": "The engine id a session ran on (Engine.id, the AssistantEngine identifier). Held by the host, never carried on an event. The Desk's two (contract/desk/inventory.json), then deepagents, the adapter this repository adds on LangChain's Deep Agents (docs/adr/0003-the-deep-agents-adapter.md).",
       "enum": [
         "vercel",
-        "codex"
+        "codex",
+        "deepagents"
       ]
     },
     "criticFigures": {
