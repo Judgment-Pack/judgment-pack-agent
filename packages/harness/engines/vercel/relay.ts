@@ -25,7 +25,8 @@
  *   capability drops everything outside its own allow-list again;
  * - **the answer is presented in the framing the SDK asked for.** See below.
  */
-import { isEventStream, withAbort } from '../contract'
+import { isCancelled, isEventStream, withAbort } from '../contract'
+import { authoredFailure, failureError } from '../../failures'
 import { TIER_MEMBERS, isTruncatedSignature } from '../../thinking'
 import type { EndpointKind } from '../../host'
 import type { ModelCall } from '../../engine'
@@ -671,8 +672,22 @@ export function relayFetch(options: {
     }
     // Reading a body is an await on the world like any other: a stalled body
     // must not outlive the run it belongs to.
-    const payload: unknown = await withAbort(() => answered.json(), run).catch(() => undefined)
-    if (payload === undefined) return answered
+    //
+    // **What cannot be read is reported, not handed on** (agent#3). The body is
+    // spent once it has been read, so an answer that broke while it was read,
+    // or is not JSON, was handed to the SDK unreadable and reported as an
+    // unknown failure. A body that broke is the connection ending before the
+    // answer did; one that is not JSON is an answer with nothing usable in it.
+    const text = await withAbort(() => answered.text(), run).catch((cause: unknown) => {
+      if (isCancelled(cause)) throw cause
+      throw failureError('connection-lost', 'model')
+    })
+    let payload: unknown
+    try {
+      payload = JSON.parse(text)
+    } catch {
+      throw authoredFailure('invalid-response', 'the endpoint answered whole where a stream was asked for, and its answer is not complete JSON', 'model')
+    }
     return new Response(reframe(options.family, payload), {
       status: answered.status,
       statusText: answered.statusText,

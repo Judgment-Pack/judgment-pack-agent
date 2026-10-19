@@ -5,10 +5,18 @@ import defaults from '../contract/policy.json'
  * carries neither at the pinned commit; a table that does wins over these.
  */
 export const TIME_DEFAULTS = Object.freeze({turnMilliseconds:15*60_000,toolCallMilliseconds:120_000})
-export type ContextPolicy = typeof defaults & {turnMilliseconds:number;toolCallMilliseconds:number}
+/**
+ * The bounds the harness puts on the Runtime's test tool, experimental_test_cases (agent#7), which the Desk's table
+ * does not carry either: how many test calls one turn may make (each re-sends the whole pack, so a test, fix and
+ * retest loop is held to a few rounds rather than to the request allowance), and the most bytes the pack text and the
+ * matrix text may each be, which the tool gate holds on the wire. A table that carries one wins over these.
+ */
+export const TEST_DEFAULTS = Object.freeze({testCallsPerTurn:3,testPackBytes:65_536,testMatrixBytes:65_536})
+export type TestBounds = {testCallsPerTurn:number;testPackBytes:number;testMatrixBytes:number}
+export type ContextPolicy = typeof defaults & {turnMilliseconds:number;toolCallMilliseconds:number} & TestBounds
 export interface ModelContextBudget {contextWindowTokens:number;outputTokens:number}
 export interface ContextConfiguration {version:1;projectBrief?:string;models?:Record<string,ModelContextBudget>}
-export const CONTEXT_DEFAULTS:Readonly<ContextPolicy> = Object.freeze({...TIME_DEFAULTS,...defaults})
+export const CONTEXT_DEFAULTS:Readonly<ContextPolicy> = Object.freeze({...TIME_DEFAULTS,...TEST_DEFAULTS,...defaults})
 export function contextConfiguration(value:unknown):ContextConfiguration {
  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid assistant context configuration')
  const c=value as Record<string,unknown>

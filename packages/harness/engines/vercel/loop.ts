@@ -6,6 +6,7 @@ import {EXECUTION_INSTRUCTIONS} from '../../execution/controller'
 import {managedContext,contextOf} from '../../context/managed'
 import { readDelegationRequest } from '../../delegationContract'
 import { assistantLanguageInstructions, endpointCapabilities } from '../../host'
+import { DATA_RULE, readingTool } from '../../framing'
 /**
  * The `vercel` engine's loop: the Vercel AI SDK v7, behind the desk's contract.
  *
@@ -103,12 +104,15 @@ import { refusedSchemaKeyword, refusedSchemaSentence } from '../../geminiSchema'
 import { eventChannel } from './channel'
 import { placeholderBase, relayFetch, signatureLedger, signatureOf } from './relay'
 import { retryingCall } from './retry'
-import type { LanguageModel, ToolSet, ModelMessage, SystemModelMessage } from 'ai'
+import type { LanguageModel, ToolSet, ModelMessage, SystemModelMessage, Tool } from 'ai'
 import type { AssistantEngine, EndpointCapabilities, EndpointKind, StatePlacement, ThinkingTier } from '../../host'
 import type { AssistantEvent, AssistantSession, McpTool, McpToolResult, HostTool, ModelCall, ProposalNote } from '../../engine'
 import type { CritiqueRecorder } from '../../refutation'
 import type { ThinkingSlot } from '../../thinking'
 import type { SignatureLedger } from './relay'
+
+/** What a tool's `toModelOutput` returns: the part of an answer the model is shown. */
+type ToolResultOutput = Awaited<ReturnType<NonNullable<Tool['toModelOutput']>>>
 
 /**
  * The tool whose arguments the desk rehearses, named once.
@@ -359,16 +363,22 @@ function modelFor(
  * The runtime's tools, as the SDK's, with the runtime's own schemas — and the
  * desk's host tools beside them, each executed by the desk's own function
  * rather than dispatched over the gate.
+ *
+ * **What the model is shown of an answer is decided here, on purpose**
+ * (agent#12): every tool carries `toModelOutput`, which hands the model the
+ * framed text a dispatch recorded for that call (`framing.ts`), and the SDK's
+ * own default — the answer as JSON — for every call that recorded none.
  */
 function toolsFor(
   family: EndpointKind,
   tools: McpTool[],
-  execute: (name: string, input: unknown) => Promise<McpToolResult>,
+  execute: (name: string, input: unknown, callId: string) => Promise<McpToolResult>,
   hostTools: HostTool[] = [],
-  executeHost: (tool: HostTool, input: unknown) => Promise<McpToolResult> = async () => ({
+  executeHost: (tool: HostTool, input: unknown, callId: string) => Promise<McpToolResult> = async () => ({
     content: [],
     isError: true
-  })
+  }),
+  modelOutput: (callId: string, output: unknown) => ToolResultOutput = shownAsAnswered
 ): ToolSet {
   const set: ToolSet = {}
   // The tools are sent host tools first, then the runtime's; the breakpoint
@@ -383,7 +393,8 @@ function toolsFor(
         servedSchemaFor(family, tool) as Parameters<typeof jsonSchema>[0]
       ),
       ...breakpoint(tool),
-      execute: (input: unknown) => executeHost(tool, input)
+      execute: (input: unknown, options: { toolCallId: string }) => executeHost(tool, input, options.toolCallId),
+      toModelOutput: ({ toolCallId, output }: { toolCallId: string; output: unknown }) => modelOutput(toolCallId, output)
     })
   }
   for (const tool of tools) {
@@ -399,10 +410,18 @@ function toolsFor(
         servedSchemaFor(family, tool) as Parameters<typeof jsonSchema>[0]
       ),
       ...breakpoint(tool),
-      execute: (input: unknown) => execute(tool.name, input)
+      execute: (input: unknown, options: { toolCallId: string }) => execute(tool.name, input, options.toolCallId),
+      toModelOutput: ({ toolCallId, output }: { toolCallId: string; output: unknown }) => modelOutput(toolCallId, output)
     })
   }
   return set
+}
+
+/** The SDK's own default for a tool answer: text as text, anything else as its JSON. */
+function shownAsAnswered(_callId: string, output: unknown): ToolResultOutput {
+  if (typeof output === 'string') return { type: 'text', value: output }
+  const text = JSON.stringify(output)
+  return { type: 'json', value: text === undefined ? null : JSON.parse(text) }
 }
 
 
@@ -637,13 +656,28 @@ function runVercelLoop(
     asked.length = 0
     /** A proposal delivered through `propose_pack`; the fence is the fallback. */
     let toolProposal: Proposal | null = null
-    const tools = toolsFor(session.model.family, session.tools, async (name, input) => {
+    /**
+     * What each reading tool's answer is shown to the model as, by call id: one
+     * data block closed by this run's marker (agent#12). Written only where a
+     * reading tool answered; a failure the harness authored is shown as it is.
+     *
+     * **Cleared as each dispatch starts.** An endpoint may use one call id for
+     * calls in different steps, so an entry left from an earlier call would show
+     * the model that call's data in place of this one's refusal or failure.
+     */
+    const framed = new Map<string, string>()
+    const shown = (callId: string, name: string, projected: McpToolResult): McpToolResult => {
+      framed.set(callId, context.frame(name, JSON.stringify(projected)))
+      return projected
+    }
+    const tools = toolsFor(session.model.family, session.tools, async (name, input, sdkCallId) => {
       // **The desk's gate is handed the call the model made.** The hook below
       // has already rewritten what the SDK carries; what leaves the page is
       // rewritten by the ToolGate, which is the layer that reports it. A gate
       // handed a call somebody else already fixed reports nothing, and the
       // guardrail line in the tab is the only place a person learns that the
       // rehearsal flag was forced.
+      framed.delete(sdkCallId)
       const args = (name === REHEARSAL_TOOL && asked.length > 0 ? asked.shift() : input) as Record<
         string,
         unknown
@@ -685,12 +719,13 @@ function runVercelLoop(
       // reached: the refusal path above returns before it, so a call the gate
       // refused is a `guardrail` line and never a check.
       recording?.saw(name, said.text)
-      return context.result(name, answer)
-    }, session.hostTools, async (tool, input) => {
+      return shown(sdkCallId, name, await context.result(name, answer))
+    }, session.hostTools, async (tool, input, sdkCallId) => {
       // A host tool runs on the page, under the run's own signal: a stopped run
       // stops it, and its answer is reported in the same two events a runtime
       // answer earns. It is never a check the critic counts — the runtime's
       // verdicts are the runtime's — and it never reaches the recorder.
+      framed.delete(sdkCallId)
       const args = (input ?? {}) as Record<string, unknown>
       if (awaitingInput) throw new DOMException('Waiting for input', 'AbortError')
       executionSignal.throwIfAborted()
@@ -748,7 +783,11 @@ function runVercelLoop(
         text: said.text,
         ...(said.structured === undefined ? {} : { structured: said.structured })
       })
-      return context.result(tool.name, answer)
+      const projected = await context.result(tool.name, answer)
+      return readingTool(tool) && tool.name !== PROPOSE_PACK_TOOL ? shown(sdkCallId, tool.name, projected) : projected
+    }, (callId, output) => {
+      const text = framed.get(callId)
+      return text === undefined ? shownAsAnswered(callId, output) : { type: 'text', value: text }
     })
 
     // One model and one refinement hook, shared by the loop and the critic:
@@ -779,7 +818,7 @@ function runVercelLoop(
 
     let streamed: unknown = null
     let publicText = ''
-    const instructions=(session.purpose === 'graph' ? GRAPH_SYSTEM : session.purpose === 'brief' ? BRIEF_SYSTEM : session.purpose === 'test-design' ? TEST_DESIGN_SYSTEM : session.allowConversation ? CONVERSATION_SYSTEM : SYSTEM) + (offersProposeTool(session.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : '') + assistantLanguageInstructions(session.replyLanguage)
+    const instructions=(session.purpose === 'graph' ? GRAPH_SYSTEM : session.purpose === 'brief' ? BRIEF_SYSTEM : session.purpose === 'test-design' ? TEST_DESIGN_SYSTEM : session.allowConversation ? CONVERSATION_SYSTEM : SYSTEM) + (offersProposeTool(session.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : '') + DATA_RULE + assistantLanguageInstructions(session.replyLanguage)
     const schemas=[...session.tools,...session.hostTools].map(({name,description,inputSchema})=>({name,description,inputSchema}))
     tier=sdkThinking(session.model.family,slot.members())
     context.reserveOutput(tier.maxOutputTokens)
@@ -1119,13 +1158,15 @@ function runVercelLoop(
       context.beginIsolatedPhase()
       let criticText = ''
       let criticReasoning = ''
+      // The critic's system text, set once: the call and every step use it.
+      const criticInstructions = CRITIC_SYSTEM + DATA_RULE + assistantLanguageInstructions(session.replyLanguage)
       /** Why the critic did not finish: its failure, never raised ahead of the proposal. */
       let unfinished: unknown = null
       try {
         const critic = streamText({
           telemetry: { isEnabled: false },
           model,
-          instructions: cachedInstructions(session.model.family, CRITIC_SYSTEM + assistantLanguageInstructions(session.replyLanguage)),
+          instructions: cachedInstructions(session.model.family, criticInstructions),
           tools: Object.fromEntries(Object.entries(tools).filter(([name]) => !session.hostTools?.some(tool => tool.name === name && (tool.interaction || tool.effect === 'memory' || ['update_plan','request_budget_increase',PROPOSE_PACK_TOOL].includes(tool.name))))),
           messages: [
             { role: 'user', content: await context.prompt(criticMessage(session.testPrompt, proposal.document),CRITIC_SYSTEM,schemas) }
@@ -1144,7 +1185,7 @@ function runVercelLoop(
             toolsClosed=progressStep==='finish'||stepNumber>=MAX_CRITIC_TURNS-1
             // The critic's system text is stable too; its step instruction, when
             // it has one, is the last message rather than a change to the system.
-            const instructions=CRITIC_SYSTEM+assistantLanguageInstructions(session.replyLanguage)
+            const instructions=criticInstructions
             const step=progressStep==='recover'?RECOVER_REPEATED_WORK_INSTRUCTIONS:progressStep==='finish'?REPEATED_WORK_INSTRUCTIONS:toolsClosed?finalInstructions:''
             // The note carries the header like every state, and is placed the same way.
             const note=step?stateText(step):''
