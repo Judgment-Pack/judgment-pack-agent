@@ -66,6 +66,14 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
 
+      # A signed tag is an annotated tag; a lightweight tag is refused.
+      - name: Require an annotated tag
+        shell: bash
+        run: |
+          kind="$(git cat-file -t "refs/tags/${RELEASE_TAG}")" \
+            || { echo "refs/tags/${RELEASE_TAG} could not be read; releases need an annotated tag (docs/releasing.md)" >&2; exit 1; }
+          [ "${kind}" = "tag" ] || { echo "refs/tags/${RELEASE_TAG} is a ${kind} object; releases need an annotated tag (git tag -s), not a lightweight one" >&2; exit 1; }
+
       - name: Require the tag to name that commit
         shell: bash
         run: |
@@ -90,6 +98,11 @@ jobs:
         run: |
           notes="docs/releases/${RELEASE_TAG}.md"
           test -s "${notes}" || { echo "${notes} is missing or empty at the tag" >&2; exit 1; }
+          # A notes file written for another tag is not this release's notes:
+          # its first line must be exactly the tag's name on a line of its own
+          # after an optional heading marker.
+          first="$(head -n 1 "${notes}" | sed -E 's/^#+ +//; s/ +$//')"
+          [ "${first}" = "${RELEASE_TAG}" ] || { echo "${notes} must name ${RELEASE_TAG} on its first line (found: ${first})" >&2; exit 1; }
 
       # GitHub creates a missing environment on first use, without protection.
       # Read the rule before anything is written so the publish gate cannot be
@@ -353,10 +366,13 @@ jobs:
         run: |
           tarball="judgment-pack-harness-${VERSION}.tgz"
           written="$(cd run && for name in checksums.txt "${tarball}"; do printf '%s sha256:%s\n' "${name}" "$(sha256sum "${name}" | cut -d ' ' -f 1)"; done | LC_ALL=C sort)"
-          draft="$(gh api "repos/${GH_REPO}/releases/${RELEASE_ID}" --jq .draft)"
-          published="$(gh api "repos/${GH_REPO}/releases/${RELEASE_ID}/assets" --paginate --jq '.[] | "\(.name) \(.digest)"' | LC_ALL=C sort)"
+          draft="$(gh api "repos/${GH_REPO}/releases/${RELEASE_ID}" --jq .draft)" \
+            || { echo "Could not verify the published release ${RELEASE_TAG} (release ${RELEASE_ID}): reading it failed. Treat it as unverified (docs/releasing.md)" >&2; exit 1; }
+          published="$(gh api "repos/${GH_REPO}/releases/${RELEASE_ID}/assets" --paginate --jq '.[] | "\(.name) \(.digest)"')" \
+            || { echo "Could not verify the published release ${RELEASE_TAG} (release ${RELEASE_ID}): reading its assets failed. Treat it as unverified (docs/releasing.md)" >&2; exit 1; }
+          published="$(printf '%s\n' "${published}" | LC_ALL=C sort)"
           if [ "${draft}" != "false" ] || [ "${published}" != "${written}" ]; then
-            printf 'The published release %s (release %s, draft: %s) does not hold what this run wrote.\nThis run wrote:\n%s\nThe release holds:\n%s\n' \
+            printf 'The published release does not hold what this run wrote: %s (release %s, draft: %s).\nThis run wrote:\n%s\nThe release holds:\n%s\n' \
               "${RELEASE_TAG}" "${RELEASE_ID}" "${draft}" "${written}" "${published}" >&2
             exit 1
           fi

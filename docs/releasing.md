@@ -49,7 +49,7 @@ rule.
      version the package does not hold;
    - finalises `docs/releases/<tag>.md`: what the package is, what the release holds and what it
      does not, and what a host must review before it pins the new version. It is the text the
-     release page will carry.
+     release page will carry. Remove the coordinator placeholder comment from it before tagging.
 2. Run the checks locally, as `ci.yml` does:
 
    ```sh
@@ -73,6 +73,10 @@ git push origin <tag>
 If no signing key is configured, stop and settle the signing policy. Do not replace a signed tag
 with an unsigned one. Signing is the maintainer's practice; the workflow does not check it.
 
+The tag must be annotated (`-s` makes it so): the workflow refuses a lightweight tag, reading the
+tag's object type. The notes file `docs/releases/<tag>.md` must name the tag, for example `v0.1.0`,
+on its first line (an optional heading marker is allowed), or the workflow refuses it.
+
 A tag is `vMAJOR.MINOR.PATCH`, in ASCII digits with no leading zeroes, and nothing after: no
 prerelease and no build metadata. A tag is never moved or reused. A fix is a new release.
 
@@ -80,8 +84,8 @@ prerelease and no build metadata. A tag is never moved or reused. A fix is a new
 
 Every job works on the commit the run was started for, by its digest, not on the tag's name.
 
-1. **Admits the tag.** It is in the grammar; it names the commit the run was started for; that
-   commit is on `main`; `docs/releases/<tag>.md` exists and is not empty; and the `release`
+1. **Admits the tag.** It is in the grammar; it is an annotated tag; it names the commit the run was started for; that
+   commit is on `main`; `docs/releases/<tag>.md` exists, is not empty and names the tag on its first line; and the `release`
    environment has a reviewer rule.
 2. **Runs CI at that commit.** The release calls the commit's own
    [`ci.yml`](../.github/workflows/ci.yml): `contract`, `tests`, `harness` and `certify` for each
@@ -106,7 +110,7 @@ Every job works on the commit the run was started for, by its digest, not on the
 7. **Reads the published release again.** Immediately after publication the job reads the
    published release's asset digests through the API once more, and fails the step `Require the
    published release to hold what this run wrote`, printing both digest sets, if they differ from
-   the run's files.
+   the run's files. A read that fails is a separate failure, "could not verify the published release", and also fails the step.
 
 An approval given more than thirty days after the run finds the run's files gone, and the job
 fails: release a new version.
