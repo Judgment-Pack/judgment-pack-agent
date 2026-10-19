@@ -1,5 +1,5 @@
 {
-  "description": "The final answer's marked json fence is not valid JSON, and the one reformat request returns the same: the whole first answer, prose and raw fence, is delivered as a message, then the failure, classed invalid-response with its host-authored detail. vercel engine.",
+  "description": "The final answer's marked json fence is not valid JSON, and the one reformat request returns the same: the whole first answer, prose and raw fence, is delivered as a message, then the failure, classed invalid-response with its host-authored detail. Both engines: vercel's tool-free reformat request, and, since agent#29, codex's tool-free reformat run, one agent run shown the answer in its prompt.",
   "schema": "run-event.json",
   "source": {
     "harness": {
@@ -8,7 +8,8 @@
     },
     "files": [
       "packages/harness/engines/contract.ts (extractProposal, wholeAnswer, reformatRequest)",
-      "packages/harness/engines/vercel/loop.ts (keepUnread)"
+      "packages/harness/engines/vercel/loop.ts (keepUnread)",
+      "packages/harness/engines/codex/index.ts (reformatPrompt, the reformat run)"
     ]
   },
   "items": [

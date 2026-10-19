@@ -317,6 +317,18 @@ class VectorTests(unittest.TestCase):
             set(self.schemas["capability.json"]["properties"]),
         )
 
+    def test_the_critic_reads_within_the_ceiling_and_runs_only_where_asked(self):
+        # agent#10: the critic's allow-list is four of the ceiling's reads, and the table's default is off.
+        critic = self.schemas["tool-offer.json"]["$defs"]["criticTools"]["enum"]
+        ceiling = self.schemas["tool-offer.json"]["$defs"]["runtimeCeiling"]["enum"]
+        self.assertEqual(critic, ["validate", "experimental_evaluate", "get_schema", "experimental_test_cases"])
+        self.assertTrue(set(critic) <= set(ceiling))
+        self.assertIs(load(CONTRACT / "desk" / "policy.json")["adversarialReview"], False)
+        self.assertEqual(self.vectors["tool-offer/critic-tools.json"]["items"], critic)
+        offered = [tool["name"] for tool in self.vectors["tool-offer/critic-offer.json"]["items"]]
+        scenario = [tool["name"] for tool in self.vectors["tool-offer/scenario-offer.json"]["items"][0]["tools"]]
+        self.assertEqual(offered, [name for name in scenario if name in critic])
+
     def test_the_scenario_is_the_order_the_conformance_session_asserts(self):
         vector = self.vectors["scenario/expense-reimbursement.json"]
         self.assertEqual(

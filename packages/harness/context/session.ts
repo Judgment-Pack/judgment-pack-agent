@@ -1,12 +1,13 @@
 import {runtimeToolContextPolicy} from './toolPolicy'
-import {failureError,AIFailureError} from '../failures'
+import {failureError,AIFailureError,authoredFailure} from '../failures'
+import {criticMayCall,criticRefusal,criticRefusalDetail,readCriticCases,type CriticCase} from '../refutation'
 import {TEST_TOOL} from '../toolGate'
 import {dataMarker,frameBlock,frameData,unframeData} from '../framing'
 import {ExecutionController} from '../execution/controller'
 import {planningSession} from '../planning/policy'
 import type {ChatPlan} from '../planning/model'
 import type {ModelMessage} from 'ai'
-import type {EngineSession,McpToolResult} from '../engine'
+import type {AssistantEvent,EngineSession,McpToolResult} from '../engine'
 import {ContextLedger,answer,contextDigest,type ContextDocument} from './ledger'
 import {READ_TOOL} from './reader'
 import {SEARCH_TOOL} from './search'
@@ -29,7 +30,14 @@ export class SessionContext {
  private summaries=new Set<string>()
  private contracts=new Map<string,unknown>()
  private referenceTools:Set<string>
- constructor(session:EngineSession){this.capabilities='model'in session?capabilitiesFor(session.model):undefined;this.policy=contextPolicy(session.context?.configuration,'model'in session?session.model.model:session.agent.model,this.capabilities);this.ledger=new ContextLedger(this.policy);this.execution=new ExecutionController(session,this.ledger);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))}
+ /** agent#10: the cases whose outcomes the host declares for the critic, read closed once for the run. */
+ readonly criticCases:CriticCase[]
+ /** agent#10: whether the critic is running, which narrows every call to its allow-list (`admit`). */
+ private critic=false
+ /** agent#10: the guardrail events the critic's refusals earned, for the boundary to put on the stream. */
+ private notices:AssistantEvent[]=[]
+ constructor(session:EngineSession){this.capabilities='model'in session?capabilitiesFor(session.model):undefined;this.policy=contextPolicy(session.context?.configuration,'model'in session?session.model.model:session.agent.model,this.capabilities);this.ledger=new ContextLedger(this.policy);this.execution=new ExecutionController(session,this.ledger);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))
+  try{this.criticCases=readCriticCases(session.criticCases??[])}catch(cause){throw authoredFailure('configuration',(cause as Error).message,'context')}}
  /** Independent reviewers get a new retrieval scope and no author's working
   * summaries or cached reads. Request accounting and original journals stay. */
  beginIsolatedPhase(){
@@ -38,6 +46,29 @@ export class SessionContext {
   this.execution.clearReadCache()
   this.execution.progress.beginPhase()
  }
+ /**
+  * The critic starts (agent#10): an isolated phase, and from here until
+  * `endCriticPhase` every call is held to the critic's allow-list by `admit`.
+  */
+ beginCriticPhase(){this.beginIsolatedPhase();this.critic=true}
+ endCriticPhase(){this.critic=false}
+ /**
+  * **The critic's allow-list, held below both engines** (agent#10). While the
+  * critic runs, a runtime call outside `CRITIC_TOOLS`, and every host tool
+  * call, is refused here before it reaches the ToolGate or the host's
+  * `execute`: the call is not made, the model reads a `permission` failure, and
+  * a `guardrail` `refused` event is put on the stream between the call and its
+  * result. The boundary's wrapped `callTool` and host tools call this, and each
+  * engine calls it before its own handling of a host tool (a question, a
+  * delegation, `propose_pack`), so no engine path reaches past it.
+  */
+ admit(name:string,kind:'runtime'|'host'){
+  if(!this.critic||kind==='runtime'&&criticMayCall(name))return
+  this.notices.push({type:'guardrail',tool:name,action:'refused',detail:criticRefusalDetail(name)})
+  throw criticRefusal(name)
+ }
+ /** The guardrail events the critic's refusals earned since the last read. */
+ takeNotices():AssistantEvent[]{const taken=this.notices;this.notices=[];return taken}
  reserveOutput(tokens:unknown){if(typeof tokens==='number'&&Number.isInteger(tokens)&&tokens>this.policy.outputTokens){if(tokens>this.policy.contextWindowTokens/2)throw new ContextBudgetError();this.policy.outputTokens=tokens}}
  /** `attachments`: the host's documents for the run, which search scopes as attachments (agent#5). */
  async initialize(documents:ContextDocument[]=[],attachments=false){for(const doc of documents)await this.ledger.retain(doc,attachments)}
@@ -222,8 +253,8 @@ export async function contextualSession<T extends EngineSession>(session:T):Prom
  await context.execution.retainProgress()
  if(session.context?.plan)await context.initialize([{id:'current-plan',kind:'artifact',label:'Current chat plan',value:session.context.plan}])
  if([...session.tools,...session.hostTools].some(t=>t.name==='read_context'||t.name==='list_context'||t.name===READ_TOOL||t.name===SEARCH_TOOL||t.name==='update_plan'||t.name==='request_budget_increase'))throw Error('Context tool names are reserved by Desk.')
- const hostTools=[...session.hostTools,...context.ledger.tools(),...(session.allowConversation?[context.execution.tool(),context.execution.budgetTool()]:[])].map(tool=>({...tool,execute:async(args:Record<string,unknown>,signal:AbortSignal)=>{await session.context?.authorize?.(signal);return context.execution.wrapRead(tool.name,a=>tool.execute(a,signal),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read')(args)}}))
+ const hostTools=[...session.hostTools,...context.ledger.tools(),...(session.allowConversation?[context.execution.tool(),context.execution.budgetTool()]:[])].map(tool=>({...tool,execute:async(args:Record<string,unknown>,signal:AbortSignal)=>{context.admit(tool.name,'host');await session.context?.authorize?.(signal);return context.execution.wrapRead(tool.name,a=>tool.execute(a,signal),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read')(args)}}))
  const model='model'in session?{...session.model,call:async(suffix:string,request:import('../engine').ModelRequest)=>{await session.context?.authorize?.(session.signal);if(request.method!=='GET'){context.execution.claim();try{await session.context?.checkpoint?.(context.execution.snapshot())}catch{throw failureError('storage','storage','not-started')}}return session.model.call(suffix,request)}}:undefined
  const agent='agent'in session?{...session.agent,run:async(request:import('../agent').AgentRequest,callbacks:import('../agent').AgentCallbacks)=>{await session.context?.authorize?.(callbacks.signal);return session.agent.run(request,callbacks)}}:undefined
- return {context,session:{...session,...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{await session.context?.authorize?.(session.signal);context.claimTestCall(name);return context.execution.wrapRead(name,a=>session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true)(args)}}}
+ return {context,session:{...session,...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{context.admit(name,'runtime');await session.context?.authorize?.(session.signal);context.claimTestCall(name);return context.execution.wrapRead(name,a=>session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true)(args)}}}
 }

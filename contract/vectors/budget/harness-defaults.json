@@ -1,5 +1,5 @@
 {
-  "description": "The policy a session works under in the harness (CONTEXT_DEFAULTS): the Desk's table, the two time bounds, the two image bounds and the three test-tool bounds the harness adds.",
+  "description": "The policy a session works under in the harness (CONTEXT_DEFAULTS): the table, with the critic's default (adversarialReview), the two time bounds, the two image bounds and the three test-tool bounds the harness adds.",
   "schema": "budget.json",
   "source": {
     "harness": {
@@ -24,6 +24,7 @@
       "historyBytes": 32000,
       "briefBytes": 8000,
       "memoryBytes": 4000,
+      "adversarialReview": false,
       "turnMilliseconds": 900000,
       "toolCallMilliseconds": 120000,
       "imagesPerRequest": 8,

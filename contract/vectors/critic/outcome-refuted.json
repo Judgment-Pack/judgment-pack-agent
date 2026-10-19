@@ -1,0 +1,76 @@
+{
+  "description": "The critic's rehearsal of the certification scenario's facts says evaluated with the outcome approve, where the declared case receipted-120 states decline: the critique refutes the proposal, names the case, lists the declared case small-40, for which the runtime gave no outcome to the harness's rehearsal, as not compared, and says what the critic cost; the proposal carries the verdict. vercel engine, the session asking for the critic. Written by hand from the schema: the checks and the disposition are the runtime's answers in the certification fixture (packages/harness/certification/runtime.json, T5 and T6), and the text is the host's quote as refutation.ts writes it.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/refutation.ts (openCritique, compareRehearsal, comparisonText, critiqueEvent, critiqueOnProposal)",
+      "packages/harness/engines/vercel/loop.ts (the refutation pass)"
+    ]
+  },
+  "items": [
+    {
+      "type": "critique",
+      "refuted": true,
+      "checks": [
+        {
+          "tool": "validate",
+          "status": "valid"
+        },
+        {
+          "tool": "experimental_evaluate",
+          "status": "evaluated"
+        }
+      ],
+      "text": "quoted from the runtime: validate → \"status\": \"valid\", 0 diagnostic(s); experimental_evaluate → \"status\": \"evaluated\", 0 diagnostic(s); compared with the declared outcomes: case receipted-120 (declared) disagrees: declared {\"kind\":\"outcome\",\"outcomeId\":\"decline\"}, experimental_evaluate gave {\"kind\":\"outcome\",\"outcomeId\":\"approve\"}; not compared: small-40",
+      "cases": [
+        {
+          "case": "receipted-120",
+          "source": "declared",
+          "tool": "experimental_evaluate",
+          "agrees": false,
+          "expected": {
+            "disposition": {
+              "kind": "outcome",
+              "outcomeId": "decline"
+            }
+          },
+          "actual": {
+            "disposition": {
+              "handoff": {
+                "state": "none"
+              },
+              "kind": "outcome",
+              "outcomeId": "approve",
+              "reasons": []
+            }
+          }
+        }
+      ],
+      "notCompared": [
+        "small-40"
+      ],
+      "figures": {
+        "model": "scripted-model",
+        "unit": "model-requests",
+        "requests": 3
+      }
+    },
+    {
+      "type": "proposal",
+      "document": {
+        "id": "https://example.com/judgment-packs/expense-reimbursement"
+      },
+      "unknowns": [],
+      "critique": {
+        "refuted": true
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

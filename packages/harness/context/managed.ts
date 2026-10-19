@@ -27,6 +27,9 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
   session.signal.throwIfAborted()
   if(tracked)yield {type:'execution_checkpoint',checkpoint:context.execution.snapshot()}
   for await (const event of run(ready.session)){
+   // agent#10: a refusal of the critic's call is the boundary's guardrail, put
+   // on the stream before the result the engine reports for that call.
+   for(const notice of context.takeNotices())yield notice
    if(event.type==='error')failed=true
    context.execution.observe(event)
    if(event.type==='budget_paused'||event.type==='error'&&(event.failure?.code==='request-limit'||event.message===new ExecutionPaused().message)){

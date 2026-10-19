@@ -15,20 +15,69 @@ import { sourceMessage } from './host'
  * rule written twice is a rule two readers can disagree about, and this one is
  * *whether a document was refuted*.
  *
- * **The critic's tools are the session's, which is what the third rule means.**
- * Neither engine builds the critic a dispatch of its own: it runs on the same
- * `guardedCallTool`, over the same five tools, through the same ToolGate on the
- * same transport — so its `experimental_evaluate` is rewritten to a rehearsal
- * before the frame leaves the page, and it can no more reach `write_file` than
- * the main loop can. The desk exposes no ungated route to an engine at all, and
- * the mutation that removes the gate takes the critic with it.
+ * **The critic's calls go through the session's gate, which is what the third
+ * rule means.** Neither engine builds the critic a dispatch of its own: it runs
+ * on the same `guardedCallTool`, through the same ToolGate on the same
+ * transport — so its `experimental_evaluate` is rewritten to a rehearsal before
+ * the frame leaves the page, and it can no more reach `write_file` than the main
+ * loop can. Since agent#10 it is offered only `CRITIC_TOOLS`, and the shared
+ * boundary refuses any other name it calls while the critic runs
+ * (`context/session.ts`, `admit`), before the ToolGate and before a host tool's
+ * `execute`, with a `guardrail` `refused` event.
+ *
+ * **The verdict reads outcomes as well as statuses** (agent#10). Where the
+ * host declares cases (the pack's saved tests, or cases the request states),
+ * each rehearsal the critic runs over the proposed document is compared with
+ * the case whose facts it ran, and each row of a test run with the case it
+ * carried; a case whose outcome differs refutes the proposal, and the critique
+ * names it.
  *
  * **Nothing here writes.** The pass runs after the main loop produced a
  * proposal and *before* the proposal event is emitted, and every call it makes
  * is a read.
  */
 import { failureMessage, normalizeFailure, type FailureSource } from './failures'
+import { GateViolation } from './toolGate'
 import type { AssistantEvent, ProposalNote } from './engine'
+
+/**
+ * **The critic's tools, an allow-list of reads** (agent#10), and the whole of
+ * what it may call: `validate`; `experimental_evaluate`, which the gate makes a
+ * rehearsal on the wire; `get_schema`; and `experimental_test_cases`, under its
+ * own bounds (the gate's argument allow-list and byte bounds, and the turn's
+ * `testCallsPerTurn`, which the critic shares with the loop). Every other name
+ * is refused before it leaves the page: the runtime's other reads, every host
+ * tool (a `propose_*` or `request_*` tool, memory, the plan, a question, a
+ * delegation) and the context tools alike. The list replaces a deny-list that
+ * left any host tool it did not name reachable.
+ */
+export const CRITIC_TOOLS = ['validate', 'experimental_evaluate', 'get_schema', 'experimental_test_cases'] as const
+const CRITIC_TOOL_SET: ReadonlySet<string> = new Set(CRITIC_TOOLS)
+
+/** Whether the critic may call a runtime tool of this name. A host tool it may never call. */
+export function criticMayCall(name: string): boolean {
+  return CRITIC_TOOL_SET.has(name)
+}
+
+/** Why the critic's call of `name` did not leave the page: the guardrail's detail. */
+export function criticRefusalDetail(name: string): string {
+  return `${name} is not one of the tools the critic may call (${CRITIC_TOOLS.join(', ')}); the call did not leave the page and nothing was written`
+}
+
+/** The failure the critic's call of a tool outside its allow-list earns: the model reads it. */
+export function criticRefusal(name: string): GateViolation {
+  return new GateViolation(name, `refused for the critic: ${criticRefusalDetail(name)}`)
+}
+
+/**
+ * **Whether the critic runs, by one rule both engines read** (agent#10): the
+ * session's `adversarialReview` where the host set it, and otherwise the
+ * policy table's `adversarialReview`, which is `false`. So the critic runs
+ * only where the host asks for it, at any reasoning tier and on either engine.
+ */
+export function criticRuns(session: { adversarialReview?: boolean }, policy: { adversarialReview: boolean }): boolean {
+  return session.adversarialReview ?? policy.adversarialReview
+}
 
 /**
  * The literal a critic's request carries, so a scripted endpoint — and a
@@ -137,13 +186,301 @@ export const NO_TEST_PROMPT =
 
 /** The verdict, and the words on either side of it. */
 export interface Critique {
-  /** Computed from the runtime's own statuses. Never from prose. */
+  /** Computed from the runtime's own statuses and outcomes. Never from prose. */
   refuted: boolean
   checks: Check[]
   /** The runtime's words, quoted. */
   text: string
   /** The critic's own words, kept beside the verdict and never deciding it. */
   modelText: string
+  /** Each declared case a rehearsal or a test run compared, where the host declared any (agent#10). */
+  cases?: CaseComparison[]
+  /** The declared cases nothing the critic ran compared. */
+  notCompared?: string[]
+  /** What the critic cost: its model and its requests (agent#10). */
+  figures?: CriticFigures
+}
+
+/**
+ * One case whose outcome the host declares (agent#10): one of the pack's saved
+ * tests, or a case the request declares. The members are a row of the
+ * runtime's matrix (`matrixVersion` 3), so the critic can run them all with
+ * `experimental_test_cases` as they are, plus `source`, which the matrix does
+ * not carry.
+ */
+export interface CriticCase {
+  source: 'declared' | 'test'
+  id: string
+  facts: Record<string, unknown>
+  evidenceAvailability?: Record<string, unknown>
+  supportedExtensions?: string[]
+  /** The §8.3 disposition the case expects; each member it states must equal the outcome's. */
+  expectedDisposition?: Record<string, unknown>
+  /** Or the §8.4 evaluation-error class it expects, and optionally the phase. */
+  expectedErrorClass?: string
+  expectedErrorPhase?: string
+  expectedHandoffTarget?: unknown
+  origin?: string
+  focus?: string
+  specSection?: string
+  cites?: unknown
+}
+
+/** An outcome, as a comparison reports it: a disposition, or an evaluation error. */
+export type CaseOutcome = { disposition: Record<string, unknown> } | { errorClass: string; phase?: string }
+
+/**
+ * One comparison of a declared case's outcome with the runtime's, the critic's
+ * structured note (`run-event.json`, `$defs/caseComparison`). `actual` is
+ * absent where the runtime reported no outcome for the case.
+ */
+export interface CaseComparison {
+  case: string
+  source: CriticCase['source']
+  tool: 'experimental_evaluate' | 'experimental_test_cases'
+  agrees: boolean
+  expected: CaseOutcome
+  actual?: CaseOutcome
+}
+
+/**
+ * What one critic pass cost (`provenance.json`, `$defs/criticFigures`): the
+ * model it ran on and its requests, in the unit its engine counts. `vercel`
+ * counts model requests, each claimed against the allowance, and sums the
+ * token counts its completions reported; `codex` counts agent runs, and the
+ * bridge reports no tokens.
+ */
+export interface CriticFigures {
+  model: string
+  unit: 'model-requests' | 'agent-runs'
+  requests: number
+  inputTokens?: number
+  outputTokens?: number
+  reasoningTokens?: number
+  cacheReadTokens?: number
+  cacheWriteTokens?: number
+}
+
+const CASE_MEMBERS = new Set([
+  'source', 'id', 'facts', 'evidenceAvailability', 'supportedExtensions', 'expectedDisposition',
+  'expectedErrorClass', 'expectedErrorPhase', 'expectedHandoffTarget', 'origin', 'focus', 'specSection', 'cites'
+])
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value)
+
+/**
+ * The host's declared cases, read closed, or a throw naming what is wrong.
+ *
+ * A row of the runtime's matrix and `source`, nothing else: a unique `id`, a
+ * `facts` object, and exactly one expectation, a disposition object with a
+ * `kind` or an error class. At most 200.
+ */
+export function readCriticCases(value: unknown): CriticCase[] {
+  if (!Array.isArray(value) || value.length > 200) throw new Error('The declared cases must be an array of at most 200 cases.')
+  const seen = new Set<string>()
+  return value.map((item, at) => {
+    const name = isObject(item) && typeof item.id === 'string' ? `case ${JSON.stringify(item.id.slice(0, 80))}` : `case ${at + 1}`
+    const fail = (why: string): never => { throw new Error(`The declared ${name} ${why}.`) }
+    if (!isObject(item)) return fail('is not an object')
+    const extra = Object.keys(item).find((member) => !CASE_MEMBERS.has(member))
+    if (extra !== undefined) fail(`carries ${JSON.stringify(extra.slice(0, 64))}, which a declared case does not have`)
+    if (item.source !== 'declared' && item.source !== 'test') fail('has no source: declared or test')
+    if (typeof item.id !== 'string' || item.id === '' || item.id.length > 200) fail('has no id of 1 to 200 characters')
+    if (seen.has(item.id as string)) fail('repeats an id')
+    seen.add(item.id as string)
+    if (!isObject(item.facts)) fail('has no facts object')
+    if (item.evidenceAvailability !== undefined && !isObject(item.evidenceAvailability)) fail('has an evidenceAvailability that is not an object')
+    if (item.supportedExtensions !== undefined && (!Array.isArray(item.supportedExtensions) || item.supportedExtensions.some((entry) => typeof entry !== 'string'))) fail('has supportedExtensions that are not strings')
+    const disposition = item.expectedDisposition !== undefined
+    const error = item.expectedErrorClass !== undefined
+    if (disposition === error) fail('must expect exactly one of a disposition and an error class')
+    if (disposition && (!isObject(item.expectedDisposition) || typeof item.expectedDisposition.kind !== 'string')) fail('expects a disposition that is not an object with a kind')
+    if (error && (typeof item.expectedErrorClass !== 'string' || item.expectedErrorClass === '')) fail('expects an error class that is not a name')
+    if (item.expectedErrorPhase !== undefined && (!error || typeof item.expectedErrorPhase !== 'string')) fail('states an error phase without an error class')
+    return item as unknown as CriticCase
+  })
+}
+
+/**
+ * How many of the declared cases the critic's own calls left uncompared the
+ * harness rehearses itself, one call each, after the critic's turns (agent#10).
+ * The rest stay `notCompared`. Bounded so that a large saved matrix cannot
+ * spend the turn's shared tool calls on one pass.
+ */
+export const CRITIC_REHEARSALS = 8
+
+/**
+ * The rehearsal that compares one declared case (agent#10): the proposed
+ * document over the case's own facts, evidence and extensions, declared a
+ * rehearsal, as `experimental_evaluate` takes them.
+ */
+export function rehearsalOf(item: CriticCase, document: unknown): Record<string, unknown> {
+  return {
+    pack: JSON.stringify(document),
+    facts: JSON.stringify(item.facts),
+    ...(item.evidenceAvailability === undefined ? {} : { evidence: JSON.stringify(item.evidenceAvailability) }),
+    ...(item.supportedExtensions === undefined ? {} : { supported_extensions: item.supportedExtensions }),
+    rehearsal: true
+  }
+}
+
+/**
+ * **The comparison the critic's own calls left open, made by the harness**
+ * (agent#10). After the critic's turns, the declared cases nothing compared are
+ * run once through `call`, the same gated dispatch the critic's calls take:
+ * one `experimental_test_cases` call over all of them, where the critic is
+ * offered it, then one rehearsal each, at most `CRITIC_REHEARSALS`, where it is
+ * offered `experimental_evaluate`. A case the runtime gives no outcome for
+ * stays `notCompared`. No model request is made.
+ */
+export async function compareTheRest(
+  recorder: CritiqueRecorder,
+  document: unknown,
+  offered: ReadonlySet<string>,
+  call: (name: string, args: Record<string, unknown>) => Promise<unknown>
+): Promise<void> {
+  if (recorder.uncompared().length > 0 && offered.has('experimental_test_cases')) {
+    await call('experimental_test_cases', { pack: JSON.stringify(document), matrix: JSON.stringify(criticMatrix(recorder.uncompared())) })
+  }
+  if (!offered.has('experimental_evaluate')) return
+  for (const item of recorder.uncompared().slice(0, CRITIC_REHEARSALS)) await call('experimental_evaluate', rehearsalOf(item, document))
+}
+
+/** The declared cases as the runtime's matrix, which `experimental_test_cases` takes as it is. */
+export function criticMatrix(cases: readonly CriticCase[]): { matrixVersion: '3'; cases: Record<string, unknown>[] } {
+  return { matrixVersion: '3', cases: cases.map(({ source: _source, ...row }) => row) }
+}
+
+/** Stable-key JSON, so two values compare by content and not by member order. */
+function canonical(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null'
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
+  const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  return `{${entries.map(([key, inner]) => `${JSON.stringify(key)}:${canonical(inner)}`).join(',')}}`
+}
+
+/** JSON text read back to its value, or undefined where it is not JSON text. */
+function parsed(text: unknown): unknown {
+  if (typeof text !== 'string') return undefined
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    return undefined
+  }
+}
+
+/** The runtime's answer as its JSON payload: the structured content, or the text read as JSON. */
+function payloadOf(text: string, structured: unknown): Record<string, unknown> | null {
+  if (isObject(structured)) return structured
+  const value = parsed(text)
+  return isObject(value) ? value : null
+}
+
+/** The expectation a declared case states, as a comparison reports it. */
+function expectationOf(item: CriticCase): CaseOutcome {
+  return item.expectedErrorClass !== undefined
+    ? { errorClass: item.expectedErrorClass, ...(item.expectedErrorPhase === undefined ? {} : { phase: item.expectedErrorPhase }) }
+    : { disposition: item.expectedDisposition! }
+}
+
+/**
+ * Whether an outcome holds what a case expects: every member the expected
+ * disposition states equal to the outcome's, or the expected error class (and
+ * phase, where stated). A disposition where an error was expected, or the
+ * reverse, never agrees.
+ */
+export function outcomeAgrees(expected: CaseOutcome, actual: CaseOutcome): boolean {
+  if ('disposition' in expected) {
+    if (!('disposition' in actual)) return false
+    return Object.entries(expected.disposition).every(([member, value]) => canonical(value) === canonical(actual.disposition[member]))
+  }
+  if (!('errorClass' in actual) || actual.errorClass !== expected.errorClass) return false
+  return expected.phase === undefined || actual.phase === expected.phase
+}
+
+/** The evidence and extensions a rehearsal ran under, normalized as the runtime reads them. */
+function sameInputs(item: CriticCase, args: Record<string, unknown>): boolean {
+  if (!isObject(parsed(args.facts)) || canonical(parsed(args.facts)) !== canonical(item.facts)) return false
+  // An omitted evidence document and an empty one both leave every requirement unknown.
+  const evidence = args.evidence === undefined ? {} : parsed(args.evidence)
+  if (!isObject(evidence) || canonical(evidence) !== canonical(item.evidenceAvailability ?? {})) return false
+  const extensions = (value: unknown) => canonical(Array.isArray(value) ? [...value].map(String).sort() : [])
+  return extensions(args.supported_extensions) === extensions(item.supportedExtensions)
+}
+
+/** The pack a call evaluated is the proposed document, read as JSON. Never a pack_id. */
+function isTheDocument(pack: unknown, document: unknown): boolean {
+  const value = parsed(pack)
+  return value !== undefined && canonical(value) === canonical(document)
+}
+
+/**
+ * The comparisons one rehearsal makes: each declared case whose facts,
+ * evidence and extensions it ran, over the proposed document, against the
+ * outcome the runtime gave.
+ */
+function compareRehearsal(cases: readonly CriticCase[], document: unknown, args: Record<string, unknown>, payload: Record<string, unknown>): CaseComparison[] {
+  if (!isTheDocument(args.pack, document)) return []
+  const failure = payload.evaluationError
+  const actual: CaseOutcome | null =
+    payload.status === 'evaluated' && isObject(payload.disposition)
+      ? { disposition: payload.disposition }
+      : isObject(failure) && typeof failure.class === 'string'
+        ? { errorClass: failure.class, ...(typeof failure.phase === 'string' ? { phase: failure.phase } : {}) }
+        : null
+  if (actual === null) return []
+  return cases.filter((item) => sameInputs(item, args)).map((item) => {
+    const expected = expectationOf(item)
+    return { case: item.id, source: item.source, tool: 'experimental_evaluate', agrees: outcomeAgrees(expected, actual), expected, actual }
+  })
+}
+
+/**
+ * The comparisons one test run makes: each row of a declared case, where the
+ * matrix the critic sent carried that case exactly as the host declared it and
+ * the pack was the proposed document. The runtime compared the row; its
+ * status is the verdict and its actual outcome is reported. A row of a case
+ * the critic changed or wrote itself compares nothing.
+ */
+function compareTestRun(cases: readonly CriticCase[], document: unknown, args: Record<string, unknown>, payload: Record<string, unknown>): CaseComparison[] {
+  if (!isTheDocument(args.pack, document)) return []
+  const matrix = parsed(args.matrix)
+  const sent = isObject(matrix) && Array.isArray(matrix.cases) ? matrix.cases.filter(isObject) : []
+  const packs = Array.isArray(payload.packs) ? payload.packs.filter(isObject) : []
+  const rows = packs.flatMap((pack) => (Array.isArray(pack.rows) ? pack.rows.filter(isObject) : []))
+  const found: CaseComparison[] = []
+  for (const row of rows) {
+    const item = cases.find((candidate) => candidate.id === row.id)
+    if (item === undefined) continue
+    const declared = criticMatrix([item]).cases[0]
+    if (!sent.some((candidate) => candidate.id === item.id && canonical(candidate) === canonical(declared))) continue
+    const disposition = parsed(row.actual)
+    const actual: CaseOutcome | undefined =
+      typeof row.actualErrorClass === 'string' && row.actualErrorClass !== ''
+        ? { errorClass: row.actualErrorClass, ...(typeof row.actualErrorPhase === 'string' && row.actualErrorPhase !== '' ? { phase: row.actualErrorPhase } : {}) }
+        : isObject(disposition) ? { disposition } : undefined
+    found.push({ case: item.id, source: item.source, tool: 'experimental_test_cases', agrees: row.status === 'passed', expected: expectationOf(item), ...(actual === undefined ? {} : { actual }) })
+  }
+  return found
+}
+
+/** An outcome as a person reads it: the members the case states, or the error class. */
+function outcomeText(outcome: CaseOutcome | undefined, shape?: CaseOutcome): string {
+  if (outcome === undefined) return 'no outcome'
+  if ('errorClass' in outcome) return `error class ${outcome.errorClass}${outcome.phase === undefined ? '' : ` (${outcome.phase})`}`
+  const members = shape !== undefined && 'disposition' in shape ? Object.keys(shape.disposition) : Object.keys(outcome.disposition)
+  return canonical(Object.fromEntries(members.map((member) => [member, outcome.disposition[member]])))
+}
+
+/** The comparisons, as a person is shown them. */
+export function comparisonText(cases: readonly CaseComparison[], notCompared: readonly string[]): string {
+  const disagree = cases.filter((item) => !item.agrees)
+  const agree = new Set(cases.filter((item) => item.agrees).map((item) => item.case))
+  const parts = disagree.map((item) =>
+    `case ${item.case} (${item.source}) disagrees: declared ${outcomeText(item.expected)}, ${item.tool} gave ${outcomeText(item.actual, item.expected)}`)
+  if (agree.size > 0) parts.push(`${agree.size} declared case(s) agree`)
+  if (notCompared.length > 0) parts.push(`not compared: ${notCompared.join(', ')}`)
+  return `compared with the declared outcomes: ${parts.join('; ')}`
 }
 
 /** The runtime's `status` and diagnostic count out of one tool answer. */
@@ -171,8 +508,11 @@ export function statusOf(text: string): { status: string; diagnostics: number } 
  * `refuted: false`, and a critic whose prose says "none found" over a
  * `validate` the runtime called `invalid` produces `refuted: true`.
  */
-export function verdictOf(checks: readonly Check[]): boolean {
-  return checks.length > 0 && checks.some((check) => check.status !== SETTLED_STATUS[check.tool])
+export function verdictOf(checks: readonly Check[], cases: readonly CaseComparison[] = []): boolean {
+  // agent#10: a rehearsal that says "evaluated" with an outcome other than the
+  // one a declared case states refutes too, so a semantic error is visible.
+  return (checks.length > 0 || cases.length > 0) &&
+    (checks.some((check) => check.status !== SETTLED_STATUS[check.tool]) || cases.some((item) => !item.agrees))
 }
 
 /** The runtime's answers, quoted — the text a person is shown as the verdict. */
@@ -201,15 +541,31 @@ export interface CritiqueRecorder {
    * The contract is in the name: an engine calls this only where its own
    * `callTool` returned — where the frame passed the ToolGate, reached
    * `jpack mcp`, and came back. A call the gate refused never gets here, and
-   * neither does one a cancelled run abandoned.
+   * neither does one a cancelled run abandoned. `args` are the arguments the
+   * call left with and `structured` the answer's structured content, which the
+   * outcome comparison reads (agent#10).
    */
-  saw(tool: string, text: string): void
+  saw(tool: string, text: string, args?: Record<string, unknown>, structured?: unknown): void
+  /** The declared cases no answer has compared yet (agent#10). */
+  uncompared(): CriticCase[]
   /** The critique, once the critic has stopped calling tools. */
   critique(modelText: string): Critique
 }
 
-export function openCritique(): CritiqueRecorder {
+/**
+ * What the comparison needs (agent#10): the cases the host declares and the
+ * document the critic is checking. With no cases there is nothing to compare,
+ * and the critique is the checks alone.
+ */
+export interface CritiqueOptions {
+  cases?: readonly CriticCase[]
+  document?: unknown
+}
+
+export function openCritique(options: CritiqueOptions = {}): CritiqueRecorder {
   const checks: Check[] = []
+  const declared = options.cases ?? []
+  const compared: CaseComparison[] = []
   return {
     /**
      * **A check is a thing the runtime said, and nothing else.**
@@ -228,14 +584,31 @@ export function openCritique(): CritiqueRecorder {
      * including an in-band `isError` from the runtime, which is the runtime
      * declining to *answer* rather than declining the document.
      */
-    saw(tool, text) {
+    saw(tool, text, args, structured) {
+      // agent#10: the outcomes, compared with the declared cases, from the
+      // runtime's own answer and the arguments the call left with.
+      if (declared.length > 0 && args !== undefined) {
+        const payload = payloadOf(text, structured)
+        if (payload !== null && tool === 'experimental_evaluate') compared.push(...compareRehearsal(declared, options.document, args, payload))
+        if (payload !== null && tool === 'experimental_test_cases') compared.push(...compareTestRun(declared, options.document, args, payload))
+      }
       if (!isCheckTool(tool)) return
       const said = statusOf(text)
       if (said === null) return
       checks.push({ tool, status: said.status, diagnostics: said.diagnostics })
     },
+    uncompared() {
+      const reached = new Set(compared.map((item) => item.case))
+      return declared.filter((item) => !reached.has(item.id))
+    },
     critique(modelText) {
-      return { refuted: verdictOf(checks), checks: [...checks], text: quoteOf(checks), modelText }
+      if (declared.length === 0) return { refuted: verdictOf(checks), checks: [...checks], text: quoteOf(checks), modelText }
+      const reached = new Set(compared.map((item) => item.case))
+      const notCompared = declared.filter((item) => !reached.has(item.id)).map((item) => item.id)
+      const quoted = checks.length > 0 || compared.length > 0
+        ? [...(checks.length > 0 ? [quoteOf(checks)] : []), comparisonText(compared, notCompared)].join('; ')
+        : `${NO_CHECKS}; ${comparisonText(compared, notCompared)}`
+      return { refuted: verdictOf(checks, compared), checks: [...checks], text: quoted, modelText, cases: [...compared], notCompared }
     }
   }
 }
@@ -271,11 +644,22 @@ export function criticCannotRun(testPrompt: string): Critique | null {
  * would be a second `prompts/get` inside a pass whose whole point is that it
  * costs one call. The document is handed over below instead, verbatim.
  */
-export function criticMessage(testPrompt: string, document: unknown): string {
+export function criticMessage(testPrompt: string, document: unknown, cases: readonly CriticCase[] = []): string {
   const fenced = `\`\`\`json\n${JSON.stringify(document, null, 2)}\n\`\`\``
   const guidance = testPrompt.trim() === '' ? '' : `${testPrompt}\n\n`
-  return `${guidance}${CRITIC_SENTENCE}\n\n${fenced}`
+  // agent#10: the cases whose outcomes the host declares, as the runtime's
+  // matrix, so the critic can run them as they are.
+  const declared = cases.length === 0 ? '' : `\n\n${CRITIC_CASES_SENTENCE}\n\n\`\`\`json\n${JSON.stringify(criticMatrix(cases), null, 2)}\n\`\`\``
+  return `${guidance}${CRITIC_SENTENCE}\n\n${fenced}${declared}`
 }
+
+/**
+ * The second sentence the desk adds, where the host declares cases
+ * (agent#10): what they are, how to run them, and that the comparison is the
+ * host's. It names the two tools and their arguments and no verdict.
+ */
+export const CRITIC_CASES_SENTENCE =
+  'The matrix below declares the outcome each case must have: the request’s own cases and the pack’s tests. Rehearse each case against the document above, with experimental_evaluate (pack: the document as JSON text; facts and evidence: the case’s facts and evidenceAvailability as JSON text) or with experimental_test_cases (pack: the document as JSON text; matrix: this matrix as it is). The host compares each outcome with the declared one.'
 
 /** The contract's own event, built in one place from the critique. */
 export function critiqueEvent(critique: Critique): AssistantEvent {
@@ -283,7 +667,9 @@ export function critiqueEvent(critique: Critique): AssistantEvent {
     type: 'critique',
     refuted: critique.refuted,
     checks: critique.checks.map((check) => ({ tool: check.tool, status: check.status })),
-    text: critique.text
+    text: critique.text,
+    ...(critique.cases === undefined ? {} : { cases: critique.cases, notCompared: critique.notCompared ?? [] }),
+    ...(critique.figures === undefined ? {} : { figures: critique.figures })
   }
 }
 
@@ -304,9 +690,28 @@ export function proposalNote(kind: ProposalNote['kind'], cause: unknown, source:
     : 'The turn stopped after this proposal was made, so nothing after it ran: no closing summary and no critic check.'
   return { kind, message: `${what} ${why}`, failure }
 }
-/** The critic's note: see `proposalNote`. */
-export function criticNote(cause: unknown, source: FailureSource): ProposalNote {
-  return proposalNote('critic-unfinished', cause, source)
+/** The critic's note: see `proposalNote`. It carries what the critic cost before it stopped (agent#10). */
+export function criticNote(cause: unknown, source: FailureSource, figures?: CriticFigures): ProposalNote {
+  return { ...proposalNote('critic-unfinished', cause, source), ...(figures === undefined ? {} : { figures }) }
+}
+
+/**
+ * What the critic cost on a model engine (agent#10): the requests it claimed
+ * against the allowance, and the token counts its completion rows reported,
+ * summed. `before` is the execution's state when the critic started.
+ */
+export function modelCriticFigures(
+  model: string,
+  before: { used: number; rows: number },
+  after: { used: number; completions?: readonly { phase: string; result: object }[] }
+): CriticFigures {
+  const rows = (after.completions ?? []).slice(before.rows).filter((row) => row.phase === 'review')
+  const figures: CriticFigures = { model, unit: 'model-requests', requests: Math.max(0, after.used - before.used) }
+  for (const member of ['inputTokens', 'outputTokens', 'reasoningTokens', 'cacheReadTokens', 'cacheWriteTokens'] as const) {
+    const counted = rows.map((row) => (row.result as Record<string, unknown>)[member]).filter((value): value is number => typeof value === 'number')
+    if (counted.length > 0) figures[member] = counted.reduce((sum, value) => sum + value, 0)
+  }
+  return figures
 }
 
 /**
@@ -320,6 +725,7 @@ export function criticNote(cause: unknown, source: FailureSource): ProposalNote 
 export function critiqueOnProposal(
   critique: Critique | null
 ): { critique: { refuted: boolean } } | Record<string, never> {
-  if (critique === null || critique.checks.length === 0) return {}
+  // A compared case is evidence as a check is (agent#10).
+  if (critique === null || (critique.checks.length === 0 && (critique.cases ?? []).length === 0)) return {}
   return { critique: { refuted: critique.refuted } }
 }

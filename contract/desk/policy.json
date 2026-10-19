@@ -9,5 +9,6 @@
   "recentMessages": 8,
   "historyBytes": 32000,
   "briefBytes": 8000,
-  "memoryBytes": 4000
+  "memoryBytes": 4000,
+  "adversarialReview": false
 }

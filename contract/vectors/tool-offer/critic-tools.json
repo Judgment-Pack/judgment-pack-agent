@@ -1,0 +1,19 @@
+{
+  "description": "The critic's allow-list (agent#10), the whole of what it may call, in its order.",
+  "schema": "tool-offer.json#/$defs/criticTools",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/refutation.ts (CRITIC_TOOLS)"
+    ]
+  },
+  "items": [
+    "validate",
+    "experimental_evaluate",
+    "get_schema",
+    "experimental_test_cases"
+  ]
+}

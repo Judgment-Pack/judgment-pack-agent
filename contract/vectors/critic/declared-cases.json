@@ -1,0 +1,59 @@
+{
+  "description": "Cases a host declares for the critic (agent#10): one the request declares and two of the pack's saved tests, one of which expects an evaluation error. Written by hand from the schema; the facts are the certification scenario's.",
+  "schema": "run-event.json#/$defs/criticCase",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/refutation.ts (CriticCase, readCriticCases, criticMatrix)"
+    ]
+  },
+  "items": [
+    {
+      "source": "declared",
+      "id": "receipted-120",
+      "facts": {
+        "claim": {
+          "type": "expense-reimbursement",
+          "amount": "120.00",
+          "receiptAttached": true
+        }
+      },
+      "expectedDisposition": {
+        "kind": "outcome",
+        "outcomeId": "approve"
+      }
+    },
+    {
+      "source": "test",
+      "id": "unreceipted-120",
+      "facts": {
+        "claim": {
+          "type": "expense-reimbursement",
+          "amount": "120.00",
+          "receiptAttached": false
+        }
+      },
+      "expectedDisposition": {
+        "kind": "outcome",
+        "outcomeId": "decline"
+      },
+      "focus": "the receipt condition"
+    },
+    {
+      "source": "test",
+      "id": "malformed-amount",
+      "facts": {
+        "claim": {
+          "type": "expense-reimbursement",
+          "amount": 120,
+          "receiptAttached": true
+        }
+      },
+      "expectedErrorClass": "malformed-input",
+      "expectedErrorPhase": "preflight"
+    }
+  ]
+}

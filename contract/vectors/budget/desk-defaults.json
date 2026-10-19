@@ -1,5 +1,5 @@
 {
-  "description": "The Desk's context budget table, verbatim: the defaults both the browser and the server read.",
+  "description": "The Desk's context budget table: the defaults both the browser and the server read, verbatim at the pinned commit, and one member the harness adds, adversarialReview (agent#10: the critic's default on both engines, false), which the Desk's table takes in its swap.",
   "schema": "budget.json",
   "source": {
     "desk": {
@@ -23,7 +23,8 @@
       "recentMessages": 8,
       "historyBytes": 32000,
       "briefBytes": 8000,
-      "memoryBytes": 4000
+      "memoryBytes": 4000,
+      "adversarialReview": false
     }
   ]
 }

@@ -7,6 +7,12 @@ export interface AgentRequest {
   tools: AgentTool[]
   effort?: CodexEffort
   phase: 'author' | 'critic'
+  /**
+   * Only on a critic run, and only the model the host names for the critic
+   * (`criticModel` in host.ts; agent#10). The agent transport refuses any other
+   * model; absent, the run's own.
+   */
+  model?: string
 }
 export type AgentEvent = { type: 'text' | 'message'; id: string; text: string; phase?: 'commentary' | 'final' } | { type: 'retry'; attempt: number }
 export interface AgentToolCall { id: string; name: string; arguments: Record<string, unknown> }
