@@ -4,8 +4,8 @@ import toolOffer from '../../contract/schemas/tool-offer.json'
 import { ASSISTANT_ENGINES, ASSISTANT_TOOLS } from './host'
 
 describe('the host contract values', () => {
-  it('are the contract’s runtime tool ceiling, in its order', () => {
-    expect([...ASSISTANT_TOOLS]).toEqual(inventory.runtimeToolCeiling.values)
+  it('are the contract’s runtime tool ceiling, in its order: the Desk’s five, then the test tool (agent#7)', () => {
+    expect([...ASSISTANT_TOOLS]).toEqual([...inventory.runtimeToolCeiling.values, 'experimental_test_cases'])
     expect([...ASSISTANT_TOOLS]).toEqual(toolOffer.$defs.runtimeCeiling.enum)
   })
 

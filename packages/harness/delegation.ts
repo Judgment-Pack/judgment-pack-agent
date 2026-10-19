@@ -4,6 +4,9 @@ import type { AssistantEvent, Engine, EngineSession, HostTool, ModelCall } from 
 import { MAX_TURNS, isCancelled, withAbort } from './engines/contract'
 import { eventChannel } from './engines/vercel/channel'
 import { DELEGATION_INSTRUCTIONS, DELEGATE_TOOL, TASK_PROFILES, delegationTool, type DelegatedTask, type DelegatedTaskRequest, type DelegationRequest, type TaskProfile } from './delegationContract'
+import { TEST_TOOL } from './toolGate'
+import { contextPolicy } from './context/policy'
+import { testCallCapFailure } from './context/session'
 
 /** Shared execution policy. Feature adapters supply capabilities, never larger child allowances. */
 export interface DelegationOptions {
@@ -31,6 +34,8 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
     const requestLimit=session.context?.execution?.limit??MAX_TURNS
     let parentCheckpoint:ExecutionCheckpoint|undefined
     let modelRequests=session.context?.execution?.used??0, toolCalls=0, agentRuns=0, activeChildren=false
+    // agent#7: the turn's test calls, across the parent and its continuation, as modelRequests is.
+    let testCalls=session.context?.execution?.testCalls??0
     let checkpointTail=Promise.resolve()
     const publish = async (task: DelegatedTask) => {
       if(signal.aborted)return
@@ -70,7 +75,13 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
           throw error
         }
       }})
-      const common={...base,signal:base.signal,hostTools:base.hostTools.map(wrapTool),callTool:async(name:string,args:Record<string,unknown>)=>{claimTool(task);return base.callTool(name,args)}}
+      const common={...base,signal:base.signal,hostTools:base.hostTools.map(wrapTool),callTool:async(name:string,args:Record<string,unknown>)=>{
+        if(name===TEST_TOOL){
+          const limit=contextPolicy(session.context?.configuration,'model' in session?session.model.model:session.agent.model).testCallsPerTurn
+          if(testCalls>=limit)throw testCallCapFailure(limit)
+          testCalls++
+        }
+        claimTool(task);return base.callTool(name,args)}}
       if ('model' in base) {
         const call: ModelCall=async(suffix,request)=>{
           base.signal.throwIfAborted()
@@ -175,7 +186,7 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
       activeChildren=false
       if(signal.aborted)return
       const continuation=session.prompt+'\n\nPARENT CONTINUATION: The delegated batch has finished. Continue the original task using the retained working material below. Child findings are unverified, never human approval. Do not repeat completed tools or proposals. Failed tasks remain failures; use partial results honestly. Existing source policy, budgets and proposal/review controls still apply. Delegation is unavailable for the rest of this response.\n'+JSON.stringify({priorParentWork:history,tasks:tasks.map(({id,title,state,result,problem})=>({id,title,state,result,problem}))})
-      for await(const event of engine.start(bind({...session,context:{...session.context,documents:[...(session.context?.documents??[]),{id:'delegated-results',kind:'history',label:'Delegated task findings; unverified working material',value:tasks.map(({id,title,state,result,problem})=>({id,title,state,result,problem}))}],execution:parentCheckpoint?{...parentCheckpoint,status:'running',used:modelRequests}:undefined},prompt:continuation,signal}))) {
+      for await(const event of engine.start(bind({...session,context:{...session.context,documents:[...(session.context?.documents??[]),{id:'delegated-results',kind:'history',label:'Delegated task findings; unverified working material',value:tasks.map(({id,title,state,result,problem})=>({id,title,state,result,problem}))}],execution:parentCheckpoint?{...parentCheckpoint,status:'running',used:modelRequests,testCalls:Math.max(parentCheckpoint.testCalls??0,testCalls)}:undefined},prompt:continuation,signal}))) {
         if(event.type!=='end')await deliver(event)
       }
     }

@@ -41,7 +41,7 @@
   "additionalProperties": true,
   "$defs": {
     "mcpCall": {
-      "description": "The params of the tools/call frame the host's gate inspects before it leaves the page (web/src/assistant/toolGate.ts, inspectOutboundFrame). Open: the gate keeps other members of params. Its rules: the name must be on this session's allow-list, a subset of the Desk's ceiling (get_schema, list_examples, get_example, validate, experimental_evaluate), or the frame is refused and a guardrail refused event is emitted; arguments, where present, are an object; and experimental_evaluate always leaves with an own rehearsal: true, with a guardrail rewrote event where the model's call did not already carry it. The host keeps this rule; an adapter never applies or skips it.",
+      "description": "The params of the tools/call frame the host's gate inspects before it leaves the page (web/src/assistant/toolGate.ts, inspectOutboundFrame). Open: the gate keeps other members of params. Its rules: the name must be on this session's allow-list, a subset of the ceiling (tool-offer.json $defs/runtimeCeiling: get_schema, list_examples, get_example, validate, experimental_evaluate, experimental_test_cases), or the frame is refused and a guardrail refused event is emitted; arguments, where present, are an object; experimental_test_cases leaves only with arguments $defs/testCasesArguments admits, or the frame is refused the same way; and experimental_evaluate always leaves with an own rehearsal: true, with a guardrail rewrote event where the model's call did not already carry it. The host keeps this rule; an adapter never applies or skips it.",
       "type": "object",
       "required": [
         "name"
@@ -79,6 +79,25 @@
         }
       },
       "additionalProperties": true
+    },
+    "testCasesArguments": {
+      "description": "The arguments experimental_test_cases may leave the page with (packages/harness/toolGate.ts, TEST_ARGUMENTS and testArgumentsProblem): exactly the two members the Runtime's served schema names, each a string within its bound, pack at most testPackBytes and matrix at most testMatrixBytes UTF-8 bytes (budget.json, 65536 each by default); the Runtime refuses text that is not JSON. Closed: any other member, a path among them, is refused on the wire with a guardrail refused event, and the model reads a failed result (failure code permission, source tool, outcome not-started) whose detail names the members and sizes, never their text. The call counts against the turn's testCallsPerTurn before the gate sees it.",
+      "type": "object",
+      "required": [
+        "pack",
+        "matrix"
+      ],
+      "properties": {
+        "pack": {
+          "description": "The exact pack under test, as text; the Runtime refuses text that is not JSON.",
+          "type": "string"
+        },
+        "matrix": {
+          "description": "The matrix, as text: cases, each with an independently established expectation; the Runtime refuses text that is not JSON.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
     },
     "textToolCall": {
       "description": "One tool call made in text (TextToolCall, extractToolCall in engines/contract.ts; agent#4), on an endpoint whose capability record says it takes no native tool calls (capability.json, nativeToolCalls): the JSON inside the one closed fenced block (```json, then this, then ```) the model's answer carries with a root that names tool. The tools are described at the end of the system text (textToolInstructions) and none is sent on the wire. Closed: an answer with two such blocks, a block that is not JSON, one that carries another member, a tool that is not a name of 1 to 128 characters or arguments that are not an object makes no call; the model is told why (tool-result.json#/$defs/textToolResultMessage) and nothing is run. A call runs through the same dispatch and gate as a native one and emits the same tool_call, guardrail and tool_result events; a name the phase did not offer is refused through the gate, never looked up; on the request reserved for a final answer the call is refused (reserved for a final answer) and the run fails. An answer with no such block is the final answer.",

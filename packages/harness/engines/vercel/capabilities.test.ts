@@ -254,10 +254,15 @@ describe('whether to offer tools reads the record', () => {
     expect(of(events, 'proposal')).toHaveLength(1)
     expect(sent).toHaveLength(4)
     // As the loop writes each message: where it is the request's last, the state rides as a second text part of it.
+    // A run draws its own data marker (agent#12); the vector's is a fixed one.
+    const marker = /BEGIN RETRIEVED DATA ([0-9a-f]{32}) /.exec(JSON.stringify(sent[1]!.body))?.[1]
+    expect(marker).toMatch(/^[0-9a-f]{32}$/)
+    const fixed = textResultVector.items[0]!.content.match(/BEGIN RETRIEVED DATA ([0-9a-f]{32}) /)![1]!
     const carried = (request: Sent) => ((request.body.messages ?? []) as { role: string; content: unknown }[])
       .filter((message) => message.role === 'user')
       .map((message) => ({ role: message.role, content: typeof message.content === 'string' ? message.content : (message.content as { type: string; text?: string }[])[0]?.text }))
       .filter((message) => message.content?.startsWith('TOOL '))
+      .map((message) => ({ ...message, content: message.content!.split(marker!).join(fixed) }))
     expect(carried(sent[3]!)).toEqual(textResultVector.items)
     // Each went back on the request after the answer it answers.
     for (const [index, item] of textResultVector.items.entries()) expect(carried(sent[index + 1]!).at(-1)).toEqual(item)

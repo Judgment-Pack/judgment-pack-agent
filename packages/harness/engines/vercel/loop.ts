@@ -6,6 +6,7 @@ import {EXECUTION_INSTRUCTIONS} from '../../execution/controller'
 import {managedContext,contextOf} from '../../context/managed'
 import { readDelegationRequest } from '../../delegationContract'
 import { assistantLanguageInstructions } from '../../host'
+import { DATA_RULE, readingTool } from '../../framing'
 /**
  * The `vercel` engine's loop: the Vercel AI SDK v7, behind the desk's contract.
  *
@@ -109,12 +110,15 @@ import { refusedSchemaKeyword, refusedSchemaSentence } from '../../geminiSchema'
 import { eventChannel } from './channel'
 import { placeholderBase, relayFetch, signatureLedger, signatureOf } from './relay'
 import { retryingCall } from './retry'
-import type { LanguageModel, ToolSet, ModelMessage, SystemModelMessage } from 'ai'
+import type { LanguageModel, ToolSet, ModelMessage, SystemModelMessage, Tool } from 'ai'
 import type { AssistantEngine, EndpointCapabilities, EndpointKind, StatePlacement, ThinkingTier } from '../../host'
 import type { AssistantEvent, AssistantSession, McpTool, McpToolResult, HostTool, ModelCall, ProposalNote } from '../../engine'
 import type { CritiqueRecorder } from '../../refutation'
 import type { ThinkingSlot } from '../../thinking'
 import type { SignatureLedger } from './relay'
+
+/** What a tool's `toModelOutput` returns: the part of an answer the model is shown. */
+type ToolResultOutput = Awaited<ReturnType<NonNullable<Tool['toModelOutput']>>>
 
 /**
  * The tool whose arguments the desk rehearses, named once.
@@ -397,18 +401,24 @@ function modelFor(
  * The runtime's tools, as the SDK's, with the runtime's own schemas — and the
  * desk's host tools beside them, each executed by the desk's own function
  * rather than dispatched over the gate.
+ *
+ * **What the model is shown of an answer is decided here, on purpose**
+ * (agent#12): every tool carries `toModelOutput`, which hands the model the
+ * framed text a dispatch recorded for that call (`framing.ts`), and the SDK's
+ * own default — the answer as JSON — for every call that recorded none.
  */
 function toolsFor(
   family: EndpointKind,
   /** The schema the model is shown for a tool: the endpoint's record decides (agent#4). */
   schemaOf: (tool: McpTool) => unknown,
   tools: McpTool[],
-  execute: (name: string, input: unknown, toolCallId?: string) => Promise<McpToolResult>,
+  execute: (name: string, input: unknown, callId: string) => Promise<McpToolResult>,
   hostTools: HostTool[] = [],
-  executeHost: (tool: HostTool, input: unknown, toolCallId?: string) => Promise<McpToolResult> = async () => ({
+  executeHost: (tool: HostTool, input: unknown, callId: string) => Promise<McpToolResult> = async () => ({
     content: [],
     isError: true
-  })
+  }),
+  modelOutput: (callId: string, output: unknown) => ToolResultOutput = shownAsAnswered
 ): ToolSet {
   const set: ToolSet = {}
   // The tools are sent host tools first, then the runtime's; the breakpoint
@@ -423,7 +433,8 @@ function toolsFor(
         schemaOf(tool) as Parameters<typeof jsonSchema>[0]
       ),
       ...breakpoint(tool),
-      execute: (input: unknown, options: { toolCallId: string }) => executeHost(tool, input, options.toolCallId)
+      execute: (input: unknown, options: { toolCallId: string }) => executeHost(tool, input, options.toolCallId),
+      toModelOutput: ({ toolCallId, output }: { toolCallId: string; output: unknown }) => modelOutput(toolCallId, output)
     })
   }
   for (const tool of tools) {
@@ -439,10 +450,18 @@ function toolsFor(
         schemaOf(tool) as Parameters<typeof jsonSchema>[0]
       ),
       ...breakpoint(tool),
-      execute: (input: unknown, options: { toolCallId: string }) => execute(tool.name, input, options.toolCallId)
+      execute: (input: unknown, options: { toolCallId: string }) => execute(tool.name, input, options.toolCallId),
+      toModelOutput: ({ toolCallId, output }: { toolCallId: string; output: unknown }) => modelOutput(toolCallId, output)
     })
   }
   return set
+}
+
+/** The SDK's own default for a tool answer: text as text, anything else as its JSON. */
+function shownAsAnswered(_callId: string, output: unknown): ToolResultOutput {
+  if (typeof output === 'string') return { type: 'text', value: output }
+  const text = JSON.stringify(output)
+  return { type: 'json', value: text === undefined ? null : JSON.parse(text) }
 }
 
 
@@ -781,9 +800,27 @@ function runVercelLoop(
     asked.length = 0
     /** A proposal delivered through `propose_pack`; the fence is the fallback. */
     let toolProposal: Proposal | null = null
-    /** What one call gives the model: its bounded result, and the images a vision model is shown after it. */
-    type Ran = { result: McpToolResult; images: HeldImage[] }
+    /**
+     * What each reading tool's answer is shown to the model as, by the SDK's
+     * call id: one data block closed by this run's marker (agent#12). Written
+     * only where a reading tool answered; a failure the harness authored is
+     * shown as it is.
+     *
+     * **Cleared as each dispatch starts.** An endpoint may use one call id for
+     * calls in different steps, so an entry left from an earlier call would show
+     * the model that call's data in place of this one's refusal or failure.
+     */
+    const framed = new Map<string, string>()
+    /**
+     * What one call gives the model: its bounded result; that result as one
+     * data block, where a reading tool answered (agent#12), which the model is
+     * shown in its place on either path; and the images a vision model is shown
+     * with it.
+     */
+    type Ran = { result: McpToolResult; images: HeldImage[]; framed?: string }
     const bare = (result: McpToolResult): Ran => ({ result, images: [] })
+    /** A reading tool's bounded answer, with the data block the model is shown for it. */
+    const asData = (name: string, result: McpToolResult, images: HeldImage[]): Ran => ({ result, images, framed: context.frame(name, JSON.stringify(result)) })
     /** One runtime call, wherever the model made it: natively, or in text (agent#4). */
     const runRuntime = async (name: string, input: unknown): Promise<Ran> => {
       // **The desk's gate is handed the call the model made.** The hook below
@@ -834,9 +871,9 @@ function runVercelLoop(
       // refused is a `guardrail` line and never a check.
       recording?.saw(name, said.text)
       // Its images, out of the text the model is shown and routed by the record's
-      // vision flag (agent#5); then the text, bounded.
-      const shown = await separateImages(answer, routing)
-      return { result: await context.result(name, shown.result), images: shown.images }
+      // vision flag (agent#5); then the text, bounded, and shown as data (agent#12).
+      const separated = await separateImages(answer, routing)
+      return asData(name, await context.result(name, separated.result), separated.images)
     }
     /** One host tool call, wherever the model made it. */
     const runHost = async (tool: HostTool, input: unknown): Promise<Ran> => {
@@ -901,22 +938,35 @@ function runVercelLoop(
         text: said.text,
         ...(said.structured === undefined ? {} : { structured: said.structured })
       })
-      const shown = await separateImages(answer, routing)
-      return { result: await context.result(tool.name, shown.result), images: shown.images }
+      const separated = await separateImages(answer, routing)
+      const projected = await context.result(tool.name, separated.result)
+      // A reading tool's answer is data (agent#12); propose_pack's acknowledgement is the adapter's own.
+      return readingTool(tool) && tool.name !== PROPOSE_PACK_TOOL ? asData(tool.name, projected, separated.images) : { result: projected, images: separated.images }
     }
-    /** A call the SDK made: its images are shown after the tool message that carries its result. */
-    const sdkCall = async (ran: Promise<Ran>, name: string, toolCallId?: string): Promise<McpToolResult> => {
-      const { result, images } = await ran
-      if (images.length > 0 && toolCallId !== undefined) imagesByCall.set(toolCallId, imageMessage(name, images))
+    /**
+     * A call the SDK made: its images are shown after the tool message that
+     * carries its result, and a reading tool's answer is shown as its data block,
+     * through `toModelOutput` (agent#12). The call id's earlier entry is cleared
+     * before the call is dispatched.
+     */
+    const sdkCall = async (dispatch: () => Promise<Ran>, name: string, toolCallId: string): Promise<McpToolResult> => {
+      framed.delete(toolCallId)
+      const { result, images, framed: data } = await dispatch()
+      if (data !== undefined) framed.set(toolCallId, data)
+      if (images.length > 0) imagesByCall.set(toolCallId, imageMessage(name, images))
       return result
     }
     const tools = toolsFor(
       session.model.family,
       schemaOf,
       session.tools,
-      (name, input, toolCallId) => sdkCall(runRuntime(name, input), name, toolCallId),
+      (name, input, toolCallId) => sdkCall(() => runRuntime(name, input), name, toolCallId),
       session.hostTools,
-      (tool, input, toolCallId) => sdkCall(runHost(tool, input), tool.name, toolCallId)
+      (tool, input, toolCallId) => sdkCall(() => runHost(tool, input), tool.name, toolCallId),
+      (callId, output) => {
+        const data = framed.get(callId)
+        return data === undefined ? shownAsAnswered(callId, output) : { type: 'text', value: data }
+      }
     )
     /**
      * A call to a tool this phase never offered, put through the gate as the
@@ -956,8 +1006,9 @@ function runVercelLoop(
     const textTurn = (said: string, name: string, ran: Ran): ModelMessage[] => {
       const back: ModelMessage = {
         role: 'user',
-        // The result as a native call's is shown: the bounded answer, as JSON.
-        content: `${textToolResultHeader(name, ran.result.isError === true)}\n${JSON.stringify(ran.result)}`
+        // The result as a native call's is shown: a reading tool's answer as its
+        // data block (agent#12), any other the bounded answer, as JSON.
+        content: `${textToolResultHeader(name, ran.result.isError === true)}\n${ran.framed ?? JSON.stringify(ran.result)}`
       }
       if (ran.images.length > 0) imagesWith.set(back, ran.images)
       return [{ role: 'assistant', content: said }, back]
@@ -991,7 +1042,7 @@ function runVercelLoop(
 
     let streamed: unknown = null
     let publicText = ''
-    const instructions=(session.purpose === 'graph' ? GRAPH_SYSTEM : session.purpose === 'brief' ? BRIEF_SYSTEM : session.purpose === 'test-design' ? TEST_DESIGN_SYSTEM : session.allowConversation ? CONVERSATION_SYSTEM : SYSTEM) + (offersProposeTool(session.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : '') + assistantLanguageInstructions(session.replyLanguage)
+    const instructions=(session.purpose === 'graph' ? GRAPH_SYSTEM : session.purpose === 'brief' ? BRIEF_SYSTEM : session.purpose === 'test-design' ? TEST_DESIGN_SYSTEM : session.allowConversation ? CONVERSATION_SYSTEM : SYSTEM) + (offersProposeTool(session.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : '') + DATA_RULE + assistantLanguageInstructions(session.replyLanguage)
     // The tools a native request carries, counted against the budget; on an
     // endpoint without native tool calls they are in the system text instead.
     const schemas=nativeTools?[...session.tools,...session.hostTools].map(({name,description,inputSchema})=>({name,description,inputSchema})):[]
@@ -1360,7 +1411,8 @@ function runVercelLoop(
       // The critic's tools: the loop's, less the host tools a review may not use.
       const criticTools = Object.fromEntries(Object.entries(tools).filter(([name]) => !session.hostTools?.some(tool => tool.name === name && (tool.interaction || tool.effect === 'memory' || ['update_plan','request_budget_increase',PROPOSE_PACK_TOOL].includes(tool.name)))))
       const criticOffered = new Set(Object.keys(criticTools))
-      const criticSystem = CRITIC_SYSTEM + assistantLanguageInstructions(session.replyLanguage) + (nativeTools ? '' : '\n\n' + described(criticOffered))
+      // The critic's system text, set once: the call and every step use it.
+      const criticSystem = CRITIC_SYSTEM + DATA_RULE + assistantLanguageInstructions(session.replyLanguage) + (nativeTools ? '' : '\n\n' + described(criticOffered))
       // On the text path the critic, like the loop, asks once per call (agent#4).
       let criticMessages: ModelMessage[] = [
         { role: 'user', content: await context.prompt(criticMessage(session.testPrompt, proposal.document),criticSystem,schemas) }

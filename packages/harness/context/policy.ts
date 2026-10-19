@@ -11,10 +11,18 @@ export const TIME_DEFAULTS = Object.freeze({turnMilliseconds:15*60_000,toolCallM
  * the Desk's table; a table that carries them wins. Sixteen MiB is one image at its own bound.
  */
 export const IMAGE_DEFAULTS = Object.freeze({imagesPerRequest:8,imageBytesPerRequest:16*1024*1024})
-export type ContextPolicy = typeof defaults & {turnMilliseconds:number;toolCallMilliseconds:number;imagesPerRequest:number;imageBytesPerRequest:number}
+/**
+ * The bounds the harness puts on the Runtime's test tool, experimental_test_cases (agent#7), which the Desk's table
+ * does not carry either: how many test calls one turn may make (each re-sends the whole pack, so a test, fix and
+ * retest loop is held to a few rounds rather than to the request allowance), and the most bytes the pack text and the
+ * matrix text may each be, which the tool gate holds on the wire. A table that carries one wins over these.
+ */
+export const TEST_DEFAULTS = Object.freeze({testCallsPerTurn:3,testPackBytes:65_536,testMatrixBytes:65_536})
+export type TestBounds = {testCallsPerTurn:number;testPackBytes:number;testMatrixBytes:number}
+export type ContextPolicy = typeof defaults & {turnMilliseconds:number;toolCallMilliseconds:number;imagesPerRequest:number;imageBytesPerRequest:number} & TestBounds
 export interface ModelContextBudget {contextWindowTokens:number;outputTokens:number}
 export interface ContextConfiguration {version:1;projectBrief?:string;models?:Record<string,ModelContextBudget>}
-export const CONTEXT_DEFAULTS:Readonly<ContextPolicy> = Object.freeze({...TIME_DEFAULTS,...IMAGE_DEFAULTS,...defaults})
+export const CONTEXT_DEFAULTS:Readonly<ContextPolicy> = Object.freeze({...TIME_DEFAULTS,...IMAGE_DEFAULTS,...TEST_DEFAULTS,...defaults})
 export function contextConfiguration(value:unknown):ContextConfiguration {
  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid assistant context configuration')
  const c=value as Record<string,unknown>

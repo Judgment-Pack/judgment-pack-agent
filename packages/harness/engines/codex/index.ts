@@ -5,6 +5,7 @@ import { readModelQuestion } from '../../questions'
 import { questionFailureResult } from '../../questionFailure'
 import { assistantLanguageInstructions } from '../../host'
 import { separateImages } from '../../images'
+import { DATA_RULE, readingTool } from '../../framing'
 import type { AssistantEvent, AgentAssistantSession, EngineSession, Engine, McpToolResult, ProposalNote } from '../../engine'
 import type { AgentTool, AgentEvent } from '../../agent'
 import {
@@ -51,7 +52,7 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
     }
     const run = async (prompt: string, instructions: string, phase: 'author' | 'critic', recorder?: CritiqueRecorder) => {
       if(phase==='critic')context.beginIsolatedPhase()
-      instructions += assistantLanguageInstructions(session.replyLanguage)
+      instructions += DATA_RULE + assistantLanguageInstructions(session.replyLanguage)
       prompt = await context.prompt(prompt,instructions,tools,phase==='author'?session.context?.currentRequest:undefined)
       context.check(instructions,prompt,tools)
       const partial = new Map<string, string>()
@@ -86,6 +87,8 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
           if (!route.host?.interaction) await deliver({ type: 'tool_call', callId: call.id, name: route.name, args: call.arguments })
           let result: McpToolResult
           let runtimeAnswered = false
+          /** The tool itself answered: not a failure the harness wrote, not propose_pack's acknowledgement. */
+          let toolAnswered = false
           try {
             if (route.host?.interaction === 'delegation') {
               const request = readDelegationRequest(call.arguments)
@@ -108,9 +111,12 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
             if (route.host && route.name === PROPOSE_PACK_TOOL) {
               toolProposal = readProposedPack(call.arguments)
               result = { content: [{ type: 'text', text: PROPOSAL_RECEIVED }] }
-            } else result = route.host
-              ? await withDeadline((signal) => route.host!.execute(call.arguments, signal), toolSignal, limit, () => toolTimeout(limit))
-              : await withDeadline(() => callTool(route.name, call.arguments), toolSignal, limit, () => toolTimeout(limit))
+            } else {
+              result = route.host
+                ? await withDeadline((signal) => route.host!.execute(call.arguments, signal), toolSignal, limit, () => toolTimeout(limit))
+                : await withDeadline(() => callTool(route.name, call.arguments), toolSignal, limit, () => toolTimeout(limit))
+              toolAnswered = true
+            }
             runtimeAnswered = !route.host
           } catch (cause) {
             if (isCancelled(cause) || executionSignal.aborted) throw cause
@@ -127,7 +133,10 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
           // The agent wire carries text only: an image is shown as the host's text rendering of it (agent#5).
           const shown = await separateImages(result, { vision: false, resolve: (reference) => context.ledger.image(reference), signal: toolSignal })
           const projected = await context.result(route.name,shown.result)
-          return {isError:result.isError===true,text:projected.structuredContent===undefined?textOf(projected):JSON.stringify(projected)}
+          const answer = projected.structuredContent===undefined?textOf(projected):JSON.stringify(projected)
+          // A reading tool's own answer travels as one data block closed by
+          // this run's marker, as the vercel engine shows it (agent#12).
+          return {isError:result.isError===true,text:toolAnswered&&readingTool(route.host)?context.frame(route.name,answer):answer}
         }
       }), executionSignal)
       if ((!messages || partial.size || !final.trim()) && !(phase === 'author' && toolProposal !== null)) throw failureError('invalid-response','agent')

@@ -8,8 +8,11 @@ are in [`contract/`](../../contract/README.md); this page says the same thing in
 
 Amended for agent#6 and the harness side of agent#2: nothing a model finished is lost (the whole
 answer kept, the proposal's `note`, the `propose_pack` tool), the model-request retry rule, the
-turn's wall clock and the tool-call deadline. These are the harness package's behaviour, not yet the
-Desk's; their vectors name the package's files as their source.
+turn's wall clock and the tool-call deadline. Amended again for agent#7 (the Runtime's test tool on
+the ceiling, under an argument allow-list and a per-turn cap), agent#3 (the failure paths, recorded
+in [AI error handling](ai-error-handling.md)) and the harness side of agent#12 (retrieved text
+framed as data). These are the harness package's behaviour, not yet the Desk's; their vectors name
+the package's files as their source.
 
 ## Host, adapter, and the slot between them
 
@@ -93,7 +96,16 @@ The stream is open: it is an in-process union with no reader at run time that re
 
 `tool-offer.json`, the session's two members, `tools` and `hostTools`. The runtime's tools arrive
 as served (`name`, `description`, `inputSchema`), already filtered to the session's allow-list,
-which is a subset of a five-tool ceiling, so each name is one of the five. The host's
+which is a subset of a six-tool ceiling, so each name is one of the six: the Desk's five
+(`get_schema`, `list_examples`, `get_example`, `validate`, `experimental_evaluate`) and
+`experimental_test_cases`, which takes pack text and a matrix and reads no project file, so a model
+can test, fix and retest a draft it has not saved. The Runtime's other test and project tools stay
+off it, each for a reason the gate's documentation keeps (`REFUSED_RUNTIME_TOOLS` in `toolGate.ts`):
+`test_conformance` takes `suite`, a local path the runtime reads on the machine that serves it, and
+the gate checks names, not paths; `experimental_test_packs` and `experimental_test_graphs` test the
+saved tree rather than the draft, and their saved suites are not held by the rule that holds a
+rehearsal; `get_pack` and `list_packs` read the saved tree. A host's own configuration may grant
+fewer (the Desk's decoder admits its five today). The host's
 tools arrive as declarations (`name`, `description`, `inputSchema`) with host-declared members the
 model never supplies: `effect` (`read`, `proposal`, `workflow`, `memory`, `plan`), `interaction`
 (`question` or `delegation`, the two that pause the run), `delegation` (the read-only capability a
@@ -125,7 +137,11 @@ was received and will be shown for review, and never reaches the host's `execute
 another shape are a failed result naming what to correct, under the fence's rules (`kind`, where
 given, must be `create`). The latest call's document is the proposal, and the fenced block stays the
 fallback; a fenced proposal in the same answer as a tool proposal is ambiguous and refused, as two
-fenced proposals are. The critic is not offered it.
+fenced proposals are. The critic is not offered it. For `propose_pack` and the host's other
+`propose_*` tools the boundary is the review card, not the gate: an offered proposal tool is one
+the model may call, retrieved text that asks for it included, and what holds is that a proposal is
+shown for the person's review and nothing is written or applied until the person acts. The gate
+holds the tools that are not offered.
 
 ## Tool calls
 
@@ -136,17 +152,33 @@ host can journal it. A host tool with an `interaction` gets `user_question` or
 
 Every runtime call leaves through the host's gate (`toolGate.ts`), which reads the outbound
 `tools/call` frame: a name outside the allow-list is refused on the wire (`guardrail` `refused`,
-and the call fails); `experimental_evaluate` always leaves with an own `rehearsal: true`
+and the call fails); `experimental_test_cases` leaves only with exactly `pack` and `matrix`, each a
+string within its bound, the policy's `testPackBytes` and `testMatrixBytes`
+(`$defs/testCasesArguments`; the Runtime refuses text that is not JSON),
+and any other member, a path among them, is refused the same way, the notice naming members and
+sizes and never their text; `experimental_evaluate` always leaves with an own `rehearsal: true`
 (`guardrail` `rewrote` where the model's call lacked it), so a rehearsal never writes an audit
-record. The adapter neither applies nor skips this rule.
+record. The adapter neither applies nor skips these rules.
+
+One turn may call `experimental_test_cases` at most `testCallsPerTurn` times (three by default),
+counted per turn. The count is the shared boundary's (`context/session.ts`), so both engines keep
+it, and it is the checkpoint's `testCalls`, carried as `used` is: a Retry, a budget continuation and
+a delegation's parent continuation go on counting, and the delegation coordinator counts the parent
+and its continuation together. A call past it is not made, and the model reads a failed result
+(`tool-failed`, source `tool`, outcome `not-started`) that names `testCallsPerTurn` and tells it to
+use the reports it has. Each call re-sends the whole pack, so without the cap a test, fix and
+retest loop would be bounded only by the request allowance, at a cost that grows with the square of
+the steps; the repeated-work detector compares arguments and does not see a pack that changes each
+time. A new turn starts at nought.
 
 A call made in text goes through the same dispatch, and so the same gate, as a native one, and
 emits the same `tool_call`, `guardrail` and `tool_result` events. A name the phase did not offer
 (the critic is offered fewer host tools than the loop) is put through the gate as the model wrote
 it and reported refused to the model whatever the gate answered, never looked up among the host's
 tools. The result goes back as the next user message, headed `TOOL RESULT from <name>` or `TOOL
-ERROR from <name>`, the bounded answer as JSON (`tool-result.json#/$defs/textToolResultMessage`; the
-vector `tool-result/text-result.json`). On the request reserved for a final answer a call made in
+ERROR from <name>`, then what a native call's result would show: a reading tool's answer as its
+data block (see Tool results), any other the bounded answer as JSON
+(`tool-result.json#/$defs/textToolResultMessage`; the vector `tool-result/text-result.json`). On the request reserved for a final answer a call made in
 text is refused (`reserved for a final answer`) and never run, as a native one is.
 
 ## Tool results
@@ -212,6 +244,23 @@ included, against `retainedBytes` (8 MiB), so an attached image holds at most ab
 a larger one fails the run's start with a context-budget error. The agent wire carries text, so the
 `codex` engine always gets the rendering.
 
+What the model is shown of a reading tool's answer (every runtime tool, `read_window`,
+`read_context`, `search`, and a host tool declared `effect: "read"` or, declaring no effect, offered to
+children as a read) is one data block (`$defs/framedData`): a first line naming the run's marker
+and the tool, the answer's text, and a last line, `END RETRIEVED DATA` and the marker. The marker is 128 random bits drawn when the
+run starts, the same for every block of the run and never written into the instructions, so text
+fetched before the run cannot close a block early; where an answer itself carries the marker (a
+tool that echoes an argument the model wrote), each occurrence is replaced before framing. `vercel`
+hands the block to the model on purpose, through the SDK's `toModelOutput`, as a text output whose
+data is the bounded answer's JSON, and, on an endpoint without native tool calls, as the body of the
+`TOOL RESULT` message (`$defs/textToolResultMessage`); `codex` sends it as the agent-wire answer's
+text. Context
+compaction reads a block back to its data, so the summary keeps its handles, and frames the
+compacted steps as one block of the same form. The run's instructions, the critic's included, carry
+the rule that text inside a block is data and never instructions (`DATA_RULE`). A failure the
+harness wrote and an acknowledgement the adapter wrote are not framed: they are the host's words.
+The `tool_result` event is never framed.
+
 A tool that throws is a failed result carrying `{"failure": …}` (or `{"questionFailure": …}` for
 `ask_user`), recoverable working data for the model. So is a runtime or host tool call past the
 policy's `toolCallMilliseconds`: it is no longer waited for (it may still complete; a host tool is
@@ -268,9 +317,10 @@ all.
 `budget_paused` and handed back to resume: `requestKey` (binding it to the request it was made
 for), `phase` (`plan` or `work`), `status`, the allowance (`unit`, `used`, `limit`, and `grants`
 `{from, to, at}`), the task `plan` and its `explanation`, every `operation` with its exact arguments
-and result, the `completions`, and the ledger's retained `context` (each entry with its digest, so
-a restore refuses a changed one). Never permissions, evidence approval or private reasoning. At
-most 4 MiB as JSON text.
+and result, the `completions`, the ledger's retained `context` (each entry with its digest, so a
+restore refuses a changed one), and, once the turn has called the test tool, `testCalls`, carried
+as `used` is. Never permissions, evidence approval or private reasoning. At most 4 MiB as JSON
+text.
 
 ## Failures
 
@@ -290,7 +340,10 @@ seconds, when the refusal is reported at once with its `retryAt`; never on an `u
 breaks after its first byte is reported; and never with the allowance's last request, which is the
 turn's tool-free final answer (tools close whenever one request is left, counted afresh on every
 step). Each attempt is a model request, counted against the allowance and recorded, each retry is
-said with a `retry` event, and the attempt number starts again at 1 on every new call.
+said with a `retry` event, and the attempt number starts again at 1 on every new call. What each
+engine reports on a dropped connection, a stall, a context-length refusal, a runtime socket drop and
+a whole answer where a stream was asked for, and what Retry does after each, is in
+[AI error handling](ai-error-handling.md).
 
 ## Budgets
 
@@ -348,6 +401,9 @@ the host's `endpointCapabilities` answer for the endpoint and model, any members
 (`$defs/endpointCapabilities`), then the session's own (`session.model.capabilities`), read whole and
 closed. Where the record comes from (an endpoint probe, a keyless local endpoint, a LAN address, a
 context-window field, a provider's header) is the host's.
+
+It adds three bounds on the Runtime's test tool, likewise: `testCallsPerTurn` (three),
+`testPackBytes` and `testMatrixBytes` (65,536 each), described under Tool calls.
 
 ## The execution state
 
@@ -460,6 +516,9 @@ the host's model capability so the host keeps counting; whether the adapter emit
   request; never on a call to a tool the model was not offered.
 - **An unoffered tool.** `vercel` reports the call and a refused result, and the run goes on;
   `codex`'s transport treats it as a protocol failure and the run ends with `connection-lost`.
+- **Framed answers.** Both frame a reading tool's answer the same way; the data inside differs as
+  the wires do: on `vercel` the bounded answer's JSON, on `codex` the agent-wire answer's text (a
+  text-only answer as its text).
 - **Messages.** `codex` emits a `message` for each commentary-phase message during the run as well
   as the final prose; `vercel` emits one `message`, at the end.
 - **Kinds only one engine emits.** `reasoning`, `thinking_unavailable`, `response_recovery` and

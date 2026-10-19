@@ -200,6 +200,13 @@ it('returns a precise question refusal and accepts the corrected call in the sam
  expect(events.some(e=>e.type==='error')).toBe(false)
 })
 
+/** agent#12: a reading tool's answer is one data block; its data lies between the first line and the last. */
+const dataOf=(text:string)=>{
+ const lines=text.split('\n')
+ expect(lines[0]).toMatch(/^BEGIN RETRIEVED DATA [0-9a-f]{32} from tool "/)
+ expect(lines.at(-1)).toBe('END RETRIEVED DATA '+lines[0]!.split(' ')[3])
+ return lines.slice(1,-1).join('\n')
+}
 it('retains full tool results for the UI, sends bounded references to Codex, and isolates the critic',async()=>{
  const value={records:Array.from({length:1000},(_,i)=>({id:i,decimal:'50',flag:false,note:'evidence '.repeat(40)}))}
  let passes=0
@@ -212,7 +219,7 @@ it('retains full tool results for the UI, sends bounded references to Codex, and
    const ref=JSON.parse(result.text).structuredContent
    expect(ref).toMatchObject({operationReturned:true,readWith:'read_window'})
    const page=await callbacks.tool({id:'page',name:find('read_context'),arguments:{id:ref.contextId,path:'/structuredContent/records/999'}},callbacks.signal)
-   expect(JSON.parse(page.text).structuredContent.value).toEqual(value.records[999])
+   expect(JSON.parse(dataOf(page.text)).structuredContent.value).toEqual(value.records[999])
   }else{
    const refs=await callbacks.tool({id:'list',name:find('list_context'),arguments:{}},callbacks.signal)
    expect(JSON.parse(refs.text).structuredContent.items).toEqual([])

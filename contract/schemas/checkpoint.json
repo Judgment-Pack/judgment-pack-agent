@@ -121,6 +121,12 @@
       "description": "Why work paused: the model's request_budget_increase reason and next step, or, on the vercel engine, the turn's wall clock (budget.json, turnMilliseconds).",
       "type": "string",
       "maxLength": 2000
+    },
+    "testCalls": {
+      "description": "The turn's experimental_test_cases calls so far (agent#7), counted by the harness and carried as used is, so a Retry, a budget continuation and a delegation's parent continuation keep counting against testCallsPerTurn (budget.json). Absent until the first test call. The harness's reader refuses one that is not an integer from 0 to 400.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 400
     }
   },
   "additionalProperties": true,
