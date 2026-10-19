@@ -66,6 +66,12 @@
       "minLength": 1,
       "maxLength": 200,
       "pattern": "^[^\\u0000-\\u001f]*\\S[^\\u0000-\\u001f]*$"
+    },
+    "concurrentRequests": {
+      "description": "How many model requests the connection serves at once (agent#17), as the host knows it for the connection: its relay's slots for it, or the provider's concurrency limit. A delegation batch runs that many children at a time, at most its three tasks. Absent: two. An agent capability runs one child at a time whatever this says, its provider account being exclusive.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 16
     }
   },
   "dependentRequired": {
@@ -156,6 +162,9 @@
         },
         "childModel": {
           "$ref": "#/properties/childModel"
+        },
+        "concurrentRequests": {
+          "$ref": "#/properties/concurrentRequests"
         }
       },
       "dependentRequired": {

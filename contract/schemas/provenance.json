@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/provenance.json",
   "title": "Provenance",
-  "description": "What the Desk records today about where a model answer came from: one row per model request, with the provider-neutral completion (finish reason and token counts) and the phase it served. Read from ExecutionCheckpoint.completions (web/src/assistant/execution/state.ts) and ModelCompletion (web/src/assistant/completion.ts, readCompletion; Go aifailure.Completion). Open: readCompletion and readExecution accept members they do not name. A request the provider refused and that was sent again has one row per attempt (packages/harness/engines/vercel/retry.ts; execution/controller.ts, recordRefusal): the refused attempt's row carries attempt, failure and waitMs, and the attempt that answered carries its attempt number. There is no model name, adapter or contract version, prompt digest or request timing in any record that crosses the slot (waitMs is the wait before a retry, not a timing) (see docs/design/wire-contract.md, Open questions).",
+  "description": "What the Desk records today about where a model answer came from: one row per model request, with the provider-neutral completion (finish reason and token counts) and the phase it served. Read from ExecutionCheckpoint.completions (web/src/assistant/execution/state.ts) and ModelCompletion (web/src/assistant/completion.ts, readCompletion; Go aifailure.Completion). Open: readCompletion and readExecution accept members they do not name. A request the provider refused and that was sent again has one row per attempt (packages/harness/engines/vercel/retry.ts; execution/controller.ts, recordRefusal): the refused attempt's row carries attempt, failure and waitMs, and the attempt that answered carries its attempt number. There is no model name, adapter or contract version, prompt digest or request timing in any record that crosses the slot (waitMs is the wait before a retry, not a timing) (see docs/design/wire-contract.md, Open questions). Delegation (agent#18): each delegated child's model, requests, tool calls, token counts, time to first byte and duration, each batch's total and the parent's own, carried by the checkpoint's delegation member ($defs/delegationReport) and each task record (delegated-task.json).",
   "type": "object",
   "required": [
     "request",
@@ -104,6 +104,207 @@
         "vercel",
         "codex"
       ]
+    },
+    "tokenFigures": {
+      "description": "Token counts the provider reported, summed over requests (agent#18): each member as completion's, absent where no request reported it.",
+      "type": "object",
+      "properties": {
+        "inputTokens": {
+          "$ref": "#/$defs/tokens"
+        },
+        "outputTokens": {
+          "$ref": "#/$defs/tokens"
+        },
+        "reasoningTokens": {
+          "$ref": "#/$defs/tokens"
+        },
+        "cacheReadTokens": {
+          "$ref": "#/$defs/tokens"
+        },
+        "cacheWriteTokens": {
+          "$ref": "#/$defs/tokens"
+        }
+      },
+      "additionalProperties": false
+    },
+    "childFigures": {
+      "description": "One delegated child's figures (agent#18), as its task record carries them. modelRequests: on a model capability, its requests, a retried attempt counted; on an agent capability 0, the provider running its own loop, and agentRuns its runs. firstByteMs: from its start to the first byte of its first answer (an agent's first event), absent where none came. durationMs: from its start to its end. partial and reused as the record's.",
+      "type": "object",
+      "required": [
+        "task",
+        "batch",
+        "profile",
+        "state",
+        "modelRequests",
+        "toolCalls",
+        "durationMs"
+      ],
+      "properties": {
+        "task": {
+          "$ref": "delegated-task.json#/$defs/uuid"
+        },
+        "batch": {
+          "description": "Which batch of the execution, from 1.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "profile": {
+          "type": "string",
+          "maxLength": 48,
+          "pattern": "\\S"
+        },
+        "model": {
+          "type": "string",
+          "maxLength": 200,
+          "pattern": "\\S"
+        },
+        "state": {
+          "$ref": "delegated-task.json#/$defs/state"
+        },
+        "modelRequests": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "toolCalls": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "agentRuns": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "tokens": {
+          "$ref": "#/$defs/tokenFigures"
+        },
+        "firstByteMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 86400000
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 86400000
+        },
+        "partial": {
+          "const": true
+        },
+        "reused": {
+          "const": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "figuresTotal": {
+      "description": "A batch's total (agent#18): its children's modelRequests, toolCalls, agentRuns and tokens summed (a token member present where any child's was), and its wall time from its first child's start to its last child's end.",
+      "type": "object",
+      "required": [
+        "modelRequests",
+        "toolCalls",
+        "durationMs"
+      ],
+      "properties": {
+        "modelRequests": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "toolCalls": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "agentRuns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tokens": {
+          "$ref": "#/$defs/tokenFigures"
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 86400000
+        }
+      },
+      "additionalProperties": false
+    },
+    "batchFigures": {
+      "type": "object",
+      "required": [
+        "batch",
+        "children",
+        "total"
+      ],
+      "properties": {
+        "batch": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "children": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/$defs/childFigures"
+          }
+        },
+        "total": {
+          "$ref": "#/$defs/figuresTotal"
+        }
+      },
+      "additionalProperties": false
+    },
+    "parentFigures": {
+      "description": "The parent's own figures beside its batches (agent#18): its model; its own model requests, the execution's used less its children's; on an agent capability, its own agent runs of the response; its own token counts, from its completion rows.",
+      "type": "object",
+      "required": [
+        "model",
+        "modelRequests"
+      ],
+      "properties": {
+        "model": {
+          "type": "string",
+          "maxLength": 200,
+          "pattern": "\\S"
+        },
+        "modelRequests": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "agentRuns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tokens": {
+          "$ref": "#/$defs/tokenFigures"
+        }
+      },
+      "additionalProperties": false
+    },
+    "delegationReport": {
+      "description": "What delegation cost in one execution (agent#18), as the checkpoint's delegation member carries it: each batch with its children's figures and its total, and the parent's own. Written by the delegation coordinator on every checkpoint of the parent after its first batch, carried through a resume as used is, and read closed by the harness's readExecution (validDelegationFigures). The Desk's report lines that show it are the Desk's (desk#499).",
+      "type": "object",
+      "required": [
+        "batches",
+        "parent"
+      ],
+      "properties": {
+        "batches": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/batchFigures"
+          }
+        },
+        "parent": {
+          "$ref": "#/$defs/parentFigures"
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

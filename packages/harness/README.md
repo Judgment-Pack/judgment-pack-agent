@@ -168,8 +168,9 @@ and where the execution state goes. The family stays the wire. A run's record is
 default (`FAMILY_CAPABILITIES`, the Desk's three families as records, which change nothing), then
 the host's `endpointCapabilities` answer member by member, then `session.model.capabilities` where
 the host puts its endpoint's own on the session; read closed, and refused where the reasoning kind
-is not one the wire speaks. One member is not about the endpoint's own model: `childModel`, a cheaper
-model the connection serves for delegated children (see Delegation).
+is not one the wire speaks. Two members are not about the endpoint's own model: `childModel`, a cheaper
+model the connection serves for delegated children, and `concurrentRequests`, how many model requests
+the connection serves at once (see Delegation).
 
 An endpoint without native tool calls is sent none: its tools are described at the end of the
 system text, the model calls one per answer as one fenced JSON block, `{"tool": name, "arguments":
@@ -243,7 +244,7 @@ The host says per run whether the project's memory is on (`context.memory`): `fa
 
 `withDelegation(engine, options)` (`delegation.ts`) wraps either engine for a conversation and
 offers the model `delegate_tasks` (`delegationContract.ts`; the contract's `delegated-task.json`;
-agent#13, agent#14, agent#15):
+agent#13, agent#14, agent#15, agent#16, agent#17, agent#18):
 
 - **One parent run.** The call runs the batch. The `vercel` engine awaits it in the parent's step,
   with no tool-call deadline (the batch is bounded by its children's time limits and the run's own
@@ -276,8 +277,39 @@ agent#13, agent#14, agent#15):
   chat's ledger and the parent gets their head and a `read_window` cursor (`more`); a task may ask
   to `summarize` them in one request of its budget. A complete task's context is kept in the chat
   under its task id, and a later batch resumes it with `resume`.
+- **Reports.** Each profile names its report shape (`profile.report`): a summary, findings,
+  citations, open questions, a confidence and what was not done, with a review finding's severity,
+  a research finding's sources and an author-test finding's check and status. The child ends its
+  answer with the report as one fenced `json` block (`reportInstructions`); the coordinator reads it
+  closed (`readReport`), or writes one itself (`confidence` `unstated`) where the block is missing
+  or breaks the shape. The parent's answer gives the report first, held to the task's share by
+  whole items (`fitReport`), then the text.
+- **Open questions, not failures.** A child's `user_question`, a proposal it wrote (its document
+  kept in the chat's ledger, never applied or shown for review) or a delegation it asked for comes
+  back as an open question in its report, and the task is complete. A batch that returned one earns
+  the response one batch past `MAX_BATCHES`, once.
+- **Streamed progress.** A running child's prose reaches the host as `message_progress` with the
+  task's `taskId`, cleared when the child ends. A host shows it under the task, never as the answer.
+- **Partial results and one retry.** A child stopped at its time limit returns what it had written,
+  `partial`. On a model capability, a child's request refused with the catalogue's retryable class
+  or overload code on a status the engine leaves (a 503 `overloaded_error`) is sent once more, only
+  before the first byte of the child's first answer (`childRetry`; the record's `retried`).
+- **Capacity.** A batch runs `concurrentRequests` children at once, the capability record's member
+  for the connection (the host answers it through `endpointCapabilities`), two where it names none;
+  an agent capability runs one.
+- **Reuse.** A complete result is kept in the chat under its profile, its objective's digest and its
+  references; an identical task of the same chat gets it again with no model request, `reused`
+  naming the earlier task.
+- **Cost and time.** Each child's record carries its tokens (from the provider's usage figures),
+  `firstByteMs` and `durationMs` beside its model, requests and tool calls; the parent's checkpoint
+  carries each batch's figures, its total and the parent's own (`delegation`,
+  `validDelegationFigures`), kept through a resume.
 - **Kept:** `options.checkpoint` before each task transition, the durable checkpoint of the shared
   count before each child request, cancellation with the parent, and the research hand-back.
+
+The Desk's side: the task view (a task's report, its open questions, `partial`, `reused`, its
+streamed prose by `taskId`), the run report's lines for each child and batch (desk#499), and the
+connection's capacity setting, answered as `concurrentRequests`.
 
 ## Certification
 

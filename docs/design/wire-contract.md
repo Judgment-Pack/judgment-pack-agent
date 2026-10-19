@@ -14,7 +14,12 @@ in [AI error handling](ai-error-handling.md)) and the harness side of agent#12 (
 framed as data). Amended for agent#14, agent#15 and agent#13's delegation items: one parent run
 with the children's findings as the delegate call's result, more than one batch, a resumed child,
 material passed by reference, a model, budget, time limit and Runtime tools per profile, long
-findings kept whole, and the tool-call cap stated (see [Delegated tasks](#delegated-tasks)). These
+findings kept whole, and the tool-call cap stated (see [Delegated tasks](#delegated-tasks)).
+Amended for agent#16, agent#17 and agent#18: a child's report in its profile's shape, what it asks
+of the parent returned as open questions, its prose streamed under its task, a partial result at
+its time limit, one retry before its first byte, concurrency from the connection's capacity, reuse
+of an identical task, and each child's cost and time in its record and the parent's checkpoint; and
+the remaining agent#12 cases, the page that asks for `propose_pack` or a search, on `codex`. These
 are the harness package's behaviour, not yet the Desk's; their vectors name the package's files as
 their source.
 
@@ -52,7 +57,8 @@ rehearsal rule stay the host's (ADR-0001). Nothing below moves them.
 
 - **Work:** `tool_call` and `tool_result` (each call before its result, paired by `callId` where
   one is set); `reasoning` (deltas, then the whole passage with `done`); `message_progress` (the
-  prose so far, whole each time, proposal fence hidden; empty clears it) and `message` (the
+  prose so far, whole each time, proposal fence hidden; empty clears it; with `taskId`, a delegated
+  child's prose under its task, never the run's own answer, agent#16) and `message` (the
   model's prose beside the proposal, as written; where the proposal could not be read, the whole
   answer, prose and raw fence, before the error).
 - **Pauses for someone else:** `user_question` (the model asked the person; the turn ends),
@@ -272,6 +278,13 @@ the rule that text inside a block is data and never instructions (`DATA_RULE`). 
 harness wrote and an acknowledgement the adapter wrote are not framed: they are the host's words.
 The `tool_result` event is never framed.
 
+Injection cases (agent#12) hold the boundary on both engines: a page that asks the model to call
+`propose_pack` (what holds is the review card: nothing written or applied), to search for a
+secret-looking string (no request leaves without the host's consent gate inside its search tool),
+and to call the test tool with a crafted path argument (the gate refuses it; the runtime sees
+nothing). Each attempt is visible as a `tool_call` and its result. On `codex` the scripted agent
+reads the page through the real agent transport and makes the same call (`framing.test.ts`).
+
 A tool that throws is a failed result carrying `{"failure": …}` (or `{"questionFailure": …}` for
 `ask_user`), recoverable working data for the model. So is a runtime or host tool call past the
 policy's `toolCallMilliseconds`: it is no longer waited for (it may still complete; a host tool is
@@ -331,9 +344,10 @@ profile's instructions, its rules, the JSON of its objective, references and tim
 tools its profile's capabilities admit and the Runtime tools its profile names, and nothing else.
 It publishes each transition as `delegated_task`: `state` (`queued`, `running`, `complete`,
 `failed`, `interrupted`), its `steps`, its counts (`modelRequests`, `toolCalls`, `attempts`), its
-`budget` and `model`, its `references` and the task it `resumes`, and its `result`, `more`,
-`problem` or `failure`. Children cannot ask, propose, approve or delegate again. Their findings are
-unverified working material.
+`budget` and `model`, its `references` and the task it `resumes`, its `report`, `result`, `more`,
+`problem` or `failure`, `partial`, `reused` or `retried`, and its `tokens`, `firstByteMs` and
+`durationMs`. Children cannot approve or delegate again, and what they would ask, propose or
+delegate is returned to the parent as data (below). Their findings are unverified working material.
 
 **Context by reference** (agent#15). A reference is a ledger entry id from the parent's context
 (`list_context`, a result reference's `contextId`) or the id the host gave one of its documents,
@@ -390,6 +404,73 @@ same chat (the same response or a later one) resumes it with `resume` and a new 
 child's brief carries its earlier objectives and findings (`earlierWork`), and its view of the chat
 still shows what it read before.
 
+**What a child returns** (agent#16). Each profile names a report shape (`profile.report`;
+`$defs/analyzeReport`, `reviewReport`, `researchReport`, `authorTestReport`, one vector each under
+`vectors/delegation/report-*.json`): a `summary`, `findings`, `citations`, `openQuestions`, a
+`confidence` (`low`, `medium`, `high`) and what was `notDone`. A review finding names its
+`severity`; a research finding cites at least one source read; an author-test finding names the
+Runtime `check` it ran, its `status`, and where they apply the `case` and the smallest `fix`. The
+child is told its shape (`reportInstructions`) and ends its answer with one fenced `json` block whose
+root has a single `report` member; the coordinator reads it closed in the profile's shape
+(`readReport`, which also holds that a finding cites only its report's citations). Where the block
+is missing or breaks its shape, the coordinator writes the report itself: the text's head as the
+summary, no findings, `confidence` `unstated`, and `notDone` saying why. The text, the answer less
+its block, is the record's `result`. The parent's answer gives each task's report first, held to the
+task's share by whole items where it does not fit (`reportCut`; the record keeps the whole), then as
+much text as the share leaves; past that, the whole text with its block is in the chat's ledger at
+`more`, as for long findings.
+
+What a child's run asks of the parent is returned as data, never a failed task: a `user_question`
+it raised becomes an open question `question` with its text and options; a proposal it wrote becomes
+`proposal`, its document kept in the chat's ledger at `ref` and never applied or shown for review
+(where the conversation takes no proposals, the open question says it was not kept); a
+`delegation_requested` becomes `delegation`, no task started. They are added to the report's
+`openQuestions` (at most six; the child is told four for its own). A batch whose answer carries an
+open question earns the response one batch past `MAX_BATCHES`, once, within the shared limits.
+
+A running child's prose streams under its task as `message_progress` with its `taskId`, as its
+engine writes it (whole each time, cleared as each step starts), between its `delegated_task`
+events, and is cleared with an empty text and its `taskId` when the child ends. The Desk's task view
+renders it (`vectors/delegation/child-progress.json`).
+
+**When a child cannot finish** (agent#17). At its time limit (its own or the batch's), what the
+child had written is returned: its finished messages and its prose so far, kept as any result,
+with `partial` true, `state` `complete`, and `problem` naming the limit; a child that had written
+nothing fails as before. On a model capability, one request of a child's is sent once more where the
+endpoint refused it with the catalogue's retryable class (`rate-limited`) or its overload code
+(`overloaded_error`) on a status the engine's own rule leaves to the run (a 5xx, so a 503
+`overloaded_error`; the engine sends a 4xx refusal again itself, see Failures), and only before the
+first byte of the child's first answer: never after a byte has arrived, at most once per task, after
+the first backoff (one second) or the provider's `Retry-After` within thirty seconds, and never
+where it would take the child's last request or the response's request kept for the parent. Each
+attempt is a request of the child's; the record carries the refusal and the wait (`retried`). A
+503 without the overload code is not sent again. On an agent capability the admission retry above
+stands and nothing else.
+
+**Capacity** (agent#17). A batch runs as many children at once as the connection serves model
+requests: the capability record's `concurrentRequests` (see The capability record), two where it
+names none, at most the batch's three tasks. An agent capability runs one at a time whatever the
+record says.
+
+**Reuse** (agent#17). A complete, not partial, child's text and open questions are kept in the chat
+under a key of its profile, its objective's SHA-256 and its references (the entries they resolved
+to, in any order). A later task of the same chat with the same key (the same batch, the same
+response, or a later one) is given that result again with no model request: its record is
+`complete` with `reused` naming the earlier task, `modelRequests` and `toolCalls` 0, its report and
+text kept as the earlier one's were. A resumed task is never reused, and another profile is another
+task.
+
+**What it cost** (agent#18). Each child's record carries its `model`, `modelRequests` (a retried
+attempt counted), `toolCalls`, `tokens` (the provider's usage figures from its completion rows,
+summed, each member absent where none reported it), `firstByteMs` (from its start to the first byte
+of its first answer; on an agent capability its agent's first event) and `durationMs`. The parent's
+checkpoint carries them too (`delegation`, `provenance.json#/$defs/delegationReport`): each batch's
+children and its total (the sums, and its wall time), and the parent's own figures (its model, its
+own requests, the execution's `used` less its children's, and its own tokens). The coordinator
+writes it on every checkpoint of the parent once a batch has finished; it is carried through a
+resume as `used` is, and the harness's reader refuses one that does not read closed. The Desk's run
+report lines are the Desk's (desk#499).
+
 **Kept as they were:** the host's checkpoint of each task transition before the next operation
 (`options.checkpoint`; a failed save ends the response with a `storage` error before any child
 runs), the durable checkpoint of the shared request count before each child request, cancellation
@@ -405,7 +486,8 @@ for), `phase` (`plan` or `work`), `status`, the allowance (`unit`, `used`, `limi
 and result, the `completions`, the ledger's retained `context` (each entry with its digest, so a
 restore refuses a changed one; for a run handed a chat-scoped context, the entries that run retained
 or read), and, once the turn has called the test tool, `testCalls`, carried
-as `used` is. Never permissions, evidence approval or private reasoning. At most 4 MiB as JSON
+as `used` is, and, once a delegation batch has finished, `delegation`: what each child and batch
+cost, beside the parent's own (agent#18; see Provenance). Never permissions, evidence approval or private reasoning. At most 4 MiB as JSON
 text.
 
 ## Failures
@@ -488,6 +570,9 @@ that speaks the request, where signatures ride, where a cache breakpoint goes):
 - `statePlacement` and `strictAlternation` (agent#9): where the execution state goes; see below.
 - `childModel` (agent#15): a model the same connection serves for delegated children, whose own
   record is the host's answer for it over the family's default; see Delegated tasks.
+- `concurrentRequests` (agent#17): how many model requests the connection serves at once, as the
+  host knows it (its relay's slots for the connection, a provider's concurrency limit); a
+  delegation batch runs that many children at a time, two where the record names none.
 
 A run's record is the family's default (the three vectors, which change nothing the loop did), then
 the host's `endpointCapabilities` answer for the endpoint and model, any members of the record
@@ -648,7 +733,11 @@ refused and that was sent again has a row per attempt, the refused one with its 
 `failure` and `waitMs`, the one that answered with its `attempt`. A failure carries the status,
 request id and completion it was classified from. The checkpoint's `requestKey` and every retained
 entry are SHA-256 digests; the server writes the project brief's digest into the brief itself.
-That is all: see the open question on provenance below.
+Since agent#18 in this harness, delegation is recorded too: each delegated child's model, requests,
+tool calls, tokens, time to first byte and duration, each batch's total, and the parent's own
+figures (`$defs/delegationReport`, `childFigures`, `figuresTotal`, `parentFigures`,
+`vectors/delegation/figures.json`), in the checkpoint's `delegation`. That is all: see the open
+question on provenance below.
 
 ## Open questions
 
@@ -700,10 +789,15 @@ the host's model capability so the host keeps counting; whether the adapter emit
 - **The critic's default.** `vercel` runs the critic when the session leaves `adversarialReview`
   unset and the reasoning tier is on (`adversarialReview ?? runsRefutation()`); `codex` runs it
   only when `adversarialReview` is `true`.
-- **Delegation** (agent#14). `vercel` awaits the delegate call in the parent's step and runs two
-  children at a time; `codex` ends its run at the call, runs its children one at a time on the
-  provider account, and the response continues in a new run given the call's result. A child model
-  (`childModel`) applies on `vercel` only.
+- **Delegation** (agent#14). `vercel` awaits the delegate call in the parent's step and runs as
+  many children at a time as the record's `concurrentRequests` says, two where it names none;
+  `codex` ends its run at the call, runs its children one at a time on the provider account, and the
+  response continues in a new run given the call's result. A child model (`childModel`) applies on
+  `vercel` only. A child's one retry before its first byte (agent#17) is on a model capability only;
+  a `codex` child keeps the admission retry. A child's time to first byte is its first answer's
+  first byte on `vercel` and its agent's first event on `codex`, and its tokens are recorded where
+  the provider reports usage, which the agent wire does not. A `codex` child's prose so far, for a
+  partial result and the streamed progress, is its agent's streamed `text` events.
 - **Retries.** `vercel` keeps the SDK's own retries off (`maxRetries: 0`) and sends a model request
   again only after a `refused` outcome whose recovery is `wait` or `retry`, at most twice, with a
   `retry` event each time (see Failures); separately, it starts the whole session again only for a

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/delegated-task.json",
   "title": "Delegated task",
-  "description": "The state of one child task of a delegation batch, carried whole on every delegated_task event (each transition is a fresh snapshot). Read from DelegatedTask (web/src/assistant/delegationContract.ts, validDelegatedTask; packages/harness/delegationContract.ts in this harness). Open: validDelegatedTask accepts a member it does not name. The model asks for a batch with the host tool delegate_tasks. In this harness (agent#14) the call runs the batch: an engine that awaits a tool call (vercel) gets the children's findings as that call's result ($defs/answer) in the same run; an engine whose run cannot wait for one (codex: the provider account runs one agent run at a time and the children need it) emits delegation_requested and ends its run, and the coordinator (packages/harness/delegation.ts, withDelegation) runs the batch and starts the response's next run with the call's result and nothing else. The coordinator runs the children on the same engine and emits these events. Its shared limits: the response's model requests (one kept for the parent), MAX_TOOLS tool calls (20) across the parent and its children, the turn's test calls, at most four batches (MAX_BATCHES) and, on an agent capability, five agent runs; each child's own are its profile's budget ($defs/profile, $defs/budget), which replace the Desk's MAX_CHILD_MODELS, MAX_CHILD_TOOLS and CHILD_TIMEOUT (budget.json $defs/deskLimits). The members after failure are this harness's (agent#13, agent#14, agent#15).",
+  "description": "The state of one child task of a delegation batch, carried whole on every delegated_task event (each transition is a fresh snapshot). Read from DelegatedTask (web/src/assistant/delegationContract.ts, validDelegatedTask; packages/harness/delegationContract.ts in this harness). Open: validDelegatedTask accepts a member it does not name. The model asks for a batch with the host tool delegate_tasks. In this harness (agent#14) the call runs the batch: an engine that awaits a tool call (vercel) gets the children's findings as that call's result ($defs/answer) in the same run; an engine whose run cannot wait for one (codex: the provider account runs one agent run at a time and the children need it) emits delegation_requested and ends its run, and the coordinator (packages/harness/delegation.ts, withDelegation) runs the batch and starts the response's next run with the call's result and nothing else. The coordinator runs the children on the same engine and emits these events. Its shared limits: the response's model requests (one kept for the parent), MAX_TOOLS tool calls (20) across the parent and its children, the turn's test calls, at most four batches (MAX_BATCHES) and, on an agent capability, five agent runs; each child's own are its profile's budget ($defs/profile, $defs/budget), which replace the Desk's MAX_CHILD_MODELS, MAX_CHILD_TOOLS and CHILD_TIMEOUT (budget.json $defs/deskLimits). The members after failure are this harness's (agent#13, agent#14, agent#15, agent#16, agent#17, agent#18). What a child returns (agent#16): its report ($defs/report, in its profile's shape) beside its text; what its run asked of the parent (a question, a proposal, more delegation) is in the report's openQuestions and the task is not failed; its prose so far streams as message_progress events carrying its taskId (run-event.json). When it cannot finish (agent#17): at its time limit, what it had written, marked partial; one retry of a transient refusal before its first answer byte (reused, retried). What it cost (agent#18): tokens, firstByteMs and durationMs beside modelRequests, toolCalls and model, and the batch's figures in the parent's checkpoint (checkpoint.json delegation, provenance.json $defs/delegationReport).",
   "type": "object",
   "required": [
     "id",
@@ -40,7 +40,8 @@
       "pattern": "\\S"
     },
     "state": {
-      "$ref": "#/$defs/state"
+      "$ref": "#/$defs/state",
+      "description": "complete covers a partial result (partial true) and a reused one (reused); failed is a task with nothing to return."
     },
     "createdAt": {
       "$ref": "#/$defs/time"
@@ -89,7 +90,7 @@
       }
     },
     "result": {
-      "description": "The child's findings: unverified working material for the parent. Where they are longer than the task's share of the parent's answer (and at most 12,000 characters), their head: whole lines, or the start of a first line too long; the whole is in the chat's ledger at more (agent#13). Where summarized is true, the child's own summary of the findings at more.",
+      "description": "The child's text: its answer less its report block. Where the report and the text are longer than the task's share of the parent's answer (and at most 12,000 characters), the text's head: whole lines, or the start of a first line too long; the whole text, the report block with it, is in the chat's ledger at more (agent#13, agent#16). Where summarized is true, the child's own summary of the text at more. Absent where the child wrote nothing but its report, or the share left no room for a line.",
       "type": "string",
       "maxLength": 12000,
       "pattern": "\\S"
@@ -132,6 +133,53 @@
     "summarized": {
       "description": "result is the child's own summary of the findings at more, made in one more request of its budget where the task asked for it (agent#13).",
       "type": "boolean"
+    },
+    "report": {
+      "description": "The child's structured result (agent#16), in its profile's report shape (profile.report): the child's own report block where it wrote one that reads closed in that shape, else the coordinator's (confidence unstated, notDone saying why). What the child's run asked of the parent is added to its openQuestions. Present on every complete task this harness publishes; absent on a record the Desk wrote before.",
+      "$ref": "#/$defs/report"
+    },
+    "partial": {
+      "description": "The task reached its time limit (its own or the batch's) and result is what it had written by then: its finished messages and its prose so far (agent#17). Its state is complete; problem says which limit.",
+      "const": true
+    },
+    "reused": {
+      "description": "The earlier task of the same chat whose result this one returns (agent#17): the same profile, the same objective (its digest) and the same references. No model request was made; modelRequests and toolCalls are 0.",
+      "$ref": "#/$defs/uuid"
+    },
+    "retried": {
+      "description": "The one refusal sent again before the child's first answer byte (agent#17): of the catalogue's retryable class (rate-limited) or carrying its overload code (overloaded_error), on a status the engine's own rule does not send again (a 5xx, such as 503 overloaded_error), and the wait before the second attempt (the first backoff, 1000 ms, or the provider's Retry-After where longer, within 30000 ms). Never after a byte of an answer; at most once per task; each attempt is a model request of the task's.",
+      "type": "object",
+      "required": [
+        "failure",
+        "waitMs"
+      ],
+      "properties": {
+        "failure": {
+          "$ref": "failure.json"
+        },
+        "waitMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 30000
+        }
+      },
+      "additionalProperties": false
+    },
+    "tokens": {
+      "description": "The provider's token counts for this task's model requests, summed over its runs (agent#18); a member is absent where no request reported it, and the whole is absent where none did (an agent capability reports none).",
+      "$ref": "provenance.json#/$defs/tokenFigures"
+    },
+    "firstByteMs": {
+      "description": "From the task's start to the first byte of its first answer's body (a model capability), or to its agent's first event or tool call (an agent capability), in milliseconds (agent#18). Absent where none arrived.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 86400000
+    },
+    "durationMs": {
+      "description": "From the task's start to its end, in milliseconds (agent#18).",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 86400000
     }
   },
   "additionalProperties": true,
@@ -220,7 +268,7 @@
       "additionalProperties": false
     },
     "profile": {
-      "description": "A task profile (TaskProfile): what a child is told, which host-tool capabilities and which of the gate's Runtime tools it is offered, which model it runs on and its budget (agent#15). A host tool reaches a child only where its own delegation member names a capability the profile lists; a Runtime tool only where the profile names it and the parent's session was served it through the gate. The closed profiles are vectors/delegation/profiles.json; a feature adapter may add one (options.profiles), held by readProfiles to a budget within the ceiling (10 model requests, 12 tool calls, 360,000 ms) and Runtime tools on the gate's ceiling.",
+      "description": "A task profile (TaskProfile): what a child is told, which host-tool capabilities and which of the gate's Runtime tools it is offered, which model it runs on and its budget (agent#15), and the report shape its children write (agent#16). A host tool reaches a child only where its own delegation member names a capability the profile lists; a Runtime tool only where the profile names it and the parent's session was served it through the gate. The closed profiles are vectors/delegation/profiles.json; a feature adapter may add one (options.profiles), held by readProfiles to a budget within the ceiling (10 model requests, 12 tool calls, 360,000 ms) and Runtime tools on the gate's ceiling.",
       "type": "object",
       "required": [
         "id",
@@ -264,6 +312,15 @@
         "budget": {
           "description": "Absent: six model requests, six tool calls, 120,000 ms (DEFAULT_TASK_BUDGET).",
           "$ref": "#/$defs/budget"
+        },
+        "report": {
+          "description": "The report shape its children write (agent#16): $defs/analyzeReport, reviewReport, researchReport or authorTestReport. Absent: analyze.",
+          "enum": [
+            "analyze",
+            "review",
+            "research",
+            "author-test"
+          ]
         }
       },
       "additionalProperties": true
@@ -326,7 +383,7 @@
       "additionalProperties": false
     },
     "answer": {
-      "description": "What the parent is answered for a batch (agent#14): the delegate call's result, as structuredContent and its JSON text, shown to the model as one data block (framing.ts); on an engine that ends its run at the call, the JSON the response's next run is given. Each task's findings are held to its share of one tool result, so the answer fits toolResultBytes. Closed: the coordinator writes these members and no other.",
+      "description": "What the parent is answered for a batch (agent#14): the delegate call's result, as structuredContent and its JSON text, shown to the model as one data block (framing.ts); on an engine that ends its run at the call, the JSON the response's next run is given. Each task's report and text are held to its share of one tool result, so the answer fits toolResultBytes. Closed: the coordinator writes these members and no other.",
       "type": "object",
       "required": [
         "tasks",
@@ -349,7 +406,7 @@
       "additionalProperties": false
     },
     "answerTask": {
-      "description": "One task of a batch's answer: its record's id, title, profile, state, resumes, result, more, summarized and problem, what it used, and its budget.",
+      "description": "One task of a batch's answer: its record's id, title, profile, state, resumes, report, result, more, summarized, partial, reused and problem, what it used, and its budget. report is held to the task's share of the answer, whole where it fits; else cut by whole items (notDone, then findings from the last with the citations only they cited, then citations, then open questions, then the summary's start) and reportCut is true: the record carries the whole, and the whole text with its report block is at more. The text takes what the share leaves.",
       "type": "object",
       "required": [
         "id",
@@ -378,6 +435,12 @@
         "resumes": {
           "$ref": "#/$defs/uuid"
         },
+        "report": {
+          "$ref": "#/$defs/report"
+        },
+        "reportCut": {
+          "const": true
+        },
         "result": {
           "type": "string",
           "maxLength": 12000,
@@ -388,6 +451,12 @@
         },
         "summarized": {
           "const": true
+        },
+        "partial": {
+          "const": true
+        },
+        "reused": {
+          "$ref": "#/$defs/uuid"
         },
         "problem": {
           "type": "string",
@@ -417,6 +486,430 @@
         }
       },
       "additionalProperties": false
+    },
+    "citation": {
+      "description": "A source the child read: an entry id of its context or a document id (read with read_window), or an address it read. quote: the words it relied on.",
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 300,
+          "pattern": "\\S"
+        },
+        "quote": {
+          "type": "string",
+          "maxLength": 300,
+          "pattern": "\\S"
+        }
+      },
+      "additionalProperties": false
+    },
+    "analyzeFinding": {
+      "type": "object",
+      "required": [
+        "text"
+      ],
+      "properties": {
+        "text": {
+          "type": "string",
+          "maxLength": 600,
+          "pattern": "\\S"
+        },
+        "citations": {
+          "description": "Ids of the report's own citations (a rule the reader holds: every id is one of them).",
+          "type": "array",
+          "maxItems": 4,
+          "items": {
+            "type": "string",
+            "maxLength": 300,
+            "pattern": "\\S"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "reviewFinding": {
+      "type": "object",
+      "required": [
+        "text",
+        "severity"
+      ],
+      "properties": {
+        "text": {
+          "type": "string",
+          "maxLength": 600,
+          "pattern": "\\S"
+        },
+        "severity": {
+          "enum": [
+            "gap",
+            "inconsistency",
+            "unsupported"
+          ]
+        },
+        "citations": {
+          "description": "Ids of the report's own citations (a rule the reader holds: every id is one of them).",
+          "type": "array",
+          "maxItems": 4,
+          "items": {
+            "type": "string",
+            "maxLength": 300,
+            "pattern": "\\S"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "researchFinding": {
+      "type": "object",
+      "required": [
+        "text",
+        "citations"
+      ],
+      "properties": {
+        "text": {
+          "type": "string",
+          "maxLength": 600,
+          "pattern": "\\S"
+        },
+        "citations": {
+          "description": "At least one id of the report's own citations: a source actually read.",
+          "type": "array",
+          "maxItems": 4,
+          "items": {
+            "type": "string",
+            "maxLength": 300,
+            "pattern": "\\S"
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "authorTestFinding": {
+      "type": "object",
+      "required": [
+        "text",
+        "check",
+        "status"
+      ],
+      "properties": {
+        "text": {
+          "type": "string",
+          "maxLength": 600,
+          "pattern": "\\S"
+        },
+        "check": {
+          "description": "The Runtime tool the check ran.",
+          "$ref": "tool-offer.json#/$defs/runtimeCeiling"
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "refused",
+            "error"
+          ]
+        },
+        "case": {
+          "description": "The test case the finding is about, where one is.",
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "\\S"
+        },
+        "fix": {
+          "description": "The smallest change that would fix it, where one would.",
+          "type": "string",
+          "maxLength": 600,
+          "pattern": "\\S"
+        }
+      },
+      "additionalProperties": false
+    },
+    "openQuestion": {
+      "description": "What the parent decides (agent#16): question, a question the child would put to the person (its own, or an ask_user call its run made); proposal, a document it proposed, kept in the chat's ledger at ref and never applied or shown for review; delegation, more delegation it asked for, never started.",
+      "type": "object",
+      "required": [
+        "kind",
+        "text"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "question",
+            "proposal",
+            "delegation"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 400,
+          "pattern": "\\S"
+        },
+        "ref": {
+          "description": "A ledger entry id, read with read_window.",
+          "type": "string",
+          "maxLength": 300,
+          "pattern": "\\S"
+        }
+      },
+      "additionalProperties": false
+    },
+    "analyzeReport": {
+      "description": "The analyze profile's report (agent#16), as its child writes it in one fenced json block whose root has a single report member at the end of its answer, read closed (readReport). summary: what the parent reads first. confidence unstated only where the coordinator wrote the report. A child is told to write at most four openQuestions; the coordinator adds what its run asked.",
+      "type": "object",
+      "required": [
+        "summary",
+        "findings",
+        "citations",
+        "openQuestions",
+        "confidence",
+        "notDone"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "maxLength": 800,
+          "pattern": "\\S"
+        },
+        "findings": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/analyzeFinding"
+          }
+        },
+        "citations": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/citation"
+          }
+        },
+        "openQuestions": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "$ref": "#/$defs/openQuestion"
+          }
+        },
+        "confidence": {
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "unstated"
+          ]
+        },
+        "notDone": {
+          "description": "What the child did not do or could not check.",
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "maxLength": 300,
+            "pattern": "\\S"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "reviewReport": {
+      "description": "The review profile's report (agent#16), as its child writes it in one fenced json block whose root has a single report member at the end of its answer, read closed (readReport). summary: what the parent reads first. confidence unstated only where the coordinator wrote the report. A child is told to write at most four openQuestions; the coordinator adds what its run asked.",
+      "type": "object",
+      "required": [
+        "summary",
+        "findings",
+        "citations",
+        "openQuestions",
+        "confidence",
+        "notDone"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "maxLength": 800,
+          "pattern": "\\S"
+        },
+        "findings": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/reviewFinding"
+          }
+        },
+        "citations": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/citation"
+          }
+        },
+        "openQuestions": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "$ref": "#/$defs/openQuestion"
+          }
+        },
+        "confidence": {
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "unstated"
+          ]
+        },
+        "notDone": {
+          "description": "What the child did not do or could not check.",
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "maxLength": 300,
+            "pattern": "\\S"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "researchReport": {
+      "description": "The research profile's report (agent#16), as its child writes it in one fenced json block whose root has a single report member at the end of its answer, read closed (readReport). summary: what the parent reads first. confidence unstated only where the coordinator wrote the report. A child is told to write at most four openQuestions; the coordinator adds what its run asked.",
+      "type": "object",
+      "required": [
+        "summary",
+        "findings",
+        "citations",
+        "openQuestions",
+        "confidence",
+        "notDone"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "maxLength": 800,
+          "pattern": "\\S"
+        },
+        "findings": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/researchFinding"
+          }
+        },
+        "citations": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/citation"
+          }
+        },
+        "openQuestions": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "$ref": "#/$defs/openQuestion"
+          }
+        },
+        "confidence": {
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "unstated"
+          ]
+        },
+        "notDone": {
+          "description": "What the child did not do or could not check.",
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "maxLength": 300,
+            "pattern": "\\S"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "authorTestReport": {
+      "description": "The author-test profile's report (agent#16), as its child writes it in one fenced json block whose root has a single report member at the end of its answer, read closed (readReport). summary: what the parent reads first. confidence unstated only where the coordinator wrote the report. A child is told to write at most four openQuestions; the coordinator adds what its run asked.",
+      "type": "object",
+      "required": [
+        "summary",
+        "findings",
+        "citations",
+        "openQuestions",
+        "confidence",
+        "notDone"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "maxLength": 800,
+          "pattern": "\\S"
+        },
+        "findings": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/authorTestFinding"
+          }
+        },
+        "citations": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/citation"
+          }
+        },
+        "openQuestions": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "$ref": "#/$defs/openQuestion"
+          }
+        },
+        "confidence": {
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "unstated"
+          ]
+        },
+        "notDone": {
+          "description": "What the child did not do or could not check.",
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "maxLength": 300,
+            "pattern": "\\S"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "report": {
+      "description": "A task's report, in its profile's shape: one of the four (agent#16). The record names its profile; profile.report says which shape.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/analyzeReport"
+        },
+        {
+          "$ref": "#/$defs/reviewReport"
+        },
+        {
+          "$ref": "#/$defs/researchReport"
+        },
+        {
+          "$ref": "#/$defs/authorTestReport"
+        }
+      ]
     }
   }
 }

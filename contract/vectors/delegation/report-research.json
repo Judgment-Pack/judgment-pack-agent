@@ -1,0 +1,47 @@
+{
+  "description": "A research child's report (agent#16), in the research shape: every finding cites at least one source the child read. Written by hand from the schema.",
+  "schema": "delegated-task.json#/$defs/researchReport",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/delegationContract.ts (readReport, reportInstructions)",
+      "packages/harness/delegationResults.test.ts (each profile's report read in its shape)"
+    ]
+  },
+  "items": [
+    {
+      "summary": "Both pages read give the same mileage rate.",
+      "findings": [
+        {
+          "text": "The published rate is 0.58 per mile.",
+          "citations": [
+            "https://example.test/rates/2026",
+            "https://example.test/policy/travel"
+          ]
+        }
+      ],
+      "citations": [
+        {
+          "id": "https://example.test/rates/2026",
+          "quote": "The rate for 2026 is 0.58 per mile."
+        },
+        {
+          "id": "https://example.test/policy/travel"
+        }
+      ],
+      "openQuestions": [
+        {
+          "kind": "delegation",
+          "text": "A second task could check the rate for earlier years."
+        }
+      ],
+      "confidence": "high",
+      "notDone": [
+        "Rates for earlier years were not read."
+      ]
+    }
+  ]
+}

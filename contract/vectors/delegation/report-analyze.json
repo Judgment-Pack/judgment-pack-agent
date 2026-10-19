@@ -1,0 +1,46 @@
+{
+  "description": "An analyze child's report (agent#16): the block it ends its answer with, read closed in the analyze shape. Two findings, the second citing the policy entry it was given by reference; one question for the person it leaves to the parent; what it did not check. Written by hand from the schema.",
+  "schema": "delegated-task.json#/$defs/analyzeReport",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/delegationContract.ts (readReport, reportInstructions)",
+      "packages/harness/delegationResults.test.ts (each profile's report read in its shape)"
+    ]
+  },
+  "items": [
+    {
+      "summary": "The draft declines a meal claim over the cap, but it says nothing about claims with no receipt.",
+      "findings": [
+        {
+          "text": "The cap rule declines a meal claim above 40 per day."
+        },
+        {
+          "text": "No rule mentions a missing receipt, although the policy requires one above 25.",
+          "citations": [
+            "chat-1:policy:5f0c9a1b2d3e4f60"
+          ]
+        }
+      ],
+      "citations": [
+        {
+          "id": "chat-1:policy:5f0c9a1b2d3e4f60",
+          "quote": "Receipts are required for any claim above 25."
+        }
+      ],
+      "openQuestions": [
+        {
+          "kind": "question",
+          "text": "Should a claim with no receipt be declined, or sent for review?"
+        }
+      ],
+      "confidence": "medium",
+      "notDone": [
+        "The currency rules were not checked."
+      ]
+    }
+  ]
+}
