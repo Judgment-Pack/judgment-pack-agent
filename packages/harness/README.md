@@ -352,8 +352,39 @@ agent#13, agent#14, agent#15, agent#16, agent#17, agent#18):
   `firstByteMs` and `durationMs` beside its model, requests and tool calls; the parent's checkpoint
   carries each batch's figures, its total and the parent's own (`delegation`,
   `validDelegationFigures`), kept through a resume.
+  kept in the chat's ledger, never applied or shown for review), a delegation it asked for, or a
+  research source call that needs the parent's research choice comes back as an open question in
+  its report, and the task is complete (the research hand-back as a partial result). A run that
+  failed fails its task, its open questions kept on the record. A batch that returned one earns the
+  response one batch past `MAX_BATCHES`, once.
+- **Streamed progress.** A running child's prose reaches the host as `message_progress` with the
+  task's `taskId`, cleared when the child ends. A host shows it under the task, never as the answer.
+- **Partial results and one retry.** A child stopped at its time limit returns what it had written,
+  `partial`. On a model capability, a child's request refused with a 5xx other than 504 carrying
+  the catalogue's retryable class or overload code (a 503 `overloaded_error`) is sent once more,
+  only before the first byte of the child's first answer's body (`childRetry`; the record's
+  `retried`).
+- **Capacity.** A batch runs `concurrentRequests` children at once: the host's `modelsFor` answer
+  for the run's connection (`context.connection`) carries it beside the critic's and the children's
+  models, two where it names none; an agent capability runs one. A connection setting, so not on
+  the capability record, which is keyed on the family and model.
+- **Reuse.** A complete result of a child that made no counted tool call is kept in the chat under
+  its profile, its model, its objective's text and its references, once its batch's answer is
+  delivered; an identical task of the same chat, or later in the same batch, gets it again with no
+  model request, `reused` naming the earlier task. A host starts a response with
+  `context.delegationReuse: false` to reuse nothing earlier (a Retry asked to run afresh).
+- **Cost and time.** Each child's record carries its tokens (from the provider's usage figures),
+  `firstByteMs` and `durationMs` beside its model, requests and tool calls; the parent's checkpoint
+  carries each batch's figures (the running one too), its total and the parent's own, counted where
+  the parent makes each request or run (`delegation`, `validDelegationFigures`), kept through a
+  resume.
 - **Kept:** `options.checkpoint` before each task transition, the durable checkpoint of the shared
-  count before each child request, cancellation with the parent, and the research hand-back.
+  count before each child request, and cancellation with the parent.
+
+The Desk's side: the task view (a task's report, its open questions, `partial`, `reused`, its
+streamed prose by `taskId`), the run report's lines for each child and batch (desk#499), the
+connection's capacity setting, answered as `concurrentRequests` in `modelsFor`, and
+`delegationReuse: false` on a Retry the person asks to run afresh.
 
 The Desk's side: the task view (a task's report, its open questions, `partial`, `reused`, its
 streamed prose by `taskId`), the run report's lines for each child and batch (desk#499), and the

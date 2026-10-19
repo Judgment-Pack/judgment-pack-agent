@@ -23,6 +23,7 @@ import { ChatContext } from './context/chat'
 import { codex } from './engines/codex'
 import { vercel } from './engines/vercel'
 import { normalize } from './thinking'
+import { configureHarness } from './host'
 import { readExecution, validDelegationFigures, type ExecutionCheckpoint } from './execution/state'
 import taskSchema from '../../contract/schemas/delegated-task.json'
 import provenanceSchema from '../../contract/schemas/provenance.json'
@@ -32,8 +33,10 @@ import researchVector from '../../contract/vectors/delegation/report-research.js
 import authorTestVector from '../../contract/vectors/delegation/report-author-test.json'
 import figuresVector from '../../contract/vectors/delegation/figures.json'
 import answerVector from '../../contract/vectors/delegation/answer.json'
+import recordVector from '../../contract/vectors/delegation/record.json'
+import checkpointVector from '../../contract/vectors/delegation/checkpoint.json'
 
-afterEach(()=>{vi.restoreAllMocks();vi.useRealTimers()})
+afterEach(()=>{vi.restoreAllMocks();vi.useRealTimers();configureHarness({modelsFor:()=>({})})})
 
 const apiSession=(patch:Partial<AssistantSession>={}):AssistantSession=>({prompt:'PARENT PRIVATE HISTORY',testPrompt:'',tools:[],callTool:vi.fn(),hostTools:[],signal:new AbortController().signal,allowConversation:true,interactive:true,adversarialReview:false,model:{family:'openai-compatible',model:'fixture',call:vi.fn(async()=>new Response('{}'))},thinking:normalize('off','openai-compatible'),...patch})
 const collect=async(engine:Engine,session:EngineSession)=>{const events:AssistantEvent[]=[];for await(const e of engine.start(session))events.push(e);return events}
@@ -261,7 +264,7 @@ describe('resilience and capacity (agent#17)',()=>{
   expect(task).toMatchObject({state:'complete',partial:true,result:'Trip 1: receipts match.',problem:'The task reached its time limit; its result is what it had written by then.'})
   expect(sibling).toMatchObject({state:'complete',result:'The policy caps meals at 40.'})
   expect(sibling!.partial).toBeUndefined()
-  expect(task.report!.notDone).toContain('The task reached its time limit before it finished.')
+  expect(task.report!.notDone).toContain('The task stopped before it finished.')
   const said=events.find(e=>e.type==='tool_result'&&e.name===DELEGATE_TOOL) as Extract<AssistantEvent,{type:'tool_result'}>
   expect((said.structured as {tasks:AnsweredTask[]}).tasks[0]).toMatchObject({state:'complete',partial:true,result:'Trip 1: receipts match.'})
   expect(events.filter(e=>e.type==='message').map(e=>(e as {text:string}).text)).toEqual(['Trip 1 matches; the rest was not checked.'])
@@ -329,19 +332,32 @@ describe('resilience and capacity (agent#17)',()=>{
   expect(task.retried).toBeUndefined()
  })
 
- it('runs as many children at once as the connection serves requests: three where its record says three, two where it says none',async()=>{
+ it('runs as many children at once as the connection serves requests: three where its modelsFor answer says three, two where it says none, one on an agent capability',async()=>{
   const peaks:number[]=[]
-  for(const capabilities of [{concurrentRequests:3},{}]){
+  for(const concurrentRequests of [3,undefined]){
+   configureHarness({modelsFor:(asked)=>asked.connection?.connectionId==='wide'&&concurrentRequests!==undefined?{concurrentRequests}:{}})
    let active=0,peak=0
    const engine:Engine={id:'vercel',async *start(s){
     if(delegateIn(s)){await delegateIn(s)!.execute({tasks:['A','B','C'].map(t=>({title:t,objective:`Check part ${t}.`,profile:'analyze'}))},s.signal);yield {type:'end'};return}
     active++;peak=Math.max(peak,active);await new Promise(r=>setTimeout(r,20));active--
     yield {type:'message',text:'Checked.'};yield {type:'end'}
    }}
-   await collect(withDelegation(engine),apiSession({model:{family:'openai-compatible',model:'fixture',call:vi.fn(),capabilities}}))
+   await collect(withDelegation(engine),apiSession({context:{connection:{connectionId:'wide'}},model:{family:'openai-compatible',model:'fixture',call:vi.fn()}}))
    peaks.push(peak)
   }
   expect(peaks).toEqual([3,DEFAULT_CHILD_CONCURRENCY])
+  // An agent capability runs one at a time whatever the connection says.
+  configureHarness({modelsFor:()=>({concurrentRequests:3})})
+  let active=0,peak=0
+  const run=vi.fn<AgentRun>(async(r,cb)=>{
+   const delegate=r.tools.find(t=>t.description.startsWith('delegate_tasks:'))
+   if(delegate&&!r.prompt.includes('DELEGATION RESULT')){await cb.tool({id:'call',name:delegate.name,arguments:{tasks:['A','B','C'].map(t=>({title:t,objective:`Check part ${t}.`,profile:'analyze'}))}},cb.signal);throw Error('Parent must yield')}
+   if(!delegate){active++;peak=Math.max(peak,active);await new Promise(r=>setTimeout(r,20));active--}
+   await cb.event({type:'message',id:'m',text:delegate?'Parent finished.':'Checked.',phase:'final'})
+  })
+  const {model:_model,thinking:_thinking,...base}=apiSession()
+  await collect(withDelegation(codex),{...base,agent:{model:'fixture',run}})
+  expect(peak).toBe(1)
  })
 
  it('returns the earlier result for an identical task of the same chat with no model request, marked reused, and runs one whose profile differs',async()=>{
@@ -420,5 +436,348 @@ describe('cost and time (agent#18)',()=>{
   expect(validDelegationFigures({...item,batches:[{...item.batches[0]!,children:[]}]})).toBe(false)
   // The answer vector's tasks are what batchAnswer writes: every member the schema names.
   for(const task of answerVector.items[1]!.tasks)for(const key of Object.keys(task))expect(Object.keys(taskSchema.$defs.answerTask.properties)).toContain(key)
+ })
+
+ it('reads the record vector’s tasks and the checkpoint vector’s figures as the harness’s own readers do (review row 6)',()=>{
+  for(const task of recordVector.items){
+   expect(validDelegatedTask(task)).toBe(true)
+   for(const key of Object.keys(task))expect(Object.keys(taskSchema.properties)).toContain(key)
+  }
+  expect(validDelegatedTask({...recordVector.items[2]!,retried:{waitMs:1000}})).toBe(false)
+  const checkpoint=readExecution(checkpointVector.items[0])!
+  expect(checkpoint.delegation).toEqual(checkpointVector.items[0]!.delegation)
+  expect(validDelegationFigures(checkpoint.delegation)).toBe(true)
+  expect(()=>readExecution({...checkpointVector.items[0]!,delegation:{batches:[],parent:{model:'a-model'}}})).toThrow()
+ })
+})
+
+/**
+ * The review of this batch (agent#39 on the pull request), row by row: each rule held by a test of
+ * its own.
+ */
+describe('the review’s rules',()=>{
+ const REQUEST={message:'Check the draft',input:'The draft.'}
+ const delegateOnce=(tasks:{title:string;objective:string;profile:string;references?:string[];resume?:string}[],answer='Done.')=>(one:Sent)=>toolMessages(one).length===0?delegateCall(tasks):sse({text:[answer]})
+ const recordsOf=(events:AssistantEvent[])=>records(events)
+ const lastCheckpoint=(events:AssistantEvent[])=>(events.filter(e=>e.type==='execution_checkpoint').at(-1) as {checkpoint:ExecutionCheckpoint}).checkpoint
+
+ // Row 1.
+ it('does not reuse a result whose child read through a tool: the draft it read changed, and the same task runs again',async()=>{
+  const chat=new ChatContext()
+  let draft='v1'
+  const readDraft={name:'read_draft',delegation:'read' as const,description:'Read the draft.',inputSchema:{type:'object'},execute:vi.fn(async()=>({content:[{type:'text' as const,text:`The draft (${draft}).`}]}))}
+  const run=async()=>{
+   const {sent,call}=scripted(one=>{
+    if(isChild(one))return toolMessages(one).length===0?sse({tool:{name:'read_draft',args:{},id:'call_read'}}):sse({text:[`The draft (${draft}) has no gap.`]})
+    return delegateOnce([{title:'Review',objective:'Review the draft for gaps.',profile:'review'}])(one)
+   })
+   const events=await collect(withDelegation(vercel),apiSession({hostTools:[readDraft],context:{chat},model:{family:'openai-compatible',model:'fixture',call}}))
+   return {children:sent.filter(isChild).length,task:recordsOf(events)[0]!}
+  }
+  const first=await run()
+  expect(first.task).toMatchObject({state:'complete',toolCalls:1,result:'The draft (v1) has no gap.'})
+  draft='v2'
+  const again=await run()
+  expect(again.children).toBe(2)
+  expect(again.task.reused).toBeUndefined()
+  expect(again.task.result).toBe('The draft (v2) has no gap.')
+ })
+
+ it('carries the model that wrote a reused result, and reuses nothing written on another model',async()=>{
+  const chat=new ChatContext()
+  const run=async()=>{
+   const {sent,call}=scripted(one=>isChild(one)?sse({text:['The cap is 40.']}):delegateOnce([{title:'Cap',objective:'Find the meal cap.',profile:'analyze'}])(one))
+   const events=await collect(withDelegation(vercel),apiSession({context:{chat},model:{family:'openai-compatible',model:'fixture',call}}))
+   return {children:sent.filter(isChild).length,task:recordsOf(events)[0]!}
+  }
+  const first=await run()
+  expect(first.task.model).toBe('fixture')
+  const again=await run()
+  expect(again).toMatchObject({children:0,task:{reused:first.task.id,model:'fixture'}})
+  // The connection now names a child model: the earlier result was written on another one.
+  configureHarness({modelsFor:()=>({child:'fixture-small'})})
+  const other=await run()
+  expect(other.children).toBe(1)
+  expect(other.task).toMatchObject({model:'fixture-small'})
+  expect(other.task.reused).toBeUndefined()
+ })
+
+ // Row 2, R1.
+ it('never keeps a partial result for reuse: the same task after a time limit runs again',async()=>{
+  const chat=new ChatContext()
+  const quick:TaskProfile={id:'quick',description:'A short check.',instructions:'Check quickly.',capabilities:[],report:'analyze',budget:{modelRequests:2,toolCalls:2,milliseconds:150}}
+  let stall=true,children=0
+  const {call}=scripted((one,signal)=>{
+   if(isChild(one)){children++
+    if(!stall)return sse({text:['Every trip matches.']})
+    return new Response(new ReadableStream<Uint8Array>({start(controller){
+     controller.enqueue(new TextEncoder().encode('data: '+JSON.stringify({id:'f',object:'chat.completion.chunk',model:'fixture',choices:[{index:0,delta:{content:'Trip 1 matches.'},finish_reason:null}]})+'\n\n'))
+     signal?.addEventListener('abort',()=>controller.error(new DOMException('Stopped','AbortError')),{once:true})
+    }}),{headers:{'Content-Type':'text/event-stream'}})}
+   return delegateOnce([{title:'Trips',objective:'Check every trip.',profile:'quick'}])(one)
+  })
+  const coordinator=withDelegation(vercel,{profiles:[...TASK_PROFILES,quick]})
+  const first=recordsOf(await collect(coordinator,apiSession({context:{chat},model:{family:'openai-compatible',model:'fixture',call}})))[0]!
+  expect(first).toMatchObject({state:'complete',partial:true})
+  stall=false
+  const again=recordsOf(await collect(coordinator,apiSession({context:{chat},model:{family:'openai-compatible',model:'fixture',call}})))[0]!
+  expect(children).toBe(2)
+  expect(again).toMatchObject({state:'complete',result:'Every trip matches.'})
+  expect(again.reused).toBeUndefined()
+ })
+
+ // Row 2, R2.
+ it('holds the references in the reuse key: the same objective on another document runs again, on the same one is reused',async()=>{
+  const chat=new ChatContext()
+  const documents=[{id:'policy-a',kind:'artifact' as const,label:'Policy A',value:'Meals are capped at 40.'},{id:'policy-b',kind:'artifact' as const,label:'Policy B',value:'Meals are capped at 55.'}]
+  let children=0
+  const run=async(reference:string)=>{
+   const {call}=scripted(one=>{if(isChild(one)){children++;return sse({text:['The cap is stated.']})}return delegateOnce([{title:'Cap',objective:'Find the meal cap.',profile:'analyze',references:[reference]}])(one)})
+   return recordsOf(await collect(withDelegation(vercel),apiSession({context:{chat,documents},model:{family:'openai-compatible',model:'fixture',call}})))[0]!
+  }
+  const a=await run('policy-a')
+  const b=await run('policy-b')
+  expect(children).toBe(2);expect(b.reused).toBeUndefined()
+  const a2=await run('policy-a')
+  expect(children).toBe(2);expect(a2.reused).toBe(a.id)
+ })
+
+ // Row 2, R3.
+ it('never reuses a resumed task: a resume with the same objective runs, with its earlier work',async()=>{
+  const chat=new ChatContext()
+  const first=scripted(one=>isChild(one)?sse({text:['The cap is 40.']}):delegateOnce([{title:'Cap',objective:'Find the meal cap.',profile:'analyze'}])(one))
+  const earlier=recordsOf(await collect(withDelegation(vercel),apiSession({context:{chat},model:{family:'openai-compatible',model:'fixture',call:first.call}})))[0]!
+  const second=scripted(one=>isChild(one)?sse({text:['Still 40, per day.']}):delegateOnce([{title:'Cap',objective:'Find the meal cap.',profile:'analyze',resume:earlier.id}])(one))
+  const resumed=recordsOf(await collect(withDelegation(vercel),apiSession({context:{chat},model:{family:'openai-compatible',model:'fixture',call:second.call}})))[0]!
+  expect(second.sent.filter(isChild)).toHaveLength(1)
+  expect(promptOf(second.sent.find(isChild)!)).toContain('earlierWork')
+  expect(resumed).toMatchObject({state:'complete',resumes:earlier.id,result:'Still 40, per day.'})
+  expect(resumed.reused).toBeUndefined()
+ })
+
+ // Row 2, R4.
+ it('leaves tokens absent, never zero, where the provider reports no usage',async()=>{
+  const {call}=scripted(one=>isChild(one)?sse({text:['Checked.']}):delegateOnce([{title:'A',objective:'Check A.',profile:'analyze'}])(one))
+  const events=await collect(withDelegation(vercel),apiSession({context:{currentRequest:REQUEST},model:{family:'openai-compatible',model:'fixture',call}}))
+  const task=recordsOf(events)[0]!
+  expect(task.state).toBe('complete')
+  expect(task.tokens).toBeUndefined()
+  const figures=lastCheckpoint(events).delegation!
+  expect(figures.batches[0]!.children[0]!.tokens).toBeUndefined()
+  expect(figures.batches[0]!.total.tokens).toBeUndefined()
+  expect(figures.parent.tokens).toBeUndefined()
+ })
+
+ // Row 2, R7.
+ it('sends a child’s request again once per task: 503 overloaded, then 429, then 503 is three requests and the task fails',async()=>{
+  let childRequests=0
+  const {call}=scripted(one=>{
+   if(isChild(one)){childRequests++;return childRequests===2?new Response(JSON.stringify({error:{type:'rate_limit_error'}}),{status:429,headers:{'content-type':'application/json','retry-after':'1'}}):overloaded()}
+   return delegateOnce([{title:'Check',objective:'Check the draft.',profile:'analyze'}],'The check could not run.')(one)
+  })
+  const events=await collect(withDelegation(vercel),apiSession({model:{family:'openai-compatible',model:'fixture',call}}))
+  expect(childRequests).toBe(3)
+  expect(recordsOf(events)[0]).toMatchObject({state:'failed',modelRequests:3,retried:{failure:{status:503}}})
+ })
+
+ // Row 2, R18.
+ it('does not wait out a Retry-After over thirty seconds: the refusal stands, and nothing is sent again',async()=>{
+  let childRequests=0
+  const {call}=scripted(one=>{
+   if(isChild(one)){childRequests++;return new Response(JSON.stringify({error:{type:'overloaded_error'}}),{status:503,headers:{'content-type':'application/json','retry-after':'60'}})}
+   return delegateOnce([{title:'Check',objective:'Check the draft.',profile:'analyze'}],'The check could not run.')(one)
+  })
+  const events=await collect(withDelegation(vercel),apiSession({model:{family:'openai-compatible',model:'fixture',call}}))
+  expect(childRequests).toBe(1)
+  const task=recordsOf(events)[0]!
+  expect(task).toMatchObject({state:'failed',modelRequests:1})
+  expect(task.retried).toBeUndefined()
+ },5_000)
+
+ // Row 2, R20.
+ it('marks the first byte at the answer’s body, not at its headers',async()=>{
+  const frames=['data: '+JSON.stringify({id:'f',object:'chat.completion.chunk',model:'fixture',choices:[{index:0,delta:{role:'assistant',content:'Checked.'},finish_reason:null}]})+'\n\n','data: '+JSON.stringify({id:'f',object:'chat.completion.chunk',model:'fixture',choices:[{index:0,delta:{},finish_reason:'stop'}]})+'\n\n','data: [DONE]\n\n']
+  const {call}=scripted(one=>{
+   if(isChild(one))return new Response(new ReadableStream<Uint8Array>({start(controller){setTimeout(()=>{for(const frame of frames)controller.enqueue(new TextEncoder().encode(frame));controller.close()},80)}}),{headers:{'Content-Type':'text/event-stream'}})
+   return delegateOnce([{title:'Check',objective:'Check the draft.',profile:'analyze'}])(one)
+  })
+  const task=recordsOf(await collect(withDelegation(vercel),apiSession({model:{family:'openai-compatible',model:'fixture',call}})))[0]!
+  expect(task.state).toBe('complete')
+  expect(task.firstByteMs).toBeGreaterThanOrEqual(60)
+ })
+
+ // Row 2, R5b.
+ it('makes no retry that would take the child’s last request: the 503 is the failure reported',async()=>{
+  const single:TaskProfile={id:'single',description:'One request.',instructions:'Answer at once.',capabilities:[],report:'analyze',budget:{modelRequests:1,toolCalls:1,milliseconds:60_000}}
+  let childRequests=0
+  const {call}=scripted(one=>{
+   if(isChild(one)){childRequests++;return overloaded()}
+   return delegateOnce([{title:'Check',objective:'Check the draft.',profile:'single'}],'No.')(one)
+  })
+  const task=recordsOf(await collect(withDelegation(vercel,{profiles:[...TASK_PROFILES,single]}),apiSession({model:{family:'openai-compatible',model:'fixture',call}})))[0]!
+  expect(childRequests).toBe(1)
+  expect(task).toMatchObject({state:'failed',failure:{code:'unavailable',status:503}})
+  expect(task.retried).toBeUndefined()
+ })
+
+ // Row 11.
+ it.each([408,504])('sends a %s that carries the overload code no second time: the child retry is for a 5xx other than 504',async(status)=>{
+  let childRequests=0
+  const {call}=scripted(one=>{
+   if(isChild(one)){childRequests++;return overloaded(status)}
+   return delegateOnce([{title:'Check',objective:'Check the draft.',profile:'analyze'}],'No.')(one)
+  })
+  const task=recordsOf(await collect(withDelegation(vercel),apiSession({model:{family:'openai-compatible',model:'fixture',call}})))[0]!
+  expect(childRequests).toBe(1)
+  expect(task.state).toBe('failed')
+  expect(task.retried).toBeUndefined()
+ })
+
+ // Row 3.
+ it('writes the running batch into the checkpoint, so a resume counts the parent’s requests as its own and the interrupted child’s in its figure',async()=>{
+  const chat=new ChatContext()
+  let parentSent=0
+  const first=scripted(one=>{
+   if(isChild(one))return sse({text:['Part A checks.']})
+   parentSent++
+   return delegateOnce([{title:'A',objective:'Check part A.',profile:'analyze'}],'Part A checks.')(one)
+  })
+  const events=await collect(withDelegation(vercel),apiSession({context:{chat,currentRequest:REQUEST},model:{family:'openai-compatible',model:'fixture',call:first.call}}))
+  // The durable checkpoint saved before the child's request: the batch running, its child in it.
+  const mid=events.filter((e):e is Extract<AssistantEvent,{type:'execution_checkpoint'}>=>e.type==='execution_checkpoint'&&e.durable===true).map(e=>e.checkpoint).find(c=>c.delegation?.batches[0]?.children[0]?.state==='running')!
+  expect(mid.delegation!.batches[0]!.children[0]).toMatchObject({state:'running',modelRequests:1})
+  expect(mid.delegation!.parent.modelRequests).toBe(1)
+  expect(readExecution(mid)!.delegation).toEqual(mid.delegation)
+  const sentBefore=1
+  // The resume: the parent runs a second batch and answers.
+  let resumedParent=0
+  const second=scripted(one=>{
+   if(isChild(one))return sse({text:['Part B checks.']})
+   resumedParent++
+   return delegateOnce([{title:'B',objective:'Check part B.',profile:'analyze'}],'Both check.')(one)
+  })
+  const again=await collect(withDelegation(vercel),apiSession({context:{chat,currentRequest:REQUEST,execution:mid},model:{family:'openai-compatible',model:'fixture',call:second.call}}))
+  const end=lastCheckpoint(again)
+  expect(end.status).toBe('complete')
+  expect(parentSent).toBe(2)
+  expect(end.delegation!.parent.modelRequests).toBe(sentBefore+resumedParent)
+  expect(end.delegation!.batches.map(batch=>batch.children.map(child=>[child.state,child.modelRequests]))).toEqual([[['interrupted',1]],[['complete',1]]])
+  expect(end.used).toBe(end.delegation!.parent.modelRequests+2)
+ })
+
+ // Row 4.
+ it('counts a Codex child’s agent runs: two with its summarize run, one after a busy admission refusal',async()=>{
+  const LONG=Array.from({length:600},(_,i)=>`Observation ${i+1}: nothing unusual.`).join('\n')
+  const figuresOf=async(child:(r:{prompt:string},attempt:number)=>Promise<string>,request:{title:string;objective:string;profile:string;summarize?:boolean})=>{
+   let childAttempts=0
+   const run=vi.fn<AgentRun>(async(r,cb)=>{
+    const delegate=r.tools.find(t=>t.description.startsWith('delegate_tasks:'))
+    if(delegate&&!r.prompt.includes('DELEGATION RESULT')){await cb.tool({id:'call',name:delegate.name,arguments:{tasks:[request]}},cb.signal);throw Error('Parent must yield')}
+    const text=delegate?'Parent finished.':await child(r,++childAttempts)
+    await cb.event({type:'message',id:'m',text,phase:'final'})
+   })
+   const {model:_model,thinking:_thinking,...base}=apiSession({context:{currentRequest:REQUEST}})
+   const events=await collect(withDelegation(codex),{...base,agent:{model:'fixture',run}})
+   return lastCheckpoint(events).delegation!.batches[0]!.children[0]!
+  }
+  const summarized=await figuresOf(async r=>r.prompt.includes('Summarize the findings below')?'Summary: nothing unusual.':LONG,{title:'Scan',objective:'Scan everything.',profile:'analyze',summarize:true})
+  expect(summarized.agentRuns).toBe(2)
+  const busy=await figuresOf(async(_r,attempt)=>{if(attempt===1)throw Object.assign(Error('busy'),{code:'busy'});return 'Checked.'},{title:'Check',objective:'Check it.',profile:'analyze'})
+  expect(busy).toMatchObject({state:'complete',agentRuns:1})
+ })
+
+ // Row 8.
+ it('fails a run that reported an error, keeps its open questions on the record, and never keeps it for reuse',async()=>{
+  const chat=new ChatContext()
+  let children=0
+  const engine:Engine={id:'vercel',async *start(s){
+   if(delegateIn(s)){await delegateIn(s)!.execute({tasks:[{title:'Receipts',objective:'Check the receipt rule.',profile:'analyze'}]},s.signal);yield {type:'end'};return}
+   children++
+   yield {type:'user_question',id:'q',question:{title:'Receipts',question:'Decline a claim with no receipt?',selection:'single',options:[{id:'a',label:'Yes',description:'Decline.'},{id:'b',label:'No',description:'Review.'}],recommendedOptionId:null,recommendation:null}}
+   yield {type:'error',message:'The connection was lost.',failure:{version:1,code:'connection-lost',source:'model',outcome:'unknown'}}
+   yield {type:'end'}
+  }}
+  const task=recordsOf(await collect(withDelegation(engine),apiSession({context:{chat}})))[0]!
+  expect(task).toMatchObject({state:'failed',problem:'The connection was lost.',report:{openQuestions:[{kind:'question',text:expect.stringContaining('Decline a claim with no receipt?')}]}})
+  await collect(withDelegation(engine),apiSession({context:{chat}}))
+  expect(children).toBe(2)
+ })
+
+ // Row 9.
+ it('keeps no result of a stopped response for reuse, and runs afresh where the host says delegationReuse false',async()=>{
+  const chat=new ChatContext()
+  let children=0
+  const engine:Engine={id:'vercel',async *start(s){
+   if(delegateIn(s)){
+    const tasks=s.prompt.includes('BOTH')?[{title:'A',objective:'Check part A.',profile:'analyze'},{title:'B',objective:'Check part B.',profile:'analyze'}]:[{title:'A',objective:'Check part A.',profile:'analyze'}]
+    await delegateIn(s)!.execute({tasks},s.signal);yield {type:'message',text:'Done.'};yield {type:'end'};return
+   }
+   children++
+   if(s.prompt.includes('part B'))await new Promise<void>(resolve=>s.signal.addEventListener('abort',()=>resolve(),{once:true}))
+   else yield {type:'message',text:'Part A checks.'}
+   yield {type:'end'}
+  }}
+  // A completes, B is still running, and the person stops the response.
+  const stop=new AbortController()
+  for await(const event of withDelegation(engine).start(apiSession({prompt:'BOTH',signal:stop.signal,context:{chat}})))if(event.type==='delegated_task'&&event.task.title==='A'&&event.task.state==='complete')stop.abort()
+  expect(children).toBe(2)
+  // The next response runs A again: nothing of the stopped one was kept.
+  const again=recordsOf(await collect(withDelegation(engine),apiSession({context:{chat}})))[0]!
+  expect(children).toBe(3);expect(again.reused).toBeUndefined()
+  // Delivered, it is reused; unless the host asks for a fresh run.
+  const reused=recordsOf(await collect(withDelegation(engine),apiSession({context:{chat}})))[0]!
+  expect(children).toBe(3);expect(reused.reused).toBe(again.id)
+  const fresh=recordsOf(await collect(withDelegation(engine),apiSession({context:{chat,delegationReuse:false}})))[0]!
+  expect(children).toBe(4);expect(fresh.reused).toBeUndefined()
+ })
+
+ // Row 10.
+ it('runs identical tasks of one batch once: the second is given the first’s result',async()=>{
+  const {sent,call}=scripted(one=>isChild(one)?sse({text:['The cap is 40.']}):delegateOnce([{title:'Cap',objective:'Find the meal cap.',profile:'analyze'},{title:'Cap, again',objective:'Find the meal cap.',profile:'analyze'}])(one))
+  const [first,second]=recordsOf(await collect(withDelegation(vercel),apiSession({model:{family:'openai-compatible',model:'fixture',call}})))
+  expect(sent.filter(isChild)).toHaveLength(1)
+  expect(first).toMatchObject({state:'complete',result:'The cap is 40.',modelRequests:1})
+  expect(second).toMatchObject({state:'complete',result:'The cap is 40.',reused:first!.id,modelRequests:0})
+ })
+
+ // Row 13.
+ it('says in a resumed task’s earlier work that a result was partial',async()=>{
+  const chat=new ChatContext()
+  const quick:TaskProfile={id:'quick',description:'A short check.',instructions:'Check quickly.',capabilities:[],report:'analyze',budget:{modelRequests:2,toolCalls:2,milliseconds:150}}
+  const coordinator=withDelegation(vercel,{profiles:[...TASK_PROFILES,quick]})
+  const first=scripted((one,signal)=>{
+   if(isChild(one))return new Response(new ReadableStream<Uint8Array>({start(controller){
+    controller.enqueue(new TextEncoder().encode('data: '+JSON.stringify({id:'f',object:'chat.completion.chunk',model:'fixture',choices:[{index:0,delta:{content:'Trip 1 matches.'},finish_reason:null}]})+'\n\n'))
+    signal?.addEventListener('abort',()=>controller.error(new DOMException('Stopped','AbortError')),{once:true})
+   }}),{headers:{'Content-Type':'text/event-stream'}})
+   return delegateOnce([{title:'Trips',objective:'Check every trip.',profile:'quick'}])(one)
+  })
+  const partial=recordsOf(await collect(coordinator,apiSession({context:{chat},model:{family:'openai-compatible',model:'fixture',call:first.call}})))[0]!
+  expect(partial.partial).toBe(true)
+  const second=scripted(one=>isChild(one)?sse({text:['The rest match.']}):delegateOnce([{title:'Trips',objective:'Check the rest.',profile:'quick',resume:partial.id}])(one))
+  await collect(coordinator,apiSession({context:{chat},model:{family:'openai-compatible',model:'fixture',call:second.call}}))
+  const text=promptOf(second.sent.find(isChild)!)
+  const brief=JSON.parse(text.slice(text.lastIndexOf('\n{"objective"')+1).split('\n')[0]!) as {earlierWork:{partial?:true}[]}
+  expect(brief.earlierWork).toEqual([expect.objectContaining({objective:'Check every trip.',result:'Trip 1 matches.',partial:true})])
+ })
+
+ // Row 14.
+ it('keeps what the run asked of the parent in the text at more, where a cut report leaves it out',async()=>{
+  const chat=new ChatContext()
+  const long='Finding. '.repeat(60)
+  const report={summary:'S'.repeat(800),findings:Array.from({length:12},(_,i)=>({text:`${i} ${long}`.slice(0,600)})),citations:[],openQuestions:[],confidence:'medium',notDone:[]}
+  let answer:{tasks:AnsweredTask[]}|undefined
+  const engine:Engine={id:'vercel',async *start(s){
+   // Long objectives leave each task the least share of the answer.
+   if(delegateIn(s)){answer=answered(await delegateIn(s)!.execute({tasks:['A','B','C'].map(t=>({title:t,objective:`Check part ${t}. `+'Read every receipt and every rule. '.repeat(50),profile:'analyze'}))},s.signal));yield {type:'end'};return}
+   for(let i=0;i<3;i++)yield {type:'user_question',id:`q${i}`,question:{title:'Receipts',question:`Question ${i}: `+'Should a claim with no receipt be declined or sent for review? '.repeat(5),selection:'single',options:[{id:'a',label:'Decline',description:'Decline it.'},{id:'b',label:'Review',description:'Send it for review.'}],recommendedOptionId:null,recommendation:null}}
+   yield {type:'message',text:'Findings.'+fence(report)}
+   yield {type:'end'}
+  }}
+  await collect(withDelegation(engine),apiSession({context:{chat}}))
+  const cut=answer!.tasks.find(task=>task.reportCut&&task.report!.openQuestions.length<3)!
+  expect(cut).toBeDefined()
+  const kept=String(chat.entries.get(cut.more!.id)!.value)
+  for(let i=0;i<3;i++)expect(kept).toContain(`Question ${i}:`)
  })
 })

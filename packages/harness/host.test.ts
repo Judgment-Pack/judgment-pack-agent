@@ -59,4 +59,17 @@ describe('the models a run’s connection names (review of agent#35, row 5)', ()
     fresh.configureHarness({ modelsFor: () => 'a-model' as unknown as { child: string } })
     expect(() => fresh.runModels(run)).toThrow('the host answered modelsFor with something other than an object')
   })
+
+  it('reads how many requests the connection serves at once, a whole number from 1 to 16 (agent#17)', async () => {
+    vi.resetModules()
+    const fresh = await import('./host')
+    const run = { connection: { connectionId: 'first' }, engine: 'vercel' as const, family: 'openai-compatible' as const, model: 'a-model' }
+    fresh.configureHarness({ modelsFor: (asked) => asked.connection?.connectionId === 'first' ? { concurrentRequests: 3 } : { concurrentRequests: null } })
+    expect(fresh.runModels(run)).toEqual({ critic: 'a-model', child: 'a-model', concurrentRequests: 3 })
+    expect(fresh.runModels({ ...run, connection: { connectionId: 'second' } })).toEqual({ critic: 'a-model', child: 'a-model' })
+    for (const concurrentRequests of [0, 17, 2.5, '3']) {
+      fresh.configureHarness({ modelsFor: () => ({ concurrentRequests } as unknown as { concurrentRequests: number }) })
+      expect(() => fresh.runModels(run)).toThrow('concurrentRequests that is not a whole number from 1 to 16')
+    }
+  })
 })

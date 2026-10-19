@@ -186,14 +186,24 @@ export interface HarnessHost {
    * the connection answers each connection for itself. Like `endpointCapabilities` it has an answer
    * before the host supplies it: none. A child's or the critic's requests go through the same
    * capability as the run's, so a model the connection does not serve is refused there.
+   *
+   * `concurrentRequests` (agent#17): how many model requests the connection serves at once (the
+   * host's relay slots for it, a provider's concurrency limit): a delegation batch runs that many
+   * children at a time, at most its three tasks; absent or null, two. A connection setting, answered
+   * here with the connection rather than on the capability record, which is keyed on the family and
+   * model and so cannot tell two connections serving one model apart. An agent capability runs one
+   * child at a time whatever this says.
    */
-  modelsFor(run: RunIdentity): { critic?: string | null; child?: string | null }
+  modelsFor(run: RunIdentity): { critic?: string | null; child?: string | null; concurrentRequests?: number | null }
 }
 
 /** What `modelsFor` is asked with: the run's connection, engine, family (a model engine's) and model. */
 export interface RunIdentity { connection?: AITarget; engine: AssistantEngine; family?: EndpointKind; model: string }
-/** The models a run's subordinate work runs on: each the host's answer, or the run's own model. */
-export interface RunModels { critic: string; child: string }
+/**
+ * What a run's connection names for its subordinate work: the models it runs on (each the host's
+ * answer, or the run's own model) and, where the host answered one, how many children run at once.
+ */
+export interface RunModels { critic: string; child: string; concurrentRequests?: number }
 
 /** What an injection point does until the host supplies it. */
 function unsupplied(name: keyof HarnessHost): never {
@@ -244,7 +254,8 @@ export let modelsFor: HarnessHost['modelsFor'] = () => ({})
 /**
  * The host's `modelsFor` answer for one run, read: each member a model name, or the run's own model
  * where the host names none. An answer that is not an object, or a member that is not a model name
- * (empty, longer than 128 characters, or carrying a line break or NUL), is refused rather than sent.
+ * (empty, longer than 128 characters, or carrying a line break or NUL), is refused rather than sent;
+ * so is a `concurrentRequests` that is not a whole number from 1 to 16.
  */
 export function runModels(run: RunIdentity): RunModels {
   const named = modelsFor(run) as unknown
@@ -257,7 +268,11 @@ export function runModels(run: RunIdentity): RunModels {
     }
     return value
   }
-  return { critic: pick('critic'), child: pick('child') }
+  const capacity = (named as Record<string, unknown>).concurrentRequests
+  if (capacity !== undefined && capacity !== null && (!Number.isInteger(capacity) || Number(capacity) < 1 || Number(capacity) > 16)) {
+    throw new Error('the host answered a concurrentRequests that is not a whole number from 1 to 16')
+  }
+  return { critic: pick('critic'), child: pick('child'), ...(capacity === undefined || capacity === null ? {} : { concurrentRequests: Number(capacity) }) }
 }
 
 /**

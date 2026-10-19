@@ -90,7 +90,7 @@
       ]
     },
     "outcome": {
-      "description": "not-started: positively refused at admission, nothing ran (an agent run is retried after it only with code busy: canRetryAdmission). refused: a 4xx other than 408, the request was refused (a model request is sent again after it only for the refusals failures.ts names: the rate-limited class and the overload code overloaded_error, canRetryRefusal, at most twice). unknown: anything else, including every 5xx and timeout; never retried, replay safety is never inferred.",
+      "description": "not-started: positively refused at admission, nothing ran (an agent run is retried after it only with code busy: canRetryAdmission). refused: a 4xx other than 408, the request was refused (a model request is sent again after it only for the refusals failures.ts names: the rate-limited class and the overload code overloaded_error, canRetryRefusal, at most twice). unknown: anything else, including every 5xx and timeout; never retried by the engine, replay safety is never inferred. One exception, a delegated child's (agent#17, delegated-task.json retried): a 5xx other than 504 that carries the rate-limited class or the overload code overloaded_error, before the child's first answer byte, is sent once more.",
       "enum": [
         "not-started",
         "refused",
