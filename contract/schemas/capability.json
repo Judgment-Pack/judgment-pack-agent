@@ -59,12 +59,6 @@
     "strictAlternation": {
       "description": "The endpoint refuses two user turns in a row and a user text after a tool result (agent#9): it gets system-tail whatever statePlacement says.",
       "type": "boolean"
-    },
-    "concurrentRequests": {
-      "description": "How many model requests the connection serves at once (agent#17), as the host knows it for the connection: its relay's slots for it, or the provider's concurrency limit. A delegation batch runs that many children at a time, at most its three tasks. Absent: two. An agent capability runs one child at a time whatever this says, its provider account being exclusive.",
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 16
     }
   },
   "dependentRequired": {
@@ -152,9 +146,6 @@
         },
         "strictAlternation": {
           "$ref": "#/properties/strictAlternation"
-        },
-        "concurrentRequests": {
-          "$ref": "#/properties/concurrentRequests"
         }
       },
       "dependentRequired": {
