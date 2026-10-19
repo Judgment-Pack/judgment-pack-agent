@@ -10,14 +10,28 @@
  * its first text part that does not start with `STATE_HEADER`; a string content is one text part. On
  * the Gemini wire a part is text when it carries `text` and is not a thought.
  *
+ * **What the request text is.** The host's prompt, where it fits the prompt's allowance. Where it
+ * does not, the prompt is retained and previewed, and the person's message (`currentRequest.message`)
+ * is sent as its own first text part, before the preview. For a delegated child it is the child's
+ * objective (`context.objective`), its own first text part before the child's prompt
+ * (`SessionContext.opening`).
+ *
  * **Why it holds on every request.** The adapter puts the request text first in the run's first
  * user message and never moves, replaces or drops that message: the execution state joins it only
- * as a later part (`placeState`), a chat's index of earlier results is its second part
+ * as a later part (`placeState`), a chat's index of earlier results is its last part
  * (`context/chat.ts`), and compaction keeps it whole. Everything else the loop adds comes after it:
  * tool results (a text-path result is a user text headed `TOOL RESULT` or `TOOL ERROR`), the images
  * shown beside a result, the finishing and reformat instructions, the compaction summary, and the
- * state. So the newest user text is often not the request; the first user turn always is. The
- * critic's requests are a second conversation, whose first user turn is the critic's own.
+ * state. So the newest user text is often not the request; the first user turn always is. Measured
+ * on all three wires in the review of judgment-pack-agent#33: the newest-remaining-text rule fails on
+ * a text-path request, the finishing request, the reformat request and after compaction; the
+ * Desk's code as ported fails the same, except after compaction on Anthropic, where the first
+ * message and the compaction summary merge into one user turn. The critic's requests are a second
+ * conversation, whose first user turn is the critic's own.
+ *
+ * The certification suite applies the rule to every request of the recorded scenario on every
+ * certified leg: 21 legs in four families (six plain, six text-path, three strict-alternation, and
+ * the six thinking legs' authoring requests).
  */
 import { STATE_HEADER } from '../engines/vercel/loop'
 import type { EndpointKind } from '../host'

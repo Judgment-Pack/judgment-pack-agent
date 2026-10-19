@@ -1067,11 +1067,11 @@ function runVercelLoop(
     // without native tool calls has its tools described at the end of it (agent#4).
     const system=instructions+'\n'+EXECUTION_INSTRUCTIONS+toolSection
     const cachedSystem=cachedInstructions(session.model.family,system)
-    const initialPrompt=await context.prompt(session.prompt,instructions+toolSection+'\n'+context.execution.guidance(),schemas,session.context?.currentRequest,context.index)
     // The request text is the first text part of the first user message on every request of the
     // run (agent#11): nothing moves it, and the state, where it joins this message, comes after it.
-    // A chat's index of the results earlier runs kept (agent#8) is its second part.
-    let messages:ModelMessage[]=[{role:'user',content:context.index?[{type:'text',text:initialPrompt},{type:'text',text:context.index}]:initialPrompt}]
+    // A chat's index of the results earlier runs kept (agent#8) is its last part (`opening`).
+    const opening=await context.opening(session.prompt,instructions+toolSection+'\n'+context.execution.guidance(),schemas,session.context?.currentRequest)
+    let messages:ModelMessage[]=[{role:'user',content:opening.length===1?opening[0]!:opening.map(text=>({type:'text' as const,text}))}]
     // The history the last step was sent, without its state message.
     let lastMessages=messages
     // The messages this run made to carry the state, against what they replace.

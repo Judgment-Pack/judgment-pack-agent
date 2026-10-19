@@ -54,6 +54,7 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
       if(phase==='critic')context.beginIsolatedPhase()
       instructions += DATA_RULE + assistantLanguageInstructions(session.replyLanguage)
       prompt = await context.prompt(prompt,instructions,tools,phase==='author'?session.context?.currentRequest:undefined)
+      if(phase==='author')prompt=context.indexed(prompt,instructions,tools)
       context.check(instructions,prompt,tools)
       const partial = new Map<string, string>()
       let final = ''
@@ -147,8 +148,8 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
       : session.allowConversation ? CONVERSATION_SYSTEM : SYSTEM
     // The agent's prompt carries the host's changing state and the execution guidance at its end;
     // its instructions stay the stable system text. A chat's index of the results earlier runs kept
-    // (agent#8) follows the request text.
-    const prompt = session.prompt + (context.index ? '\n\n' + context.index : '') + (session.context?.currentState ? '\n\n' + session.context.currentState : '') + (session.allowConversation ? '\n\n' + context.execution.guidance() : '')
+    // (agent#8) is added at its end, in the room it leaves (`run`).
+    const prompt = session.prompt + (session.context?.currentState ? '\n\n' + session.context.currentState : '') + (session.allowConversation ? '\n\n' + context.execution.guidance() : '')
     let final: string
     try {
       final = await run(prompt, instructions + (offersProposeTool(session.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : ''), 'author')

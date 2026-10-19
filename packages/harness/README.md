@@ -218,8 +218,9 @@ Runtime-served read (every runtime tool, and a host tool that declares `contextP
 read never is. `retainedBytes` bounds the chat: the oldest entries no running run references are
 evicted first. Each run's first message carries, after the request text, an index of the results
 earlier runs kept (`read_window` id, tool, arguments digest, size, first line), bounded by
-`turnIndexEntries` and `turnIndexBytes` and counted in the request budget; results evicted since the
-last index are listed there. A run's checkpoint carries the entries it retained or read, not the
+`turnIndexEntries` and `turnIndexBytes` and cut to the room the message leaves in the prompt's
+allowance, at most a quarter of it, so the request is never previewed and a run never fails because
+of the index; results evicted since the last index was sent are listed there. A run's checkpoint carries the entries it retained or read, not the
 chat's. Nothing is global: a run reaches only the chat context it was handed, and a delegated child
 gets none. `wire-contract.md` has the rules; `tool-result.json` the index and the cache key.
 
@@ -227,8 +228,11 @@ gets none. `wire-contract.md` has the rules; `tool-result.json` the index and th
 
 The request text is the first text part of a run's first user turn on every request of the run, on
 every wire (agent#11): nothing the loop does moves it, and every other user text the loop adds comes
-after it. The contract states the rule a server applies to find it (`budget.json#/$defs/recallQuery`,
-`certification/recall.ts`), and the certification suite applies it to every request on every leg.
+after it. Where the prompt is previewed, the person's message (`currentRequest.message`) is that
+first part, before the preview; for a delegated child, its objective (`context.objective`). The
+contract states the rule a server applies to find it (`budget.json#/$defs/recallQuery`,
+`certification/recall.ts`), and the certification suite applies it to every request on every
+certified leg, 21 legs in four families.
 The host says per run whether the project's memory is on (`context.memory`): `false` frees the
 `memoryBytes` reserve, and a run whose host says nothing keeps it.
 
@@ -256,8 +260,8 @@ which the loop passes with the state in the system tail; and (agent#4) the text 
 whole scenario, on each of the six wire legs, at an endpoint whose record says it takes no native
 tool calls and which refuses any request that carries tools, with the same calls, gate events and
 proposal, and once more where it also keeps a strict turn order; and (agent#11) on every request
-of the plain, text-path, strict-alternation and thinking legs, the recall rule finds the request
-text the run started from; an agent engine (`codex`) the recorded
+of 21 certified legs in four families (plain, text-path, strict-alternation and thinking), the
+recall rule finds the request text the run started from; an agent engine (`codex`) the recorded
 scenario behind the real tool gate and the agent-engine checks in `engines/codex/codex.test.ts`.
 
 Tests and certification run on `testing/host.ts`, a host that supplies each injection point the way
