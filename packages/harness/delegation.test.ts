@@ -8,7 +8,8 @@ import { ChatContext } from './context/chat'
 import { codex } from './engines/codex'
 import { vercel } from './engines/vercel'
 import { normalize } from './thinking'
-import { gatedRuntime, runtimeAnswer, TEST_CASES_TOOL, TEST_CONFORMANCE_TOOL, type RuntimeCall } from './testing/scripted'
+import { gatedRuntime, runtimeAnswer, scriptedBridge, TEST_CASES_TOOL, TEST_CONFORMANCE_TOOL, type RuntimeCall } from './testing/scripted'
+import { bindAgentRun } from './agentTransport'
 import { RECORDED_TOOLS } from './certification/scriptedServer'
 import taskSchema from '../../contract/schemas/delegated-task.json'
 import budgetSchema from '../../contract/schemas/budget.json'
@@ -448,6 +449,30 @@ describe('context by reference and profiles (agent#15)',()=>{
   const plain=scripted(one=>isChild(one)?sse('Finding.'):toolMessages(one).length===0?sse(undefined,{name:DELEGATE_TOOL,args:{tasks:[task('Plain','review')]}}):sse('Done.'))
   await collect(withDelegation(vercel),apiSession({context:{connection:{connectionId:'another'}},model:{family:'openai-compatible',model:'fixture',call:plain.call}}))
   expect(plain.sent.filter(isChild).map(one=>one.body.model)).toEqual(['fixture'])
+ })
+
+ // Review row 5: on the agent wire the child model rides on the child's run, as the critic's does on a critic run.
+ it('runs a Codex child on the agent model the host names for children, through the agent transport',async()=>{
+  configureHarness({modelsFor:(run)=>run.engine==='codex'?{child:'cheaper-agent'}:{}})
+  const bridge=scriptedBridge(async(wire)=>{
+   wire.started()
+   if(wire.request.prompt.includes('Complete this read-only task')){wire.say('Child finding.');wire.end();return}
+   if(wire.request.prompt.includes('DELEGATION RESULT')){wire.say('Done.');wire.end();return}
+   await wire.call(DELEGATE_TOOL,{tasks:[task('Cheap','review'),task('Tests','author-test')]})
+  })
+  vi.stubGlobal('WebSocket',bridge.WebSocket)
+  const {model:_model,thinking:_thinking,...base}=apiSession()
+  const events=await collect(withDelegation(codex),{...base,agent:{model:'scripted-agent',run:bindAgentRun('scripted-agent')}})
+  expect(bridge.errors).toEqual([])
+  expect(events.filter(e=>e.type==='message')).toEqual([{type:'message',text:'Done.'}])
+  // The parent's runs keep the bound model; the review child's names the child model, the author-test child's the parent's.
+  expect(bridge.runs.map(run=>[run.phase,run.model])).toEqual([['author','scripted-agent'],['author','cheaper-agent'],['author','scripted-agent'],['author','scripted-agent']])
+  expect(results(events).map(t=>[t.title,t.model])).toEqual([['Cheap','cheaper-agent'],['Tests','scripted-agent']])
+  // The mark that admits the model is the coordinator's, and never leaves the page.
+  for(const run of bridge.runs)expect(Object.keys(run)).not.toContain('delegated')
+  // A run the coordinator did not mark is refused another model before anything is sent.
+  const run=bindAgentRun('scripted-agent')
+  await expect(run({prompt:'p',instructions:'i',tools:[],phase:'author',model:'cheaper-agent'},{signal:new AbortController().signal,event:async()=>{},tool:async()=>({text:'',isError:false})})).rejects.toMatchObject({failure:{code:'configuration',source:'agent',outcome:'not-started'}})
  })
 
  // Review row 3: every profile's offer, with Runtime tools served; an unoffered Runtime name never reaches the runtime.

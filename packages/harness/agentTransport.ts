@@ -21,6 +21,14 @@ export function bindAgentRun(model: string, target?:AITarget): AgentRun {
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   return async (request, callbacks) => {
     if (callbacks.signal.aborted) throw new RunCancelled()
+    // agent#10 and agent#15: a run's model is the one bound here, or, on a
+    // critic run or a delegated child's run only, the one passed down from the
+    // host's single answer for the run (modelsFor, asked once). The bridge
+    // admits only a model the subscription lists.
+    const chosen = request.model === undefined || request.model === model ? model
+      : request.phase === 'critic' || request.delegated === true ? request.model : null
+    const { delegated: _delegated, ...wire } = request
+    if (chosen === null) throw failureError('configuration', 'agent', 'not-started')
     const token = await sessionBearer()
     if (callbacks.signal.aborted) throw new RunCancelled()
     return new Promise<void>((resolve, reject) => {
@@ -97,7 +105,7 @@ export function bindAgentRun(model: string, target?:AITarget): AgentRun {
       stopWatching = whenSessionEnds(aborted)
       if (callbacks.signal.aborted) { aborted(); return }
       ws.onopen = () => {
-        try { send({ type: 'start', request: { ...request, model } }) }
+        try { send({ type: 'start', request: { ...wire, model: chosen } }) }
         catch { finish(failure()) }
       }
       ws.onmessage = event => {

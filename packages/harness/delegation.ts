@@ -211,6 +211,8 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
       shared.toolCalls++; if (task) task.toolCalls++
     }
     const testLimit = contextPolicy(session.context?.configuration,modelName).testCallsPerTurn
+    /** The model each child runs on, by task id, where it differs from the parent's (agent#15). */
+    const childModels = new Map<string,string>()
     /** Why a child's request was refused in the wrapper: its own budget, or the request kept for the parent (review row 6). */
     const refusedBy = new Map<string,'budget'|'reserve'>()
     /** The children whose source call needed the parent's research choice: stopped, not timed out. */
@@ -268,7 +270,10 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
         }
         return {...common,model:{...base.model,call}} as EngineSession
       }
-      return {...common,agent:{...base.agent,run:async(request,callbacks)=>{
+      // agent#15: a child's run carries the child model the host named, as a critic run carries the critic's.
+      const named=task?childModels.get(task.id):undefined
+      return {...common,agent:{...base.agent,run:async(given,callbacks)=>{
+        const request=named!==undefined&&named!==base.agent.model?{...given,model:named,delegated:true as const}:given
         shared.agentRun(task!==undefined)
         // Subscription providers own their internal model loop. Count admitted
         // agent invocations, not invented model-request totals.
@@ -336,6 +341,7 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
         context.execution.toolAllowance=()=>({used:task.toolCalls,limit:planned.budget.toolCalls,scope:'task'})
       }}
       const model = childModel(profile)
+      childModels.set(task.id, model.name)
       const base = {...session,
         // agent#11: the objective is the child's request text, the first text part of its first message.
         context:{configuration:session.context?.configuration,phase:session.context?.phase,authorize:session.context?.authorize,artifactProposals:session.context?.artifactProposals,memory:session.context?.memory,objective,runtime:session.context?.runtime,chat:chat.childScope(planned.visible),link,...(session.context?.connection?{connection:session.context.connection}:{})},

@@ -579,6 +579,28 @@ export function toolTimeout(ms: number): Error {
     detail: `The tool did not answer within ${limitText(ms)} and is no longer waited for; it may still complete. Its outcome is unknown; check it before repeating the call.` })
 }
 
+/**
+ * A call to a tool this phase never offered: put through the gate as the model
+ * made it, so the layer that holds is the one that reports, and answered
+ * refused whatever the gate said (agent#4). Both engines (the `codex` engine
+ * since agent#25). A cancelled run stops here rather than reporting a refusal
+ * that never happened.
+ */
+export async function refusedUnoffered(callTool: CallTool, name: string, args: Record<string, unknown>): Promise<string> {
+  let refusal = 'the call did not leave the page and nothing was written'
+  try {
+    await callTool(name, args)
+  } catch (cause) {
+    if (isCancelled(cause)) throw cause
+    refusal = (cause as Error).message
+  }
+  return unofferedRefusal(refusal)
+}
+/** What the model is told of a call to a tool it was not offered, whoever refused it. */
+export function unofferedRefusal(refusal: string): string {
+  return `refused: ${refusal}. This assistant proposes; it never writes a file and never calls a tool it was not offered.`
+}
+
 /** A recovery action for old replies, never an automatic import of chat prose. */
 export function recoverableProposal(text: string): Proposal | null {
   try {

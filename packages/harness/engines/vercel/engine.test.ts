@@ -1328,10 +1328,11 @@ describe('the thinking tier, through the SDK’s own call settings', () => {
 
   it('reports unavailable after two answers with no reasoning, and not after one', async () => {
     // The critic's own turn is this session's second answer, so the second
-    // observation lands there on a session that proposes at once.
+    // observation lands there on a session that proposes at once and asks for
+    // the critic (agent#10: the tier alone no longer starts one).
     const { call, seen } = scriptedCall([turn({ text: PROPOSAL_TEXT })])
     const events = await drain(
-      vercel.start(session(call, { thinking: normalize('on', 'openai-compatible') }))
+      vercel.start(session(call, { thinking: normalize('on', 'openai-compatible'), adversarialReview: true }))
     )
     const notices = events.filter((event) => event.type === 'thinking_unavailable')
     expect(notices).toHaveLength(1)
@@ -1687,9 +1688,14 @@ describe('the refutation pass, on this SDK’s second streamText', () => {
     diagnostics: [{ code: 'JPS-SEMANTIC-UNRESOLVED-OUTCOME' }]
   })
 
-  /** A session whose main loop proposes at once and whose critic runs a script. */
+  /**
+   * A session whose main loop proposes at once and whose critic runs a script.
+   * `review`: whether the session asks for the critic; agent#10 made that the
+   * one thing that starts it, at any tier.
+   */
   function criticised(options: {
     tier: 'off' | 'on' | 'ultra'
+    review?: boolean
     criticCalls?: { name: string; args: Record<string, unknown> }[]
     criticSays: string
     answer: string
@@ -1713,7 +1719,7 @@ describe('the refutation pass, on this SDK’s second streamText', () => {
     return {
       session: session(
         call,
-        { thinking: normalize(options.tier, 'openai-compatible') },
+        { thinking: normalize(options.tier, 'openai-compatible'), ...(options.review === undefined ? {} : { adversarialReview: options.review }) },
         async (name, args) => {
           asked.push({ name, args })
           return { content: [{ type: 'text', text: options.answer }] }
@@ -1724,16 +1730,19 @@ describe('the refutation pass, on this SDK’s second streamText', () => {
     }
   }
 
-  it('does not run at all where the tier is off', async () => {
-    const one = criticised({ tier: 'off', criticSays: 'x', answer: VALID })
-    const events = await drain(vercel.start(one.session))
-    expect(one.critic).toEqual([])
-    expect(events.some((event) => event.type === 'critique')).toBe(false)
+  it('does not run where the session does not ask for it, at tier off or on (agent#10)', async () => {
+    for (const tier of ['off', 'on'] as const) {
+      const one = criticised({ tier, criticSays: 'x', answer: VALID })
+      const events = await drain(vercel.start(one.session))
+      expect(one.critic, tier).toEqual([])
+      expect(events.some((event) => event.type === 'critique'), tier).toBe(false)
+    }
   })
 
   it('runs after the proposal exists and before it is shown', async () => {
     const one = criticised({
       tier: 'on',
+      review: true,
       criticCalls: [{ name: 'validate', args: { document: '{}' } }],
       criticSays: 'REFUTATION: none found.',
       answer: VALID
@@ -1751,6 +1760,7 @@ describe('the refutation pass, on this SDK’s second streamText', () => {
   it('takes the verdict from the runtime and not from the critic’s prose', async () => {
     const one = criticised({
       tier: 'on',
+      review: true,
       criticCalls: [{ name: 'validate', args: { document: '{}' } }],
       criticSays: 'REFUTATION: this pack is broken and must not be used.',
       answer: VALID
@@ -1766,6 +1776,7 @@ describe('the refutation pass, on this SDK’s second streamText', () => {
   it('reports refuted where the runtime refused, whatever the critic said', async () => {
     const one = criticised({
       tier: 'on',
+      review: true,
       criticCalls: [{ name: 'validate', args: { document: '{}' } }],
       criticSays: 'REFUTATION: none found. Everything checks out.',
       answer: INVALID
@@ -1783,7 +1794,7 @@ describe('the refutation pass, on this SDK’s second streamText', () => {
   })
 
   it('says the critic ran no check, and puts no line on the proposal', async () => {
-    const one = criticised({ tier: 'on', criticSays: 'I had a look.', answer: VALID })
+    const one = criticised({ tier: 'on', review: true, criticSays: 'I had a look.', answer: VALID })
     const events = await drain(vercel.start(one.session))
     const critique = events.find(
       (event): event is Extract<AssistantEvent, { type: 'critique' }> => event.type === 'critique'
@@ -1802,6 +1813,7 @@ describe('the refutation pass, on this SDK’s second streamText', () => {
     // executed — and the desk's gate below rewrites it again on the wire.
     const one = criticised({
       tier: 'on',
+      review: true,
       criticCalls: [{ name: 'experimental_evaluate', args: { pack: '{}', facts: '{}' } }],
       criticSays: 'REFUTATION: none found.',
       answer: JSON.stringify({ status: 'evaluated', rehearsal: true })
@@ -1820,7 +1832,7 @@ describe('the refutation pass, on this SDK’s second streamText', () => {
   })
 
   it('hands the critic the runtime’s testing prompt and the proposed document', async () => {
-    const one = criticised({ tier: 'on', criticSays: 'done', answer: VALID })
+    const one = criticised({ tier: 'on', review: true, criticSays: 'done', answer: VALID })
     await drain(vercel.start(one.session))
     expect(one.critic[0]).toContain('test_pack guidance')
     expect(one.critic[0]).toContain(REFUTATION_MARKER)
@@ -1843,7 +1855,8 @@ describe('the refutation pass, on this SDK’s second streamText', () => {
       vercel.start(
         session(call, {
           signal: controller.signal,
-          thinking: normalize('on', 'openai-compatible')
+          thinking: normalize('on', 'openai-compatible'),
+          adversarialReview: true
         })
       )
     )
@@ -2251,7 +2264,7 @@ describe('response language at the model boundary', () => {
       return new Response(turn({ text: request.body.includes(REFUTATION_MARKER) ? 'Review complete.' : PROPOSAL_TEXT }),
         { status: 200, headers: { 'content-type': 'text/event-stream' } })
     }
-    const events = await drain(vercel.start(session(call, { replyLanguage: locale.id, thinking: normalize('on', 'openai-compatible') })))
+    const events = await drain(vercel.start(session(call, { replyLanguage: locale.id, thinking: normalize('on', 'openai-compatible'), adversarialReview: true })))
     expect(requests.length).toBe(2)
     for (const body of requests) {
       expect(body).toContain(locale.instruction)
@@ -2489,7 +2502,7 @@ describe('nothing finished is lost (agent#6)', () => {
       }
       return stream(turn({ text: PROPOSAL_TEXT }))
     }
-    const events = await drain(vercel.start(session(call, { thinking: normalize('on', 'openai-compatible') })))
+    const events = await drain(vercel.start(session(call, { thinking: normalize('on', 'openai-compatible'), adversarialReview: true })))
     expect(criticRequests).toBe(1)
     expect(events.filter((event) => event.type === 'error')).toEqual([])
     expect(events.some((event) => event.type === 'critique')).toBe(false)

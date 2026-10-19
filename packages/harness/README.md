@@ -24,8 +24,9 @@ repository root prints every difference from the Desk's files and names its reas
 changes made here since the extraction, each by its issue (agent#1, the read window and the reader;
 agent#9, the stable prefix and the state's placement; agent#4, the capability record and the text
 tool path; agent#5, search, numbered reads and images; agent#8, the chat-scoped context; agent#11,
-the request text on every request and the memory reserve; agent#14, agent#15 and agent#13,
-delegation as one parent run with context by reference and per-profile budgets).
+the request text on every request and the memory reserve; agent#10, the critic; agent#25, the
+agent-engine certification leg; agent#29, the Codex adapter's reformat run; agent#14, agent#15 and
+agent#13, delegation as one parent run with context by reference and per-profile budgets).
 
 ## Entry points
 
@@ -84,7 +85,7 @@ nothing known, so a host that knows nothing about its endpoints may leave it out
 | `dialectAPI(path, …)` | A request to the host's input-preparation API | `dialects/client` | `planning/tools.ts` |
 | `endpointCapabilities({ family, model })` | What the host knows about an endpoint and model: any members of its capability record (see The capability record), its probe result. Answers `{}`, nothing known, until supplied | none (new, agent#9, agent#4: the Desk decides by its three families) | `capabilities.ts`, read once per run by `context/session.ts` |
 | `renderImageToText(image, signal)` | An image as text, for a model whose record says no vision: the host's render adapter | none (new, agent#5) | `images.ts`, from `engines/vercel/loop.ts` and `engines/codex/index.ts` |
-| `modelsFor({ connection, engine, family, model })` | The models a run's connection names for its subordinate work: `child`, delegated children's, and `critic`, the critic's; each absent or null for the run's own model. Asked once per run with the run's connection (`context.connection`), engine, family and model. Answers none until supplied | none (new, review of agent#35) | `host.ts`, `runModels`, read by `context/session.ts`, `SessionContext.models`, for `delegation.ts` |
+| `modelsFor({ connection, engine, family, model })` | The models a run's connection names for its subordinate work: `child`, delegated children's, and `critic`, the critic's; each absent or null for the run's own model. Asked once per run with the run's connection (`context.connection`), engine, family and model. Answers none until supplied. It replaces agent#10's `criticModel` (see The critic) | none (new, agent#10; one seam since the review of agent#35) | `host.ts`, `runModels`, read by `context/session.ts`, `SessionContext.models`, for `engines/vercel/loop.ts`, `engines/codex/index.ts` and `delegation.ts` |
 
 The failure catalogue and the context budget table are the package's own copies of the Desk's
 Go-side files (`internal/aifailure/catalog.json`, `internal/aicontext/policy.json`), byte for byte,
@@ -181,6 +182,47 @@ is refused, never looked up. Its result goes back as the next user message, head
 (`framing.ts`). On the request reserved for a final answer a call made in text is refused and never
 run.
 
+### The critic
+
+The refutation pass (`refutation.ts`, agent#10) runs after a proposal exists and before it is
+delivered, on either engine, where the session's `adversarialReview` says so, and otherwise where
+the policy table's `adversarialReview` does (`contract/policy.json`: `false`). A host passes
+`adversarialReview` on the session for each run; the table only gives the default. One rule, read
+from one place by both engines (`criticRuns`); the reasoning tier no longer starts it. It needs the
+runtime's `test_pack` prompt as `testPrompt`.
+
+- **Its tools** are an allow-list: `CRITIC_TOOLS` (`validate`, `experimental_evaluate`, a rehearsal on
+  the wire, `get_schema` and `experimental_test_cases`, within its bounds and the turn's test-call
+  cap, shared with the loop) and `CRITIC_READERS` (`read_window` and `search`, the harness's own
+  context readers). It is offered those the session offers and no other host tool. While it runs,
+  the `admit` on the shared boundary's wrapped `callTool` and host tools (`SessionContext.admit`)
+  refuses any other name before the tool gate and before a host tool runs, with a `guardrail`
+  `refused` event and a `permission` failure the model reads; each engine's own call of it is a
+  redundant first check. On `codex` a name the session serves but the run was not offered is
+  refused before any call, and the tool-free reformat run is held to nothing.
+- **Its first message**, where it does not fit, is retained, and the critic reads it with
+  `read_window` or `search`; where it does not fit even as that preview, the pass is refused with a
+  `critic-unfinished` note.
+- **Its comparison.** A host passes the cases whose outcomes it knows as `criticCases`: the pack's
+  saved tests (`source: 'test'`) and cases the request declares (`source: 'declared'`), each a row of
+  the runtime's matrix (`CriticCase`; read closed by `readCriticCases`, and a case it refuses ends the
+  run before any request). The critic is shown the cases that state a whole §8.3 disposition or an
+  error class as that matrix (`testable`), and the cases that state part of one apart, for rehearsal
+  only. Each rehearsal of the proposed document with a case's inputs (the sets `reasons` and
+  `handoff.triggeredBy` in any order), and each test-run row of a whole case sent as declared, is
+  compared with the declared outcome. The cases the critic's own calls left uncompared the harness
+  runs once each after its turns, through the same gate, marked `origin: 'harness'` and counted in
+  the figures (one test call over the whole ones where the critic is offered the test tool, then up
+  to `CRITIC_REHEARSALS` rehearsals; no model request; on `codex` within the pass's ten minutes,
+  `CRITIC_PASS_MILLISECONDS`). A disagreeing case refutes the proposal, and so does a declared case
+  nothing compared: the critique's `cases` and `incomplete` say which, and the proposal's `critique`
+  names the incomplete ones.
+- **Its model** is the `critic` member of the host's `modelsFor` answer for the run's connection,
+  asked once per run, or the run's.
+- **Its cost** is on the critique, and on a `critic-unfinished` note: `figures`, the model and the
+  requests (model requests and their token counts on `vercel`, agent runs on `codex`), and the
+  harness's own calls (`harnessCalls`).
+
 ### What changes between requests
 
 The `vercel` adapter sends a stable prefix: its system text with the execution instructions, the
@@ -268,8 +310,10 @@ agent#13, agent#14, agent#15):
   gate's ceiling. Each task's record carries its `budget` and the `model` it ran on.
 - **A child model.** A host names a cheaper model for children of a connection with `modelsFor`
   (see Host injection points), asked once per run with the run's connection (`context.connection`);
-  a child whose profile asks for the parent's model (`author-test`) stays on it. The host answers
-  `endpointCapabilities` for the child model as for any other, and its relay must admit it.
+  a child whose profile asks for the parent's model (`author-test`) stays on it. On `vercel` the
+  host answers `endpointCapabilities` for the child model as for any other, and its relay must admit
+  it; on `codex` the child's agent run carries it (`AgentRequest.model`), and the bridge must admit
+  it on a child's run as it does on a critic run.
 - **Shared limits.** The parent's execution owns the response's model requests once its run starts
   (`ContextInput.link`), a child's are charged to it, and the last is kept for the parent. Children
   running at once share what is left by grants, so each finishes within its own; a finished child's
@@ -297,7 +341,27 @@ scenario's five-tool offer (K2), the rehearsal rewrite (K3a), the refused write 
 (K3c), event order, and the network and timer seal shown to fail on the four fixtures in
 `certification/certification/`. One check is added (agent#7), and every adapter runs it: the
 ceiling is exactly six names, and `test_conformance` is refused at the wire even where a runtime
-serves it and a file grants it. It reads the contract's vectors where the contract states what it
+serves it and a file grants it.
+
+The checks, by adapter:
+
+| Check | `vercel` (model engine) | `codex` (agent engine) |
+| --- | --- | --- |
+| The ceiling is six names; `test_conformance` refused at the wire | `certification/conformance.test.ts` | the same |
+| The seal: no network global touched, at load, during or after (K1a) | each wire leg | the scenario leg |
+| No credential, nothing but the relay (K1) | each wire leg | not applicable: no model capability |
+| K2: the offer is `tool-offer/scenario-offer.json`, both members | each wire leg, every request | since agent#25: the agent-wire offer read back by real name; the critic's is `tool-offer/critic-offer.json` |
+| K3a: the evaluate reaches the runtime as a rehearsal, reported | each wire leg | the scenario leg |
+| K3b: `write_file` reaches the gate, is refused there and never reaches the runtime, and the model is told | each wire leg (T7) | since agent#25: T7, a call of a tool the agent was never offered |
+| K3c: the proposal is DRAFT_V2 with T8's unknowns | each wire leg | the scenario leg |
+| The event order and one `end` | each wire leg, exactly | a subset |
+| The refutation pass: the verdict is the runtime's, a refuted draft, a critic refused at the wire | each wire leg, asked for (agent#10) | the verdict, on the scenario leg, asked for |
+| A seeded wrong outcome is refuted and the case named (agent#10) | each wire leg | the scenario leg |
+| No critic where the session does not ask, at any tier (agent#10) | each wire leg | `critic.test.ts`, outside certification |
+| Thinking, no-thinking, strict alternation, text tool calls | each wire leg | not applicable |
+
+So a gate that admits a name the session did not grant (the sixth-tool mutant) fails both
+certifications. It reads the contract's vectors where the contract states what it
 asserts (the scenario's event sequence and K2's offer, from `contract/vectors/`) and the recorded
 scenario otherwise. Each adapter runs the suite's own checks of the scenario and the seal, then the
 checks the Desk runs over every engine of its kind: a model engine (`vercel`) the conformance legs,
