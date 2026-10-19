@@ -4,12 +4,15 @@
  * Tests only: nothing here is built or exported. It supplies each injection
  * point in `host.ts` the way the Desk's own test ground supplies it
  * (`web/src/testing/setup.ts` at the Desk's pinned commit): a page that
- * already holds a session, a relay addressed by path, no open desk and no
- * connection header. The reply-language table and instruction are the Desk's
+ * already holds a session, a relay addressed by path, no open desk, no
+ * connection header, and a socket transport that dials only when started and
+ * offers the session on its subprotocols, as the Desk's (`web/src/mcp/transport.ts`)
+ * does. The reply-language table and instruction are the Desk's
  * own (`web/src/i18n/locales.ts`, `web/src/i18n/assistantLanguage.ts`),
  * carried here so the engines' language tests have a host that writes them.
  * A host's real values come from the host; see the package README.
  */
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { HarnessHost, Language } from '../host'
 
 /** BCP 47 language identifiers are preferences, never protocol/schema values. */
@@ -46,7 +49,30 @@ class NoSession extends Error {
   }
 }
 
-/** A fresh test host: a session in hand that never ends, and no socket of its own. */
+/**
+ * The host's socket, as far as a session sees it: nothing is dialled until
+ * `start()`, which opens the page's `WebSocket` with the URL and the
+ * subprotocol offer it was built with. The tests that connect pass a transport
+ * of their own; this one is only ever built, started or closed.
+ */
+class TestSocketTransport implements Transport {
+  private socket?: WebSocket
+  constructor(
+    private readonly url: string,
+    private readonly protocols: string[] = []
+  ) {}
+  async start(): Promise<void> {
+    this.socket = new WebSocket(this.url, this.protocols)
+  }
+  async send(): Promise<void> {
+    throw new Error('the test host’s socket carries no frames: pass a transport')
+  }
+  async close(): Promise<void> {
+    this.socket?.close()
+  }
+}
+
+/** A fresh test host: a session in hand that never ends. */
 export function testHost(): HarnessHost {
   return {
     assistantLanguageInstructions,
@@ -73,15 +99,9 @@ export function testHost(): HarnessHost {
     deskSocketURL: (url) => url,
     aiHeaders: (id, revision) =>
       id ? { 'X-Assistant-Connection': id, ...(revision ? { 'X-Assistant-Revision': revision } : {}) } : {},
-    socketURL: () => {
-      throw new Error('the test host opens no socket: pass a transport')
-    },
+    socketURL: () => `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`,
     socketProtocols: (id) => ['jpack-desk', `jpack-desk-session.${id}`],
-    DeskWebSocketTransport: class {
-      constructor() {
-        throw new Error('the test host opens no socket: pass a transport')
-      }
-    } as unknown as HarnessHost['DeskWebSocketTransport'],
+    DeskWebSocketTransport: TestSocketTransport,
     deskFetch: () => Promise.reject(new Error('no host request in this test')),
     answer: () => Promise.reject(new Error('no host request in this test')),
     readFile: () => Promise.reject(new Error('no host file in this test')),

@@ -8,5 +8,5 @@
     "sourceMap": true
   },
   "include": ["**/*.ts", "contract/*.json", "certification/*.json"],
-  "exclude": ["node_modules", "dist", "testing", "scripts", "**/*.test.ts", "vitest.config.ts"]
+  "exclude": ["node_modules", "dist", "testing", "scripts", "**/*.test.ts", "vitest.config.ts", "certification/certification"]
 }

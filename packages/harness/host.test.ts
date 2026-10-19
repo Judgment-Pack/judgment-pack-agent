@@ -21,6 +21,7 @@ describe('an injection point the host has not supplied', () => {
     const fresh = await import('./host')
     expect(() => fresh.chassisUrl('/api')).toThrow(/has not supplied chassisUrl/)
     await expect(async () => fresh.sessionBearer()).rejects.toThrow(/has not supplied sessionBearer/)
+    expect(() => new fresh.NoSession('ended')).toThrow(/has not supplied NoSession/)
     fresh.configureHarness({ chassisUrl: (path) => `host:${path}` })
     expect(fresh.chassisUrl('/api')).toBe('host:/api')
   })
