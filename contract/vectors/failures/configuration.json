@@ -1,0 +1,31 @@
+{
+  "description": "The server could not prepare the request's context (an unreadable project brief, a profile problem): it ends the run before anything is sent.",
+  "schema": "run-event.json",
+  "failureClass": "configuration",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "internal/desk/agent_run.go (prepareAgentContext failure)",
+      "internal/desk/ai_context.go (aiContext)"
+    ]
+  },
+  "items": [
+    {
+      "type": "error",
+      "message": "The AI connection is unavailable or needs configuration. Check it in Admin.",
+      "failure": {
+        "version": 1,
+        "code": "configuration",
+        "source": "context",
+        "outcome": "not-started"
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

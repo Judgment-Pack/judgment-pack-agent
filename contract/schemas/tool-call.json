@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/tool-call.json",
+  "title": "Tool call",
+  "description": "The tool_call event: the model asked for one tool, with these arguments, and the adapter is about to hand the call to the host (callTool for a runtime tool, execute for a host tool). Emitted before the call is made, so the host can journal it; its arguments are the model's own, before the host's gate rewrites anything. A host tool with an interaction (ask_user, delegate_tasks) gets no tool_call: it gets user_question or delegation_requested instead. Read from the AssistantEvent union (web/src/assistant/engine.ts). Open: no reader at run time refuses another member.",
+  "type": "object",
+  "required": [
+    "type",
+    "name",
+    "args"
+  ],
+  "properties": {
+    "type": {
+      "const": "tool_call"
+    },
+    "callId": {
+      "description": "Pairs the call with its tool_result. The codex engine always sets it (the server's 48-hex call id); the vercel engine sets it only on an interactive session, and never on a call to a tool the model was not offered.",
+      "type": "string"
+    },
+    "name": {
+      "description": "The tool's own name. The codex engine offers its tools on the agent wire under aliases (desk_runtime_N, desk_host_N) and reports the real name here.",
+      "type": "string"
+    },
+    "args": {
+      "description": "The arguments exactly as the model wrote them. Usually an object; a call to a tool the model was not offered carries whatever the model sent, or {}."
+    },
+    "presentation": {
+      "description": "Host-owned presentation frozen when the tool was offered. Added by a host consumer (the research run) from the offered host tool, never by an engine and never from model arguments.",
+      "type": "object",
+      "required": [
+        "provider"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "mcpCall": {
+      "description": "The params of the tools/call frame the host's gate inspects before it leaves the page (web/src/assistant/toolGate.ts, inspectOutboundFrame). Open: the gate keeps other members of params. Its rules: the name must be on this session's allow-list, a subset of the Desk's ceiling (get_schema, list_examples, get_example, validate, experimental_evaluate), or the frame is refused and a guardrail refused event is emitted; arguments, where present, are an object; and experimental_evaluate always leaves with an own rehearsal: true, with a guardrail rewrote event where the model's call did not already carry it. The host keeps this rule; an adapter never applies or skips it.",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "arguments": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "agentWireCall": {
+      "description": "One tool-call frame's call on the agent wire, from the Desk server to the browser (codexbridge.ToolCall). The browser reader (web/src/assistant/agentTransport.ts) refuses an id that is not 48 lower-case hex digits, a repeated id, more than twenty calls in a run, a name it did not offer and arguments that are not an object; it does not refuse another member.",
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "arguments"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{48}$"
+        },
+        "name": {
+          "type": "string"
+        },
+        "arguments": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

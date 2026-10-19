@@ -1,0 +1,35 @@
+{
+  "description": "The Desk's fixed limits, by its own constant names, as the source declares them.",
+  "schema": "budget.json#/$defs/deskLimits",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "web/src/assistant/engines/contract.ts (MAX_TURNS)",
+      "web/src/assistant/execution/state.ts (REQUEST_INCREMENT, MAX_REQUEST_ALLOWANCE, MAX_CHECKPOINT_BYTES)",
+      "web/src/assistant/refutation.ts (MAX_CRITIC_TURNS)",
+      "web/src/assistant/delegation.ts (MAX_TOOLS, MAX_CHILD_MODELS, MAX_CHILD_TOOLS, CHILD_TIMEOUT, RESULT_LIMIT)",
+      "internal/desk/conversations.go (maxConversationBytes)",
+      "internal/codexbridge/contract.go (MaxPromptBytes)"
+    ]
+  },
+  "items": [
+    {
+      "MAX_TURNS": 20,
+      "REQUEST_INCREMENT": 10,
+      "MAX_REQUEST_ALLOWANCE": 100,
+      "MAX_CHECKPOINT_BYTES": 4194304,
+      "MAX_CRITIC_TURNS": 4,
+      "MAX_TOOLS": 20,
+      "MAX_CHILD_MODELS": 6,
+      "MAX_CHILD_TOOLS": 6,
+      "CHILD_TIMEOUT": 120000,
+      "RESULT_LIMIT": 12000,
+      "maxConversationBytes": 16777216,
+      "MaxPromptBytes": 200000
+    }
+  ]
+}

@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/question.json",
+  "title": "Question to the person",
+  "description": "One question the model puts to the person through the host tool ask_user, carried on the user_question event. Asking ends the model turn: the adapter pauses before any answer and returns none of its own; the person's answer arrives with the next run. Read from UserQuestion (web/src/assistant/questions.ts, readUserQuestion). Closed: readUserQuestion refuses a member it does not name, here and in each option. Rules the reader holds that JSON Schema does not state: option ids and option labels are unique (labels compared trimmed and case-folded); non-blank means not empty after JavaScript's trim.",
+  "type": "object",
+  "required": [
+    "title",
+    "question",
+    "selection",
+    "options",
+    "recommendedOptionId",
+    "recommendation"
+  ],
+  "properties": {
+    "title": {
+      "type": "string",
+      "maxLength": 40,
+      "pattern": "\\S"
+    },
+    "question": {
+      "type": "string",
+      "maxLength": 600,
+      "pattern": "\\S"
+    },
+    "selection": {
+      "enum": [
+        "single",
+        "multiple"
+      ]
+    },
+    "options": {
+      "description": "None, for an open text question, or two to four choices. Free text is always available beside them.",
+      "type": "array",
+      "maxItems": 4,
+      "not": {
+        "minItems": 1,
+        "maxItems": 1
+      },
+      "items": {
+        "$ref": "#/$defs/option"
+      }
+    },
+    "recommendedOptionId": {
+      "description": "An offered option's id, or null. Null exactly when recommendation is null.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[a-zA-Z0-9_-]{1,100}$"
+    },
+    "recommendation": {
+      "description": "The reason for the recommended option, or null.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 240,
+      "pattern": "\\S"
+    }
+  },
+  "additionalProperties": false,
+  "anyOf": [
+    {
+      "properties": {
+        "recommendedOptionId": {
+          "type": "null"
+        },
+        "recommendation": {
+          "type": "null"
+        }
+      }
+    },
+    {
+      "properties": {
+        "recommendedOptionId": {
+          "type": "string"
+        },
+        "recommendation": {
+          "type": "string"
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "option": {
+      "type": "object",
+      "required": [
+        "id",
+        "label",
+        "description"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_-]{1,100}$"
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 100,
+          "pattern": "\\S"
+        },
+        "description": {
+          "description": "May be empty.",
+          "type": "string",
+          "maxLength": 240
+        }
+      },
+      "additionalProperties": false
+    },
+    "draft": {
+      "description": "The person's answer as the chat holds it (QuestionDraft): the selected option ids and free text. Closed (validQuestionDraft).",
+      "type": "object",
+      "required": [
+        "selected",
+        "text"
+      ],
+      "properties": {
+        "selected": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 4000
+        }
+      },
+      "additionalProperties": false
+    },
+    "saved": {
+      "description": "A question as a chat saves it (SavedQuestion), with its resolution once answered. Closed (readSavedQuestions). At most one saved question in a chat is unresolved.",
+      "type": "object",
+      "required": [
+        "id",
+        "prompt",
+        "draft"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_-]{1,100}$"
+        },
+        "prompt": {
+          "$ref": "#"
+        },
+        "draft": {
+          "$ref": "#/$defs/draft"
+        },
+        "resolution": {
+          "type": "object",
+          "required": [
+            "kind",
+            "at",
+            "turnId"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "answered",
+                "help",
+                "superseded"
+              ]
+            },
+            "at": {
+              "type": "string",
+              "maxLength": 64,
+              "pattern": "\\S"
+            },
+            "turnId": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]{1,100}$"
+            },
+            "continued": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "formatFailure": {
+      "description": "The structuredContent of an ask_user result the host refused (questionFailureResult): which field to correct, or unavailable. The model corrects the named field and asks again in the same turn.",
+      "type": "object",
+      "required": [
+        "questionFailure"
+      ],
+      "properties": {
+        "questionFailure": {
+          "enum": [
+            "shape",
+            "title",
+            "question",
+            "selection",
+            "options",
+            "recommendation",
+            "unavailable"
+          ]
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "description": "The endpoint answered 5xx through the relay. A 5xx is never taken as safe to replay, so the outcome is unknown.",
+  "schema": "run-event.json",
+  "failureClass": "unavailable",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "web/src/assistant/failures.ts (normalizeFailure: status 500 to 599)"
+    ]
+  },
+  "items": [
+    {
+      "type": "error",
+      "message": "The AI service is temporarily unavailable. Completed work is retained.",
+      "failure": {
+        "version": 1,
+        "code": "unavailable",
+        "source": "model",
+        "outcome": "unknown",
+        "status": 503
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "description": "The model is not allowed for this connection: the server ends the run with error model-not-allowed before anything is sent.",
+  "schema": "run-event.json",
+  "failureClass": "permission",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "internal/desk/agent_run.go (connectionAgentAllowed)"
+    ]
+  },
+  "items": [
+    {
+      "type": "error",
+      "message": "This AI connection does not allow the requested operation. Check access and enabled models.",
+      "failure": {
+        "version": 1,
+        "code": "permission",
+        "source": "agent",
+        "outcome": "not-started"
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

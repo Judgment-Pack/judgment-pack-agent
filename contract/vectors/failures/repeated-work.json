@@ -1,0 +1,31 @@
+{
+  "description": "The host's progress tracker found the loop repeating completed work, gave it one recovery request, and stopped it. The completion of the last request is added where one finished.",
+  "schema": "run-event.json",
+  "failureClass": "repeated-work",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "web/src/assistant/execution/progress.ts",
+      "web/src/assistant/engines/vercel/loop.ts (stalled)"
+    ]
+  },
+  "items": [
+    {
+      "type": "error",
+      "message": "The assistant kept repeating completed work. Desk stopped this response and retained the results.",
+      "failure": {
+        "version": 1,
+        "code": "repeated-work",
+        "source": "desk",
+        "outcome": "unknown"
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

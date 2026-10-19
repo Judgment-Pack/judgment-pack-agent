@@ -1,0 +1,40 @@
+{
+  "description": "Codex recovered within the turn twice and needed a third: the bridge allows two recovery notices, relayed as retry events, then ends the run.",
+  "schema": "run-event.json",
+  "failureClass": "retries-exhausted",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "internal/codexbridge/run.go (the error notification: willRetry)",
+      "internal/desk/ai_failure.go (aiAgentFailure: ErrRetries)",
+      "web/src/assistant/agentTransport.ts (the retry event)"
+    ]
+  },
+  "items": [
+    {
+      "type": "retry",
+      "attempt": 1
+    },
+    {
+      "type": "retry",
+      "attempt": 2
+    },
+    {
+      "type": "error",
+      "message": "The AI connection could not recover after automatic retries. Review completed work before continuing.",
+      "failure": {
+        "version": 1,
+        "code": "retries-exhausted",
+        "source": "agent",
+        "outcome": "unknown"
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

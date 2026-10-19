@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/approval.json",
+  "title": "Approval",
+  "description": "The approval state the host holds for one chat: Ask me (manual) or Auto within limits (auto), and the one grant an explicit user decision minted. A grant admits one host action on one resource revision (a pack update, a Dialect publication) within fifteen minutes, is consumed by the commit, and is never minted by model output. No approval crosses the engine slot today: the run proposes and ends, and the host acts on the proposal afterwards under this state; a model's request for more compute is a budget_paused event and the person's grant is a checkpoint grant (checkpoint.json); a question for the person is user_question. Read from ActionApproval and ActionGrant (web/src/assistant/approvals/client.ts) and the server's assistantActionGrant (internal/desk/assistant_approval.go). Open: the chat reads the answer by a cast, with no check.",
+  "type": "object",
+  "required": [
+    "mode"
+  ],
+  "properties": {
+    "mode": {
+      "description": "manual unless a ready grant exists.",
+      "enum": [
+        "manual",
+        "auto"
+      ]
+    },
+    "grant": {
+      "$ref": "#/$defs/grant"
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "grant": {
+      "type": "object",
+      "required": [
+        "id",
+        "action",
+        "chatId",
+        "path",
+        "revision",
+        "name",
+        "state",
+        "expiresAt"
+      ],
+      "properties": {
+        "target": {
+          "description": "The chat action the grant is for, where the action names one (a Dialect publication).",
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "action": {
+          "description": "The host action admitted. The chat's controls name pack-update and dialect-publish.",
+          "type": "string"
+        },
+        "chatId": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "revision": {
+          "description": "The resource revision the grant is bound to; a change invalidates it.",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "ready",
+            "used",
+            "expired",
+            "revoked",
+            "stale"
+          ]
+        },
+        "expiresAt": {
+          "description": "An RFC 3339 time, fifteen minutes after the grant.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "request": {
+      "description": "What the chat posts to grant, revoke or commit (assistantApprovalRequest). Closed: the server decodes it with unknown and duplicate members refused.",
+      "type": "object",
+      "properties": {
+        "target": {
+          "type": "string"
+        },
+        "reviewed": {
+          "type": "boolean"
+        },
+        "action": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

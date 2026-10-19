@@ -1,0 +1,251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/tool-result.json",
+  "title": "Tool result",
+  "description": "The tool_result event: what a tool answered, as the adapter reports it to the host after a tool_call. The model is shown the same answer, bounded (see $defs/reference). Read from the AssistantEvent union (web/src/assistant/engine.ts) as both engines emit it (engines/vercel/loop.ts, engines/codex/index.ts). Open: no reader at run time refuses another member. A failed tool is a result with isError true and the failure in structured, never an error event (toolFailureResult). The bound: a result whose JSON text, after an exact JSON text block is folded into structuredContent, is at most toolResultBytes (budget.json, 12000 by default) reaches the model whole. A larger one is retained in the execution's context ledger and the model is shown a reference envelope instead, which it reads back in sections with the host tool read_context (at most readBytes, 6000 by default, per read). Where the ledger is full (retainedBytes) the model is shown the unavailable envelope. The tool_result event itself is never bounded: the host sees the whole answer.",
+  "type": "object",
+  "required": [
+    "type",
+    "name",
+    "isError",
+    "text"
+  ],
+  "properties": {
+    "type": {
+      "const": "tool_result"
+    },
+    "callId": {
+      "description": "The id of the tool_call this answers. The codex engine always sets it; the vercel engine sets it only on an interactive session, and never on the result of a call the model made to a tool it was not offered.",
+      "type": "string"
+    },
+    "name": {
+      "description": "The tool's own name, never a wire alias.",
+      "type": "string"
+    },
+    "isError": {
+      "type": "boolean"
+    },
+    "text": {
+      "description": "The text blocks of the answer, joined with newlines in the runtime's order (textOf).",
+      "type": "string"
+    },
+    "structured": {
+      "description": "The answer's structuredContent, where it had one. A failed tool's is {\"failure\": …} (failure.json#/$defs/toolFailureContent) or, for ask_user, {\"questionFailure\": …}."
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "mcpToolResult": {
+      "description": "One tools/call answer in the shape the wire carries it (McpToolResult), which is also the shape a host tool's execute returns. Open: an MCP result may carry other members, and readExecution keeps them.",
+      "type": "object",
+      "properties": {
+        "content": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "isError": {
+          "type": "boolean"
+        },
+        "structuredContent": {}
+      },
+      "additionalProperties": true
+    },
+    "reference": {
+      "description": "A retained context item, as ContextLedger.reference writes it: the handle the model reads back with read_context. Open: the model reads it, and no host reader refuses another member.",
+      "type": "object",
+      "required": [
+        "sections",
+        "contextId",
+        "kind",
+        "label",
+        "bytes",
+        "sha256",
+        "readWith",
+        "historical"
+      ],
+      "properties": {
+        "sections": {
+          "description": "Up to thirty JSON pointers into the value, with their JSON types, so a read can go straight to a section.",
+          "type": "array",
+          "maxItems": 30,
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "type"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "object",
+                  "array",
+                  "string",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "contextId": {
+          "description": "scope:id:first sixteen hex digits of the digest.",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "history",
+            "artifact",
+            "request",
+            "tool"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "$ref": "provenance.json#/$defs/sha256"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "readWith": {
+          "const": "read_context"
+        },
+        "historical": {
+          "description": "True for history and tool items: data, not current policy or approval.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true
+    },
+    "referenceEnvelope": {
+      "description": "What the model is shown for a result over the bound (SessionContext.result): the reference, whether the tool failed, that it returned, a note, and a 1000-byte preview of its text.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/reference"
+        },
+        {
+          "type": "object",
+          "required": [
+            "isError",
+            "operationReturned",
+            "note",
+            "preview"
+          ],
+          "properties": {
+            "isError": {
+              "type": "boolean"
+            },
+            "operationReturned": {
+              "const": true
+            },
+            "note": {
+              "type": "string"
+            },
+            "preview": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "unavailableEnvelope": {
+      "description": "What the model is shown when the result is over the bound and the ledger has no room to retain it.",
+      "type": "object",
+      "required": [
+        "operationReturned",
+        "isError",
+        "contextUnavailable",
+        "note"
+      ],
+      "properties": {
+        "operationReturned": {
+          "const": true
+        },
+        "isError": {
+          "type": "boolean"
+        },
+        "contextUnavailable": {
+          "const": true
+        },
+        "note": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "readContextArguments": {
+      "description": "The read-back: read_context's arguments as the host offers its schema. Closed: the offered schema sets additionalProperties false. limit is bounded above by readBytes; sha256 refuses a read of a changed item.",
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "path": {
+          "description": "A JSON pointer within the item, or empty for its root.",
+          "type": "string",
+          "maxLength": 2048
+        },
+        "query": {
+          "description": "A literal, case-sensitive search.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 128
+        }
+      },
+      "additionalProperties": false
+    },
+    "agentWireAnswer": {
+      "description": "The answer the browser returns to the Desk server for one call on the agent wire (codexbridge.ToolAnswer, the tool-result frame's answer). Closed: the server decodes it with unknown members refused; text is at most 1 MiB. A structured answer travels as its JSON text.",
+      "type": "object",
+      "required": [
+        "text",
+        "isError"
+      ],
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "isError": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

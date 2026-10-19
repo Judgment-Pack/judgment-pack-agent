@@ -1,0 +1,30 @@
+{
+  "description": "The agent run passed the browser transport's twelve-minute deadline.",
+  "schema": "run-event.json",
+  "failureClass": "timeout",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "web/src/assistant/agentTransport.ts (deadline)"
+    ]
+  },
+  "items": [
+    {
+      "type": "error",
+      "message": "The AI request timed out. Its outcome may be uncertain; review completed work before continuing.",
+      "failure": {
+        "version": 1,
+        "code": "timeout",
+        "source": "agent",
+        "outcome": "unknown"
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

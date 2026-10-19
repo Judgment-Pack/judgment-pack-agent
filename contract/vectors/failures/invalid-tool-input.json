@@ -1,0 +1,33 @@
+{
+  "description": "A host tool refused its arguments with a host-authored correction (here read_context's): a failed result whose text is the detail, so the model can correct the call.",
+  "schema": "run-event.json",
+  "failureClass": "invalid-tool-input",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "web/src/assistant/failures.ts (toolInputFailure, toolFailureResult)",
+      "web/src/assistant/context/ledger.ts (read)"
+    ]
+  },
+  "items": [
+    {
+      "type": "tool_result",
+      "name": "read_context",
+      "isError": true,
+      "text": "Use a JSON pointer within this context item.",
+      "structured": {
+        "failure": {
+          "version": 1,
+          "code": "invalid-tool-input",
+          "source": "tool",
+          "outcome": "unknown",
+          "detail": "Use a JSON pointer within this context item."
+        }
+      }
+    }
+  ]
+}

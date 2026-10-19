@@ -1,0 +1,31 @@
+{
+  "description": "The host could not save the execution checkpoint before a model request, so the request was not sent.",
+  "schema": "run-event.json",
+  "failureClass": "storage",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "web/src/assistant/context/session.ts (contextualSession: model.call)",
+      "web/src/assistant/engines/vercel/loop.ts (open: failureEvent)"
+    ]
+  },
+  "items": [
+    {
+      "type": "error",
+      "message": "Progress could not be saved. Keep this window open and restore storage before continuing.",
+      "failure": {
+        "version": 1,
+        "code": "storage",
+        "source": "storage",
+        "outcome": "not-started"
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

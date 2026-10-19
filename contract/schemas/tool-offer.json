@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/tool-offer.json",
+  "title": "Tool offer",
+  "description": "One tool the host offers a run. Two kinds cross the slot today, in two session members: the runtime's tools (session.tools: McpTool, exactly as tools/list served them, filtered to this session's allow-list, reached only through callTool and the host's gate) and the host's own tools (session.hostTools: HostTool, run by the host on the adapter's behalf, answered in the shape a runtime answer takes). An adapter offers the model exactly these, under their served schemas (servedSchema: a tool served without an input schema ends the session; the Gemini family alone is shown the schema less a closed list of keywords, with a guardrail narrowed event per tool that lost one). The host also adds its own context tools (list_context, read_context and, in a conversation, update_plan and request_budget_increase), whose names an offered tool may not take. Read from web/src/assistant/engine.ts (McpTool, HostTool) and context/session.ts (contextualSession). Open: the runtime's answer is passed through as served, and HostTool is an in-process value with no reader.",
+  "anyOf": [
+    {
+      "$ref": "#/$defs/runtimeTool"
+    },
+    {
+      "$ref": "#/$defs/hostTool"
+    }
+  ],
+  "$defs": {
+    "runtimeTool": {
+      "description": "A runtime tool (McpTool). No effect class is carried: the host decides what is read-only by name (runtimeToolContextPolicy and the read list in context/managed.ts).",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "inputSchema": {
+          "description": "The runtime's own JSON Schema for the arguments, passed through untouched."
+        }
+      },
+      "additionalProperties": true
+    },
+    "hostTool": {
+      "description": "A host tool's declaration (HostTool, without its execute function, which never crosses). Its schema is the host's, written in the subset every family's wire carries.",
+      "type": "object",
+      "required": [
+        "name",
+        "description",
+        "inputSchema"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "inputSchema": {},
+        "effect": {
+          "description": "Host-declared effect, never supplied by model arguments.",
+          "enum": [
+            "read",
+            "proposal",
+            "workflow",
+            "memory",
+            "plan"
+          ]
+        },
+        "interaction": {
+          "description": "A tool that pauses the run for the person (question: ask_user) or for the host's coordinator (delegation: delegate_tasks). The adapter emits user_question or delegation_requested, pauses, and returns no answer of its own.",
+          "enum": [
+            "question",
+            "delegation"
+          ]
+        },
+        "delegation": {
+          "description": "The read-only capability this tool offers to a delegated child; absent means parent-only.",
+          "enum": [
+            "read",
+            "research"
+          ]
+        },
+        "contextPolicy": {
+          "description": "Host-declared context retention (ContextToolPolicy), independent of topic, provider and action permission. immutable: the same arguments return the same value for this execution, so a read may be cached. reference: prefer this material in the bounded working summary.",
+          "type": "object",
+          "properties": {
+            "immutable": {
+              "type": "boolean"
+            },
+            "reference": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": true
+        },
+        "presentation": {
+          "description": "Host-owned presentation, frozen when the tool is offered.",
+          "type": "object",
+          "required": [
+            "provider"
+          ],
+          "properties": {
+            "provider": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "agentWireTool": {
+      "description": "A tool as the codex engine offers it on the agent wire (codexbridge.Tool in the start frame's request): an alias name desk_runtime_N or desk_host_N, the real name prefixed to the description, and the served schema. Closed: the Desk server decodes the start frame with unknown members refused; a request carries at most 128 tools.",
+      "type": "object",
+      "required": [
+        "name",
+        "description",
+        "inputSchema"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^desk_(runtime|host)_[0-9]+$"
+        },
+        "description": {
+          "type": "string"
+        },
+        "inputSchema": {}
+      },
+      "additionalProperties": false
+    },
+    "runtimeCeiling": {
+      "description": "The runtime tools any session may be allowed (ASSISTANT_TOOLS). A session's allow-list is a subset; the gate refuses a call outside it on the wire.",
+      "enum": [
+        "get_schema",
+        "list_examples",
+        "get_example",
+        "validate",
+        "experimental_evaluate"
+      ]
+    },
+    "reservedName": {
+      "description": "Names the host keeps for its own context tools; an offered tool that takes one ends the session.",
+      "enum": [
+        "list_context",
+        "read_context",
+        "update_plan",
+        "request_budget_increase"
+      ]
+    }
+  }
+}

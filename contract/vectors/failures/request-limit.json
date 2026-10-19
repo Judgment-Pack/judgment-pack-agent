@@ -1,0 +1,31 @@
+{
+  "description": "Resuming a saved execution that is paused, or has used its allowance, without a grant: the shared context boundary reports it and ends. Within a run the same limit is a budget_paused event instead: the boundary converts an adapter's request-limit error, and the vercel loop pushes budget_paused itself.",
+  "schema": "run-event.json",
+  "failureClass": "request-limit",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "web/src/assistant/execution/controller.ts (initialize, ExecutionPaused)",
+      "web/src/assistant/context/managed.ts (execute: the catch)"
+    ]
+  },
+  "items": [
+    {
+      "type": "error",
+      "message": "Work paused at the approved request limit.",
+      "failure": {
+        "version": 1,
+        "code": "request-limit",
+        "source": "context",
+        "outcome": "unknown"
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

@@ -1,0 +1,259 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/checkpoint.json",
+  "title": "Execution checkpoint",
+  "description": "A local record of one execution, carried whole on execution_checkpoint and budget_paused events and handed back to resume: the request allowance and the grants that raised it, the task plan, every operation with its exact arguments and result, the completions, and the retained context the ledger holds. Never permissions, evidence approval or private reasoning. Read from ExecutionCheckpoint (web/src/assistant/execution/state.ts, readExecution). Open: readExecution accepts a member it does not name and keeps it. Rules the reader holds that JSON Schema does not state: the serialized checkpoint is at most 4 MiB (MAX_CHECKPOINT_BYTES); used is at most limit; the grants chain from the first limit (MAX_TURNS for model-requests, 1 for provider-managed), each grant's from is the previous to, and limit equals the last to; operation ids and entry ids are unique; every entry id starts with the context scope and a colon; a completion's request is at most used; at most one plan step is in_progress.",
+  "type": "object",
+  "required": [
+    "version",
+    "id",
+    "requestKey",
+    "phase",
+    "status",
+    "unit",
+    "used",
+    "limit",
+    "grants",
+    "plan",
+    "explanation",
+    "operations",
+    "context"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "requestKey": {
+      "$ref": "provenance.json#/$defs/requestKey"
+    },
+    "phase": {
+      "description": "plan: Plan mode, no artifact proposals. work: everything else.",
+      "enum": [
+        "plan",
+        "work"
+      ]
+    },
+    "status": {
+      "enum": [
+        "running",
+        "paused",
+        "complete",
+        "stopped"
+      ]
+    },
+    "unit": {
+      "description": "What used and limit count. model-requests: the host counts each model request the adapter makes (the vercel engine). provider-managed: the provider runs its own model loop and the host counts nothing (the codex engine; limit stays 1 and no grant is possible).",
+      "enum": [
+        "model-requests",
+        "provider-managed"
+      ]
+    },
+    "used": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "grants": {
+      "description": "Each explicit allowance the person granted (extendExecution): from the old limit to the new, ten requests at a time, never above 100.",
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "$ref": "#/$defs/grant"
+      }
+    },
+    "plan": {
+      "description": "Empty, or one to twenty steps.",
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "$ref": "#/$defs/taskStep"
+      }
+    },
+    "explanation": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "operations": {
+      "type": "array",
+      "maxItems": 400,
+      "items": {
+        "$ref": "#/$defs/operation"
+      }
+    },
+    "completions": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "$ref": "provenance.json"
+      }
+    },
+    "context": {
+      "type": "object",
+      "required": [
+        "scope",
+        "entries"
+      ],
+      "properties": {
+        "scope": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "entries": {
+          "type": "array",
+          "maxItems": 800,
+          "items": {
+            "$ref": "#/$defs/retainedEntry"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "reason": {
+      "description": "Why work paused: the model's request_budget_increase reason and next step.",
+      "type": "string",
+      "maxLength": 2000
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "grant": {
+      "type": "object",
+      "required": [
+        "from",
+        "to",
+        "at"
+      ],
+      "properties": {
+        "from": {
+          "type": "integer"
+        },
+        "to": {
+          "type": "integer",
+          "maximum": 100
+        },
+        "at": {
+          "description": "When the person granted it; a time Date.parse reads.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "taskStep": {
+      "type": "object",
+      "required": [
+        "step",
+        "status"
+      ],
+      "properties": {
+        "step": {
+          "type": "string",
+          "maxLength": 1000,
+          "pattern": "\\S"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "completed"
+          ]
+        },
+        "detail": {
+          "type": "string",
+          "maxLength": 1500
+        }
+      },
+      "additionalProperties": true
+    },
+    "operation": {
+      "description": "One tool call as the host journaled it from the tool_call and tool_result events.",
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "args",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 150
+        },
+        "args": {
+          "description": "The exact arguments of the call."
+        },
+        "status": {
+          "enum": [
+            "running",
+            "complete",
+            "failed",
+            "interrupted"
+          ]
+        },
+        "result": {
+          "$ref": "tool-result.json#/$defs/mcpToolResult"
+        }
+      },
+      "additionalProperties": true
+    },
+    "retainedEntry": {
+      "description": "One immutable source copy the context ledger holds (RetainedEntry). value is the copy itself.",
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "label",
+        "value",
+        "bytes",
+        "digest"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "kind": {
+          "enum": [
+            "history",
+            "artifact",
+            "request",
+            "tool"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "value": {
+          "description": "Any JSON value."
+        },
+        "revision": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "bytes": {
+          "description": "UTF-8 bytes of the value's JSON text.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "digest": {
+          "description": "SHA-256 of the value's JSON text.",
+          "$ref": "provenance.json#/$defs/sha256"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

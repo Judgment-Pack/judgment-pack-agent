@@ -1,0 +1,34 @@
+{
+  "description": "The model stopped at its output-token limit, after the one tool-free synthesis request (response_recovery) where one was possible. The completion carries the provider's token counts where it reported them.",
+  "schema": "run-event.json",
+  "failureClass": "output-limit",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "web/src/assistant/completion.ts (completionFailureCode, canFinishResponse)",
+      "web/src/assistant/engines/vercel/loop.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "error",
+      "message": "The AI reached its output-token limit before completing the response. Completed work is retained.",
+      "failure": {
+        "version": 1,
+        "code": "output-limit",
+        "source": "model",
+        "outcome": "unknown",
+        "completion": {
+          "finishReason": "length"
+        }
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

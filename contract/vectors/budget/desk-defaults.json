@@ -1,0 +1,29 @@
+{
+  "description": "The Desk's context budget table, verbatim: the defaults both the browser and the server read.",
+  "schema": "budget.json",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "internal/aicontext/policy.json"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "maxInputBytes": 180000,
+      "contextWindowTokens": 65536,
+      "outputTokens": 8192,
+      "toolResultBytes": 12000,
+      "readBytes": 6000,
+      "retainedBytes": 8388608,
+      "recentMessages": 8,
+      "historyBytes": 32000,
+      "briefBytes": 8000,
+      "memoryBytes": 4000
+    }
+  ]
+}

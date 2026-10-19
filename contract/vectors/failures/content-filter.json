@@ -1,0 +1,34 @@
+{
+  "description": "The provider's filter stopped the response.",
+  "schema": "run-event.json",
+  "failureClass": "content-filter",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "web/src/assistant/completion.ts (completionFailureCode)",
+      "web/src/assistant/engines/vercel/loop.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "error",
+      "message": "The AI provider blocked this response. Review the request before continuing.",
+      "failure": {
+        "version": 1,
+        "code": "content-filter",
+        "source": "model",
+        "outcome": "unknown",
+        "completion": {
+          "finishReason": "content-filter"
+        }
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

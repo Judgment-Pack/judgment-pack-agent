@@ -1,0 +1,30 @@
+{
+  "description": "The agent run ended without a complete final message.",
+  "schema": "run-event.json",
+  "failureClass": "invalid-response",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "web/src/assistant/engines/codex/index.ts (run: no final message)"
+    ]
+  },
+  "items": [
+    {
+      "type": "error",
+      "message": "The AI returned no usable complete response. Completed work is retained.",
+      "failure": {
+        "version": 1,
+        "code": "invalid-response",
+        "source": "agent",
+        "outcome": "unknown"
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

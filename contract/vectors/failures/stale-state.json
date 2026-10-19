@@ -1,0 +1,32 @@
+{
+  "description": "The endpoint answered 409 with no code the catalogue's aliases name. The relay's own 409s carry a code (assistant-no-key, assistant-unconfigured, assistant-key-unbound) and classify as authentication or configuration instead.",
+  "schema": "run-event.json",
+  "failureClass": "stale-state",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "web/src/assistant/failures.ts (normalizeFailure: status 409)",
+      "internal/desk/modelrelay.go (the relay's coded 409s)"
+    ]
+  },
+  "items": [
+    {
+      "type": "error",
+      "message": "The saved context or configuration changed. Reload the current state before continuing.",
+      "failure": {
+        "version": 1,
+        "code": "stale-state",
+        "source": "model",
+        "outcome": "refused",
+        "status": 409
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

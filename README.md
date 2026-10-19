@@ -33,10 +33,15 @@ framework's own guardrails are a convenience inside an adapter, never the bounda
 Nothing is extracted yet. The harness code lives in the Desk's `web/src/assistant` and the Go
 server. The order of work, from the audit recorded on the Desk's `assistant-harness` issues:
 
-1. Extract the contract from the Desk's engine slot and certify the existing Vercel AI SDK loop
-   against it, moved onto the SDK's own agent layer.
-2. Add a second adapter, LangChain Deep Agents for JavaScript, as the first real swap.
-3. Add a Go adapter when the loop moves into the Desk's server.
+1. The contract, extracted from the Desk's engine slot (#19).
+2. (a) The Vercel AI SDK adapter, extracted as it is today, with the Codex adapter beside it, both
+   certified (#20, #21). (b) After the swap, the loop moved onto the SDK's own agent layer.
+3. v0.1.0: the package, an attested release, and the Desk swap (#22, judgment-pack-desk#515).
+4. The Deep Agents adapter (LangChain, JavaScript), as the first real swap.
+5. A Go adapter when the loop moves into the Desk's server.
+
+v0.1.0 means parity with the Desk's harness, plus the improvements of #1 to #18 that land before
+it; the rest follow in later releases.
 
 Releases follow the gateway's recipe, signed tags, attested archives and a reviewed `release`
 gate, once there is something to ship. Until then, `main` is the only line.
