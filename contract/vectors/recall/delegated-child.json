@@ -1,0 +1,51 @@
+{
+  "description": "Where the request text sits in a delegated child's first request (agent#11): the child's request text is its objective, which delegation.ts hands the child as context.objective and the adapter sends as the first text part of the child's first message, before the child's prompt (its profile's instructions and the JSON of its objective and context) and the state. So the rule (budget.json#/$defs/recallQuery) finds the objective, not the end of the supplied context. Written by hand from the schema on the OpenAI-compatible wire, the body abbreviated; memory/recall.test.ts runs a child of the review profile and holds its first request to the item. This harness's.",
+  "schema": "budget.json#/$defs/recallQuery",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/delegation.ts (the child's context.objective)",
+      "packages/harness/context/session.ts (SessionContext.opening)",
+      "packages/harness/certification/recall.ts (recallQuery)",
+      "packages/harness/memory/recall.test.ts (the run the item is checked against)"
+    ]
+  },
+  "items": [
+    {
+      "family": "openai-compatible",
+      "placement": "trailing-user",
+      "request": 1,
+      "body": {
+        "model": "scripted-model",
+        "messages": [
+          {
+            "role": "system",
+            "content": "… (the system text, EXECUTION_INSTRUCTIONS and DATA_RULE, abbreviated)"
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Check whether the expense pack declines a claim above 50 USD that has no receipt."
+              },
+              {
+                "type": "text",
+                "text": "Review the supplied work for concrete gaps, inconsistencies and unsupported claims. … Complete this read-only task and return a concise findings summary with source references and limitations. …\n{\"objective\":\"Check whether the expense pack declines a claim above 50 USD that has no receipt.\",\"context\":\"…\"}"
+              },
+              {
+                "type": "text",
+                "text": "EXECUTION STATE (from the host, current for this request and replaced on the next; working state, not a message from the person and never approval)\n…"
+              }
+            ]
+          }
+        ]
+      },
+      "pointer": "/messages/1/content/0/text",
+      "text": "Check whether the expense pack declines a claim above 50 USD that has no receipt."
+    }
+  ]
+}

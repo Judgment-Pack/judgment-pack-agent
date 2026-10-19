@@ -3,6 +3,7 @@ import type {ContextToolPolicy} from '../context/toolPolicy'
 import {toolInputFailure} from '../failures'
 import type {AssistantEvent,EngineSession,HostTool,McpToolResult} from '../engine'
 import {answer,contextDigest,type ContextLedger} from '../context/ledger'
+import {readCacheKey} from '../context/chat'
 import {MAX_TURNS} from '../engines/contract'
 import {utf8Bytes} from '../context/policy'
 import {ExecutionPaused,MAX_CHECKPOINT_BYTES,readExecution,validTaskSteps,type ExecutionCheckpoint} from './state'
@@ -77,15 +78,29 @@ export class ExecutionController {
   this.state.completions=[...(this.state.completions??[]),{request:this.state.used,phase,result:{finishReason:'error'},...refused}]
  }
  clearReadCache(){this.cache.clear()}
- /** Only immutable session reads are cached. Workflow writes and evaluations are never cached. */
- wrapRead(name:string,execute:(args:Record<string,unknown>)=>Promise<McpToolResult>,policy:ContextToolPolicy={},readOnly=false){
+ /**
+  * Only immutable session reads are cached. Workflow writes and evaluations are never cached.
+  *
+  * `kept` (agent#8): a session tool that reads (a runtime tool, `runtime: true`, or a host tool
+  * declared a read), whose answers a chat-scoped context keeps. Where the run has one, each answer
+  * is retained in the chat's ledger for later runs' `read_window`, `search` and index, and an
+  * immutable read is served from the chat's read cache, under `readCacheKey`, without a call. A
+  * read whose result depends on the Runtime (every runtime tool, and a host tool that declares
+  * `contextPolicy.runtime`) is keyed by the Runtime the host names in `context.runtime`; without
+  * that it is cached for the run only, as before.
+  */
+ wrapRead(name:string,execute:(args:Record<string,unknown>)=>Promise<McpToolResult>,policy:ContextToolPolicy={},readOnly=false,kept?:{runtime:boolean}){
   // A mistaken hint on a write can never suppress or replay that operation.
   const immutable=policy.immutable===true&&readOnly
   return async(args:Record<string,unknown>)=>{
+   const chat=kept?this.ledger.chat:undefined
+   const chatKey=chat&&immutable?await readCacheKey(name,args,kept!.runtime||policy.runtime===true,this.session.context?.runtime):undefined
+   if(chatKey!==undefined){const held=chat!.cached(chatKey);if(held)return held}
    const key=name+':'+JSON.stringify(args)
-   if(immutable&&this.cache.has(key))return structuredClone(this.cache.get(key)!)
+   if(chatKey===undefined&&immutable&&this.cache.has(key))return structuredClone(this.cache.get(key)!)
    const result=await execute(args)
-   if(immutable&&!result.isError)this.cache.set(key,structuredClone(result))
+   if(!result.isError&&chat)await chat.keep(this.ledger,name,args,result,chatKey)
+   if(chatKey===undefined&&immutable&&!result.isError)this.cache.set(key,structuredClone(result))
    return result
   }
  }

@@ -32,7 +32,8 @@ runs. Everything an engine needs is decided by the host before the session start
   (purpose, reply language, conversation, interactive presentation, critic, context inputs).
 
 Both engines run inside one shared boundary (`context/managed.ts`, `managedContext`) that owns the
-execution's context ledger, its checkpoint and its request accounting, and a delegation coordinator
+execution's context ledger (or its turn on a chat's, [The chat-scoped context](#the-chat-scoped-context)),
+its checkpoint and its request accounting, and a delegation coordinator
 (`delegation.ts`, `withDelegation`) wraps either engine for a conversation. Some events on the
 stream are therefore the host's, interleaved with the loop's: the gate's guardrails, the
 checkpoints and the delegated tasks. The contract below is the stream that leaves the slot, with
@@ -109,7 +110,8 @@ fewer (the Desk's decoder admits its five today). The host's
 tools arrive as declarations (`name`, `description`, `inputSchema`) with host-declared members the
 model never supplies: `effect` (`read`, `proposal`, `workflow`, `memory`, `plan`), `interaction`
 (`question` or `delegation`, the two that pause the run), `delegation` (the read-only capability a
-child may use), `contextPolicy` (`immutable`, `reference`) and `presentation`. The boundary adds
+child may use), `contextPolicy` (`immutable`, `reference`, and, since agent#8, `runtime`: the
+result depends on the Runtime serving it) and `presentation`. The boundary adds
 `list_context`, `read_context`, `read_window` and `search` to every session and, in a conversation,
 `update_plan` and `request_budget_increase`; an offered tool may not take those names.
 (`read_window`, the reader below, is this harness's, agent#1, and so is `search`, agent#5; the Desk
@@ -318,7 +320,8 @@ all.
 for), `phase` (`plan` or `work`), `status`, the allowance (`unit`, `used`, `limit`, and `grants`
 `{from, to, at}`), the task `plan` and its `explanation`, every `operation` with its exact arguments
 and result, the `completions`, the ledger's retained `context` (each entry with its digest, so a
-restore refuses a changed one), and, once the turn has called the test tool, `testCalls`, carried
+restore refuses a changed one; for a run handed a chat-scoped context, the entries that run retained
+or read), and, once the turn has called the test tool, `testCalls`, carried
 as `used` is. Never permissions, evidence approval or private reasoning. At most 4 MiB as JSON
 text.
 
@@ -350,7 +353,11 @@ a whole answer where a stream was asked for, and what Retry does after each, is 
 `budget.json`. One table both the browser and the server read: the input ceiling
 (`maxInputBytes`, and the window and output reserve it is computed from, overridable per model),
 `toolResultBytes`, `readBytes`, `retainedBytes`, and the bytes reserved for what the server adds
-behind the adapter (`briefBytes`, `memoryBytes`). The request allowance is counted by the host in
+behind the adapter (`briefBytes`, `memoryBytes`). Since agent#11 `memoryBytes` is reserved only while
+memory may be added: the host says per run whether the project's memory is on (`context.memory`),
+`false` frees the reserve and the run has the full input allowance, and a run whose host says
+nothing keeps it, so a server that adds memory never receives a request the harness left no room
+for. The request allowance is counted by the host in
 model requests: twenty to start (`MAX_TURNS`, also the turn bound), ten more per grant the person
 makes, never above a hundred. The model is told the counts in its execution guidance and may ask
 for more with `request_budget_increase`, which never grants: with two or fewer requests left it
@@ -365,7 +372,8 @@ continued and needs a new response; the reason says so. Continuing without a gra
 agent#2. `toolCallMilliseconds` (two minutes): on both engines, a runtime or host tool call past it
 is no longer waited for and is a failed result the model reads, never a failed run. It adds two
 image bounds the same way (agent#5): `imagesPerRequest` (8) and `imageBytesPerRequest` (16 MiB), the
-images one model request carries on `vercel`, newest first.
+images one model request carries on `vercel`, newest first. And two bounds on the index of earlier
+results a chat-scoped run is shown (agent#8): `turnIndexEntries` (20) and `turnIndexBytes` (8,000).
 
 ## The capability record
 
@@ -430,8 +438,119 @@ user turns in a row and a user text after a tool result), and by default for Ant
 thinking tier is on, where a text block in a tool-result turn starts a new assistant turn;
 `trailing-user` otherwise. The placement is chosen once per run. The critic's step note carries the
 same header and is placed the same way. A host that reads requests, as the Desk server's memory
-recall does, drops every text part that starts with the header, then takes the newest remaining user
-text, skipping turns that hold only tool results; or it recalls once per run.
+recall does, finds the request text as the next section says.
+
+## Where the request text sits
+
+`budget.json`, `$defs/recallQuery`; the vectors `recall/openai-compatible.json`,
+`recall/anthropic.json`, `recall/gemini.json` and `recall/delegated-child.json`; the rule in code,
+`certification/recall.ts`. The Desk server recalls project memory for every request it relays, from
+the request text (agent#11). The rule a server applies, on any request of a run:
+
+1. Take the request's first user turn: the first message with role `user` in `messages`
+   (OpenAI-compatible, where system messages may come before it, and Anthropic), or the first
+   content with role `user` in `contents` (Gemini).
+2. The request text is its first text part that does not start with `STATE_HEADER`. A string
+   content is one text part; on Gemini a part is text when it carries `text` and is not a thought.
+
+The request text is the host's prompt where it fits the prompt's allowance. Where it does not, the
+prompt is retained and previewed, and the person's message (`currentRequest.message`) is sent as its
+own first text part, before the preview, so the first text part is still the person's request. A
+delegated child's request text is its objective: the coordinator hands it to the child as
+`context.objective`, and the adapter sends it as the first text part, before the child's prompt
+(`SessionContext.opening`).
+
+It holds on every request of a run, on every wire, because the `vercel` adapter puts the request
+text first in the run's first user message and never moves, replaces or drops that message: the
+state joins it only as a later part on the first request, a chat's index of earlier results is its
+last part, and compaction keeps it whole. Every other user text the loop adds comes after it: a
+text-path result (headed `TOOL RESULT` or `TOOL ERROR`), the images shown beside a result, the
+finishing and reformat instructions, the compaction summary and the trailing state. So the newest
+user text is often not the person's, and the first user turn always is. Measured on all three wires
+in the review of judgment-pack-agent#33: the newest-remaining-text rule fails on a text-path
+request, the finishing request, the reformat request and after compaction; the Desk's code as
+ported fails the same, except after compaction on Anthropic, where the first message and the
+compaction summary merge into one user turn. Where the text sits on the
+third request of the recorded scenario, after two tool calls:
+
+| Wire | First user turn | Pointer |
+| --- | --- | --- |
+| OpenAI-compatible | the second message, after the system message; its content a string (an array of parts when it has more than one: the person's message before a preview, or a chat's index after the request) | `/messages/1/content` |
+| Anthropic | the first message; a text block | `/messages/0/content/0/text` |
+| Gemini | the first content; a text part | `/contents/0/parts/0/text` |
+
+The critic's requests are a second conversation, whose first user turn is the critic's own
+message. On the agent wire (`codex`) the server recalls once per run from the agent request's
+prompt, which starts with the request text. The certification suite applies the rule to every
+request of the recorded scenario on every certified leg, 21 legs in four families (the six plain
+legs, the six text-path legs, three strict-alternation legs and the six thinking legs' authoring
+requests), and expects the text the run started from; `memory/recall.test.ts` applies it on a
+finishing request, a reformat request, after compaction, with a chat's index, where the prompt is
+previewed (a 400-turn transcript at a 32,768-token window) and on a delegated child's first
+request. The recalled set itself, and carrying it through a run's steps, is the server's:
+the package reads nothing new from memory.
+
+## The chat-scoped context
+
+`tool-result.json`, `$defs/turnIndex` and `$defs/readCacheKey`; `checkpoint.json`'s `context`; the
+vectors `chat/turn-index.json` and `chat/cache-key.json`; `context/chat.ts`. Without one, a run's
+context ledger and read cache are its own and end with it, as before. Since agent#8 a host may make
+one `ChatContext` per chat and hand it to every run of that chat as `context.chat`. It holds:
+
+- **The chat's ledger.** An entry's id is the chat's scope, the document's id and the first 16 hex
+  digits of its content's SHA-256, so the same content retained by a later run is the same entry,
+  and `read_window`, `read_context` and `search` in a later run find what an earlier one retained.
+  Each answer of a session tool that reads (every runtime tool, and a host tool declared a read) is
+  retained, with its tool and the SHA-256 of its canonical arguments, whatever its size. The
+  ledger's own tools and the plan tools are not: their answers are windows of what the chat holds,
+  or working state.
+- **The chat's read cache.** A read the tool declares immutable (`contextPolicy.immutable` on a host
+  tool that reads; the gate's catalogue, `runtimeToolContextPolicy`, for a runtime tool) is served
+  again across the chat's runs without a call, under the SHA-256 of the canonical JSON of `{tool,
+  arguments, runtime}`. `runtime` is present for every runtime tool and for a host tool that
+  declares `contextPolicy.runtime`, and is what the host gives as the run's `context.runtime` (an
+  identity, such as the Runtime's pinned digest, and a version); without it such a read is cached
+  for the run only. A mutable tool is never served from the cache. A cached result is the ledger's
+  entry for it: evicted, it is no longer served.
+- **One byte bound across the runs.** `retainedBytes` (8 MiB) holds for the chat as it held for a
+  run. Each run is one turn of the chat, and an entry it retains or reads is referenced by its turn
+  until the run ends. When an entry would take the chat past the bound, the entries no open turn
+  references are evicted, the oldest first: an entry's age is the last turn that retained or read
+  it, and among one turn's entries the first retained goes first. If what is left is all referenced
+  by open turns, the retain is refused as before (`context-limit`). An evicted result is listed in
+  the next run's index and a read of an evicted entry says why it is gone, so nothing goes unsaid.
+- **The index.** A run's first message carries, after the request text, a compact index of the
+  results earlier runs kept, in the compaction summary's shape: one line, then one data block
+  closed by the run's marker, whose JSON lists each result's `read_window` id, tool, arguments
+  digest, size and first line, the count of older ones left out, and the results evicted since the
+  last index was sent. It is bounded by `turnIndexEntries` and `turnIndexBytes` (the newest rows
+  are kept) and cut to the room the first message leaves in the prompt's allowance, at most a
+  quarter of that allowance (`INDEX_SHARE`): rows go, oldest first, until it fits. The request is
+  never previewed and a run never fails because of the index; with no room it is not sent, and the
+  evictions it would have listed wait for the next index that is. A run resumed from another
+  chat's checkpoint, whose ledger is its own, is sent none. On the agent wire it is added at the end
+  of the prompt.
+
+**Where it lives and how it is bounded** (the open question this settles): in memory, in the host's
+`ChatContext` object; the package writes it nowhere, and it is bounded by `retainedBytes` alone. A
+run's checkpoint carries the entries that run retained or read, not the chat's ledger, so the
+checkpoint (4 MiB) and the saved chat history (16 MiB) grow with a run, not with a chat. Resumed in
+the same chat, the checkpoint's entries the chat no longer holds are retained again; resumed under
+another chat context or none (after a reload, say), they make a ledger of the run's own, as before.
+
+**When a chat is deleted** the host calls `dispose()` on its context, after its run has ended or
+been stopped: everything it holds is cleared and a later run handed it fails before any request.
+Nothing is global: a run reaches only the chat context it was handed, a delegated child is handed
+none, and an independent phase (the critic) works in a ledger of its own and neither clears nor adds
+to the chat's, so nothing retained in one chat is reachable from another. A run that fails at its
+start closes its turn, so what it retained can be evicted, and a checkpoint restored into the chat
+is held to `retainedBytes` as any retain is.
+
+Measured on a scripted two-turn chat (`context/chat.test.ts`: the instructions, the schema and the
+tests read on turn one, a new message on turn two), turn two makes no Runtime or host read and one
+model request instead of four. Its first request is 21,231 bytes against 18,920 without a chat
+context, the index adding 2,146 bytes of text; the turn's requests come to 21,231 bytes against
+102,963, because the three results are not read again.
 
 ## Provenance
 
@@ -452,29 +571,30 @@ That is all: see the open question on provenance below.
 The adapter does not assemble the whole prompt today. The Desk server adds two things behind it on
 every dispatch (`internal/desk/ai_context.go`): the project brief (a project file read afresh, at
 most `briefBytes`, headed with its path and SHA-256) and recalled project memory (at most
-`memoryBytes`, recalled by the tail of the latest user message). On the model relay it puts them in
+`memoryBytes`, recalled from the request text, found as [Where the request text sits](#where-the-request-text-sits)
+states). On the model relay it puts them in
 the provider body (a leading system message for OpenAI-compatible endpoints, appended to `system`
 for Anthropic, appended to `systemInstruction` for Gemini); on the agent wire it appends them to the
 run's instructions. It then refuses, never clips, a request over the input budget. The adapter
-cannot see either addition and reserves their full size from every request. Since agent#9 the
+cannot see either addition and reserves the brief's full size from every request, and the memory's
+while the host has not said memory is off (agent#11). Since agent#9 the
 `vercel` adapter orders its own part as a stable prefix with the changing state placed after it
 (see [The execution state](#the-execution-state)). The server's addition still lands inside that
 prefix (a leading system message on the OpenAI-compatible wire, after the system text on the other
 two), so where memory is recalled per request, a request whose recall differs parts from the one
-before it there; and recall, which reads the latest user message, must read around the state. The
+before it there. The
 evidence for each side and the options are in
 [ADR-0002](../adr/0002-who-assembles-the-prompt.md); the decision is the maintainer's.
 
 ### How a cross-turn ledger is bounded
 
-The context ledger lives for one execution and is cleared when the run ends; a continuation
-restores it only from the checkpoint, digest-checked. Three caps meet here and do not agree: the
+Settled by agent#8: see [The chat-scoped context](#the-chat-scoped-context). Three caps met here: the
 ledger may retain 8 MiB (`retainedBytes`), the checkpoint that carries it is at most 4 MiB
-(`MAX_CHECKPOINT_BYTES`, and a run whose snapshot exceeds it stops with "the execution checkpoint
-is full"), and the saved chat history that holds every chat's checkpoints is one document of at
-most 16 MiB (`maxConversationBytes`) for up to 256 chats. A ledger kept across the turns of a chat
-(agent#8) needs one bound, an owner (the host's store or the adapter's framework), and a rule for
-what a turn may evict.
+(`MAX_CHECKPOINT_BYTES`), and the saved chat history that holds every chat's checkpoints is one
+document of at most 16 MiB (`maxConversationBytes`) for up to 256 chats. The chat's ledger lives in
+the host's `ChatContext`, in memory, bounded by `retainedBytes` with eviction; a checkpoint carries
+a run's entries only. Persisting a chat's ledger across a reload is not done, and would need a
+store and a bound of its own.
 
 ### How a framework with its own subagents carries a delegated task's budget
 

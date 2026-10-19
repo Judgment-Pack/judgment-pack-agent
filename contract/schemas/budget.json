@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/budget.json",
   "title": "Budget",
-  "description": "The context budget one run works under: the provider-independent byte and token limits both the browser and the Desk server read from one table (internal/aicontext/policy.json, ContextPolicy in web/src/assistant/context/policy.ts, aicontext.Policy in Go). The model's context window and output reserve may be overridden per model by the assistant profile (configuration); everything else is fixed. Input bytes for one request are min(maxInputBytes, max(1024, (contextWindowTokens - outputTokens) * 3)); the browser further leaves briefBytes and memoryBytes for what the server adds behind the adapter, and the server refuses before dispatch, never clipping, a request over the input bytes (context-limit, not-started). Open: the Go reader ignores a member it does not name. The request allowance, the grants and the fixed limits are in $defs. The harness adds two time bounds the Desk's table does not carry (packages/harness/context/policy.ts, TIME_DEFAULTS), each taken from the table where it does: turnMilliseconds and toolCallMilliseconds; and three bounds on the Runtime's test tool (TEST_DEFAULTS), likewise: testCallsPerTurn, testPackBytes and testMatrixBytes; and two image bounds (IMAGE_DEFAULTS), likewise: imagesPerRequest and imageBytesPerRequest.",
+  "description": "The context budget one run works under: the provider-independent byte and token limits both the browser and the Desk server read from one table (internal/aicontext/policy.json, ContextPolicy in web/src/assistant/context/policy.ts, aicontext.Policy in Go). The model's context window and output reserve may be overridden per model by the assistant profile (configuration); everything else is fixed. Input bytes for one request are min(maxInputBytes, max(1024, (contextWindowTokens - outputTokens) * 3)); the browser further leaves briefBytes, and memoryBytes where the host has not said memory is off (the run's context.memory, agent#11), for what the server adds behind the adapter, and the server refuses before dispatch, never clipping, a request over the input bytes (context-limit, not-started). Open: the Go reader ignores a member it does not name. The request allowance, the grants and the fixed limits are in $defs. The harness adds two time bounds the Desk's table does not carry (packages/harness/context/policy.ts, TIME_DEFAULTS), each taken from the table where it does: turnMilliseconds and toolCallMilliseconds; and three bounds on the Runtime's test tool (TEST_DEFAULTS), likewise: testCallsPerTurn, testPackBytes and testMatrixBytes; and two image bounds (IMAGE_DEFAULTS), likewise: imagesPerRequest and imageBytesPerRequest; and two bounds on the index of earlier results a chat-scoped run's first message carries (INDEX_DEFAULTS, agent#8), likewise: turnIndexEntries and turnIndexBytes.",
   "type": "object",
   "required": [
     "version",
@@ -68,7 +68,7 @@
       "minimum": 0
     },
     "memoryBytes": {
-      "description": "The most of recalled project memory the server adds behind the adapter.",
+      "description": "The most of recalled project memory the server adds behind the adapter. The harness leaves it out of a run's input allowance only while memory may be added: a run whose host says memory is off (context.memory: false, agent#11) reserves none and has the full allowance; absent, the reserve stays (contextPolicy in packages/harness/context/policy.ts).",
       "type": "integer",
       "minimum": 0
     },
@@ -113,6 +113,18 @@
       "type": "integer",
       "minimum": 1,
       "default": 65536
+    },
+    "turnIndexEntries": {
+      "description": "How many earlier results the index a chat-scoped run's first message carries lists, the newest; older ones are counted in its omitted member (tool-result.json#/$defs/turnIndex, agent#8). Not in the Desk's table; the harness's default is 20.",
+      "type": "integer",
+      "minimum": 0,
+      "default": 20
+    },
+    "turnIndexBytes": {
+      "description": "The most UTF-8 bytes that index may be, its line and data block together (agent#8). It is also cut to the room the run's first message leaves in the prompt's allowance, and to at most a quarter of that allowance (INDEX_SHARE): rows go, oldest first, until it fits, an index with no room is not sent, and the request is never previewed and a run never fails because of it. Not in the Desk's table; the harness's default is 8000.",
+      "type": "integer",
+      "minimum": 0,
+      "default": 8000
     }
   },
   "additionalProperties": true,
@@ -298,7 +310,7 @@
       "additionalProperties": true
     },
     "stateLocation": {
-      "description": "Where the execution state sits in one request on one wire (agent#9). The state is one text: the header, then the request counters, plan and operations index the model is told ($defs/requestAllowance), the host's changing text and the step's own instruction. It is the text at pointer (a JSON pointer into the provider body the adapter composed) from the header, which starts a line, to the end of that text; the header occurs nowhere else in the request. The critic's step note carries the same header. A host that reads requests (the Desk server's memory recall) drops every text part that starts with the header.",
+      "description": "Where the execution state sits in one request on one wire (agent#9). The state is one text: the header, then the request counters, plan and operations index the model is told ($defs/requestAllowance), the host's changing text and the step's own instruction. It is the text at pointer (a JSON pointer into the provider body the adapter composed) from the header, which starts a line, to the end of that text; the header occurs nowhere else in the request. The critic's step note carries the same header. A host that reads requests (the Desk server's memory recall) drops every text part that starts with the header, and finds the request text as $defs/recallQuery states.",
       "type": "object",
       "required": [
         "family",
@@ -349,6 +361,53 @@
         }
       },
       "additionalProperties": true
+    },
+    "recallQuery": {
+      "description": "Where the request text a run started from sits on each model wire on any request of the run, and the rule a server applies to find it (agent#11; the Desk server's memory recall adopts it in its swap, judgment-pack-desk#515). The rule: take the request's first user turn, the first message with role user in messages (OpenAI-compatible, where system messages may come before it, and Anthropic) or the first content with role user in contents (Gemini); the request text is its first text part that does not start with STATE_HEADER ($defs/stateLocation), a string content being one text part and, on Gemini, a part being text when it carries text and is not a thought. The request text is the host's prompt where it fits the prompt's allowance; where it does not, the prompt is retained and previewed, and the person's message (currentRequest.message) is sent as its own first text part, before the preview; for a delegated child it is the child's objective (context.objective), sent as its own first text part before the child's prompt. It holds on every request of the run: the adapter puts the request text first in the run's first user message and never moves, replaces or drops that message. The state joins it only as a later part on the first request; a chat's index of earlier results (tool-result.json#/$defs/turnIndex) is its second part; compaction keeps it whole. Every other user text the loop adds comes after it: a text-path result, the images shown beside a result, the finishing and reformat instructions, the compaction summary, the state. So the newest user text is often not the request, and the first user turn always is. Measured on all three wires in the review of judgment-pack-agent#33: the newest-remaining-text rule fails on a text-path request, the finishing request, the reformat request and after compaction; the Desk's code as ported fails the same, except after compaction on Anthropic, where the first message and the compaction summary merge into one user turn. The critic's requests are a second conversation, whose first user turn is the critic's own message. On the agent wire the request text is the start of the agent request's prompt. An item is one request of a run with tool calls: body is the request as the adapter composed it, abbreviated to its turns (the system text, tool results and state shortened, the tools left out); pointer is the JSON pointer the rule resolves to in it, and text the request text found there. packages/harness/certification/recall.ts states the rule in code, memory/recall.test.ts checks every item against a run, and the certification suite applies it to every request of the recorded scenario on every certified leg: 21 legs in four families (the six plain legs, the six text-path legs, three strict-alternation legs and the six thinking legs' authoring requests).",
+      "type": "object",
+      "required": [
+        "family",
+        "placement",
+        "request",
+        "body",
+        "pointer",
+        "text"
+      ],
+      "properties": {
+        "family": {
+          "enum": [
+            "openai-compatible",
+            "anthropic",
+            "gemini"
+          ]
+        },
+        "placement": {
+          "description": "Where the run places the state after its first request ($defs/stateLocation).",
+          "enum": [
+            "trailing-user",
+            "system-tail"
+          ]
+        },
+        "request": {
+          "description": "Which request of the run, counted from 1.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "body": {
+          "description": "The request body as the adapter composed it, abbreviated: messages (or contents and systemInstruction, or system and messages), each turn's role and parts as the wire spells them, long texts shortened with an ellipsis, tools and settings left out.",
+          "type": "object"
+        },
+        "pointer": {
+          "description": "The JSON pointer (RFC 6901) the rule resolves to in body.",
+          "type": "string",
+          "pattern": "^(/[^/]*)+$"
+        },
+        "text": {
+          "description": "The request text: the value at pointer.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
     }
   }
 }
