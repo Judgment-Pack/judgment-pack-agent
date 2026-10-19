@@ -1,0 +1,180 @@
+{
+  "description": "Task records as the coordinator publishes them, with the members agent#16, agent#17 and agent#18 add: a research task that stopped at its time limit, its report and what it had written kept (partial), with its tokens, time to first byte and duration; a task that returned an earlier one's result (reused, no request); a task whose first request was refused 503 overloaded_error and sent once more, then refused again (retried, failed); and a failed run that had asked the parent a question, its open question kept in its report. Written by hand from the schema.",
+  "schema": "delegated-task.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/delegation.ts (child, keep)",
+      "packages/harness/delegationContract.ts (validDelegatedTask)",
+      "packages/harness/delegationResults.test.ts (the vector read by validDelegatedTask)"
+    ]
+  },
+  "items": [
+    {
+      "id": "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
+      "parentRunId": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "title": "Mileage rate",
+      "objective": "Find the mileage rate the policy pays.",
+      "profile": "research",
+      "state": "complete",
+      "createdAt": "2026-10-19T09:00:00.000Z",
+      "finishedAt": "2026-10-19T09:06:00.120Z",
+      "modelRequests": 4,
+      "toolCalls": 5,
+      "attempts": 0,
+      "steps": [
+        {
+          "name": "read_page",
+          "state": "complete"
+        }
+      ],
+      "result": "Two of four pages read give 0.58 per mile.",
+      "problem": "The task reached its time limit; its result is what it had written by then.",
+      "budget": {
+        "modelRequests": 10,
+        "toolCalls": 12,
+        "milliseconds": 360000
+      },
+      "model": "a-model",
+      "report": {
+        "summary": "Two of four pages read give 0.58 per mile.",
+        "findings": [],
+        "citations": [],
+        "openQuestions": [],
+        "confidence": "unstated",
+        "notDone": [
+          "The child wrote no report block; its findings are the result text.",
+          "The task stopped before it finished."
+        ]
+      },
+      "partial": true,
+      "tokens": {
+        "inputTokens": 5120,
+        "outputTokens": 380
+      },
+      "firstByteMs": 910,
+      "durationMs": 360000
+    },
+    {
+      "id": "5e6f7a8b-9c0d-4e1f-a2b3-c4d5e6f7a8b9",
+      "parentRunId": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "title": "Receipt rule, again",
+      "objective": "Check whether any rule reads a receipt.",
+      "profile": "analyze",
+      "state": "complete",
+      "createdAt": "2026-10-19T09:07:00.000Z",
+      "finishedAt": "2026-10-19T09:07:00.004Z",
+      "modelRequests": 0,
+      "toolCalls": 0,
+      "attempts": 0,
+      "steps": [],
+      "result": "Read the policy and the draft's four rules. None reads a receipt.",
+      "budget": {
+        "modelRequests": 6,
+        "toolCalls": 6,
+        "milliseconds": 120000
+      },
+      "model": "a-model",
+      "report": {
+        "summary": "No rule covers a claim with no receipt.",
+        "findings": [
+          {
+            "text": "The policy requires a receipt above 25, and no rule reads one."
+          }
+        ],
+        "citations": [],
+        "openQuestions": [],
+        "confidence": "medium",
+        "notDone": []
+      },
+      "reused": "7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e",
+      "durationMs": 4
+    },
+    {
+      "id": "8d9e0f1a-2b3c-4d5e-8f60-718293a4b5c6",
+      "parentRunId": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "title": "Check",
+      "objective": "Check the draft.",
+      "profile": "analyze",
+      "state": "failed",
+      "createdAt": "2026-10-19T09:08:00.000Z",
+      "finishedAt": "2026-10-19T09:08:01.050Z",
+      "modelRequests": 2,
+      "toolCalls": 0,
+      "attempts": 0,
+      "steps": [],
+      "problem": "The AI service is temporarily unavailable. Completed work is retained.",
+      "failure": {
+        "version": 1,
+        "code": "unavailable",
+        "source": "model",
+        "outcome": "unknown",
+        "status": 503
+      },
+      "budget": {
+        "modelRequests": 6,
+        "toolCalls": 6,
+        "milliseconds": 120000
+      },
+      "model": "a-model",
+      "retried": {
+        "failure": {
+          "version": 1,
+          "code": "unavailable",
+          "source": "model",
+          "outcome": "unknown",
+          "status": 503
+        },
+        "waitMs": 1000
+      },
+      "durationMs": 1050
+    },
+    {
+      "id": "9eaf0b1c-2d3e-4f50-8172-a3b4c5d6e7f8",
+      "parentRunId": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "title": "Receipts",
+      "objective": "Check the receipt rule.",
+      "profile": "analyze",
+      "state": "failed",
+      "createdAt": "2026-10-19T09:09:00.000Z",
+      "finishedAt": "2026-10-19T09:09:02.000Z",
+      "modelRequests": 1,
+      "toolCalls": 0,
+      "attempts": 0,
+      "steps": [],
+      "problem": "The connection was lost.",
+      "failure": {
+        "version": 1,
+        "code": "connection-lost",
+        "source": "model",
+        "outcome": "unknown"
+      },
+      "budget": {
+        "modelRequests": 6,
+        "toolCalls": 6,
+        "milliseconds": 120000
+      },
+      "model": "a-model",
+      "report": {
+        "summary": "The child wrote no findings text; what it asked of the parent is in openQuestions.",
+        "findings": [],
+        "citations": [],
+        "openQuestions": [
+          {
+            "kind": "question",
+            "text": "Receipts: Decline a claim with no receipt? Options: Yes; No."
+          }
+        ],
+        "confidence": "unstated",
+        "notDone": [
+          "The child’s run failed before it finished."
+        ]
+      },
+      "firstByteMs": 420,
+      "durationMs": 2000
+    }
+  ]
+}

@@ -109,16 +109,20 @@ it('cancels active children, never starts queued children, and does not resume t
  expect(results(events).every(t=>t.state==='interrupted')).toBe(true)
 })
 
-// agent#14: the hand-back reaches the parent in the call's result.
+// agent#14: the hand-back reaches the parent in the call's result. agent#16 (review row 7): it is a
+// question for the parent, the task is complete, and what the child had written is kept, partial.
 it('returns a research permission request to the parent without subsequent child source calls',async()=>{
  const execute=vi.fn(async()=>({structuredContent:{researchSuggestion:true}}))
+ let said:{tasks:{state:string;problem?:string;partial?:true;result?:string;report?:{openQuestions:{kind:string;text:string}[]}}[]}|undefined
  const engine:Engine={id:'vercel',async *start(s){
-  if(delegateIn(s)){const result=answered(await delegateIn(s)!.execute({tasks:[task('Research','research')]},s.signal));expect(result.tasks[0]!.problem).toContain('parent’s research choice');yield {type:'message',text:'Research needs your choice.'}}
-  else {await s.hostTools[0]!.execute({},s.signal);await s.hostTools[0]!.execute({},s.signal)}
+  if(delegateIn(s)){said=answered(await delegateIn(s)!.execute({tasks:[task('Research','research')]},s.signal)) as typeof said;yield {type:'message',text:'Research needs your choice.'}}
+  else {yield {type:'message_progress',text:'Two sources read so far agree on 0.58.'};await s.hostTools[0]!.execute({},s.signal);await s.hostTools[0]!.execute({},s.signal)}
   yield {type:'end'}
  }}
  const events=await collect(withDelegation(engine),apiSession({hostTools:[{...readTool,delegation:'research',execute}]}))
- expect(execute).toHaveBeenCalledTimes(1);expect(results(events)[0]?.state).toBe('failed')
+ expect(execute).toHaveBeenCalledTimes(1)
+ expect(results(events)[0]).toMatchObject({state:'complete',partial:true,result:'Two sources read so far agree on 0.58.',problem:expect.stringContaining('parent’s research choice')})
+ expect(said!.tasks[0]).toMatchObject({state:'complete',partial:true,report:{openQuestions:[{kind:'question',text:expect.stringContaining('parent’s research choice')}]}})
 })
 
 // agent#14: Codex keeps the restart, and its next run is told the call's result and nothing else.

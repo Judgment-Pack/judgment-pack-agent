@@ -135,19 +135,19 @@
       "type": "boolean"
     },
     "report": {
-      "description": "The child's structured result (agent#16), in its profile's report shape (profile.report): the child's own report block where it wrote one that reads closed in that shape, else the coordinator's (confidence unstated, notDone saying why). What the child's run asked of the parent is added to its openQuestions. Present on every complete task this harness publishes; absent on a record the Desk wrote before.",
+      "description": "The child's structured result (agent#16), in its profile's report shape (profile.report): the child's own report block where it wrote one that reads closed in that shape, else the coordinator's (confidence unstated, notDone saying why). What the child's run asked of the parent is added to its openQuestions. Present on every complete task this harness publishes, and on a failed task whose run asked the parent something, where it carries those open questions (review row 8); absent on a record the Desk wrote before.",
       "$ref": "#/$defs/report"
     },
     "partial": {
-      "description": "The task reached its time limit (its own or the batch's) and result is what it had written by then: its finished messages and its prose so far (agent#17). Its state is complete; problem says which limit.",
+      "description": "The task stopped before it finished and result is what it had written by then: its finished messages and its prose so far (agent#17). It stopped at its time limit (its own or the batch's), or at a source call that needs the parent's research choice, which is then an open question of kind question in its report (agent#16, review row 7). Its state is complete; problem says why it stopped. A partial result is never kept for reuse.",
       "const": true
     },
     "reused": {
-      "description": "The earlier task of the same chat whose result this one returns (agent#17): the same profile, the same objective text and the same references. No model request was made; modelRequests and toolCalls are 0.",
+      "description": "The earlier task whose result this one returns (agent#17): the same profile, the same model, the same objective text and the same references, in the same batch (an identical task later in a batch waits for the first) or earlier in the same chat. No model request was made; modelRequests and toolCalls are 0, and model names the model that wrote the result. Kept for reuse only: a complete, not partial, result of a child that made no counted tool call (what it read was its references, through the context tools), once its batch's answer was delivered, so a stopped response's children are not reused. A response the host starts with delegationReuse false ($defs/hostRequest), as for a Retry the person asked to run afresh, reuses nothing of the chat's earlier results.",
       "$ref": "#/$defs/uuid"
     },
     "retried": {
-      "description": "The one refusal sent again before the child's first answer byte (agent#17): of the catalogue's retryable class (rate-limited) or carrying its overload code (overloaded_error), on a status the engine's own rule does not send again (a 5xx, such as 503 overloaded_error), and the wait before the second attempt (the first backoff, 1000 ms, or the provider's Retry-After where longer, within 30000 ms). Never after a byte of an answer; at most once per task; each attempt is a model request of the task's.",
+      "description": "The one refusal sent again before the child's first answer byte (agent#17): a 5xx other than 504 (a 503 overloaded_error) that carries the catalogue's retryable class (rate-limited) or its overload code (overloaded_error), and the wait before the second attempt (the first backoff, 1000 ms, or the provider's Retry-After where longer, within 30000 ms; a longer Retry-After is not waited out). A 4xx refusal is the engine's own retry rule's; a 408 or 504 may have run and is not sent again. Never after a byte of an answer, never where it would take the child's last request, at most once per task; each attempt is a model request of the task's.",
       "type": "object",
       "required": [
         "failure",
@@ -575,7 +575,7 @@
       "additionalProperties": false
     },
     "earlierWork": {
-      "description": "One earlier exchange of a resumed task: what it was asked, and what it answered (the head, with the cursor into the whole, where the answer was long).",
+      "description": "One earlier exchange of a resumed task: what it was asked, and what it answered (the head, with the cursor into the whole, where the answer was long); partial where that answer was what the task had written when it stopped (review row 13).",
       "type": "object",
       "required": [
         "objective",
@@ -593,6 +593,9 @@
         },
         "more": {
           "$ref": "#/$defs/resultCursor"
+        },
+        "partial": {
+          "const": true
         }
       },
       "additionalProperties": false
@@ -1025,6 +1028,16 @@
           "$ref": "#/$defs/authorTestReport"
         }
       ]
+    },
+    "hostRequest": {
+      "description": "What a host passes with a response that the delegation coordinator reads beside its other context inputs (ContextInput in packages/harness/context/session.ts), as far as reuse goes (agent#17, review row 9). delegationReuse false: this response's delegated tasks reuse no earlier result of the chat, as for a Retry the person asked to run afresh; identical tasks of one batch still run once. Absent or true: a complete result of an identical task is reused, so a Retry of the same message gets the same children's results. Open: ContextInput carries other members.",
+      "type": "object",
+      "properties": {
+        "delegationReuse": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true
     }
   }
 }

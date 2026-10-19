@@ -10,9 +10,12 @@
 //   `engine <id> · thinking`, `engine <id> · strict alternation` (an endpoint
 //   that refuses a broken turn order, agent#9) and `engine <id> · text tool
 //   calls` (the scenario on an endpoint without native tool calls, agent#4), in
-//   certification/conformance.test.ts;
+//   certification/conformance.test.ts, and `engine <id> · delegation` (a batch's
+//   concurrency from the connection's answer, agent#17), in
+//   certification/delegation.test.ts;
 // - an agent engine: the recorded scenario behind the real tool gate and the
-//   agent-engine checks, `agent engine <id>`, in engines/<id>/<id>.test.ts.
+//   agent-engine checks, `agent engine <id>`, in engines/<id>/<id>.test.ts, and
+//   one delegated child at a time, in certification/delegation.test.ts.
 //
 // The ids and kinds are the registry's own (engines/index.ts,
 // ENGINE_CAPABILITIES), read here rather than copied. A run in which none of
@@ -74,7 +77,8 @@ function ownChecks(report) {
             `engine ${adapter}`,
             `engine ${adapter} · thinking`,
             `engine ${adapter} · strict alternation`,
-            `engine ${adapter} · text tool calls`
+            `engine ${adapter} · text tool calls`,
+            `engine ${adapter} · delegation`
           ].includes(top)
   let count = 0
   for (const file of parsed.testResults ?? []) {

@@ -1,0 +1,20 @@
+{
+  "description": "What a host passes with a response, as far as reuse goes (agent#17, review row 9): delegationReuse false for a Retry the person asked to run afresh, so no earlier result of the chat is reused; absent, an identical task's complete result is. Written by hand from the schema.",
+  "schema": "delegated-task.json#/$defs/hostRequest",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/context/session.ts (ContextInput.delegationReuse)",
+      "packages/harness/delegation.ts (withDelegation)"
+    ]
+  },
+  "items": [
+    {
+      "delegationReuse": false
+    },
+    {}
+  ]
+}

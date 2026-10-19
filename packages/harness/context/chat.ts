@@ -116,17 +116,20 @@ export interface ChatScope {openTurn():ChatTurn}
 export interface TaskThread {
  profile:string
  title:string
- exchanges:{objective:string;result:string;more?:{readWith:'read_window';id:string;cursor:string;totalCharacters:number}}[]
+ exchanges:{objective:string;result:string;more?:{readWith:'read_window';id:string;cursor:string;totalCharacters:number};partial?:true}[]
  visible:Set<string>
 }
 /**
  * A complete child's result, kept for an identical task of the same chat (agent#17): the task it came
  * from, the whole text its child wrote and the open questions its run returned, from which the
  * coordinator gives the parent the same result again without a model request. Identical: the same
- * profile, the same objective and the same references.
+ * profile, the same model, the same objective and the same references. Kept only for a child that
+ * made no counted tool call, once its batch's answer was delivered.
  */
 export interface ReusableResult {
  task:string
+ /** The model that wrote it (review row 1), which the reuse key also holds. */
+ model:string
  text:string
  questions:import('../delegationContract').OpenQuestion[]
 }
