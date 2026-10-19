@@ -123,7 +123,10 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
     const instructions = session.purpose === 'graph' ? GRAPH_SYSTEM : session.purpose === 'brief' ? BRIEF_SYSTEM
       : session.purpose === 'test-design' ? TEST_DESIGN_SYSTEM
       : session.allowConversation ? CONVERSATION_SYSTEM : SYSTEM
-    const final = await run(session.prompt, instructions, 'author')
+    // The agent's prompt carries the host's changing state and the execution guidance at its end;
+    // its instructions stay the stable system text.
+    const prompt = session.prompt + (session.context?.currentState ? '\n\n' + session.context.currentState : '') + (session.allowConversation ? '\n\n' + context.execution.guidance() : '')
+    const final = await run(prompt, instructions, 'author')
     if (session.allowConversation && !hasProposalFence(final)) {
       await deliver({ type: 'message', text: proseOf(final) })
       return

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/tool-result.json",
   "title": "Tool result",
-  "description": "The tool_result event: what a tool answered, as the adapter reports it to the host after a tool_call. The model is shown the same answer, bounded (see $defs/reference). Read from the AssistantEvent union (web/src/assistant/engine.ts) as both engines emit it (engines/vercel/loop.ts, engines/codex/index.ts). Open: no reader at run time refuses another member. A failed tool is a result with isError true and the failure in structured, never an error event (toolFailureResult). The bound: a result whose JSON text, after an exact JSON text block is folded into structuredContent, is at most toolResultBytes (budget.json, 12000 by default) reaches the model whole. A larger one is retained in the execution's context ledger and the model is shown a reference envelope instead, which it reads back in sections with the host tool read_context (at most readBytes, 6000 by default, per read). Where the ledger is full (retainedBytes) the model is shown the unavailable envelope. The tool_result event itself is never bounded: the host sees the whole answer.",
+  "description": "The tool_result event: what a tool answered, as the adapter reports it to the host after a tool_call. The model is shown the same answer, bounded (see $defs/reference). Read from the AssistantEvent union (web/src/assistant/engine.ts) as both engines emit it (engines/vercel/loop.ts, engines/codex/index.ts). Open: no reader at run time refuses another member. A failed tool is a result with isError true and the failure in structured, never an error event (toolFailureResult). The bound: a result whose JSON text, after an exact JSON text block is folded into structuredContent, is at most toolResultBytes (budget.json, 12000 by default) reaches the model whole. A larger one is retained in the execution's context ledger and the model is shown a reference envelope instead, which it reads back in sections with the host tool read_context (at most readBytes, 6000 by default, per read). A reading tool holds its window to the result limit less the envelope (readWindowBytes: toolResultBytes less 1024 bytes, counted in the window's JSON-encoded text), so one read is one result and never a reference; the host tool read reads a retained item by line or page in such windows ($defs/readArguments, $defs/readResult). Where the ledger is full (retainedBytes) the model is shown the unavailable envelope. The tool_result event itself is never bounded: the host sees the whole answer.",
   "type": "object",
   "required": [
     "type",
@@ -230,6 +230,98 @@
         }
       },
       "additionalProperties": false
+    },
+    "readArguments": {
+      "description": "The reader's arguments (context/reader.ts, ReadArguments), as the host tool read offers its schema and as every reading tool keeps them. Closed: the offered schema sets additionalProperties false. offset counts units from 0. cursor is the more of a previous read, passed back unchanged; it replaces unit and offset.",
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "unit": {
+          "enum": [
+            "line",
+            "page"
+          ]
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "cursor": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^(line|page):[0-9]{1,9}(\\+[0-9]{1,9})?$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "readResult": {
+      "description": "One read (ReadResult): as much of the item as fits in readWindowBytes, as whole units where they fit and one unit in part where it alone does not. In text, lines are separated by a newline and pages by a form feed. Open: the model reads it, and no host reader refuses another member.",
+      "type": "object",
+      "required": [
+        "type",
+        "id",
+        "unit",
+        "offset",
+        "count",
+        "total",
+        "text",
+        "more"
+      ],
+      "properties": {
+        "type": {
+          "const": "read"
+        },
+        "id": {
+          "type": "string"
+        },
+        "unit": {
+          "enum": [
+            "line",
+            "page"
+          ]
+        },
+        "offset": {
+          "description": "The first unit shown, counted from 0.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "column": {
+          "description": "Where text starts inside that unit, when a previous read stopped part way through it.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "count": {
+          "description": "How many units text shows, a unit shown in part included.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "total": {
+          "description": "How many units the item holds.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "text": {
+          "type": "string"
+        },
+        "more": {
+          "description": "The cursor that reads on from exactly where this read stopped, or null at the end.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true
     },
     "agentWireAnswer": {
       "description": "The answer the browser returns to the Desk server for one call on the agent wire (codexbridge.ToolAnswer, the tool-result frame's answer). Closed: the server decodes it with unknown members refused; text is at most 1 MiB. A structured answer travels as its JSON text.",

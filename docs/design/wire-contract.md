@@ -72,8 +72,9 @@ tools arrive as declarations (`name`, `description`, `inputSchema`) with host-de
 model never supplies: `effect` (`read`, `proposal`, `workflow`, `memory`, `plan`), `interaction`
 (`question` or `delegation`, the two that pause the run), `delegation` (the read-only capability a
 child may use), `contextPolicy` (`immutable`, `reference`) and `presentation`. The boundary adds
-`list_context` and `read_context` to every session and, in a conversation, `update_plan` and
-`request_budget_increase`; an offered tool may not take those names.
+`list_context`, `read_context` and `read` to every session and, in a conversation, `update_plan`
+and `request_budget_increase`; an offered tool may not take those names. (`read`, the reader below,
+is this harness's, agent#1; the Desk takes it in its swap.)
 
 An adapter shows the model the schema the runtime serves or nothing: a tool served without one ends
 the session. The one exception is the Gemini family, shown the schema less a closed list of
@@ -108,6 +109,15 @@ whether it is `historical`, and a 1,000-byte `preview`. The model reads it back 
 `read_context` (`id`, optional `sha256`, `path`, literal `query`, `offset`, `limit` up to
 `readBytes`, 6,000 by default). Where the ledger itself is full (`retainedBytes`, 8 MiB), the model
 is told the operation returned and its output could not be retained, and not to repeat it.
+
+A reading tool keeps under that bound by construction (agent#1): its window is `readWindowBytes`,
+the result limit less a 1,024-byte envelope, counted in the window's JSON-encoded text, so one read
+is one result and the reference path is left for results that still exceed it. The boundary's own
+reader, `read`, reads a retained item in such windows by line, or a paged document (an item whose
+`pages` are strings) by page: arguments `id`, `unit`, `offset` (from 0) and `limit`, or the
+`cursor` a previous read returned; a result with the `text` (lines separated by a newline, pages by
+a form feed), the units shown, the item's `total` and `more`, the cursor that reads on, or null. A
+host's own readers keep the same shape.
 
 A tool that throws is a failed result carrying `{"failure": …}` (or `{"questionFailure": …}` for
 `ask_user`), recoverable working data for the model. On the agent wire the answer travels as
@@ -191,10 +201,11 @@ pauses the run for the person.
 
 `provenance.json`. Per model request, the Desk records the request number, the phase (`work`,
 `synthesis`, `review`) and the provider-neutral completion (`finishReason`, and the input, output
-and reasoning token counts the provider reported), in the checkpoint. A failure carries the status,
-request id and completion it was classified from. The checkpoint's `requestKey` and every retained
-entry are SHA-256 digests; the server writes the project brief's digest into the brief itself.
-That is all: see the open question on provenance below.
+and reasoning token counts the provider reported, and, since agent#9 in this harness, the prompt
+cache's reads and writes where the provider reports them), in the checkpoint. A failure carries the
+status, request id and completion it was classified from. The checkpoint's `requestKey` and every
+retained entry are SHA-256 digests; the server writes the project brief's digest into the brief
+itself. That is all: see the open question on provenance below.
 
 ## Open questions
 
@@ -207,7 +218,15 @@ most `briefBytes`, headed with its path and SHA-256) and recalled project memory
 the provider body (a leading system message for OpenAI-compatible endpoints, appended to `system`
 for Anthropic, appended to `systemInstruction` for Gemini); on the agent wire it appends them to the
 run's instructions. It then refuses, never clips, a request over the input budget. The adapter
-cannot see either addition and reserves their full size from every request. The evidence for each
+cannot see either addition and reserves their full size from every request. Since agent#9 the
+`vercel` adapter orders its own part as a stable prefix (system text and the execution
+instructions, tools, the host's prompt, the history) with everything that changes between requests
+in one message at the end, and marks Anthropic cache breakpoints after the system text and after the
+tools. The server's addition still lands inside that prefix (a leading system message on the
+OpenAI-compatible wire, after the system text on the other two), so where memory is recalled per
+request, a request whose recall differs parts from the one before it there; and recall, which reads
+the latest user message, now reads that last message of changing state unless the server skips it.
+The evidence for each
 side and the options are in [ADR-0002](../adr/0002-who-assembles-the-prompt.md); the decision is the
 maintainer's.
 
@@ -287,5 +306,6 @@ the host's model capability so the host keeps counting; whether the adapter emit
   with `request-limit` when a paused execution is resumed without a grant.
 - **Provenance.** No record names the model, the adapter or the contract version, digests the
   prompt actually sent (`requestKey` digests the person's request), or times a request; a
-  `ContextUsage` estimate is computed and emitted nowhere. Cache reads and writes are not recorded.
+  `ContextUsage` estimate is computed and emitted nowhere. Cache reads and writes are recorded by
+  this harness since agent#9; the Desk's Go reader of a completion drops them until its swap.
 - **Declared, unread.** `recentMessages` is in the budget table and read by no code.

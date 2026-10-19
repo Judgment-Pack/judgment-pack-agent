@@ -19,7 +19,9 @@ test files lose their `.tsx`), so a host that ran the Desk's copy swaps to this 
 import paths. What the moved code read from a Desk feature it now reads from one module, `host.ts`.
 Beyond that, one type is exported so declarations can be emitted (`Entry` in `context/ledger.ts`),
 and tests that exercise a Desk feature stay in the Desk (see Tests). `scripts/parity.sh` at the
-repository root prints every difference from the Desk's files and names its reason.
+repository root prints every difference from the Desk's files and names its reason, including the
+changes made here since the extraction, each by its issue (agent#1, the read window and the reader;
+agent#9, the stable prefix).
 
 ## Entry points
 
@@ -97,6 +99,32 @@ For the Desk each value is the one its own module exports under the same name (f
 `sessionBearer` from `web/src/mcp/session.ts`). A host may wire them in parts; members it leaves out
 keep what they had. The host keeps what the contract says it keeps: the relay and its keys, the tool
 gate's decision of what a session may call, and approvals.
+
+### Reading tools
+
+A host's reading tools (a page it fetched, a document a person attached) hold each window to
+`readWindowBytes(policy)` from `context/policy`: the result limit (`toolResultBytes`) less a
+1,024-byte envelope for the reader's own header and members, counted in the window's JSON-encoded
+text. `encodedPrefix(text, bytes)` cuts a text to that. A read so held reaches the model whole, as
+one result; a result that still exceeds the limit is retained in the ledger and the model is shown
+a reference and a preview, as before. The policy is the session's, `contextPolicy(configuration,
+model)`.
+
+The ledger offers its own reader, `read` (`context/reader.ts`), over every item it retains: by line,
+or by page for an item whose `pages` are strings, with `offset`, `limit` and a `more` cursor in each
+result. A host's readers keep the same argument and result shape (`ReadArguments`, `ReadResult`;
+the contract's `tool-result.json`), and a host that retains an attached document in the ledger as
+`{ pages: [...] }` gives the model a reader over it at no prompt cost until a part is read.
+
+### What changes between requests
+
+The `vercel` adapter sends a stable prefix: its system text with the execution instructions, the
+tools, the host's prompt and the history, and then, in one last message, what changes between
+requests: the request counters, the plan and the operations index, and the host's own changing text,
+which a host passes as `context.currentState` (a chat's draft snapshot, the latest check) rather than
+inside `prompt`. On the Anthropic wire it marks cache breakpoints after the system text and after the
+tools; the tier is held for the run, changed only where the endpoint refused it. The provider's cache
+reads and writes are recorded with each completion (`cacheReadTokens`, `cacheWriteTokens`).
 
 ## Certification
 

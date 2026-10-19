@@ -11,7 +11,7 @@ describe('shared planning boundary',()=>{
  it('fails closed for execution and unknown tools, including direct dispatch; retains exact plan',async()=>{
   const before=session(),ready=await contextualSession(before)
   expect(ready.session.tools.map(t=>t.name)).toEqual(['get_schema'])
-  expect(ready.session.hostTools.map(t=>t.name)).toEqual(['read_pack','ask_user','delegate','propose_plan','list_context','read_context','update_plan','request_budget_increase'])
+  expect(ready.session.hostTools.map(t=>t.name)).toEqual(['read_pack','ask_user','delegate','propose_plan','list_context','read_context','read','update_plan','request_budget_increase'])
   await expect(ready.session.callTool('experimental_evaluate',{})).rejects.toThrow(/Plan mode/)
   expect(before.callTool).not.toHaveBeenCalled()
   await ready.session.callTool('get_schema',{});expect(before.callTool).toHaveBeenCalledOnce()

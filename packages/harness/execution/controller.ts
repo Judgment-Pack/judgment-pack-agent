@@ -36,7 +36,12 @@ export class ExecutionController {
  }
  get remaining(){return this.state.limit-this.state.used}
  claim(){if(this.remaining<=0)throw new ExecutionPaused();this.state.used++}
- guidance(){return EXECUTION_INSTRUCTIONS+'\n'+this.progress.guidance+'\n'+JSON.stringify({requests:this.state.unit==='model-requests'?{unit:this.state.unit,used:this.state.used,limit:this.state.limit,remaining:this.remaining}:{unit:this.state.unit,note:'The subscription provider manages its internal model loop; tool calls are not model-request counts.'},tasks:this.state.plan,explanation:this.state.explanation,retainedOperations:this.operationsReference,...(this.restoredResults.length?{resumeFromCompletedResults:this.restoredResults}:{}),completedOperationCount:this.state.operations.length})}
+ /** The instructions and the state together, as an agent's prompt carries them. */
+ guidance(){return EXECUTION_INSTRUCTIONS+'\n'+this.requestState()}
+ /** The part of the guidance that changes between requests: the repetition note, the request
+  * counters, the plan, the operations index. A model loop sends it after the history, at the end
+  * of every request, and EXECUTION_INSTRUCTIONS once in its stable system text. */
+ requestState(){return this.progress.guidance+'\n'+JSON.stringify({requests:this.state.unit==='model-requests'?{unit:this.state.unit,used:this.state.used,limit:this.state.limit,remaining:this.remaining}:{unit:this.state.unit,note:'The subscription provider manages its internal model loop; tool calls are not model-request counts.'},tasks:this.state.plan,explanation:this.state.explanation,retainedOperations:this.operationsReference,...(this.restoredResults.length?{resumeFromCompletedResults:this.restoredResults}:{}),completedOperationCount:this.state.operations.length})}
  async retainProgress(includeIndex=true){
   if(!this.state.operations.length)return
   const rows=[]

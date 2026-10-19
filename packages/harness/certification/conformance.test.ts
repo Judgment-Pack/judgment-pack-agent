@@ -71,6 +71,8 @@ import offerVector from '../../../contract/vectors/tool-offer/scenario-offer.jso
 import type { AssistantEvent, Engine, McpTool } from '../engine'
 
 const FIVE = scenario.scenarioTools
+/** The context tools the boundary adds, shown before the runtime's: the offer vector's host tools. */
+const CONTEXT_TOOLS = offerVector.items[0]!.hostTools.length
 
 /** The stand-in for the runtime's `test_pack` prompt. See `runLeg`. */
 const TEST_PROMPT = 'THE RUNTIME’S TEST_PACK GUIDANCE, AS PROMPTS/GET SERVED IT'
@@ -1405,7 +1407,7 @@ describe.each(MODEL_ENGINES)('engine %s · thinking', (engineId) => {
         schemaShown(engineId, leg.api, tool.inputSchema)
       )
       for (const request of requests) {
-        expect(request.schemas.slice(2), `${request.step} sent a different schema`).toEqual(shown)
+        expect(request.schemas.slice(CONTEXT_TOOLS), `${request.step} sent a different schema`).toEqual(shown)
       }
       // The runtime's own schemas all declare `additionalProperties: false`, so
       // this is a rule with a subject rather than one waiting for a
@@ -1438,7 +1440,7 @@ describe.each(MODEL_ENGINES)('engine %s · thinking', (engineId) => {
       // still missing from the wire is the **engine's** removal and nothing
       // else. That is what is derived and what is compared.
       const desk = servedSchemaFor(leg.api, VOCABULARY)
-      const carried = keywordsSent(requests[0]!.schemas[2])
+      const carried = keywordsSent(requests[0]!.schemas[CONTEXT_TOOLS])
       const derived = [...keywordsSent(desk)].filter((keyword) => !carried.has(keyword)).sort()
       const declared = keywordsNotShown(engineId, leg.api)
         .filter((keyword) => keywordsSent(desk).has(keyword))
@@ -1447,7 +1449,7 @@ describe.each(MODEL_ENGINES)('engine %s · thinking', (engineId) => {
       expect(derived).toEqual([])
       // Preserve values and references too, not only keyword names. This fails
       // if extraction reads the old `parameters` field and returns undefined.
-      for (const request of requests) expect(request.schemas.slice(2)).toEqual([desk])
+      for (const request of requests) expect(request.schemas.slice(CONTEXT_TOOLS)).toEqual([desk])
     })
 
     it('carries exactly the recorded runtime’s own schema vocabulary', () => {
@@ -1493,7 +1495,7 @@ describe.each(MODEL_ENGINES)('engine %s · thinking', (engineId) => {
       const { events, requests } = await runLeg(fromRegistry(engineId), leg, { tools: [VOCABULARY] })
       expect(requests.length).toBeGreaterThan(0)
       for (const request of requests) {
-        expect(request.schemas.slice(2)).toEqual([servedSchemaFor(leg.api, VOCABULARY)])
+        expect(request.schemas.slice(CONTEXT_TOOLS)).toEqual([servedSchemaFor(leg.api, VOCABULARY)])
       }
       expect(guardrails(events).filter((event) => event.action === 'narrowed')).toEqual([])
       expect(events.some((event) => event.type === 'error')).toBe(false)
