@@ -122,14 +122,15 @@ class SchemaTests(unittest.TestCase):
     def test_the_readme_table_lists_every_schema_with_its_closedness(self):
         table = {}
         for line in (CONTRACT / "README.md").read_text(encoding="utf-8").splitlines():
-            row = re.match(r"^\| `([a-z-]+\.json)` \|[^|]*\| (closed|open)\b", line)
+            row = re.match(r"^\| `([a-z-]+\.json)` \|[^|]*\| (closed|open) \|([^|]*)\|", line)
             if row:
-                table[row.group(1)] = row.group(2)
+                table[row.group(1)] = (row.group(2), set(re.findall(r"`\$defs/([A-Za-z]+)`", row.group(3))))
         self.assertEqual(set(table), EXPECTED_SCHEMAS)
         for name, schema in schemas().items():
             with self.subTest(schema=name):
                 root = "closed" if schema.get("additionalProperties") is False else "open"
-                self.assertEqual(table[name], root)
+                closed = {key for key, value in schema.get("$defs", {}).items() if value.get("additionalProperties") is False}
+                self.assertEqual(table[name], (root, closed))
 
 
 class DeskInventoryTests(unittest.TestCase):
@@ -172,6 +173,17 @@ class DeskInventoryTests(unittest.TestCase):
             self.schemas["tool-offer.json"]["$defs"]["runtimeCeiling"]["enum"],
             self.inventory["runtimeToolCeiling"]["values"],
         )
+
+    def test_approval_actions_are_the_servers_four(self):
+        self.assertEqual(
+            self.schemas["approval.json"]["$defs"]["action"]["enum"],
+            self.inventory["approvalActions"]["values"],
+        )
+
+    def test_the_budget_vector_is_the_desks_table(self):
+        policy = load(CONTRACT / "desk" / "policy.json")
+        self.assertEqual(load(VECTORS / "budget" / "desk-defaults.json")["items"], [policy])
+        self.assertEqual(problems(validator(self.schemas, "budget.json"), [policy]), [])
 
     def test_every_catalogue_entry_is_well_formed(self):
         check = validator(self.schemas, "failure.json#/$defs/catalogueEntry")
@@ -217,7 +229,7 @@ class VectorTests(unittest.TestCase):
                 continue
             kinds = [item["type"] for item in vector["items"]]
             with self.subTest(vector=name):
-                if "end" in kinds:
+                if "end" in kinds or "error" in kinds:
                     self.assertEqual(kinds.count("end"), 1)
                     self.assertEqual(kinds[-1], "end")
 
@@ -229,6 +241,7 @@ class VectorTests(unittest.TestCase):
                 self.assertEqual(name, f"failures/{code}.json")
                 seen[code] = vector
         self.assertEqual(sorted(seen), sorted(self.catalogue["failures"]))
+        failed_tool = validator(self.schemas, "failure.json#/$defs/toolFailureContent")
         for code, vector in seen.items():
             with self.subTest(failure=code):
                 for item in vector["items"]:
@@ -237,6 +250,7 @@ class VectorTests(unittest.TestCase):
                         self.assertEqual(failure["code"], code)
                         self.assertEqual(item["message"], failure.get("detail", self.catalogue["failures"][code]["message"]))
                     if item["type"] == "tool_result":
+                        self.assertEqual(problems(failed_tool, [item["structured"]]), [])
                         failure = item["structured"]["failure"]
                         self.assertTrue(item["isError"])
                         self.assertEqual(failure["code"], code)

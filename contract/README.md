@@ -22,10 +22,10 @@ root is not.
 | Schema | What it describes | Root | Closed parts | Read from (Desk file, symbol) |
 | --- | --- | --- | --- | --- |
 | `run-event.json` | Every event a run emits, 18 kinds discriminated by `type`, in the union's order | open | none | `web/src/assistant/engine.ts`, `AssistantEvent` |
-| `tool-offer.json` | One tool offered to a run: a runtime tool as served, or a host tool's declaration; the agent-wire alias form; the runtime ceiling and reserved names | open | `$defs/agentWireTool` | `web/src/assistant/engine.ts`, `McpTool`, `HostTool`; `context/session.ts`, `contextualSession`; `internal/codexbridge/contract.go`, `Tool` |
+| `tool-offer.json` | The tools offered to a run, as the session's two members: `tools` (runtime tools as served, each named within the ceiling) and `hostTools` (host tools' declarations); the agent-wire alias form; the runtime ceiling and reserved names | open | `$defs/agentWireTool` | `web/src/assistant/engine.ts`, `McpTool`, `HostTool`; `context/session.ts`, `contextualSession`; `internal/codexbridge/contract.go`, `Tool` |
 | `tool-call.json` | The `tool_call` event; the `tools/call` params the gate inspects; the agent-wire call | open | none | `web/src/assistant/engine.ts`, `AssistantEvent`; `toolGate.ts`, `inspectOutboundFrame`; `agentTransport.ts`, `bindAgentRun` |
 | `tool-result.json` | The `tool_result` event; the MCP result shape; the bound, the read-back reference and its envelopes; `read_context` arguments; the agent-wire answer | open | `$defs/readContextArguments`, `$defs/agentWireAnswer` | `web/src/assistant/engine.ts`, `McpToolResult`; `context/session.ts`, `SessionContext.result`; `context/ledger.ts`, `ContextLedger.reference`, `ContextLedger.tools` |
-| `approval.json` | The host's approval state for a chat and the one grant a user decision mints; the grant request | open | `$defs/request` | `web/src/assistant/approvals/client.ts`, `ActionApproval`, `ActionGrant`; `internal/desk/assistant_approval.go`, `assistantActionGrant`, `assistantApprovalRequest` |
+| `approval.json` | The host's approval state for a chat and the one grant a user decision mints, for one of the server's four actions; the grant request | open | `$defs/request` | `web/src/assistant/approvals/client.ts`, `ActionApproval`, `ActionGrant`; `internal/desk/assistant_approval.go`, `assistantActionGrant`, `assistantApprovalRequest` |
 | `question.json` | One question to the person (`ask_user`); the answer draft; a saved question; the format-failure codes | closed | the root, `$defs/option`, `$defs/draft`, `$defs/saved` | `web/src/assistant/questions.ts`, `readUserQuestion`, `validQuestionDraft`, `readSavedQuestions`; `questionFailure.ts`, `QuestionFailureCode` |
 | `delegated-task.json` | One child task's state; the delegation request; a task profile | open | `$defs/request`, `$defs/taskRequest` | `web/src/assistant/delegationContract.ts`, `DelegatedTask`, `validDelegatedTask`, `readDelegationRequest`, `TaskProfile` |
 | `checkpoint.json` | The execution checkpoint: allowance, grants, plan, operations, completions, retained context | open | none | `web/src/assistant/execution/state.ts`, `ExecutionCheckpoint`, `readExecution` |
@@ -56,8 +56,10 @@ and symbols they were read or rendered from.
   `tool_result` for `tool-failed` and `invalid-tool-input`, which are working data and not a failed
   run; `retry` events before `retries-exhausted`; and nothing at all for `cancelled`, which is never
   an error event.
-- `tool-offer/scenario-offer.json`: what the scenario's session offers the model, the host's two
-  context tools and the runtime's five as recorded.
+- `tool-offer/`: what the scenario's session offers, whole (`scenario-offer.json`, its `tools` and
+  `hostTools`), then its runtime tools and its host tools one by one (`runtime-tools.json`,
+  `host-tools.json`), and the same offer as the `codex` engine puts it on the agent wire
+  (`agent-wire-offer.json`).
 - `budget/desk-defaults.json` and `budget/desk-limits.json`: the budget table verbatim, and the fixed
   limits by their constant names.
 - `question/interview.json`: the Desk's interview-question fixture.
@@ -67,10 +69,11 @@ recorded data carries them; no vector carries an event the Desk does not emit.
 
 ## The Desk's own lists
 
-`desk/catalog.json` is a byte-for-byte copy of the Desk's failure catalogue
-(`internal/aifailure/catalog.json`) and `desk/inventory.json` lists, by source and symbol, the event
-kinds, failure sources and outcomes, completion reasons, engine ids and runtime tool ceiling at the
-pinned commit. The tests hold the schemas to both. When the Desk changes one of them, copy it again
+`desk/catalog.json` and `desk/policy.json` are byte-for-byte copies of the Desk's failure catalogue
+(`internal/aifailure/catalog.json`) and budget table (`internal/aicontext/policy.json`), and
+`desk/inventory.json` lists, by source and symbol, the event kinds, failure sources and outcomes,
+completion reasons, engine ids, runtime tool ceiling and approval actions at the pinned commit. The
+tests hold the schemas and the budget vector to them. When the Desk changes one of them, copy it again
 and the tests say which schema has to follow.
 
 ## Checks
@@ -78,7 +81,9 @@ and the tests say which schema has to follow.
 `python -m unittest discover -s tests -v` (Python 3.12, `pip install -r requirements-dev.txt`):
 every schema is well formed and every `$ref` resolves; every vector validates against its schema;
 every member a vector carries is stated by its schema (the schemas re-checked with every object
-definition closed, so an open schema still has to name what the Desk emits); the event kinds and
-failure classes equal the Desk's lists; one vector per catalogue class; a run ends once, last; the
-scenario's order is the one the conformance session asserts; and this table's *Root* column matches
-each schema.
+definition closed, so an open schema still has to name what the Desk emits); the event kinds,
+failure classes and approval actions equal the Desk's lists; the budget vector is the Desk's table;
+one vector per catalogue class, a failed tool's failure validated as one; a run that ends or fails
+ends once, last; the scenario's order is the one the conformance session asserts; and this table's
+*Root* and *Closed parts* columns match each schema (*Closed parts* lists the closed top-level
+`$defs`).

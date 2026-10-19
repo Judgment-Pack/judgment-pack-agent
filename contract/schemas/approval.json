@@ -42,8 +42,7 @@
           "type": "string"
         },
         "action": {
-          "description": "The host action admitted. The chat's controls name pack-update and dialect-publish.",
-          "type": "string"
+          "$ref": "#/$defs/action"
         },
         "chatId": {
           "type": "string"
@@ -85,7 +84,7 @@
           "type": "boolean"
         },
         "action": {
-          "type": "string"
+          "$ref": "#/$defs/action"
         },
         "id": {
           "type": "string"
@@ -98,6 +97,15 @@
         }
       },
       "additionalProperties": false
+    },
+    "action": {
+      "description": "The host actions the Desk server's dispatcher admits (assistantActionAdapters, internal/desk/assistant_approval.go); a grant, apply or commit for any other action is refused (409). The chat's own controls use pack-update and dialect-publish; policy-update, portable-research and dialect-publish stay manual.",
+      "enum": [
+        "policy-update",
+        "pack-update",
+        "portable-research",
+        "dialect-publish"
+      ]
     }
   }
 }

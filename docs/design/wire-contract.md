@@ -65,8 +65,9 @@ The stream is open: it is an in-process union with no reader at run time that re
 
 ## Tool offers
 
-`tool-offer.json`. The runtime's tools arrive as served (`name`, `description`, `inputSchema`),
-already filtered to the session's allow-list, which is a subset of a five-tool ceiling. The host's
+`tool-offer.json`, the session's two members, `tools` and `hostTools`. The runtime's tools arrive
+as served (`name`, `description`, `inputSchema`), already filtered to the session's allow-list,
+which is a subset of a five-tool ceiling, so each name is one of the five. The host's
 tools arrive as declarations (`name`, `description`, `inputSchema`) with host-declared members the
 model never supplies: `effect` (`read`, `proposal`, `workflow`, `memory`, `plan`), `interaction`
 (`question` or `delegation`, the two that pause the run), `delegation` (the read-only capability a
@@ -116,9 +117,11 @@ A tool that throws is a failed result carrying `{"failure": …}` (or `{"questio
 
 `approval.json`. No approval crosses the slot today. The run proposes and ends; the host acts on the
 proposal afterwards. What the host holds per chat is a mode, `manual` (Ask me) or `auto` (Auto
-within limits), and at most one grant an explicit user decision minted: one action (`pack-update`,
-`dialect-publish`) on one resource revision, within fifteen minutes, consumed by the commit, with
-`state` `ready`, `used`, `expired`, `revoked` or `stale`. Model output never mints one.
+within limits), and at most one grant an explicit user decision minted: one of the four actions the
+server's dispatcher admits (`policy-update`, `pack-update`, `portable-research`,
+`dialect-publish`; any other is refused) on one resource revision, within fifteen minutes, consumed
+by the commit, with `state` `ready`, `used`, `expired`, `revoked` or `stale`. Model output never
+mints one.
 
 The run's own pauses for a person are the question (`user_question`), the budget
 (`budget_paused`, resumed only by a grant recorded in the checkpoint) and, for the coordinator,
@@ -148,8 +151,10 @@ or delegate again.
 
 The shared limits are the coordinator's: twenty tool calls across parent and children, six model
 requests and six tool calls per child, one request held back for the parent, two minutes and
-12,000 characters of result per child, and for an agent capability at most five runs and three
-attempts per child, a retry only after a `busy`, `not-started` refusal.
+12,000 characters of result per child. On an agent capability the coordinator admits at most five
+agent runs in all, shared by the parent and its children, and retries every agent run under it,
+the parent's included, after a `busy`, `not-started` refusal and nothing else, three attempts in
+all.
 
 ## Checkpoints
 
@@ -235,16 +240,23 @@ the host's model capability so the host keeps counting; whether the adapter emit
   unset and the reasoning tier is on (`adversarialReview ?? runsRefutation()`); `codex` runs it
   only when `adversarialReview` is `true`.
 - **Retries.** `vercel` makes no automatic retry (`maxRetries: 0`) and emits no `retry`; it
-  re-attempts the whole session, up to three times, only for a tier refusal that arrived before
-  anything was delivered. `codex` relays up to two `retry` events from the Codex bridge's own
-  recovery within the turn, then fails with `retries-exhausted`. The coordinator retries a child's
-  agent run on `busy`, `not-started`, and nothing else.
+  starts the whole session again only for a tier refusal that arrived before anything was
+  delivered, three attempts in all. `codex` relays up to two `retry` events from the Codex bridge's
+  own recovery within the turn, then fails with `retries-exhausted`. In a conversation the
+  delegation coordinator retries every agent run under it, the parent's included, on `busy`,
+  `not-started` and nothing else, three attempts in all, within five agent runs shared by the
+  parent and its children.
+- **Deadlines.** `codex`: the Codex bridge bounds a whole run at ten minutes and the server reports
+  it as a `timeout` failure; the browser's agent transport ends a run at twelve minutes, a backstop
+  behind the bridge's deadline. `vercel`: no deadline for a whole run; the relay bounds each relayed
+  request at ten minutes, and two minutes without a write.
 - **Budgets.** `vercel` counts model requests (`unit: "model-requests"`, twenty, grants of ten up to
   a hundred). `codex` is `provider-managed`: the limit stays 1, no grant is possible,
   `request_budget_increase` answers `unavailable`, `budget_paused` cannot arise in the loop, and the
   coordinator counts agent runs rather than requests.
-- **Call ids.** `codex` sets `callId` on every call and result; `vercel` only on an interactive
-  session, and never on a call to a tool the model was not offered.
+- **Call ids.** `codex` sets `callId` on every call and result. `vercel` sets it on an interactive
+  session, and always on its refusal of a repeated call or of a call on the final, tool-free
+  request; never on a call to a tool the model was not offered.
 - **An unoffered tool.** `vercel` reports the call and a refused result, and the run goes on;
   `codex`'s transport treats it as a protocol failure and the run ends with `connection-lost`.
 - **Messages.** `codex` emits a `message` for each commentary-phase message during the run as well
@@ -253,8 +265,8 @@ the host's model capability so the host keeps counting; whether the adapter emit
   `guardrail` `narrowed` are `vercel`'s only; `retry` is `codex`'s only.
 - **Failure source.** A loop failure is `source: "model"` from `vercel` and `"agent"` from
   `codex`.
-- **Certification.** `vercel` is held to the conformance session's exact event order on six legs (three wire families, each streamed and whole);
-  `codex` to a separate leg that runs T1 to T6 only, with the critic on, and asserts a subset (no
+- **Certification.** `vercel` is held to the conformance session's exact event order on six legs
+  (three wire families, each streamed and whole); `codex` to a separate leg that runs T1 to T6 only, with the critic on, and asserts a subset (no
   error, the proposal, the gate's events in place, one `end`). The two are not held to one
   sequence.
 

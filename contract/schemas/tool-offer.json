@@ -2,15 +2,29 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/tool-offer.json",
   "title": "Tool offer",
-  "description": "One tool the host offers a run. Two kinds cross the slot today, in two session members: the runtime's tools (session.tools: McpTool, exactly as tools/list served them, filtered to this session's allow-list, reached only through callTool and the host's gate) and the host's own tools (session.hostTools: HostTool, run by the host on the adapter's behalf, answered in the shape a runtime answer takes). An adapter offers the model exactly these, under their served schemas (servedSchema: a tool served without an input schema ends the session; the Gemini family alone is shown the schema less a closed list of keywords, with a guardrail narrowed event per tool that lost one). The host also adds its own context tools (list_context, read_context and, in a conversation, update_plan and request_budget_increase), whose names an offered tool may not take. Read from web/src/assistant/engine.ts (McpTool, HostTool) and context/session.ts (contextualSession). Open: the runtime's answer is passed through as served, and HostTool is an in-process value with no reader.",
-  "anyOf": [
-    {
-      "$ref": "#/$defs/runtimeTool"
-    },
-    {
-      "$ref": "#/$defs/hostTool"
-    }
+  "description": "The tools the host offers a run, as the session's two members: the runtime's tools (session.tools: McpTool, exactly as tools/list served them, filtered to this session's allow-list, reached only through callTool and the host's gate) and the host's own tools (session.hostTools: HostTool, run by the host on the adapter's behalf, answered in the shape a runtime answer takes). An adapter offers the model exactly these, under their served schemas (servedSchema: a tool served without an input schema ends the session; the Gemini family alone is shown the schema less a closed list of keywords, with a guardrail narrowed event per tool that lost one). The host also adds its own context tools (list_context, read_context and, in a conversation, update_plan and request_budget_increase), whose names an offered tool may not take. Read from web/src/assistant/engine.ts (McpTool, HostTool) and context/session.ts (contextualSession). Open: the session is an in-process value with no reader, and the runtime's answer is passed through as served.",
+  "type": "object",
+  "required": [
+    "tools",
+    "hostTools"
   ],
+  "properties": {
+    "tools": {
+      "description": "The runtime's tools (session.tools), each named within the ceiling.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/runtimeTool"
+      }
+    },
+    "hostTools": {
+      "description": "The host's tools (session.hostTools), the context tools the boundary adds included.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/hostTool"
+      }
+    }
+  },
+  "additionalProperties": true,
   "$defs": {
     "runtimeTool": {
       "description": "A runtime tool (McpTool). No effect class is carried: the host decides what is read-only by name (runtimeToolContextPolicy and the read list in context/managed.ts).",
@@ -20,7 +34,7 @@
       ],
       "properties": {
         "name": {
-          "type": "string"
+          "$ref": "#/$defs/runtimeCeiling"
         },
         "description": {
           "type": "string"
@@ -116,7 +130,22 @@
         "description": {
           "type": "string"
         },
-        "inputSchema": {}
+        "inputSchema": {
+          "description": "The served schema, which the Desk server requires to be a JSON object whose type is object, at most 64 KiB (65536 bytes) as JSON text; a description is at most 8192 bytes, and all tools' schemas and descriptions together at most 1 MiB (codexbridge threadParams).",
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "allOf": [
+            {
+              "properties": {
+                "type": {
+                  "const": "object"
+                }
+              }
+            }
+          ]
+        }
       },
       "additionalProperties": false
     },

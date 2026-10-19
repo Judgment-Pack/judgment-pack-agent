@@ -22,7 +22,8 @@ framework's own guardrails are a convenience inside an adapter, never the bounda
 
 ## Layout
 
-- `contract/`: the wire contract, schemas and vectors. Empty until the first extraction lands.
+- `contract/`: the wire contract, schemas and vectors, extracted from the Desk's engine slot; see
+  [`contract/README.md`](contract/README.md).
 - `docs/adr/`: decisions. `docs/design/`: designs, starting with the
   [wire contract](docs/design/wire-contract.md).
 - Adapters live beside the contract once extracted, one directory per framework, each with the
@@ -30,8 +31,9 @@ framework's own guardrails are a convenience inside an adapter, never the bounda
 
 ## Status and plan
 
-Nothing is extracted yet. The harness code lives in the Desk's `web/src/assistant` and the Go
-server. The order of work, from the audit recorded on the Desk's `assistant-harness` issues:
+The contract is extracted (`contract/`, #19); the harness code itself still lives in the Desk's
+`web/src/assistant` and the Go server. The order of work, from the audit recorded on the Desk's
+`assistant-harness` issues:
 
 1. The contract, extracted from the Desk's engine slot (#19).
 2. (a) The Vercel AI SDK adapter, extracted as it is today, with the Codex adapter beside it, both

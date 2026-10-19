@@ -74,5 +74,14 @@
       "validate",
       "experimental_evaluate"
     ]
+  },
+  "approvalActions": {
+    "source": "internal/desk/assistant_approval.go, assistantActionAdapters",
+    "values": [
+      "policy-update",
+      "pack-update",
+      "portable-research",
+      "dialect-publish"
+    ]
   }
 }
