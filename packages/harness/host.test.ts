@@ -25,4 +25,13 @@ describe('an injection point the host has not supplied', () => {
     fresh.configureHarness({ chassisUrl: (path) => `host:${path}` })
     expect(fresh.chassisUrl('/api')).toBe('host:/api')
   })
+
+  it('answers nothing known for endpoint capabilities, until the host says more', async () => {
+    vi.resetModules()
+    const fresh = await import('./host')
+    const endpoint = { family: 'anthropic' as const, model: 'a-model' }
+    expect(fresh.endpointCapabilities(endpoint)).toEqual({})
+    fresh.configureHarness({ endpointCapabilities: () => ({ strictAlternation: true }) })
+    expect(fresh.endpointCapabilities(endpoint)).toEqual({ strictAlternation: true })
+  })
 })

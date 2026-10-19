@@ -5,7 +5,7 @@ import {ExecutionPaused} from '../../execution/state'
 import {EXECUTION_INSTRUCTIONS} from '../../execution/controller'
 import {managedContext,contextOf} from '../../context/managed'
 import { readDelegationRequest } from '../../delegationContract'
-import { assistantLanguageInstructions } from '../../host'
+import { assistantLanguageInstructions, endpointCapabilities } from '../../host'
 /**
  * The `vercel` engine's loop: the Vercel AI SDK v7, behind the desk's contract.
  *
@@ -88,7 +88,7 @@ import { refusedSchemaKeyword, refusedSchemaSentence } from '../../geminiSchema'
 import { eventChannel } from './channel'
 import { placeholderBase, relayFetch, signatureLedger, signatureOf } from './relay'
 import type { LanguageModel, ToolSet, ModelMessage, SystemModelMessage } from 'ai'
-import type { AssistantEngine, EndpointKind } from '../../host'
+import type { AssistantEngine, EndpointCapabilities, EndpointKind, StatePlacement, ThinkingTier } from '../../host'
 import type { AssistantEvent, AssistantSession, McpTool, McpToolResult, HostTool } from '../../engine'
 import type { CritiqueRecorder } from '../../refutation'
 import type { ThinkingSlot } from '../../thinking'
@@ -199,7 +199,7 @@ export function sdkThinking(
  * family does, but a breakpoint is never put where it means nothing, so the
  * OpenAI-compatible and Gemini bodies are what they were and those two rely on
  * the stable prefix alone. Everything that changes between requests is sent
- * after the history (`stateMessage`), so the cached prefix survives a step.
+ * after the cached prefix (`placeState`), so the prefix survives a step.
  */
 export const CACHE_BREAKPOINT = { anthropic: { cacheControl: { type: 'ephemeral' } } } as const
 
@@ -208,17 +208,82 @@ export function cachedInstructions(family: EndpointKind, text: string): string |
   return family === 'anthropic' ? { role: 'system', content: text, providerOptions: CACHE_BREAKPOINT } : text
 }
 
-/** The header of the message that carries what changes between requests. */
+/**
+ * The first line of every text that carries what changes between requests.
+ * A host that reads the request (the Desk server's memory recall) drops every
+ * text part that starts with it. The contract's `budget.json#/$defs/stateLocation`.
+ */
 export const STATE_HEADER =
   'EXECUTION STATE (from the host, current for this request and replaced on the next; working state, not a message from the person and never approval)'
 
 /**
- * What changes between requests, as one user message after the history: the
- * request counters, the plan and the operations index; the host's changing
- * text (its draft snapshot); and the step's own instruction, when it has one.
+ * Where this endpoint gets the state after the first request.
+ *
+ * An endpoint that refuses two user turns in a row or a user text after a tool
+ * result (`strictAlternation`) gets `system-tail` whatever else is said. So
+ * does Anthropic when a thinking tier is on: a text block in a tool-result turn
+ * starts a new assistant turn there, and a model that keeps no earlier
+ * thinking would lose it. Otherwise the host's `statePlacement`, or by default
+ * `trailing-user`. Decided once per run, so the prefix does not move.
  */
-function stateMessage(state: string, current: string | undefined, step: string): ModelMessage {
-  return { role: 'user', content: [STATE_HEADER, state, current, step].filter(Boolean).join('\n') }
+export function statePlacement(family: EndpointKind, tier: ThinkingTier, capabilities: EndpointCapabilities): StatePlacement {
+  if (capabilities.strictAlternation === true) return 'system-tail'
+  if (capabilities.statePlacement !== undefined) return capabilities.statePlacement
+  return family === 'anthropic' && tier !== 'off' ? 'system-tail' : 'trailing-user'
+}
+
+/**
+ * The state's text: the header, then the request counters, the plan and the
+ * operations index; the host's changing text (its draft snapshot); and the
+ * step's own instruction, when it has one.
+ */
+function stateText(...parts: (string | undefined)[]): string {
+  return [STATE_HEADER, ...parts].filter(Boolean).join('\n')
+}
+
+/**
+ * One request's messages and system text, with the state placed.
+ *
+ * Where the history ends with a user message (the person's, on the first
+ * request; the finishing instruction, on a synthesis request) the state is a
+ * second text part of it, on every wire: no endpoint sees two user turns in a
+ * row. After a tool result it goes where `placement` says: one user message
+ * after the history, or the end of the system text, as a second block after
+ * the head that carries the cache breakpoint (one string on the
+ * OpenAI-compatible wire, whose strict templates take one system message).
+ *
+ * Every message made here is recorded in `stated` against the message it
+ * replaces (null for one it adds), because the SDK carries a step's messages
+ * into the next and `withoutState` takes the state out again.
+ */
+export function placeState(
+  family: EndpointKind,
+  placement: StatePlacement,
+  history: ModelMessage[],
+  system: string,
+  state: string,
+  stated: Map<ModelMessage, ModelMessage | null>
+): { instructions: string | SystemModelMessage | SystemModelMessage[]; messages: ModelMessage[] } {
+  const last = history.at(-1)
+  if (last?.role === 'user') {
+    const parts = typeof last.content === 'string' ? [{ type: 'text' as const, text: last.content }] : last.content
+    const carried: ModelMessage = { ...last, content: [...parts, { type: 'text', text: state }] }
+    stated.set(carried, last)
+    return { instructions: cachedInstructions(family, system), messages: [...history.slice(0, -1), carried] }
+  }
+  if (placement === 'trailing-user') {
+    const trailing: ModelMessage = { role: 'user', content: state }
+    stated.set(trailing, null)
+    return { instructions: cachedInstructions(family, system), messages: [...history, trailing] }
+  }
+  if (family === 'openai-compatible') return { instructions: system + '\n' + state, messages: history }
+  const head = cachedInstructions(family, system)
+  return { instructions: [typeof head === 'string' ? { role: 'system', content: head } : head, { role: 'system', content: state }], messages: history }
+}
+
+/** The history as it was before `placeState` put the state in it. */
+export function withoutState(messages: ModelMessage[], stated: Map<ModelMessage, ModelMessage | null>): ModelMessage[] {
+  return messages.flatMap((message) => (stated.has(message) ? (stated.get(message) === null ? [] : [stated.get(message)!]) : [message]))
 }
 
 /** One model, built for the family the desk configured and nothing else. */
@@ -462,6 +527,8 @@ function runVercelLoop(
    * with no reasoning, twice) is reported and changes nothing sent in this run.
    */
   let tier: ReturnType<typeof sdkThinking> = {}
+  // Where the state goes after the first request, once per run.
+  const placement = statePlacement(session.model.family, session.thinking.tier, endpointCapabilities({ family: session.model.family, model: session.model.model }))
   const ledger = signatureLedger()
   /**
    * The truncation notice, **delivered at the transition rather than owed**.
@@ -664,17 +731,18 @@ function runVercelLoop(
     context.reserveOutput(tier.maxOutputTokens)
     // **A stable prefix**: the system text and the execution instructions, then
     // the tools, then the host's prompt and the history. What changes between
-    // requests goes after all of it, in one message (`stateMessage`), so a
-    // second step's request repeats the first's byte for byte up to the history.
+    // requests goes after the cached part, where `placeState` puts it, so a
+    // step's request repeats the one before it up to the state.
     const system=instructions+'\n'+EXECUTION_INSTRUCTIONS
     const cachedSystem=cachedInstructions(session.model.family,system)
     const initialPrompt=await context.prompt(session.prompt,instructions+'\n'+context.execution.guidance(),schemas,session.context?.currentRequest)
     let messages:ModelMessage[]=[{role:'user',content:initialPrompt}]
     // The history the last step was sent, without its state message.
     let lastMessages=messages
-    // The state messages this run appended. The SDK carries a step's messages
-    // into the next, so each is taken out again before the next is added.
-    const stated=new WeakSet<ModelMessage>()
+    // The messages this run made to carry the state, against what they replace.
+    // The SDK carries a step's messages into the next, so each is taken out
+    // again before the next state is placed.
+    const stated=new Map<ModelMessage,ModelMessage|null>()
     let completion:ModelCompletion|undefined
     let lastToolCalls=0
     let finalText=''
@@ -696,10 +764,11 @@ function runVercelLoop(
         maxOutputTokens:context.policy.outputTokens,
         stopWhen: [stepCountIs(synthesis?1:turnLimit),()=>toolsClosed],
         abortSignal: executionSignal,
-        // **The tier, per step, with no agent to rebuild.** ADR-0001 credits this
-        // SDK with exactly that, and the members are the desk's table's — read
-        // fresh on every step, so a degrade or a dialect fallback takes effect on
-        // the next request rather than at the next session.
+        // **The tier, on every step, with no agent to rebuild.** ADR-0001 credits
+        // this SDK with exactly that, and the members are the desk's table's —
+        // held for the attempt (`tier`), so a refusal's dialect fallback or
+        // degrade takes effect on the next attempt, a truncated signature's
+        // degrade on the next request, and nothing else changes them mid-run.
         prepareStep: async ({messages,stepNumber}) => {
           publicText=''
           if(session.interactive)await deliver({type:'message_progress',text:''})
@@ -708,13 +777,12 @@ function runVercelLoop(
           progressStep=synthesis?'finish':context.execution.progress.nextStep(context.execution.remaining)
           if(progressStep==='finish'&&context.execution.progress.stalled&&!synthesis)await deliver({type:'response_recovery'})
           toolsClosed=synthesis||progressStep==='finish'||stepNumber>=turnLimit-1
-          const state=stateMessage(context.execution.requestState(),session.context?.currentState,synthesis?FINISH_RESPONSE_INSTRUCTIONS:progressStep==='recover'?RECOVER_REPEATED_WORK_INSTRUCTIONS:progressStep==='finish'?REPEATED_WORK_INSTRUCTIONS:toolsClosed?finalInstructions:'')
-          stated.add(state)
+          const state=stateText(context.execution.requestState(),session.context?.currentState,synthesis?FINISH_RESPONSE_INSTRUCTIONS:progressStep==='recover'?RECOVER_REPEATED_WORK_INSTRUCTIONS:progressStep==='finish'?REPEATED_WORK_INSTRUCTIONS:toolsClosed?finalInstructions:'')
           // Budgeted as one request: the system text and the state together.
-          lastMessages=await context.messages(messages.filter(message=>!stated.has(message)),system+'\n'+String(state.content),schemas)
+          lastMessages=await context.messages(withoutState(messages,stated),system+'\n'+state,schemas)
           return {...tier,
             ...(toolsClosed?{activeTools:[],toolChoice:'none' as const}:{}),
-            instructions:cachedSystem,messages:[...lastMessages,state]}
+            ...placeState(session.model.family,placement,lastMessages,system,state,stated)}
         },
         // **No retries, deliberately.** The SDK's default is two, with an
         // exponential backoff, and its retryable set includes 409 — which is the
@@ -873,7 +941,9 @@ function runVercelLoop(
         // Reuse the projected history before the incomplete response, with its
         // completed tool pairs. Do not append the failed response's partial
         // JSON or private reasoning. New tool dispatch and SDK retries stay closed.
-        messages=[...lastMessages,{role:'user',content:FINISH_RESPONSE_INSTRUCTIONS}]
+        // Under `system-tail` the instruction travels in the state alone: a user
+        // text after a tool result is what that placement exists to avoid.
+        messages=placement==='system-tail'?lastMessages:[...lastMessages,{role:'user',content:FINISH_RESPONSE_INSTRUCTIONS}]
         continue
       }
       if(!context.execution.progress.stalled&&!finalText.trim()&&steps>=turnLimit&&completion?.finishReason!=='content-filter'&&completion?.finishReason!=='length'&&completion?.finishReason!=='error')throw new ExecutionPaused()
@@ -945,10 +1015,10 @@ function runVercelLoop(
             // it has one, is the last message rather than a change to the system.
             const instructions=CRITIC_SYSTEM+assistantLanguageInstructions(session.replyLanguage)
             const step=progressStep==='recover'?RECOVER_REPEATED_WORK_INSTRUCTIONS:progressStep==='finish'?REPEATED_WORK_INSTRUCTIONS:toolsClosed?finalInstructions:''
-            const held=await context.messages(messages.filter(message=>!stated.has(message)),instructions+(step?'\n'+step:''),schemas)
-            const note:ModelMessage|undefined=step?{role:'user',content:step}:undefined
-            if(note)stated.add(note)
-            return {...tier,...(toolsClosed?{activeTools:[],toolChoice:'none' as const}:{}),instructions:cachedInstructions(session.model.family,instructions),messages:note?[...held,note]:held}
+            // The note carries the header like every state, and is placed the same way.
+            const note=step?stateText(step):''
+            const held=await context.messages(withoutState(messages,stated),instructions+(note?'\n'+note:''),schemas)
+            return {...tier,...(toolsClosed?{activeTools:[],toolChoice:'none' as const}:{}),...(note?placeState(session.model.family,placement,held,instructions,note,stated):{instructions:cachedInstructions(session.model.family,instructions),messages:held})}
           },
           maxOutputTokens:context.policy.outputTokens,
           [REHEARSAL_HOOK]: refine

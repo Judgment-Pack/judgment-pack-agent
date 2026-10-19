@@ -1,5 +1,5 @@
 {
-  "description": "The scenario's host tools, one by one: the three context tools the boundary adds to every session. The third, read (the reader over retained items by line or page, with a cursor), is this harness's (agent#1) and reaches the Desk in its swap; the first two are the Desk's.",
+  "description": "The scenario's host tools, one by one: the three context tools the boundary adds to every session. The third, read_window (the reader over retained items by line or page, with a cursor), is this harness's (agent#1) and reaches the Desk in its swap; the first two are the Desk's.",
   "schema": "tool-offer.json#/$defs/hostTool",
   "source": {
     "desk": {
@@ -69,7 +69,7 @@
       }
     },
     {
-      "name": "read",
+      "name": "read_window",
       "effect": "read",
       "contextPolicy": {
         "immutable": true

@@ -33,28 +33,28 @@ $pkg/agentTransport.ts|$a/agentTransport.ts|2eebc32ad049919fa652a600e0cb0ed8d322
 $pkg/agentTransport.test.ts|$a/agentTransport.test.ts|df8c20487e36f88e9c14eea65b142a7bb90be82990aea400756669423af7630f|injection points: the Desk's two module mocks become one mock of host.ts
 $pkg/completion.ts|$a/completion.ts|b2bf689ca718a8a8d1481fdce145d42b52f3b6f8ff20d64b54f35fe3d1d3d46e|agent#9: the prompt cache reads and writes (cacheReadTokens, cacheWriteTokens) read from the SDK usage and kept
 $pkg/completion.test.ts|$a/completion.test.ts|-|-
-$pkg/context/context.test.ts|$a/context/context.test.ts|-|-
-$pkg/context/ledger.ts|$a/context/ledger.ts|318a10e37df9d9dd162f6cefe5edc770fc010452857c88f8e474b1fb9183fc58|declaration emit: Entry exported (a type, no runtime change) so tsc can write controller.d.ts; agent#1: the reader, read, among the ledger tools
+$pkg/context/context.test.ts|$a/context/context.test.ts|4e3433cb73aa6bbe78b7225472198e6620d116ff3ff73df65740c5b9ce3e1128|agent#1: the reference envelope names read_window
+$pkg/context/ledger.ts|$a/context/ledger.ts|e7b17e98dc903b1036f636db8b06333d1d49249b1a5dbf4db013cba59287c34f|declaration emit: Entry exported (a type, no runtime change) so tsc can write controller.d.ts; agent#1: the reader, read_window, among the ledger tools and named in the reference envelope (readWith)
 $pkg/context/managed.ts|$a/context/managed.ts|-|-
 $pkg/context/policy.ts|$a/context/policy.ts|61223a8682799dcf2e84b37558899963610ca0a14f41a45d8699e5968994535a|the Go-side copy: policy.json read from the package's contract/; agent#1: readWindowBytes and encodedPrefix, the read window
 $pkg/context/recovery.integration.test.ts|$a/context/recovery.integration.test.ts|-|-
-$pkg/context/session.ts|$a/context/session.ts|13f336a37d5d281e2dbb9e937e9585fde210628eddfcb454f5f3ee5e52b47ced|agent#1: read reserved; agent#9: the execution guidance no longer appended to the prompt (each adapter places it), currentState
+$pkg/context/session.ts|$a/context/session.ts|13f336a37d5d281e2dbb9e937e9585fde210628eddfcb454f5f3ee5e52b47ced|agent#1: read_window reserved; agent#9: the execution guidance no longer appended to the prompt (each adapter places it), currentState
 $pkg/context/toolPolicy.ts|$a/context/toolPolicy.ts|-|-
 $pkg/context/toolPolicy.test.ts|$a/context/toolPolicy.test.ts|-|-
 $pkg/delegation.ts|$a/delegation.ts|-|-
 $pkg/delegation.test.ts|$a/delegation.test.ts|c2a97f7509cca43de3522ab5c2b00de6846f87fa54c00236d957eb4ed9aa4bb2|test kept in the Desk: the case over the Desk's response history; the Desk's chat-history reader replaced by a fold of delegated_task events with its interruption rule
 $pkg/delegationContract.ts|$a/delegationContract.ts|-|-
 $pkg/engine.ts|$a/engine.ts|68b25cb988d24686b5c335110823d1c2b3fc13cd3dab855575919fea60a81a7f|injection points: Language, AssistantEngine, EndpointKind (types)
-$pkg/engines/codex/codex.test.ts|$a/engines/codex/codex.test.ts|54e512e54192dcd3a2284bdf3c1c4b56ca8ef5186da28f2de29603c1dac6e9aa|paths: conformance/ is certification/, testing/question reads the contract vector; test kept in the Desk: the case over the Desk's dialect chat tools
+$pkg/engines/codex/codex.test.ts|$a/engines/codex/codex.test.ts|ee2310f6b4ec149d85a7d61631abc3510a75e95ba433ad9cbf29a063e17b9260|paths: conformance/ is certification/, testing/question reads the contract vector; test kept in the Desk: the case over the Desk's dialect chat tools; agent#1: the reference envelope names read_window
 $pkg/engines/codex/index.ts|$a/engines/codex/index.ts|78946ae6533096ed56b4442dad844e68c815a139c4cce7ab4eb31f9fc4657b24|injection points: assistantLanguageInstructions; agent#9: the agent prompt carries currentState and the execution guidance itself
 $pkg/engines/contract.ts|$a/engines/contract.ts|18552d59d52ddcae8d4b82738ddd4a21bdedf891d22a3bc6b95101363bd63abd|injection points: EndpointKind (type)
 $pkg/engines/contract.test.ts|$a/engines/contract.test.ts|-|-
 $pkg/engines/index.ts|$a/engines/index.ts|6f19d51e6ae2890ff7ea6f7156ed0800ab9681c73e85d9c509d761b201813b58|injection points: AssistantEngine (type)
 $pkg/engines/vercel/channel.ts|$a/engines/vercel/channel.ts|-|-
 $pkg/engines/vercel/completion.test.ts|$a/engines/vercel/completion.test.ts|-|-
-$pkg/engines/vercel/engine.test.ts|$a/engines/vercel/engine.test.ts|d2e115ee4672bacadd96429ac8e8f925a4c1658c1249b15a173890e67e2a1e26|injection points: ASSISTANT_ENGINES, ASSISTANT_TOOLS; paths: LANGUAGES from the test host, testing/question reads the contract vector; agent#1: read in the offered tool lists
+$pkg/engines/vercel/engine.test.ts|$a/engines/vercel/engine.test.ts|b43d58b6df3579d6b90c4426ba834fa39f5d542d528b548e44a6b4a3433914b9|injection points: ASSISTANT_ENGINES, ASSISTANT_TOOLS; paths: LANGUAGES from the test host, testing/question reads the contract vector; agent#1: read_window in the offered tool lists
 $pkg/engines/vercel/index.ts|$a/engines/vercel/index.ts|-|-
-$pkg/engines/vercel/loop.ts|$a/engines/vercel/loop.ts|6bb15857b8cce94dc2f7a8669939f803245f2cb302c512a3c2d4b138cfec4a00|injection points: assistantLanguageInstructions, AssistantEngine and EndpointKind (types); agent#9: a stable prefix with the changing state in one last message, Anthropic cache breakpoints, the tier held for the run
+$pkg/engines/vercel/loop.ts|$a/engines/vercel/loop.ts|ff98eccd0b30ce007ca1b39c1e87491d1cfe77f9a0ee8d5f9ffe4e89fb31f908|injection points: assistantLanguageInstructions, AssistantEngine and EndpointKind (types); agent#9: a stable prefix with the changing state placed by endpoint (the person's message on the first request, then a trailing user message or the system tail), the critic's note headed, Anthropic cache breakpoints, the tier held for the run
 $pkg/engines/vercel/relay.ts|$a/engines/vercel/relay.ts|a4cf2c7f1ab2de26ebc85fbca87774f86ea6a385d69e57fd66d2cf8a20b7ef88|injection points: EndpointKind (type)
 $pkg/execution/checkArtifact.ts|$a/execution/checkArtifact.ts|-|-
 $pkg/execution/checkArtifact.test.ts|$a/execution/checkArtifact.test.ts|-|-
@@ -74,7 +74,7 @@ $pkg/memory/client.ts|$a/memory/client.ts|447add57ae764bb05abe84cdaf49c22420041d
 $pkg/memory/memory.test.ts|$a/memory/memory.test.tsx|86fa73104725e7beb66e2b68240f77135c9db0066288db093d36e546e2ff4634|tests kept in the Desk: the two cases over the Desk's memory settings screen
 $pkg/memory/tools.ts|$a/memory/tools.ts|-|-
 $pkg/planning/model.ts|$a/planning/model.ts|-|-
-$pkg/planning/planning.test.ts|$a/planning/planning.test.tsx|a077569473fb3228208fd9ba308376e5e8f2cc112d207d6fdf6a63246cb55c49|tests kept in the Desk: the three cases over the Desk's chat store and plan card; agent#1: read in the host tool list
+$pkg/planning/planning.test.ts|$a/planning/planning.test.tsx|f071a06c39c415066fd50a9e82e4303d470999b1db53a4a8e33932c7db443c69|tests kept in the Desk: the three cases over the Desk's chat store and plan card; agent#1: read_window in the host tool list
 $pkg/planning/policy.ts|$a/planning/policy.ts|-|-
 $pkg/planning/tools.ts|$a/planning/tools.ts|7797f4ceb26b22e216e973ea2d1206a0ac43218a89836496ee2b2e6ec62217ef|injection points: Chat and ChatStore (types), readFile, dialectAPI, PreparationReply (type)
 $pkg/questionFailure.ts|$a/questionFailure.ts|dba6a633523a01fc9499eaafd49a743b7c0c85fad7b7067309f114425f9c5da0|injection points: sourceMessage
@@ -91,7 +91,7 @@ $pkg/certification/certification/clearsItsInterval.ts|$a/conformance/certificati
 $pkg/certification/certification/throwsWhileDraining.ts|$a/conformance/certification/throwsWhileDraining.ts|-|-
 $pkg/certification/certification/touchesAfterRun.ts|$a/conformance/certification/touchesAfterRun.ts|-|-
 $pkg/certification/certification/touchesOnLoad.ts|$a/conformance/certification/touchesOnLoad.ts|-|-
-$pkg/certification/conformance.test.ts|$a/conformance/conformance.test.ts|6512172fd64030d78b3045f2eb4f1d1b91e69e8914fa86b4a5e6a2322437c978|injection points: EndpointKind and ThinkingTier (types); contract vectors: the event order and K2's offer read from contract/vectors/; agent#1: the Gemini legs count the context tools from the offer vector
+$pkg/certification/conformance.test.ts|$a/conformance/conformance.test.ts|9a53f21c0236f9c22d75fdcb894db1856f66dd82fbf8e84dcc1499f2b62a0ed2|injection points: EndpointKind and ThinkingTier (types); contract vectors: the event order and K2's offer read from contract/vectors/; agent#1: the Gemini legs count the context tools from the offer vector; agent#9: the strict-alternation leg and the endpoint capabilities a leg sets
 $pkg/certification/runtime.json|$a/conformance/runtime.json|-|-
 $pkg/certification/scenario.json|$a/conformance/scenario.json|-|-
 $pkg/certification/scriptedModel.ts|$a/conformance/scriptedModel.ts|af92198d6032d82d4c0a57ac1aa7e1c044fc18d442b85f8ace19d3f5488e971e|injection points: EndpointKind (type)

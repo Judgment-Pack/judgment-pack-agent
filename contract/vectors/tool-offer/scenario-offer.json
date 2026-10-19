@@ -1,5 +1,5 @@
 {
-  "description": "What the scenario's session offers, as its two members: the five runtime tools exactly as tools/list served them in the recording, and the host tools, which in this session are the three context tools the boundary adds (read, the reader, is this harness's, agent#1). The model is shown the context tools first (conformance K2). read_context's limit maximum is the default readBytes.",
+  "description": "What the scenario's session offers, as its two members: the five runtime tools exactly as tools/list served them in the recording, and the host tools, which in this session are the three context tools the boundary adds (read_window, the reader, is this harness's, agent#1). The model is shown the context tools first (conformance K2). read_context's limit maximum is the default readBytes.",
   "schema": "tool-offer.json",
   "source": {
     "desk": {
@@ -181,7 +181,7 @@
           }
         },
         {
-          "name": "read",
+          "name": "read_window",
           "effect": "read",
           "contextPolicy": {
             "immutable": true

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/tool-result.json",
   "title": "Tool result",
-  "description": "The tool_result event: what a tool answered, as the adapter reports it to the host after a tool_call. The model is shown the same answer, bounded (see $defs/reference). Read from the AssistantEvent union (web/src/assistant/engine.ts) as both engines emit it (engines/vercel/loop.ts, engines/codex/index.ts). Open: no reader at run time refuses another member. A failed tool is a result with isError true and the failure in structured, never an error event (toolFailureResult). The bound: a result whose JSON text, after an exact JSON text block is folded into structuredContent, is at most toolResultBytes (budget.json, 12000 by default) reaches the model whole. A larger one is retained in the execution's context ledger and the model is shown a reference envelope instead, which it reads back in sections with the host tool read_context (at most readBytes, 6000 by default, per read). A reading tool holds its window to the result limit less the envelope (readWindowBytes: toolResultBytes less 1024 bytes, counted in the window's JSON-encoded text), so one read is one result and never a reference; the host tool read reads a retained item by line or page in such windows ($defs/readArguments, $defs/readResult). Where the ledger is full (retainedBytes) the model is shown the unavailable envelope. The tool_result event itself is never bounded: the host sees the whole answer.",
+  "description": "The tool_result event: what a tool answered, as the adapter reports it to the host after a tool_call. The model is shown the same answer, bounded (see $defs/reference). Read from the AssistantEvent union (web/src/assistant/engine.ts) as both engines emit it (engines/vercel/loop.ts, engines/codex/index.ts). Open: no reader at run time refuses another member. A failed tool is a result with isError true and the failure in structured, never an error event (toolFailureResult). The bound: a result whose JSON text, after an exact JSON text block is folded into structuredContent, is at most toolResultBytes (budget.json, 12000 by default) reaches the model whole. A larger one is retained in the execution's context ledger and the model is shown a reference envelope instead, which it reads back with the host tool the envelope names (readWith: read_window, by line or page in windows of readWindowBytes), or in sections with read_context (at most readBytes, 6000 by default, per read). A reading tool holds its window to the result limit less the envelope (readWindowBytes: toolResultBytes less 1024 bytes, counted in the window's JSON-encoded text), so one read is one result and never a reference; the host tool read_window reads a retained item by line or page in such windows ($defs/readArguments, $defs/readResult). Where the ledger is full (retainedBytes) the model is shown the unavailable envelope. The tool_result event itself is never bounded: the host sees the whole answer.",
   "type": "object",
   "required": [
     "type",
@@ -62,7 +62,7 @@
       "additionalProperties": true
     },
     "reference": {
-      "description": "A retained context item, as ContextLedger.reference writes it: the handle the model reads back with read_context. Open: the model reads it, and no host reader refuses another member.",
+      "description": "A retained context item, as ContextLedger.reference writes it: the handle the model reads back with read_window (or, by section, read_context). Open: the model reads it, and no host reader refuses another member.",
       "type": "object",
       "required": [
         "sections",
@@ -129,7 +129,8 @@
           "type": "string"
         },
         "readWith": {
-          "const": "read_context"
+          "description": "The host tool to read the item back with: read_window, the reader, whose windows are the read window rather than read_context's readBytes. read_context still reads it by JSON pointer (sections).",
+          "const": "read_window"
         },
         "historical": {
           "description": "True for history and tool items: data, not current policy or approval.",
@@ -232,7 +233,7 @@
       "additionalProperties": false
     },
     "readArguments": {
-      "description": "The reader's arguments (context/reader.ts, ReadArguments), as the host tool read offers its schema and as every reading tool keeps them. Closed: the offered schema sets additionalProperties false. offset counts units from 0. cursor is the more of a previous read, passed back unchanged; it replaces unit and offset.",
+      "description": "The reader's arguments (context/reader.ts, ReadArguments): exactly the input schema the host tool read_window offers (readInputSchema), which every reading tool keeps. Closed: that schema sets additionalProperties false. offset counts units from 0. cursor is the more of a previous read, passed back unchanged (unit:offset, or unit:offset+column inside a unit); it replaces unit and offset, and a malformed one is refused when read.",
       "type": "object",
       "required": [
         "id"
@@ -242,6 +243,7 @@
           "type": "string"
         },
         "unit": {
+          "type": "string",
           "enum": [
             "line",
             "page"
@@ -258,14 +260,13 @@
         },
         "cursor": {
           "type": "string",
-          "maxLength": 64,
-          "pattern": "^(line|page):[0-9]{1,9}(\\+[0-9]{1,9})?$"
+          "maxLength": 64
         }
       },
       "additionalProperties": false
     },
     "readResult": {
-      "description": "One read (ReadResult): as much of the item as fits in readWindowBytes, as whole units where they fit and one unit in part where it alone does not. In text, lines are separated by a newline and pages by a form feed. Open: the model reads it, and no host reader refuses another member.",
+      "description": "One read_window answer (ReadResult): as much of the item as fits in readWindowBytes, as whole units where they fit and one unit in part where it alone does not. In text, lines are separated by a newline and pages by a form feed. Open: the model reads it, and no host reader refuses another member.",
       "type": "object",
       "required": [
         "type",

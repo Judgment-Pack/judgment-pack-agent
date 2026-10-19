@@ -31,7 +31,7 @@ export class ContextLedger {
    return [{path:pointer,type:Array.isArray(held)?'array':held===null?'null':typeof held},...(depth<2&&['content','structuredContent'].includes(key)||path==='/content'?this.sections(held,pointer,depth+1):[])]
   }).slice(0,30)
  }
- reference(e:Entry){return {sections:this.sections(e.value),contextId:e.id,kind:e.kind,label:e.label,bytes:e.bytes,sha256:e.digest,...(e.revision?{revision:e.revision}:{}),readWith:'read_context',historical:e.kind==='history'||e.kind==='tool'}}
+ reference(e:Entry){return {sections:this.sections(e.value),contextId:e.id,kind:e.kind,label:e.label,bytes:e.bytes,sha256:e.digest,...(e.revision?{revision:e.revision}:{}),readWith:READ_TOOL,historical:e.kind==='history'||e.kind==='tool'}}
  list(offset=0){const rows=[...this.entries.values()].slice(offset,offset+20).map(e=>this.reference(e));return {items:rows,nextOffset:offset+rows.length<this.entries.size?offset+rows.length:null}}
  read(args:Record<string,unknown>):unknown {
   const e=typeof args.id==='string'?this.entries.get(args.id):undefined
