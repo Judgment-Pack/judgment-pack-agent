@@ -19,7 +19,9 @@ test files lose their `.tsx`), so a host that ran the Desk's copy swaps to this 
 import paths. What the moved code read from a Desk feature it now reads from one module, `host.ts`.
 Beyond that, one type is exported so declarations can be emitted (`Entry` in `context/ledger.ts`),
 and tests that exercise a Desk feature stay in the Desk (see Tests). `scripts/parity.sh` at the
-repository root prints every difference from the Desk's files and names its reason.
+repository root prints every difference from the Desk's files and names its reason, including the
+changes made here since the extraction, each by its issue (agent#1, the read window and the reader;
+agent#9, the stable prefix and the state's placement).
 
 ## Entry points
 
@@ -51,7 +53,8 @@ reaches (none passes a `count`).
 
 **Injection points**, what only a host can do. Each one throws, naming itself, until the host
 supplies it with `configureHarness`. (`NO_SESSION_MESSAGE` is a sentence and cannot throw; it is
-read only to build a `NoSession`, which does.)
+read only to build a `NoSession`, which does. `endpointCapabilities` has an answer of its own,
+nothing known, so a host that knows nothing about its endpoints may leave it out.)
 
 | Injection point | What the host supplies | The Desk feature it replaces | Read by |
 | --- | --- | --- | --- |
@@ -73,6 +76,7 @@ read only to build a `NoSession`, which does.)
 | `deskFetch(input, init)`, `answer(response)` | An authenticated request to the host, and its answer read | `files/client` | `memory/client.ts` |
 | `readFile(path, signal)` | A saved file's current revision | `files/client` | `planning/tools.ts` |
 | `dialectAPI(path, …)` | A request to the host's input-preparation API | `dialects/client` | `planning/tools.ts` |
+| `endpointCapabilities({ family, model })` | What the host knows about an endpoint: `statePlacement`, `strictAlternation` (see What changes between requests). Answers `{}`, nothing known, until supplied | none (new, agent#9) | `engines/vercel/loop.ts` |
 
 The failure catalogue and the context budget table are the package's own copies of the Desk's
 Go-side files (`internal/aifailure/catalog.json`, `internal/aicontext/policy.json`), byte for byte,
@@ -90,7 +94,7 @@ configureHarness({
   sessionBearer, sessionEnded, whenSessionEnds, forgetSession, refusalCode, discardBody,
   NoSession, NO_SESSION_MESSAGE,
   chassisUrl, deskHeaders, deskSocketURL, aiHeaders, socketURL, socketProtocols, DeskWebSocketTransport,
-  deskFetch, answer, readFile, dialectAPI
+  deskFetch, answer, readFile, dialectAPI, endpointCapabilities
 })
 ```
 
@@ -98,6 +102,39 @@ For the Desk each value is the one its own module exports under the same name (f
 `sessionBearer` from `web/src/mcp/session.ts`). A host may wire them in parts; members it leaves out
 keep what they had. The host keeps what the contract says it keeps: the relay and its keys, the tool
 gate's decision of what a session may call, and approvals.
+
+### Reading tools
+
+A host's reading tools (a page it fetched, a document a person attached) hold each window to
+`readWindowBytes(policy)` from `context/policy`: the result limit (`toolResultBytes`) less a
+1,024-byte envelope for the reader's own header and members, counted in the window's JSON-encoded
+text. `encodedPrefix(text, bytes)` cuts a text to that. A read so held reaches the model whole, as
+one result; a result that still exceeds the limit is retained in the ledger and the model is shown
+a reference and a preview, as before. The policy is the session's, `contextPolicy(configuration,
+model)`.
+
+The ledger offers its own reader, `read_window` (`context/reader.ts`), over every item it retains:
+by line, or by page for an item whose `pages` are strings, with `offset`, `limit` and a `more` cursor
+in each result. The reference envelope of a result over the limit names it (`readWith`). A host's readers keep the same argument and result shape (`ReadArguments`, `ReadResult`;
+the contract's `tool-result.json`), and a host that retains an attached document in the ledger as
+`{ pages: [...] }` gives the model a reader over it at no prompt cost until a part is read.
+
+### What changes between requests
+
+The `vercel` adapter sends a stable prefix: its system text with the execution instructions, the
+tools, the host's prompt and the history. What changes between requests is one text headed
+`STATE_HEADER` (`engines/vercel/loop.ts`): the request counters, the plan and the operations index,
+the step's own instruction, and the host's own changing text, which a host passes as
+`context.currentState` (a chat's draft snapshot, the latest check) rather than inside `prompt`. On
+the first request it is a second text part of the person's message, on every wire. After that it
+goes where the endpoint's placement says: `trailing-user`, one user message after the history (the
+default), or `system-tail`, the end of the system text (for an endpoint marked `strictAlternation`,
+and by default for Anthropic when a thinking tier is on). A host sets both through
+`endpointCapabilities`. On the Anthropic wire the adapter marks cache breakpoints after the system
+head and after the tools. The tier is held for the run, changed only where the endpoint refused it
+or a thinking signature came back truncated. The provider's cache reads and writes are recorded with
+each completion (`cacheReadTokens`, `cacheWriteTokens`). The contract states the header and where it
+sits on each wire (`budget.json`, `contract/vectors/budget/state-placement.json`).
 
 ## Certification
 
@@ -115,8 +152,10 @@ proposal (K3c), event order, and the network and timer seal shown to fail on the
 asserts (the scenario's event sequence and K2's offer, from `contract/vectors/`) and the recorded
 scenario otherwise. Each adapter runs the suite's own checks of the scenario and the seal, then the
 checks the Desk runs over every engine of its kind: a model engine (`vercel`) the conformance legs,
-six wire legs plus the thinking and refutation legs; an agent engine (`codex`) the recorded scenario
-behind the real tool gate and the agent-engine checks in `engines/codex/codex.test.ts`.
+six wire legs plus the thinking and refutation legs, and, added here (agent#9), the strict-alternation
+leg: an endpoint that answers 400 to two user turns in a row or a user text after a tool result,
+which the loop passes with the state in the system tail; an agent engine (`codex`) the recorded
+scenario behind the real tool gate and the agent-engine checks in `engines/codex/codex.test.ts`.
 
 Tests and certification run on `testing/host.ts`, a host that supplies each injection point the way
 the Desk's own test ground does: a session already in hand, a relay addressed by path, no socket.
