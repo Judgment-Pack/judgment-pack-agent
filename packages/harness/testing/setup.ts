@@ -1,6 +1,7 @@
-import { beforeEach } from 'vitest'
+import { afterEach, beforeEach, expect } from 'vitest'
 import { configureHarness } from '../host'
 import { testHost } from './host'
+import { isProviderOptionsKeyWarning, recordSdkWarnings, takeSdkWarnings } from './sdkWarnings'
 
 /**
  * The ground every test and the certification suite run on, registered as
@@ -13,6 +14,16 @@ import { testHost } from './host'
 configureHarness(testHost())
 beforeEach(() => {
   configureHarness(testHost())
+})
+
+/**
+ * **The AI SDK's deprecation of a provider-options key fails the test that caused it** (agent#38).
+ * The warnings are kept rather than printed (`testing/sdkWarnings.ts`), and checked after each
+ * test, so a request that puts options under a key the SDK is retiring cannot pass quietly.
+ */
+recordSdkWarnings()
+afterEach(() => {
+  expect(takeSdkWarnings().filter(isProviderOptionsKeyWarning)).toEqual([])
 })
 
 /**

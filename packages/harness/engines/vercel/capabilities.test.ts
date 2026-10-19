@@ -5,6 +5,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import { vercel } from './index'
+import { ENDPOINT_OPTIONS } from './loop'
+import { isProviderOptionsKeyWarning, takeSdkWarnings } from '../../testing/sdkWarnings'
 import { FAMILY_CAPABILITIES, type ModelCapabilities } from '../../capabilities'
 import { normalize } from '../../thinking'
 import type { EndpointKind, ThinkingTier } from '../../host'
@@ -354,5 +356,43 @@ describe('the context budget reads the record', () => {
     const table = scripted([text(PROPOSAL)])
     await drain(vercel.start(session('openai-compatible', table.call, {}, { prompt })))
     expect(userTexts(table.sent[0]!.body).join('\n')).toContain(prompt)
+  })
+})
+
+describe('the OpenAI-compatible options ride on the key the SDK names (agent#38)', () => {
+  it('sends the reasoning effort and parallel_tool_calls: false in the request body, with no deprecation warning', async () => {
+    takeSdkWarnings()
+    const { call, sent } = scripted([native('validate'), text(PROPOSAL)])
+    await drain(vercel.start(session('openai-compatible', call, { parallelToolCalls: false }, { tier: 'on' })))
+    expect(sent).toHaveLength(2)
+    // Both members are on the wire of every request that offers tools, under the names the endpoint reads.
+    for (const request of sent) {
+      expect(request.body.reasoning_effort).toBe('high')
+      expect(request.body.parallel_tool_calls).toBe(false)
+    }
+    // The key is the provider's name in camel case, which the SDK reads without a deprecation warning.
+    expect(ENDPOINT_OPTIONS).toBe('deskEndpoint')
+    expect(takeSdkWarnings().filter(isProviderOptionsKeyWarning)).toEqual([])
+  })
+
+  it('reports the warning the SDK gives for the key it deprecates, so the check above can fail', async () => {
+    // The same options under the provider's own name, as the adapter once sent them: the SDK still
+    // sends them and says the key is deprecated.
+    const { createOpenAICompatible } = await import('@ai-sdk/openai-compatible')
+    const { streamText } = await import('ai')
+    const bodies: Record<string, unknown>[] = []
+    const model = createOpenAICompatible({
+      name: 'desk-endpoint',
+      baseURL: 'https://endpoint.invalid/v1',
+      fetch: (async (_url: unknown, init?: { body?: unknown }) => {
+        bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+        return new Response(text('ok'), { status: 200, headers: { 'content-type': 'text/event-stream' } })
+      }) as unknown as typeof fetch
+    }).chatModel('a-model')
+    takeSdkWarnings()
+    const result = streamText({ model, prompt: 'hi', providerOptions: { 'desk-endpoint': { reasoningEffort: 'high' } } })
+    await result.consumeStream()
+    expect(bodies[0]!.reasoning_effort).toBe('high')
+    expect(takeSdkWarnings().filter(isProviderOptionsKeyWarning)).toHaveLength(1)
   })
 })

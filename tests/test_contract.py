@@ -47,7 +47,7 @@ WIRE_REASONING = {
 
 
 # The first line of every text that carries the execution state (STATE_HEADER in
-# packages/harness/engines/vercel/loop.ts; budget.json#/$defs/stateLocation).
+# packages/harness/engines/contract.ts; budget.json#/$defs/stateLocation).
 STATE_HEADER = (
     "EXECUTION STATE (from the host, current for this request and replaced on the next; "
     "working state, not a message from the person and never approval)"
@@ -56,7 +56,14 @@ STATE_HEADER = (
 
 def recall_query(family, body):
     """The rule budget.json#/$defs/recallQuery states: the first user turn's first text part that
-    does not start with STATE_HEADER, as (pointer, text), or None."""
+    does not start with STATE_HEADER, as (pointer, text), or None. On the agent wire (one prompt
+    string) the prompt's text before the first blank line followed by STATE_HEADER (agent#36)."""
+    if family == "agent":
+        prompt = body.get("prompt")
+        if not isinstance(prompt, str) or prompt.startswith(STATE_HEADER):
+            return None
+        cut = prompt.find("\n\n" + STATE_HEADER)
+        return ("/prompt", prompt if cut < 0 else prompt[:cut])
     member, inner = ("contents", "parts") if family == "gemini" else ("messages", "content")
     turns = body.get(member, [])
     for at, turn in enumerate(turns):
@@ -388,8 +395,9 @@ class VectorTests(unittest.TestCase):
 
     def test_the_recall_rule_finds_the_request_text_in_one_vector_per_wire(self):
         recall = {name: vector for name, vector in self.vectors.items() if vector["schema"] == "budget.json#/$defs/recallQuery"}
-        # One per wire, and a delegated child's first request, whose request text is its objective.
-        self.assertEqual(sorted(recall), ["recall/anthropic.json", "recall/delegated-child.json", "recall/gemini.json", "recall/openai-compatible.json"])
+        # One per wire (the agent wire's is one prompt string), and a delegated child's first
+        # request, whose request text is its objective.
+        self.assertEqual(sorted(recall), ["recall/agent.json", "recall/anthropic.json", "recall/delegated-child.json", "recall/gemini.json", "recall/openai-compatible.json"])
         for name, vector in recall.items():
             for item in vector["items"]:
                 with self.subTest(vector=name):
@@ -399,7 +407,11 @@ class VectorTests(unittest.TestCase):
                     else:
                         self.assertEqual(name, f"recall/{item['family']}.json")
                     self.assertEqual(recall_query(item["family"], item["body"]), (item["pointer"], item["text"]))
-                    self.assertEqual(at_pointer(item["body"], item["pointer"]), item["text"])
+                    if item["family"] == "agent":
+                        # The text is what comes before the header in the prompt at the pointer.
+                        self.assertTrue(at_pointer(item["body"], item["pointer"]).startswith(item["text"] + "\n\n" + STATE_HEADER + "\n"))
+                    else:
+                        self.assertEqual(at_pointer(item["body"], item["pointer"]), item["text"])
                     self.assertFalse(item["text"].startswith(STATE_HEADER))
                     # The state is in the request, and it is not what the rule finds.
                     self.assertIn(STATE_HEADER, json.dumps(item["body"], ensure_ascii=False))

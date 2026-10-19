@@ -19,7 +19,8 @@ import { ASSISTANT_ENGINES, ASSISTANT_TOOLS } from '../../host'
 import { CERTIFICATION_IS_TOTAL, CERTIFIED_ENGINES, loadEngine } from '../index'
 import { ChannelHasOneConsumer, eventChannel } from './channel'
 import { vercel } from './index'
-import { GOOGLE_OPTIONS, REHEARSAL_HOOK, claimPromises, sdkThinking } from './loop'
+import { GOOGLE_OPTIONS, REHEARSAL_HOOK, claimPromises, runVercelLoop, sdkThinking } from './loop'
+import { managedContext } from '../../context/managed'
 import {
   ADDRESS_REFUSED,
   PLACEHOLDER_ORIGIN,
@@ -982,6 +983,56 @@ describe('a consumer that stops in the middle of a run', () => {
     expect(await second).toEqual({ value: undefined, done: true })
   })
 
+  it('closes the run’s own iterator with done, not with an end yielded from a finally (agent#37)', async () => {
+    // The wrapper every run is started through (`managedContext`) closes the loop's iterator itself
+    // and discards what it answers, so the loop's own `return()` is read here, from inside that
+    // wrapper. A generator with `end` yielded from its `finally` answers `{ done: false }` carrying
+    // an event, and a consumer that reads the loop directly is left holding it.
+    const { call } = scriptedCall([
+      turn({ tool: { name: 'validate', args: { document: {} } } }),
+      turn({ text: PROPOSAL_TEXT })
+    ])
+    const closed: IteratorResult<AssistantEvent>[] = []
+    const events = managedContext(session(call), (held) => {
+      const loop = runVercelLoop(held, 'vercel')[Symbol.asyncIterator]()
+      return {
+        [Symbol.asyncIterator]: () => ({
+          next: () => loop.next(),
+          return: async (value?: unknown) => {
+            const answer = await loop.return!(value)
+            closed.push(answer)
+            return answer
+          }
+        })
+      }
+    })[Symbol.asyncIterator]()
+    expect((await events.next()).value).toMatchObject({ type: 'tool_call', name: 'validate' })
+    await events.return!(undefined)
+    expect(closed).toEqual([{ value: undefined, done: true }])
+  })
+
+  it('does not dispatch the call of a tool it never offered once the consumer has stopped (agent#37)', async () => {
+    // The refusal of an unoffered call is put through the gate as the model made it, and it is the
+    // one call the loop makes outside the per-call deadline: the guard on `callTool` is what stops
+    // it. The loop is waiting for the consumer to take the `tool_call` event when the consumer
+    // leaves; the event is dropped, the wait ends, and the call must not reach the runtime.
+    const dispatched: string[] = []
+    const { call } = scriptedCall([
+      turn({ tool: { name: 'write_file', args: { path: 'pack.json' } } }),
+      turn({ text: PROPOSAL_TEXT })
+    ])
+    const iterator = vercel.start(
+      session(call, {}, async (name) => {
+        dispatched.push(name)
+        return { content: [{ type: 'text', text: 'THE FILE IS SAVED' }] }
+      })
+    )[Symbol.asyncIterator]()
+    expect((await iterator.next()).value).toMatchObject({ type: 'tool_call', name: 'write_file' })
+    expect(await within(2000, iterator.return!(undefined))).toBe('settled')
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(dispatched, 'a tools/call reached the runtime after the consumer stopped').toEqual([])
+  })
+
   it('returns promptly, and asks the runtime nothing more', async () => {
     // The whole path: the model asks for a tool, the adapter's `execute` waits
     // for the `tool_call` event to reach the consumer, and the consumer stops
@@ -1238,7 +1289,7 @@ describe('the thinking tier, through the SDK’s own call settings', () => {
   it('translates each of the desk’s three dialects and nothing else', () => {
     expect(sdkThinking('openai-compatible', null)).toEqual({})
     expect(sdkThinking('openai-compatible', { reasoning_effort: 'xhigh' })).toEqual({
-      providerOptions: { 'desk-endpoint': { reasoningEffort: 'xhigh' } }
+      providerOptions: { deskEndpoint: { reasoningEffort: 'xhigh' } }
     })
     expect(
       sdkThinking('anthropic', { thinking: { type: 'adaptive' }, output_config: { effort: 'high' } })

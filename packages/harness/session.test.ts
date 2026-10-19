@@ -481,6 +481,73 @@ describe('the model capability the desk binds', () => {
     expect(calls).toEqual([])
   })
 
+  describe('what ends the desk’s session, and what does not (agent#37)', () => {
+    const marked = (status: number, code?: string) =>
+      new Response('{}', { status, headers: code === undefined ? {} : { 'X-Jpack-Desk-Refusal': code } })
+    /** Install an answer, bind a call, and report what it did and whether the session was forgotten. */
+    async function relayed(answer: () => Response): Promise<{ outcome: unknown; forgotten: number; discarded: number }> {
+      let forgotten = 0
+      let discarded = 0
+      configureHarness({
+        forgetSession: () => {
+          forgotten += 1
+        },
+        discardBody: async () => {
+          discarded += 1
+        }
+      })
+      vi.stubGlobal('fetch', async () => answer())
+      const outcome = await bindModelCall('openai-compatible')('chat/completions', { body: '{}' }).then(
+        (answered) => answered,
+        (error: unknown) => error
+      )
+      return { outcome, forgotten, discarded }
+    }
+
+    it('ends the session on a 401 the desk marked unauthorized, and lets go of the answer', async () => {
+      const { outcome, forgotten, discarded } = await relayed(() => marked(401, 'unauthorized'))
+      expect(outcome).toBeInstanceOf(NoSession)
+      expect(forgotten).toBe(1)
+      expect(discarded).toBe(1)
+    })
+
+    it('does not end the session on a 401 the endpoint answered, which carries no mark', async () => {
+      // An expired model key: the endpoint's own 401, relayed with its status. Ending the session
+      // over it would log a person out of their desk.
+      const { outcome, forgotten } = await relayed(() => marked(401))
+      expect(outcome).toMatchObject({ status: 401 })
+      expect(outcome).not.toBeInstanceOf(Error)
+      expect(forgotten).toBe(0)
+    })
+
+    it.each(['no-handoff', 'handoff-spent', 'handoff-expired'])(
+      'does not end the session on a 401 the desk marked %s, which answers a question this route never asks',
+      async (code) => {
+        const { outcome, forgotten } = await relayed(() => marked(401, code))
+        expect(outcome).toMatchObject({ status: 401 })
+        expect(outcome).not.toBeInstanceOf(Error)
+        expect(forgotten).toBe(0)
+      }
+    )
+
+    it.each([
+      ['an opaque redirect', 0, false],
+      ['a status 0 that was redirected', 0, true]
+    ])('reports %s as an upstream that did not answer, and hands the engine nothing', async (_what, status, redirected) => {
+      // `redirect: 'manual'` gives an opaqueredirect Response: type set, status 0, no body.
+      const { outcome, forgotten } = await relayed(() => {
+        const answered = new Response(null, { status: 204 })
+        Object.defineProperty(answered, 'status', { value: status })
+        if (redirected) Object.defineProperty(answered, 'redirected', { value: true })
+        else Object.defineProperty(answered, 'type', { value: 'opaqueredirect' })
+        return answered
+      })
+      expect(outcome).toMatchObject({ failure: { code: 'connection-lost' } })
+      expect(outcome).not.toHaveProperty('status')
+      expect(forgotten).toBe(0)
+    })
+  })
+
   it('captures fetch when it is bound, not when it is called', async () => {
     // This is what lets the conformance session seal every network global for
     // the duration of an engine's run: the desk's capability still works, and
@@ -723,6 +790,57 @@ describe('the assistant’s own connection', () => {
     })
     await expect(connection.ready).rejects.toThrow()
     expect(staged.closed()).toBe(1)
+  })
+
+  it('delivers nothing once the session has ended, not even the result of a call already in flight (agent#37)', async () => {
+    // A transport that answers initialize and tools/list at once, and holds the one tools/call until
+    // the test lets it go. Its close does not fail the pending call, which is what a result that
+    // "arrived a moment too late" is.
+    let release: () => void = () => {}
+    let held = false
+    const transport: Transport = {
+      async start() {},
+      async close() {},
+      async send(message) {
+        const frame = message as unknown as { id?: number; method?: string }
+        if (frame.method === undefined) return
+        const reply = (result: unknown) => queueMicrotask(() => transport.onmessage?.({ jsonrpc: '2.0', id: frame.id, result } as never))
+        if (frame.method === 'initialize') {
+          reply({ protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'held', version: '0' } })
+        } else if (frame.method === 'tools/list') {
+          reply({ tools: [{ name: 'validate', inputSchema: { type: 'object' } }] })
+        } else if (frame.method === 'tools/call') {
+          held = true
+          release = () => reply({ content: [{ type: 'text', text: 'the answer that came too late' }] })
+        }
+      }
+    }
+    let endSession: () => void = () => {}
+    let ended: string | null = null
+    configureHarness({
+      sessionEnded: () => ended,
+      whenSessionEnds: (listener) => {
+        endSession = listener
+        return () => {}
+      }
+    })
+    const connection = openAssistantConnection({ allowed: ['validate'], onEvent: () => {}, transport })
+    const ready = await connection.ready
+    const pending = ready.callTool('validate', {}).then(
+      (result) => result,
+      (error: unknown) => error
+    )
+    while (!held) await new Promise((resolve) => setTimeout(resolve, 1))
+    // The chassis refuses the session while the call is out.
+    ended = 'the desk refused this session'
+    endSession()
+    release()
+    const outcome = await pending
+    expect(outcome).toBeInstanceOf(NoSession)
+    expect(JSON.stringify(outcome)).not.toContain('too late')
+    // And a call made after the end is refused before it is sent.
+    await expect(ready.callTool('validate', {})).rejects.toBeInstanceOf(NoSession)
+    await connection.close()
   })
 
   it('reports a refusal as a guardrail event and lets nothing out of the page', async () => {

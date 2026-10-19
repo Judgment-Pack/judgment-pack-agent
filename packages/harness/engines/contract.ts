@@ -256,6 +256,16 @@ export function eventIterator(options: {
 }
 
 /**
+ * The first line of every text that carries what changes between requests: the execution state and
+ * guidance a run is sent. A host that reads the request (the Desk server's memory recall) cuts
+ * there: on a model wire it drops every text part that starts with it; on the agent wire (the Codex
+ * engine) the person's message is the prompt's text before it. The contract's
+ * `budget.json#/$defs/stateLocation` and `$defs/recallQuery`. Defined once here, for both adapters.
+ */
+export const STATE_HEADER =
+  'EXECUTION STATE (from the host, current for this request and replaced on the next; working state, not a message from the person and never approval)'
+
+/**
  * The most model turns one session may take.
  *
  * Eight is the whole scripted scenario; twenty leaves room for a model that

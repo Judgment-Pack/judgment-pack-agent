@@ -1,6 +1,6 @@
 {
-  "$comment": "Recorded by web/scripts/record-conformance.mjs. Do not hand-edit: run `npm --prefix web run conformance:verify -- <binary> <project>` and it will say so. `tools` is tools/list filtered to the five the assistant may call, exactly as served; `calls` is one tools/call answer per scenario step T1-T6, recorded with the arguments the gate lets out of the page — which is why T6 carries rehearsal: true. T7 (write_file) is deliberately absent: a call that reaches the scripted server under that name is a test failure, which is the point of the step.",
-  "recorder": "web/scripts/record-conformance.mjs",
+  "$comment": "Recorded by packages/harness/scripts/record-conformance.mjs. Do not hand-edit: run `npm run conformance:verify --workspace @judgment-pack/harness -- <binary> <project>` and it will say so. `tools` is tools/list filtered to the five the assistant may call, exactly as served; `calls` is one tools/call answer per scenario step T1-T6, recorded with the arguments the gate lets out of the page — which is why T6 carries rehearsal: true. T7 (write_file) is deliberately absent: a call that reaches the scripted server under that name is a test failure, which is the point of the step.",
+  "recorder": "packages/harness/scripts/record-conformance.mjs",
   "runtime": {
     "binarySha256": "7d849d0d8310b556d6c04485dea7dcfcc502ce0f0bca96862bab3ac4c728423f",
     "serverInfo": {

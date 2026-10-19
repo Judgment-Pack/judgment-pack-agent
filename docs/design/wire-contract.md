@@ -744,13 +744,19 @@ second block or part on the other two). The host sets the placement through `con
 user turns in a row and a user text after a tool result), and by default for Anthropic when a
 thinking tier is on, where a text block in a tool-result turn starts a new assistant turn;
 `trailing-user` otherwise. The placement is chosen once per run. The critic's step note carries the
-same header and is placed the same way. A host that reads requests, as the Desk server's memory
-recall does, finds the request text as the next section says.
+same header and is placed the same way.
+
+On the agent wire the `codex` engine makes one request, with one prompt string, and the same header
+heads what it appends (agent#36): the person's message, then after a blank line the header, the
+host's `context.currentState` and, in a conversation, the execution guidance, then a chat's index of
+earlier results. The engine appends the header only when it appends something. The header is the
+one string for both adapters (`STATE_HEADER`, `engines/contract.ts`). A host that reads requests, as
+the Desk server's memory recall does, finds the request text as the next section says.
 
 ## Where the request text sits
 
 `budget.json`, `$defs/recallQuery`; the vectors `recall/openai-compatible.json`,
-`recall/anthropic.json`, `recall/gemini.json` and `recall/delegated-child.json`; the rule in code,
+`recall/anthropic.json`, `recall/gemini.json`, `recall/agent.json` and `recall/delegated-child.json`; the rule in code,
 `certification/recall.ts`. The Desk server recalls project memory for every request it relays, from
 the request text (agent#11). The rule a server applies, on any request of a run:
 
@@ -787,8 +793,19 @@ third request of the recorded scenario, after two tool calls:
 | Gemini | the first content; a text part | `/contents/0/parts/0/text` |
 
 The critic's requests are a second conversation, whose first user turn is the critic's own
-message. On the agent wire (`codex`) the server recalls once per run from the agent request's
-prompt, which starts with the request text. The certification suite applies the rule to every
+message.
+
+On the agent wire (`codex`) the server recalls once per run from the agent request's prompt, which
+starts with the request text and has the state and guidance after it, headed by `STATE_HEADER`
+(agent#36). The rule there: the request text is the prompt's text before the first blank line that
+is followed by `STATE_HEADER`, or the whole prompt where the header is absent (a run that appends
+nothing); a prompt that starts with the header has none. It holds where the prompt, state and
+guidance fit the prompt's allowance. Where they do not, the whole is retained and previewed and the
+preview is what is sent; its text before any header is the preview's notice, not the person's
+message. The vector `recall/agent.json` holds the shape (`family` `agent`, `placement`
+`appended`, the prompt as the one member of `body`), and the certification suite applies the rule to
+the `codex` engine's prompt and expects the person's message (`agent engine codex` in
+`engines/codex/codex.test.ts`). The certification suite applies the rule to every
 request of the recorded scenario on every certified leg, 21 legs in four families (the six plain
 legs, the six text-path legs, three strict-alternation legs and the six thinking legs' authoring
 requests), and expects the text the run started from; `memory/recall.test.ts` applies it on a

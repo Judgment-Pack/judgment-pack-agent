@@ -46,7 +46,11 @@
  *   a seeded wrong outcome refuted with the case named; no pass where the
  *   session does not ask, at any tier.
  */
+import { existsSync, readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import packageJson from '../package.json'
 import { CERTIFIED_ENGINES, MODEL_ENGINES, loadEngine } from '../engines'
 import { bindModelCall, openAssistantConnection, runAssistantSession } from '../session'
 import scenario from './scenario.json'
@@ -999,18 +1003,28 @@ describe('the scenario this session carries', () => {
     // **Provenance that can be checked, not asserted.** The fixture used to
     // carry a tag and a short commit in prose, with no recorder in the
     // repository and nothing that could tell a hand-edited answer from a
-    // recorded one. `web/scripts/record-conformance.mjs` regenerates this file
+    // recorded one. `scripts/record-conformance.mjs` regenerates this file
     // byte for byte from a named binary and project, and its `verify` mode
-    // byte-compares — so what this test holds is that the members the
-    // verification needs are all here.
-    expect(runtime.recorder).toBe('web/scripts/record-conformance.mjs')
+    // byte-compares — so what this test holds is that the recorder the
+    // fixture names is a file in this repository (agent#37: it once named a
+    // script that existed in neither repository, and the check passed on the
+    // string), that the instruction in the fixture is the command that runs
+    // it, and that the members the verification needs are all here.
+    // `certification/recorder.test.ts` runs the recorder itself.
+    expect(runtime.recorder).toBe('packages/harness/scripts/record-conformance.mjs')
+    const recorder = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'record-conformance.mjs')
+    expect(existsSync(recorder)).toBe(true)
+    expect(readFileSync(recorder, 'utf8')).toContain(`const RECORDER_PATH = '${runtime.recorder}'`)
+    const scripts = (packageJson as { scripts: Record<string, string> }).scripts
+    expect(scripts['conformance:verify']).toBe('node scripts/record-conformance.mjs verify')
+    expect(scripts['conformance:record']).toBe('node scripts/record-conformance.mjs record')
+    expect(runtime.$comment).toContain('npm run conformance:verify --workspace @judgment-pack/harness')
     expect(runtime.runtime.binarySha256).toMatch(/^[0-9a-f]{64}$/)
     expect(runtime.runtime.sourceCommit).toMatch(/^[0-9a-f]{40}$/)
     expect(runtime.runtime.protocolVersion).toBeTruthy()
     expect(runtime.runtime.serverInfo.name).toBeTruthy()
     // The one member here that is a claim rather than a measurement says so.
     expect(runtime.runtime.note).toContain('a claim rather than a measurement')
-    expect(runtime.$comment).toContain('conformance:verify')
   })
 
   it('carries one recorded answer per step T1–T6 and none for the write', () => {

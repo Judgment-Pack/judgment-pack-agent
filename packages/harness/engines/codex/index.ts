@@ -14,7 +14,7 @@ import {
   openRun, eventIterator, guardedCallTool, withAbort, isCancelled,
   servedSchema, textOf, streamingProse, proseOf, hasProposalFence, extractProposal,
   wholeAnswer, withDeadline, toolTimeout, PROPOSE_PACK_TOOL, PROPOSE_PACK_INSTRUCTIONS, PROPOSAL_RECEIVED,
-  offersProposeTool, readProposedPack, twoProposals, reformatRequest, refusedUnoffered, unofferedRefusal, type Proposal
+  offersProposeTool, readProposedPack, twoProposals, reformatRequest, refusedUnoffered, unofferedRefusal, STATE_HEADER, type Proposal
 } from '../contract'
 import { eventChannel } from '../vercel/channel'
 import { CRITIC_SYSTEM, compareTheRest, criticMayCall, criticMayRead, criticMessage, criticCannotRun, criticRuns, critiqueEvent, critiqueOnProposal, criticNote, proposalNote, openCritique } from '../../refutation'
@@ -229,10 +229,13 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
     const instructions = session.purpose === 'graph' ? GRAPH_SYSTEM : session.purpose === 'brief' ? BRIEF_SYSTEM
       : session.purpose === 'test-design' ? TEST_DESIGN_SYSTEM
       : session.allowConversation ? CONVERSATION_SYSTEM : SYSTEM
-    // The agent's prompt carries the host's changing state and the execution guidance at its end;
-    // its instructions stay the stable system text. A chat's index of the results earlier runs kept
-    // (agent#8) is added at its end, in the room it leaves (`run`).
-    const prompt = session.prompt + (session.context?.currentState ? '\n\n' + session.context.currentState : '') + (session.allowConversation ? '\n\n' + context.execution.guidance() : '')
+    // The agent's prompt carries the host's changing state and the execution guidance at its end,
+    // after the person's message and headed by STATE_HEADER, as the relayed wires head the state
+    // part: a host that takes its recall query from the prompt cuts at the header and keeps the
+    // message (agent#36). Its instructions stay the stable system text. A chat's index of the
+    // results earlier runs kept (agent#8) is added after both, in the room it leaves (`run`).
+    const appended = [session.context?.currentState, session.allowConversation ? context.execution.guidance() : undefined].filter((part): part is string => !!part)
+    const prompt = session.prompt + (appended.length > 0 ? '\n\n' + STATE_HEADER + '\n' + appended.join('\n\n') : '')
     let final: string
     try {
       final = await run(prompt, instructions + (offersProposeTool(session.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : ''), 'author')

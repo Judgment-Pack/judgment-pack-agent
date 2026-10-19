@@ -227,7 +227,7 @@ runtime's `test_pack` prompt as `testPrompt`.
 
 The `vercel` adapter sends a stable prefix: its system text with the execution instructions, the
 tools, the host's prompt and the history. What changes between requests is one text headed
-`STATE_HEADER` (`engines/vercel/loop.ts`): the request counters, the plan and the operations index,
+`STATE_HEADER` (`engines/contract.ts`): the request counters, the plan and the operations index,
 the step's own instruction, and the host's own changing text, which a host passes as
 `context.currentState` (a chat's draft snapshot, the latest check) rather than inside `prompt`. On
 the first request it is a second text part of the person's message, on every wire. After that it
@@ -239,6 +239,12 @@ head and after the tools. The tier is held for the run, changed only where the e
 or a thinking signature came back truncated. The provider's cache reads and writes are recorded with
 each completion (`cacheReadTokens`, `cacheWriteTokens`). The contract states the header and where it
 sits on each wire (`budget.json`, `contract/vectors/budget/state-placement.json`).
+
+On the agent wire the `codex` engine makes one request with one prompt string, and the same header
+heads what it appends (agent#36): the person's message, then after a blank line `STATE_HEADER`, the
+host's `context.currentState` and, in a conversation, the execution guidance, then a chat's index of
+earlier results. A run that appends neither state nor guidance has no header. `STATE_HEADER` is one
+string for both adapters, defined in `engines/contract.ts`.
 
 ### Across the turns of a chat
 
@@ -278,7 +284,11 @@ after it. Where the prompt is previewed, the person's message (`currentRequest.m
 first part, before the preview; for a delegated child, its objective (`context.objective`). The
 contract states the rule a server applies to find it (`budget.json#/$defs/recallQuery`,
 `certification/recall.ts`), and the certification suite applies it to every request on every
-certified leg, 21 legs in four families.
+certified leg, 21 legs in four families. On the agent wire (`codex`) the request text is the
+prompt's text before the first blank line followed by `STATE_HEADER`, or the whole prompt where
+there is none (agent#36; `contract/vectors/recall/agent.json`, and the `agent engine codex` check in
+`engines/codex/codex.test.ts`); it holds where the prompt, state and guidance fit the allowance,
+and where they are previewed the preview is what is sent.
 The host says per run whether the project's memory is on (`context.memory`): `false` frees the
 `memoryBytes` reserve, and a run whose host says nothing keeps it.
 
@@ -412,7 +422,54 @@ tool calls and which refuses any request that carries tools, with the same calls
 proposal, and once more where it also keeps a strict turn order; and (agent#11) on every request
 of 21 certified legs in four families (plain, text-path, strict-alternation and thinking), the
 recall rule finds the request text the run started from; an agent engine (`codex`) the recorded
-scenario behind the real tool gate and the agent-engine checks in `engines/codex/codex.test.ts`.
+scenario behind the real tool gate and the agent-engine checks in `engines/codex/codex.test.ts`,
+among them (agent#36) the recall rule applied to the prompt, which yields the person's message.
+
+### The recorded runtime and its recorder (agent#37)
+
+`certification/runtime.json` is the Runtime's own answers to the scenario's scripted calls, and
+its `recorder` member names `scripts/record-conformance.mjs`, which is in this repository. It
+drives a `jpack mcp` over stdio, asks no model anything, and writes the file; `verify` records to
+memory and compares byte for byte:
+
+```sh
+npm run conformance:verify --workspace @judgment-pack/harness -- <jpack binary> <project dir>
+npm run conformance:record --workspace @judgment-pack/harness -- <jpack binary> <project dir>
+```
+
+The project directory must declare an audit trail, as the fixture's `runtime.project` says. The
+fixture names the binary it was recorded from by SHA-256, so a binary with another digest records a
+file that differs in that member, and `verify` says so. The recorded binary is not kept in this
+repository: `certification/recorder.test.ts` runs the recorder over a stand-in that answers from
+the fixture (what it writes is the committed file in every member but the binary's digest, `verify`
+of a file it wrote is a match, and a hand edit of one answer is not), and `conformance.test.ts`
+holds that the file the fixture names exists and is the one the package's scripts run. Re-recording
+against the recorded runtime is a command a person runs with that binary.
+
+### The mutation check (agent#37)
+
+`scripts/mutation-rows.json` is the table of rows, one deliberate break of one safeguard each (the
+file, the text found once and the text put in its place, the test files that catch it, where the
+row came from, and `caught` or `retired`). `scripts/mutation-check.mjs` applies one row at a time to
+a scratch copy of the package, runs the row's tests, and fails on a row no test fails under:
+
+```sh
+npm run mutation --workspace @judgment-pack/harness -- --list
+npm run mutation --workspace @judgment-pack/harness -- --check            # every row still applies; no test run
+npm run mutation --workspace @judgment-pack/harness -- --row "any relay 401"
+npm run mutation --workspace @judgment-pack/harness -- --changed origin/main --sample 15
+npm run mutation --workspace @judgment-pack/harness -- --shard 1/4         # the full table, in four parts
+```
+
+The first 111 rows are the ones the Desk's `mutation-check.sh` held over the files that moved here,
+carried by the swap (judgment-pack-desk#516); the rest are this repository's own (agent#36 and
+agent#38 each add one). Nine of the Desk's needles no longer matched the moved code: eight were
+re-anchored on the same safeguard (a row's `note` says why), and one row is retired, with its
+reason in the table, because the code it broke is gone. A row's `tests` are the files that
+import the mutated file or a module that does, and those that name it in a string; a run in which
+nothing fails is run again against the whole suite, which decides. `.github/workflows/mutation.yml`
+runs the rows over the files a pull request changes (at most fifteen) and five more by the pull
+request's number, and the whole table weekly, in four shards, and on demand.
 
 ### The certified scenarios (agent#13)
 

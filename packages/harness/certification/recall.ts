@@ -32,9 +32,21 @@
  * The certification suite applies the rule to every request of the recorded scenario on every
  * certified leg: 21 legs in four families (six plain, six text-path, three strict-alternation, and
  * the six thinking legs' authoring requests).
+ *
+ * **The agent wire** (the Codex engine) sends one string, the run's prompt, not a list of turns:
+ * the person's message first, then, when the run has any, the host's state and the execution
+ * guidance headed by `STATE_HEADER` after a blank line, then a chat's index of earlier results.
+ * The request text is the prompt's text before the first blank line that is followed by
+ * `STATE_HEADER`, or the whole prompt where the header is absent; a prompt that starts with the
+ * header has none (agent#36). It holds where the prompt, state and guidance fit the allowance.
+ * Where they do not, the whole is retained and previewed (`SessionContext.prompt`) and the preview
+ * is what is sent; its text before any header is the preview's notice, not the person's message.
  */
-import { STATE_HEADER } from '../engines/vercel/loop'
+import { STATE_HEADER } from '../engines/contract'
 import type { EndpointKind } from '../host'
+
+/** The wires the rule reads: the three model wires, and the agent wire's one prompt (`{ prompt }`). */
+export type RecallWire = EndpointKind | 'agent'
 
 /** What the rule found: the text, and the JSON pointer (RFC 6901) to it in the request body. */
 export interface RecallQuery {
@@ -45,7 +57,13 @@ export interface RecallQuery {
 type Json = Record<string, unknown>
 
 /** The rule, applied to one request body as the adapter sent it; null where no first user turn carries a text. */
-export function recallQuery(api: EndpointKind, body: Json): RecallQuery | null {
+export function recallQuery(api: RecallWire, body: Json): RecallQuery | null {
+  if (api === 'agent') {
+    const prompt = body.prompt
+    if (typeof prompt !== 'string' || prompt.startsWith(STATE_HEADER)) return null
+    const cut = prompt.indexOf('\n\n' + STATE_HEADER)
+    return { pointer: '/prompt', text: cut < 0 ? prompt : prompt.slice(0, cut) }
+  }
   const member = api === 'gemini' ? 'contents' : 'messages'
   const turns = Array.isArray(body[member]) ? (body[member] as Json[]) : []
   const at = turns.findIndex((turn) => turn?.role === 'user')
