@@ -191,4 +191,3 @@ describe('the ledger’s reader, read', () => {
     expect(window.more).not.toBeNull()
   })
 })
-
