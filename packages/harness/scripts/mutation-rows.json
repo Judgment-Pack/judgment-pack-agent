@@ -2970,6 +2970,92 @@
    "status": "caught",
    "origin": "review of #47",
    "note": "the reviewer's M6: a name the loop offers and the critic's allow-list does not reaches dispatch"
+  },
+  {
+   "name": "the deepagents tracing refusal names one variable only",
+   "file": "engines/deepagents/loop.ts",
+   "find": "export const TRACING_VARIABLES = ['LANGSMITH_TRACING_V2', 'LANGCHAIN_TRACING_V2', 'LANGSMITH_TRACING', 'LANGCHAIN_TRACING'] as const",
+   "replace": "export const TRACING_VARIABLES = ['LANGSMITH_TRACING_V2'] as const",
+   "tests": [
+    "certification/conformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "release review of v0.3.0",
+   "note": "each of LangChain's four tracing variables alone turns its tracer on: K1c sets each one alone"
+  },
+  {
+   "name": "the deepagents boundary refuses a call on a tools-closed request only for repeated work",
+   "file": "engines/deepagents/loop.ts",
+   "find": "      if (!toolsClosed && !context.execution.progress.rejects(name, args)) return",
+   "replace": "      if (!context.execution.progress.rejects(name, args)) return",
+   "tests": [
+    "engines/deepagents/deepagents.test.ts"
+   ],
+   "status": "caught",
+   "origin": "release review of v0.3.0",
+   "note": "the final request and the reformat request are tool-free: a call the model makes on either is refused, native or in text"
+  },
+  {
+   "name": "the vercel boundary refuses a call on a tools-closed request only for repeated work",
+   "file": "engines/vercel/loop.ts",
+   "find": "      if(!toolsClosed&&!context.execution.progress.rejects(name,args))return",
+   "replace": "      if(!context.execution.progress.rejects(name,args))return",
+   "tests": [
+    "engines/vercel/capabilities.test.ts"
+   ],
+   "status": "caught",
+   "origin": "release review of v0.3.0",
+   "note": "the native path of the final request: a call made anyway is refused, not run"
+  },
+  {
+   "name": "the chat's read cache serves a name the run's session does not offer",
+   "file": "execution/controller.ts",
+   "find": "if(chatKey!==undefined&&kept!.offered!==false){const held=chat!.cached(chatKey)",
+   "replace": "if(chatKey!==undefined){const held=chat!.cached(chatKey)",
+   "tests": [
+    "delegation.test.ts",
+    "context/chat.test.ts"
+   ],
+   "status": "caught",
+   "origin": "review of #44",
+   "note": "a child's call of a name outside its offer is served the parent's cached read"
+  },
+  {
+   "name": "the runtime tools never say whether the session offers the name",
+   "file": "context/session.ts",
+   "find": "{runtime:true,offered:session.tools.some(t=>t.name===name)}",
+   "replace": "{runtime:true}",
+   "tests": [
+    "delegation.test.ts",
+    "context/chat.test.ts"
+   ],
+   "status": "caught",
+   "origin": "review of #44",
+   "note": "the offer condition's caller: a name outside the offer is not marked unoffered, so the cache serves it"
+  },
+  {
+   "name": "the previewed codex prompt drops the person's message",
+   "file": "context/session.ts",
+   "find": "  const head=message+'\\n\\n'+STATE_HEADER+'\\n'",
+   "replace": "  const head=STATE_HEADER+'\\n'",
+   "tests": [
+    "engines/codex/codex.test.ts"
+   ],
+   "status": "caught",
+   "origin": "review of #44",
+   "note": "where the prompt does not fit, the text before the state header is the person's message"
+  },
+  {
+   "name": "the runtime tools skip the critic's allow-list",
+   "file": "context/session.ts",
+   "find": "callTool:async(name:string,args:Record<string,unknown>)=>{context.admit(name,'runtime');await session.context?.authorize",
+   "replace": "callTool:async(name:string,args:Record<string,unknown>)=>{await session.context?.authorize",
+   "tests": [
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "review of #44",
+   "note": "the critic's call of a tool outside its allow-list reaches the gate instead of the harness's own refusal"
   }
  ]
 }

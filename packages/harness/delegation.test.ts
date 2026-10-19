@@ -654,6 +654,60 @@ describe('context by reference and profiles (agent#15)',()=>{
   expect(without.seen).toEqual([])
   expect(without.held).toBeUndefined()
  })
+ // The same finding on the Codex adapter: its agent asks for an unoffered name through callbacks.tool.
+ it('refuses a Codex analyze child the parent’s cached get_schema read: nothing is served, listed or readable, and the parent’s row stays',async()=>{
+  const RUNTIME={identity:'sha256:runtime',version:'0.4.0'}
+  const run=async(parentReads:boolean)=>{
+   const runtime=await gatedRuntime({tools:[...RECORDED_TOOLS,TEST_CASES_TOOL],allowed:[...ASSISTANT_TOOLS],handle:()=>runtimeAnswer({schema:'judgment-pack',version:'0.4'}),onEvent:()=>{}})
+   const chat=new ChatContext()
+   const schemaId=()=>[...chat.entries.keys()].find(id=>id.includes(':result-get_schema-'))
+   const answers:string[]=[]
+   let childToolCalls=0
+   try {
+    const agentRun=vi.fn<AgentRun>(async(r,cb)=>{
+     const offeredTool=(name:string)=>r.tools.find((t:{description:string})=>t.description.startsWith(name+':'))
+     if(r.prompt.includes('Complete this read-only task')){
+      // The child asks for the parent's tool by its name, though its offer does not hold it.
+      expect(offeredTool('get_schema')).toBeUndefined()
+      answers.push((await cb.tool({id:'call_child_schema',name:'get_schema',arguments:{}},cb.signal)).text)
+      answers.push((await cb.tool({id:'call_child_list',name:offeredTool('list_context')!.name,arguments:{}},cb.signal)).text)
+      answers.push((await cb.tool({id:'call_child_read',name:offeredTool('read_window')!.name,arguments:{id:schemaId()??'result-get_schema-absent'}},cb.signal)).text)
+      childToolCalls=answers.length
+      await cb.event({type:'message',id:'c',text:'Nothing was readable.',phase:'final'})
+      return
+     }
+     if(r.prompt.includes('DELEGATION RESULT')){await cb.event({type:'message',id:'reply',text:'Done.',phase:'final'});return}
+     if(parentReads)await cb.tool({id:'call_schema',name:offeredTool('get_schema')!.name,arguments:{}},cb.signal)
+     await cb.tool({id:'call_delegate',name:offeredTool('delegate_tasks')!.name,arguments:{tasks:[{title:'Analyze',objective:'analyze',profile:'analyze'}]}},cb.signal)
+     throw Error('Parent must yield')
+    })
+    const {model:_model,thinking:_thinking,...base}=apiSession({tools:runtime.tools,callTool:runtime.callTool,context:{chat,runtime:RUNTIME}})
+    const events=await collect(withDelegation(codex),{...base,agent:{model:'fixture',run:agentRun}})
+    const key=(await readCacheKey('get_schema',{},true,RUNTIME))!
+    return {answers,childToolCalls,events,seen:runtime.seen.map(c=>c.name),held:schemaId(),entry:schemaId()===undefined?undefined:chat.entries.get(schemaId()!),cached:chat.cachedEntry(key)}
+   } finally { await runtime.close() }
+  }
+  const withRead=await run(true)
+  const [call,list,read]=withRead.answers
+  // The child's call got no served result; it made no Runtime call and counted no tool call.
+  expect(withRead.childToolCalls).toBe(3)
+  expect(call).not.toContain('judgment-pack')
+  expect(withRead.seen).toEqual(['get_schema'])
+  expect(results(withRead.events).find(t=>t.profile==='analyze')).toMatchObject({state:'complete',toolCalls:0})
+  // No entry joined the child's view, and the parent's entry cannot be read by id.
+  expect(list).not.toContain('result-get_schema')
+  expect(read).toContain('This entry is not among this task’s references')
+  expect(read).not.toContain('judgment-pack')
+  // The parent's cache row and its entry are unchanged.
+  expect(withRead.held).toBeDefined()
+  expect(withRead.cached).toBe(withRead.held)
+  expect(withRead.entry).toBeDefined()
+  // The control: with no earlier parent read, the child is refused the same way and nothing reached the Runtime.
+  const without=await run(false)
+  expect(without.answers[0]).not.toContain('judgment-pack')
+  expect(without.seen).toEqual([])
+  expect(without.held).toBeUndefined()
+ })
 })
 
 describe('the rest of agent#13',()=>{

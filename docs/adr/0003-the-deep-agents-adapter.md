@@ -123,7 +123,10 @@ Node's conditions and throws under the browser's). The contract also carries no 
 (`approval.json`: no approval crosses the slot; the run proposes and the host acts). The run's two
 pauses for a person stay where they are: the question (`ask_user`), which the boundary reads closed
 and, well formed, reports as `user_question` and ends the turn on, unanswered; a malformed one is a
-failed result naming the field, corrected in the same turn; and the budget, whose
+failed result naming the field, corrected in the same turn. The question's pause stops only the
+calls that come after it in the same model turn, on this adapter and on `vercel`: a call made before
+`ask_user` in that turn (a `read_policy`) has run, and a call after it is reported as `tool_call`
+with no `tool_result`. The other pause is the budget, whose
 `request_budget_increase` runs and whose pause is the shared boundary's (`context/managed.ts`).
 
 `permissions` is not used: its rules govern the file tools, which are off, and do not reach the
@@ -190,16 +193,22 @@ What this engine does differently is recorded in the wire contract's list of dis
 
 ### 6. Bundle shape
 
-The adapter builds for the browser. Built with the package's Vite (8.2.2) for the browser, with the
-`vercel` engine as a second entry so that what they share is split out, the chunk only `deepagents`
-needs is 1,044.7 kB minified, 276.1 kB gzipped, as Vite reports them; `vercel`'s own chunk is
-799.5 kB and 181.7 kB, and the chunks the two share (the harness's core and their common
-dependencies) are 891.3 kB, which a host that already ships `vercel` already ships. Vite replaces five
-Node built-ins that `deepagents/browser`'s dependencies import with empty modules (`path` and
-`util`, from `micromatch` and `picomatch`, which the file permissions use; `node:path` and
-`node:fs/promises`, from LangSmith's sandbox client): none is reached with the file tools off. The
-built bundle was run through a session against a scripted capability with the network globals
-replaced by throwing sentinels: a runtime call, a refused name and the question pause, and nothing
+The adapter builds for the browser. The figures below come from one committed script,
+`packages/harness/scripts/bundle-size.mjs` (`npm run bundle:size`): the package's Vite (8.2.2), for the
+browser, minified by Vite's default, the two engines as two entries so that what they share is split
+out, no plugin but an empty module for `ws` (an optional peer of LangSmith's client that no page
+loads), no config file; sizes in kilobytes of 1,000 bytes, and gzip at level 6. The chunks only
+`deepagents` reaches are 1,308.0 kB minified, 367.6 kB gzipped (two chunks: its own, 816.4 kB and
+243.7 kB, and one only it imports, 491.6 kB and 123.9 kB); the chunk only `vercel` reaches is 615.5 kB
+and 153.8 kB; and the two chunks both reach (the harness's core and their common dependencies) are
+212.8 kB and 66.6 kB, which a host that already ships `vercel` already ships. Vite replaces four Node
+built-ins that `deepagents/browser`'s dependencies import with empty modules (`path` and `util`, from
+`micromatch`, `picomatch` and `fill-range`; `node:path` and `node:fs/promises`, from LangSmith's
+sandbox client): none is reached with the file tools off. The figures this section first gave
+(1,044.7 kB and 276.1 kB for `deepagents`, 799.5 kB and 181.7 kB for `vercel`) and its count of five
+built-ins did not reproduce from any recorded build; these replace them. The built bundle was run
+through a session against a scripted capability with the network globals replaced by throwing
+sentinels: a runtime call, a refused name and the question pause, and nothing
 touched.
 
 ## Consequences

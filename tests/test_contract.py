@@ -24,7 +24,7 @@ HARNESS_CEILING_ADDITIONS = ["experimental_test_cases"]
 
 # Engines the harness carries beyond the Desk's two (contract/desk/inventory.json), in order: the
 # Deep Agents adapter (docs/adr/0003-the-deep-agents-adapter.md).
-HARNESS_ENGINE_ADDITIONS = ["deepagents"]
+HARNESS_ENGINE_ADDITIONS = ["deepagents", "eino"]
 
 EXPECTED_SCHEMAS = {
     "run-event.json",
@@ -268,6 +268,11 @@ class DeskInventoryTests(unittest.TestCase):
         self.assertEqual(completion, self.inventory["completionReasons"]["values"])
         self.assertEqual(
             self.schemas["provenance.json"]["$defs"]["engine"]["enum"],
+            self.inventory["engines"]["values"] + HARNESS_ENGINE_ADDITIONS,
+        )
+        # The vector states the same ids, in the same order.
+        self.assertEqual(
+            load(VECTORS / "provenance" / "engine-ids.json")["items"],
             self.inventory["engines"]["values"] + HARNESS_ENGINE_ADDITIONS,
         )
         # The ceiling is the Desk's five, then the one tool the harness admits beyond them

@@ -102,7 +102,13 @@ The costs, stated:
 - Eino is before 1.0 and releases often; a minor release may change an interface. The pin is exact
   and the suite is what notices.
 - It brings `bytedance/sonic` into the Desk's binary, with its assembler, and about 12.9 MB to a
-  stripped build; ADK for Go would bring about 11 MB.
+  stripped build; ADK for Go would bring about 11 MB. Those are the spike's figures, against a
+  standard-library program that does not construct a proxy (3.8 MB). Measured on the finished
+  adapter, the same way (`go build -trimpath -ldflags='-s -w'`, go1.26.5 linux/amd64): a program that
+  constructs the adapter, the coordinator and the relay is 15.91 MB, and a standard-library program
+  that constructs a `net/http/httputil.ReverseProxy`, which the relay does, is 5.05 MB, so the
+  adapter adds about 10.9 MB, not the 12.4 MB the pull request that landed it stated (it set the
+  baseline at 3.5 MB).
 - An unoffered name bypasses the middleware and reaches only the unknown-tools handler, so the
   dispatch has two entry points; both are the adapter's, and the mutation check "an unoffered name
   run" covers the second.

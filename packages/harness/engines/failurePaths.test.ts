@@ -53,6 +53,7 @@ import {
   type TurnRecord
 } from '../testing/scripted'
 import type { AssistantEvent, Engine } from '../engine'
+import { unofferedRefusal } from './contract'
 import { vercel } from './vercel'
 import { deepagents } from './deepagents'
 
@@ -505,5 +506,14 @@ describe('codex', () => {
     const checkpoint = lastCheckpoint(events)
     expect(checkpoint.status).toBe('complete')
     expect(operations(checkpoint)).toEqual([['get_schema', 'complete'], ['validate', 'failed']])
+  })
+})
+
+describe('what the model is told of a call to a tool it was not offered', () => {
+  it('ends in one period, whether or not the refusal it is given does', () => {
+    const tail = '. This assistant proposes; it never writes a file and never calls a tool it was not offered.'
+    for (const detail of ['write_file is not offered', 'write_file is not offered.', 'write_file is not offered...']) {
+      expect(unofferedRefusal(detail)).toBe(`refused: write_file is not offered${tail}`)
+    }
   })
 })

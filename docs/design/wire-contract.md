@@ -802,7 +802,7 @@ third request of the recorded scenario, after two tool calls:
 
 | Wire | First user turn | Pointer |
 | --- | --- | --- |
-| OpenAI-compatible | the second message, after the system message; its content a string (an array of parts when it has more than one: the person's message before a preview, or a chat's index after the request) | `/messages/1/content` |
+| OpenAI-compatible | the second message, after the system message; its content a string (an array of parts when it has more than one: the person's message, cut to a quarter of the allowance where the preview follows it, or a chat's index after the request) | `/messages/1/content` |
 | Anthropic | the first message; a text block | `/messages/0/content/0/text` |
 | Gemini | the first content; a text part | `/contents/0/parts/0/text` |
 
@@ -813,10 +813,10 @@ On the agent wire (`codex`) the server recalls once per run from the agent reque
 starts with the request text and has the state and guidance after it, headed by `STATE_HEADER`
 (agent#36). The rule there: the request text is the prompt's text before the first blank line that
 is followed by `STATE_HEADER`, or the whole prompt where the header is absent (a run that appends
-nothing); a prompt that starts with the header has none. It holds where the prompt, state and
-guidance fit the prompt's allowance. Where they do not, the whole is retained and previewed
-(`SessionContext.agentPrompt`), and the prompt sent is the person's message (`currentRequest.message`),
-a blank line, `STATE_HEADER` and the preview, so the rule still finds the person's message; a host
+nothing); a prompt that starts with the header has none. Where the prompt, state and guidance do
+not fit the prompt's allowance, the whole is retained and previewed (`SessionContext.agentPrompt`),
+and the prompt sent is the person's message (`currentRequest.message`, cut to a quarter of the
+allowance), a blank line, `STATE_HEADER` and the preview, so the rule finds the person's message; a host
 that gives no `currentRequest` gets the preview alone, and the rule finds its own opening. The vector `recall/agent.json` holds the shape (`family` `agent`, `placement`
 `appended`, the prompt as the one member of `body`), and the certification suite applies the rule to
 the `codex` engine's prompt and expects the person's message (`agent engine codex` in

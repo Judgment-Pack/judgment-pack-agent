@@ -97,6 +97,48 @@ func TestAReflectedCredentialDoesNotReachTheAdapter(t *testing.T) {
 	}
 }
 
+// The handler itself takes the key out of an answer's headers, before the facade reads them: an
+// endpoint that echoes the key under a credential header's name, and inside the two diagnostic
+// headers the facade would carry on (x-request-id and request-id, whose values may be letters,
+// digits, hyphens and underscores, as a key is), hands the adapter neither, at the handler and
+// through the client. The handler is called here with no facade between it and the headers.
+func TestTheHandlerTakesAnEchoedKeyOutOfItsAnswerHeaders(t *testing.T) {
+	echo := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Api-Key", testKey)
+		w.Header().Set("X-Request-Id", "req-"+testKey+"-1")
+		w.Header().Set("Request-Id", testKey)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"ok":true}`)
+	}
+	client, handler, _ := upstreamClient(t, echo, "openai-compatible")
+
+	inbound := httptest.NewRequest(http.MethodPost, "http://desk.invalid"+Prefix+"chat/completions", strings.NewReader(`{"model":"m"}`))
+	inbound.Header.Set("Authorization", "Bearer host-session")
+	inbound.RemoteAddr = "127.0.0.1:0"
+	recorded := httptest.NewRecorder()
+	handler.ServeHTTP(recorded, inbound)
+	if recorded.Code != http.StatusOK {
+		t.Fatalf("the handler answered %d", recorded.Code)
+	}
+	for name, values := range recorded.Header() {
+		for _, value := range values {
+			if strings.Contains(value, testKey) {
+				t.Errorf("the handler's answer carries the key in %s", name)
+			}
+		}
+	}
+	if recorded.Header().Get("Content-Type") != "application/json" {
+		t.Errorf("the handler dropped the content type: %v", recorded.Header())
+	}
+
+	response, _ := call(t, client, "chat/completions", nil)
+	for _, name := range []string{"X-Api-Key", "X-Request-Id", "Request-Id"} {
+		if response.Header.Get(name) != "" {
+			t.Errorf("the adapter was handed %s: %q", name, response.Header.Get(name))
+		}
+	}
+}
+
 // No redirect is followed: the 3xx comes back as the answer, without its Location, and the address
 // it named is never reached.
 func TestNoRedirectIsFollowed(t *testing.T) {

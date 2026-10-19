@@ -1197,6 +1197,39 @@ describe.each(MODEL_ENGINES)('engine %s', (engineId) => {
       }
     })
 
+    // Each of LangChain's four tracing variables alone, with a key and an endpoint, is enough for its
+    // tracer to send each run through the global `fetch` (review of the v0.3.0 release, row 4: a refusal
+    // that named only one of them passed this leg). `deepagents` refuses the run for each, alone, before
+    // an agent is built; the other engines read none of them.
+    it.runIf(engineId === 'deepagents').each(['LANGSMITH_TRACING', 'LANGSMITH_TRACING_V2', 'LANGCHAIN_TRACING_V2', 'LANGCHAIN_TRACING'])(
+      'K1c — %s alone is refused, with no request and no reach',
+      async (variable) => {
+        const key = 'lsv2-a-key-this-leg-was-given'
+        for (const [name, value] of Object.entries({
+          [variable]: 'true',
+          LANGSMITH_API_KEY: key,
+          LANGCHAIN_API_KEY: key,
+          LANGSMITH_ENDPOINT: 'http://127.0.0.1:9',
+          LANGCHAIN_ENDPOINT: 'http://127.0.0.1:9'
+        })) vi.stubEnv(name, value)
+        try {
+          const { events, violations, leftPending, liveIntervals, requests, bodies } = await runLeg(fromRegistry(engineId), leg)
+          expect(violations).toEqual([])
+          expect(leftPending).toBe(0)
+          expect(liveIntervals).toEqual([])
+          expect(requests).toEqual([])
+          for (const body of bodies) expect(body).not.toContain(key)
+          const errors = events.filter((event): event is Extract<AssistantEvent, { type: 'error' }> => event.type === 'error')
+          expect(errors.map((error) => error.failure?.code)).toEqual(['configuration'])
+          expect(errors[0]!.message).toContain(`(${variable})`)
+          expect(proposals(events)).toEqual([])
+          expect(events.at(-1)).toEqual({ type: 'end' })
+        } finally {
+          vi.unstubAllEnvs()
+        }
+      }
+    )
+
     it('K2 — offers exactly the five, out of tools/list', async () => {
       const { requests } = await runLeg(fromRegistry(engineId), leg)
       for (const request of requests) {

@@ -99,11 +99,12 @@
       "$ref": "#/$defs/sha256"
     },
     "engine": {
-      "description": "The engine id a session ran on (Engine.id, the AssistantEngine identifier). Held by the host, never carried on an event. The Desk's two (contract/desk/inventory.json), then deepagents, the adapter this repository adds on LangChain's Deep Agents (docs/adr/0003-the-deep-agents-adapter.md).",
+      "description": "The engine id a session ran on (Engine.id, the AssistantEngine identifier). Held by the host, never carried on an event. The Desk's two (contract/desk/inventory.json), then deepagents, the adapter this repository adds on LangChain's Deep Agents (docs/adr/0003-the-deep-agents-adapter.md), then eino, the Go adapter on Eino's ADK (docs/adr/0004-the-go-adapter.md), which the TypeScript registry does not load.",
       "enum": [
         "vercel",
         "codex",
-        "deepagents"
+        "deepagents",
+        "eino"
       ]
     },
     "criticFigures": {
