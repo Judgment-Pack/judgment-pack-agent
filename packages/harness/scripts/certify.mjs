@@ -10,9 +10,11 @@
 //   `engine <id> · thinking`, `engine <id> · strict alternation` (an endpoint
 //   that refuses a broken turn order, agent#9) and `engine <id> · text tool
 //   calls` (the scenario on an endpoint without native tool calls, agent#4), in
-//   certification/conformance.test.ts;
+//   certification/conformance.test.ts, and the six certified scenarios of
+//   agent#13, `engine <id> · scenarios`, in certification/scenarios.test.ts;
 // - an agent engine: the recorded scenario behind the real tool gate and the
-//   agent-engine checks, `agent engine <id>`, in engines/<id>/<id>.test.ts.
+//   agent-engine checks, `agent engine <id>`, in engines/<id>/<id>.test.ts,
+//   and the same six scenarios, `agent engine <id> · scenarios`.
 //
 // The ids and kinds are the registry's own (engines/index.ts,
 // ENGINE_CAPABILITIES), read here rather than copied. A run in which none of
@@ -58,6 +60,9 @@ function run(args, report) {
   return 1
 }
 
+/** The checks of each certified scenario that passed, by the number their names begin with (agent#13). */
+const scenarioChecks = new Map()
+
 /** The adapter's own checks that passed, by their describe names. */
 function ownChecks(report) {
   let parsed
@@ -68,18 +73,23 @@ function ownChecks(report) {
   }
   const own =
     kind === 'agent'
-      ? (top) => top === `agent engine ${adapter}`
+      ? (top) => top === `agent engine ${adapter}` || top === `agent engine ${adapter} · scenarios`
       : (top) =>
           [
             `engine ${adapter}`,
             `engine ${adapter} · thinking`,
             `engine ${adapter} · strict alternation`,
-            `engine ${adapter} · text tool calls`
+            `engine ${adapter} · text tool calls`,
+            `engine ${adapter} · scenarios`
           ].includes(top)
   let count = 0
   for (const file of parsed.testResults ?? []) {
     for (const test of file.assertionResults ?? []) {
-      if (test.status === 'passed' && own(test.ancestorTitles?.[0] ?? '')) count++
+      const top = test.ancestorTitles?.[0] ?? ''
+      if (test.status !== 'passed' || !own(top)) continue
+      count++
+      const scenario = top.endsWith(' · scenarios') ? /^(\d) · /.exec(test.title ?? '')?.[1] : undefined
+      if (scenario !== undefined) scenarioChecks.set(scenario, (scenarioChecks.get(scenario) ?? 0) + 1)
     }
   }
   return count
@@ -109,6 +119,10 @@ try {
 if (checks === 0) {
   console.error(`certify ${adapter}: no check of the ${kind} engine ${adapter} ran`)
   if (status === 0) status = 1
+}
+if (scenarioChecks.size > 0) {
+  const listed = [...scenarioChecks].sort(([a], [b]) => a.localeCompare(b)).map(([id, count]) => `${id}: ${count}`)
+  console.log(`certify ${adapter}: certified scenarios, checks passed by scenario (${listed.join(', ')})`)
 }
 console.log(
   status === 0

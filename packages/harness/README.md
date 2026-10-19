@@ -407,6 +407,36 @@ of 21 certified legs in four families (plain, text-path, strict-alternation and 
 recall rule finds the request text the run started from; an agent engine (`codex`) the recorded
 scenario behind the real tool gate and the agent-engine checks in `engines/codex/codex.test.ts`.
 
+### The certified scenarios (agent#13)
+
+Six more scripted scenarios run beside the bake-off's, on every adapter, by the same command. Each
+is written by hand in `certification/scenarios/<name>.json` as `scenario.json` is: the model's
+turns are listed in order, and nothing in them was recorded from a model. The model engine runs
+each on the OpenAI-compatible wire, once with each answer shape (a stream, a whole object), through
+the scripted endpoint; the agent engine runs each at its own seam (`AgentRun`), as
+`engines/codex/codex.test.ts` does, the scripted agent calling each tool by the name its offer gave
+it. The suite is `certification/scenarios.test.ts`; its turns and runs are driven by
+`testing/scenarioDriver.ts`. `npm run certify` prints the checks passed by scenario.
+
+| Scenario | Checks | `vercel` (per answer shape) | `codex` |
+| --- | --- | --- | --- |
+| 1 Chat mode with host tools: a read, a proposal, a name never offered | the offer (two host tools beside the Runtime's six and the harness's six); the gate refuses the third name between its call and its result; the proposal reaches the review card and nothing is acted on; the answer is delivered | 4 | 4 |
+| 2 Delegation: a batch of a review and a research child, then a follow-up that resumes the research child | one parent run per response (vercel) or the next run's result and the chat's index (codex); the children's offers closed; a reference resolved within the chat; each result in its profile's shape and valid against the contract; the figures; the resumed child's earlier work | 7 | 7 |
+| 3 Memory: three tool steps | the request text found on every request by the recall rule; the reserve kept with memory on or unsaid; the full allowance with memory off | 4 | 4 |
+| 4 Plan mode | no action tool offered; the Runtime reads offered are the gate's ceiling less the evaluation and the test run; a call to an action tool refused and visible; the plan delivered | 4 | 4 |
+| 5 The correction loop: a draft validate refuses, one correction request, the critic | the first draft fails validate with its diagnostic; one correction request and a passing draft; the request count; the critic's comparison rows for the declared case; no `incomplete` mark | 5 | 5 |
+| 6 A multi-turn transcript: three turns of one chat | no unchanged source read again on turns two and three; the index present and within its bound; the ledger kept across the runs and gone after `dispose()` | 3 | 3 |
+
+The checks the adapters make differently are recorded here, with the reason, and not skipped:
+
+- **1** The agent transport refuses a name outside the agent's offer before the gate sees it (the run ends), so the agent engine is driven at `AgentRun`, where the gate refuses it and the agent's answer is the refusal (agent#25). On the model engine the SDK answers the unoffered call first, with its own no-such-tool error naming the tool, and the model reads that; the stream shows the gate's refusal on both.
+- **2** The agent's run ends at the delegate call, so a response is the call's run, the children's runs and the next run: four runs for a batch of two, three for the resumed child. The agent wire reports no usage and no model request, so a child's record carries no `tokens` and no model requests, and the batch's figures count `agentRuns` instead; its `firstByteMs` and `durationMs` are present.
+- **3** The agent engine sends the Desk's server no model request to recall for: its one request is the run's prompt, which opens with the person's message. The reserve checks are the same on both.
+- **5** The model engine's loop is five model requests (two authoring requests, the critic's three); the agent engine's is three agent runs (author, author, critic).
+- **4** and **6** make the same checks on both. The index is a text part of the first message on the model engine and the end of the prompt on the agent engine.
+
+Not covered by these scenarios: the network seal (the recorded scenario's legs hold it), the other two wires (the recall rule's vectors and the recorded scenario cover them), and a model engine other than `vercel`, which a new adapter adds by registering.
+
 Tests and certification run on `testing/host.ts`, a host that supplies each injection point the way
 the Desk's own test ground does: a session already in hand, a relay addressed by path, no socket.
 

@@ -1,0 +1,120 @@
+{
+  "$comment": "Written by hand. Three turns of one chat. The first reads the Runtime's schema and two host sources. The second and third ask for the schema and the instructions again, which the chat already holds.",
+  "id": "multi-turn",
+  "turns": [
+    {
+      "request": "Write the expense pack.",
+      "model": [
+        {
+          "call": {
+            "tool": "get_schema",
+            "arguments": {
+              "spec_version": "0.2.0-draft"
+            }
+          }
+        },
+        {
+          "call": {
+            "tool": "get_authoring_instructions",
+            "arguments": {}
+          }
+        },
+        {
+          "call": {
+            "tool": "read_pack_tests",
+            "arguments": {
+              "owner": "packs/expense.pack.json"
+            }
+          }
+        },
+        {
+          "say": "I read the schema, the instructions and the saved cases, and drafted the pack."
+        }
+      ]
+    },
+    {
+      "request": "Add a rule for claims above 1000 USD.",
+      "model": [
+        {
+          "call": {
+            "tool": "get_schema",
+            "arguments": {
+              "spec_version": "0.2.0-draft"
+            }
+          }
+        },
+        {
+          "call": {
+            "tool": "get_authoring_instructions",
+            "arguments": {}
+          }
+        },
+        {
+          "say": "I added a rule that sends a claim above 1000 USD to finance."
+        }
+      ]
+    },
+    {
+      "request": "Name the new rule.",
+      "model": [
+        {
+          "call": {
+            "tool": "get_schema",
+            "arguments": {
+              "spec_version": "0.2.0-draft"
+            }
+          }
+        },
+        {
+          "call": {
+            "tool": "get_authoring_instructions",
+            "arguments": {}
+          }
+        },
+        {
+          "say": "The rule is called large-claim."
+        }
+      ]
+    }
+  ],
+  "sources": {
+    "schema": {
+      "$id": "https://example.com/schemas/pack.json",
+      "type": "object",
+      "description": "The pack schema. "
+    },
+    "instructions": "Read the pack schema before you write a pack, and keep every amount a decimal string.",
+    "tests": {
+      "cases": [
+        {
+          "id": "small-claim",
+          "facts": {
+            "claim": {
+              "amount": "40"
+            }
+          },
+          "expected": "approve"
+        }
+      ]
+    }
+  },
+  "hostTools": [
+    {
+      "name": "get_authoring_instructions",
+      "effect": "read",
+      "contextPolicy": {
+        "immutable": true,
+        "reference": true,
+        "runtime": true
+      },
+      "description": "Read the runtime contract before creating or changing a pack.",
+      "result": "Read the pack schema before you write a pack, and keep every amount a decimal string."
+    },
+    {
+      "name": "read_pack_tests",
+      "effect": "read",
+      "description": "Read a pack and its saved cases.",
+      "result": "{\"cases\": [{\"id\": \"small-claim\", \"facts\": {\"claim\": {\"amount\": \"40\"}}, \"expected\": \"approve\"}]}"
+    }
+  ]
+}

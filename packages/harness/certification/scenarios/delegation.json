@@ -1,0 +1,241 @@
+{
+  "$comment": "Written by hand. Two responses of one chat. The first delegates one batch of two children, a review and a research task, and synthesises their findings. The second resumes the research child with a follow-up. Each response lists the parent's turns in order; the children are listed once, by their objectives. A word beginning with $ stands for what the run learns: $reference:N is the ledger id of a child's Nth reference, $task:T the id of the task titled T.",
+  "id": "delegation",
+  "documents": [
+    {
+      "id": "policy",
+      "kind": "artifact",
+      "label": "Expense policy",
+      "value": "Expense policy, section 4. Mileage is paid at the published rate per mile. Tolls are paid with a receipt. Parking is paid up to 20 USD a day."
+    }
+  ],
+  "hostTools": [
+    {
+      "name": "read_policy",
+      "effect": "read",
+      "delegation": "read",
+      "description": "Read one section of the expense policy.",
+      "result": "Section 4, mileage: paid at the published rate per mile."
+    },
+    {
+      "name": "read_rates",
+      "effect": "read",
+      "delegation": "research",
+      "description": "Read the published mileage rate for one year.",
+      "result": "The rate for 2026 is 0.58 per mile. Rates are per mile, not per kilometre."
+    }
+  ],
+  "children": [
+    {
+      "objective": "Review the mileage section of the policy for gaps.",
+      "turns": [
+        {
+          "call": {
+            "tool": "read_window",
+            "arguments": {
+              "id": "$reference:0"
+            }
+          },
+          "usage": {
+            "input": 300,
+            "output": 20
+          }
+        },
+        {
+          "say": "The section pays mileage at a rate it does not state.",
+          "usage": {
+            "input": 380,
+            "output": 40
+          },
+          "report": {
+            "summary": "The mileage section names no rate and no unit.",
+            "findings": [
+              {
+                "text": "The section pays the published rate and does not say what the rate is.",
+                "severity": "gap",
+                "citations": [
+                  "$reference:0"
+                ]
+              },
+              {
+                "text": "The section does not say whether the rate is per mile or per kilometre.",
+                "severity": "gap",
+                "citations": [
+                  "$reference:0"
+                ]
+              }
+            ],
+            "citations": [
+              {
+                "id": "$reference:0",
+                "quote": "Mileage is paid at the published rate per mile."
+              }
+            ],
+            "openQuestions": [],
+            "confidence": "high",
+            "notDone": []
+          }
+        }
+      ]
+    },
+    {
+      "objective": "Find the published mileage rate for 2026.",
+      "turns": [
+        {
+          "call": {
+            "tool": "read_rates",
+            "arguments": {
+              "year": "2026"
+            }
+          },
+          "usage": {
+            "input": 310,
+            "output": 22
+          }
+        },
+        {
+          "say": "The published 2026 rate is 0.58 per mile.",
+          "usage": {
+            "input": 400,
+            "output": 36
+          },
+          "report": {
+            "summary": "The 2026 rate is 0.58 per mile.",
+            "findings": [
+              {
+                "text": "The published rate for 2026 is 0.58 per mile.",
+                "citations": [
+                  "read_rates"
+                ]
+              }
+            ],
+            "citations": [
+              {
+                "id": "read_rates",
+                "quote": "The rate for 2026 is 0.58 per mile."
+              }
+            ],
+            "openQuestions": [],
+            "confidence": "high",
+            "notDone": []
+          }
+        }
+      ]
+    },
+    {
+      "objective": "Is the published rate per mile or per kilometre?",
+      "turns": [
+        {
+          "say": "The rate is per mile, not per kilometre.",
+          "usage": {
+            "input": 520,
+            "output": 30
+          },
+          "report": {
+            "summary": "The rate is per mile.",
+            "findings": [
+              {
+                "text": "The rate source says rates are per mile, not per kilometre.",
+                "citations": [
+                  "read_rates"
+                ]
+              }
+            ],
+            "citations": [
+              {
+                "id": "read_rates",
+                "quote": "Rates are per mile, not per kilometre."
+              }
+            ],
+            "openQuestions": [],
+            "confidence": "high",
+            "notDone": []
+          }
+        }
+      ]
+    }
+  ],
+  "responses": [
+    {
+      "request": "Check the mileage section of the expense policy against the current rate, and tell me what you find.",
+      "parent": [
+        {
+          "call": {
+            "tool": "read_policy",
+            "arguments": {
+              "section": "4"
+            }
+          },
+          "usage": {
+            "input": 410,
+            "output": 18
+          }
+        },
+        {
+          "call": {
+            "tool": "delegate_tasks",
+            "arguments": {
+              "tasks": [
+                {
+                  "title": "Review section 4",
+                  "profile": "review",
+                  "objective": "Review the mileage section of the policy for gaps.",
+                  "references": [
+                    "policy"
+                  ]
+                },
+                {
+                  "title": "Research the rate",
+                  "profile": "research",
+                  "objective": "Find the published mileage rate for 2026."
+                }
+              ]
+            }
+          },
+          "usage": {
+            "input": 520,
+            "output": 96
+          }
+        },
+        {
+          "say": "The policy pays mileage at the published rate and does not name the rate or its unit. The published 2026 rate is 0.58 per mile. The section should state both.",
+          "usage": {
+            "input": 1100,
+            "output": 44
+          }
+        }
+      ]
+    },
+    {
+      "request": "Is that rate per mile or per kilometre?",
+      "parent": [
+        {
+          "call": {
+            "tool": "delegate_tasks",
+            "arguments": {
+              "tasks": [
+                {
+                  "title": "Rate unit",
+                  "profile": "research",
+                  "objective": "Is the published rate per mile or per kilometre?",
+                  "resume": "$task:Research the rate"
+                }
+              ]
+            }
+          },
+          "usage": {
+            "input": 900,
+            "output": 60
+          }
+        },
+        {
+          "say": "The rate source says the rate is per mile, not per kilometre.",
+          "usage": {
+            "input": 700,
+            "output": 20
+          }
+        }
+      ]
+    }
+  ]
+}

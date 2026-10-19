@@ -1,0 +1,33 @@
+{
+  "$comment": "Written by hand, over the recorded runtime's own answers. The first proposal is the bake-off's first draft, which the Runtime's validate refuses. One correction request follows, and its proposal is the second draft, which validate accepts. The critic then checks that draft and the host compares one declared case. The model's turns are listed by the request they answer.",
+  "id": "correction-loop",
+  "case": {
+    "id": "receipted-120",
+    "expectedOutcome": "approve"
+  },
+  "author": [
+    {
+      "proposal": "DRAFT_V1",
+      "say": "Here is a first draft of the expense pack."
+    },
+    {
+      "proposal": "DRAFT_V2",
+      "say": "Here is the corrected draft."
+    }
+  ],
+  "critic": [
+    {
+      "call": {
+        "recorded": "T5"
+      }
+    },
+    {
+      "call": {
+        "recorded": "T6"
+      }
+    },
+    {
+      "say": "No refutation found: the draft validates and the rehearsal agrees."
+    }
+  ]
+}
