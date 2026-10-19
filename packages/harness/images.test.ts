@@ -165,6 +165,18 @@ describe('a model with vision', () => {
     expect(image?.source?.data).toBe(PNG)
   })
 
+  it('is shown it on the text path even where the endpoint keeps a strict turn order: the image rides in the result’s own turn', async () => {
+    const asked = answer('```json\n' + JSON.stringify({ tool: 'screenshot', arguments: {} }) + '\n```')
+    const { call, sent } = scripted([asked, answer(PROPOSAL)])
+    await drain(vercel.start(session(call, { vision: true, nativeToolCalls: false, strictAlternation: true })))
+    const held = messages(sent[1]!)
+    const result = held.findIndex((message) => message.role === 'user' && textOf(message).startsWith('TOOL RESULT from screenshot'))
+    expect(result).toBeGreaterThan(0)
+    expect(partsOf(held[result]!).slice(1)).toEqual([{ type: 'image_url', image_url: { url: dataUrl(PNG) } }])
+    // No user turn follows another.
+    expect(held.every((message, at) => at === 0 || !(message.role === 'user' && held[at - 1]!.role === 'user'))).toBe(true)
+  })
+
   it('is shown it after a result it asked for in text, where the endpoint takes no native tool calls', async () => {
     const asked = answer('```json\n' + JSON.stringify({ tool: 'screenshot', arguments: {} }) + '\n```')
     const { call, sent } = scripted([asked, answer(PROPOSAL)])
@@ -175,6 +187,27 @@ describe('a model with vision', () => {
     expect(result).toBeGreaterThan(0)
     expect(partsOf(held[result]!).slice(1)).toEqual([{ type: 'image_url', image_url: { url: dataUrl(PNG) } }])
     expect(held[result + 1]).toBeUndefined()
+  })
+})
+
+describe('the images one request carries', () => {
+  it('are the newest, up to the policy’s count; an older one is left out with a line saying so', async () => {
+    // Nine calls, each bringing one image: the tenth request may carry eight.
+    const callNumber = (n: number) => streamed({ tool_calls: [{ index: 0, id: 'call_' + n, type: 'function', function: { name: 'screenshot', arguments: JSON.stringify({ n }) } }] }, 'tool_calls')
+    const turns = [...Array.from({ length: 9 }, (_, n) => callNumber(n)), answer(PROPOSAL)]
+    const { call, sent } = scripted(turns)
+    await drain(vercel.start(session(call, { vision: true })))
+    expect(sent).toHaveLength(10)
+    const last = JSON.stringify(sent[9]!.body)
+    expect(last.split(dataUrl(PNG)).length - 1).toBe(8)
+    expect(last).toContain('no longer shown, because this request already carries the newest images up to its bound (8 images, 16777216 bytes)')
+    // The oldest is the one left out: the first image message after call 0 carries the line.
+    const held = messages(sent[9]!)
+    const first = held.findIndex((message) => message.role === 'tool' && message.tool_call_id === 'call_0')
+    expect(JSON.stringify(held[first + 1]!.content)).toContain('no longer shown')
+    expect(JSON.stringify(held[first + 1]!.content)).not.toContain(PNG)
+    // Within the bound every image is carried.
+    expect(JSON.stringify(sent[8]!.body).split(dataUrl(PNG)).length - 1).toBe(8)
   })
 })
 

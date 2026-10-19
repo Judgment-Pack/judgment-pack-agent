@@ -113,7 +113,8 @@ see [The capability record](#the-capability-record)) is offered the same tools i
 name, description and shown schema at the end of the system text, and no tool on the wire. The
 model calls one per answer as one fenced JSON block, `{"tool": name, "arguments": {…}}`, read by
 the proposal fence's own closed reader: one block whose root is exactly `tool` and `arguments`, or
-the call is not made and the model is told why. On the agent wire the `codex` engine
+the call is not made and the model is told why (`tool-call.json#/$defs/textToolCall`; the vector
+`tool-call/text-call.json`). On the agent wire the `codex` engine
 offers each tool under an alias (`desk_runtime_N`, `desk_host_N`) and reports the real name in its
 events.
 
@@ -144,7 +145,9 @@ emits the same `tool_call`, `guardrail` and `tool_result` events. A name the pha
 (the critic is offered fewer host tools than the loop) is put through the gate as the model wrote
 it and reported refused to the model whatever the gate answered, never looked up among the host's
 tools. The result goes back as the next user message, headed `TOOL RESULT from <name>` or `TOOL
-ERROR from <name>`, the bounded answer as JSON.
+ERROR from <name>`, the bounded answer as JSON (`tool-result.json#/$defs/textToolResultMessage`; the
+vector `tool-result/text-result.json`). On the request reserved for a final answer a call made in
+text is refused (`reserved for a final answer`) and never run, as a native one is.
 
 ## Tool results
 
@@ -171,18 +174,29 @@ whose `pages` are strings) by page: arguments `id`, `unit`, `offset` (from 0) an
 a form feed), the units shown, the item's `total` and `more`, the cursor that reads on, or null. A
 host's own readers keep the same shape. Since agent#5 a read by line numbers its lines,
 `<number><tab><line>` counted from 1 (line n is at offset n − 1), and shows 200 lines where the
-model names no limit; an item whose value is an image is read whole, as the image
-(`$defs/imageReadResult`).
+model names no limit; an item whose value is an image is read whole, as the image, a `reference`
+followed to the image the execution retains (`$defs/imageReadResult`). An item meant as an image that
+cannot be shown (a GIF, bytes that are not base64, a member an image part does not carry, a
+reference to nothing retained) is answered with the line a tool result gives in its place, `[image 1
+(…): not shown, because …]`, never an empty window.
 
 `search` (`$defs/searchArguments`, `$defs/searchResult`; agent#5) finds a regular expression in
 retained items, line by line: one item by `id`, every item (`scope` `all`, the default) or the
 documents the host handed the run (`attachments`, `$defs/attachment`). The pattern is the subset
 RE2 accepts (no backreferences, lookaround, Unicode property classes or inline flags; at most 256
-characters), run in time linear in each line with a bound on one search's work. Each match gives
+characters; compiling bounded at 2,000 steps, every node built and every repetition counted, so a
+nested repetition of an empty group is refused at once), run in time linear in each line with a
+bound on one search's work, each line charged the program's size before it is read. Two readings
+differ from ECMAScript's `RegExp` with `u`: `$` also matches just before a line's final carriage
+return (a line of a CRLF text ends in one), and with `ignoreCase` a letter matches every letter its
+case mappings reach, as `iu` does (`σ`, `ς` and `Σ`; `k`, `K` and the Kelvin sign; `s`, `S` and
+`ſ`), literals and classes alike. Each match gives
 the item's `id` and `label`, its `line` (counted from 1), `offset` (the read offset), `column`, the
 `page` of a paged item, and `text`, the line with two either side, numbered. As many matches as fit
 in `readWindowBytes`, at most `limit` (20 by default, 100 at most), and `more`, a cursor bound to
 the same pattern and scope; a search that reaches its work bound stops with a cursor and a `note`.
+An image item is not searched as text; one in scope that cannot be shown is named on the first page
+in `notShown`, with the same line, so none is passed over in silence.
 
 A result's `content` may carry image parts (`$defs/imagePart`: `kind` `image`, a PNG, JPEG or
 WebP `mediaType`, and either `bytes`, base64 up to 16 MiB decoded, or a `reference` to an image the
@@ -190,8 +204,13 @@ execution retains), and so may an attachment's value; MCP's own image item is re
 model is shown depends on its capability record: with `vision`, the image as an image beside its
 result; without, the host's text rendering of it (`renderImageToText`) in its place. The bytes are
 never part of the text the result limit counts. An image that cannot be shown is a line in the
-result saying why; none is dropped in silence. The agent wire carries text, so the `codex` engine
-always gets the rendering.
+result saying why; none is dropped in silence. One model request carries at most `imagesPerRequest`
+images and `imageBytesPerRequest` of their bytes, decoded (8 and 16 MiB by default): the newest,
+and an older image past either bound is a line in that request saying it is no longer shown, its
+result still describing it. An attachment's value is retained in the ledger as its JSON text, base64
+included, against `retainedBytes` (8 MiB), so an attached image holds at most about 6 MiB decoded;
+a larger one fails the run's start with a context-budget error. The agent wire carries text, so the
+`codex` engine always gets the rendering.
 
 A tool that throws is a failed result carrying `{"failure": …}` (or `{"questionFailure": …}` for
 `ask_user`), recoverable working data for the model. So is a runtime or host tool call past the
@@ -291,7 +310,9 @@ so; a proposal already made is delivered, with a note, and the run ends. Continu
 takes a request grant, as any pause does, so a run already at the hundred-request cap cannot be
 continued and needs a new response; the reason says so. Continuing without a grant stays open under
 agent#2. `toolCallMilliseconds` (two minutes): on both engines, a runtime or host tool call past it
-is no longer waited for and is a failed result the model reads, never a failed run.
+is no longer waited for and is a failed result the model reads, never a failed run. It adds two
+image bounds the same way (agent#5): `imagesPerRequest` (8) and `imageBytesPerRequest` (16 MiB), the
+images one model request carries on `vercel`, newest first.
 
 ## The capability record
 
@@ -307,8 +328,11 @@ that speaks the request, where signatures ride, where a cache breakpoint goes):
   wire has a member for it (`parallel_tool_calls` on OpenAI-compatible, `disable_parallel_tool_use`
   on Anthropic).
 - `vision`: whether an image reaches the model as an image or as the host's rendering. An endpoint
-  marked `strictAlternation` off the Anthropic wire gets the rendering either way, since an image
-  there is a user turn after the result.
+  marked `strictAlternation` off the Anthropic wire that takes native tool calls gets the rendering
+  either way, since a native call's image there is a user turn after the result. On the text path
+  the image rides inside the result's own user message, so the turn order holds and a vision model
+  is shown it: `vision && (!nativeToolCalls || strictAlternation !== true || family ===
+  'anthropic')`.
 - `reasoning`: the `kind` the tier is spelled in (`anthropic-thinking`, `gemini-thinking`,
   `openai-effort`, or `none`), which must be one the session's wire speaks, and `ignored`, an
   endpoint that takes the parameter and does nothing with it. With `none` or `ignored` nothing is sent

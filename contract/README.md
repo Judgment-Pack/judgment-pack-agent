@@ -23,8 +23,8 @@ root is not.
 | --- | --- | --- | --- | --- |
 | `run-event.json` | Every event a run emits, 18 kinds discriminated by `type`, in the union's order; the proposal's `note` where something after it did not finish | open | none | `web/src/assistant/engine.ts`, `AssistantEvent` |
 | `tool-offer.json` | The tools offered to a run, as the session's two members: `tools` (runtime tools as served, each named within the ceiling) and `hostTools` (host tools' declarations); the agent-wire alias form; the runtime ceiling and reserved names; `propose_pack`, the proposal as a host tool call | open | `$defs/agentWireTool` | `web/src/assistant/engine.ts`, `McpTool`, `HostTool`; `context/session.ts`, `contextualSession`; `internal/codexbridge/contract.go`, `Tool` |
-| `tool-call.json` | The `tool_call` event; the `tools/call` params the gate inspects; the agent-wire call | open | none | `web/src/assistant/engine.ts`, `AssistantEvent`; `toolGate.ts`, `inspectOutboundFrame`; `agentTransport.ts`, `bindAgentRun` |
-| `tool-result.json` | The `tool_result` event; the MCP result shape, image parts included; the bound, the read-back reference and its envelopes; `read_context` arguments; the reader's arguments and result (`read_window`, and every reading tool's window, its lines numbered); an image item read whole; an attachment; `search`'s arguments and result; the agent-wire answer | open | `$defs/readContextArguments`, `$defs/readArguments`, `$defs/imagePart`, `$defs/searchArguments`, `$defs/agentWireAnswer` | `web/src/assistant/engine.ts`, `McpToolResult`; `context/session.ts`, `SessionContext.result`; `context/ledger.ts`, `ContextLedger.reference`, `ContextLedger.tools`, `ContextDocument`; the reader, the search and images are this repository's, `packages/harness/context/reader.ts`, `context/search.ts`, `context/pattern.ts`, `images.ts` and `context/policy.ts`, `readWindowBytes` (agent#1, agent#5) |
+| `tool-call.json` | The `tool_call` event; the `tools/call` params the gate inspects; the agent-wire call; a call made in text, the JSON inside its fence | open | `$defs/textToolCall` | `web/src/assistant/engine.ts`, `AssistantEvent`; `toolGate.ts`, `inspectOutboundFrame`; `agentTransport.ts`, `bindAgentRun` |
+| `tool-result.json` | The `tool_result` event; the MCP result shape, image parts included; the bound, the read-back reference and its envelopes; `read_context` arguments; the reader's arguments and result (`read_window`, and every reading tool's window, its lines numbered); an image item read whole, or the line saying why it cannot be shown; an attachment; `search`'s arguments and result; the message that carries a text call's result back; the agent-wire answer | open | `$defs/readContextArguments`, `$defs/readArguments`, `$defs/imagePart`, `$defs/searchArguments`, `$defs/agentWireAnswer` | `web/src/assistant/engine.ts`, `McpToolResult`; `context/session.ts`, `SessionContext.result`; `context/ledger.ts`, `ContextLedger.reference`, `ContextLedger.tools`, `ContextDocument`; the reader, the search and images are this repository's, `packages/harness/context/reader.ts`, `context/search.ts`, `context/pattern.ts`, `images.ts` and `context/policy.ts`, `readWindowBytes` (agent#1, agent#5) |
 | `approval.json` | The host's approval state for a chat and the one grant a user decision mints, for one of the server's four actions; the grant request | open | `$defs/request` | `web/src/assistant/approvals/client.ts`, `ActionApproval`, `ActionGrant`; `internal/desk/assistant_approval.go`, `assistantActionGrant`, `assistantApprovalRequest` |
 | `question.json` | One question to the person (`ask_user`); the answer draft; a saved question; the format-failure codes | closed | the root, `$defs/option`, `$defs/draft`, `$defs/saved` | `web/src/assistant/questions.ts`, `readUserQuestion`, `validQuestionDraft`, `readSavedQuestions`; `questionFailure.ts`, `QuestionFailureCode` |
 | `delegated-task.json` | One child task's state; the delegation request; a task profile | open | `$defs/request`, `$defs/taskRequest` | `web/src/assistant/delegationContract.ts`, `DelegatedTask`, `validDelegatedTask`, `readDelegationRequest`, `TaskProfile` |
@@ -67,7 +67,7 @@ files they were rendered from.
   (`agent-wire-offer.json`).
 - `budget/desk-defaults.json` and `budget/desk-limits.json`: the budget table verbatim, and the fixed
   limits by their constant names; `budget/harness-defaults.json`: the policy a harness session works
-  under, the table and the two time bounds.
+  under, the table, the two time bounds and the two image bounds.
 - `proposal/`: the proposal through `propose_pack` (`propose-pack.json`), a proposal whose critic
   failed, delivered with its `note` (`critic-unfinished.json`), a `propose_pack` proposal whose
   closing request failed, delivered with its `note` (`turn-unfinished.json`), and an answer whose
@@ -90,9 +90,15 @@ files they were rendered from.
   `packages/harness/capabilities.test.ts` holds the three to `FAMILY_CAPABILITIES` and runs the
   recorded scenario on the fourth.
 - `tool-result/`: results that carry images (`image-result.json`), `read_window`'s answer for an
-  image item (`image-read.json`), the documents a host hands a run to retain (`attachments.json`),
-  and `search`'s arguments and results (`search-arguments.json`, `search.json`, rendered from the
-  code the tests run, with a fixed ledger scope). This harness's (agent#5).
+  image item and for one it cannot show (`image-read.json`), the documents a host hands a run to
+  retain (`attachments.json`), and `search`'s arguments and results (`search-arguments.json`,
+  `search.json`, rendered from the code the tests run, with a fixed ledger scope, and a search that
+  names an image it cannot show, written by hand). This harness's (agent#5).
+- `tool-call/text-call.json` and `tool-result/text-result.json`: on an endpoint that takes no native
+  tool calls, the calls a model makes in a fenced JSON block, the answers that make them and two
+  that make none, and the messages that carry the results back, headed `TOOL RESULT` or `TOOL
+  ERROR`. Written by hand from the schemas; `engines/vercel/capabilities.test.ts` holds the reader
+  and a run to them. This harness's (agent#4).
 
 Values the Desk generates afresh on every run (UUIDs, timestamps, digests) appear only where the
 recorded data carries them, or, in the harness's own vectors, as rendered with a fixed ledger scope;

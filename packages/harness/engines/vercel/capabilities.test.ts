@@ -8,7 +8,9 @@ import { vercel } from './index'
 import { FAMILY_CAPABILITIES, type ModelCapabilities } from '../../capabilities'
 import { normalize } from '../../thinking'
 import type { EndpointKind, ThinkingTier } from '../../host'
-import { PROPOSE_PACK_SCHEMA, PROPOSE_PACK_TOOL } from '../contract'
+import { PROPOSE_PACK_SCHEMA, PROPOSE_PACK_TOOL, extractToolCall } from '../contract'
+import textCallVector from '../../../../contract/vectors/tool-call/text-call.json'
+import textResultVector from '../../../../contract/vectors/tool-result/text-result.json'
 import type { AssistantEvent, AssistantSession, HostTool, McpTool, McpToolResult, ModelCall } from '../../engine'
 
 const SERVED = {
@@ -220,6 +222,45 @@ describe('whether to offer tools reads the record', () => {
     const events = await drain(vercel.start(session('openai-compatible', call, { nativeToolCalls: false }, { hostTools: [propose] })))
     expect(executed).toBe(0)
     expect(of(events, 'proposal')).toEqual([{ type: 'proposal', document: { id: 'p' }, unknowns: ['who signs'] }])
+  })
+
+  it('refuses a text call on the request reserved for the final answer, however many the model makes', async () => {
+    // The model calls a tool in text on every request, with new arguments each time.
+    const turns = Array.from({ length: 30 }, (_, n) => text(textCall('validate', { pack: { id: `p${n}` } })))
+    const { call, sent } = scripted(turns)
+    let calls = 0
+    const events = await drain(vercel.start(session('openai-compatible', call, { nativeToolCalls: false }, {
+      callTool: async () => { calls += 1; return { content: [{ type: 'text', text: '{"status":"valid"}' }] } }
+    })))
+    const refusals = of(events, 'tool_result').filter((event) => event.text.includes('reserved for a final answer'))
+    expect(refusals).toHaveLength(1)
+    expect(calls).toBeLessThan(sent.length)
+    expect(of(events, 'proposal')).toEqual([])
+    expect(of(events, 'error')).toHaveLength(1)
+  })
+
+  it('reads the calls and writes the result messages the contract’s text-path vectors state', async () => {
+    // The fence: each answer makes its item's call, and each of the others makes none, for the reason given.
+    textCallVector.answers.forEach((answer, index) => expect(extractToolCall(answer)).toEqual({ call: textCallVector.items[index] }))
+    for (const { answer, problem } of textCallVector.notCalls) expect(extractToolCall(answer)).toEqual({ problem })
+    // The messages: a run that makes the vector's validate call, then two calls in one answer, then a call of a tool it was not offered.
+    const { call, sent } = scripted([
+      text(textCallVector.answers[0]!),
+      text(textCallVector.notCalls[0]!.answer),
+      text(textCall('write_file', { path: 'pack.json' })),
+      text(PROPOSAL)
+    ])
+    const events = await drain(vercel.start(session('openai-compatible', call, { nativeToolCalls: false })))
+    expect(of(events, 'proposal')).toHaveLength(1)
+    expect(sent).toHaveLength(4)
+    // As the loop writes each message: where it is the request's last, the state rides as a second text part of it.
+    const carried = (request: Sent) => ((request.body.messages ?? []) as { role: string; content: unknown }[])
+      .filter((message) => message.role === 'user')
+      .map((message) => ({ role: message.role, content: typeof message.content === 'string' ? message.content : (message.content as { type: string; text?: string }[])[0]?.text }))
+      .filter((message) => message.content?.startsWith('TOOL '))
+    expect(carried(sent[3]!)).toEqual(textResultVector.items)
+    // Each went back on the request after the answer it answers.
+    for (const [index, item] of textResultVector.items.entries()) expect(carried(sent[index + 1]!).at(-1)).toEqual(item)
   })
 
   it('tells the model a call it could not read was not made, and goes on', async () => {

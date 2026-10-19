@@ -11,11 +11,11 @@ import searchVector from '../../../contract/vectors/tool-result/search.json'
 import imageReadVector from '../../../contract/vectors/tool-result/image-read.json'
 import attachmentsVector from '../../../contract/vectors/tool-result/attachments.json'
 import { normalize } from '../thinking'
-import { PATTERN_LENGTH, PatternError, compilePattern, firstMatch } from './pattern'
-import { SEARCH_STEPS, SEARCH_TOOL, searchInputSchema, type SearchResult } from './search'
+import { PATTERN_LENGTH, PatternError, compilePattern, firstMatch, folded } from './pattern'
+import { SEARCH_NOT_SHOWN, SEARCH_STEPS, SEARCH_TOOL, searchInputSchema, type SearchResult } from './search'
 import { READ_TOOL, READ_WINDOW_LINES, type ReadResult } from './reader'
 import { SessionContext } from './session'
-import { utf8Bytes } from './policy'
+import { readWindowBytes, utf8Bytes } from './policy'
 import type { AssistantSession, HostTool } from '../engine'
 
 function session(): AssistantSession {
@@ -119,12 +119,39 @@ describe('search', () => {
     await expect(refused(context, { pattern: '(?i)claim' })).rejects.toThrow(/inline flags/)
     await expect(refused(context, { pattern: 'a'.repeat(PATTERN_LENGTH + 1) })).rejects.toThrow(`at most ${PATTERN_LENGTH} characters`)
     await expect(refused(context, { pattern: 'a{1001}' })).rejects.toThrow(/at most 1000/)
-    await expect(refused(context, { pattern: '(abc){999}' })).rejects.toThrow(/instructions/)
+    await expect(refused(context, { pattern: '(abc){999}' })).rejects.toThrow(/steps to compile/)
+    await expect(refused(context, { pattern: '[x]a{0,998}b{0,10}' })).rejects.toThrow(/instructions/)
     await expect(refused(context, { pattern: 'claim', id: 'x', scope: 'all' })).rejects.toThrow(/not both/)
     await expect(refused(context, { pattern: 'claim', regex: true })).rejects.toThrow(/does not take "regex"/)
     await expect(refused(context, { pattern: 'claim', limit: 101 })).rejects.toThrow(/limit from 1 to 100/)
     // At the bound itself, a pattern is taken.
     await expect(refused(context, { pattern: 'a'.repeat(PATTERN_LENGTH) })).resolves.toBeDefined()
+  })
+
+  it('refuses nested repetitions of an empty group in milliseconds, charging every step of compiling', async () => {
+    const context = new SessionContext(session())
+    await context.ledger.retain({ id: 'policy', kind: 'artifact', label: 'The policy', value: POLICY })
+    for (const pattern of ['((((){1000}){1000}){1000}){1000}', '(((){1000}){1000}){1000}', '(?:(?:(?:){1000}){1000}){1000}']) {
+      const started = performance.now()
+      await expect(refused(context, { pattern }), pattern).rejects.toThrow(/steps to compile/)
+      expect(performance.now() - started, pattern).toBeLessThan(50)
+    }
+    // A repetition of nothing collapses to nothing: it compiles to no instruction.
+    expect(compilePattern('(?:){1000}claim').ops.length).toBe(compilePattern('claim').ops.length)
+    expect(compilePattern('a{1000}').ops.length).toBe(1001)
+  })
+
+  it('charges each line its setup, so millions of short lines stop at the bound in a stated time', async () => {
+    const context = new SessionContext(session())
+    const entry = await context.ledger.retain({ id: 'empty', kind: 'tool', label: 'Three million empty lines', value: '\n'.repeat(2_999_999) })
+    // 1,998 instructions, and no literal a line must contain.
+    const started = performance.now()
+    const stopped = await search(context, { pattern: '[x]a{0,998}', id: entry.id })
+    const elapsed = performance.now() - started
+    expect(stopped.note).toContain('work bound')
+    // Charged the program's size per line, a search reads a few thousand of them, not millions.
+    expect(Number(stopped.more!.split(':')[1])).toBeLessThan(10_000)
+    expect(elapsed).toBeLessThan(3000)
   })
 
   it('passes over an image, and stops at its work bound with a cursor rather than stopping the page', async () => {
@@ -154,6 +181,8 @@ describe('search', () => {
   it('takes exactly the arguments the contract states', () => {
     const { description, ...schema } = toolResult.$defs.searchArguments
     expect(description).toContain('exactly the input schema')
+    expect(description).toContain('just before a line’s final carriage return')
+    expect(tool(new SessionContext(session()), SEARCH_TOOL).description).toContain('just before a line’s final carriage return')
     expect(schema).toEqual(searchInputSchema())
   })
 
@@ -165,11 +194,17 @@ describe('search', () => {
     expect([
       (await tool(context, SEARCH_TOOL).execute({ pattern: '\\b\\d+ USD\\b', limit: 3 }, signal)).structuredContent,
       (await tool(context, SEARCH_TOOL).execute({ pattern: 'usd', ignoreCase: true, scope: 'attachments' }, signal)).structuredContent
-    ]).toEqual(searchVector.items)
+    ]).toEqual(searchVector.items.slice(0, 2))
     const image = attachmentsVector.items[2]!
     await context.ledger.retain({ ...image, kind: 'artifact', id: 'receipt-scan', label: 'A scanned receipt' })
     const entry = context.ledger.list().items.find((item) => item.label === 'A scanned receipt' && item.contextId.endsWith(imageReadVector.items[0]!.id.slice(-16)))!
     expect((await tool(context, READ_TOOL).execute({ id: entry.contextId }, signal)).structuredContent).toEqual(imageReadVector.items[0])
+    // The hand-written items: a GIF read, and a search that names it.
+    const gif = await context.ledger.retain({ id: 'receipt-gif', kind: 'artifact', label: 'A receipt sent as a GIF', value: { kind: 'image', mediaType: 'image/gif', bytes: 'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7' } })
+    const read = await tool(context, READ_TOOL).execute({ id: gif.id }, signal)
+    expect(read.structuredContent).toEqual(imageReadVector.items[1])
+    expect(read.content).toEqual([{ type: 'text', text: imageReadVector.items[1]!.notShown }])
+    expect((await tool(context, SEARCH_TOOL).execute({ pattern: 'Hotel' }, signal)).structuredContent).toEqual(searchVector.items[2])
   })
 
   it('is declared to the model exactly as the contract’s host-tool vector states it', () => {
@@ -200,34 +235,96 @@ describe('the pattern', () => {
     let seed = 20261018
     const next = (n: number) => { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; return (seed >>> 8) % n }
     const pick = <T,>(items: readonly T[]) => items[next(items.length)]!
-    const ATOMS = ['a', 'b', 'c', '.', '[ab]', '[^a]', '[a-c1]', '\\d', '\\w', '\\W', '\\s', '\\b', '\\B', '^', '$', ' ', '1']
+    // Case-fold specials (σ ς Σ, k and the Kelvin sign, s and ſ, ı and I), a
+    // carriage return, and astral characters, one of them cased (Deseret).
+    const SPECIALS = ['σ', 'ς', 'Σ', 'k', '\u212a', 's', 'ſ', 'ı', 'I', 'İ', '\u{10400}', '\u{10428}', '😀']
+    const ATOMS = ['a', 'b', 'c', '.', '[ab]', '[^a]', '[a-c1]', '[σk]', '[^ſ]', '\\d', '\\w', '\\W', '\\s', '\\b', '\\B', '^', '$', ' ', '1', '\\r', ...SPECIALS]
     const QUANTIFIERS = ['', '', '', '*', '+', '?', '{1,2}', '{2}', '*?', '+?', '{0,1}']
-    const pattern = (depth: number): string => {
+    // The pattern, and the browser's reading of it: its $ written as the
+    // search's own, which also matches just before a final carriage return.
+    const pattern = (depth: number): [string, string] => {
       let out = ''
+      let reference = ''
       for (let count = 1 + next(3); count > 0; count--) {
-        const atom = depth < 2 && next(4) === 0 ? `(${next(2) ? '?:' : ''}${pattern(depth + 1)}${next(2) ? '|' + pattern(depth + 1) : ''})` : pick(ATOMS)
-        out += atom + pick(QUANTIFIERS)
+        let atom: [string, string]
+        if (depth < 2 && next(4) === 0) {
+          const [left, leftReference] = pattern(depth + 1)
+          const alternative = next(2) ? pattern(depth + 1) : null
+          const head = next(2) ? '?:' : ''
+          atom = [`(${head}${left}${alternative ? '|' + alternative[0] : ''})`, `(${head}${leftReference}${alternative ? '|' + alternative[1] : ''})`]
+        } else {
+          const picked = pick(ATOMS)
+          atom = [picked, picked === '$' ? '(?=\\r?$)' : picked]
+        }
+        const quantifier = pick(QUANTIFIERS)
+        out += atom[0] + quantifier
+        reference += atom[1] + quantifier
       }
-      return out
+      return [out, reference]
     }
-    const LINES = Array.from({ length: 24 }, () => Array.from({ length: next(12) }, () => pick(['a', 'b', 'c', ' ', '1', '_', 'é'])).join(''))
+    const LINES = Array.from({ length: 24 }, () => Array.from({ length: next(12) }, () => pick(['a', 'b', 'c', ' ', '1', '_', 'é', '\r', ...SPECIALS])).join(''))
     let compared = 0
     for (let round = 0; round < 2000; round++) {
-      const source = pattern(0)
+      const [source, reference] = pattern(0)
       const ignoreCase = next(2) === 0
       let native: RegExp | null = null
-      try { native = new RegExp(source, ignoreCase ? 'iu' : 'u') } catch { native = null }
+      try { native = new RegExp(reference, ignoreCase ? 'iu' : 'u') } catch { native = null }
       if (native === null) {
         expect(() => compilePattern(source, ignoreCase), `${source} is refused by both`).toThrow()
         continue
       }
       const compiled = compilePattern(source, ignoreCase)
       for (const line of LINES) {
-        expect(firstMatch(compiled, line, { steps: SEARCH_STEPS }), `${source}${ignoreCase ? ' (i)' : ''} on ${JSON.stringify(line)}`).toBe(line.search(native))
+        const expected = line.search(native)
+        // V8 tries an assertion between the two halves of a surrogate pair under u; a match there is its, not the spec's.
+        if (expected > 0 && /[\uDC00-\uDFFF]/.test(line[expected]!) && /[\uD800-\uDBFF]/.test(line[expected - 1]!)) continue
+        expect(firstMatch(compiled, line, { steps: SEARCH_STEPS }), `${source}${ignoreCase ? ' (i)' : ''} on ${JSON.stringify(line)}`).toBe(expected)
         compared += 1
       }
     }
     expect(compared).toBeGreaterThan(20_000)
+  })
+
+  it('folds case through the closure of the case mappings, literals and classes alike, as the browser’s iu does', () => {
+    const matches = (pattern: string, line: string) => firstMatch(compilePattern(pattern, true), line, { steps: SEARCH_STEPS }) === 0
+    const cases: [string, string][] = [['σ', 'ς'], ['ς', 'Σ'], ['Σ', 'σ'], ['k', '\u212a'], ['\u212a', 'K'], ['s', 'ſ'], ['ſ', 'S'], ['ı', 'I'], ['ı', 'i'], ['İ', 'i'], ['I', 'i'], ['ß', 'ẞ'], ['µ', 'μ']]
+    for (const [letter, other] of cases) {
+      const browser = new RegExp(`^${letter}$`, 'iu').test(other)
+      expect(matches(letter, other), `${letter} and ${other}`).toBe(browser)
+      expect(matches(`[${letter}]`, other), `[${letter}] and ${other}`).toBe(browser)
+      expect(matches(`[^${letter}]`, other), `[^${letter}] and ${other}`).toBe(!browser)
+    }
+    // ı, dotless, has no simple case folding: literal and class alike match only itself.
+    expect([matches('ı', 'I'), matches('[ı]', 'I'), matches('ı', 'ı'), matches('[ı]', 'ı')]).toEqual([false, false, true, true])
+    // \w folds too: ſ and the Kelvin sign are word characters under ignoreCase, and \b reads them so.
+    expect(matches('\\w', 'ſ')).toBe(/^\w$/iu.test('ſ'))
+    expect(firstMatch(compilePattern('\\bk', true), 'a\u212a', { steps: SEARCH_STEPS })).toBe('a\u212a'.search(/\bk/iu))
+  })
+
+  it('agrees with the browser’s iu on the case class of every cased code point', () => {
+    const disagreements: string[] = []
+    const letters = new Set<number>()
+    for (let code = 0; code <= 0x1ffff; code++) {
+      if (code >= 0xd800 && code <= 0xdfff) continue
+      const text = String.fromCodePoint(code)
+      if (text.toLowerCase() !== text || text.toUpperCase() !== text || folded(code).length > 1) letters.add(code)
+    }
+    for (const code of letters) {
+      const browser = new RegExp(`^\\u{${code.toString(16)}}$`, 'iu')
+      const text = String.fromCodePoint(code)
+      const candidates = new Set<number>([...folded(code), ...[text.toLowerCase(), text.toUpperCase()].filter((mapped) => [...mapped].length === 1).map((mapped) => mapped.codePointAt(0)!)])
+      for (const other of candidates) {
+        if (browser.test(String.fromCodePoint(other)) !== folded(code).includes(other)) disagreements.push(`U+${code.toString(16)} U+${other.toString(16)}`)
+      }
+    }
+    expect(letters.size).toBeGreaterThan(2000)
+    expect(disagreements).toEqual([])
+  })
+
+  it('matches $ also just before a line’s final carriage return, as its description says', () => {
+    expect(firstMatch(compilePattern('end$'), 'the end\r', { steps: SEARCH_STEPS })).toBe(4)
+    expect(firstMatch(compilePattern('end$'), 'the end\rmore', { steps: SEARCH_STEPS })).toBe(-1)
+    expect(searchInputSchema()).toBeDefined()
   })
 
   it('runs in time linear in the line on the patterns that make a backtracking engine exponential or cubic', () => {
@@ -284,5 +381,50 @@ describe('read, by line', () => {
     expect(context.ledger.image('scan')).toEqual({ kind: 'image', mediaType: 'image/png', bytes: 'QUJD' })
     expect(context.ledger.image(entry.id)).toEqual({ kind: 'image', mediaType: 'image/png', bytes: 'QUJD' })
     expect(context.ledger.image('elsewhere')).toBeNull()
+  })
+
+  it('reads an image it cannot show as the line that says why, never as an empty item, and search reports it the same way', async () => {
+    const context = new SessionContext(session())
+    await context.ledger.retain({ id: 'scan', kind: 'artifact', label: 'A scan', value: { kind: 'image', mediaType: 'image/png', bytes: 'QUJD' } })
+    const cases: [string, unknown, RegExp][] = [
+      ['gif', { kind: 'image', mediaType: 'image/gif', bytes: 'QUJD' }, /^\[image 1 \(image\/gif\): not shown, because an image must be image\/png, image\/jpeg, image\/webp\]$/],
+      ['malformed', { kind: 'image', mediaType: 'image/png', bytes: 'not base64!' }, /^\[image 1 \(image\/png\): not shown, because an image’s bytes are base64\]$/],
+      ['extra', { kind: 'image', mediaType: 'image/png', bytes: 'QUJD', caption: 'x' }, /^\[image 1: not shown, because an image part does not carry "caption"\]$/],
+      ['unresolved', { kind: 'image', mediaType: 'image/png', reference: 'gone' }, /^\[image 1 \(image\/png\): not shown, because "gone" names no image this execution retains\]$/]
+    ]
+    const ids: string[] = []
+    for (const [id, value, line] of cases) {
+      const entry = await context.ledger.retain({ id, kind: 'artifact', label: `An attachment, ${id}`, value })
+      ids.push(entry.id)
+      const answered = await tool(context, READ_TOOL).execute({ id: entry.id }, signal)
+      expect(answered.content).toHaveLength(1)
+      expect(answered.content![0]!.text, id).toMatch(line)
+      expect(answered.structuredContent).toMatchObject({ type: 'image', id: entry.id, notShown: answered.content![0]!.text })
+    }
+    // A reference that resolves is the image it names, whole.
+    const pointing = await context.ledger.retain({ id: 'pointing', kind: 'artifact', label: 'The scan again', value: { kind: 'image', mediaType: 'image/png', reference: 'scan' } })
+    const resolved = await tool(context, READ_TOOL).execute({ id: pointing.id }, signal)
+    expect(resolved.structuredContent).toEqual({ type: 'image', id: pointing.id, label: 'The scan again', mediaType: 'image/png', bytes: 3 })
+    expect(resolved.content![1]).toEqual({ kind: 'image', mediaType: 'image/png', bytes: 'QUJD' })
+    // search names each one it cannot show, with the same line; the images it can show are images, not text.
+    const found = await search(context, { pattern: 'anything' })
+    expect(found.notShown!.map((item) => item.id)).toEqual(ids)
+    for (const [index, [id, , line]] of cases.entries()) expect(found.notShown![index]!.text, id).toMatch(line)
+  })
+
+  it('names at most twenty images it cannot show, in a quarter of the window, on the first page only', async () => {
+    const context = new SessionContext(session())
+    await context.ledger.retain({ id: 'policy', kind: 'artifact', label: 'The policy', value: POLICY })
+    for (let n = 0; n < 40; n++) {
+      await context.ledger.retain({ id: `gone-${n}`, kind: 'artifact', label: `Attachment ${n}`, value: { kind: 'image', mediaType: 'image/png', reference: `r${n}-`.padEnd(400, 'x') } })
+    }
+    const first = await search(context, { pattern: 'USD', limit: 1 })
+    expect(first.notShown!.length).toBeGreaterThan(0)
+    expect(first.notShown!.length).toBeLessThanOrEqual(SEARCH_NOT_SHOWN)
+    expect(utf8Bytes(JSON.stringify(first.notShown))).toBeLessThanOrEqual(readWindowBytes(context.policy) / 4)
+    expect(first.matches).toHaveLength(1)
+    const next = await search(context, { pattern: 'USD', limit: 1, cursor: first.more })
+    expect(next.notShown).toBeUndefined()
+    expect(next.matches).toHaveLength(1)
   })
 })

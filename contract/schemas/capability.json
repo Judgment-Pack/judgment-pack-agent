@@ -25,7 +25,7 @@
       "minimum": 1024
     },
     "nativeToolCalls": {
-      "description": "The endpoint takes the wire's own tool calls. False: no tool is sent; the tools are described at the end of the system text (name, description, the schema the model is shown), and the model calls one per answer as one fenced JSON block shaped {\"tool\": name, \"arguments\": {…}}, read with the proposal fence's closed reader (extractToolCall), run through the same dispatch and gate as a native call (a name the phase did not offer is refused, never looked up) and answered in the next user message, headed TOOL RESULT from <name> or TOOL ERROR from <name>.",
+      "description": "The endpoint takes the wire's own tool calls. False: no tool is sent; the tools are described at the end of the system text (name, description, the schema the model is shown), and the model calls one per answer as one fenced JSON block shaped {\"tool\": name, \"arguments\": {…}} (tool-call.json#/$defs/textToolCall), read with the proposal fence's closed reader (extractToolCall), run through the same dispatch and gate as a native call (a name the phase did not offer is refused, never looked up) and answered in the next user message, headed TOOL RESULT from <name> or TOOL ERROR from <name> (tool-result.json#/$defs/textToolResultMessage).",
       "type": "boolean"
     },
     "parallelToolCalls": {
@@ -33,7 +33,7 @@
       "type": "boolean"
     },
     "vision": {
-      "description": "The model is shown images. True: an image part in a tool result reaches it as an image, beside its result (tool-result.json#/$defs/imagePart). False: the host's text rendering of it (renderImageToText) takes its place in the result. An endpoint marked strictAlternation off the anthropic wire is shown the rendering either way: an image is a user turn after the result there.",
+      "description": "The model is shown images. True: an image part in a tool result reaches it as an image, beside its result (tool-result.json#/$defs/imagePart). False: the host's text rendering of it (renderImageToText) takes its place in the result. An endpoint marked strictAlternation off the anthropic wire that takes native tool calls is shown the rendering either way: a native call's image is a user turn after its result there. On the text path (nativeToolCalls false) the image rides inside the result's own user message (tool-result.json#/$defs/textToolResultMessage), so the turn order holds and a vision model is shown it: vision && (!nativeToolCalls || strictAlternation !== true || family === anthropic).",
       "type": "boolean"
     },
     "reasoning": {

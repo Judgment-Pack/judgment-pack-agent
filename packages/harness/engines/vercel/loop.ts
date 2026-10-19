@@ -90,7 +90,7 @@ import {
   twoProposals,
   type Proposal
 } from '../contract'
-import { separateImages, type HeldImage, type ImageRouting } from '../../images'
+import { decodedBytes, separateImages, type HeldImage, type ImageRouting } from '../../images'
 import type { ModelCapabilities, StreamingQuirks } from '../../capabilities'
 import { openThinking } from '../../thinking'
 import { capabilitiesFor } from '../../capabilities'
@@ -647,10 +647,12 @@ function runVercelLoop(
    * still carries it: by the SDK's call id, or by the text call's result message.
    */
   const routing: ImageRouting = {
-    // An image follows its result as a user turn, which an endpoint that keeps a
-    // strict turn order refuses; except on Anthropic, where it joins the result's
-    // own turn. Such an endpoint is shown the rendering instead.
-    vision: capabilities.vision && (capabilities.strictAlternation !== true || session.model.family === 'anthropic'),
+    // A native call's image follows its result as a user turn, which an endpoint
+    // that keeps a strict turn order refuses; except on Anthropic, where it joins
+    // the result's own turn. Such an endpoint is shown the rendering instead. On
+    // the text path the image rides inside the result's own user turn, so the
+    // turn order holds and the image is shown.
+    vision: capabilities.vision && (!nativeTools || capabilities.strictAlternation !== true || session.model.family === 'anthropic'),
     resolve: (reference) => context.ledger.image(reference),
     signal: executionSignal
   }
@@ -674,7 +676,7 @@ function runVercelLoop(
    * result message, as parts after its text, so no endpoint sees two user turns.
    */
   const withImages = (messages: ModelMessage[]): ModelMessage[] =>
-    messages.flatMap((message) => {
+    capImages(messages.flatMap((message) => {
       const inside = imagesWith.get(message)
       if (inside !== undefined && typeof message.content === 'string') {
         const carried: ModelMessage = { role: 'user', content: [{ type: 'text', text: message.content }, ...imageParts(inside)] }
@@ -690,7 +692,42 @@ function runVercelLoop(
         }
       }
       return [message, ...after]
-    })
+    }))
+  /**
+   * One request's images held to the policy (agent#5): the newest first, up to
+   * `imagesPerRequest` and `imageBytesPerRequest` decoded; an older one past
+   * either bound is left out with a line saying so, so a run of large images
+   * cannot push every later request past what a provider takes.
+   */
+  const capImages = (messages: ModelMessage[]): ModelMessage[] => {
+    let count = 0
+    let bytes = 0
+    const out = [...messages]
+    for (let at = out.length - 1; at >= 0; at -= 1) {
+      const message = out[at]!
+      if (!imaged.has(message) || !Array.isArray(message.content)) continue
+      let changed = false
+      const parts = [...(message.content as { type: string; image?: unknown; mediaType?: string }[])].reverse().map((part) => {
+        if (part.type !== 'image') return part
+        const size = decodedBytes(String(part.image))
+        if (count < context.policy.imagesPerRequest && bytes + size <= context.policy.imageBytesPerRequest) {
+          count += 1
+          bytes += size
+          return part
+        }
+        changed = true
+        return {
+          type: 'text',
+          text: `[an image (${part.mediaType}, ${size} bytes): no longer shown, because this request already carries the newest images up to its bound (${context.policy.imagesPerRequest} images, ${context.policy.imageBytesPerRequest} bytes); the result that brought it still describes it]`
+        }
+      }).reverse()
+      if (!changed) continue
+      const copy = { ...message, content: parts } as ModelMessage
+      imaged.set(copy, imaged.get(message)!)
+      out[at] = copy
+    }
+    return out
+  }
   /** The history as it was before `withImages`. */
   const withoutImages = (messages: ModelMessage[]): ModelMessage[] =>
     messages.flatMap((message) => (imaged.has(message) ? (imaged.get(message) === null ? [] : [imaged.get(message)!]) : [message]))

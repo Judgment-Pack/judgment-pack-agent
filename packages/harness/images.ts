@@ -91,6 +91,31 @@ export function readImagePart(value: unknown): { image: ImagePart } | { problem:
   return { image: { kind: 'image', mediaType: mediaType as ImageMediaType, bytes: part.bytes } }
 }
 
+/** The line an image that cannot be shown leaves in its place, wherever it is read. */
+export function notShownLine(number: number, reason: string, mediaType?: string): string {
+  return `[image ${number}${mediaType ? ` (${mediaType})` : ''}: not shown, because ${reason}]`
+}
+
+/**
+ * A value meant as an image, resolved: its bytes in hand (a reference followed
+ * to the image the execution retains), or the line saying why it cannot be
+ * shown; null where the value is not meant as an image. One reading for a tool
+ * result's image, an attachment read whole and an item a search passes.
+ */
+export function resolveImage(
+  value: unknown,
+  resolve: (reference: string) => HeldImage | null,
+  number = 1
+): { image: HeldImage } | { line: string } | null {
+  const read = readImagePart(value)
+  if (read === null) return null
+  if ('problem' in read) return { line: notShownLine(number, read.problem, read.mediaType) }
+  if (read.image.bytes !== undefined) return { image: read.image as HeldImage }
+  const held = resolve(read.image.reference!)
+  if (held !== null) return { image: held }
+  return { line: notShownLine(number, `${JSON.stringify(read.image.reference)} names no image this execution retains`, read.image.mediaType) }
+}
+
 /** How a run shows images: the model's `vision` flag, and the retained images a reference may name. */
 export interface ImageRouting {
   vision: boolean
@@ -118,16 +143,16 @@ export async function separateImages(result: McpToolResult, routing: ImageRoutin
       continue
     }
     number += 1
-    parts.push({ type: 'text', text: await imageLine(number, held, routing, images) })
+    parts.push({ type: 'text', text: await imageLine(number, item, routing, images) })
   }
   return { result: { ...result, content: parts }, images }
 }
 
-async function imageLine(number: number, held: { image: ImagePart } | { problem: string; mediaType?: string }, routing: ImageRouting, images: HeldImage[]): Promise<string> {
-  if ('problem' in held) return `[image ${number}${held.mediaType ? ` (${held.mediaType})` : ''}: not shown, because ${held.problem}]`
-  const part = held.image
-  const image = part.bytes !== undefined ? (part as HeldImage) : routing.resolve(part.reference!)
-  if (image === null) return `[image ${number} (${part.mediaType}): not shown, because ${JSON.stringify(part.reference)} names no image this execution retains]`
+async function imageLine(number: number, value: unknown, routing: ImageRouting, images: HeldImage[]): Promise<string> {
+  const held = resolveImage(value, routing.resolve, number)
+  if (held === null) return notShownLine(number, 'it is not an image part')
+  if ('line' in held) return held.line
+  const image = held.image
   const size = `${image.mediaType}, ${decodedBytes(image.bytes)} bytes`
   if (routing.vision) {
     images.push(image)
@@ -139,6 +164,6 @@ async function imageLine(number: number, held: { image: ImagePart } | { problem:
     return `[image ${number} (${size}): this model is not shown images; the host's text rendering of it follows]\n${text}`
   } catch (cause) {
     if (routing.signal.aborted) throw cause
-    return `[image ${number} (${size}): not shown, because this model is not shown images and the host could not render it as text (${String((cause as Error)?.message ?? cause).slice(0, 200)})]`
+    return notShownLine(number, `this model is not shown images and the host could not render it as text (${String((cause as Error)?.message ?? cause).slice(0, 200)})`, size)
   }
 }

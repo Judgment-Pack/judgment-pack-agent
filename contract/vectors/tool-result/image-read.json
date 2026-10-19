@@ -1,5 +1,5 @@
 {
-  "description": "What read_window answers, as structuredContent, for an item whose value is an image part (agent#5): the image's id, label, media type and decoded size; the image itself rides beside it in the content.",
+  "description": "What read_window answers, as structuredContent, for an item whose value is meant as an image (agent#5): an image it can show, with its id, label, media type and decoded size, the image itself riding beside it in the content; and an image it cannot show (a GIF), with the line that says why in place of a window, the result's only text part.",
   "schema": "tool-result.json#/$defs/imageReadResult",
   "source": {
     "desk": {
@@ -18,6 +18,12 @@
       "label": "A scanned receipt",
       "mediaType": "image/png",
       "bytes": 70
+    },
+    {
+      "type": "image",
+      "id": "7b3e1c52-0d6f-4a8e-9c21-5f4d2a6b8e90:receipt-gif:2abc694da1ff73a5",
+      "label": "A receipt sent as a GIF",
+      "notShown": "[image 1 (image/gif): not shown, because an image must be image/png, image/jpeg, image/webp]"
     }
   ]
 }

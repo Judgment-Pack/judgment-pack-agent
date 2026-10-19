@@ -131,7 +131,11 @@ in one result, at most `limit`, with a `more` cursor. The pattern is the subset 
 (backreferences, lookaround, Unicode property classes and inline flags refused; at most 256
 characters), compiled to a small program and run as a Pike VM (`context/pattern.ts`): every position
 of a line is read once, so no pattern backtracks, and one search's work is bounded, stopping with a
-cursor rather than holding the page.
+cursor rather than holding the page. Compiling is bounded too (every node built and every repetition
+counted), and each line is charged the program's size, so millions of short lines stop at the bound
+as one long line does. `$` also matches just before a line's final carriage return, and
+`ignoreCase` folds a letter through every case mapping it reaches, as `RegExp`'s `iu` does. An image
+item is not searched; one that cannot be shown is named in the result's `notShown`.
 
 **Images** (`images.ts`, agent#5). A tool result's `content` may carry an image part, `{ kind:
 'image', mediaType, bytes }` (base64, PNG, JPEG or WebP, at most 16 MiB) or `{ kind: 'image',
@@ -141,7 +145,13 @@ record says `vision` is shown it as an image beside its result; any other is sho
 rendering (`renderImageToText`) in its place. An image is never dropped in silence: one that cannot
 be shown is a line in the result saying why. Its bytes are never part of the text the result limit
 counts, so a result with an image stays within `toolResultBytes`. `read_window` reads an image item
-whole, as the image. The `codex` engine's agent wire carries text, so it always gets the rendering.
+whole, as the image (a reference followed to the image it names), or answers the line saying why it
+cannot be shown. One request carries at most `imagesPerRequest` images and `imageBytesPerRequest`
+bytes of them (8 and 16 MiB by default; `context/policy.ts`, `IMAGE_DEFAULTS`), the newest; an older
+one is a line saying it is no longer shown. An endpoint that keeps a strict turn order off Anthropic
+is shown the rendering where it takes native tool calls, and the image on the text path, where the
+image rides in the result's own message. The `codex` engine's agent wire carries text, so it always
+gets the rendering.
 
 ### The capability record
 

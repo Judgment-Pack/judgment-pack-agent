@@ -5,10 +5,16 @@ import defaults from '../contract/policy.json'
  * carries neither at the pinned commit; a table that does wins over these.
  */
 export const TIME_DEFAULTS = Object.freeze({turnMilliseconds:15*60_000,toolCallMilliseconds:120_000})
-export type ContextPolicy = typeof defaults & {turnMilliseconds:number;toolCallMilliseconds:number}
+/**
+ * How many images, and how many of their bytes decoded, one model request may carry (agent#5): the
+ * newest are shown, and an older one past either bound is left out with a line saying so. Not in
+ * the Desk's table; a table that carries them wins. Sixteen MiB is one image at its own bound.
+ */
+export const IMAGE_DEFAULTS = Object.freeze({imagesPerRequest:8,imageBytesPerRequest:16*1024*1024})
+export type ContextPolicy = typeof defaults & {turnMilliseconds:number;toolCallMilliseconds:number;imagesPerRequest:number;imageBytesPerRequest:number}
 export interface ModelContextBudget {contextWindowTokens:number;outputTokens:number}
 export interface ContextConfiguration {version:1;projectBrief?:string;models?:Record<string,ModelContextBudget>}
-export const CONTEXT_DEFAULTS:Readonly<ContextPolicy> = Object.freeze({...TIME_DEFAULTS,...defaults})
+export const CONTEXT_DEFAULTS:Readonly<ContextPolicy> = Object.freeze({...TIME_DEFAULTS,...IMAGE_DEFAULTS,...defaults})
 export function contextConfiguration(value:unknown):ContextConfiguration {
  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid assistant context configuration')
  const c=value as Record<string,unknown>

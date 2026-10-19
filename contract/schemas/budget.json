@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/budget.json",
   "title": "Budget",
-  "description": "The context budget one run works under: the provider-independent byte and token limits both the browser and the Desk server read from one table (internal/aicontext/policy.json, ContextPolicy in web/src/assistant/context/policy.ts, aicontext.Policy in Go). The model's context window and output reserve may be overridden per model by the assistant profile (configuration); everything else is fixed. Input bytes for one request are min(maxInputBytes, max(1024, (contextWindowTokens - outputTokens) * 3)); the browser further leaves briefBytes and memoryBytes for what the server adds behind the adapter, and the server refuses before dispatch, never clipping, a request over the input bytes (context-limit, not-started). Open: the Go reader ignores a member it does not name. The request allowance, the grants and the fixed limits are in $defs. The harness adds two time bounds the Desk's table does not carry (packages/harness/context/policy.ts, TIME_DEFAULTS), each taken from the table where it does: turnMilliseconds and toolCallMilliseconds.",
+  "description": "The context budget one run works under: the provider-independent byte and token limits both the browser and the Desk server read from one table (internal/aicontext/policy.json, ContextPolicy in web/src/assistant/context/policy.ts, aicontext.Policy in Go). The model's context window and output reserve may be overridden per model by the assistant profile (configuration); everything else is fixed. Input bytes for one request are min(maxInputBytes, max(1024, (contextWindowTokens - outputTokens) * 3)); the browser further leaves briefBytes and memoryBytes for what the server adds behind the adapter, and the server refuses before dispatch, never clipping, a request over the input bytes (context-limit, not-started). Open: the Go reader ignores a member it does not name. The request allowance, the grants and the fixed limits are in $defs. The harness adds two time bounds the Desk's table does not carry (packages/harness/context/policy.ts, TIME_DEFAULTS), each taken from the table where it does: turnMilliseconds and toolCallMilliseconds. It adds two image bounds the same way (IMAGE_DEFAULTS): imagesPerRequest and imageBytesPerRequest.",
   "type": "object",
   "required": [
     "version",
@@ -83,6 +83,18 @@
       "type": "integer",
       "minimum": 1,
       "default": 120000
+    },
+    "imagesPerRequest": {
+      "description": "The most images one model request carries, on the vercel engine (agent#5): the newest; an older image past it is replaced in that request by a line saying it is no longer shown, and the result that brought it still describes it. The codex engine's agent wire carries text and shows none. Not in the Desk's table; the harness's default is 8.",
+      "type": "integer",
+      "minimum": 0,
+      "default": 8
+    },
+    "imageBytesPerRequest": {
+      "description": "The most bytes, decoded, of the images one model request carries, counted from the newest with imagesPerRequest; an older image that would pass it is replaced by the same line. Not in the Desk's table; the harness's default is 16777216 (16 MiB, one image at its own bound).",
+      "type": "integer",
+      "minimum": 0,
+      "default": 16777216
     }
   },
   "additionalProperties": true,
