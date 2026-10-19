@@ -1,0 +1,37 @@
+{
+  "description": "The final answer's marked json fence is not valid JSON, and the one reformat request returns the same: the whole first answer, prose and raw fence, is delivered as a message, then the failure, classed invalid-response with its host-authored detail. vercel engine.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/engines/contract.ts (extractProposal, wholeAnswer, reformatRequest)",
+      "packages/harness/engines/vercel/loop.ts (keepUnread)"
+    ]
+  },
+  "items": [
+    {
+      "type": "response_recovery"
+    },
+    {
+      "type": "message",
+      "text": "Here is the pack.\n\n```json\n{\"proposal\":{\"kind\":\"create\",\"document\":{\"id\":\"p\",},\"unknowns\":[]}}\n```"
+    },
+    {
+      "type": "error",
+      "message": "the fenced proposal block is not valid JSON",
+      "failure": {
+        "version": 1,
+        "code": "invalid-response",
+        "source": "desk",
+        "outcome": "unknown",
+        "detail": "the fenced proposal block is not valid JSON"
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

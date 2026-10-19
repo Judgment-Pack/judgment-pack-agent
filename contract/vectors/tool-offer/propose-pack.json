@@ -1,0 +1,39 @@
+{
+  "description": "propose_pack as a host declares it: the name and input schema the harness reads, the effect proposal, and the host's own description.",
+  "schema": "tool-offer.json#/$defs/proposePack",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/engines/contract.ts (PROPOSE_PACK_TOOL, PROPOSE_PACK_SCHEMA)"
+    ]
+  },
+  "items": [
+    {
+      "name": "propose_pack",
+      "effect": "proposal",
+      "description": "Propose the pack for the person to review. Nothing is written until they accept it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "document": {
+            "type": "object",
+            "description": "The proposed pack, as a JSON object (not a JSON string)."
+          },
+          "unknowns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What the policy leaves open, one sentence each."
+          }
+        },
+        "required": [
+          "document"
+        ]
+      }
+    }
+  ]
+}

@@ -255,9 +255,24 @@ export type AssistantEvent =
   | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string }
   | { type: 'thinking_unavailable'; detail: string }
   | { type: 'critique'; refuted: boolean; checks: { tool: string; status: string }[]; text: string }
-  | { type: 'proposal'; document: unknown; unknowns: string[]; critique?: { refuted: boolean } }
+  /** `note` where something that ran after the proposal existed did not finish. */
+  | { type: 'proposal'; document: unknown; unknowns: string[]; critique?: { refuted: boolean }; note?: ProposalNote }
   | { type: 'error'; message: string; failure?: import('./failures').AIFailure }
   | { type: 'end' }
+
+/**
+ * Something that ran after the proposal existed did not finish
+ * (`refutation.ts`, `proposalNote`): its failure, classified, and a
+ * host-authored sentence. The proposal is delivered all the same, with no
+ * `critique`. `critic-unfinished`: the critic started and did not finish.
+ * `turn-unfinished`: a proposal made through `propose_pack`, and a later
+ * request of the turn failed, so nothing after the proposal ran.
+ */
+export interface ProposalNote {
+  kind: 'critic-unfinished' | 'turn-unfinished'
+  message: string
+  failure: import('./failures').AIFailure
+}
 
 export type AgentAssistantSession = Omit<AssistantSession, 'model' | 'thinking'> & {
   agent: { model: string; run: import('./agent').AgentRun }

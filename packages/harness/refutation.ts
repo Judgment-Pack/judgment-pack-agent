@@ -27,7 +27,8 @@ import { sourceMessage } from './host'
  * proposal and *before* the proposal event is emitted, and every call it makes
  * is a read.
  */
-import type { AssistantEvent } from './engine'
+import { failureMessage, normalizeFailure, type FailureSource } from './failures'
+import type { AssistantEvent, ProposalNote } from './engine'
 
 /**
  * The literal a critic's request carries, so a scripted endpoint — and a
@@ -284,6 +285,28 @@ export function critiqueEvent(critique: Critique): AssistantEvent {
     checks: critique.checks.map((check) => ({ tool: check.tool, status: check.status })),
     text: critique.text
   }
+}
+
+/**
+ * What the proposal carries where something after it did not finish: the
+ * critic (its provider error, length cutoff, the allowance or the turn's wall
+ * clock), or, for a proposal made through `propose_pack`, a later request of
+ * the turn. The proposal is the finished work and is delivered; the failure is
+ * a note on it, never an error raised ahead of it.
+ */
+export function proposalNote(kind: ProposalNote['kind'], cause: unknown, source: FailureSource): ProposalNote {
+  const failure = normalizeFailure(cause, source)
+  // Nothing pauses here: the run ends with the proposal, so the allowance's
+  // own sentence ("Work paused …") would say what did not happen.
+  const why = failure.code === 'request-limit' ? 'The request allowance was used up before it finished.' : failureMessage(failure)
+  const what = kind === 'critic-unfinished'
+    ? 'The critic did not finish, so it checked nothing on this proposal.'
+    : 'The turn stopped after this proposal was made, so nothing after it ran: no closing summary and no critic check.'
+  return { kind, message: `${what} ${why}`, failure }
+}
+/** The critic's note: see `proposalNote`. */
+export function criticNote(cause: unknown, source: FailureSource): ProposalNote {
+  return proposalNote('critic-unfinished', cause, source)
 }
 
 /**

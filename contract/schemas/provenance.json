@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/provenance.json",
   "title": "Provenance",
-  "description": "What the Desk records today about where a model answer came from: one row per model request, with the provider-neutral completion (finish reason and token counts) and the phase it served. Read from ExecutionCheckpoint.completions (web/src/assistant/execution/state.ts) and ModelCompletion (web/src/assistant/completion.ts, readCompletion; Go aifailure.Completion). Open: readCompletion and readExecution accept members they do not name. This is all the Desk records per request: there is no model name, adapter or contract version, prompt digest or timing in any record that crosses the slot (see docs/design/wire-contract.md, Open questions).",
+  "description": "What the Desk records today about where a model answer came from: one row per model request, with the provider-neutral completion (finish reason and token counts) and the phase it served. Read from ExecutionCheckpoint.completions (web/src/assistant/execution/state.ts) and ModelCompletion (web/src/assistant/completion.ts, readCompletion; Go aifailure.Completion). Open: readCompletion and readExecution accept members they do not name. A request the provider refused and that was sent again has one row per attempt (packages/harness/engines/vercel/retry.ts; execution/controller.ts, recordRefusal): the refused attempt's row carries attempt, failure and waitMs, and the attempt that answered carries its attempt number. There is no model name, adapter or contract version, prompt digest or request timing in any record that crosses the slot (waitMs is the wait before a retry, not a timing) (see docs/design/wire-contract.md, Open questions).",
   "type": "object",
   "required": [
     "request",
@@ -25,6 +25,22 @@
     },
     "result": {
       "$ref": "#/$defs/completion"
+    },
+    "attempt": {
+      "description": "Which attempt at this request the row records, from 1, where the provider refused the request and it was sent again: at most three (two retries). Absent on a request answered at its first attempt.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3
+    },
+    "failure": {
+      "description": "On a refused attempt's row: the refusal, classified (outcome refused). The row's result has finishReason error.",
+      "$ref": "failure.json"
+    },
+    "waitMs": {
+      "description": "On a refused attempt's row: the wait before the next attempt, in milliseconds, the longer of the backoff (1000, then 2000) and the provider's Retry-After; at most 30000 as the vercel engine waits, and readExecution accepts up to a day. Absent where no attempt followed.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 86400000
     }
   },
   "additionalProperties": true,

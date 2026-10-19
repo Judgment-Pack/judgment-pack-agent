@@ -1,8 +1,14 @@
 import defaults from '../contract/policy.json'
-export type ContextPolicy = typeof defaults
+/**
+ * The time bounds the harness adds to the Desk's table (budget.json): one turn's wall clock, after which the run
+ * pauses as budget_paused does, and one tool call's, after which the model reads a failed result. The Desk's table
+ * carries neither at the pinned commit; a table that does wins over these.
+ */
+export const TIME_DEFAULTS = Object.freeze({turnMilliseconds:15*60_000,toolCallMilliseconds:120_000})
+export type ContextPolicy = typeof defaults & {turnMilliseconds:number;toolCallMilliseconds:number}
 export interface ModelContextBudget {contextWindowTokens:number;outputTokens:number}
 export interface ContextConfiguration {version:1;projectBrief?:string;models?:Record<string,ModelContextBudget>}
-export const CONTEXT_DEFAULTS:Readonly<ContextPolicy> = Object.freeze(defaults)
+export const CONTEXT_DEFAULTS:Readonly<ContextPolicy> = Object.freeze({...TIME_DEFAULTS,...defaults})
 export function contextConfiguration(value:unknown):ContextConfiguration {
  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid assistant context configuration')
  const c=value as Record<string,unknown>

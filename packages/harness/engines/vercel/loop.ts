@@ -1,7 +1,7 @@
 import {RECOVER_REPEATED_WORK_INSTRUCTIONS,REPEATED_WORK_INSTRUCTIONS} from '../../execution/progress'
 import {canFinishResponse,completionFailureCode,FINISH_RESPONSE_INSTRUCTIONS,modelCompletion,type ModelCompletion} from '../../completion'
 import {failureEvent,authoredFailure,toolFailureResult,normalizeFailure,AIFailureError} from '../../failures'
-import {ExecutionPaused} from '../../execution/state'
+import {ExecutionPaused,MAX_REQUEST_ALLOWANCE} from '../../execution/state'
 import {EXECUTION_INSTRUCTIONS} from '../../execution/controller'
 import {managedContext,contextOf} from '../../context/managed'
 import { readDelegationRequest } from '../../delegationContract'
@@ -72,7 +72,20 @@ import {
   schemasShown,
   servedSchemaFor,
   textOf,
-  withAbort
+  withAbort,
+  withDeadline,
+  toolTimeout,
+  limitText,
+  wholeAnswer,
+  reformatRequest,
+  REFORMAT_INSTRUCTIONS,
+  PROPOSE_PACK_TOOL,
+  PROPOSE_PACK_INSTRUCTIONS,
+  PROPOSAL_RECEIVED,
+  offersProposeTool,
+  readProposedPack,
+  twoProposals,
+  type Proposal
 } from '../contract'
 import { openThinking } from '../../thinking'
 import {
@@ -82,14 +95,17 @@ import {
   criticMessage,
   critiqueEvent,
   critiqueOnProposal,
+  criticNote,
+  proposalNote,
   openCritique
 } from '../../refutation'
 import { refusedSchemaKeyword, refusedSchemaSentence } from '../../geminiSchema'
 import { eventChannel } from './channel'
 import { placeholderBase, relayFetch, signatureLedger, signatureOf } from './relay'
+import { retryingCall } from './retry'
 import type { LanguageModel, ToolSet, ModelMessage, SystemModelMessage } from 'ai'
 import type { AssistantEngine, EndpointCapabilities, EndpointKind, StatePlacement, ThinkingTier } from '../../host'
-import type { AssistantEvent, AssistantSession, McpTool, McpToolResult, HostTool } from '../../engine'
+import type { AssistantEvent, AssistantSession, McpTool, McpToolResult, HostTool, ModelCall, ProposalNote } from '../../engine'
 import type { CritiqueRecorder } from '../../refutation'
 import type { ThinkingSlot } from '../../thinking'
 import type { SignatureLedger } from './relay'
@@ -289,6 +305,8 @@ export function withoutState(messages: ModelMessage[], stated: Map<ModelMessage,
 /** One model, built for the family the desk configured and nothing else. */
 function modelFor(
   session: AssistantSession,
+  /** The session's model capability, wrapped in the one retry a refusal earns (`retry.ts`). */
+  call: ModelCall,
   signal: AbortSignal,
   ledger: SignatureLedger,
   onTruncated: (reason: string) => void,
@@ -296,7 +314,7 @@ function modelFor(
 ): LanguageModel {
   const fetch = relayFetch({
     family: session.model.family,
-    call: session.model.call,
+    call,
     signal,
     ledger,
     onTruncated,
@@ -558,7 +576,16 @@ function runVercelLoop(
   // evaluates still pairs each call with its own arguments.
   const asked: unknown[] = []
   const inputPause = new AbortController()
-  const executionSignal = AbortSignal.any([gate.signal, inputPause.signal])
+  /**
+   * The turn's wall clock (`context.policy.turnMilliseconds`). When it passes,
+   * whatever is in flight is stopped and the run pauses as `budget_paused`
+   * does, with its checkpoint: completed work is kept and the person decides.
+   * A proposal already made is delivered, with a note where the critic was cut.
+   */
+  const turnClock = new AbortController()
+  let overTime = false
+  let turnTimer: ReturnType<typeof setTimeout> | undefined
+  const executionSignal = AbortSignal.any([gate.signal, inputPause.signal, turnClock.signal])
   let awaitingInput = false
 
   /**
@@ -608,6 +635,8 @@ function runVercelLoop(
 
     // A fresh attempt takes nothing from the one before it.
     asked.length = 0
+    /** A proposal delivered through `propose_pack`; the fence is the fallback. */
+    let toolProposal: Proposal | null = null
     const tools = toolsFor(session.model.family, session.tools, async (name, input) => {
       // **The desk's gate is handed the call the model made.** The hook below
       // has already rewritten what the SDK carries; what leaves the page is
@@ -627,7 +656,10 @@ function runVercelLoop(
       await deliver({ type: 'tool_call', ...correlation, name, args })
       let answer: McpToolResult
       try {
-        answer = await callTool(name, args)
+        // Bounded by the policy's per-call deadline as well as by the run: a
+        // call past it is a failed result the model reads, not a failed run.
+        const limit = context.policy.toolCallMilliseconds
+        answer = await withDeadline(() => callTool(name, args), executionSignal, limit, () => toolTimeout(limit))
       } catch (cause) {
         // A run that ended while this was waiting — or before it was
         // dispatched — is the session unwinding, not a tool refusing. The
@@ -683,7 +715,16 @@ function runVercelLoop(
           inputPause.abort()
           throw new DOMException('Waiting for input', 'AbortError')
         }
-        answer = await withAbort(() => tool.execute(args, executionSignal), executionSignal)
+        if (tool.name === PROPOSE_PACK_TOOL) {
+          // **The proposal, delivered as a tool call.** Read here, by the
+          // contract's reader; the host's own `execute` is never reached. The
+          // latest call's document is the one proposed.
+          toolProposal = readProposedPack(args)
+          answer = { content: [{ type: 'text', text: PROPOSAL_RECEIVED }] }
+        } else {
+          const limit = context.policy.toolCallMilliseconds
+          answer = await withDeadline((signal) => tool.execute(args, signal), executionSignal, limit, () => toolTimeout(limit))
+        }
       } catch (cause) {
         if (isCancelled(cause)) {
           const text = 'the session was stopped before this call was made; nothing was written'
@@ -713,7 +754,20 @@ function runVercelLoop(
     // One model and one refinement hook, shared by the loop and the critic:
     // the pass runs on the same everything, which is what makes "inside the
     // same ToolGate" structural rather than a habit.
-    const model = modelFor(session, executionSignal, ledger, onTruncated, slot)
+    const call = retryingCall(session.model.call, {
+      signal: executionSignal,
+      // Each refused attempt is a row of the completion record; a retry is
+      // said on the stream, as the codex engine says its bridge's.
+      onRefused: async (refused) => {
+        context.execution.recordRefusal(recording !== null ? 'review' : synthesis ? 'synthesis' : 'work', refused)
+        if (refused.waitMs !== undefined) await channel.push({ type: 'retry', attempt: refused.attempt })
+      },
+      onAttempt: (attempt) => context.execution.beginAttempt(attempt),
+      // The last request of the allowance is the turn's tool-free final
+      // answer: a retry never takes it, and the refusal is reported instead.
+      mayRetry: () => context.execution.remaining > 1
+    })
+    const model = modelFor(session, call, executionSignal, ledger, onTruncated, slot)
     // See REHEARSAL_HOOK. The key is the constant, never a literal.
     const refine = {
       [REHEARSAL_TOOL]: (input: unknown) => {
@@ -725,7 +779,7 @@ function runVercelLoop(
 
     let streamed: unknown = null
     let publicText = ''
-    const instructions=(session.purpose === 'graph' ? GRAPH_SYSTEM : session.purpose === 'brief' ? BRIEF_SYSTEM : session.purpose === 'test-design' ? TEST_DESIGN_SYSTEM : session.allowConversation ? CONVERSATION_SYSTEM : SYSTEM) + assistantLanguageInstructions(session.replyLanguage)
+    const instructions=(session.purpose === 'graph' ? GRAPH_SYSTEM : session.purpose === 'brief' ? BRIEF_SYSTEM : session.purpose === 'test-design' ? TEST_DESIGN_SYSTEM : session.allowConversation ? CONVERSATION_SYSTEM : SYSTEM) + (offersProposeTool(session.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : '') + assistantLanguageInstructions(session.replyLanguage)
     const schemas=[...session.tools,...session.hostTools].map(({name,description,inputSchema})=>({name,description,inputSchema}))
     tier=sdkThinking(session.model.family,slot.members())
     context.reserveOutput(tier.maxOutputTokens)
@@ -747,7 +801,22 @@ function runVercelLoop(
     let lastToolCalls=0
     let finalText=''
     let synthesis=false
+    /** The one reformat request a proposal that could not be read earns. */
+    let reformatting=false
     let steps=0
+    let proposal: Proposal | null = null
+    /**
+     * The answer whose proposal could not be read. **Nothing finished is lost:**
+     * whatever the reformat request does, this is delivered whole — the prose
+     * and the raw fence — before the run reports why.
+     */
+    let unread: { text: string; cause: unknown } | null = null
+    const keepUnread = async (): Promise<void> => {
+      const text = unread === null ? '' : wholeAnswer(unread.text)
+      unread = null
+      if (text !== '' && !gate.isClosed()) await deliver({ type: 'message', text })
+    }
+    try {
     for(;;){
       completion=undefined
       lastToolCalls=0
@@ -776,8 +845,10 @@ function runVercelLoop(
           await context.execution.retainProgress(false)
           progressStep=synthesis?'finish':context.execution.progress.nextStep(context.execution.remaining)
           if(progressStep==='finish'&&context.execution.progress.stalled&&!synthesis)await deliver({type:'response_recovery'})
-          toolsClosed=synthesis||progressStep==='finish'||stepNumber>=turnLimit-1
-          const state=stateText(context.execution.requestState(),session.context?.currentState,synthesis?FINISH_RESPONSE_INSTRUCTIONS:progressStep==='recover'?RECOVER_REPEATED_WORK_INSTRUCTIONS:progressStep==='finish'?REPEATED_WORK_INSTRUCTIONS:toolsClosed?finalInstructions:'')
+          // Read fresh on every step: a retry claims a request too, so the
+          // count at the start of the turn can overstate what is left.
+          toolsClosed=synthesis||progressStep==='finish'||stepNumber>=turnLimit-1||context.execution.remaining<=1
+          const state=stateText(context.execution.requestState(),session.context?.currentState,reformatting?REFORMAT_INSTRUCTIONS:synthesis?FINISH_RESPONSE_INSTRUCTIONS:progressStep==='recover'?RECOVER_REPEATED_WORK_INSTRUCTIONS:progressStep==='finish'?REPEATED_WORK_INSTRUCTIONS:toolsClosed?finalInstructions:'')
           // Budgeted as one request: the system text and the state together.
           lastMessages=await context.messages(withoutState(messages,stated),system+'\n'+state,schemas)
           return {...tier,
@@ -936,7 +1007,9 @@ function runVercelLoop(
       // `result.text` mints a fresh promise on every read, so it is read here,
       // where it is awaited, and nowhere it would be left standing.
       finalText = final !== '' ? final : await withAbort(() => Promise.resolve(result.text), executionSignal)
-      if(canFinishResponse(completion,finalText,lastToolCalls,context.execution.remaining,synthesis||(toolsClosed&&context.execution.progress.stalled))){
+      // A proposal delivered through the tool is a finished answer, whatever
+      // the text after it says or does not say.
+      if(toolProposal===null&&canFinishResponse(completion,finalText,lastToolCalls,context.execution.remaining,synthesis||(toolsClosed&&context.execution.progress.stalled))){
         synthesis=true
         // Reuse the projected history before the incomplete response, with its
         // completed tool pairs. Do not append the failed response's partial
@@ -946,23 +1019,78 @@ function runVercelLoop(
         messages=placement==='system-tail'?lastMessages:[...lastMessages,{role:'user',content:FINISH_RESPONSE_INSTRUCTIONS}]
         continue
       }
-      if(!context.execution.progress.stalled&&!finalText.trim()&&steps>=turnLimit&&completion?.finishReason!=='content-filter'&&completion?.finishReason!=='length'&&completion?.finishReason!=='error')throw new ExecutionPaused()
-      if(toolsClosed&&lastToolCalls>0||!finalText.trim()||completion?.finishReason==='length'||completion?.finishReason==='content-filter'||completion?.finishReason==='error'){
+      if(toolProposal===null&&!context.execution.progress.stalled&&!finalText.trim()&&steps>=turnLimit&&completion?.finishReason!=='content-filter'&&completion?.finishReason!=='length'&&completion?.finishReason!=='error')throw new ExecutionPaused()
+      if(toolProposal===null&&(toolsClosed&&lastToolCalls>0||!finalText.trim()||completion?.finishReason==='length'||completion?.finishReason==='content-filter'||completion?.finishReason==='error')){
         // A stalled loop is distinct from filtering, output truncation or a
         // provider error. Keep those original causes when they actually occur.
         const stalled=context.execution.progress.stalled&&!['length','content-filter','error'].includes(completion?.finishReason??'')
         throw new AIFailureError({version:1,code:stalled?'repeated-work':completionFailureCode(completion),source:stalled?'desk':'model',outcome:'unknown',...(completion?{completion}:{})})
       }
+      if (toolProposal !== null || !session.allowConversation || hasProposalFence(finalText)) {
+        try {
+          if (toolProposal !== null && hasProposalFence(finalText)) {
+            // Two proposals in one answer, one by the tool and one fenced:
+            // ambiguous, and refused as two fences are.
+            toolProposal = null
+            throw twoProposals()
+          }
+          proposal = toolProposal ?? extractProposal(finalText)
+        } catch (cause) {
+          // **One reformat request, within the allowance**: tool-free, shown
+          // its own answer and asked for the same proposal in the shape the
+          // contract reads. A second failure is reported, the first answer kept.
+          if (unread === null && context.execution.remaining > 0) {
+            unread = { text: finalText, cause }
+            reformatting = synthesis = true
+            messages = [...lastMessages, { role: 'assistant', content: finalText }, { role: 'user', content: reformatRequest(cause) }]
+            continue
+          }
+          unread ??= { text: finalText, cause }
+          throw unread.cause
+        }
+      }
       break
     }
-    if (session.allowConversation && !hasProposalFence(finalText)) {
+    } catch (cause) {
+      await keepUnread()
+      // **A proposal made through propose_pack is finished work.** A later
+      // request of the turn that fails (the closing summary refused, cut off,
+      // over the allowance or past the turn's clock) does not take it with
+      // it: it is delivered, with a note naming the failure, as the critic's
+      // failure is, and the run ends. A person's Stop still stops; a question
+      // to the person leaves the proposal delivered and the turn waiting.
+      const made = toolProposal as Proposal | null
+      if (made !== null && !gate.signal.aborted && !gate.isClosed()) {
+        toolProposal = null
+        if (awaitingInput) {
+          await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns })
+          throw cause
+        }
+        await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns,
+          note: proposalNote('turn-unfinished', overTime ? turnTimeFailure() : cause, 'model') })
+        return
+      }
+      throw cause
+    }
+    if (proposal === null && unread !== null) {
+      // The reformat request came back without a proposal, which a
+      // conversation allows: the first answer is still delivered whole, then
+      // what the reformat said, then why the first answer's proposal was not
+      // read.
+      const first = unread as { text: string; cause: unknown }
+      await keepUnread()
+      const said = proseOf(finalText)
+      if (said !== '') await deliver({ type: 'message', text: said })
+      throw first.cause
+    }
+    if (proposal === null) {
       await deliver({ type: 'message', text: proseOf(finalText) })
       if(context.execution.remaining<=0&&context.execution.state.plan.some(step=>step.status!=='completed'))throw new ExecutionPaused()
       return
     }
-    const proposal = extractProposal(finalText)
-    // What the model said beside the document, as it said it.
-    const prose = proseOf(finalText)
+    // What the model said beside the document, as it said it: the first
+    // answer's, where a reformat request recovered its proposal.
+    const prose = (unread === null ? '' : proseOf((unread as { text: string }).text)) || proseOf(finalText)
     if (prose !== '') await deliver({ type: 'message', text: prose })
 
     /**
@@ -974,6 +1102,7 @@ function runVercelLoop(
      * delivered, and every call it makes is a read.
      */
     let critique = null as ReturnType<CritiqueRecorder['critique']> | null
+    let note: ProposalNote | null = null
     // **No runtime prompt, no critic.** The instructions are the runtime's; this
     // desk adds one sentence and has none of its own to fall back on.
     const review = session.adversarialReview ?? slot.runsRefutation()
@@ -990,12 +1119,14 @@ function runVercelLoop(
       context.beginIsolatedPhase()
       let criticText = ''
       let criticReasoning = ''
+      /** Why the critic did not finish: its failure, never raised ahead of the proposal. */
+      let unfinished: unknown = null
       try {
         const critic = streamText({
           telemetry: { isEnabled: false },
           model,
           instructions: cachedInstructions(session.model.family, CRITIC_SYSTEM + assistantLanguageInstructions(session.replyLanguage)),
-          tools: Object.fromEntries(Object.entries(tools).filter(([name]) => !session.hostTools?.some(tool => tool.name === name && (tool.interaction || tool.effect === 'memory' || ['update_plan','request_budget_increase'].includes(tool.name))))),
+          tools: Object.fromEntries(Object.entries(tools).filter(([name]) => !session.hostTools?.some(tool => tool.name === name && (tool.interaction || tool.effect === 'memory' || ['update_plan','request_budget_increase',PROPOSE_PACK_TOOL].includes(tool.name))))),
           messages: [
             { role: 'user', content: await context.prompt(criticMessage(session.testPrompt, proposal.document),CRITIC_SYSTEM,schemas) }
           ],
@@ -1078,25 +1209,39 @@ function runVercelLoop(
           if(part.type==='tool-error'&&await rejectToolStep(part.toolName,part.input??{}))continue
           if (part.type === 'text-delta') criticText += (part as { text?: string }).text ?? ''
         }
+        const ended = slot.turnEnded(criticText !== '')
+        if (ended !== null) await deliver(ended)
+      } catch (cause) {
+        // A person's Stop ends the run here as anywhere; the turn's wall clock
+        // and everything else leave the finished proposal standing.
+        if (gate.signal.aborted || (isCancelled(cause) && !overTime)) throw cause
+        unfinished = cause
       } finally {
         // Whatever happened, the main loop's dispatch stops feeding a recorder
         // nobody is reading.
         recording = null
       }
-      const ended = slot.turnEnded(criticText !== '')
-      if (ended !== null) await deliver(ended)
-      if (streamed !== null) throw streamed
-      critique = recorder.critique(criticText)
-      await deliver(critiqueEvent(critique))
+      unfinished ??= streamed
+      if (unfinished === null) {
+        critique = recorder.critique(criticText)
+        await deliver(critiqueEvent(critique))
+      } else {
+        note = criticNote(overTime ? turnTimeFailure() : unfinished, 'model')
+      }
     }
 
     await deliver({
       type: 'proposal',
       document: proposal.document,
       unknowns: proposal.unknowns,
-      ...critiqueOnProposal(critique)
+      ...critiqueOnProposal(critique),
+      ...(note === null ? {} : { note })
     })
   }
+
+  /** What the turn's wall clock passing is, as a failure the catalogue can say. */
+  const turnTimeFailure = (): AIFailureError =>
+    authoredFailure('timeout', `The turn reached its wall-clock limit of ${limitText(context.policy.turnMilliseconds)}.`, 'model')
 
   /**
    * The status and the endpoint's own sentence out of an SDK error, or nothing.
@@ -1155,6 +1300,10 @@ function runVercelLoop(
    * slot itself says `other` once it carries no members, so this cannot spin.
    */
   const drive = async (): Promise<void> => {
+    turnTimer = setTimeout(() => {
+      overTime = true
+      turnClock.abort()
+    }, context.policy.turnMilliseconds)
     // A host tool named like a runtime tool would shadow it in the SDK's
     // set: reported as this run's error, before the model is shown either.
     if (collision !== undefined) throw authoredFailure('configuration',`host tool ${collision.name} is named like a tool the runtime serves; nothing was run`)
@@ -1173,6 +1322,12 @@ function runVercelLoop(
         return
       } catch (cause) {
         if (awaitingInput) return
+        if (overTime && !gate.signal.aborted) {
+          // Continuing a pause takes a request grant, the clock's as much as
+          // the allowance's, so a run already at the cap cannot be continued.
+          context.execution.state.reason = `${turnTimeFailure().message} Completed work is kept. Continuing takes a grant of more requests, so a run already at the ${MAX_REQUEST_ALLOWANCE}-request limit cannot be continued; start a new response instead.`
+          throw new ExecutionPaused()
+        }
         const refusal = refusalOf(cause)
         if (refusal === null || produced.count > 0 || attempt >= 3) throw schemaRefusal(cause) ?? cause
         const said = slot.refused(refusal.status, refusal.message)
@@ -1200,6 +1355,7 @@ function runVercelLoop(
    * abandoned, this push resolves at once, and the event is dropped.
    */
   const finish = async (): Promise<void> => {
+    clearTimeout(turnTimer)
     await channel.push({ type: 'end' })
     channel.close()
   }

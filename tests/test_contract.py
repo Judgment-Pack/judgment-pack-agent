@@ -208,7 +208,19 @@ class VectorTests(unittest.TestCase):
                 self.assertIn(vector["schema"].split("#")[0], EXPECTED_SCHEMAS)
                 self.assertIsInstance(vector["items"], list)
                 self.assertTrue(vector["description"].strip())
-                self.assertEqual(vector["source"]["desk"]["repository"], "Judgment-Pack/judgment-pack-desk")
+                source = vector["source"]
+                if "desk" in source:
+                    self.assertEqual(source["desk"]["repository"], "Judgment-Pack/judgment-pack-desk")
+                else:
+                    # Behaviour the harness changed or added since the extraction: rendered from
+                    # the package, and its files named there.
+                    self.assertEqual(source["harness"], {"repository": "Judgment-Pack/judgment-pack-agent", "package": "packages/harness"})
+                    self.assertTrue(source["files"])
+                    for file in source["files"]:
+                        # "packages/harness/x.ts (symbol)": the path, without its annotation.
+                        path = file.split(" (", 1)[0]
+                        self.assertTrue(path.startswith("packages/harness/"), file)
+                        self.assertTrue((ROOT / path).is_file(), f"{name} names {path}, which does not exist")
 
     def test_every_vector_validates_against_its_schema(self):
         for name, vector in self.vectors.items():
