@@ -30,6 +30,10 @@ framework's own guardrails are a convenience inside an adapter, never the bounda
   budget and ledger, execution and planning, delegation, the memory client, the tool gate, the
   failure catalogue, and the certification suite (`certification/`). What it needs from a host
   comes through one module, `host.ts`; see [its README](packages/harness/README.md).
+- `go/`: the Go module (ADR-0004): the contract's types, generated from `contract/schemas`, and the
+  Go runner of the certification suite, which drives a Go adapter against the TypeScript suite's
+  own scripted server (`packages/harness/scripts/scripted-server.mjs`). `go/spike/` holds the spikes
+  ADR-0004 measured, a separate module, not shipped.
 - `scripts/parity.sh`: diffs the package against a Desk checkout and names every difference.
 - `tests/`: the contract's checks, and the package's copies of the Desk's JSON held to them.
 - `docs/adr/`: decisions. `docs/design/`: designs, starting with the

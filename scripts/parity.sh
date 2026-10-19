@@ -149,6 +149,7 @@ $pkg/certification/recorder.test.ts
 $pkg/scripts/mutation-check.mjs
 $pkg/scripts/mutation-rows.json
 $pkg/scripts/record-conformance.mjs
+$pkg/scripts/scripted-server.mjs
 $pkg/testing/sdkWarnings.ts
 $pkg/certification/scenarios.test.ts
 $pkg/certification/scenarios/chat-host-tools.json

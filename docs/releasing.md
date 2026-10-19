@@ -56,6 +56,7 @@ rule.
    python -m unittest discover -s tests -v
    npm ci && npm run build && npm test
    npm run certify -- --adapter vercel && npm run certify -- --adapter codex
+   (cd go && go vet ./... && go test -count=1 ./...)
    ```
 
 3. Merge the pull request.
@@ -88,8 +89,8 @@ Every job works on the commit the run was started for, by its digest, not on the
    commit is on `main`; `docs/releases/<tag>.md` exists, is not empty and names the tag on its first line; and the `release`
    environment has a reviewer rule.
 2. **Runs CI at that commit.** The release calls the commit's own
-   [`ci.yml`](../.github/workflows/ci.yml): `contract`, `tests`, `harness` and `certify` for each
-   adapter. A check `main` has gained since that commit is not run.
+   [`ci.yml`](../.github/workflows/ci.yml): `contract`, `tests`, `harness`, `go` and `certify` for
+   each adapter. A check `main` has gained since that commit is not run.
 3. **Builds the package.** It refuses unless the package's version, in `package.json` and in
    `package-lock.json`, equals the tag without `v`. Then `npm ci`, `npm run build`, `npm pack`
    into `judgment-pack-harness-<version>.tgz`, and `checksums.txt` written over it and checked.
