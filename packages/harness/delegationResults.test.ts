@@ -305,7 +305,7 @@ describe('resilience and capacity (agent#17)',()=>{
   expect(task.retried).toBeUndefined()
  })
 
- it('leaves a 4xx refusal to the engine’s own rule, and a 503 that carries no overload code unsent',async()=>{
+ it('leaves a 503 that carries no overload code unsent',async()=>{
   let childRequests=0
   const {call}=scripted(one=>{
    if(isChild(one)){childRequests++;return new Response(JSON.stringify({error:{type:'server_error'}}),{status:503,headers:{'content-type':'application/json'}})}
@@ -314,6 +314,19 @@ describe('resilience and capacity (agent#17)',()=>{
   const events=await collect(withDelegation(vercel),apiSession({model:{family:'openai-compatible',model:'fixture',call}}))
   expect(childRequests).toBe(1)
   expect(records(events)[0]).toMatchObject({state:'failed',modelRequests:1})
+ })
+
+ it('leaves a 429 to the engine’s own rule: the engine sends it again, and the child adds no retry of its own',async()=>{
+  let childRequests=0
+  const {call}=scripted(one=>{
+   if(isChild(one)){childRequests++;return childRequests===1?new Response(JSON.stringify({error:{type:'rate_limit_error'}}),{status:429,headers:{'content-type':'application/json','retry-after':'1'}}):sse({text:['Checked.']})}
+   return toolMessages(one).length===0?delegateCall([{title:'Check',objective:'Check the draft.',profile:'analyze'}]):sse({text:['Done.']})
+  })
+  const events=await collect(withDelegation(vercel),apiSession({model:{family:'openai-compatible',model:'fixture',call}}))
+  expect(childRequests).toBe(2)
+  const task=records(events)[0]!
+  expect(task).toMatchObject({state:'complete',result:'Checked.',modelRequests:2})
+  expect(task.retried).toBeUndefined()
  })
 
  it('runs as many children at once as the connection serves requests: three where its record says three, two where it says none',async()=>{
