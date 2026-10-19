@@ -16,6 +16,7 @@ import recallVector from '../../../../contract/vectors/recall/agent.json'
 import { recallQuery } from '../../certification/recall'
 import { STATE_HEADER } from '../contract'
 import type { AgentTool } from '../../agent'
+import { utf8Bytes } from '../../context/policy'
 
 /** An agent-wire offer read back to the tools it aliases: the real name, its description and schema. */
 const offered = (tools: AgentTool[], kind: 'runtime' | 'host') =>
@@ -265,6 +266,46 @@ describe.each(AGENT_ENGINES)('agent engine %s', engineId => {
     expect(recallQuery('agent', { prompt: chat })).toEqual({ pointer: item.pointer, text: item.text })
     expect(plain).toBe(item.text)
     expect(recallQuery('agent', { prompt: plain })).toEqual({ pointer: item.pointer, text: item.text })
+  })
+
+  // Release review v0.2.0 (#42): past the prompt's allowance the whole is retained and previewed, and the
+  // prompt sent still starts with the person's message, a blank line and STATE_HEADER, so the recall rule
+  // yields the message. The vector's second item is the shape.
+  it('leads a previewed prompt with the person’s message, and the contract’s recall rule yields the message', async () => {
+    const item = recallVector.items[1]!
+    const earlier = Array.from({ length: 4000 }, (_, turn) => `Turn ${turn}: the earlier claim was reviewed and the receipt was on file.`).join('\n')
+    const prompt = earlier + '\n\n' + item.text
+    const prompts: string[] = []
+    const run: AgentRun = async (request, callbacks) => {
+      prompts.push(request.prompt)
+      await callbacks.event({ type: 'message', id: 'done', text: proposal(), phase: 'final' })
+    }
+    const loaded = await loadEngine(engineId)
+    const events: AssistantEvent[] = []
+    const base = { prompt, adversarialReview: false, allowConversation: true }
+    // With a state and the person's message named: the message leads.
+    for await (const event of loaded.start(session(run, { ...base, context: { currentState: 'Draft snapshot: {"pack":"expense-reimbursement"}', currentRequest: { message: item.text, input: item.text } } }) as never)) events.push(event)
+    // Without a state to append, and without a conversation: the message still leads, then the header and the preview.
+    for await (const event of loaded.start(session(run, { prompt, adversarialReview: false, context: { currentRequest: { message: item.text, input: item.text } } }) as never)) events.push(event)
+    // Without the person's message named, the preview is sent alone and the rule finds its opening.
+    for await (const event of loaded.start(session(run, base) as never)) events.push(event)
+    expect(events.filter(event => event.type === 'error')).toEqual([])
+    expect(prompts).toHaveLength(3)
+    const [withState, withoutState, unnamed] = prompts as [string, string, string]
+    // The prompt was previewed, not sent whole.
+    expect(utf8Bytes(prompt)).toBeGreaterThan(200_000)
+    for (const sent of [withState, withoutState]) {
+      expect(utf8Bytes(sent)).toBeLessThan(100_000)
+      expect(sent.startsWith(item.text + '\n\n' + STATE_HEADER + '\n')).toBe(true)
+      expect(recallQuery('agent', { prompt: sent })).toEqual({ pointer: item.pointer, text: item.text })
+    }
+    // The header the previewed prompt carries is the leading one; the state the host appended is in the preview's recent end under its own.
+    expect(withoutState.split(STATE_HEADER)).toHaveLength(2)
+    // The preview names the retained original and carries the recent end of the prompt, the state among it.
+    expect(withState).toContain('"earlierRequest"')
+    expect(withState).toContain('Draft snapshot: {"pack":"expense-reimbursement"}')
+    expect(recallQuery('agent', { prompt: unnamed })!.text).not.toBe(item.text)
+    expect(recallQuery('agent', { prompt: unnamed })!.text).toContain('retained')
   })
 })
 

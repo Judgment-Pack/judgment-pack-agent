@@ -802,9 +802,10 @@ starts with the request text and has the state and guidance after it, headed by 
 (agent#36). The rule there: the request text is the prompt's text before the first blank line that
 is followed by `STATE_HEADER`, or the whole prompt where the header is absent (a run that appends
 nothing); a prompt that starts with the header has none. It holds where the prompt, state and
-guidance fit the prompt's allowance. Where they do not, the whole is retained and previewed and the
-preview is what is sent; its text before any header is the preview's notice, not the person's
-message. The vector `recall/agent.json` holds the shape (`family` `agent`, `placement`
+guidance fit the prompt's allowance. Where they do not, the whole is retained and previewed
+(`SessionContext.agentPrompt`), and the prompt sent is the person's message (`currentRequest.message`),
+a blank line, `STATE_HEADER` and the preview, so the rule still finds the person's message; a host
+that gives no `currentRequest` gets the preview alone, and the rule finds its own opening. The vector `recall/agent.json` holds the shape (`family` `agent`, `placement`
 `appended`, the prompt as the one member of `body`), and the certification suite applies the rule to
 the `codex` engine's prompt and expects the person's message (`agent engine codex` in
 `engines/codex/codex.test.ts`). The certification suite applies the rule to every

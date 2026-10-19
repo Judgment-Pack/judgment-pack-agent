@@ -100,7 +100,8 @@ files they were rendered from.
   its turns, with the JSON pointer the recall rule resolves to and the request text there; a
   delegated child's first request, whose request text is its objective, sent as the first text part
   (`delegated-child.json`); and the agent wire's one prompt, the person's message with the state and
-  guidance after it headed by `STATE_HEADER` (`agent.json`, agent#36). Written by hand from the
+  guidance after it headed by `STATE_HEADER`, and the same prompt where it is previewed: the person's
+  message, then the header and the preview (`agent.json`, agent#36). Written by hand from the
   schema; `memory/recall.test.ts` and `engines/codex/codex.test.ts` hold a run's request to each,
   and the contract tests apply the rule to each body. This harness's (agent#11).
 - `chat/`: the index of earlier results a chat-scoped run is shown (`turn-index.json`: the index

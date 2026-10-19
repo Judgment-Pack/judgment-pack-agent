@@ -837,7 +837,8 @@ describe.each(AGENT_ENGINES)('agent engine %s · scenarios', (engineId) => {
 
     // Recorded disagreement: the agent engine sends no model request the Desk's server could recall for; its one request is the run's prompt, which opens with the person's message.
     it('3 · the person’s message opens the run’s one request (the agent wire has no later request to recall for)', () => {
-      expect(ran.runs[0]!.prompt.startsWith(memory.request)).toBe(true)
+      // The contract's recall rule, as the codex engine's own test applies it: the text before the state's header is the person's message.
+      expect(recallQuery('agent', { prompt: ran.runs[0]!.prompt })).toEqual({ pointer: '/prompt', text: memory.request })
     })
 
     reserveChecks('agent')

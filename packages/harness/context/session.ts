@@ -15,6 +15,7 @@ import {SEARCH_TOOL} from './search'
 import {capabilitiesFor,type ModelCapabilities} from '../capabilities'
 import {contextPolicy,inputBytes,utf8Bytes,prefix,ContextBudgetError,type ContextConfiguration} from './policy'
 import {INDEX_SHARE,partBytes,type ChatScope,type ChatTurn,type RuntimeIdentity} from './chat'
+import {STATE_HEADER} from '../engines/contract'
 import {runModels,type AITarget,type AssistantEngine,type RunIdentity,type RunModels} from '../host'
 export interface CurrentRequest {message:string;input:string}
 /** `currentState`: host-authored text that changes between requests or responses (the chat's
@@ -165,6 +166,21 @@ export class SessionContext {
   return budget
  }
  async prompt(text:string,instructions:string,tools:unknown,currentRequest?:CurrentRequest):Promise<string>{return this.fit(text,this.allowance(instructions,tools),currentRequest)}
+ /**
+  * The agent wire's one prompt string (agent#36, release review): the host's prompt, sent whole where
+  * it fits the allowance. Where it does not, the person's message (`currentRequest.message`), a blank
+  * line, `STATE_HEADER` and the preview, so the text before the header, which the recall rule reads
+  * as the request, is the person's message, as the model wires' first text part is. Without a
+  * `currentRequest` the preview is sent alone.
+  */
+ async agentPrompt(text:string,instructions:string,tools:unknown,currentRequest?:CurrentRequest):Promise<string>{
+  const allowance=this.allowance(instructions,tools)
+  if(utf8Bytes(encoded([{role:'user',content:text}]))<=allowance||currentRequest===undefined)return this.fit(text,allowance,currentRequest)
+  const message=prefix(currentRequest.message,Math.floor(allowance/4))
+  if(!message.trim())return this.fit(text,allowance,currentRequest)
+  const head=message+'\n\n'+STATE_HEADER+'\n'
+  return head+await this.fit(text,allowance-utf8Bytes(encoded(head)),currentRequest)
+ }
  /**
   * The text parts of the run's first user message (agent#8, agent#11). The request text comes
   * first: the host's prompt, sent whole where it fits the allowance; where it does not, the

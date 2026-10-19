@@ -38,9 +38,11 @@
  * guidance headed by `STATE_HEADER` after a blank line, then a chat's index of earlier results.
  * The request text is the prompt's text before the first blank line that is followed by
  * `STATE_HEADER`, or the whole prompt where the header is absent; a prompt that starts with the
- * header has none (agent#36). It holds where the prompt, state and guidance fit the allowance.
- * Where they do not, the whole is retained and previewed (`SessionContext.prompt`) and the preview
- * is what is sent; its text before any header is the preview's notice, not the person's message.
+ * header has none (agent#36). Where the prompt, state and guidance do not fit the allowance, the
+ * whole is retained and previewed (`SessionContext.agentPrompt`), and the prompt sent is the
+ * person's message (`currentRequest.message`), a blank line, `STATE_HEADER` and the preview, so
+ * the rule finds the person's message; a host that gives no `currentRequest` gets the preview
+ * alone, and the rule finds its own opening.
  */
 import { STATE_HEADER } from '../engines/contract'
 import type { EndpointKind } from '../host'
