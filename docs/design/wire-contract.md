@@ -127,7 +127,11 @@ was received and will be shown for review, and never reaches the host's `execute
 another shape are a failed result naming what to correct, under the fence's rules (`kind`, where
 given, must be `create`). The latest call's document is the proposal, and the fenced block stays the
 fallback; a fenced proposal in the same answer as a tool proposal is ambiguous and refused, as two
-fenced proposals are. The critic is not offered it.
+fenced proposals are. The critic is not offered it. For `propose_pack` and the host's other
+`propose_*` tools the boundary is the review card, not the gate: an offered proposal tool is one
+the model may call, retrieved text that asks for it included, and what holds is that a proposal is
+shown for the person's review and nothing is written or applied until the person acts. The gate
+holds the tools that are not offered.
 
 ## Tool calls
 
@@ -138,20 +142,24 @@ host can journal it. A host tool with an `interaction` gets `user_question` or
 
 Every runtime call leaves through the host's gate (`toolGate.ts`), which reads the outbound
 `tools/call` frame: a name outside the allow-list is refused on the wire (`guardrail` `refused`,
-and the call fails); `experimental_test_cases` leaves only with exactly `pack` and `matrix`, each
-JSON text within the policy's `testPackBytes` and `testMatrixBytes` (`$defs/testCasesArguments`),
+and the call fails); `experimental_test_cases` leaves only with exactly `pack` and `matrix`, each a
+string within its bound, the policy's `testPackBytes` and `testMatrixBytes`
+(`$defs/testCasesArguments`; the Runtime refuses text that is not JSON),
 and any other member, a path among them, is refused the same way, the notice naming members and
 sizes and never their text; `experimental_evaluate` always leaves with an own `rehearsal: true`
 (`guardrail` `rewrote` where the model's call lacked it), so a rehearsal never writes an audit
 record. The adapter neither applies nor skips these rules.
 
-One turn may call `experimental_test_cases` at most `testCallsPerTurn` times (three by default).
-The count is the shared boundary's (`context/session.ts`), so both engines keep it: a call past it
-is not made, and the model reads a failed result (`request-limit`, source `tool`, outcome
-`not-started`) that names the limit and tells it to use the reports it has. Each call re-sends the
-whole pack, so without the cap a test, fix and retest loop would be bounded only by the request
-allowance, at a cost that grows with the square of the steps; the repeated-work detector compares
-arguments and does not see a pack that changes each time. A new turn starts at nought.
+One turn may call `experimental_test_cases` at most `testCallsPerTurn` times (three by default),
+counted per turn. The count is the shared boundary's (`context/session.ts`), so both engines keep
+it, and it is the checkpoint's `testCalls`, carried as `used` is: a Retry, a budget continuation and
+a delegation's parent continuation go on counting, and the delegation coordinator counts the parent
+and its continuation together. A call past it is not made, and the model reads a failed result
+(`tool-failed`, source `tool`, outcome `not-started`) that names `testCallsPerTurn` and tells it to
+use the reports it has. Each call re-sends the whole pack, so without the cap a test, fix and
+retest loop would be bounded only by the request allowance, at a cost that grows with the square of
+the steps; the repeated-work detector compares arguments and does not see a pack that changes each
+time. A new turn starts at nought.
 
 ## Tool results
 
@@ -249,9 +257,10 @@ all.
 `budget_paused` and handed back to resume: `requestKey` (binding it to the request it was made
 for), `phase` (`plan` or `work`), `status`, the allowance (`unit`, `used`, `limit`, and `grants`
 `{from, to, at}`), the task `plan` and its `explanation`, every `operation` with its exact arguments
-and result, the `completions`, and the ledger's retained `context` (each entry with its digest, so
-a restore refuses a changed one). Never permissions, evidence approval or private reasoning. At
-most 4 MiB as JSON text.
+and result, the `completions`, the ledger's retained `context` (each entry with its digest, so a
+restore refuses a changed one), and, once the turn has called the test tool, `testCalls`, carried
+as `used` is. Never permissions, evidence approval or private reasoning. At most 4 MiB as JSON
+text.
 
 ## Failures
 

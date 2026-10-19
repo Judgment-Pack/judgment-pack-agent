@@ -26,8 +26,9 @@ import {AIFailureError,failure} from './failures'
  *
  * **One tool's arguments are allow-listed as well** (agent#7):
  * `experimental_test_cases` leaves only with exactly the two members the
- * Runtime's schema names, `pack` and `matrix`, each JSON text within the
- * policy's bytes (`testPackBytes`, `testMatrixBytes`). It takes pack text and a
+ * Runtime's schema names, `pack` and `matrix`, each a string within its bound
+ * in the policy's bytes (`testPackBytes`, `testMatrixBytes`); the Runtime
+ * refuses text that is not JSON. It takes pack text and a
  * matrix and reads no project file, which is why it is the one test tool on the
  * ceiling; any other member, a path among them, is refused on the wire. The
  * Runtime tools kept off the ceiling, and why, are `REFUSED_RUNTIME_TOOLS`.
@@ -56,7 +57,8 @@ export const REHEARSAL_MEMBER = 'rehearsal'
 
 /**
  * The Runtime's test tool the ceiling admits (agent#7), and the members its
- * arguments may carry: exactly the two its served schema names, each JSON text.
+ * arguments may carry: exactly the two its served schema names, each a string
+ * within its bound; the Runtime refuses text that is not JSON.
  */
 export const TEST_TOOL = 'experimental_test_cases'
 export const TEST_ARGUMENTS = ['pack', 'matrix'] as const
@@ -210,7 +212,7 @@ function testArgumentsProblem(supplied: unknown, bounds: TestArgumentBounds): st
   for (const member of TEST_ARGUMENTS) {
     const value = args[member]
     if (typeof value !== 'string') {
-      return `${TEST_TOOL} takes ${member} as JSON text, and this call's ${member} is ${value === undefined ? 'missing' : 'not a string'}`
+      return `${TEST_TOOL} takes ${member} as a string, and this call's ${member} is ${value === undefined ? 'missing' : 'not a string'}`
     }
     const [limit, policy] = limits[member]
     const bytes = utf8Bytes(value)

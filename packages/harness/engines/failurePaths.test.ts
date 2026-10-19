@@ -11,7 +11,9 @@
  * whole-JSON success legs on every family (the certification suite).
  *
  * Every case runs one turn that has already completed a runtime call when the
- * failure comes, and asserts four things:
+ * failure comes, except two codex cases that fail before any call (the socket
+ * closing before `started`, and the server's input-budget refusal), and
+ * asserts four things:
  *
  * - **the failure class** the run reports, and its outcome;
  * - **the recovery hint**, the catalogue's `recovery` for that class, which is
@@ -21,8 +23,9 @@
  * - **what the Retry action does**: a host offers Retry unless the recovery is
  *   `narrow` (and not before `retryAt`), and Retry starts the same request
  *   again from that checkpoint (`context.execution`, status `running`), as the
- *   Desk's `retryResponse` does. The completed call is kept, not repeated by
- *   the harness, and the request count carries on from where it stopped.
+ *   Desk's `retryResponse` does. The completed call is kept and the harness
+ *   does not replay it (a model that asks for it again gets it again), and
+ *   the request count carries on from where it stopped.
  *
  * The scripted endpoint is named for what it does; nothing here reaches a
  * provider or a live service.
@@ -180,7 +183,8 @@ describe('vercel', () => {
       const resumed = lastCheckpoint(retried.events)
       expect(operations(resumed)).toEqual([['get_schema', 'complete'], ['validate', 'complete']])
       expect(resumed.used).toBe(checkpoint.used + 2)
-      // The completed call was not made again.
+      // The completed call is not replayed by the harness: this model does not
+      // ask for it again (one that did would get it again).
       expect(retried.seen.map((call) => call.name)).toEqual(['validate'])
     })
   })
@@ -320,8 +324,17 @@ describe('vercel', () => {
     neverRetried(failure)
     expect(requests).toHaveLength(2)
     expect(ofType(events, 'retry')).toEqual([])
-    expect(operations(lastCheckpoint(events))).toEqual([['get_schema', 'complete']])
+    const checkpoint = lastCheckpoint(events)
+    expect(checkpoint.status).toBe('stopped')
+    expect(operations(checkpoint)).toEqual([['get_schema', 'complete']])
+
     expect(retryOffered(failure)).toBe(true)
+    const retried = await vercelRetry(checkpoint)
+    expect(ofType(retried.events, 'error')).toEqual([])
+    const resumed = lastCheckpoint(retried.events)
+    expect(resumed.status).toBe('complete')
+    expect(operations(resumed)).toEqual([['get_schema', 'complete'], ['validate', 'complete']])
+    expect(resumed.used).toBe(checkpoint.used + 2)
   })
 
   it('the endpoint answers whole JSON cut short where a stream was asked for: invalid-response, the checkpoint kept, and Retry resumes it', async () => {

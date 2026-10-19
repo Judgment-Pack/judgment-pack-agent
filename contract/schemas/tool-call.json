@@ -81,7 +81,7 @@
       "additionalProperties": true
     },
     "testCasesArguments": {
-      "description": "The arguments experimental_test_cases may leave the page with (packages/harness/toolGate.ts, TEST_ARGUMENTS and testArgumentsProblem): exactly the two members the Runtime's served schema names, each JSON text, pack at most testPackBytes and matrix at most testMatrixBytes UTF-8 bytes (budget.json, 65536 each by default). Closed: any other member, a path among them, is refused on the wire with a guardrail refused event, and the model reads a failed result (failure code permission, source tool, outcome not-started) whose detail names the members and sizes, never their text. The call counts against the turn's testCallsPerTurn before the gate sees it.",
+      "description": "The arguments experimental_test_cases may leave the page with (packages/harness/toolGate.ts, TEST_ARGUMENTS and testArgumentsProblem): exactly the two members the Runtime's served schema names, each a string within its bound, pack at most testPackBytes and matrix at most testMatrixBytes UTF-8 bytes (budget.json, 65536 each by default); the Runtime refuses text that is not JSON. Closed: any other member, a path among them, is refused on the wire with a guardrail refused event, and the model reads a failed result (failure code permission, source tool, outcome not-started) whose detail names the members and sizes, never their text. The call counts against the turn's testCallsPerTurn before the gate sees it.",
       "type": "object",
       "required": [
         "pack",
@@ -89,11 +89,11 @@
       ],
       "properties": {
         "pack": {
-          "description": "The exact pack JSON text under test.",
+          "description": "The exact pack under test, as text; the Runtime refuses text that is not JSON.",
           "type": "string"
         },
         "matrix": {
-          "description": "The matrix JSON text: cases, each with an independently established expectation.",
+          "description": "The matrix, as text: cases, each with an independently established expectation; the Runtime refuses text that is not JSON.",
           "type": "string"
         }
       },

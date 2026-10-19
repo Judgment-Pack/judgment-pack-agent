@@ -18,13 +18,15 @@ a failed run: the model reads a failed result and goes on.
 A host offers **Retry** unless the recovery is `narrow`, and not before the failure's `retryAt`.
 Retry starts the same request again from the failed run's checkpoint (`context.execution`, status
 `running`), as the Desk's `retryResponse` does: completed operations are kept and the harness does
-not make them again, an operation that was in flight becomes `interrupted`, and the request count
-carries on from where it stopped, within the same allowance.
+not replay them, though a model that asks for one again gets it again; an operation that was in
+flight becomes `interrupted`, and the request count and the turn's test-call count carry on from
+where they stopped, within the same allowance.
 
 ## The paths
 
 Each row is a case in `packages/harness/engines/failurePaths.test.ts`, run on one turn that has
-already completed a runtime call when the failure comes.
+already completed a runtime call when the failure comes, except two `codex` cases that fail before
+any call: the socket closing before `started`, and the server's input-budget refusal.
 
 | What happens | `vercel` reports | `codex` reports | Recovery | Retry |
 | --- | --- | --- | --- | --- |

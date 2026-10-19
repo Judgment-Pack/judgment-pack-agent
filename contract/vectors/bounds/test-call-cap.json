@@ -1,5 +1,5 @@
 {
-  "description": "A turn whose model calls experimental_test_cases on every step, each time on a changed pack, with the policy's testCallsPerTurn of 3: three calls reach the runtime, the fourth is not made and the model reads a failed result naming the limit (request-limit, source tool, outcome not-started), and the turn ends with the model's answer. A non-interactive session, so no callId.",
+  "description": "A turn whose model calls experimental_test_cases on every step, each time on a changed pack, with the policy's testCallsPerTurn of 3: three calls reach the runtime, the fourth is not made and the model reads a failed result naming testCallsPerTurn (tool-failed, source tool, outcome not-started), and the turn ends with the model's answer. A non-interactive session, so no callId.",
   "schema": "run-event.json",
   "source": {
     "harness": {
@@ -82,7 +82,7 @@
       "structured": {
         "failure": {
           "version": 1,
-          "code": "request-limit",
+          "code": "tool-failed",
           "source": "tool",
           "outcome": "not-started",
           "detail": "This turn has called experimental_test_cases 3 times, the most one turn may (testCallsPerTurn); this call was not run. Use the reports already obtained: fix what they show and propose, or say what remains. The person can test again in a new turn."

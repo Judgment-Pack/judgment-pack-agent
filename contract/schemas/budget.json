@@ -85,7 +85,7 @@
       "default": 120000
     },
     "testCallsPerTurn": {
-      "description": "How many experimental_test_cases calls one turn may make, on both engines (context/session.ts, claimTestCall). Each call re-sends the whole pack, so a test, fix and retest loop is held to a few rounds rather than to the request allowance. A call past it is not made: the model reads a failed result (failure code request-limit, source tool, outcome not-started) naming the limit, and the run goes on. Counted per run, from its first call; a new turn starts at nought. Not in the Desk's table; the harness's default is 3.",
+      "description": "How many experimental_test_cases calls one turn may make, on both engines (context/session.ts, claimTestCall). Each call re-sends the whole pack, so a test, fix and retest loop is held to a few rounds rather than to the request allowance. A call past it is not made: the model reads a failed result (failure code tool-failed, source tool, outcome not-started) naming the limit, and the run goes on. Counted per turn: the count is the checkpoint's testCalls (checkpoint.json), carried as used is through a Retry, a budget continuation and a delegation's parent continuation, and the delegation coordinator counts the parent and its continuation together; a new turn starts at nought. Not in the Desk's table; the harness's default is 3.",
       "type": "integer",
       "minimum": 0,
       "default": 3

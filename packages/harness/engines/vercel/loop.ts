@@ -660,6 +660,10 @@ function runVercelLoop(
      * What each reading tool's answer is shown to the model as, by call id: one
      * data block closed by this run's marker (agent#12). Written only where a
      * reading tool answered; a failure the harness authored is shown as it is.
+     *
+     * **Cleared as each dispatch starts.** An endpoint may use one call id for
+     * calls in different steps, so an entry left from an earlier call would show
+     * the model that call's data in place of this one's refusal or failure.
      */
     const framed = new Map<string, string>()
     const shown = (callId: string, name: string, projected: McpToolResult): McpToolResult => {
@@ -673,6 +677,7 @@ function runVercelLoop(
       // handed a call somebody else already fixed reports nothing, and the
       // guardrail line in the tab is the only place a person learns that the
       // rehearsal flag was forced.
+      framed.delete(sdkCallId)
       const args = (name === REHEARSAL_TOOL && asked.length > 0 ? asked.shift() : input) as Record<
         string,
         unknown
@@ -720,6 +725,7 @@ function runVercelLoop(
       // stops it, and its answer is reported in the same two events a runtime
       // answer earns. It is never a check the critic counts — the runtime's
       // verdicts are the runtime's — and it never reaches the recorder.
+      framed.delete(sdkCallId)
       const args = (input ?? {}) as Record<string, unknown>
       if (awaitingInput) throw new DOMException('Waiting for input', 'AbortError')
       executionSignal.throwIfAborted()
@@ -1152,13 +1158,15 @@ function runVercelLoop(
       context.beginIsolatedPhase()
       let criticText = ''
       let criticReasoning = ''
+      // The critic's system text, set once: the call and every step use it.
+      const criticInstructions = CRITIC_SYSTEM + DATA_RULE + assistantLanguageInstructions(session.replyLanguage)
       /** Why the critic did not finish: its failure, never raised ahead of the proposal. */
       let unfinished: unknown = null
       try {
         const critic = streamText({
           telemetry: { isEnabled: false },
           model,
-          instructions: cachedInstructions(session.model.family, CRITIC_SYSTEM + DATA_RULE + assistantLanguageInstructions(session.replyLanguage)),
+          instructions: cachedInstructions(session.model.family, criticInstructions),
           tools: Object.fromEntries(Object.entries(tools).filter(([name]) => !session.hostTools?.some(tool => tool.name === name && (tool.interaction || tool.effect === 'memory' || ['update_plan','request_budget_increase',PROPOSE_PACK_TOOL].includes(tool.name))))),
           messages: [
             { role: 'user', content: await context.prompt(criticMessage(session.testPrompt, proposal.document),CRITIC_SYSTEM,schemas) }
@@ -1177,7 +1185,7 @@ function runVercelLoop(
             toolsClosed=progressStep==='finish'||stepNumber>=MAX_CRITIC_TURNS-1
             // The critic's system text is stable too; its step instruction, when
             // it has one, is the last message rather than a change to the system.
-            const instructions=CRITIC_SYSTEM+DATA_RULE+assistantLanguageInstructions(session.replyLanguage)
+            const instructions=criticInstructions
             const step=progressStep==='recover'?RECOVER_REPEATED_WORK_INSTRUCTIONS:progressStep==='finish'?REPEATED_WORK_INSTRUCTIONS:toolsClosed?finalInstructions:''
             // The note carries the header like every state, and is placed the same way.
             const note=step?stateText(step):''

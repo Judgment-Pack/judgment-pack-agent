@@ -1,5 +1,5 @@
 {
-  "description": "Arguments experimental_test_cases leaves the page with: exactly pack and matrix, each JSON text within the policy's bytes. Any other member is refused on the wire (see framing/injection-refused.json).",
+  "description": "Arguments experimental_test_cases leaves the page with: exactly pack and matrix, each a string within its bound in the policy's bytes; the Runtime refuses text that is not JSON. Any other member is refused on the wire (see framing/injection-refused.json).",
   "schema": "tool-call.json#/$defs/testCasesArguments",
   "source": {
     "harness": {

@@ -38,10 +38,10 @@ $pkg/context/ledger.ts|$a/context/ledger.ts|e7b17e98dc903b1036f636db8b06333d1d49
 $pkg/context/managed.ts|$a/context/managed.ts|-|-
 $pkg/context/policy.ts|$a/context/policy.ts|8f89aa96a7104ba08634c1b37a451f0d8f48217a173e2ee1cf3f9ac5943f4b91|the Go-side copy: policy.json read from the package's contract/; agent#1: readWindowBytes and encodedPrefix, the read window; agent#2: the turn clock and the tool-call deadline (TIME_DEFAULTS); agent#7: the test tool's bounds (TEST_DEFAULTS)
 $pkg/context/recovery.integration.test.ts|$a/context/recovery.integration.test.ts|-|-
-$pkg/context/session.ts|$a/context/session.ts|c0765e40385377d215e18d64d0e5cc37a5e7cf07af3d05020dead7fdf3779221|agent#1: read_window reserved; agent#9: the execution guidance no longer appended to the prompt (each adapter places it), currentState; agent#7: the per-turn test-call cap (claimTestCall); agent#12: the run's marker, frame, framed results read back in compaction and the summary framed
+$pkg/context/session.ts|$a/context/session.ts|b357cedcfa493f5a5105f0623b281b2c46a5695d27472ecc2248c29a20e17637|agent#1: read_window reserved; agent#9: the execution guidance no longer appended to the prompt (each adapter places it), currentState; agent#7: the per-turn test-call cap (claimTestCall); agent#12: the run's marker, frame, framed results read back in compaction and the summary framed
 $pkg/context/toolPolicy.ts|$a/context/toolPolicy.ts|-|-
 $pkg/context/toolPolicy.test.ts|$a/context/toolPolicy.test.ts|-|-
-$pkg/delegation.ts|$a/delegation.ts|-|-
+$pkg/delegation.ts|$a/delegation.ts|ec5a20f9dc6c95c687d601d4e6ccc53e49fcf1450ebedc21968269c087a27de5|agent#7: the turn's test calls counted across the parent and its continuation, and carried into the continuation's checkpoint
 $pkg/delegation.test.ts|$a/delegation.test.ts|c2a97f7509cca43de3522ab5c2b00de6846f87fa54c00236d957eb4ed9aa4bb2|test kept in the Desk: the case over the Desk's response history; the Desk's chat-history reader replaced by a fold of delegated_task events with its interruption rule
 $pkg/delegationContract.ts|$a/delegationContract.ts|-|-
 $pkg/engine.ts|$a/engine.ts|232d695eac9dcdcda35f82880acabad78a3954816fe9241606a520f41166c46e|injection points: Language, AssistantEngine, EndpointKind (types); agent#6: the proposal's note (ProposalNote)
@@ -54,7 +54,7 @@ $pkg/engines/vercel/channel.ts|$a/engines/vercel/channel.ts|-|-
 $pkg/engines/vercel/completion.test.ts|$a/engines/vercel/completion.test.ts|-|-
 $pkg/engines/vercel/engine.test.ts|$a/engines/vercel/engine.test.ts|d96e938946be6cf9f764d534762c1a8de3d2854c687b5fab548e6506f6040a8b|injection points: ASSISTANT_ENGINES, ASSISTANT_TOOLS; paths: LANGUAGES from the test host, testing/question reads the contract vector; agent#1: read_window in the offered tool lists; agent#6: the reformat request and the whole answer, the critic's note, propose_pack
 $pkg/engines/vercel/index.ts|$a/engines/vercel/index.ts|-|-
-$pkg/engines/vercel/loop.ts|$a/engines/vercel/loop.ts|07c5566c1df7b6012075f2812bb377f660e77c8bb064ff9af982d4c19395e5fb|injection points: assistantLanguageInstructions, AssistantEngine and EndpointKind (types); agent#9: a stable prefix with the changing state placed by endpoint (the person's message on the first request, then a trailing user message or the system tail), the critic's note headed, Anthropic cache breakpoints, the tier held for the run; agent#6: the reformat request, the whole answer kept, the critic's note, propose_pack; agent#2: the model-request retry, the turn clock, the tool-call deadline; agent#12: a reading tool's answer framed through toModelOutput, the data rule in the instructions and the critic's
+$pkg/engines/vercel/loop.ts|$a/engines/vercel/loop.ts|5a7918795715a88bef0bbc7649df83875d661adf0acecad5b7aae270bf7c7f3b|injection points: assistantLanguageInstructions, AssistantEngine and EndpointKind (types); agent#9: a stable prefix with the changing state placed by endpoint (the person's message on the first request, then a trailing user message or the system tail), the critic's note headed, Anthropic cache breakpoints, the tier held for the run; agent#6: the reformat request, the whole answer kept, the critic's note, propose_pack; agent#2: the model-request retry, the turn clock, the tool-call deadline; agent#12: a reading tool's answer framed through toModelOutput, the data rule in the instructions and the critic's
 $pkg/engines/vercel/relay.ts|$a/engines/vercel/relay.ts|f6c7c2cc27588127f0a4a33f646ee358c64a3e3e3f139b55054eb57d35aca085|injection points: EndpointKind (type); agent#3: a whole answer that broke while read, or is not JSON, reported by class
 $pkg/execution/checkArtifact.ts|$a/execution/checkArtifact.ts|-|-
 $pkg/execution/checkArtifact.test.ts|$a/execution/checkArtifact.test.ts|-|-
@@ -64,7 +64,7 @@ $pkg/execution/correctArtifact.test.ts|$a/execution/correctArtifact.test.ts|-|-
 $pkg/execution/execution.test.ts|$a/execution/execution.test.ts|83b025c05b75843046bb03e0df56094a27fc9b680e32073583fa7db2e791161c|test kept in the Desk: the case over the Desk's chat checkpoint
 $pkg/execution/progress.ts|$a/execution/progress.ts|-|-
 $pkg/execution/progress.test.ts|$a/execution/progress.test.ts|-|-
-$pkg/execution/state.ts|$a/execution/state.ts|1bcc57a2aa31a7940fd32ae951aab294b66b78c893caa83dda72e90cb1930b1e|agent#2: the completion record's attempt, failure and waitMs (CompletionRecord, readExecution)
+$pkg/execution/state.ts|$a/execution/state.ts|17562390282e43022c62c3af788cf30119302e8dd0e73e6f01ee1c0eaf3ccb8e|agent#2: the completion record's attempt, failure and waitMs (CompletionRecord, readExecution); agent#7: the turn's test-call count (testCalls) carried in the checkpoint
 $pkg/failures.ts|$a/failures.ts|b8deb6c05e890f1642f210dc36906267f2014a8b02586734cd0826950bd67a69|the Go-side copy: catalog.json read from the package's contract/; agent#2: the retried refusals by name (canRetryRefusal, refusalCode)
 $pkg/failures.test.ts|$a/failures.test.ts|-|-
 $pkg/failures.integration.test.ts|$a/failures.integration.test.ts|bade99f8d9b602b16789f9835f1e1abdb0a0ef7a749afc41ce43838ef0095a4c|agent#2: Retry-After 120, past the retry wait limit, so the refusal is still reported after one request
@@ -85,7 +85,7 @@ $pkg/session.ts|$a/session.ts|5b43df17b626eee3a98d06e959bff82eb6118ca8dd1605ca06
 $pkg/session.test.ts|$a/session.test.ts|f3400e960cab12b82f9f2491827268be9aabc1b5adfb5d5a1c1c70f40cc51133|injection points: the Desk's session store and language replaced by configureHarness with the test host's sessionBearer and currentLanguage; paths: conformance/ is certification/
 $pkg/thinking.ts|$a/thinking.ts|0a05ccb19f2f89cddf8efdaf4fb4fd03264219ac8469083a722b4b4a5151a892|injection points: sourceMessage, EndpointKind and ThinkingTier (types)
 $pkg/thinking.test.ts|$a/thinking.test.ts|95558d0f77c51b73671db0d36f50c00cfb0108959939f3131c10029746d6cd24|injection points: EndpointKind and ThinkingTier (types)
-$pkg/toolGate.ts|$a/toolGate.ts|af760477e011a6ba940325cd3679f65895a897aea401e258b48959eca213adb5|injection points: ASSISTANT_TOOLS; agent#7: the six-tool ceiling, the test tool's argument allow-list and byte bounds, the refused tools and their reasons
+$pkg/toolGate.ts|$a/toolGate.ts|83352875a4b38854e7c11801284b2c498b8f618b162d5575ee493a0d331f7a2e|injection points: ASSISTANT_TOOLS; agent#7: the six-tool ceiling, the test tool's argument allow-list and byte bounds, the refused tools and their reasons
 $pkg/toolGate.test.ts|$a/toolGate.test.ts|378089aa27c3e5e6c67776fcd4c709a1e7d412415f527d9e2d3b2be56cba62c8|injection points: ASSISTANT_TOOLS; whitespace: the blank line at the end of the file, which the repository's whitespace check refuses; agent#7: the ceiling's wording
 $pkg/certification/certification/clearsItsInterval.ts|$a/conformance/certification/clearsItsInterval.ts|-|-
 $pkg/certification/certification/throwsWhileDraining.ts|$a/conformance/certification/throwsWhileDraining.ts|-|-

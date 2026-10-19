@@ -21,8 +21,6 @@ export class SessionContext {
  readonly policy;readonly ledger;readonly execution:ExecutionController;private compactions=0
  /** agent#12: this run's closing marker for retrieved data, drawn once, never written into the instructions. */
  readonly marker=dataMarker()
- /** agent#7: the Runtime's test tool calls this turn has made, held to policy.testCallsPerTurn. */
- private testCalls=0
  private compactedSteps=new Map<string,Record<string,unknown>>()
  private summaries=new Set<string>()
  private contracts=new Map<string,unknown>()
@@ -192,15 +190,23 @@ export class SessionContext {
   if(data===undefined)return output.value
   try{return JSON.parse(data)}catch{return data}
  }
- /** One call of the Runtime's test tool, counted; past the turn's cap, a failure the model reads instead of the call. */
+ /**
+  * One call of the Runtime's test tool, counted against the turn (agent#7); past policy.testCallsPerTurn, a failure
+  * the model reads instead of the call. The count is the execution state's (testCalls), so it is carried through the
+  * checkpoint as `used` is: a Retry, a budget continuation and a delegation's parent continuation go on counting.
+  */
  claimTestCall(name:string){
   if(name!==TEST_TOOL)return
-  const limit=this.policy.testCallsPerTurn
-  if(this.testCalls>=limit)throw new AIFailureError({version:1,code:'request-limit',source:'tool',outcome:'not-started',detail:`This turn has called ${TEST_TOOL} ${limit} time${limit===1?'':'s'}, the most one turn may (testCallsPerTurn); this call was not run. Use the reports already obtained: fix what they show and propose, or say what remains. The person can test again in a new turn.`})
-  this.testCalls++
+  const limit=this.policy.testCallsPerTurn,made=this.execution.state.testCalls??0
+  if(made>=limit)throw testCallCapFailure(limit)
+  this.execution.state.testCalls=made+1
  }
  check(instructions:string,prompt:string,tools:unknown){if(utf8Bytes(prompt)>this.budget(instructions,tools))throw new ContextBudgetError()}
  usage(input:unknown):ContextUsage {const bytes=utf8Bytes(encoded(input));return {inputBytes:bytes,estimatedInputTokens:Math.ceil(bytes/3),inputBudgetBytes:inputBytes(this.policy),outputReserveTokens:this.policy.outputTokens,compactions:this.compactions,retainedItems:this.ledger.list().items.length}}
+}
+/** What a test call past the turn's cap earns: a failed tool result the model reads, naming the limit. */
+export function testCallCapFailure(limit:number):AIFailureError{
+ return new AIFailureError({version:1,code:'tool-failed',source:'tool',outcome:'not-started',detail:`This turn has called ${TEST_TOOL} ${limit} time${limit===1?'':'s'}, the most one turn may (testCallsPerTurn); this call was not run. Use the reports already obtained: fix what they show and propose, or say what remains. The person can test again in a new turn.`})
 }
 export async function contextualSession<T extends EngineSession>(session:T):Promise<{session:T;context:SessionContext}>{
  session=planningSession(session)
