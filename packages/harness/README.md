@@ -50,7 +50,8 @@ their values; it is the Desk's function without the Desk's plural table, which n
 reaches (none passes a `count`).
 
 **Injection points**, what only a host can do. Each one throws, naming itself, until the host
-supplies it with `configureHarness`.
+supplies it with `configureHarness`. (`NO_SESSION_MESSAGE` is a sentence and cannot throw; it is
+read only to build a `NoSession`, which does.)
 
 | Injection point | What the host supplies | The Desk feature it replaces | Read by |
 | --- | --- | --- | --- |
@@ -122,11 +123,16 @@ the Desk's own test ground does: a session already in hand, a relay addressed by
 
 ## Tests
 
-`npm test` runs every moved test and the suite (vitest, jsdom, as the Desk runs them). The cases
-that exercise a Desk feature stay in the Desk and run there against this package after its swap:
-the chat checkpoint round trip (`execution/execution.test.ts`), the plan store and plan card
+`npm test` runs every moved test and the suite (vitest, jsdom, as the Desk runs them), including
+`session.test.ts`, whose session store and language come from the test host. The cases that
+exercise a Desk feature stay in the Desk and run there against this package after its swap: the
+chat checkpoint round trip (`execution/execution.test.ts`), the plan store and plan card
 (`planning/planning.test.tsx`, three cases), the memory settings screen (`memory/memory.test.tsx`,
 two cases), the response history (`delegation.test.ts`, one case) and the dialect chat tools
-(`engines/codex/codex.test.ts`, one case); and, whole, the architecture tripwires that read the
-Desk's sources (`context/coverage.test.ts`, `enforcement.test.ts`) and the session tests over the
-Desk's session store (`session.test.ts`).
+(`engines/codex/codex.test.ts`, one case).
+
+Two whole files stay in the Desk and **cannot run against this package as written**: the
+architecture tripwires `enforcement.test.ts` and `context/coverage.test.ts` read the harness by
+source path (`assistant/engine.ts`, `session.ts`, `engines/**`, `failures.ts`), and one expects the
+catalogue import string `internal/aifailure/catalog.json`, which is `./contract/catalog.json` here.
+The package publishes no TypeScript source, so they need porting in the swap (#22).

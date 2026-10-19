@@ -155,10 +155,11 @@ function unsupplied(name: keyof HarnessHost): never {
   )
 }
 
+/** Building the error a call without a session throws is itself a use of the host's class. */
 class UnsuppliedNoSession extends Error {
-  constructor(message?: string) {
-    super(message)
-    this.name = 'NoSession'
+  constructor() {
+    super()
+    unsupplied('NoSession')
   }
 }
 
@@ -172,6 +173,7 @@ export let forgetSession: HarnessHost['forgetSession'] = () => unsupplied('forge
 export let refusalCode: HarnessHost['refusalCode'] = () => unsupplied('refusalCode')
 export let discardBody: HarnessHost['discardBody'] = () => unsupplied('discardBody')
 export let NoSession: HarnessHost['NoSession'] = UnsuppliedNoSession
+/** A sentence, read only to build a `NoSession`, which throws until the host supplies it. */
 export let NO_SESSION_MESSAGE: HarnessHost['NO_SESSION_MESSAGE'] = 'no session'
 export let chassisUrl: HarnessHost['chassisUrl'] = () => unsupplied('chassisUrl')
 export let deskHeaders: HarnessHost['deskHeaders'] = () => unsupplied('deskHeaders')
