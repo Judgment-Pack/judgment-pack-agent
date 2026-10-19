@@ -25,15 +25,26 @@ questions, its prose streamed under its task, a partial result at its time limit
 its first byte, concurrency from the connection's capacity, reuse of an identical task, and each
 child's cost and time in its record and the parent's checkpoint; and the remaining agent#12 cases,
 the page that asks for `propose_pack` or a search, on `codex`. These are the harness package's
-behaviour, not yet the Desk's; their vectors name the package's files as their source.
+behaviour, not yet the Desk's; their vectors name the package's files as their source. Amended for
+[ADR-0003](../adr/0003-the-deep-agents-adapter.md): a third adapter, `deepagents`, a model engine
+on LangChain's Deep Agents, held to the same legs as `vercel` (see the adapters below and Where the
+engines disagree).
 
 ## Host, adapter, and the slot between them
 
 In the Desk, an adapter is an **engine**: a module the page loads for one session, which receives a
 session and returns an ordered stream of events (`Engine.start(session)`,
-`web/src/assistant/engine.ts`). Two engines ship: `vercel`, a loop on the Vercel AI SDK that drives a
-model over the relay, and `codex`, which drives a ChatGPT subscription agent that the Desk server
-runs. Everything an engine needs is decided by the host before the session starts and handed to it:
+`web/src/assistant/engine.ts`). Two engines ship in the Desk: `vercel`, a loop on the Vercel AI SDK
+that drives a model over the relay, and `codex`, which drives a ChatGPT subscription agent that the
+Desk server runs. This package adds a third, `deepagents` (ADR-0003):
+
+| Adapter | Kind | Loop | Reach to a model | Tool calls |
+| --- | --- | --- | --- | --- |
+| `vercel` | model | the Vercel AI SDK's `streamText` | `model.call`, as the SDK's providers' `fetch` (`relayFetch`) | the SDK's tools, each executed through the gate's dispatch |
+| `codex` | agent | the Codex bridge the Desk server runs | `agent.run` | the agent wire, under aliases, through the gate's dispatch |
+| `deepagents` | model | Deep Agents' agent graph (`createDeepAgent`, `deepagents/browser`), its own tools, subagents and summarization off | `model.call`, from its own LangChain chat model, the three wires written by the adapter; a run whose environment turns LangChain's tracing on is refused | every call answered by the adapter's boundary middleware through the gate's dispatch |
+
+Everything an engine needs is decided by the host before the session starts and handed to it:
 
 - the runtime's prompt (`prompts/get`) and, for the critic, its testing prompt;
 - the runtime's tools exactly as `tools/list` served them, and `callTool`, the only way to reach
@@ -944,9 +955,11 @@ adapter, where the host sees no `delegation_requested`, no per-child model call 
 unless the adapter reports them. Open: whether every child's model traffic must still go through
 the host's model capability so the host keeps counting; whether the adapter emits
 `delegated_task` itself, and with whose limits; and how a child's budget is stated to the adapter
-(a member of the request, or the host's counting alone).
+(a member of the request, or the host's counting alone). For `deepagents` it does not arise: Deep
+Agents' subagents are off and delegation is the package's, an awaited `delegate_tasks` call as on
+`vercel` (ADR-0003, decision 3).
 
-### Where the two engines disagree
+### Where the engines disagree
 
 - **The critic's model and figures.** Both read the critic's member of the host's `modelsFor` answer,
   asked once per run (agent#10; review of agent#35).
@@ -1053,12 +1066,54 @@ the host's model capability so the host keeps counting; whether the adapter emit
   the harness's own `admit`, nothing reaches the Runtime and the pass still ends, so an adapter that
   skipped `admit` on the critic's calls fails both certifications.
 
+- **The `deepagents` engine** (ADR-0003). It is a model engine and keeps `vercel`'s rules wherever
+  the list above names `vercel`: the request allowance and its grants, the retry rule (the same
+  module), the turn's wall clock, the tool-call deadline, the awaited delegate call and its
+  children's concurrency, the critic's figures, call ids, one `message` at the end, the kinds only
+  a model engine emits, the failure source `model` and the capability record. It differs in these:
+  - **An unoffered tool.** Its boundary answers every call before LangChain's tool node, so on the
+    native path too the model reads the gate's refusal (`unofferedRefusal`), where `vercel`'s model
+    reads the SDK's own no-such-tool error first; certified scenario 1 records it.
+  - **The wires.** The adapter writes the three wires itself (`engines/deepagents/wire.ts`), so the
+    bodies are its own, held to the members each wire format defines. Signed reasoning goes back as
+    it arrived: an Anthropic signature split across two events is joined and carried, where
+    `vercel` detects the fragment and degrades the tier; two empty signed Gemini thoughts are
+    carried back as two and count as reasoning, so "always thinks" is inferred from them, where
+    `vercel`'s provider drops them (`SDK_DROPS_EMPTY_SIGNED_THOUGHTS`); a Gemini call goes back
+    without the id `vercel`'s provider adds to it. A failed tool result carries `is_error` on the
+    Anthropic wire. The token figures are the adapter's reading of each wire's usage; the scenario
+    that asserts figures runs on the OpenAI-compatible wire, where both count `prompt_tokens` and
+    `completion_tokens`.
+  - **The rehearsal call carried back.** The `experimental_evaluate` call the history carries back
+    to the model is the model's own, without `rehearsal: true`, on all three wires; `vercel` writes
+    the flag into the call it keeps through the AI SDK's `experimental_refineToolInput`, a second
+    layer. Here the gate's rewrite of the outbound frame is the one layer, and K3a holds it on both
+    engines: the runtime sees a rehearsal and the `rewrote` guardrail is reported. The adapter keeps
+    the model's call as written so the gate is handed exactly what the model asked for. (The
+    Anthropic tools' `eager_input_streaming: true`, which `vercel`'s provider sends, is sent here
+    too.)
+  - **Tracing.** A run whose environment turns LangChain's LangSmith tracer on (`LANGSMITH_TRACING`,
+    `LANGCHAIN_TRACING_V2` and their kin, read where a host has a `process.env`) is refused as a
+    `configuration` failure before an agent is built: the tracer would send the run through the
+    global `fetch` with the environment's key, and LangChain cannot be made to keep it off on every
+    path (ADR-0003, decision 1). `vercel` reads none of these variables. The sealed leg K1b holds
+    both: no network global reached, the refusal on this engine and the proposal on `vercel`.
+  - **Tool names.** `createDeepAgent` refuses a tool named like one of its built-ins even with them
+    off, so a host tool named `ls`, `read_file`, `write_file`, `edit_file`, `delete`, `glob`,
+    `grep`, `execute`, `task` or one of the async task tools ends the run as a `configuration`
+    error on this engine.
+  - **Certification.** Held to every leg `vercel` is held to (the six wire legs, text tool calls,
+    strict alternation, thinking, the six scenarios once per answer shape, delegation's
+    concurrency), with one recorded difference, scenario 1's, above.
+
 ### Other departures
 
 - **No approval event.** The design draft had a call that needs a person's decision pause the run;
   the Desk has no such event. A framework with its own approval interrupt (the AI SDK's tool
   approval, Deep Agents' interrupts) has nothing to map to except `user_question`. The boundary
-  already refuses to compact across a pending approval part, so the shape is anticipated.
+  already refuses to compact across a pending approval part, so the shape is anticipated. The
+  `deepagents` engine does not use Deep Agents' interrupts: they need `AsyncLocalStorage`, which the
+  browser build lacks, and its question pause is its boundary's (ADR-0003, decision 2).
 - **The host's events in the adapter's stream.** `guardrail` `rewrote` and `refused` are emitted by
   the gate through a callback and land between a call and its result only because both run in one
   page. Across a process boundary the order needs stating.

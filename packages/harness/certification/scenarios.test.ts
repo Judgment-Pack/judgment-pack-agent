@@ -99,7 +99,7 @@ const lastCheckpoint = (events: AssistantEvent[]): ExecutionCheckpoint =>
 // ---------------------------------------------------------------------------------------------
 
 /** The checks every adapter makes of scenario 1, over one run of it. */
-function chatHostToolsChecks(run: () => Ran, executed: () => Record<string, number>, answers: () => { text: string; isError: boolean }[] | null) {
+function chatHostToolsChecks(run: () => Ran, executed: () => Record<string, number>, answers: () => { text: string; isError: boolean }[] | null, engineId?: string) {
   it('1 · the offer is the two host tools beside the Runtime’s six and the harness’s six, and no third name', () => {
     const offered = offeredNames(run())
     expect(sorted(offered)).toEqual(sorted([...RUNTIME_SIX, ...CONTEXT_SIX, 'read_policy', PROPOSE_PACK_TOOL]))
@@ -115,12 +115,15 @@ function chatHostToolsChecks(run: () => Ran, executed: () => Record<string, numb
     expect(flow[at - 1]).toMatchObject({ type: 'tool_call', name: 'save_pack' })
     expect(flow[at + 1]).toMatchObject({ type: 'tool_result', name: 'save_pack', isError: true })
     expect(seen).toEqual([])
-    // The model is told. On the agent engine its answer is the gate's refusal. Recorded disagreement: on the model engine the SDK
-    // answers the call first, with its own no-such-tool error naming the name, and the model reads that.
+    // The model is told. On the agent engine its answer is the gate's refusal. Recorded disagreement: on the `vercel` model engine
+    // the SDK answers the call first, with its own no-such-tool error naming the name, and the model reads that; on the
+    // `deepagents` model engine the adapter's boundary answers every call before LangChain's tool node, so the model reads the
+    // gate's refusal, as the agent engine's does (ADR-0003).
     const told = answers()
     if (told === null) {
       const answered = (run().requests.at(-1)!.body.messages ?? []).find((message) => message.role === 'tool' && message.tool_call_id === 'call_2')
-      expect(String(answered?.content)).toContain("unavailable tool 'save_pack'")
+      if (engineId === 'deepagents') expect(String(answered?.content)).toContain('never calls a tool it was not offered')
+      else expect(String(answered?.content)).toContain("unavailable tool 'save_pack'")
     } else {
       expect(told[1]).toMatchObject({ isError: true, text: expect.stringContaining('never calls a tool it was not offered') })
     }
@@ -694,7 +697,7 @@ describe.each(MODEL_ENGINES)('engine %s · scenarios', (engineId) => {
         })
       })
       afterAll(() => vi.unstubAllGlobals())
-      chatHostToolsChecks(() => ran, () => executed, () => null)
+      chatHostToolsChecks(() => ran, () => executed, () => null, engineId)
     })
 
     describe('2 · delegation', () => {

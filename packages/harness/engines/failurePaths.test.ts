@@ -27,10 +27,13 @@
  *   does not replay it (a model that asks for it again gets it again), and
  *   the request count carries on from where it stopped.
  *
+ * The model engine's cases run on `vercel` and again on `deepagents` (ADR-0003),
+ * which must report each the same way.
+ *
  * The scripted endpoint is named for what it does; nothing here reaches a
  * provider or a live service.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RETRYABLE_OVERLOAD_CODES, RETRYABLE_REFUSAL_CLASSES, canRetryRefusal, failureRecovery, retryReady, type AIFailure } from '../failures'
 import { readExecution, type ExecutionCheckpoint } from '../execution/state'
 import {
@@ -49,7 +52,9 @@ import {
   type RuntimeControl,
   type TurnRecord
 } from '../testing/scripted'
-import type { AssistantEvent } from '../engine'
+import type { AssistantEvent, Engine } from '../engine'
+import { vercel } from './vercel'
+import { deepagents } from './deepagents'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -125,11 +130,18 @@ function firstChunkThen(text: string, after: (controller: ReadableStreamDefaultC
 /** The relay's idle bound, shortened: the Desk's relay cuts a stream two minutes after its last write. */
 const IDLE_BOUND_MS = 300
 
+/**
+ * The model engine the cases below run on: each runs on `vercel` and again on `deepagents`
+ * (ADR-0003), which reads the same wire through its own chat model and must report the same.
+ */
+let modelEngine: Engine = vercel
+
 async function vercelFailure(options: {
   answer?: (request: EndpointRequest) => Response | Promise<Response>
   handle?: (call: RuntimeCall, control: RuntimeControl) => unknown
 }): Promise<TurnRecord & { requests: EndpointRequest[] }> {
   return vercelTurn({
+    engine: modelEngine,
     answer: options.answer ?? healthy,
     handle: options.handle ?? (() => runtimeAnswer({ status: 'valid' }))
   })
@@ -138,6 +150,7 @@ async function vercelFailure(options: {
 /** Retry on vercel: the same turn from the checkpoint, the endpoint healthy now. */
 async function vercelRetry(checkpoint: ExecutionCheckpoint) {
   const retried = await vercelTurn({
+    engine: modelEngine,
     answer: (request) => streamed(request.number === 1 ? HEALTHY[2]! : HEALTHY[3]!),
     handle: () => runtimeAnswer({ status: 'valid' }),
     session: { context: { currentRequest: { message: 'Check the expense pack.', input: 'The expense pack.' }, execution: resumeFrom(checkpoint) } }
@@ -145,7 +158,11 @@ async function vercelRetry(checkpoint: ExecutionCheckpoint) {
   return retried
 }
 
-describe('vercel', () => {
+describe.each([vercel, deepagents])('$id', (engine) => {
+  beforeEach(() => {
+    modelEngine = engine
+  })
+
   describe.each([
     {
       when: 'the connection to the relay drops before the first byte',

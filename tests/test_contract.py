@@ -22,6 +22,10 @@ BASE = "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/
 # Runtime tools the harness admits beyond the Desk's ceiling (contract/desk/inventory.json), in order.
 HARNESS_CEILING_ADDITIONS = ["experimental_test_cases"]
 
+# Engines the harness carries beyond the Desk's two (contract/desk/inventory.json), in order: the
+# Deep Agents adapter (docs/adr/0003-the-deep-agents-adapter.md).
+HARNESS_ENGINE_ADDITIONS = ["deepagents"]
+
 EXPECTED_SCHEMAS = {
     "run-event.json",
     "tool-offer.json",
@@ -262,7 +266,10 @@ class DeskInventoryTests(unittest.TestCase):
         self.assertEqual(failure["outcome"]["enum"], self.inventory["failureOutcomes"]["values"])
         completion = self.schemas["provenance.json"]["$defs"]["completion"]["properties"]["finishReason"]["enum"]
         self.assertEqual(completion, self.inventory["completionReasons"]["values"])
-        self.assertEqual(self.schemas["provenance.json"]["$defs"]["engine"]["enum"], self.inventory["engines"]["values"])
+        self.assertEqual(
+            self.schemas["provenance.json"]["$defs"]["engine"]["enum"],
+            self.inventory["engines"]["values"] + HARNESS_ENGINE_ADDITIONS,
+        )
         # The ceiling is the Desk's five, then the one tool the harness admits beyond them
         # (agent#7: experimental_test_cases, under an argument allow-list and a per-turn cap).
         self.assertEqual(

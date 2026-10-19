@@ -1197,6 +1197,47 @@ describe.each(MODEL_ENGINES)('engine %s', (engineId) => {
       )
     })
 
+    it('K1b — the environment’s tracing variables reach nothing: no network global, and nothing but the relay', async () => {
+      // A host with a `process.env` may carry LangSmith's tracing variables, a key and an endpoint;
+      // LangChain's tracer would send each run through the global `fetch` with that key (review of
+      // #47, row 1). Under the seal, with all of them set, the engine reaches no network global and
+      // sends the environment's key nowhere. An engine runs as ever, or, where its framework would
+      // trace, refuses the run before anything is sent: `deepagents` refuses (ADR-0003, decision 1).
+      const key = 'lsv2-a-key-this-leg-was-given'
+      for (const [name, value] of Object.entries({
+        LANGSMITH_TRACING: 'true',
+        LANGSMITH_TRACING_V2: 'true',
+        LANGCHAIN_TRACING_V2: 'true',
+        LANGCHAIN_TRACING: 'true',
+        LANGSMITH_API_KEY: key,
+        LANGCHAIN_API_KEY: key,
+        LANGSMITH_ENDPOINT: 'http://127.0.0.1:9',
+        LANGCHAIN_ENDPOINT: 'http://127.0.0.1:9'
+      })) vi.stubEnv(name, value)
+      try {
+        const { events, violations, leftPending, liveIntervals, requests, bodies } = await runLeg(fromRegistry(engineId), leg)
+        expect(violations).toEqual([])
+        expect(leftPending).toBe(0)
+        expect(liveIntervals).toEqual([])
+        for (const request of requests) expect(request.url.startsWith('/api/assistant/relay/v1/')).toBe(true)
+        for (const body of bodies) expect(body).not.toContain(key)
+        const errors = events.filter((event): event is Extract<AssistantEvent, { type: 'error' }> => event.type === 'error')
+        if (engineId === 'deepagents') {
+          // Refused before an agent is built: one configuration failure, and no request at all.
+          expect(errors.map((error) => error.failure?.code)).toEqual(['configuration'])
+          expect(errors[0]!.message).toContain('LANGSMITH_TRACING')
+          expect(requests).toEqual([])
+          expect(proposals(events)).toEqual([])
+        } else {
+          expect(errors).toEqual([])
+          expect(proposals(events)).toHaveLength(1)
+        }
+        expect(events.at(-1)).toEqual({ type: 'end' })
+      } finally {
+        vi.unstubAllEnvs()
+      }
+    })
+
     it('K2 — offers exactly the five, out of tools/list', async () => {
       const { requests } = await runLeg(fromRegistry(engineId), leg)
       for (const request of requests) {

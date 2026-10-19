@@ -26,7 +26,8 @@ framework's own guardrails are a convenience inside an adapter, never the bounda
   [`contract/README.md`](contract/README.md).
 - `packages/harness/`: the harness as an npm workspace package, `@judgment-pack/harness`, extracted
   from the Desk's `web/src/assistant` with no behaviour change: the Vercel AI SDK adapter
-  (`engines/vercel`) and the Codex adapter (`engines/codex`) behind the engine slot, the context
+  (`engines/vercel`) and the Codex adapter (`engines/codex`) behind the engine slot, the Deep Agents
+  adapter added here (`engines/deepagents`, [ADR-0003](docs/adr/0003-the-deep-agents-adapter.md)), the context
   budget and ledger, execution and planning, delegation, the memory client, the tool gate, the
   failure catalogue, and the certification suite (`certification/`). What it needs from a host
   comes through one module, `host.ts`; see [its README](packages/harness/README.md).
@@ -52,7 +53,8 @@ The contract is extracted (`contract/`, #19), and the harness is extracted as a 
 2. (a) The Vercel AI SDK adapter, extracted as it is today, with the Codex adapter beside it, both
    certified (#20, #21). (b) After the swap, the loop moved onto the SDK's own agent layer.
 3. v0.1.0: the package, an attested release, and the Desk swap (#22, judgment-pack-desk#515).
-4. The Deep Agents adapter (LangChain, JavaScript), as the first real swap.
+4. The Deep Agents adapter (LangChain, JavaScript), as the first real swap: `engines/deepagents`,
+   certified by the same suite ([ADR-0003](docs/adr/0003-the-deep-agents-adapter.md), proposed).
 5. A Go adapter when the loop moves into the Desk's server.
 
 v0.1.0 means parity with the Desk's harness, plus the improvements of #1 to #18 that land before

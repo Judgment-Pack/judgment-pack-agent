@@ -274,7 +274,7 @@ interface ChildRun {text: string; progress: string; questions: OpenQuestion[]; f
  */
 export function withDelegation(engine: Engine, options: DelegationOptions = {}): Engine {
   return {id:engine.id,start(session) {
-    if (!session.allowConversation || !session.interactive || !['vercel','codex'].includes(engine.id)) return engine.start(session)
+    if (!session.allowConversation || !session.interactive || !['vercel','codex','deepagents'].includes(engine.id)) return engine.start(session)
     const controller = new AbortController()
     const signal = AbortSignal.any([session.signal,controller.signal])
     // Stops the parent run alone, so the reason can still be delivered.

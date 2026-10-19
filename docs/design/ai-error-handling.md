@@ -3,7 +3,7 @@
 Status: 2026-10-18, for agent#3. The Desk's shared design (`docs/design/ai-error-handling.md` in the
 Desk) owns the failure catalogue, its recovery categories and how a host renders a failure; the
 [wire contract](wire-contract.md) states the failure shape and the retry rule. This page records what
-the harness's two engines report on the failure paths the audit found untested, what a host's
+the harness's engines report on the failure paths the audit found untested, what a host's
 Retry does after each, and one decision: what happens when a provider refuses the context as too
 long.
 
@@ -26,7 +26,9 @@ where they stopped, within the same allowance.
 
 Each row is a case in `packages/harness/engines/failurePaths.test.ts`, run on one turn that has
 already completed a runtime call when the failure comes, except two `codex` cases that fail before
-any call: the socket closing before `started`, and the server's input-budget refusal.
+any call: the socket closing before `started`, and the server's input-budget refusal. The `deepagents`
+engine (ADR-0003), a model engine that reads the wire through its own chat model, runs every
+`vercel` case and reports what the `vercel` column says, row for row.
 
 | What happens | `vercel` reports | `codex` reports | Recovery | Retry |
 | --- | --- | --- | --- | --- |
