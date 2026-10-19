@@ -271,7 +271,7 @@ export interface ProposalNote {
   failure: import('./failures').AIFailure
 }
 
-export type AgentAssistantSession =Omit<AssistantSession, 'model' | 'thinking'> & {
+export type AgentAssistantSession = Omit<AssistantSession, 'model' | 'thinking'> & {
   agent: { model: string; run: import('./agent').AgentRun }
   effort?: import('./agent').CodexEffort
 }

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/tool-offer.json",
   "title": "Tool offer",
-  "description": "The tools the host offers a run, as the session's two members: the runtime's tools (session.tools: McpTool, exactly as tools/list served them, filtered to this session's allow-list, reached only through callTool and the host's gate) and the host's own tools (session.hostTools: HostTool, run by the host on the adapter's behalf, answered in the shape a runtime answer takes). An adapter offers the model exactly these, under their served schemas (servedSchema: a tool served without an input schema ends the session; the Gemini family alone is shown the schema less a closed list of keywords, with a guardrail narrowed event per tool that lost one). The host also adds its own context tools (list_context, read_context and, in a conversation, update_plan and request_budget_increase), whose names an offered tool may not take. Read from web/src/assistant/engine.ts (McpTool, HostTool) and context/session.ts (contextualSession). Open: the session is an in-process value with no reader, and the runtime's answer is passed through as served.",
+  "description": "The tools the host offers a run, as the session's two members: the runtime's tools (session.tools: McpTool, exactly as tools/list served them, filtered to this session's allow-list, reached only through callTool and the host's gate) and the host's own tools (session.hostTools: HostTool, run by the host on the adapter's behalf, answered in the shape a runtime answer takes). An adapter offers the model exactly these, under their served schemas (servedSchema: a tool served without an input schema ends the session; the Gemini family alone is shown the schema less a closed list of keywords, with a guardrail narrowed event per tool that lost one). The host also adds its own context tools (list_context, read_context and, in a conversation, update_plan and request_budget_increase), whose names an offered tool may not take. Read from web/src/assistant/engine.ts (McpTool, HostTool) and context/session.ts (contextualSession). Open: the session is an in-process value with no reader, and the runtime's answer is passed through as served. A host may offer propose_pack ($defs/proposePack): the adapter reads that call itself as the run's proposal and never reaches the host's execute, the instructions then tell the model to use it, the critic is not offered it, and the fenced block stays the fallback.",
   "type": "object",
   "required": [
     "tools",
@@ -113,6 +113,45 @@
         }
       },
       "additionalProperties": true
+    },
+    "proposePack": {
+      "description": "The host tool through which the model delivers its proposal (packages/harness/engines/contract.ts: PROPOSE_PACK_TOOL, PROPOSE_PACK_SCHEMA). The host registers it among its hostTools under this name and with this input schema, which is in the subset every family's wire carries. The adapter reads the call's arguments as the proposal (document an object, unknowns strings), answers the model that it was received, and never calls the host's execute; arguments of another shape are a failed result naming what to correct (invalid-tool-input). The latest call's document is the one proposed.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/hostTool"
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "propose_pack"
+            },
+            "effect": {
+              "const": "proposal"
+            },
+            "inputSchema": {
+              "const": {
+                "type": "object",
+                "properties": {
+                  "document": {
+                    "type": "object",
+                    "description": "The proposed pack, as a JSON object (not a JSON string)."
+                  },
+                  "unknowns": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "What the policy leaves open, one sentence each."
+                  }
+                },
+                "required": [
+                  "document"
+                ]
+              }
+            }
+          }
+        }
+      ]
     },
     "agentWireTool": {
       "description": "A tool as the codex engine offers it on the agent wire (codexbridge.Tool in the start frame's request): an alias name desk_runtime_N or desk_host_N, the real name prefixed to the description, and the served schema. Closed: the Desk server decodes the start frame with unknown members refused; a request carries at most 128 tools.",

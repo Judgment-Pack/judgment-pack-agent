@@ -1,0 +1,62 @@
+{
+  "description": "The first model request is never answered and the turn's wall clock passes (turnMilliseconds 1000 for this vector; 900000 by default): the request is stopped and the run pauses as budget_paused, the checkpoint's reason saying why. No error event. vercel engine; the ids and digest are the ones this run generated.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/engines/vercel/loop.ts (turnClock, drive)",
+      "packages/harness/context/managed.ts (the request-limit error becomes budget_paused)"
+    ]
+  },
+  "items": [
+    {
+      "type": "execution_checkpoint",
+      "checkpoint": {
+        "version": 1,
+        "id": "ac27bccf-d080-4343-bda3-abed1a723d54",
+        "requestKey": "786f40a5d619b12d3bbea0ec90793b56499679201a3fd2d9420ffddec151abb1",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "c8cb5fa6-5a94-4d93-beaa-cda8ea59f350",
+          "entries": []
+        }
+      }
+    },
+    {
+      "type": "budget_paused",
+      "checkpoint": {
+        "version": 1,
+        "id": "ac27bccf-d080-4343-bda3-abed1a723d54",
+        "requestKey": "786f40a5d619b12d3bbea0ec90793b56499679201a3fd2d9420ffddec151abb1",
+        "phase": "work",
+        "status": "paused",
+        "unit": "model-requests",
+        "used": 1,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "c8cb5fa6-5a94-4d93-beaa-cda8ea59f350",
+          "entries": []
+        },
+        "reason": "The turn reached its wall-clock limit of 1 second. Completed work is kept; continue to resume it."
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

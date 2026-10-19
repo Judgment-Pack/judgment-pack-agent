@@ -508,10 +508,17 @@ export async function withDeadline<T>(
     clearTimeout(timer)
   }
 }
+/** A time limit as a person reads it, in the largest unit that states it whole. */
+export function limitText(ms: number): string {
+  const count = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`
+  if (ms >= 60_000 && ms % 60_000 === 0) return count(ms / 60_000, 'minute')
+  if (ms >= 1_000 && ms % 1_000 === 0) return count(ms / 1_000, 'second')
+  return count(ms, 'millisecond')
+}
 /** The failure a tool call past its deadline earns: the model reads it and decides. */
 export function toolTimeout(ms: number): Error {
   return new AIFailureError({ version: 1, code: 'timeout', source: 'tool', outcome: 'unknown',
-    detail: `The tool did not answer within ${Math.round(ms / 1000)} seconds and was stopped. Its outcome is unknown; check it before repeating the call.` })
+    detail: `The tool did not answer within ${limitText(ms)} and was stopped. Its outcome is unknown; check it before repeating the call.` })
 }
 
 /** A recovery action for old replies, never an automatic import of chat prose. */

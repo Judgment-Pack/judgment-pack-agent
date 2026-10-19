@@ -21,8 +21,8 @@ root is not.
 
 | Schema | What it describes | Root | Closed parts | Read from (Desk file, symbol) |
 | --- | --- | --- | --- | --- |
-| `run-event.json` | Every event a run emits, 18 kinds discriminated by `type`, in the union's order | open | none | `web/src/assistant/engine.ts`, `AssistantEvent` |
-| `tool-offer.json` | The tools offered to a run, as the session's two members: `tools` (runtime tools as served, each named within the ceiling) and `hostTools` (host tools' declarations); the agent-wire alias form; the runtime ceiling and reserved names | open | `$defs/agentWireTool` | `web/src/assistant/engine.ts`, `McpTool`, `HostTool`; `context/session.ts`, `contextualSession`; `internal/codexbridge/contract.go`, `Tool` |
+| `run-event.json` | Every event a run emits, 18 kinds discriminated by `type`, in the union's order; the proposal's `note` where the critic did not finish | open | none | `web/src/assistant/engine.ts`, `AssistantEvent` |
+| `tool-offer.json` | The tools offered to a run, as the session's two members: `tools` (runtime tools as served, each named within the ceiling) and `hostTools` (host tools' declarations); the agent-wire alias form; the runtime ceiling and reserved names; `propose_pack`, the proposal as a host tool call | open | `$defs/agentWireTool` | `web/src/assistant/engine.ts`, `McpTool`, `HostTool`; `context/session.ts`, `contextualSession`; `internal/codexbridge/contract.go`, `Tool` |
 | `tool-call.json` | The `tool_call` event; the `tools/call` params the gate inspects; the agent-wire call | open | none | `web/src/assistant/engine.ts`, `AssistantEvent`; `toolGate.ts`, `inspectOutboundFrame`; `agentTransport.ts`, `bindAgentRun` |
 | `tool-result.json` | The `tool_result` event; the MCP result shape; the bound, the read-back reference and its envelopes; `read_context` arguments; the agent-wire answer | open | `$defs/readContextArguments`, `$defs/agentWireAnswer` | `web/src/assistant/engine.ts`, `McpToolResult`; `context/session.ts`, `SessionContext.result`; `context/ledger.ts`, `ContextLedger.reference`, `ContextLedger.tools` |
 | `approval.json` | The host's approval state for a chat and the one grant a user decision mints, for one of the server's four actions; the grant request | open | `$defs/request` | `web/src/assistant/approvals/client.ts`, `ActionApproval`, `ActionGrant`; `internal/desk/assistant_approval.go`, `assistantActionGrant`, `assistantApprovalRequest` |
@@ -30,12 +30,13 @@ root is not.
 | `delegated-task.json` | One child task's state; the delegation request; a task profile | open | `$defs/request`, `$defs/taskRequest` | `web/src/assistant/delegationContract.ts`, `DelegatedTask`, `validDelegatedTask`, `readDelegationRequest`, `TaskProfile` |
 | `checkpoint.json` | The execution checkpoint: allowance, grants, plan, operations, completions, retained context | open | none | `web/src/assistant/execution/state.ts`, `ExecutionCheckpoint`, `readExecution` |
 | `failure.json` | One failure: the catalogue's 23 classes, source, the `not-started`/`refused`/`unknown` outcome, HTTP metadata; a catalogue entry; a failed tool's content | open | none | `web/src/assistant/failures.ts`, `AIFailure`, `readFailure`; `internal/aifailure/failure.go`, `Failure`; `internal/aifailure/catalog.json` |
-| `budget.json` | The context budget table; the per-model override and profile configuration; the request allowance the model is told; the budget-increase answer; the fixed limits by their Desk names | open | `$defs/modelBudget`, `$defs/configuration` | `internal/aicontext/policy.json`; `web/src/assistant/context/policy.ts`, `ContextPolicy`, `contextConfiguration`; `internal/aicontext/policy.go`, `Policy`, `Decode`; `execution/controller.ts`, `guidance`, `budgetTool` |
-| `provenance.json` | One model request's record: request number, phase, normalized completion; the digests and engine id the Desk holds | open | none | `web/src/assistant/execution/state.ts`, `ExecutionCheckpoint.completions`; `completion.ts`, `ModelCompletion`, `readCompletion` |
+| `budget.json` | The context budget table; the per-model override and profile configuration; the request allowance the model is told; the budget-increase answer; the fixed limits by their Desk names; the harness's turn clock and tool-call deadline | open | `$defs/modelBudget`, `$defs/configuration` | `internal/aicontext/policy.json`; `web/src/assistant/context/policy.ts`, `ContextPolicy`, `contextConfiguration`; `internal/aicontext/policy.go`, `Policy`, `Decode`; `execution/controller.ts`, `guidance`, `budgetTool` |
+| `provenance.json` | One model request's record: request number, phase, normalized completion, and for a request sent again its attempt, a refused attempt's failure and wait; the digests and engine id the Desk holds | open | none | `web/src/assistant/execution/state.ts`, `ExecutionCheckpoint.completions`; `completion.ts`, `ModelCompletion`, `readCompletion` |
 
 ## Vectors
 
-Data the Desk's engines produce today, in `vectors/`, one JSON file per vector:
+Data the Desk's engines produce today, in `vectors/`, one JSON file per vector, and data the harness
+package produces where it has changed or added behaviour since the extraction:
 
 ```json
 { "description": "…", "schema": "run-event.json", "source": { "desk": {…}, "files": ["…"] }, "items": [ … ] }
@@ -43,7 +44,9 @@ Data the Desk's engines produce today, in `vectors/`, one JSON file per vector:
 
 `schema` names the schema each item must validate against (a file, or a file and a `$defs`
 pointer); `items` are the instances, in order where order matters; `source` names the Desk files
-and symbols they were read or rendered from.
+and symbols they were read or rendered from, or, as `{"harness": {"repository":
+"Judgment-Pack/judgment-pack-agent", "package": "packages/harness"}, "files": […]}`, the package's
+files they were rendered from.
 
 - `scenario/expense-reimbursement.json`: the Desk's recorded conformance scenario, **one file for
   the whole run**, because what the conformance session asserts is the run's order (every call
@@ -52,20 +55,29 @@ and symbols they were read or rendered from.
   session, reasoning tier off, the five runtime tools allowed), with the recorded runtime answers
   and the texts the host writes rendered from the code that writes them.
 - `failures/<class>.json`: one per catalogue class, with the terminal events an adapter emits for it
-  on one path the Desk actually takes, named in `source`: `error` then `end` for most; a failed
-  `tool_result` for `tool-failed` and `invalid-tool-input`, which are working data and not a failed
-  run; `retry` events before `retries-exhausted`; and nothing at all for `cancelled`, which is never
+  on one path the Desk (or, where `source` names the package, the harness) actually takes, named in
+  `source`: `error` then `end` for most; a failed `tool_result` for `tool-failed` and
+  `invalid-tool-input`, which are working data and not a failed run; `retry` events before
+  `retries-exhausted` and before `rate-limited`; and nothing at all for `cancelled`, which is never
   an error event.
 - `tool-offer/`: what the scenario's session offers, whole (`scenario-offer.json`, its `tools` and
   `hostTools`), then its runtime tools and its host tools one by one (`runtime-tools.json`,
   `host-tools.json`), and the same offer as the `codex` engine puts it on the agent wire
   (`agent-wire-offer.json`).
 - `budget/desk-defaults.json` and `budget/desk-limits.json`: the budget table verbatim, and the fixed
-  limits by their constant names.
+  limits by their constant names; `budget/harness-defaults.json`: the policy a harness session works
+  under, the table and the two time bounds.
+- `proposal/`: the proposal through `propose_pack` (`propose-pack.json`), a proposal whose critic
+  failed, delivered with its `note` (`critic-unfinished.json`), and an answer whose proposal could not
+  be read, kept whole before the failure (`unreadable.json`); and `tool-offer/propose-pack.json`, the
+  tool as a host declares it.
+- `bounds/`: a 429 retried once, with the attempts in the completion record
+  (`rate-limited-retried.json`), the turn's wall clock pausing the run (`turn-clock.json`), and a
+  tool past its deadline answered as a failed result (`tool-timeout.json`).
 - `question/interview.json`: the Desk's interview-question fixture.
 
 Values the Desk generates afresh on every run (UUIDs, timestamps, digests) appear only where the
-recorded data carries them; no vector carries an event the Desk does not emit.
+recorded data carries them; no vector carries an event the Desk or the harness does not emit.
 
 ## The Desk's own lists
 

@@ -1,19 +1,27 @@
 {
-  "description": "The endpoint answered 429 through the relay; the vercel engine reports it after one request, with no retry. requestId and retryAt are added where the provider's headers carry them.",
+  "description": "The endpoint answered 429 through the relay three times, with no Retry-After: the vercel engine sent the request again twice, after 1 s and then 2 s, saying so with a retry event each time, then reports the third refusal. A Retry-After over 30 s is reported at the first refusal, with retryAt. requestId and retryAt are added where the provider's headers carry them.",
   "schema": "run-event.json",
   "failureClass": "rate-limited",
   "source": {
-    "desk": {
-      "repository": "Judgment-Pack/judgment-pack-desk",
-      "ref": "integration/v0.13",
-      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
     },
     "files": [
-      "web/src/assistant/failures.ts (normalizeFailure: status 429)",
-      "web/src/assistant/engines/vercel/loop.ts (maxRetries: 0; open: failureEvent(cause,'model'))"
+      "packages/harness/failures.ts (normalizeFailure: status 429; canRetryRefusal)",
+      "packages/harness/engines/vercel/retry.ts (retryingCall: MODEL_RETRIES, RETRY_BACKOFF_MS, RETRY_WAIT_LIMIT_MS)",
+      "packages/harness/engines/vercel/loop.ts (maxRetries: 0; open: failureEvent(cause,'model'))"
     ]
   },
   "items": [
+    {
+      "type": "retry",
+      "attempt": 1
+    },
+    {
+      "type": "retry",
+      "attempt": 2
+    },
     {
       "type": "error",
       "message": "The AI provider is limiting requests. Wait before trying again.",

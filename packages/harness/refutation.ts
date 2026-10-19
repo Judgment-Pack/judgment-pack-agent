@@ -288,14 +288,6 @@ export function critiqueEvent(critique: Critique): AssistantEvent {
 }
 
 /**
- * What the proposal event carries about the pass, or nothing.
- *
- * ADR-0001's first rule again, at the other end: with no checks there is no
- * refutation line on the proposal at all. The proposal is still shown — the
- * critic reaching nothing is not a reason to withhold a document — and the
- * stream says what happened.
- */
-/**
  * What the proposal carries where the critic started and did not finish: its
  * provider error, length cutoff, budget pause or the turn's wall clock. The
  * proposal is the finished work and is delivered; the critic's failure is a
@@ -306,6 +298,14 @@ export function criticNote(cause: unknown, source: FailureSource): ProposalNote 
   return { kind: 'critic-unfinished', message: `The critic did not finish, so it checked nothing on this proposal. ${failureMessage(failure)}`, failure }
 }
 
+/**
+ * What the proposal event carries about the pass, or nothing.
+ *
+ * ADR-0001's first rule again, at the other end: with no checks there is no
+ * refutation line on the proposal at all. The proposal is still shown — the
+ * critic reaching nothing is not a reason to withhold a document — and the
+ * stream says what happened.
+ */
 export function critiqueOnProposal(
   critique: Critique | null
 ): { critique: { refuted: boolean } } | Record<string, never> {

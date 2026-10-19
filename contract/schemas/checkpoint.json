@@ -118,7 +118,7 @@
       "additionalProperties": true
     },
     "reason": {
-      "description": "Why work paused: the model's request_budget_increase reason and next step.",
+      "description": "Why work paused: the model's request_budget_increase reason and next step, or, on the vercel engine, the turn's wall clock (budget.json, turnMilliseconds).",
       "type": "string",
       "maxLength": 2000
     }

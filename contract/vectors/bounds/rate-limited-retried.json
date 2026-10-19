@@ -1,0 +1,107 @@
+{
+  "description": "The endpoint answered the first request 429 with Retry-After: 1 and the second with the answer: one retry event, and the completion record carries the refused attempt (attempt 1, its failure, waitMs) and the attempt that answered (attempt 2), each counted against the allowance. vercel engine, a session with a current request so the checkpoint is on the stream; the ids, digest and retryAt are the ones this run generated.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/engines/vercel/retry.ts (retryingCall)",
+      "packages/harness/failures.ts (canRetryRefusal)",
+      "packages/harness/execution/controller.ts (recordRefusal, recordCompletion)"
+    ]
+  },
+  "items": [
+    {
+      "type": "execution_checkpoint",
+      "checkpoint": {
+        "version": 1,
+        "id": "c5c6e864-748e-45ee-8f7a-01df76967e7f",
+        "requestKey": "786f40a5d619b12d3bbea0ec90793b56499679201a3fd2d9420ffddec151abb1",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "3d341e89-b942-42db-90c2-565d7df177e7",
+          "entries": []
+        }
+      }
+    },
+    {
+      "type": "retry",
+      "attempt": 1
+    },
+    {
+      "type": "message",
+      "text": "Here it is."
+    },
+    {
+      "type": "proposal",
+      "document": {
+        "id": "p"
+      },
+      "unknowns": [
+        "who signs"
+      ]
+    },
+    {
+      "type": "execution_checkpoint",
+      "durable": true,
+      "checkpoint": {
+        "version": 1,
+        "id": "c5c6e864-748e-45ee-8f7a-01df76967e7f",
+        "requestKey": "786f40a5d619b12d3bbea0ec90793b56499679201a3fd2d9420ffddec151abb1",
+        "phase": "work",
+        "status": "complete",
+        "unit": "model-requests",
+        "used": 2,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "3d341e89-b942-42db-90c2-565d7df177e7",
+          "entries": []
+        },
+        "completions": [
+          {
+            "request": 1,
+            "phase": "work",
+            "result": {
+              "finishReason": "error"
+            },
+            "attempt": 1,
+            "failure": {
+              "version": 1,
+              "code": "rate-limited",
+              "source": "model",
+              "outcome": "refused",
+              "status": 429,
+              "retryAt": "2026-10-19T02:16:51.645Z"
+            },
+            "waitMs": 1000
+          },
+          {
+            "request": 2,
+            "phase": "work",
+            "result": {
+              "finishReason": "stop"
+            },
+            "attempt": 2
+          }
+        ]
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

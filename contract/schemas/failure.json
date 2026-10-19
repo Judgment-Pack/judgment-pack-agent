@@ -90,7 +90,7 @@
       ]
     },
     "outcome": {
-      "description": "not-started: positively refused at admission, nothing ran (the only outcome an automatic retry may act on, and only with code busy: canRetryAdmission). refused: a 4xx other than 408, the request was refused. unknown: anything else, including every 5xx and timeout; replay safety is never inferred.",
+      "description": "not-started: positively refused at admission, nothing ran (an agent run is retried after it only with code busy: canRetryAdmission). refused: a 4xx other than 408, the request was refused (a model request is sent again after it only where the catalogue's recovery is wait or retry: canRetryRefusal, at most twice). unknown: anything else, including every 5xx and timeout; never retried, replay safety is never inferred.",
       "enum": [
         "not-started",
         "refused",

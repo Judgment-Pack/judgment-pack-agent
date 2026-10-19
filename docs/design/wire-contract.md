@@ -6,6 +6,11 @@ where the Desk departs from a clean contract, the departure is listed under
 [Open questions](#open-questions) and left for the decisions that follow. The schemas and vectors
 are in [`contract/`](../../contract/README.md); this page says the same thing in words.
 
+Amended for agent#6 and the harness side of agent#2: nothing a model finished is lost (the whole
+answer kept, the proposal's `note`, the `propose_pack` tool), the model-request retry rule, the
+turn's wall clock and the tool-call deadline. These are the harness package's behaviour, not yet the
+Desk's; their vectors name the package's files as their source.
+
 ## Host, adapter, and the slot between them
 
 In the Desk, an adapter is an **engine**: a module the page loads for one session, which receives a
@@ -40,26 +45,40 @@ rehearsal rule stay the host's (ADR-0001). Nothing below moves them.
 - **Work:** `tool_call` and `tool_result` (each call before its result, paired by `callId` where
   one is set); `reasoning` (deltas, then the whole passage with `done`); `message_progress` (the
   prose so far, whole each time, proposal fence hidden; empty clears it) and `message` (the
-  model's prose beside the proposal, as written).
+  model's prose beside the proposal, as written; where the proposal could not be read, the whole
+  answer, prose and raw fence, before the error).
 - **Pauses for someone else:** `user_question` (the model asked the person; the turn ends),
   `delegation_requested` (the model asked for a batch of child tasks; the coordinator runs them),
-  `budget_paused` (the request allowance ran out or the model asked for more; the person decides).
+  `budget_paused` (the request allowance ran out, the model asked for more or, on `vercel`, the
+  turn's wall clock passed; the person decides).
 - **Host reports:** `guardrail` (`rewrote` and `refused` from the tool gate, between the call and
   its result; `narrowed` before the model is asked anything, where a family's wire cannot carry a
   served schema keyword; `refused` with tool `proposal` where Plan mode or a conversation withholds
   proposals), `execution_checkpoint` (state to save, `durable` where it must be saved before the
   next operation), `delegated_task` (a child's state, whole, at each transition).
-- **Provider recovery:** `retry` (attempt one or two, relayed from the subscription agent),
-  `response_recovery` (one tool-free request to finish a response cut short),
+- **Provider recovery:** `retry` (attempt one or two: on `codex` relayed from the subscription
+  agent, on `vercel` before a refused model request is sent again), `response_recovery` (one
+  tool-free request to finish a response cut short, or to ask once for a proposal that could not be
+  read),
   `thinking_unavailable` (the tier could not be expressed here, said once).
 - **Outcome:** `critique` (the critic's checks, decided from the runtime's results and never its
-  prose, before the proposal), `proposal` (one document out of exactly one fenced JSON envelope,
-  with its unknowns, and the critique's verdict where the critic reached a check), `error` (the
+  prose, before the proposal), `proposal` (one document out of exactly one fenced JSON envelope or
+  the model's `propose_pack` call, with its unknowns, the critique's verdict where the critic
+  reached a check, and a `note` where the critic started and did not finish), `error` (the
   catalogue's sentence and the classified failure), `end` (exactly once, last).
 
 A consumer that leaves gets no `end`; nothing is delivered after the run closes. A cancelled run
 emits no `error`. A failed tool is a `tool_result` with `isError`, not an `error`. The proposal is
 the adapter's last word on the document, and accepting or rejecting it is the host's action.
+
+Nothing the model finished is lost. A proposal that cannot be read (two marked blocks; none,
+outside a conversation; a block not marked `json`, one not closed, or one that is not valid JSON,
+the last classed `invalid-response` like the rest) earns `vercel` one tool-free reformat request
+within the allowance; whatever that request returns, the first answer is delivered whole, prose and raw
+fence, before the `invalid-response` error. A critic that fails after a valid proposal (its
+provider error, its length cutoff, a budget pause or the turn's wall clock) does not raise an error
+ahead of the proposal: the proposal is delivered with `note` `{kind: "critic-unfinished", message,
+failure}` and no `critique`. A person's Stop still ends the run.
 
 The stream is open: it is an in-process union with no reader at run time that refuses a member.
 
@@ -80,6 +99,13 @@ the session. The one exception is the Gemini family, shown the schema less a clo
 keywords, with a `narrowed` guardrail per tool that lost one. On the agent wire the `codex` engine
 offers each tool under an alias (`desk_runtime_N`, `desk_host_N`) and reports the real name in its
 events.
+
+A host may offer `propose_pack`, with the input schema the contract states (`document`, an object;
+`unknowns`, strings) and effect `proposal`. Where it does, the instructions tell the model to deliver
+the proposal by calling it; the adapter reads the call itself, answers the model that the proposal
+was received and will be shown for review, and never reaches the host's `execute`; arguments of
+another shape are a failed result naming what to correct. The latest call's document is the
+proposal, and the fenced block stays the fallback. The critic is not offered it.
 
 ## Tool calls
 
@@ -110,7 +136,9 @@ whether it is `historical`, and a 1,000-byte `preview`. The model reads it back 
 is told the operation returned and its output could not be retained, and not to repeat it.
 
 A tool that throws is a failed result carrying `{"failure": …}` (or `{"questionFailure": …}` for
-`ask_user`), recoverable working data for the model. On the agent wire the answer travels as
+`ask_user`), recoverable working data for the model. So is a runtime or host tool call past the
+policy's `toolCallMilliseconds`: it is stopped and answered with class `timeout`, source `tool`,
+outcome `unknown`, and the run goes on. On the agent wire the answer travels as
 `{text, isError}`, a structured answer as its JSON text.
 
 ## Approvals
@@ -174,7 +202,15 @@ person sees and a recovery), and one failure shape: `version` 1, `code`, `source
 nothing ran), `refused` (a 4xx other than 408), or `unknown` (everything else, every 5xx and
 timeout included). Optional `status`, `requestId`, `retryAt` (from the provider's headers),
 `detail` (host-authored only, replacing the catalogue sentence) and `completion`. Provider prose,
-bodies, URLs and headers are never retained. Only `busy` with `not-started` proves a retry safe.
+bodies, URLs and headers are never retained. Only `busy` with `not-started` proves an agent run safe
+to retry. A model request the provider refused is sent again by `vercel` only where the outcome is
+`refused` and the catalogue's recovery for the class is `wait` or `retry` (429 `rate-limited`, a 4xx
+carrying an overload code): at most twice, each after the longer of the backoff (one second, then
+two) and the provider's `Retry-After`; not at all where `Retry-After` asks for more than thirty
+seconds, when the refusal is reported at once with its `retryAt`; never on an `unknown` outcome (a
+5xx, 408, 504 or a transport failure); and never once a response has answered, so a stream that
+breaks after its first byte is reported. Each attempt is a model request, counted against the
+allowance and recorded, and each retry is said with a `retry` event.
 
 ## Budgets
 
@@ -187,11 +223,20 @@ makes, never above a hundred. The model is told the counts in its execution guid
 for more with `request_budget_increase`, which never grants: with two or fewer requests left it
 pauses the run for the person.
 
+The harness adds two time bounds the Desk's table does not carry, each taken from the table where it
+does. `turnMilliseconds` (fifteen minutes): on `vercel`, when one turn's wall clock passes, what is
+in flight is stopped and the run pauses as `budget_paused` does, the checkpoint's `reason` saying
+so; a proposal already made is delivered, with a note where the critic was cut.
+`toolCallMilliseconds` (two minutes): on both engines, a runtime or host tool call past it is a
+failed result the model reads, never a failed run.
+
 ## Provenance
 
 `provenance.json`. Per model request, the Desk records the request number, the phase (`work`,
 `synthesis`, `review`) and the provider-neutral completion (`finishReason`, and the input, output
-and reasoning token counts the provider reported), in the checkpoint. A failure carries the status,
+and reasoning token counts the provider reported), in the checkpoint; a request the provider
+refused and that was sent again has a row per attempt, the refused one with its `attempt`,
+`failure` and `waitMs`, the one that answered with its `attempt`. A failure carries the status,
 request id and completion it was classified from. The checkpoint's `requestKey` and every retained
 entry are SHA-256 digests; the server writes the project brief's digest into the brief itself.
 That is all: see the open question on provenance below.
@@ -239,17 +284,20 @@ the host's model capability so the host keeps counting; whether the adapter emit
 - **The critic's default.** `vercel` runs the critic when the session leaves `adversarialReview`
   unset and the reasoning tier is on (`adversarialReview ?? runsRefutation()`); `codex` runs it
   only when `adversarialReview` is `true`.
-- **Retries.** `vercel` makes no automatic retry (`maxRetries: 0`) and emits no `retry`; it
-  starts the whole session again only for a tier refusal that arrived before anything was
-  delivered, three attempts in all. `codex` relays up to two `retry` events from the Codex bridge's
+- **Retries.** `vercel` keeps the SDK's own retries off (`maxRetries: 0`) and sends a model request
+  again only after a `refused` outcome whose recovery is `wait` or `retry`, at most twice, with a
+  `retry` event each time (see Failures); separately, it starts the whole session again only for a
+  tier refusal that arrived before anything was delivered, three attempts in all. `codex` relays up to two `retry` events from the Codex bridge's
   own recovery within the turn, then fails with `retries-exhausted`. In a conversation the
   delegation coordinator retries every agent run under it, the parent's included, on `busy`,
   `not-started` and nothing else, three attempts in all, within five agent runs shared by the
   parent and its children.
 - **Deadlines.** `codex`: the Codex bridge bounds a whole run at ten minutes and the server reports
   it as a `timeout` failure; the browser's agent transport ends a run at twelve minutes, a backstop
-  behind the bridge's deadline. `vercel`: no deadline for a whole run; the relay bounds each relayed
-  request at ten minutes, and two minutes without a write.
+  behind the bridge's deadline. `vercel`: no deadline for a whole run, and a turn's wall clock
+  (`turnMilliseconds`) that pauses the run rather than failing it; the relay bounds each relayed
+  request at ten minutes, and two minutes without a write. Both: a tool call past
+  `toolCallMilliseconds` is a failed result, not a failed run.
 - **Budgets.** `vercel` counts model requests (`unit: "model-requests"`, twenty, grants of ten up to
   a hundred). `codex` is `provider-managed`: the limit stays 1, no grant is possible,
   `request_budget_increase` answers `unavailable`, `budget_paused` cannot arise in the loop, and the
@@ -262,7 +310,9 @@ the host's model capability so the host keeps counting; whether the adapter emit
 - **Messages.** `codex` emits a `message` for each commentary-phase message during the run as well
   as the final prose; `vercel` emits one `message`, at the end.
 - **Kinds only one engine emits.** `reasoning`, `thinking_unavailable`, `response_recovery` and
-  `guardrail` `narrowed` are `vercel`'s only; `retry` is `codex`'s only.
+  `guardrail` `narrowed` are `vercel`'s only. Both emit `retry`, for different recoveries.
+- **An unreadable proposal.** `vercel` asks once more, with a tool-free reformat request, before it
+  reports `invalid-response`; `codex` reports it at once. Both deliver the whole answer first.
 - **Failure source.** A loop failure is `source: "model"` from `vercel` and `"agent"` from
   `codex`.
 - **Certification.** `vercel` is held to the conformance session's exact event order on six legs

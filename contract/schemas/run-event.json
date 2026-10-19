@@ -109,7 +109,7 @@
       "additionalProperties": true
     },
     "budget_paused": {
-      "description": "Work paused at the request allowance: the allowance ran out, or the model asked for more with request_budget_increase. The checkpoint's status is paused; the run ends with end. Only the person's grant (a new checkpoint grant) continues it. An adapter's error with code request-limit is converted to this by the shared context boundary.",
+      "description": "Work paused at the request allowance: the allowance ran out, or the model asked for more with request_budget_increase. The checkpoint's status is paused; the run ends with end. Only the person's grant (a new checkpoint grant) continues it. An adapter's error with code request-limit is converted to this by the shared context boundary. On the vercel engine it is also how the turn's wall clock ends a turn (budget.json, turnMilliseconds): what is in flight is stopped, completed work is kept, and the checkpoint's reason says the turn reached its limit. A clock that passes while the critic runs leaves the proposal delivered with a note instead, and the run ends.",
       "type": "object",
       "required": [
         "type",
@@ -126,7 +126,7 @@
       "additionalProperties": true
     },
     "retry": {
-      "description": "The provider is recovering within this turn, attempt n of at most two. Only the codex engine emits it, relaying the Codex bridge's recovery notices; the vercel engine makes no automatic retry and never emits it.",
+      "description": "The adapter is sending again within this turn, attempt n of at most two. The codex engine relays the Codex bridge's recovery notices. The vercel engine emits it before it sends again a model request the provider refused (packages/harness/engines/vercel/retry.ts, retryingCall): only a failure whose outcome is refused and whose catalogue recovery is wait or retry (canRetryRefusal: 429 rate-limited, a 4xx carrying an overload code), never an unknown outcome (a 5xx, 408, 504 or a transport failure) and never a response that answered: a stream that breaks after its first byte is reported, not sent again; at most two retries, each after the longer of the backoff (1 s, then 2 s) and the provider's Retry-After, and none where Retry-After asks for more than 30 s, when the refusal is reported at once with its retryAt. Each attempt is a model request: counted against the allowance and recorded in the checkpoint's completions (provenance.json: attempt, failure, waitMs).",
       "type": "object",
       "required": [
         "type",
@@ -145,7 +145,7 @@
       "additionalProperties": true
     },
     "response_recovery": {
-      "description": "The adapter is spending one tool-free request to finish a response cut short, or to stop repeated work. Only the vercel engine emits it.",
+      "description": "The adapter is spending one tool-free request to finish a response cut short, to stop repeated work, or to ask once, within the allowance, for a proposal that could not be read, in the shape the contract reads (the reformat request). Only the vercel engine emits it.",
       "type": "object",
       "required": [
         "type"
@@ -234,7 +234,7 @@
       "additionalProperties": true
     },
     "message": {
-      "description": "The model's own prose to the person, outside the proposal fence, as it wrote it. Never written by the host; absent where the model wrote nothing but the fence.",
+      "description": "The model's own prose to the person, outside the proposal fence, as it wrote it. Never written by the host; absent where the model wrote nothing but the fence. Where the run's proposal could not be read, the whole final answer, prose and raw fence as written, is one message before the error: nothing the model finished is lost. On the vercel engine that is the answer before its reformat request.",
       "type": "object",
       "required": [
         "type",
@@ -355,7 +355,7 @@
       "additionalProperties": true
     },
     "proposal": {
-      "description": "The one document the run proposes, from exactly one fenced JSON block shaped {\"proposal\": {\"kind\": \"create\", \"document\": …, \"unknowns\": […]}} and never from the prose around it. critique is present only where a critic ran and reached at least one check. Accept and Reject are the host's actions, not the adapter's.",
+      "description": "The one document the run proposes: from exactly one fenced JSON block shaped {\"proposal\": {\"kind\": \"create\", \"document\": …, \"unknowns\": […]}} and never from the prose around it, or from the model's call of the host tool propose_pack (tool-offer.json, $defs/proposePack), which the adapter reads itself, the fence then being the fallback. critique is present only where a critic ran and reached at least one check; note where the critic started and did not finish. Accept and Reject are the host's actions, not the adapter's.",
       "type": "object",
       "required": [
         "type",
@@ -384,6 +384,27 @@
           "properties": {
             "refuted": {
               "type": "boolean"
+            }
+          },
+          "additionalProperties": true
+        },
+        "note": {
+          "description": "The critic started and did not finish: its provider error, its length cutoff, a budget pause or the turn's wall clock. The proposal is the finished work and is delivered all the same, with no critique and no error event ahead of it (refutation.ts, criticNote). message is host-authored: one sentence saying the critic checked nothing on this proposal, then the catalogue's sentence for the failure. failure is the critic's failure, classified (source model on the vercel engine, agent on the codex engine).",
+          "type": "object",
+          "required": [
+            "kind",
+            "message",
+            "failure"
+          ],
+          "properties": {
+            "kind": {
+              "const": "critic-unfinished"
+            },
+            "message": {
+              "type": "string"
+            },
+            "failure": {
+              "$ref": "failure.json"
             }
           },
           "additionalProperties": true

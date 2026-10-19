@@ -1,0 +1,56 @@
+{
+  "description": "The runtime's validate does not answer within the call deadline (toolCallMilliseconds 1000 for this vector; 120000 by default): the model is answered with a failed result of class timeout, and the run goes on to its proposal. vercel engine.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/engines/contract.ts (withDeadline, toolTimeout)",
+      "packages/harness/engines/vercel/loop.ts (the runtime and host tool dispatch)"
+    ]
+  },
+  "items": [
+    {
+      "type": "tool_call",
+      "name": "validate",
+      "args": {
+        "document": {
+          "id": "p"
+        }
+      }
+    },
+    {
+      "type": "tool_result",
+      "name": "validate",
+      "isError": true,
+      "text": "The tool did not answer within 1 second and was stopped. Its outcome is unknown; check it before repeating the call.",
+      "structured": {
+        "failure": {
+          "version": 1,
+          "code": "timeout",
+          "source": "tool",
+          "outcome": "unknown",
+          "detail": "The tool did not answer within 1 second and was stopped. Its outcome is unknown; check it before repeating the call."
+        }
+      }
+    },
+    {
+      "type": "message",
+      "text": "Here it is."
+    },
+    {
+      "type": "proposal",
+      "document": {
+        "id": "p"
+      },
+      "unknowns": [
+        "who signs"
+      ]
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

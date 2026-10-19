@@ -1,5 +1,5 @@
 {
-  "description": "The agent run passed its deadline. The Codex bridge bounds a run at ten minutes; the server then ends the run with error limit and this failure. The browser transport's twelve-minute deadline is a backstop behind the bridge's and reports the same failure. The vercel engine has no whole-run deadline: the relay bounds each request at ten minutes and two minutes idle.",
+  "description": "The agent run passed its deadline. The Codex bridge bounds a run at ten minutes; the server then ends the run with error limit and this failure. The browser transport's twelve-minute deadline is a backstop behind the bridge's and reports the same failure. The vercel engine has no whole-run deadline: its turn clock pauses the run rather than failing it (bounds/turn-clock.json), a tool call past its deadline is a failed tool_result of this class (bounds/tool-timeout.json), and the relay bounds each request at ten minutes and two minutes idle.",
   "schema": "run-event.json",
   "failureClass": "timeout",
   "source": {

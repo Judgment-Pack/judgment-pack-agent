@@ -74,6 +74,7 @@ import {
   withAbort,
   withDeadline,
   toolTimeout,
+  limitText,
   wholeAnswer,
   reformatRequest,
   REFORMAT_INSTRUCTIONS,
@@ -315,11 +316,6 @@ function unofferedTool(part: { type: string }, offered: ReadonlySet<string>): st
   const name = (part as { toolName?: unknown }).toolName
   if (typeof name !== 'string' || offered.has(name)) return undefined
   return name
-}
-
-/** A limit as a person reads it. */
-function duration(ms: number): string {
-  return ms >= 60_000 ? `${Math.round(ms / 60_000)} minutes` : `${Math.round(ms / 1000)} seconds`
 }
 
 /** What one tool call produced, in the shape the contract's event carries. */
@@ -1065,7 +1061,7 @@ function runVercelLoop(
 
   /** What the turn's wall clock passing is, as a failure the catalogue can say. */
   const turnTimeFailure = (): AIFailureError =>
-    authoredFailure('timeout', `The turn reached its wall-clock limit of ${duration(context.policy.turnMilliseconds)}.`)
+    authoredFailure('timeout', `The turn reached its wall-clock limit of ${limitText(context.policy.turnMilliseconds)}.`)
 
   /**
    * The status and the endpoint's own sentence out of an SDK error, or nothing.

@@ -35,6 +35,7 @@ import {
 import { normalize, wireFor } from '../../thinking'
 import { REFUTATION_MARKER } from '../../refutation'
 import { PROPOSAL_RECEIVED, PROPOSE_PACK_SCHEMA, PROPOSE_PACK_TOOL } from '../contract'
+import toolOffer from '../../../../contract/schemas/tool-offer.json'
 import type { streamText } from 'ai'
 import type { AssistantEvent, AssistantSession, McpTool, ModelCall, McpToolResult } from '../../engine'
 
@@ -2537,6 +2538,12 @@ describe('nothing finished is lost (agent#6)', () => {
       expect((events[1] as { text: string }).text).toContain('not as a JSON string')
       expect(events[4]).toEqual({ type: 'proposal', document: { id: 'p' }, unknowns: [] })
       expect(seen).toHaveLength(3)
+    })
+
+    it('reads the name and input schema the contract states', () => {
+      const stated = toolOffer.$defs.proposePack.allOf[1]!.properties!
+      expect(PROPOSE_PACK_TOOL).toBe(stated.name.const)
+      expect(PROPOSE_PACK_SCHEMA).toEqual(stated.inputSchema.const)
     })
 
     it('says nothing about the tool where the host did not offer it', async () => {
