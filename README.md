@@ -54,8 +54,13 @@ The contract is extracted (`contract/`, #19), and the harness is extracted as a 
 v0.1.0 means parity with the Desk's harness, plus the improvements of #1 to #18 that land before
 it; the rest follow in later releases.
 
-Releases follow the gateway's recipe, signed tags, attested archives and a reviewed `release`
-gate, once there is something to ship. Until then, `main` is the only line.
+## Release
+
+A release is a signed tag on `main`. The workflow builds `@judgment-pack/harness` into a tarball
+with its checksums, attests both files, and publishes them by release id only after a maintainer
+approves the `release` gate. There is no registry; a host pins the attested asset by digest. See
+[`docs/releasing.md`](docs/releasing.md) for preparing, tagging, what the workflow does and
+verifying a release by hand. Until the first release, `main` is the only line.
 
 ## Licence
 
