@@ -171,8 +171,7 @@ and where the execution state goes. The family stays the wire. A run's record is
 default (`FAMILY_CAPABILITIES`, the Desk's three families as records, which change nothing), then
 the host's `endpointCapabilities` answer member by member, then `session.model.capabilities` where
 the host puts its endpoint's own on the session; read closed, and refused where the reasoning kind
-is not one the wire speaks. One member is not about the endpoint's own model: `concurrentRequests`, how
-many model requests the connection serves at once (see Delegation).
+is not one the wire speaks.
 
 An endpoint without native tool calls is sent none: its tools are described at the end of the
 system text, the model calls one per answer as one fenced JSON block, `{"tool": name, "arguments":
@@ -333,25 +332,6 @@ agent#13, agent#14, agent#15, agent#16, agent#17, agent#18):
   or breaks the shape. The parent's answer gives the report first, held to the task's share by
   whole items (`fitReport`), then the text.
 - **Open questions, not failures.** A child's `user_question`, a proposal it wrote (its document
-  kept in the chat's ledger, never applied or shown for review) or a delegation it asked for comes
-  back as an open question in its report, and the task is complete. A batch that returned one earns
-  the response one batch past `MAX_BATCHES`, once.
-- **Streamed progress.** A running child's prose reaches the host as `message_progress` with the
-  task's `taskId`, cleared when the child ends. A host shows it under the task, never as the answer.
-- **Partial results and one retry.** A child stopped at its time limit returns what it had written,
-  `partial`. On a model capability, a child's request refused with the catalogue's retryable class
-  or overload code on a status the engine leaves (a 503 `overloaded_error`) is sent once more, only
-  before the first byte of the child's first answer (`childRetry`; the record's `retried`).
-- **Capacity.** A batch runs `concurrentRequests` children at once, the capability record's member
-  for the connection (the host answers it through `endpointCapabilities`), two where it names none;
-  an agent capability runs one.
-- **Reuse.** A complete result is kept in the chat under its profile, its objective's text and its
-  references; an identical task of the same chat gets it again with no model request, `reused`
-  naming the earlier task.
-- **Cost and time.** Each child's record carries its tokens (from the provider's usage figures),
-  `firstByteMs` and `durationMs` beside its model, requests and tool calls; the parent's checkpoint
-  carries each batch's figures, its total and the parent's own (`delegation`,
-  `validDelegationFigures`), kept through a resume.
   kept in the chat's ledger, never applied or shown for review), a delegation it asked for, or a
   research source call that needs the parent's research choice comes back as an open question in
   its report, and the task is complete (the research hand-back as a partial result). A run that
@@ -385,10 +365,6 @@ The Desk's side: the task view (a task's report, its open questions, `partial`, 
 streamed prose by `taskId`), the run report's lines for each child and batch (desk#499), the
 connection's capacity setting, answered as `concurrentRequests` in `modelsFor`, and
 `delegationReuse: false` on a Retry the person asks to run afresh.
-
-The Desk's side: the task view (a task's report, its open questions, `partial`, `reused`, its
-streamed prose by `taskId`), the run report's lines for each child and batch (desk#499), and the
-connection's capacity setting, answered as `concurrentRequests`.
 
 ## Certification
 
@@ -455,7 +431,7 @@ it. The suite is `certification/scenarios.test.ts`; its turns and runs are drive
 | 2 Delegation: a batch of a review and a research child, then a follow-up that resumes the research child | one parent run per response (vercel) or the next run's result and the chat's index (codex); the children's offers closed; a reference resolved within the chat; each result in its profile's shape and valid against the contract; the figures; the resumed child's earlier work | 7 | 7 |
 | 3 Memory: three tool steps | the request text found on every request by the recall rule; the reserve kept with memory on or unsaid; the full allowance with memory off | 4 | 4 |
 | 4 Plan mode | no action tool offered; the Runtime reads offered are the gate's ceiling less the evaluation and the test run; a call to an action tool refused and visible; the plan delivered | 4 | 4 |
-| 5 The correction loop: a draft validate refuses, one correction request, the critic | the first draft fails validate with its diagnostic; one correction request and a passing draft; the request count; the critic's comparison rows for the declared case; no `incomplete` mark | 5 | 5 |
+| 5 The correction loop: a draft validate refuses, one correction request, the critic (the correction request's text is the scenario's own script; the scenario exercises `correctArtifact`, one correction then ready, the engines' critic and the gate's rehearsal rule) | the first draft fails validate with its diagnostic; one correction request and a passing draft; the request count; the critic's comparison rows for the declared case; no `incomplete` mark | 5 | 5 |
 | 6 A multi-turn transcript: three turns of one chat | no unchanged source read again on turns two and three; the index present and within its bound; the ledger kept across the runs and gone after `dispose()` | 3 | 3 |
 
 The checks the adapters make differently are recorded here, with the reason, and not skipped:
