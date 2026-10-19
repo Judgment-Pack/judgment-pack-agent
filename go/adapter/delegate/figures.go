@@ -29,7 +29,8 @@ func ms(d time.Duration) int64 {
 	return int64(d / time.Millisecond)
 }
 
-// childFigures is a task's figures as the checkpoint carries them (agent#18).
+// childFigures is a task's figures as the checkpoint carries them (agent#18). The caller holds
+// taskMu.
 func (c *coordinator) childFigures(task *contract.DelegatedTask, number int) contract.ProvenanceChildFigures {
 	out := contract.ProvenanceChildFigures{Task: task.ID, Batch: int64(number), Profile: task.Profile, Model: task.Model, State: task.State,
 		ModelRequests: task.ModelRequests, ToolCalls: task.ToolCalls, Tokens: task.Tokens, FirstByteMs: task.FirstByteMs}
@@ -37,7 +38,10 @@ func (c *coordinator) childFigures(task *contract.DelegatedTask, number int) con
 	case task.DurationMs != nil:
 		out.DurationMs = *task.DurationMs
 	default:
-		if started, ok := c.childStarts[task.ID]; ok {
+		c.childMu.Lock()
+		started, ok := c.childStarts[task.ID]
+		c.childMu.Unlock()
+		if ok {
 			out.DurationMs = ms(time.Since(started))
 		}
 	}
@@ -68,9 +72,11 @@ func (c *coordinator) batchFigures() []contract.ProvenanceBatchFigures {
 	out := append([]contract.ProvenanceBatchFigures{}, c.figures...)
 	if c.running != nil {
 		var children []contract.ProvenanceChildFigures
+		c.taskMu.Lock()
 		for _, task := range c.running.tasks {
 			children = append(children, c.childFigures(task, c.running.number))
 		}
+		c.taskMu.Unlock()
 		out = append(out, contract.ProvenanceBatchFigures{Batch: int64(c.running.number), Children: children, Total: totalOf(children, ms(time.Since(c.running.started)))})
 	}
 	return out

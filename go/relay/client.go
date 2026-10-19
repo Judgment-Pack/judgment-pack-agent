@@ -214,11 +214,15 @@ func facade(answered *http.Response) *http.Response {
 }
 
 // serve runs one request through a handler in process and hands back its answer as soon as the
-// handler writes its status, the body streaming from what the handler writes after.
+// handler writes its status, the body streaming from what the handler writes after. When the
+// request's context ends, the body's reader is closed, so a handler writing an answer nobody reads
+// any more returns and gives back its slot, whether or not the caller closes the body.
 func serve(ctx context.Context, handler http.Handler, request *http.Request) (*http.Response, error) {
 	reader, writer := io.Pipe()
 	w := &pipeWriter{header: http.Header{}, pipe: writer, ready: make(chan *http.Response, 1), body: reader}
+	stop := context.AfterFunc(ctx, func() { _ = reader.CloseWithError(ctx.Err()) })
 	go func() {
+		defer stop()
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				w.WriteHeader(http.StatusBadGateway)

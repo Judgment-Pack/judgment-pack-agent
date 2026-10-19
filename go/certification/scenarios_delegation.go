@@ -20,7 +20,7 @@ import (
 // host's gate is in (gate.ChildPhase), its guardrails to the child's events.
 func (h *scenarioHost) children() adapter.Children {
 	return func(ctx context.Context, profile contract.DelegatedTaskProfile, emit func(contract.RunEvent)) (*gate.Calls, []contract.ToolOfferRuntimeTool, error) {
-		child := gate.New(gate.Options{Runtime: gate.Call(h.session.RuntimeCall()), Granted: gate.Ceiling, Emit: emit, TestCalls: h.gate.TestCalls()})
+		child := gate.New(gate.Options{Runtime: gate.Call(h.session.RuntimeCall()), Granted: gate.Ceiling, Emit: emit, Turn: h.gate})
 		child.SetOffer(h.offer)
 		phase := gate.ChildPhase(profile, h.offer, h.gate.Phase())
 		child.Enter(phase)

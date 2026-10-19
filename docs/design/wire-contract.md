@@ -1121,11 +1121,14 @@ Agents' subagents are off and delegation is the package's, an awaited `delegate_
     refusal, Plan mode's reads, a child's profile and the turn's test-call count are `go/gate`'s
     (`gate.Calls`), not the context's `admit`; the refusals' words are the gate's, and a guardrail is
     written by the gate while the call is in flight. A delegated child runs on a gate of its own in
-    its profile's phase within its parent's (the host's `Children` capability); its test calls count
-    from the parent's count when it starts and are not charged back to the parent's turn.
+    its profile's phase within its parent's (the host's `Children` capability), opened on the
+    parent's turn (`gate.Options.Turn`), so its test calls are charged to the parent's turn: the
+    parent and its children share one count and one `testCallsPerTurn`, as on `vercel`.
   - **A runtime result's images.** The gate's call answers a result's text parts and its structured
-    content; an image part a Runtime tool returns does not reach the adapter, so a vision model is
-    not shown it (a host tool's images are). The scenarios carry none.
+    content; an image part a Runtime tool returns is named, not shown: it is a line in the result's
+    text in its place, `[image n (type): not shown, because …]` (a part of another kind is named the
+    same way), so none is dropped in silence, and a vision model is not shown it (a host tool's
+    images are). The scenarios carry none.
   - **The proposal's member order.** A proposal event holds its document as Go's `contract` type
     does, a map, so a host that writes the document back writes its members in sorted order where
     the TypeScript writes the order the model wrote; the values are the same.
@@ -1135,12 +1138,14 @@ Agents' subagents are off and delegation is the package's, an awaited `delegate_
     K1b holds that nothing but the relay is reached and no key is sent.
   - **Delegation.** The coordinator is the package's, ported (`go/adapter/delegate`): profiles,
     budgets, references, reports, reuse, the retry before the first byte, the figures; Eino's
-    subagents are not used. A batch runs two children at once: the host's `Models` answer names the
-    critic's and a child's model and no connection capacity. The agent capability's half (a run that
-    ends at `delegation_requested`) is not ported, the Go adapter being a model adapter.
+    subagents are not used. A batch runs as many children at once as the host's `Models` answer for
+    the run's connection says (`concurrentRequests`), two where it names none, as on `vercel`. The
+    agent capability's half (a run that ends at `delegation_requested`) is not ported, the Go
+    adapter being a model adapter.
   - **Certification.** The Go runner (`go/certification`, `go/cmd/harness-check`) runs every leg the
-    TypeScript suite runs on a model engine and the six scenarios on this adapter, all passing;
-    `go/certification/parity.json` maps every TypeScript check to the Go checks that make it. Where
+    TypeScript suite runs on a model engine, the six scenarios and the model engine's check of
+    `certification/delegation.test.ts` on this adapter, all passing; `go/certification/parity.json`
+    maps every TypeScript check to the Go checks that make it. Where
     the host differs, the check says so: scenario 5's boundary check reads the refusals only, because
     the Go host keeps the gate's rewrite notice for the critic's evaluate, which the TypeScript
     scenario's host drops.

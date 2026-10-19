@@ -143,6 +143,10 @@ func TestTheParityTableHoldsTheGoChecksInStepWithTheTypeScriptLeg(t *testing.T) 
 			Source string      `json:"source"`
 			Checks []parityRow `json:"checks"`
 		} `json:"scenarios"`
+		Delegation struct {
+			Source string      `json:"source"`
+			Checks []parityRow `json:"checks"`
+		} `json:"delegation"`
 	}
 	raw, err := os.ReadFile("parity.json")
 	if err != nil {
@@ -228,9 +232,42 @@ func TestTheParityTableHoldsTheGoChecksInStepWithTheTypeScriptLeg(t *testing.T) 
 			t.Errorf("the TypeScript scenarios have %q, and the parity table does not", name)
 		}
 	}
+	// The delegation checks every adapter runs (delegation.test.ts): every check, by its name, is a
+	// row, each with its Go checks or a reason.
+	delegationSource, err := os.ReadFile(filepath.Join(root, table.Delegation.Source))
+	if err != nil {
+		t.Fatal(err)
+	}
+	delegationChecks := itNames(string(delegationSource))
+	if len(delegationChecks) < 2 {
+		t.Fatalf("%d checks read from %s", len(delegationChecks), table.Delegation.Source)
+	}
+	delegationRows := map[string]parityRow{}
+	for _, row := range table.Delegation.Checks {
+		if _, repeated := delegationRows[row.Check]; repeated {
+			t.Errorf("%s is in the delegation table twice", row.Check)
+		}
+		delegationRows[row.Check] = row
+		if !slices.Contains(delegationChecks, row.Check) {
+			t.Errorf("the delegation table names %q, which the TypeScript suite does not have", row.Check)
+		}
+		if (len(row.Go) == 0) == (row.Reason == "") {
+			t.Errorf("%s: a row names its Go checks or a reason, one of the two", row.Check)
+		}
+		for _, check := range row.Go {
+			if !slices.Contains(AllCheckNames(), check) {
+				t.Errorf("%s: %q is not a check the Go runner makes", row.Check, check)
+			}
+		}
+	}
+	for _, name := range delegationChecks {
+		if _, ok := delegationRows[name]; !ok {
+			t.Errorf("the TypeScript delegation checks have %q, and the parity table does not", name)
+		}
+	}
 	for _, check := range AllCheckNames() {
 		used := false
-		for _, row := range append(append([]parityRow{}, table.Checks...), table.Scenarios.Checks...) {
+		for _, row := range slices.Concat(table.Checks, table.Scenarios.Checks, table.Delegation.Checks) {
 			used = used || slices.Contains(row.Go, check)
 		}
 		if !used {

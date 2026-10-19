@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"strings"
+	"sync"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
@@ -156,6 +157,8 @@ type LedgerStore interface {
 	// Room makes room for bytes more within bound, or answers a ContextBudgetError.
 	Room(bytes, bound int) error
 	Add(entry *Entry)
+	// Put makes room for an entry within bound and adds it, as one step.
+	Put(entry *Entry, bound int) error
 	// Use is one entry by id, as this run reads it.
 	Use(id string) *Entry
 	// Adopt is an entry held under the id of content this run is retaining itself, where Use does
@@ -198,6 +201,13 @@ func (s *EntryStore) Room(bytes, bound int) error {
 	return nil
 }
 func (s *EntryStore) Add(entry *Entry) { s.entries.set(entry); s.size += entry.Bytes }
+func (s *EntryStore) Put(entry *Entry, bound int) error {
+	if err := s.Room(entry.Bytes, bound); err != nil {
+		return err
+	}
+	s.Add(entry)
+	return nil
+}
 func (s *EntryStore) Use(id string) *Entry {
 	return s.entries.get(id)
 }
@@ -223,6 +233,11 @@ func heldImage(value *Value) *ImagePart {
 
 // ContextLedger is the run's ledger: what it retains, and the tools that read it.
 type ContextLedger struct {
+	// mu guards store and attached: a ledger may be used from more than one goroutine (the
+	// delegation coordinator's, by children running at once). Every exported method takes it; the
+	// store's own methods then take the chat's lock where the store is a chat's turn (ledger, then
+	// chat: the order chat.go states).
+	mu sync.Mutex
 	// Policy is the budget the ledger holds its reads and its size to.
 	Policy *Policy
 	store  LedgerStore
@@ -241,10 +256,20 @@ func NewContextLedger(policy *Policy, store LedgerStore) *ContextLedger {
 }
 
 // Scope is the ledger's scope.
-func (l *ContextLedger) Scope() string { return l.store.Scope() }
+func (l *ContextLedger) Scope() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.store.Scope()
+}
 
 // SetScope renames a run's own scope; a chat-scoped ledger keeps the chat's.
 func (l *ContextLedger) SetScope(scope string) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.setScopeHeld(scope)
+}
+
+func (l *ContextLedger) setScopeHeld(scope string) error {
 	own, ok := l.store.(*EntryStore)
 	if !ok {
 		return errChatScope
@@ -261,10 +286,18 @@ type authoredError struct{ message string }
 func (e *authoredError) Error() string { return e.message }
 
 // Chat is the chat's turn this ledger reads and writes, or nil for a ledger of the run's own.
-func (l *ContextLedger) Chat() *ChatTurn { return l.store.Chat() }
+func (l *ContextLedger) Chat() *ChatTurn {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.store.Chat()
+}
 
 // Store is the store this ledger reads and writes.
-func (l *ContextLedger) Store() LedgerStore { return l.store }
+func (l *ContextLedger) Store() LedgerStore {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.store
+}
 
 func (l *ContextLedger) entry(id *Value) (*Entry, error) {
 	var held *Entry
@@ -286,11 +319,17 @@ func (l *ContextLedger) entry(id *Value) (*Entry, error) {
 
 // Retain is retain: one document retained, or the entry already held for the same content.
 func (l *ContextLedger) Retain(document Document, attachment bool) (*Entry, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.retainHeld(document, attachment)
+}
+
+func (l *ContextLedger) retainHeld(document Document, attachment bool) (*Entry, error) {
 	value := document.Value.Clone()
 	text := string(value.JSON())
 	bytes := UTF8Bytes(text)
 	digest := ContextDigest(text)
-	id := l.Scope() + ":" + document.ID + ":" + digest[:16]
+	id := l.store.Scope() + ":" + document.ID + ":" + digest[:16]
 	if attachment {
 		l.attached[id] = true
 	}
@@ -301,11 +340,10 @@ func (l *ContextLedger) Retain(document Document, attachment bool) (*Entry, erro
 	if existing != nil {
 		return existing, nil
 	}
-	if err := l.store.Room(bytes, l.Policy.RetainedBytes); err != nil {
+	entry := &Entry{ID: id, Kind: document.Kind, Label: document.Label, Value: value, Revision: document.Revision, Bytes: bytes, Digest: digest}
+	if err := l.store.Put(entry, l.Policy.RetainedBytes); err != nil {
 		return nil, err
 	}
-	entry := &Entry{ID: id, Kind: document.Kind, Label: document.Label, Value: value, Revision: document.Revision, Bytes: bytes, Digest: digest}
-	l.store.Add(entry)
 	return entry, nil
 }
 
@@ -371,6 +409,12 @@ func (l *ContextLedger) Reference(e *Entry) *Value {
 
 // List is list: a page of the entries this run may read.
 func (l *ContextLedger) List(offset int) *Value {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.listHeld(offset)
+}
+
+func (l *ContextLedger) listHeld(offset int) *Value {
 	all := l.store.entryList().values()
 	rows := Array()
 	count := 0
@@ -411,6 +455,12 @@ func indexOfU16(text, needle string, from int) int {
 // Read is read: one window of a retained item by JSON pointer, by text offset or by a literal
 // query (read_context).
 func (l *ContextLedger) Read(args *Value) (*Value, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.readHeld(args)
+}
+
+func (l *ContextLedger) readHeld(args *Value) (*Value, error) {
 	e, err := l.entry(args.Get("id"))
 	if err != nil {
 		return nil, err
@@ -635,6 +685,12 @@ func (l *ContextLedger) Read(args *Value) (*Value, error) {
 // ReadUnits is readUnits: one window of a retained item by line or page, held to the read window,
 // with a cursor to read on (reader.go).
 func (l *ContextLedger) ReadUnits(args *Value) (ReadResult, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.readUnitsHeld(args)
+}
+
+func (l *ContextLedger) readUnitsHeld(args *Value) (ReadResult, error) {
 	request, err := ReadArguments(args)
 	if err != nil {
 		return ReadResult{}, err
@@ -650,6 +706,12 @@ func (l *ContextLedger) ReadUnits(args *Value) (ReadResult, error) {
 // an image, the image whole beside a line about it (a reference followed to the image it names),
 // or the line saying why it cannot be shown, never an empty window (agent#5).
 func (l *ContextLedger) ReadItem(args *Value) (ToolResult, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.readItemHeld(args)
+}
+
+func (l *ContextLedger) readItemHeld(args *Value) (ToolResult, error) {
 	request, err := ReadArguments(args)
 	if err != nil {
 		return ToolResult{}, err
@@ -659,10 +721,10 @@ func (l *ContextLedger) ReadItem(args *Value) (ToolResult, error) {
 	var line string
 	meant := false
 	if e != nil {
-		image, line, meant = ResolveImage(e.Value, func(reference string) *ImagePart { return l.Image(reference) }, 1)
+		image, line, meant = ResolveImage(e.Value, func(reference string) *ImagePart { return l.imageHeld(reference) }, 1)
 	}
 	if e == nil || !meant {
-		window, err := l.ReadUnits(args)
+		window, err := l.readUnitsHeld(args)
 		if err != nil {
 			return ToolResult{}, err
 		}
@@ -685,10 +747,16 @@ func (l *ContextLedger) ReadItem(args *Value) (ToolResult, error) {
 // Image is image: a retained image by the reference a result or the model names — its ledger id,
 // or the id the host gave the document.
 func (l *ContextLedger) Image(reference string) *ImagePart {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.imageHeld(reference)
+}
+
+func (l *ContextLedger) imageHeld(reference string) *ImagePart {
 	e := l.store.Use(reference)
 	if e == nil {
 		for _, held := range l.store.entryList().values() {
-			if held.ID == l.Scope()+":"+reference+":"+held.Digest[:16] {
+			if held.ID == l.store.Scope()+":"+reference+":"+held.Digest[:16] {
 				e = held
 				break
 			}
@@ -704,6 +772,12 @@ func (l *ContextLedger) Image(reference string) *ImagePart {
 // Search is search: one search over one item, every item, or the attachments (search.go). Images
 // are passed over.
 func (l *ContextLedger) Search(args *Value) (SearchResult, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.searchHeld(args)
+}
+
+func (l *ContextLedger) searchHeld(args *Value) (SearchResult, error) {
 	request, err := SearchArguments(args)
 	if err != nil {
 		return SearchResult{}, err
@@ -727,7 +801,7 @@ func (l *ContextLedger) Search(args *Value) (SearchResult, error) {
 	notShown := []SearchNotShownItem{}
 	items := []Searchable{}
 	for _, e := range scoped {
-		_, line, meant := ResolveImage(e.Value, func(reference string) *ImagePart { return l.Image(reference) }, 1)
+		_, line, meant := ResolveImage(e.Value, func(reference string) *ImagePart { return l.imageHeld(reference) }, 1)
 		if !meant {
 			items = append(items, Searchable{ID: e.ID, Label: e.Label, Item: ReadableOf(e.Value)})
 			continue
@@ -847,7 +921,13 @@ func (l *ContextLedger) Tools() []HostTool {
 // Snapshot is what a checkpoint carries: every entry of a run's own ledger; of a chat's, the
 // entries this run retained or read.
 func (l *ContextLedger) Snapshot() contract.CheckpointContext {
-	out := contract.CheckpointContext{Scope: l.Scope(), Entries: []contract.CheckpointRetainedEntry{}}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.snapshotHeld()
+}
+
+func (l *ContextLedger) snapshotHeld() contract.CheckpointContext {
+	out := contract.CheckpointContext{Scope: l.store.Scope(), Entries: []contract.CheckpointRetainedEntry{}}
 	for _, e := range l.store.Held() {
 		out.Entries = append(out.Entries, e.Clone().Retained())
 	}
@@ -858,7 +938,13 @@ func (l *ContextLedger) Snapshot() contract.CheckpointContext {
 // chat (agent#8), the entries it no longer holds are retained again; a checkpoint written under
 // another chat context, or under none, resumes in a store of the run's own, as before.
 func (l *ContextLedger) Restore(saved contract.CheckpointContext) error {
-	intoChat := l.store.Chat() != nil && saved.Scope == l.Scope()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.restoreHeld(saved)
+}
+
+func (l *ContextLedger) restoreHeld(saved contract.CheckpointContext) error {
+	intoChat := l.store.Chat() != nil && saved.Scope == l.store.Scope()
 	if l.store.Chat() == nil && l.store.entryList().size() > 0 {
 		return failure.ToolInput("Cannot restore over active retained context.")
 	}
@@ -879,10 +965,9 @@ func (l *ContextLedger) Restore(saved contract.CheckpointContext) error {
 	if intoChat {
 		for _, e := range checked {
 			if l.store.Use(e.ID) == nil {
-				if err := l.store.Room(e.Bytes, l.Policy.RetainedBytes); err != nil {
+				if err := l.store.Put(e, l.Policy.RetainedBytes); err != nil {
 					return err
 				}
-				l.store.Add(e)
 			}
 		}
 		return nil
@@ -902,6 +987,12 @@ func (l *ContextLedger) Restore(saved contract.CheckpointContext) error {
 // Clear empties this ledger's store: a run's own, or the chat's whole ledger. A run's end calls
 // Release.
 func (l *ContextLedger) Clear() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.clearHeld()
+}
+
+func (l *ContextLedger) clearHeld() {
 	l.store.Clear()
 	l.attached = map[string]bool{}
 }
@@ -909,6 +1000,12 @@ func (l *ContextLedger) Clear() {
 // Release says the run ended: a store of its own is cleared; a chat's turn closes and the chat
 // keeps its entries.
 func (l *ContextLedger) Release() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.releaseHeld()
+}
+
+func (l *ContextLedger) releaseHeld() {
 	l.store.Release()
 	l.store = NewEntryStore("")
 	l.attached = map[string]bool{}

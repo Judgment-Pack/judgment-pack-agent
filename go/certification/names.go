@@ -15,10 +15,10 @@ func LegChecks() []Check {
 // DelegationNames are the delegation scenario's checks.
 var DelegationNames = []string{"2 runs", "2 findings", "2 offers", "2 references", "2 reports", "2 figures", "2 resume"}
 
-// AllScenarios are the six scenarios' checks, the delegation scenario's made with the coordinator
-// the caller wraps the adapter in.
+// AllScenarios are the six scenarios' checks and the delegation capacity check, the delegation
+// scenario's and the capacity check's made with the coordinator the caller wraps the adapter in.
 func AllScenarios(with func(Adapter) Adapter) []ScenarioCheck {
-	return append(append([]ScenarioCheck{}, Scenarios...), Delegation(with))
+	return append(append([]ScenarioCheck{}, Scenarios...), Delegation(with), Capacity(with))
 }
 
 // AllCheckNames are every check the Go runner makes, by name.
@@ -30,5 +30,6 @@ func AllCheckNames() []string {
 	for _, scenario := range Scenarios {
 		out = append(out, scenario.Names...)
 	}
-	return append(out, DelegationNames...)
+	out = append(out, DelegationNames...)
+	return append(out, CapacityNames...)
 }

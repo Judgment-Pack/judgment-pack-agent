@@ -71,19 +71,24 @@ func (c *coordinator) parentModel(call relay.Call) relay.Call {
 // chargeChild is one model request of a child's: within its budget and the response's, the shared
 // allowance checkpointed before it leaves.
 func (c *coordinator) chargeChild(task *contract.DelegatedTask, budget turn.TaskBudget) error {
-	if task.ModelRequests >= budget.ModelRequests {
-		c.batchMu.Lock()
+	c.taskMu.Lock()
+	over := task.ModelRequests >= budget.ModelRequests
+	c.taskMu.Unlock()
+	if over {
+		c.childMu.Lock()
 		c.refusedBy[task.ID] = "budget"
-		c.batchMu.Unlock()
+		c.childMu.Unlock()
 		return runcontext.ErrExecutionPaused
 	}
 	if err := c.shared.childRequest(task); err != nil {
-		c.batchMu.Lock()
+		c.childMu.Lock()
 		c.refusedBy[task.ID] = "reserve"
-		c.batchMu.Unlock()
+		c.childMu.Unlock()
 		return err
 	}
+	c.taskMu.Lock()
 	task.ModelRequests++
+	c.taskMu.Unlock()
 	c.emitMu.Lock()
 	held := c.parentCheckpoint
 	c.emitMu.Unlock()
@@ -166,9 +171,14 @@ func (c *coordinator) childModel(task *contract.DelegatedTask, budget turn.TaskB
 		if !posted {
 			return answered, nil
 		}
-		if answered.StatusCode/100 != 2 && !m.marked() && task.Retried == nil {
+		c.taskMu.Lock()
+		retried := task.Retried != nil
+		c.taskMu.Unlock()
+		if answered.StatusCode/100 != 2 && !m.marked() && !retried {
 			if held, wait, ok := childRetry(answered); ok && c.mayRetry(task, budget, m) {
+				c.taskMu.Lock()
 				task.Retried = &contract.DelegatedTaskRetried{Failure: *held, WaitMs: ms(wait)}
+				c.taskMu.Unlock()
 				_ = answered.Body.Close()
 				select {
 				case <-time.After(wait):
@@ -201,7 +211,10 @@ func (c *coordinator) mayRetry(task *contract.DelegatedTask, budget turn.TaskBud
 	if len(m.contexts) > 0 {
 		left = m.contexts[len(m.contexts)-1].Execution.Remaining()
 	}
-	return task.ModelRequests < budget.ModelRequests && c.shared.remaining() > synthesisReserve && left > 1
+	c.taskMu.Lock()
+	under := task.ModelRequests < budget.ModelRequests
+	c.taskMu.Unlock()
+	return under && c.shared.remaining() > synthesisReserve && left > 1
 }
 
 // wrapHostTools are a run's host tools with each call counted against the response and a child's
@@ -224,12 +237,15 @@ func (c *coordinator) wrapHostTools(tools []runcontext.HostTool, task *contract.
 			}
 			at := -1
 			if task != nil {
+				c.taskMu.Lock()
 				task.Steps = append(task.Steps, contract.DelegatedTaskStepsItem{Name: held.Name, State: "running"})
 				at = len(task.Steps) - 1
+				c.taskMu.Unlock()
 				c.publish(task)
 			}
 			result, err := inner(ctx, args)
 			if task != nil {
+				c.taskMu.Lock()
 				switch {
 				case err != nil && (failure.IsCancelled(err) || ctx.Err() != nil):
 					task.Steps[at].State = "interrupted"
@@ -238,14 +254,17 @@ func (c *coordinator) wrapHostTools(tools []runcontext.HostTool, task *contract.
 				default:
 					task.Steps[at].State = "complete"
 				}
+				c.taskMu.Unlock()
 				c.publish(task)
 				if err == nil && result.StructuredContent != nil && result.StructuredContent.Get("researchSuggestion").Truth() {
 					text := handedBackText
+					c.taskMu.Lock()
 					task.Problem = &text
-					c.batchMu.Lock()
+					c.taskMu.Unlock()
+					c.childMu.Lock()
 					c.handedBack[task.ID] = true
 					stop := c.childStops[task.ID]
-					c.batchMu.Unlock()
+					c.childMu.Unlock()
 					if stop != nil {
 						stop()
 					}

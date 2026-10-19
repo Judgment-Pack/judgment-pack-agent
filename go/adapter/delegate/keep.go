@@ -86,7 +86,7 @@ func (c *coordinator) keep(ctx context.Context, p *planned, profile turn.TaskPro
 			full = nil
 		}
 		if full != nil {
-			p.visible[full.ID] = true
+			c.chat.Reveal(p.visible, full.ID)
 		}
 		if hasShown && !fits(shown, room) {
 			head, cursor := "", ""
@@ -102,9 +102,9 @@ func (c *coordinator) keep(ctx context.Context, p *planned, profile turn.TaskPro
 				more = cursorAt(full.ID, cursor)
 			} else {
 				problem := "Only the head of these findings was kept: the retained-context bound left no room for the rest."
-				task.Problem = &problem
+				c.edit(func() { task.Problem = &problem })
 			}
-			if summarizeWith != nil && !partial && p.request.Summarize != nil && *p.request.Summarize && full != nil && c.shared.grantFor(task, p.budget, 1) >= 1 {
+			if summarizeWith != nil && !partial && p.request.Summarize != nil && *p.request.Summarize && full != nil && c.shared.grantFor(task, c.spent(task), p.budget, 1) >= 1 {
 				// The child's own summary within the share, where the task asked and its budget allows.
 				limit := room * 8 / 10
 				prompt := profile.Instructions + "\n\n" + turn.ChildRules + " " + "Summarize the findings below for the parent task in at most " + itoa(limit) +
@@ -116,23 +116,25 @@ func (c *coordinator) keep(ctx context.Context, p *planned, profile turn.TaskPro
 					shown, hasShown = ran.text, true
 					more = cursorAt(full.ID, "line:0")
 					yes := true
-					task.Summarized = &yes
+					c.edit(func() { task.Summarized = &yes })
 				}
 			}
 		} else if full != nil {
 			more = cursorAt(full.ID, "line:0")
 		}
 	}
-	task.State = "complete"
-	if hasShown {
-		task.Result = &shown
-	}
-	task.More = more
-	task.Report = reportOf(profile, report)
-	if partial {
-		yes := true
-		task.Partial = &yes
-	}
+	c.edit(func() {
+		task.State = "complete"
+		if hasShown {
+			task.Result = &shown
+		}
+		task.More = more
+		task.Report = reportOf(profile, report)
+		if partial {
+			yes := true
+			task.Partial = &yes
+		}
+	})
 	c.shownReports.Store(task.ID, shownReport{shown: fitted, cut: cut})
 	thread := p.thread
 	if thread == nil {

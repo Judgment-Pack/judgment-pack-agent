@@ -23,6 +23,10 @@ type Options struct {
 	// TestCalls is the turn's test calls so far: the execution checkpoint's testCalls, carried
 	// through a retry, a budget continuation and a delegation's parent continuation.
 	TestCalls int
+	// Turn is the gate of the turn this gate's session runs within: a delegated child's gate takes
+	// its parent's, and its test calls are then charged to the parent's turn, one count for the
+	// parent and all its children (TestCalls is not read). Nil for a turn's own gate.
+	Turn *Gate
 	// Emit receives the guardrail events, written while the call is in flight, so each lands
 	// between its call's tool_call and tool_result.
 	Emit func(contract.RunEvent)
@@ -41,13 +45,19 @@ type Gate struct {
 	bounds    Bounds
 	emit      func(contract.RunEvent)
 
-	mu        sync.Mutex
-	offer     contract.ToolOffer
-	phase     Phase     // the phase the host entered
-	narrowed  PhaseKind // the critic's or the reformat run's narrowing of it, or ""
-	testCalls int
-	nextID    int64
-	calls     *Calls
+	mu       sync.Mutex
+	offer    contract.ToolOffer
+	phase    Phase     // the phase the host entered
+	narrowed PhaseKind // the critic's or the reformat run's narrowing of it, or ""
+	turn     *turnCount
+	nextID   int64
+	calls    *Calls
+}
+
+// turnCount is a turn's test calls, one count shared by the turn's gate and its children's.
+type turnCount struct {
+	mu    sync.Mutex
+	calls int
 }
 
 // Calls is the adapter's handle on the gate: the gated call, a host tool's admission, and the
@@ -119,7 +129,10 @@ func intersect(list, within []string) []string {
 
 // New puts a session's runtime transport behind the gate.
 func New(options Options) *Gate {
-	g := &Gate{allowed: Allowed(options.Granted), bounds: options.Bounds, emit: options.Emit, testCalls: options.TestCalls}
+	g := &Gate{allowed: Allowed(options.Granted), bounds: options.Bounds, emit: options.Emit, turn: &turnCount{calls: options.TestCalls}}
+	if options.Turn != nil {
+		g.turn = options.Turn.turn
+	}
 	if g.bounds == (Bounds{}) {
 		g.bounds = DefaultBounds
 	}
@@ -138,11 +151,11 @@ func (g *Gate) AllowList() []string { return append([]string(nil), g.allowed...)
 // Transport is the gated transport: every frame passes Inspect before it reaches the runtime.
 func (g *Gate) Transport() Call { return g.transport }
 
-// TestCalls is the turn's test calls so far, for the checkpoint.
+// TestCalls is the turn's test calls so far, for the checkpoint: the parent's and its children's.
 func (g *Gate) TestCalls() int {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	return g.testCalls
+	g.turn.mu.Lock()
+	defer g.turn.mu.Unlock()
+	return g.turn.calls
 }
 
 func (g *Gate) id() int64 {
@@ -364,13 +377,13 @@ func (g *Gate) CallTool(ctx context.Context, name string, args json.RawMessage) 
 // claimTestCall counts one test call against the turn (claimTestCall in context/session.ts): false,
 // with the failure the model reads, past testCallsPerTurn.
 func (g *Gate) claimTestCall() (Result, bool) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if g.testCalls >= g.bounds.TestCallsPerTurn {
+	g.turn.mu.Lock()
+	defer g.turn.mu.Unlock()
+	if g.turn.calls >= g.bounds.TestCallsPerTurn {
 		detail := TestCallCapDetail(g.bounds.TestCallsPerTurn)
 		return failed(contract.Failure{Version: 1, Code: "tool-failed", Source: "tool", Outcome: "not-started", Detail: &detail}), false
 	}
-	g.testCalls++
+	g.turn.calls++
 	return Result{}, true
 }
 
@@ -402,8 +415,9 @@ func (g *Gate) send(ctx context.Context, name string, args json.RawMessage) (Res
 	var answer struct {
 		Result *struct {
 			Content []struct {
-				Type string `json:"type"`
-				Text string `json:"text"`
+				Type     string `json:"type"`
+				Text     string `json:"text"`
+				MimeType string `json:"mimeType"`
 			} `json:"content"`
 			StructuredContent json.RawMessage `json:"structuredContent"`
 			IsError           bool            `json:"isError"`
@@ -422,12 +436,34 @@ func (g *Gate) send(ctx context.Context, name string, args json.RawMessage) (Res
 		return Result{}, errors.New("the runtime answered with neither a result nor an error")
 	}
 	var texts []string
+	counted := map[string]int{}
 	for _, part := range answer.Result.Content {
 		if part.Type == "text" {
 			texts = append(texts, part.Text)
+			continue
 		}
+		counted[part.Type]++
+		texts = append(texts, notShownPart(part.Type, counted[part.Type], part.MimeType))
 	}
 	return Result{Text: strings.Join(texts, "\n"), IsError: answer.Result.IsError, Structured: answer.Result.StructuredContent}, nil
+}
+
+// RuntimePartNotShown is why a Runtime result's part other than text is not shown: the gate's call
+// answers the adapter with the result's text and structured content only.
+const RuntimePartNotShown = "a Runtime tool's result reaches this engine's model as text, and this part is not text"
+
+// notShownPart is the line a Runtime result's part other than text leaves in its place, so none is
+// dropped in silence: an image's is the contract's notShownLine (`[image n (type): not shown,
+// because …]`), numbered among the result's images; another kind's names its kind the same way.
+func notShownPart(kind string, number int, mediaType string) string {
+	media := ""
+	if mediaType != "" {
+		media = " (" + mediaType + ")"
+	}
+	if kind == "" {
+		kind = "part"
+	}
+	return fmt.Sprintf("[%s %d%s: not shown, because %s]", kind, number, media, RuntimePartNotShown)
 }
 
 // AdmitHost holds a host tool call to the phase's offer before the host runs it: nil where the

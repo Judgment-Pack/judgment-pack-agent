@@ -72,6 +72,7 @@ func (m *relayModel) Generate(ctx context.Context, input []*schema.Message, _ ..
 	if err != nil {
 		return nil, err
 	}
+	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode > 299 {
 		body, _ := readLimited(response)
 		return nil, &wire.RelayRefusal{Status: response.StatusCode, Body: body, Headers: response.Header}

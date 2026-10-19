@@ -5,9 +5,11 @@ package runcontext
 // a scripted endpoint are the adapter's).
 
 import (
+	"fmt"
 	"math"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
@@ -666,5 +668,55 @@ func TestAChildsTurnSeesOnlyItsReferences(t *testing.T) {
 	}
 	if !visible[own.ID] {
 		t.Error("what the child retained is not in its references")
+	}
+}
+
+// Children run at once on one chat (agent#15): each opens its turn, retains, reads, keeps its task
+// and a reusable result while its siblings do, and the chat holds every entry. Run under -race this
+// is the lock discipline's check; without the chat's lock it ends in concurrent map writes.
+func TestChildrenUseOneChatAtOnce(t *testing.T) {
+	chat := NewChatContext("")
+	parent, _ := chatRun(t, chat, Defaults.RetainedBytes)
+	shared := map[string]bool{}
+	var wg sync.WaitGroup
+	errs := make(chan error, 8*20)
+	for child := range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			visible := map[string]bool{}
+			for at := range 20 {
+				turn, err := chat.ChildScope(visible).OpenTurn()
+				if err != nil {
+					errs <- err
+					return
+				}
+				ledger := NewContextLedger(&Defaults, turn)
+				id := fmt.Sprintf("c%d-%d", child, at)
+				entry, err := ledger.Retain(Document{ID: id, Kind: "tool", Label: id, Value: String(id)}, false)
+				if err != nil {
+					errs <- err
+					return
+				}
+				if _, err := ledger.Read(MustParseJSON(`{"id":` + QuoteJSON(entry.ID) + `}`)); err != nil {
+					errs <- err
+					return
+				}
+				chat.Reveal(shared, entry.ID)
+				_ = chat.KeepTask([]string{id}, &TaskThread{Profile: "analyze", Title: id, Visible: visible})
+				_ = chat.KeepResult(id, ReusableResult{Task: id, Text: id})
+				_ = chat.Reusable(id)
+				ledger.Release()
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
+	parent.Release()
+	if len(shared) != 8*20 || chat.Size() == 0 {
+		t.Fatalf("%d entries revealed, the chat holds %d bytes", len(shared), chat.Size())
 	}
 }

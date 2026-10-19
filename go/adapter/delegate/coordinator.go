@@ -55,25 +55,38 @@ type allowance struct {
 
 type grant struct{ given, spent int }
 
+// used and remaining take a.mu; the Locked forms assume it is held.
 func (a *allowance) used() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.usedLocked()
+}
+
+func (a *allowance) usedLocked() int {
 	if a.parent != nil {
 		return a.parent.Execution.State.Used
 	}
 	return a.usedHere
 }
 
-func (a *allowance) limit() int {
+func (a *allowance) limitLocked() int {
 	if a.parent != nil {
 		return a.parent.Execution.State.Limit
 	}
 	return a.limitHere
 }
 
-func (a *allowance) remaining() int { return a.limit() - a.used() }
+func (a *allowance) remaining() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.remainingLocked()
+}
+
+func (a *allowance) remainingLocked() int { return a.limitLocked() - a.usedLocked() }
 
 // grantFor is the requests a child about to run may make: what the response can still give
 // children, split among the children that run at once, never past its own budget.
-func (a *allowance) grantFor(task *contract.DelegatedTask, budget turn.TaskBudget, slots int) int {
+func (a *allowance) grantFor(task *contract.DelegatedTask, spent int64, budget turn.TaskBudget, slots int) int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	held, others := 0, 0
@@ -85,12 +98,12 @@ func (a *allowance) grantFor(task *contract.DelegatedTask, budget turn.TaskBudge
 			others++
 		}
 	}
-	free := a.remaining() - synthesisReserve - held
+	free := a.remainingLocked() - synthesisReserve - held
 	share := slots - others
 	if share < 1 {
 		share = 1
 	}
-	given := int(budget.ModelRequests) - int(task.ModelRequests)
+	given := int(budget.ModelRequests) - int(spent)
 	if part := floorDiv(free, share); part < given {
 		given = part
 	}
@@ -122,7 +135,7 @@ func (a *allowance) release(task *contract.DelegatedTask) {
 func (a *allowance) childRequest(task *contract.DelegatedTask) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.remaining() <= synthesisReserve {
+	if a.remainingLocked() <= synthesisReserve {
 		return runcontext.ErrExecutionPaused
 	}
 	if a.parent != nil {
@@ -169,6 +182,12 @@ type coordinator struct {
 	parentCheckpoint *contract.Checkpoint
 	fatal            error
 
+	// The locks, taken in this order where more than one is held: shared.mu, batchMu, taskMu,
+	// childMu. taskMu guards every task record's members once runBatch has published it (children
+	// run at once and the parent's checkpoints read their figures); childMu guards the per-child maps
+	// (models, refusedBy, childStarts, childStops, handedBack).
+	taskMu       sync.Mutex
+	childMu      sync.Mutex
 	batchMu      sync.Mutex
 	batches      int
 	extraBatch   bool
@@ -207,8 +226,10 @@ func (c *coordinator) deliver(event contract.RunEvent) {
 
 // publish is one task's record as its delegated_task event.
 func (c *coordinator) publish(task *contract.DelegatedTask) {
+	c.taskMu.Lock()
 	snapshot := *task
 	snapshot.Steps = append([]contract.DelegatedTaskStepsItem{}, task.Steps...)
+	c.taskMu.Unlock()
 	c.deliver(contract.RunEvent{DelegatedTask: &contract.RunEventDelegatedTask{Type: "delegated_task", Task: snapshot}})
 }
 
@@ -222,6 +243,8 @@ func (c *coordinator) claimTool(task *contract.DelegatedTask, budget *turn.TaskB
 		}
 		return failure.ToolInput("This response has made its " + itoa(turn.MaxTools) + " tool calls, yours and your delegated children’s together (toolCalls in the execution state); this call was not made. Answer from the results you have.")
 	}
+	c.taskMu.Lock()
+	defer c.taskMu.Unlock()
 	if task != nil && budget != nil && task.ToolCalls >= budget.ToolCalls {
 		return failure.ToolInput("This task has made its " + itoa(int(budget.ToolCalls)) + " tool calls, its profile’s budget; this call was not made. Return the findings you have to the parent.")
 	}
@@ -373,4 +396,25 @@ const handedBackText = "This source request needs the parent’s research choice
 func mustJSON(value any) json.RawMessage {
 	encoded, _ := json.Marshal(value)
 	return encoded
+}
+
+// edit changes a task record's members under taskMu.
+func (c *coordinator) edit(change func()) {
+	c.taskMu.Lock()
+	defer c.taskMu.Unlock()
+	change()
+}
+
+// spent is the model requests a task has made, read under taskMu.
+func (c *coordinator) spent(task *contract.DelegatedTask) int64 {
+	c.taskMu.Lock()
+	defer c.taskMu.Unlock()
+	return task.ModelRequests
+}
+
+// toolCalls is the counted tool calls a task has made, read under taskMu.
+func (c *coordinator) toolCalls(task *contract.DelegatedTask) int64 {
+	c.taskMu.Lock()
+	defer c.taskMu.Unlock()
+	return task.ToolCalls
 }

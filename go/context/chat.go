@@ -41,6 +41,15 @@ package runcontext
 //     finished child's context is kept under its task ids (KeepTask), so a later batch of the same
 //     chat can resume it.
 //
+// One lock (agent#57, review row 1). A chat is shared by every run on it, and a delegation batch
+// runs children at once, so its state is guarded by one mutex, the ChatContext's mu: every member of
+// the ChatContext, and of every ChatTurn on it (a child's visible set among them). Every exported
+// method of ChatContext and of ChatTurn takes it for its own duration, the ledger store's methods
+// included; the unexported helpers assume it is held. No method holding it calls out of the chat,
+// to a ledger or a tool: Keep retains through the run's ledger first and takes the lock to record
+// after. A ContextLedger has a lock of its own, taken before the chat's (ledger, then chat; never
+// the reverse). The read cache is the chat's (cache, byCall) and so under the same lock.
+//
 // The chat context lives in memory, in the host's hands; the package writes it nowhere. A run's
 // checkpoint carries the entries that run retained or read, as it carried a run's whole ledger
 // before, so the checkpoint's size is the run's and never the chat's.
@@ -48,6 +57,7 @@ package runcontext
 import (
 	"sort"
 	"strings"
+	"sync"
 )
 
 // ReadCacheKey is the object a chat's read cache keys one result by; the key is the SHA-256 of
@@ -181,6 +191,8 @@ type evictedResult struct {
 
 // ChatContext is the chat-scoped context a host makes for one chat (ChatContext).
 type ChatContext struct {
+	// mu guards everything below, and every ChatTurn's state on this chat (the package comment).
+	mu      sync.Mutex
 	scope   string
 	entries *entryMap
 	size    int
@@ -217,16 +229,30 @@ func (c *ChatContext) Scope() string { return c.scope }
 
 // Entries are the chat's ledger: every entry its runs retained, in the order they were first
 // retained.
-func (c *ChatContext) Entries() []*Entry { return c.entries.values() }
+func (c *ChatContext) Entries() []*Entry {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.entries.values()
+}
 
 // EntryIDs are the ids of those entries, in the same order.
-func (c *ChatContext) EntryIDs() []string { return c.entries.keys() }
+func (c *ChatContext) EntryIDs() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.entries.keys()
+}
 
 // HasEntry reports an entry the chat still holds.
-func (c *ChatContext) HasEntry(id string) bool { return c.entries.has(id) }
+func (c *ChatContext) HasEntry(id string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.entries.has(id)
+}
 
 // DeleteEntry drops one entry, as a test that resumes a checkpoint after an eviction does.
 func (c *ChatContext) DeleteEntry(id string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if e := c.entries.get(id); e != nil {
 		c.size -= e.Bytes
 		c.entries.delete(id)
@@ -234,18 +260,32 @@ func (c *ChatContext) DeleteEntry(id string) {
 }
 
 // Size is how many bytes the chat's entries hold.
-func (c *ChatContext) Size() int { return c.size }
+func (c *ChatContext) Size() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.size
+}
 
 // IsDisposed reports whether Dispose has been called.
-func (c *ChatContext) IsDisposed() bool { return c.disposed }
+func (c *ChatContext) IsDisposed() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.disposed
+}
 
 // TurnCount is how many runs have opened a turn on this chat.
-func (c *ChatContext) TurnCount() int { return c.turns }
+func (c *ChatContext) TurnCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.turns
+}
 
 // Dispose clears everything this chat holds (its ledger, its read cache, the results it kept) and
 // refuses every later run. A host calls it when the chat is deleted or closed, after its run has
 // ended.
 func (c *ChatContext) Dispose() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.clear()
 	c.open = map[*ChatTurn]bool{}
 	c.disposed = true
@@ -262,6 +302,8 @@ func (c *ChatContext) OpenTurn() (*ChatTurn, error) { return c.OpenTurnFor(nil) 
 // OpenTurnFor is openTurn: a turn that sees only the entries in visible where it is a delegated
 // child's (agent#15), or the error where the chat was disposed.
 func (c *ChatContext) OpenTurnFor(visible map[string]bool) (*ChatTurn, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.disposed {
 		return nil, ErrDisposed
 	}
@@ -286,9 +328,19 @@ func (c *ChatContext) ChildScope(visible map[string]bool) ChatScope {
 	return childScope{context: c, visible: visible}
 }
 
+// Reveal adds an entry to a child's visible set (a ChildScope's), under the chat's lock: the
+// coordinator writes a set a running child's turn reads.
+func (c *ChatContext) Reveal(visible map[string]bool, id string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	visible[id] = true
+}
+
 // KeepTask is keepTask: a finished child's context, kept under each of its task ids (agent#14);
 // the oldest past keptTasks goes.
 func (c *ChatContext) KeepTask(ids []string, thread *TaskThread) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if err := c.live(); err != nil {
 		return err
 	}
@@ -317,11 +369,17 @@ func (c *ChatContext) dropTask(id string) {
 }
 
 // Task is the kept context of a finished task of this chat, by any of its task ids.
-func (c *ChatContext) Task(id string) *TaskThread { return c.taskThreads[id] }
+func (c *ChatContext) Task(id string) *TaskThread {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.taskThreads[id]
+}
 
 // KeepResult is keepResult: a complete result kept under its task's reuse key (agent#17); the
 // oldest past keptTasks goes.
 func (c *ChatContext) KeepResult(key string, kept ReusableResult) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if err := c.live(); err != nil {
 		return err
 	}
@@ -350,6 +408,8 @@ func (c *ChatContext) dropResult(key string) {
 
 // Reusable is the result an identical earlier task of this chat completed, by its reuse key.
 func (c *ChatContext) Reusable(key string) *ReusableResult {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	held := c.reusableResults[key]
 	if held == nil {
 		return nil
@@ -567,9 +627,15 @@ func (t *ChatTurn) Chat() *ChatTurn { return t }
 func (t *ChatTurn) Scope() string { return t.context.scope }
 
 func (t *ChatTurn) entryList() *entryMap {
+	t.context.mu.Lock()
+	defer t.context.mu.Unlock()
 	all := t.context.entries
 	if t.visible == nil {
-		return all
+		out := newEntryMap()
+		for _, entry := range all.values() {
+			out.set(entry)
+		}
+		return out
 	}
 	out := newEntryMap()
 	for _, entry := range all.values() {
@@ -581,13 +647,39 @@ func (t *ChatTurn) entryList() *entryMap {
 }
 
 // Size is how many bytes the chat holds.
-func (t *ChatTurn) Size() int { return t.context.size }
+func (t *ChatTurn) Size() int {
+	t.context.mu.Lock()
+	defer t.context.mu.Unlock()
+	return t.context.size
+}
 
 // Room makes room for bytes more within bound on the chat.
-func (t *ChatTurn) Room(bytes, bound int) error { return t.context.room(bytes, bound) }
+func (t *ChatTurn) Room(bytes, bound int) error {
+	t.context.mu.Lock()
+	defer t.context.mu.Unlock()
+	return t.context.room(bytes, bound)
+}
+
+// Put makes room for an entry within bound and retains it, visible to this turn, as one step: two
+// runs on the chat cannot both make room for the same bytes.
+func (t *ChatTurn) Put(entry *Entry, bound int) error {
+	t.context.mu.Lock()
+	defer t.context.mu.Unlock()
+	if err := t.context.room(entry.Bytes, bound); err != nil {
+		return err
+	}
+	t.add(entry)
+	return nil
+}
 
 // Add retains an entry in the chat, visible to this turn.
 func (t *ChatTurn) Add(entry *Entry) {
+	t.context.mu.Lock()
+	defer t.context.mu.Unlock()
+	t.add(entry)
+}
+
+func (t *ChatTurn) add(entry *Entry) {
 	// A chat that was disposed while a run held a turn refuses the write; the ledger's caller sees
 	// the error through Room, which every retain asks first.
 	_ = t.context.add(entry, t)
@@ -598,6 +690,12 @@ func (t *ChatTurn) Add(entry *Entry) {
 
 // Use is one entry by id, as this run reads it.
 func (t *ChatTurn) Use(id string) *Entry {
+	t.context.mu.Lock()
+	defer t.context.mu.Unlock()
+	return t.use(id)
+}
+
+func (t *ChatTurn) use(id string) *Entry {
 	if t.visible != nil && !t.visible[id] {
 		return nil
 	}
@@ -611,19 +709,23 @@ func (t *ChatTurn) Use(id string) *Entry {
 // Adopt is an entry the chat holds that this run retained itself with the same content: a child's
 // turn is given it. Never a way to read an entry by id: the caller produced the bytes.
 func (t *ChatTurn) Adopt(id string) *Entry {
+	t.context.mu.Lock()
+	defer t.context.mu.Unlock()
 	if t.visible == nil {
-		return t.Use(id)
+		return t.use(id)
 	}
 	if !t.context.entries.has(id) {
 		return nil
 	}
 	t.visible[id] = true
-	return t.Use(id)
+	return t.use(id)
 }
 
 // Held is what this run's checkpoint carries: the entries it retained or read that the chat still
 // holds.
 func (t *ChatTurn) Held() []*Entry {
+	t.context.mu.Lock()
+	defer t.context.mu.Unlock()
 	out := []*Entry{}
 	for _, id := range t.referenced.list() {
 		if entry := t.context.entries.get(id); entry != nil {
@@ -635,6 +737,8 @@ func (t *ChatTurn) Held() []*Entry {
 
 // Missing is why an id is not held, where the turn knows.
 func (t *ChatTurn) Missing(id string) string {
+	t.context.mu.Lock()
+	defer t.context.mu.Unlock()
 	if t.visible != nil && !t.visible[id] {
 		return NotReferenced
 	}
@@ -647,6 +751,8 @@ func (t *ChatTurn) Missing(id string) string {
 // Clear clears the chat's whole ledger; a child's turn clears nothing. A run's end calls Release,
 // not this.
 func (t *ChatTurn) Clear() {
+	t.context.mu.Lock()
+	defer t.context.mu.Unlock()
 	if t.visible == nil {
 		t.context.clear()
 	}
@@ -654,11 +760,17 @@ func (t *ChatTurn) Clear() {
 
 // Release says the run ended: its turn closes and what it referenced may be evicted. The chat
 // keeps it all.
-func (t *ChatTurn) Release() { t.context.close(t) }
+func (t *ChatTurn) Release() {
+	t.context.mu.Lock()
+	defer t.context.mu.Unlock()
+	t.context.close(t)
+}
 
 // Cached is an immutable read's result, served from the chat's read cache, or false. A child's
 // turn is given the entry it was served.
 func (t *ChatTurn) Cached(key string) (ToolResult, bool) {
+	t.context.mu.Lock()
+	defer t.context.mu.Unlock()
 	id, ok := t.context.cachedEntry(key)
 	if ok && t.visible != nil {
 		t.visible[id] = true
@@ -666,7 +778,7 @@ func (t *ChatTurn) Cached(key string) (ToolResult, bool) {
 	if !ok {
 		return ToolResult{}, false
 	}
-	entry := t.Use(id)
+	entry := t.use(id)
 	if entry == nil {
 		return ToolResult{}, false
 	}
@@ -690,6 +802,8 @@ func (t *ChatTurn) Keep(ledger *ContextLedger, tool string, args *Value, result 
 		}
 		return err
 	}
+	t.context.mu.Lock()
+	defer t.context.mu.Unlock()
 	t.context.record(&keptResult{tool: tool, arguments: ContextDigest(CanonicalJSON(orObject(args))),
 		entry: entry.ID, bytes: entry.Bytes, firstLine: FirstLine(result), turn: t.number}, key, hasKey)
 	return nil
@@ -706,6 +820,8 @@ func (t *ChatTurn) Keep(ledger *ContextLedger, tool string, args *Value, result 
 //
 // room is the bytes the index may cost; pass IndexNoRoomBound for no bound.
 func (t *ChatTurn) Index(turnIndexEntries, turnIndexBytes int, marker string, room int) string {
+	t.context.mu.Lock()
+	defer t.context.mu.Unlock()
 	t.offered = nil
 	// A child's brief names its references; the chat's index is its parent's.
 	if t.visible != nil {
@@ -766,6 +882,8 @@ func newest[T any](list []T, count int) []T {
 
 // Sent says the index this turn made last was sent: the evictions it listed or counted are said.
 func (t *ChatTurn) Sent() {
+	t.context.mu.Lock()
+	defer t.context.mu.Unlock()
 	t.context.reported(t.offered)
 	t.offered = nil
 }

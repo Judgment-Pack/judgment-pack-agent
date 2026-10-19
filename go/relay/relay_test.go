@@ -233,3 +233,44 @@ func TestAnAnswerStreams(t *testing.T) {
 		t.Fatalf("read %q", rest)
 	}
 }
+
+// Four streamed answers stopped mid-stream, their bodies never closed, give their slots back when
+// their requests' contexts end: the fifth request is answered 200, not busy.
+func TestAStoppedStreamGivesBackItsSlot(t *testing.T) {
+	var arrived atomic.Int32
+	client, handler, _ := upstreamClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: one\n\n")
+		w.(http.Flusher).Flush()
+		if arrived.Add(1) > MaxInFlight {
+			return
+		}
+		chunk := strings.Repeat("data: more\n\n", 64)
+		for r.Context().Err() == nil {
+			if _, err := io.WriteString(w, chunk); err != nil {
+				return
+			}
+			w.(http.Flusher).Flush()
+		}
+	}, "openai-compatible")
+	for range MaxInFlight {
+		ctx, cancel := context.WithCancel(context.Background())
+		response, err := client.Call()(ctx, "chat/completions", Request{Body: []byte("{}")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		first := make([]byte, len("data: one\n\n"))
+		if _, err := io.ReadFull(response.Body, first); err != nil {
+			t.Fatal(err)
+		}
+		cancel()
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for len(handler.slots) > 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	response, body := call(t, client, "chat/completions", nil)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("the fifth was answered %d %s with %d slots held", response.StatusCode, body, len(handler.slots))
+	}
+}

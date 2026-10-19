@@ -1,5 +1,5 @@
 {
-  "description": "The Go certification runner's checks held in step with the TypeScript suite's (agent#53): every check of the describe.each(MODEL_ENGINES) blocks of packages/harness/certification/conformance.test.ts, by its block and its name, and every check of packages/harness/certification/scenarios.test.ts, by its name, mapped to the Go checks that make it (the engine leg's LegResult.Checks by CheckNames; each other block's Check by its name, LegChecks; each scenario's ScenarioCheck names) or to the reason Go does not run it. parity_test.go reads both TypeScript files and fails where one has a check this table lacks, where this table names one it does not have, or where a Go check is named that the runner does not make.",
+  "description": "The Go certification runner's checks held in step with the TypeScript suite's (agent#53): every check of the describe.each(MODEL_ENGINES) blocks of packages/harness/certification/conformance.test.ts, by its block and its name, every check of packages/harness/certification/scenarios.test.ts, by its name, and every check of packages/harness/certification/delegation.test.ts, by its name, mapped to the Go checks that make it (the engine leg's LegResult.Checks by CheckNames; each other block's Check by its name, LegChecks; each scenario's ScenarioCheck names) or to the reason Go does not run it. parity_test.go reads the three TypeScript files and fails where one has a check this table lacks, where this table names one it does not have, or where a Go check is named that the runner does not make.",
   "source": "packages/harness/certification/conformance.test.ts",
   "checks": [
     {
@@ -498,6 +498,21 @@
       {
         "check": "3 \u00b7 the person\u2019s message opens the run\u2019s one request (the agent wire has no later request to recall for)",
         "reason": "the agent engine's check (the codex engine's AgentRun seam): the Go adapter is a model adapter, and makes the model engine's check of the same scenario"
+      }
+    ]
+  },
+  "delegation": {
+    "source": "packages/harness/certification/delegation.test.ts",
+    "checks": [
+      {
+        "check": "runs as many children at once as the connection\u2019s answer says",
+        "go": [
+          "delegation capacity"
+        ]
+      },
+      {
+        "check": "runs one delegated child at a time, whatever the connection\u2019s answer says",
+        "reason": "An agent engine's check: the Go adapter is a model adapter, and the agent capability's half of delegation (a run that ends at delegation_requested, its children run one at a time) is not ported, so no Go run has an agent child to hold to one at a time."
       }
     ]
   }

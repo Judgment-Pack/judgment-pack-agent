@@ -108,7 +108,7 @@ func (c *coordinator) plan(request contract.DelegatedTaskTaskRequest) (*planned,
 		visible = thread.Visible
 	}
 	for _, entry := range references {
-		visible[entry.ID] = true
+		c.chat.Reveal(visible, entry.ID)
 	}
 	budget := turn.ProfileBudget(turn.TaskProfile{})
 	if profile != nil {
@@ -124,11 +124,11 @@ func (c *coordinator) childModelName(profile turn.TaskProfile) string {
 	if profile.Model != nil && *profile.Model == "parent" || c.run.Models == nil {
 		return own
 	}
-	_, child, err := c.run.Models()
-	if err != nil || child == "" {
+	named, err := c.run.Models()
+	if err != nil || named.Child == "" {
 		return own
 	}
-	return child
+	return named.Child
 }
 
 // reuseKey is the key an identical task is found by in this chat (agent#17).
@@ -178,6 +178,7 @@ type childRun struct {
 // childLink attaches a child's context to its grant, its tool budget and its meter.
 type childLink struct {
 	limit  int
+	calls  func(*contract.DelegatedTask) int64
 	task   *contract.DelegatedTask
 	budget turn.TaskBudget
 	m      *meter
@@ -186,7 +187,7 @@ type childLink struct {
 func (l childLink) Attach(context *runcontext.SessionContext) {
 	context.Execution.LimitTo(l.limit)
 	context.Execution.ToolAllowance = func() *runcontext.ToolAllowance {
-		return &runcontext.ToolAllowance{Used: int(l.task.ToolCalls), Limit: int(l.budget.ToolCalls), Scope: "task"}
+		return &runcontext.ToolAllowance{Used: int(l.calls(l.task)), Limit: int(l.budget.ToolCalls), Scope: "task"}
 	}
 	l.m.mu.Lock()
 	l.m.contexts = append(l.m.contexts, context)
@@ -233,16 +234,16 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 		return err
 	}
 	name := c.childModelName(profile)
-	c.batchMu.Lock()
+	c.childMu.Lock()
 	c.models[task.ID] = name
-	c.batchMu.Unlock()
+	c.childMu.Unlock()
 	var hosts []runcontext.HostTool
 	if offered {
 		hosts = c.childHostTools(profile)
 	} else {
 		tools = nil
 	}
-	input := &runcontext.Input{Objective: objective, Chat: c.chat.ChildScope(p.visible), Link: childLink{limit: limit, task: task, budget: p.budget, m: m}}
+	input := &runcontext.Input{Objective: objective, Chat: c.chat.ChildScope(p.visible), Link: childLink{limit: limit, calls: c.toolCalls, task: task, budget: p.budget, m: m}}
 	if parent := c.run.Context; parent != nil {
 		input.Configuration, input.Phase, input.ArtifactProposals, input.Memory, input.Runtime, input.Authorize, input.Connection =
 			parent.Configuration, parent.Phase, parent.ArtifactProposals, parent.Memory, parent.Runtime, parent.Authorize, parent.Connection
@@ -299,6 +300,6 @@ func (c *coordinator) proposalQuestion(p *planned, task *contract.DelegatedTask,
 	if err != nil || kept == nil {
 		return openQuestion("proposal", "The child proposed a document. It was not applied or shown for review, and the retained-context bound left no room to keep it.", "")
 	}
-	p.visible[kept.ID] = true
+	c.chat.Reveal(p.visible, kept.ID)
 	return openQuestion("proposal", "The child proposed a document. It was not applied or shown for review: read it with read_window at ref, and propose it yourself if it should be.", kept.ID)
 }

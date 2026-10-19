@@ -112,9 +112,17 @@ func TestTheScenarios(t *testing.T) {
 	runScenarios(t, certification.Scenarios...)
 }
 
-// The delegation scenario, on the adapter wrapped by the coordinator.
+func withDelegation(inner certification.Adapter) certification.Adapter {
+	return delegate.With(inner, delegate.Options{})
+}
+
+// The delegation scenario, on the adapter wrapped by the coordinator. Two children run at once on
+// one ChatContext, so CI runs this package under -race too.
 func TestTheDelegationScenario(t *testing.T) {
-	runScenarios(t, certification.Delegation(func(inner certification.Adapter) certification.Adapter {
-		return delegate.With(inner, delegate.Options{})
-	}))
+	runScenarios(t, certification.Delegation(withDelegation))
+}
+
+// A batch runs as many children at once as the connection's answer says: one, and three.
+func TestTheDelegationCapacity(t *testing.T) {
+	runScenarios(t, certification.CapacityAt(withDelegation, 1), certification.CapacityAt(withDelegation, 3))
 }

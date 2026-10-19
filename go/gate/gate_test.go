@@ -7,6 +7,8 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
@@ -324,5 +326,87 @@ func TestPlanModeAndAChildCountAnUnofferedTestCall(t *testing.T) {
 		if first.Text != UnofferedRefusal(refusal) || !strings.Contains(second.Text, "testCallsPerTurn") || g.TestCalls() != 1 || len(*calls) != 0 {
 			t.Fatalf("child %t: %q then %q, %d counted, %v reached", child, first.Text, second.Text, g.TestCalls(), *calls)
 		}
+	}
+}
+
+// A delegated child's test calls are charged to its parent's turn (Options.Turn, the gate the
+// host's Children capability opens a child on): a parent that made one call and two author-test
+// children that each try two reach the runtime three times in all, testCallsPerTurn, and the
+// fourth and fifth are refused with the cap's failure.
+func TestAChildsTestCallsAreChargedToItsParentsTurn(t *testing.T) {
+	var mu sync.Mutex
+	reached := 0
+	runtime := func(_ context.Context, frame json.RawMessage) (json.RawMessage, error) {
+		mu.Lock()
+		reached++
+		mu.Unlock()
+		return json.RawMessage(`{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"ok"}]}}`), nil
+	}
+	offer := contract.ToolOffer{}
+	for _, name := range Ceiling {
+		offer.Tools = append(offer.Tools, contract.ToolOfferRuntimeTool{Name: name})
+	}
+	parent := New(Options{Runtime: runtime, Granted: Ceiling})
+	parent.SetOffer(offer)
+	test := json.RawMessage(`{"pack":"{}","matrix":"{}"}`)
+	if result, err := parent.Calls().CallTool(context.Background(), TestTool, test); err != nil || result.IsError {
+		t.Fatalf("the parent's call: %+v (%v)", result, err)
+	}
+	profile := contract.DelegatedTaskProfile{ID: "author-test", RuntimeTools: []string{TestTool}}
+	var wg sync.WaitGroup
+	var refused atomic.Int32
+	for range 2 {
+		child := New(Options{Runtime: runtime, Granted: Ceiling, Turn: parent})
+		child.SetOffer(offer)
+		child.Enter(ChildPhase(profile, offer, parent.Phase()))
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 2 {
+				result, err := child.Calls().CallTool(context.Background(), TestTool, test)
+				if err != nil {
+					t.Error(err)
+				}
+				if result.IsError && strings.Contains(result.Text, "testCallsPerTurn") {
+					refused.Add(1)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	if reached != 3 || refused.Load() != 2 || parent.TestCalls() != 3 {
+		t.Fatalf("%d reached the runtime, %d refused, the parent's turn counts %d", reached, refused.Load(), parent.TestCalls())
+	}
+}
+
+// A Runtime result's image part is named, not shown, and none is dropped in silence: the call's
+// text keeps each text part and a line per other part, in the result's order.
+func TestARuntimeResultsImageIsNamedNotDropped(t *testing.T) {
+	g := New(Options{
+		Runtime: func(_ context.Context, frame json.RawMessage) (json.RawMessage, error) {
+			return json.RawMessage(`{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"before"},` +
+				`{"type":"image","data":"iVBORw0KGgo=","mimeType":"image/png"},{"type":"text","text":"after"},` +
+				`{"type":"image","data":"/9j/","mimeType":"image/jpeg"},{"type":"audio","data":"AAAA","mimeType":"audio/wav"}]}}`), nil
+		},
+		Granted: Ceiling,
+	})
+	offer := contract.ToolOffer{}
+	for _, name := range Ceiling {
+		offer.Tools = append(offer.Tools, contract.ToolOfferRuntimeTool{Name: name})
+	}
+	g.SetOffer(offer)
+	result, err := g.Calls().CallTool(context.Background(), "get_schema", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Join([]string{
+		"before",
+		"[image 1 (image/png): not shown, because " + RuntimePartNotShown + "]",
+		"after",
+		"[image 2 (image/jpeg): not shown, because " + RuntimePartNotShown + "]",
+		"[audio 1 (audio/wav): not shown, because " + RuntimePartNotShown + "]",
+	}, "\n")
+	if result.Text != want {
+		t.Fatalf("answered %q", result.Text)
 	}
 }

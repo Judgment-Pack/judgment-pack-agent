@@ -138,13 +138,13 @@ func (t *turnState) critic(ctx context.Context, proposal turn.Proposal) (*turn.C
 		messages := []*schema.Message{userMessage(message)}
 		held := messages
 		if r.run.Models != nil {
-			named, _, err := r.run.Models()
+			named, err := r.run.Models()
 			if err != nil {
 				unfinished = err
 				return
 			}
-			if named != "" {
-				criticModel = named
+			if named.Critic != "" {
+				criticModel = named.Critic
 			}
 		}
 		tools, err := r.toolList(offered)

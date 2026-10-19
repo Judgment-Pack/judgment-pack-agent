@@ -62,9 +62,12 @@ type Run struct {
 	// LanguageInstructions is the host's instruction on the language the person reads
 	// (assistantLanguageInstructions in host.ts), appended to the system text; empty is none.
 	LanguageInstructions string
-	// Models names the models the run's connection gives its critic and its delegated children
-	// (runModels in host.ts); nil is the run's own model for both.
-	Models func() (critic, child string, err error)
+	// Models is the host's answer for the run's connection (runModels in host.ts, read by
+	// runcontext.ReadRunModels): the models it gives the critic and the delegated children, an empty
+	// name being the run's own, and how many model requests the connection serves at once
+	// (concurrentRequests), by which a delegation batch runs that many children at once. Nil is the
+	// run's own model for both and no stated capacity.
+	Models func() (runcontext.RunModels, error)
 	// Children is the host's capability to start a delegated child's run behind the gate, in the
 	// child's phase within this run's (agent#15); nil where the host offers no delegation.
 	Children Children

@@ -31,9 +31,9 @@ func failureOf(code, source, outcome string) *contract.Failure {
 
 // outOfRequests is why a child that ran out of requests stopped (review row 6).
 func (c *coordinator) outOfRequests(task *contract.DelegatedTask, budget turn.TaskBudget) string {
-	c.batchMu.Lock()
+	c.childMu.Lock()
 	why := c.refusedBy[task.ID]
-	c.batchMu.Unlock()
+	c.childMu.Unlock()
 	switch {
 	case task.ModelRequests >= budget.ModelRequests || why == "budget":
 		return "This task used its " + itoa(int(budget.ModelRequests)) + " model requests, its profile’s budget, and stopped without findings."
@@ -46,19 +46,21 @@ func (c *coordinator) outOfRequests(task *contract.DelegatedTask, budget turn.Ta
 // child runs one child of a batch.
 func (c *coordinator) child(p *planned, task *contract.DelegatedTask, batch *batchState, share int, key string) {
 	if p.profile == nil {
-		task.State = "failed"
-		task.Problem = strPtr("The requested task profile is not available.")
-		task.FinishedAt = strPtr(now())
-		zero := int64(0)
-		task.DurationMs = &zero
+		c.edit(func() {
+			task.State = "failed"
+			task.Problem = strPtr("The requested task profile is not available.")
+			task.FinishedAt = strPtr(now())
+			zero := int64(0)
+			task.DurationMs = &zero
+		})
 		c.publish(task)
 		return
 	}
 	profile := *p.profile
 	m := &meter{started: time.Now()}
-	c.batchMu.Lock()
+	c.childMu.Lock()
 	c.childStarts[task.ID] = m.started
-	c.batchMu.Unlock()
+	c.childMu.Unlock()
 	if key != "" {
 		batch.mu.Lock()
 		earlier, ok := batch.kept[key]
@@ -70,11 +72,13 @@ func (c *coordinator) child(p *planned, task *contract.DelegatedTask, batch *bat
 		}
 		if ok {
 			c.keep(batch.ctx, p, profile, task, earlier.Text, share, earlier.Questions, false, nil)
-			task.Reused = strPtr(earlier.Task)
-			task.Model = strPtr(earlier.Model)
-			duration := ms(time.Since(m.started))
-			task.DurationMs = &duration
-			task.FinishedAt = strPtr(now())
+			c.edit(func() {
+				task.Reused = strPtr(earlier.Task)
+				task.Model = strPtr(earlier.Model)
+				duration := ms(time.Since(m.started))
+				task.DurationMs = &duration
+				task.FinishedAt = strPtr(now())
+			})
 			c.publish(task)
 			return
 		}
@@ -85,11 +89,13 @@ func (c *coordinator) child(p *planned, task *contract.DelegatedTask, batch *bat
 	run := &childRun{}
 	defer func() {
 		c.shared.release(task)
+		c.taskMu.Lock()
 		for at := range task.Steps {
 			if task.Steps[at].State == "running" {
 				task.Steps[at].State = "interrupted"
 			}
 		}
+		c.taskMu.Unlock()
 		m.mu.Lock()
 		var rows []contract.Provenance
 		for _, context := range m.contexts {
@@ -97,118 +103,151 @@ func (c *coordinator) child(p *planned, task *contract.DelegatedTask, batch *bat
 		}
 		first := m.firstByte
 		m.mu.Unlock()
-		task.Tokens = tokenFigures(rows)
-		if first != nil {
-			at := ms(first.Sub(m.started))
-			task.FirstByteMs = &at
-		}
-		duration := ms(time.Since(m.started))
-		task.DurationMs = &duration
+		c.edit(func() {
+			task.Tokens = tokenFigures(rows)
+			if first != nil {
+				at := ms(first.Sub(m.started))
+				task.FirstByteMs = &at
+			}
+			duration := ms(time.Since(m.started))
+			task.DurationMs = &duration
+		})
 		if run.streamed != "" {
 			id := task.ID
 			c.deliver(contract.RunEvent{MessageProgress: &contract.RunEventMessageProgress{Type: "message_progress", Text: "", TaskID: &id}})
 		}
-		task.FinishedAt = strPtr(now())
+		c.edit(func() { task.FinishedAt = strPtr(now()) })
 		c.publish(task)
 	}()
-	task.State = "running"
+	c.edit(func() { task.State = "running" })
 	c.publish(task)
 	m.started = time.Now()
-	c.batchMu.Lock()
+	c.childMu.Lock()
 	c.childStarts[task.ID] = m.started
-	c.batchMu.Unlock()
-	limit := c.shared.grantFor(task, p.budget, batch.slots())
+	c.childMu.Unlock()
+	limit := c.shared.grantFor(task, c.spent(task), p.budget, batch.slots())
 	if limit < 1 {
-		task.State = "failed"
-		task.Problem = strPtr("No model request is left for this task: the response keeps its last request for the parent’s answer.")
-		task.Failure = failureOf("request-limit", "desk", "not-started")
+		c.edit(func() {
+			task.State = "failed"
+			task.Problem = strPtr("No model request is left for this task: the response keeps its last request for the parent’s answer.")
+			task.Failure = failureOf("request-limit", "desk", "not-started")
+		})
 		return
 	}
 	childCtx, handBack := context.WithCancel(childCtx)
 	defer handBack()
-	c.batchMu.Lock()
+	c.childMu.Lock()
 	c.childStops[task.ID] = handBack
-	c.batchMu.Unlock()
+	c.childMu.Unlock()
 	run.err = c.runChild(childCtx, p, profile, task, p.request.Objective, c.brief(p, profile), limit, true, m, run)
 	written := strings.TrimSpace(strings.Join(nonEmpty(run.text, run.progress), "\n\n"))
-	c.batchMu.Lock()
+	c.childMu.Lock()
 	handedBack := c.handedBack[task.ID]
-	c.batchMu.Unlock()
+	c.childMu.Unlock()
 	timedOut := errors.Is(childCtx.Err(), context.DeadlineExceeded) && batch.ctx.Err() == nil && !handedBack
 	limited := childCtx.Err() != nil && !handedBack
+	c.taskMu.Lock()
+	problem := task.Problem
+	c.taskMu.Unlock()
 	switch {
 	case batch.parent.Err() != nil:
-		task.State = "interrupted"
-		task.Problem = strPtr("Stopped with the parent run.")
+		c.edit(func() {
+			task.State = "interrupted"
+			task.Problem = strPtr("Stopped with the parent run.")
+		})
 	case handedBack:
 		// A source call that needs the parent's research choice is a question for the parent; what
 		// the child had written is kept, partial, and the task is complete (agent#16, review row 7).
 		asked := handedBackText
-		if task.Problem != nil {
-			asked = *task.Problem
+		if problem != nil {
+			asked = *problem
 		}
 		c.keep(batch.ctx, p, profile, task, written, share, append(append([]*runcontext.Value{}, run.questions...), openQuestion("question", asked, "")), true, nil)
-		held := ""
-		if task.Problem != nil && *task.Problem != asked {
-			held = *task.Problem
-		}
-		task.Problem = strPtr(problems(asked, held))
+		c.edit(func() {
+			held := ""
+			if task.Problem != nil && *task.Problem != asked {
+				held = *task.Problem
+			}
+			task.Problem = strPtr(problems(asked, held))
+		})
 	case limited && (written != "" || len(run.questions) > 0):
 		c.keep(childCtx, p, profile, task, strings.Join(nonEmpty(run.text, run.progress), "\n\n"), share, run.questions, true, nil)
 		why := batchPartialProblem
 		if timedOut {
 			why = partialProblem
 		}
-		held := ""
-		if task.Problem != nil {
-			held = *task.Problem
-		}
-		task.Problem = strPtr(problems(why, held))
+		c.edit(func() {
+			held := ""
+			if task.Problem != nil {
+				held = *task.Problem
+			}
+			task.Problem = strPtr(problems(why, held))
+		})
 	case timedOut:
-		task.State = "failed"
 		why := run.failed
 		if why == "" {
 			why = timeLimit
 		}
-		task.Problem = strPtr(why)
-		task.Failure = failureOf("timeout", "desk", "unknown")
+		c.edit(func() {
+			task.State = "failed"
+			task.Problem = strPtr(why)
+			task.Failure = failureOf("timeout", "desk", "unknown")
+		})
 	case limited:
-		task.State = "failed"
-		task.Problem = strPtr(batchLimit)
-		task.Failure = failureOf("timeout", "desk", "unknown")
+		c.edit(func() {
+			task.State = "failed"
+			task.Problem = strPtr(batchLimit)
+			task.Failure = failureOf("timeout", "desk", "unknown")
+		})
 	case run.err != nil && !errors.Is(run.err, runcontext.ErrExecutionPaused):
-		task.State = "failed"
 		held := failure.Normalize(run.err, "agent", time.Now())
-		task.Failure = &held
-		task.Problem = strPtr(runcontext.U16Slice(failure.Message(held), 0, 1000))
+		c.edit(func() {
+			task.State = "failed"
+			task.Failure = &held
+			task.Problem = strPtr(runcontext.U16Slice(failure.Message(held), 0, 1000))
+		})
 	case run.failed != "" || strings.TrimSpace(run.text) == "" && len(run.questions) == 0:
-		task.State = "failed"
 		why := run.failed
+		var failed *contract.Failure
 		if why == "" {
 			if run.paused || errors.Is(run.err, runcontext.ErrExecutionPaused) {
+				c.taskMu.Lock()
 				why = c.outOfRequests(task, p.budget)
-				task.Failure = failureOf("request-limit", "desk", "not-started")
+				c.taskMu.Unlock()
+				failed = failureOf("request-limit", "desk", "not-started")
 			} else {
 				why = "The task returned no complete findings."
 			}
 		}
-		task.Problem = strPtr(runcontext.U16Slice(why, 0, 1000))
+		var report *runcontext.Value
 		if len(run.questions) > 0 {
-			report := hostReport(written, "")
+			report = hostReport(written, "")
 			report.Set("openQuestions", runcontext.Array(run.questions...))
 			report.Set("notDone", runcontext.Array(runcontext.String("The child’s run failed before it finished.")))
-			task.Report = reportOf(profile, report)
 			shown, cut := FitReport(report, share)
 			c.shownReports.Store(task.ID, shownReport{shown: shown, cut: cut})
 		}
+		c.edit(func() {
+			task.State = "failed"
+			if failed != nil {
+				task.Failure = failed
+			}
+			task.Problem = strPtr(runcontext.U16Slice(why, 0, 1000))
+			if report != nil {
+				task.Report = reportOf(profile, report)
+			}
+		})
 	default:
 		c.keep(childCtx, p, profile, task, run.text, share, run.questions, false, m)
 		// Kept for reuse only where the child made no counted tool call (agent#17, review row 1).
-		if key != "" && task.ToolCalls == 0 {
-			model := c.run.ModelName
-			if task.Model != nil {
-				model = *task.Model
-			}
+		c.taskMu.Lock()
+		calls := task.ToolCalls
+		model := c.run.ModelName
+		if task.Model != nil {
+			model = *task.Model
+		}
+		c.taskMu.Unlock()
+		if key != "" && calls == 0 {
 			kept := runcontext.ReusableResult{Task: task.ID, Model: model, Text: run.text, Questions: run.questions}
 			batch.mu.Lock()
 			batch.kept[key] = kept
@@ -319,7 +358,7 @@ func (c *coordinator) runBatch(ctx context.Context, request contract.DelegatedTa
 	}
 	batchCtx, stop := context.WithTimeout(ctx, total)
 	defer stop()
-	concurrency := DefaultChildConcurrency
+	concurrency := c.concurrency()
 	var mu sync.Mutex
 	next, finished := 0, 0
 	done := make([]chan struct{}, len(tasks))
@@ -362,9 +401,11 @@ func (c *coordinator) runBatch(ctx context.Context, request contract.DelegatedTa
 	}
 	workers.Wait()
 	var children []contract.ProvenanceChildFigures
+	c.taskMu.Lock()
 	for _, task := range tasks {
 		children = append(children, c.childFigures(task, number))
 	}
+	c.taskMu.Unlock()
 	c.batchMu.Lock()
 	c.figures = append(c.figures, contract.ProvenanceBatchFigures{Batch: int64(number), Children: children, Total: totalOf(children, ms(time.Since(started)))})
 	c.running = nil
@@ -428,4 +469,18 @@ func (c *coordinator) batchAnswer(tasks []*contract.DelegatedTask) runcontext.To
 		list.Append(item)
 	}
 	return runcontext.Answer(runcontext.ObjectOf("tasks", list, "note", runcontext.String(answerNote)))
+}
+
+// concurrency is how many children a batch runs at once (agent#17): as many as the run's connection
+// serves requests at once, the concurrentRequests of the host's answer for it, and
+// DefaultChildConcurrency where the answer names none.
+func (c *coordinator) concurrency() int {
+	if c.run.Models == nil {
+		return DefaultChildConcurrency
+	}
+	named, err := c.run.Models()
+	if err != nil || named.ConcurrentRequests == nil {
+		return DefaultChildConcurrency
+	}
+	return max(1, *named.ConcurrentRequests)
 }
