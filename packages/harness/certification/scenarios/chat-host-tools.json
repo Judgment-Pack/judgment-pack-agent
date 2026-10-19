@@ -1,0 +1,32 @@
+{
+  "$comment": "Written by hand. A conversation-mode run that is offered two host tools, one that reads and one that proposes. The model's turns are listed in order: it reads, asks for a name it was never offered, proposes, and answers.",
+  "id": "chat-host-tools",
+  "request": "What does the policy say about receipts? If a pack is needed, propose one for me to review.",
+  "hostTools": [
+    {
+      "name": "read_policy",
+      "effect": "read",
+      "description": "Read one section of the expense policy.",
+      "result": "Section receipts: a claim above 50 USD is approved only when a receipt is attached."
+    },
+    {
+      "name": "propose_pack",
+      "effect": "proposal",
+      "description": "Propose a pack for the person to review."
+    }
+  ],
+  "turns": [
+    { "call": { "tool": "read_policy", "arguments": { "section": "receipts" } } },
+    { "call": { "tool": "save_pack", "arguments": { "path": "packs/expense.pack.json" } } },
+    {
+      "call": {
+        "tool": "propose_pack",
+        "arguments": {
+          "document": { "id": "expense-receipts", "title": "Expense receipts" },
+          "unknowns": ["Whether a receipt must be itemized."]
+        }
+      }
+    },
+    { "say": "The policy asks for a receipt above 50 USD. I proposed a pack for your review; nothing is saved." }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "$comment": "Written by hand. A run over three steps that call tools, once with the project's memory on (said, and not said) and once with it off. The tools answer with fixed text; the checks read the requests the run sent, not the answers.",
+  "id": "memory",
+  "request": "Review the expense pack: read its schema, list the examples, read the closest one, and tell me what to add.",
+  "runtimeAnswers": {
+    "get_schema": {
+      "title": "Judgment Pack Core",
+      "type": "object"
+    },
+    "list_examples": {
+      "examples": [
+        {
+          "name": "minimal-expense-approval"
+        }
+      ]
+    },
+    "get_example": {
+      "id": "minimal-expense-approval",
+      "rules": 2
+    }
+  },
+  "turns": [
+    {
+      "call": {
+        "tool": "get_schema",
+        "arguments": {
+          "spec_version": "0.2.0-draft"
+        }
+      }
+    },
+    {
+      "call": {
+        "tool": "list_examples",
+        "arguments": {}
+      }
+    },
+    {
+      "call": {
+        "tool": "get_example",
+        "arguments": {
+          "name": "minimal-expense-approval"
+        }
+      }
+    },
+    {
+      "say": "Add a rule for a claim above 1000 USD, which the example sends to finance."
+    }
+  ]
+}

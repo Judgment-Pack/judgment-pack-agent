@@ -144,6 +144,14 @@ $pkg/critic.test.ts
 $pkg/criticDefault.test.ts
 $pkg/engines/codex/reformat.test.ts
 $pkg/delegationResults.test.ts
+$pkg/testing/scenarioDriver.ts
+$pkg/certification/scenarios.test.ts
+$pkg/certification/scenarios/chat-host-tools.json
+$pkg/certification/scenarios/delegation.json
+$pkg/certification/scenarios/memory.json
+$pkg/certification/scenarios/plan-mode.json
+$pkg/certification/scenarios/correction-loop.json
+$pkg/certification/scenarios/multi-turn.json
 $pkg/certification/delegation.test.ts
 EOF
 }

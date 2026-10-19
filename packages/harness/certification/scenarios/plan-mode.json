@@ -1,0 +1,82 @@
+{
+  "$comment": "Written by hand. A run in plan mode: the model reads, then asks for an action of the Runtime and an action tool of the host, and is refused each, then saves a plan and answers. The host offers a read, an action that proposes, an action that saves, an action that remembers, a question and the plan tool.",
+  "id": "plan-mode",
+  "request": "Plan how to add a receipt rule to the expense pack. Do not change anything yet.",
+  "hostTools": [
+    {
+      "name": "read_policy",
+      "effect": "read",
+      "delegation": "read",
+      "description": "Read one section of the expense policy.",
+      "result": "Section receipts: a claim above 50 USD is approved only when a receipt is attached."
+    },
+    {
+      "name": "propose_pack",
+      "effect": "proposal",
+      "description": "Propose a pack for the person to review."
+    },
+    {
+      "name": "save_recipe",
+      "effect": "workflow",
+      "description": "Save a recipe."
+    },
+    {
+      "name": "remember_note",
+      "effect": "memory",
+      "description": "Keep a note in the project's memory."
+    },
+    {
+      "name": "propose_plan",
+      "effect": "plan",
+      "description": "Save a plan for the person to review.",
+      "result": "Plan saved. The person must choose Start work."
+    }
+  ],
+  "turns": [
+    {
+      "call": {
+        "tool": "read_policy",
+        "arguments": {
+          "section": "receipts"
+        }
+      }
+    },
+    {
+      "call": {
+        "tool": "experimental_evaluate",
+        "arguments": {
+          "pack": "{}",
+          "facts": "{}"
+        }
+      }
+    },
+    {
+      "call": {
+        "tool": "save_recipe",
+        "arguments": {
+          "name": "receipts"
+        }
+      }
+    },
+    {
+      "call": {
+        "tool": "propose_plan",
+        "arguments": {
+          "objective": "Add a receipt rule",
+          "steps": [
+            "Read the receipts section",
+            "Draft the rule",
+            "Test the rule against the saved cases"
+          ],
+          "questions": [
+            "Must the receipt be itemized?"
+          ],
+          "references": []
+        }
+      }
+    },
+    {
+      "say": "I saved a three-step plan. Nothing is changed until you choose Start work."
+    }
+  ]
+}
