@@ -1,5 +1,5 @@
 {
-  "description": "The provider account is busy and admitted nothing. The only class and outcome an automatic retry may act on (canRetryAdmission), and only the delegation coordinator does, for a child's agent run.",
+  "description": "The provider account is busy and admitted nothing. The only class and outcome an automatic retry may act on (canRetryAdmission), and only the delegation coordinator does: every agent run under it, the parent's included, three attempts in all, within the five agent runs it admits, shared by the parent and its children.",
   "schema": "run-event.json",
   "failureClass": "busy",
   "source": {
@@ -10,7 +10,8 @@
     },
     "files": [
       "internal/desk/ai_failure.go (aiAgentFailure: ErrBusy)",
-      "web/src/assistant/failures.ts (canRetryAdmission)"
+      "web/src/assistant/failures.ts (canRetryAdmission)",
+      "web/src/assistant/delegation.ts (withDelegation: bind, the agent run)"
     ]
   },
   "items": [

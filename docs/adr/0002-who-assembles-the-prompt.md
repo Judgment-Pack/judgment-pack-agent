@@ -33,10 +33,11 @@ The research worker the server runs on its own uses the same policy table and th
   store; both are read where the project's files and storage are, under the server's own path and
   symlink rules. Moving them to the adapter means handing an adapter project content it does not
   hold today.
-- **One place every request passes.** Every model dispatch, from either engine, the critic, a
-  delegated child or the server's own research, goes through the relay. Adding the background
-  there makes it impossible for an adapter to forget it, and the final byte guard there sees the
-  request whole.
+- **One place every request passes.** Every model dispatch passes through the Desk server: the
+  `vercel` engine's requests, its critic's and its delegated children's through the model relay,
+  `codex` runs through `/api/agent/run` (`prepareAgentContext`), and the server's own research
+  through the same preparation; each path adds the same background. Adding it there makes it
+  impossible for an adapter to forget it, and the final byte guard there sees the request whole.
 - **Custody and capacity live there.** The relay holds the keys and the admission slots. A guard
   that refuses before dispatch is cheapest where the dispatch is.
 - **An adapter cannot be trusted with the boundary.** ADR-0001 keeps the relay, the gate and the

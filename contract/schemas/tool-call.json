@@ -14,7 +14,7 @@
       "const": "tool_call"
     },
     "callId": {
-      "description": "Pairs the call with its tool_result. The codex engine always sets it (the server's 48-hex call id); the vercel engine sets it only on an interactive session, and never on a call to a tool the model was not offered.",
+      "description": "Pairs the call with its tool_result. The codex engine always sets it (the server's 48-hex call id); the vercel engine sets it on an interactive session, and always on its refusal of a repeated call or of a call made on the final, tool-free request; never on a call to a tool the model was not offered.",
       "type": "string"
     },
     "name": {
@@ -70,7 +70,9 @@
           "pattern": "^[a-f0-9]{48}$"
         },
         "name": {
-          "type": "string"
+          "description": "The alias the codex engine offered the tool under; the browser refuses any name it did not offer.",
+          "type": "string",
+          "pattern": "^desk_(runtime|host)_[0-9]+$"
         },
         "arguments": {
           "type": "object"

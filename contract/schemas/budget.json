@@ -118,7 +118,9 @@
           "maxProperties": 128,
           "propertyNames": {
             "minLength": 1,
-            "maxLength": 128
+            "maxLength": 128,
+            "description": "A model name: trimmed, with no CR, LF or NUL.",
+            "pattern": "^[^\\s\\u0000](?:[^\\r\\n\\u0000]*[^\\s\\u0000])?$"
           },
           "additionalProperties": {
             "$ref": "#/$defs/modelBudget"
@@ -199,7 +201,7 @@
       "additionalProperties": true
     },
     "deskLimits": {
-      "description": "The fixed limits, by the Desk's own constant names, at the pinned commit. Values the Desk writes as unnamed literals are stated in these descriptions instead: a checkpoint holds at most 8 grants; one delegation batch has one to three tasks, admits at most 5 agent runs and 3 attempts per child, and runs two children at a time on a model capability and one on an agent capability; an agent run's browser transport ends at 12 minutes, refuses a frame over 2 MiB, more than 8 MiB received or 64 queued frames, and more than 20 tool calls; the Codex bridge allows two recovery notices (retry events) per run.",
+      "description": "The fixed limits, by the Desk's own constant names, at the pinned commit. Values the Desk writes as unnamed literals are stated in these descriptions instead: a checkpoint holds at most 8 grants; one delegation batch has one to three tasks; on an agent capability the delegation coordinator admits at most 5 agent runs in all, shared by the parent and its children, retries every agent run under it, the parent's included, after a busy, not-started refusal, three attempts in all, and runs one child at a time (two on a model capability); the Codex bridge bounds an agent run at ten minutes (internal/codexbridge/run.go), which the server reports as a timeout failure; the browser's agent transport ends a run at twelve minutes, a backstop behind the bridge's deadline, and refuses a frame over 2 MiB, more than 8 MiB received or 64 queued frames, and more than 20 tool calls; the Codex bridge allows two recovery notices (retry events) per run; the model relay bounds one relayed request at ten minutes and two minutes idle (relayDeadline, relayIdle), and has no deadline for a whole run.",
       "type": "object",
       "properties": {
         "MAX_TURNS": {

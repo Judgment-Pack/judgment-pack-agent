@@ -15,7 +15,7 @@
       "const": "tool_result"
     },
     "callId": {
-      "description": "The id of the tool_call this answers. The codex engine always sets it; the vercel engine sets it only on an interactive session, and never on the result of a call the model made to a tool it was not offered.",
+      "description": "The id of the tool_call this answers. The codex engine always sets it; the vercel engine sets it on an interactive session, and always on its refusal of a repeated call or of a call made on the final, tool-free request; never on the result of a call to a tool the model was not offered.",
       "type": "string"
     },
     "name": {
@@ -30,7 +30,7 @@
       "type": "string"
     },
     "structured": {
-      "description": "The answer's structuredContent, where it had one. A failed tool's is {\"failure\": …} (failure.json#/$defs/toolFailureContent) or, for ask_user, {\"questionFailure\": …}."
+      "description": "The answer's structuredContent, where it had one. On a failed result the host wrote, it is bound: for ask_user, the question format failure ({\"questionFailure\": …}); otherwise, where it carries a failure member, {\"failure\": …} (failure.json#/$defs/toolFailureContent), which the Desk reads back with readFailure. A runtime tool's own failed answer passes its structuredContent through unbound."
     }
   },
   "additionalProperties": true,
@@ -209,9 +209,10 @@
           "type": "string"
         },
         "path": {
-          "description": "A JSON pointer within the item, or empty for its root.",
+          "description": "Empty for the item's root, or a JSON pointer starting with /.",
           "type": "string",
-          "maxLength": 2048
+          "maxLength": 2048,
+          "pattern": "^(?:/[\\s\\S]*)?$"
         },
         "query": {
           "description": "A literal, case-sensitive search.",
@@ -247,5 +248,57 @@
       },
       "additionalProperties": false
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "isError",
+          "name",
+          "structured"
+        ],
+        "properties": {
+          "isError": {
+            "const": true
+          },
+          "name": {
+            "const": "ask_user"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "structured": {
+            "$ref": "question.json#/$defs/formatFailure"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "isError",
+          "structured"
+        ],
+        "properties": {
+          "isError": {
+            "const": true
+          },
+          "structured": {
+            "type": "object",
+            "required": [
+              "failure"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "structured": {
+            "$ref": "failure.json#/$defs/toolFailureContent"
+          }
+        }
+      }
+    }
+  ]
 }

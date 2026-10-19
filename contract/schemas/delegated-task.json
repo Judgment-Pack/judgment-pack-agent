@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/delegated-task.json",
   "title": "Delegated task",
-  "description": "The state of one child task of a delegation batch, carried whole on every delegated_task event (each transition is a fresh snapshot). Read from DelegatedTask (web/src/assistant/delegationContract.ts, validDelegatedTask). Open: validDelegatedTask accepts a member it does not name. The model asks for a batch with the host tool delegate_tasks; the adapter emits delegation_requested and pauses; the host's coordinator (web/src/assistant/delegation.ts, withDelegation) runs the children on the same engine and emits these events. Shared limits are in budget.json (deskLimits.delegation).",
+  "description": "The state of one child task of a delegation batch, carried whole on every delegated_task event (each transition is a fresh snapshot). Read from DelegatedTask (web/src/assistant/delegationContract.ts, validDelegatedTask). Open: validDelegatedTask accepts a member it does not name. The model asks for a batch with the host tool delegate_tasks; the adapter emits delegation_requested and pauses; the host's coordinator (web/src/assistant/delegation.ts, withDelegation) runs the children on the same engine and emits these events. Its shared limits are budget.json $defs/deskLimits (MAX_TOOLS, MAX_CHILD_MODELS, MAX_CHILD_TOOLS, CHILD_TIMEOUT, RESULT_LIMIT, and the agent-run cap and retry in that definition's description).",
   "type": "object",
   "required": [
     "id",
