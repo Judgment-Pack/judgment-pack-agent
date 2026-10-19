@@ -517,7 +517,8 @@ browser entry, `deepagents/browser`), with the same session, the same seams and 
 certification as `vercel`:
 
 - **Its model is the relay's.** `model.ts` is a LangChain chat model whose only reach is
-  `session.model.call`, wrapped in the shared retry rule; `wire.ts` writes and reads the three wires
+  `session.model.call`, wrapped in the shared retry rule, and a run whose environment turns
+  LangChain's LangSmith tracer on (its other way out) is refused before it starts; `wire.ts` writes and reads the three wires
   itself, because LangChain's provider classes cannot carry what the contract holds a model engine
   to (the Gemini one cannot route through the relay at all; the ADR lists what was measured).
 - **The gate is its only tool boundary.** Deep Agents' own middleware (its file tools, the `task`

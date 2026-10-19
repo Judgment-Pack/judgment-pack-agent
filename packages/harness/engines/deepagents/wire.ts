@@ -390,6 +390,9 @@ function anthropicRequest(request: WireRequest): Encoded {
       name: tool.name,
       description: tool.description,
       input_schema: tool.schema,
+      // As the `vercel` adapter's provider sends it (review of #47, row 3): the call's input streams as
+      // it is written. The reader joins `input_json_delta` pieces either way.
+      eager_input_streaming: true,
       ...(at === request.tools.length - 1 ? { cache_control: CACHE_BREAKPOINT } : {})
     }))
     body.tool_choice = { type: 'auto', ...(request.oneCallPerTurn ? { disable_parallel_tool_use: true } : {}) }

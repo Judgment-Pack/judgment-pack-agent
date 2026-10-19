@@ -1,6 +1,8 @@
 /**
  * The `deepagents` engine's loop: LangChain's Deep Agents (`deepagents/browser`, `createDeepAgent`)
- * behind the wire contract (ADR-0001, step 3; ADR-0003).
+ * behind the wire contract (ADR-0001, step 3; ADR-0003). A run whose environment turns LangChain's
+ * tracing on is refused before anything else (`tracingAsked`): the tracer is the one way out
+ * LangChain has beside the relay.
  *
  * The agent graph Deep Agents builds (a model node, a tools node, middleware hooks around both) runs
  * each stretch of the turn that the `vercel` adapter runs as one `streamText` call; the turn around
@@ -30,6 +32,7 @@ import { createDeepAgent, StateBackend } from 'deepagents/browser'
 import { createMiddleware } from 'langchain'
 import { DynamicStructuredTool } from '@langchain/core/tools'
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages'
+import { getEnvironmentVariable } from '@langchain/core/utils/env'
 import type { ModelMessage } from 'ai'
 import { RECOVER_REPEATED_WORK_INSTRUCTIONS, REPEATED_WORK_INSTRUCTIONS } from '../../execution/progress'
 import { canFinishResponse, completionFailureCode, FINISH_RESPONSE_INSTRUCTIONS, modelCompletion, type ModelCompletion } from '../../completion'
@@ -297,6 +300,42 @@ function endpointSentence(body: unknown): string {
   } catch {
     return ''
   }
+}
+
+/**
+ * The environment variables by which LangChain and LangSmith turn their tracer on (`@langchain/core`,
+ * `isTracingEnabled`; LangSmith's `isEnvTracingEnabled`; the older `LANGCHAIN_TRACING`). Where a host
+ * has a `process.env` (Node, a test runner, a page with a `process` shim), one of them set makes
+ * LangChain's tracer send each run, prompts and answers included, through the global `fetch` with the
+ * environment's LangSmith key: a way out beside the relay capability (review of #47, row 1). A browser
+ * page has no `process`, and LangChain reads none of them there.
+ */
+export const TRACING_VARIABLES = ['LANGSMITH_TRACING_V2', 'LANGCHAIN_TRACING_V2', 'LANGSMITH_TRACING', 'LANGCHAIN_TRACING'] as const
+
+/** The tracing variable the environment sets, if any: any value but empty or `false` counts. */
+export function tracingAsked(): string | undefined {
+  return TRACING_VARIABLES.find((name) => {
+    const value = getEnvironmentVariable(name)
+    return value !== undefined && value !== '' && value.toLowerCase() !== 'false'
+  })
+}
+
+/**
+ * The refusal a run gets where the environment turns tracing on.
+ *
+ * **Refused, not forced off, because forcing it off does not hold on every path.** LangChain decides
+ * whether to trace from the LangSmith run tree current in the run's async context, and reads the
+ * environment wherever there is none; LangGraph and LangChain start parts of a run in contexts that
+ * carry none (`runWithConfig(..., avoidCreatingRootRunTree)`). Measured: with a run tree whose
+ * tracing is off set around the whole run, the tracer still appeared inside the model node and
+ * reached the global `fetch`. So a run starts only where the environment asks for no tracing, and
+ * otherwise ends at once with this, before an agent is built or a request made.
+ */
+function tracingRefusal(variable: string): AIFailureError {
+  return authoredFailure(
+    'configuration',
+    `the environment turns LangChain's tracing on (${variable}), which would send the run through the global fetch, beside the relay; the run was refused and nothing was sent. Unset the LangSmith and LangChain tracing variables to run this engine`
+  )
 }
 
 /**
@@ -981,6 +1020,9 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
       overTime = true
       turnClock.abort()
     }, context.policy.turnMilliseconds)
+    // LangChain's tracer is the one way out beside the relay; an environment that turns it on refuses the run.
+    const tracing = tracingAsked()
+    if (tracing !== undefined) throw tracingRefusal(tracing)
     if (collision !== undefined) throw authoredFailure('configuration', `host tool ${collision.name} is named like a tool the runtime serves; nothing was run`)
     for (const notice of narrowingEvents(id, session.model.family, [...session.tools, ...session.hostTools])) await channel.push(notice)
     const opened = slot.opening()

@@ -42,7 +42,7 @@ Desk server runs. This package adds a third, `deepagents` (ADR-0003):
 | --- | --- | --- | --- | --- |
 | `vercel` | model | the Vercel AI SDK's `streamText` | `model.call`, as the SDK's providers' `fetch` (`relayFetch`) | the SDK's tools, each executed through the gate's dispatch |
 | `codex` | agent | the Codex bridge the Desk server runs | `agent.run` | the agent wire, under aliases, through the gate's dispatch |
-| `deepagents` | model | Deep Agents' agent graph (`createDeepAgent`, `deepagents/browser`), its own tools, subagents and summarization off | `model.call`, from its own LangChain chat model, the three wires written by the adapter | every call answered by the adapter's boundary middleware through the gate's dispatch |
+| `deepagents` | model | Deep Agents' agent graph (`createDeepAgent`, `deepagents/browser`), its own tools, subagents and summarization off | `model.call`, from its own LangChain chat model, the three wires written by the adapter; a run whose environment turns LangChain's tracing on is refused | every call answered by the adapter's boundary middleware through the gate's dispatch |
 
 Everything an engine needs is decided by the host before the session starts and handed to it:
 
@@ -1084,6 +1084,20 @@ Agents' subagents are off and delegation is the package's, an awaited `delegate_
     Anthropic wire. The token figures are the adapter's reading of each wire's usage; the scenario
     that asserts figures runs on the OpenAI-compatible wire, where both count `prompt_tokens` and
     `completion_tokens`.
+  - **The rehearsal call carried back.** The `experimental_evaluate` call the history carries back
+    to the model is the model's own, without `rehearsal: true`, on all three wires; `vercel` writes
+    the flag into the call it keeps through the AI SDK's `experimental_refineToolInput`, a second
+    layer. Here the gate's rewrite of the outbound frame is the one layer, and K3a holds it on both
+    engines: the runtime sees a rehearsal and the `rewrote` guardrail is reported. The adapter keeps
+    the model's call as written so the gate is handed exactly what the model asked for. (The
+    Anthropic tools' `eager_input_streaming: true`, which `vercel`'s provider sends, is sent here
+    too.)
+  - **Tracing.** A run whose environment turns LangChain's LangSmith tracer on (`LANGSMITH_TRACING`,
+    `LANGCHAIN_TRACING_V2` and their kin, read where a host has a `process.env`) is refused as a
+    `configuration` failure before an agent is built: the tracer would send the run through the
+    global `fetch` with the environment's key, and LangChain cannot be made to keep it off on every
+    path (ADR-0003, decision 1). `vercel` reads none of these variables. The sealed leg K1b holds
+    both: no network global reached, the refusal on this engine and the proposal on `vercel`.
   - **Tool names.** `createDeepAgent` refuses a tool named like one of its built-ins even with them
     off, so a host tool named `ls`, `read_file`, `write_file`, `edit_file`, `delete`, `glob`,
     `grep`, `execute`, `task` or one of the async task tools ends the run as a `configuration`

@@ -24,6 +24,7 @@ import { loadEngine } from '../index'
 import { runOnModelEngine } from '../../testing/scenarioDriver'
 import { ofType, sseTurn, streamed, systemText, toolTexts, whole, wholeTurn, type EndpointRequest } from '../../testing/scripted'
 import { questionTool } from '../../questions'
+import { REFUTATION_MARKER } from '../../refutation'
 import { configureHarness } from '../../host'
 import { normalize } from '../../thinking'
 import type { AssistantEvent, HostTool, ModelRequest } from '../../engine'
@@ -120,6 +121,36 @@ describe('Deep Agents’ own tools and middleware are off', () => {
     for (const request of ran.requests) expect((request.body as { tools?: unknown }).tools).toBeUndefined()
     expect(ofType(ran.events, 'tool_result').map((event) => [event.name, event.isError])).toEqual([['task', true]])
     expect(ran.seen).toEqual([])
+  })
+})
+
+describe('the critic’s offer', () => {
+  it('refuses at the boundary a name the loop offers and the critic’s allow-list does not, with the gate’s guardrail', async () => {
+    // list_examples is one of the runtime's reads the loop is offered and the critic is not (its
+    // allow-list is validate, experimental_evaluate, get_schema, experimental_test_cases and the two
+    // readers). The critic's boundary refuses it as unoffered, through the gate, before any tool runs.
+    const proposal = 'Here.\n\n```json\n' + JSON.stringify({ proposal: { kind: 'create', document: { id: 'p' }, unknowns: [] } }) + '\n```'
+    const answer = (request: EndpointRequest): Response => {
+      const text = JSON.stringify(request.body)
+      if (!text.includes(REFUTATION_MARKER)) return streamed(sseTurn({ text: proposal }))
+      const results = (request.body.messages ?? []).filter((message) => message.role === 'tool').length
+      return streamed(results === 0 ? sseTurn({ tool: { name: 'list_examples', args: {}, id: 'call_critic' } }) : sseTurn({ text: 'No check refuted it.' }))
+    }
+    const ran = await runOnModelEngine(answer, {
+      engine: deepagents,
+      session: { allowConversation: false, adversarialReview: true, testPrompt: 'Test the proposal with the runtime.' }
+    })
+    expect(ofType(ran.events, 'error')).toEqual([])
+    expect(guardrails(ran.events)).toEqual(['list_examples'])
+    const flow = ran.events.filter((event) => event.type !== 'execution_checkpoint')
+    const at = flow.findIndex((event) => event.type === 'guardrail' && event.tool === 'list_examples')
+    expect(flow[at - 1]).toMatchObject({ type: 'tool_call', name: 'list_examples' })
+    expect(flow[at + 1]).toMatchObject({ type: 'tool_result', name: 'list_examples', isError: true, text: expect.stringContaining('never calls a tool it was not offered') })
+    const critic = ran.requests.filter((request) => JSON.stringify(request.body).includes(REFUTATION_MARKER))
+    expect(toolTexts(critic.at(-1)!)).toEqual([expect.stringContaining('never calls a tool it was not offered')])
+    expect(ran.seen).toEqual([])
+    expect(ofType(ran.events, 'critique')).toHaveLength(1)
+    expect(ofType(ran.events, 'proposal')).toHaveLength(1)
   })
 })
 

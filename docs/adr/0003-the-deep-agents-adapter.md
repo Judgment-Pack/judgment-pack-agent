@@ -41,7 +41,18 @@ below: the adapter passes `model`, `tools`, `middleware` and `backend`, and noth
 
 The adapter's model is a LangChain chat model (`RelayChatModel`, `model.ts`, a `BaseChatModel`)
 whose only reach is `session.model.call`, the host's capability: a path suffix, a body and the
-protocol's own headers, no address and no credential. `bindModelCall` (`session.ts`) builds the
+protocol's own headers, no address and no credential. LangChain has one other way out: its
+LangSmith tracer, which the environment's tracing variables (`LANGSMITH_TRACING`,
+`LANGCHAIN_TRACING_V2` and their kin) turn on wherever a host has a `process.env`, and which sends
+each run through the global `fetch` with the environment's key. A run whose environment sets one is
+refused, as a `configuration` failure, before an agent is built or a request made; so on every run
+this engine starts, the relay capability is the only way out. It is refused rather than forced off
+because forcing it off does not hold on every path: LangChain reads the environment wherever a run's
+async context carries no LangSmith run tree, and LangGraph starts parts of a run in such contexts
+(measured: with a run tree whose tracing is off set around the whole run, the tracer still appeared
+in the model node and reached the global `fetch`). A browser page has no `process`, and runs. The
+certification holds it with a sealed leg run with every tracing variable, a key and an endpoint
+set (K1b). `bindModelCall` (`session.ts`) builds the
 address on the host's relay and writes the bearer, as it does for `vercel`; the relay attaches the
 provider's key on the far side. Every request goes through the one retry a refusal earns, the rule
 `vercel` keeps (`engines/vercel/retry.ts`, imported, as `codex` imports `engines/vercel/channel.ts`).
@@ -61,6 +72,12 @@ the pinned versions and cannot carry what the contract holds a model engine to:
   chunks returned from Anthropic API") on a whole answer to a streamed request.
 - Both SDKs write a credential header of their own (a placeholder key) on every request, which only
   the host's header allow-list would remove, and retry on their own unless told not to.
+
+On the Anthropic wire each tool carries `eager_input_streaming: true`, as the `vercel` adapter's
+provider sends it. One difference from `vercel`'s bodies stays, recorded in the wire contract: the
+`experimental_evaluate` call the history carries back is the model's own, without `rehearsal: true`
+(the gate's frame rewrite is the one layer; `vercel` adds a second through the AI SDK's
+`experimental_refineToolInput`).
 
 The capability record drives the request as it does on `vercel` (`capabilities.ts`): the tier's
 members are the host's table (`thinking.ts`, read from the thinking slot each attempt, a refused

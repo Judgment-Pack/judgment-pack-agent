@@ -2940,6 +2940,36 @@
    "status": "caught",
    "origin": "ADR-0003",
    "note": "the approval pause bypassed: a well-formed question must end the turn unanswered"
+  },
+  {
+   "name": "the deepagents tracing refusal is removed",
+   "file": "engines/deepagents/loop.ts",
+   "find": "    if (tracing !== undefined) throw tracingRefusal(tracing)",
+   "replace": "    void tracing",
+   "tests": [
+    "certification/conformance.test.ts",
+    "certification/delegation.test.ts",
+    "certification/scenarios.test.ts",
+    "engines/deepagents/deepagents.test.ts"
+   ],
+   "status": "caught",
+   "origin": "review of #47",
+   "note": "an environment that turns LangChain's tracing on: the tracer reaches the global fetch"
+  },
+  {
+   "name": "the deepagents critic dispatches against the loop's offer",
+   "file": "engines/deepagents/loop.ts",
+   "find": "            const ran = await dispatch(toolCall.name, (toolCall.args ?? {}) as Record<string, unknown>, criticOffered)",
+   "replace": "            const ran = await dispatch(toolCall.name, (toolCall.args ?? {}) as Record<string, unknown>, offered)",
+   "tests": [
+    "certification/conformance.test.ts",
+    "certification/delegation.test.ts",
+    "certification/scenarios.test.ts",
+    "engines/deepagents/deepagents.test.ts"
+   ],
+   "status": "caught",
+   "origin": "review of #47",
+   "note": "the reviewer's M6: a name the loop offers and the critic's allow-list does not reaches dispatch"
   }
  ]
 }

@@ -2,7 +2,10 @@
  * The `deepagents` adapter's chat model: a LangChain chat model whose only reach to a model is the
  * host's relay capability (ADR-0003, decision 1).
  *
- * It holds no key, no address and no `fetch`. A request is a path suffix, a body and the protocol's
+ * It holds no key, no address and no `fetch`. LangChain itself has one other way out, its LangSmith
+ * tracer, which an environment's tracing variables turn on and which sends through the global `fetch`
+ * with the environment's key; a run whose environment sets one is refused before an agent is built
+ * (`tracingAsked`, `loop.ts`), so on every run this engine starts, the relay is the only way out. A request is a path suffix, a body and the protocol's
  * own headers, handed to `session.model.call` (wrapped in the one retry a refusal earns), which the
  * host binds to its relay and its bearer; the relay attaches the provider's credential on the far
  * side. The body is the one `wire.ts` writes for the session's family, and the answer is read back
