@@ -1,7 +1,7 @@
 import {runtimeToolContextPolicy} from './toolPolicy'
 import {failureError,AIFailureError} from '../failures'
 import {TEST_TOOL} from '../toolGate'
-import {dataMarker,frameBlock,frameData,unframeData} from '../framing'
+import {dataMarker,frameBlock,frameData,readingTool,unframeData} from '../framing'
 import {ExecutionController} from '../execution/controller'
 import {planningSession} from '../planning/policy'
 import type {ChatPlan} from '../planning/model'
@@ -12,11 +12,22 @@ import {READ_TOOL} from './reader'
 import {SEARCH_TOOL} from './search'
 import {capabilitiesFor,type ModelCapabilities} from '../capabilities'
 import {contextPolicy,inputBytes,utf8Bytes,prefix,ContextBudgetError,type ContextConfiguration} from './policy'
+import type {ChatContext,ChatTurn,RuntimeIdentity} from './chat'
 export interface CurrentRequest {message:string;input:string}
 /** `currentState`: host-authored text that changes between requests or responses (the chat's
  * draft snapshot, the latest check). An adapter sends it after the history, at the end of every
- * request, with the execution state, so a change to it invalidates no cached prefix. */
-export interface ContextInput {currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;configuration?:ContextConfiguration;documents?:ContextDocument[]}
+ * request, with the execution state, so a change to it invalidates no cached prefix.
+ *
+ * `chat` (agent#8): the chat-scoped context the host made for this run's chat (`context/chat.ts`):
+ * the ledger and the read cache kept across the chat's runs. Absent, the run's are its own and end
+ * with it. `runtime`: what the host knows the Runtime this run's tools reach by, which keys a
+ * Runtime-served read in the chat's read cache; without it such a read is cached for the run only.
+ * `memory` (agent#11): whether the server behind the adapter adds recalled project memory to this
+ * run's requests (the project's memory setting). Only `false` frees the `memoryBytes` reserve:
+ * absent, the reserve stays, so a server that adds memory never receives a request the harness
+ * left no room for.
+ */
+export interface ContextInput {currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatContext;runtime?:RuntimeIdentity;memory?:boolean}
 export interface ContextUsage {inputBytes:number;estimatedInputTokens:number;inputBudgetBytes:number;outputReserveTokens:number;compactions:number;retainedItems:number}
 const encoded=(value:unknown)=>JSON.stringify(value)
 export class SessionContext {
@@ -29,11 +40,23 @@ export class SessionContext {
  private summaries=new Set<string>()
  private contracts=new Map<string,unknown>()
  private referenceTools:Set<string>
- constructor(session:EngineSession){this.capabilities='model'in session?capabilitiesFor(session.model):undefined;this.policy=contextPolicy(session.context?.configuration,'model'in session?session.model.model:session.agent.model,this.capabilities);this.ledger=new ContextLedger(this.policy);this.execution=new ExecutionController(session,this.ledger);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))}
+ /** This run's turn on its chat (agent#8), or none. */
+ private readonly turn?:ChatTurn
+ private built?:string
+ constructor(session:EngineSession){this.capabilities='model'in session?capabilitiesFor(session.model):undefined;this.policy=contextPolicy(session.context?.configuration,'model'in session?session.model.model:session.agent.model,this.capabilities,session.context?.memory);this.turn=session.context?.chat?.openTurn();this.ledger=new ContextLedger(this.policy,this.turn);this.execution=new ExecutionController(session,this.ledger);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))}
+ /**
+  * The index of the results earlier runs in this chat kept (agent#8, `ChatTurn.index`), which the
+  * run's first message carries after the request text; empty for a run with no chat context, and
+  * for a chat whose earlier runs kept nothing. Made when an adapter first reads it, so a run that
+  * never starts leaves the evictions it would list for the next.
+  */
+ get index():string{return this.built??=this.turn?this.turn.index(this.policy,this.marker):''}
+ /** The run ended: a ledger of its own is cleared, a chat's turn closes and the chat keeps what it holds. */
+ close(){this.ledger.release()}
  /** Independent reviewers get a new retrieval scope and no author's working
   * summaries or cached reads. Request accounting and original journals stay. */
  beginIsolatedPhase(){
-  this.ledger.clear();this.ledger.scope=crypto.randomUUID()
+  this.ledger.isolate()
   this.compactedSteps.clear();this.summaries.clear();this.contracts.clear()
   this.execution.clearReadCache()
   this.execution.progress.beginPhase()
@@ -42,9 +65,10 @@ export class SessionContext {
  /** `attachments`: the host's documents for the run, which search scopes as attachments (agent#5). */
  async initialize(documents:ContextDocument[]=[],attachments=false){for(const doc of documents)await this.ledger.retain(doc,attachments)}
  private budget(instructions:string,tools:unknown){return inputBytes(this.policy)-utf8Bytes(instructions)-utf8Bytes(encoded(tools))-this.policy.briefBytes-this.policy.memoryBytes-1536}
- async prompt(text:string,instructions:string,tools:unknown,currentRequest?:CurrentRequest):Promise<string>{
+ /** `beside`: text the same message carries after the prompt (the chat's index, agent#8), counted against the prompt's allowance. */
+ async prompt(text:string,instructions:string,tools:unknown,currentRequest?:CurrentRequest,beside=''):Promise<string>{
   // Leave headroom for subsequent tool results; fitting the first request alone is insufficient.
-  const budget=Math.floor(this.budget(instructions,tools)*0.6)
+  const budget=Math.floor(this.budget(instructions,tools)*0.6)-utf8Bytes(beside)
   if(budget<2000)throw new ContextBudgetError()
   if(utf8Bytes(encoded([{role:'user',content:text}]))<=budget)return text
   const e=await this.ledger.retain({id:'request',kind:'request',label:'Complete current request',value:text})
@@ -217,13 +241,18 @@ export async function contextualSession<T extends EngineSession>(session:T):Prom
  session=planningSession(session)
  await session.context?.authorize?.(session.signal)
  const context=new SessionContext(session)
+ // A chat's turn is open from here: a run that cannot start closes it again.
+ try{
  await context.execution.initialize()
  await context.initialize(session.context?.documents,true)
  await context.execution.retainProgress()
  if(session.context?.plan)await context.initialize([{id:'current-plan',kind:'artifact',label:'Current chat plan',value:session.context.plan}])
  if([...session.tools,...session.hostTools].some(t=>t.name==='read_context'||t.name==='list_context'||t.name===READ_TOOL||t.name===SEARCH_TOOL||t.name==='update_plan'||t.name==='request_budget_increase'))throw Error('Context tool names are reserved by Desk.')
- const hostTools=[...session.hostTools,...context.ledger.tools(),...(session.allowConversation?[context.execution.tool(),context.execution.budgetTool()]:[])].map(tool=>({...tool,execute:async(args:Record<string,unknown>,signal:AbortSignal)=>{await session.context?.authorize?.(signal);return context.execution.wrapRead(tool.name,a=>tool.execute(a,signal),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read')(args)}}))
+ }catch(error){context.close();throw error}
+ // The session's own tools that read (agent#8): what a chat-scoped context keeps across its runs.
+ const own=new Set(session.hostTools.filter(tool=>readingTool(tool)).map(tool=>tool.name))
+ const hostTools=[...session.hostTools,...context.ledger.tools(),...(session.allowConversation?[context.execution.tool(),context.execution.budgetTool()]:[])].map(tool=>({...tool,execute:async(args:Record<string,unknown>,signal:AbortSignal)=>{await session.context?.authorize?.(signal);return context.execution.wrapRead(tool.name,a=>tool.execute(a,signal),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read',own.has(tool.name)?{runtime:false}:undefined)(args)}}))
  const model='model'in session?{...session.model,call:async(suffix:string,request:import('../engine').ModelRequest)=>{await session.context?.authorize?.(session.signal);if(request.method!=='GET'){context.execution.claim();try{await session.context?.checkpoint?.(context.execution.snapshot())}catch{throw failureError('storage','storage','not-started')}}return session.model.call(suffix,request)}}:undefined
  const agent='agent'in session?{...session.agent,run:async(request:import('../agent').AgentRequest,callbacks:import('../agent').AgentCallbacks)=>{await session.context?.authorize?.(callbacks.signal);return session.agent.run(request,callbacks)}}:undefined
- return {context,session:{...session,...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{await session.context?.authorize?.(session.signal);context.claimTestCall(name);return context.execution.wrapRead(name,a=>session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true)(args)}}}
+ return {context,session:{...session,...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{await session.context?.authorize?.(session.signal);context.claimTestCall(name);return context.execution.wrapRead(name,a=>session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true,{runtime:true})(args)}}}
 }

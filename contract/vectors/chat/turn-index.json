@@ -1,0 +1,168 @@
+{
+  "description": "The index of earlier results a run handed a chat-scoped context is shown, as the JSON inside its data block (agent#8). Written by hand from the schema for one chat whose ledger scope is fixed at 5f0c2a8e-3b1d-4c7e-9a6f-2d4b8e1c7a30. Its first run kept three answers, each in the shape a runtime answer takes (one text part, the JSON of the fixture's value, and the value as structured content): get_authoring_instructions with no arguments, get_schema for spec_version 0.2.0-draft, read_pack_tests for owner packs/expense.pack.json. The first item is the index its second run is shown. That second run then kept get_example for minimal-expense-approval under a retainedBytes of 690, which evicted the two oldest entries no open run referenced; the second item is the index the third run is shown. context/chat.test.ts builds the same chat and holds the index the code writes to each item.",
+  "schema": "tool-result.json#/$defs/turnIndex",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/context/chat.ts (ChatTurn.index, ChatTurn.keep, ChatContext.room)",
+      "packages/harness/context/chat.test.ts (the chat each item is checked against)"
+    ]
+  },
+  "fixture": {
+    "scope": "5f0c2a8e-3b1d-4c7e-9a6f-2d4b8e1c7a30",
+    "results": [
+      {
+        "tool": "get_authoring_instructions",
+        "arguments": {},
+        "value": {
+          "instructions": "Read the pack schema before you write a pack, and keep every amount a decimal string."
+        }
+      },
+      {
+        "tool": "get_schema",
+        "arguments": {
+          "spec_version": "0.2.0-draft"
+        },
+        "value": {
+          "$id": "https://example.com/schemas/pack.json",
+          "type": "object",
+          "required": [
+            "specVersion",
+            "id",
+            "rules"
+          ]
+        }
+      },
+      {
+        "tool": "read_pack_tests",
+        "arguments": {
+          "owner": "packs/expense.pack.json"
+        },
+        "value": {
+          "cases": [
+            {
+              "id": "small-claim",
+              "facts": {
+                "claim": {
+                  "amount": "40"
+                }
+              },
+              "expected": "approve"
+            }
+          ]
+        }
+      },
+      {
+        "tool": "get_example",
+        "arguments": {
+          "name": "minimal-expense-approval"
+        },
+        "value": {
+          "name": "minimal-expense-approval",
+          "document": {
+            "specVersion": "0.2.0-draft",
+            "id": "https://example.com/judgment-packs/minimal",
+            "rules": [
+              {
+                "id": "small-claim",
+                "outcome": "approve"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "retainedBytes": 690
+  },
+  "items": [
+    {
+      "steps": [
+        {
+          "tool": "get_authoring_instructions",
+          "read": {
+            "id": "5f0c2a8e-3b1d-4c7e-9a6f-2d4b8e1c7a30:result-get_authoring_instructions-947ecb9b74244c39bcbc5c392932b20d63020658bc05b36381a7294b2d34d3e2:947ecb9b74244c39"
+          },
+          "arguments": {
+            "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "bytes": 272,
+          "firstLine": "{\"instructions\":\"Read the pack schema before you write a pack, and keep every amount a decimal string.\"}"
+        },
+        {
+          "tool": "get_schema",
+          "read": {
+            "id": "5f0c2a8e-3b1d-4c7e-9a6f-2d4b8e1c7a30:result-get_schema-3a1f7f20275bffc5d980bb47e75a4c69ad71897f2a6d296298c9b06c58bfd72d:3a1f7f20275bffc5"
+          },
+          "arguments": {
+            "sha256": "925994ecc8d94114f36ec5119fb336e8e7ea36775986ce629dce7fa6651fd247"
+          },
+          "bytes": 282,
+          "firstLine": "{\"$id\":\"https://example.com/schemas/pack.json\",\"type\":\"object\",\"required\":[\"specVersion\",\"id\",\"rules\"]}"
+        },
+        {
+          "tool": "read_pack_tests",
+          "read": {
+            "id": "5f0c2a8e-3b1d-4c7e-9a6f-2d4b8e1c7a30:result-read_pack_tests-8b81ce26d6b39e7a912a55f4860da917ac08afc84713dbbd565025937f05727a:8b81ce26d6b39e7a"
+          },
+          "arguments": {
+            "sha256": "dd3c6a22a48096a05300af05d9c61e26223483e06f534d7839cea0b32ea8a6e6"
+          },
+          "bytes": 252,
+          "firstLine": "{\"cases\":[{\"id\":\"small-claim\",\"facts\":{\"claim\":{\"amount\":\"40\"}},\"expected\":\"approve\"}]}"
+        }
+      ],
+      "omitted": 0,
+      "evicted": [],
+      "evictedOmitted": 0,
+      "olderResults": "list_context lists every entry this chat retains, the ones omitted here among them."
+    },
+    {
+      "steps": [
+        {
+          "tool": "read_pack_tests",
+          "read": {
+            "id": "5f0c2a8e-3b1d-4c7e-9a6f-2d4b8e1c7a30:result-read_pack_tests-8b81ce26d6b39e7a912a55f4860da917ac08afc84713dbbd565025937f05727a:8b81ce26d6b39e7a"
+          },
+          "arguments": {
+            "sha256": "dd3c6a22a48096a05300af05d9c61e26223483e06f534d7839cea0b32ea8a6e6"
+          },
+          "bytes": 252,
+          "firstLine": "{\"cases\":[{\"id\":\"small-claim\",\"facts\":{\"claim\":{\"amount\":\"40\"}},\"expected\":\"approve\"}]}"
+        },
+        {
+          "tool": "get_example",
+          "read": {
+            "id": "5f0c2a8e-3b1d-4c7e-9a6f-2d4b8e1c7a30:result-get_example-ba40f013b273cc30619efb1631262adc0283551af17c941351a9d05ebd19a5aa:ba40f013b273cc30"
+          },
+          "arguments": {
+            "sha256": "9b82c6c54a984f353eae9ae0b5cbb992258166191e95318cc8680979b565ab07"
+          },
+          "bytes": 438,
+          "firstLine": "{\"name\":\"minimal-expense-approval\",\"document\":{\"specVersion\":\"0.2.0-draft\",\"id\":\"https://example.com/judgment-packs/mini"
+        }
+      ],
+      "omitted": 0,
+      "evicted": [
+        {
+          "tool": "get_authoring_instructions",
+          "arguments": {
+            "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "bytes": 272
+        },
+        {
+          "tool": "get_schema",
+          "arguments": {
+            "sha256": "925994ecc8d94114f36ec5119fb336e8e7ea36775986ce629dce7fa6651fd247"
+          },
+          "bytes": 282
+        }
+      ],
+      "evictedOmitted": 0,
+      "olderResults": "list_context lists every entry this chat retains, the ones omitted here among them."
+    }
+  ]
+}

@@ -146,8 +146,9 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
       : session.purpose === 'test-design' ? TEST_DESIGN_SYSTEM
       : session.allowConversation ? CONVERSATION_SYSTEM : SYSTEM
     // The agent's prompt carries the host's changing state and the execution guidance at its end;
-    // its instructions stay the stable system text.
-    const prompt = session.prompt + (session.context?.currentState ? '\n\n' + session.context.currentState : '') + (session.allowConversation ? '\n\n' + context.execution.guidance() : '')
+    // its instructions stay the stable system text. A chat's index of the results earlier runs kept
+    // (agent#8) follows the request text.
+    const prompt = session.prompt + (context.index ? '\n\n' + context.index : '') + (session.context?.currentState ? '\n\n' + session.context.currentState : '') + (session.allowConversation ? '\n\n' + context.execution.guidance() : '')
     let final: string
     try {
       final = await run(prompt, instructions + (offersProposeTool(session.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : ''), 'author')

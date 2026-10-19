@@ -1,0 +1,67 @@
+{
+  "description": "The objects a chat-scoped context's read cache keys an immutable read by (agent#8), and, in keys, each one's canonical JSON and the SHA-256 of it that is the key. Written by hand from the schema: a runtime tool, keyed by the Runtime the host names; a host tool that declares contextPolicy.runtime, keyed the same way; a host tool declared immutable whose result does not depend on the Runtime; and arguments whose members are written out of order, nested, which the canonical form sorts. context/chat.test.ts holds canonicalJSON and readCacheKey to every item, and the contract tests compute each digest again.",
+  "schema": "tool-result.json#/$defs/readCacheKey",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/context/chat.ts (canonicalJSON, readCacheKey)",
+      "packages/harness/execution/controller.ts (wrapRead)"
+    ]
+  },
+  "keys": [
+    {
+      "canonical": "{\"arguments\":{\"spec_version\":\"0.2.0-draft\"},\"runtime\":{\"identity\":\"jpack\",\"version\":\"0.19.0\"},\"tool\":\"get_schema\"}",
+      "sha256": "d2a87b674b1770be576cf0c53d2115f269e6d530dbc4e3889e7b3bf47bbb646c"
+    },
+    {
+      "canonical": "{\"arguments\":{},\"runtime\":{\"identity\":\"jpack\",\"version\":\"0.19.0\"},\"tool\":\"get_authoring_instructions\"}",
+      "sha256": "f2ca05c6d5aadac2858a3b94f21c1717c687883b4ca2ea63de9ad26048af852c"
+    },
+    {
+      "canonical": "{\"arguments\":{},\"tool\":\"get_dialect_recipe_instructions\"}",
+      "sha256": "384701379bf1e403a26d21656895820287931391e42faf40538175fae9f1a2ed"
+    },
+    {
+      "canonical": "{\"arguments\":{\"id\":\"pack\",\"path\":\"/rules\",\"window\":{\"from\":0,\"limit\":5}},\"tool\":\"read_reference\"}",
+      "sha256": "c89f1a78c910073c9c360dbfff2211a8ac0d30dcbe4953ce42a8ad22dcae87e2"
+    }
+  ],
+  "items": [
+    {
+      "tool": "get_schema",
+      "arguments": {
+        "spec_version": "0.2.0-draft"
+      },
+      "runtime": {
+        "identity": "jpack",
+        "version": "0.19.0"
+      }
+    },
+    {
+      "tool": "get_authoring_instructions",
+      "arguments": {},
+      "runtime": {
+        "identity": "jpack",
+        "version": "0.19.0"
+      }
+    },
+    {
+      "tool": "get_dialect_recipe_instructions",
+      "arguments": {}
+    },
+    {
+      "tool": "read_reference",
+      "arguments": {
+        "path": "/rules",
+        "id": "pack",
+        "window": {
+          "limit": 5,
+          "from": 0
+        }
+      }
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 {
-  "description": "The policy a session works under in the harness (CONTEXT_DEFAULTS): the Desk's table, the two time bounds, the two image bounds and the three test-tool bounds the harness adds.",
+  "description": "The policy a session works under in the harness (CONTEXT_DEFAULTS): the Desk's table, the two time bounds, the two image bounds, the three test-tool bounds and the two bounds on a chat's index of earlier results the harness adds.",
   "schema": "budget.json",
   "source": {
     "harness": {
@@ -7,7 +7,7 @@
       "package": "packages/harness"
     },
     "files": [
-      "packages/harness/context/policy.ts (TIME_DEFAULTS, IMAGE_DEFAULTS, TEST_DEFAULTS, CONTEXT_DEFAULTS)",
+      "packages/harness/context/policy.ts (TIME_DEFAULTS, IMAGE_DEFAULTS, TEST_DEFAULTS, INDEX_DEFAULTS, CONTEXT_DEFAULTS)",
       "packages/harness/contract/policy.json"
     ]
   },
@@ -30,7 +30,9 @@
       "imageBytesPerRequest": 16777216,
       "testCallsPerTurn": 3,
       "testPackBytes": 65536,
-      "testMatrixBytes": 65536
+      "testMatrixBytes": 65536,
+      "turnIndexEntries": 20,
+      "turnIndexBytes": 8000
     }
   ]
 }

@@ -19,10 +19,16 @@ export const IMAGE_DEFAULTS = Object.freeze({imagesPerRequest:8,imageBytesPerReq
  */
 export const TEST_DEFAULTS = Object.freeze({testCallsPerTurn:3,testPackBytes:65_536,testMatrixBytes:65_536})
 export type TestBounds = {testCallsPerTurn:number;testPackBytes:number;testMatrixBytes:number}
-export type ContextPolicy = typeof defaults & {turnMilliseconds:number;toolCallMilliseconds:number;imagesPerRequest:number;imageBytesPerRequest:number} & TestBounds
+/**
+ * The bounds on the index a run's first message carries of the results earlier runs in its chat
+ * kept (agent#8): how many results it lists, and its most bytes, data block included. Not in the
+ * Desk's table; a table that carries them wins.
+ */
+export const INDEX_DEFAULTS = Object.freeze({turnIndexEntries:20,turnIndexBytes:8000})
+export type ContextPolicy = typeof defaults & {turnMilliseconds:number;toolCallMilliseconds:number;imagesPerRequest:number;imageBytesPerRequest:number;turnIndexEntries:number;turnIndexBytes:number} & TestBounds
 export interface ModelContextBudget {contextWindowTokens:number;outputTokens:number}
 export interface ContextConfiguration {version:1;projectBrief?:string;models?:Record<string,ModelContextBudget>}
-export const CONTEXT_DEFAULTS:Readonly<ContextPolicy> = Object.freeze({...TIME_DEFAULTS,...IMAGE_DEFAULTS,...TEST_DEFAULTS,...defaults})
+export const CONTEXT_DEFAULTS:Readonly<ContextPolicy> = Object.freeze({...TIME_DEFAULTS,...IMAGE_DEFAULTS,...TEST_DEFAULTS,...INDEX_DEFAULTS,...defaults})
 export function contextConfiguration(value:unknown):ContextConfiguration {
  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid assistant context configuration')
  const c=value as Record<string,unknown>
@@ -36,10 +42,12 @@ export function contextConfiguration(value:unknown):ContextConfiguration {
 }
 /** The budget one model runs under: the table's, then the window and output cap of the model's
  * capability record where it carries them (agent#4), then the assistant profile's own override for
- * the model, which a person wrote and which therefore stays the last word. */
-export function contextPolicy(config:ContextConfiguration|undefined,model:string,capabilities?:Partial<ModelContextBudget>):ContextPolicy {
+ * the model, which a person wrote and which therefore stays the last word. `memory` (agent#11): the
+ * host's word on whether the server adds recalled project memory to the run's requests; `false`
+ * frees the `memoryBytes` reserve, and anything else keeps it. */
+export function contextPolicy(config:ContextConfiguration|undefined,model:string,capabilities?:Partial<ModelContextBudget>,memory?:boolean):ContextPolicy {
  const record=capabilities?.contextWindowTokens!==undefined&&capabilities.outputTokens!==undefined?{contextWindowTokens:capabilities.contextWindowTokens,outputTokens:capabilities.outputTokens}:undefined
- return {...CONTEXT_DEFAULTS,...record,...(config?contextConfiguration(config).models?.[model]:undefined)}
+ return {...CONTEXT_DEFAULTS,...record,...(config?contextConfiguration(config).models?.[model]:undefined),...(memory===false?{memoryBytes:0}:{})}
 }
 export const utf8Bytes=(text:string)=>new TextEncoder().encode(text).length
 export const inputBytes=(policy:ContextPolicy)=>Math.min(policy.maxInputBytes,Math.max(1024,(policy.contextWindowTokens-policy.outputTokens)*3))

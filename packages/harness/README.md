@@ -23,16 +23,17 @@ and tests that exercise a Desk feature stay in the Desk (see Tests). `scripts/pa
 repository root prints every difference from the Desk's files and names its reason, including the
 changes made here since the extraction, each by its issue (agent#1, the read window and the reader;
 agent#9, the stable prefix and the state's placement; agent#4, the capability record and the text
-tool path; agent#5, search, numbered reads and images).
+tool path; agent#5, search, numbered reads and images; agent#8, the chat-scoped context; agent#11,
+the request text on every request and the memory reserve).
 
 ## Entry points
 
 | Import | What it is |
 | --- | --- |
-| `@judgment-pack/harness/contract` | The engine slot's types and events (`engine.ts`), what every adapter shares (`engines/contract.ts`), the registry (`engines/index.ts`), the host's side (`host.ts`), the capability record (`capabilities.ts`) and the image part (`images.ts`). |
+| `@judgment-pack/harness/contract` | The engine slot's types and events (`engine.ts`), what every adapter shares (`engines/contract.ts`), the registry (`engines/index.ts`), the host's side (`host.ts`), the capability record (`capabilities.ts`), the image part (`images.ts`), and the chat-scoped context a host makes once per chat (`ChatContext`, `context/chat.ts`) with the run's context inputs (`ContextInput`). |
 | `@judgment-pack/harness/vercel` | The Vercel AI SDK adapter, `engines/vercel/index.ts`. |
 | `@judgment-pack/harness/codex` | The Codex adapter, `engines/codex/index.ts`. |
-| `@judgment-pack/harness/certification` | The scripted model and runtime server, and the recorded scenario and runtime the suite runs on. |
+| `@judgment-pack/harness/certification` | The scripted model and runtime server, the recorded scenario and runtime the suite runs on, and the recall rule (`recallQuery`, `certification/recall.ts`). |
 | `@judgment-pack/harness/<path>` | Any module at its Desk path, for example `context/session` or `failures`. |
 
 `npm run build` typechecks every file, tests included, and emits ES modules with declarations to
@@ -194,6 +195,43 @@ or a thinking signature came back truncated. The provider's cache reads and writ
 each completion (`cacheReadTokens`, `cacheWriteTokens`). The contract states the header and where it
 sits on each wire (`budget.json`, `contract/vectors/budget/state-placement.json`).
 
+### Across the turns of a chat
+
+A run's context ledger and read cache are its own and end with it, unless the host hands it a
+chat-scoped context (`context/chat.ts`, agent#8). The host makes one per chat and passes it to every
+run of that chat:
+
+```ts
+import { ChatContext } from '@judgment-pack/harness/contract'
+
+const chat = new ChatContext()                 // once, when the chat opens
+session.context = { ...session.context, chat, runtime: { identity: runtimeDigest, version: runtimeVersion } }
+// …every run of the chat…
+chat.dispose()                                 // when the chat is deleted or closed, after its run has ended
+```
+
+The chat's ledger keeps what each run retained, and every answer of a session tool that reads, so a
+later run's `read_window`, `read_context` and `search` find it. A read the tool declares immutable is
+served again from the chat's read cache without a call, keyed by the tool, its arguments and, for a
+Runtime-served read (every runtime tool, and a host tool that declares `contextPolicy.runtime`), the
+`context.runtime` the host names; without that, such a read is cached for the run only. A mutable
+read never is. `retainedBytes` bounds the chat: the oldest entries no running run references are
+evicted first. Each run's first message carries, after the request text, an index of the results
+earlier runs kept (`read_window` id, tool, arguments digest, size, first line), bounded by
+`turnIndexEntries` and `turnIndexBytes` and counted in the request budget; results evicted since the
+last index are listed there. A run's checkpoint carries the entries it retained or read, not the
+chat's. Nothing is global: a run reaches only the chat context it was handed, and a delegated child
+gets none. `wire-contract.md` has the rules; `tool-result.json` the index and the cache key.
+
+### The request text and project memory
+
+The request text is the first text part of a run's first user turn on every request of the run, on
+every wire (agent#11): nothing the loop does moves it, and every other user text the loop adds comes
+after it. The contract states the rule a server applies to find it (`budget.json#/$defs/recallQuery`,
+`certification/recall.ts`), and the certification suite applies it to every request on every leg.
+The host says per run whether the project's memory is on (`context.memory`): `false` frees the
+`memoryBytes` reserve, and a run whose host says nothing keeps it.
+
 ## Certification
 
 ```sh
@@ -217,7 +255,9 @@ leg: an endpoint that answers 400 to two user turns in a row or a user text afte
 which the loop passes with the state in the system tail; and (agent#4) the text tool calls legs: the
 whole scenario, on each of the six wire legs, at an endpoint whose record says it takes no native
 tool calls and which refuses any request that carries tools, with the same calls, gate events and
-proposal, and once more where it also keeps a strict turn order; an agent engine (`codex`) the recorded
+proposal, and once more where it also keeps a strict turn order; and (agent#11) on every request
+of the plain, text-path, strict-alternation and thinking legs, the recall rule finds the request
+text the run started from; an agent engine (`codex`) the recorded
 scenario behind the real tool gate and the agent-engine checks in `engines/codex/codex.test.ts`.
 
 Tests and certification run on `testing/host.ts`, a host that supplies each injection point the way
