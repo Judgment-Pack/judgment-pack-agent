@@ -10,9 +10,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { REFORMAT_INSTRUCTIONS } from '../contract'
 import { codex, reformatPrompt } from './index'
 import { runAssistantSession } from '../../session'
-import { codexTurn, ofType, type Bridge } from '../../testing/scripted'
-import type { AgentRun } from '../../agent'
-import type { AssistantEvent } from '../../engine'
+import { ASSISTANT_TOOLS } from '../../host'
+import { RECORDED_TOOLS } from '../../certification/scriptedServer'
+import { TEST_CASES_TOOL, codexTurn, gatedRuntime, ofType, runtimeAnswer, type Bridge } from '../../testing/scripted'
+import type { AgentRequest, AgentRun } from '../../agent'
+import type { AssistantEvent, McpTool } from '../../engine'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -101,26 +103,52 @@ describe('the Codex adapter’s reformat run (agent#29)', () => {
     expect(ofType(events, 'proposal')).toEqual([])
   })
 
-  it('offers the reformat run no tool, and a call it makes anyway is refused without running', async () => {
-    const callTool = vi.fn(async () => { throw new Error('validate is not one of the tools this assistant may call') })
-    let refused: { text: string; isError: boolean } | undefined
+  /**
+   * A reformat run through the real tool gate (review row 5): the author's
+   * answer is unreadable, and the reformat run calls `name` (the author's alias
+   * for it where the author was offered it) before it answers.
+   */
+  async function reformatCalls(name: string, served: (tools: McpTool[]) => McpTool[] = (tools) => tools) {
+    const events: AssistantEvent[] = []
+    const runtime = await gatedRuntime({ tools: [...RECORDED_TOOLS, TEST_CASES_TOOL], allowed: [...ASSISTANT_TOOLS], handle: () => runtimeAnswer({ status: 'ok' }), onEvent: (event) => events.push(event) })
+    let author: AgentRequest['tools'] = []
+    let answer: { text: string; isError: boolean } | undefined
     const run: AgentRun = async (request, callbacks) => {
       if (request.tools.length > 0) {
+        author = request.tools
         await callbacks.event({ type: 'message', id: 'a', text: TWO_FENCES, phase: 'final' })
         return
       }
-      refused = await callbacks.tool({ id: 'r', name: 'desk_runtime_0', arguments: { document: '{}' } }, callbacks.signal)
+      const alias = author.find((tool) => tool.description.startsWith(`${name}:`))?.name ?? name
+      answer = await callbacks.tool({ id: 'r', name: alias, arguments: {} }, callbacks.signal)
       await callbacks.event({ type: 'message', id: 'b', text: ONE_FENCE, phase: 'final' })
     }
-    const events: AssistantEvent[] = []
-    await runAssistantSession(codex, {
-      prompt: 'p', testPrompt: '', tools: [{ name: 'validate', inputSchema: { type: 'object' } }], callTool, hostTools: [],
-      agent: { model: 'agent-model', run }, signal: new AbortController().signal
-    }, (event) => events.push(event))
-    expect(refused).toMatchObject({ isError: true, text: expect.stringContaining('refused') })
-    expect(callTool).toHaveBeenCalledOnce()
-    expect(ofType(events, 'tool_result')).toEqual([expect.objectContaining({ name: 'validate', isError: true })])
+    try {
+      await runAssistantSession(codex, {
+        prompt: 'p', testPrompt: '', tools: served(runtime.tools), callTool: runtime.callTool, hostTools: [],
+        agent: { model: 'agent-model', run }, signal: new AbortController().signal
+      }, (event) => events.push(event))
+    } finally {
+      await runtime.close()
+    }
+    return { events, seen: runtime.seen, answer }
+  }
+
+  it('refuses a granted read the session serves but the reformat run was not offered, before any call, through the real gate (review row 5)', async () => {
+    const { events, seen, answer } = await reformatCalls('list_examples')
+    expect(seen).toEqual([])
+    expect(ofType(events, 'guardrail')).toEqual([{ type: 'guardrail', tool: 'list_examples', action: 'refused', detail: expect.stringContaining('list_examples is served to this session but was not offered to this run') }])
+    expect(answer).toMatchObject({ isError: true, text: expect.stringContaining('refused: list_examples is served to this session') })
+    expect(ofType(events, 'tool_result')).toEqual([expect.objectContaining({ name: 'list_examples', isError: true })])
     expect(ofType(events, 'proposal')[0]).toMatchObject({ document: { id: 'second' } })
+  })
+
+  it('refuses every call during the reformat run at the boundary: a granted read the session does not serve, through the real gate (review row 5)', async () => {
+    // The gate grants list_examples; the session was handed the runtime's tools without it.
+    const { events, seen, answer } = await reformatCalls('list_examples', (tools) => tools.filter((tool) => tool.name !== 'list_examples'))
+    expect(seen).toEqual([])
+    expect(ofType(events, 'guardrail')).toEqual([{ type: 'guardrail', tool: 'list_examples', action: 'refused', detail: expect.stringContaining('list_examples is not offered to the reformat run, which is offered no tool') }])
+    expect(answer).toMatchObject({ isError: true })
   })
 
   it('makes no reformat run for a readable proposal or a conversation’s prose', async () => {

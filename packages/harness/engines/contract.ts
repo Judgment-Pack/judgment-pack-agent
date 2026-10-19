@@ -594,6 +594,10 @@ export async function refusedUnoffered(callTool: CallTool, name: string, args: R
     if (isCancelled(cause)) throw cause
     refusal = (cause as Error).message
   }
+  return unofferedRefusal(refusal)
+}
+/** What the model is told of a call to a tool it was not offered, whoever refused it. */
+export function unofferedRefusal(refusal: string): string {
   return `refused: ${refusal}. This assistant proposes; it never writes a file and never calls a tool it was not offered.`
 }
 

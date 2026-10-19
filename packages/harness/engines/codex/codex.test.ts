@@ -60,9 +60,9 @@ describe.each(AGENT_ENGINES)('agent engine %s', engineId => {
           expect(offered(request.tools, 'runtime')).toEqual(asOffered(offer.tools))
           expect(offered(request.tools, 'host')).toEqual(asOffered(offer.hostTools))
         } else {
-          // The critic is offered its allow-list of the scenario's runtime tools and no host tool (agent#10).
-          expect(offered(request.tools, 'runtime')).toEqual(asOffered(criticOfferVector.items))
-          expect(offered(request.tools, 'host')).toEqual([])
+          // The critic is offered its allow-list: the scenario's runtime reads and the harness's two readers (agent#10).
+          expect(offered(request.tools, 'runtime')).toEqual(asOffered(criticOfferVector.items[0]!.tools))
+          expect(offered(request.tools, 'host')).toEqual(asOffered(criticOfferVector.items[0]!.hostTools))
         }
         const calls = passes === 1 ? recording.calls : recording.calls.filter(call => call.step === 'T5' || call.step === 'T6')
         for (const [index, call] of calls.entries()) {
@@ -136,7 +136,7 @@ describe.each(AGENT_ENGINES)('agent engine %s', engineId => {
         refuted: true,
         checks: [{ tool: 'validate', status: 'valid' }, { tool: 'experimental_evaluate', status: 'evaluated' }],
         cases: [{ case: 'receipted-120', source: 'declared', tool: 'experimental_evaluate', agrees: false, actual: { disposition: { kind: 'outcome', outcomeId: 'approve' } } }],
-        notCompared: []
+        incomplete: []
       })
       expect(events.find(event => event.type === 'proposal')).toMatchObject({ document: scenario.documents.DRAFT_V2, critique: { refuted: true } })
     } finally {
@@ -290,7 +290,7 @@ it('retains full tool results for the UI, sends bounded references to Codex, and
  const value={records:Array.from({length:1000},(_,i)=>({id:i,decimal:'50',flag:false,note:'evidence '.repeat(40)}))}
  let passes=0
  let listAlias=''
- let critic:{offered:number;refused?:{text:string;isError:boolean}}={offered:-1}
+ let critic:{offered:string[];refused?:{text:string;isError:boolean}}={offered:[]}
  const run:AgentRun=async(request,callbacks)=>{
   passes++
   const find=(name:string)=>request.tools.find(t=>t.description.startsWith(name+':'))!.name
@@ -303,10 +303,10 @@ it('retains full tool results for the UI, sends bounded references to Codex, and
    const page=await callbacks.tool({id:'page',name:find('read_context'),arguments:{id:ref.contextId,path:'/structuredContent/records/999'}},callbacks.signal)
    expect(JSON.parse(dataOf(page.text)).structuredContent.value).toEqual(value.records[999])
   }else{
-   // agent#10: the critic is offered no host tool and no context tool, so it
-   // cannot read the author's retained results; asked by the author's alias,
-   // list_context is refused before it runs.
-   critic={offered:request.tools.length,refused:await callbacks.tool({id:'list',name:listAlias,arguments:{}},callbacks.signal)}
+   // agent#10: the critic is offered no host tool but the harness's two
+   // readers, over its own isolated ledger; asked by the author's alias,
+   // list_context is refused before any call (review row 5).
+   critic={offered:request.tools.map(t=>t.description.split(':')[0]!),refused:await callbacks.tool({id:'list',name:listAlias,arguments:{}},callbacks.signal)}
   }
   await callbacks.event({type:'message',id:'answer-'+passes,phase:'final',text:passes===1?proposal({id:'p'}):'No change recommended.'})
  }
@@ -315,9 +315,9 @@ it('retains full tool results for the UI, sends bounded references to Codex, and
  expect(events.filter(e=>e.type==='error')).toEqual([])
  expect(passes).toBe(2)
  expect(events.find(e=>e.type==='tool_result'&&e.name==='read_records')).toMatchObject({structured:value})
- expect(critic.offered).toBe(0)
- expect(critic.refused).toMatchObject({isError:true,text:expect.stringContaining('not one of the tools the critic may call')})
- expect(events.filter(e=>e.type==='guardrail')).toEqual([{type:'guardrail',tool:'list_context',action:'refused',detail:expect.stringContaining('not one of the tools the critic may call')}])
+ expect(critic.offered).toEqual(['read_window','search'])
+ expect(critic.refused).toMatchObject({isError:true,text:expect.stringContaining('list_context is served to this session but was not offered to this run')})
+ expect(events.filter(e=>e.type==='guardrail')).toEqual([{type:'guardrail',tool:'list_context',action:'refused',detail:expect.stringContaining('was not offered to this run')}])
 })
 
 it('preserves the current question and reads searchable context through the subscription adapter',async()=>{

@@ -102,6 +102,7 @@ import {
   MAX_CRITIC_TURNS,
   criticCannotRun,
   criticMayCall,
+  criticMayRead,
   criticMessage,
   criticRuns,
   compareTheRest,
@@ -828,7 +829,7 @@ function runVercelLoop(
     /** A reading tool's bounded answer, with the data block the model is shown for it. */
     const asData = (name: string, result: McpToolResult, images: HeldImage[]): Ran => ({ result, images, framed: context.frame(name, JSON.stringify(result)) })
     /** One runtime call, wherever the model made it: natively, or in text (agent#4). */
-    const runRuntime = async (name: string, input: unknown): Promise<Ran> => {
+    const runRuntime = async (name: string, input: unknown, origin?: 'harness'): Promise<Ran> => {
       // **The desk's gate is handed the call the model made.** The hook below
       // has already rewritten what the SDK carries; what leaves the page is
       // rewritten by the ToolGate, which is the layer that reports it. A gate
@@ -843,7 +844,8 @@ function runVercelLoop(
       executionSignal.throwIfAborted()
       const refusal=await rejectToolStep(name,args)
       if(refusal)return bare(refusal)
-      const correlation = session.interactive ? { callId: crypto.randomUUID() } : {}
+      // A call the harness made itself is marked on both its events (agent#10 review row 8).
+      const correlation = { ...(session.interactive ? { callId: crypto.randomUUID() } : {}), ...(origin === undefined ? {} : { origin }) }
       await deliver({ type: 'tool_call', ...correlation, name, args })
       let answer: McpToolResult
       try {
@@ -1411,25 +1413,33 @@ function runVercelLoop(
       // read inside the pass so a host answer it refuses is the critic's note.
       let criticModelId = session.model.model
       let criticModel = model
-      const figures = () => modelCriticFigures(criticModelId, before, context.execution.state)
+      /** The runtime calls the harness made itself in this pass (review row 8). */
+      let harnessCalls = 0
+      const figures = () => ({ ...modelCriticFigures(criticModelId, before, context.execution.state), ...(harnessCalls === 0 ? {} : { harnessCalls }) })
       let criticText = ''
       let criticReasoning = ''
       // The critic's tools (agent#10): an allow-list of the runtime's reads, and
-      // no host tool. A call to any other name is refused as unoffered, and the
-      // boundary refuses it before the gate.
-      const criticTools = Object.fromEntries(Object.entries(tools).filter(([name]) => criticMayCall(name) && session.tools.some(tool => tool.name === name)))
+      // of the host tools only the harness's own context readers (review row 6).
+      // A call to any other name is refused as unoffered, and the boundary
+      // refuses it before the gate.
+      const criticTools = Object.fromEntries(Object.entries(tools).filter(([name]) =>
+        criticMayCall(name) ? session.tools.some(tool => tool.name === name) : criticMayRead(name) && session.hostTools.some(tool => tool.name === name)))
       const criticOffered = new Set(Object.keys(criticTools))
       // The critic's system text, set once: the call and every step use it.
       const criticSystem = CRITIC_SYSTEM + DATA_RULE + assistantLanguageInstructions(session.replyLanguage) + (nativeTools ? '' : '\n\n' + described(criticOffered))
       // On the text path the critic, like the loop, asks once per call (agent#4).
-      let criticMessages: ModelMessage[] = [
-        { role: 'user', content: await context.prompt(criticMessage(session.testPrompt, proposal.document, context.criticCases),criticSystem,schemas) }
-      ]
+      let criticMessages: ModelMessage[] = []
       let criticHeld = criticMessages
       let criticSteps = 0
       /** Why the critic did not finish: its failure, never raised ahead of the proposal. */
       let unfinished: unknown = null
       try {
+       // A first message that does not fit even as a retained preview refuses
+       // the pass with a note, the proposal still delivered (review row 6).
+       criticMessages = [
+         { role: 'user', content: await context.prompt(criticMessage(session.testPrompt, proposal.document, context.criticCases),criticSystem,schemas) }
+       ]
+       criticHeld = criticMessages
        criticModelId = criticModelFor({ engine: id, family: session.model.family, model: session.model.model })
        if (criticModelId !== session.model.model) {
          // The same connection, relay and capability record: only the model id differs.
@@ -1554,7 +1564,10 @@ function runVercelLoop(
           // dispatch, gate and recorder; no model request.
           toolsClosed = false
           asked.length = 0
-          await compareTheRest(recorder, proposal.document, criticOffered, (name, args) => runRuntime(name, args))
+          await compareTheRest(recorder, proposal.document, criticOffered, (name, args) => {
+            harnessCalls += 1
+            return runRuntime(name, args, 'harness')
+          })
         }
         const ended = slot.turnEnded(criticText !== '')
         if (ended !== null) await deliver(ended)

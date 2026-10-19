@@ -181,11 +181,11 @@ export interface HarnessHost {
    * The model the critic runs on for this run's connection, or null for the
    * run's own model (agent#10): a cheaper model the same connection serves,
    * named by the host from its connection settings. Asked once per critic pass
-   * with the run's engine, family (a model engine's) and model. Like
-   * `endpointCapabilities` it has an answer before the host supplies it: null.
-   * The critic's requests go through the same capability as the run's (the
-   * model relay, or the agent transport), so a model the connection does not
-   * serve is refused there.
+   * with the run's engine, family (a model engine's) and model, and the answer
+   * passed down. Like `endpointCapabilities` it has an answer before the host
+   * supplies it: null. The critic's requests go through the same capability as
+   * the run's (the model relay, or the agent transport), so a model the
+   * connection does not serve is refused there.
    */
   criticModel(run: { engine: AssistantEngine; family?: EndpointKind; model: string }): string | null
 }

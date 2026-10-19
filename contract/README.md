@@ -76,13 +76,16 @@ files they were rendered from.
   (`turn-unfinished.json`), and an answer whose proposal could not be read, kept whole before the
   failure after the one reformat, on both engines since agent#29 (`unreadable.json`); and
   `tool-offer/propose-pack.json`, the tool as a host declares it.
-- `critic/` (agent#10), written by hand from the schemas: cases a host declares for the critic
-  (`declared-cases.json`); a critique that refutes a seeded wrong outcome, naming the case
-  (`outcome-refuted.json`), and one that reads a test run's rows (`test-run-compared.json`); and what
-  a critic pass cost on each engine (`figures.json`). `critic.test.ts` holds the two critiques and the
-  cases to what `refutation.ts` writes. `tool-offer/critic-tools.json` is the critic's allow-list and
-  `tool-offer/critic-offer.json` what the critic is offered in the scenario's session, which the
-  conformance session and the agent-engine leg assert.
+- `critic/` (agent#10), written by hand from the schemas: cases a host declares for the critic,
+  partial and whole (`declared-cases.json`); a critique that refutes a seeded wrong outcome, naming
+  the case and the one left incomplete (`outcome-refuted.json`), and one that reads a test run's rows
+  of the saved tests stating a whole disposition (`test-run-compared.json`); and what a critic pass
+  cost on each engine, with the harness's own calls (`figures.json`). `critic.test.ts` holds the
+  critiques and the cases to what `refutation.ts` writes, and the figures, `proposal/unreadable.json`
+  and `proposal/critic-unfinished.json` to what the engines emit. `tool-offer/critic-tools.json` is
+  the critic's allow-list and `tool-offer/critic-offer.json` what the critic is offered in the
+  scenario's session (its runtime reads and the harness's two readers), which the conformance
+  session and the agent-engine leg assert.
 - `bounds/`: a 429 retried once, with the attempts in the completion record
   (`rate-limited-retried.json`), the turn's wall clock pausing the run (`turn-clock.json`), a tool
   past its deadline answered as a failed result (`tool-timeout.json`), and a turn whose test calls
@@ -141,7 +144,7 @@ failure classes and approval actions equal the Desk's lists; the budget vector i
 one vector per catalogue class, a failed tool's failure validated as one; a run that ends or fails
 ends once, last; every capability record names a family whose wire speaks its reasoning kind, with
 one default record per family, and a host's answer may carry any members of the record and no
-other; the critic's allow-list is within the ceiling, its default is off, and its offer in the
+other; the critic's allow-list is four of the ceiling's reads and two reserved readers, its default is off, and its offer in the
 scenario is the scenario's runtime tools on the list; the scenario's order is the one the
 conformance session asserts; and this table's
 *Root* and *Closed parts* columns match each schema (*Closed parts* lists the closed top-level

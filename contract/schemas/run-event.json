@@ -314,7 +314,7 @@
       "additionalProperties": true
     },
     "critique": {
-      "description": "The critic pass's report, before the proposal it reviewed: refuted is decided from the runtime's own results and never from the critic's prose, true where a check came back as something other than the runtime's settled word (validate valid, experimental_evaluate evaluated) or, since agent#10, where a compared case's outcome is not the declared one; checks lists each runtime check it ran with the runtime's status; text is the host's quote of them and of the comparisons. cases and notCompared are present where the host declared cases (session criticCases, $defs/criticCase): each comparison of a declared outcome with the runtime's ($defs/caseComparison), and the ids of the declared cases nothing compared, the harness's own calls for the uncompared included. figures: what the critic cost (provenance.json $defs/criticFigures).",
+      "description": "The critic pass's report, before the proposal it reviewed: refuted is decided from the runtime's own results and never from the critic's prose, true where a check came back as something other than the runtime's settled word (validate valid, experimental_evaluate evaluated) or, since agent#10, where a compared case's outcome is not the declared one, or a declared case was not compared at all (review row 1: an uncompared case is unsettled, so a critique that did not reach every declared case is never not refuted); checks lists each runtime check it ran with the runtime's status; text is the host's quote of them and of the comparisons. cases and incomplete are present where the host declared cases (session criticCases, $defs/criticCase): each comparison of a declared outcome with the runtime's ($defs/caseComparison), and the ids of the declared cases nothing compared, the harness's own calls for the uncompared included. figures: what the critic cost (provenance.json $defs/criticFigures).",
       "type": "object",
       "required": [
         "type",
@@ -357,7 +357,8 @@
             "$ref": "#/$defs/caseComparison"
           }
         },
-        "notCompared": {
+        "incomplete": {
+          "description": "The declared cases nothing compared, by id. Any makes refuted true and is named on the proposal's critique.",
           "type": "array",
           "items": {
             "type": "string"
@@ -399,6 +400,14 @@
           "properties": {
             "refuted": {
               "type": "boolean"
+            },
+            "incomplete": {
+              "description": "The declared cases the critic's pass did not compare, by id (review row 1): present where any is, with refuted true, so the proposal's critique is never a plain not-refuted while a declared case is uncompared.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
             }
           },
           "additionalProperties": true
@@ -501,7 +510,7 @@
       ]
     },
     "caseComparison": {
-      "description": "One comparison of a declared case's outcome with the runtime's, the critic's structured note (agent#10; packages/harness/refutation.ts, CaseComparison). tool experimental_evaluate: a rehearsal the critic ran over the proposed document (its pack argument, read as JSON, is the proposal's document; a pack_id never is) with the case's facts, evidence (an omitted document and an empty one both leave every requirement unknown) and supported extensions; agrees where each member the declared disposition states equals the rehearsal's, or the error class (and phase, where stated) is the declared one. tool experimental_test_cases: a row of a test run over the proposed document whose matrix carried the case exactly as declared; the runtime compared the row, and agrees is its status passed. The call may be the critic's own or one the harness makes after the critic's turns for a declared case nothing compared yet (refutation.ts, compareTheRest: one experimental_test_cases call over them where the critic is offered it, then one rehearsal each, at most CRITIC_REHEARSALS, 8, where it is offered experimental_evaluate); both go through the same gate and appear as tool_call and tool_result events. expected is the declared outcome; actual what the runtime gave, absent where it reported none.",
+      "description": "One comparison of a declared case's outcome with the runtime's, the critic's structured note (agent#10; packages/harness/refutation.ts, CaseComparison). tool experimental_evaluate: a rehearsal the critic ran over the proposed document (its pack argument, read as JSON, is the proposal's document; a pack_id never is) with the case's facts, evidence (an omitted document and an empty one both leave every requirement unknown) and supported extensions; agrees where each member the declared disposition states equals the rehearsal's, the §8.3 sets reasons and handoff.triggeredBy compared in any order (review row 3), or the error class (and phase, where stated) is the declared one. tool experimental_test_cases: a row of a test run over the proposed document whose matrix carried the case exactly as declared, for a case stating the whole §8.3 disposition (kind, reasons and handoff) or an error class (review row 2: the runtime compares a disposition byte for byte, so a case stating part of one is compared by rehearsal only); the runtime compared the row, and agrees is its status passed. The call may be the critic's own or one the harness makes after the critic's turns for a declared case nothing compared yet (refutation.ts, compareTheRest: one experimental_test_cases call over those stating a whole disposition or an error class where the critic is offered it, then one rehearsal each of the rest, at most CRITIC_REHEARSALS, 8, where it is offered experimental_evaluate); both go through the same gate and appear as tool_call and tool_result events, the harness's marked origin harness. expected is the declared outcome; actual what the runtime gave, absent where it reported none.",
       "type": "object",
       "required": [
         "case",
@@ -540,7 +549,7 @@
       "additionalProperties": true
     },
     "criticCase": {
-      "description": "One case whose outcome the host declares for the critic (agent#10; the session's criticCases; packages/harness/refutation.ts, CriticCase, readCriticCases): one of the pack's saved tests (source test) or a case the request declares (source declared), as a row of the runtime's matrix (matrixVersion 3) with its source. The critic is shown the cases as that matrix, without source, so experimental_test_cases can run them as they are. Closed: the reader refuses another member, a repeated id, a case with no facts object, and a case that does not expect exactly one of a disposition (an object with a kind) and an error class; a session carries at most 200, and one the reader refuses ends the run before any request (configuration).",
+      "description": "One case whose outcome the host declares for the critic (agent#10; the session's criticCases; packages/harness/refutation.ts, CriticCase, readCriticCases): one of the pack's saved tests (source test) or a case the request declares (source declared), as a row of the runtime's matrix (matrixVersion 3) with its source. The critic is shown the cases stating a whole §8.3 disposition (kind, reasons and handoff) or an error class as that matrix, without source, so experimental_test_cases can run them as they are, and the cases stating part of a disposition apart, for rehearsal only (review row 2). Closed: the reader refuses another member, a repeated id, a case with no facts object, and a case that does not expect exactly one of a disposition (an object with a kind) and an error class; a session carries at most 200, and one the reader refuses ends the run before any request (configuration).",
       "type": "object",
       "required": [
         "source",

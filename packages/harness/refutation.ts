@@ -20,24 +20,24 @@ import { sourceMessage } from './host'
  * on the same `guardedCallTool`, through the same ToolGate on the same
  * transport — so its `experimental_evaluate` is rewritten to a rehearsal before
  * the frame leaves the page, and it can no more reach `write_file` than the main
- * loop can. Since agent#10 it is offered only `CRITIC_TOOLS`, and the shared
- * boundary refuses any other name it calls while the critic runs
- * (`context/session.ts`, `admit`), before the ToolGate and before a host tool's
+ * loop can. Since agent#10 it is offered only `CRITIC_TOOLS` and
+ * `CRITIC_READERS`, and the shared boundary refuses any other name it calls
+ * while the critic runs (`context/session.ts`, `admit` on the wrapped
+ * `callTool` and host tools), before the ToolGate and before a host tool's
  * `execute`, with a `guardrail` `refused` event.
  *
  * **The verdict reads outcomes as well as statuses** (agent#10). Where the
  * host declares cases (the pack's saved tests, or cases the request states),
  * each rehearsal the critic runs over the proposed document is compared with
  * the case whose facts it ran, and each row of a test run with the case it
- * carried; a case whose outcome differs refutes the proposal, and the critique
- * names it.
+ * carried; a case whose outcome differs refutes the proposal, and so does a
+ * declared case nothing compared, and the critique names each.
  *
  * **Nothing here writes.** The pass runs after the main loop produced a
  * proposal and *before* the proposal event is emitted, and every call it makes
  * is a read.
  */
 import { failureMessage, normalizeFailure, type FailureSource } from './failures'
-import { GateViolation } from './toolGate'
 import type { AssistantEvent, ProposalNote } from './engine'
 
 /**
@@ -54,20 +54,31 @@ import type { AssistantEvent, ProposalNote } from './engine'
 export const CRITIC_TOOLS = ['validate', 'experimental_evaluate', 'get_schema', 'experimental_test_cases'] as const
 const CRITIC_TOOL_SET: ReadonlySet<string> = new Set(CRITIC_TOOLS)
 
-/** Whether the critic may call a runtime tool of this name. A host tool it may never call. */
+/**
+ * The harness's own context readers the critic may also call (agent#10 review
+ * row 6): `read_window` and `search`, the context ledger's tools, whose names a
+ * host tool may not take. They reach no Runtime tool and no action; the critic
+ * reads its own retained first message with them where that message did not
+ * fit its request.
+ */
+export const CRITIC_READERS = ['read_window', 'search'] as const
+const CRITIC_READER_SET: ReadonlySet<string> = new Set(CRITIC_READERS)
+
+/** Whether the critic may call a runtime tool of this name. */
 export function criticMayCall(name: string): boolean {
   return CRITIC_TOOL_SET.has(name)
 }
 
-/** Why the critic's call of `name` did not leave the page: the guardrail's detail. */
-export function criticRefusalDetail(name: string): string {
-  return `${name} is not one of the tools the critic may call (${CRITIC_TOOLS.join(', ')}); the call did not leave the page and nothing was written`
+/** Whether the critic may call a host tool of this name: only the harness's own readers. */
+export function criticMayRead(name: string): boolean {
+  return CRITIC_READER_SET.has(name)
 }
 
-/** The failure the critic's call of a tool outside its allow-list earns: the model reads it. */
-export function criticRefusal(name: string): GateViolation {
-  return new GateViolation(name, `refused for the critic: ${criticRefusalDetail(name)}`)
+/** Why the critic's call of `name` did not leave the page: the guardrail's detail. */
+export function criticRefusalDetail(name: string): string {
+  return `${name} is not one of the tools the critic may call (${[...CRITIC_TOOLS, ...CRITIC_READERS].join(', ')}); the call did not leave the page and nothing was written`
 }
+
 
 /**
  * **Whether the critic runs, by one rule both engines read** (agent#10): the
@@ -195,8 +206,11 @@ export interface Critique {
   modelText: string
   /** Each declared case a rehearsal or a test run compared, where the host declared any (agent#10). */
   cases?: CaseComparison[]
-  /** The declared cases nothing the critic ran compared. */
-  notCompared?: string[]
+  /**
+   * The declared cases nothing compared, by id (agent#10 review row 1). Each
+   * counts as unsettled, so a critique with any is never "not refuted".
+   */
+  incomplete?: string[]
   /** What the critic cost: its model and its requests (agent#10). */
   figures?: CriticFigures
 }
@@ -254,6 +268,8 @@ export interface CriticFigures {
   model: string
   unit: 'model-requests' | 'agent-runs'
   requests: number
+  /** The runtime calls the harness made itself for declared cases the critic left uncompared (review row 8). */
+  harnessCalls?: number
   inputTokens?: number
   outputTokens?: number
   reasoningTokens?: number
@@ -304,7 +320,7 @@ export function readCriticCases(value: unknown): CriticCase[] {
 /**
  * How many of the declared cases the critic's own calls left uncompared the
  * harness rehearses itself, one call each, after the critic's turns (agent#10).
- * The rest stay `notCompared`. Bounded so that a large saved matrix cannot
+ * The rest stay `incomplete`. Bounded so that a large saved matrix cannot
  * spend the turn's shared tool calls on one pass.
  */
 export const CRITIC_REHEARSALS = 8
@@ -328,10 +344,11 @@ export function rehearsalOf(item: CriticCase, document: unknown): Record<string,
  * **The comparison the critic's own calls left open, made by the harness**
  * (agent#10). After the critic's turns, the declared cases nothing compared are
  * run once through `call`, the same gated dispatch the critic's calls take:
- * one `experimental_test_cases` call over all of them, where the critic is
- * offered it, then one rehearsal each, at most `CRITIC_REHEARSALS`, where it is
- * offered `experimental_evaluate`. A case the runtime gives no outcome for
- * stays `notCompared`. No model request is made.
+ * one `experimental_test_cases` call over those stating a whole disposition or
+ * an error class, where the critic is offered it, then one rehearsal each of
+ * what is left, at most `CRITIC_REHEARSALS`, where it is offered
+ * `experimental_evaluate`. A case the runtime gives no outcome for stays
+ * `incomplete`. No model request is made.
  */
 export async function compareTheRest(
   recorder: CritiqueRecorder,
@@ -339,11 +356,26 @@ export async function compareTheRest(
   offered: ReadonlySet<string>,
   call: (name: string, args: Record<string, unknown>) => Promise<unknown>
 ): Promise<void> {
-  if (recorder.uncompared().length > 0 && offered.has('experimental_test_cases')) {
-    await call('experimental_test_cases', { pack: JSON.stringify(document), matrix: JSON.stringify(criticMatrix(recorder.uncompared())) })
+  // Only the cases the test tool can compare (review row 2); the rest by rehearsal.
+  const whole = recorder.uncompared().filter(testable)
+  if (whole.length > 0 && offered.has('experimental_test_cases')) {
+    await call('experimental_test_cases', { pack: JSON.stringify(document), matrix: JSON.stringify(criticMatrix(whole)) })
   }
   if (!offered.has('experimental_evaluate')) return
   for (const item of recorder.uncompared().slice(0, CRITIC_REHEARSALS)) await call('experimental_evaluate', rehearsalOf(item, document))
+}
+
+/**
+ * Whether a case can go to `experimental_test_cases` (agent#10 review row 2):
+ * it expects an error class, or states the whole §8.3 disposition (`kind`,
+ * `reasons`, `handoff`), which the runtime compares byte for byte. A case that
+ * states part of a disposition (a request's `kind` and `outcomeId`) comes back
+ * a mismatch there, so it is compared by rehearsal only.
+ */
+export function testable(item: CriticCase): boolean {
+  if (item.expectedErrorClass !== undefined) return true
+  const disposition = item.expectedDisposition ?? {}
+  return ['kind', 'reasons', 'handoff'].every((member) => Object.hasOwn(disposition, member))
 }
 
 /** The declared cases as the runtime's matrix, which `experimental_test_cases` takes as it is. */
@@ -392,10 +424,27 @@ function expectationOf(item: CriticCase): CaseOutcome {
 export function outcomeAgrees(expected: CaseOutcome, actual: CaseOutcome): boolean {
   if ('disposition' in expected) {
     if (!('disposition' in actual)) return false
-    return Object.entries(expected.disposition).every(([member, value]) => canonical(value) === canonical(actual.disposition[member]))
+    const wanted = asSets(expected.disposition)
+    const got = asSets(actual.disposition)
+    return Object.entries(wanted).every(([member, value]) => canonical(value) === canonical(got[member]))
   }
   if (!('errorClass' in actual) || actual.errorClass !== expected.errorClass) return false
   return expected.phase === undefined || actual.phase === expected.phase
+}
+
+/**
+ * A disposition with its two §8.3 sets in one order (review row 3): `reasons`
+ * and `handoff.triggeredBy` are sets, which the runtime serializes sorted and
+ * compares as sets, so a case may list them in any order.
+ */
+function asSets(disposition: Record<string, unknown>): Record<string, unknown> {
+  const sorted = (value: unknown) => (Array.isArray(value) ? [...value].sort((a, b) => (canonical(a) < canonical(b) ? -1 : canonical(a) > canonical(b) ? 1 : 0)) : value)
+  const handoff = disposition.handoff
+  return {
+    ...disposition,
+    ...(Object.hasOwn(disposition, 'reasons') ? { reasons: sorted(disposition.reasons) } : {}),
+    ...(isObject(handoff) && Object.hasOwn(handoff, 'triggeredBy') ? { handoff: { ...handoff, triggeredBy: sorted(handoff.triggeredBy) } } : {})
+  }
 }
 
 /** The evidence and extensions a rehearsal ran under, normalized as the runtime reads them. */
@@ -450,7 +499,8 @@ function compareTestRun(cases: readonly CriticCase[], document: unknown, args: R
   const rows = packs.flatMap((pack) => (Array.isArray(pack.rows) ? pack.rows.filter(isObject) : []))
   const found: CaseComparison[] = []
   for (const row of rows) {
-    const item = cases.find((candidate) => candidate.id === row.id)
+    // A case stating part of a disposition is never compared by a test run (review row 2).
+    const item = cases.find((candidate) => candidate.id === row.id && testable(candidate))
     if (item === undefined) continue
     const declared = criticMatrix([item]).cases[0]
     if (!sent.some((candidate) => candidate.id === item.id && canonical(candidate) === canonical(declared))) continue
@@ -473,13 +523,13 @@ function outcomeText(outcome: CaseOutcome | undefined, shape?: CaseOutcome): str
 }
 
 /** The comparisons, as a person is shown them. */
-export function comparisonText(cases: readonly CaseComparison[], notCompared: readonly string[]): string {
+export function comparisonText(cases: readonly CaseComparison[], incomplete: readonly string[]): string {
   const disagree = cases.filter((item) => !item.agrees)
   const agree = new Set(cases.filter((item) => item.agrees).map((item) => item.case))
   const parts = disagree.map((item) =>
     `case ${item.case} (${item.source}) disagrees: declared ${outcomeText(item.expected)}, ${item.tool} gave ${outcomeText(item.actual, item.expected)}`)
   if (agree.size > 0) parts.push(`${agree.size} declared case(s) agree`)
-  if (notCompared.length > 0) parts.push(`not compared: ${notCompared.join(', ')}`)
+  if (incomplete.length > 0) parts.push(`incomplete, ${incomplete.length} declared case(s) not compared, so nothing here says the proposal holds: ${incomplete.join(', ')}`)
   return `compared with the declared outcomes: ${parts.join('; ')}`
 }
 
@@ -508,11 +558,13 @@ export function statusOf(text: string): { status: string; diagnostics: number } 
  * `refuted: false`, and a critic whose prose says "none found" over a
  * `validate` the runtime called `invalid` produces `refuted: true`.
  */
-export function verdictOf(checks: readonly Check[], cases: readonly CaseComparison[] = []): boolean {
+export function verdictOf(checks: readonly Check[], cases: readonly CaseComparison[] = [], incomplete: readonly string[] = []): boolean {
   // agent#10: a rehearsal that says "evaluated" with an outcome other than the
-  // one a declared case states refutes too, so a semantic error is visible.
-  return (checks.length > 0 || cases.length > 0) &&
-    (checks.some((check) => check.status !== SETTLED_STATUS[check.tool]) || cases.some((item) => !item.agrees))
+  // one a declared case states refutes too, so a semantic error is visible;
+  // and a declared case nothing compared is unsettled (review row 1), so a
+  // critique that did not reach every declared case is never "not refuted".
+  return (checks.length > 0 || cases.length > 0 || incomplete.length > 0) &&
+    (checks.some((check) => check.status !== SETTLED_STATUS[check.tool]) || cases.some((item) => !item.agrees) || incomplete.length > 0)
 }
 
 /** The runtime's answers, quoted — the text a person is shown as the verdict. */
@@ -604,11 +656,11 @@ export function openCritique(options: CritiqueOptions = {}): CritiqueRecorder {
     critique(modelText) {
       if (declared.length === 0) return { refuted: verdictOf(checks), checks: [...checks], text: quoteOf(checks), modelText }
       const reached = new Set(compared.map((item) => item.case))
-      const notCompared = declared.filter((item) => !reached.has(item.id)).map((item) => item.id)
+      const incomplete = declared.filter((item) => !reached.has(item.id)).map((item) => item.id)
       const quoted = checks.length > 0 || compared.length > 0
-        ? [...(checks.length > 0 ? [quoteOf(checks)] : []), comparisonText(compared, notCompared)].join('; ')
-        : `${NO_CHECKS}; ${comparisonText(compared, notCompared)}`
-      return { refuted: verdictOf(checks, compared), checks: [...checks], text: quoted, modelText, cases: [...compared], notCompared }
+        ? [...(checks.length > 0 ? [quoteOf(checks)] : []), comparisonText(compared, incomplete)].join('; ')
+        : `${NO_CHECKS}; ${comparisonText(compared, incomplete)}`
+      return { refuted: verdictOf(checks, compared, incomplete), checks: [...checks], text: quoted, modelText, cases: [...compared], incomplete }
     }
   }
 }
@@ -647,10 +699,15 @@ export function criticCannotRun(testPrompt: string): Critique | null {
 export function criticMessage(testPrompt: string, document: unknown, cases: readonly CriticCase[] = []): string {
   const fenced = `\`\`\`json\n${JSON.stringify(document, null, 2)}\n\`\`\``
   const guidance = testPrompt.trim() === '' ? '' : `${testPrompt}\n\n`
-  // agent#10: the cases whose outcomes the host declares, as the runtime's
-  // matrix, so the critic can run them as they are.
-  const declared = cases.length === 0 ? '' : `\n\n${CRITIC_CASES_SENTENCE}\n\n\`\`\`json\n${JSON.stringify(criticMatrix(cases), null, 2)}\n\`\`\``
-  return `${guidance}${CRITIC_SENTENCE}\n\n${fenced}${declared}`
+  // agent#10: the cases whose outcomes the host declares. Those the test tool
+  // can compare as the runtime's matrix, to run as it is; the cases stating
+  // part of a disposition apart, for rehearsal only (review row 2).
+  const whole = cases.filter(testable)
+  const partial = cases.filter((item) => !testable(item))
+  const block = (value: unknown) => `\`\`\`json\n${JSON.stringify(value, null, 2)}\n\`\`\``
+  const matrix = whole.length === 0 ? '' : `\n\n${CRITIC_CASES_SENTENCE}\n\n${block(criticMatrix(whole))}`
+  const rehearse = partial.length === 0 ? '' : `\n\n${CRITIC_REHEARSE_SENTENCE}\n\n${block(criticMatrix(partial).cases)}`
+  return `${guidance}${CRITIC_SENTENCE}\n\n${fenced}${matrix}${rehearse}`
 }
 
 /**
@@ -659,7 +716,14 @@ export function criticMessage(testPrompt: string, document: unknown, cases: read
  * host's. It names the two tools and their arguments and no verdict.
  */
 export const CRITIC_CASES_SENTENCE =
-  'The matrix below declares the outcome each case must have: the request’s own cases and the pack’s tests. Rehearse each case against the document above, with experimental_evaluate (pack: the document as JSON text; facts and evidence: the case’s facts and evidenceAvailability as JSON text) or with experimental_test_cases (pack: the document as JSON text; matrix: this matrix as it is). The host compares each outcome with the declared one.'
+  'The matrix below declares the outcome each case must have, its whole disposition or its error class: the pack’s tests and the request’s own cases. Run it against the document above with experimental_test_cases (pack: the document as JSON text; matrix: this matrix as it is), or rehearse each case with experimental_evaluate (pack: the document as JSON text; facts and evidence: the case’s facts and evidenceAvailability as JSON text). The host compares each outcome with the declared one.'
+
+/**
+ * The third, for the cases that state part of a disposition (review row 2):
+ * rehearsal only, since the test tool compares a whole disposition.
+ */
+export const CRITIC_REHEARSE_SENTENCE =
+  'The cases below state part of the outcome they must have. Rehearse each one against the document above with experimental_evaluate (pack: the document as JSON text; facts and evidence: the case’s facts and evidenceAvailability as JSON text); experimental_test_cases does not take them. The host compares each outcome with the declared one.'
 
 /** The contract's own event, built in one place from the critique. */
 export function critiqueEvent(critique: Critique): AssistantEvent {
@@ -668,7 +732,7 @@ export function critiqueEvent(critique: Critique): AssistantEvent {
     refuted: critique.refuted,
     checks: critique.checks.map((check) => ({ tool: check.tool, status: check.status })),
     text: critique.text,
-    ...(critique.cases === undefined ? {} : { cases: critique.cases, notCompared: critique.notCompared ?? [] }),
+    ...(critique.cases === undefined ? {} : { cases: critique.cases, incomplete: critique.incomplete ?? [] }),
     ...(critique.figures === undefined ? {} : { figures: critique.figures })
   }
 }
@@ -724,8 +788,10 @@ export function modelCriticFigures(
  */
 export function critiqueOnProposal(
   critique: Critique | null
-): { critique: { refuted: boolean } } | Record<string, never> {
-  // A compared case is evidence as a check is (agent#10).
-  if (critique === null || (critique.checks.length === 0 && (critique.cases ?? []).length === 0)) return {}
-  return { critique: { refuted: critique.refuted } }
+): { critique: { refuted: boolean; incomplete?: string[] } } | Record<string, never> {
+  // A compared case is evidence as a check is (agent#10), and a declared case
+  // nothing compared is named here, never left to a plain not-refuted (review row 1).
+  const incomplete = critique?.incomplete ?? []
+  if (critique === null || (critique.checks.length === 0 && (critique.cases ?? []).length === 0 && incomplete.length === 0)) return {}
+  return { critique: { refuted: critique.refuted, ...(incomplete.length === 0 ? {} : { incomplete }) } }
 }

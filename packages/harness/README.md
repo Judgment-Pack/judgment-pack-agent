@@ -83,7 +83,7 @@ nothing known, so a host that knows nothing about its endpoints may leave it out
 | `dialectAPI(path, …)` | A request to the host's input-preparation API | `dialects/client` | `planning/tools.ts` |
 | `endpointCapabilities({ family, model })` | What the host knows about an endpoint and model: any members of its capability record (see The capability record), its probe result. Answers `{}`, nothing known, until supplied | none (new, agent#9, agent#4: the Desk decides by its three families) | `capabilities.ts`, read once per run by `context/session.ts` |
 | `renderImageToText(image, signal)` | An image as text, for a model whose record says no vision: the host's render adapter | none (new, agent#5) | `images.ts`, from `engines/vercel/loop.ts` and `engines/codex/index.ts` |
-| `criticModel({ engine, family, model })` | The model the critic runs on for this run's connection, a cheaper one the same connection serves, or null for the run's own (see The critic). Answers null until supplied | none (new, agent#10) | `host.ts` (`criticModelFor`), from `engines/vercel/loop.ts`, `engines/codex/index.ts` and `agentTransport.ts` |
+| `criticModel({ engine, family, model })` | The model the critic runs on for this run's connection, a cheaper one the same connection serves, or null for the run's own (see The critic); asked once per pass. Answers null until supplied | none (new, agent#10) | `host.ts` (`criticModelFor`), from `engines/vercel/loop.ts` and `engines/codex/index.ts` |
 
 The failure catalogue and the context budget table are the package's own copies of the Desk's
 Go-side files (`internal/aifailure/catalog.json`, `internal/aicontext/policy.json`), byte for byte,
@@ -184,28 +184,42 @@ run.
 
 The refutation pass (`refutation.ts`, agent#10) runs after a proposal exists and before it is
 delivered, on either engine, where the session's `adversarialReview` says so, and otherwise where
-the policy table's `adversarialReview` does (`contract/policy.json`: `false`). One rule, read from one
-place by both engines (`criticRuns`); the reasoning tier no longer starts it. It needs the runtime's
-`test_pack` prompt as `testPrompt`.
+the policy table's `adversarialReview` does (`contract/policy.json`: `false`). A host passes
+`adversarialReview` on the session for each run; the table only gives the default. One rule, read
+from one place by both engines (`criticRuns`); the reasoning tier no longer starts it. It needs the
+runtime's `test_pack` prompt as `testPrompt`.
 
-- **Its tools** are an allow-list, `CRITIC_TOOLS`: `validate`, `experimental_evaluate` (a rehearsal on
-  the wire), `get_schema` and `experimental_test_cases` (within its bounds and the turn's test-call
-  cap, shared with the loop). It is offered those the session serves and no host tool. While it runs,
-  the shared boundary refuses any other name before the tool gate and before a host tool runs
-  (`SessionContext.admit`), with a `guardrail` `refused` event and a `permission` failure the model
-  reads.
+- **Its tools** are an allow-list: `CRITIC_TOOLS` (`validate`, `experimental_evaluate`, a rehearsal on
+  the wire, `get_schema` and `experimental_test_cases`, within its bounds and the turn's test-call
+  cap, shared with the loop) and `CRITIC_READERS` (`read_window` and `search`, the harness's own
+  context readers). It is offered those the session offers and no other host tool. While it runs,
+  the `admit` on the shared boundary's wrapped `callTool` and host tools (`SessionContext.admit`)
+  refuses any other name before the tool gate and before a host tool runs, with a `guardrail`
+  `refused` event and a `permission` failure the model reads; each engine's own call of it is a
+  redundant first check. On `codex` a name the session serves but the run was not offered is
+  refused before any call, and the tool-free reformat run is held to nothing.
+- **Its first message**, where it does not fit, is retained, and the critic reads it with
+  `read_window` or `search`; where it does not fit even as that preview, the pass is refused with a
+  `critic-unfinished` note.
 - **Its comparison.** A host passes the cases whose outcomes it knows as `criticCases`: the pack's
   saved tests (`source: 'test'`) and cases the request declares (`source: 'declared'`), each a row of
   the runtime's matrix (`CriticCase`; read closed by `readCriticCases`, and a case it refuses ends the
-  run before any request). The critic is shown them as that matrix, and each rehearsal of the proposed
-  document with a case's inputs, and each test-run row of a case sent as declared, is compared with
-  the declared outcome. The cases the critic's own calls left uncompared the harness runs once each
-  after its turns, through the same gate (one test call where the critic is offered the test tool,
-  then up to `CRITIC_REHEARSALS` rehearsals; no model request). A disagreeing case refutes the
-  proposal; the critique's `cases` and `notCompared` say which.
-- **Its model** is the host's `criticModel` answer for the connection, or the run's.
+  run before any request). The critic is shown the cases that state a whole §8.3 disposition or an
+  error class as that matrix (`testable`), and the cases that state part of one apart, for rehearsal
+  only. Each rehearsal of the proposed document with a case's inputs (the sets `reasons` and
+  `handoff.triggeredBy` in any order), and each test-run row of a whole case sent as declared, is
+  compared with the declared outcome. The cases the critic's own calls left uncompared the harness
+  runs once each after its turns, through the same gate, marked `origin: 'harness'` and counted in
+  the figures (one test call over the whole ones where the critic is offered the test tool, then up
+  to `CRITIC_REHEARSALS` rehearsals; no model request; on `codex` within the pass's ten minutes,
+  `CRITIC_PASS_MILLISECONDS`). A disagreeing case refutes the proposal, and so does a declared case
+  nothing compared: the critique's `cases` and `incomplete` say which, and the proposal's `critique`
+  names the incomplete ones.
+- **Its model** is the host's `criticModel` answer for the connection, asked once per pass, or the
+  run's.
 - **Its cost** is on the critique, and on a `critic-unfinished` note: `figures`, the model and the
-  requests (model requests and their token counts on `vercel`, agent runs on `codex`).
+  requests (model requests and their token counts on `vercel`, agent runs on `codex`), and the
+  harness's own calls (`harnessCalls`).
 
 ### What changes between requests
 

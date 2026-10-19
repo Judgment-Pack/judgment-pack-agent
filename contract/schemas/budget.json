@@ -115,7 +115,7 @@
       "default": 65536
     },
     "adversarialReview": {
-      "description": "Whether the critic runs where a session leaves adversarialReview unset, on both engines (packages/harness/refutation.ts, criticRuns): false, so a critic runs only where the host asks for one, at any reasoning tier. The harness adds it to the Desk's table (contract/desk/policy.json); a host's table that says true runs the critic by default on both engines. A session's own adversarialReview, set from the host's settings, wins.",
+      "description": "Whether the critic runs where a session leaves adversarialReview unset, on both engines (packages/harness/refutation.ts, criticRuns): false, so a critic runs only where the host asks for one, at any reasoning tier. The harness adds it to the Desk's table (contract/desk/policy.json). The host chooses per run by passing adversarialReview on the session, from its own settings; this member is the default the harness reads where a session leaves it unset.",
       "type": "boolean",
       "default": false
     }

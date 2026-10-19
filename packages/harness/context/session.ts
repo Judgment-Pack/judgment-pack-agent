@@ -1,6 +1,7 @@
 import {runtimeToolContextPolicy} from './toolPolicy'
 import {failureError,AIFailureError,authoredFailure} from '../failures'
-import {criticMayCall,criticRefusal,criticRefusalDetail,readCriticCases,type CriticCase} from '../refutation'
+import {criticMayCall,criticMayRead,criticRefusalDetail,readCriticCases,type CriticCase} from '../refutation'
+import {GateViolation} from '../toolGate'
 import {TEST_TOOL} from '../toolGate'
 import {dataMarker,frameBlock,frameData,unframeData} from '../framing'
 import {ExecutionController} from '../execution/controller'
@@ -32,8 +33,11 @@ export class SessionContext {
  private referenceTools:Set<string>
  /** agent#10: the cases whose outcomes the host declares for the critic, read closed once for the run. */
  readonly criticCases:CriticCase[]
- /** agent#10: whether the critic is running, which narrows every call to its allow-list (`admit`). */
- private critic=false
+ /**
+  * agent#10: the phase that narrows every call (`admit`): the critic, to its
+  * allow-list; the codex engine's tool-free reformat run, to nothing (review row 5).
+  */
+ private narrowed:'critic'|'reformat'|null=null
  /** agent#10: the guardrail events the critic's refusals earned, for the boundary to put on the stream. */
  private notices:AssistantEvent[]=[]
  constructor(session:EngineSession){this.capabilities='model'in session?capabilitiesFor(session.model):undefined;this.policy=contextPolicy(session.context?.configuration,'model'in session?session.model.model:session.agent.model,this.capabilities);this.ledger=new ContextLedger(this.policy);this.execution=new ExecutionController(session,this.ledger);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))
@@ -50,8 +54,28 @@ export class SessionContext {
   * The critic starts (agent#10): an isolated phase, and from here until
   * `endCriticPhase` every call is held to the critic's allow-list by `admit`.
   */
- beginCriticPhase(){this.beginIsolatedPhase();this.critic=true}
- endCriticPhase(){this.critic=false}
+ beginCriticPhase(){this.beginIsolatedPhase();this.narrowed='critic'}
+ endCriticPhase(){if(this.narrowed==='critic')this.narrowed=null}
+ /** The tool-free reformat run starts (review row 5): from here until `endReformatPhase` every call is refused. */
+ beginReformatPhase(){this.narrowed='reformat'}
+ endReformatPhase(){if(this.narrowed==='reformat')this.narrowed=null}
+ /** Whether the critic is running. */
+ get criticRunning(){return this.narrowed==='critic'}
+ /**
+  * A refusal the boundary makes itself: the guardrail event, put on the stream
+  * before the call's result, and the failure the model reads.
+  */
+ refuse(name:string,detail:string):GateViolation{
+  this.notices.push({type:'guardrail',tool:name,action:'refused',detail})
+  return new GateViolation(name,detail)
+ }
+ /**
+  * A name the session serves but this run was not offered (review row 5): refused
+  * before any call is made, whatever the phase, with its own guardrail event.
+  */
+ refuseUnoffered(name:string):GateViolation{
+  return this.refuse(name,`${name} is served to this session but was not offered to this run; the call did not leave the page and nothing was written`)
+ }
  /**
   * **The critic's allow-list, held below both engines** (agent#10). While the
   * critic runs, a runtime call outside `CRITIC_TOOLS`, and every host tool
@@ -63,9 +87,9 @@ export class SessionContext {
   * delegation, `propose_pack`), so no engine path reaches past it.
   */
  admit(name:string,kind:'runtime'|'host'){
-  if(!this.critic||kind==='runtime'&&criticMayCall(name))return
-  this.notices.push({type:'guardrail',tool:name,action:'refused',detail:criticRefusalDetail(name)})
-  throw criticRefusal(name)
+  if(this.narrowed===null)return
+  if(this.narrowed==='critic'&&(kind==='runtime'?criticMayCall(name):criticMayRead(name)))return
+  throw this.refuse(name,this.narrowed==='critic'?criticRefusalDetail(name):`${name} is not offered to the reformat run, which is offered no tool; the call did not leave the page and nothing was written`)
  }
  /** The guardrail events the critic's refusals earned since the last read. */
  takeNotices():AssistantEvent[]{const taken=this.notices;this.notices=[];return taken}
@@ -104,7 +128,9 @@ export class SessionContext {
    const room=Math.max(0,Math.floor((budget-utf8Bytes(encoded(notice))-512)/6))
    return notice+'\nLATEST USER MESSAGE (excerpt if large)\n'+prefix(currentRequest.message,Math.floor(room/4))+'\nCURRENT INPUT BEGINNING (excerpt; use /input and query to locate omitted sections)\n'+prefix(currentRequest.input,Math.floor(room/4))+'\nREQUEST BEGINNING (excerpt)\n'+prefix(remainder,Math.floor(room/4))+'\nRECENT CONTEXT AND CONTINUATION (excerpt)\n'+tail(remainder,Math.floor(room/4))
   }
-  const notice='The complete request is retained below. This is an extractive context preview, not a replacement decision or permission. Use read_context to read the relevant original sections before answering. Preserve outstanding user requests; do not infer success from an omitted operation.\n'+encoded(this.ledger.reference(e))
+  // The critic reads with the harness's own readers, which its allow-list admits (review row 6).
+  const reader=this.narrowed==='critic'?'read_window (by the contextId below, a window of lines at a time) or search':'read_context'
+  const notice='The complete request is retained below. This is an extractive context preview, not a replacement decision or permission. Use '+reader+' to read the relevant original sections before answering. Preserve outstanding user requests; do not infer success from an omitted operation.\n'+encoded(this.ledger.reference(e))
   const allowance=Math.max(0,budget-utf8Bytes(notice)-400)
   const head=prefix(text,Math.min(3000,Math.floor(allowance/3)))
   // End of Desk prompts carries the current user message. This is labeled as a

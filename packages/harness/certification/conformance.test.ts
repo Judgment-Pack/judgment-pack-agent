@@ -1448,8 +1448,9 @@ describe.each(MODEL_ENGINES)('engine %s · thinking', (engineId) => {
       // The pass is a second conversation, and the endpoint saw it.
       const marked = requests.filter((request) => request.refutation)
       expect(marked.length).toBeGreaterThan(0)
-      // Offered its allow-list of the session's runtime tools, and no host tool (agent#10).
-      for (const request of marked) expect(request.toolNames).toEqual(criticOfferVector.items.map((tool) => tool.name))
+      // Offered its allow-list: the session's runtime reads and the harness's two readers (agent#10).
+      const criticOffer = criticOfferVector.items[0]!
+      for (const request of marked) expect(request.toolNames).toEqual([...criticOffer.hostTools, ...criticOffer.tools].map((tool) => tool.name))
       const critique = criticEvents(events)
       expect(critique).toHaveLength(1)
       // **The verdict is the runtime's.** The critic's prose on this leg says
@@ -1516,11 +1517,8 @@ describe.each(MODEL_ENGINES)('engine %s · thinking', (engineId) => {
       // recorded facts says `evaluated` with the outcome approve; the declared
       // case says decline. Status alone reads this as not refuted.
       const facts = scenario.documents.FACTS as Record<string, unknown>
-      const cases: CriticCase[] = [
-        { source: 'declared', id: 'receipted-120', facts, expectedDisposition: { kind: 'outcome', outcomeId: 'decline' } },
-        { source: 'test', id: 'small-40', facts: { claim: { type: 'expense-reimbursement', amount: '40.00', receiptAttached: false } }, expectedDisposition: { kind: 'outcome', outcomeId: 'approve' } }
-      ]
-      const { events } = await runLeg(fromRegistry(engineId), leg, { tier: 'on', mode: 'on', review: true, cases })
+      const wrong: CriticCase = { source: 'declared', id: 'receipted-120', facts, expectedDisposition: { kind: 'outcome', outcomeId: 'decline' } }
+      const { events } = await runLeg(fromRegistry(engineId), leg, { tier: 'on', mode: 'on', review: true, cases: [wrong] })
       const critique = criticEvents(events)
       expect(critique).toHaveLength(1)
       expect(critique[0]!.checks).toEqual([
@@ -1538,14 +1536,18 @@ describe.each(MODEL_ENGINES)('engine %s · thinking', (engineId) => {
           actual: { disposition: { handoff: { state: 'none' }, kind: 'outcome', outcomeId: 'approve', reasons: [] } }
         }
       ])
-      expect(critique[0]!.notCompared).toEqual(['small-40'])
+      expect(critique[0]!.incomplete).toEqual([])
       expect(critique[0]!.text).toContain('case receipted-120 (declared) disagrees')
       expect(proposals(events)[0]!.critique).toEqual({ refuted: true })
-      // The same rehearsal, declared as approve, agrees and refutes nothing.
+      // The same rehearsal, declared as approve, agrees; a second case the
+      // scenario's runtime has no answer for stays incomplete, and that alone
+      // keeps the verdict from "not refuted" (review row 1).
+      const small: CriticCase = { source: 'test', id: 'small-40', facts: { claim: { type: 'expense-reimbursement', amount: '40.00', receiptAttached: false } }, expectedDisposition: { kind: 'outcome', outcomeId: 'approve' } }
       const agreed = await runLeg(fromRegistry(engineId), leg, {
-        tier: 'on', mode: 'on', review: true, cases: [{ ...cases[0]!, expectedDisposition: { kind: 'outcome', outcomeId: 'approve' } }]
+        tier: 'on', mode: 'on', review: true, cases: [{ ...wrong, expectedDisposition: { kind: 'outcome', outcomeId: 'approve' } }, small]
       })
-      expect(criticEvents(agreed.events)[0]!.refuted).toBe(false)
+      expect(criticEvents(agreed.events)[0]).toMatchObject({ refuted: true, incomplete: ['small-40'] })
+      expect(proposals(agreed.events)[0]!.critique).toEqual({ refuted: true, incomplete: ['small-40'] })
       expect(criticEvents(agreed.events)[0]!.cases!.map((item) => item.agrees)).toEqual([true])
     })
 

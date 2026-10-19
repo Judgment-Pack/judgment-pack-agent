@@ -31,6 +31,10 @@
     },
     "structured": {
       "description": "The answer's structuredContent, where it had one. On a failed result the host wrote, it is bound: for ask_user, the question format failure ({\"questionFailure\": …}); otherwise, where it carries a failure member, {\"failure\": …} (failure.json#/$defs/toolFailureContent), which the Desk reads back with readFailure. A runtime tool's own failed answer passes its structuredContent through unbound."
+    },
+    "origin": {
+      "description": "harness: the harness made this call itself, not the model: the critic pass's own run of a declared case nothing compared yet (agent#10 review row 8; refutation.ts, compareTheRest). Absent on every call a model made.",
+      "const": "harness"
     }
   },
   "additionalProperties": true,

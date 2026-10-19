@@ -1,5 +1,5 @@
 {
-  "description": "Cases a host declares for the critic (agent#10): one the request declares and two of the pack's saved tests, one of which expects an evaluation error. Written by hand from the schema; the facts are the certification scenario's.",
+  "description": "Cases a host declares for the critic (agent#10): one the request declares, stating part of the disposition (compared by rehearsal only), two of the pack's saved tests stating the whole §8.3 disposition (which experimental_test_cases compares), and one expecting an evaluation error. Written by hand from the schema; the facts are the certification scenario's.",
   "schema": "run-event.json#/$defs/criticCase",
   "source": {
     "harness": {
@@ -37,10 +37,33 @@
         }
       },
       "expectedDisposition": {
+        "handoff": {
+          "state": "none"
+        },
         "kind": "outcome",
-        "outcomeId": "decline"
+        "outcomeId": "decline",
+        "reasons": []
       },
       "focus": "the receipt condition"
+    },
+    {
+      "source": "test",
+      "id": "small-40",
+      "facts": {
+        "claim": {
+          "type": "expense-reimbursement",
+          "amount": "40.00",
+          "receiptAttached": false
+        }
+      },
+      "expectedDisposition": {
+        "handoff": {
+          "state": "none"
+        },
+        "kind": "outcome",
+        "outcomeId": "approve",
+        "reasons": []
+      }
     },
     {
       "source": "test",

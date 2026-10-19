@@ -106,7 +106,7 @@
       ]
     },
     "criticFigures": {
-      "description": "What one critic pass cost (agent#10; packages/harness/refutation.ts, CriticFigures), carried on the critique event and on a critic-unfinished note (run-event.json). model: the model the critic ran on, the host's critic model for the connection (criticModel) or the run's. unit model-requests (the vercel engine): requests counts the model requests the critic claimed against the allowance, refused attempts included, and the token members sum what its completion rows (phase review) reported, each absent where no row reported it. unit agent-runs (the codex engine): requests counts the critic's agent runs, and the bridge reports no tokens.",
+      "description": "What one critic pass cost (agent#10; packages/harness/refutation.ts, CriticFigures), carried on the critique event and on a critic-unfinished note (run-event.json). model: the model the critic ran on, the host's critic model for the connection (criticModel) or the run's. unit model-requests (the vercel engine): requests counts the model requests the critic claimed against the allowance, refused attempts included, and the token members sum what its completion rows (phase review) reported, each absent where no row reported it. unit agent-runs (the codex engine): requests counts the critic's agent runs, and the bridge reports no tokens. harnessCalls counts the harness's own runtime calls in the pass.",
       "type": "object",
       "required": [
         "model",
@@ -143,6 +143,11 @@
         },
         "cacheWriteTokens": {
           "$ref": "#/$defs/tokens"
+        },
+        "harnessCalls": {
+          "description": "The runtime calls the harness made itself in the pass for declared cases the critic left uncompared (review row 8), each marked origin harness on its events; absent where it made none. Not model requests.",
+          "type": "integer",
+          "minimum": 1
         }
       },
       "additionalProperties": false

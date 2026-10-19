@@ -1,5 +1,5 @@
 {
-  "description": "The critic's allow-list (agent#10), the whole of what it may call, in its order.",
+  "description": "The critic's allow-list (agent#10), the whole of what it may call, in its order: four of the runtime's reads and the harness's two context readers (review row 6).",
   "schema": "tool-offer.json#/$defs/criticTools",
   "source": {
     "harness": {
@@ -7,13 +7,15 @@
       "package": "packages/harness"
     },
     "files": [
-      "packages/harness/refutation.ts (CRITIC_TOOLS)"
+      "packages/harness/refutation.ts (CRITIC_TOOLS, CRITIC_READERS)"
     ]
   },
   "items": [
     "validate",
     "experimental_evaluate",
     "get_schema",
-    "experimental_test_cases"
+    "experimental_test_cases",
+    "read_window",
+    "search"
   ]
 }

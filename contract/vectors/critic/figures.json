@@ -1,5 +1,5 @@
 {
-  "description": "What one critic pass cost (agent#10): on the vercel engine, two model requests on a cheaper model the host named for the connection, with the token counts the two completion rows reported, summed; on the codex engine, one agent run on the run's model, and no tokens, which the bridge does not report. Written by hand from the schema.",
+  "description": "What one critic pass cost (agent#10): on the vercel engine, two model requests on a cheaper model the host named for the connection, with the token counts the two completion rows reported, summed (each request reported 1205 input tokens, 900 of them read from the cache, 48 output tokens and no reasoning tokens); on the codex engine, one agent run on the run's model and no tokens, which the bridge does not report; and the same with one runtime call the harness made itself for a declared case the critic left uncompared (review row 8). Written by hand from the schema; critic.test.ts holds the three to what the engines carry.",
   "schema": "provenance.json#/$defs/criticFigures",
   "source": {
     "harness": {
@@ -18,12 +18,19 @@
       "requests": 2,
       "inputTokens": 2410,
       "outputTokens": 96,
+      "reasoningTokens": 0,
       "cacheReadTokens": 1800
     },
     {
       "model": "agent-model",
       "unit": "agent-runs",
       "requests": 1
+    },
+    {
+      "model": "agent-model",
+      "unit": "agent-runs",
+      "requests": 1,
+      "harnessCalls": 1
     }
   ]
 }

@@ -262,8 +262,12 @@ export type AssistantEvent =
    */
   | { type: 'message'; text: string }
   | { type: 'message_progress'; text: string }
-  | { type: 'tool_call'; callId?: string; name: string; args: unknown; presentation?: { provider: string } }
-  | { type: 'tool_result'; callId?: string; name: string; isError: boolean; text: string; structured?: unknown }
+  /**
+   * `origin` `harness` on a call the harness made itself, not the model: the
+   * critic pass's own comparison of a declared case (agent#10 review row 8).
+   */
+  | { type: 'tool_call'; callId?: string; name: string; args: unknown; presentation?: { provider: string }; origin?: 'harness' }
+  | { type: 'tool_result'; callId?: string; name: string; isError: boolean; text: string; structured?: unknown; origin?: 'harness' }
   /**
    * `rewrote` and `refused` are the ToolGate's, on the wire. `narrowed` is the
    * desk's own report on the **contract it showed the model**: on a wire whose
@@ -275,13 +279,13 @@ export type AssistantEvent =
   | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string }
   | { type: 'thinking_unavailable'; detail: string }
   /**
-   * `cases` and `notCompared` where the host declared cases (agent#10): each
+   * `cases` and `incomplete` where the host declared cases (agent#10): each
    * comparison of a declared outcome with the runtime's, and the cases nothing
-   * compared. `figures`: what the critic cost.
+   * compared, each of which leaves `refuted` true. `figures`: what the critic cost.
    */
-  | { type: 'critique'; refuted: boolean; checks: { tool: string; status: string }[]; text: string; cases?: import('./refutation').CaseComparison[]; notCompared?: string[]; figures?: import('./refutation').CriticFigures }
+  | { type: 'critique'; refuted: boolean; checks: { tool: string; status: string }[]; text: string; cases?: import('./refutation').CaseComparison[]; incomplete?: string[]; figures?: import('./refutation').CriticFigures }
   /** `note` where something that ran after the proposal existed did not finish. */
-  | { type: 'proposal'; document: unknown; unknowns: string[]; critique?: { refuted: boolean }; note?: ProposalNote }
+  | { type: 'proposal'; document: unknown; unknowns: string[]; critique?: { refuted: boolean; incomplete?: string[] }; note?: ProposalNote }
   | { type: 'error'; message: string; failure?: import('./failures').AIFailure }
   | { type: 'end' }
 

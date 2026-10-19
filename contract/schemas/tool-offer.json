@@ -200,21 +200,25 @@
       ]
     },
     "reservedName": {
-      "description": "Names the host keeps for its own context tools; an offered tool that takes one ends the session.",
+      "description": "Names the host keeps for its own context tools; an offered tool that takes one ends the session (context/session.ts, contextualSession). read_window (agent#1) and search (agent#5) are the harness's own readers.",
       "enum": [
         "list_context",
         "read_context",
+        "read_window",
+        "search",
         "update_plan",
         "request_budget_increase"
       ]
     },
     "criticTools": {
-      "description": "The critic's tools (agent#10; packages/harness/refutation.ts, CRITIC_TOOLS): an allow-list of the runtime's reads about the document, and the whole of what the critic may call. experimental_evaluate leaves only as a rehearsal (the gate's rewrite), and experimental_test_cases under its own bounds (tool-call.json $defs/testCasesArguments, and budget.json testCallsPerTurn, which the critic shares with the loop). The critic is offered these, of the runtime tools the session offers, in the session's order, and no host tool. Any other name it calls (the runtime's other reads, every host tool, propose_* and request_* among them, and the context tools) is refused by the shared boundary while the critic runs (context/session.ts, admit), before the tool gate and before a host tool runs: the call is not made, the model reads a permission failure, and a guardrail refused event names the tool.",
+      "description": "The critic's tools (agent#10; packages/harness/refutation.ts, CRITIC_TOOLS and CRITIC_READERS): an allow-list, and the whole of what the critic may call. Four of the runtime's reads about the document: validate, experimental_evaluate (only as a rehearsal, the gate's rewrite) and get_schema, and experimental_test_cases under its own bounds (tool-call.json $defs/testCasesArguments, and budget.json testCallsPerTurn, which the critic shares with the loop). Then two of the harness's own context readers, read_window and search (review row 6): the context ledger's tools, whose names a host tool may not take ($defs/reservedName), which reach no Runtime tool and no action; with them the critic reads its own first message where that message was retained to fit its request. The critic is offered these, of the tools the session offers, in the session's order. Any other name it calls (the runtime's other reads, every host tool, propose_* and request_* among them, and the other context tools) is refused by the shared boundary while the critic runs (context/session.ts, admit on the wrapped callTool and host tools), before the tool gate and before a host tool runs: the call is not made, the model reads a permission failure, and a guardrail refused event names the tool.",
       "enum": [
         "validate",
         "experimental_evaluate",
         "get_schema",
-        "experimental_test_cases"
+        "experimental_test_cases",
+        "read_window",
+        "search"
       ]
     }
   }

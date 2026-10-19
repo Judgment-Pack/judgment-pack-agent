@@ -8,9 +8,9 @@ export interface AgentRequest {
   effort?: CodexEffort
   phase: 'author' | 'critic'
   /**
-   * Only on a critic run, and only the model the host names for the critic
-   * (`criticModel` in host.ts; agent#10). The agent transport refuses any other
-   * model; absent, the run's own.
+   * Only on a critic run: the model the host named for the critic, asked once
+   * per pass by the engine and passed down (`criticModel` in host.ts; agent#10).
+   * The agent transport refuses a model on any other run; absent, the run's own.
    */
   model?: string
 }

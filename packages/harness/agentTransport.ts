@@ -4,7 +4,6 @@ import { deskSocketURL } from './host'
 import { chassisUrl } from './host'
 import { socketProtocols } from './host'
 import { sessionBearer, whenSessionEnds } from './host'
-import { criticModelFor } from './host'
 import { RunCancelled } from './engines/contract'
 import type { AgentEvent, AgentRun } from './agent'
 
@@ -22,10 +21,12 @@ export function bindAgentRun(model: string, target?:AITarget): AgentRun {
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   return async (request, callbacks) => {
     if (callbacks.signal.aborted) throw new RunCancelled()
-    // agent#10: a run's model is the one bound here, or, on a critic run, the
-    // one the host names for the critic. No other model leaves the page.
+    // agent#10: a run's model is the one bound here, or, on a critic run only,
+    // the one the engine passes down from the host's single answer for the
+    // pass (criticModel, asked once; review row 10). The bridge admits only a
+    // model the subscription lists.
     const chosen = request.model === undefined || request.model === model ? model
-      : request.phase === 'critic' && request.model === criticModelFor({ engine: 'codex', model }) ? request.model : null
+      : request.phase === 'critic' ? request.model : null
     if (chosen === null) throw failureError('configuration', 'agent', 'not-started')
     const token = await sessionBearer()
     if (callbacks.signal.aborted) throw new RunCancelled()

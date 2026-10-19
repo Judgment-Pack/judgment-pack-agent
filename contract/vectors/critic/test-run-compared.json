@@ -1,5 +1,5 @@
 {
-  "description": "The critic ran the declared cases with experimental_test_cases over the proposed document, with the matrix as declared: each row of a declared case is a comparison, the runtime's row status its verdict. The test unreceipted-120 failed (the runtime gave approve where it declares decline), so the critique refutes; a test run is not a status check, so checks is empty. codex engine, whose figures count agent runs. Written by hand from the schema.",
+  "description": "The critic ran the declared saved tests that state a whole disposition (declared-cases.json, unreceipted-120 and small-40) with experimental_test_cases over the proposed document, the matrix as declared: each row is a comparison, the runtime's row status its verdict. unreceipted-120 failed (the runtime gave approve where the test declares decline), so the critique refutes; a test run is not a status check, so checks is empty. codex engine, whose figures count agent runs. Written by hand from the schema.",
   "schema": "run-event.json",
   "source": {
     "harness": {
@@ -16,17 +16,21 @@
       "type": "critique",
       "refuted": true,
       "checks": [],
-      "text": "compared with the declared outcomes: case unreceipted-120 (test) disagrees: declared {\"kind\":\"outcome\",\"outcomeId\":\"decline\"}, experimental_test_cases gave {\"kind\":\"outcome\",\"outcomeId\":\"approve\"}; 1 declared case(s) agree",
+      "text": "compared with the declared outcomes: case unreceipted-120 (test) disagrees: declared {\"handoff\":{\"state\":\"none\"},\"kind\":\"outcome\",\"outcomeId\":\"decline\",\"reasons\":[]}, experimental_test_cases gave {\"handoff\":{\"state\":\"none\"},\"kind\":\"outcome\",\"outcomeId\":\"approve\",\"reasons\":[]}; 1 declared case(s) agree",
       "cases": [
         {
-          "case": "receipted-120",
-          "source": "declared",
+          "case": "small-40",
+          "source": "test",
           "tool": "experimental_test_cases",
           "agrees": true,
           "expected": {
             "disposition": {
+              "handoff": {
+                "state": "none"
+              },
               "kind": "outcome",
-              "outcomeId": "approve"
+              "outcomeId": "approve",
+              "reasons": []
             }
           },
           "actual": {
@@ -47,8 +51,12 @@
           "agrees": false,
           "expected": {
             "disposition": {
+              "handoff": {
+                "state": "none"
+              },
               "kind": "outcome",
-              "outcomeId": "decline"
+              "outcomeId": "decline",
+              "reasons": []
             }
           },
           "actual": {
@@ -63,7 +71,7 @@
           }
         }
       ],
-      "notCompared": [],
+      "incomplete": [],
       "figures": {
         "model": "agent-model",
         "unit": "agent-runs",
