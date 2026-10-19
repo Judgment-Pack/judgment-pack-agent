@@ -510,10 +510,13 @@ describe('codex', () => {
 })
 
 describe('what the model is told of a call to a tool it was not offered', () => {
-  it('ends in one period, whether or not the refusal it is given does', () => {
-    const tail = '. This assistant proposes; it never writes a file and never calls a tool it was not offered.'
-    for (const detail of ['write_file is not offered', 'write_file is not offered.', 'write_file is not offered...']) {
-      expect(unofferedRefusal(detail)).toBe(`refused: write_file is not offered${tail}`)
-    }
+  it('keeps the refusal’s own trailing period, an ellipsis included, and adds one only where it has none', () => {
+    const tail = ' This assistant proposes; it never writes a file and never calls a tool it was not offered.'
+    const cases: Array<[string, string]> = [
+      ['write_file is not offered', 'write_file is not offered.'],
+      ['write_file is not offered.', 'write_file is not offered.'],
+      ['write_file is not offered...', 'write_file is not offered...']
+    ]
+    for (const [detail, kept] of cases) expect(unofferedRefusal(detail)).toBe(`refused: ${kept}${tail}`)
   })
 })

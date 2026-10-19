@@ -88,6 +88,15 @@ jobs:
           node-version: 22
       - name: Install the locked dependencies
         run: npm ci
+      # Go resolves the module by this path and by the go/<version> tag the release makes
+      # (docs/releasing.md): a path that drifts from the repository's breaks every importer.
+      - name: The module path is the repository's
+        run: |
+          set -eu
+          path="$(awk '$1 == "module" { print $2 }' go/go.mod)"
+          if [ "${path}" != "github.com/Judgment-Pack/judgment-pack-agent/go" ]; then
+            echo "go/go.mod declares module '${path}'; it must be github.com/Judgment-Pack/judgment-pack-agent/go"; exit 1
+          fi
       - name: gofmt
         run: |
           set -eu
