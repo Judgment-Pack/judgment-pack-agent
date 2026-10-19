@@ -31,6 +31,8 @@ export interface LedgerStore {
  add(entry:Entry):void
  /** One entry by id, as this run reads it. */
  use(id:string):Entry|undefined
+ /** An entry held under the id of content this run is retaining itself, where `use` does not show it (a delegated child's turn, agent#15). */
+ adopt?(id:string):Entry|undefined
  /** The entries a checkpoint of this run carries. */
  held():Entry[]
  /** Why an id is not held, where the store knows. */
@@ -75,7 +77,7 @@ export class ContextLedger {
   const value=snapshot(document.value),text=JSON.stringify(value),bytes=utf8Bytes(text)
   const digest=await contextDigest(text),id=this.scope+':'+document.id+':'+digest.slice(0,16)
   if(attachment)this.attached.add(id)
-  const existing=this.store.use(id);if(existing)return existing
+  const existing=this.store.use(id)??this.store.adopt?.(id);if(existing)return existing
   this.store.room(bytes,this.policy.retainedBytes)
   const entry={...document,id,value,bytes,digest};this.store.add(entry);return entry
  }

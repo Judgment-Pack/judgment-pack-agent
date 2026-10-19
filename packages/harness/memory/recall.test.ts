@@ -29,7 +29,7 @@ import { ChatContext, INDEX_NOTICE } from '../context/chat'
 import { CONTEXT_DEFAULTS, contextPolicy, inputBytes, utf8Bytes } from '../context/policy'
 import { SessionContext } from '../context/session'
 import { FINISH_RESPONSE_INSTRUCTIONS } from '../completion'
-import { answer } from '../context/ledger'
+import { ContextLedger, answer } from '../context/ledger'
 import { runtimeAnswer, sseTurn, streamed, vercelTurn, type EndpointRequest } from '../testing/scripted'
 import type { AssistantEvent, AssistantSession, Engine, EngineSession, ModelCall } from '../engine'
 
@@ -239,25 +239,41 @@ describe('the memory reserve', () => {
     off.close()
   })
 
-  it('reaches a delegated child: the child works under its parent’s word on memory, and gets no chat context', async () => {
+  // agent#14 and agent#15 rewrote this case: the parent is one run, and a child is handed a view of
+  // the parent's chat that shows it its references alone, never the chat itself.
+  it('reaches a delegated child: the child works under its parent’s word on memory, and gets a view of the chat, not the chat', async () => {
     const { withDelegation } = await import('../delegation')
     const chat = new ChatContext()
+    // An earlier run of the chat kept one entry.
+    const earlier = chat.openTurn()
+    const kept = await new ContextLedger(CONTEXT_DEFAULTS, earlier).retain({ id: 'earlier-note', kind: 'history', label: 'An earlier run’s note', value: 'Private to the parent.' })
+    earlier.release()
     const sessions: EngineSession[] = []
     const engine: Engine = {
       id: 'vercel',
       async *start(started) {
         sessions.push(started)
-        if (sessions.length === 1) yield { type: 'delegation_requested', request: { tasks: [{ title: 'Check', profile: 'review', objective: 'Check the claims.', context: 'Supplied.' }] } }
-        else yield { type: 'message', text: 'Checked.' }
+        const delegate = started.hostTools.find((tool) => tool.name === 'delegate_tasks')
+        if (delegate) await delegate.execute({ tasks: [{ title: 'Check', profile: 'review', objective: 'Check the claims.' }] }, started.signal)
+        yield { type: 'message', text: 'Checked.' }
         yield { type: 'end' }
       }
     }
     const parent = { ...session(false), allowConversation: true, interactive: true, adversarialReview: false, context: { memory: false, chat } }
     for await (const event of withDelegation(engine).start(parent)) void event
-    expect(sessions).toHaveLength(3)
-    // The child: memory as the parent said, no chat context. The parent's continuation: both.
+    expect(sessions).toHaveLength(2)
+    // The parent: memory as the host said, and the chat. The child: memory as the parent said, and a view of the chat.
+    expect(sessions[0]!.context).toMatchObject({ memory: false, chat })
     expect(sessions[1]!.context).toMatchObject({ memory: false })
-    expect(sessions[1]!.context?.chat).toBeUndefined()
-    expect(sessions[2]!.context).toMatchObject({ memory: false, chat })
+    expect(sessions[1]!.context?.chat).toBeDefined()
+    expect(sessions[1]!.context?.chat).not.toBe(chat)
+    // The view opens a turn that sees nothing it was not given, and makes no index; the chat still holds it.
+    const view = sessions[1]!.context!.chat!.openTurn()
+    expect([...view.entries.keys()]).toEqual([])
+    expect(view.use(kept.id)).toBeUndefined()
+    expect(view.missing(kept.id)).toContain('not among this task’s references')
+    expect(view.index(CONTEXT_DEFAULTS, 'marker')).toBe('')
+    view.release()
+    expect(chat.entries.has(kept.id)).toBe(true)
   })
 })

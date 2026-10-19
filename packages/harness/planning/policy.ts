@@ -1,7 +1,14 @@
 import {toolInputFailure} from '../failures'
+import {ASSISTANT_TOOLS} from '../host'
+import {REHEARSAL_TOOL,TEST_TOOL} from '../toolGate'
 import type {EngineSession,HostTool} from '../engine'
-// Closed runtime vocabulary. Future capabilities require an explicit review.
-const reads=new Set(['get_schema','list_examples','get_example','validate','get_artifact_version_options','get_dialect_contract','get_dialect_schema','get_dialect_reference','dialect_validate','dialect_check','dialect_canonicalize','dialect_digest'])
+/**
+ * The Runtime tools Plan mode admits (agent#13): the gate's ceiling less the two that run a pack, an
+ * evaluation (held to rehearsal) and a test run, which Plan's rule withholds. Derived from the
+ * ceiling, so Plan names nothing the gate never serves. Future capabilities require an explicit review.
+ */
+export const PLAN_RUNTIME_READS:readonly string[]=ASSISTANT_TOOLS.filter(name=>name!==REHEARSAL_TOOL&&name!==TEST_TOOL)
+const reads=new Set(PLAN_RUNTIME_READS)
 export function planningTool(tool:HostTool):boolean {
  if(tool.effect)return tool.effect==='read'||tool.effect==='plan'
  return tool.interaction==='question'||tool.interaction==='delegation'||tool.delegation==='read'||tool.delegation==='research'

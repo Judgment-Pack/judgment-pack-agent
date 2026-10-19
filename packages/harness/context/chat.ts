@@ -29,6 +29,13 @@
  * - **Disposal.** `dispose()` clears everything the chat holds and refuses every later run. A host
  *   calls it when the chat is deleted or closed. Nothing is global: a run reaches only the chat
  *   context it was handed, so nothing retained in one chat is reachable from another.
+ * - **A delegated child's view** (agent#14, agent#15). The delegation coordinator hands a child
+ *   `childScope(visible)`: a turn on this chat that sees only the entries named in `visible` (the
+ *   references its parent gave it) and what the child itself retains or reads, and that shares the
+ *   chat's read cache, so an immutable read the parent made is served to the child without a call
+ *   and the child's reads are kept for the parent. Its first message carries no index: its brief
+ *   names its references. A finished child's context is kept under its task ids (`keepTask`), so a
+ *   later batch of the same chat can resume it.
  *
  * The chat context lives in memory, in the host's hands; the package writes it nowhere. A run's
  * checkpoint carries the entries that run retained or read, as it carried a run's whole ledger
@@ -89,6 +96,25 @@ const OLDER_RESULTS='list_context lists every entry this chat retains, the ones 
 /** What a read of an evicted entry is told. */
 export const EVICTED='This entry was evicted from the chat’s retained context to stay within its byte bound (retainedBytes). Call its tool again for the value.'
 
+/** What a run of a chat is handed as `context.chat`: the chat itself, or a delegated child's view of it. */
+export interface ChatScope {openTurn():ChatTurn}
+
+/**
+ * A finished delegated child's context, kept under its task ids (agent#14): its profile and title, its
+ * objectives and findings in order (a long finding as its head and the cursor into the whole), and
+ * the entries it may read: its references, and what its runs retained or read.
+ */
+export interface TaskThread {
+ profile:string
+ title:string
+ exchanges:{objective:string;result:string;more?:{readWith:'read_window';id:string;cursor:string;totalCharacters:number}}[]
+ visible:Set<string>
+}
+/** The most finished tasks a chat keeps to resume; the oldest goes first. */
+const KEPT_TASKS=64
+/** What a child's turn answers for an entry it was not given. */
+export const NOT_REFERENCED='This entry is not among this task’s references. Read the references in your brief, and what you read yourself.'
+
 /** One result a chat keeps: the row the index shows for it. */
 interface KeptResult {tool:string;arguments:string;entry:string;bytes:number;firstLine:string;turn:number}
 /** One kept result the chat evicted. */
@@ -110,6 +136,7 @@ export class ChatContext {
  private gone=new Set<string>()
  private turns=0
  private disposed=false
+ private tasks=new Map<string,TaskThread>()
  /** `scope`: for a test that needs fixed ids; a host leaves it out. */
  constructor(options:{scope?:string}={}){this.scope=options.scope??crypto.randomUUID()}
  /** Whether `dispose` has been called. */
@@ -122,12 +149,26 @@ export class ChatContext {
   */
  dispose(){this.clear();this.open.clear();this.disposed=true}
  /** One run's turn on this chat, open until the run ends. */
- openTurn():ChatTurn{
+ openTurn(visible?:Set<string>):ChatTurn{
   if(this.disposed)throw Error('This chat context was disposed. Start the run with a new ChatContext.')
-  const turn=new ChatTurn(this,++this.turns)
+  const turn=new ChatTurn(this,++this.turns,visible)
   this.open.add(turn)
   return turn
  }
+ /**
+  * A delegated child's view of this chat (agent#15): each run handed it opens a turn that sees only
+  * the entries in `visible` and what it retains or reads itself, which are added to `visible` as it
+  * goes, and shares the chat's read cache.
+  */
+ childScope(visible:Set<string>):ChatScope{return {openTurn:()=>this.openTurn(visible)}}
+ /** A finished child's context, kept under each of its task ids (agent#14); the oldest past KEPT_TASKS goes. */
+ keepTask(ids:readonly string[],thread:TaskThread){
+  this.live()
+  for(const id of ids){this.tasks.delete(id);this.tasks.set(id,thread)}
+  while(this.tasks.size>KEPT_TASKS)this.tasks.delete(this.tasks.keys().next().value!)
+ }
+ /** The kept context of a finished task of this chat, by any of its task ids. */
+ task(id:string):TaskThread|undefined{return this.tasks.get(id)}
  /** @internal Ends a run's turn: what it referenced may now be evicted. */
  close(turn:ChatTurn){this.open.delete(turn)}
  /** @internal Room for `bytes` more within `bound`, evicting what no open turn references, the oldest first. */
@@ -141,13 +182,13 @@ export class ChatContext {
   for(const {id} of order){if(this.size+bytes<=bound)break;this.evict(id)}
  }
  /** @internal */
- add(entry:Entry,turn:ChatTurn){this.live();this.entries.set(entry.id,entry);this.size+=entry.bytes;this.touch(entry.id,turn)}
+ add(entry:Entry,turn:ChatTurn){this.live();if(!this.entries.has(entry.id)){this.entries.set(entry.id,entry);this.size+=entry.bytes}this.touch(entry.id,turn)}
  /** @internal An entry referenced by a turn: it is that turn's age now. */
  touch(id:string,turn:ChatTurn){this.ages.set(id,turn.number);turn.referenced.add(id)}
  /** @internal */
  wasEvicted(id:string){return this.gone.has(id)}
  /** @internal Everything this chat holds, gone; its scope stays. */
- clear(){this.entries.clear();this.size=0;this.ages.clear();this.results.clear();this.cache.clear();this.evicted=[];this.gone.clear()}
+ clear(){this.entries.clear();this.size=0;this.ages.clear();this.results.clear();this.cache.clear();this.evicted=[];this.gone.clear();this.tasks.clear()}
  /** @internal */
  record(row:KeptResult,key?:string){this.results.set(row.tool+'\n'+row.arguments,row);if(key!==undefined)this.cache.set(key,row.entry)}
  /** @internal The entry a read cache key names, where it is still held. */
@@ -166,28 +207,38 @@ export class ChatContext {
  private live(){if(this.disposed)throw Error('This chat context was disposed.')}
 }
 
-/** One run's view of its chat: the ledger store its `ContextLedger` reads and writes, and the chat's read cache. */
+/**
+ * One run's view of its chat: the ledger store its `ContextLedger` reads and writes, and the chat's
+ * read cache. A delegated child's turn (`visible`, agent#15) sees only the entries named there and
+ * adds to them what it retains, reads from the cache or adopts.
+ */
 export class ChatTurn implements LedgerStore {
  /** What this run retained or read: kept from eviction while the run is open. */
  readonly referenced=new Set<string>()
- constructor(private readonly context:ChatContext,readonly number:number){}
+ constructor(private readonly context:ChatContext,readonly number:number,private readonly visible?:Set<string>){}
  get chat(){return this}
  get scope(){return this.context.scope}
- get entries():ReadonlyMap<string,Entry>{return this.context.entries}
+ get entries():ReadonlyMap<string,Entry>{const all=this.context.entries,visible=this.visible;return visible?new Map([...all].filter(([id])=>visible.has(id))):all}
  get size(){return this.context.size}
  room(bytes:number,bound:number){this.context.room(bytes,bound)}
- add(entry:Entry){this.context.add(entry,this)}
- use(id:string):Entry|undefined{const entry=this.context.entries.get(id);if(entry)this.context.touch(id,this);return entry}
+ add(entry:Entry){this.context.add(entry,this);this.visible?.add(entry.id)}
+ use(id:string):Entry|undefined{if(this.visible&&!this.visible.has(id))return undefined;const entry=this.context.entries.get(id);if(entry)this.context.touch(id,this);return entry}
+ /**
+  * An entry the chat holds that this run retained itself with the same content: a child's turn is
+  * given it. Never a way to read an entry by id: the caller produced the bytes.
+  */
+ adopt(id:string):Entry|undefined{if(!this.visible)return this.use(id);if(!this.context.entries.has(id))return undefined;this.visible.add(id);return this.use(id)}
  /** What this run's checkpoint carries: the entries it retained or read that the chat still holds. */
  held():Entry[]{return [...this.referenced].flatMap(id=>{const entry=this.context.entries.get(id);return entry?[entry]:[]})}
- missing(id:string){return this.context.wasEvicted(id)?EVICTED:undefined}
- /** Clears the chat's whole ledger. A run's end calls `release`, not this. */
- clear(){this.context.clear()}
+ missing(id:string){return this.visible&&!this.visible.has(id)?NOT_REFERENCED:this.context.wasEvicted(id)?EVICTED:undefined}
+ /** Clears the chat's whole ledger; a child's turn clears nothing. A run's end calls `release`, not this. */
+ clear(){if(!this.visible)this.context.clear()}
  /** The run ended: its turn closes and what it referenced may be evicted. The chat keeps it all. */
  release(){this.context.close(this)}
- /** An immutable read's result, served from the chat's read cache, or undefined. */
+ /** An immutable read's result, served from the chat's read cache, or undefined. A child's turn is given the entry it was served. */
  cached(key:string):McpToolResult|undefined{
   const id=this.context.cachedEntry(key)
+  if(id!==undefined)this.visible?.add(id)
   const entry=id===undefined?undefined:this.use(id)
   return entry===undefined?undefined:structuredClone(entry.value) as McpToolResult
  }
@@ -211,6 +262,8 @@ export class ChatTurn implements LedgerStore {
   * `turnIndexBytes`. Empty where earlier turns kept nothing and nothing was evicted.
   */
  index(policy:Pick<ContextPolicy,'turnIndexEntries'|'turnIndexBytes'>,marker:string):string{
+  // A child's brief names its references; the chat's index is its parent's.
+  if(this.visible)return ''
   const rows=this.context.earlier(this.number),evicted=this.context.takeEvicted()
   if(!rows.length&&!evicted.length)return ''
   const newest=<T>(list:T[])=>list.slice(Math.max(0,list.length-policy.turnIndexEntries))

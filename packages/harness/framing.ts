@@ -28,7 +28,8 @@
  * What is framed is a reading tool's own answer: every runtime tool (each is a
  * read), and a host tool whose declared effect is `read` (the ledger's
  * `read_window` and `read_context` among them) or, declaring none, is offered to
- * children as a read (`readingTool`). A failure the harness authored
+ * children as a read, or is the delegation tool, whose answer carries the
+ * children's findings (agent#14) (`readingTool`). A failure the harness authored
  * (a refused or timed-out call, a cap) is guidance for the model and is not
  * framed; nor is an acknowledgement the engine writes (`propose_pack`'s).
  */
@@ -87,10 +88,11 @@ export function unframeData(text: string, marker: string): string | undefined {
 
 /**
  * Whether a tool's answer is retrieved text: every runtime tool (host absent),
- * and a host tool the host declared a read.
+ * a host tool the host declared a read, and the delegation tool, whose answer is
+ * text its children wrote from what they read (agent#14).
  */
-export function readingTool(host?: Pick<HostTool, 'effect' | 'delegation'>): boolean {
+export function readingTool(host?: Pick<HostTool, 'effect' | 'delegation' | 'interaction'>): boolean {
   if (host === undefined) return true
   if (host.effect !== undefined) return host.effect === 'read'
-  return host.delegation === 'read' || host.delegation === 'research'
+  return host.delegation === 'read' || host.delegation === 'research' || host.interaction === 'delegation'
 }

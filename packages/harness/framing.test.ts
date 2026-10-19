@@ -95,11 +95,14 @@ describe('one block', () => {
     for (const marker of drawn) expect(marker).toMatch(/^[0-9a-f]{32}$/)
   })
 
-  it('counts every runtime tool and a host tool declared a read as reading tools, and nothing else', () => {
+  it('counts every runtime tool, a host tool declared a read and the delegation tool as reading tools, and nothing else', () => {
     expect(readingTool()).toBe(true)
     expect(readingTool({ effect: 'read' })).toBe(true)
     expect(readingTool({ delegation: 'research' })).toBe(true)
     expect(readingTool({ delegation: 'read' })).toBe(true)
+    // agent#14: the delegation tool's answer is its children's findings, so it is data too.
+    expect(readingTool({ interaction: 'delegation' })).toBe(true)
+    expect(readingTool({ interaction: 'question' })).toBe(false)
     for (const effect of ['proposal', 'workflow', 'memory', 'plan'] as const) {
       expect(readingTool({ effect, delegation: 'read' })).toBe(false)
     }

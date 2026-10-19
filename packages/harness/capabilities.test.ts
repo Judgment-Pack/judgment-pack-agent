@@ -59,6 +59,9 @@ describe('the record, read', () => {
     expect(refused({ toolSchemas: 'openapi' })).toThrow(/toolSchemas/)
     expect(refused({ statePlacement: 'leading-user' })).toThrow(/statePlacement/)
     expect(refused({ vision: 'yes' })).toThrow(/vision must be true or false/)
+    // agent#15: the child model is a model name, nothing else.
+    expect(readCapabilities({ ...base, childModel: 'a-smaller-model' }).childModel).toBe('a-smaller-model')
+    for (const childModel of ['', '   ', 'a\nmodel', 'm'.repeat(201), 7]) expect(refused({ childModel })).toThrow(/childModel/)
     expect(() => readCapabilities(null)).toThrow(/not an object/)
   })
 })

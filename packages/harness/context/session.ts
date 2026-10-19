@@ -12,7 +12,7 @@ import {READ_TOOL} from './reader'
 import {SEARCH_TOOL} from './search'
 import {capabilitiesFor,type ModelCapabilities} from '../capabilities'
 import {contextPolicy,inputBytes,utf8Bytes,prefix,ContextBudgetError,type ContextConfiguration} from './policy'
-import type {ChatContext,ChatTurn,RuntimeIdentity} from './chat'
+import type {ChatScope,ChatTurn,RuntimeIdentity} from './chat'
 export interface CurrentRequest {message:string;input:string}
 /** `currentState`: host-authored text that changes between requests or responses (the chat's
  * draft snapshot, the latest check). An adapter sends it after the history, at the end of every
@@ -26,8 +26,15 @@ export interface CurrentRequest {message:string;input:string}
  * run's requests (the project's memory setting). Only `false` frees the `memoryBytes` reserve:
  * absent, the reserve stays, so a server that adds memory never receives a request the harness
  * left no room for.
+ *
+ * `chat` is a `ChatContext`, or the view of one a delegated child is handed (`ChatContext.childScope`,
+ * agent#15). `link` (agent#14): set by the delegation coordinator on a run it starts, so it reaches
+ * that run's execution (the parent's request count, which its children's requests are charged to, and
+ * a child's own budget); a host leaves it out.
  */
-export interface ContextInput {currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatContext;runtime?:RuntimeIdentity;memory?:boolean}
+export interface ContextInput {currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatScope;runtime?:RuntimeIdentity;memory?:boolean;link?:ExecutionLink}
+/** How the delegation coordinator reaches a run it starts (agent#14): told the run's context once its execution is initialized, before its first request. */
+export interface ExecutionLink {attach(context:SessionContext):void}
 export interface ContextUsage {inputBytes:number;estimatedInputTokens:number;inputBudgetBytes:number;outputReserveTokens:number;compactions:number;retainedItems:number}
 const encoded=(value:unknown)=>JSON.stringify(value)
 export class SessionContext {
@@ -248,6 +255,7 @@ export async function contextualSession<T extends EngineSession>(session:T):Prom
  await context.execution.retainProgress()
  if(session.context?.plan)await context.initialize([{id:'current-plan',kind:'artifact',label:'Current chat plan',value:session.context.plan}])
  if([...session.tools,...session.hostTools].some(t=>t.name==='read_context'||t.name==='list_context'||t.name===READ_TOOL||t.name===SEARCH_TOOL||t.name==='update_plan'||t.name==='request_budget_increase'))throw Error('Context tool names are reserved by Desk.')
+ session.context?.link?.attach(context)
  }catch(error){context.close();throw error}
  // The session's own tools that read (agent#8): what a chat-scoped context keeps across its runs.
  const own=new Set(session.hostTools.filter(tool=>readingTool(tool)).map(tool=>tool.name))
