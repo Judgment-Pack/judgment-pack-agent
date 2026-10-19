@@ -1,0 +1,87 @@
+{
+  "$comment": "The Desk's own lists at the pinned commit, copied by hand from the named source and symbol, so the tests can hold the schemas to them. When the Desk changes one of these, copy it again here and the tests say which schema has to follow. catalog.json beside this file is a byte-for-byte copy of the Desk's internal/aifailure/catalog.json at the same commit.",
+  "desk": {
+    "repository": "Judgment-Pack/judgment-pack-desk",
+    "ref": "integration/v0.13",
+    "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+  },
+  "eventTypes": {
+    "source": "web/src/assistant/engine.ts, AssistantEvent",
+    "values": [
+      "execution_checkpoint",
+      "budget_paused",
+      "retry",
+      "response_recovery",
+      "delegation_requested",
+      "delegated_task",
+      "user_question",
+      "reasoning",
+      "message",
+      "message_progress",
+      "tool_call",
+      "tool_result",
+      "guardrail",
+      "thinking_unavailable",
+      "critique",
+      "proposal",
+      "error",
+      "end"
+    ]
+  },
+  "failureSources": {
+    "source": "web/src/assistant/failures.ts, FailureSource",
+    "values": [
+      "model",
+      "agent",
+      "tool",
+      "context",
+      "storage",
+      "desk"
+    ]
+  },
+  "failureOutcomes": {
+    "source": "web/src/assistant/failures.ts, AIFailure.outcome",
+    "values": [
+      "not-started",
+      "refused",
+      "unknown"
+    ]
+  },
+  "completionReasons": {
+    "source": "web/src/assistant/completion.ts, COMPLETION_REASONS",
+    "values": [
+      "stop",
+      "length",
+      "content-filter",
+      "tool-calls",
+      "error",
+      "other"
+    ]
+  },
+  "engines": {
+    "source": "web/src/config/deskConfig.ts, ASSISTANT_ENGINES",
+    "values": [
+      "vercel",
+      "codex"
+    ]
+  },
+  "runtimeToolCeiling": {
+    "source": "web/src/config/deskConfig.ts, ASSISTANT_TOOLS",
+    "values": [
+      "get_schema",
+      "list_examples",
+      "get_example",
+      "validate",
+      "experimental_evaluate"
+    ]
+  },
+  "approvalActions": {
+    "source": "internal/desk/assistant_approval.go, assistantActionAdapters",
+    "values": [
+      "policy-update",
+      "pack-update",
+      "portable-research",
+      "dialect-publish"
+    ]
+  }
+}

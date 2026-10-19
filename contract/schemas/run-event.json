@@ -1,0 +1,428 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-event.json",
+  "title": "Run event",
+  "description": "One event of a run, from the adapter to the host, in order, discriminated by type. Every kind of the Desk's AssistantEvent union (web/src/assistant/engine.ts) at the pinned commit, with its members spelled as the Desk spells them. A run ends with exactly one end and nothing follows it; a run the consumer left gets no end. Some events are the host's own, interleaved into the same stream rather than emitted by a loop: the tool gate's guardrail rewrote and refused, the shared context boundary's execution_checkpoint and budget_paused (which also replaces a loop's own budget_paused or request-limit error), and the delegation coordinator's delegated_task. Open: the stream is an in-process TypeScript union with no reader at run time that refuses another member; the type member alone decides the kind.",
+  "type": "object",
+  "required": [
+    "type"
+  ],
+  "properties": {
+    "type": {
+      "enum": [
+        "execution_checkpoint",
+        "budget_paused",
+        "retry",
+        "response_recovery",
+        "delegation_requested",
+        "delegated_task",
+        "user_question",
+        "reasoning",
+        "message",
+        "message_progress",
+        "tool_call",
+        "tool_result",
+        "guardrail",
+        "thinking_unavailable",
+        "critique",
+        "proposal",
+        "error",
+        "end"
+      ]
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/execution_checkpoint"
+    },
+    {
+      "$ref": "#/$defs/budget_paused"
+    },
+    {
+      "$ref": "#/$defs/retry"
+    },
+    {
+      "$ref": "#/$defs/response_recovery"
+    },
+    {
+      "$ref": "#/$defs/delegation_requested"
+    },
+    {
+      "$ref": "#/$defs/delegated_task"
+    },
+    {
+      "$ref": "#/$defs/user_question"
+    },
+    {
+      "$ref": "#/$defs/reasoning"
+    },
+    {
+      "$ref": "#/$defs/message"
+    },
+    {
+      "$ref": "#/$defs/message_progress"
+    },
+    {
+      "$ref": "tool-call.json"
+    },
+    {
+      "$ref": "tool-result.json"
+    },
+    {
+      "$ref": "#/$defs/guardrail"
+    },
+    {
+      "$ref": "#/$defs/thinking_unavailable"
+    },
+    {
+      "$ref": "#/$defs/critique"
+    },
+    {
+      "$ref": "#/$defs/proposal"
+    },
+    {
+      "$ref": "#/$defs/error"
+    },
+    {
+      "$ref": "#/$defs/end"
+    }
+  ],
+  "$defs": {
+    "execution_checkpoint": {
+      "description": "The execution's state, for the host to save: at the start of a tracked run, after each tool call, tool result and question, and at the end. durable true asks the host to save before the next operation (anything but a read); absent or false means the save may be lazy. Emitted by the shared context boundary (context/managed.ts) and by the delegation coordinator, only where the session carries a current request or a saved execution.",
+      "type": "object",
+      "required": [
+        "type",
+        "checkpoint"
+      ],
+      "properties": {
+        "type": {
+          "const": "execution_checkpoint"
+        },
+        "durable": {
+          "type": "boolean"
+        },
+        "checkpoint": {
+          "$ref": "checkpoint.json"
+        }
+      },
+      "additionalProperties": true
+    },
+    "budget_paused": {
+      "description": "Work paused at the request allowance: the allowance ran out, or the model asked for more with request_budget_increase. The checkpoint's status is paused; the run ends with end. Only the person's grant (a new checkpoint grant) continues it. An adapter's error with code request-limit is converted to this by the shared context boundary.",
+      "type": "object",
+      "required": [
+        "type",
+        "checkpoint"
+      ],
+      "properties": {
+        "type": {
+          "const": "budget_paused"
+        },
+        "checkpoint": {
+          "$ref": "checkpoint.json"
+        }
+      },
+      "additionalProperties": true
+    },
+    "retry": {
+      "description": "The provider is recovering within this turn, attempt n of at most two. Only the codex engine emits it, relaying the Codex bridge's recovery notices; the vercel engine makes no automatic retry and never emits it.",
+      "type": "object",
+      "required": [
+        "type",
+        "attempt"
+      ],
+      "properties": {
+        "type": {
+          "const": "retry"
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2
+        }
+      },
+      "additionalProperties": true
+    },
+    "response_recovery": {
+      "description": "The adapter is spending one tool-free request to finish a response cut short, or to stop repeated work. Only the vercel engine emits it.",
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "response_recovery"
+        }
+      },
+      "additionalProperties": true
+    },
+    "delegation_requested": {
+      "description": "The model called delegate_tasks. The adapter emits this instead of a tool_call, pauses, and returns no result of its own; the host's coordinator runs the batch and continues the parent.",
+      "type": "object",
+      "required": [
+        "type",
+        "request"
+      ],
+      "properties": {
+        "type": {
+          "const": "delegation_requested"
+        },
+        "request": {
+          "$ref": "delegated-task.json#/$defs/request"
+        }
+      },
+      "additionalProperties": true
+    },
+    "delegated_task": {
+      "description": "A child task's state, whole, at each transition. Emitted by the host's delegation coordinator.",
+      "type": "object",
+      "required": [
+        "type",
+        "task"
+      ],
+      "properties": {
+        "type": {
+          "const": "delegated_task"
+        },
+        "task": {
+          "$ref": "delegated-task.json"
+        }
+      },
+      "additionalProperties": true
+    },
+    "user_question": {
+      "description": "The model called ask_user. The adapter emits this instead of a tool_call, ends the turn and waits; the answer comes with the next run. id is fresh per question.",
+      "type": "object",
+      "required": [
+        "type",
+        "id",
+        "question"
+      ],
+      "properties": {
+        "type": {
+          "const": "user_question"
+        },
+        "id": {
+          "type": "string"
+        },
+        "question": {
+          "$ref": "question.json"
+        }
+      },
+      "additionalProperties": true
+    },
+    "reasoning": {
+      "description": "The model's reasoning, as the provider streams it: deltas with done false, then the whole passage once with done true. Shown to the person, never sent to the runtime. Only the vercel engine emits it.",
+      "type": "object",
+      "required": [
+        "type",
+        "text",
+        "done"
+      ],
+      "properties": {
+        "type": {
+          "const": "reasoning"
+        },
+        "text": {
+          "type": "string"
+        },
+        "done": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true
+    },
+    "message": {
+      "description": "The model's own prose to the person, outside the proposal fence, as it wrote it. Never written by the host; absent where the model wrote nothing but the fence.",
+      "type": "object",
+      "required": [
+        "type",
+        "text"
+      ],
+      "properties": {
+        "type": {
+          "const": "message"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "message_progress": {
+      "description": "The prose so far of the answer being written, whole each time (not a delta), with any proposal fence hidden; an empty text clears it. Only on an interactive session.",
+      "type": "object",
+      "required": [
+        "type",
+        "text"
+      ],
+      "properties": {
+        "type": {
+          "const": "message_progress"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "guardrail": {
+      "description": "The host saying what it did. rewrote and refused are the tool gate's, emitted by the host as the call's frame leaves the page, so they arrive between that call's tool_call and tool_result. narrowed is the adapter's notice, before the model is asked anything, that a tool's served schema lost a keyword on this family's wire. Also refused, with tool proposal, where the host withholds a proposal (Plan mode, or a conversation without artifact proposals).",
+      "type": "object",
+      "required": [
+        "type",
+        "tool",
+        "action",
+        "detail"
+      ],
+      "properties": {
+        "type": {
+          "const": "guardrail"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "action": {
+          "enum": [
+            "rewrote",
+            "refused",
+            "narrowed"
+          ]
+        },
+        "detail": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "thinking_unavailable": {
+      "description": "The reasoning tier the host asked for could not be expressed on this endpoint, said once. Only the vercel engine emits it; the sentence is the host's thinking table's.",
+      "type": "object",
+      "required": [
+        "type",
+        "detail"
+      ],
+      "properties": {
+        "type": {
+          "const": "thinking_unavailable"
+        },
+        "detail": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "critique": {
+      "description": "The critic pass's report, before the proposal it reviewed: refuted is decided from the runtime's own check results and never from the critic's prose; checks lists each runtime check it ran with the runtime's status; text is the host's quote of them.",
+      "type": "object",
+      "required": [
+        "type",
+        "refuted",
+        "checks",
+        "text"
+      ],
+      "properties": {
+        "type": {
+          "const": "critique"
+        },
+        "refuted": {
+          "type": "boolean"
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "tool",
+              "status"
+            ],
+            "properties": {
+              "tool": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "proposal": {
+      "description": "The one document the run proposes, from exactly one fenced JSON block shaped {\"proposal\": {\"kind\": \"create\", \"document\": …, \"unknowns\": […]}} and never from the prose around it. critique is present only where a critic ran and reached at least one check. Accept and Reject are the host's actions, not the adapter's.",
+      "type": "object",
+      "required": [
+        "type",
+        "document",
+        "unknowns"
+      ],
+      "properties": {
+        "type": {
+          "const": "proposal"
+        },
+        "document": {
+          "description": "A JSON object.",
+          "type": "object"
+        },
+        "unknowns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "critique": {
+          "type": "object",
+          "required": [
+            "refuted"
+          ],
+          "properties": {
+            "refuted": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "error": {
+      "description": "The run failed. message is the catalogue's sentence for the class, or the failure's host-authored detail; failure is the classified failure. A failed tool is not an error event (tool_result with isError), and a cancelled run emits none.",
+      "type": "object",
+      "required": [
+        "type",
+        "message"
+      ],
+      "properties": {
+        "type": {
+          "const": "error"
+        },
+        "message": {
+          "type": "string"
+        },
+        "failure": {
+          "$ref": "failure.json"
+        }
+      },
+      "additionalProperties": true
+    },
+    "end": {
+      "description": "The run is over. Exactly once, last.",
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "end"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

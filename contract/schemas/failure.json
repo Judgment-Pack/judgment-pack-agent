@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/failure.json",
+  "title": "Failure",
+  "description": "One failure, provider-independent: the catalogue class, which side it came from, and whether the request was refused before anything was delivered. Read from the Desk's AIFailure (web/src/assistant/failures.ts, readFailure) and aifailure.Failure (internal/aifailure/failure.go). Open: readFailure accepts a member it does not name and drops it, and the Go reader ignores it. The message and recovery a person sees are the catalogue's (contract/desk/catalog.json), never provider prose; detail is host-authored only.",
+  "type": "object",
+  "required": [
+    "version",
+    "code",
+    "source",
+    "outcome"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "code": {
+      "$ref": "#/$defs/code"
+    },
+    "source": {
+      "$ref": "#/$defs/source"
+    },
+    "outcome": {
+      "$ref": "#/$defs/outcome"
+    },
+    "status": {
+      "description": "The HTTP status the failure was classified from, where there was one.",
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 599
+    },
+    "requestId": {
+      "description": "The provider's request-id or x-request-id header, where it matched this pattern.",
+      "type": "string",
+      "pattern": "^[-a-zA-Z0-9_]{1,128}$"
+    },
+    "retryAt": {
+      "description": "When a retry-after header allows another attempt: an absolute time, at most 24 hours ahead. The reader accepts any string of at most 64 characters that Date.parse reads; the Desk writes ISO 8601.",
+      "type": "string",
+      "maxLength": 64
+    },
+    "detail": {
+      "description": "A host-authored sentence that replaces the catalogue message (authoredFailure). Never provider prose, bodies, URLs, headers or stacks.",
+      "type": "string",
+      "maxLength": 1000
+    },
+    "completion": {
+      "$ref": "provenance.json#/$defs/completion"
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "code": {
+      "description": "The catalogue's classes, the keys of failures in contract/desk/catalog.json, spelled as the Desk spells them.",
+      "enum": [
+        "cancelled",
+        "request-limit",
+        "provider-limit",
+        "context-limit",
+        "authentication",
+        "permission",
+        "configuration",
+        "busy",
+        "rate-limited",
+        "unavailable",
+        "connection-lost",
+        "timeout",
+        "invalid-request",
+        "invalid-response",
+        "storage",
+        "stale-state",
+        "tool-failed",
+        "unknown",
+        "retries-exhausted",
+        "invalid-tool-input",
+        "output-limit",
+        "content-filter",
+        "repeated-work"
+      ]
+    },
+    "source": {
+      "description": "Which side the failure came from (FailureSource).",
+      "enum": [
+        "model",
+        "agent",
+        "tool",
+        "context",
+        "storage",
+        "desk"
+      ]
+    },
+    "outcome": {
+      "description": "not-started: positively refused at admission, nothing ran (the only outcome an automatic retry may act on, and only with code busy: canRetryAdmission). refused: a 4xx other than 408, the request was refused. unknown: anything else, including every 5xx and timeout; replay safety is never inferred.",
+      "enum": [
+        "not-started",
+        "refused",
+        "unknown"
+      ]
+    },
+    "recovery": {
+      "description": "The recovery a catalogue entry names for the person.",
+      "enum": [
+        "none",
+        "increase",
+        "review",
+        "narrow",
+        "configure",
+        "wait",
+        "retry",
+        "storage",
+        "reload"
+      ]
+    },
+    "catalogueEntry": {
+      "description": "One entry of the catalogue's failures map.",
+      "type": "object",
+      "required": [
+        "message",
+        "recovery"
+      ],
+      "properties": {
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recovery": {
+          "$ref": "#/$defs/recovery"
+        }
+      },
+      "additionalProperties": true
+    },
+    "toolFailureContent": {
+      "description": "The structuredContent of a tool result that failed (toolFailureResult): the failure itself, so a failed tool is recoverable working data rather than a failed turn.",
+      "type": "object",
+      "required": [
+        "failure"
+      ],
+      "properties": {
+        "failure": {
+          "$ref": "#"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

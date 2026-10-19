@@ -1,0 +1,31 @@
+{
+  "description": "The subscription agent needs a ChatGPT sign-in: the server ends the run with error sign-in-required and this failure.",
+  "schema": "run-event.json",
+  "failureClass": "authentication",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "internal/desk/ai_failure.go (aiAgentFailure: ErrSignIn)",
+      "internal/desk/agent_run.go (the terminal frame)"
+    ]
+  },
+  "items": [
+    {
+      "type": "error",
+      "message": "The AI connection needs authentication. Check its credentials or sign in again.",
+      "failure": {
+        "version": 1,
+        "code": "authentication",
+        "source": "agent",
+        "outcome": "not-started"
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

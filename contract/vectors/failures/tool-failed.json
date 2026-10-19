@@ -1,0 +1,32 @@
+{
+  "description": "A tool call that threw with nothing the catalogue classifies (a JSON-RPC error from the runtime, say) is a failed result, recoverable working data for the model, not a failed run: no error event.",
+  "schema": "run-event.json",
+  "failureClass": "tool-failed",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "web/src/assistant/failures.ts (toolFailureResult)",
+      "web/src/assistant/engines/vercel/loop.ts (the runtime tool path)"
+    ]
+  },
+  "items": [
+    {
+      "type": "tool_result",
+      "name": "validate",
+      "isError": true,
+      "text": "The tool could not complete this operation. Check its result before repeating it.",
+      "structured": {
+        "failure": {
+          "version": 1,
+          "code": "tool-failed",
+          "source": "tool",
+          "outcome": "unknown"
+        }
+      }
+    }
+  ]
+}

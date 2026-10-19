@@ -1,0 +1,34 @@
+{
+  "description": "The agent run passed its deadline. The Codex bridge bounds a run at ten minutes; the server then ends the run with error limit and this failure. The browser transport's twelve-minute deadline is a backstop behind the bridge's and reports the same failure. The vercel engine has no whole-run deadline: the relay bounds each request at ten minutes and two minutes idle.",
+  "schema": "run-event.json",
+  "failureClass": "timeout",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "internal/codexbridge/run.go (Run: the ten-minute context)",
+      "internal/desk/agent_run.go (the terminal frame: limit)",
+      "internal/desk/ai_failure.go (aiAgentFailure: DeadlineExceeded)",
+      "web/src/assistant/agentTransport.ts (deadline)",
+      "internal/desk/modelrelay.go (relayDeadline, relayIdle)"
+    ]
+  },
+  "items": [
+    {
+      "type": "error",
+      "message": "The AI request timed out. Its outcome may be uncertain; review completed work before continuing.",
+      "failure": {
+        "version": 1,
+        "code": "timeout",
+        "source": "agent",
+        "outcome": "unknown"
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

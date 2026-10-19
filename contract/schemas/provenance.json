@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/provenance.json",
+  "title": "Provenance",
+  "description": "What the Desk records today about where a model answer came from: one row per model request, with the provider-neutral completion (finish reason and token counts) and the phase it served. Read from ExecutionCheckpoint.completions (web/src/assistant/execution/state.ts) and ModelCompletion (web/src/assistant/completion.ts, readCompletion; Go aifailure.Completion). Open: readCompletion and readExecution accept members they do not name. This is all the Desk records per request: there is no model name, adapter or contract version, prompt digest or timing in any record that crosses the slot (see docs/design/wire-contract.md, Open questions).",
+  "type": "object",
+  "required": [
+    "request",
+    "phase",
+    "result"
+  ],
+  "properties": {
+    "request": {
+      "description": "Which model request of the execution this was, counted from 1; at most the checkpoint's used count.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "phase": {
+      "description": "work: the main loop. synthesis: the one tool-free request that finishes a response cut short. review: the critic.",
+      "enum": [
+        "work",
+        "synthesis",
+        "review"
+      ]
+    },
+    "result": {
+      "$ref": "#/$defs/completion"
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "completion": {
+      "description": "Provider-neutral completion metadata (ModelCompletion). Never raw provider text or reasoning. Open: readCompletion keeps only these members and drops any other.",
+      "type": "object",
+      "required": [
+        "finishReason"
+      ],
+      "properties": {
+        "finishReason": {
+          "description": "COMPLETION_REASONS. A reason outside the list is recorded as other.",
+          "enum": [
+            "stop",
+            "length",
+            "content-filter",
+            "tool-calls",
+            "error",
+            "other"
+          ]
+        },
+        "inputTokens": {
+          "$ref": "#/$defs/tokens"
+        },
+        "outputTokens": {
+          "$ref": "#/$defs/tokens"
+        },
+        "reasoningTokens": {
+          "$ref": "#/$defs/tokens"
+        }
+      },
+      "additionalProperties": true
+    },
+    "tokens": {
+      "description": "A count the provider reported; a safe integer, never negative. Absent where the provider reported none.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "sha256": {
+      "description": "A lower-case hex SHA-256 digest, as the Desk writes requestKey, retained-entry digests and the project brief's header.",
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "requestKey": {
+      "description": "The SHA-256 of the JSON text {\"request\":…,\"phase\":…,\"purpose\":…} for the person's current request (ExecutionController.initialize). It binds a checkpoint to the request it was made for; it is not a digest of the prompt sent to the model.",
+      "$ref": "#/$defs/sha256"
+    },
+    "engine": {
+      "description": "The engine id a session ran on (Engine.id, the AssistantEngine identifier). Held by the host, never carried on an event.",
+      "enum": [
+        "vercel",
+        "codex"
+      ]
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "description": "The endpoint answered 429 through the relay; the vercel engine reports it after one request, with no retry. requestId and retryAt are added where the provider's headers carry them.",
+  "schema": "run-event.json",
+  "failureClass": "rate-limited",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "web/src/assistant/failures.ts (normalizeFailure: status 429)",
+      "web/src/assistant/engines/vercel/loop.ts (maxRetries: 0; open: failureEvent(cause,'model'))"
+    ]
+  },
+  "items": [
+    {
+      "type": "error",
+      "message": "The AI provider is limiting requests. Wait before trying again.",
+      "failure": {
+        "version": 1,
+        "code": "rate-limited",
+        "source": "model",
+        "outcome": "refused",
+        "status": 429
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

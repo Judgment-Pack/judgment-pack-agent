@@ -1,0 +1,32 @@
+{
+  "description": "The provider account is busy and admitted nothing. The only class and outcome an automatic retry may act on (canRetryAdmission), and only the delegation coordinator does: every agent run under it, the parent's included, three attempts in all, within the five agent runs it admits, shared by the parent and its children.",
+  "schema": "run-event.json",
+  "failureClass": "busy",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "internal/desk/ai_failure.go (aiAgentFailure: ErrBusy)",
+      "web/src/assistant/failures.ts (canRetryAdmission)",
+      "web/src/assistant/delegation.ts (withDelegation: bind, the agent run)"
+    ]
+  },
+  "items": [
+    {
+      "type": "error",
+      "message": "The AI connection is busy. No new operation was admitted.",
+      "failure": {
+        "version": 1,
+        "code": "busy",
+        "source": "agent",
+        "outcome": "not-started"
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

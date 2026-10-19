@@ -1,0 +1,31 @@
+{
+  "description": "The agent run failed for a reason the server does not classify: error run-failed.",
+  "schema": "run-event.json",
+  "failureClass": "unknown",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "internal/desk/agent_run.go (run-failed)",
+      "internal/desk/ai_failure.go (aiAgentFailure)"
+    ]
+  },
+  "items": [
+    {
+      "type": "error",
+      "message": "The response could not complete. Review completed work before continuing.",
+      "failure": {
+        "version": 1,
+        "code": "unknown",
+        "source": "agent",
+        "outcome": "unknown"
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

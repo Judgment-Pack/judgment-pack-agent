@@ -32,13 +32,19 @@ another runtime is a second process to ship, or a service.
 
 1. Extract the contract from the Desk's engine slot and the Go server's share of the prompt; decide
    which side assembles the prompt and record it here.
-2. The **Vercel AI SDK adapter**, from the existing loop, moved onto the SDK's agent layer
-   (`ToolLoopAgent`, subagents as tools, policy approvals). It is the baseline the certification
-   suite already covers.
+2. The **Vercel AI SDK adapter**, in two parts.
+   (a) The existing loop extracted as it is, with the Codex engine as a second adapter of the same
+   package, certified by the suite, and swapped into the Desk in place of its in-tree assistant.
+   It is the baseline the certification suite already covers.
+   (b) After the swap, the loop moved onto the SDK's agent layer (`ToolLoopAgent`, subagents as
+   tools, policy approvals).
 3. The **Deep Agents adapter** (LangChain, JavaScript, MIT, browser entrypoint): the first real swap,
    and the one that brings file and search tools, subagents, compaction, skills and interrupts
    without building them.
 4. A **Go adapter** (Eino or ADK for Go) when the loop moves server-side.
+
+The first release is the swap-ready one: step 1 and step 2a, packaged and attested, with the Desk
+swapped onto it.
 
 ## Consequences
 

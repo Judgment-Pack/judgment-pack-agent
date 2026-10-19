@@ -1,0 +1,32 @@
+{
+  "description": "The server's final guard: the agent request with the project brief and recalled memory added is over the input budget, refused before dispatch, never clipped.",
+  "schema": "run-event.json",
+  "failureClass": "context-limit",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "internal/desk/ai_context.go (prepareAgentContext)",
+      "internal/aicontext/policy.go (Check)",
+      "internal/desk/agent_run.go (the terminal frame)"
+    ]
+  },
+  "items": [
+    {
+      "type": "error",
+      "message": "The current AI context exceeds its configured budget. Saved work is retained; reduce the current request or read smaller context sections.",
+      "failure": {
+        "version": 1,
+        "code": "context-limit",
+        "source": "context",
+        "outcome": "not-started"
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "description": "The agent socket closed, errored or sent a frame the browser refused before the run's end frame.",
+  "schema": "run-event.json",
+  "failureClass": "connection-lost",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "web/src/assistant/agentTransport.ts (failure)"
+    ]
+  },
+  "items": [
+    {
+      "type": "error",
+      "message": "The AI connection ended before completion. Review completed work before continuing.",
+      "failure": {
+        "version": 1,
+        "code": "connection-lost",
+        "source": "agent",
+        "outcome": "unknown"
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

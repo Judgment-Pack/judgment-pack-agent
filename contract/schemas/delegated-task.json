@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/delegated-task.json",
+  "title": "Delegated task",
+  "description": "The state of one child task of a delegation batch, carried whole on every delegated_task event (each transition is a fresh snapshot). Read from DelegatedTask (web/src/assistant/delegationContract.ts, validDelegatedTask). Open: validDelegatedTask accepts a member it does not name. The model asks for a batch with the host tool delegate_tasks; the adapter emits delegation_requested and pauses; the host's coordinator (web/src/assistant/delegation.ts, withDelegation) runs the children on the same engine and emits these events. Its shared limits are budget.json $defs/deskLimits (MAX_TOOLS, MAX_CHILD_MODELS, MAX_CHILD_TOOLS, CHILD_TIMEOUT, RESULT_LIMIT, and the agent-run cap and retry in that definition's description).",
+  "type": "object",
+  "required": [
+    "id",
+    "parentRunId",
+    "title",
+    "objective",
+    "profile",
+    "state",
+    "createdAt",
+    "modelRequests",
+    "toolCalls",
+    "attempts",
+    "steps"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "parentRunId": {
+      "$ref": "#/$defs/uuid"
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 80,
+      "pattern": "\\S"
+    },
+    "objective": {
+      "type": "string",
+      "maxLength": 2000,
+      "pattern": "\\S"
+    },
+    "profile": {
+      "type": "string",
+      "maxLength": 48,
+      "pattern": "\\S"
+    },
+    "state": {
+      "$ref": "#/$defs/state"
+    },
+    "createdAt": {
+      "$ref": "#/$defs/time"
+    },
+    "finishedAt": {
+      "$ref": "#/$defs/time"
+    },
+    "modelRequests": {
+      "description": "Model requests this child spent; at most six are admitted per child.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 20
+    },
+    "toolCalls": {
+      "description": "Tool calls this child made; at most six are admitted per child.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 20
+    },
+    "attempts": {
+      "description": "Agent-capability attempts; a second and third only after a busy, not-started admission refusal.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3
+    },
+    "steps": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "state"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "\\S"
+          },
+          "state": {
+            "$ref": "#/$defs/state"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "result": {
+      "description": "The child's findings: unverified working material for the parent.",
+      "type": "string",
+      "maxLength": 12000,
+      "pattern": "\\S"
+    },
+    "problem": {
+      "type": "string",
+      "maxLength": 1000,
+      "pattern": "\\S"
+    },
+    "failure": {
+      "$ref": "failure.json"
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[a-f0-9-]{36}$"
+    },
+    "time": {
+      "description": "An ISO 8601 time as toISOString writes it; the reader accepts at most 64 characters that Date.parse reads.",
+      "type": "string",
+      "maxLength": 64
+    },
+    "state": {
+      "enum": [
+        "queued",
+        "running",
+        "complete",
+        "failed",
+        "interrupted"
+      ]
+    },
+    "request": {
+      "description": "What the model asks for with delegate_tasks, carried on the delegation_requested event (DelegationRequest). Closed: readDelegationRequest refuses a member it does not name, here and in each task. One batch of one to three tasks per response.",
+      "type": "object",
+      "required": [
+        "tasks"
+      ],
+      "properties": {
+        "tasks": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/$defs/taskRequest"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "taskRequest": {
+      "type": "object",
+      "required": [
+        "title",
+        "objective",
+        "context",
+        "profile"
+      ],
+      "properties": {
+        "title": {
+          "type": "string",
+          "maxLength": 80,
+          "pattern": "\\S"
+        },
+        "objective": {
+          "type": "string",
+          "maxLength": 2000,
+          "pattern": "\\S"
+        },
+        "context": {
+          "description": "The only context the child receives; may be empty.",
+          "type": "string",
+          "maxLength": 16000
+        },
+        "profile": {
+          "description": "An offered profile's id; the Desk offers analyze, review and research.",
+          "type": "string",
+          "maxLength": 48,
+          "pattern": "\\S"
+        }
+      },
+      "additionalProperties": false
+    },
+    "profile": {
+      "description": "A task profile (TaskProfile): what a child is told and which host-tool capabilities it may use. A host tool reaches a child only where its own delegation member names a capability the profile lists.",
+      "type": "object",
+      "required": [
+        "id",
+        "description",
+        "instructions",
+        "capabilities"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "instructions": {
+          "type": "string"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "read",
+              "research"
+            ]
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

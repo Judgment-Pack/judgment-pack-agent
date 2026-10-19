@@ -1,0 +1,40 @@
+{
+  "description": "The Desk's interview question fixture, as ask_user carries it on a user_question event.",
+  "schema": "question.json",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "web/src/testing/question.ts (interviewQuestion)"
+    ]
+  },
+  "items": [
+    {
+      "title": "Buyer",
+      "question": "Who should we focus on as the first buyer?",
+      "selection": "single",
+      "options": [
+        {
+          "id": "operations",
+          "label": "Head of operations",
+          "description": "Owns recurring exception approvals."
+        },
+        {
+          "id": "risk",
+          "label": "Risk or compliance lead",
+          "description": "Owns oversight and decision records."
+        },
+        {
+          "id": "it",
+          "label": "IT or systems lead",
+          "description": "Owns systems and integrations."
+        }
+      ],
+      "recommendedOptionId": "operations",
+      "recommendation": "A starting hypothesis for recurring exception approvals."
+    }
+  ]
+}

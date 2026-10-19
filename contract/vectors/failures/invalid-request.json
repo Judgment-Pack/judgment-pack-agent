@@ -1,0 +1,32 @@
+{
+  "description": "The endpoint answered 400 to a request whose refusal was not about the reasoning tier (the one refusal the vercel engine re-attempts, and only before anything was delivered).",
+  "schema": "run-event.json",
+  "failureClass": "invalid-request",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "web/src/assistant/failures.ts (normalizeFailure: status 400 to 499)",
+      "web/src/assistant/engines/vercel/loop.ts (drive)"
+    ]
+  },
+  "items": [
+    {
+      "type": "error",
+      "message": "The AI request was rejected. Check the selected model and request settings before trying again.",
+      "failure": {
+        "version": 1,
+        "code": "invalid-request",
+        "source": "model",
+        "outcome": "refused",
+        "status": 400
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

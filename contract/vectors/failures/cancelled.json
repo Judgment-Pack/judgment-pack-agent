@@ -1,0 +1,17 @@
+{
+  "description": "Never an error event. A run stopped by the person or left by its consumer closes its stream: no error, and no end where the consumer left (RunCancelled and isCancelled; eventIterator; the vercel and codex catch paths skip a cancelled cause). The class appears only where a cancellation is classified after the fact.",
+  "schema": "run-event.json",
+  "failureClass": "cancelled",
+  "source": {
+    "desk": {
+      "repository": "Judgment-Pack/judgment-pack-desk",
+      "ref": "integration/v0.13",
+      "commit": "d9251ecc272b9ac4f182fdfe652af54a0b2ead23"
+    },
+    "files": [
+      "web/src/assistant/engines/contract.ts (RunCancelled, isCancelled, eventIterator)",
+      "web/src/assistant/failures.ts (normalizeFailure: AbortError and RunCancelled)"
+    ]
+  },
+  "items": []
+}
