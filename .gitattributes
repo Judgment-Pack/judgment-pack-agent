@@ -1,0 +1,5 @@
+# An entry's files are held to SHA-256 digests (manifest.json, entry.json), so no checkout may
+# convert a line ending in them. Fixtures are the Runner's recorded bytes and are never converted.
+entries/** -text
+manifest.json -text
+**/fixtures/** -text

@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Every JSON document under contract/ parses
+        run: |
+          set -eu
+          count=0
+          while IFS= read -r -d '' file; do
+            python3 -I -c 'import json,sys; json.load(open(sys.argv[1], encoding="utf-8"))' "$file"
+            count=$((count+1))
+          done < <(find contract -name '*.json' -print0)
+          echo "checked $count JSON documents"
+      - name: No machine-local paths in tracked text
+        run: |
+          set -eu
+          if git grep -nE '(^|[^A-Za-z0-9_])/(home|tmp)/[A-Za-z0-9_.-]+' -- ':!*.png' ':!*.jpg'; then
+            echo 'a machine-local path is in tracked text'; exit 1
+          fi
+      - name: Whitespace
+        run: git diff --check "$(git hash-object -t tree /dev/null)" HEAD
