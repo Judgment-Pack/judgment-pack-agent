@@ -16,6 +16,11 @@ name: Release
 # attestation (recorded in a public log when made), and the draft (visible to
 # those who can write to the repository).
 #
+# The Go module (go/, path github.com/Judgment-Pack/judgment-pack-agent/go) is
+# resolved by Go from a tag named go/<version>, not from the release tag. After
+# the release is published the last step makes that tag on the same commit.
+# The pattern below stays the release tag's alone, so a go/ tag starts no run.
+#
 # Every job works on the commit the run was started for, by digest. A tag is a
 # name and can be moved until its release is published, so the tag is compared
 # with that commit when the run begins, before the draft, and before publishing.
@@ -92,6 +97,21 @@ jobs:
         shell: bash
         run: |
           git merge-base --is-ancestor "${GITHUB_SHA}" refs/remotes/origin/main || { echo "Tagged commit ${GITHUB_SHA} is not on main" >&2; exit 1; }
+
+      # The Go module's tag, go/<version>, is made after publication. If one
+      # already exists (made by hand, or by an earlier run), it must name this
+      # release's commit: a go/ tag on any other commit is refused before
+      # anything is drafted, and is never moved.
+      - name: Require any existing go/ tag to name the release commit
+        shell: bash
+        run: |
+          go_tag="go/${RELEASE_TAG}"
+          named="$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" "refs/tags/${go_tag}" "refs/tags/${go_tag}^{}" \
+            | awk -v tag="refs/tags/${go_tag}" '$2 == tag { plain = $1 } $2 == tag "^{}" { peeled = $1 } END { print (peeled != "" ? peeled : plain) }')"
+          if [ -n "${named}" ] && [ "${named}" != "${GITHUB_SHA}" ]; then
+            echo "refs/tags/${go_tag} exists and names ${named}, not the release commit ${GITHUB_SHA}; a go/ tag must point at a v release commit (docs/releasing.md)" >&2
+            exit 1
+          fi
 
       - name: Require release notes
         shell: bash
@@ -378,3 +398,43 @@ jobs:
           fi
           echo "Published ${RELEASE_TAG} (release ${RELEASE_ID}):"
           echo "${published}"
+
+  # Go resolves a module in a subdirectory by the tag go/<version>. The release
+  # is published, so the tagged commit is final: this job makes that tag on the
+  # same commit, annotated, through the API with the workflow's token, and
+  # fails the run if it cannot. A tag that already exists at the same commit
+  # (docs/releasing.md: made by hand, or by a re-run) is left alone; one at any
+  # other commit fails the run. A tag made with the workflow's token starts no
+  # workflow, and the pattern at the top would not match it.
+  go-tag:
+    name: Tag the Go module
+    needs:
+      - publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Create go/<version> on the release commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          go_tag="go/${RELEASE_TAG}"
+          # Whatever the tag names now, by exact name; a failed lookup fails the step.
+          lookup() {
+            git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" "refs/tags/${go_tag}" "refs/tags/${go_tag}^{}" \
+              | awk -v tag="refs/tags/${go_tag}" '$2 == tag { plain = $1 } $2 == tag "^{}" { peeled = $1 } END { print (peeled != "" ? peeled : plain) }'
+          }
+          named="$(lookup)" || { echo "Could not read refs/tags/${go_tag}" >&2; exit 1; }
+          if [ -z "${named}" ]; then
+            object="$(gh api -X POST "repos/${GH_REPO}/git/tags" \
+              -f tag="${go_tag}" -f message="Go module ${go_tag}" -f object="${GITHUB_SHA}" -f type=commit --jq .sha)" \
+              || { echo "Could not create the tag object for ${go_tag}; tag it by hand (docs/releasing.md)" >&2; exit 1; }
+            gh api -X POST "repos/${GH_REPO}/git/refs" -f ref="refs/tags/${go_tag}" -f sha="${object}" --silent \
+              || { echo "Could not create refs/tags/${go_tag}; tag it by hand (docs/releasing.md)" >&2; exit 1; }
+            named="$(lookup)" || { echo "Could not read refs/tags/${go_tag} after creating it" >&2; exit 1; }
+          fi
+          [ "${named}" = "${GITHUB_SHA}" ] || { echo "refs/tags/${go_tag} names ${named:-nothing}, not the release commit ${GITHUB_SHA}" >&2; exit 1; }
+          echo "refs/tags/${go_tag} names ${GITHUB_SHA}"

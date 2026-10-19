@@ -511,6 +511,12 @@
         ]
       },
       {
+        "check": "runs no more children at once than the connection\u2019s answer says, with more tasks than the answer allows",
+        "go": [
+          "delegation capacity"
+        ]
+      },
+      {
         "check": "runs one delegated child at a time, whatever the connection\u2019s answer says",
         "reason": "An agent engine's check: the Go adapter is a model adapter, and the agent capability's half of delegation (a run that ends at delegation_requested, its children run one at a time) is not ported, so no Go run has an agent child to hold to one at a time."
       }

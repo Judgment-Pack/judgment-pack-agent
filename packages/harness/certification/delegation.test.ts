@@ -51,27 +51,83 @@ const session = {
   context: { connection: CONNECTION }
 }
 
+/**
+ * Concurrency counted without a clock (agent#54): the scripted model holds each child's first
+ * answer until `expected` children are in flight, then reads how many were. A child that never
+ * comes is a failure that says so, after `LIMIT_MS`, not a count that happened to fall short. With
+ * `settle` the barrier stays shut a little longer once it is full, so a child started past the bound
+ * has the time to arrive and be counted; that wait can only miss such a child, never invent one.
+ */
+const LIMIT_MS = 8_000
+function barrier(expected: number, settle = 0) {
+  let active = 0
+  let peak = 0
+  let held = 0
+  let atRelease: number | undefined
+  let failure: string | undefined
+  let open!: () => void
+  const opened = new Promise<void>((resolve) => (open = resolve))
+  const release = () => {
+    atRelease ??= active
+    open()
+  }
+  return {
+    /** A child's first model request: counted in, held, counted out once the answer is given. */
+    async hold<T>(answer: () => T): Promise<T> {
+      active++
+      held++
+      peak = Math.max(peak, active)
+      if (held >= expected && settle === 0) release()
+      else if (held === expected) setTimeout(release, settle)
+      const timer = setTimeout(() => {
+        failure ??= `only ${active} of the expected ${expected} children were in flight after ${LIMIT_MS} ms`
+        release()
+      }, LIMIT_MS)
+      await opened
+      clearTimeout(timer)
+      active--
+      return answer()
+    },
+    /** What the run showed: the children in flight when the barrier opened, the most at once, and why it did not fill. */
+    result: () => ({ inFlightAtRelease: atRelease, peak, failure })
+  }
+}
+
+const connectionOf = (concurrentRequests: number) => ({ connectionId: `${concurrentRequests}-at-once` })
+const answerFor = (concurrentRequests: number) =>
+  configureHarness({ modelsFor: (run) => (run.connection?.connectionId === connectionOf(concurrentRequests).connectionId ? { concurrentRequests } : {}) })
+
+async function runBatch(engineId: (typeof MODEL_ENGINES)[number], concurrentRequests: number, gate: ReturnType<typeof barrier>) {
+  answerFor(concurrentRequests)
+  const call = vi.fn(async (_suffix: string, request: { body: string }) => {
+    if (isChild(request.body)) return gate.hold(() => turn({ text: 'Checked.' }))
+    return request.body.includes('"role":"tool"') ? turn({ text: 'All three check.' }) : turn({ tool: { name: 'delegate_tasks', args: { tasks: TASKS } } })
+  })
+  const engine = await loadEngine(engineId)
+  return drain(
+    withDelegation(engine).start({
+      ...session,
+      context: { connection: connectionOf(concurrentRequests) },
+      signal: new AbortController().signal,
+      model: { family: 'openai-compatible', model: 'fixture', call },
+      thinking: normalize('off', 'openai-compatible')
+    } as EngineSession)
+  )
+}
+
 describe.each(MODEL_ENGINES)('engine %s · delegation', (engineId) => {
   it('runs as many children at once as the connection’s answer says', async () => {
-    answerForConnection()
-    let active = 0
-    let peak = 0
-    const call = vi.fn(async (_suffix: string, request: { body: string }) => {
-      if (isChild(request.body)) {
-        active++
-        peak = Math.max(peak, active)
-        await new Promise((resolve) => setTimeout(resolve, 30))
-        active--
-        return turn({ text: 'Checked.' })
-      }
-      return request.body.includes('"role":"tool"') ? turn({ text: 'All three check.' }) : turn({ tool: { name: 'delegate_tasks', args: { tasks: TASKS } } })
-    })
-    const engine = await loadEngine(engineId)
-    const events = await drain(
-      withDelegation(engine).start({ ...session, signal: new AbortController().signal, model: { family: 'openai-compatible', model: 'fixture', call }, thinking: normalize('off', 'openai-compatible') } as EngineSession)
-    )
+    const gate = barrier(3)
+    const events = await runBatch(engineId, 3, gate)
     expect(events.filter((event) => event.type === 'error')).toEqual([])
-    expect(peak).toBe(3)
+    expect(gate.result()).toEqual({ inFlightAtRelease: 3, peak: 3, failure: undefined })
+  })
+
+  it('runs no more children at once than the connection’s answer says, with more tasks than the answer allows', async () => {
+    const gate = barrier(2, 300)
+    const events = await runBatch(engineId, 2, gate)
+    expect(events.filter((event) => event.type === 'error')).toEqual([])
+    expect(gate.result()).toEqual({ inFlightAtRelease: 2, peak: 2, failure: undefined })
   })
 })
 

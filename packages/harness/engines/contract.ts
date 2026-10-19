@@ -618,7 +618,8 @@ export async function refusedUnoffered(callTool: CallTool, name: string, args: R
 }
 /** What the model is told of a call to a tool it was not offered, whoever refused it. */
 export function unofferedRefusal(refusal: string): string {
-  return `refused: ${refusal.replace(/\.+$/, '')}. This assistant proposes; it never writes a file and never calls a tool it was not offered.`
+  // One period ends the detail: its own when it has one (an ellipsis keeps all three), else added.
+  return `refused: ${refusal}${refusal.endsWith('.') ? '' : '.'} This assistant proposes; it never writes a file and never calls a tool it was not offered.`
 }
 
 /** A recovery action for old replies, never an automatic import of chat prose. */

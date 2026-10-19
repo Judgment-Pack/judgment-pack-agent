@@ -3056,6 +3056,18 @@
    "status": "caught",
    "origin": "review of #44",
    "note": "the critic's call of a tool outside its allow-list reaches the gate instead of the harness's own refusal"
+  },
+  {
+   "name": "a delegation batch ignores the connection's concurrency and starts every child at once",
+   "file": "delegation.ts",
+   "find": "const concurrency='agent' in session?1:Math.max(1,connectionAnswer().concurrentRequests??DEFAULT_CHILD_CONCURRENCY)",
+   "replace": "const concurrency='agent' in session?1:tasks.length",
+   "tests": [
+    "certification/delegation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#54",
+   "note": "caught by the barrier in certification/delegation.test.ts, which holds the first children until the bound's worth are in flight and counts any further child that arrives (three tasks against an answer of two); no clock decides it"
   }
  ]
 }

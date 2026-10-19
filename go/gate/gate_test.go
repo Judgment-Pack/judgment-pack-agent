@@ -212,12 +212,16 @@ func fiveServed(t *testing.T, granted []string, bounds Bounds) (*Gate, *[]string
 	return g, &calls, &events
 }
 
-// The sentence the model is told ends in one period, whether or not the detail it is given does
-// (unofferedRefusal in engines/contract.ts takes trailing periods off the detail first).
-func TestTheUnofferedRefusalEndsInOnePeriod(t *testing.T) {
-	const tail = ". This assistant proposes; it never writes a file and never calls a tool it was not offered."
-	for _, detail := range []string{"write_file is not offered", "write_file is not offered.", "write_file is not offered..."} {
-		if got := UnofferedRefusal(detail); got != "refused: write_file is not offered"+tail {
+// The sentence the model is told keeps the detail's own trailing period, an ellipsis included, and
+// adds one only where the detail has none (unofferedRefusal in engines/contract.ts, the same rule).
+func TestTheUnofferedRefusalKeepsAtMostOneTrailingPeriodOfItsOwn(t *testing.T) {
+	const tail = " This assistant proposes; it never writes a file and never calls a tool it was not offered."
+	for detail, want := range map[string]string{
+		"write_file is not offered":    "write_file is not offered.",
+		"write_file is not offered.":   "write_file is not offered.",
+		"write_file is not offered...": "write_file is not offered...",
+	} {
+		if got := UnofferedRefusal(detail); got != "refused: "+want+tail {
 			t.Errorf("%q told the model %q", detail, got)
 		}
 	}

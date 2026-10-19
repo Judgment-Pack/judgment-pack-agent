@@ -280,7 +280,10 @@ func failed(failure contract.Failure) Result {
 // UnofferedRefusal is what the model is told of a call to a tool it was not offered, whoever
 // refused it (unofferedRefusal in engines/contract.ts).
 func UnofferedRefusal(refusal string) string {
-	return "refused: " + strings.TrimRight(refusal, ".") + ". This assistant proposes; it never writes a file and never calls a tool it was not offered."
+	if !strings.HasSuffix(refusal, ".") {
+		refusal += "."
+	}
+	return "refused: " + refusal + " This assistant proposes; it never writes a file and never calls a tool it was not offered."
 }
 
 // TestCallCapDetail is the failure a test call past the turn's cap earns (testCallCapFailure in

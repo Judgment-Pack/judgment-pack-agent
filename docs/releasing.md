@@ -16,6 +16,9 @@ its component lock.
 - A build-provenance attestation whose subjects are both files, each by its own digest, signed by
   GitHub for this workflow at the tagged commit.
 - The notes a person wrote, from `docs/releases/<tag>.md`.
+- The Go module's tag, `go/<tag>`, on the same commit (see below). It is not an asset of the
+  release: Go resolves the module `github.com/Judgment-Pack/judgment-pack-agent/go` by that tag, and
+  by no other. The module's version equals the package's. See [`go/README.md`](../go/README.md).
 
 ## Once, before the first release
 
@@ -49,7 +52,9 @@ rule.
      version the package does not hold;
    - finalises `docs/releases/<tag>.md`: what the package is, what the release holds and what it
      does not, and what a host must review before it pins the new version. It is the text the
-     release page will carry. Remove the coordinator placeholder comment from it before tagging.
+     release page will carry. It names the Go module, `github.com/Judgment-Pack/judgment-pack-agent/go`,
+     and the tag `go/<tag>` that the workflow makes (a test holds every notes file from v0.3.0 on to
+     this). Remove the coordinator placeholder comment from it before tagging.
 2. Run the checks locally, as `ci.yml` does:
 
    ```sh
@@ -87,7 +92,8 @@ Every job works on the commit the run was started for, by its digest, not on the
 
 1. **Admits the tag.** It is in the grammar; it is an annotated tag; it names the commit the run was started for; that
    commit is on `main`; `docs/releases/<tag>.md` exists, is not empty and names the tag on its first line; and the `release`
-   environment has a reviewer rule.
+   environment has a reviewer rule. If a `go/<tag>` tag already exists it must name that same commit, or the
+   run is refused: a `go/` tag never points anywhere but at a `v` release commit.
 2. **Runs CI at that commit.** The release calls the commit's own
    [`ci.yml`](../.github/workflows/ci.yml): `contract`, `tests`, `harness`, `go` and `certify` for
    each adapter. A check `main` has gained since that commit is not run.
@@ -112,6 +118,13 @@ Every job works on the commit the run was started for, by its digest, not on the
    published release's asset digests through the API once more, and fails the step `Require the
    published release to hold what this run wrote`, printing both digest sets, if they differ from
    the run's files. A read that fails is a separate failure, "could not verify the published release", and also fails the step.
+
+8. **Tags the Go module.** Once the release is published, the `Tag the Go module` job creates the
+   annotated tag `go/<tag>` (for example `go/v0.4.0`) on the commit the run was started for, through
+   the API with the workflow's token (`contents: write`), and reads it back. A `go/` tag that already
+   names that commit is left as it is; one that names another commit fails the job, and nothing moves
+   it. The tag starts no workflow: the trigger at the top of `release.yml` matches `v` tags alone.
+   A failure here fails the run loudly, after the release is already published.
 
 An approval given more than thirty days after the run finds the run's files gone, and the job
 fails: release a new version.
@@ -152,7 +165,23 @@ What to do with a draft depends on which job failed:
 | Any job before `Attest and draft release` | none was made | re-run the failed jobs; where the package version did not match the tag, fix it on `main` and release a new version |
 | `Attest and draft release` | may exist, and may lack assets | read it, delete it by hand, then re-run the failed jobs. The job refuses to run while a release under the tag exists, draft or published, and refuses when it cannot find out |
 | `Publish release`, before publication | needs looking at: it may be as it was made, changed, incomplete or gone | read why the job failed, and look at the Releases page. **Keep** a draft that is as it was made, and re-run the failed jobs: that job only publishes the release id the run drafted. Do not publish a draft that was changed or is incomplete. Where the draft cannot be published, release a new version |
+| `Tag the Go module` | the release is published | the release is fine; only the module's tag is missing. Re-run the failed job, or tag by hand (below). If the job said the tag names another commit, do not move it: release a new version |
 | `Publish release`, at `Require the published release to hold what this run wrote` | published, holding files this run did not write, or not published after the call | someone who can write to the repository changed the release in the window above. Treat it as an incident: tell the maintainers, point no one at the release, and release a new version from a new tag. Do not re-run |
+
+### Tagging the Go module by hand
+
+If the `Tag the Go module` job cannot be re-run, make the tag on the release commit, annotated and
+signed as the release tag is, and push only that tag. It triggers no workflow.
+
+```sh
+git fetch origin --tags
+git tag -s go/<tag> -m "Go module go/<tag>" "$(git rev-parse '<tag>^{commit}')"
+git push origin go/<tag>
+```
+
+Then check that Go resolves it: `go list -m github.com/Judgment-Pack/judgment-pack-agent/go@<tag>`.
+`go/v0.3.0` was made this way. A `go/` tag is never moved or reused, and never made on a commit
+that is not a `v` release commit.
 
 Delete a draft with `gh release delete <tag> --repo Judgment-Pack/judgment-pack-agent`, which
 leaves the tag. A published release is never deleted to make room for another.

@@ -122,7 +122,7 @@ func TestTheDelegationScenario(t *testing.T) {
 	runScenarios(t, certification.Delegation(withDelegation))
 }
 
-// A batch runs as many children at once as the connection's answer says: one, and three.
+// A batch runs as many children at once as the connection's answer says: one, two and three.
 func TestTheDelegationCapacity(t *testing.T) {
-	runScenarios(t, certification.CapacityAt(withDelegation, 1), certification.CapacityAt(withDelegation, 3))
+	runScenarios(t, certification.CapacityAt(withDelegation, 1), certification.CapacityAt(withDelegation, 2), certification.CapacityAt(withDelegation, 3))
 }
