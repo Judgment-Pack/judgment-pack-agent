@@ -43,7 +43,7 @@ describe('shared scoped context',()=>{
   const projected=await c.result('save_records',original)
   expect(projected.isError).toBe(true)
   const ref=projected.structuredContent as {contextId:string}
-  expect(ref).toMatchObject({operationReturned:true,readWith:'read_context'})
+  expect(ref).toMatchObject({operationReturned:true,readWith:'read_window'})
   expect(c.ledger.read({id:ref.contextId,path:'/structuredContent/records/799'})).toMatchObject({value:original.structuredContent.records[799]})
   expect(original.structuredContent.records).toHaveLength(800)
  })

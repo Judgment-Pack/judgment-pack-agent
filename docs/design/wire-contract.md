@@ -72,9 +72,9 @@ tools arrive as declarations (`name`, `description`, `inputSchema`) with host-de
 model never supplies: `effect` (`read`, `proposal`, `workflow`, `memory`, `plan`), `interaction`
 (`question` or `delegation`, the two that pause the run), `delegation` (the read-only capability a
 child may use), `contextPolicy` (`immutable`, `reference`) and `presentation`. The boundary adds
-`list_context`, `read_context` and `read` to every session and, in a conversation, `update_plan`
-and `request_budget_increase`; an offered tool may not take those names. (`read`, the reader below,
-is this harness's, agent#1; the Desk takes it in its swap.)
+`list_context`, `read_context` and `read_window` to every session and, in a conversation,
+`update_plan` and `request_budget_increase`; an offered tool may not take those names.
+(`read_window`, the reader below, is this harness's, agent#1; the Desk takes it in its swap.)
 
 An adapter shows the model the schema the runtime serves or nothing: a tool served without one ends
 the session. The one exception is the Gemini family, shown the schema less a closed list of
@@ -104,17 +104,18 @@ The event is not bounded: the host sees the whole answer.
 What the model is shown is bounded. A result whose JSON text is at most `toolResultBytes` (12,000
 by default) reaches the model whole; a larger one is retained in the execution's context ledger and
 the model is shown a reference envelope: the item's `contextId`, `kind`, `label`, `bytes`,
-`sha256`, up to thirty `sections` (JSON pointers with their types), `readWith: "read_context"`,
-whether it is `historical`, and a 1,000-byte `preview`. The model reads it back in sections with
-`read_context` (`id`, optional `sha256`, `path`, literal `query`, `offset`, `limit` up to
-`readBytes`, 6,000 by default). Where the ledger itself is full (`retainedBytes`, 8 MiB), the model
+`sha256`, up to thirty `sections` (JSON pointers with their types), `readWith: "read_window"`,
+whether it is `historical`, and a 1,000-byte `preview`. The model reads it back with the reader
+the envelope names, `read_window` (below), or in sections with `read_context` (`id`, optional
+`sha256`, `path`, literal `query`, `offset`, `limit` up to `readBytes`, 6,000 by default). Where the
+ledger itself is full (`retainedBytes`, 8 MiB), the model
 is told the operation returned and its output could not be retained, and not to repeat it.
 
 A reading tool keeps under that bound by construction (agent#1): its window is `readWindowBytes`,
 the result limit less a 1,024-byte envelope, counted in the window's JSON-encoded text, so one read
 is one result and the reference path is left for results that still exceed it. The boundary's own
-reader, `read`, reads a retained item in such windows by line, or a paged document (an item whose
-`pages` are strings) by page: arguments `id`, `unit`, `offset` (from 0) and `limit`, or the
+reader, `read_window`, reads a retained item in such windows by line, or a paged document (an item
+whose `pages` are strings) by page: arguments `id`, `unit`, `offset` (from 0) and `limit`, or the
 `cursor` a previous read returned; a result with the `text` (lines separated by a newline, pages by
 a form feed), the units shown, the item's `total` and `more`, the cursor that reads on, or null. A
 host's own readers keep the same shape.
@@ -197,6 +198,33 @@ makes, never above a hundred. The model is told the counts in its execution guid
 for more with `request_budget_increase`, which never grants: with two or fewer requests left it
 pauses the run for the person.
 
+## The execution state
+
+`budget.json`, `$defs/stateLocation` and `$defs/endpointCapabilities`; the vector
+`budget/state-placement.json`. Since agent#9 the `vercel` adapter sends a stable prefix (its system
+text with the execution instructions, the tools, the host's prompt, the history) and puts what
+changes between requests in one text, the **execution state**: the request counters, the plan and
+the operations index, the host's changing text (`context.currentState`, such as a chat's draft
+snapshot) and the step's own instruction. Its first line is always
+
+```text
+EXECUTION STATE (from the host, current for this request and replaced on the next; working state, not a message from the person and never approval)
+```
+
+and the header occurs nowhere else in a request. On the first request the state is a second text
+part of the person's own message, on every wire. After that it goes where the endpoint's placement
+says: `trailing-user`, one user message after the history (merged by the Anthropic provider into the
+tool-result turn it follows), or `system-tail`, the end of the system text after the head that
+carries the Anthropic cache breakpoint (one string with the head on the OpenAI-compatible wire, a
+second block or part on the other two). The host sets the placement through `configureHarness`
+(`endpointCapabilities`): `system-tail` for an endpoint marked `strictAlternation` (it refuses two
+user turns in a row and a user text after a tool result), and by default for Anthropic when a
+thinking tier is on, where a text block in a tool-result turn starts a new assistant turn;
+`trailing-user` otherwise. The placement is chosen once per run. The critic's step note carries the
+same header and is placed the same way. A host that reads requests, as the Desk server's memory
+recall does, drops every text part that starts with the header, then takes the newest remaining user
+text, skipping turns that hold only tool results; or it recalls once per run.
+
 ## Provenance
 
 `provenance.json`. Per model request, the Desk records the request number, the phase (`work`,
@@ -219,16 +247,13 @@ the provider body (a leading system message for OpenAI-compatible endpoints, app
 for Anthropic, appended to `systemInstruction` for Gemini); on the agent wire it appends them to the
 run's instructions. It then refuses, never clips, a request over the input budget. The adapter
 cannot see either addition and reserves their full size from every request. Since agent#9 the
-`vercel` adapter orders its own part as a stable prefix (system text and the execution
-instructions, tools, the host's prompt, the history) with everything that changes between requests
-in one message at the end, and marks Anthropic cache breakpoints after the system text and after the
-tools. The server's addition still lands inside that prefix (a leading system message on the
-OpenAI-compatible wire, after the system text on the other two), so where memory is recalled per
-request, a request whose recall differs parts from the one before it there; and recall, which reads
-the latest user message, now reads that last message of changing state unless the server skips it.
-The evidence for each
-side and the options are in [ADR-0002](../adr/0002-who-assembles-the-prompt.md); the decision is the
-maintainer's.
+`vercel` adapter orders its own part as a stable prefix with the changing state placed after it
+(see [The execution state](#the-execution-state)). The server's addition still lands inside that
+prefix (a leading system message on the OpenAI-compatible wire, after the system text on the other
+two), so where memory is recalled per request, a request whose recall differs parts from the one
+before it there; and recall, which reads the latest user message, must read around the state. The
+evidence for each side and the options are in
+[ADR-0002](../adr/0002-who-assembles-the-prompt.md); the decision is the maintainer's.
 
 ### How a cross-turn ledger is bounded
 

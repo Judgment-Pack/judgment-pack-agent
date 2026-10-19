@@ -3,16 +3,18 @@
  *
  * A reading tool that holds its window to `readWindowBytes` is answered whole:
  * its result never becomes a ledger reference and a preview the model has to
- * page back through `read_context`. A result that still exceeds the limit is
- * stubbed as before. And the ledger's own reader, `read`, pages a retained item
- * by line or page with a cursor, each window one result.
+ * page back. A result that still exceeds the limit is stubbed as before, its
+ * reference naming the reader to page it back with. And the ledger's own
+ * reader, `read_window`, pages a retained item by line or page with a cursor,
+ * each window one result.
  */
 import { describe, expect, it } from 'vitest'
 import hostToolsVector from '../../../contract/vectors/tool-offer/host-tools.json'
+import toolResult from '../../../contract/schemas/tool-result.json'
 import { normalize } from '../thinking'
 import type { AssistantSession, HostTool } from '../engine'
 import { CONTEXT_DEFAULTS, READ_ENVELOPE_BYTES, encodedPrefix, readWindowBytes, utf8Bytes, type ContextPolicy } from './policy'
-import { READ_TOOL, type ReadResult } from './reader'
+import { READ_TOOL, readInputSchema, type ReadResult } from './reader'
 import { SessionContext } from './session'
 
 function session(): AssistantSession {
@@ -94,21 +96,22 @@ describe('one read, one result', () => {
     expect(reads).toBeLessThanOrEqual(Math.ceil(utf8Bytes(JSON.stringify(PAGE)) / (readWindowBytes(context.policy) - 2)) + 1)
   })
 
-  it('still stubs a result over the limit: a reference and a preview, the original retained', async () => {
+  it('still stubs a result over the limit: a reference naming read_window and a preview, the original retained', async () => {
     const context = new SessionContext(session())
     // The Desk's link reader before its swap: 20,000 characters a window.
     const reader = pageReader(PAGE, (text) => text.slice(0, 20000))
     const answered = await reader.execute({ offset: 0 }, signal)
     const shown = await context.result(reader.name, answered)
     const reference = shown.structuredContent as { contextId: string; readWith: string; preview: string }
-    expect(reference).toMatchObject({ operationReturned: true, readWith: 'read_context' })
+    expect(reference).toMatchObject({ operationReturned: true, readWith: READ_TOOL })
+    expect(READ_TOOL).toBe('read_window')
     expect(reference.preview.length).toBeLessThanOrEqual(1000)
     expect(utf8Bytes(JSON.stringify(shown))).toBeLessThanOrEqual(context.policy.toolResultBytes)
     expect(context.ledger.read({ id: reference.contextId, path: '/content/0/text', limit: 128 })).toMatchObject({ type: 'text' })
   })
 })
 
-describe('the ledger’s reader, read', () => {
+describe('the ledger’s reader, read_window', () => {
   const tool = (context: SessionContext) => context.ledger.tools().find((held) => held.name === READ_TOOL)!
   const read = async (context: SessionContext, args: Record<string, unknown>) => {
     const shown = await context.result(READ_TOOL, await tool(context).execute(args, signal))
@@ -179,6 +182,12 @@ describe('the ledger’s reader, read', () => {
     expect({ name, effect, contextPolicy, description, inputSchema }).toEqual(
       hostToolsVector.items.find((item) => item.name === READ_TOOL)
     )
+  })
+
+  it('takes exactly the arguments the contract states for every reader', () => {
+    const { description, ...schema } = toolResult.$defs.readArguments
+    expect(description).toContain('exactly the input schema')
+    expect(schema).toEqual(readInputSchema())
   })
 
   it('holds its window to the policy it was given, not to the default', async () => {

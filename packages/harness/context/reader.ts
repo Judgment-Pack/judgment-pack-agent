@@ -2,7 +2,7 @@
  * The reader: one contract for every tool that reads a long text in parts.
  *
  * A host's reading tools (a page it fetched, a document a person attached) and
- * the ledger's own `read` over the items it retains keep one shape, so a model
+ * the ledger's own `read_window` over the items it retains keep one shape, so a model
  * learns it once. Arguments: `id`, `unit` (`line`, or `page` for a paged
  * document), `offset` (the first unit, counted from 0) and `limit` (at most
  * this many units), or instead of `unit` and `offset` the `cursor` a previous
@@ -18,7 +18,7 @@ import {toolInputFailure} from '../failures'
 import {encodedPrefix,readWindowBytes,utf8Bytes,type ContextPolicy} from './policy'
 
 /** The ledger's reader, by name. The name is reserved like the other context tools. */
-export const READ_TOOL='read'
+export const READ_TOOL='read_window'
 export type ReadUnit='line'|'page'
 export const READ_UNITS:readonly ReadUnit[]=['line','page']
 /** At most this many units in one read, however many would fit. */

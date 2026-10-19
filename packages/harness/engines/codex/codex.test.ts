@@ -208,7 +208,7 @@ it('retains full tool results for the UI, sends bounded references to Codex, and
    const result=await callbacks.tool({id:'large',name:find('read_records'),arguments:{}},callbacks.signal)
    expect(result.text.length).toBeLessThan(12000)
    const ref=JSON.parse(result.text).structuredContent
-   expect(ref).toMatchObject({operationReturned:true,readWith:'read_context'})
+   expect(ref).toMatchObject({operationReturned:true,readWith:'read_window'})
    const page=await callbacks.tool({id:'page',name:find('read_context'),arguments:{id:ref.contextId,path:'/structuredContent/records/999'}},callbacks.signal)
    expect(JSON.parse(page.text).structuredContent.value).toEqual(value.records[999])
   }else{

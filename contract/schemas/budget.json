@@ -254,6 +254,74 @@
         }
       },
       "additionalProperties": true
+    },
+    "endpointCapabilities": {
+      "description": "What the host knows about one endpoint and model, as far as the harness reads it (EndpointCapabilities in packages/harness/host.ts, supplied with configureHarness as endpointCapabilities; agent#9). Every member is optional; an endpoint the host knows nothing about gets the defaults. statePlacement: where the execution state goes after the first request (the first request always carries it as a second text part of the person's own message): trailing-user, one user message after the history, or system-tail, the end of the system text after the cache breakpoint on its head. By default system-tail for Anthropic when a thinking tier is on and trailing-user otherwise. strictAlternation: the endpoint refuses two user turns in a row and a user text after a tool result, so it gets system-tail whatever statePlacement says. Open: a capability record will add members, and the harness reads only these two.",
+      "type": "object",
+      "properties": {
+        "statePlacement": {
+          "enum": [
+            "trailing-user",
+            "system-tail"
+          ]
+        },
+        "strictAlternation": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true
+    },
+    "stateLocation": {
+      "description": "Where the execution state sits in one request on one wire (agent#9). The state is one text: the header, then the request counters, plan and operations index the model is told ($defs/requestAllowance), the host's changing text and the step's own instruction. It is the text at pointer (a JSON pointer into the provider body the adapter composed) from the header, which starts a line, to the end of that text; the header occurs nowhere else in the request. The critic's step note carries the same header. A host that reads requests (the Desk server's memory recall) drops every text part that starts with the header.",
+      "type": "object",
+      "required": [
+        "family",
+        "thinking",
+        "capabilities",
+        "placement",
+        "request",
+        "pointer",
+        "header"
+      ],
+      "properties": {
+        "family": {
+          "enum": [
+            "openai-compatible",
+            "anthropic",
+            "gemini"
+          ]
+        },
+        "thinking": {
+          "description": "The run's thinking tier, as far as it chooses the placement.",
+          "enum": [
+            "off",
+            "on"
+          ]
+        },
+        "capabilities": {
+          "$ref": "#/$defs/endpointCapabilities"
+        },
+        "placement": {
+          "description": "The placement the capabilities and the tier resolve to.",
+          "enum": [
+            "trailing-user",
+            "system-tail"
+          ]
+        },
+        "request": {
+          "description": "Which request of the run, counted from 1.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "pointer": {
+          "type": "string",
+          "pattern": "^(/[^/]*)+$"
+        },
+        "header": {
+          "const": "EXECUTION STATE (from the host, current for this request and replaced on the next; working state, not a message from the person and never approval)"
+        }
+      },
+      "additionalProperties": true
     }
   }
 }
