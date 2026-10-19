@@ -251,7 +251,7 @@
       "additionalProperties": true
     },
     "message_progress": {
-      "description": "The prose so far of the answer being written, whole each time (not a delta), with any proposal fence hidden; an empty text clears it. Only on an interactive session.",
+      "description": "The prose so far of the answer being written, whole each time (not a delta), with any proposal fence hidden; an empty text clears it. Only on an interactive session. taskId (agent#16): a delegated child's prose so far, under its task, forwarded by the delegation coordinator as the child writes it, between that task's delegated_task events; an empty text with its taskId clears it when the child ends. An event without taskId is the run's own answer: a host routes one with taskId to the task's view, never to the answer.",
       "type": "object",
       "required": [
         "type",
@@ -263,6 +263,10 @@
         },
         "text": {
           "type": "string"
+        },
+        "taskId": {
+          "description": "The delegated task (delegated-task.json id) whose child is writing this prose.",
+          "$ref": "delegated-task.json#/$defs/uuid"
         }
       },
       "additionalProperties": true

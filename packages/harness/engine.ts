@@ -261,7 +261,11 @@ export type AssistantEvent =
    * where the model wrote nothing but the fence.
    */
   | { type: 'message'; text: string }
-  | { type: 'message_progress'; text: string }
+  /**
+   * The prose so far, whole each time. `taskId` (agent#16): a delegated child's prose so far, under its
+   * task; absent, the run's own answer.
+   */
+  | { type: 'message_progress'; text: string; taskId?: string }
   /**
    * `origin` `harness` on a call the harness made itself, not the model: the
    * critic pass's own comparison of a declared case (agent#10 review row 8).

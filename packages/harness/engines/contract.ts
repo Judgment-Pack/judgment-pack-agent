@@ -380,6 +380,16 @@ export function proseOf(text: string): string {
 export function hasProposalFence(text: string): boolean {
   return jsonFences(text).some(block => explicitProposal(block.body))
 }
+/**
+ * A delegated child's report blocks (agent#16): the closed json fences whose root names `report`,
+ * found by the proposal fence's own reader, and the answer's text without them.
+ */
+export function reportBlocks(text: string): { bodies: string[]; prose: string } {
+  const blocks = jsonFences(text ?? '').filter(block => explicitRoot(block.body, 'report'))
+  let prose = text ?? ''
+  for (const block of [...blocks].reverse()) prose = prose.slice(0, block.start) + prose.slice(block.end)
+  return { bodies: blocks.map(block => block.body), prose: trimProse(prose) }
+}
 /** Ordinary code streams immediately. A bare/json fence can also contain a
  * legacy proposal, so an ambiguous root object is buffered only until its JSON
  * value can be classified, not until the whole answer ends. `json example`

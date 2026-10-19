@@ -37,9 +37,12 @@ export interface CurrentRequest {message:string;input:string}
  * a child's own budget); a host leaves it out. `connection`: the AI connection the run's model or
  * agent capability is bound to, as the host names it (`AITarget`); the host's `modelsFor` is asked
  * with it once per run, for the models the connection names for the critic and for delegated
- * children (review of agent#35, row 5).
+ * children (review of agent#35, row 5), and for how many children run at once (agent#17).
+ * `delegationReuse` (agent#17): `false` where this response's delegated tasks reuse no earlier result
+ * of the chat, as for a Retry the person asked to run afresh; absent or `true`, an identical task's
+ * complete result is reused.
  */
-export interface ContextInput {currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatScope;runtime?:RuntimeIdentity;memory?:boolean;objective?:string;link?:ExecutionLink;connection?:AITarget}
+export interface ContextInput {currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatScope;runtime?:RuntimeIdentity;memory?:boolean;objective?:string;link?:ExecutionLink;connection?:AITarget;delegationReuse?:boolean}
 /** How the delegation coordinator reaches a run it starts (agent#14): told the run's context once its execution is initialized, before its first request. */
 export interface ExecutionLink {attach(context:SessionContext):void}
 export interface ContextUsage {inputBytes:number;estimatedInputTokens:number;inputBudgetBytes:number;outputReserveTokens:number;compactions:number;retainedItems:number}

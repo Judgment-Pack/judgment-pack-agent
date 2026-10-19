@@ -59,6 +59,8 @@ describe('the record, read', () => {
     expect(refused({ toolSchemas: 'openapi' })).toThrow(/toolSchemas/)
     expect(refused({ statePlacement: 'leading-user' })).toThrow(/statePlacement/)
     expect(refused({ vision: 'yes' })).toThrow(/vision must be true or false/)
+    // agent#17: the connection's capacity is not the record's: it is the connection's answer (modelsFor).
+    expect(refused({ concurrentRequests: 3 })).toThrow(/concurrentRequests/)
     expect(() => readCapabilities(null)).toThrow(/not an object/)
   })
 })

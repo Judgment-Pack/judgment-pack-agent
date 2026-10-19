@@ -128,6 +128,10 @@
       "type": "integer",
       "minimum": 0,
       "maximum": 400
+    },
+    "delegation": {
+      "description": "Each delegated child's figures, each batch's total and the parent's own (agent#18): written by the delegation coordinator once a batch has finished, kept through a resume, and refused by the harness's reader where it does not read closed.",
+      "$ref": "provenance.json#/$defs/delegationReport"
     }
   },
   "additionalProperties": true,

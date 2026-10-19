@@ -1,0 +1,40 @@
+{
+  "description": "A running child's prose, streamed under its task (agent#16): the coordinator forwards each message_progress the child's engine emits, with the task's id, between that task's delegated_task events (the engine clears the prose as each step starts, as it does for a parent), and clears it with an empty text when the child ends. The first event is the parent's own, cleared as the batch starts, with no taskId; an event with taskId is never the parent's answer. The task's records are left out. Written by hand from the schema.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/delegation.ts (runChild: message_progress under taskId)",
+      "packages/harness/delegationResults.test.ts (the deltas carry the task id)"
+    ]
+  },
+  "items": [
+    {
+      "type": "message_progress",
+      "text": ""
+    },
+    {
+      "type": "message_progress",
+      "text": "",
+      "taskId": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9"
+    },
+    {
+      "type": "message_progress",
+      "text": "Trip 1:",
+      "taskId": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9"
+    },
+    {
+      "type": "message_progress",
+      "text": "Trip 1: receipts match.",
+      "taskId": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9"
+    },
+    {
+      "type": "message_progress",
+      "text": "",
+      "taskId": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9"
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "description": "An author-test child's report (agent#16), in the author-test shape: each finding names the Runtime check it ran and its status, and a failed case names the case and the smallest fix. The child proposes nothing; a draft it would change is an open question. Written by hand from the schema.",
+  "schema": "delegated-task.json#/$defs/authorTestReport",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/delegationContract.ts (readReport, reportInstructions)",
+      "packages/harness/delegationResults.test.ts (each profile's report read in its shape)"
+    ]
+  },
+  "items": [
+    {
+      "summary": "The draft validates; one of three test cases fails.",
+      "findings": [
+        {
+          "text": "The draft is valid against the schema.",
+          "check": "validate",
+          "status": "passed"
+        },
+        {
+          "text": "Case c2 expected decided and got refused: the receipt rule runs before the cap rule.",
+          "check": "experimental_test_cases",
+          "status": "failed",
+          "case": "c2",
+          "fix": "Move the cap rule before the receipt rule."
+        }
+      ],
+      "citations": [],
+      "openQuestions": [
+        {
+          "kind": "proposal",
+          "text": "The draft with the two rules in the other order would pass c2; the parent decides whether to propose it."
+        }
+      ],
+      "confidence": "high",
+      "notDone": []
+    }
+  ]
+}

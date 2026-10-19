@@ -1,0 +1,44 @@
+{
+  "description": "A review child's report (agent#16), in the review shape: each finding names its severity. Written by hand from the schema.",
+  "schema": "delegated-task.json#/$defs/reviewReport",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/delegationContract.ts (readReport, reportInstructions)",
+      "packages/harness/delegationResults.test.ts (each profile's report read in its shape)"
+    ]
+  },
+  "items": [
+    {
+      "summary": "Two gaps and one unsupported claim in the draft's explanation.",
+      "findings": [
+        {
+          "text": "The explanation says every claim is checked, but mileage claims are not.",
+          "severity": "unsupported"
+        },
+        {
+          "text": "The outcome for a claim exactly at the cap is not stated.",
+          "severity": "gap"
+        },
+        {
+          "text": "Rule 3 and rule 5 decide the same input differently.",
+          "severity": "inconsistency",
+          "citations": [
+            "chat-1:draft:0a1b2c3d4e5f6071"
+          ]
+        }
+      ],
+      "citations": [
+        {
+          "id": "chat-1:draft:0a1b2c3d4e5f6071"
+        }
+      ],
+      "openQuestions": [],
+      "confidence": "high",
+      "notDone": []
+    }
+  ]
+}

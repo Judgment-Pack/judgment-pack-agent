@@ -16,7 +16,8 @@ import budgetSchema from '../../contract/schemas/budget.json'
 import profilesVector from '../../contract/vectors/delegation/profiles.json'
 import continuationVector from '../../contract/vectors/delegation/continuation.json'
 
-const task=(title='Check evidence',profile='review')=>({title,profile,objective:'Check the supplied claims.'})
+// agent#17: each title its own objective, so tasks of one batch are not identical (an identical task is reused).
+const task=(title='Check evidence',profile='review')=>({title,profile,objective:`Check the supplied claims (${title}).`})
 const request:DelegationRequest={tasks:[task()]}
 const apiSession=(patch:Partial<AssistantSession>={}):AssistantSession=>({prompt:'PARENT PRIVATE HISTORY',testPrompt:'',tools:[],callTool:vi.fn(),hostTools:[],signal:new AbortController().signal,allowConversation:true,interactive:true,adversarialReview:false,model:{family:'openai-compatible',model:'fixture',call:vi.fn(async()=>new Response('{}'))},thinking:normalize('off','openai-compatible'),...patch})
 const collect=async(engine:Engine,session:EngineSession)=>{const events:AssistantEvent[]=[];for await(const e of engine.start(session))events.push(e);return events}
@@ -108,16 +109,20 @@ it('cancels active children, never starts queued children, and does not resume t
  expect(results(events).every(t=>t.state==='interrupted')).toBe(true)
 })
 
-// agent#14: the hand-back reaches the parent in the call's result.
+// agent#14: the hand-back reaches the parent in the call's result. agent#16 (review row 7): it is a
+// question for the parent, the task is complete, and what the child had written is kept, partial.
 it('returns a research permission request to the parent without subsequent child source calls',async()=>{
  const execute=vi.fn(async()=>({structuredContent:{researchSuggestion:true}}))
+ let said:{tasks:{state:string;problem?:string;partial?:true;result?:string;report?:{openQuestions:{kind:string;text:string}[]}}[]}|undefined
  const engine:Engine={id:'vercel',async *start(s){
-  if(delegateIn(s)){const result=answered(await delegateIn(s)!.execute({tasks:[task('Research','research')]},s.signal));expect(result.tasks[0]!.problem).toContain('parent’s research choice');yield {type:'message',text:'Research needs your choice.'}}
-  else {await s.hostTools[0]!.execute({},s.signal);await s.hostTools[0]!.execute({},s.signal)}
+  if(delegateIn(s)){said=answered(await delegateIn(s)!.execute({tasks:[task('Research','research')]},s.signal)) as typeof said;yield {type:'message',text:'Research needs your choice.'}}
+  else {yield {type:'message_progress',text:'Two sources read so far agree on 0.58.'};await s.hostTools[0]!.execute({},s.signal);await s.hostTools[0]!.execute({},s.signal)}
   yield {type:'end'}
  }}
  const events=await collect(withDelegation(engine),apiSession({hostTools:[{...readTool,delegation:'research',execute}]}))
- expect(execute).toHaveBeenCalledTimes(1);expect(results(events)[0]?.state).toBe('failed')
+ expect(execute).toHaveBeenCalledTimes(1)
+ expect(results(events)[0]).toMatchObject({state:'complete',partial:true,result:'Two sources read so far agree on 0.58.',problem:expect.stringContaining('parent’s research choice')})
+ expect(said!.tasks[0]).toMatchObject({state:'complete',partial:true,report:{openQuestions:[{kind:'question',text:expect.stringContaining('parent’s research choice')}]}})
 })
 
 // agent#14: Codex keeps the restart, and its next run is told the call's result and nothing else.
@@ -672,7 +677,8 @@ describe('limits after the review of agent#35',()=>{
  }
  // Review row 1.
  it('offers a Codex parent delegate_tasks only while a child run and its next run remain, so a third batch never starts and the parent answers',async()=>{
-  const codexRuns=greedyCodex(()=>[task('One','analyze')])
+  // agent#17: each batch its own task, so the second is not the first's result reused.
+  const codexRuns=greedyCodex(batch=>[task(`Batch ${batch}`,'analyze')])
   const {model:_model,thinking:_thinking,...base}=apiSession()
   const events=await collect(withDelegation(codex),{...base,agent:{model:'fixture',run:codexRuns.run}})
   // Runs: parent, child, parent, child, parent: five, the last with no delegate_tasks.

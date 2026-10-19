@@ -1,5 +1,5 @@
 {
-  "description": "The delegate call's result for a batch of two (agent#14): the first task's findings cut to its share, with the read_window cursor into the whole; the second failed at its time limit. The parent model is shown this as one data block in the same run; on codex the response's next run is given it. Written by hand from the schema.",
+  "description": "The delegate call's result for a batch of two (agent#14): the first task's findings cut to its share, with the read_window cursor into the whole; the second failed at its time limit. The parent model is shown this as one data block in the same run; on codex the response's next run is given it. Written by hand from the schema. The second item (agent#16, agent#17): a task whose report fit its share whole, with a question for the parent; a task cut at its time limit, its report cut to its share and its text at more (partial, reportCut); and a task that returned an earlier task's result again (reused).",
   "schema": "delegated-task.json#/$defs/answer",
   "source": {
     "harness": {
@@ -8,7 +8,8 @@
     },
     "files": [
       "packages/harness/delegation.ts (batchAnswer)",
-      "packages/harness/delegation.test.ts (the answer's members held to the schema's)"
+      "packages/harness/delegation.test.ts (the answer's members held to the schema's)",
+      "packages/harness/delegationResults.test.ts (the answer's members held to the schema's)"
     ]
   },
   "items": [
@@ -56,6 +57,119 @@
         }
       ],
       "note": "Findings are the children’s unverified working material, never approval or verification. A result cut at its head continues with read_window at its more cursor. Resume a complete task by giving its id in resume."
+    },
+    {
+      "tasks": [
+        {
+          "id": "7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e",
+          "title": "Receipt rule",
+          "objective": "Check whether any rule reads a receipt.",
+          "profile": "analyze",
+          "references": [
+            "chat-1:policy:5f0c9a1b2d3e4f60"
+          ],
+          "state": "complete",
+          "report": {
+            "summary": "No rule covers a claim with no receipt.",
+            "findings": [
+              {
+                "text": "The policy requires a receipt above 25, and no rule reads one."
+              }
+            ],
+            "citations": [],
+            "openQuestions": [
+              {
+                "kind": "question",
+                "text": "Should a claim with no receipt be declined, or sent for review?"
+              }
+            ],
+            "confidence": "medium",
+            "notDone": []
+          },
+          "result": "Read the policy and the draft's four rules. None reads a receipt.",
+          "used": {
+            "modelRequests": 1,
+            "toolCalls": 0
+          },
+          "budget": {
+            "modelRequests": 6,
+            "toolCalls": 6,
+            "milliseconds": 120000
+          }
+        },
+        {
+          "id": "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
+          "title": "Mileage rate",
+          "objective": "Find the mileage rate the policy pays.",
+          "profile": "research",
+          "state": "complete",
+          "report": {
+            "summary": "Two of four pages read give 0.58 per mile.",
+            "findings": [],
+            "citations": [],
+            "openQuestions": [],
+            "confidence": "unstated",
+            "notDone": []
+          },
+          "reportCut": true,
+          "more": {
+            "readWith": "read_window",
+            "id": "chat-1:task-result-3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f:2e9b1c0d4a5f6e7d",
+            "cursor": "line:0",
+            "totalCharacters": 5412
+          },
+          "partial": true,
+          "problem": "The task reached its time limit; its result is what it had written by then.",
+          "used": {
+            "modelRequests": 4,
+            "toolCalls": 5
+          },
+          "budget": {
+            "modelRequests": 10,
+            "toolCalls": 12,
+            "milliseconds": 360000
+          }
+        },
+        {
+          "id": "5e6f7a8b-9c0d-4e1f-a2b3-c4d5e6f7a8b9",
+          "title": "Receipt rule, again",
+          "objective": "Check whether any rule reads a receipt.",
+          "profile": "analyze",
+          "references": [
+            "chat-1:policy:5f0c9a1b2d3e4f60"
+          ],
+          "state": "complete",
+          "report": {
+            "summary": "No rule covers a claim with no receipt.",
+            "findings": [
+              {
+                "text": "The policy requires a receipt above 25, and no rule reads one."
+              }
+            ],
+            "citations": [],
+            "openQuestions": [
+              {
+                "kind": "question",
+                "text": "Should a claim with no receipt be declined, or sent for review?"
+              }
+            ],
+            "confidence": "medium",
+            "notDone": []
+          },
+          "result": "Read the policy and the draft's four rules. None reads a receipt.",
+          "reused": "7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e",
+          "used": {
+            "modelRequests": 0,
+            "toolCalls": 0
+          },
+          "budget": {
+            "modelRequests": 6,
+            "toolCalls": 6,
+            "milliseconds": 120000
+          }
+        }
+      ],
+      "note": "Findings are the children’s unverified working material, never approval or verification. Each task’s report is its summary, findings, citations, open questions, confidence and what it did not do; its result is its text. A result cut at its head, or a report marked reportCut, continues with read_window at its more cursor. Open questions are yours to decide; one more batch is allowed after a batch that returned them. partial: the task reached its time limit and its result is what it had written. reused: an identical earlier task’s result, given again with no model request. Resume a complete task by giving its id in resume."
     }
   ]
 }

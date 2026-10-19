@@ -466,6 +466,49 @@ class VectorTests(unittest.TestCase):
         answered = self.vectors["delegation/answer.json"]["items"][0]["tasks"][0]
         self.assertEqual((answered["result"], answered["more"]), (done["result"], done["more"]))
 
+    def test_every_finding_cites_only_its_reports_citations(self):
+        # delegated-task.json#/$defs/report (agent#16): a rule the reader holds that JSON Schema does
+        # not state. Every report a vector carries, in a report vector or an answer's task.
+        reports = []
+        for name, vector in self.vectors.items():
+            if name.startswith("delegation/report-"):
+                reports += vector["items"]
+        for item in self.vectors["delegation/answer.json"]["items"]:
+            reports += [task["report"] for task in item["tasks"] if "report" in task]
+        self.assertGreaterEqual(len(reports), 4)
+        for report in reports:
+            ids = {citation["id"] for citation in report["citations"]}
+            for finding in report["findings"]:
+                with self.subTest(finding=finding["text"]):
+                    self.assertLessEqual(set(finding.get("citations", [])), ids)
+
+    def test_one_report_vector_per_closed_profile_in_its_shape(self):
+        profiles = self.vectors["delegation/profiles.json"]["items"]
+        for profile in profiles:
+            with self.subTest(profile=profile["id"]):
+                vector = self.vectors[f"delegation/report-{profile['report']}.json"]
+                shape = "".join(part.capitalize() for part in profile["report"].split("-"))
+                self.assertEqual(vector["schema"], f"delegated-task.json#/$defs/{shape[0].lower() + shape[1:]}Report")
+
+    def test_each_batch_total_is_its_childrens_sums(self):
+        # provenance.json#/$defs/figuresTotal (agent#18): the children's counts summed, a token member
+        # present where any child's was, and a wall time no shorter than its longest child.
+        for item in self.vectors["delegation/figures.json"]["items"]:
+            for batch in item["batches"]:
+                with self.subTest(batch=batch["batch"]):
+                    children, total = batch["children"], batch["total"]
+                    self.assertTrue(all(child["batch"] == batch["batch"] for child in children))
+                    for member in ("modelRequests", "toolCalls"):
+                        self.assertEqual(total[member], sum(child[member] for child in children))
+                    tokens = {}
+                    for child in children:
+                        for key, value in child.get("tokens", {}).items():
+                            tokens[key] = tokens.get(key, 0) + value
+                    self.assertEqual(total.get("tokens", {}), tokens)
+                    self.assertGreaterEqual(total["durationMs"], max(child["durationMs"] for child in children))
+                    for child in children:
+                        if child.get("reused"):
+                            self.assertEqual((child["modelRequests"], child["toolCalls"]), (0, 0))
     def test_the_codex_continuation_carries_the_answer_as_one_data_block(self):
         # delegated-task.json#/$defs/continuation (review of agent#35, rows 4 and 9): a line, then one
         # block opened and closed by the same marker, whose data is a batch's answer.
