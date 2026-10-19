@@ -33,20 +33,20 @@ $pkg/agentTransport.ts|$a/agentTransport.ts|2eebc32ad049919fa652a600e0cb0ed8d322
 $pkg/agentTransport.test.ts|$a/agentTransport.test.ts|df8c20487e36f88e9c14eea65b142a7bb90be82990aea400756669423af7630f|injection points: the Desk's two module mocks become one mock of host.ts
 $pkg/completion.ts|$a/completion.ts|-|-
 $pkg/completion.test.ts|$a/completion.test.ts|-|-
-$pkg/context/context.test.ts|$a/context/context.test.ts|-|-
+$pkg/context/context.test.ts|$a/context/context.test.ts|d8ffb8050b53875e4e23db9d8d0acc9f3a7326645771adaae826cefece500b35|agent#12: the compacted summary's steps read through their data block
 $pkg/context/ledger.ts|$a/context/ledger.ts|49cbcb45dc776e158c8dd617373cfbf719a072273263c352c9544a8584a10b5e|declaration emit: Entry exported (a type, no runtime change) so tsc can write controller.d.ts
 $pkg/context/managed.ts|$a/context/managed.ts|-|-
-$pkg/context/policy.ts|$a/context/policy.ts|3aa351866d68b97480956b4259a48fc32403df0c1e2d3cebb58f5efdbcef5148|the Go-side copy: policy.json read from the package's contract/; agent#2: the turn clock and the tool-call deadline (TIME_DEFAULTS)
+$pkg/context/policy.ts|$a/context/policy.ts|f4454bd1bdbcc65edebe10778f48448066b270f272f6d2c64340f89ce2cc50d2|the Go-side copy: policy.json read from the package's contract/; agent#2: the turn clock and the tool-call deadline (TIME_DEFAULTS); agent#7: the test tool's bounds (TEST_DEFAULTS)
 $pkg/context/recovery.integration.test.ts|$a/context/recovery.integration.test.ts|-|-
-$pkg/context/session.ts|$a/context/session.ts|-|-
+$pkg/context/session.ts|$a/context/session.ts|d8a919b22e4da1e182c69f59c3f5547e42e2c08fd17e6fa82caf6a907e2e58ce|agent#7: the per-turn test-call cap (claimTestCall); agent#12: the run's marker, frame, framed results read back in compaction and the summary framed
 $pkg/context/toolPolicy.ts|$a/context/toolPolicy.ts|-|-
 $pkg/context/toolPolicy.test.ts|$a/context/toolPolicy.test.ts|-|-
 $pkg/delegation.ts|$a/delegation.ts|-|-
 $pkg/delegation.test.ts|$a/delegation.test.ts|c2a97f7509cca43de3522ab5c2b00de6846f87fa54c00236d957eb4ed9aa4bb2|test kept in the Desk: the case over the Desk's response history; the Desk's chat-history reader replaced by a fold of delegated_task events with its interruption rule
 $pkg/delegationContract.ts|$a/delegationContract.ts|-|-
 $pkg/engine.ts|$a/engine.ts|232d695eac9dcdcda35f82880acabad78a3954816fe9241606a520f41166c46e|injection points: Language, AssistantEngine, EndpointKind (types); agent#6: the proposal's note (ProposalNote)
-$pkg/engines/codex/codex.test.ts|$a/engines/codex/codex.test.ts|f60fd74eca36578ed1df119eeeae842e13c1b9cebb8730d163bb52cbd556f507|paths: conformance/ is certification/, testing/question reads the contract vector; test kept in the Desk: the case over the Desk's dialect chat tools; agent#6: the whole answer kept, the critic's note, propose_pack
-$pkg/engines/codex/index.ts|$a/engines/codex/index.ts|46777f023f6c6d64a0b5c987f93eb2028872880c7403fc9f68654f8c93beee8f|injection points: assistantLanguageInstructions; agent#6: the whole answer kept, the critic's note, propose_pack; agent#2: the tool-call deadline
+$pkg/engines/codex/codex.test.ts|$a/engines/codex/codex.test.ts|787f3146719642a4db6fda8aade045ba5929c75b22d48265795e594b30b8d17b|paths: conformance/ is certification/, testing/question reads the contract vector; test kept in the Desk: the case over the Desk's dialect chat tools; agent#6: the whole answer kept, the critic's note, propose_pack; agent#12: read_context's answer read through its data block
+$pkg/engines/codex/index.ts|$a/engines/codex/index.ts|997b1aec3da1a94b87d80231793e4c672a943594446c636eeb9183c15cd9c108|injection points: assistantLanguageInstructions; agent#6: the whole answer kept, the critic's note, propose_pack; agent#2: the tool-call deadline; agent#12: a reading tool's answer framed, the data rule in the instructions
 $pkg/engines/contract.ts|$a/engines/contract.ts|3e7a3ec10a2af6f9fe14a972b0946279e6dcf71480b1b1ef3fb36c12b8e25ed5|injection points: EndpointKind (type); agent#6: why a proposal was not read, the whole answer, the reformat request, propose_pack; agent#2: withDeadline, toolTimeout, limitText
 $pkg/engines/contract.test.ts|$a/engines/contract.test.ts|-|-
 $pkg/engines/index.ts|$a/engines/index.ts|6f19d51e6ae2890ff7ea6f7156ed0800ab9681c73e85d9c509d761b201813b58|injection points: AssistantEngine (type)
@@ -54,8 +54,8 @@ $pkg/engines/vercel/channel.ts|$a/engines/vercel/channel.ts|-|-
 $pkg/engines/vercel/completion.test.ts|$a/engines/vercel/completion.test.ts|-|-
 $pkg/engines/vercel/engine.test.ts|$a/engines/vercel/engine.test.ts|ee45c2ad5f92bf94f795a18a4d5a3709a3b9f55e1b9bd45572808557e685fc47|injection points: ASSISTANT_ENGINES, ASSISTANT_TOOLS; paths: LANGUAGES from the test host, testing/question reads the contract vector; agent#6: the reformat request and the whole answer, the critic's note, propose_pack
 $pkg/engines/vercel/index.ts|$a/engines/vercel/index.ts|-|-
-$pkg/engines/vercel/loop.ts|$a/engines/vercel/loop.ts|4a9e31f0533b7c6c094b2938668208e90fa16255cd383a9299ab94ade1048446|injection points: assistantLanguageInstructions, AssistantEngine and EndpointKind (types); agent#6: the reformat request, the whole answer kept, the critic's note, propose_pack; agent#2: the model-request retry, the turn clock, the tool-call deadline
-$pkg/engines/vercel/relay.ts|$a/engines/vercel/relay.ts|a4cf2c7f1ab2de26ebc85fbca87774f86ea6a385d69e57fd66d2cf8a20b7ef88|injection points: EndpointKind (type)
+$pkg/engines/vercel/loop.ts|$a/engines/vercel/loop.ts|8e44794b21c4c24d955d91c388a722deb1a287b419a6e3d61ae289f0d878d1cf|injection points: assistantLanguageInstructions, AssistantEngine and EndpointKind (types); agent#6: the reformat request, the whole answer kept, the critic's note, propose_pack; agent#2: the model-request retry, the turn clock, the tool-call deadline; agent#12: a reading tool's answer framed through toModelOutput, the data rule in the instructions and the critic's
+$pkg/engines/vercel/relay.ts|$a/engines/vercel/relay.ts|f6c7c2cc27588127f0a4a33f646ee358c64a3e3e3f139b55054eb57d35aca085|injection points: EndpointKind (type); agent#3: a whole answer that broke while read, or is not JSON, reported by class
 $pkg/execution/checkArtifact.ts|$a/execution/checkArtifact.ts|-|-
 $pkg/execution/checkArtifact.test.ts|$a/execution/checkArtifact.test.ts|-|-
 $pkg/execution/controller.ts|$a/execution/controller.ts|86020c34b892cb1fbc8864464839c1028d0271bb3d8d7bd7e3bbc0bd4fda517f|agent#2: a refused attempt's row in the completion record and the attempt number per call (recordRefusal, beginAttempt)
@@ -85,13 +85,13 @@ $pkg/session.ts|$a/session.ts|5b43df17b626eee3a98d06e959bff82eb6118ca8dd1605ca06
 $pkg/session.test.ts|$a/session.test.ts|f3400e960cab12b82f9f2491827268be9aabc1b5adfb5d5a1c1c70f40cc51133|injection points: the Desk's session store and language replaced by configureHarness with the test host's sessionBearer and currentLanguage; paths: conformance/ is certification/
 $pkg/thinking.ts|$a/thinking.ts|0a05ccb19f2f89cddf8efdaf4fb4fd03264219ac8469083a722b4b4a5151a892|injection points: sourceMessage, EndpointKind and ThinkingTier (types)
 $pkg/thinking.test.ts|$a/thinking.test.ts|95558d0f77c51b73671db0d36f50c00cfb0108959939f3131c10029746d6cd24|injection points: EndpointKind and ThinkingTier (types)
-$pkg/toolGate.ts|$a/toolGate.ts|ed7f72456dd7d84783628c57af30f405f00ef1276d2d36e3a921c1e6d91589a4|injection points: ASSISTANT_TOOLS
-$pkg/toolGate.test.ts|$a/toolGate.test.ts|052142bb695e6a249e68c316f1df2cd8167a94b8fa2e6a44125669dcd2b392b6|injection points: ASSISTANT_TOOLS; whitespace: the blank line at the end of the file, which the repository's whitespace check refuses
+$pkg/toolGate.ts|$a/toolGate.ts|af760477e011a6ba940325cd3679f65895a897aea401e258b48959eca213adb5|injection points: ASSISTANT_TOOLS; agent#7: the six-tool ceiling, the test tool's argument allow-list and byte bounds, the refused tools and their reasons
+$pkg/toolGate.test.ts|$a/toolGate.test.ts|378089aa27c3e5e6c67776fcd4c709a1e7d412415f527d9e2d3b2be56cba62c8|injection points: ASSISTANT_TOOLS; whitespace: the blank line at the end of the file, which the repository's whitespace check refuses; agent#7: the ceiling's wording
 $pkg/certification/certification/clearsItsInterval.ts|$a/conformance/certification/clearsItsInterval.ts|-|-
 $pkg/certification/certification/throwsWhileDraining.ts|$a/conformance/certification/throwsWhileDraining.ts|-|-
 $pkg/certification/certification/touchesAfterRun.ts|$a/conformance/certification/touchesAfterRun.ts|-|-
 $pkg/certification/certification/touchesOnLoad.ts|$a/conformance/certification/touchesOnLoad.ts|-|-
-$pkg/certification/conformance.test.ts|$a/conformance/conformance.test.ts|ef10ff645b90f0386f3578330f871197f32b2301a09a9a83b791ed46816e3c01|injection points: EndpointKind and ThinkingTier (types); contract vectors: the event order and K2's offer read from contract/vectors/
+$pkg/certification/conformance.test.ts|$a/conformance/conformance.test.ts|a3400d78944399a90ecc48fc6a8b65db5b37b7306c38396733a66210949d0b76|injection points: EndpointKind and ThinkingTier (types); contract vectors: the event order and K2's offer read from contract/vectors/; agent#7: the ceiling is six names and test_conformance is refused at the wire
 $pkg/certification/runtime.json|$a/conformance/runtime.json|-|-
 $pkg/certification/scenario.json|$a/conformance/scenario.json|-|-
 $pkg/certification/scriptedModel.ts|$a/conformance/scriptedModel.ts|af92198d6032d82d4c0a57ac1aa7e1c044fc18d442b85f8ace19d3f5488e971e|injection points: EndpointKind (type)
@@ -120,6 +120,11 @@ $pkg/testing/question.ts
 $pkg/testing/setup.ts
 $pkg/engines/vercel/retry.ts
 $pkg/engines/vercel/bounds.test.ts
+$pkg/framing.ts
+$pkg/framing.test.ts
+$pkg/testCases.test.ts
+$pkg/engines/failurePaths.test.ts
+$pkg/testing/scripted.ts
 EOF
 }
 

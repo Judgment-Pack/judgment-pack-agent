@@ -28,7 +28,7 @@
  * provider or a live service.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { failureRecovery, retryReady, type AIFailure } from '../failures'
+import { RETRYABLE_OVERLOAD_CODES, RETRYABLE_REFUSAL_CLASSES, canRetryRefusal, failureRecovery, retryReady, type AIFailure } from '../failures'
 import { readExecution, type ExecutionCheckpoint } from '../execution/state'
 import {
   codexTurn,
@@ -71,6 +71,16 @@ function lastCheckpoint(events: AssistantEvent[]): ExecutionCheckpoint {
   // A checkpoint the host can hand back: it reads as one.
   expect(readExecution(structuredClone(last))).toBeDefined()
   return last
+}
+
+/**
+ * Not one the engine sends again on its own: neither its class nor the code its
+ * refusal carried is on the lists `failures.ts` names (agent#2).
+ */
+function neverRetried(failure: AIFailure, code?: string) {
+  expect(RETRYABLE_REFUSAL_CLASSES).not.toContain(failure.code)
+  if (code !== undefined) expect(RETRYABLE_OVERLOAD_CODES).not.toContain(code)
+  expect(canRetryRefusal(failure, code)).toBe(false)
 }
 
 /** Whether a host offers Retry for this failure, now: never for `narrow`, and not before `retryAt`. */
@@ -155,6 +165,7 @@ describe('vercel', () => {
       expect(failure).toMatchObject({ code: 'connection-lost', source: 'model', outcome: 'unknown' })
       expect(failureRecovery(failure)).toBe('review')
       // Never sent again: the outcome is unknown, and only a refusal is retried.
+      neverRetried(failure, 'assistant-relay-upstream')
       expect(requests).toHaveLength(expected)
       expect(ofType(events, 'retry')).toEqual([])
       const checkpoint = lastCheckpoint(events)
@@ -198,6 +209,7 @@ describe('vercel', () => {
       const failure = failureOf(events)
       expect(failure).toMatchObject({ code: 'unknown', source: 'model', outcome: 'unknown' })
       expect(failureRecovery(failure)).toBe('review')
+      neverRetried(failure)
       expect(requests).toHaveLength(2)
       expect(ofType(events, 'retry')).toEqual([])
       expect(Date.now() - started).toBeLessThan(10_000)
@@ -215,14 +227,16 @@ describe('vercel', () => {
   describe.each([
     {
       when: 'the endpoint answers 413',
+      code: undefined,
       refusal: () => whole(JSON.stringify({ error: { message: 'Request too large', type: 'invalid_request_error' } }), 413)
     },
     {
       when: 'the endpoint answers 400 context_length_exceeded',
+      code: 'context_length_exceeded',
       refusal: () =>
         whole(JSON.stringify({ error: { message: 'This model’s maximum context length is exceeded.', type: 'invalid_request_error', code: 'context_length_exceeded' } }), 400)
     }
-  ])('$when', ({ refusal }) => {
+  ])('$when', ({ refusal, code }) => {
     it('reports context-limit with its checkpoint, shrinks and resends nothing, and offers no Retry', async () => {
       const { events, requests } = await vercelFailure({
         answer: (request) => (request.number === 2 ? refusal() : healthy(request))
@@ -230,6 +244,8 @@ describe('vercel', () => {
       const failure = failureOf(events)
       expect(failure).toMatchObject({ code: 'context-limit', source: 'model', outcome: 'refused' })
       expect(failureRecovery(failure)).toBe('narrow')
+      // A refusal, but not one the engine sends again.
+      neverRetried(failure, code)
       // No automatic shrink-and-resend in this release (docs/design/ai-error-handling.md):
       // one request, refused, reported.
       expect(requests).toHaveLength(2)
@@ -301,6 +317,7 @@ describe('vercel', () => {
     const failure = failureOf(events)
     expect(failure).toMatchObject({ code: 'connection-lost', source: 'model', outcome: 'unknown' })
     expect(failureRecovery(failure)).toBe('review')
+    neverRetried(failure)
     expect(requests).toHaveLength(2)
     expect(ofType(events, 'retry')).toEqual([])
     expect(operations(lastCheckpoint(events))).toEqual([['get_schema', 'complete']])
@@ -313,7 +330,9 @@ describe('vercel', () => {
     })
     const failure = failureOf(events)
     expect(failure).toMatchObject({ code: 'invalid-response', source: 'model' })
+    // Its recovery says retry, but that is the person's Retry: the engine does not.
     expect(failureRecovery(failure)).toBe('retry')
+    neverRetried(failure)
     expect(requests).toHaveLength(2)
     const checkpoint = lastCheckpoint(events)
     expect(operations(checkpoint)).toEqual([['get_schema', 'complete']])

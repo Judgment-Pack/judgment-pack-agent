@@ -37,8 +37,10 @@ already completed a runtime call when the failure comes.
 | The endpoint answers whole JSON where a stream was asked for | read whole and re-framed (`relay.ts`); nothing fails | (no counterpart) | none | none |
 | The same, cut short so it is not JSON | `invalid-response` | (no counterpart) | retry | offered; resumes |
 
-No path is retried automatically: only a refusal the catalogue classes `refused` with a `wait` or
-`retry` recovery is (the wire contract's retry rule), and none of these is one. A whole answer that
+No path is retried automatically: only a `refused` outcome of a class or code `failures.ts` names
+is (`RETRYABLE_REFUSAL_CLASSES`, `RETRYABLE_OVERLOAD_CODES`; the wire contract's retry rule), and
+none of these is one. `invalid-response`'s recovery is `retry`, which is the person's Retry, not
+the engine's. A whole answer that
 broke while the relay read it, or is not JSON, used to be handed to the SDK as a spent body and
 reported as `unknown`; the relay now reports it by class (`connection-lost`, `invalid-response`).
 A stream broken after its first byte is reported as the SDK reports it, `unknown`: the harness
