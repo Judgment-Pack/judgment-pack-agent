@@ -424,6 +424,32 @@ class VectorTests(unittest.TestCase):
         self.assertLessEqual(kept, fixture["retainedBytes"])
         self.assertGreater(kept + vector["items"][1]["evicted"][-1]["bytes"], fixture["retainedBytes"])
 
+    def test_a_long_findings_head_and_cursor_follow_from_the_fixture(self):
+        # delegated-task.json#/$defs/resultCursor (agent#13): the head is the whole lines whose
+        # JSON-encoded text fits the share, the cursor reads on at the next line, and the whole is
+        # retained in the chat's ledger under task-result-<task id>.
+        vector = self.vectors["delegation/long-result.json"]
+        fixture = vector["fixture"]
+        lines = fixture["findings"].split("\n")
+        count = 0
+        while count < len(lines) and len(json.dumps("\n".join(lines[: count + 1]), ensure_ascii=False).encode("utf-8")) <= fixture["shareBytes"]:
+            count += 1
+        self.assertGreater(count, 0)
+        self.assertLess(count, len(lines))
+        done = vector["items"][-1]
+        self.assertEqual(done["state"], "complete")
+        self.assertEqual(done["result"], "\n".join(lines[:count]))
+        digest = sha256(json.dumps(fixture["findings"], ensure_ascii=False))
+        self.assertEqual(done["more"], {
+            "readWith": "read_window",
+            "id": f"{fixture['scope']}:task-result-{done['id']}:{digest[:16]}",
+            "cursor": f"line:{count}",
+            "totalCharacters": len(fixture["findings"]),
+        })
+        # The batch's answer shows the parent the same head and cursor.
+        answered = self.vectors["delegation/answer.json"]["items"][0]["tasks"][0]
+        self.assertEqual((answered["result"], answered["more"]), (done["result"], done["more"]))
+
     def test_the_scenario_is_the_order_the_conformance_session_asserts(self):
         vector = self.vectors["scenario/expense-reimbursement.json"]
         self.assertEqual(

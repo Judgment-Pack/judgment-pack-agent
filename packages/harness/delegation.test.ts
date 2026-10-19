@@ -10,6 +10,9 @@ import { vercel } from './engines/vercel'
 import { normalize } from './thinking'
 import { gatedRuntime, runtimeAnswer, TEST_CASES_TOOL, TEST_CONFORMANCE_TOOL, type RuntimeCall } from './testing/scripted'
 import { RECORDED_TOOLS } from './certification/scriptedServer'
+import taskSchema from '../../contract/schemas/delegated-task.json'
+import budgetSchema from '../../contract/schemas/budget.json'
+import profilesVector from '../../contract/vectors/delegation/profiles.json'
 
 const task=(title='Check evidence',profile='review')=>({title,profile,objective:'Check the supplied claims.'})
 const request:DelegationRequest={tasks:[task()]}
@@ -133,6 +136,34 @@ it('pauses the real Codex adapter and runs children serially before continuing',
  // The continuation carries the findings, as the call's result, and no copy of the parent's earlier work.
  const continuation=prompts.at(-1)!
  expect(continuation).toContain('Child finding.');expect(continuation).not.toContain('PARENT CONTINUATION');expect(continuation).not.toContain('priorParentWork')
+})
+
+// agent#14: on Codex the next run of the response reads what the earlier one read by reference, and
+// may delegate again.
+it('carries the Codex parent’s earlier reads to its next run by reference, and lets that run delegate again',async()=>{
+ const prompts:string[]=[]
+ // The index shows a result's first line; the rest is read by reference.
+ const SOURCE='Mileage policy, page 1\nSOURCE-TEXT-7: the policy pays 0.58 per mile.'
+ const readSource:HostTool={name:'read_source',delegation:'read',description:'Read the source',inputSchema:{type:'object'},execute:vi.fn(async()=>({content:[{type:'text' as const,text:SOURCE}]}))}
+ let parents=0
+ const run=vi.fn<AgentRun>(async(r,cb)=>{prompts.push(r.prompt)
+  const tool=(name:string)=>r.tools.find((t:{description:string})=>t.description.startsWith(name+':'))
+  if(!tool('delegate_tasks')||r.prompt.includes('Complete this read-only task')){await cb.event({type:'message',id:'c',text:'Child finding.',phase:'final'});return}
+  parents++
+  if(parents===1){await cb.tool({id:'read',name:tool('read_source')!.name,arguments:{}},cb.signal);await cb.tool({id:'call',name:tool('delegate_tasks')!.name,arguments:{tasks:[task('First','analyze')]}},cb.signal);throw Error('Parent must yield')}
+  if(parents===2){await cb.tool({id:'call2',name:tool('delegate_tasks')!.name,arguments:{tasks:[task('Second','analyze')]}},cb.signal);throw Error('Parent must yield')}
+  await cb.event({type:'message',id:'reply',text:'Both batches done.',phase:'final'})
+ })
+ const {model:_model,thinking:_thinking,...base}=apiSession({hostTools:[readSource]})
+ const events=await collect(withDelegation(codex),{...base,agent:{model:'fixture',run}})
+ expect(parents).toBe(3)
+ expect(results(events).map(t=>[t.title,t.state])).toEqual([['First','complete'],['Second','complete']])
+ expect(events.filter(e=>e.type==='message')).toEqual([{type:'message',text:'Both batches done.'}])
+ const second=prompts.filter(p=>p.includes('DELEGATION RESULT'))[0]!
+ // The earlier read is in the index, by its read_window id and its first line; its text is not copied into the prompt.
+ expect(second).toContain('Earlier runs in this chat kept these tool results')
+ expect(second).toMatch(/"tool":"read_source","read":\{"id":"[^"]+:result-read_source-/)
+ expect(second).not.toContain('SOURCE-TEXT-7')
 })
 
 it('retries only refused Codex admission, never an uncertain execution failure',async()=>{
@@ -360,6 +391,8 @@ describe('context by reference and profiles (agent#15)',()=>{
    ['author-test','parent',{modelRequests:8,toolCalls:8,milliseconds:240_000},[],[...ASSISTANT_TOOLS]]
   ])
   expect(readProfiles(TASK_PROFILES)).toBe(TASK_PROFILES)
+  // The contract states them (vectors/delegation/profiles.json).
+  expect(profilesVector.items).toEqual(TASK_PROFILES)
   // A feature adapter may add a profile, never a larger allowance or a tool off the gate's ceiling.
   expect(()=>readProfiles([...TASK_PROFILES,{id:'wide',description:'d',instructions:'i',capabilities:[],budget:{...TASK_BUDGET_CEILING,toolCalls:TASK_BUDGET_CEILING.toolCalls+1}}])).toThrow()
   expect(()=>readProfiles([...TASK_PROFILES,{id:'files',description:'d',instructions:'i',capabilities:[],runtimeTools:['get_pack']}])).toThrow()
@@ -373,7 +406,11 @@ describe('context by reference and profiles (agent#15)',()=>{
   const events=await collect(withDelegation(engine),apiSession({model:{family:'openai-compatible',model:'fixture',call:vi.fn(),capabilities:{childModel:'fixture-small'}}}))
   const records=results(events)
   expect(records.map(t=>[t.profile,t.budget,t.model])).toEqual(TASK_PROFILES.map(p=>[p.id,profileBudget(p),p.model==='parent'?'fixture':'fixture-small']))
-  for(const event of events)if(event.type==='delegated_task')expect(validDelegatedTask(event.task)).toBe(true)
+  for(const event of events)if(event.type==='delegated_task'){
+   expect(validDelegatedTask(event.task)).toBe(true)
+   // Every member of the record is one the contract names.
+   for(const key of Object.keys(event.task))expect(Object.keys(taskSchema.properties)).toContain(key)
+  }
   // The parent is told each profile's limits where it chooses one.
   const offered=JSON.stringify(delegationTool(TASK_PROFILES).inputSchema)
   expect(offered).toContain('research: Research one focused question using the parent’s permitted source tools. Up to 10 model requests, 12 tool calls, 360 seconds.')
@@ -452,6 +489,13 @@ describe('the rest of agent#13',()=>{
   expect(LONG.startsWith(record.result!)).toBe(true)
   expect(record.result!.length).toBeLessThan(LONG.length)
   expect(record.more).toEqual({readWith:'read_window',id:cursor!.id,cursor:`line:${record.result!.split('\n').length}`,totalCharacters:LONG.length})
+  // The answer and the record carry the members the contract names, and no other.
+  const said=events.find(e=>e.type==='tool_result'&&e.name===DELEGATE_TOOL) as Extract<AssistantEvent,{type:'tool_result'}>
+  const answer=said.structured as Answered
+  expect(Object.keys(answer).sort()).toEqual(Object.keys(taskSchema.$defs.answer.properties).sort())
+  for(const key of Object.keys(answer.tasks[0]!))expect(Object.keys(taskSchema.$defs.answerTask.properties)).toContain(key)
+  for(const key of Object.keys(record))expect(Object.keys(taskSchema.properties)).toContain(key)
+  expect(answer.tasks[0]!.more).toEqual(record.more)
   // The parent read on from the cursor: the next line after the head.
   const next=LINES[record.result!.split('\n').length]!
   expect(readOn).toContain(next)
@@ -486,6 +530,7 @@ describe('the rest of agent#13',()=>{
   const parent=parentRequests(sent)
   expect(texts(parent[0]!).join('\n')).toContain(`at most ${MAX_TOOLS} tool calls in all`)
   expect(stated(parent[0]!)).toMatchObject({unit:'tool-calls',used:0,limit:MAX_TOOLS,remaining:MAX_TOOLS,scope:'response'})
+  expect(Object.keys(stated(parent[0]!)).sort()).toEqual(Object.keys(budgetSchema.$defs.toolCallAllowance.properties).sort())
   // A child is told its own budget.
   expect(stated(sent.find(isChild)!)).toMatchObject({unit:'tool-calls',used:0,limit:6,remaining:6,scope:'task'})
  })

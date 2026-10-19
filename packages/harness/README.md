@@ -24,7 +24,8 @@ repository root prints every difference from the Desk's files and names its reas
 changes made here since the extraction, each by its issue (agent#1, the read window and the reader;
 agent#9, the stable prefix and the state's placement; agent#4, the capability record and the text
 tool path; agent#5, search, numbered reads and images; agent#8, the chat-scoped context; agent#11,
-the request text on every request and the memory reserve).
+the request text on every request and the memory reserve; agent#14, agent#15 and agent#13,
+delegation as one parent run with context by reference and per-profile budgets).
 
 ## Entry points
 
@@ -167,7 +168,8 @@ and where the execution state goes. The family stays the wire. A run's record is
 default (`FAMILY_CAPABILITIES`, the Desk's three families as records, which change nothing), then
 the host's `endpointCapabilities` answer member by member, then `session.model.capabilities` where
 the host puts its endpoint's own on the session; read closed, and refused where the reasoning kind
-is not one the wire speaks.
+is not one the wire speaks. One member is not about the endpoint's own model: `childModel`, a cheaper
+model the connection serves for delegated children (see Delegation).
 
 An endpoint without native tool calls is sent none: its tools are described at the end of the
 system text, the model calls one per answer as one fenced JSON block, `{"tool": name, "arguments":
@@ -222,7 +224,8 @@ earlier runs kept (`read_window` id, tool, arguments digest, size, first line), 
 allowance, at most a quarter of it, so the request is never previewed and a run never fails because
 of the index; results evicted since the last index was sent are listed there. A run's checkpoint carries the entries it retained or read, not the
 chat's. Nothing is global: a run reaches only the chat context it was handed, and a delegated child
-gets none. `wire-contract.md` has the rules; `tool-result.json` the index and the cache key.
+gets a view of its parent's that shows it its references and what it reads itself (see Delegation).
+`wire-contract.md` has the rules; `tool-result.json` the index and the cache key.
 
 ### The request text and project memory
 
@@ -235,6 +238,46 @@ contract states the rule a server applies to find it (`budget.json#/$defs/recall
 certified leg, 21 legs in four families.
 The host says per run whether the project's memory is on (`context.memory`): `false` frees the
 `memoryBytes` reserve, and a run whose host says nothing keeps it.
+
+### Delegation
+
+`withDelegation(engine, options)` (`delegation.ts`) wraps either engine for a conversation and
+offers the model `delegate_tasks` (`delegationContract.ts`; the contract's `delegated-task.json`;
+agent#13, agent#14, agent#15):
+
+- **One parent run.** The call runs the batch. The `vercel` engine awaits it in the parent's step,
+  with no tool-call deadline (the batch is bounded by its children's time limits and the run's own
+  signal), and the children's findings are the call's tool result in the same run. The `codex`
+  engine ends its run at the call, since the provider account runs one agent run at a time and the
+  children need it; the coordinator runs the batch and starts the response's next run with the
+  call's result alone, the earlier run's reads listed in its index. Up to four batches per response
+  (`MAX_BATCHES`), one at a time.
+- **Context by reference.** A task names `references`, ledger entry ids or document ids of the
+  parent's context, resolved in the parent's chat alone. The child gets a view of the chat
+  (`ChatContext.childScope`) showing it those entries and what it reads itself, sharing the chat's
+  read cache, and reads them with `read_window` and `search`; nothing is copied into its brief. The
+  coordinator makes a chat context for the response where the host handed none, and disposes of it
+  when the response ends.
+- **Profiles.** `TASK_PROFILES`: `analyze`, `review`, `research` and `author-test`, each with a
+  `model`, a `budget` (model requests, tool calls, milliseconds) and its tools; `author-test` is
+  offered the gate's six Runtime tools and no host tool, and its test calls count against the
+  parent's turn. A feature adapter may add a profile through `options.profiles`
+  (`[...TASK_PROFILES, its own]`), held by `readProfiles` within `TASK_BUDGET_CEILING` and the
+  gate's ceiling. Each task's record carries its `budget` and the `model` it ran on.
+- **A child model.** A host names a cheaper model for children in the capability record,
+  `childModel`, through `endpointCapabilities` or `session.model.capabilities`; a child whose
+  profile asks for the parent's model (`author-test`) stays on it. The host answers
+  `endpointCapabilities` for the child model as for any other, and its relay must admit it.
+- **Shared limits.** The parent's execution owns the response's model requests once its run starts
+  (`ContextInput.link`), a child's are charged to it, and the last is kept for the parent. Twenty
+  host and Runtime tool calls per response, the parent's and its children's together, stated in
+  the instructions and in the execution state as `toolCalls`.
+- **Long findings and resume.** Findings past a task's share of the answer are retained whole in the
+  chat's ledger and the parent gets their head and a `read_window` cursor (`more`); a task may ask
+  to `summarize` them in one request of its budget. A complete task's context is kept in the chat
+  under its task id, and a later batch resumes it with `resume`.
+- **Kept:** `options.checkpoint` before each task transition, the durable checkpoint of the shared
+  count before each child request, cancellation with the parent, and the research hand-back.
 
 ## Certification
 

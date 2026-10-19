@@ -11,8 +11,12 @@ answer kept, the proposal's `note`, the `propose_pack` tool), the model-request 
 turn's wall clock and the tool-call deadline. Amended again for agent#7 (the Runtime's test tool on
 the ceiling, under an argument allow-list and a per-turn cap), agent#3 (the failure paths, recorded
 in [AI error handling](ai-error-handling.md)) and the harness side of agent#12 (retrieved text
-framed as data). These are the harness package's behaviour, not yet the Desk's; their vectors name
-the package's files as their source.
+framed as data). Amended for agent#14, agent#15 and agent#13's delegation items: one parent run
+with the children's findings as the delegate call's result, more than one batch, a resumed child,
+material passed by reference, a model, budget, time limit and Runtime tools per profile, long
+findings kept whole, and the tool-call cap stated (see [Delegated tasks](#delegated-tasks)). These
+are the harness package's behaviour, not yet the Desk's; their vectors name the package's files as
+their source.
 
 ## Host, adapter, and the slot between them
 
@@ -52,14 +56,17 @@ rehearsal rule stay the host's (ADR-0001). Nothing below moves them.
   model's prose beside the proposal, as written; where the proposal could not be read, the whole
   answer, prose and raw fence, before the error).
 - **Pauses for someone else:** `user_question` (the model asked the person; the turn ends),
-  `delegation_requested` (the model asked for a batch of child tasks; the coordinator runs them),
+  `delegation_requested` (on an engine whose run cannot wait for a tool call, `codex`, the model
+  asked for a batch of child tasks; the coordinator runs them and starts the response's next run;
+  on `vercel` the batch is an awaited `delegate_tasks` call, a `tool_call` and a `tool_result`),
   `budget_paused` (the request allowance ran out, the model asked for more or, on `vercel`, the
   turn's wall clock passed; the person decides).
 - **Host reports:** `guardrail` (`rewrote` and `refused` from the tool gate, between the call and
   its result; `narrowed` before the model is asked anything, where a family's wire cannot carry a
   served schema keyword; `refused` with tool `proposal` where Plan mode or a conversation withholds
   proposals), `execution_checkpoint` (state to save, `durable` where it must be saved before the
-  next operation), `delegated_task` (a child's state, whole, at each transition).
+  next operation), `delegated_task` (a child's state, whole, at each transition; on `vercel`
+  between the delegate call and its result).
 - **Provider recovery:** `retry` (attempt one or two: on `codex` relayed from the subscription
   agent, on `vercel` before a refused model request is sent again), `response_recovery` (one
   tool-free request to finish a response cut short, or to ask once for a proposal that could not be
@@ -109,7 +116,8 @@ rehearsal; `get_pack` and `list_packs` read the saved tree. A host's own configu
 fewer (the Desk's decoder admits its five today). The host's
 tools arrive as declarations (`name`, `description`, `inputSchema`) with host-declared members the
 model never supplies: `effect` (`read`, `proposal`, `workflow`, `memory`, `plan`), `interaction`
-(`question` or `delegation`, the two that pause the run), `delegation` (the read-only capability a
+(`question`, which pauses the run, or `delegation`, the delegate call the coordinator runs; see
+Delegated tasks), `delegation` (the read-only capability a
 child may use), `contextPolicy` (`immutable`, `reference`, and, since agent#8, `runtime`: the
 result depends on the Runtime serving it) and `presentation`. The boundary adds
 `list_context`, `read_context`, `read_window` and `search` to every session and, in a conversation,
@@ -149,8 +157,8 @@ holds the tools that are not offered.
 
 `tool-call.json`. A `tool_call` carries the tool's own `name`, the model's own `args` (before the
 gate rewrites anything) and, where set, a `callId`. It is emitted before the call is made, so the
-host can journal it. A host tool with an `interaction` gets `user_question` or
-`delegation_requested` instead.
+host can journal it. `ask_user` gets `user_question` instead; `delegate_tasks` gets a `tool_call`
+on `vercel`, where the call is awaited (agent#14), and `delegation_requested` on `codex`.
 
 Every runtime call leaves through the host's gate (`toolGate.ts`), which reads the outbound
 `tools/call` frame: a name outside the allow-list is refused on the wire (`guardrail` `refused`,
@@ -165,8 +173,9 @@ record. The adapter neither applies nor skips these rules.
 One turn may call `experimental_test_cases` at most `testCallsPerTurn` times (three by default),
 counted per turn. The count is the shared boundary's (`context/session.ts`), so both engines keep
 it, and it is the checkpoint's `testCalls`, carried as `used` is: a Retry, a budget continuation and
-a delegation's parent continuation go on counting, and the delegation coordinator counts the parent
-and its continuation together. A call past it is not made, and the model reads a failed result
+a `codex` parent's next run after a batch go on counting. A delegated child's test calls (the
+`author-test` profile) are charged to its parent's turn, so the parent and its children share the
+cap. A call past it is not made, and the model reads a failed result
 (`tool-failed`, source `tool`, outcome `not-started`) that names `testCallsPerTurn` and tells it to
 use the reports it has. Each call re-sends the whole pack, so without the cap a test, fix and
 retest loop would be bounded only by the request allowance, at a cost that grows with the square of
@@ -280,9 +289,10 @@ server's dispatcher admits (`policy-update`, `pack-update`, `portable-research`,
 by the commit, with `state` `ready`, `used`, `expired`, `revoked` or `stale`. Model output never
 mints one.
 
-The run's own pauses for a person are the question (`user_question`), the budget
-(`budget_paused`, resumed only by a grant recorded in the checkpoint) and, for the coordinator,
-delegation. The model's call of an unoffered or refused tool is not a pause: the gate refuses it.
+The run's own pauses for a person are the question (`user_question`) and the budget
+(`budget_paused`, resumed only by a grant recorded in the checkpoint). A delegation is not a pause
+on `vercel`, where the call is awaited, and ends the run on `codex`, where the coordinator starts the
+response's next run itself. The model's call of an unoffered or refused tool is not a pause: the gate refuses it.
 
 ## Questions
 
@@ -296,22 +306,95 @@ the model asks again in the same turn. The reader is closed: no member it does n
 
 ## Delegated tasks
 
-`delegated-task.json`. The model asks for one batch of one to three tasks (`title`, `objective`,
-the only `context` the child gets, and an offered `profile`: `analyze`, `review` or `research`).
-The adapter emits `delegation_requested` and pauses. The host's coordinator runs each child on the
-same engine with a fresh session, the profile's instructions and only the host tools the profile's
-capabilities admit, and publishes each transition as `delegated_task`: `state` (`queued`,
-`running`, `complete`, `failed`, `interrupted`), its `steps`, its counts (`modelRequests`,
-`toolCalls`, `attempts`), and its `result`, `problem` or `failure`. Then it continues the parent
-with the findings as retained, unverified working material. Children cannot ask, propose, approve
-or delegate again.
+`delegated-task.json`; the vectors `delegation/`. The model asks for a batch of one to three tasks
+with the host tool `delegate_tasks` (`$defs/request`): each a `title`, an `objective` (the child's
+request text, sent as the first text part of its first message), an offered `profile`, and,
+optionally, `references`, `resume` and `summarize`. The request is closed; since agent#15 it carries
+no copied context.
 
-The shared limits are the coordinator's: twenty tool calls across parent and children, six model
-requests and six tool calls per child, one request held back for the parent, two minutes and
-12,000 characters of result per child. On an agent capability the coordinator admits at most five
-agent runs in all, shared by the parent and its children, and retries every agent run under it,
-the parent's included, after a `busy`, `not-started` refusal and nothing else, three attempts in
-all.
+**One parent run** (agent#14). The call runs the batch. The `vercel` engine awaits it inside the
+parent's step: the children run while the call is open, and their findings are the call's result
+(`$defs/answer`), shown to the model as one data block, so the parent keeps its own messages,
+tool calls and reasoning as they are, and its prompt prefix. The call has no tool-call deadline; it
+is bounded by its children's time limits end to end and by the run's own signal, so a Stop or the
+turn's wall clock stops the children with it, and a stopped call returns no findings. The `codex`
+engine cannot wait: the provider account runs one agent run at a time and the children need it, so
+it reports `delegation_requested` and ends its run; the coordinator runs the batch and starts the
+response's next run with the call's result and nothing else. What the earlier run read is in the
+chat's ledger and listed in that run's index of earlier results (see The chat-scoped context; the
+coordinator makes a chat context for the response where the host gave none), and nothing of the
+earlier run is copied into the prompt. On both, the delegate tool stays offered: a response may run
+up to four batches (`MAX_BATCHES`), one at a time.
+
+**The children.** The coordinator runs each child on the same engine with a fresh session: its
+profile's instructions, its rules, the JSON of its objective, references and time limit, the host
+tools its profile's capabilities admit and the Runtime tools its profile names, and nothing else.
+It publishes each transition as `delegated_task`: `state` (`queued`, `running`, `complete`,
+`failed`, `interrupted`), its `steps`, its counts (`modelRequests`, `toolCalls`, `attempts`), its
+`budget` and `model`, its `references` and the task it `resumes`, and its `result`, `more`,
+`problem` or `failure`. Children cannot ask, propose, approve or delegate again. Their findings are
+unverified working material.
+
+**Context by reference** (agent#15). A reference is a ledger entry id from the parent's context
+(`list_context`, a result reference's `contextId`) or the id the host gave one of its documents,
+resolved in the parent's chat alone; one the parent's context does not hold fails the call before
+any task starts. The child is handed a view of the parent's chat (`ChatContext.childScope`) that
+shows it its references and what it retains or reads itself, and nothing else of the chat; it reads
+them with `read_window` and `search`. The view shares the chat's read cache, so an immutable read
+the parent made is served to the child without a call, and the child's reads are kept for the
+parent. Its first message carries no index.
+
+**Profiles** (`$defs/profile`, `vectors/delegation/profiles.json`). Each declares a `model`, a
+`budget` (model requests, tool calls, milliseconds) and its tools:
+
+| Profile | Model | Requests | Tool calls | Time limit | Tools |
+| --- | --- | --- | --- | --- | --- |
+| `analyze` | child | 6 | 6 | 120 s | none beside the context tools |
+| `review` | child | 6 | 6 | 120 s | host tools declared `read` |
+| `research` | child | 10 | 12 | 360 s | host tools declared `read` or `research` |
+| `author-test` | parent | 8 | 8 | 240 s | the gate's six Runtime tools; no host tool |
+
+`child` is the connection's child model, which the capability record names (`childModel`, see The
+capability record), and the parent's model where it names none; `parent` is the parent's model
+always. An agent capability names no model per request, so `codex` children run on the parent's
+agent. The four profiles are closed; a feature adapter may add one (`options.profiles`), held to a
+budget within the research profile's and to Runtime tools on the gate's ceiling. A child's requests
+are held to its budget by its own execution, whose allowance is its budget's rest within what the
+response can give it, so its loop plans its final answer within what it may spend.
+
+**Shared limits.** The parent's execution owns the response's model requests once its run starts
+(`ContextInput.link`): each child request is charged to it, and none takes the last request, kept
+for the parent's answer after the children; the checkpoint with the shared count is delivered,
+durable, before each child request. One response may make twenty host and Runtime tool calls
+(`MAX_TOOLS`), the parent's and its children's together; the context tools are not counted. The cap
+is stated where the model reads it: in the delegation instructions, and in the execution state as
+`toolCalls` (`budget.json#/$defs/toolCallAllowance`; a child is told its own budget there, scope
+`task`). It stays a response-wide cap rather than being separated from the delegation's budget:
+now that a response may run several batches it is the one bound on a response's whole tool work,
+and the parent can plan within it once it is stated. The turn's test calls are shared the same way.
+On an agent capability the coordinator admits at most five agent runs in all, shared by the parent
+and its children, never a child's taking the last, and retries every agent run under it, the
+parent's included, after a `busy`, `not-started` refusal and nothing else, three attempts in all.
+
+**Long findings** (agent#13). Each task's findings are held to its share of the parent's answer,
+which then fits one tool result (`toolResultBytes`), and to 12,000 characters. Findings past it are
+kept, never a failed task: retained whole in the chat's ledger (`task-result-<task id>`), with the
+record's `result` their head (whole lines, or the start of a first line too long) and `more` the
+`read_window` cursor that reads on (`$defs/resultCursor`). A task that asks (`summarize`) is given
+one more request of its budget, tool-free, to summarize the findings within the share; the summary
+becomes its `result` and `more` points at the whole.
+
+**Resume** (agent#14). A complete task's context is kept in the chat under its task ids: its
+profile, its objectives and findings in order, and the entries it may read. A later batch of the
+same chat (the same response or a later one) resumes it with `resume` and a new objective: the
+child's brief carries its earlier objectives and findings (`earlierWork`), and its view of the chat
+still shows what it read before.
+
+**Kept as they were:** the host's checkpoint of each task transition before the next operation
+(`options.checkpoint`; a failed save ends the response with a `storage` error before any child
+runs), the durable checkpoint of the shared request count before each child request, cancellation
+of the children with the parent, and the research hand-back: a child's source call that needs the
+parent's research choice stops the child and its task reports why.
 
 ## Checkpoints
 
@@ -403,6 +486,8 @@ that speaks the request, where signatures ride, where a cache breakpoint goes):
   whole, which is asked for a whole answer.
 - `toolSchemas`: the served JSON Schema, or the Gemini subset, on any wire.
 - `statePlacement` and `strictAlternation` (agent#9): where the execution state goes; see below.
+- `childModel` (agent#15): a model the same connection serves for delegated children, whose own
+  record is the host's answer for it over the family's default; see Delegated tasks.
 
 A run's record is the family's default (the three vectors, which change nothing the loop did), then
 the host's `endpointCapabilities` answer for the endpoint and model, any members of the record
@@ -541,7 +626,8 @@ another chat context or none (after a reload, say), they make a ledger of the ru
 **When a chat is deleted** the host calls `dispose()` on its context, after its run has ended or
 been stopped: everything it holds is cleared and a later run handed it fails before any request.
 Nothing is global: a run reaches only the chat context it was handed, a delegated child is handed
-none, and an independent phase (the critic) works in a ledger of its own and neither clears nor adds
+a view of its parent's (`childScope`: its references and what it reads itself, see Delegated
+tasks), and an independent phase (the critic) works in a ledger of its own and neither clears nor adds
 to the chat's, so nothing retained in one chat is reachable from another. A run that fails at its
 start closes its turn, so what it retained can be evicted, and a checkpoint restored into the chat
 is held to `retainedBytes` as any retain is.
@@ -598,9 +684,10 @@ store and a bound of its own.
 
 ### How a framework with its own subagents carries a delegated task's budget
 
-Delegation today is the host's: the adapter only reports `delegation_requested`, and the
-coordinator runs each child on the same engine, counting each child's model requests through the
-model capability it wraps and holding the shared limits above. A framework that brings its own
+Delegation today is the host's: the adapter awaits the delegate call (`vercel`) or reports
+`delegation_requested` (`codex`), and the coordinator runs each child on the same engine, charging
+each child's model requests to the parent's execution through the model capability it wraps and
+holding the shared limits above. A framework that brings its own
 subagents (Deep Agents' task tool, the AI SDK's subagents as tools) runs children inside the
 adapter, where the host sees no `delegation_requested`, no per-child model call and no child state
 unless the adapter reports them. Open: whether every child's model traffic must still go through
@@ -613,6 +700,10 @@ the host's model capability so the host keeps counting; whether the adapter emit
 - **The critic's default.** `vercel` runs the critic when the session leaves `adversarialReview`
   unset and the reasoning tier is on (`adversarialReview ?? runsRefutation()`); `codex` runs it
   only when `adversarialReview` is `true`.
+- **Delegation** (agent#14). `vercel` awaits the delegate call in the parent's step and runs two
+  children at a time; `codex` ends its run at the call, runs its children one at a time on the
+  provider account, and the response continues in a new run given the call's result. A child model
+  (`childModel`) applies on `vercel` only.
 - **Retries.** `vercel` keeps the SDK's own retries off (`maxRetries: 0`) and sends a model request
   again only after a `refused` outcome whose recovery is `wait` or `retry`, at most twice, with a
   `retry` event each time (see Failures); separately, it starts the whole session again only for a

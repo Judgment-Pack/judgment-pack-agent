@@ -1,0 +1,33 @@
+{
+  "description": "The tool-call cap as the execution state states it (agent#13): a parent run's, scope response, the twenty host and Runtime tool calls one response may make, its own and its children's together, after seven; and a review child's, scope task, its profile's six, after two. Written by hand from the schema.",
+  "schema": "budget.json#/$defs/toolCallAllowance",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/execution/controller.ts (requestState, toolAllowance)",
+      "packages/harness/delegation.ts (the parent's and a child's link)",
+      "packages/harness/delegation.test.ts (the cap in the state text)"
+    ]
+  },
+  "items": [
+    {
+      "unit": "tool-calls",
+      "used": 7,
+      "limit": 20,
+      "remaining": 13,
+      "scope": "response",
+      "note": "Tool calls this response may make, yours and your delegated children’s together; the context tools are not counted."
+    },
+    {
+      "unit": "tool-calls",
+      "used": 2,
+      "limit": 6,
+      "remaining": 4,
+      "scope": "task",
+      "note": "Tool calls this task may make; the context tools are not counted."
+    }
+  ]
+}

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/delegated-task.json",
   "title": "Delegated task",
-  "description": "The state of one child task of a delegation batch, carried whole on every delegated_task event (each transition is a fresh snapshot). Read from DelegatedTask (web/src/assistant/delegationContract.ts, validDelegatedTask). Open: validDelegatedTask accepts a member it does not name. The model asks for a batch with the host tool delegate_tasks; the adapter emits delegation_requested and pauses; the host's coordinator (web/src/assistant/delegation.ts, withDelegation) runs the children on the same engine and emits these events. Its shared limits are budget.json $defs/deskLimits (MAX_TOOLS, MAX_CHILD_MODELS, MAX_CHILD_TOOLS, CHILD_TIMEOUT, RESULT_LIMIT, and the agent-run cap and retry in that definition's description).",
+  "description": "The state of one child task of a delegation batch, carried whole on every delegated_task event (each transition is a fresh snapshot). Read from DelegatedTask (web/src/assistant/delegationContract.ts, validDelegatedTask; packages/harness/delegationContract.ts in this harness). Open: validDelegatedTask accepts a member it does not name. The model asks for a batch with the host tool delegate_tasks. In this harness (agent#14) the call runs the batch: an engine that awaits a tool call (vercel) gets the children's findings as that call's result ($defs/answer) in the same run; an engine whose run cannot wait for one (codex: the provider account runs one agent run at a time and the children need it) emits delegation_requested and ends its run, and the coordinator (packages/harness/delegation.ts, withDelegation) runs the batch and starts the response's next run with the call's result and nothing else. The coordinator runs the children on the same engine and emits these events. Its shared limits: the response's model requests (one kept for the parent), MAX_TOOLS tool calls (20) across the parent and its children, the turn's test calls, at most four batches (MAX_BATCHES) and, on an agent capability, five agent runs; each child's own are its profile's budget ($defs/profile, $defs/budget), which replace the Desk's MAX_CHILD_MODELS, MAX_CHILD_TOOLS and CHILD_TIMEOUT (budget.json $defs/deskLimits). The members after failure are this harness's (agent#13, agent#14, agent#15).",
   "type": "object",
   "required": [
     "id",
@@ -49,13 +49,13 @@
       "$ref": "#/$defs/time"
     },
     "modelRequests": {
-      "description": "Model requests this child spent; at most six are admitted per child.",
+      "description": "Model requests this child spent; at most its profile's budget.modelRequests are admitted, and none that would take the response's last request, kept for the parent.",
       "type": "integer",
       "minimum": 0,
       "maximum": 20
     },
     "toolCalls": {
-      "description": "Tool calls this child made; at most six are admitted per child.",
+      "description": "Host and Runtime tool calls this child made; at most its profile's budget.toolCalls are admitted, within the response's MAX_TOOLS. The context tools (list_context, read_context, read_window, search, update_plan, request_budget_increase) are not counted, nor is a read the chat's read cache served.",
       "type": "integer",
       "minimum": 0,
       "maximum": 20
@@ -89,7 +89,7 @@
       }
     },
     "result": {
-      "description": "The child's findings: unverified working material for the parent.",
+      "description": "The child's findings: unverified working material for the parent. Where they are longer than the task's share of the parent's answer (and at most 12,000 characters), their head: whole lines, or the start of a first line too long; the whole is in the chat's ledger at more (agent#13). Where summarized is true, the child's own summary of the findings at more.",
       "type": "string",
       "maxLength": 12000,
       "pattern": "\\S"
@@ -101,6 +101,37 @@
     },
     "failure": {
       "$ref": "failure.json"
+    },
+    "budget": {
+      "description": "The limits this task ran under: its profile's budget (agent#15). Always present on a task this harness publishes; absent on a record the Desk wrote before.",
+      "$ref": "#/$defs/budget"
+    },
+    "model": {
+      "description": "The model this task ran on (agent#15): the connection's child model (capability.json childModel) unless its profile asks for the parent's, or the parent's model; on an agent capability, the parent's agent.",
+      "type": "string",
+      "maxLength": 200,
+      "pattern": "\\S"
+    },
+    "references": {
+      "description": "The entries of the parent's context the task was given by reference (agent#15), each by its ledger id: a document id the parent passed is resolved to its entry. The child reads them with read_window and search; none is copied into its brief.",
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "string",
+        "maxLength": 300,
+        "pattern": "\\S"
+      }
+    },
+    "resumes": {
+      "description": "The finished task of the same chat this one continues with its earlier context (agent#14): its objectives and findings, and what it read.",
+      "$ref": "#/$defs/uuid"
+    },
+    "more": {
+      "$ref": "#/$defs/resultCursor"
+    },
+    "summarized": {
+      "description": "result is the child's own summary of the findings at more, made in one more request of its budget where the task asked for it (agent#13).",
+      "type": "boolean"
     }
   },
   "additionalProperties": true,
@@ -124,7 +155,7 @@
       ]
     },
     "request": {
-      "description": "What the model asks for with delegate_tasks, carried on the delegation_requested event (DelegationRequest). Closed: readDelegationRequest refuses a member it does not name, here and in each task. One batch of one to three tasks per response.",
+      "description": "What the model asks for with delegate_tasks (DelegationRequest): the call's arguments, and, from an engine that ends its run at the call (codex), the delegation_requested event's request. Closed: readDelegationRequest refuses a member it does not name, here and in each task. One to three tasks per batch; a response may run up to four batches (MAX_BATCHES), one at a time.",
       "type": "object",
       "required": [
         "tasks"
@@ -142,11 +173,11 @@
       "additionalProperties": false
     },
     "taskRequest": {
+      "description": "One task, as the model asks for it. Closed. Since agent#15 the task carries no copied context: material is passed by reference.",
       "type": "object",
       "required": [
         "title",
         "objective",
-        "context",
         "profile"
       ],
       "properties": {
@@ -156,26 +187,40 @@
           "pattern": "\\S"
         },
         "objective": {
+          "description": "The child's request text (agent#11): the first text part of its first message.",
           "type": "string",
           "maxLength": 2000,
           "pattern": "\\S"
         },
-        "context": {
-          "description": "The only context the child receives; may be empty.",
-          "type": "string",
-          "maxLength": 16000
-        },
         "profile": {
-          "description": "An offered profile's id; the Desk offers analyze, review and research.",
+          "description": "An offered profile's id; this harness offers analyze, review, research and author-test (vectors/delegation/profiles.json). A resumed task gives its own profile again.",
           "type": "string",
           "maxLength": 48,
           "pattern": "\\S"
+        },
+        "references": {
+          "description": "Entries of the parent's context the child reads by reference (agent#15): a contextId from list_context or a result reference, or the id the host gave one of its documents. Resolved in the parent's chat alone; one the parent's context does not hold fails the call before any task starts.",
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "string",
+            "maxLength": 300,
+            "pattern": "\\S"
+          }
+        },
+        "resume": {
+          "description": "The id of a finished task of this chat to continue with its earlier context (agent#14). An id the chat holds no finished task for fails the call before any task starts.",
+          "$ref": "#/$defs/uuid"
+        },
+        "summarize": {
+          "description": "Where the findings run past the task's share of the answer, the child is asked once, in one request of its budget, to summarize them within it (agent#13).",
+          "type": "boolean"
         }
       },
       "additionalProperties": false
     },
     "profile": {
-      "description": "A task profile (TaskProfile): what a child is told and which host-tool capabilities it may use. A host tool reaches a child only where its own delegation member names a capability the profile lists.",
+      "description": "A task profile (TaskProfile): what a child is told, which host-tool capabilities and which of the gate's Runtime tools it is offered, which model it runs on and its budget (agent#15). A host tool reaches a child only where its own delegation member names a capability the profile lists; a Runtime tool only where the profile names it and the parent's session was served it through the gate. The closed profiles are vectors/delegation/profiles.json; a feature adapter may add one (options.profiles), held by readProfiles to a budget within the ceiling (10 model requests, 12 tool calls, 360,000 ms) and Runtime tools on the gate's ceiling.",
       "type": "object",
       "required": [
         "id",
@@ -201,9 +246,177 @@
               "research"
             ]
           }
+        },
+        "runtimeTools": {
+          "description": "The gate's Runtime tools a child of this profile is offered; none where absent.",
+          "type": "array",
+          "items": {
+            "$ref": "tool-offer.json#/$defs/runtimeCeiling"
+          }
+        },
+        "model": {
+          "description": "child: the connection's child model (capability.json childModel) where it names one, else the parent's; parent: the parent's always. Absent: child.",
+          "enum": [
+            "child",
+            "parent"
+          ]
+        },
+        "budget": {
+          "description": "Absent: six model requests, six tool calls, 120,000 ms (DEFAULT_TASK_BUDGET).",
+          "$ref": "#/$defs/budget"
         }
       },
       "additionalProperties": true
+    },
+    "budget": {
+      "description": "One child's limits (TaskBudget, agent#15): the model requests and the tool calls it may make, and its time limit. A batch is bounded by its children's time limits end to end; the delegate call has no tool-call deadline of its own.",
+      "type": "object",
+      "required": [
+        "modelRequests",
+        "toolCalls",
+        "milliseconds"
+      ],
+      "properties": {
+        "modelRequests": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "toolCalls": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12
+        },
+        "milliseconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 360000
+        }
+      },
+      "additionalProperties": false
+    },
+    "resultCursor": {
+      "description": "Where a child's whole findings are kept when its result is their head or a summary (agent#13): an entry of the chat's ledger, read on with read_window from cursor (tool-result.json's read cursor: line:<offset>, or line:<offset>+<column> inside a line).",
+      "type": "object",
+      "required": [
+        "readWith",
+        "id",
+        "cursor",
+        "totalCharacters"
+      ],
+      "properties": {
+        "readWith": {
+          "const": "read_window"
+        },
+        "id": {
+          "type": "string",
+          "maxLength": 300,
+          "pattern": "\\S"
+        },
+        "cursor": {
+          "type": "string",
+          "pattern": "^line:\\d{1,9}(\\+\\d{1,9})?$"
+        },
+        "totalCharacters": {
+          "description": "The whole findings' length, in UTF-16 code units as the reader counts them.",
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "answer": {
+      "description": "What the parent is answered for a batch (agent#14): the delegate call's result, as structuredContent and its JSON text, shown to the model as one data block (framing.ts); on an engine that ends its run at the call, the JSON the response's next run is given. Each task's findings are held to its share of one tool result, so the answer fits toolResultBytes. Closed: the coordinator writes these members and no other.",
+      "type": "object",
+      "required": [
+        "tasks",
+        "note"
+      ],
+      "properties": {
+        "tasks": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/$defs/answerTask"
+          }
+        },
+        "note": {
+          "type": "string",
+          "pattern": "\\S"
+        }
+      },
+      "additionalProperties": false
+    },
+    "answerTask": {
+      "description": "One task of a batch's answer: its record's id, title, profile, state, resumes, result, more, summarized and problem, what it used, and its budget.",
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "profile",
+        "state",
+        "used"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 80,
+          "pattern": "\\S"
+        },
+        "profile": {
+          "type": "string",
+          "maxLength": 48,
+          "pattern": "\\S"
+        },
+        "state": {
+          "$ref": "#/$defs/state"
+        },
+        "resumes": {
+          "$ref": "#/$defs/uuid"
+        },
+        "result": {
+          "type": "string",
+          "maxLength": 12000,
+          "pattern": "\\S"
+        },
+        "more": {
+          "$ref": "#/$defs/resultCursor"
+        },
+        "summarized": {
+          "const": true
+        },
+        "problem": {
+          "type": "string",
+          "maxLength": 1000,
+          "pattern": "\\S"
+        },
+        "used": {
+          "type": "object",
+          "required": [
+            "modelRequests",
+            "toolCalls"
+          ],
+          "properties": {
+            "modelRequests": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "toolCalls": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "budget": {
+          "$ref": "#/$defs/budget"
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

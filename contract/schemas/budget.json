@@ -184,7 +184,7 @@
       "additionalProperties": false
     },
     "requestAllowance": {
-      "description": "What the host tells the model about the request allowance, inside its execution guidance (ExecutionController.guidance): the counts where the host counts model requests, or a note where the provider manages its own loop. Written for the model; no reader.",
+      "description": "What the host tells the model about the request allowance, inside its execution guidance (ExecutionController.guidance): the counts where the host counts model requests, or a note where the provider manages its own loop. In a conversation the delegation coordinator wraps, the same state carries toolCalls beside it ($defs/toolCallAllowance). Written for the model; no reader.",
       "oneOf": [
         {
           "type": "object",
@@ -230,6 +230,44 @@
         }
       ]
     },
+    "toolCallAllowance": {
+      "description": "The tool-call cap the execution state states as toolCalls (agent#13), where the delegation coordinator holds one (ExecutionController.toolAllowance): scope response, the MAX_TOOLS (20) host and Runtime tool calls one response may make, the parent's and its delegated children's together; scope task, one child's own budget (delegated-task.json#/$defs/budget). The context tools are not counted. Absent from a run the coordinator does not wrap. Written for the model; no reader.",
+      "type": "object",
+      "required": [
+        "unit",
+        "used",
+        "limit",
+        "remaining",
+        "scope"
+      ],
+      "properties": {
+        "unit": {
+          "const": "tool-calls"
+        },
+        "used": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "remaining": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "scope": {
+          "enum": [
+            "response",
+            "task"
+          ]
+        },
+        "note": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
     "budgetIncreaseAnswer": {
       "description": "The answer of the host tool request_budget_increase. It never grants: approval-required pauses the run (budget_paused) for the person; within-allowance tells the model to carry on (more than two requests remain); unavailable is the provider-managed case.",
       "type": "object",
@@ -255,7 +293,7 @@
       "additionalProperties": true
     },
     "deskLimits": {
-      "description": "The fixed limits, by the Desk's own constant names, at the pinned commit. Values the Desk writes as unnamed literals are stated in these descriptions instead: a checkpoint holds at most 8 grants; one delegation batch has one to three tasks; on an agent capability the delegation coordinator admits at most 5 agent runs in all, shared by the parent and its children, retries every agent run under it, the parent's included, after a busy, not-started refusal, three attempts in all, and runs one child at a time (two on a model capability); the Codex bridge bounds an agent run at ten minutes (internal/codexbridge/run.go), which the server reports as a timeout failure; the browser's agent transport ends a run at twelve minutes, a backstop behind the bridge's deadline, and refuses a frame over 2 MiB, more than 8 MiB received or 64 queued frames, and more than 20 tool calls; the Codex bridge allows two recovery notices (retry events) per run; the model relay bounds one relayed request at ten minutes and two minutes idle (relayDeadline, relayIdle), and has no deadline for a whole run.",
+      "description": "The fixed limits, by the Desk's own constant names, at the pinned commit. Values the Desk writes as unnamed literals are stated in these descriptions instead: a checkpoint holds at most 8 grants; one delegation batch has one to three tasks; on an agent capability the delegation coordinator admits at most 5 agent runs in all, shared by the parent and its children, retries every agent run under it, the parent's included, after a busy, not-started refusal, three attempts in all, and runs one child at a time (two on a model capability); the Codex bridge bounds an agent run at ten minutes (internal/codexbridge/run.go), which the server reports as a timeout failure; the browser's agent transport ends a run at twelve minutes, a backstop behind the bridge's deadline, and refuses a frame over 2 MiB, more than 8 MiB received or 64 queued frames, and more than 20 tool calls; the Codex bridge allows two recovery notices (retry events) per run; the model relay bounds one relayed request at ten minutes and two minutes idle (relayDeadline, relayIdle), and has no deadline for a whole run. This harness (agent#13, agent#15) keeps MAX_TOOLS and RESULT_LIMIT, states MAX_TOOLS to the model (toolCallAllowance), keeps a result over the limit whole in the chat's ledger rather than failing the task, and replaces MAX_CHILD_MODELS, MAX_CHILD_TOOLS and CHILD_TIMEOUT with each profile's budget (delegated-task.json#/$defs/profile); the Desk's values stay stated here as the Desk's.",
       "type": "object",
       "properties": {
         "MAX_TURNS": {
@@ -310,7 +348,7 @@
       "additionalProperties": true
     },
     "stateLocation": {
-      "description": "Where the execution state sits in one request on one wire (agent#9). The state is one text: the header, then the request counters, plan and operations index the model is told ($defs/requestAllowance), the host's changing text and the step's own instruction. It is the text at pointer (a JSON pointer into the provider body the adapter composed) from the header, which starts a line, to the end of that text; the header occurs nowhere else in the request. The critic's step note carries the same header. A host that reads requests (the Desk server's memory recall) drops every text part that starts with the header, and finds the request text as $defs/recallQuery states.",
+      "description": "Where the execution state sits in one request on one wire (agent#9). The state is one text: the header, then the request counters ($defs/requestAllowance, and in a conversation the delegation coordinator wraps the tool-call cap, $defs/toolCallAllowance), plan and operations index the model is told, the host's changing text and the step's own instruction. It is the text at pointer (a JSON pointer into the provider body the adapter composed) from the header, which starts a line, to the end of that text; the header occurs nowhere else in the request. The critic's step note carries the same header. A host that reads requests (the Desk server's memory recall) drops every text part that starts with the header, and finds the request text as $defs/recallQuery states.",
       "type": "object",
       "required": [
         "family",

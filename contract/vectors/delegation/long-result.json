@@ -1,0 +1,95 @@
+{
+  "description": "One task's records, queued, running and complete, on a child whose findings run past its share of the parent's answer (agent#13): the task is complete, its result is the head (the whole lines whose JSON-encoded text fits the share) and more is the read_window cursor into the whole, retained in the chat's ledger under task-result-<task id>. The fixture gives the findings and the share; the share is set small here so the cut shows in six lines (the coordinator's share is never under 1,000 bytes). The record carries its profile's budget, the model it ran on and its reference (agent#15). Written by hand from the schema; tests/test_contract.py holds the head, the cursor, the length and the ledger id to the fixture.",
+  "schema": "delegated-task.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/delegation.ts (findingsHead, keep)",
+      "packages/harness/delegation.test.ts (a long child result reaches the parent as head and cursor)"
+    ]
+  },
+  "fixture": {
+    "scope": "chat-1",
+    "findings": "Trip 1: receipts match.\nTrip 2: receipts match.\nTrip 3: receipts match.\nTrip 4: receipts match.\nTrip 5: receipts match.\nTrip 6: receipts match.",
+    "shareBytes": 120
+  },
+  "items": [
+    {
+      "id": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9",
+      "parentRunId": "0b6f3c1e-7d2a-4c8e-9f10-2a3b4c5d6e7f",
+      "title": "Receipts",
+      "objective": "Check the receipts of every trip.",
+      "profile": "analyze",
+      "state": "queued",
+      "createdAt": "2026-10-19T09:00:00.000Z",
+      "modelRequests": 0,
+      "toolCalls": 0,
+      "attempts": 0,
+      "steps": [],
+      "budget": {
+        "modelRequests": 6,
+        "toolCalls": 6,
+        "milliseconds": 120000
+      },
+      "model": "fixture-small",
+      "references": [
+        "chat-1:mileage-policy:2c9d4e1f7a3b5c60"
+      ]
+    },
+    {
+      "id": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9",
+      "parentRunId": "0b6f3c1e-7d2a-4c8e-9f10-2a3b4c5d6e7f",
+      "title": "Receipts",
+      "objective": "Check the receipts of every trip.",
+      "profile": "analyze",
+      "state": "running",
+      "createdAt": "2026-10-19T09:00:00.000Z",
+      "modelRequests": 0,
+      "toolCalls": 0,
+      "attempts": 0,
+      "steps": [],
+      "budget": {
+        "modelRequests": 6,
+        "toolCalls": 6,
+        "milliseconds": 120000
+      },
+      "model": "fixture-small",
+      "references": [
+        "chat-1:mileage-policy:2c9d4e1f7a3b5c60"
+      ]
+    },
+    {
+      "id": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9",
+      "parentRunId": "0b6f3c1e-7d2a-4c8e-9f10-2a3b4c5d6e7f",
+      "title": "Receipts",
+      "objective": "Check the receipts of every trip.",
+      "profile": "analyze",
+      "state": "complete",
+      "createdAt": "2026-10-19T09:00:00.000Z",
+      "finishedAt": "2026-10-19T09:00:04.000Z",
+      "modelRequests": 1,
+      "toolCalls": 0,
+      "attempts": 0,
+      "steps": [],
+      "result": "Trip 1: receipts match.\nTrip 2: receipts match.\nTrip 3: receipts match.\nTrip 4: receipts match.",
+      "budget": {
+        "modelRequests": 6,
+        "toolCalls": 6,
+        "milliseconds": 120000
+      },
+      "model": "fixture-small",
+      "references": [
+        "chat-1:mileage-policy:2c9d4e1f7a3b5c60"
+      ],
+      "more": {
+        "readWith": "read_window",
+        "id": "chat-1:task-result-9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9:7d7ffdcce5123230",
+        "cursor": "line:4",
+        "totalCharacters": 143
+      }
+    }
+  ]
+}
