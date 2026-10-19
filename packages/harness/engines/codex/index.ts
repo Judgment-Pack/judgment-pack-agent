@@ -89,7 +89,7 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
       if(phase==='reformat')context.beginReformatPhase()
       try {
       instructions += DATA_RULE + assistantLanguageInstructions(session.replyLanguage)
-      prompt = await context.prompt(prompt,instructions,offeredHere,phase==='author'?session.context?.currentRequest:undefined)
+      prompt = phase==='author' ? await context.agentPrompt(prompt,instructions,offeredHere,session.context?.currentRequest) : await context.prompt(prompt,instructions,offeredHere)
       if(phase==='author')prompt=context.indexed(prompt,instructions,offeredHere)
       context.check(instructions,prompt,offeredHere)
       const partial = new Map<string, string>()

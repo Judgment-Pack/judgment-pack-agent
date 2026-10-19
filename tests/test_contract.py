@@ -37,6 +37,28 @@ EXPECTED_SCHEMAS = {
     "capability.json",
 }
 
+# The $defs added or changed (beyond their descriptions) between v0.1.0 and the v0.2.0 release
+# review, whose members each need a vector (#43): (schema, definition).
+RELEASE_REVIEWED_DEFS = [
+    ("budget.json", "toolCallAllowance"), ("budget.json", "recallQuery"),
+    ("delegated-task.json", "budget"), ("delegated-task.json", "resultCursor"), ("delegated-task.json", "answer"),
+    ("delegated-task.json", "answerTask"), ("delegated-task.json", "brief"), ("delegated-task.json", "briefReference"),
+    ("delegated-task.json", "earlierWork"), ("delegated-task.json", "continuation"), ("delegated-task.json", "citation"),
+    ("delegated-task.json", "analyzeFinding"), ("delegated-task.json", "reviewFinding"),
+    ("delegated-task.json", "researchFinding"), ("delegated-task.json", "authorTestFinding"),
+    ("delegated-task.json", "openQuestion"), ("delegated-task.json", "analyzeReport"),
+    ("delegated-task.json", "reviewReport"), ("delegated-task.json", "researchReport"),
+    ("delegated-task.json", "authorTestReport"), ("delegated-task.json", "report"), ("delegated-task.json", "hostRequest"),
+    ("delegated-task.json", "taskRequest"), ("delegated-task.json", "profile"),
+    ("provenance.json", "criticFigures"), ("provenance.json", "tokenFigures"), ("provenance.json", "childFigures"),
+    ("provenance.json", "figuresTotal"), ("provenance.json", "batchFigures"), ("provenance.json", "parentFigures"),
+    ("provenance.json", "delegationReport"),
+    ("run-event.json", "caseOutcome"), ("run-event.json", "caseComparison"), ("run-event.json", "criticCase"),
+    ("run-event.json", "message_progress"), ("run-event.json", "critique"), ("run-event.json", "proposal"),
+    ("tool-offer.json", "criticTools"), ("tool-offer.json", "hostTool"), ("tool-offer.json", "reservedName"),
+    ("tool-result.json", "turnIndex"), ("tool-result.json", "readCacheKey"),
+]
+
 # The reasoning kinds each wire speaks (WIRE_REASONING in packages/harness/capabilities.ts): a
 # capability record whose kind its family's wire does not speak is refused before any request.
 WIRE_REASONING = {
@@ -505,13 +527,18 @@ class VectorTests(unittest.TestCase):
     def test_each_batch_total_is_its_childrens_sums(self):
         # provenance.json#/$defs/figuresTotal (agent#18): the children's counts summed, a token member
         # present where any child's was, and a wall time no shorter than its longest child.
-        for item in self.vectors["delegation/figures.json"]["items"]:
+        reports = [item for vector in self.vectors.values() if vector["schema"] == "provenance.json#/$defs/delegationReport" for item in vector["items"]]
+        self.assertGreaterEqual(len(reports), 3)
+        for item in reports:
             for batch in item["batches"]:
                 with self.subTest(batch=batch["batch"]):
                     children, total = batch["children"], batch["total"]
                     self.assertTrue(all(child["batch"] == batch["batch"] for child in children))
                     for member in ("modelRequests", "toolCalls"):
                         self.assertEqual(total[member], sum(child[member] for child in children))
+                    # agentRuns is present on a total where any child's was (the codex engine's unit).
+                    self.assertEqual(total.get("agentRuns", 0), sum(child.get("agentRuns", 0) for child in children))
+                    self.assertEqual("agentRuns" in total, any("agentRuns" in child for child in children))
                     tokens = {}
                     for child in children:
                         for key, value in child.get("tokens", {}).items():
@@ -533,6 +560,45 @@ class VectorTests(unittest.TestCase):
         data = rest[: -len(closing)]
         self.assertNotIn(marker, data)
         self.assertEqual(problems(validator(self.schemas, "delegated-task.json#/$defs/answer"), [json.loads(data)]), [])
+
+    def test_every_member_the_release_review_named_is_carried_by_a_vector(self):
+        # The members of the $defs added or changed between v0.1.0 and the v0.2.0 review, and the
+        # root members of three schemas, each appear in at least one vector (#43): a probe sets
+        # the member's schema to false and every vector is validated again; a member no vector
+        # carries leaves them all valid. Conditions (if, then, else, not) are not members.
+        schemas_ = self.schemas
+        vectors_ = self.vectors
+
+        def members(node, path):
+            if isinstance(node, dict):
+                for key, value in node.items():
+                    if key in ("if", "then", "else", "not", "const", "enum", "default", "examples"):
+                        continue
+                    if key == "properties" and isinstance(value, dict):
+                        for name in value:
+                            yield path + [key, name]
+                    yield from members(value, path + [key])
+            elif isinstance(node, list):
+                for index, value in enumerate(node):
+                    yield from members(value, path + [index])
+
+        def carried(name, path):
+            changed = copy.deepcopy(schemas_)
+            node = changed[name]
+            for step in path[:-1]:
+                node = node[step]
+            node[path[-1]] = False
+            return any(problems(validator(changed, vector["schema"]), vector["items"]) for vector in vectors_.values())
+
+        targets = []
+        for name, definition in RELEASE_REVIEWED_DEFS:
+            targets += [(name, ["$defs", definition] + path) for path in members(schemas_[name]["$defs"][definition], [])]
+        for name in ("delegated-task.json", "tool-call.json", "tool-result.json"):
+            root = {key: value for key, value in schemas_[name].items() if key != "$defs"}
+            targets += [(name, path) for path in members(root, [])]
+        self.assertGreater(len(targets), 250)
+        missing = [f"{name} {'/'.join(str(step) for step in path)}" for name, path in targets if not carried(name, path)]
+        self.assertEqual(missing, [], "members no vector carries")
 
     def test_the_scenario_is_the_order_the_conformance_session_asserts(self):
         vector = self.vectors["scenario/expense-reimbursement.json"]

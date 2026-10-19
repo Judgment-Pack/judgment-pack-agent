@@ -37,7 +37,7 @@
  */
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -173,6 +173,20 @@ if (!binary || !project) {
   process.exit(2)
 }
 
+// An absent binary fails closed, saying which binary the fixture expects, not through a spawn error.
+if (!existsSync(resolve(binary))) {
+  let expected = 'not stated'
+  try {
+    expected = JSON.parse(readFileSync(RUNTIME, 'utf8')).runtime.binarySha256 ?? expected
+  } catch {
+    // No fixture to read a digest from: the message says so.
+  }
+  console.error(
+    `binary not found: ${resolve(binary)}. The fixture ${RUNTIME} was recorded from a binary with ` +
+      `SHA-256 ${expected}; name the path of that binary, or of the one to record from.`
+  )
+  process.exit(1)
+}
 const produced = await record(resolve(binary), resolve(project))
 if (mode === 'record') {
   writeFileSync(RUNTIME, produced)

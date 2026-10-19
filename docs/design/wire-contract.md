@@ -455,8 +455,10 @@ resolved in the parent's chat alone; one the parent's context does not hold fail
 any task starts. The child is handed a view of the parent's chat (`ChatContext.childScope`) that
 shows it its references and what it retains or reads itself, and nothing else of the chat; it reads
 them with `read_window` and `search`. The view shares the chat's read cache, so an immutable read
-the parent made is served to the child without a call, and the child's reads are kept for the
-parent. Its first message carries no index.
+the parent made is served to the child without a call where the child's profile offers that tool,
+and the child's reads are kept for the parent. A name the profile does not offer is never served
+from the cache: the call goes to the offer check and the gate and is refused, and no cached entry
+joins the child's view. Its first message carries no index.
 
 **Profiles** (`$defs/profile`, `vectors/delegation/profiles.json`). Each declares a `model`, a
 `budget` (model requests, tool calls, milliseconds) and its tools:
@@ -800,9 +802,10 @@ starts with the request text and has the state and guidance after it, headed by 
 (agent#36). The rule there: the request text is the prompt's text before the first blank line that
 is followed by `STATE_HEADER`, or the whole prompt where the header is absent (a run that appends
 nothing); a prompt that starts with the header has none. It holds where the prompt, state and
-guidance fit the prompt's allowance. Where they do not, the whole is retained and previewed and the
-preview is what is sent; its text before any header is the preview's notice, not the person's
-message. The vector `recall/agent.json` holds the shape (`family` `agent`, `placement`
+guidance fit the prompt's allowance. Where they do not, the whole is retained and previewed
+(`SessionContext.agentPrompt`), and the prompt sent is the person's message (`currentRequest.message`),
+a blank line, `STATE_HEADER` and the preview, so the rule still finds the person's message; a host
+that gives no `currentRequest` gets the preview alone, and the rule finds its own opening. The vector `recall/agent.json` holds the shape (`family` `agent`, `placement`
 `appended`, the prompt as the one member of `body`), and the certification suite applies the rule to
 the `codex` engine's prompt and expects the person's message (`agent engine codex` in
 `engines/codex/codex.test.ts`). The certification suite applies the rule to every
@@ -834,8 +837,11 @@ one `ChatContext` per chat and hand it to every run of that chat as `context.cha
   arguments, runtime}`. `runtime` is present for every runtime tool and for a host tool that
   declares `contextPolicy.runtime`, and is what the host gives as the run's `context.runtime` (an
   identity, such as the Runtime's pinned digest, and a version); without it such a read is cached
-  for the run only. A mutable tool is never served from the cache. A cached result is the ledger's
-  entry for it: evicted, it is no longer served.
+  for the run only. A mutable tool is never served from the cache. The cache serves only a name the
+  run's session offers: for a name it does not offer (a delegated child's profile that lacks the
+  tool), the call goes on to the offer check and the gate as any other, and the cached entry is not
+  added to the run's view. A cached result is the ledger's entry for it: evicted, it is no longer
+  served.
 - **One byte bound across the runs.** `retainedBytes` (8 MiB) holds for the chat as it held for a
   run. Each run is one turn of the chat, and an entry it retains or reads is referenced by its turn
   until the run ends. When an entry would take the chat past the bound, the entries no open turn
@@ -1030,6 +1036,22 @@ the host's model capability so the host keeps counting; whether the adapter emit
   `tool-offer/critic-offer.json`; and T7's `write_file`, which the agent was never offered, reaches
   the gate and is refused there, never the runtime, so a gate that admitted a sixth name fails
   `certify (codex)` as it fails `certify (vercel)`. The two are not held to one sequence.
+  Six more scripted scenarios run on both adapters (agent#13; `certification/scenarios.test.ts`,
+  the README's "The certified scenarios"): chat mode with host tools, delegation, memory, plan mode,
+  the correction loop and a multi-turn transcript, each checked on the model engine once per answer
+  shape (a stream, a whole object) and on the agent engine at its own seam. The checks the adapters
+  make differently are recorded, not skipped. 1: the agent transport refuses a name outside the
+  agent's offer before the gate sees it, so the agent engine is driven at `AgentRun`; the model
+  engine's SDK answers the unoffered call first with its own no-such-tool error, and both streams
+  show the gate's refusal. 2: the agent's run ends at the delegate call, so a response is the call's
+  run, the children's runs and the next run, and a child's record carries no tokens and no model
+  requests, the figures counting `agentRuns`. 3: the agent engine sends the Desk's server no model
+  request to recall for, its one request being the run's prompt, which the recall rule reads for the
+  person's message. 5: five model requests on the model engine, three agent runs on the agent
+  engine. 4 and 6 are the same on both. Since the release review of v0.2.0 scenario 5 also holds the
+  critic's boundary: a critic that calls a tool outside its allow-list (`write_file`) is refused by
+  the harness's own `admit`, nothing reaches the Runtime and the pass still ends, so an adapter that
+  skipped `admit` on the critic's calls fails both certifications.
 
 ### Other departures
 

@@ -104,15 +104,18 @@ export class ExecutionController {
   * immutable read is served from the chat's read cache, under `readCacheKey`, without a call. A
   * read whose result depends on the Runtime (every runtime tool, and a host tool that declares
   * `contextPolicy.runtime`) is keyed by the Runtime the host names in `context.runtime`; without
-  * that it is cached for the run only, as before.
+  * that it is cached for the run only, as before. The cache serves only a name the run's session
+  * offers (`kept.offered`, said false for a name it does not): the call then reaches the offer
+  * check and the gate as any other, and no cached entry is added to the run's view.
   */
- wrapRead(name:string,execute:(args:Record<string,unknown>)=>Promise<McpToolResult>,policy:ContextToolPolicy={},readOnly=false,kept?:{runtime:boolean}){
+ wrapRead(name:string,execute:(args:Record<string,unknown>)=>Promise<McpToolResult>,policy:ContextToolPolicy={},readOnly=false,kept?:{runtime:boolean;offered?:boolean}){
   // A mistaken hint on a write can never suppress or replay that operation.
   const immutable=policy.immutable===true&&readOnly
   return async(args:Record<string,unknown>)=>{
    const chat=kept?this.ledger.chat:undefined
    const chatKey=chat&&immutable?await readCacheKey(name,args,kept!.runtime||policy.runtime===true,this.session.context?.runtime):undefined
-   if(chatKey!==undefined){const held=chat!.cached(chatKey);if(held)return held}
+   // The cache serves only a name the run's session offers: an unoffered name goes on to the inner offer check and the gate, and a served entry never joins a child's visible set.
+   if(chatKey!==undefined&&kept!.offered!==false){const held=chat!.cached(chatKey);if(held)return held}
    const key=name+':'+JSON.stringify(args)
    if(chatKey===undefined&&immutable&&this.cache.has(key))return structuredClone(this.cache.get(key)!)
    const result=await execute(args)

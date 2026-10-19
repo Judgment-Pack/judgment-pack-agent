@@ -1,0 +1,34 @@
+{
+  "description": "A call of a host tool that declared a presentation (agent#4): the research run adds the host-owned presentation from the offered tool to the tool_call event, never from the model's arguments. Written by hand from the schema.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/engine.ts (HostTool, presentation)",
+      "packages/harness/delegation.ts (the child's tool wrapper)"
+    ]
+  },
+  "items": [
+    {
+      "type": "tool_call",
+      "callId": "c1",
+      "name": "read_page",
+      "args": {
+        "url": "https://example.com/policy"
+      },
+      "presentation": {
+        "provider": "Example pages"
+      }
+    },
+    {
+      "type": "tool_result",
+      "callId": "c1",
+      "name": "read_page",
+      "isError": false,
+      "text": "Page https://example.com/policy: the rate is 0.58."
+    }
+  ]
+}

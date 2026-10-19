@@ -1,0 +1,26 @@
+{
+  "description": "What one critic pass cost (agent#10) on a provider that reports cache writes: two model requests on the cheaper model, each reporting 1500 input tokens (1000 read from the cache, 500 written to it), 40 output tokens and 16 reasoning tokens, summed. Written by hand from the schema.",
+  "schema": "provenance.json#/$defs/criticFigures",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/refutation.ts (CriticFigures, modelCriticFigures)",
+      "packages/harness/critic.test.ts (the figures vector)"
+    ]
+  },
+  "items": [
+    {
+      "model": "cheaper-model",
+      "unit": "model-requests",
+      "requests": 2,
+      "inputTokens": 3000,
+      "outputTokens": 80,
+      "reasoningTokens": 32,
+      "cacheReadTokens": 2000,
+      "cacheWriteTokens": 1000
+    }
+  ]
+}

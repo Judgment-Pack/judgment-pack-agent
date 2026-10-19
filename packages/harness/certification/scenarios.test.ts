@@ -415,7 +415,9 @@ function criticTurn(turn: { call?: { recorded: string }; say?: string }): Turn {
 /** The findings the Runtime's validate gave, as the correction request carries them. */
 const findingsOf = (check: Corrected['checks'][number]) => check.diagnostics.map((one) => `${one.code} at ${one.instancePath}`).join('; ')
 
-async function correctionLoop(kind: 'model' | 'agent', engine: Engine, answerAs: AnswerAs): Promise<Corrected> {
+async function correctionLoop(kind: 'model' | 'agent', engine: Engine, answerAs: AnswerAs, beforeCritic?: { call: { recorded: string } }): Promise<Corrected> {
+  // The critic's script, with one call of a recorded step put first where the boundary check asks for it.
+  const critics = beforeCritic === undefined ? correction.critic : [beforeCritic, ...correction.critic]
   const runtime = await scriptedRuntime()
   const connection = openAssistantConnection({ allowed: scenario.scenarioTools, transport: runtime.transport, onEvent: () => undefined })
   const authors: AssistantEvent[][] = []
@@ -426,17 +428,18 @@ async function correctionLoop(kind: 'model' | 'agent', engine: Engine, answerAs:
   const endpoint = scriptedEndpoint((incoming) => {
     const text = JSON.stringify(incoming.body)
     sent.push({ text })
-    if (text.includes(REFUTATION_MARKER)) return answerWith(criticTurn(correction.critic[resultsIn(incoming)]!), answerAs, resultsIn(incoming))
+    if (text.includes(REFUTATION_MARKER)) return answerWith(criticTurn(critics[resultsIn(incoming)]!), answerAs, resultsIn(incoming))
     return answerWith({ say: authorText(correction.author[attempt]!) }, answerAs, 0)
   })
   const agent: AgentRun = async (incoming, callbacks) => {
     started.push({ prompt: incoming.prompt, phase: incoming.phase })
     if (incoming.phase === 'critic') {
-      for (const [at, listed] of correction.critic.entries()) {
+      for (const [at, listed] of critics.entries()) {
         const turn = criticTurn(listed)
         if ('call' in turn) {
-          const offered = incoming.tools.find((tool) => tool.description.startsWith(`${turn.call.tool}:`))!
-          await callbacks.tool({ id: `critic-${at}`, name: offered.name, arguments: structuredClone(turn.call.arguments) }, callbacks.signal)
+          // A tool the critic was not offered is called by its own name, as a model that ignored its offer would.
+          const offered = incoming.tools.find((tool) => tool.description.startsWith(`${turn.call.tool}:`))
+          await callbacks.tool({ id: `critic-${at}`, name: offered?.name ?? turn.call.tool, arguments: structuredClone(turn.call.arguments) }, callbacks.signal)
         } else {
           await callbacks.event({ type: 'message', id: 'critic', text: turn.say, phase: 'final' })
         }
@@ -552,6 +555,24 @@ function correctionChecks(get: () => Corrected) {
     expect(ofType(get().authors[1]!, 'proposal')[0]!.critique).toMatchObject({ refuted: false })
     expect(ofType(get().authors[1]!, 'proposal')[0]!.critique?.incomplete ?? []).toEqual([])
     expect(get().authors.flatMap((events) => ofType(events, 'error'))).toEqual([])
+  })
+}
+
+/**
+ * The critic's boundary, on every adapter (release review of v0.2.0, finding 9): a critic that calls a
+ * tool outside its allow-list (here the scenario's `write_file`, step T7) is refused below the engine, by
+ * the harness's own admit; nothing reaches the Runtime and the pass still ends in its critique. An adapter
+ * that skipped admit on the critic's calls would let the call on to the gate, whose refusal says something else.
+ */
+function criticBoundaryChecks(get: () => Corrected) {
+  it('5 · a critic call of a tool outside its allow-list is refused below the engine, reaches no runtime, and the pass still ends', () => {
+    const { authors, seen } = get()
+    expect(ofType(authors[1]!, 'guardrail')).toEqual([
+      { type: 'guardrail', tool: 'write_file', action: 'refused', detail: expect.stringContaining('write_file is not one of the tools the critic may call') }
+    ])
+    expect(seen.filter((call) => call.name === 'write_file')).toEqual([])
+    expect(ofType(authors[1]!, 'critique')).toHaveLength(1)
+    expect(authors.flatMap((events) => ofType(events, 'error'))).toEqual([])
   })
 }
 
@@ -756,6 +777,14 @@ describe.each(MODEL_ENGINES)('engine %s · scenarios', (engineId) => {
       correctionChecks(() => state)
     })
 
+    describe('5 · the critic’s boundary', () => {
+      let state: Corrected
+      beforeAll(async () => {
+        state = await correctionLoop('model', await loadEngine(engineId), answerAs, { call: { recorded: 'T7' } })
+      })
+      criticBoundaryChecks(() => state)
+    })
+
     describe('6 · a multi-turn transcript', () => {
       let state: Transcript
       beforeAll(async () => {
@@ -837,7 +866,8 @@ describe.each(AGENT_ENGINES)('agent engine %s · scenarios', (engineId) => {
 
     // Recorded disagreement: the agent engine sends no model request the Desk's server could recall for; its one request is the run's prompt, which opens with the person's message.
     it('3 · the person’s message opens the run’s one request (the agent wire has no later request to recall for)', () => {
-      expect(ran.runs[0]!.prompt.startsWith(memory.request)).toBe(true)
+      // The contract's recall rule, as the codex engine's own test applies it: the text before the state's header is the person's message.
+      expect(recallQuery('agent', { prompt: ran.runs[0]!.prompt })).toEqual({ pointer: '/prompt', text: memory.request })
     })
 
     reserveChecks('agent')
@@ -864,6 +894,14 @@ describe.each(AGENT_ENGINES)('agent engine %s · scenarios', (engineId) => {
       state = await correctionLoop('agent', await loadEngine(engineId), 'stream')
     })
     correctionChecks(() => state)
+  })
+
+  describe('5 · the critic’s boundary', () => {
+    let state: Corrected
+    beforeAll(async () => {
+      state = await correctionLoop('agent', await loadEngine(engineId), 'stream', { call: { recorded: 'T7' } })
+    })
+    criticBoundaryChecks(() => state)
   })
 
   describe('6 · a multi-turn transcript', () => {

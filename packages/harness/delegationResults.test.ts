@@ -34,6 +34,10 @@ import authorTestVector from '../../contract/vectors/delegation/report-author-te
 import figuresVector from '../../contract/vectors/delegation/figures.json'
 import answerVector from '../../contract/vectors/delegation/answer.json'
 import recordVector from '../../contract/vectors/delegation/record.json'
+import resumedVector from '../../contract/vectors/delegation/record-resumed.json'
+import connectionVector from '../../contract/vectors/delegation/connection-models.json'
+import agentRunsVector from '../../contract/vectors/delegation/figures-agent-runs.json'
+import answerResumedVector from '../../contract/vectors/delegation/answer-resumed.json'
 import checkpointVector from '../../contract/vectors/delegation/checkpoint.json'
 
 afterEach(()=>{vi.restoreAllMocks();vi.useRealTimers();configureHarness({modelsFor:()=>({})})})
@@ -436,6 +440,18 @@ describe('cost and time (agent#18)',()=>{
   expect(validDelegationFigures({...item,batches:[{...item.batches[0]!,children:[]}]})).toBe(false)
   // The answer vector's tasks are what batchAnswer writes: every member the schema names.
   for(const task of answerVector.items[1]!.tasks)for(const key of Object.keys(task))expect(Object.keys(taskSchema.$defs.answerTask.properties)).toContain(key)
+ })
+
+ // The vectors added for the schema members the release review found uncarried (#43).
+ it('reads the resumed, connection and agent-run vectors as the harness’s own readers do',()=>{
+  for(const task of [...resumedVector.items,...connectionVector.items]){
+   expect(validDelegatedTask(task)).toBe(true)
+   for(const key of Object.keys(task))expect(Object.keys(taskSchema.properties)).toContain(key)
+  }
+  expect(resumedVector.items[0]).toMatchObject({resumes:expect.any(String),summarized:true})
+  for(const item of agentRunsVector.items)expect(validDelegationFigures(item)).toBe(true)
+  expect((agentRunsVector.items[0]!.batches[0]!.total as {agentRuns?:number}).agentRuns).toBe(2)
+  for(const task of answerResumedVector.items[0]!.tasks)for(const key of Object.keys(task))expect(Object.keys(taskSchema.$defs.answerTask.properties)).toContain(key)
  })
 
  it('reads the record vector’s tasks and the checkpoint vector’s figures as the harness’s own readers do (review row 6)',()=>{

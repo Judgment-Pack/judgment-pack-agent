@@ -20,6 +20,7 @@ import openaiVector from '../../../contract/vectors/recall/openai-compatible.jso
 import anthropicVector from '../../../contract/vectors/recall/anthropic.json'
 import geminiVector from '../../../contract/vectors/recall/gemini.json'
 import childVector from '../../../contract/vectors/recall/delegated-child.json'
+import memoryVector from '../../../contract/vectors/budget/memory.json'
 import { atPointer, recallQuery } from '../certification/recall'
 import { scenario, scriptedModel, scriptedRuntime } from '../certification'
 import { STATE_HEADER } from '../engines/vercel/loop'
@@ -263,6 +264,15 @@ describe('the memory reserve', () => {
     expect(contextPolicy(undefined, 'scripted-model', undefined, true).memoryBytes).toBe(CONTEXT_DEFAULTS.memoryBytes)
     expect(contextPolicy(undefined, 'scripted-model').memoryBytes).toBe(CONTEXT_DEFAULTS.memoryBytes)
     expect(CONTEXT_DEFAULTS.memoryBytes).toBe(4000)
+  })
+
+  // budget/memory.json: the policy for each word the host gives, memory on, not said, off.
+  it('gives the policy the memory vector states for each word the host gives on memory', () => {
+    const [on, unsaid, off] = memoryVector.items
+    expect(contextPolicy(undefined, 'scripted-model', undefined, true)).toMatchObject(on!)
+    expect(contextPolicy(undefined, 'scripted-model')).toMatchObject(unsaid!)
+    expect(contextPolicy(undefined, 'scripted-model', undefined, false)).toMatchObject(off!)
+    expect([on!.memoryBytes, unsaid!.memoryBytes, off!.memoryBytes]).toEqual([4000, 4000, 0])
   })
 
   it('leaves a run with memory off the full input allowance, and one with it on the allowance less the reserve', () => {

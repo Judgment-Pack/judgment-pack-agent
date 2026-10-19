@@ -100,7 +100,8 @@ files they were rendered from.
   its turns, with the JSON pointer the recall rule resolves to and the request text there; a
   delegated child's first request, whose request text is its objective, sent as the first text part
   (`delegated-child.json`); and the agent wire's one prompt, the person's message with the state and
-  guidance after it headed by `STATE_HEADER` (`agent.json`, agent#36). Written by hand from the
+  guidance after it headed by `STATE_HEADER`, and the same prompt where it is previewed: the person's
+  message, then the header and the preview (`agent.json`, agent#36). Written by hand from the
   schema; `memory/recall.test.ts` and `engines/codex/codex.test.ts` hold a run's request to each,
   and the contract tests apply the rule to each body. This harness's (agent#11).
 - `chat/`: the index of earlier results a chat-scoped run is shown (`turn-index.json`: the index
@@ -109,6 +110,18 @@ files they were rendered from.
   (`cache-key.json`). Written by hand from the schema; `context/chat.test.ts` builds the same chat
   and holds the code to both, and the contract tests derive each row and digest again. This
   harness's (agent#8).
+- Vectors added for the members the v0.2.0 release review found without one (#43), written by hand
+  from the schemas: `delegation/record-resumed.json`, `delegation/answer-resumed.json` (a resumed,
+  summarized task), `delegation/brief-partial.json` (an earlier exchange that stopped at its time
+  limit), `delegation/report-analyze-proposal.json` (an open question with a `ref`),
+  `delegation/figures-agent-runs.json` (a codex child's `agentRuns`; reasoning and cache-write
+  tokens), `critic/figures-cache-write.json`, `critic/declared-cases-members.json`,
+  `critic/error-outcome-compared.json` (an error class and phase as a case outcome; the harness's own
+  calls, `origin`), `tool-offer/host-declarations.json` (the interaction, delegation and
+  presentation members and `contextPolicy.runtime`), `tool-call/host-presentation.json`,
+  `budget/memory.json` (the policy for each word the host gives on `context.memory`) and
+  `delegation/connection-models.json` (the model a task ran on under two connections,
+  `context.connection`). The TypeScript tests that read them are named in each file's `source`.
 - `tool-call/test-cases-arguments.json`: the arguments `experimental_test_cases` leaves the page with.
 - `delegation/`: the four closed task profiles with their models, budgets and tools
   (`profiles.json`; `delegation.test.ts` holds `TASK_PROFILES` equal to it); a delegate call with
@@ -186,6 +199,6 @@ other; the recall rule finds the request text in each wire's vector, the agent w
 digest of its canonical JSON; each row of the chat index follows from the vector's fixture; the critic's allow-list is four of
 the ceiling's reads and two reserved readers, its default is off, and its offer in the scenario is the scenario's runtime
 tools on the list; a long delegated finding's head, cursor, length and ledger id follow from its vector's fixture; the
-codex continuation's block carries a batch's answer under one marker; each finding of a report vector cites only its report's citations; each batch total of the figures vector is its children's sums; the scenario's order is the one the conformance session asserts; and this table's
+codex continuation's block carries a batch's answer under one marker; each finding of a report vector cites only its report's citations; each batch total of every delegation-report vector is its children's sums, `agentRuns` included; every member of the `$defs` added or changed between v0.1.0 and the v0.2.0 release review, and the root members of `delegated-task.json`, `tool-call.json` and `tool-result.json`, is carried by at least one vector (a probe sets the member's schema to `false` and validates every vector again); the scenario's order is the one the conformance session asserts; and this table's
 *Root* and *Closed parts* columns match each schema (*Closed parts* lists the closed top-level
 `$defs`).

@@ -1,0 +1,85 @@
+{
+  "description": "The policy a run works under for each word the host gives on project memory (context.memory, agent#11), in this order: memory on, memory not said, memory off. The memory reserve (memoryBytes, 4000) is kept for the first two, so a server that adds recalled memory never receives a request the harness left no room for; only an explicit false frees it, and the run then has the full input allowance. Written by hand from the table in budget/harness-defaults.json; memory/recall.test.ts holds contextPolicy to each item.",
+  "schema": "budget.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/context/policy.ts (contextPolicy)",
+      "packages/harness/memory/recall.test.ts (the memory reserve)"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "maxInputBytes": 180000,
+      "contextWindowTokens": 65536,
+      "outputTokens": 8192,
+      "toolResultBytes": 12000,
+      "readBytes": 6000,
+      "retainedBytes": 8388608,
+      "recentMessages": 8,
+      "historyBytes": 32000,
+      "briefBytes": 8000,
+      "memoryBytes": 4000,
+      "adversarialReview": false,
+      "turnMilliseconds": 900000,
+      "toolCallMilliseconds": 120000,
+      "imagesPerRequest": 8,
+      "imageBytesPerRequest": 16777216,
+      "testCallsPerTurn": 3,
+      "testPackBytes": 65536,
+      "testMatrixBytes": 65536,
+      "turnIndexEntries": 20,
+      "turnIndexBytes": 8000
+    },
+    {
+      "version": 1,
+      "maxInputBytes": 180000,
+      "contextWindowTokens": 65536,
+      "outputTokens": 8192,
+      "toolResultBytes": 12000,
+      "readBytes": 6000,
+      "retainedBytes": 8388608,
+      "recentMessages": 8,
+      "historyBytes": 32000,
+      "briefBytes": 8000,
+      "memoryBytes": 4000,
+      "adversarialReview": false,
+      "turnMilliseconds": 900000,
+      "toolCallMilliseconds": 120000,
+      "imagesPerRequest": 8,
+      "imageBytesPerRequest": 16777216,
+      "testCallsPerTurn": 3,
+      "testPackBytes": 65536,
+      "testMatrixBytes": 65536,
+      "turnIndexEntries": 20,
+      "turnIndexBytes": 8000
+    },
+    {
+      "version": 1,
+      "maxInputBytes": 180000,
+      "contextWindowTokens": 65536,
+      "outputTokens": 8192,
+      "toolResultBytes": 12000,
+      "readBytes": 6000,
+      "retainedBytes": 8388608,
+      "recentMessages": 8,
+      "historyBytes": 32000,
+      "briefBytes": 8000,
+      "memoryBytes": 0,
+      "adversarialReview": false,
+      "turnMilliseconds": 900000,
+      "toolCallMilliseconds": 120000,
+      "imagesPerRequest": 8,
+      "imageBytesPerRequest": 16777216,
+      "testCallsPerTurn": 3,
+      "testPackBytes": 65536,
+      "testMatrixBytes": 65536,
+      "turnIndexEntries": 20,
+      "turnIndexBytes": 8000
+    }
+  ]
+}

@@ -71,8 +71,8 @@ beforeAll(() => {
 afterAll(() => rmSync(work, { recursive: true, force: true }))
 
 /** The recorder, as a person would run it; the project directory is any directory, which the stand-in never reads. */
-function recorder(mode: 'record' | 'verify', fixture: string) {
-  const result = spawnSync(process.execPath, [RECORDER, mode, binary, work, '--fixture', fixture], {
+function recorder(mode: 'record' | 'verify', fixture: string, path = binary) {
+  const result = spawnSync(process.execPath, [RECORDER, mode, path, work, '--fixture', fixture], {
     encoding: 'utf8',
     env: { ...process.env, STAND_IN_FIXTURE: COMMITTED, JPACK_COMMIT: runtime.runtime.sourceCommit },
     timeout: 60_000
@@ -112,6 +112,24 @@ describe('the conformance recorder', () => {
     const other = recorder('verify', COMMITTED)
     expect(other.status).toBe(1)
     expect(other.out).toContain('does not match')
+  })
+
+  // #42: an absent binary was an unhandled spawn error with a stack trace.
+  it('fails closed when the binary is absent, naming the path and the digest the fixture expects', () => {
+    const absent = join(work, 'no-such-jpack')
+    for (const mode of ['record', 'verify'] as const) {
+      const done = recorder(mode, COMMITTED, absent)
+      expect(done.status).toBe(1)
+      expect(done.out).toContain('binary not found')
+      expect(done.out).toContain(absent)
+      expect(done.out).toContain(runtime.runtime.binarySha256)
+      expect(done.out).not.toContain('ENOENT')
+      expect(done.out).not.toMatch(/\n\s+at /)
+    }
+    // Nothing was written for a record that had no binary.
+    const written = join(work, 'never-written.json')
+    expect(recorder('record', written, absent).status).toBe(1)
+    expect(existsSync(written)).toBe(false)
   })
 
   it('refuses a fixture with one recorded answer edited by hand', () => {

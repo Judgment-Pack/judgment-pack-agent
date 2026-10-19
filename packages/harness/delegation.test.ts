@@ -4,7 +4,7 @@ import { CONTINUATION, RESULT_LIMIT, findingsHead, withDelegation } from './dele
 import { AUTHOR_TEST_TOOLS, DELEGATE_TOOL, DELEGATION_INSTRUCTIONS, MAX_BATCHES, MAX_TOOLS, TASK_BUDGET_CEILING, TASK_PROFILES, delegationTool, profileBudget, readDelegationRequest, readProfiles, validDelegatedTask, AGENT_DELEGATION_INSTRUCTIONS, type DelegatedTask, type DelegationRequest, type TaskProfile } from './delegationContract'
 import type { AssistantEvent, AssistantSession, Engine, EngineSession, HostTool, McpToolResult } from './engine'
 import { ASSISTANT_TOOLS, configureHarness, type RunIdentity } from './host'
-import { ChatContext } from './context/chat'
+import { ChatContext, readCacheKey } from './context/chat'
 import { codex } from './engines/codex'
 import { vercel } from './engines/vercel'
 import { normalize } from './thinking'
@@ -15,6 +15,7 @@ import taskSchema from '../../contract/schemas/delegated-task.json'
 import budgetSchema from '../../contract/schemas/budget.json'
 import profilesVector from '../../contract/vectors/delegation/profiles.json'
 import continuationVector from '../../contract/vectors/delegation/continuation.json'
+import connectionVector from '../../contract/vectors/delegation/connection-models.json'
 
 // agent#17: each title its own objective, so tasks of one batch are not identical (an identical task is reused).
 const task=(title='Check evidence',profile='review')=>({title,profile,objective:`Check the supplied claims (${title}).`})
@@ -456,6 +457,18 @@ describe('context by reference and profiles (agent#15)',()=>{
   expect(plain.sent.filter(isChild).map(one=>one.body.model)).toEqual(['fixture'])
  })
 
+ // delegation/connection-models.json: the task record's model for each of two connections.
+ it('records the model the host names for the run’s connection on each task, as the connection vector states',async()=>{
+  configureHarness({modelsFor:(run)=>run.connection?.connectionId==='cheap-children'?{child:'fixture-small'}:{}})
+  const models:string[]=[]
+  for(const connectionId of ['cheap-children','another']){
+   const {call}=scripted(one=>isChild(one)?sse('Receipts match.'):toolMessages(one).length===0?sse(undefined,{name:DELEGATE_TOOL,args:{tasks:[{title:'Receipts',objective:'Check the receipts of every trip.',profile:'analyze'}]}}):sse('Done.'))
+   const events=await collect(withDelegation(vercel),apiSession({context:{connection:{connectionId}},model:{family:'openai-compatible',model:'fixture',call}}))
+   models.push(results(events)[0]!.model!)
+  }
+  expect(models).toEqual(connectionVector.items.map(item=>item.model))
+ })
+
  // Review row 5: on the agent wire the child model rides on the child's run, as the critic's does on a critic run.
  it('runs a Codex child on the agent model the host names for children, through the agent transport',async()=>{
   configureHarness({modelsFor:(run)=>run.engine==='codex'?{child:'cheaper-agent'}:{}})
@@ -595,6 +608,51 @@ describe('context by reference and profiles (agent#15)',()=>{
    expect(results(events)[0]).toMatchObject({state:'complete',profile:'author-test',toolCalls:1,result:'Case c1 fails: expected decided, got refused.'})
    expect(gateEvents.filter(e=>e.type==='guardrail')).toEqual([])
   } finally { await runtime.close() }
+ })
+ // Release review v0.2.0, finding 1: the chat's read cache serves only a name the run's session offers.
+ it('refuses an analyze child the parent’s cached get_schema read: nothing is served, listed or readable, and the parent’s row stays',async()=>{
+  const RUNTIME={identity:'sha256:runtime',version:'0.4.0'}
+  const run=async(parentReads:boolean)=>{
+   const runtime=await gatedRuntime({tools:[...RECORDED_TOOLS,TEST_CASES_TOOL],allowed:[...ASSISTANT_TOOLS],handle:()=>runtimeAnswer({schema:'judgment-pack',version:'0.4'}),onEvent:()=>{}})
+   const chat=new ChatContext()
+   const schemaId=()=>[...chat.entries.keys()].find(id=>id.includes(':result-get_schema-'))
+   try {
+    const {sent,call}=scripted(one=>{
+     const done=toolMessages(one).length
+     if(isChild(one)){
+      if(done===0)return sse(undefined,{name:'get_schema',args:{},id:'call_child_schema'})
+      if(done===1)return sse(undefined,{name:'list_context',args:{},id:'call_child_list'})
+      if(done===2)return sse(undefined,{name:'read_window',args:{id:schemaId()??'result-get_schema-absent'},id:'call_child_read'})
+      return sse('Nothing was readable.')
+     }
+     const step=parentReads?done:done+1
+     return step===0?sse(undefined,{name:'get_schema',args:{},id:'call_schema'}):step===1?sse(undefined,{name:DELEGATE_TOOL,args:{tasks:[{title:'Analyze',objective:'analyze',profile:'analyze'}]},id:'call_delegate'}):sse('Done.')
+    })
+    const events=await collect(withDelegation(vercel),apiSession({tools:runtime.tools,callTool:runtime.callTool,context:{chat,runtime:RUNTIME},model:{family:'openai-compatible',model:'fixture',call}}))
+    const key=(await readCacheKey('get_schema',{},true,RUNTIME))!
+    return {sent,events,seen:runtime.seen.map(c=>c.name),held:schemaId(),entry:schemaId()===undefined?undefined:chat.entries.get(schemaId()!),cached:chat.cachedEntry(key)}
+   } finally { await runtime.close() }
+  }
+  const withRead=await run(true)
+  const child=withRead.sent.filter(isChild).at(-1)!
+  const [call,list,read]=toolMessages(child)
+  // The child's call got no served result; it made no Runtime call and counted no tool call.
+  expect(call).not.toContain('judgment-pack')
+  expect(withRead.seen).toEqual(['get_schema'])
+  expect(results(withRead.events).find(t=>t.profile==='analyze')).toMatchObject({state:'complete',toolCalls:0})
+  // No entry joined the child's view, and the parent's entry cannot be read by id.
+  expect(list).not.toContain('result-get_schema')
+  expect(read).toContain('This entry is not among this task’s references')
+  expect(read).not.toContain('judgment-pack')
+  // The parent's cache row and its entry are unchanged.
+  expect(withRead.held).toBeDefined()
+  expect(withRead.cached).toBe(withRead.held)
+  expect(withRead.entry).toBeDefined()
+  // The control: with no earlier parent read, the child is refused the same way and nothing reached the Runtime.
+  const without=await run(false)
+  expect(toolMessages(without.sent.filter(isChild).at(-1)!)[0]).not.toContain('judgment-pack')
+  expect(without.seen).toEqual([])
+  expect(without.held).toBeUndefined()
  })
 })
 
