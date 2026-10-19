@@ -1,0 +1,43 @@
+{
+  "description": "The critic's request answered 503 after a valid proposal: the proposal is delivered with a note and no critique, and the run ends without an error event. vercel engine, reasoning tier on, so the critic runs.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/engines/vercel/loop.ts (the critic's catch: unfinished)",
+      "packages/harness/refutation.ts (criticNote)"
+    ]
+  },
+  "items": [
+    {
+      "type": "message",
+      "text": "Here it is."
+    },
+    {
+      "type": "proposal",
+      "document": {
+        "id": "p"
+      },
+      "unknowns": [
+        "who signs"
+      ],
+      "note": {
+        "kind": "critic-unfinished",
+        "message": "The critic did not finish, so it checked nothing on this proposal. The AI service is temporarily unavailable. Completed work is retained.",
+        "failure": {
+          "version": 1,
+          "code": "unavailable",
+          "source": "model",
+          "outcome": "unknown",
+          "status": 503
+        }
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

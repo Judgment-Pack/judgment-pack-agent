@@ -1,4 +1,4 @@
-import {authoredFailure} from '../failures'
+import {AIFailureError,authoredFailure,toolInputFailure} from '../failures'
 /**
  * The contract's own vocabulary, shared by every adapter.
  *
@@ -410,13 +410,26 @@ export function streamingProse(text: string): string {
   const tail = text.slice(cursor).replace(/(?:^|\n)[ \t]*(?:`{1,2}|~{1,2})$/, '')
   return trimProse(result + tail)
 }
+/** Why no closed `json` proposal block was found, where the answer shows an attempt at one. */
+function missingProposal(text: string): string {
+  const fences = markdownFences(text)
+  if (fences.some(block => block.json && !block.closed && explicitProposal(block.body))) return 'its proposal block is not closed'
+  if (fences.some(block => !block.json && /^\s*(?:\{\s*)?["']?proposal["']?\s*:/.test(block.body))) return 'its proposal is in a fence that is not marked json'
+  return ''
+}
 /** Exactly one explicit envelope; examples never become candidates. */
 export function extractProposal(text: string): Proposal {
   const blocks = jsonFences(text ?? '').filter(block => explicitProposal(block.body))
-  if (blocks.length !== 1) throw authoredFailure('invalid-response',
-    `the final message must carry exactly one fenced JSON block holding the proposal; this one carried ${blocks.length}`
-  )
-  const parsed: unknown = JSON.parse(blocks[0]!.body)
+  if (blocks.length !== 1) {
+    const why = blocks.length === 0 ? missingProposal(text ?? '') : ''
+    throw authoredFailure('invalid-response',
+      `the final message must carry exactly one fenced JSON block holding the proposal; this one carried ${blocks.length}${why ? `: ${why}` : ''}`
+    )
+  }
+  let parsed: unknown
+  // A marked block that is not JSON is the model's answer in the wrong shape,
+  // never an unknown failure: the engine keeps it and may ask once for a reformat.
+  try { parsed = JSON.parse(blocks[0]!.body) } catch { throw authoredFailure('invalid-response', 'the fenced proposal block is not valid JSON') }
   if (!object(parsed) || !object(parsed.proposal) || !object(parsed.proposal.document)) throw authoredFailure('invalid-response','the proposal must contain a document object')
   if (parsed.proposal.kind !== undefined && parsed.proposal.kind !== 'create') throw authoredFailure('invalid-response','the proposal kind is not supported')
   const unknowns = parsed.proposal.unknowns
@@ -463,6 +476,107 @@ export function textToolResultHeader(name: string, isError: boolean): string {
 export function textToolInstructions(tools: readonly { name: string; description?: string; schema: unknown }[]): string {
   return 'TOOLS\nThis endpoint takes no native tool calls, so the tools are described here. To call one, answer with exactly one fenced JSON block shaped {"tool": "<name>", "arguments": {…}}, with arguments as the tool’s input schema describes, and nothing after it. The host runs the call and sends its result in the next message, headed TOOL RESULT or TOOL ERROR. One call per answer, and wait for its result. An answer with no such block is your final answer: never put a "tool" block in it. A tool not listed here is refused.\n' +
     tools.map(tool => `- ${tool.name}: ${tool.description ?? ''}\n  input schema: ${JSON.stringify(tool.schema)}`).join('\n')
+}
+
+/**
+ * The answer whose proposal could not be read, delivered whole: the prose and
+ * the raw fence, so a parse failure never leaves the person with nothing.
+ */
+export function wholeAnswer(text: string): string {
+  return trimProse(text ?? '')
+}
+
+/**
+ * The one reformat request a parse failure earns: tool-free, within the
+ * allowance, and asking for the same proposal in the shape the contract reads.
+ */
+export const REFORMAT_INSTRUCTIONS =
+  'The previous answer carried a proposal that could not be read. Return the same proposal, unchanged in content, as exactly one fenced ```json block whose root object has a single "proposal" member shaped as your instructions describe. Valid JSON only: no comments, no trailing commas, no second proposal block. Tools are unavailable.'
+export function reformatRequest(cause: unknown): string {
+  const detail = (cause as { failure?: { detail?: unknown } } | null)?.failure?.detail
+  return `${REFORMAT_INSTRUCTIONS}${typeof detail === 'string' ? ` The problem: ${detail}.` : ''}`
+}
+
+/**
+ * The proposal as a host tool call: the host registers `propose_pack` in its
+ * `hostTools` with this schema, and the engine handles the call itself — the
+ * host's `execute` is never reached. The fence stays the fallback.
+ *
+ * The schema is in the subset every family's wire carries, so a Gemini session
+ * earns no narrowing notice for it.
+ */
+export const PROPOSE_PACK_TOOL = 'propose_pack'
+export const PROPOSE_PACK_SCHEMA = {
+  type: 'object',
+  properties: {
+    document: { type: 'object', description: 'The proposed pack, as a JSON object (not a JSON string).' },
+    unknowns: { type: 'array', items: { type: 'string' }, description: 'What the policy leaves open, one sentence each.' }
+  },
+  required: ['document']
+} as const
+export const PROPOSE_PACK_INSTRUCTIONS =
+  `\nDeliver the pack proposal by calling ${PROPOSE_PACK_TOOL} with the document as an object and its unknowns, then end with a short summary. Use the fenced JSON block only if that call is unavailable.`
+/** What the model is told when its call delivered the proposal. */
+export const PROPOSAL_RECEIVED =
+  'The proposal was received and will be shown to the person for review; nothing was written. Do not call propose_pack again unless the proposal changes. End with a short summary.'
+export function offersProposeTool(hostTools: readonly { name: string }[]): boolean {
+  return hostTools.some(tool => tool.name === PROPOSE_PACK_TOOL)
+}
+/** The tool's arguments as a proposal, or a failure the model can read and correct. */
+export function readProposedPack(args: unknown): Proposal {
+  if (!object(args)) throw toolInputFailure('Call propose_pack with an object holding document and unknowns.')
+  if (!object(args.document)) throw toolInputFailure('Pass the pack as the document object itself, not as a JSON string, an array or null.')
+  // The fence's rule, held on the tool path too: only a new pack is proposed.
+  if (args.kind !== undefined && args.kind !== 'create') throw toolInputFailure('Only a new pack can be proposed: leave kind out, or pass "create".')
+  const unknowns = args.unknowns
+  if (unknowns !== undefined && (!Array.isArray(unknowns) || unknowns.some(item => typeof item !== 'string'))) throw toolInputFailure('Pass unknowns as an array of strings.')
+  return { document: args.document, unknowns: (unknowns as string[] | undefined) ?? [] }
+}
+/**
+ * A proposal made through `propose_pack` beside another in a fenced block of
+ * the same answer: ambiguous, refused as two fenced proposals are.
+ */
+export function twoProposals(): Error {
+  return authoredFailure('invalid-response',
+    'the answer carried a proposal through propose_pack and another in a fenced JSON block; it must carry exactly one')
+}
+
+/**
+ * One call bounded by a deadline as well as by the run.
+ *
+ * The run's signal ending is the run unwinding, as `withAbort` reports it; the
+ * deadline passing is the call's own failure, `late()`, which a tool dispatch
+ * reports to the model as a failed result rather than ending the run.
+ */
+export async function withDeadline<T>(
+  work: (signal: AbortSignal) => Promise<T>,
+  signal: AbortSignal,
+  ms: number,
+  late: () => Error
+): Promise<T> {
+  const deadline = new AbortController()
+  const timer = setTimeout(() => deadline.abort(), ms)
+  const bounded = AbortSignal.any([signal, deadline.signal])
+  try {
+    return await withAbort(() => work(bounded), bounded)
+  } catch (cause) {
+    if (deadline.signal.aborted && !signal.aborted) throw late()
+    throw cause
+  } finally {
+    clearTimeout(timer)
+  }
+}
+/** A time limit as a person reads it, in the largest unit that states it whole. */
+export function limitText(ms: number): string {
+  const count = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`
+  if (ms >= 60_000 && ms % 60_000 === 0) return count(ms / 60_000, 'minute')
+  if (ms >= 1_000 && ms % 1_000 === 0) return count(ms / 1_000, 'second')
+  return count(ms, 'millisecond')
+}
+/** The failure a tool call past its deadline earns: the model reads it and decides. */
+export function toolTimeout(ms: number): Error {
+  return new AIFailureError({ version: 1, code: 'timeout', source: 'tool', outcome: 'unknown',
+    detail: `The tool did not answer within ${limitText(ms)} and is no longer waited for; it may still complete. Its outcome is unknown; check it before repeating the call.` })
 }
 
 /** A recovery action for old replies, never an automatic import of chat prose. */

@@ -1,4 +1,5 @@
 import {readCompletion,type ModelCompletion} from '../completion'
+import {readFailure,type AIFailure} from '../failures'
 import type {McpToolResult} from '../engine'
 import {MAX_TURNS} from '../engines/contract'
 import {utf8Bytes} from '../context/policy'
@@ -9,12 +10,18 @@ export const MAX_CHECKPOINT_BYTES = 4 * 1024 * 1024
 export interface TaskStep {step:string;status:'pending'|'in_progress'|'completed';detail?:string}
 export interface Operation {id:string;name:string;args:unknown;status:'running'|'complete'|'failed'|'interrupted';result?:McpToolResult}
 export interface RetainedEntry {id:string;kind:'history'|'artifact'|'request'|'tool';label:string;value:unknown;revision?:string;bytes:number;digest:string}
+/**
+ * One model request's row. `attempt`, `failure` and `waitMs` record a request the provider refused and that was
+ * retried (engines/vercel/retry.ts): the refused attempt's row carries its failure and the wait before the next, and
+ * the attempt that answered carries its number.
+ */
+export interface CompletionRecord {request:number;phase:'work'|'synthesis'|'review';result:ModelCompletion;attempt?:number;failure?:AIFailure;waitMs?:number}
 /** A local execution record, never permissions, evidence approval or private reasoning. */
 export interface ExecutionCheckpoint {
  version:1;id:string;requestKey:string;phase:'plan'|'work';status:'running'|'paused'|'complete'|'stopped';
  unit:'model-requests'|'provider-managed';used:number;limit:number;grants:{from:number;to:number;at:string}[];
  plan:TaskStep[];explanation:string;operations:Operation[];
- completions?:{request:number;phase:'work'|'synthesis'|'review';result:ModelCompletion}[];
+ completions?:CompletionRecord[];
  context:{scope:string;entries:RetainedEntry[]};reason?:string;
 }
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v)
@@ -30,13 +37,13 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  let limit=value.unit==='model-requests'?MAX_TURNS:1
  for(const grant of value.grants){if(!object(grant)||grant.from!==limit||!Number.isInteger(grant.to)||Number(grant.to)<=limit||Number(grant.to)>MAX_REQUEST_ALLOWANCE||typeof grant.at!=='string'||!Number.isFinite(Date.parse(grant.at)))return fail();limit=Number(grant.to)}
  if(value.limit!==limit||!Array.isArray(value.plan)||(value.plan.length&&!validTaskSteps(value.plan))||!text(value.explanation,2000)||(value.reason!==undefined&&!text(value.reason,2000)))return fail()
- if(value.completions!==undefined&&(!Array.isArray(value.completions)||value.completions.length>MAX_REQUEST_ALLOWANCE||value.completions.some(row=>!object(row)||!Number.isInteger(row.request)||Number(row.request)<1||Number(row.request)>Number(value.used)||!['work','synthesis','review'].includes(String(row.phase))||!readCompletion(row.result))))return fail()
+ if(value.completions!==undefined&&(!Array.isArray(value.completions)||value.completions.length>MAX_REQUEST_ALLOWANCE||value.completions.some(row=>!object(row)||!Number.isInteger(row.request)||Number(row.request)<1||Number(row.request)>Number(value.used)||!['work','synthesis','review'].includes(String(row.phase))||!readCompletion(row.result)||row.attempt!==undefined&&(!Number.isInteger(row.attempt)||Number(row.attempt)<1||Number(row.attempt)>3)||row.failure!==undefined&&!readFailure(row.failure)||row.waitMs!==undefined&&(!Number.isInteger(row.waitMs)||Number(row.waitMs)<0||Number(row.waitMs)>86400000))))return fail()
  if(!Array.isArray(value.operations)||value.operations.length>400||new Set(value.operations.map(o=>o.id)).size!==value.operations.length)return fail()
  for(const op of value.operations){if(!object(op)||!text(op.id,100)||!text(op.name,150)||!['running','complete','failed','interrupted'].includes(String(op.status))||op.result!==undefined&&(!object(op.result)||(op.result.content!==undefined&&(!Array.isArray(op.result.content)||op.result.content.some(p=>!object(p)||p.type!==undefined&&typeof p.type!=='string'||p.text!==undefined&&typeof p.text!=='string')))))return fail()}
  if(!object(value.context)||!text(value.context.scope,100)||!Array.isArray(value.context.entries)||value.context.entries.length>800||new Set(value.context.entries.map(e=>e.id)).size!==value.context.entries.length)return fail()
  for(const e of value.context.entries){if(!object(e)||!text(e.id,300)||!e.id.startsWith(value.context.scope+':')||!['history','artifact','request','tool'].includes(String(e.kind))||!text(e.label,1000)||typeof e.digest!=='string'||!/^[a-f0-9]{64}$/.test(e.digest)||e.revision!==undefined&&!text(e.revision,256)||!Number.isInteger(e.bytes)||Number(e.bytes)<0||!Object.hasOwn(e,'value'))return fail()}
  const result=structuredClone(value) as unknown as ExecutionCheckpoint
- if(result.completions)result.completions=result.completions.map(({request,phase,result})=>({request,phase,result:readCompletion(result)!}))
+ if(result.completions)result.completions=result.completions.map(({request,phase,result,attempt,failure,waitMs})=>({request,phase,result:readCompletion(result)!,...(attempt===undefined?{}:{attempt}),...(failure===undefined?{}:{failure:readFailure(failure)!}),...(waitMs===undefined?{}:{waitMs})}))
  return result
 }
 /** A stopped API request can fail exactly at the ceiling; recovery still needs an explicit grant. */

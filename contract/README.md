@@ -21,8 +21,8 @@ root is not.
 
 | Schema | What it describes | Root | Closed parts | Read from (Desk file, symbol) |
 | --- | --- | --- | --- | --- |
-| `run-event.json` | Every event a run emits, 18 kinds discriminated by `type`, in the union's order | open | none | `web/src/assistant/engine.ts`, `AssistantEvent` |
-| `tool-offer.json` | The tools offered to a run, as the session's two members: `tools` (runtime tools as served, each named within the ceiling) and `hostTools` (host tools' declarations); the agent-wire alias form; the runtime ceiling and reserved names | open | `$defs/agentWireTool` | `web/src/assistant/engine.ts`, `McpTool`, `HostTool`; `context/session.ts`, `contextualSession`; `internal/codexbridge/contract.go`, `Tool` |
+| `run-event.json` | Every event a run emits, 18 kinds discriminated by `type`, in the union's order; the proposal's `note` where something after it did not finish | open | none | `web/src/assistant/engine.ts`, `AssistantEvent` |
+| `tool-offer.json` | The tools offered to a run, as the session's two members: `tools` (runtime tools as served, each named within the ceiling) and `hostTools` (host tools' declarations); the agent-wire alias form; the runtime ceiling and reserved names; `propose_pack`, the proposal as a host tool call | open | `$defs/agentWireTool` | `web/src/assistant/engine.ts`, `McpTool`, `HostTool`; `context/session.ts`, `contextualSession`; `internal/codexbridge/contract.go`, `Tool` |
 | `tool-call.json` | The `tool_call` event; the `tools/call` params the gate inspects; the agent-wire call | open | none | `web/src/assistant/engine.ts`, `AssistantEvent`; `toolGate.ts`, `inspectOutboundFrame`; `agentTransport.ts`, `bindAgentRun` |
 | `tool-result.json` | The `tool_result` event; the MCP result shape, image parts included; the bound, the read-back reference and its envelopes; `read_context` arguments; the reader's arguments and result (`read_window`, and every reading tool's window, its lines numbered); an image item read whole; an attachment; `search`'s arguments and result; the agent-wire answer | open | `$defs/readContextArguments`, `$defs/readArguments`, `$defs/imagePart`, `$defs/searchArguments`, `$defs/agentWireAnswer` | `web/src/assistant/engine.ts`, `McpToolResult`; `context/session.ts`, `SessionContext.result`; `context/ledger.ts`, `ContextLedger.reference`, `ContextLedger.tools`, `ContextDocument`; the reader, the search and images are this repository's, `packages/harness/context/reader.ts`, `context/search.ts`, `context/pattern.ts`, `images.ts` and `context/policy.ts`, `readWindowBytes` (agent#1, agent#5) |
 | `approval.json` | The host's approval state for a chat and the one grant a user decision mints, for one of the server's four actions; the grant request | open | `$defs/request` | `web/src/assistant/approvals/client.ts`, `ActionApproval`, `ActionGrant`; `internal/desk/assistant_approval.go`, `assistantActionGrant`, `assistantApprovalRequest` |
@@ -30,13 +30,14 @@ root is not.
 | `delegated-task.json` | One child task's state; the delegation request; a task profile | open | `$defs/request`, `$defs/taskRequest` | `web/src/assistant/delegationContract.ts`, `DelegatedTask`, `validDelegatedTask`, `readDelegationRequest`, `TaskProfile` |
 | `checkpoint.json` | The execution checkpoint: allowance, grants, plan, operations, completions, retained context | open | none | `web/src/assistant/execution/state.ts`, `ExecutionCheckpoint`, `readExecution` |
 | `failure.json` | One failure: the catalogue's 23 classes, source, the `not-started`/`refused`/`unknown` outcome, HTTP metadata; a catalogue entry; a failed tool's content | open | none | `web/src/assistant/failures.ts`, `AIFailure`, `readFailure`; `internal/aifailure/failure.go`, `Failure`; `internal/aifailure/catalog.json` |
-| `budget.json` | The context budget table; the per-model override and profile configuration; the request allowance the model is told; the budget-increase answer; the fixed limits by their Desk names; where the execution state sits on each wire (the two capability-record members that place it are `capability.json`'s) | open | `$defs/modelBudget`, `$defs/configuration` | `internal/aicontext/policy.json`; `web/src/assistant/context/policy.ts`, `ContextPolicy`, `contextConfiguration`; `internal/aicontext/policy.go`, `Policy`, `Decode`; `execution/controller.ts`, `guidance`, `budgetTool`; the placement is this repository's, `packages/harness/engines/vercel/loop.ts`, `STATE_HEADER`, `statePlacement` (agent#9) |
-| `provenance.json` | One model request's record: request number, phase, normalized completion; the digests and engine id the Desk holds | open | none | `web/src/assistant/execution/state.ts`, `ExecutionCheckpoint.completions`; `completion.ts`, `ModelCompletion`, `readCompletion` |
+| `budget.json` | The context budget table; the per-model override and profile configuration; the request allowance the model is told; the budget-increase answer; the fixed limits by their Desk names; the harness's turn clock and tool-call deadline; where the execution state sits on each wire (the two capability-record members that place it are `capability.json`'s) | open | `$defs/modelBudget`, `$defs/configuration` | `internal/aicontext/policy.json`; `web/src/assistant/context/policy.ts`, `ContextPolicy`, `contextConfiguration`; `internal/aicontext/policy.go`, `Policy`, `Decode`; `execution/controller.ts`, `guidance`, `budgetTool`; the placement is this repository's, `packages/harness/engines/vercel/loop.ts`, `STATE_HEADER`, `statePlacement` (agent#9) |
+| `provenance.json` | One model request's record: request number, phase, normalized completion, and for a request sent again its attempt, a refused attempt's failure and wait; the digests and engine id the Desk holds | open | none | `web/src/assistant/execution/state.ts`, `ExecutionCheckpoint.completions`; `completion.ts`, `ModelCompletion`, `readCompletion` |
 | `capability.json` | What one endpoint and model can do, as the `vercel` adapter reads it wherever it decides: window and output cap, native and parallel tool calls, vision, the reasoning kind (and whether the endpoint ignores it), streaming quirks, the tool-schema subset, and where the execution state goes; what a host answers for an endpoint (any members of the record) | closed | the root, `$defs/reasoning`, `$defs/streamingQuirks`, `$defs/endpointCapabilities` | none at the pinned commit (the Desk decides by its three families: `web/src/assistant/thinking.ts`, `firstDialect`; `geminiSchema.ts`; `context/policy.ts`); the record is this repository's, `packages/harness/capabilities.ts`, `ModelCapabilities`, `FAMILY_CAPABILITIES`, `readCapabilities`, `capabilitiesFor` (agent#4, agent#9) |
 
 ## Vectors
 
-Data the Desk's engines produce today, in `vectors/`, one JSON file per vector:
+Data the Desk's engines produce today, in `vectors/`, one JSON file per vector, and data the harness
+package produces where it has changed or added behaviour since the extraction:
 
 ```json
 { "description": "…", "schema": "run-event.json", "source": { "desk": {…}, "files": ["…"] }, "items": [ … ] }
@@ -44,7 +45,9 @@ Data the Desk's engines produce today, in `vectors/`, one JSON file per vector:
 
 `schema` names the schema each item must validate against (a file, or a file and a `$defs`
 pointer); `items` are the instances, in order where order matters; `source` names the Desk files
-and symbols they were read or rendered from.
+and symbols they were read or rendered from, or, as `{"harness": {"repository":
+"Judgment-Pack/judgment-pack-agent", "package": "packages/harness"}, "files": […]}`, the package's
+files they were rendered from.
 
 - `scenario/expense-reimbursement.json`: the Desk's recorded conformance scenario, **one file for
   the whole run**, because what the conformance session asserts is the run's order (every call
@@ -53,16 +56,26 @@ and symbols they were read or rendered from.
   session, reasoning tier off, the five runtime tools allowed), with the recorded runtime answers
   and the texts the host writes rendered from the code that writes them.
 - `failures/<class>.json`: one per catalogue class, with the terminal events an adapter emits for it
-  on one path the Desk actually takes, named in `source`: `error` then `end` for most; a failed
-  `tool_result` for `tool-failed` and `invalid-tool-input`, which are working data and not a failed
-  run; `retry` events before `retries-exhausted`; and nothing at all for `cancelled`, which is never
+  on one path the Desk (or, where `source` names the package, the harness) actually takes, named in
+  `source`: `error` then `end` for most; a failed `tool_result` for `tool-failed` and
+  `invalid-tool-input`, which are working data and not a failed run; `retry` events before
+  `retries-exhausted` and before `rate-limited`; and nothing at all for `cancelled`, which is never
   an error event.
 - `tool-offer/`: what the scenario's session offers, whole (`scenario-offer.json`, its `tools` and
   `hostTools`), then its runtime tools and its host tools one by one (`runtime-tools.json`,
   `host-tools.json`), and the same offer as the `codex` engine puts it on the agent wire
   (`agent-wire-offer.json`).
 - `budget/desk-defaults.json` and `budget/desk-limits.json`: the budget table verbatim, and the fixed
-  limits by their constant names.
+  limits by their constant names; `budget/harness-defaults.json`: the policy a harness session works
+  under, the table and the two time bounds.
+- `proposal/`: the proposal through `propose_pack` (`propose-pack.json`), a proposal whose critic
+  failed, delivered with its `note` (`critic-unfinished.json`), a `propose_pack` proposal whose
+  closing request failed, delivered with its `note` (`turn-unfinished.json`), and an answer whose
+  proposal could not be read, kept whole before the failure (`unreadable.json`); and
+  `tool-offer/propose-pack.json`, the tool as a host declares it.
+- `bounds/`: a 429 retried once, with the attempts in the completion record
+  (`rate-limited-retried.json`), the turn's wall clock pausing the run (`turn-clock.json`), and a
+  tool past its deadline answered as a failed result (`tool-timeout.json`).
 - `budget/state-placement.json`: where the execution state, headed `STATE_HEADER`, sits in the
   first and second requests of the recorded scenario on each wire, for each placement the endpoint
   capabilities resolve to. This harness's (agent#9); `engines/vercel/prefix.test.ts` checks every
@@ -83,7 +96,7 @@ and symbols they were read or rendered from.
 
 Values the Desk generates afresh on every run (UUIDs, timestamps, digests) appear only where the
 recorded data carries them, or, in the harness's own vectors, as rendered with a fixed ledger scope;
-no vector carries an event the Desk does not emit.
+no vector carries an event the Desk or the harness does not emit.
 
 ## The Desk's own lists
 

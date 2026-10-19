@@ -1,0 +1,57 @@
+{
+  "description": "The model delivers its proposal by calling propose_pack, and the closing summary request after it is answered 503: the proposal is delivered with a turn-unfinished note naming the failure, and the run ends without an error event. vercel engine.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/engines/vercel/loop.ts (the main loop's catch: a proposal made through propose_pack)",
+      "packages/harness/refutation.ts (proposalNote)"
+    ]
+  },
+  "items": [
+    {
+      "type": "tool_call",
+      "name": "propose_pack",
+      "args": {
+        "document": {
+          "id": "p"
+        },
+        "unknowns": [
+          "who signs"
+        ]
+      }
+    },
+    {
+      "type": "tool_result",
+      "name": "propose_pack",
+      "isError": false,
+      "text": "The proposal was received and will be shown to the person for review; nothing was written. Do not call propose_pack again unless the proposal changes. End with a short summary."
+    },
+    {
+      "type": "proposal",
+      "document": {
+        "id": "p"
+      },
+      "unknowns": [
+        "who signs"
+      ],
+      "note": {
+        "kind": "turn-unfinished",
+        "message": "The turn stopped after this proposal was made, so nothing after it ran: no closing summary and no critic check. The AI service is temporarily unavailable. Completed work is retained.",
+        "failure": {
+          "version": 1,
+          "code": "unavailable",
+          "source": "model",
+          "outcome": "unknown",
+          "status": 503
+        }
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

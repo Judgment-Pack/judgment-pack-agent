@@ -13,6 +13,7 @@ export class ExecutionController {
  readonly progress=new ExecutionProgressTracker()
  state!:ExecutionCheckpoint
  pauseRequested=false
+ private attempt=1
  private operationsReference:unknown
  private restoredResults:unknown[]=[]
  private inFlight=new Map<string,string>()
@@ -66,7 +67,14 @@ export class ExecutionController {
   }
  }
  recordCompletion(result:import('../completion').ModelCompletion,phase:'work'|'synthesis'|'review'){
-  this.state.completions=[...(this.state.completions??[]),{request:this.state.used,phase,result}]
+  const attempt=this.attempt;this.attempt=1
+  this.state.completions=[...(this.state.completions??[]),{request:this.state.used,phase,result,...(attempt>1?{attempt}:{})}]
+ }
+ /** Which attempt at a model request is being sent, said before each one, so a new call starts again at 1. */
+ beginAttempt(attempt:number){this.attempt=attempt}
+ /** A refused attempt at a model request: its own row. */
+ recordRefusal(phase:'work'|'synthesis'|'review',refused:{attempt:number;failure:import('../failures').AIFailure;waitMs?:number}){
+  this.state.completions=[...(this.state.completions??[]),{request:this.state.used,phase,result:{finishReason:'error'},...refused}]
  }
  clearReadCache(){this.cache.clear()}
  /** Only immutable session reads are cached. Workflow writes and evaluations are never cached. */

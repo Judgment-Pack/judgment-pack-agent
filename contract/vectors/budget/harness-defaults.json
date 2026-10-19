@@ -1,0 +1,31 @@
+{
+  "description": "The policy a session works under in the harness (CONTEXT_DEFAULTS): the Desk's table and the two time bounds the harness adds.",
+  "schema": "budget.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/context/policy.ts (TIME_DEFAULTS, CONTEXT_DEFAULTS)",
+      "packages/harness/contract/policy.json"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "maxInputBytes": 180000,
+      "contextWindowTokens": 65536,
+      "outputTokens": 8192,
+      "toolResultBytes": 12000,
+      "readBytes": 6000,
+      "retainedBytes": 8388608,
+      "recentMessages": 8,
+      "historyBytes": 32000,
+      "briefBytes": 8000,
+      "memoryBytes": 4000,
+      "turnMilliseconds": 900000,
+      "toolCallMilliseconds": 120000
+    }
+  ]
+}

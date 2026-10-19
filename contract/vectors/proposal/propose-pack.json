@@ -1,0 +1,50 @@
+{
+  "description": "The model delivers its proposal by calling propose_pack, then ends with a short summary: the adapter reads the call, answers it, and emits the proposal from the call's arguments. vercel engine.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/engines/contract.ts (readProposedPack, PROPOSAL_RECEIVED)",
+      "packages/harness/engines/vercel/loop.ts (the propose_pack dispatch)"
+    ]
+  },
+  "items": [
+    {
+      "type": "tool_call",
+      "name": "propose_pack",
+      "args": {
+        "document": {
+          "id": "p"
+        },
+        "unknowns": [
+          "who signs"
+        ]
+      }
+    },
+    {
+      "type": "tool_result",
+      "name": "propose_pack",
+      "isError": false,
+      "text": "The proposal was received and will be shown to the person for review; nothing was written. Do not call propose_pack again unless the proposal changes. End with a short summary."
+    },
+    {
+      "type": "message",
+      "text": "Proposed for your review."
+    },
+    {
+      "type": "proposal",
+      "document": {
+        "id": "p"
+      },
+      "unknowns": [
+        "who signs"
+      ]
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

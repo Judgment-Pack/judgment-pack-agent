@@ -5,15 +5,17 @@ import { readModelQuestion } from '../../questions'
 import { questionFailureResult } from '../../questionFailure'
 import { assistantLanguageInstructions } from '../../host'
 import { separateImages } from '../../images'
-import type { AssistantEvent, AgentAssistantSession, EngineSession, Engine, McpToolResult } from '../../engine'
+import type { AssistantEvent, AgentAssistantSession, EngineSession, Engine, McpToolResult, ProposalNote } from '../../engine'
 import type { AgentTool, AgentEvent } from '../../agent'
 import {
   SYSTEM, CONVERSATION_SYSTEM, TEST_DESIGN_SYSTEM, BRIEF_SYSTEM, GRAPH_SYSTEM,
   openRun, eventIterator, guardedCallTool, withAbort, isCancelled,
-  servedSchema, textOf, streamingProse, proseOf, hasProposalFence, extractProposal
+  servedSchema, textOf, streamingProse, proseOf, hasProposalFence, extractProposal,
+  wholeAnswer, withDeadline, toolTimeout, PROPOSE_PACK_TOOL, PROPOSE_PACK_INSTRUCTIONS, PROPOSAL_RECEIVED,
+  offersProposeTool, readProposedPack, twoProposals, type Proposal
 } from '../contract'
 import { eventChannel } from '../vercel/channel'
-import { CRITIC_SYSTEM, criticMessage, criticCannotRun, critiqueEvent, critiqueOnProposal, openCritique } from '../../refutation'
+import { CRITIC_SYSTEM, criticMessage, criticCannotRun, critiqueEvent, critiqueOnProposal, criticNote, proposalNote, openCritique } from '../../refutation'
 import type { CritiqueRecorder, Critique } from '../../refutation'
 
 /** Candidate contract. No fake model endpoint, and no selectable registry entry
@@ -33,6 +35,8 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
   const callTool = guardedCallTool(session, executionSignal)
   const deliver = (event: AssistantEvent) => channel.push(event)
   const drive = async () => {
+    /** A proposal delivered through `propose_pack`; the fence is the fallback. */
+    let toolProposal: Proposal | null = null
     const names = new Set<string>()
     const routes = new Map<string, { name: string; host?: CodexSession['hostTools'][number] }>()
     const tools: AgentTool[] = []
@@ -53,7 +57,7 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
       const partial = new Map<string, string>()
       let final = ''
       let messages = 0
-      await withAbort(() => session.agent.run({ prompt, instructions, tools: phase === 'critic' ? tools.filter(tool => !routes.get(tool.name)?.host?.interaction && routes.get(tool.name)?.host?.effect!=='memory' && !['update_plan','request_budget_increase'].includes(routes.get(tool.name)?.name??'')) : tools, effort: session.effort, phase }, {
+      await withAbort(() => session.agent.run({ prompt, instructions, tools: phase === 'critic' ? tools.filter(tool => !routes.get(tool.name)?.host?.interaction && routes.get(tool.name)?.host?.effect!=='memory' && !['update_plan','request_budget_increase',PROPOSE_PACK_TOOL].includes(routes.get(tool.name)?.name??'')) : tools, effort: session.effort, phase }, {
         signal: executionSignal,
         event: async (event: AgentEvent) => {
           if (executionSignal.aborted) return
@@ -98,9 +102,15 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
               inputPause.abort()
               throw new DOMException('Waiting for input', 'AbortError')
             }
-            result = route.host
-              ? await withAbort(() => route.host!.execute(call.arguments, toolSignal), toolSignal)
-              : await withAbort(() => callTool(route.name, call.arguments), toolSignal)
+            // The proposal as a tool call is the engine's to read; every other
+            // call is bounded by the policy's per-call deadline as well.
+            const limit = context.policy.toolCallMilliseconds
+            if (route.host && route.name === PROPOSE_PACK_TOOL) {
+              toolProposal = readProposedPack(call.arguments)
+              result = { content: [{ type: 'text', text: PROPOSAL_RECEIVED }] }
+            } else result = route.host
+              ? await withDeadline((signal) => route.host!.execute(call.arguments, signal), toolSignal, limit, () => toolTimeout(limit))
+              : await withDeadline(() => callTool(route.name, call.arguments), toolSignal, limit, () => toolTimeout(limit))
             runtimeAnswered = !route.host
           } catch (cause) {
             if (isCancelled(cause) || executionSignal.aborted) throw cause
@@ -120,7 +130,7 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
           return {isError:result.isError===true,text:projected.structuredContent===undefined?textOf(projected):JSON.stringify(projected)}
         }
       }), executionSignal)
-      if (!messages || partial.size || !final.trim()) throw failureError('invalid-response','agent')
+      if ((!messages || partial.size || !final.trim()) && !(phase === 'author' && toolProposal !== null)) throw failureError('invalid-response','agent')
       return final
     }
     const instructions = session.purpose === 'graph' ? GRAPH_SYSTEM : session.purpose === 'brief' ? BRIEF_SYSTEM
@@ -129,25 +139,64 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
     // The agent's prompt carries the host's changing state and the execution guidance at its end;
     // its instructions stay the stable system text.
     const prompt = session.prompt + (session.context?.currentState ? '\n\n' + session.context.currentState : '') + (session.allowConversation ? '\n\n' + context.execution.guidance() : '')
-    const final = await run(prompt, instructions, 'author')
-    if (session.allowConversation && !hasProposalFence(final)) {
+    let final: string
+    try {
+      final = await run(prompt, instructions + (offersProposeTool(session.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : ''), 'author')
+    } catch (cause) {
+      // **A proposal made through propose_pack is finished work.** The run
+      // failing after it (the bridge's deadline, a lost connection) does not
+      // take it with it: it is delivered with a note naming the failure, and
+      // the run ends. A person's Stop still stops; a question to the person
+      // leaves the proposal delivered and the turn waiting.
+      const made = toolProposal as Proposal | null
+      if (made === null || gate.signal.aborted) throw cause
+      toolProposal = null
+      if (awaitingInput) {
+        await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns })
+        throw cause
+      }
+      if (isCancelled(cause) || executionSignal.aborted) throw cause
+      await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns, note: proposalNote('turn-unfinished', cause, 'agent') })
+      return
+    }
+    if (session.allowConversation && toolProposal === null && !hasProposalFence(final)) {
       await deliver({ type: 'message', text: proseOf(final) })
       return
     }
-    const proposal = extractProposal(final)
+    let proposal: Proposal
+    try {
+      // A tool proposal beside a fenced one is ambiguous, refused as two
+      // fenced proposals are.
+      if (toolProposal !== null && hasProposalFence(final)) throw twoProposals()
+      proposal = toolProposal ?? extractProposal(final)
+    } catch (cause) {
+      // Nothing finished is lost: the answer is delivered whole, the prose and
+      // the raw fence, before the run reports why its proposal was not read.
+      const kept = wholeAnswer(final)
+      if (kept) await deliver({ type: 'message', text: kept })
+      throw cause
+    }
     const prose = proseOf(final)
     if (prose) await deliver({ type: 'message', text: prose })
     let critique: Critique | null = null
+    let note: ProposalNote | null = null
     if (session.adversarialReview) {
       critique = criticCannotRun(session.testPrompt)
       if (!critique) {
         const recorder = openCritique()
-        const text = await run(criticMessage(session.testPrompt, proposal.document), CRITIC_SYSTEM, 'critic', recorder)
-        critique = recorder.critique(text)
+        try {
+          const text = await run(criticMessage(session.testPrompt, proposal.document), CRITIC_SYSTEM, 'critic', recorder)
+          critique = recorder.critique(text)
+        } catch (cause) {
+          // The proposal is finished work: a critic that did not finish is a
+          // note on it, never an error raised ahead of it. A Stop still stops.
+          if (isCancelled(cause) || executionSignal.aborted) throw cause
+          note = criticNote(cause, 'agent')
+        }
       }
-      await deliver(critiqueEvent(critique))
+      if (critique) await deliver(critiqueEvent(critique))
     }
-    await deliver({ type: 'proposal', document: proposal.document, unknowns: proposal.unknowns, ...critiqueOnProposal(critique) })
+    await deliver({ type: 'proposal', document: proposal.document, unknowns: proposal.unknowns, ...critiqueOnProposal(critique), ...(note === null ? {} : { note }) })
   }
   const open = () => {
     void drive().catch(async (cause: unknown) => {
