@@ -1036,6 +1036,22 @@ the host's model capability so the host keeps counting; whether the adapter emit
   `tool-offer/critic-offer.json`; and T7's `write_file`, which the agent was never offered, reaches
   the gate and is refused there, never the runtime, so a gate that admitted a sixth name fails
   `certify (codex)` as it fails `certify (vercel)`. The two are not held to one sequence.
+  Six more scripted scenarios run on both adapters (agent#13; `certification/scenarios.test.ts`,
+  the README's "The certified scenarios"): chat mode with host tools, delegation, memory, plan mode,
+  the correction loop and a multi-turn transcript, each checked on the model engine once per answer
+  shape (a stream, a whole object) and on the agent engine at its own seam. The checks the adapters
+  make differently are recorded, not skipped. 1: the agent transport refuses a name outside the
+  agent's offer before the gate sees it, so the agent engine is driven at `AgentRun`; the model
+  engine's SDK answers the unoffered call first with its own no-such-tool error, and both streams
+  show the gate's refusal. 2: the agent's run ends at the delegate call, so a response is the call's
+  run, the children's runs and the next run, and a child's record carries no tokens and no model
+  requests, the figures counting `agentRuns`. 3: the agent engine sends the Desk's server no model
+  request to recall for, its one request being the run's prompt, which the recall rule reads for the
+  person's message. 5: five model requests on the model engine, three agent runs on the agent
+  engine. 4 and 6 are the same on both. Since the release review of v0.2.0 scenario 5 also holds the
+  critic's boundary: a critic that calls a tool outside its allow-list (`write_file`) is refused by
+  the harness's own `admit`, nothing reaches the Runtime and the pass still ends, so an adapter that
+  skipped `admit` on the critic's calls fails both certifications.
 
 ### Other departures
 

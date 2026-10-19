@@ -1,0 +1,47 @@
+{
+  "description": "A task record for a task that resumed an earlier one (agent#14) and whose long finding was summarized (agent#13): resumes names the finished task of the same chat it continues, and summarized says result is the child's own summary of the findings at more, written in one more request of its budget. Written by hand from the schema; delegationResults.test.ts reads it with validDelegatedTask.",
+  "schema": "delegated-task.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/delegation.ts (child, keep)",
+      "packages/harness/delegationContract.ts (validDelegatedTask)",
+      "packages/harness/delegationResults.test.ts (the vector read by validDelegatedTask)"
+    ]
+  },
+  "items": [
+    {
+      "id": "4d5e6f7a-8b9c-4d0e-8f1a-2b3c4d5e6f7a",
+      "parentRunId": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "title": "Receipts, continued",
+      "objective": "Check the receipts of the trips after trip 4.",
+      "profile": "analyze",
+      "state": "complete",
+      "createdAt": "2026-10-19T09:10:00.000Z",
+      "finishedAt": "2026-10-19T09:10:03.200Z",
+      "modelRequests": 3,
+      "toolCalls": 0,
+      "attempts": 0,
+      "steps": [],
+      "result": "Trips 5 to 8: receipts match. Trip 9 has no receipt.",
+      "more": {
+        "readWith": "read_window",
+        "id": "chat-1:task-result-4d5e6f7a-8b9c-4d0e-8f1a-2b3c4d5e6f7a:5c0d1e2f3a4b5c6d",
+        "cursor": "line:6",
+        "totalCharacters": 412
+      },
+      "budget": {
+        "modelRequests": 6,
+        "toolCalls": 6,
+        "milliseconds": 120000
+      },
+      "model": "a-model",
+      "resumes": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9",
+      "summarized": true,
+      "durationMs": 3200
+    }
+  ]
+}

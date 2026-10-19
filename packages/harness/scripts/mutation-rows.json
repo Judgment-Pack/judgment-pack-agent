@@ -134,24 +134,9 @@
    "name": "the answer's headers are not filtered",
    "file": "session.ts",
    "find": "    if (MODEL_ANSWER_HEADERS.includes(name.toLowerCase())) carried.set(name, value)",
-   "replace": "    carried.set(name, value)",
+   "replace": "    if (true) carried.set(name, value)",
    "tests": [
-    "capabilities.test.ts",
-    "certification/conformance.test.ts",
-    "certification/scenarios.test.ts",
-    "context/chat.test.ts",
-    "critic.test.ts",
-    "criticDefault.test.ts",
-    "delegation.test.ts",
-    "engines/codex/codex.test.ts",
-    "engines/codex/reformat.test.ts",
-    "engines/failurePaths.test.ts",
-    "engines/vercel/bounds.test.ts",
-    "engines/vercel/prefix.test.ts",
-    "framing.test.ts",
-    "memory/recall.test.ts",
-    "session.test.ts",
-    "testCases.test.ts"
+    "session.test.ts"
    ],
    "status": "caught",
    "origin": "desk"

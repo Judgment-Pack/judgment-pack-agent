@@ -1,0 +1,33 @@
+{
+  "description": "The brief of a task resumed after its earlier run stopped at its time limit (review row 13): the earlier exchange's result is what the task had written when it stopped, marked partial, with the cursor into the whole. Written by hand from the schema; delegation.test.ts holds a child's brief to the schema's members.",
+  "schema": "delegated-task.json#/$defs/brief",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/delegation.ts (brief)",
+      "packages/harness/delegation.test.ts (a resumed child)"
+    ]
+  },
+  "items": [
+    {
+      "objective": "Finish the mileage check: read the two pages not yet read.",
+      "earlierWork": [
+        {
+          "objective": "Find the mileage rate the policy pays.",
+          "result": "Two of four pages read give 0.58 per mile.",
+          "more": {
+            "readWith": "read_window",
+            "id": "chat-1:task-result-6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c:7d7ffdcce5123230",
+            "cursor": "line:1",
+            "totalCharacters": 43
+          },
+          "partial": true
+        }
+      ],
+      "timeLimitSeconds": 360
+    }
+  ]
+}

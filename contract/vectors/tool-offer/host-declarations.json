@@ -1,0 +1,91 @@
+{
+  "description": "Host tools declared with the members the first vectors leave out: the two interaction tools the adapter handles itself (ask_user, delegate_tasks); a read tool a delegated child may be offered (delegation read), declared immutable, reference and runtime-dependent (contextPolicy.runtime, so a chat's read cache keys it by the Runtime the host names), with the host-owned presentation frozen when it is offered; and a research-capability reader. Written by hand from the schema.",
+  "schema": "tool-offer.json#/$defs/hostTool",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/engine.ts (HostTool)",
+      "packages/harness/context/toolPolicy.ts",
+      "packages/harness/execution/controller.ts (wrapRead)"
+    ]
+  },
+  "items": [
+    {
+      "name": "ask_user",
+      "description": "Ask the person one question.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ]
+      },
+      "interaction": "question"
+    },
+    {
+      "name": "delegate_tasks",
+      "description": "Hand one to three read-only tasks to subordinate runs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "tasks": {
+            "type": "array"
+          }
+        },
+        "required": [
+          "tasks"
+        ]
+      },
+      "interaction": "delegation"
+    },
+    {
+      "name": "read_pack",
+      "description": "Read the saved pack's rules.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "effect": "read",
+      "delegation": "read",
+      "contextPolicy": {
+        "immutable": true,
+        "reference": true,
+        "runtime": true
+      },
+      "presentation": {
+        "provider": "Judgment Pack workspace"
+      }
+    },
+    {
+      "name": "read_page",
+      "description": "Read one web page.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "effect": "read",
+      "delegation": "research"
+    }
+  ]
+}

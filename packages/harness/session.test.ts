@@ -283,6 +283,29 @@ describe('the model capability the desk binds', () => {
     expect(answered.headers.get('request-id')).toBeNull()
   })
 
+  // Mutation row "the answer's headers are not filtered": only the two answer headers and the valid
+  // diagnostic ones travel; anything else the endpoint sets, whatever its name, does not.
+  it('carries the answer’s content headers and the valid diagnostic ones, and no other header', async () => {
+    configureHarness({ sessionBearer: async () => 'a-secret-session-id' })
+    vi.stubGlobal('fetch', async () => new Response('{}', {
+      status: 200,
+      headers: {
+        'content-type': 'application/json',
+        'content-length': '2',
+        'set-cookie': 'session=abc',
+        'x-auth-token': 'a-token',
+        'x-request-id': 'req_fixture',
+        'retry-after': 'soon, not a number or a date'
+      }
+    }))
+    const answered = await bindModelCall('openai-compatible')('chat/completions', { body: '{}' })
+    const names = [...answered.headers.keys()].sort()
+    expect(names).toEqual(['content-length', 'content-type', 'x-request-id'].sort())
+    expect(answered.headers.get('set-cookie')).toBeNull()
+    expect(answered.headers.get('x-auth-token')).toBeNull()
+    expect(answered.headers.get('retry-after')).toBeNull()
+  })
+
   it('gives back a body stream of its own, not the one the answer arrived on', async () => {
     // A Response built from a ReadableStream keeps that very object as its
     // body, so a stream somebody decorated — a captured fetch, a patched

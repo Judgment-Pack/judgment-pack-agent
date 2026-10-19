@@ -70,6 +70,8 @@ import { ContextBudgetError } from './context/policy'
 import { CRITIC_PASS_MILLISECONDS } from './engines/codex'
 import testRunCompared from '../../contract/vectors/critic/test-run-compared.json'
 import declaredCases from '../../contract/vectors/critic/declared-cases.json'
+import caseMembers from '../../contract/vectors/critic/declared-cases-members.json'
+import errorCompared from '../../contract/vectors/critic/error-outcome-compared.json'
 import criticTools from '../../contract/vectors/tool-offer/critic-tools.json'
 import type { AgentRequest, AgentRun } from './agent'
 import type { AssistantEvent, HostTool, McpToolResult } from './engine'
@@ -573,6 +575,17 @@ describe('the contract’s critic vectors are what the harness writes (agent#10)
     recorder.saw('experimental_test_cases', JSON.stringify(report), { pack: JSON.stringify(draft), matrix: JSON.stringify(criticMatrix(cases)) }, report)
     const item = testRunCompared.items[0]!
     expect(critiqueEvent({ ...recorder.critique(''), figures: item.figures as CriticFigures })).toEqual(item)
+  })
+
+  it('critic/declared-cases-members.json: a case with every member beside its facts and expectation is read whole', () => {
+    expect(readCriticCases(caseMembers.items)).toEqual(caseMembers.items)
+    expect(Object.keys(caseMembers.items[0]!)).toEqual(expect.arrayContaining(['evidenceAvailability', 'supportedExtensions', 'expectedHandoffTarget', 'origin', 'specSection', 'cites']))
+  })
+
+  it('critic/error-outcome-compared.json: an expected error class and phase agree with the runtime’s', () => {
+    const critique = errorCompared.items[2]!
+    expect(critique).toMatchObject({ refuted: false, cases: [{ agrees: true, expected: { errorClass: 'malformed-input', phase: 'preflight' }, actual: { errorClass: 'malformed-input', phase: 'preflight' } }] })
+    expect(errorCompared.items.filter((item) => 'origin' in item).map((item) => item.type)).toEqual(['tool_call', 'tool_result'])
   })
 
   it('critic/declared-cases.json: cases the reader reads, as the matrix the critic is shown', () => {

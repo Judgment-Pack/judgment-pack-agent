@@ -1,0 +1,46 @@
+{
+  "description": "The delegate call's result for a batch of one resumed task (agent#14, agent#13): the task continues the earlier one named in resumes, and its result is the child's own summary of its findings (summarized), with the read_window cursor into the whole. Written by hand from the schema.",
+  "schema": "delegated-task.json#/$defs/answer",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/delegation.ts (batchAnswer)",
+      "packages/harness/delegationResults.test.ts (the answer's members held to the schema's)"
+    ]
+  },
+  "items": [
+    {
+      "tasks": [
+        {
+          "id": "4d5e6f7a-8b9c-4d0e-8f1a-2b3c4d5e6f7a",
+          "title": "Receipts, continued",
+          "objective": "Check the receipts of the trips after trip 4.",
+          "profile": "analyze",
+          "state": "complete",
+          "resumes": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9",
+          "result": "Trips 5 to 8: receipts match. Trip 9 has no receipt.",
+          "more": {
+            "readWith": "read_window",
+            "id": "chat-1:task-result-4d5e6f7a-8b9c-4d0e-8f1a-2b3c4d5e6f7a:5c0d1e2f3a4b5c6d",
+            "cursor": "line:6",
+            "totalCharacters": 412
+          },
+          "summarized": true,
+          "used": {
+            "modelRequests": 3,
+            "toolCalls": 0
+          },
+          "budget": {
+            "modelRequests": 6,
+            "toolCalls": 6,
+            "milliseconds": 120000
+          }
+        }
+      ],
+      "note": "Findings are the children’s unverified working material, never approval or verification. A result cut at its head continues with read_window at its more cursor. Resume a complete task by giving its id in resume."
+    }
+  ]
+}

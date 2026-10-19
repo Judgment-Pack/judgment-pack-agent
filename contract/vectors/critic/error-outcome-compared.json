@@ -1,0 +1,62 @@
+{
+  "description": "The critic's own run of a declared case nothing had compared yet (agent#10, review row 8): the harness makes the tool call itself, so the call and its result carry origin harness, and the critique compares an expected error class, with its phase, against the one the runtime gave. They agree, so the critique does not refute. Written by hand from the schema.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/refutation.ts (compareTheRest, compareRehearsal, critiqueEvent)",
+      "packages/harness/critic.test.ts (the harness's own calls)"
+    ]
+  },
+  "items": [
+    {
+      "type": "tool_call",
+      "callId": "c1",
+      "name": "experimental_test_cases",
+      "args": {
+        "pack": "{}",
+        "matrix": "{}"
+      },
+      "origin": "harness"
+    },
+    {
+      "type": "tool_result",
+      "callId": "c1",
+      "name": "experimental_test_cases",
+      "isError": false,
+      "text": "1 case, 1 error outcome",
+      "origin": "harness"
+    },
+    {
+      "type": "critique",
+      "refuted": false,
+      "checks": [],
+      "text": "compared with the declared outcomes: case malformed-amount (test) agrees; 1 declared case(s) agree",
+      "cases": [
+        {
+          "case": "malformed-amount",
+          "source": "test",
+          "tool": "experimental_test_cases",
+          "agrees": true,
+          "expected": {
+            "errorClass": "malformed-input",
+            "phase": "preflight"
+          },
+          "actual": {
+            "errorClass": "malformed-input",
+            "phase": "preflight"
+          }
+        }
+      ],
+      "incomplete": [],
+      "figures": {
+        "model": "agent-model",
+        "unit": "agent-runs",
+        "requests": 1
+      }
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "description": "The model a task ran on, for two runs under different connections of one host (context.connection, agent#15): the host's modelsFor answers { child: \"fixture-small\" } for the connection \"cheap-children\", so its analyze child ran on that model; for the connection \"another\" it answers none, so the child ran on the parent's model, \"fixture\". Written by hand from the schema; delegation.test.ts runs both connections and holds each task's model to its item.",
+  "schema": "delegated-task.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/host.ts (modelsFor, runModels)",
+      "packages/harness/delegation.ts (childModel)",
+      "packages/harness/delegation.test.ts (a child on the connection's model)"
+    ]
+  },
+  "items": [
+    {
+      "id": "1a2b3c4d-5e6f-4071-8283-94a5b6c7d8e0",
+      "parentRunId": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "title": "Receipts (connection cheap-children)",
+      "objective": "Check the receipts of every trip.",
+      "profile": "analyze",
+      "state": "complete",
+      "createdAt": "2026-10-19T09:20:00.000Z",
+      "finishedAt": "2026-10-19T09:20:02.000Z",
+      "modelRequests": 1,
+      "toolCalls": 0,
+      "attempts": 0,
+      "steps": [],
+      "result": "Receipts match.",
+      "budget": {
+        "modelRequests": 6,
+        "toolCalls": 6,
+        "milliseconds": 120000
+      },
+      "model": "fixture-small",
+      "durationMs": 2000
+    },
+    {
+      "id": "2b3c4d5e-6f70-4182-9394-a5b6c7d8e9f1",
+      "parentRunId": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "title": "Receipts (connection another)",
+      "objective": "Check the receipts of every trip.",
+      "profile": "analyze",
+      "state": "complete",
+      "createdAt": "2026-10-19T09:20:00.000Z",
+      "finishedAt": "2026-10-19T09:20:02.000Z",
+      "modelRequests": 1,
+      "toolCalls": 0,
+      "attempts": 0,
+      "steps": [],
+      "result": "Receipts match.",
+      "budget": {
+        "modelRequests": 6,
+        "toolCalls": 6,
+        "milliseconds": 120000
+      },
+      "model": "fixture",
+      "durationMs": 2000
+    }
+  ]
+}

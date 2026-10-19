@@ -288,8 +288,10 @@ contract states the rule a server applies to find it (`budget.json#/$defs/recall
 certified leg, 21 legs in four families. On the agent wire (`codex`) the request text is the
 prompt's text before the first blank line followed by `STATE_HEADER`, or the whole prompt where
 there is none (agent#36; `contract/vectors/recall/agent.json`, and the `agent engine codex` check in
-`engines/codex/codex.test.ts`); it holds where the prompt, state and guidance fit the allowance,
-and where they are previewed the preview is what is sent.
+`engines/codex/codex.test.ts`); where the prompt, state and guidance do not fit the allowance, the
+prompt sent is the person's message (`currentRequest.message`), a blank line, `STATE_HEADER` and the
+preview, so the rule still finds the person's message (a host that gives no `currentRequest` gets the
+preview alone).
 The host says per run whether the project's memory is on (`context.memory`): `false` frees the
 `memoryBytes` reserve, and a run whose host says nothing keeps it.
 
@@ -489,7 +491,7 @@ it. The suite is `certification/scenarios.test.ts`; its turns and runs are drive
 | 2 Delegation: a batch of a review and a research child, then a follow-up that resumes the research child | one parent run per response (vercel) or the next run's result and the chat's index (codex); the children's offers closed; a reference resolved within the chat; each result in its profile's shape and valid against the contract; the figures; the resumed child's earlier work | 7 | 7 |
 | 3 Memory: three tool steps | the request text found on every request by the recall rule; the reserve kept with memory on or unsaid; the full allowance with memory off | 4 | 4 |
 | 4 Plan mode | no action tool offered; the Runtime reads offered are the gate's ceiling less the evaluation and the test run; a call to an action tool refused and visible; the plan delivered | 4 | 4 |
-| 5 The correction loop: a draft validate refuses, one correction request, the critic (the correction request's text is the scenario's own script; the scenario exercises `correctArtifact`, one correction then ready, the engines' critic and the gate's rehearsal rule) | the first draft fails validate with its diagnostic; one correction request and a passing draft; the request count; the critic's comparison rows for the declared case; no `incomplete` mark | 5 | 5 |
+| 5 The correction loop: a draft validate refuses, one correction request, the critic (the correction request's text is the scenario's own script; the scenario exercises `correctArtifact`, one correction then ready, the engines' critic and the gate's rehearsal rule) | the first draft fails validate with its diagnostic; one correction request and a passing draft; the request count; the critic's comparison rows for the declared case; no `incomplete` mark; the critic's call of a tool outside its allow-list refused by `admit`, reaching no Runtime tool, with the pass still ending | 6 | 6 |
 | 6 A multi-turn transcript: three turns of one chat | no unchanged source read again on turns two and three; the index present and within its bound; the ledger kept across the runs and gone after `dispose()` | 3 | 3 |
 
 The checks the adapters make differently are recorded here, with the reason, and not skipped:
@@ -497,7 +499,7 @@ The checks the adapters make differently are recorded here, with the reason, and
 - **1** The agent transport refuses a name outside the agent's offer before the gate sees it (the run ends), so the agent engine is driven at `AgentRun`, where the gate refuses it and the agent's answer is the refusal (agent#25). On the model engine the SDK answers the unoffered call first, with its own no-such-tool error naming the tool, and the model reads that; the stream shows the gate's refusal on both.
 - **2** The agent's run ends at the delegate call, so a response is the call's run, the children's runs and the next run: four runs for a batch of two, three for the resumed child. The agent wire reports no usage and no model request, so a child's record carries no `tokens` and no model requests, and the batch's figures count `agentRuns` instead; its `firstByteMs` and `durationMs` are present.
 - **3** The agent engine sends the Desk's server no model request to recall for: its one request is the run's prompt, which opens with the person's message. The reserve checks are the same on both.
-- **5** The model engine's loop is five model requests (two authoring requests, the critic's three); the agent engine's is three agent runs (author, author, critic).
+- **5** The model engine's loop is five model requests (two authoring requests, the critic's three); the agent engine's is three agent runs (author, author, critic). The critic's boundary check runs the loop once more with a call of `write_file` first in the critic's script, on both adapters; the guardrail's detail, "is not one of the tools the critic may call", is what shows `admit` refused it.
 - **4** and **6** make the same checks on both. The index is a text part of the first message on the model engine and the end of the prompt on the agent engine.
 
 Not covered by these scenarios: the network seal (the recorded scenario's legs hold it), the other two wires (the recall rule's vectors and the recorded scenario cover them), and a model engine other than `vercel`, which a new adapter adds by registering.

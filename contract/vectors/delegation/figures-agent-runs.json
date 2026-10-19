@@ -1,0 +1,123 @@
+{
+  "description": "What delegation cost in two executions (agent#18). The first, on the codex engine: two children that each took one agent run and made no model request (no token counts, which the bridge does not report), the parent's own two agent runs counted beside them; each total is its children's sums, agentRuns included. The second, on a model capability: two children whose token counts carry reasoning and cache-write tokens, summed in the total. Written by hand from the schema; the contract tests check each total against its children.",
+  "schema": "provenance.json#/$defs/delegationReport",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/delegation.ts (withFigures, childFigures, totalOf)",
+      "packages/harness/execution/state.ts (validDelegationFigures)",
+      "packages/harness/delegationResults.test.ts (the figures after a delegating turn)"
+    ]
+  },
+  "items": [
+    {
+      "batches": [
+        {
+          "batch": 1,
+          "children": [
+            {
+              "task": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9",
+              "batch": 1,
+              "profile": "review",
+              "model": "agent-model",
+              "state": "complete",
+              "modelRequests": 0,
+              "toolCalls": 2,
+              "agentRuns": 1,
+              "firstByteMs": 1400,
+              "durationMs": 8200
+            },
+            {
+              "task": "4d5e6f7a-8b9c-4d0e-8f1a-2b3c4d5e6f7a",
+              "batch": 1,
+              "profile": "analyze",
+              "model": "agent-model",
+              "state": "complete",
+              "modelRequests": 0,
+              "toolCalls": 0,
+              "agentRuns": 1,
+              "durationMs": 4100
+            }
+          ],
+          "total": {
+            "modelRequests": 0,
+            "toolCalls": 2,
+            "agentRuns": 2,
+            "durationMs": 8200
+          }
+        }
+      ],
+      "parent": {
+        "model": "agent-model",
+        "modelRequests": 0,
+        "agentRuns": 2
+      }
+    },
+    {
+      "batches": [
+        {
+          "batch": 1,
+          "children": [
+            {
+              "task": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9",
+              "batch": 1,
+              "profile": "analyze",
+              "model": "a-model",
+              "state": "complete",
+              "modelRequests": 3,
+              "toolCalls": 1,
+              "tokens": {
+                "inputTokens": 3900,
+                "outputTokens": 410,
+                "reasoningTokens": 256,
+                "cacheReadTokens": 1024,
+                "cacheWriteTokens": 2048
+              },
+              "firstByteMs": 700,
+              "durationMs": 5200
+            },
+            {
+              "task": "4d5e6f7a-8b9c-4d0e-8f1a-2b3c4d5e6f7a",
+              "batch": 1,
+              "profile": "review",
+              "model": "a-model",
+              "state": "complete",
+              "modelRequests": 2,
+              "toolCalls": 0,
+              "tokens": {
+                "inputTokens": 2100,
+                "outputTokens": 180,
+                "reasoningTokens": 64,
+                "cacheWriteTokens": 512
+              },
+              "durationMs": 3100
+            }
+          ],
+          "total": {
+            "modelRequests": 5,
+            "toolCalls": 1,
+            "tokens": {
+              "inputTokens": 6000,
+              "outputTokens": 590,
+              "reasoningTokens": 320,
+              "cacheReadTokens": 1024,
+              "cacheWriteTokens": 2560
+            },
+            "durationMs": 5200
+          }
+        }
+      ],
+      "parent": {
+        "model": "a-model",
+        "modelRequests": 4,
+        "tokens": {
+          "inputTokens": 7200,
+          "outputTokens": 640
+        }
+      }
+    }
+  ]
+}

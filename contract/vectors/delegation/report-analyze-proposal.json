@@ -1,0 +1,36 @@
+{
+  "description": "An analyze child's report that carries a document it proposed (agent#16): an open question of kind proposal, whose ref is the ledger entry holding the proposal, read with read_window and never applied. Written by hand from the schema.",
+  "schema": "delegated-task.json#/$defs/analyzeReport",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/delegationContract.ts (readReport)",
+      "packages/harness/delegationResults.test.ts (each profile's report read in its shape)"
+    ]
+  },
+  "items": [
+    {
+      "summary": "The draft has no rule for a claim without a receipt; one rule is proposed.",
+      "findings": [
+        {
+          "text": "No rule reads a receipt for a claim above 25."
+        }
+      ],
+      "citations": [],
+      "openQuestions": [
+        {
+          "kind": "proposal",
+          "text": "A rule that declines a claim above 25 without a receipt, written as a pack fragment.",
+          "ref": "chat-1:task-proposal-4d5e6f7a-8b9c-4d0e-8f1a-2b3c4d5e6f7a:3f4a5b6c7d8e9f01"
+        }
+      ],
+      "confidence": "medium",
+      "notDone": [
+        "The proposed rule was not tested."
+      ]
+    }
+  ]
+}

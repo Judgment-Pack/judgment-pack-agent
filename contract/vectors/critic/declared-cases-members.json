@@ -1,0 +1,48 @@
+{
+  "description": "Cases a host declares for the critic that carry the members beside the facts and the expectation (agent#10): evidence availability, the extensions the case supports, the handoff target the disposition expects, where the case came from, the spec section it rests on and what it cites. Written by hand from the schema; critic.test.ts reads them with readCriticCases.",
+  "schema": "run-event.json#/$defs/criticCase",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/refutation.ts (CriticCase, readCriticCases)",
+      "packages/harness/critic.test.ts (the case vectors)"
+    ]
+  },
+  "items": [
+    {
+      "source": "declared",
+      "id": "large-claim-escalated",
+      "facts": {
+        "claim": {
+          "type": "expense-reimbursement",
+          "amount": "1500.00",
+          "receiptAttached": true
+        }
+      },
+      "evidenceAvailability": {
+        "receipt": "present"
+      },
+      "supportedExtensions": [
+        "https://example.com/extensions/receipts"
+      ],
+      "expectedDisposition": {
+        "handoff": {
+          "state": "required"
+        },
+        "kind": "outcome",
+        "outcomeId": "escalate",
+        "reasons": []
+      },
+      "expectedHandoffTarget": "finance",
+      "origin": "request",
+      "focus": "the finance ceiling",
+      "specSection": "8.3",
+      "cites": [
+        "rule-4"
+      ]
+    }
+  ]
+}
