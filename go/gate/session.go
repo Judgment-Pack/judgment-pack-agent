@@ -322,6 +322,15 @@ func (g *Gate) refuse(name, detail string) Result {
 func (g *Gate) CallTool(ctx context.Context, name string, args json.RawMessage) (Result, error) {
 	phase := g.current()
 	if !contains(phase.Runtime, name) {
+		// Plan mode's and a child's refusal come after the turn's test-call count, as the TypeScript
+		// boundary orders them (contextualSession's claimTestCall wraps the phase's own callTool,
+		// agent#56): an unoffered test call there is counted, and past the cap the model reads the
+		// cap's failure instead of the phase's refusal.
+		if (phase.Kind == PhasePlan || phase.Kind == PhaseChild) && name == TestTool {
+			if capped, ok := g.claimTestCall(); !ok {
+				return capped, nil
+			}
+		}
 		switch phase.Kind {
 		case PhaseCritic:
 			return g.refuse(name, CriticRefusalDetail(name)), nil
@@ -345,16 +354,24 @@ func (g *Gate) CallTool(ctx context.Context, name string, args json.RawMessage) 
 		return Result{Text: UnofferedRefusal(verdict.Violation.Error()), IsError: true}, nil
 	}
 	if name == TestTool {
-		g.mu.Lock()
-		if g.testCalls >= g.bounds.TestCallsPerTurn {
-			g.mu.Unlock()
-			detail := TestCallCapDetail(g.bounds.TestCallsPerTurn)
-			return failed(contract.Failure{Version: 1, Code: "tool-failed", Source: "tool", Outcome: "not-started", Detail: &detail}), nil
+		if capped, ok := g.claimTestCall(); !ok {
+			return capped, nil
 		}
-		g.testCalls++
-		g.mu.Unlock()
 	}
 	return g.send(ctx, name, args)
+}
+
+// claimTestCall counts one test call against the turn (claimTestCall in context/session.ts): false,
+// with the failure the model reads, past testCallsPerTurn.
+func (g *Gate) claimTestCall() (Result, bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.testCalls >= g.bounds.TestCallsPerTurn {
+		detail := TestCallCapDetail(g.bounds.TestCallsPerTurn)
+		return failed(contract.Failure{Version: 1, Code: "tool-failed", Source: "tool", Outcome: "not-started", Detail: &detail}), false
+	}
+	g.testCalls++
+	return Result{}, true
 }
 
 // frame is one tools/call frame for a call as the model wrote it; arguments that are not JSON

@@ -43,6 +43,7 @@ Desk server runs. This package adds a third, `deepagents` (ADR-0003):
 | `vercel` | model | the Vercel AI SDK's `streamText` | `model.call`, as the SDK's providers' `fetch` (`relayFetch`) | the SDK's tools, each executed through the gate's dispatch |
 | `codex` | agent | the Codex bridge the Desk server runs | `agent.run` | the agent wire, under aliases, through the gate's dispatch |
 | `deepagents` | model | Deep Agents' agent graph (`createDeepAgent`, `deepagents/browser`), its own tools, subagents and summarization off | `model.call`, from its own LangChain chat model, the three wires written by the adapter; a run whose environment turns LangChain's tracing on is refused | every call answered by the adapter's boundary middleware through the gate's dispatch |
+| `eino` (Go) | model | Eino's `adk.ChatModelAgent` under an `adk.Runner` (ADR-0004), its interrupt, checkpoint, retries and subagents not configured | the in-process relay client (`go/relay`), which runs each request through the relay handler's path; the three wires written by the adapter (`go/adapter/wire`) | every call answered by the adapter's boundary middleware or Eino's unknown-tools handler, one dispatch, through the Go gate's narrow handle (`gate.Calls`) |
 
 Everything an engine needs is decided by the host before the session starts and handed to it:
 
@@ -1105,6 +1106,44 @@ Agents' subagents are off and delegation is the package's, an awaited `delegate_
   - **Certification.** Held to every leg `vercel` is held to (the six wire legs, text tool calls,
     strict alternation, thinking, the six scenarios once per answer shape, delegation's
     concurrency), with one recorded difference, scenario 1's, above.
+
+- **The `eino` engine** (Go, ADR-0004). A model engine on Eino's ADK, running in the host's Go
+  process. It keeps `deepagents`' rules (the boundary answers every call, the gate's refusal is
+  what the model reads of an unoffered name, the wires are the adapter's own and carry signed
+  reasoning back as it arrived, the rehearsal call is carried back as the model wrote it) and
+  `vercel`'s wherever `deepagents` keeps them. It differs in these:
+  - **The model call is in process.** `go/relay`'s client hands each request to the relay
+    handler's path (`relay.Handler` here, the Desk's `handleModelRelay` there) without a socket; the
+    handler keeps the path's four slots, its body bound, its deadlines, its transport that follows no
+    redirect and `withoutReflectedCredentials` on the answer's headers, and the client hands the
+    adapter only the answer's content headers and bounded diagnostics.
+  - **The gate is Go's, and holds the phases.** The critic's allow-list, the reformat run's
+    refusal, Plan mode's reads, a child's profile and the turn's test-call count are `go/gate`'s
+    (`gate.Calls`), not the context's `admit`; the refusals' words are the gate's, and a guardrail is
+    written by the gate while the call is in flight. A delegated child runs on a gate of its own in
+    its profile's phase within its parent's (the host's `Children` capability); its test calls count
+    from the parent's count when it starts and are not charged back to the parent's turn.
+  - **A runtime result's images.** The gate's call answers a result's text parts and its structured
+    content; an image part a Runtime tool returns does not reach the adapter, so a vision model is
+    not shown it (a host tool's images are). The scenarios carry none.
+  - **The proposal's member order.** A proposal event holds its document as Go's `contract` type
+    does, a map, so a host that writes the document back writes its members in sorted order where
+    the TypeScript writes the order the model wrote; the values are the same.
+  - **Strings.** A lone surrogate cannot be held in a Go string: it is U+FFFD, three bytes, where
+    JavaScript keeps the code unit (the byte bounds count the two alike).
+  - **Tracing.** Eino reads no tracing variable, so a run proceeds under them as `vercel`'s does;
+    K1b holds that nothing but the relay is reached and no key is sent.
+  - **Delegation.** The coordinator is the package's, ported (`go/adapter/delegate`): profiles,
+    budgets, references, reports, reuse, the retry before the first byte, the figures; Eino's
+    subagents are not used. A batch runs two children at once: the host's `Models` answer names the
+    critic's and a child's model and no connection capacity. The agent capability's half (a run that
+    ends at `delegation_requested`) is not ported, the Go adapter being a model adapter.
+  - **Certification.** The Go runner (`go/certification`, `go/cmd/harness-check`) runs every leg the
+    TypeScript suite runs on a model engine and the six scenarios on this adapter, all passing;
+    `go/certification/parity.json` maps every TypeScript check to the Go checks that make it. Where
+    the host differs, the check says so: scenario 5's boundary check reads the refusals only, because
+    the Go host keeps the gate's rewrite notice for the critic's evaluate, which the TypeScript
+    scenario's host drops.
 
 ### Other departures
 

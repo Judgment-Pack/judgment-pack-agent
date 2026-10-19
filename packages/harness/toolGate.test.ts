@@ -15,6 +15,9 @@ import { describe, expect, it } from 'vitest'
 import gateFramesVector from '../../contract/vectors/tool-call/gate-frames.json'
 import phaseOffersVector from '../../contract/vectors/tool-offer/phase-offers.json'
 import { TASK_PROFILES } from './delegationContract'
+import { childOffer } from './delegation'
+import { ContextLedger } from './context/ledger'
+import { CONTEXT_DEFAULTS } from './context/policy'
 import type { HostTool, McpTool } from './engine'
 import { ASSISTANT_TOOLS } from './host'
 import { PLAN_RUNTIME_READS, planningTool } from './planning/policy'
@@ -814,8 +817,9 @@ describe('the contract’s gate vectors', () => {
     }
     const session = phases.items[0]!
     // The boundary's own context tools, which it adds to a run after a phase's filter of the
-    // session's host tools (contextualSession), in every phase but the critic's and the reformat run's.
-    const context = new Set(['list_context', 'read_context', 'read_window', 'search', 'update_plan', 'request_budget_increase'])
+    // session's host tools (contextualSession), in every phase but the critic's and the reformat run's:
+    // the ledger's readers, read off a real ledger, and the execution's two tools.
+    const context = new Set([...new ContextLedger(CONTEXT_DEFAULTS).tools().map((tool) => tool.name), 'update_plan', 'request_budget_increase'])
     const offered = (phase: { phase: string; profile?: string; within?: string }): { tools: McpTool[]; hostTools: HostTool[] } => {
       switch (phase.phase) {
         case 'loop':
@@ -833,14 +837,11 @@ describe('the contract’s gate vectors', () => {
           // A child's session is its parent's in the parent's phase (delegation.ts passes the
           // phase on, and planningSession applies to children), narrowed by its profile.
           const parent = offered({ phase: phase.within ?? 'loop' })
+          // The child's own filter is delegation.ts's (childOffer, which runChild calls); the boundary
+          // then adds the parent's context tools after it.
           const profile = TASK_PROFILES.find((candidate) => candidate.id === phase.profile)!
-          const runtime = new Set(profile.runtimeTools ?? [])
-          return {
-            tools: parent.tools.filter((tool) => runtime.has(tool.name)),
-            hostTools: parent.hostTools.filter(
-              (tool) => context.has(tool.name) || (!tool.interaction && tool.delegation !== undefined && profile.capabilities.includes(tool.delegation))
-            )
-          }
+          const child = childOffer(profile, { tools: parent.tools, hostTools: parent.hostTools.filter((tool) => !context.has(tool.name)) })
+          return { tools: child.tools, hostTools: [...child.hostTools, ...parent.hostTools.filter((tool) => context.has(tool.name))] }
         }
       }
       throw new Error(`no phase ${phase.phase}`)

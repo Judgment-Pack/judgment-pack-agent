@@ -137,8 +137,12 @@ func TestTheParityTableHoldsTheGoChecksInStepWithTheTypeScriptLeg(t *testing.T) 
 		t.Fatal(err)
 	}
 	var table struct {
-		Source string      `json:"source"`
-		Checks []parityRow `json:"checks"`
+		Source    string      `json:"source"`
+		Checks    []parityRow `json:"checks"`
+		Scenarios struct {
+			Source string      `json:"source"`
+			Checks []parityRow `json:"checks"`
+		} `json:"scenarios"`
 	}
 	raw, err := os.ReadFile("parity.json")
 	if err != nil {
@@ -172,7 +176,7 @@ func TestTheParityTableHoldsTheGoChecksInStepWithTheTypeScriptLeg(t *testing.T) 
 			t.Errorf("%s: a check of the engine leg the Go runner runs has no Go counterpart", key)
 		}
 		for _, check := range row.Go {
-			if !slices.Contains(CheckNames, check) {
+			if !slices.Contains(AllCheckNames(), check) {
 				t.Errorf("%s: %q is not a check the Go leg makes", key, check)
 			}
 		}
@@ -191,9 +195,42 @@ func TestTheParityTableHoldsTheGoChecksInStepWithTheTypeScriptLeg(t *testing.T) 
 			}
 		}
 	}
-	for _, check := range CheckNames {
+	// The certified scenarios (scenarios.test.ts): every check the file makes, by its name, is a row,
+	// each with its Go checks or a reason.
+	scenarioSource, err := os.ReadFile(filepath.Join(root, table.Scenarios.Source))
+	if err != nil {
+		t.Fatal(err)
+	}
+	scenarioChecks := itNames(string(scenarioSource))
+	if len(scenarioChecks) < 20 {
+		t.Fatalf("%d checks read from %s", len(scenarioChecks), table.Scenarios.Source)
+	}
+	scenarioRows := map[string]parityRow{}
+	for _, row := range table.Scenarios.Checks {
+		if _, repeated := scenarioRows[row.Check]; repeated {
+			t.Errorf("%s is in the scenario table twice", row.Check)
+		}
+		scenarioRows[row.Check] = row
+		if !slices.Contains(scenarioChecks, row.Check) {
+			t.Errorf("the scenario table names %q, which the TypeScript suite does not have", row.Check)
+		}
+		if (len(row.Go) == 0) == (row.Reason == "") {
+			t.Errorf("%s: a row names its Go checks or a reason, one of the two", row.Check)
+		}
+		for _, check := range row.Go {
+			if !slices.Contains(AllCheckNames(), check) {
+				t.Errorf("%s: %q is not a check the Go runner makes", row.Check, check)
+			}
+		}
+	}
+	for _, name := range scenarioChecks {
+		if _, ok := scenarioRows[name]; !ok {
+			t.Errorf("the TypeScript scenarios have %q, and the parity table does not", name)
+		}
+	}
+	for _, check := range AllCheckNames() {
 		used := false
-		for _, row := range table.Checks {
+		for _, row := range append(append([]parityRow{}, table.Checks...), table.Scenarios.Checks...) {
 			used = used || slices.Contains(row.Go, check)
 		}
 		if !used {

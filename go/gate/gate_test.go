@@ -302,3 +302,27 @@ func TestTheAdapterHandleHasOnlyItsMethods(t *testing.T) {
 		t.Fatal("the adapter's handle exposes a field")
 	}
 }
+
+// An unoffered test call in Plan mode or a child's phase is counted before the phase refuses it, as
+// the TypeScript boundary counts it (agent#56): the phase's refusal while the turn has calls left,
+// the cap's failure past it, and the runtime reached by neither.
+func TestPlanModeAndAChildCountAnUnofferedTestCall(t *testing.T) {
+	for _, child := range []bool{false, true} {
+		g, calls, _ := fiveServed(t, Ceiling, Bounds{TestCallsPerTurn: 1, TestPackBytes: 100, TestMatrixBytes: 100})
+		if child {
+			g.Enter(ChildPhase(contract.DelegatedTaskProfile{ID: "review"}, g.Offer(), LoopPhase(g.Offer())))
+		} else {
+			g.Enter(PlanPhase(g.Offer()))
+		}
+		test := json.RawMessage(`{"pack":"{}","matrix":"{}"}`)
+		first, _ := g.Calls().CallTool(context.Background(), TestTool, test)
+		second, _ := g.Calls().CallTool(context.Background(), TestTool, test)
+		refusal := planRefusal
+		if child {
+			refusal = childRefusal
+		}
+		if first.Text != UnofferedRefusal(refusal) || !strings.Contains(second.Text, "testCallsPerTurn") || g.TestCalls() != 1 || len(*calls) != 0 {
+			t.Fatalf("child %t: %q then %q, %d counted, %v reached", child, first.Text, second.Text, g.TestCalls(), *calls)
+		}
+	}
+}

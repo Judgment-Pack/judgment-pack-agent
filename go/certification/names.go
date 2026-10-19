@@ -1,0 +1,34 @@
+package certification
+
+// The checks the Go runner makes, by name: the engine leg's (CheckNames), each leg block's, and
+// each scenario's. parity.json maps every TypeScript check to these.
+
+// LegChecks are the leg blocks after the engine leg, in the TypeScript suite's order.
+func LegChecks() []Check {
+	var out []Check
+	for _, block := range [][]Check{TextChecks, StrictChecks, ThinkingChecks, MoreThinkingChecks, WireChecks} {
+		out = append(out, block...)
+	}
+	return out
+}
+
+// DelegationNames are the delegation scenario's checks.
+var DelegationNames = []string{"2 runs", "2 findings", "2 offers", "2 references", "2 reports", "2 figures", "2 resume"}
+
+// AllScenarios are the six scenarios' checks, the delegation scenario's made with the coordinator
+// the caller wraps the adapter in.
+func AllScenarios(with func(Adapter) Adapter) []ScenarioCheck {
+	return append(append([]ScenarioCheck{}, Scenarios...), Delegation(with))
+}
+
+// AllCheckNames are every check the Go runner makes, by name.
+func AllCheckNames() []string {
+	out := append([]string{}, CheckNames...)
+	for _, check := range LegChecks() {
+		out = append(out, check.Name)
+	}
+	for _, scenario := range Scenarios {
+		out = append(out, scenario.Names...)
+	}
+	return append(out, DelegationNames...)
+}

@@ -30,6 +30,7 @@ import { correctArtifact } from '../execution/correctArtifact'
 import { REFUTATION_MARKER, type CriticCase } from '../refutation'
 import { bindModelCall, openAssistantConnection, runAssistantSession } from '../session'
 import { scriptedRuntime } from './scriptedServer'
+import { authorText, criticTurn } from './scenarioServer'
 import scenario from './scenario.json'
 import correction from './scenarios/correction-loop.json'
 import multiTurn from './scenarios/multi-turn.json'
@@ -397,23 +398,10 @@ interface Corrected {
   seen: { name: string; args: Record<string, unknown>; refusal: string }[]
 }
 
-const DRAFTS = scenario.documents as unknown as Record<string, unknown>
 const TEST_GUIDANCE = 'THE RUNTIME’S TEST_PACK GUIDANCE, AS PROMPTS/GET SERVED IT'
 const DECLARED: CriticCase[] = [
   { source: 'declared', id: correction.case.id, facts: scenario.documents.FACTS as Record<string, unknown>, expectedDisposition: { kind: 'outcome', outcomeId: correction.case.expectedOutcome } }
 ]
-
-/** A turn of the author's script as the words the model sends: its sentence, then the proposal in a fenced block. */
-const authorText = (turn: { proposal: string; say: string }) =>
-  `${turn.say}\n\n\`\`\`json\n${JSON.stringify({ proposal: { kind: 'create', document: DRAFTS[turn.proposal], unknowns: scenario.unknowns } })}\n\`\`\``
-
-/** A turn of the critic's script, a recorded step of the bake-off's scenario or a sentence. */
-function criticTurn(turn: { call?: { recorded: string }; say?: string }): Turn {
-  const recorded = turn.call?.recorded
-  if (recorded === undefined) return { say: turn.say! }
-  const step = scenario.steps.find((one) => one.id === recorded)!
-  return { call: { tool: step.tool!, arguments: step.arguments as Record<string, unknown> } }
-}
 
 /** The findings the Runtime's validate gave, as the correction request carries them. */
 const findingsOf = (check: Corrected['checks'][number]) => check.diagnostics.map((one) => `${one.code} at ${one.instancePath}`).join('; ')

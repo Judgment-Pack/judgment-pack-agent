@@ -129,8 +129,10 @@ than over HTTP, through the same capability: a path suffix and a request, never 
 key. The in-process call runs through the Desk's relay handler's own path (`handleModelRelay`,
 `internal/desk/modelrelay.go`), not beside it: its four slots (`maxRelayInFlight`), its body bound
 (`maxRelayBody`), its idle and overall deadlines (`relayIdle`, `relayDeadline`), its transport that
-follows no redirect, and `withoutReflectedCredentials` on the provider's answer, so an adapter in
-the Desk's process cannot receive a key the provider reflects. The adapter's pull request names the
+follows no redirect, and `withoutReflectedCredentials` on the provider's answer, so a key the
+provider reflects in an answer's header does not reach an adapter in the Desk's process.
+`withoutReflectedCredentials` reads headers only: a body is not read, and a derived form of the key
+(base64, hex, a part of it) is not caught (amended, agent#56). The adapter's pull request names the
 seam it calls and a test that a reflected credential does not reach it.
 
 Stays the host's: the gate (ported to Go as the host's package, below, and used by the server; an
@@ -183,11 +185,16 @@ go/                         module github.com/Judgment-Pack/judgment-pack-agent/
   gate/                     the host's tool gate (decision 3)
   certification/            the Go runner: the shared server, a session, the relay capability, the
                             scenario leg and its checks, and the parity table with the TypeScript leg
-  internal/depcheck/        the dependency deny list
+  internal/depcheck/        the dependency allow-list
   spike/                    a separate module: the two spikes, not shipped
 ```
 
-PR 2 adds `go/gate`; the adapter's pull request (PR 3) adds `go/adapter/eino/`.
+PR 2 adds `go/gate`; the adapter's pull request (PR 3) adds `go/adapter/eino/` and, beside it (as
+built): `go/relay` (the in-process relay client and the relay handler's path), `go/context` (the
+run's context, held to the `budget`, `recall`, `chat` and `framing` vectors), `go/failure` (the
+failure catalogue), `go/adapter` (what a host hands an adapter), `go/adapter/wire`,
+`go/adapter/turn` and `go/adapter/delegate` (the wires, the turn's rules and the delegation
+coordinator, framework-neutral), and `go/cmd/harness-check` (the certification as a command).
 
 **The generator is `contractgen`, in this module**, so the module's commit pins it; `go generate
 ./contract` writes `contract_gen.go`, and a test holds the committed file to the generator's
@@ -233,17 +240,20 @@ of the engine leg has its Go counterpart, among them the scenario's call and run
 the T4, T5 and T6 results, the recall rule (agent#11), K1b under the tracing variables, the wire's
 body members, the eight steps with no repeat, and no error event with one end.
 
-**The dependency graph is held to a deny list.** K1a in Go seals only `http.DefaultTransport`, and
-a dependency with a transport of its own would pass it. `go/internal/depcheck` lists every package
-of the module and its tests (`go list -deps -test ./...`) and fails on a provider's model client:
-`eino-ext`'s model components, the `genai` clients, ADK for Go's model package and the provider
-SDKs. The adapter's pull request inherits it.
+**The dependency graph is held to an allow-list** (amended, agent#56; PR 1 wrote a deny list, and a
+prefix deny list is open: langchaingo's model clients, for one, were not on it). K1a in Go seals
+only `http.DefaultTransport`, and a dependency with a transport of its own would pass it.
+`go/internal/depcheck` lists every package of the module and its tests (`go list -deps -test
+./...`) and fails on any package outside the standard library whose module is not on its list of
+allowed modules, each pinned at the version `go.mod` requires; the deny list of provider clients
+(`eino-ext`'s model components, the `genai` clients, ADK for Go's model package, the provider SDKs)
+stays as a second check. A new module is a change to the list, reviewed.
 
 ### 6. CI
 
 A `go` job in `ci.yml`, and so in the release's CI at the tag: `gofmt` over `go/` (the spikes
 included), `go vet` and `go test` of the module (the round-trip of every vector, the generator's
-output, the gate held to the vectors, the parity table, the dependency deny list, which runs
+output, the gate held to the vectors, the parity table, the dependency allow-list, which runs
 `go list`, and the runner against the shared server, which needs the repository's Node
 dependencies), and `go generate` leaving the tree unchanged. The spikes are not built in CI: they are records of
 a measurement, and their modules are not the adapter's.
