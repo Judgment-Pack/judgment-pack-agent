@@ -1,0 +1,285 @@
+{
+  "$comment": "Written by hand. Scenario 10, the critic's switch (ADR-0010): one request, one proposal, and the runs that show each mode, each auto trigger, the model's ask taken and refused, the forced-off reviewer, the critic's tier, a resume, and on the agent capability the invocation held back for the critic. runs are played in order, one session each (the scripted server advances once per run): author names the author's script; session the run's critic members, cases the declared cases, tier the author's tier and criticReasoning the critic's (low and high are the capability's two tiers, tiers), breakAtAsk the run broken off once the model's ask is written, resumeFrom the run whose last checkpoint it continues, measure a row of the measurement. The critic checks the proposal with validate and says what the runtime said; the runtime answers validate valid and each rehearsal evaluated with the declared outcome.",
+  "id": "critic-switch",
+  "request": "Draft the expense approval pack: approve a claim under 100, refer the rest.",
+  "testPrompt": "THE RUNTIME’S TEST_PACK GUIDANCE, AS PROMPTS/GET SERVED IT",
+  "document": {
+    "specVersion": "0.2.0-draft",
+    "id": "https://example.org/packs/expense-approval",
+    "version": "1.0.0",
+    "title": "Expense approval",
+    "decision": {
+      "question": "Is the expense claim approved?"
+    },
+    "outcomes": [
+      {
+        "id": "approve"
+      },
+      {
+        "id": "refer"
+      }
+    ],
+    "rules": [
+      {
+        "id": "small-claim",
+        "when": {
+          "fact": "amount",
+          "lessThan": 100
+        },
+        "then": "approve"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "source": "test",
+      "id": "small-claim",
+      "facts": {
+        "amount": 40
+      },
+      "expectedDisposition": {
+        "kind": "approve"
+      }
+    }
+  ],
+  "runtimeAnswers": {
+    "validate": {
+      "status": "valid",
+      "diagnostics": []
+    },
+    "experimental_evaluate": {
+      "status": "evaluated",
+      "disposition": {
+        "kind": "approve",
+        "reasons": [
+          "small-claim"
+        ],
+        "handoff": null
+      }
+    }
+  },
+  "author": {
+    "propose": [
+      {
+        "say": "Here is the pack. Please review it before it is used.\n\n```json\n{\"proposal\": {\"document\": {\"specVersion\": \"0.2.0-draft\", \"id\": \"https://example.org/packs/expense-approval\", \"version\": \"1.0.0\", \"title\": \"Expense approval\", \"decision\": {\"question\": \"Is the expense claim approved?\"}, \"outcomes\": [{\"id\": \"approve\"}, {\"id\": \"refer\"}], \"rules\": [{\"id\": \"small-claim\", \"when\": {\"fact\": \"amount\", \"lessThan\": 100}, \"then\": \"approve\"}]}, \"unknowns\": [\"Who signs a referred claim?\"]}}\n```"
+      }
+    ],
+    "converse": [
+      {
+        "say": "Which amount should the approval stop at?"
+      }
+    ],
+    "ask": [
+      {
+        "call": {
+          "tool": "request_review",
+          "arguments": {
+            "reason": "The pack sets the approval threshold."
+          }
+        }
+      },
+      {
+        "call": {
+          "tool": "request_review",
+          "arguments": {}
+        }
+      },
+      {
+        "say": "Here is the pack. Please review it before it is used.\n\n```json\n{\"proposal\": {\"document\": {\"specVersion\": \"0.2.0-draft\", \"id\": \"https://example.org/packs/expense-approval\", \"version\": \"1.0.0\", \"title\": \"Expense approval\", \"decision\": {\"question\": \"Is the expense claim approved?\"}, \"outcomes\": [{\"id\": \"approve\"}, {\"id\": \"refer\"}], \"rules\": [{\"id\": \"small-claim\", \"when\": {\"fact\": \"amount\", \"lessThan\": 100}, \"then\": \"approve\"}]}, \"unknowns\": [\"Who signs a referred claim?\"]}}\n```"
+      }
+    ],
+    "askOnce": [
+      {
+        "call": {
+          "tool": "request_review",
+          "arguments": {
+            "reason": "The pack sets the approval threshold."
+          }
+        }
+      },
+      {
+        "say": "Here is the pack. Please review it before it is used.\n\n```json\n{\"proposal\": {\"document\": {\"specVersion\": \"0.2.0-draft\", \"id\": \"https://example.org/packs/expense-approval\", \"version\": \"1.0.0\", \"title\": \"Expense approval\", \"decision\": {\"question\": \"Is the expense claim approved?\"}, \"outcomes\": [{\"id\": \"approve\"}, {\"id\": \"refer\"}], \"rules\": [{\"id\": \"small-claim\", \"when\": {\"fact\": \"amount\", \"lessThan\": 100}, \"then\": \"approve\"}]}, \"unknowns\": [\"Who signs a referred claim?\"]}}\n```"
+      }
+    ],
+    "resumed": [
+      {
+        "call": {
+          "tool": "request_review",
+          "arguments": {}
+        }
+      },
+      {
+        "say": "Here is the pack. Please review it before it is used.\n\n```json\n{\"proposal\": {\"document\": {\"specVersion\": \"0.2.0-draft\", \"id\": \"https://example.org/packs/expense-approval\", \"version\": \"1.0.0\", \"title\": \"Expense approval\", \"decision\": {\"question\": \"Is the expense claim approved?\"}, \"outcomes\": [{\"id\": \"approve\"}, {\"id\": \"refer\"}], \"rules\": [{\"id\": \"small-claim\", \"when\": {\"fact\": \"amount\", \"lessThan\": 100}, \"then\": \"approve\"}]}, \"unknowns\": [\"Who signs a referred claim?\"]}}\n```"
+      }
+    ]
+  },
+  "critic": [
+    {
+      "call": {
+        "tool": "validate",
+        "arguments": {
+          "pack": "{\"specVersion\": \"0.2.0-draft\", \"id\": \"https://example.org/packs/expense-approval\", \"version\": \"1.0.0\", \"title\": \"Expense approval\", \"decision\": {\"question\": \"Is the expense claim approved?\"}, \"outcomes\": [{\"id\": \"approve\"}, {\"id\": \"refer\"}], \"rules\": [{\"id\": \"small-claim\", \"when\": {\"fact\": \"amount\", \"lessThan\": 100}, \"then\": \"approve\"}]}"
+        }
+      }
+    },
+    {
+      "say": "The runtime said the document is valid."
+    }
+  ],
+  "tiers": {
+    "model": [
+      "off",
+      "on"
+    ],
+    "agent": [
+      "low",
+      "high"
+    ]
+  },
+  "runs": [
+    {
+      "name": "cases",
+      "author": "propose",
+      "session": {
+        "cases": true
+      }
+    },
+    {
+      "name": "converse",
+      "author": "converse",
+      "session": {
+        "cases": true
+      }
+    },
+    {
+      "name": "existing",
+      "author": "propose",
+      "session": {
+        "existingPack": true
+      }
+    },
+    {
+      "name": "fresh",
+      "author": "propose",
+      "session": {}
+    },
+    {
+      "name": "asked",
+      "author": "ask",
+      "session": {}
+    },
+    {
+      "name": "off",
+      "author": "askOnce",
+      "session": {
+        "critic": "off"
+      }
+    },
+    {
+      "name": "on",
+      "author": "propose",
+      "session": {
+        "critic": "on"
+      }
+    },
+    {
+      "name": "reviewer",
+      "author": "propose",
+      "session": {
+        "critic": "on",
+        "reviewerAssigned": true
+      }
+    },
+    {
+      "name": "tier",
+      "author": "propose",
+      "session": {
+        "critic": "on",
+        "tier": "high"
+      }
+    },
+    {
+      "name": "lowered",
+      "author": "propose",
+      "session": {
+        "critic": "on",
+        "tier": "high",
+        "criticReasoning": "low"
+      }
+    },
+    {
+      "name": "broken",
+      "author": "askOnce",
+      "session": {},
+      "breakAtAsk": true
+    },
+    {
+      "name": "resumed",
+      "author": "resumed",
+      "session": {},
+      "resumeFrom": "broken"
+    },
+    {
+      "name": "measure low off",
+      "author": "propose",
+      "session": {
+        "critic": "off",
+        "cases": true,
+        "tier": "low"
+      },
+      "measure": true
+    },
+    {
+      "name": "measure low on",
+      "author": "propose",
+      "session": {
+        "critic": "on",
+        "cases": true,
+        "tier": "low"
+      },
+      "measure": true
+    },
+    {
+      "name": "measure high off",
+      "author": "propose",
+      "session": {
+        "critic": "off",
+        "cases": true,
+        "tier": "high"
+      },
+      "measure": true
+    },
+    {
+      "name": "measure high on",
+      "author": "propose",
+      "session": {
+        "critic": "on",
+        "cases": true,
+        "tier": "high"
+      },
+      "measure": true
+    }
+  ],
+  "delegation": {
+    "tasks": [
+      {
+        "title": "Read the claim rules",
+        "profile": "research",
+        "objective": "Find the claim rules for small expenses."
+      },
+      {
+        "title": "Read the referral rules",
+        "profile": "research",
+        "objective": "Find who a referred claim goes to."
+      },
+      {
+        "title": "Read the receipt rules",
+        "profile": "research",
+        "objective": "Find when a receipt is required."
+      }
+    ],
+    "child": {
+      "say": "Claims under 100 are approved by the team lead; the rest go to finance."
+    }
+  }
+}

@@ -1,0 +1,131 @@
+{
+  "description": "The checkpoint's critic (ADR-0010; checkpoint.json critic), closed. First, a run whose model's request_review was taken under auto and which has not decided yet: mode and trigger alone; a continued run restores it, so its proposal is reviewed with the trigger model-asked and a second ask is refused. Then the same response once it decided: mode, ran, reason, the tier the critic ran at, and the trigger, written durably after critic_decided. Then two other responses' decided members: a pack with saved tests reviewed (cases), and a change to an existing pack whose critic was skipped for budget, the trigger kept. Written by hand; criticSwitch.test.ts restores from the first and go/context/critic_test.go reads both.",
+  "schema": "checkpoint.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/execution/state.ts (ExecutionCheckpoint.critic, readExecution)",
+      "packages/harness/criticSwitch.ts (validCriticRecord, CriticSwitch)"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "id": "3c9d1e7a-5b2f-4a8c-9e6d-1f0a2b3c4d5e",
+      "requestKey": "4c6e8a0b2d4f6a8c0e2b4d6f8a0c2e4b6d8f0a2c4e6b8d0f2a4c6e8b0d2f4a6c",
+      "phase": "work",
+      "status": "running",
+      "unit": "model-requests",
+      "used": 2,
+      "limit": 20,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [
+        {
+          "id": "1f2e3d4c-5b6a-4978-8a9b-0c1d2e3f4a5b",
+          "name": "request_review",
+          "args": {
+            "reason": "The pack changes the approval threshold."
+          },
+          "status": "complete"
+        }
+      ],
+      "context": {
+        "scope": "run-10",
+        "entries": []
+      },
+      "critic": {
+        "mode": "auto",
+        "trigger": "model-asked"
+      }
+    },
+    {
+      "version": 1,
+      "id": "3c9d1e7a-5b2f-4a8c-9e6d-1f0a2b3c4d5e",
+      "requestKey": "4c6e8a0b2d4f6a8c0e2b4d6f8a0c2e4b6d8f0a2c4e6b8d0f2a4c6e8b0d2f4a6c",
+      "phase": "work",
+      "status": "complete",
+      "unit": "model-requests",
+      "used": 4,
+      "limit": 20,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [
+        {
+          "id": "1f2e3d4c-5b6a-4978-8a9b-0c1d2e3f4a5b",
+          "name": "request_review",
+          "args": {
+            "reason": "The pack changes the approval threshold."
+          },
+          "status": "complete"
+        }
+      ],
+      "context": {
+        "scope": "run-10",
+        "entries": []
+      },
+      "critic": {
+        "mode": "auto",
+        "ran": true,
+        "reason": "model-asked",
+        "reasoning": "on",
+        "trigger": "model-asked"
+      }
+    },
+    {
+      "version": 1,
+      "id": "5d0e2f8b-6c3a-4b9d-af7e-2a1b3c4d5e6f",
+      "requestKey": "4c6e8a0b2d4f6a8c0e2b4d6f8a0c2e4b6d8f0a2c4e6b8d0f2a4c6e8b0d2f4a6c",
+      "phase": "work",
+      "status": "complete",
+      "unit": "model-requests",
+      "used": 2,
+      "limit": 20,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [],
+      "context": {
+        "scope": "run-10",
+        "entries": []
+      },
+      "critic": {
+        "mode": "auto",
+        "ran": true,
+        "reason": "cases",
+        "reasoning": "off",
+        "trigger": "cases"
+      }
+    },
+    {
+      "version": 1,
+      "id": "6e1f3a9c-7d4b-4cae-b08f-3b2c4d5e6f7a",
+      "requestKey": "4c6e8a0b2d4f6a8c0e2b4d6f8a0c2e4b6d8f0a2c4e6b8d0f2a4c6e8b0d2f4a6c",
+      "phase": "work",
+      "status": "complete",
+      "unit": "model-requests",
+      "used": 2,
+      "limit": 20,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [],
+      "context": {
+        "scope": "run-10",
+        "entries": []
+      },
+      "critic": {
+        "mode": "auto",
+        "ran": false,
+        "reason": "budget",
+        "reasoning": "off",
+        "trigger": "changes-existing"
+      }
+    }
+  ]
+}

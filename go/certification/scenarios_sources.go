@@ -277,7 +277,7 @@ var ToolSources = ScenarioCheck{
 			return append(out, Finding{"7 budget", "no request"}), nil
 		}
 		offered := offeredNames(ran.Requests[0])
-		want := sortedCopy(append(append(append(append([]string{}, runtimeSix...), contextSix...), runcontext.LoadTool, custom), tracker...))
+		want := sortedCopy(append(append(append(append([]string{}, runtimeSix...), contextSix...), reviewAsk, runcontext.LoadTool, custom), tracker...))
 		if !slices.Equal(sortedCopy(offered), want) || slices.Contains(offered, "write_file") {
 			f.fail("offered %v", offered)
 		}
@@ -617,7 +617,7 @@ func agentSourcesChecks(ctx context.Context, server *Server, host AgentHost, _ f
 	for _, tool := range shown {
 		names = append(names, tool.Name)
 	}
-	want := sortedCopy(append(append(append(append([]string{}, runtimeSix...), contextSix...), runcontext.LoadTool, custom), tracker...))
+	want := sortedCopy(append(append(append(append([]string{}, runtimeSix...), contextSix...), reviewAsk, runcontext.LoadTool, custom), tracker...))
 	if !slices.Equal(sortedCopy(names), want) || slices.Contains(names, "write_file") {
 		f.fail("offered %v", names)
 	}

@@ -42,6 +42,14 @@ the system text with one framed line each, loads one on the model's `load_skill`
 budget, and places its instructions after the history at the rank of the project's own
 instructions. A skill grants no tool.
 
+The critic ([ADR-0010](docs/adr/0010-the-critics-switch.md)) is switched `off`, `auto` or `on`, the
+run's word over the project's over the policy table's default, `auto`. Under `auto` it runs where the
+run proposes a pack and the host declared cases (saved tests), or the proposal changes an existing
+pack, or the model asked through `request_review`; a reviewer assigned, a graph-purpose run, Plan mode
+and a delegated child turn it off. It runs at least at the author's reasoning tier unless the host
+lowers it, on the agent capability one invocation is held back for it, and every run records whether
+it ran and why (`critic_decided`, the checkpoint's `critic`).
+
 ## Layout
 
 - `contract/`: the wire contract, schemas and vectors, extracted from the Desk's engine slot; see

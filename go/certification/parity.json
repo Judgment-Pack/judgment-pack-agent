@@ -338,7 +338,7 @@
     "source": "packages/harness/certification/scenarios.test.ts",
     "checks": [
       {
-        "check": "1 \u00b7 the offer is the two host tools beside the Runtime\u2019s six and the harness\u2019s six, and no third name",
+        "check": "1 \u00b7 the offer is the two host tools beside the Runtime\u2019s six, the harness\u2019s six and request_review, and no third name",
         "go": [
           "1 offer"
         ]
@@ -524,7 +524,7 @@
         ]
       },
       {
-        "check": "7 \u00b7 the schema budget trips: the server\u2019s seventeen tools are a catalogue offered with load_tool, beside the Runtime\u2019s six, the harness\u2019s six and the custom read, and no write_file",
+        "check": "7 \u00b7 the schema budget trips: the server\u2019s seventeen tools are a catalogue offered with load_tool, beside the Runtime\u2019s six, the harness\u2019s six, request_review and the custom read, and no write_file",
         "go": [
           "7 budget",
           "7 agent budget"
@@ -713,6 +713,82 @@
         "go": [
           "9 critic",
           "9 agent critic"
+        ]
+      },
+      {
+        "check": "10 \u00b7 auto with a proposal and declared cases runs the critic: the decision says cases, before the critique, the proposal after",
+        "go": [
+          "10 cases",
+          "10 agent cases"
+        ]
+      },
+      {
+        "check": "10 \u00b7 auto with a conversation turn runs none: the decision says no-proposal and no critic is asked anything",
+        "go": [
+          "10 converse",
+          "10 agent converse"
+        ]
+      },
+      {
+        "check": "10 \u00b7 auto with a proposal that changes an existing pack runs the critic: changes-existing; a new pack with no cases runs none",
+        "go": [
+          "10 existing",
+          "10 agent existing"
+        ]
+      },
+      {
+        "check": "10 \u00b7 request_review under auto runs the critic: model-asked, the first ask answered and the second refused with review refused",
+        "go": [
+          "10 asked",
+          "10 agent asked"
+        ]
+      },
+      {
+        "check": "10 \u00b7 request_review under off is refused with the guardrail review refused, nothing recorded, and no critic runs",
+        "go": [
+          "10 off",
+          "10 agent off"
+        ]
+      },
+      {
+        "check": "10 \u00b7 on runs the critic on every proposal, a new pack with no cases included: person",
+        "go": [
+          "10 on",
+          "10 agent on"
+        ]
+      },
+      {
+        "check": "10 \u00b7 a reviewer assigned under on runs none: reviewer-assigned",
+        "go": [
+          "10 reviewer",
+          "10 agent reviewer"
+        ]
+      },
+      {
+        "check": "10 \u00b7 the critic's tier is the author's unless the host lowers it explicitly, shown in the decision and sent with the critic's requests or its run",
+        "go": [
+          "10 tier",
+          "10 agent tier"
+        ]
+      },
+      {
+        "check": "10 \u00b7 a resume carries the decision: the ask written before the break is the restored run's trigger, and its own ask is refused",
+        "go": [
+          "10 resume",
+          "10 agent resume"
+        ]
+      },
+      {
+        "check": "10 \u00b7 the measurement: the same proposal at two author tiers, with and without the critic, recorded as a table (no verdict)",
+        "go": [
+          "10 measurement",
+          "10 agent measurement"
+        ]
+      },
+      {
+        "check": "10 \u00b7 on the agent capability a delegation batch that would take the critic's held invocation is refused while a smaller one proceeds, and under off the larger one proceeds",
+        "go": [
+          "10 agent reserve"
         ]
       }
     ]

@@ -1,0 +1,211 @@
+{
+  "description": "adversarialReview, the switch before ADR-0010, read for one release as an alias of the layer it sits in: on the session of the run's word, in the table of criticDefault; true is on and false is off, and the new member wins where both are set. Each item is the decision for the case beside it in cases (by position): session, the session's critic members (tool-offer.json: critic, criticProject, criticReasoning, adversarialReview); table, the policy table's (budget.json: criticDefault, criticReasoningFloor, adversarialReview); forced, the forced-off facts (child, phase, purpose, reviewerAssigned); run, the run's facts where the critic would start (proposal, cases, changesExisting, modelAsked, room); author, the author's tier on the run's capability (absent: none stated). Written by hand; criticSwitch.test.ts and go/context/critic_test.go compute each decision and hold it equal.",
+  "schema": "provenance.json#/$defs/criticDecision",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/criticSwitch.ts (criticMode, criticForcedOff, criticDecision, criticTier)"
+    ]
+  },
+  "cases": [
+    {
+      "name": "the session's true reads as the run's on",
+      "session": {
+        "adversarialReview": true
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "the session's false reads as the run's off",
+      "session": {
+        "adversarialReview": false
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": true,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "critic wins over the alias where both are set",
+      "session": {
+        "critic": "auto",
+        "adversarialReview": true
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "critic's off wins over the alias's true",
+      "session": {
+        "critic": "off",
+        "adversarialReview": true
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "the alias is the run's word, over the project's",
+      "session": {
+        "adversarialReview": false,
+        "criticProject": "on"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "a table that says adversarialReview true and no criticDefault",
+      "session": {},
+      "table": {
+        "adversarialReview": true
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "the table's criticDefault wins over its alias",
+      "session": {},
+      "table": {
+        "criticDefault": "off",
+        "adversarialReview": true
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    }
+  ],
+  "items": [
+    {
+      "mode": "on",
+      "ran": true,
+      "reason": "person",
+      "reasoning": "off"
+    },
+    {
+      "mode": "off",
+      "ran": false,
+      "reason": "off",
+      "reasoning": "off"
+    },
+    {
+      "mode": "auto",
+      "ran": false,
+      "reason": "person",
+      "reasoning": "off"
+    },
+    {
+      "mode": "off",
+      "ran": false,
+      "reason": "off",
+      "reasoning": "off"
+    },
+    {
+      "mode": "off",
+      "ran": false,
+      "reason": "off",
+      "reasoning": "off"
+    },
+    {
+      "mode": "on",
+      "ran": true,
+      "reason": "table",
+      "reasoning": "off"
+    },
+    {
+      "mode": "off",
+      "ran": false,
+      "reason": "off",
+      "reasoning": "off"
+    }
+  ]
+}

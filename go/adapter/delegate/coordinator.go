@@ -42,12 +42,32 @@ func With(inner adapter.Adapter, options Options) adapter.Adapter {
 		}
 		c := &coordinator{inner: inner, run: run, profiles: profiles, parentRunID: newID(), models: map[string]string{},
 			refusedBy: map[string]string{}, childStarts: map[string]time.Time{}, childStops: map[string]context.CancelFunc{}, handedBack: map[string]bool{},
-			runs: agentRuns{children: map[string]int{}}, account: newAccount()}
+			runs: agentRuns{children: map[string]int{}}, account: newAccount(), criticReserve: criticReserve(run)}
 		return c.drive(ctx)
 	})
 }
 
 func newID() string { return uuid() }
+
+// criticReserve is the agent invocation held back for the critic (ADR-0010): 1 on an agent
+// capability under auto and on, where nothing forces the critic off, from the first invocation on; 0
+// under off and on the model capability, where nothing is held.
+func criticReserve(run *adapter.Run) int {
+	if run.Agent == nil {
+		return 0
+	}
+	forced := runcontext.CriticForcedFacts{Purpose: run.Purpose, ReviewerAssigned: run.ReviewerAssigned}
+	if run.Context != nil {
+		forced.Child = run.Context.Objective != ""
+		forced.Phase = run.Context.Phase
+	}
+	table := runcontext.CriticTable{CriticDefault: runcontext.Defaults.CriticDefault, CriticReasoningFloor: runcontext.Defaults.CriticReasoningFloor, AdversarialReview: runcontext.Defaults.AdversarialReview}
+	mode, _ := runcontext.CriticMode(runcontext.CriticSettings{Critic: run.Critic, CriticProject: run.CriticProject, AdversarialReview: run.Review}, table)
+	if runcontext.CriticForcedOff(forced) != "" || mode == "off" {
+		return 0
+	}
+	return 1
+}
 
 // allowance is one response's shared limits (ResponseAllowance): its model requests, owned by the
 // parent run's execution once that run is attached; and its tool calls.
@@ -223,13 +243,15 @@ type coordinator struct {
 	// The agent capability's half (agent.go): the response's invocations, the account the
 	// invocations run on one at a time, the handoff in progress, whether the parent's context is
 	// open, and whether the parent's run reported its own failure.
-	runsMu       sync.Mutex
-	runs         agentRuns
-	account      *account
-	handoff      *handoff
-	parentOpen   bool
-	parentFailed bool
-	requested    *contract.RunEventDelegationRequested
+	runsMu sync.Mutex
+	runs   agentRuns
+	// criticReserve is the invocation held back for the critic (ADR-0010; criticReserve), 0 or 1.
+	criticReserve int
+	account       *account
+	handoff       *handoff
+	parentOpen    bool
+	parentFailed  bool
+	requested     *contract.RunEventDelegationRequested
 }
 
 type runningBatch struct {

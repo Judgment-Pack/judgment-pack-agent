@@ -1,5 +1,5 @@
 {
-  "description": "What the scenario's session offers, as its two members: the five runtime tools exactly as tools/list served them in the recording, and the host tools, which in this session are the four context tools the boundary adds (read_window, the reader, and search are this harness's, agent#1 and agent#5). The model is shown the context tools first (conformance K2). read_context's limit maximum is the default readBytes.",
+  "description": "What the scenario's session offers, as its two members: the five runtime tools exactly as tools/list served them in the recording, and the host tools, which in this session are the four context tools the boundary adds (read_window, the reader, and search are this harness's, agent#1 and agent#5) and request_review, which the boundary adds where the critic's mode is auto, the policy table's default (ADR-0010). The model is shown the context tools first (conformance K2). read_context's limit maximum is the default readBytes.",
   "schema": "tool-offer.json",
   "source": {
     "desk": {
@@ -13,7 +13,8 @@
       "web/src/assistant/conformance/runtime.json (tools)",
       "web/src/assistant/conformance/conformance.test.ts (K2)",
       "packages/harness/context/reader.ts (READ_TOOL, READ_DESCRIPTION, readInputSchema), in this repository",
-      "packages/harness/context/search.ts (SEARCH_TOOL, SEARCH_DESCRIPTION, searchInputSchema), in this repository"
+      "packages/harness/context/search.ts (SEARCH_TOOL, SEARCH_DESCRIPTION, searchInputSchema), in this repository",
+      "packages/harness/criticSwitch.ts (REQUEST_REVIEW, REQUEST_REVIEW_DESCRIPTION, REQUEST_REVIEW_SCHEMA), in this repository"
     ]
   },
   "items": [
@@ -260,6 +261,20 @@
               "pattern"
             ],
             "additionalProperties": false
+          }
+        },
+        {
+          "name": "request_review",
+          "effect": "plan",
+          "description": "Ask for an independent review of the proposal this response makes. Call it at most once, before you propose, where a second check would help: a critic then checks the proposal with the runtime’s own tools before it is shown. Its findings come from the runtime’s results; your reason is not shown to it.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string",
+                "description": "Why a review of this run’s proposal is wanted, in one sentence."
+              }
+            }
           }
         }
       ]

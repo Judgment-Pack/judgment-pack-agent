@@ -10,21 +10,26 @@
 //   `engine <id> · thinking`, `engine <id> · strict alternation` (an endpoint
 //   that refuses a broken turn order, agent#9) and `engine <id> · text tool
 //   calls` (the scenario on an endpoint without native tool calls, agent#4), in
-//   certification/conformance.test.ts, the nine certified scenarios (agent#13; the seventh ADR-0006's, the eighth ADR-0008's, the ninth ADR-0009's),
+//   certification/conformance.test.ts, the ten certified scenarios (agent#13; the seventh ADR-0006's, the eighth ADR-0008's, the ninth ADR-0009's, the tenth ADR-0010's),
 //   `engine <id> · scenarios`, in certification/scenarios.test.ts, and
 //   `engine <id> · delegation` (a batch's concurrency from the connection's
 //   answer, agent#17), in certification/delegation.test.ts;
 // - an agent engine: the recorded scenario behind the real tool gate and the
 //   agent-engine checks, `agent engine <id>`, in engines/<id>/<id>.test.ts, the
-//   same nine scenarios, `agent engine <id> · scenarios`, and one delegated child
+//   same ten scenarios, `agent engine <id> · scenarios`, and one delegated child
 //   at a time, in certification/delegation.test.ts.
 //
 // The ids and kinds are the registry's own (engines/index.ts,
 // ENGINE_CAPABILITIES), read here rather than copied. A run in which none of
 // the adapter's own checks ran fails: vitest passes a name pattern that matches
 // nothing, so the checks are counted from its JSON report.
+//
+// Scenario 10's measurement (ADR-0010): the same proposal at two author tiers,
+// with and without the critic, each run's outcome written by the scenario to the
+// file CERTIFY_MEASUREMENT names and printed here as a table. No verdict is drawn
+// from it; the Desk reads the numbers to set its defaults.
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -49,12 +54,13 @@ const kind = ENGINE_CAPABILITIES[adapter]
 
 const bin = [resolve(root, 'node_modules/.bin/vitest'), resolve(root, '../../node_modules/.bin/vitest')]
 const reports = mkdtempSync(join(tmpdir(), 'certify-'))
+const measurement = join(reports, 'measurement.jsonl')
 
 /** One vitest run; its JSON report is written beside the others. */
 function run(args, report) {
   const reporting = ['--reporter=default', '--reporter=json', `--outputFile.json=${report}`]
   for (const candidate of bin) {
-    const result = spawnSync(candidate, ['run', ...args, ...reporting], { cwd: root, stdio: 'inherit' })
+    const result = spawnSync(candidate, ['run', ...args, ...reporting], { cwd: root, stdio: 'inherit', env: { ...process.env, CERTIFY_MEASUREMENT: measurement } })
     if (result.error && result.error.code === 'ENOENT') continue
     if (result.error) throw result.error
     return result.status ?? 1
@@ -92,7 +98,7 @@ function ownChecks(report) {
       const top = test.ancestorTitles?.[0] ?? ''
       if (test.status !== 'passed' || !own(top)) continue
       count++
-      const scenario = top.endsWith(' · scenarios') ? /^(\d) · /.exec(test.title ?? '')?.[1] : undefined
+      const scenario = top.endsWith(' · scenarios') ? /^(\d+) · /.exec(test.title ?? '')?.[1] : undefined
       if (scenario !== undefined) scenarioChecks.set(scenario, (scenarioChecks.get(scenario) ?? 0) + 1)
     }
   }
@@ -109,6 +115,8 @@ if (kind === 'agent') {
 
 let status = 0
 let checks = 0
+/** Scenario 10's measurement rows, read before the reports' directory is removed. */
+let measured = []
 try {
   for (const [index, args] of runs.entries()) {
     console.log(`certify ${adapter}: vitest run ${args.join(' ')}`)
@@ -117,6 +125,7 @@ try {
     if (code !== 0) status = code
     checks += ownChecks(report)
   }
+  if (existsSync(measurement)) measured = readFileSync(measurement, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line))
 } finally {
   rmSync(reports, { recursive: true, force: true })
 }
@@ -125,8 +134,18 @@ if (checks === 0) {
   if (status === 0) status = 1
 }
 if (scenarioChecks.size > 0) {
-  const listed = [...scenarioChecks].sort(([a], [b]) => a.localeCompare(b)).map(([id, count]) => `${id}: ${count}`)
+  const listed = [...scenarioChecks].sort(([a], [b]) => Number(a) - Number(b)).map(([id, count]) => `${id}: ${count}`)
   console.log(`certify ${adapter}: certified scenarios, checks passed by scenario (${listed.join(', ')})`)
+}
+if (measured.length > 0) {
+  // One line per run: the leg, the author's tier, the critic's word, whether it ran and at which tier,
+  // its verdict, its checks and its requests. Recorded, not judged.
+  const columns = ['leg', 'author', 'critic', 'ran', 'reasoning', 'refuted', 'checks', 'criticRequests']
+  const rows = measured.filter((row) => row.engine === adapter).map((row) => columns.map((column) => String(row[column] === '' ? '-' : row[column])))
+  const widths = columns.map((column, at) => Math.max(column.length, ...rows.map((row) => row[at].length)))
+  const line = (cells) => cells.map((cell, at) => cell.padEnd(widths[at])).join('  ').trimEnd()
+  console.log(`certify ${adapter}: scenario 10, the measurement (the same proposal at two author tiers, with and without the critic; no verdict)`)
+  for (const row of [columns, ...rows]) console.log(`  ${line(row)}`)
 }
 console.log(
   status === 0

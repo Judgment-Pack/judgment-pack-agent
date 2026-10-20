@@ -1,6 +1,7 @@
 import {runtimeToolContextPolicy} from './toolPolicy'
 import {failureError,AIFailureError,authoredFailure} from '../failures'
 import {criticMayCall,criticMayRead,criticRefusalDetail,readCriticCases,type CriticCase} from '../refutation'
+import {CriticSwitch,readCriticSettings,REQUEST_REVIEW,REQUEST_REVIEW_DESCRIPTION,REQUEST_REVIEW_SCHEMA,REVIEW_TAKEN,type CriticDecision,type CriticTier} from '../criticSwitch'
 import {GateViolation} from '../toolGate'
 import {TEST_TOOL} from '../toolGate'
 import {dataMarker,frameBlock,frameData,readingTool,unframeData} from '../framing'
@@ -73,6 +74,21 @@ export class SessionContext {
  private referenceTools:Set<string>
  /** agent#10: the cases whose outcomes the host declares for the critic, read closed once for the run. */
  readonly criticCases:CriticCase[]
+ /**
+  * ADR-0010: the critic's switch for the run: its mode and the layer it came from, the forced-off
+  * reason, the model's ask and the decision, written into the execution state's `critic`.
+  */
+ readonly review:CriticSwitch
+ /** ADR-0010: the host's fact that the run works on a pack that already exists. */
+ private readonly existingPack:boolean
+ /** ADR-0010: the author's tier on the run's capability: the thinking tier, or the agent's effort. */
+ private readonly authorTier?:CriticTier
+ /**
+  * ADR-0010: whether the critic has room to run, where something other than the request allowance
+  * decides it: on the agent capability the delegation coordinator's count of the response's
+  * invocations (set at attach). Absent, the critic has room where the allowance leaves a request.
+  */
+ criticRoom?:()=>boolean
  /**
   * agent#10: the phase that narrows every call (`admit`): the critic, to its
   * allow-list; the codex engine's tool-free reformat run, to nothing (review row 5).
@@ -159,7 +175,38 @@ export class SessionContext {
  constructor(session:EngineSession){
   this.identity={...(session.context?.connection?{connection:session.context.connection}:{}),...('model'in session?{family:session.model.family}:{}),model:'model'in session?session.model.model:session.agent.model}
   try{this.criticCases=readCriticCases(session.criticCases??[])}catch(cause){throw authoredFailure('configuration',(cause as Error).message,'context')}
-  this.capabilities='model'in session?capabilitiesFor(session.model):undefined;this.policy=contextPolicy(session.context?.configuration,'model'in session?session.model.model:session.agent.model,this.capabilities);this.turn=session.context?.chat?.openTurn();this.objective=session.context?.objective;this.ledger=new ContextLedger(this.policy,this.turn);this.execution=new ExecutionController(session,this.ledger);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))}
+  // ADR-0010: the session's critic members, read closed before any request.
+  try{readCriticSettings(session,'agent'in session)}catch(cause){throw authoredFailure('configuration',(cause as Error).message,'context')}
+  this.existingPack=session.existingPack===true
+  this.authorTier='model'in session?session.thinking?.tier:session.effort
+  this.capabilities='model'in session?capabilitiesFor(session.model):undefined;this.policy=contextPolicy(session.context?.configuration,'model'in session?session.model.model:session.agent.model,this.capabilities);this.turn=session.context?.chat?.openTurn();this.objective=session.context?.objective;this.ledger=new ContextLedger(this.policy,this.turn);this.execution=new ExecutionController(session,this.ledger);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))
+  // ADR-0010: the forced-off facts are the session's: a delegated child (its objective), Plan mode, a
+  // graph-purpose run, a reviewer assigned.
+  this.review=new CriticSwitch(session,this.policy,{child:!!session.context?.objective,phase:session.context?.phase,purpose:session.purpose,reviewerAssigned:session.reviewerAssigned===true},{get:()=>this.execution.state.critic,set:value=>{this.execution.state.critic=value}})
+ }
+ /**
+  * ADR-0010: **the critic's decision**, at the point the critic would start (a proposal) or where the
+  * run ends without one: written into the execution state and answered for the engine to emit as
+  * `critic_decided` before anything the critic does. `room`: the request allowance, or on the agent
+  * capability the coordinator's invocations, leave the critic one.
+  */
+ decideCritic(proposal:boolean):CriticDecision{
+  const room=this.criticRoom?this.criticRoom():this.execution.remaining>0
+  return this.review.decide({proposal,room,cases:this.criticCases.length>0,changesExisting:proposal&&this.existingPack},{author:this.authorTier})
+ }
+ /**
+  * ADR-0010: `request_review`, the model's ask for a review, offered where the switch says so: the
+  * first call of the run is recorded (the checkpoint's critic), any other is refused with the
+  * guardrail `review refused`.
+  */
+ reviewTool():import('../engine').HostTool{
+  return {name:REQUEST_REVIEW,description:REQUEST_REVIEW_DESCRIPTION,inputSchema:structuredClone(REQUEST_REVIEW_SCHEMA),effect:'plan',execute:async args=>{
+   if(args.reason!==undefined&&typeof args.reason!=='string')throw authoredFailure('invalid-tool-input',`${REQUEST_REVIEW} takes one optional reason, a string; nothing was recorded.`,'tool')
+   const refused=this.review.ask(this.narrowed===null)
+   if(refused!==null){this.notices.push({type:'guardrail',tool:REQUEST_REVIEW,action:'refused',detail:refused,reason:'review refused'});throw new AIFailureError({version:1,code:'tool-failed',source:'tool',outcome:'not-started',detail:refused})}
+   return answer({asked:true,note:REVIEW_TAKEN})
+  }}
+ }
  /**
   * The index of the results earlier runs in this chat kept (agent#8, `ChatTurn.index`), cut to
   * `room` bytes and to INDEX_SHARE of the prompt's `allowance`. Made only while this run's ledger
@@ -198,7 +245,7 @@ export class SessionContext {
   * A refusal the boundary makes itself: the guardrail event, put on the stream
   * before the call's result, and the failure the model reads.
   */
- refuse(name:string,detail:string,reason?:'approval refused'|'approval pending'|'approval stale'|'skill withheld'|'skill budget'):GateViolation{
+ refuse(name:string,detail:string,reason?:'approval refused'|'approval pending'|'approval stale'|'skill withheld'|'skill budget'|'review refused'):GateViolation{
   this.notices.push({type:'guardrail',tool:name,action:'refused',detail,...(reason===undefined?{}:{reason})})
   return new GateViolation(name,detail)
  }
@@ -225,6 +272,8 @@ export class SessionContext {
   * before any call is made, whatever the phase, with its own guardrail event.
   */
  refuseUnoffered(name:string):GateViolation{
+  // ADR-0010: request_review where it is not offered is refused with the switch's own guardrail.
+  if(name===REQUEST_REVIEW)return this.refuse(name,this.review.ask(false)!,'review refused')
   return this.refuse(name,`${name} is served to this session but was not offered to this run; the call did not leave the page and nothing was written`)
  }
  /**
@@ -238,6 +287,11 @@ export class SessionContext {
   * delegation, `propose_pack`), so no engine path reaches past it.
   */
  admit(name:string,kind:'runtime'|'host'){
+  // ADR-0010: request_review reaches the author's run only, where the switch offers it; a call
+  // anywhere else (the critic, the reformat run, a run it is not offered to) is refused here with the
+  // guardrail review refused, and nothing is recorded.
+  // ask(false) never records: it answers why the ask is refused here.
+  if(name===REQUEST_REVIEW&&(this.narrowed!==null||kind==='runtime'||!this.review.offered))throw this.refuse(name,this.review.ask(false)!,'review refused')
   if(this.narrowed===null)return
   if(this.narrowed==='critic'&&(kind==='runtime'?criticMayCall(name):criticMayRead(name)))return
   throw this.refuse(name,this.narrowed==='critic'?criticRefusalDetail(name):`${name} is not offered to the reformat run, which is offered no tool; the call did not leave the page and nothing was written`)
@@ -488,7 +542,7 @@ export async function contextualSession<T extends EngineSession>(session:T):Prom
  await context.initialize(session.context?.documents,true)
  await context.execution.retainProgress()
  if(session.context?.plan)await context.initialize([{id:'current-plan',kind:'artifact',label:'Current chat plan',value:session.context.plan}])
- if([...session.tools,...session.hostTools].some(t=>t.name==='read_context'||t.name==='list_context'||t.name===READ_TOOL||t.name===SEARCH_TOOL||t.name==='update_plan'||t.name==='request_budget_increase'||t.name===LOAD_TOOL||t.name===LOAD_SKILL||t.name===UNLOAD_SKILL))throw Error('Context tool names are reserved by Desk.')
+ if([...session.tools,...session.hostTools].some(t=>t.name==='read_context'||t.name==='list_context'||t.name===READ_TOOL||t.name===SEARCH_TOOL||t.name==='update_plan'||t.name==='request_budget_increase'||t.name===LOAD_TOOL||t.name===LOAD_SKILL||t.name===UNLOAD_SKILL||t.name===REQUEST_REVIEW))throw Error('Context tool names are reserved by Desk.')
  session.context?.link?.attach(context)
  }catch(error){context.close();throw error}
  // The session's own tools that read (agent#8): what a chat-scoped context keeps across its runs.
@@ -496,7 +550,7 @@ export async function contextualSession<T extends EngineSession>(session:T):Prom
  // ADR-0006: load_tool beside the ledger's tools where the tools with a source are a catalogue; each call
  // of a tool with a source is held by the source gate before the host's execute (SourceGate.call).
  // ADR-0009: load_skill and unload_skill beside them where any skill is catalogued, in every phase but a child's (which is handed no skills).
- const hostTools=[...session.hostTools,...context.ledger.tools(),...(context.catalogue?[context.sources!.loadTool()]:[]),...(context.skills?.offered?[context.skills.loadTool(),context.skills.unloadTool()]:[]),...(session.allowConversation?[context.execution.tool(),context.execution.budgetTool()]:[])].map(tool=>({...tool,execute:async(args:Record<string,unknown>,signal:AbortSignal,callId?:string)=>{context.admit(tool.name,'host');await session.context?.authorize?.(signal);const run=(given:Record<string,unknown>,bounded:AbortSignal)=>context.execution.wrapRead(tool.name,a=>tool.execute(a,bounded,callId),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read',own.has(tool.name)?{runtime:false}:undefined)(given);return context.sources?context.sources.call(tool,args,signal,run,callId):run(args,signal)}}))
+ const hostTools=[...session.hostTools,...context.ledger.tools(),...(context.catalogue?[context.sources!.loadTool()]:[]),...(context.skills?.offered?[context.skills.loadTool(),context.skills.unloadTool()]:[]),...(context.review.offered?[context.reviewTool()]:[]),...(session.allowConversation?[context.execution.tool(),context.execution.budgetTool()]:[])].map(tool=>({...tool,execute:async(args:Record<string,unknown>,signal:AbortSignal,callId?:string)=>{context.admit(tool.name,'host');await session.context?.authorize?.(signal);const run=(given:Record<string,unknown>,bounded:AbortSignal)=>context.execution.wrapRead(tool.name,a=>tool.execute(a,bounded,callId),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read',own.has(tool.name)?{runtime:false}:undefined)(given);return context.sources?context.sources.call(tool,args,signal,run,callId):run(args,signal)}}))
  // ADR-0008: the act call the person approved runs through the host's own execute, as every call of it would.
  const approval=context.execution.state.approval
  if(context.execution.approvalStep==='execute'&&approval){

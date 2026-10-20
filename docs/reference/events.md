@@ -10,11 +10,11 @@ Schemas:
 
 > generated; edit the sources, then run `node scripts/gen-reference.mjs`. `--check` fails where this page differs from them.
 
-One event of a run, from the adapter to the host, in order, discriminated by type. Every kind of the Desk's AssistantEvent union (web/src/assistant/engine.ts) at the pinned commit, with its members spelled as the Desk spells them. A run ends with exactly one end and nothing follows it; a run the consumer left gets no end. Some events are the host's own, interleaved into the same stream rather than emitted by a loop: the tool gate's guardrail rewrote and refused, the shared context boundary's execution_checkpoint, budget_paused (which also replaces a loop's own budget_paused or request-limit error) and approval_requested (ADR-0008: emitted in place of an act call's tool_call where the host's approval policy answers ask), and the delegation coordinator's delegated_task. Open: the stream is an in-process TypeScript union with no reader at run time that refuses another member; the type member alone decides the kind.
+One event of a run, from the adapter to the host, in order, discriminated by type. Every kind of the Desk's AssistantEvent union (web/src/assistant/engine.ts) at the pinned commit, with its members spelled as the Desk spells them. A run ends with exactly one end and nothing follows it; a run the consumer left gets no end. Some events are the host's own, interleaved into the same stream rather than emitted by a loop: the tool gate's guardrail rewrote and refused, the shared context boundary's execution_checkpoint, budget_paused (which also replaces a loop's own budget_paused or request-limit error) and approval_requested (ADR-0008: emitted in place of an act call's tool_call where the host's approval policy answers ask), and the delegation coordinator's delegated_task. critic_decided (ADR-0010) is emitted by the adapter once per run, where the critic would start or where it is skipped. Open: the stream is an in-process TypeScript union with no reader at run time that refuses another member; the type member alone decides the kind.
 
 See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](critic.md), [skills.md](skills.md), [budget.md](budget.md), [reasons.md](reasons.md), [checkpoint.md](checkpoint.md).
 
-## The 21 kinds
+## The 22 kinds
 
 | Kind | Defined in | Required beyond type |
 | --- | --- | --- |
@@ -35,6 +35,7 @@ See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](crit
 | `tool_result` | `tool-result.json` | `name`, `isError`, `text` |
 | `guardrail` | `run-event.json $defs/guardrail` | `tool`, `action`, `detail` |
 | `thinking_unavailable` | `run-event.json $defs/thinking_unavailable` | `detail` |
+| `critic_decided` | `run-event.json $defs/critic_decided` | `mode`, `ran`, `reason` |
 | `critique` | `run-event.json $defs/critique` | `refuted`, `checks`, `text` |
 | `proposal` | `run-event.json $defs/proposal` | `document`, `unknowns` |
 | `error` | `run-event.json $defs/error` | `message` |
@@ -233,7 +234,7 @@ Conditions beyond the members (allOf) are in the schema file.
 
 ### `guardrail`
 
-The host saying what it did. rewrote and refused are the tool gate's, emitted by the host as the call's frame leaves the page, so they arrive between that call's tool_call and tool_result. narrowed is the adapter's notice, before the model is asked anything, that a tool's served schema lost a keyword on this family's wire. Also refused, with tool proposal, where the host withholds a proposal (Plan mode, or a conversation without artifact proposals). reason (ADR-0008), on a refusal of an act call of a tool with a source: approval refused, the host's approval policy answered refuse; approval pending, the call came while another act call of the run waits for the person's decision (at most one approval is pending); approval stale, the gate's own refusal of a call whose decision no longer holds for it (its arguments not those its approval was decided for, a call that reaches its run without an allow, or, on the continued run, its tool no longer offered as the person decided). None of these calls is run. skill withheld (ADR-0009), on a skill the package did not catalogue or restore, tool its name (or, for the catalogue's bounds, its source's id): its tools[] names a tool the host did not declare, its bytes pass skillBytes, its bundle does not hash to the digest the person approved, the catalogue's bounds left it out, or a skill the checkpoint had loaded is no longer declared as it was; skill budget, on a load_skill call refused past skillsPerRun, between that call and its failed result. Nothing of a withheld skill reaches the model.
+The host saying what it did. rewrote and refused are the tool gate's, emitted by the host as the call's frame leaves the page, so they arrive between that call's tool_call and tool_result. narrowed is the adapter's notice, before the model is asked anything, that a tool's served schema lost a keyword on this family's wire. Also refused, with tool proposal, where the host withholds a proposal (Plan mode, or a conversation without artifact proposals). reason (ADR-0008), on a refusal of an act call of a tool with a source: approval refused, the host's approval policy answered refuse; approval pending, the call came while another act call of the run waits for the person's decision (at most one approval is pending); approval stale, the gate's own refusal of a call whose decision no longer holds for it (its arguments not those its approval was decided for, a call that reaches its run without an allow, or, on the continued run, its tool no longer offered as the person decided). None of these calls is run. skill withheld (ADR-0009), on a skill the package did not catalogue or restore, tool its name (or, for the catalogue's bounds, its source's id): its tools[] names a tool the host did not declare, its bytes pass skillBytes, its bundle does not hash to the digest the person approved, the catalogue's bounds left it out, or a skill the checkpoint had loaded is no longer declared as it was; skill budget, on a load_skill call refused past skillsPerRun, between that call and its failed result. Nothing of a withheld skill reaches the model. review refused (ADR-0010), on a request_review call refused: a second ask of the run, an ask under off or on, or one outside the author's phase; nothing is recorded and no review is asked.
 
 Open: a member the schema does not name is accepted.
 
@@ -243,7 +244,7 @@ Open: a member the schema does not name is accepted.
 | `tool` | yes | string |  |
 | `action` | yes | enum `rewrote`, `refused`, `narrowed` |  |
 | `detail` | yes | string |  |
-| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget` |  |
+| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused` |  |
 
 ### `thinking_unavailable`
 
@@ -255,6 +256,21 @@ Open: a member the schema does not name is accepted.
 | --- | --- | --- | --- |
 | `type` | yes | const `thinking_unavailable` |  |
 | `detail` | yes | string |  |
+
+### `critic_decided`
+
+The critic's decision for the run (ADR-0010; provenance.json#/$defs/criticDecision): emitted once per run, after the proposal exists and before the critic would start (and before its critique), or where the critic is skipped, a run with no proposal included, before the run's last message. mode, ran and reason always; reasoning, the critic's tier, where the run states one; trigger under auto. The checkpoint's critic carries the same members, written durably after it.
+
+Open: a member the schema does not name is accepted.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `type` | yes | const `critic_decided` |  |
+| `mode` | yes | `tool-offer.json $defs/criticMode` |  |
+| `ran` | yes | boolean |  |
+| `reason` | yes | `provenance.json $defs/criticReason` |  |
+| `reasoning` |  | `tool-offer.json $defs/criticReasoning` |  |
+| `trigger` |  | enum `cases`, `changes-existing`, `model-asked` |  |
 
 ### `critique`
 

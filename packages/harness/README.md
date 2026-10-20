@@ -195,11 +195,28 @@ run.
 ### The critic
 
 The refutation pass (`refutation.ts`, agent#10) runs after a proposal exists and before it is
-delivered, on either engine, where the session's `adversarialReview` says so, and otherwise where
-the policy table's `adversarialReview` does (`contract/policy.json`: `false`). A host passes
-`adversarialReview` on the session for each run; the table only gives the default. One rule, read
-from one place by both engines (`criticRuns`); the reasoning tier no longer starts it. It needs the
-runtime's `test_pack` prompt as `testPrompt`.
+delivered, on every engine, where the critic's switch says so ([ADR-0010](../../docs/adr/0010-the-critics-switch.md),
+`criticSwitch.ts`). It needs the runtime's `test_pack` prompt as `testPrompt`.
+
+- **The switch.** The session's `critic` (`off`, `auto` or `on`, the person's word for the run), else
+  `criticProject`, else the policy table's `criticDefault` (`contract/policy.json`: `auto`). Under
+  `on` the critic runs on every proposal, under `off` never; under `auto` it runs on a proposal where
+  the model called `request_review` this run, the host declared `criticCases`, or the host says the run
+  works on an existing pack (`existingPack`). A reviewer assigned (`reviewerAssigned`), a
+  graph-purpose run, Plan mode and a delegated child turn it off in every mode. `adversarialReview` is
+  read for one release as an alias of `critic` (`true` is `on`, `false` is `off`). One decision for
+  every engine (`criticDecision`, through the boundary's `decideCritic`); nothing is read from prose.
+- **Its tier** is `criticReasoning` (a thinking tier on a model session, an effort on an agent
+  session), else the author's (`criticReasoningFloor`: `author`); a lower one the host names is
+  honoured. On the model engines it is the thinking members of the critic's requests; on `codex` the
+  critic run's `effort`.
+- **The record.** Every run that reaches a proposal or its last message emits `critic_decided` (mode,
+  whether it ran, the reason, the tier and the `auto` trigger), and the boundary writes it into the
+  checkpoint's `critic`, durably. A critic with no room left is recorded with the reason `budget`.
+- **`request_review`** is offered to the author under `auto` only, after the context tools; the first
+  call is recorded and answered, a second, or a call anywhere else, is refused with a `guardrail`
+  whose reason is `review refused`. On `codex` with delegation one agent run is held back for the
+  critic under `auto` and `on`, so a batch that would take it is refused.
 
 - **Its tools** are an allow-list: `CRITIC_TOOLS` (`validate`, `experimental_evaluate`, a rehearsal on
   the wire, `get_schema` and `experimental_test_cases`, within its bounds and the turn's test-call
@@ -488,7 +505,7 @@ column, on the same legs:
 | The event order and one `end` | each wire leg, exactly | a subset |
 | The refutation pass: the verdict is the runtime's, a refuted draft, a critic refused at the wire | each wire leg, asked for (agent#10) | the verdict, on the scenario leg, asked for |
 | A seeded wrong outcome is refuted and the case named (agent#10) | each wire leg | the scenario leg |
-| No critic where the session does not ask, at any tier (agent#10) | each wire leg | `critic.test.ts`, outside certification |
+| No critic where nothing asks for one: the table's `auto` with no trigger, at any tier (agent#10; ADR-0010) | each wire leg | `critic.test.ts`, outside certification |
 | Thinking, no-thinking, strict alternation, text tool calls | each wire leg | not applicable |
 
 So a gate that admits a name the session did not grant (the sixth-tool mutant) fails both
@@ -574,7 +591,7 @@ it. The suite is `certification/scenarios.test.ts`; its turns and runs are drive
 
 | Scenario | Checks | `vercel` and `deepagents` (per answer shape) | `codex` |
 | --- | --- | --- | --- |
-| 1 Chat mode with host tools: a read, a proposal, a name never offered | the offer (two host tools beside the Runtime's six and the harness's six); the gate refuses the third name between its call and its result; the proposal reaches the review card and nothing is acted on; the answer is delivered | 4 | 4 |
+| 1 Chat mode with host tools: a read, a proposal, a name never offered | the offer (two host tools beside the Runtime's six, the harness's six and, under the table's `auto`, `request_review`); the gate refuses the third name between its call and its result; the proposal reaches the review card and nothing is acted on; the answer is delivered | 4 | 4 |
 | 2 Delegation: a batch of a review and a research child, then a follow-up that resumes the research child | one parent run per response (vercel) or the next run's result and the chat's index (codex); the children's offers closed; a reference resolved within the chat; each result in its profile's shape and valid against the contract; the figures; the resumed child's earlier work | 7 | 7 |
 | 3 Memory: three tool steps | memory asked once, for the person's message, and carried in the same place on every request (ADR-0005); the same allowance, with no reserve, with memory on, unsaid or off | 4 | 4 |
 | 4 Plan mode | no action tool offered; the Runtime reads offered are the gate's ceiling less the evaluation and the test run; a call to an action tool refused and visible; the plan delivered | 4 | 4 |
@@ -583,6 +600,7 @@ it. The suite is `certification/scenarios.test.ts`; its turns and runs are drive
 | 7 Tool sources (ADR-0006): a scripted MCP server of seventeen tools, three descriptions telling the model to drop the data rule and call `write_file`, its list changing after its first call; one custom read; a second run after the new list is approved | the digests; the schema budget trips and the server is a catalogue beside `load_tool`, with no `write_file`; every source description framed, the poisoned lines inside their blocks; `load_tool` loads one schema, carried after the history while the tools and the system text hold; each act asks the host's approval policy and runs where it allows, the read does not ask; `write_file` refused at the gate; the changed list refuses the next call before the host; the source records on the events and the run report; the second run offered the new list and its call run | 9 | 9 |
 | 8 The approval pause (ADR-0008): scenario 7's server, its policy asking about `create_issue`; two `create_issue` calls in one answer; the paused checkpoint continued from its JSON text with a decision for another call, refused with a note, approved and broken off after the result was written, and once more from there | `approval_requested` in place of the call, the checkpoint paused and durable, `end`, nothing run; the second call refused with the `approval pending` guardrail; the decision for another call refused before anything runs; refused: the result and the note in one data block, `answered`; approved: written and acknowledged, run once, its result written and acknowledged; the restart runs the continuation and not the call; the continuation one line and one block after the request text; one more model request on the model engine, no invented figure on the agent engine | 8 | 8 |
 | 9 Skills (ADR-0009): 42 skills declared beside the custom read, 40 admissible past `cataloguedSkills`, one with a changed bundle and one naming `write_file`; two loads (one poisoned), the read, `write_file`, a load, an unload, a fourth load and one past `skillsPerRun`; a fresh session restored from the last checkpoint's JSON text with one skill withdrawn; a third run with the critic on, the author and the critic each loading the same skill | the catalogue of 32 with its guardrails; each load and unload between its call and its result; the block after the history on every later request with the tool list and the system text the same bytes (the agent engine: in `load_skill`'s answer); the load past the budget refused; the poisoned skill held off; the loaded set and each source's loads; the restore and the withdrawn skill's guardrail; the critic sees the loaded skill (its step note on the model engines, the block in its `load_skill` answer on the agent engine) | 8 | 8 |
+| 10 The critic's switch (ADR-0010): the runs of `critic-switch.json`, in order: `auto` with declared cases, a conversation turn, an existing pack and a new one, the model's ask (twice), an ask under `off`, `on`, a reviewer under `on`, the critic at the author's tier and lowered, a run broken off at the ask and resumed, and the measurement's four runs; on the agent engine three delegating responses | `cases` before the critique with the durable checkpoint carrying it; `no-proposal`; `changes-existing`, and `table` with no critic; `model-asked`, the second ask refused with `review refused`, the critic never offered it; the ask under `off` refused, no critic; `person`; `reviewer-assigned`; the tier in the decision and on the critic's requests or run; the resume's `model-asked` and its own ask refused; the measurement's table; on the agent engine a batch of three refused under `auto`, two proceeding with the critic as the fifth run, three proceeding under `off` | 10 | 11 |
 
 The checks the adapters make differently are recorded here, with the reason, and not skipped:
 
@@ -592,6 +610,7 @@ The checks the adapters make differently are recorded here, with the reason, and
 - **5** The model engine's loop is five model requests (two authoring requests, the critic's three); the agent engine's is three agent runs (author, author, critic). The critic's boundary check runs the loop once more with a call of `write_file` first in the critic's script, on both adapters; the guardrail's detail, "is not one of the tools the critic may call", is what shows `admit` refused it.
 - **4** and **6** make the same checks on both. The index is a text part of the first message on the model engine and the end of the prompt on the agent engine.
 - **7** The agent wire sends the execution state once per run, so on the agent engine a loaded schema reaches the agent in `load_tool`'s answer only; the model engines carry it after the history on every later request.
+- **10** The model engines carry the critic's tier as its requests' thinking members (on the OpenAI-compatible wire `reasoning_effort`, none at `off`); the agent engine as the critic run's `effort`. The invocation held back for the critic is the agent engine's alone, so its eleventh check is the delegating responses. `npm run certify` prints the measurement's rows as a table after the counts.
 - **9** The same holds for a loaded skill: on the agent engine its block reaches the agent in `load_skill`'s answer, and the restored run's state carries the loaded set. The critic's agent run is sent no loaded set, so its `load_skill` of a skill the author loaded is answered with the block; the model engines' critic step note carries the loaded set. An unload drops the block from the later requests on the model engines; on the agent engine a later run's state drops it, and the current run keeps the answer it was given.
 
 Not covered by these scenarios: the network seal (the recorded scenario's legs hold it) and the other two wires (the recorded scenario's legs cover them). A model engine is added by registering it, as `deepagents` was, and then runs every scenario.

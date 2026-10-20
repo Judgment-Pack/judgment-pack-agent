@@ -61,7 +61,22 @@ type Run struct {
 	// AllowConversation permits a prose-only answer; Interactive asks for the presentation events.
 	AllowConversation bool
 	Interactive       bool
-	// Review is whether the critic runs; nil takes the policy table's adversarialReview.
+	// Critic is the run's word on the critic (ADR-0010): off, auto or on, the person's per-run
+	// control, over CriticProject and the policy table's criticDefault (auto). "" states none.
+	Critic string
+	// CriticProject is the project's word on the critic, read where the run states none.
+	CriticProject string
+	// CriticReasoning is the critic's tier in the enum of the run's capability (a thinking tier on
+	// the model capability, an effort on the agent capability); "" is the author's tier. A tier lower
+	// than the author's is the host's explicit choice, honoured and recorded.
+	CriticReasoning string
+	// ExistingPack is the host's fact that the run works on a pack that already exists: under auto,
+	// its proposal is reviewed.
+	ExistingPack bool
+	// ReviewerAssigned is the host's fact that a human reviewer is assigned: no critic in any mode.
+	ReviewerAssigned bool
+	// Review is the switch before ADR-0010, read for one release as an alias of Critic (true on,
+	// false off); Critic wins where both are set. Nil states none.
 	Review *bool
 	// Cases are the cases whose outcomes the host declares for the critic (agent#10), each as
 	// run-event.json's $defs/criticCase.

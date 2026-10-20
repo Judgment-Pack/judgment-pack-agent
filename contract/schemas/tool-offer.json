@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/tool-offer.json",
   "title": "Tool offer",
-  "description": "The tools the host offers a run, as the session's two members: the runtime's tools (session.tools: McpTool, exactly as tools/list served them, filtered to this session's allow-list, reached only through callTool and the host's gate) and the host's own tools (session.hostTools: HostTool, run by the host on the adapter's behalf, answered in the shape a runtime answer takes). An adapter offers the model exactly these, under their served schemas (servedSchema: a tool served without an input schema ends the session; the Gemini family alone is shown the schema less a closed list of keywords, with a guardrail narrowed event per tool that lost one). The host also adds its own context tools (list_context, read_context, read_window and, in a conversation, update_plan and request_budget_increase), whose names an offered tool may not take. Read from web/src/assistant/engine.ts (McpTool, HostTool) and context/session.ts (contextualSession). Open: the session is an in-process value with no reader, and the runtime's answer is passed through as served. A host may offer propose_pack ($defs/proposePack): the adapter reads that call itself as the run's proposal and never reaches the host's execute, the instructions then tell the model to use it, the critic is not offered it, and the fenced block stays the fallback. The critic is offered only $defs/criticTools, of the runtime tools the session offers, and no host tool (agent#10). Tool sources (ADR-0006): a host tool that a source outside the host serves (a gateway connection, a public MCP server, a tool the person created) is declared with its source record ($defs/sourceDeclaration) and is still a host tool: the host executes it under the person's grants and the package never reaches the source. The package offers it under a wire-safe name mapped to the source and its own name ($defs/wireName, $defs/nameMapping), with its description bounded and framed as retrieved text, its effect class and approval default ($defs/effectClass), and, where the source's tools pass the schema budget, as a catalogue entry whose schema load_tool loads ($defs/catalogueEntry, $defs/loadTool). Skills (ADR-0009): the host declares skills beside its host tools (skills, $defs/skillDeclaration, skill.json): the package admits each, lists the admitted ones in the system text after the tools described in text ($defs/skillCatalogueEntry), and offers load_skill and unload_skill beside load_tool ($defs/loadSkill, $defs/unloadSkill) where any is catalogued; a loaded skill ($defs/loadedSkill) rides after the history, and grants no tool.",
+  "description": "The tools the host offers a run, as the session's two members: the runtime's tools (session.tools: McpTool, exactly as tools/list served them, filtered to this session's allow-list, reached only through callTool and the host's gate) and the host's own tools (session.hostTools: HostTool, run by the host on the adapter's behalf, answered in the shape a runtime answer takes). An adapter offers the model exactly these, under their served schemas (servedSchema: a tool served without an input schema ends the session; the Gemini family alone is shown the schema less a closed list of keywords, with a guardrail narrowed event per tool that lost one). The host also adds its own context tools (list_context, read_context, read_window and, in a conversation, update_plan and request_budget_increase), whose names an offered tool may not take. Read from web/src/assistant/engine.ts (McpTool, HostTool) and context/session.ts (contextualSession). Open: the session is an in-process value with no reader, and the runtime's answer is passed through as served. A host may offer propose_pack ($defs/proposePack): the adapter reads that call itself as the run's proposal and never reaches the host's execute, the instructions then tell the model to use it, the critic is not offered it, and the fenced block stays the fallback. The critic is offered only $defs/criticTools, of the runtime tools the session offers, and no host tool (agent#10). Tool sources (ADR-0006): a host tool that a source outside the host serves (a gateway connection, a public MCP server, a tool the person created) is declared with its source record ($defs/sourceDeclaration) and is still a host tool: the host executes it under the person's grants and the package never reaches the source. The package offers it under a wire-safe name mapped to the source and its own name ($defs/wireName, $defs/nameMapping), with its description bounded and framed as retrieved text, its effect class and approval default ($defs/effectClass), and, where the source's tools pass the schema budget, as a catalogue entry whose schema load_tool loads ($defs/catalogueEntry, $defs/loadTool). Skills (ADR-0009): the host declares skills beside its host tools (skills, $defs/skillDeclaration, skill.json): the package admits each, lists the admitted ones in the system text after the tools described in text ($defs/skillCatalogueEntry), and offers load_skill and unload_skill beside load_tool ($defs/loadSkill, $defs/unloadSkill) where any is catalogued; a loaded skill ($defs/loadedSkill) rides after the history, and grants no tool. The critic's switch (ADR-0010) rides beside them: critic, criticProject, criticReasoning, existingPack, reviewerAssigned and the alias adversarialReview, each optional.",
   "type": "object",
   "required": [
     "tools",
@@ -29,6 +29,30 @@
       "items": {
         "$ref": "#/$defs/skillDeclaration"
       }
+    },
+    "critic": {
+      "description": "The run's word on the critic (ADR-0010; the person's, from the host's per-run control): off, auto or on. It wins over the project's word (criticProject) and the policy table's (budget.json criticDefault). Absent, the run states none and the alias adversarialReview is read where it is set.",
+      "$ref": "#/$defs/criticMode"
+    },
+    "criticProject": {
+      "description": "The project's word on the critic (ADR-0010), as the host passes it from the project's settings: off, auto or on. Read where the run states none; absent, the policy table's default (budget.json criticDefault) decides.",
+      "$ref": "#/$defs/criticMode"
+    },
+    "criticReasoning": {
+      "description": "The critic's reasoning tier (ADR-0010), in the enum of the run's capability: a thinking tier (off, on, ultra) on the model capability, an effort (none to max) on the agent capability; a value of the other capability's enum is refused before any request (configuration). Absent, the critic runs at the author's tier (budget.json criticReasoningFloor, author). A value lower than the author's is the host's explicit choice: it is honoured and recorded in critic_decided and the checkpoint's critic.",
+      "$ref": "#/$defs/criticReasoning"
+    },
+    "existingPack": {
+      "description": "The host's fact that the run works on a pack that already exists rather than drafting a new one (ADR-0010): under auto, a proposal of such a run changes an existing pack, one of the three triggers. Absent is false.",
+      "type": "boolean"
+    },
+    "reviewerAssigned": {
+      "description": "The host's fact that a human reviewer is assigned to the run's work (ADR-0010): the critic does not run in any mode, with the reason reviewer-assigned. Absent is false.",
+      "type": "boolean"
+    },
+    "adversarialReview": {
+      "description": "The switch before ADR-0010, kept for one release as a read alias of the run's word: true reads as on, false as off. Where critic is also set, critic wins. Retired in the release after.",
+      "type": "boolean"
     }
   },
   "additionalProperties": true,
@@ -224,7 +248,7 @@
       ]
     },
     "reservedName": {
-      "description": "Names the host keeps for its own context tools; an offered tool that takes one ends the session (context/session.ts, contextualSession). read_window (agent#1) and search (agent#5) are the harness's own readers. load_tool (ADR-0006) is the harness's catalogue loader, offered only where the schema budget trips. load_skill and unload_skill (ADR-0009) are the harness's skill loaders, offered only where the run catalogues a skill.",
+      "description": "Names the host keeps for its own context tools; an offered tool that takes one ends the session (context/session.ts, contextualSession). read_window (agent#1) and search (agent#5) are the harness's own readers. load_tool (ADR-0006) is the harness's catalogue loader, offered only where the schema budget trips. load_skill and unload_skill (ADR-0009) are the harness's skill loaders, offered only where the run catalogues a skill. request_review (ADR-0010) is the harness's ask for a review, offered only under auto in the author's phase.",
       "enum": [
         "list_context",
         "read_context",
@@ -234,7 +258,8 @@
         "request_budget_increase",
         "load_tool",
         "load_skill",
-        "unload_skill"
+        "unload_skill",
+        "request_review"
       ]
     },
     "criticTools": {
@@ -640,6 +665,58 @@
         }
       },
       "additionalProperties": false
+    },
+    "criticMode": {
+      "description": "The critic's switch (ADR-0010): off, the critic never runs; on, it runs on every proposal; auto, it runs on a proposal where the package's own facts say so (declared cases exist, the proposal changes an existing pack, or the model asked through request_review). The mode is the run's word, else the project's, else the policy table's (run > project > table).",
+      "enum": [
+        "off",
+        "auto",
+        "on"
+      ]
+    },
+    "criticReasoning": {
+      "description": "A reasoning tier in the enum of a run's capability (ADR-0010): the thinking tiers off, on and ultra of the model capability (ThinkingTier), or the efforts none, minimal, low, medium, high, xhigh and max of the agent capability (CodexEffort), each enum in its own order, lowest first.",
+      "enum": [
+        "off",
+        "on",
+        "ultra",
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    },
+    "requestReview": {
+      "description": "The harness tool by which the model asks for a review (ADR-0010): a reserved name, offered only where the critic's mode is auto, in the author's phase, on a run the critic is not forced off for; never offered to the critic, to a delegated child, in Plan mode or to the reformat run. It takes one optional reason. The first call of a run is recorded as the trigger model-asked (the checkpoint's critic, carried through a resume) and answered with a note; the package then runs the critic on the run's proposal. A second call of the run, a call under off or on, and a call outside the author's phase are refused (tool-failed, not-started) with a guardrail whose reason is review refused, and nothing is recorded. The model's ask is a trigger, never a verdict: it cannot turn a review off or decide what the critic finds. Its effect is plan, so its answer is not framed as data.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/hostTool"
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "request_review"
+            },
+            "effect": {
+              "const": "plan"
+            },
+            "inputSchema": {
+              "const": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "description": "Why a review of this run’s proposal is wanted, in one sentence."
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

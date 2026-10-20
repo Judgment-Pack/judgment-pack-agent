@@ -66,7 +66,7 @@ The Runtime tools that stay off the ceiling, with the reason the gate’s source
 
 ### Context tool names
 
-Names the host keeps for its own context tools; an offered tool that takes one ends the session (context/session.ts, contextualSession). read_window (agent#1) and search (agent#5) are the harness's own readers. load_tool (ADR-0006) is the harness's catalogue loader, offered only where the schema budget trips. load_skill and unload_skill (ADR-0009) are the harness's skill loaders, offered only where the run catalogues a skill.
+Names the host keeps for its own context tools; an offered tool that takes one ends the session (context/session.ts, contextualSession). read_window (agent#1) and search (agent#5) are the harness's own readers. load_tool (ADR-0006) is the harness's catalogue loader, offered only where the schema budget trips. load_skill and unload_skill (ADR-0009) are the harness's skill loaders, offered only where the run catalogues a skill. request_review (ADR-0010) is the harness's ask for a review, offered only under auto in the author's phase.
 
 The package also holds a wider set, `HELD_NAMES`, that a tool with a source may not bear: the ceiling, the Runtime tools that stay off it, the context names above and `propose_pack`.
 
@@ -92,6 +92,7 @@ The package also holds a wider set, `HELD_NAMES`, that a tool with a source may 
 | `load_tool` | context tool name |
 | `load_skill` | context tool name |
 | `unload_skill` | context tool name |
+| `request_review` | context tool name |
 | `propose_pack` | harness host tool |
 
 The tools the harness itself serves:

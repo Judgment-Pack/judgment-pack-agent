@@ -55,11 +55,11 @@ Desk server runs. This package adds a third, `deepagents` (ADR-0003):
 
 | Adapter | Kind | Loop | Reach to a model | Tool calls | The prompt (ADR-0005) |
 | --- | --- | --- | --- | --- | --- |
-| `vercel` | model | the Vercel AI SDK's `streamText` | `model.call`, as the SDK's providers' `fetch` (`relayFetch`) | the SDK's tools, each executed through the gate's dispatch; an act call the host's policy asks about held, its step's other calls answered and the next request refused (ADR-0008) | the system text (`systemText`) as the SDK's `instructions`, with the Anthropic cache breakpoint; the host's parts from `configureHarness` |
-| `codex` | agent | the Codex bridge the Desk server runs | `agent.run` | the agent wire, under aliases, through the gate's dispatch; an act call the host's policy asks about ends the run as a delegation handoff does (ADR-0008) | the system text as the agent request's `instructions`; the request text, the index and the state in its `prompt`; the host's parts from `configureHarness`; a loaded skill's block in `load_skill`'s answer, and in a later run's state (ADR-0009) |
-| `deepagents` | model | Deep Agents' agent graph (`createDeepAgent`, `deepagents/browser`), its own tools, subagents and summarization off | `model.call`, from its own LangChain chat model, the three wires written by the adapter; a run whose environment turns LangChain's tracing on is refused | every call answered by the adapter's boundary middleware through the gate's dispatch; an act call the host's policy asks about held, as on `vercel` (ADR-0008) | the system text as the system message its `wrapModelCall` places; the host's parts from `configureHarness` |
-| `agent` (Go) | agent | the host's provider-run function (`adapter.Agent.Run`, ADR-0007), one invocation per call, the provider's own model loop | the host's function, which holds its account, process and credentials; the adapter holds no transport | the agent wire, under aliases, through the Go gate's narrow handle (`gate.Calls`); `delegate_tasks` a handoff, and an act call the host's policy asks about ends the invocation as one (ADR-0008) | the system text (`runcontext.SystemText`) as each invocation's `instructions`; the request text, the index and the state in its `prompt`; the host's parts from `adapter.Run`'s `Host`; a loaded skill's block in `load_skill`'s answer, and in a later invocation's state (ADR-0009) |
-| `eino` (Go) | model | Eino's `adk.ChatModelAgent` under an `adk.Runner` (ADR-0004), its interrupt, checkpoint, retries and subagents not configured | the in-process relay client (`go/relay`), which runs each request through the relay handler's path; the three wires written by the adapter (`go/adapter/wire`) | every call answered by the adapter's boundary middleware or Eino's unknown-tools handler, one dispatch, through the Go gate's narrow handle (`gate.Calls`); a turn's calls one at a time, an act call the host's policy asks about held as on `vercel` (ADR-0008) | the system text (`runcontext.SystemText`) as the system message the adapter writes on each wire; the host's parts from `adapter.Run`'s `Host` |
+| `vercel` | model | the Vercel AI SDK's `streamText` | `model.call`, as the SDK's providers' `fetch` (`relayFetch`) | the SDK's tools, each executed through the gate's dispatch; an act call the host's policy asks about held, its step's other calls answered and the next request refused (ADR-0008) | the system text (`systemText`) as the SDK's `instructions`, with the Anthropic cache breakpoint; the host's parts from `configureHarness`; the critic's tier in its requests' thinking members (ADR-0010) |
+| `codex` | agent | the Codex bridge the Desk server runs | `agent.run` | the agent wire, under aliases, through the gate's dispatch; an act call the host's policy asks about ends the run as a delegation handoff does (ADR-0008) | the system text as the agent request's `instructions`; the request text, the index and the state in its `prompt`; the host's parts from `configureHarness`; a loaded skill's block in `load_skill`'s answer, and in a later run's state (ADR-0009); the critic's tier as its run's `effort`, one run held back for it under `auto` and `on` (ADR-0010) |
+| `deepagents` | model | Deep Agents' agent graph (`createDeepAgent`, `deepagents/browser`), its own tools, subagents and summarization off | `model.call`, from its own LangChain chat model, the three wires written by the adapter; a run whose environment turns LangChain's tracing on is refused | every call answered by the adapter's boundary middleware through the gate's dispatch; an act call the host's policy asks about held, as on `vercel` (ADR-0008) | the system text as the system message its `wrapModelCall` places; the host's parts from `configureHarness`; the critic's tier in its requests' thinking members (ADR-0010) |
+| `agent` (Go) | agent | the host's provider-run function (`adapter.Agent.Run`, ADR-0007), one invocation per call, the provider's own model loop | the host's function, which holds its account, process and credentials; the adapter holds no transport | the agent wire, under aliases, through the Go gate's narrow handle (`gate.Calls`); `delegate_tasks` a handoff, and an act call the host's policy asks about ends the invocation as one (ADR-0008) | the system text (`runcontext.SystemText`) as each invocation's `instructions`; the request text, the index and the state in its `prompt`; the host's parts from `adapter.Run`'s `Host`; a loaded skill's block in `load_skill`'s answer, and in a later invocation's state (ADR-0009); the critic's tier as its invocation's `effort`, one invocation held back for it under `auto` and `on` (ADR-0010) |
+| `eino` (Go) | model | Eino's `adk.ChatModelAgent` under an `adk.Runner` (ADR-0004), its interrupt, checkpoint, retries and subagents not configured | the in-process relay client (`go/relay`), which runs each request through the relay handler's path; the three wires written by the adapter (`go/adapter/wire`) | every call answered by the adapter's boundary middleware or Eino's unknown-tools handler, one dispatch, through the Go gate's narrow handle (`gate.Calls`); a turn's calls one at a time, an act call the host's policy asks about held as on `vercel` (ADR-0008) | the system text (`runcontext.SystemText`) as the system message the adapter writes on each wire; the host's parts from `adapter.Run`'s `Host`; the critic's tier in its requests' thinking members (ADR-0010) |
 
 Everything an engine needs is decided by the host before the session starts and handed to it:
 
@@ -93,9 +93,9 @@ rehearsal rule stay the host's (ADR-0001). Nothing below moves them.
 
 Generated reference: [`docs/reference/events.md`](../reference/events.md) lists these from the schemas and the package's constants.
 
-`run-event.json`. Twenty-one kinds, discriminated by `type`, from the adapter to the host, in order: the
-Desk's eighteen, the harness's `approval_requested` (ADR-0008), and `skill_loaded` and
-`skill_unloaded` (ADR-0009):
+`run-event.json`. Twenty-two kinds, discriminated by `type`, from the adapter to the host, in order: the
+Desk's eighteen, the harness's `approval_requested` (ADR-0008), `skill_loaded` and
+`skill_unloaded` (ADR-0009), and `critic_decided` (ADR-0010):
 
 - **Work:** `tool_call` and `tool_result` (each call before its result, paired by `callId` where
   one is set); `reasoning` (deltas, then the whole passage with `done`); `message_progress` (the
@@ -117,7 +117,8 @@ Desk's eighteen, the harness's `approval_requested` (ADR-0008), and `skill_loade
   holds for it, and `approval refused` again after the person's refusal is written; with `reason`
   `skill withheld` on a skill the package did not catalogue or restore (ADR-0009), before the first
   request, and `skill budget` on a `load_skill` call past `skillsPerRun`, between the call and its
-  result; `narrowed` before the model is asked anything, where a family's wire cannot carry a
+  result; with `reason` `review refused` on a `request_review` call refused (ADR-0010: a second ask,
+  or an ask where it is not offered), between the call and its result; `narrowed` before the model is asked anything, where a family's wire cannot carry a
   served schema keyword; `refused` with tool `proposal` where Plan mode or a conversation withholds
   proposals), `execution_checkpoint` (state to save, `durable` where it must be saved before the
   next operation), `delegated_task` (a child's state, whole, at each transition; on `vercel`
@@ -127,7 +128,9 @@ Desk's eighteen, the harness's `approval_requested` (ADR-0008), and `skill_loade
   `vercel` one tool-free request to finish a response cut short; on both engines the one tool-free
   request, or on `codex` agent run, that asks for a proposal that could not be read),
   `thinking_unavailable` (the tier could not be expressed here, said once).
-- **Outcome:** `critique` (the critic's checks and its comparisons of declared outcomes, decided
+- **Outcome:** `critic_decided` (ADR-0010: whether the critic runs and why, its mode, reason, tier
+  and `auto` trigger, once per run, before anything the critic does or before the last message of a
+  run with no proposal; see [The critic](#the-critic)), `critique` (the critic's checks and its comparisons of declared outcomes, decided
   from the runtime's results and never its prose, and what it cost, before the proposal; see [The
   critic](#the-critic)), `proposal` (one document out of exactly one fenced JSON envelope or the
   model's `propose_pack` call, with its unknowns, the critique's verdict where the critic reached a
@@ -437,14 +440,57 @@ scenario 9 (`certification/scenarios/skills.json`) runs it on every engine and b
 Generated reference: [`docs/reference/critic.md`](../reference/critic.md) lists these from the schemas and the package's constants.
 
 The refutation pass, after the proposal exists and before it is delivered (`refutation.ts`; agent#10,
-with the fixes of its clean-room review, rows 1 to 11).
+with the fixes of its clean-room review, rows 1 to 11), switched by
+[ADR-0010](../adr/0010-the-critics-switch.md) (`criticSwitch.ts`; Go `go/context/critic.go`).
 
-- **When it runs.** One rule on both engines (`criticRuns`): the session's `adversarialReview`, and
-  otherwise the policy table's `adversarialReview` (`budget.json`; `contract/desk/policy.json`), which
-  is `false`. The host passes `adversarialReview` on the session for each run, from its own settings;
-  the table's member is the harness's default where a session leaves it unset. So a critic runs only
-  where the host asks for one, at any reasoning tier; a tier no longer starts one. The runtime's
-  `test_pack` prompt is still required: with none, the pass does not run and says so.
+- **When it runs: the switch.** One decision on every engine and both Go adapters
+  (`criticDecision`, read through the boundary's `decideCritic`; Go `runcontext.DecideCritic`):
+  - **The modes and their precedence.** `critic` is `off`, `auto` or `on` (`tool-offer.json#/$defs/criticMode`),
+    taken from the run's word (the session's `critic`, the person's per-run control), else the
+    project's (`criticProject`), else the policy table's `criticDefault` (`budget.json`;
+    `contract/desk/policy.json`), which is `auto`: run > project > table. Under `on` the critic runs
+    on every proposal; under `off` never.
+  - **The `auto` triggers.** The run produced a proposal and, read in this order, the model called
+    `request_review` this run (`model-asked`), the host declared cases (`cases`), or the host says the
+    run works on an existing pack (`existingPack`, `changes-existing`). With none, no critic runs and
+    the reason is the layer that set `auto`. Nothing is read from the person's or the model's prose.
+  - **The forced-off cases**, whatever the mode, each a reason, in the order `child` (a delegated
+    child's run), `phase` (Plan mode), `purpose` (a graph-purpose run), `reviewer-assigned` (the
+    host's `reviewerAssigned`). A run with no proposal runs none (`no-proposal`); a critic that would
+    run with no room left (the request allowance spent, or on the agent capability the response's
+    invocations taken) does not run (`budget`, the trigger kept).
+  - **The reserve.** On the agent capability, under `auto` and `on`, one of the response's five
+    invocations is held back for the critic from the first one on: a parent is offered
+    `delegate_tasks` only while it, a child, the continuation and the critic's invocation remain; a
+    batch of `n` tasks is admitted only while `n` children, the continuation and the critic's
+    invocation remain, and refused whole otherwise; a child never takes it. Under `off` nothing is
+    held back (ADR-0007 §3 as before).
+  - **The tier.** The critic runs at `criticReasoning` (`$defs/criticReasoning`, the run's
+    capability's enum: a thinking tier on the model capability, an effort on the agent capability),
+    else at the author's tier (`criticReasoningFloor`, `author`); a lower one the host names is
+    honoured and recorded. On the model engines a tier other than the author's opens a thinking slot
+    of its own for the critic's requests; on the agent capability it is the critic invocation's
+    `effort`.
+  - **The decision event and member.** `critic_decided {mode, ran, reason, reasoning, trigger}`
+    (`run-event.json`; the reasons, `provenance.json#/$defs/criticReason`) is emitted once per run,
+    where the critic would start (before anything it does, its `critique` and the proposal) or where
+    the run ends with no proposal (before its last message); the boundary writes the checkpoint's
+    `critic` (`checkpoint.json`) durably straight after it on a tracked run. A run that fails or
+    pauses before either point emits none.
+  - **`request_review`**, the model's ask (`tool-offer.json#/$defs/requestReview`), a reserved name
+    offered after the context tools only under `auto`, in the author's phase, on a run nothing forces
+    the critic off; never to the critic, a child, Plan mode or the reformat run. The first call of
+    the run is answered with a note and recorded (the checkpoint's `critic`: `mode` `auto`, `trigger`
+    `model-asked`, carried through a resume); a second call is refused (`tool-failed`, `not-started`)
+    and a call anywhere else is refused by the boundary as an unoffered call is, each with a
+    `guardrail` whose reason is `review refused`; nothing is recorded. In Go the adapters refuse it
+    before the gate; a Go host that opens the gate with its offer adds it where the switch offers it
+    (`runcontext.OfferedReviewTool`).
+  - **The alias.** `adversarialReview`, on the session and in the table, is read for one release as
+    an alias of its layer (`true` is `on`, `false` is `off`), the new member winning where both are
+    set; the harness's table no longer carries it.
+
+  The runtime's `test_pack` prompt is still required: with none, the pass does not run and says so.
 - **What it may call.** An allow-list (`tool-offer.json#/$defs/criticTools`): four of the runtime's
   reads, `validate`, `experimental_evaluate` (a rehearsal, by the gate's rewrite), `get_schema` and
   `experimental_test_cases` (within its argument and byte bounds, and the turn's `testCallsPerTurn`,
@@ -927,7 +973,10 @@ the run, `approval` (ADR-0008, closed in both readers): the call, its state (`as
 `refused`, `executed`, `answered`), when it was decided, the person's note and the result; at most
 one, and `status` `paused` while it is `asked`. Once a skill is loaded, `skills` (ADR-0009): the
 loaded set in load order, each its id, digest, bytes and `loadedAt`, closed in both readers, which a
-continued run restores. Never permissions,
+continued run restores. Once the run has decided its critic, or under `auto` once the model's
+`request_review` was taken, `critic` (ADR-0010, closed in both readers): `mode`, and `ran`, `reason`,
+`reasoning` and `trigger` once decided, written durably after `critic_decided`; a continued run keeps
+the model's ask, so its proposal is reviewed and a second ask is refused. Never permissions,
 evidence approval or private reasoning. At most 4 MiB as JSON
 text.
 
@@ -984,9 +1033,11 @@ is taken for them: every request's input allowance is up to 12,000 bytes (`brief
 the input left after the instructions and the tools, up to 7,200 bytes larger (see
 [The prompt](#the-prompt)).
 
-The table also states the critic's default, `adversarialReview` (`false`; agent#10), which the
-harness adds to the Desk's table (`contract/desk/policy.json`) and both engines read; see [The
-critic](#the-critic).
+The table also states the critic's switch (ADR-0010), which the harness adds to the Desk's table
+(`contract/desk/policy.json`) and every engine reads: `criticDefault` (`auto`), the mode where neither
+the run nor the project states one, and `criticReasoningFloor` (`author`), the critic's tier where the
+host names none; `adversarialReview` (agent#10's `false`) is read as an alias of `criticDefault` for
+one release and no longer in the table; see [The critic](#the-critic).
 
 The harness adds two time bounds the Desk's table does not carry, each taken from the table where it
 does. `turnMilliseconds` (fifteen minutes): on `vercel`, when one turn's wall clock passes, what is
@@ -1295,8 +1346,10 @@ tool calls, tokens, time to first byte and duration, each batch's total, and the
 figures (`$defs/delegationReport`, `childFigures`, `figuresTotal`, `parentFigures`,
 `vectors/delegation/figures.json`), in the checkpoint's `delegation`. Since ADR-0005 the digest of
 every request body the adapter sent is in the checkpoint's `prompts` (`$defs/promptDigest`,
-`vectors/provenance/prompt-digest.json`; see [The prompt](#the-prompt)). That is all: see the open
-question on provenance below.
+`vectors/provenance/prompt-digest.json`; see [The prompt](#the-prompt)). Since ADR-0010 the critic's
+decision is the report's row (`$defs/criticDecision`, the reasons `$defs/criticReason`), on
+`critic_decided` and in the checkpoint's `critic`, so a reader sees why a review ran or did not.
+That is all: see the open question on provenance below.
 
 ## Open questions
 
@@ -1339,8 +1392,19 @@ Agents' subagents are off and delegation is the package's, an awaited `delegate_
   figures count model requests and the tokens the completions reported; `codex` sends it on the
   critic's agent run, where the bridge admits it only if the subscription lists it, and its figures
   count agent runs, with no tokens. Both count the harness's own calls. The harness's calls run
-  under the turn's clock on `vercel` and under the critic pass's ten minutes on `codex`. (The critic's default is no longer a disagreement: one rule, the policy
-  table's.)
+  under the turn's clock on `vercel` and under the critic pass's ten minutes on `codex`. (Whether the critic runs is no longer a disagreement: one decision,
+  ADR-0010's.)
+- **The critic's tier and its budget** (ADR-0010). The model engines (`vercel`, `deepagents`, `eino`)
+  carry the critic's tier as the thinking members of the critic's requests, a slot of its own where it
+  is not the author's, and skip the critic for `budget` where the request allowance has no request
+  left; the agent capability (`codex`, Go's agent adapter) carries it as the critic invocation's
+  `effort`, holds one of the response's five invocations back for it under `auto` and `on`, and skips
+  it for `budget` where none is left. A model engine holds nothing back: the critic's requests are
+  claimed against the allowance as before.
+- **`request_review` refused outside the author's phase.** In TypeScript the shared boundary refuses
+  it (`admit`, and on `codex` its served-but-not-offered refusal) with the switch's guardrail; in Go
+  each adapter refuses it before the gate, which never sees the name, with the same guardrail and
+  sentence.
 - **Delegation** (agent#14). `vercel` awaits the delegate call in the parent's step and runs as
   many children at a time as the connection's `concurrentRequests` says (`modelsFor`), two where it names none; `codex` ends its run at the call, runs its children one at a time on the
   provider account, and the response continues in a new run given the call's result, framed as the
@@ -1519,7 +1583,7 @@ Agents' subagents are off and delegation is the package's, an awaited `delegate_
     `grep`, `execute`, `task` or one of the async task tools ends the run as a `configuration`
     error on this engine.
   - **Certification.** Held to every leg `vercel` is held to (the six wire legs, text tool calls,
-    strict alternation, thinking, the nine scenarios once per answer shape, delegation's
+    strict alternation, thinking, the ten scenarios once per answer shape, delegation's
     concurrency), with one recorded difference, scenario 1's, above.
 
 - **The `eino` engine** (Go, ADR-0004). A model engine on Eino's ADK, running in the host's Go
@@ -1558,7 +1622,7 @@ Agents' subagents are off and delegation is the package's, an awaited `delegate_
     agent capability's half (a run that ends at `delegation_requested`) is not ported, the Go
     adapter being a model adapter.
   - **Certification.** The Go runner (`go/certification`, `go/cmd/harness-check`) runs every leg the
-    TypeScript suite runs on a model engine, the nine scenarios and the model engine's check of
+    TypeScript suite runs on a model engine, the ten scenarios and the model engine's check of
     `certification/delegation.test.ts` on this adapter, all passing; `go/certification/parity.json`
     maps every TypeScript check to the Go checks that make it. Where
     the host differs, the check says so: scenario 5's boundary check reads the refusals only, because

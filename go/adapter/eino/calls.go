@@ -340,6 +340,16 @@ func (t *turnState) refuseUnoffered(ctx context.Context, name string, args json.
 	return result, nil
 }
 
+// refuseReview is a request_review call the run does not admit (ADR-0010): its call, the switch's
+// guardrail (put on the stream by the boundary before the result) and the refused result, as an
+// unoffered call's reads.
+func (t *turnState) refuseReview(name string, args json.RawMessage) runcontext.ToolResult {
+	t.r.deliver(t.callEvent("", name, nonEmpty(args), ""))
+	result := textResult(gate.UnofferedRefusal(t.r.sc.RefuseReview()), true)
+	t.r.deliver(t.resultEvent("", name, result, ""))
+	return result
+}
+
 // dispatch is one call, wherever it was made, through the same dispatch and so the same gate: only
 // a name this phase offered is looked up.
 func (t *turnState) dispatch(ctx context.Context, name string, args json.RawMessage, offered map[string]bool) (ran, error) {
@@ -351,6 +361,12 @@ func (t *turnState) dispatch(ctx context.Context, name string, args json.RawMess
 		t.r.deliver(t.callEvent(callID, name, held, ""))
 		t.r.deliver(t.resultEvent(callID, name, result, ""))
 		return bare(result), nil
+	}
+	// ADR-0010: request_review reaches the switch's own tool only in the author's phase of a run it is
+	// offered to; anywhere else it is refused here, with the guardrail review refused, before anything
+	// runs and before the gate, and nothing is recorded.
+	if name == runcontext.RequestReview && (!offered[name] || !t.r.sc.ReviewAdmitted()) {
+		return bare(t.refuseReview(name, args)), nil
 	}
 	if !offered[name] {
 		if rejected := t.rejectToolStep(name, args); rejected != nil {

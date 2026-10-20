@@ -1,0 +1,30 @@
+{
+  "description": "request_review, the model's ask for a review (ADR-0010; tool-offer.json#/$defs/requestReview), as the boundary declares it: a reserved name, its effect plan, one optional reason. Offered in the author's phase where the critic's mode is auto and nothing forces the critic off, after the context tools. Written by hand; criticSwitch.test.ts and go/context/critic_test.go hold the declaration each language offers equal to it.",
+  "schema": "tool-offer.json#/$defs/requestReview",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/criticSwitch.ts (REQUEST_REVIEW, REQUEST_REVIEW_DESCRIPTION, REQUEST_REVIEW_SCHEMA)",
+      "packages/harness/context/session.ts (SessionContext.reviewTool, contextualSession)"
+    ]
+  },
+  "items": [
+    {
+      "name": "request_review",
+      "description": "Ask for an independent review of the proposal this response makes. Call it at most once, before you propose, where a second check would help: a critic then checks the proposal with the runtime’s own tools before it is shown. Its findings come from the runtime’s results; your reason is not shown to it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Why a review of this run’s proposal is wanted, in one sentence."
+          }
+        }
+      },
+      "effect": "plan"
+    }
+  ]
+}

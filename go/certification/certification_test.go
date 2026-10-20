@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/certification"
+	runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
 )
@@ -260,6 +261,11 @@ func referenceLoop(ctx context.Context, run *certification.Run) error {
 			}
 			run.Emit(certification.Message(text))
 			if proposal := certification.Proposal(text); proposal != nil {
+				// ADR-0010: the decision before the proposal: the table's auto, with no trigger.
+				table := runcontext.CriticTable{CriticDefault: runcontext.Defaults.CriticDefault, CriticReasoningFloor: runcontext.Defaults.CriticReasoningFloor}
+				decided := runcontext.DecideCritic(runcontext.CriticSettings{}, table, runcontext.CriticForcedFacts{}, runcontext.CriticRunFacts{Proposal: true, Room: true})
+				decided.Reasoning = runcontext.CriticTier("off", "", table.CriticReasoningFloor)
+				run.Emit(runcontext.CriticDecidedEvent(decided))
 				run.Emit(contract.RunEvent{Proposal: proposal})
 			}
 			run.Emit(certification.End())

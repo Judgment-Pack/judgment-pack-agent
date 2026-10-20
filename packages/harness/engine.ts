@@ -226,9 +226,25 @@ export interface AssistantSession {
   /** Optional presentation events; adapters without them still deliver final messages. */
   interactive?: boolean
   /**
-   * Whether the critic runs. Independent of reasoning effort. Undefined takes
-   * the policy table's `adversarialReview`, which is `false`, on both engines
-   * (`refutation.ts`, `criticRuns`; agent#10).
+   * The run's word on the critic (ADR-0010, `criticSwitch.ts`): `off`, `auto` or `on`, the person's
+   * per-run control. It wins over `criticProject` and the policy table's `criticDefault` (`auto`).
+   */
+  critic?: import('./criticSwitch').CriticMode
+  /** ADR-0010: the project's word on the critic, read where the run states none. */
+  criticProject?: import('./criticSwitch').CriticMode
+  /**
+   * ADR-0010: the critic's reasoning tier, in the enum of the run's capability (a thinking tier on the
+   * model capability, an effort on the agent capability). Absent, the author's tier; lower than the
+   * author's is the host's explicit choice, honoured and recorded.
+   */
+  criticReasoning?: import('./criticSwitch').CriticTier
+  /** ADR-0010: the run works on a pack that already exists; under `auto` its proposal is reviewed. */
+  existingPack?: boolean
+  /** ADR-0010: a human reviewer is assigned; the critic does not run, whatever the mode. */
+  reviewerAssigned?: boolean
+  /**
+   * The switch before ADR-0010, read for one release as an alias of `critic`: `true` is `on`, `false`
+   * is `off`; `critic` wins where both are set.
    */
   adversarialReview?: boolean
   /**
@@ -329,7 +345,7 @@ export type AssistantEvent =
    * that fired — nothing was stopped — but it is the same kind of sentence: the
    * desk saying what it did rather than leaving it to be discovered.
    */
-  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string; reason?: 'approval refused' | 'approval pending' | 'approval stale' | 'skill withheld' | 'skill budget' }
+  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string; reason?: 'approval refused' | 'approval pending' | 'approval stale' | 'skill withheld' | 'skill budget' | 'review refused' }
   | { type: 'thinking_unavailable'; detail: string }
   /**
    * `cases` and `incomplete` where the host declared cases (agent#10): each
@@ -337,6 +353,11 @@ export type AssistantEvent =
    * compared, each of which leaves `refuted` true. `figures`: what the critic cost.
    */
   | { type: 'critique'; refuted: boolean; checks: { tool: string; status: string }[]; text: string; cases?: import('./refutation').CaseComparison[]; incomplete?: string[]; figures?: import('./refutation').CriticFigures }
+  /**
+   * ADR-0010: the critic's decision, once per run, where the critic would start (before its critique)
+   * or where it is skipped: the mode, whether it ran, why, its tier and, under `auto`, the trigger.
+   */
+  | ({ type: 'critic_decided' } & import('./criticSwitch').CriticDecision)
   /** `note` where something that ran after the proposal existed did not finish. */
   | { type: 'proposal'; document: unknown; unknowns: string[]; critique?: { refuted: boolean; incomplete?: string[] }; note?: ProposalNote }
   | { type: 'error'; message: string; failure?: import('./failures').AIFailure }

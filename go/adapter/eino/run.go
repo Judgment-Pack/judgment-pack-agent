@@ -94,12 +94,16 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		AllowConversation: run.AllowConversation,
 		Interactive:       run.Interactive,
 		CallTool:          r.gatedCall,
-		Model:             &runcontext.ModelSession{Family: run.Wire, Model: run.ModelName, Budget: budgetOf(capabilities), ToolSchemas: string(capabilities.ToolSchemas)},
+		Model:             &runcontext.ModelSession{Family: run.Wire, Model: run.ModelName, Budget: budgetOf(capabilities), ToolSchemas: string(capabilities.ToolSchemas), Thinking: orOff(run.Thinking)},
 		Host:              run.Host,
 		Skills:            run.Skills,
-	}
-	if run.Review != nil {
-		session.AdversarialReview = *run.Review
+		// ADR-0010: the critic's switch, as the host passes it.
+		Critic:            run.Critic,
+		CriticProject:     run.CriticProject,
+		CriticReasoning:   run.CriticReasoning,
+		ExistingPack:      run.ExistingPack,
+		ReviewerAssigned:  run.ReviewerAssigned,
+		AdversarialReview: run.Review,
 	}
 	for _, tool := range run.Tools {
 		session.Tools = append(session.Tools, runcontext.RuntimeTool{Name: tool.Name})

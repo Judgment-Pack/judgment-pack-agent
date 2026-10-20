@@ -296,8 +296,12 @@ func hostToolsVector(t *testing.T, _ string, vector vectorFile) int {
 		if err := json.Unmarshal(item, &tool); err != nil {
 			t.Fatal(err)
 		}
-		if !contains(ContextTools, tool.Name) {
+		// ADR-0010: request_review, which the boundary adds under auto, beside the context tools.
+		if !contains(ContextTools, tool.Name) && tool.Name != ReviewTool {
 			t.Errorf("item %d: %s is not one of the host's context tools", i, tool.Name)
+		}
+		if tool.Name == ReviewTool && contains(PlanPhase(session).Host, tool.Name) {
+			t.Errorf("item %d: Plan mode admits %s", i, tool.Name)
 		}
 		if contains(critic.Host, tool.Name) != contains(CriticReaders, tool.Name) {
 			t.Errorf("item %d: the critic's offer of %s is not its readers'", i, tool.Name)

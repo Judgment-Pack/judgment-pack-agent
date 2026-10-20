@@ -41,6 +41,7 @@
  * - **the report** (`SourceGate.report`): calls, refusals, proposals, bytes and time per source in
  *   the checkpoint's `sources`, and the source record on the tool's `tool_call` and `tool_result`.
  */
+import { REQUEST_REVIEW } from './criticSwitch'
 import { canonicalJSON } from './context/chat'
 import { answer, contextDigest } from './context/ledger'
 import { prefix, utf8Bytes, type ContextPolicy } from './context/policy'
@@ -139,6 +140,8 @@ export const HELD_NAMES: ReadonlySet<string> = new Set([
   LOAD_TOOL,
   'load_skill',
   'unload_skill',
+  // ADR-0010: the model's ask for a review.
+  REQUEST_REVIEW,
   PROPOSE_PACK_TOOL
 ])
 

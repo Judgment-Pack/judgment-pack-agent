@@ -50,7 +50,8 @@ import { readModelQuestion } from '../../questions'
 import { questionFailureResult } from '../../questionFailure'
 import { separateImages, type HeldImage, type ImageRouting } from '../../images'
 import { capabilitiesFor, type ModelCapabilities } from '../../capabilities'
-import { openThinking } from '../../thinking'
+import { normalize, openThinking } from '../../thinking'
+import { criticDecidedEvent } from '../../criticSwitch'
 import { refusedSchemaKeyword, refusedSchemaSentence } from '../../geminiSchema'
 import {
   CRITIC_SYSTEM,
@@ -59,7 +60,6 @@ import {
   criticMayCall,
   criticMayRead,
   criticMessage,
-  criticRuns,
   compareTheRest,
   critiqueEvent,
   critiqueOnProposal,
@@ -371,7 +371,8 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
   const capabilities: ModelCapabilities = context.capabilities ?? capabilitiesFor(session.model)
   const nativeTools = capabilities.nativeToolCalls
   const schemaOf = (tool: McpTool) => shownSchema(capabilities.toolSchemas, tool)
-  const slot = openThinking(session, capabilities.reasoning)
+  // ADR-0010: the critic's own tier opens a slot of its own when the critic starts.
+  let slot = openThinking(session, capabilities.reasoning)
   /** The tier's members, held for an attempt; a refusal of the tier starts a new attempt. */
   let tier: Record<string, unknown> | null = null
   const placement = statePlacement(session.model.family, session.thinking.tier, capabilities)
@@ -869,6 +870,8 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
       throw first.cause
     }
     if (proposal === null) {
+      // ADR-0010: nothing to refute; the decision says so.
+      await deliver(criticDecidedEvent(context.decideCritic(false)))
       await deliver({ type: 'message', text: proseOf(finalText) })
       if (context.execution.remaining <= 0 && context.execution.state.plan.some((step) => step.status !== 'completed')) throw new ExecutionPaused()
       return
@@ -882,7 +885,10 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
     // ------------------------------------------------------------------------------------------
     let critique = null as ReturnType<CritiqueRecorder['critique']> | null
     let note: ProposalNote | null = null
-    const review = criticRuns(session, context.policy)
+    // ADR-0010: one decision on every engine, emitted before anything the critic does.
+    const decided = context.decideCritic(true)
+    await deliver(criticDecidedEvent(decided))
+    const review = decided.ran
     const cannot = review ? criticCannotRun(session.testPrompt) : null
     if (cannot !== null) {
       critique = cannot
@@ -893,6 +899,15 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
       toolsClosed = false
       context.beginCriticPhase()
       const before = { used: context.execution.state.used, rows: (context.execution.state.completions ?? []).length }
+      // ADR-0010: the critic's tier, at least the author's unless the host lowered it: a tier other than
+      // the author's opens a slot of its own, whose members every critic request carries.
+      // A decision with no tier sends the critic none: off.
+      const criticTier = (decided.reasoning ?? 'off') as ThinkingTier
+      if (criticTier !== session.thinking.tier) {
+        slot = openThinking({ ...session, thinking: normalize(criticTier, session.model.family) }, capabilities.reasoning)
+        tier = slot.members()
+        context.reserveOutput(tier?.max_tokens)
+      }
       let criticModelId = session.model.model
       let harnessCalls = 0
       const figures = () => ({ ...modelCriticFigures(criticModelId, before, context.execution.state), ...(harnessCalls === 0 ? {} : { harnessCalls }) })

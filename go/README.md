@@ -69,6 +69,18 @@ admits them (`go/context/skills.go`), lists the admitted ones at the end of the 
 the loaders by name, so a host adds `runcontext.OfferedSkillTools(...)` to the names it opens the gate
 with. A delegated child's run is handed no skills.
 
+## The critic's switch
+
+A host passes the critic's switch ([ADR-0010](../docs/adr/0010-the-critics-switch.md)) on `adapter.Run`:
+`Critic` (the run's word, `off`, `auto` or `on`), `CriticProject` (the project's), `CriticReasoning`
+(the critic's tier: a thinking tier on the model capability, an effort on the agent capability; empty
+is the author's) and the facts `ExistingPack` and `ReviewerAssigned`; `Review` is read for one release
+as an alias of `Critic`. The table's default is `runcontext.Defaults.CriticDefault`, `auto`. Each
+adapter decides through `SessionContext.DecideCritic` (`go/context/critic.go`), emits `critic_decided`
+and writes the checkpoint's `critic`; under `auto` the boundary offers `request_review`, so a host that
+opens the gate with its offer adds `runcontext.OfferedReviewTool(...)` beside the context tools. On
+the agent capability `delegate.With` holds one invocation back for the critic under `auto` and `on`.
+
 ## The agent capability
 
 A run is on one of two capabilities: the model capability (`adapter.Run.Model`, the relay) or the

@@ -1,5 +1,5 @@
 {
-  "description": "The policy a session works under in the harness (CONTEXT_DEFAULTS): the table, with the critic's default (adversarialReview), the two time bounds, the two image bounds, the three test-tool bounds the two bounds on a chat's index of earlier results and the bound on the project's own instructions (ADR-0005) the harness adds, the eight bounds on tools with a source (ADR-0006) and the four of the skills budget (ADR-0009).",
+  "description": "The policy a session works under in the harness (CONTEXT_DEFAULTS): the table, with the critic's switch (ADR-0010: criticDefault, auto, and criticReasoningFloor, author, which replaced agent#10's adversarialReview), the two time bounds, the two image bounds, the three test-tool bounds the two bounds on a chat's index of earlier results and the bound on the project's own instructions (ADR-0005) the harness adds, the eight bounds on tools with a source (ADR-0006) and the four of the skills budget (ADR-0009).",
   "schema": "budget.json",
   "source": {
     "harness": {
@@ -24,7 +24,8 @@
       "historyBytes": 32000,
       "briefBytes": 8000,
       "memoryBytes": 4000,
-      "adversarialReview": false,
+      "criticDefault": "auto",
+      "criticReasoningFloor": "author",
       "turnMilliseconds": 900000,
       "toolCallMilliseconds": 120000,
       "imagesPerRequest": 8,

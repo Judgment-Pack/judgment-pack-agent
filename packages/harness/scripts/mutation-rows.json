@@ -3712,6 +3712,82 @@
    "status": "caught",
    "origin": "v0.6.0 release review (#93)",
    "note": "SkillGate.restore (row 3); skills.test.ts restores against expense-policy re-approved with a new digest and expects no restore and the guardrail; the Go twin is SkillGate.Restore (go/context/skills.go), caught by TestAReapprovedSkillIsNotRestoredFromTheCheckpoint (run by hand on a scratch copy)"
+  },
+  {
+   "name": "the critic's decision is read from the model's prose",
+   "file": "engines/vercel/loop.ts",
+   "find": "    const review = decided.ran",
+   "replace": "    const review = decided.ran || /review/i.test(prose)",
+   "tests": [
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0010, the critic's switch (#96)",
+   "note": "the decision is the switch's (criticSwitch.ts, criticDecision), never the prose: scenario 10's author says 'Please review it' beside a proposal on a new pack with no cases, under off and with a reviewer assigned, and the checks hold that no critic request is made; the Go twin is finish in go/adapter/eino/critic.go (decided.Ran or the prose naming a review), caught by scenario 10's existing, off and reviewer checks in the Go harness-check (run by hand on a scratch copy)"
+  },
+  {
+   "name": "request_review is honoured under off",
+   "file": "criticSwitch.ts",
+   "find": "    if (this.mode !== 'auto') return reviewRefusal(this.mode)",
+   "replace": "    if (this.mode === 'on') return reviewRefusal(this.mode)",
+   "tests": [
+    "criticSwitch.test.ts",
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0010, the critic's switch (#96)",
+   "note": "CriticSwitch.ask; criticSwitch.test.ts asks under off in the author's phase and expects the off refusal and no record, and scenario 10's off run expects the guardrail's off sentence; the Go twin is CriticSwitch.Ask (go/context/critic.go), caught by TestTheAskIsTakenOnceAndRefusedAfterWithTheGuardrail and the Go harness-check's 10 off (run by hand on a scratch copy)"
+  },
+  {
+   "name": "the critic's invocation is not held back before a delegation batch",
+   "file": "delegation.ts",
+   "find": "    const reserve = 'agent' in session && forced === undefined && criticMode(session, policy).mode !== 'off' ? 1 : 0",
+   "replace": "    const reserve = 0",
+   "tests": [
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0010, the critic's switch (#96)",
+   "note": "ResponseAllowance's criticReserve; scenario 10 on the agent engine delegates a batch of three under auto and expects it refused with no child started; the Go twin is criticReserve in go/adapter/delegate/coordinator.go (held at 0), caught by TestTheCriticsInvocationIsHeldBackBeforeABatch and the Go harness-check's 10 agent reserve (run by hand on a scratch copy)"
+  },
+  {
+   "name": "the critic's reason is not recorded in the checkpoint",
+   "file": "criticSwitch.ts",
+   "find": "    this.record.set({ ...decision })",
+   "replace": "    this.record.set({ mode: decision.mode, ...(decision.trigger === undefined ? {} : { trigger: decision.trigger }) })",
+   "tests": [
+    "criticSwitch.test.ts",
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0010, the critic's switch (#96)",
+   "note": "CriticSwitch.decide; criticSwitch.test.ts resumes from critic/checkpoint.json and expects the decision in the snapshot, and scenario 10 expects the durable checkpoint after critic_decided to carry it whole; the Go twin is CriticSwitch.Decide (go/context/critic.go), caught by TestTheCheckpointCarriesTheAskThroughAResume and the Go harness-check's 10 cases, 10 off and 10 resume (run by hand on a scratch copy)"
+  },
+  {
+   "name": "the critic's tier floor is removed",
+   "file": "criticSwitch.ts",
+   "find": "  return floor === undefined || floor === 'author' ? author : undefined",
+   "replace": "  return undefined",
+   "tests": [
+    "criticSwitch.test.ts",
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0010, the critic's switch (#96)",
+   "note": "criticTier; the vectors critic/switch-tier.json state the author's tier where the host names none, and scenario 10 expects the critic's requests at the author's on (reasoning_effort high) and the critic's invocation at the author's effort; the Go twin is CriticTier (go/context/critic.go), caught by TestTheDecisionIsTheVectors and the Go harness-check's 10 tier (run by hand on a scratch copy)"
+  },
+  {
+   "name": "the table's default wins over the run's word",
+   "file": "criticSwitch.ts",
+   "find": "  if (run !== undefined) return { mode: run, layer: 'person' }",
+   "replace": "  if (run !== undefined && !isMode(table.criticDefault)) return { mode: run, layer: 'person' }",
+   "tests": [
+    "criticSwitch.test.ts",
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0010, the critic's switch (#96)",
+   "note": "criticMode, the precedence run > project > table; critic/switch-modes.json and switch-alias.json hold the run's word over the table's auto, and scenario 10's off and on runs expect the run's word; the Go twin is CriticMode (go/context/critic.go), caught by TestTheDecisionIsTheVectors and the Go harness-check's 10 off and 10 on (run by hand on a scratch copy)"
   }
  ]
 }

@@ -533,21 +533,44 @@ async function criticPage(page) {
   const marker = await page.nameOnly('refutation', 'REFUTATION_MARKER')
   const TEST_DEFAULTS = await page.use('context/policy', 'TEST_DEFAULTS')
   const budget = page.schema('budget.json')
-  const member = budget.properties.adversarialReview
-  if (member === undefined) throw new Error('critic.md: budget.json has no adversarialReview member')
+  const offer = page.schema('tool-offer.json')
   const criticTools = page.def('tool-offer.json', 'criticTools')
   page.schema('run-event.json')
   const CONTEXT_DEFAULTS = await page.use('context/policy', 'CONTEXT_DEFAULTS')
+  // ADR-0010: the switch, from the schemas and the package's constants (criticSwitch.ts).
+  const CRITIC_MODES = await page.use('criticSwitch', 'CRITIC_MODES')
+  const CRITIC_REASONS = await page.use('criticSwitch', 'CRITIC_REASONS')
+  const MODEL_TIERS = await page.use('criticSwitch', 'MODEL_TIERS')
+  const AGENT_TIERS = await page.use('criticSwitch', 'AGENT_TIERS')
+  const REQUEST_REVIEW = await page.use('criticSwitch', 'REQUEST_REVIEW')
+  const modes = page.def('tool-offer.json', 'criticMode')
+  const tiers = page.def('tool-offer.json', 'criticReasoning')
+  const reasons = page.def('provenance.json', 'criticReason')
+  const decision = page.def('provenance.json', 'criticDecision')
+  const requestReview = page.def('tool-offer.json', 'requestReview')
+  agree(page, 'the modes', modes.enum, CRITIC_MODES)
+  agree(page, 'the tiers', tiers.enum, [...MODEL_TIERS, ...AGENT_TIERS])
+  agree(page, 'the reasons', reasons.enum, CRITIC_REASONS)
+  agree(page, 'the request_review name', [requestReview.allOf[1].properties.name.const], [REQUEST_REVIEW])
+  contained(page, 'the reserved names', [REQUEST_REVIEW], new Set(page.def('tool-offer.json', 'reservedName').enum))
+  const sessionMembers = ['critic', 'criticProject', 'criticReasoning', 'existingPack', 'reviewerAssigned', 'adversarialReview']
+  const tableMembers = ['criticDefault', 'criticReasoningFloor', 'adversarialReview']
+  for (const name of sessionMembers) if (offer.properties[name] === undefined) throw new Error(`critic.md: tool-offer.json has no ${name} member`)
+  for (const name of tableMembers) if (budget.properties[name] === undefined) throw new Error(`critic.md: budget.json has no ${name} member`)
 
   page.add(
     'The critic reviews a proposal before it is delivered. This page lists its switch, the tools it may call, its bounds and the records it produces.',
     seeAlso('tools.md', 'events.md', 'budget.md', 'reasons.md'),
     '## The switch',
     '',
-    'This page documents what is on `main`. The switch today is the boolean `adversarialReview`: a session sets it, and where a session leaves it unset the context budget’s member of the same name is read. ADR-0010 will replace the boolean; this page is then regenerated from what replaces it.',
+    `The modes: ${list(modes.enum)}. The tiers: ${list(MODEL_TIERS)} on the model capability, ${list(AGENT_TIERS)} on the agent capability. The run's word, then the project's, then the context budget's default decides the mode (ADR-0010).`,
     table(['Where', 'Member', 'Type', 'Default', 'Description'], [
-      ['context budget (`budget.json`)', code('adversarialReview'), typeText(member, 'budget.json'), code(json(CONTEXT_DEFAULTS.adversarialReview)), member.description]
+      ...sessionMembers.map((name) => ['session (`tool-offer.json`)', code(name), typeText(offer.properties[name], 'tool-offer.json'), '', offer.properties[name].description]),
+      ...tableMembers.map((name) => ['context budget (`budget.json`)', code(name), typeText(budget.properties[name], 'budget.json'),
+        CONTEXT_DEFAULTS[name] === undefined ? '' : code(json(CONTEXT_DEFAULTS[name])), budget.properties[name].description])
     ]),
+    nodeSection('### The modes', modes, 'tool-offer.json'),
+    nodeSection('### The tiers', tiers, 'tool-offer.json'),
     '## What the critic may call',
     '',
     nodeSection('### The critic’s allow-list', criticTools, 'tool-offer.json').replace(/\nType: .*\n/, '\n'),
@@ -579,7 +602,13 @@ async function criticPage(page) {
     `The critic's request is marked by the constant ${code(marker.name)} in \`refutation.ts\` (named here, not its text).`,
     '## Triggers',
     '',
-    'Listed here once ADR-0010 lands.'
+    `Under ${code('auto')}, in the order read: ${list(decision.properties.trigger.enum)}.`,
+    '## The decision',
+    '',
+    page.nodeOf('provenance.json', 'criticDecision', '### The decision, the report\'s row'),
+    page.nodeOf('provenance.json', 'criticReason', '### The reasons'),
+    page.nodeOf('run-event.json', 'critic_decided', '### The `critic_decided` event'),
+    page.nodeOf('tool-offer.json', 'requestReview', `### The tool ${code(REQUEST_REVIEW)}`)
   )
 }
 

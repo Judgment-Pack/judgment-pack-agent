@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter"
+	runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 )
 
@@ -65,5 +66,55 @@ func TestARestoredHandoffIsReadWhereItStood(t *testing.T) {
 		if open != (len(c.figures) == 0) {
 			t.Errorf("item %d: the batch in progress was taken as finished, or a finished one as in progress", at)
 		}
+	}
+}
+
+// ADR-0010: under auto and on one invocation is held back for the critic from the first one on, so a
+// batch is admitted only while the critic's invocation and the continuation both remain, and a child
+// never takes it; under off nothing is held back.
+func TestTheCriticsInvocationIsHeldBackBeforeABatch(t *testing.T) {
+	held := func(critic string, purpose string) *coordinator {
+		run := &adapter.Run{Agent: &adapter.Agent{Model: "agent-model"}, Critic: critic, Purpose: purpose}
+		return &coordinator{run: run, runs: agentRuns{parent: 1, children: map[string]int{}}, account: newAccount(), criticReserve: criticReserve(run)}
+	}
+	if c := held("", ""); c.criticReserve != 1 || c.reserveContinuation(3) == nil || c.reserveContinuation(2) != nil {
+		t.Errorf("under auto the reserve is %d, a batch of three admitted: %v, a batch of two refused: %v", c.criticReserve, c.reserveContinuation(3) == nil, c.reserveContinuation(2) != nil)
+	}
+	if c := held("on", ""); c.criticReserve != 1 || !c.mayDelegate() {
+		t.Error("under on the first invocation may not delegate, or nothing is held back")
+	}
+	if c := held("off", ""); c.criticReserve != 0 || c.reserveContinuation(3) != nil {
+		t.Error("under off an invocation is held back")
+	}
+	if c := held("on", "graph"); c.criticReserve != 0 {
+		t.Error("a graph-purpose run, which runs no critic, holds an invocation back")
+	}
+	if c := (&coordinator{run: &adapter.Run{}, runs: agentRuns{children: map[string]int{}}}); criticReserve(c.run) != 0 {
+		t.Error("the model capability holds an invocation back")
+	}
+	// A child never takes the critic's invocation: with the parent, two children and the
+	// continuation counted, a third child is refused under auto and admitted under off.
+	auto, off := held("", ""), held("off", "")
+	for _, c := range []*coordinator{auto, off} {
+		c.runs.children["a"], c.runs.children["b"] = 1, 1
+	}
+	task := &contract.DelegatedTask{ID: "c"}
+	if err := auto.admitRun(task); err == nil {
+		t.Error("under auto a child took the critic's invocation")
+	}
+	if err := off.admitRun(task); err != nil {
+		t.Errorf("under off a child was refused: %v", err)
+	}
+	// The critic's room is what the agent link answers the parent's context: an invocation left.
+	sc, err := runcontext.NewSessionContext(runcontext.Session{Agent: &runcontext.AgentSession{Model: "agent-model"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentLink{auto}.Attach(sc)
+	if !sc.CriticRoom() || auto.admitRun(nil) != nil || !sc.CriticRoom() {
+		t.Error("under auto the continuation took the critic's room")
+	}
+	if auto.admitRun(nil) != nil || sc.CriticRoom() {
+		t.Error("the critic has room once the response's five invocations are taken")
 	}
 }

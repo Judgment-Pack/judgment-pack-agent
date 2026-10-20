@@ -1,28 +1,33 @@
 /**
- * The critic's default is the policy table's, and both engines read it from
- * there (agent#10). This file runs on a table that says `adversarialReview:
- * true`, as a host whose own table carries the member would; `critic.test.ts`
- * runs on the package's, which says `false`.
+ * The critic's default is the policy table's, and every engine reads it from
+ * there (agent#10; ADR-0010). This file runs on a table that states no
+ * `criticDefault` and says `adversarialReview: true`, as a host's table from
+ * before ADR-0010 would: the alias reads as `on`. `critic.test.ts` runs on the
+ * package's table, which says `criticDefault: auto`.
  */
 import { describe, expect, it, vi } from 'vitest'
 import { CONTEXT_DEFAULTS } from './context/policy'
 import { runAssistantSession } from './session'
 import { REFUTATION_MARKER } from './refutation'
+import { criticMode } from './criticSwitch'
 import { codex } from './engines/codex'
 import { ofType, sseTurn, streamed, vercelTurn } from './testing/scripted'
 import type { AgentRun } from './agent'
 import type { AssistantEvent } from './engine'
 
 vi.mock('./contract/policy.json', async (original) => {
-  const table = ((await original()) as { default: Record<string, unknown> }).default
+  const { criticDefault: _default, ...table } = ((await original()) as { default: Record<string, unknown> }).default
   return { default: { ...table, adversarialReview: true } }
 })
 
 const PROPOSAL = 'Ready.\n\n```json\n' + JSON.stringify({ proposal: { document: { id: 'p' }, unknowns: [] } }) + '\n```'
 
-describe('a policy table that says adversarialReview: true (agent#10)', () => {
-  it('is the harness’s default', () => {
-    expect(CONTEXT_DEFAULTS.adversarialReview).toBe(true)
+describe('a policy table that says adversarialReview: true and no criticDefault (agent#10; ADR-0010 alias)', () => {
+  it('is the harness’s default, read as on at the table’s layer', () => {
+    expect((CONTEXT_DEFAULTS as { adversarialReview?: boolean }).adversarialReview).toBe(true)
+    expect(criticMode({}, CONTEXT_DEFAULTS)).toEqual({ mode: 'on', layer: 'table' })
+    // The table's criticDefault wins over its alias where both are set.
+    expect(criticMode({}, { ...CONTEXT_DEFAULTS, criticDefault: 'off' })).toEqual({ mode: 'off', layer: 'table' })
   })
 
   it.each([undefined, false] as const)('vercel: a session that says %s runs the critic only where it leaves it unset', async (review) => {
@@ -37,6 +42,9 @@ describe('a policy table that says adversarialReview: true (agent#10)', () => {
     })
     expect(critic > 0).toBe(review === undefined)
     expect(ofType(events, 'critique')).toHaveLength(review === undefined ? 1 : 0)
+    expect(ofType(events, 'critic_decided')).toEqual([review === undefined
+      ? { type: 'critic_decided', mode: 'on', ran: true, reason: 'table', reasoning: 'off' }
+      : { type: 'critic_decided', mode: 'off', ran: false, reason: 'off', reasoning: 'off' }])
   })
 
   it.each([undefined, false] as const)('codex: a session that says %s runs the critic only where it leaves it unset', async (review) => {

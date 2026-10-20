@@ -81,6 +81,9 @@ type runState struct {
 	mu    sync.Mutex
 	ended bool
 
+	// criticEffort is the critic's effort (ADR-0010): the decision's tier, set before the critic runs.
+	criticEffort string
+
 	held          sync.Mutex
 	awaitingInput bool
 	handoff       bool
@@ -105,12 +108,16 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		AllowConversation: run.AllowConversation,
 		Interactive:       run.Interactive,
 		CallTool:          r.gatedCall,
-		Agent:             &runcontext.AgentSession{Model: run.Agent.Model},
+		Agent:             &runcontext.AgentSession{Model: run.Agent.Model, Effort: run.Agent.Effort},
 		Host:              run.Host,
 		Skills:            run.Skills,
-	}
-	if run.Review != nil {
-		session.AdversarialReview = *run.Review
+		// ADR-0010: the critic's switch, as the host passes it.
+		Critic:            run.Critic,
+		CriticProject:     run.CriticProject,
+		CriticReasoning:   run.CriticReasoning,
+		ExistingPack:      run.ExistingPack,
+		ReviewerAssigned:  run.ReviewerAssigned,
+		AdversarialReview: run.Review,
 	}
 	for _, tool := range run.Tools {
 		session.Tools = append(session.Tools, runcontext.RuntimeTool{Name: tool.Name})
@@ -328,6 +335,8 @@ func (r *runState) drive(ctx context.Context) error {
 	}
 	made := r.takeProposal()
 	if r.session.AllowConversation && made == nil && !turn.HasProposalFence(final) {
+		// ADR-0010: nothing to refute; the decision says so.
+		r.deliver(runcontext.CriticDecidedEvent(r.sc.DecideCritic(false, len(r.run.Cases) > 0)))
 		r.deliver(messageEvent(turn.ProseOf(final)))
 		return nil
 	}
@@ -383,12 +392,12 @@ func (r *runState) drive(ctx context.Context) error {
 	}
 	var critique *turn.Critique
 	var note *contract.RunEventProposalNote
-	asked := r.run.Review
-	if r.run.Context != nil && r.run.Context.Phase == "plan" {
-		no := false
-		asked = &no
-	}
-	if turn.CriticRuns(asked, r.sc.Policy.AdversarialReview) {
+	// ADR-0010: one decision on every adapter, emitted before anything the critic does; on this
+	// capability the critic has room where the response's invocations leave it one.
+	decided := r.sc.DecideCritic(true, len(r.run.Cases) > 0)
+	r.deliver(runcontext.CriticDecidedEvent(decided))
+	r.criticEffort = decided.Reasoning
+	if decided.Ran {
 		if cannot := turn.CriticCannotRun(r.session.TestPrompt); cannot != nil {
 			critique = cannot
 			r.deliver(turn.CritiqueEvent(*cannot))

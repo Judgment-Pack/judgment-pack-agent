@@ -598,13 +598,16 @@ describe('the contract’s critic vectors are what the harness writes (agent#10)
   })
 })
 
-describe('one default for both engines (agent#10)', () => {
-  it('is the policy table’s adversarialReview, false, and the harness reads it from there', () => {
-    expect(policyTable.adversarialReview).toBe(false)
-    expect(CONTEXT_DEFAULTS.adversarialReview).toBe(false)
+describe('one default for both engines (agent#10; ADR-0010)', () => {
+  it('is the policy table’s criticDefault, auto, with the author’s tier as the floor, and the harness reads it from there', () => {
+    expect(policyTable.criticDefault).toBe('auto')
+    expect(policyTable.criticReasoningFloor).toBe('author')
+    expect('adversarialReview' in policyTable).toBe(false)
+    expect(CONTEXT_DEFAULTS.criticDefault).toBe('auto')
   })
 
-  it('vercel: no critic where the session leaves it unset, at any tier; one where it asks', async () => {
+  // Under auto, a proposal with no declared cases, no existing pack and no ask has no trigger.
+  it('vercel: no critic where the session leaves it unset and nothing triggers it, at any tier; one where it asks', async () => {
     for (const tier of ['off', 'on'] as const) {
       const requests: EndpointRequest[] = []
       const { events } = await vercelTurn({
@@ -618,7 +621,7 @@ describe('one default for both engines (agent#10)', () => {
     expect(asked.requests.filter(isCritic).length).toBeGreaterThan(0)
   })
 
-  it('codex: no critic run where the session leaves it unset; one where it asks', async () => {
+  it('codex: no critic run where the session leaves it unset and nothing triggers it; one where it asks', async () => {
     const run = vi.fn<AgentRun>(async (_request, callbacks) => {
       await callbacks.event({ type: 'message', id: 'a', text: PROPOSAL, phase: 'final' })
     })

@@ -3,6 +3,7 @@ import {failure,readFailure,type AIFailure} from '../failures'
 import type {McpToolResult} from '../engine'
 import {MAX_TURNS} from '../engines/contract'
 import {utf8Bytes} from '../context/policy'
+import {validCriticRecord,type CriticRecord} from '../criticSwitch'
 
 export const REQUEST_INCREMENT = 10
 export const MAX_REQUEST_ALLOWANCE = 100
@@ -43,6 +44,11 @@ export interface ExecutionCheckpoint {
  approval?:ApprovalRecord;
  /** ADR-0009: the skills loaded, in load order, carried through a resume (`skills.ts`, SkillGate). */
  skills?:SkillLoad[];
+ /**
+  * ADR-0010: the critic's decision (`criticSwitch.ts`): written when the run decides, and before that,
+  * under auto, when the model's request_review is taken; carried through a resume.
+  */
+ critic?:CriticRecord;
 }
 /** One loaded skill as the checkpoint keeps it (ADR-0009; `provenance.json#/$defs/skillLoad`). */
 export interface SkillLoad {id:string;digest:string;bytes:number;loadedAt:string}
@@ -145,6 +151,7 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value.sources!==undefined&&!validSourceFigures(value.sources))return fail()
  if(value.approval!==undefined&&!validApproval(value.approval))return fail()
  if(value.skills!==undefined&&!validSkillLoads(value.skills))return fail()
+ if(value.critic!==undefined&&!validCriticRecord(value.critic))return fail()
  if(!Array.isArray(value.operations)||value.operations.length>400||new Set(value.operations.map(o=>o.id)).size!==value.operations.length)return fail()
  for(const op of value.operations){if(!object(op)||!text(op.id,100)||!text(op.name,150)||!['running','complete','failed','interrupted'].includes(String(op.status))||op.result!==undefined&&(!object(op.result)||(op.result.content!==undefined&&(!Array.isArray(op.result.content)||op.result.content.some(p=>!object(p)||p.type!==undefined&&typeof p.type!=='string'||p.text!==undefined&&typeof p.text!=='string')))))return fail()}
  if(!object(value.context)||!text(value.context.scope,100)||!Array.isArray(value.context.entries)||value.context.entries.length>800||new Set(value.context.entries.map(e=>e.id)).size!==value.context.entries.length)return fail()

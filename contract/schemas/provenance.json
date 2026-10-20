@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/provenance.json",
   "title": "Provenance",
-  "description": "What the Desk records today about where a model answer came from: one row per model request, with the provider-neutral completion (finish reason and token counts) and the phase it served. Read from ExecutionCheckpoint.completions (web/src/assistant/execution/state.ts) and ModelCompletion (web/src/assistant/completion.ts, readCompletion; Go aifailure.Completion). Open: readCompletion and readExecution accept members they do not name. A request the provider refused and that was sent again has one row per attempt (packages/harness/engines/vercel/retry.ts; execution/controller.ts, recordRefusal): the refused attempt's row carries attempt, failure and waitMs, and the attempt that answered carries its attempt number. Since ADR-0005 the adapter assembles the whole prompt and records the digest of every request body it sent, in order, in the checkpoint's prompts ($defs/promptDigest). There is no model name, adapter or contract version or request timing in any record that crosses the slot (waitMs is the wait before a retry, not a timing) (see docs/design/wire-contract.md, Open questions). Delegation (agent#18): each delegated child's model, requests, tool calls, token counts, time to first byte and duration, each batch's total and the parent's own, carried by the checkpoint's delegation member ($defs/delegationReport) and each task record (delegated-task.json). Tool sources (ADR-0006): each source's calls, refusals, proposals, bytes and time, the Runtime's among them, in the checkpoint's sources ($defs/sourceFigures).",
+  "description": "What the Desk records today about where a model answer came from: one row per model request, with the provider-neutral completion (finish reason and token counts) and the phase it served. Read from ExecutionCheckpoint.completions (web/src/assistant/execution/state.ts) and ModelCompletion (web/src/assistant/completion.ts, readCompletion; Go aifailure.Completion). Open: readCompletion and readExecution accept members they do not name. A request the provider refused and that was sent again has one row per attempt (packages/harness/engines/vercel/retry.ts; execution/controller.ts, recordRefusal): the refused attempt's row carries attempt, failure and waitMs, and the attempt that answered carries its attempt number. Since ADR-0005 the adapter assembles the whole prompt and records the digest of every request body it sent, in order, in the checkpoint's prompts ($defs/promptDigest). There is no model name, adapter or contract version or request timing in any record that crosses the slot (waitMs is the wait before a retry, not a timing) (see docs/design/wire-contract.md, Open questions). Delegation (agent#18): each delegated child's model, requests, tool calls, token counts, time to first byte and duration, each batch's total and the parent's own, carried by the checkpoint's delegation member ($defs/delegationReport) and each task record (delegated-task.json). Tool sources (ADR-0006): each source's calls, refusals, proposals, bytes and time, the Runtime's among them, in the checkpoint's sources ($defs/sourceFigures). The critic's switch (ADR-0010): whether the critic ran on the run, why, at which tier and on which trigger, in the checkpoint's critic and the critic_decided event ($defs/criticDecision).",
   "type": "object",
   "required": [
     "request",
@@ -448,6 +448,55 @@
         "loadedAt": {
           "type": "string",
           "format": "date-time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "criticReason": {
+      "description": "Why the critic ran or did not (ADR-0010), one enum. The layer that set the mode: person (the run's word), project, table. The trigger under auto: cases (declared cases exist), changes-existing (the proposal changes an existing pack), model-asked (the model called request_review). Not run: no-proposal (nothing to refute), off (the mode is off), budget (the request allowance, or on the agent capability the invocations, left none for the critic). Forced off whatever the mode: reviewer-assigned, purpose (a graph-purpose run), phase (Plan mode), child (a delegated child).",
+      "enum": [
+        "person",
+        "project",
+        "table",
+        "model-asked",
+        "cases",
+        "changes-existing",
+        "no-proposal",
+        "reviewer-assigned",
+        "purpose",
+        "phase",
+        "child",
+        "budget",
+        "off"
+      ]
+    },
+    "criticDecision": {
+      "description": "The critic's decision for one run, the report's row (ADR-0010): the mode (run > project > table), whether the critic ran, the reason, the tier the critic ran or would run at, and under auto the trigger. reason: a forced-off reason (child, phase, purpose, reviewer-assigned, in that order) whatever the mode; else off under off; else no-proposal where the run proposed nothing; else under on the layer that set it; else under auto the trigger, in the order model-asked, cases, changes-existing, or, with none, the layer that set auto and ran false; a critic that would run but has no room left is not run, with budget. reasoning: the critic's tier, the host's criticReasoning, else the author's (criticReasoningFloor); absent where the run states no tier (an agent capability with no effort). trigger: under auto, the trigger that held, kept on a budget skip; absent otherwise. Emitted once per run as critic_decided and written in the checkpoint's critic.",
+      "type": "object",
+      "required": [
+        "mode",
+        "ran",
+        "reason"
+      ],
+      "properties": {
+        "mode": {
+          "$ref": "tool-offer.json#/$defs/criticMode"
+        },
+        "ran": {
+          "type": "boolean"
+        },
+        "reason": {
+          "$ref": "#/$defs/criticReason"
+        },
+        "reasoning": {
+          "$ref": "tool-offer.json#/$defs/criticReasoning"
+        },
+        "trigger": {
+          "enum": [
+            "cases",
+            "changes-existing",
+            "model-asked"
+          ]
         }
       },
       "additionalProperties": false

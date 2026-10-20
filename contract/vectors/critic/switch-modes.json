@@ -1,0 +1,266 @@
+{
+  "description": "The critic's switch, each mode and each layer (ADR-0010): the run's word over the project's over the table's default (run > project > table), on running the critic on every proposal and reporting the layer that set it, off running none, auto running on a trigger only, and a run with no proposal running none in any mode. Each item is the decision for the case beside it in cases (by position): session, the session's critic members (tool-offer.json: critic, criticProject, criticReasoning, adversarialReview); table, the policy table's (budget.json: criticDefault, criticReasoningFloor, adversarialReview); forced, the forced-off facts (child, phase, purpose, reviewerAssigned); run, the run's facts where the critic would start (proposal, cases, changesExisting, modelAsked, room); author, the author's tier on the run's capability (absent: none stated). Written by hand; criticSwitch.test.ts and go/context/critic_test.go compute each decision and hold it equal.",
+  "schema": "provenance.json#/$defs/criticDecision",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/criticSwitch.ts (criticMode, criticForcedOff, criticDecision, criticTier)"
+    ]
+  },
+  "cases": [
+    {
+      "name": "the run's on wins over the project's off",
+      "session": {
+        "critic": "on",
+        "criticProject": "off"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "the run's off wins over the project's on, cases or not",
+      "session": {
+        "critic": "off",
+        "criticProject": "on"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": true,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "the project's on, the run silent, over the table's off",
+      "session": {
+        "criticProject": "on"
+      },
+      "table": {
+        "criticDefault": "off",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "the table's on, the run and the project silent",
+      "session": {},
+      "table": {
+        "criticDefault": "on",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "the project's off over the table's on",
+      "session": {
+        "criticProject": "off"
+      },
+      "table": {
+        "criticDefault": "on",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "a table that states no default reads auto",
+      "session": {},
+      "table": {},
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": true,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "the run's auto with no trigger: no critic, the layer named",
+      "session": {
+        "critic": "auto",
+        "criticProject": "on"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "the project's auto with no trigger",
+      "session": {
+        "criticProject": "auto"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "on, and nothing proposed",
+      "session": {
+        "critic": "on"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": false,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    }
+  ],
+  "items": [
+    {
+      "mode": "on",
+      "ran": true,
+      "reason": "person",
+      "reasoning": "off"
+    },
+    {
+      "mode": "off",
+      "ran": false,
+      "reason": "off",
+      "reasoning": "off"
+    },
+    {
+      "mode": "on",
+      "ran": true,
+      "reason": "project",
+      "reasoning": "off"
+    },
+    {
+      "mode": "on",
+      "ran": true,
+      "reason": "table",
+      "reasoning": "off"
+    },
+    {
+      "mode": "off",
+      "ran": false,
+      "reason": "off",
+      "reasoning": "off"
+    },
+    {
+      "mode": "auto",
+      "ran": true,
+      "reason": "cases",
+      "reasoning": "off",
+      "trigger": "cases"
+    },
+    {
+      "mode": "auto",
+      "ran": false,
+      "reason": "person",
+      "reasoning": "off"
+    },
+    {
+      "mode": "auto",
+      "ran": false,
+      "reason": "project",
+      "reasoning": "off"
+    },
+    {
+      "mode": "on",
+      "ran": false,
+      "reason": "no-proposal",
+      "reasoning": "off"
+    }
+  ]
+}
