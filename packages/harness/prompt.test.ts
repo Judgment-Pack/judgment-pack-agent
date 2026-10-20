@@ -28,8 +28,9 @@ import { normalize } from './thinking'
 import { bindAgentRun } from './agentTransport'
 import { bindModelCall } from './session'
 import { codexTurn, scriptedEndpoint, sseTurn, streamed, vercelTurn, type EndpointRequest } from './testing/scripted'
-import type { AgentRun } from './agent'
-import type { AssistantEvent, AssistantSession, ModelCall } from './engine'
+import { FINISH_RESPONSE_INSTRUCTIONS } from './completion'
+import type { AgentRequest, AgentRun } from './agent'
+import type { AgentAssistantSession, AssistantEvent, AssistantSession, ModelCall } from './engine'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -64,6 +65,15 @@ describe('the host’s parts of the prompt', () => {
     configureHarness({ brief: async () => { briefs++; return 'The brief.' }, projectInstructions: () => null, memoryFor: (query) => { asked.push(query); return '' } })
     expect(await readHostParts('the person’s message', CONTEXT_DEFAULTS)).toEqual({ brief: 'The brief.' })
     expect(briefs).toBe(1)
+    expect(asked).toEqual(['the person’s message'])
+  })
+
+  it('takes an empty objective as none: memory is asked with the person’s message, as in Go', async () => {
+    const asked: string[] = []
+    configureHarness({ memoryFor: (query) => { asked.push(query); return undefined } })
+    const { contextualSession } = await import('./context/session')
+    const ready = await contextualSession({ ...bare(), prompt: 'the host’s prompt', context: { objective: '', currentRequest: { message: 'the person’s message', input: '' } } })
+    ready.context.close()
     expect(asked).toEqual(['the person’s message'])
   })
 
@@ -157,6 +167,108 @@ describe('the request text where the prompt is previewed, and for a delegated ch
   })
 })
 
+/** One Anthropic SSE turn: a thinking block (its signature split in two deltas where asked), then a tool call or the text. */
+function anthropicTurn(step: { reasoning?: string; splitSignature?: boolean; text?: string; tool?: { name: string; args: unknown } }): string {
+  const lines: string[] = []
+  const event = (name: string, object: Record<string, unknown>) => lines.push(`event: ${name}\ndata: ${JSON.stringify({ type: name, ...object })}\n\n`)
+  event('message_start', { message: { id: 'm', type: 'message', role: 'assistant', model: 'm', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } })
+  let index = 0
+  if (step.reasoning !== undefined) {
+    const signature = 'c2lnbmF0dXJlLVQx'
+    event('content_block_start', { index, content_block: { type: 'thinking', thinking: '' } })
+    event('content_block_delta', { index, delta: { type: 'thinking_delta', thinking: step.reasoning } })
+    for (const piece of step.splitSignature === true ? [signature.slice(0, 8), signature.slice(8)] : [signature]) event('content_block_delta', { index, delta: { type: 'signature_delta', signature: piece } })
+    event('content_block_stop', { index })
+    index += 1
+  }
+  if (step.tool !== undefined) {
+    event('content_block_start', { index, content_block: { type: 'tool_use', id: `toolu_${step.tool.name}`, name: step.tool.name, input: {} } })
+    event('content_block_delta', { index, delta: { type: 'input_json_delta', partial_json: JSON.stringify(step.tool.args) } })
+  } else {
+    event('content_block_start', { index, content_block: { type: 'text', text: '' } })
+    event('content_block_delta', { index, delta: { type: 'text_delta', text: step.text ?? '' } })
+  }
+  event('content_block_stop', { index })
+  event('message_delta', { delta: { stop_reason: step.tool === undefined ? 'end_turn' : 'tool_use', stop_sequence: null }, usage: { output_tokens: 1 } })
+  event('message_stop', {})
+  return lines.join('')
+}
+
+/**
+ * A thinking run on the Anthropic wire whose answer carries a signature split in two (vercel/ai#19663),
+ * consumed by a reader that takes a moment over the notice that says the tier is gone. Each request
+ * records, as it is received, whether that reader had already finished with the notice.
+ */
+async function truncatedRun(answers: string[], overrides: Partial<AssistantSession> = {}) {
+  const received: { body: Record<string, unknown>; noticed: boolean }[] = []
+  let noticed = false
+  const call: ModelCall = async (_suffix, request) => {
+    received.push({ body: JSON.parse(request.body) as Record<string, unknown>, noticed })
+    const answer = answers[Math.min(received.length - 1, answers.length - 1)]!
+    return new Response(answer, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+  }
+  const events: AssistantEvent[] = []
+  for await (const event of vercel.start({ ...bare(), prompt: 'Check the expense pack.', tools: [{ name: 'validate', description: 'check a document', inputSchema: { type: 'object' } }], callTool: async () => ({ content: [{ type: 'text', text: '{"status":"ok"}' }] }), model: { family: 'anthropic', model: 'a-model', call }, thinking: normalize('on', 'anthropic'), adversarialReview: false, ...overrides })) {
+    events.push(event)
+    if (event.type === 'thinking_unavailable') {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      noticed = true
+    }
+  }
+  return { received, events }
+}
+
+/** The text of every message a request carries, in order. */
+const messageText = (body: Record<string, unknown>) => JSON.stringify(body.messages)
+
+/** The first text part of a request's first user turn. */
+const firstText = (body: Record<string, unknown>) => {
+  const first = (body.messages as { role: string; content: unknown }[]).find((message) => message.role === 'user')!
+  return typeof first.content === 'string' ? first.content : (first.content as { text?: string }[])[0]!.text
+}
+
+// The finishing and the reformat requests (ported from the recall rule's cases, without the rule): the
+// request text still opens the first user turn of each. And a thinking answer whose signature came
+// back split (vercel/ai#19663) is degraded when the request that would carry it back is composed:
+// the notice is on the stream, taken by its reader, before that request leaves, and neither it nor
+// the finishing or reformat request after it asks for a tier.
+describe('the finishing and the reformat requests after a truncated answer', () => {
+  const truncated = anthropicTurn({ reasoning: 'I will check it.', splitSignature: true, tool: { name: 'validate', args: { document: '{}' } } })
+
+  it('the notice is taken before the degraded request leaves, and the finishing request opens with the request text', async () => {
+    const { received, events } = await truncatedRun([truncated, anthropicTurn({ text: '' }), anthropicTurn({ text: 'The pack is unchanged.' })], { allowConversation: true })
+    expect(events.filter((event) => event.type === 'error')).toEqual([])
+    expect(events.filter((event) => event.type === 'thinking_unavailable')).toHaveLength(1)
+    expect(received).toHaveLength(3)
+    // The second request carries the short signature back: it is the degraded one, and the reader had the notice first.
+    expect(received.map((request) => request.noticed)).toEqual([false, true, true])
+    expect(received[0]!.body).toHaveProperty('thinking')
+    expect(received[1]!.body).not.toHaveProperty('thinking')
+    // The third is the finishing request (its instruction in the state, here the system tail), and the request text still leads.
+    expect(JSON.stringify(received[2]!.body)).toContain(JSON.stringify(FINISH_RESPONSE_INSTRUCTIONS).slice(1, 60))
+    expect(received[2]!.body).not.toHaveProperty('thinking')
+    for (const request of received) expect(firstText(request.body)).toBe('Check the expense pack.')
+  })
+
+  it('the notice is taken before the degraded request leaves, and the reformat request opens with the request text', async () => {
+    const { received, events } = await truncatedRun([
+      truncated,
+      anthropicTurn({ text: 'Here it is.\n```json\n{"proposal": {\n```' }),
+      anthropicTurn({ text: '```json\n' + JSON.stringify({ proposal: { kind: 'create', document: { specVersion: '0.2.0-draft', id: 'expense' }, unknowns: [] } }) + '\n```' })
+    ], { allowConversation: false })
+    expect(events.filter((event) => event.type === 'error')).toEqual([])
+    expect(events.some((event) => event.type === 'proposal')).toBe(true)
+    expect(events.filter((event) => event.type === 'thinking_unavailable')).toHaveLength(1)
+    expect(received).toHaveLength(3)
+    expect(received.map((request) => request.noticed)).toEqual([false, true, true])
+    expect(received[1]!.body).not.toHaveProperty('thinking')
+    // The third is the reformat request, a user text after the answer it could not read.
+    expect(messageText(received[2]!.body)).toContain('could not be read')
+    expect(received[2]!.body).not.toHaveProperty('thinking')
+    for (const request of received) expect(firstText(request.body)).toBe('Check the expense pack.')
+  })
+})
+
 /** A model session with nothing in it, and the host's word on memory where given. */
 const bare = (memory?: boolean): AssistantSession => ({
   prompt: '', testPrompt: '', tools: [], callTool: async () => ({}), hostTools: [],
@@ -231,7 +343,9 @@ describe('the prompt’s digest', () => {
     // Bound at the first run, so it captures the scripted bridge the turn stubs in.
     let run: AgentRun | undefined
     const recorded: AgentRun = async (request, callbacks) => {
-      sent.push(JSON.stringify(request))
+      // The body as the transport sends it to the bridge: the coordinator's `delegated` mark is never sent.
+      const { delegated: _delegated, ...wire } = request
+      sent.push(JSON.stringify(wire))
       run ??= bindAgentRun('scripted-agent')
       return run(request, callbacks)
     }
@@ -246,6 +360,20 @@ describe('the prompt’s digest', () => {
     expect(turn.events.filter((event) => event.type === 'error')).toEqual([])
     expect(sent).toHaveLength(1)
     expect(lastCheckpoint(turn.events).prompts).toEqual([{ request: 1, sha256: await contextDigest(sent[0]!) }])
+  })
+
+  it('on the agent wire is of the body the transport sends: a delegated child’s mark is not in it', async () => {
+    const { contextualSession } = await import('./context/session')
+    const handed: AgentRequest[] = []
+    const agentSession: AgentAssistantSession = { prompt: 'Check the pack.', testPrompt: '', tools: [], callTool: async () => ({}), hostTools: [], signal: new AbortController().signal, agent: { model: 'scripted-agent', run: async (request) => { handed.push(request) } } }
+    const ready = await contextualSession(agentSession)
+    const request: AgentRequest = { prompt: 'Check the pack.', instructions: 'GUIDANCE', tools: [], phase: 'author', model: 'child-model', delegated: true }
+    await ready.session.agent.run(request, { signal: new AbortController().signal, event: async () => {}, tool: async () => ({ text: '', isError: false }) })
+    // The capability is still handed the mark (the transport reads it to admit the child's model); the digest leaves it out.
+    expect(handed[0]!.delegated).toBe(true)
+    const { delegated: _delegated, ...wire } = request
+    expect(ready.context.execution.state.prompts).toEqual([{ request: 1, sha256: await contextDigest(JSON.stringify(wire)) }])
+    ready.context.close()
   })
 
   it('is refused on a checkpoint whose digests are not in order or not digests', () => {

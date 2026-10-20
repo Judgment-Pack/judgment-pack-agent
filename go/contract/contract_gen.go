@@ -346,8 +346,9 @@ func (v BudgetBudgetIncreaseAnswer) MarshalJSON() ([]byte, error) {
 
 // From budget.json#/$defs/configuration. The assistant profile's context member
 // (ContextConfiguration; aicontext.Configuration). Closed: contextConfiguration refuses another
-// member and the Go decoder disallows unknown fields. projectBrief is a relative project file,
-// read afresh by the server on every dispatch; models holds at most 128 overrides by model name.
+// member and the Go decoder disallows unknown fields. projectBrief is a relative project file the
+// host reads for its brief() answer, once per run (ADR-0005; before it, the server read it afresh
+// on every dispatch); models holds at most 128 overrides by model name.
 type BudgetConfiguration struct {
 	Version      int64                        `json:"version"`
 	ProjectBrief *string                      `json:"projectBrief,omitzero"`
@@ -2500,9 +2501,10 @@ func (v ProvenanceParentFigures) MarshalJSON() ([]byte, error) {
 // ExecutionController.RecordPrompt), recorded before the request is sent, in the checkpoint's
 // prompts. On a model engine the body is the provider body the adapter handed the relay capability
 // (model.call), each model request and each retried attempt its own; on the agent wire it is the
-// agent request as the adapter handed it to the agent capability (agent.run), as JSON text, one
-// per agent run. The relay adds nothing to the prompt, so the digest is of what the model was
-// shown, the credential and the relay's own headers aside.
+// agent request as the transport sends it to the bridge, as JSON text, without the delegation
+// coordinator's delegated mark, one per agent run; there it reaches the host on the run's next
+// execution_checkpoint event, on a tracked run. The relay adds nothing to the prompt, so the
+// digest is of what the model was shown, the credential and the relay's own headers aside.
 type ProvenancePromptDigest struct {
 	Request int64  `json:"request"`
 	Sha256  string `json:"sha256"`

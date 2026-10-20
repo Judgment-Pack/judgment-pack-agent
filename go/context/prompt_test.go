@@ -142,6 +142,18 @@ func TestTheRunAsksTheHostOnceWithThePersonsMessage(t *testing.T) {
 	if len(asked) != 1 || asked[0] != "Check the threshold." {
 		t.Errorf("asked %v", asked)
 	}
+	// An empty objective is no objective, as in TypeScript: memory is asked with the person's message.
+	asked = nil
+	empty := session
+	empty.Context = &Input{Objective: "", CurrentRequest: &CurrentRequest{Message: "Check the pack.", Input: ""}}
+	if run, err := ContextualSession(context.Background(), empty); err != nil {
+		t.Fatal(err)
+	} else {
+		run.Context.Close()
+	}
+	if len(asked) != 1 || asked[0] != "Check the pack." {
+		t.Errorf("with an empty objective, asked %v", asked)
+	}
 }
 
 func TestThePromptDigestIsTheContractVector(t *testing.T) {

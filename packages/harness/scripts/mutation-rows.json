@@ -1479,7 +1479,7 @@
    ],
    "status": "caught",
    "origin": "desk",
-   "note": "needle re-anchored: onTruncated now rebuilds the tier between the notice and its push (agent#4)"
+   "note": "needle re-anchored: onTruncated now rebuilds the tier between the notice and its push (agent#4); caught by prompt.test.ts's finishing and reformat cases (ADR-0005 review), whose reader takes a moment over the notice and whose degraded request must find it taken"
   },
   {
    "name": "one reasoning turn makes a model that always thinks",
@@ -3122,6 +3122,19 @@
    "status": "caught",
    "origin": "ADR-0005",
    "note": "the stable-prefix check: the certification host answers each memoryFor call with its number, so memory recalled per request changes the prefix"
+  },
+  {
+   "name": "the host's parts sit between the package's instructions and the execution instructions",
+   "file": "engines/vercel/loop.ts",
+   "find": "    const system=context.system(instructions+'\\n'+EXECUTION_INSTRUCTIONS,toolSection)",
+   "replace": "    const system=context.system(instructions,'')+'\\n'+EXECUTION_INSTRUCTIONS+toolSection",
+   "tests": [
+    "certification/conformance.test.ts",
+    "prompt.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0005 review",
+   "note": "the rank check: placementMisses requires the system text to be the package's guidance through its last line, then the host's section, then the tools or the state"
   }
  ]
 }

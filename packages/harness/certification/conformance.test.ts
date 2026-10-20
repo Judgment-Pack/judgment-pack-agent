@@ -70,7 +70,8 @@ import { RECORDED_TOOLS, scriptedRuntime, type ServerObservation } from './scrip
 import { strictAlternation } from './strictAlternation'
 import { REFUTATION_MARKER } from '../refutation'
 import { DATA_RULE, OPENING } from '../framing'
-import { HOST_PARTS, type HostParts } from '../prompt'
+import { HOST_PARTS, hostSection, type HostParts } from '../prompt'
+import { EXECUTION_INSTRUCTIONS } from '../execution/controller'
 import { STATE_HEADER } from '../engines/contract'
 import {
   ALWAYS_FROM_ABSENCE,
@@ -888,6 +889,16 @@ function placementMisses(api: EndpointKind, run: Pick<Run, 'bodies' | 'asked'>, 
       return
     }
     for (const block of blocks) if (block.text !== block.part.text) misses.push(`request ${at + 1}: ${block.part.name} is ${JSON.stringify(block.text)}, not the text the host answered once`)
+    // The rank: the system text is exactly the package's guidance, anchored on its last line (the
+    // execution instructions), then the host's section and nothing between, then the tools described
+    // in text or the state or nothing.
+    const guidanceEnd = system.indexOf(EXECUTION_INSTRUCTIONS) + EXECUTION_INSTRUCTIONS.length
+    const section = hostSection(Object.fromEntries(placed.map((part) => [part.name, part.text])))
+    const after = system.slice(guidanceEnd + section.length)
+    if (guidanceEnd < EXECUTION_INSTRUCTIONS.length || system.indexOf(DATA_RULE) > guidanceEnd || system.slice(guidanceEnd, guidanceEnd + section.length) !== section ||
+      !(after === '' || after.startsWith(`\n\n${TEXT_TOOLS}`) || after.startsWith(`\n${STATE_HEADER}`))) {
+      misses.push(`request ${at + 1}: the system text is not the package's guidance, then the host's parts, then the tools or the state`)
+    }
     const end = blocks.at(-1)?.end ?? places[0]! + DATA_RULE.length
     const state = system.indexOf(STATE_HEADER)
     if (state >= 0 && state < end) misses.push(`request ${at + 1}: the state is inside the stable prefix`)

@@ -788,7 +788,7 @@ adapter (`STATE_HEADER`, `engines/contract.ts`; `runcontext.StateHeader` in Go).
 `prompt.ts` (`systemText`, `readHostParts`, `HOST_PARTS`) and `go/context/prompt.go`. **The adapter
 assembles the whole prompt; the host supplies parts through named injection points and never
 rewrites a request behind the relay.** Every engine builds the same layered request, and the relay
-adds nothing to it:
+adds nothing to it. The decision, as agent#65 draws it:
 
 ```
  HOST (Desk: web page now, Go server after the swap)       PACKAGE (the adapter: vercel | codex | deepagents | eino)
@@ -811,6 +811,13 @@ adds nothing to it:
         (slots, body bound, deadlines, no-redirect,
          reflected credentials stripped — unchanged)
 ```
+
+**The order as sent** differs from the decision's numbering in one place: in the first user turn
+the request text comes first, then a chat's index of earlier results, then the state headed
+`STATE_HEADER`, and the turn's steps follow. The reason is that the host hands the adapter the
+Runtime's prompt (2) and the person's request (9) as one text, `session.prompt`, which the adapter
+can neither split nor raise into the system text; it is sent where the request goes. The system
+text (1, 3, 4, 5 and the tools described in text) is as drawn.
 
 **As sent.** The system text (the agent wire's `instructions`) is layer 1, then 3, 4 and 5, each
 part the host supplied as its header line, its text and its end line, a blank line before each
@@ -862,9 +869,14 @@ same checks (`parts`, `project`, `text parts`, `strict parts`, `thinking parts`)
 engine's own test holds its instructions and its prompt to the same order.
 
 **The digest.** Before each request is sent, the adapter's boundary records the SHA-256 of its body
-(the provider body handed to `model.call`, each retried attempt its own; on the agent wire the agent
-request handed to `agent.run`, as JSON text) in the checkpoint's `prompts`, numbered in the order
-sent; the checkpoint written before the request carries it. Since the relay adds nothing, it is the
+in the checkpoint's `prompts`, numbered in the order sent: on a model engine the provider body
+handed to `model.call`, each retried attempt its own; on the agent wire the agent request as the
+transport sends it to the bridge, as JSON text, without the delegation coordinator's `delegated`
+mark, which is never sent (the transport adds the model it is bound to where the request names
+none). When it reaches the host: on a model engine, in the checkpoint the host is handed before
+the request leaves (`context.checkpoint`); on the agent wire nothing writes a checkpoint before the
+run, so it reaches the host on the run's next `execution_checkpoint` event, which a tracked run (one
+with a `currentRequest` or a restored execution) emits. Since the relay adds nothing, it is the
 digest of what the model was shown, the credential and the relay's own headers aside.
 
 **What the Desk changes in its swap** (judgment-pack-desk#537): the three injection points answered

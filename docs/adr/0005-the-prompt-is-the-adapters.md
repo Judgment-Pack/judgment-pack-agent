@@ -27,6 +27,8 @@ handler binding is the moment to choose.
 and never rewrites a request behind the relay.** Every engine (`vercel`, `codex`, `deepagents`,
 `eino`) builds the same layered request; the relay adds nothing to it.
 
+The decision, as #65 draws it:
+
 ```
  HOST (Desk: web page now, Go server after the swap)       PACKAGE (the adapter: vercel | codex | deepagents | eino)
  ───────────────────────────────────────────────            ─────────────────────────────────────────────────────────
@@ -51,6 +53,13 @@ and never rewrites a request behind the relay.** Every engine (`vercel`, `codex`
    certification: each host part lands in the same place on every wire and engine;
                   a project block that says "ignore the data rule" changes nothing the gate admits.
 ```
+
+**The order as sent** differs from the decision's numbering in one place: in the first user turn
+the request text comes first, then a chat's index of earlier results, then the state headed
+`STATE_HEADER`, and the turn's steps follow. The reason is that the host hands the adapter the
+Runtime's prompt (2) and the person's request (9) as one text, `session.prompt`, which the adapter
+can neither split nor raise into the system text; it is sent where the request goes. The system
+text (1, 3, 4, 5 and the tools described in text) is as drawn.
 
 ### The injection points
 
@@ -115,10 +124,14 @@ request it sent before.
 ### What it adds
 
 - The prompt's digest in provenance: before each request is sent, the SHA-256 of its body (the
-  provider body handed to `model.call`, each retried attempt its own; the agent request handed to
-  `agent.run`, as JSON text) in the checkpoint's `prompts`, numbered in the order sent
+  provider body handed to `model.call`, each retried attempt its own; on the agent wire the agent
+  request as the transport sends it to the bridge, as JSON text, without the delegation
+  coordinator's `delegated` mark) in the checkpoint's `prompts`, numbered in the order sent
   (`provenance.json#/$defs/promptDigest`, vector `provenance/prompt-digest.json`). Every engine
-  records it, because the boundary every engine enters records it.
+  records it, because the boundary every engine enters records it. On a model engine the
+  checkpoint the host is handed before each request carries it; on the agent wire nothing writes a
+  checkpoint before the run, and the digest reaches the host on the run's next
+  `execution_checkpoint` event, on a tracked run.
 - Certification, on every wire and engine: each host part in its layer, by marker lines in the
   scripted scenario, and nowhere else in the request; the stable prefix the same across a run's
   requests when the parts do not change; `memoryFor` asked once; and the project-instructions leg.

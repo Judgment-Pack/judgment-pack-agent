@@ -79,7 +79,8 @@ export class SessionContext {
   * objective; the host's prompt where the host gives neither), unless the host said memory is off.
   */
  async askHost(session:EngineSession){
-  const query=this.objective??session.context?.currentRequest?.message??session.prompt
+  // An empty objective is no objective, as in Go (AskHost).
+  const query=this.objective?this.objective:session.context?.currentRequest?.message??session.prompt
   this.hostParts=await readHostParts(query,this.policy,session.context?.memory!==false)
  }
  /** The system text of every request of the run: `guidance`, the host's parts, then `tools` described in text (`systemText`, ADR-0005). */
@@ -391,6 +392,6 @@ export async function contextualSession<T extends EngineSession>(session:T):Prom
  const own=new Set(session.hostTools.filter(tool=>readingTool(tool)).map(tool=>tool.name))
  const hostTools=[...session.hostTools,...context.ledger.tools(),...(session.allowConversation?[context.execution.tool(),context.execution.budgetTool()]:[])].map(tool=>({...tool,execute:async(args:Record<string,unknown>,signal:AbortSignal)=>{context.admit(tool.name,'host');await session.context?.authorize?.(signal);return context.execution.wrapRead(tool.name,a=>tool.execute(a,signal),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read',own.has(tool.name)?{runtime:false}:undefined)(args)}}))
  const model='model'in session?{...session.model,call:async(suffix:string,request:import('../engine').ModelRequest)=>{await session.context?.authorize?.(session.signal);if(request.method!=='GET'){context.execution.claim();await context.execution.recordPrompt(request.body);try{await session.context?.checkpoint?.(context.execution.snapshot())}catch{throw failureError('storage','storage','not-started')}}return session.model.call(suffix,request)}}:undefined
- const agent='agent'in session?{...session.agent,run:async(request:import('../agent').AgentRequest,callbacks:import('../agent').AgentCallbacks)=>{await session.context?.authorize?.(callbacks.signal);await context.execution.recordPrompt(JSON.stringify(request));return session.agent.run(request,callbacks)}}:undefined
+ const agent='agent'in session?{...session.agent,run:async(request:import('../agent').AgentRequest,callbacks:import('../agent').AgentCallbacks)=>{await session.context?.authorize?.(callbacks.signal);const {delegated:_delegated,...sent}=request;await context.execution.recordPrompt(JSON.stringify(sent));return session.agent.run(request,callbacks)}}:undefined
  return {context,session:{...session,...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{context.admit(name,'runtime');await session.context?.authorize?.(session.signal);context.claimTestCall(name);return context.execution.wrapRead(name,a=>session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true,{runtime:true,offered:session.tools.some(t=>t.name===name)})(args)}}}
 }

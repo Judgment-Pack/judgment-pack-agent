@@ -107,7 +107,7 @@ func placementMisses(api string, r *LegResult, parts runcontext.HostParts, textT
 			misses = append(misses, fmt.Sprintf("memoryFor was asked %q, not once with the request", r.asked))
 		}
 	}
-	type placed struct{ name, header, end, text string }
+	type placed = struct{ name, header, end, text string }
 	var supplied []placed
 	for _, part := range runcontext.HostPartsTable {
 		text := ""
@@ -161,6 +161,20 @@ func placementMisses(api string, r *LegResult, parts runcontext.HostParts, textT
 				misses = append(misses, fmt.Sprintf("request %d: %s is %q, not the text the host answered once", at, part.name, texts[i]))
 			}
 		}
+		// The rank: the system text is exactly the package's guidance, anchored on its last line (the
+		// execution instructions), then the host's section and nothing between, then the tools described
+		// in text or the state or nothing.
+		section := runcontext.HostSection(placedParts(supplied))
+		guidanceEnd := strings.Index(system, runcontext.ExecutionInstructions) + len(runcontext.ExecutionInstructions)
+		exact := guidanceEnd >= len(runcontext.ExecutionInstructions) && places[0] < guidanceEnd &&
+			strings.HasPrefix(system[guidanceEnd:], section)
+		if exact {
+			after := system[guidanceEnd+len(section):]
+			exact = after == "" || strings.HasPrefix(after, "\n\n"+textToolsOpening) || strings.HasPrefix(after, "\n"+StateHeader)
+		}
+		if !exact {
+			misses = append(misses, fmt.Sprintf("request %d: the system text is not the package's guidance, then the host's parts, then the tools or the state", at))
+		}
 		end := places[0] + len(runcontext.DataRule)
 		if len(ends) > 0 {
 			end = ends[len(ends)-1]
@@ -186,6 +200,22 @@ func placementMisses(api string, r *LegResult, parts runcontext.HostParts, textT
 		misses = append(misses, fmt.Sprintf("the stable prefix differs across the run's requests: %d different", len(prefixes)))
 	}
 	return misses
+}
+
+// placedParts are the parts a leg expects, the memory as its first recall answers it.
+func placedParts(supplied []struct{ name, header, end, text string }) runcontext.HostParts {
+	var parts runcontext.HostParts
+	for _, part := range supplied {
+		switch part.name {
+		case "brief":
+			parts.Brief = part.text
+		case "projectInstructions":
+			parts.ProjectInstructions = part.text
+		default:
+			parts.Memory = part.text
+		}
+	}
+	return parts
 }
 
 // PromptChecks are the `engine %s` block's ADR-0005 checks, each on its own leg with the host's

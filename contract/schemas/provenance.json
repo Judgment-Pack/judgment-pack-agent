@@ -99,7 +99,7 @@
       "$ref": "#/$defs/sha256"
     },
     "promptDigest": {
-      "description": "The digest of one request body the adapter sent (ADR-0005; packages/harness/execution/controller.ts, recordPrompt; Go ExecutionController.RecordPrompt), recorded before the request is sent, in the checkpoint's prompts. On a model engine the body is the provider body the adapter handed the relay capability (model.call), each model request and each retried attempt its own; on the agent wire it is the agent request as the adapter handed it to the agent capability (agent.run), as JSON text, one per agent run. The relay adds nothing to the prompt, so the digest is of what the model was shown, the credential and the relay's own headers aside.",
+      "description": "The digest of one request body the adapter sent (ADR-0005; packages/harness/execution/controller.ts, recordPrompt; Go ExecutionController.RecordPrompt), recorded before the request is sent, in the checkpoint's prompts. On a model engine the body is the provider body the adapter handed the relay capability (model.call), each model request and each retried attempt its own; on the agent wire it is the agent request as the transport sends it to the bridge, as JSON text, without the delegation coordinator's delegated mark, one per agent run; there it reaches the host on the run's next execution_checkpoint event, on a tracked run. The relay adds nothing to the prompt, so the digest is of what the model was shown, the credential and the relay's own headers aside.",
       "type": "object",
       "required": [
         "request",

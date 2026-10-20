@@ -20,10 +20,11 @@
  *   through the package's `callTool` (and so `admit` and the gate) or the host tool's own function,
  *   with the contract's events. LangChain's own tool node, and its argument validation, are never
  *   reached: a call the gate must see is never refused before it.
- * - **The package keeps the context.** The ledger, the chat context, the read cache, the index, the
- *   compaction and the host's parts of the prompt are `context/session.ts`'s, asked on every request from the
- *   `wrapModelCall` hook, which places the execution state, closes the tools on the final request and
- *   records each step's completion.
+ * - **The package keeps the context.** The ledger, the chat context, the read cache, the index and the
+ *   compaction are `context/session.ts`'s, asked on every request from the `wrapModelCall` hook, which
+ *   places the execution state, closes the tools on the final request and records each step's
+ *   completion. The host's parts of the prompt are `context/session.ts`'s too, asked once per run
+ *   before the first request and carried in the system text (ADR-0005).
  *
  * Delegation is the package's (`delegation.ts`): `delegate_tasks` is a host tool awaited inside the
  * step, as on `vercel`. Deep Agents' subagents are off; ADR-0003 records why.

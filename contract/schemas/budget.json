@@ -162,7 +162,7 @@
       "additionalProperties": false
     },
     "configuration": {
-      "description": "The assistant profile's context member (ContextConfiguration; aicontext.Configuration). Closed: contextConfiguration refuses another member and the Go decoder disallows unknown fields. projectBrief is a relative project file, read afresh by the server on every dispatch; models holds at most 128 overrides by model name.",
+      "description": "The assistant profile's context member (ContextConfiguration; aicontext.Configuration). Closed: contextConfiguration refuses another member and the Go decoder disallows unknown fields. projectBrief is a relative project file the host reads for its brief() answer, once per run (ADR-0005; before it, the server read it afresh on every dispatch); models holds at most 128 overrides by model name.",
       "type": "object",
       "required": [
         "version"
