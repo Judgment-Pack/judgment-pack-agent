@@ -69,28 +69,22 @@ func TestTheDeskLimitsAreTheContractVector(t *testing.T) {
 	}
 }
 
-func TestTheMemoryReserveIsTheContractVector(t *testing.T) {
-	// The three words a host may give on project memory, in the vector's order: on, not said, off.
-	items := vectorItems(t, "budget/memory.json")
-	on, off := true, false
-	for at, memory := range []*bool{&on, nil, &off} {
-		policy, err := ContextPolicy(nil, "scripted-model", nil, memory)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !equalJSON(policyValue(t, policy), items[at]) {
-			t.Errorf("item %d: the policy is %s", at, policyValue(t, policy).Text())
-		}
+func TestTheBriefAndMemoryAreBoundsNotReserves(t *testing.T) {
+	// BriefBytes and MemoryBytes are the parts' bounds (budget/harness-defaults.json); the policy
+	// takes no reserve for either, so ContextPolicy answers the table whatever the host says of
+	// memory (the host's word is Input.Memory, which only decides whether MemoryFor is asked).
+	policy, err := ContextPolicy(nil, "scripted-model", nil)
+	if err != nil {
+		t.Fatal(err)
 	}
-	// Only an explicit false frees the reserve.
-	if items[2].Get("memoryBytes").Num() != 0 || items[1].Get("memoryBytes").Num() != 4000 {
-		t.Error("the vector's memory words are not the reserve this package keeps")
+	if policy != Defaults || policy.BriefBytes != 8000 || policy.MemoryBytes != 4000 {
+		t.Errorf("the policy is not the table with the parts' bounds: %+v", policy)
 	}
 }
 
 func TestThePolicyLayersTheRecordAndTheProfile(t *testing.T) {
 	// The table, then the capability record, then the profile's override for the model.
-	policy, err := ContextPolicy(nil, "small", &ModelBudget{ContextWindowTokens: 16384, OutputTokens: 4096}, nil)
+	policy, err := ContextPolicy(nil, "small", &ModelBudget{ContextWindowTokens: 16384, OutputTokens: 4096})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +92,7 @@ func TestThePolicyLayersTheRecordAndTheProfile(t *testing.T) {
 		t.Errorf("the record's window was not taken: %+v", policy)
 	}
 	configuration := &Configuration{Version: 1, Models: map[string]ModelBudget{"small": {ContextWindowTokens: 32768, OutputTokens: 8192}}}
-	policy, err = ContextPolicy(configuration, "small", &ModelBudget{ContextWindowTokens: 16384, OutputTokens: 4096}, nil)
+	policy, err = ContextPolicy(configuration, "small", &ModelBudget{ContextWindowTokens: 16384, OutputTokens: 4096})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +100,7 @@ func TestThePolicyLayersTheRecordAndTheProfile(t *testing.T) {
 		t.Errorf("the profile's override was not the last word: %+v", policy)
 	}
 	// A model the profile does not name keeps the defaults (context.test.ts).
-	policy, err = ContextPolicy(configuration, "different", nil, nil)
+	policy, err = ContextPolicy(configuration, "different", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

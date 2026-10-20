@@ -28,8 +28,8 @@ export interface CurrentRequest {message:string;input:string}
  * with it. `runtime`: what the host knows the Runtime this run's tools reach by, which keys a
  * Runtime-served read in the chat's read cache; without it such a read is cached for the run only.
  * `memory` (agent#11): whether the project's memory is on (the project's memory setting). `false`:
- * the host's `memoryFor` is not asked (ADR-0005) and the `memoryBytes` reserve is freed; absent, both
- * stay. `objective` (agent#11): a delegated child's objective, its request text, sent as the first
+ * the host's `memoryFor` is not asked (ADR-0005); absent, it is. The input allowance takes no reserve for the
+ * brief or the memory: a present part is in the instructions and counted there. `objective` (agent#11): a delegated child's objective, its request text, sent as the first
  * text part of its first message (`delegation.ts` sets it), and the query its `memoryFor` is asked
  * with.
  *
@@ -118,7 +118,7 @@ export class SessionContext {
  constructor(session:EngineSession){
   this.identity={...(session.context?.connection?{connection:session.context.connection}:{}),...('model'in session?{family:session.model.family}:{}),model:'model'in session?session.model.model:session.agent.model}
   try{this.criticCases=readCriticCases(session.criticCases??[])}catch(cause){throw authoredFailure('configuration',(cause as Error).message,'context')}
-  this.capabilities='model'in session?capabilitiesFor(session.model):undefined;this.policy=contextPolicy(session.context?.configuration,'model'in session?session.model.model:session.agent.model,this.capabilities,session.context?.memory);this.turn=session.context?.chat?.openTurn();this.objective=session.context?.objective;this.ledger=new ContextLedger(this.policy,this.turn);this.execution=new ExecutionController(session,this.ledger);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))}
+  this.capabilities='model'in session?capabilitiesFor(session.model):undefined;this.policy=contextPolicy(session.context?.configuration,'model'in session?session.model.model:session.agent.model,this.capabilities);this.turn=session.context?.chat?.openTurn();this.objective=session.context?.objective;this.ledger=new ContextLedger(this.policy,this.turn);this.execution=new ExecutionController(session,this.ledger);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))}
  /**
   * The index of the results earlier runs in this chat kept (agent#8, `ChatTurn.index`), cut to
   * `room` bytes and to INDEX_SHARE of the prompt's `allowance`. Made only while this run's ledger
@@ -188,7 +188,7 @@ export class SessionContext {
  reserveOutput(tokens:unknown){if(typeof tokens==='number'&&Number.isInteger(tokens)&&tokens>this.policy.outputTokens){if(tokens>this.policy.contextWindowTokens/2)throw new ContextBudgetError();this.policy.outputTokens=tokens}}
  /** `attachments`: the host's documents for the run, which search scopes as attachments (agent#5). */
  async initialize(documents:ContextDocument[]=[],attachments=false){for(const doc of documents)await this.ledger.retain(doc,attachments)}
- private budget(instructions:string,tools:unknown){return inputBytes(this.policy)-utf8Bytes(instructions)-utf8Bytes(encoded(tools))-this.policy.briefBytes-this.policy.memoryBytes-1536}
+ private budget(instructions:string,tools:unknown){return inputBytes(this.policy)-utf8Bytes(instructions)-utf8Bytes(encoded(tools))-1536}
  /** The prompt's allowance: what the first message may take, leaving headroom for later tool results. */
  private allowance(instructions:string,tools:unknown){
   // Leave headroom for subsequent tool results; fitting the first request alone is insufficient.

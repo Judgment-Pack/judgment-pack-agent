@@ -257,14 +257,15 @@ func (v ApprovalRequest) MarshalJSON() ([]byte, error) {
 // (internal/aicontext/policy.json, ContextPolicy in web/src/assistant/context/policy.ts,
 // aicontext.Policy in Go). The model's context window and output reserve may be overridden per
 // model by the assistant profile (configuration); everything else is fixed. Input bytes for one
-// request are min(maxInputBytes, max(1024, (contextWindowTokens - outputTokens) * 3)); the browser
-// further leaves briefBytes, and memoryBytes where the host has not said memory is off (the run's
-// context.memory, agent#11), a reserve kept from when the server added the brief and memory behind
-// the adapter; since ADR-0005 the adapter places them itself (each held to its bound,
-// $defs/hostPart) and counts them where they sit, and the server refuses before dispatch, never
-// clipping, a request over the input bytes (context-limit, not-started). Open: the Go reader
-// ignores a member it does not name. The request allowance, the grants and the fixed limits are in
-// $defs. The harness adds two time bounds the Desk's table does not carry
+// request are min(maxInputBytes, max(1024, (contextWindowTokens - outputTokens) * 3)); the request
+// allowance takes no reserve for the host's parts: briefBytes and memoryBytes are the bounds on
+// the brief and the recalled memory (each held to its bound, $defs/hostPart), which the adapter
+// places itself (ADR-0005) and counts once, where they sit in the instructions (until agent#69 the
+// adapter left both out of every request's allowance whether or not the parts were present, a
+// reserve kept from when the server added them behind the adapter), and the server refuses before
+// dispatch, never clipping, a request over the input bytes (context-limit, not-started). Open: the
+// Go reader ignores a member it does not name. The request allowance, the grants and the fixed
+// limits are in $defs. The harness adds two time bounds the Desk's table does not carry
 // (packages/harness/context/policy.ts, TIME_DEFAULTS), each taken from the table where it does:
 // turnMilliseconds and toolCallMilliseconds; and three bounds on the Runtime's test tool
 // (TEST_DEFAULTS), likewise: testCallsPerTurn, testPackBytes and testMatrixBytes; and two image

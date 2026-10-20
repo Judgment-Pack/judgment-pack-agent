@@ -8,15 +8,14 @@
  *   wire and engine (`certification/conformance.test.ts`); here the reading and the assembler alone.
  * - **The request text.** Where the prompt does not fit its allowance, the person's message leads
  *   the preview; a delegated child's objective leads its first message and is its memory query.
- * - **The memory reserve**, as before: `memoryBytes` is left out of a run's input allowance only
- *   while the host has not said memory is off.
+ * - **No reserve.** `briefBytes` and `memoryBytes` are the parts' bounds and nothing is taken out of a
+ *   run's input allowance for either: a part that is present is in the instructions and counted there.
  * - **The prompt's digest.** Every request body the adapter sent is digested in the checkpoint's
  *   `prompts`, in order, on a model engine and on the agent wire (`provenance/prompt-digest.json`).
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import hostPartsVector from '../../contract/vectors/budget/host-parts.json'
 import digestVector from '../../contract/vectors/provenance/prompt-digest.json'
-import memoryVector from '../../contract/vectors/budget/memory.json'
 import { HOST_PARTS, BRIEF_HEADER, MEMORY_HEADER, PROJECT_INSTRUCTIONS_HEADER, hostSection, readHostParts, systemText } from './prompt'
 import { configureHarness } from './host'
 import { CONTEXT_DEFAULTS, contextPolicy, inputBytes, utf8Bytes } from './context/policy'
@@ -80,7 +79,7 @@ describe('the host’s parts of the prompt', () => {
   it('does not ask for memory where the host said memory is off', async () => {
     const asked: string[] = []
     configureHarness({ memoryFor: (query) => { asked.push(query); return 'Recalled.' } })
-    expect(await readHostParts('q', contextPolicy(undefined, 'scripted-model', undefined, false), false)).toEqual({})
+    expect(await readHostParts('q', contextPolicy(undefined, 'scripted-model'), false)).toEqual({})
     expect(asked).toEqual([])
   })
 
@@ -277,38 +276,26 @@ const bare = (memory?: boolean): AssistantSession => ({
   ...(memory === undefined ? {} : { context: { memory } })
 })
 
-describe('the memory reserve', () => {
-  it('is reserved only when memory may be on: off frees it, on and unsaid keep today’s', () => {
-    expect(contextPolicy(undefined, 'scripted-model', undefined, false).memoryBytes).toBe(0)
-    expect(contextPolicy(undefined, 'scripted-model', undefined, true).memoryBytes).toBe(CONTEXT_DEFAULTS.memoryBytes)
-    expect(contextPolicy(undefined, 'scripted-model').memoryBytes).toBe(CONTEXT_DEFAULTS.memoryBytes)
+describe('the input allowance', () => {
+  it('keeps briefBytes and memoryBytes as the parts’ bounds, and the host’s word on memory does not change the policy', () => {
+    expect(CONTEXT_DEFAULTS.briefBytes).toBe(8000)
     expect(CONTEXT_DEFAULTS.memoryBytes).toBe(4000)
+    expect(contextPolicy(undefined, 'scripted-model')).toEqual(CONTEXT_DEFAULTS)
   })
 
-  // budget/memory.json: the policy for each word the host gives, memory on, not said, off.
-  it('gives the policy the memory vector states for each word the host gives on memory', () => {
-    const [on, unsaid, off] = memoryVector.items
-    expect(contextPolicy(undefined, 'scripted-model', undefined, true)).toEqual(on!)
-    expect(contextPolicy(undefined, 'scripted-model')).toEqual(unsaid!)
-    expect(contextPolicy(undefined, 'scripted-model', undefined, false)).toEqual(off!)
-    expect([on!.memoryBytes, unsaid!.memoryBytes, off!.memoryBytes]).toEqual([4000, 4000, 0])
-  })
-
-  it('leaves a run with memory off the full input allowance, and one with it on the allowance less the reserve', () => {
+  it('takes no reserve for the brief or the memory, whatever the host says of memory', () => {
     const instructions = 'instructions', tools: unknown[] = []
-    // The allowance with no memory reserve: the input bytes less the instructions, the tools,
-    // the brief and the 1,536 bytes the budget keeps for the request's own framing.
-    const full = inputBytes(CONTEXT_DEFAULTS) - utf8Bytes(instructions) - utf8Bytes(JSON.stringify(tools)) - CONTEXT_DEFAULTS.briefBytes - 1536
+    // The input bytes less the instructions, the tools and the 1,536 bytes the budget keeps for the
+    // request's own framing: the allowance of a run with no part, and of one with every part (the
+    // parts are in the instructions, counted where they sit).
+    const full = inputBytes(CONTEXT_DEFAULTS) - utf8Bytes(instructions) - utf8Bytes(JSON.stringify(tools)) - 1536
     const prompt = (bytes: number) => 'p'.repeat(bytes)
-    const off = new SessionContext(bare(false))
-    expect(() => off.check(instructions, prompt(full), tools)).not.toThrow()
-    expect(() => off.check(instructions, prompt(full + 1), tools)).toThrow()
-    for (const on of [new SessionContext(bare(true)), new SessionContext(bare())]) {
-      expect(() => on.check(instructions, prompt(full - 4000), tools)).not.toThrow()
-      expect(() => on.check(instructions, prompt(full - 4000 + 1), tools)).toThrow()
-      on.close()
+    for (const said of [true, undefined, false]) {
+      const held = new SessionContext(bare(said))
+      expect(() => held.check(instructions, prompt(full), tools)).not.toThrow()
+      expect(() => held.check(instructions, prompt(full + 1), tools)).toThrow()
+      held.close()
     }
-    off.close()
   })
 })
 

@@ -26,7 +26,7 @@ repository root prints every difference from the Desk's files and names its reas
 changes made here since the extraction, each by its issue (agent#1, the read window and the reader;
 agent#9, the stable prefix and the state's placement; agent#4, the capability record and the text
 tool path; agent#5, search, numbered reads and images; agent#8, the chat-scoped context; agent#11,
-the request text on every request and the memory reserve; ADR-0005, the prompt assembled whole by
+the request text on every request and the memory reserve (retired in agent#69); ADR-0005, the prompt assembled whole by
 the adapter, with the host's parts and the prompt's digest; ADR-0006, tools with a source held at
 the boundary (`toolSources.ts`, new); agent#10, the critic; agent#25, the
 agent-engine certification leg; agent#29, the Codex adapter's reformat run; agent#14, agent#15 and
@@ -244,8 +244,8 @@ the first request it is a second text part of the person's message, on every wir
 goes where the endpoint's placement says: `trailing-user`, one user message after the history (the
 default), or `system-tail`, the end of the system text (for an endpoint marked `strictAlternation`,
 and by default for Anthropic when a thinking tier is on). A host sets both through
-`endpointCapabilities`; they are two members of the capability record. On the Anthropic wire the adapter marks cache breakpoints after the system
-head and after the tools. The tier is held for the run, changed only where the endpoint refused it
+`endpointCapabilities`; they are two members of the capability record. On the Anthropic wire the adapter marks three cache breakpoints, after the system
+head, after the tools and after the request text (the first text part of the first user turn). The tier is held for the run, changed only where the endpoint refused it
 or a thinking signature came back truncated. The provider's cache reads and writes are recorded with
 each completion (`cacheReadTokens`, `cacheWriteTokens`). The contract states the header and where it
 sits on each wire (`budget.json`, `contract/vectors/budget/state-placement.json`).
@@ -338,8 +338,9 @@ Every request body the adapter sent is digested in the checkpoint's `prompts`, i
 SHA-256 of the provider body on a model engine, of the agent request's JSON on the agent wire;
 `provenance.json#/$defs/promptDigest`).
 
-The host says per run whether the project's memory is on (`context.memory`): `false` frees the
-`memoryBytes` reserve and `memoryFor` is not asked, and a run whose host says nothing keeps both.
+The host says per run whether the project's memory is on (`context.memory`): `false` means `memoryFor`
+is not asked. No reserve is taken out of a request's input allowance for the brief or the memory
+(`briefBytes` and `memoryBytes` are the parts' bounds): a part is counted once, where it sits.
 
 ### Delegation
 
@@ -545,7 +546,7 @@ it. The suite is `certification/scenarios.test.ts`; its turns and runs are drive
 | --- | --- | --- | --- |
 | 1 Chat mode with host tools: a read, a proposal, a name never offered | the offer (two host tools beside the Runtime's six and the harness's six); the gate refuses the third name between its call and its result; the proposal reaches the review card and nothing is acted on; the answer is delivered | 4 | 4 |
 | 2 Delegation: a batch of a review and a research child, then a follow-up that resumes the research child | one parent run per response (vercel) or the next run's result and the chat's index (codex); the children's offers closed; a reference resolved within the chat; each result in its profile's shape and valid against the contract; the figures; the resumed child's earlier work | 7 | 7 |
-| 3 Memory: three tool steps | memory asked once, for the person's message, and carried in the same place on every request (ADR-0005); the reserve kept with memory on or unsaid; the full allowance with memory off | 4 | 4 |
+| 3 Memory: three tool steps | memory asked once, for the person's message, and carried in the same place on every request (ADR-0005); the same allowance, with no reserve, with memory on, unsaid or off | 4 | 4 |
 | 4 Plan mode | no action tool offered; the Runtime reads offered are the gate's ceiling less the evaluation and the test run; a call to an action tool refused and visible; the plan delivered | 4 | 4 |
 | 5 The correction loop: a draft validate refuses, one correction request, the critic (the correction request's text is the scenario's own script; the scenario exercises `correctArtifact`, one correction then ready, the engines' critic and the gate's rehearsal rule) | the first draft fails validate with its diagnostic; one correction request and a passing draft; the request count; the critic's comparison rows for the declared case; no `incomplete` mark; the critic's call of a tool outside its allow-list refused by `admit`, reaching no Runtime tool, with the pass still ending | 6 | 6 |
 | 6 A multi-turn transcript: three turns of one chat | no unchanged source read again on turns two and three; the index present and within its bound; the ledger kept across the runs and gone after `dispose()` | 3 | 3 |
@@ -555,7 +556,7 @@ The checks the adapters make differently are recorded here, with the reason, and
 
 - **1** The agent transport refuses a name outside the agent's offer before the gate sees it (the run ends), so the agent engine is driven at `AgentRun`, where the gate refuses it and the agent's answer is the refusal (agent#25). On the `vercel` model engine the SDK answers the unoffered call first, with its own no-such-tool error naming the tool, and the model reads that; on the `deepagents` model engine the adapter's boundary answers every call before LangChain's tool node, so the model reads the gate's refusal, as the agent's does (ADR-0003); the stream shows the gate's refusal on all three.
 - **2** The agent's run ends at the delegate call, so a response is the call's run, the children's runs and the next run: four runs for a batch of two, three for the resumed child. The agent wire reports no usage and no model request, so a child's record carries no `tokens` and no model requests, and the batch's figures count `agentRuns` instead; its `firstByteMs` and `durationMs` are present.
-- **3** The agent engine makes one request, so "every request" is its one run's: the memory at the end of its instructions, the person's message opening its prompt. The reserve checks are the same on both.
+- **3** The agent engine makes one request, so "every request" is its one run's: the memory at the end of its instructions, the person's message opening its prompt. The allowance checks are the same on both.
 - **5** The model engine's loop is five model requests (two authoring requests, the critic's three); the agent engine's is three agent runs (author, author, critic). The critic's boundary check runs the loop once more with a call of `write_file` first in the critic's script, on both adapters; the guardrail's detail, "is not one of the tools the critic may call", is what shows `admit` refused it.
 - **4** and **6** make the same checks on both. The index is a text part of the first message on the model engine and the end of the prompt on the agent engine.
 - **7** The agent wire sends the execution state once per run, so on the agent engine a loaded schema reaches the agent in `load_tool`'s answer only; the model engines carry it after the history on every later request.

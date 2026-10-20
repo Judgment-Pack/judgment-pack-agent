@@ -9,8 +9,8 @@
  * says, one user message after the history (`trailing-user`) or the end of the
  * system text (`system-tail`). So each request repeats the one before it up to
  * the state, for each placement. The execution instructions are sent once.
- * Anthropic gets two breakpoints, after the system head and after the tools,
- * and no other wire gets any. The tier is held for the run. The provider's
+ * Anthropic gets three breakpoints, after the system head, after the tools and after the request
+ * text (the first text part of the first user turn), and no other wire gets any. The tier is held for the run. The provider's
  * cache reads and writes are recorded with each completion.
  *
  * Measured on the recorded scenario, over the scripted model and the recorded
@@ -228,7 +228,7 @@ describe.each(APIS)('the %s wire', (api) => {
       }
     })
 
-    it(api === 'anthropic' ? 'marks two cache breakpoints, after the system head and after the tools' : 'carries no cache breakpoint', async () => {
+    it(api === 'anthropic' ? 'marks three cache breakpoints, after the system head, after the tools and after the request text' : 'carries no cache breakpoint', async () => {
       const { bodies } = await scenarioRun(api, {}, { capabilities: { statePlacement: placement } })
       for (const body of bodies) {
         if (api !== 'anthropic') {
@@ -236,12 +236,29 @@ describe.each(APIS)('the %s wire', (api) => {
           expect(body).not.toContain('cacheControl')
           continue
         }
-        const sent = JSON.parse(body) as { system: Json[]; tools: Json[] }
+        const sent = JSON.parse(body) as { system: Json[]; tools: Json[]; messages: { role: string; content: Json[] }[] }
         expect(sent.system[0]!.cache_control).toEqual({ type: 'ephemeral' })
         expect(sent.tools.at(-1)!.cache_control).toEqual({ type: 'ephemeral' })
-        expect(body.split('"cache_control"').length - 1).toBe(2)
+        // The request text is the first text part of the first user turn, and it carries the third.
+        const opening = sent.messages[0]!
+        expect(opening.role).toBe('user')
+        expect(opening.content[0]).toEqual({ type: 'text', text: scenario.policy, cache_control: { type: 'ephemeral' } })
+        expect(body.split('"cache_control"').length - 1).toBe(3)
       }
     })
+
+    if (api === 'anthropic') {
+      it('puts the request text inside the cached prefix and the state after it, and that is all that moves', async () => {
+        const { bodies } = await scenarioRun(api, {}, { capabilities: { statePlacement: placement } })
+        const first = JSON.parse(bodies[0]!) as { messages: { content: Json[] }[] }
+        // The state is a part after the request text on the first request.
+        expect(String(first.messages[0]!.content[1]!.text).startsWith(STATE_HEADER)).toBe(true)
+        expect(first.messages[0]!.content[1]!.cache_control).toBeUndefined()
+        // What the breakpoint adds to the cached prefix: the request text, which no request changes.
+        expect(new TextEncoder().encode(scenario.policy).length).toBe(230)
+        for (const body of bodies) expect((JSON.parse(body) as { messages: { content: Json[] }[] }).messages[0]!.content[0]!.text).toBe(scenario.policy)
+      })
+    }
   })
 })
 

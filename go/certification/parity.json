@@ -397,13 +397,13 @@
         ]
       },
       {
-        "check": "3 \u00b7 memory on, and memory not said, keep the 4,000-byte reserve out of the input allowance",
+        "check": "3 \u00b7 memory on, and memory not said, take no reserve out of the input allowance",
         "go": [
           "3 reserve"
         ]
       },
       {
-        "check": "3 \u00b7 memory off gives the run the full allowance",
+        "check": "3 \u00b7 memory off gives the run the same allowance",
         "go": [
           "3 reserve"
         ]

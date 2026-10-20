@@ -363,7 +363,7 @@ describe('the context budget reads the record', () => {
   })
 
   it('holds the prompt to the record’s window: what the table’s window sends whole, the record’s retains and previews', async () => {
-    const prompt = 'the policy: ' + 'x'.repeat(20_000) + ' THE END'
+    const prompt = 'the policy: ' + 'x'.repeat(30_000) + ' THE END'
     const small = scripted([text(PROPOSAL)])
     await drain(vercel.start(session('openai-compatible', small.call, window, { prompt })))
     expect(userTexts(small.sent[0]!.body).join('\n')).toContain('The complete request is retained')

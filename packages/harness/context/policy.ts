@@ -56,12 +56,12 @@ export function contextConfiguration(value:unknown):ContextConfiguration {
 }
 /** The budget one model runs under: the table's, then the window and output cap of the model's
  * capability record where it carries them (agent#4), then the assistant profile's own override for
- * the model, which a person wrote and which therefore stays the last word. `memory` (agent#11): the
- * host's word on whether the server adds recalled project memory to the run's requests; `false`
- * frees the `memoryBytes` reserve, and anything else keeps it. */
-export function contextPolicy(config:ContextConfiguration|undefined,model:string,capabilities?:Partial<ModelContextBudget>,memory?:boolean):ContextPolicy {
+ * the model, which a person wrote and which therefore stays the last word. `briefBytes` and `memoryBytes`
+ * are the bounds on the host's parts (ADR-0005); the policy takes no reserve for either, so the
+ * host's word on memory (`context.memory`) does not change it. */
+export function contextPolicy(config:ContextConfiguration|undefined,model:string,capabilities?:Partial<ModelContextBudget>):ContextPolicy {
  const record=capabilities?.contextWindowTokens!==undefined&&capabilities.outputTokens!==undefined?{contextWindowTokens:capabilities.contextWindowTokens,outputTokens:capabilities.outputTokens}:undefined
- return {...CONTEXT_DEFAULTS,...record,...(config?contextConfiguration(config).models?.[model]:undefined),...(memory===false?{memoryBytes:0}:{})}
+ return {...CONTEXT_DEFAULTS,...record,...(config?contextConfiguration(config).models?.[model]:undefined)}
 }
 export const utf8Bytes=(text:string)=>new TextEncoder().encode(text).length
 export const inputBytes=(policy:ContextPolicy)=>Math.min(policy.maxInputBytes,Math.max(1024,(policy.contextWindowTokens-policy.outputTokens)*3))

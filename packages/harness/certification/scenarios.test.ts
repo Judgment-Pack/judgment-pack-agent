@@ -325,23 +325,23 @@ function recallFor(asked: string[]) {
   configureHarness({ memoryFor: (query) => { asked.push(query); return memory.memory } })
 }
 
-/** The checks both adapters make of the memory reserve: only the host's word that memory is off frees it. */
+/** The checks both adapters make of the input allowance: no reserve is taken for the brief or the memory, whatever the host says of memory. */
 function reserveChecks(kind: 'model' | 'agent') {
-  it('3 · memory on, and memory not said, keep the 4,000-byte reserve out of the input allowance', () => {
-    // The allowance a run holds with no reserve: the input bytes less the instructions, the tools, the brief and the 1,536 bytes kept for the request's framing.
+  it('3 · memory on, and memory not said, take no reserve out of the input allowance', () => {
+    // The allowance a run holds: the input bytes less the instructions, the tools and the 1,536 bytes kept for the request's framing.
     const instructions = 'instructions'
-    const full = inputBytes(CONTEXT_DEFAULTS) - utf8Bytes(instructions) - utf8Bytes('[]') - CONTEXT_DEFAULTS.briefBytes - 1536
+    const full = inputBytes(CONTEXT_DEFAULTS) - utf8Bytes(instructions) - utf8Bytes('[]') - 1536
     for (const said of [true, undefined]) {
       const on = new SessionContext(bareSession(kind, said))
-      expect(() => on.check(instructions, 'p'.repeat(full - 4000), [])).not.toThrow()
-      expect(() => on.check(instructions, 'p'.repeat(full - 4000 + 1), [])).toThrow()
+      expect(() => on.check(instructions, 'p'.repeat(full), [])).not.toThrow()
+      expect(() => on.check(instructions, 'p'.repeat(full + 1), [])).toThrow()
       on.close()
     }
   })
 
-  it('3 · memory off gives the run the full allowance', () => {
+  it('3 · memory off gives the run the same allowance', () => {
     const instructions = 'instructions'
-    const full = inputBytes(CONTEXT_DEFAULTS) - utf8Bytes(instructions) - utf8Bytes('[]') - CONTEXT_DEFAULTS.briefBytes - 1536
+    const full = inputBytes(CONTEXT_DEFAULTS) - utf8Bytes(instructions) - utf8Bytes('[]') - 1536
     const off = new SessionContext(bareSession(kind, false))
     expect(() => off.check(instructions, 'p'.repeat(full), [])).not.toThrow()
     expect(() => off.check(instructions, 'p'.repeat(full + 1), [])).toThrow()

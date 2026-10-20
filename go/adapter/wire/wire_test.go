@@ -102,7 +102,7 @@ func TestEncodeOnTheAnthropicWire(t *testing.T) {
 	equalText(t, "the protocol header", encoded.Headers["anthropic-version"], "2023-06-01")
 	equalText(t, "the body", string(encoded.Body), `{"model":"scripted-model","max_tokens":4096,"thinking":{"type":"adaptive"},"output_config":{"effort":"high"},`+
 		`"system":[{"type":"text","text":"SYSTEM","cache_control":{"type":"ephemeral"}},{"type":"text","text":"STATE"}],`+
-		`"messages":[{"role":"user","content":[{"type":"text","text":"Draft the pack."}]},`+
+		`"messages":[{"role":"user","content":[{"type":"text","text":"Draft the pack.","cache_control":{"type":"ephemeral"}}]},`+
 		`{"role":"assistant","content":[{"type":"text","text":"Checking."},{"type":"tool_use","id":"call_1","name":"validate","input":{"document":{"id":"p"}}}]},`+
 		`{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_1","content":"valid"}]}],`+
 		`"tools":[{"name":"validate","description":"Validate a pack.","input_schema":{"type":"object"},"eager_input_streaming":true,"cache_control":{"type":"ephemeral"}}],`+

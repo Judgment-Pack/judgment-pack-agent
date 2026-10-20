@@ -273,8 +273,8 @@ type RuntimeIdentity struct {
 // Chat (agent#8) is the chat-scoped context the host made for this run's chat: the ledger and the
 // read cache kept across the chat's runs; absent, the run's are its own and end with it. Runtime
 // is what the host knows the Runtime this run's tools reach by, which keys a Runtime-served read
-// in the chat's read cache. Memory (agent#11) is whether the project's memory is on: false frees
-// the memoryBytes reserve and the host's MemoryFor is not asked (ADR-0005). Objective (agent#11) is
+// in the chat's read cache. Memory (agent#11) is whether the project's memory is on: false and the
+// host's MemoryFor is not asked (ADR-0005); the input allowance takes no reserve either way. Objective (agent#11) is
 // a delegated child's objective, its request text, sent as the first text part of its first
 // message, and the query its MemoryFor is asked with. Link (agent#14) is set by the delegation coordinator on a run it
 // starts. Connection is the AI connection the run's model or agent capability is bound to, as the

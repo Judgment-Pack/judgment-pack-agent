@@ -87,8 +87,8 @@ and for Anthropic with a tier on); one call per turn where it takes no parallel 
 reasoning member it pins; a whole answer asked for where it answers whole; and images by `vision`.
 Signed reasoning goes back exactly as it arrived: Anthropic's content blocks (a signature split
 across events is joined, never sent as a fragment) and Gemini's parts (pieces of one thought joined,
-two empty signed thoughts kept as two). The Anthropic cache breakpoint is on the system head and the
-last tool.
+two empty signed thoughts kept as two). The Anthropic cache breakpoints are on the system head, the
+last tool and the first text part of the first user turn.
 
 Cost: the adapter owns three wire codecs, about nine hundred lines (`wire.ts`). A provider's
 change that a LangChain class would absorb is this adapter's to make, and the certification

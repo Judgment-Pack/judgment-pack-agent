@@ -278,6 +278,20 @@ func anthropicRequest(request Request) Encoded {
 			push("user", []*Value{result})
 		}
 	}
+	// The third breakpoint, on the first text block of the first user turn: the request text (the
+	// Runtime's prompt and the person's request, or a delegated child's objective), with the state a
+	// block after it. The system text and the tools come before it in Anthropic's order.
+	if len(messages.Items()) > 0 {
+		opening := messages.Items()[0]
+		if opening.Get("role").Text() == "user" {
+			for _, block := range opening.Get("content").Items() {
+				if block.Get("type").Text() == "text" {
+					block.Set("cache_control", cacheBreakpoint())
+					break
+				}
+			}
+		}
+	}
 	// The table's maximum where the tier sets one (the enabled dialect spends its budget out of it).
 	maximum := Int(request.MaxOutputTokens)
 	if held, ok := request.Tier.Get("max_tokens").Number(); ok {

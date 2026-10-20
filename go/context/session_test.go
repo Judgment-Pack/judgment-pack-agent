@@ -1,7 +1,7 @@
 package runcontext
 
 // The run's prompt, its compaction and its tool wrapping (the port of the session cases of
-// packages/harness/context/context.test.ts, and the memory reserve of
+// packages/harness/context/context.test.ts, and the allowance cases of
 // certification/scenarios.test.ts, scenario 3).
 
 import (
@@ -399,9 +399,9 @@ func TestTheContextToolNamesAreReserved(t *testing.T) {
 	refused(t, err, "reserved")
 }
 
-func TestTheMemoryReserveIsKeptUnlessTheHostSaysMemoryIsOff(t *testing.T) {
-	// certification/scenarios.test.ts, scenario 3: only the host's word that memory is off frees
-	// the 4,000-byte reserve. Both capabilities make the same checks.
+func TestNoReserveIsTakenForTheBriefOrTheMemory(t *testing.T) {
+	// certification/scenarios.test.ts, scenario 3: the allowance is the same whatever the host says
+	// of memory. Both capabilities make the same checks.
 	for _, kind := range []string{"model", "agent"} {
 		bare := func(memory *bool) Session {
 			held := Session{Prompt: "", TestPrompt: "", Tools: []RuntimeTool{}, HostTools: []HostTool{},
@@ -419,29 +419,21 @@ func TestTheMemoryReserveIsKeptUnlessTheHostSaysMemoryIsOff(t *testing.T) {
 			return held
 		}
 		instructions := "instructions"
-		// The allowance a run holds with no reserve: the input bytes less the instructions, the
-		// tools, the brief and the 1,536 bytes kept for the request's framing.
-		full := InputBytes(Defaults) - UTF8Bytes(instructions) - UTF8Bytes("[]") - Defaults.BriefBytes - 1536
-		on := true
-		for _, said := range []*bool{&on, nil} {
+		// The allowance a run holds: the input bytes less the instructions, the tools and the 1,536
+		// bytes kept for the request's framing. The brief and the memory are in the instructions,
+		// where they are counted; nothing is reserved for either.
+		full := InputBytes(Defaults) - UTF8Bytes(instructions) - UTF8Bytes("[]") - 1536
+		on, off := true, false
+		for _, said := range []*bool{&on, nil, &off} {
 			c := openContext(t, bare(said))
-			if err := c.Check(instructions, strings.Repeat("p", full-4000), noTools()); err != nil {
-				t.Errorf("%s: the reserve left no room for %d bytes: %v", kind, full-4000, err)
+			if err := c.Check(instructions, strings.Repeat("p", full), noTools()); err != nil {
+				t.Errorf("%s: the allowance left no room for %d bytes: %v", kind, full, err)
 			}
-			if err := c.Check(instructions, strings.Repeat("p", full-4000+1), noTools()); err == nil {
-				t.Errorf("%s: one byte past the reserve was admitted", kind)
+			if err := c.Check(instructions, strings.Repeat("p", full+1), noTools()); err == nil {
+				t.Errorf("%s: one byte past the allowance was admitted", kind)
 			}
 			c.Close()
 		}
-		off := false
-		c := openContext(t, bare(&off))
-		if err := c.Check(instructions, strings.Repeat("p", full), noTools()); err != nil {
-			t.Errorf("%s: memory off left no room for %d bytes: %v", kind, full, err)
-		}
-		if err := c.Check(instructions, strings.Repeat("p", full+1), noTools()); err == nil {
-			t.Errorf("%s: one byte past the full allowance was admitted", kind)
-		}
-		c.Close()
 	}
 }
 

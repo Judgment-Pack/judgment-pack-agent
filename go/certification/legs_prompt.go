@@ -92,13 +92,85 @@ func systemSplit(api string, raw []byte) (string, string) {
 	return strings.Join(system, "\n"), string(rest)
 }
 
+// cacheMarks counts the members named cache_control, at any depth.
+func cacheMarks(value any) int {
+	count := 0
+	switch held := value.(type) {
+	case []any:
+		for _, item := range held {
+			count += cacheMarks(item)
+		}
+	case map[string]any:
+		for name, item := range held {
+			if name == "cache_control" {
+				count++
+			}
+			count += cacheMarks(item)
+		}
+	}
+	return count
+}
+
+// cacheMisses are the Anthropic cache breakpoints of one request (agent#69), three of the four the
+// wire allows: on the system head, on the last tool where the request offers any, and on the first
+// text part of the first user turn, which is the request text. So the system text, the tools and
+// the request are in the cached prefix; the state, a part after the request text or later, is not.
+// One line per miss (cacheMisses in conformance.test.ts).
+func cacheMisses(raw []byte, request int) []string {
+	var body struct {
+		System   []map[string]any `json:"system"`
+		Tools    []map[string]any `json:"tools"`
+		Messages []struct {
+			Role    string           `json:"role"`
+			Content []map[string]any `json:"content"`
+		} `json:"messages"`
+	}
+	if json.Unmarshal(raw, &body) != nil {
+		return []string{fmt.Sprintf("request %d: the body is not JSON", request)}
+	}
+	marked := func(value map[string]any) bool {
+		mark, _ := value["cache_control"].(map[string]any)
+		return len(mark) == 1 && mark["type"] == "ephemeral"
+	}
+	var misses []string
+	if len(body.System) == 0 || !marked(body.System[0]) {
+		misses = append(misses, fmt.Sprintf("request %d: the system head carries no cache breakpoint", request))
+	}
+	if len(body.Tools) > 0 && !marked(body.Tools[len(body.Tools)-1]) {
+		misses = append(misses, fmt.Sprintf("request %d: the last tool carries no cache breakpoint", request))
+	}
+	opening := false
+	if len(body.Messages) > 0 && body.Messages[0].Role == "user" {
+		for _, block := range body.Messages[0].Content {
+			if block["type"] == "text" {
+				opening = marked(block)
+				break
+			}
+		}
+	}
+	if !opening {
+		misses = append(misses, fmt.Sprintf("request %d: the first user turn's text part carries no cache breakpoint", request))
+	}
+	var whole any
+	_ = json.Unmarshal(raw, &whole)
+	expected := 2
+	if len(body.Tools) > 0 {
+		expected = 3
+	}
+	if count := cacheMarks(whole); count != expected {
+		misses = append(misses, fmt.Sprintf("request %d: %d cache breakpoints, not %d", request, count, expected))
+	}
+	return misses
+}
+
 // placementMisses is ADR-0005 on every request a leg sent, the critic's second conversation aside:
 // the package's guidance (its data rule) and then each host part in its layer's order in the system
 // text, as its header, its text and its end line; no part anywhere else in the request; the state,
 // where it is in the system text, after the last part; on the text path, the tools described in
 // text after the last part; the system text through the last part the same bytes on every request
 // (the stable prefix); and memory asked once, with the request the run started from. One line per
-// miss; empty where all of it holds.
+// miss; empty where all of it holds. On the Anthropic wire also the cache breakpoints
+// (cacheMisses): the request text is inside the cached prefix.
 func placementMisses(api string, r *LegResult, parts runcontext.HostParts, textTools bool) []string {
 	var misses []string
 	if parts.Memory != "" {
@@ -130,6 +202,9 @@ func placementMisses(api string, r *LegResult, parts runcontext.HostParts, textT
 			continue
 		}
 		at++
+		if api == "anthropic" {
+			misses = append(misses, cacheMisses(raw, at)...)
+		}
 		system, rest := systemSplit(api, raw)
 		// Each part's block by its header and the end line after it; the text between them is the part's.
 		places := []int{strings.Index(system, runcontext.DataRule)}

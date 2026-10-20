@@ -152,7 +152,8 @@ swap it is in process. Stated and accepted.
 - The adapter now holds project content (the brief, the memory, the project's instructions); in the
   browser, until the swap, that content is in the page.
 - The brief and memory reserves (`briefBytes`, and `memoryBytes` with `context.memory`) were room
-  for what the server added. The adapter now counts the parts where they sit, so the reserves double
-  count them; retiring them changes every run's allowance and is left to a later change.
+  for what the server added. The adapter counts the parts where they sit, so the reserves double
+  counted them. They were retired in agent#69: nothing is reserved for either part, the two members
+  stay as the parts' bounds, and every request's allowance grows by up to 12,000 bytes.
 - judgment-pack-desk#537 binds the brief and memory as these injection points, not as steps inside
   the bound relay handler.

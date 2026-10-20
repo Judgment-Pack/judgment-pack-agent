@@ -300,7 +300,7 @@ func (c *coordinator) drive(ctx context.Context) error {
 	if c.shared.limitHere == 0 {
 		c.shared.limitHere = runcontext.MaxTurns
 	}
-	policy, err := runcontext.ContextPolicy(configuration, run.ModelName, nil, nil)
+	policy, err := runcontext.ContextPolicy(configuration, run.ModelName, nil)
 	if err != nil {
 		c.failAndEnd(err)
 		return nil
