@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/checkpoint.json",
   "title": "Execution checkpoint",
-  "description": "A local record of one execution, carried whole on execution_checkpoint and budget_paused events and handed back to resume: the request allowance and the grants that raised it, the task plan, every operation with its exact arguments and result, the completions, and the retained context the ledger holds. Never permissions, evidence approval or private reasoning. Read from ExecutionCheckpoint (web/src/assistant/execution/state.ts, readExecution). Open: readExecution accepts a member it does not name and keeps it. Rules the reader holds that JSON Schema does not state: the serialized checkpoint is at most 4 MiB (MAX_CHECKPOINT_BYTES); used is at most limit; the grants chain from the first limit (MAX_TURNS for model-requests, 1 for provider-managed), each grant's from is the previous to, and limit equals the last to; operation ids and entry ids are unique; every entry id starts with the context scope and a colon; a completion's request is at most used; the prompts' request numbers increase; at most one plan step is in_progress.",
+  "description": "A local record of one execution, carried whole on execution_checkpoint and budget_paused events and handed back to resume: the request allowance and the grants that raised it, the task plan, every operation with its exact arguments and result, the completions, and the retained context the ledger holds. On an agent capability, the delegation handoff (ADR-0007): the call, the batch's task records and the call's result. Never permissions, evidence approval or private reasoning. Read from ExecutionCheckpoint (web/src/assistant/execution/state.ts, readExecution). Open: readExecution accepts a member it does not name and keeps it. Rules the reader holds that JSON Schema does not state: the serialized checkpoint is at most 4 MiB (MAX_CHECKPOINT_BYTES); used is at most limit; the grants chain from the first limit (MAX_TURNS for model-requests, 1 for provider-managed), each grant's from is the previous to, and limit equals the last to; operation ids and entry ids are unique; every entry id starts with the context scope and a colon; a completion's request is at most used; the prompts' request numbers increase; at most one plan step is in_progress.",
   "type": "object",
   "required": [
     "version",
@@ -130,8 +130,12 @@
       "maximum": 400
     },
     "delegation": {
-      "description": "Each delegated child's figures, each batch's total and the parent's own (agent#18): written by the delegation coordinator once a batch has finished, kept through a resume, and refused by the harness's reader where it does not read closed.",
+      "description": "Each delegated child's figures, each batch's total and the parent's own (agent#18): written by the delegation coordinator once a batch has finished, and on an agent capability by the Go coordinator from the parent's first invocation (ADR-0007), so the response's agent runs survive a restart; kept through a resume, and refused by the harness's reader where it does not read closed.",
       "$ref": "provenance.json#/$defs/delegationReport"
+    },
+    "handoff": {
+      "description": "The delegation handoff on an agent capability (ADR-0007): written by the Go coordinator (go/adapter/delegate) on every checkpoint from the parent's delegate_tasks call until the response's next run has been dispatched with the call's result, and on every checkpoint after it in that response; read closed by the Go reader (ReadExecution). Each such checkpoint is acknowledged by the host's save before the next invocation is dispatched. Not written by the TypeScript coordinator, whose handoff lives in memory; its reader keeps the member as it keeps any it does not name.",
+      "$ref": "#/$defs/handoff"
     },
     "prompts": {
       "description": "The digest of every request body the adapter sent in this execution, in the order sent (ADR-0005; provenance.json#/$defs/promptDigest), each request numbered one more than the one before it; at most the newest 300 (MAX_PROMPT_DIGESTS: three attempts at each request of the largest allowance). Carried as used is through a resume.",
@@ -273,6 +277,51 @@
         }
       },
       "additionalProperties": true
+    },
+    "handoff": {
+      "description": "One delegation handoff on an agent capability (ADR-0007). callId: the agent wire's id of the parent's delegate_tasks call. batch: the batch's number in the response. state: released, the parent's invocation returned (the account it ran on released) and no child has been dispatched; children, the batch's task records are written and its children are dispatched one at a time, each record in its state (a task running in a restored checkpoint is an admitted invocation whose outcome is unknown, never dispatched again); answered, every child finished and answer is the call's exact result, given to no run yet; continued, the response's next run has been dispatched with answer. request: the call's arguments. tasks: the batch's task records, each child's result and report among them. A restored checkpoint is continued only when the host hands it back, the person's explicit continuation. A child a checkpoint shows running is never dispatched again; a restored answered or continued handoff starts the parent's continuation again with answer, as any restored parent run starts again, and the operations a checkpoint shows committed are not repeated.",
+      "type": "object",
+      "required": [
+        "callId",
+        "batch",
+        "state",
+        "request",
+        "tasks"
+      ],
+      "properties": {
+        "callId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "batch": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "state": {
+          "enum": [
+            "released",
+            "children",
+            "answered",
+            "continued"
+          ]
+        },
+        "request": {
+          "$ref": "delegated-task.json#/$defs/request"
+        },
+        "tasks": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "$ref": "delegated-task.json"
+          }
+        },
+        "answer": {
+          "$ref": "delegated-task.json#/$defs/answer"
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

@@ -125,7 +125,12 @@ func (c *coordinator) child(p *planned, task *contract.DelegatedTask, batch *bat
 	c.childMu.Lock()
 	c.childStarts[task.ID] = m.started
 	c.childMu.Unlock()
-	limit := c.shared.grantFor(task, c.spent(task), p.budget, batch.slots())
+	// On the agent capability a child's run is one invocation, counted where it is admitted; the
+	// provider's model loop is its own, and no request is granted.
+	limit := 1
+	if c.run.Agent == nil {
+		limit = c.shared.grantFor(task, c.spent(task), p.budget, batch.slots())
+	}
 	if limit < 1 {
 		c.edit(func() {
 			task.State = "failed"
@@ -290,22 +295,11 @@ func (c *coordinator) runBatch(ctx context.Context, request contract.DelegatedTa
 	c.pending = nil
 	c.batchMu.Unlock()
 	c.deliver(contract.RunEvent{MessageProgress: &contract.RunEventMessageProgress{Type: "message_progress", Text: ""}})
-	tasks := make([]*contract.DelegatedTask, len(plans))
+	tasks := c.recordTasks(plans)
 	keys := make([]string, len(plans))
 	for i, p := range plans {
-		budget := p.budget
-		task := &contract.DelegatedTask{ID: uuid(), ParentRunID: c.parentRunID, Title: p.request.Title, Objective: p.request.Objective, Profile: p.request.Profile,
-			State: "queued", CreatedAt: now(), Steps: []contract.DelegatedTaskStepsItem{}, Budget: &budget, Resumes: p.request.Resume}
-		if p.profile != nil {
-			task.Model = strPtr(c.childModelName(*p.profile))
-		}
-		for _, entry := range p.references {
-			task.References = append(task.References, entry.ID)
-		}
-		tasks[i] = task
-		c.publish(task)
 		if p.request.Resume == nil && p.profile != nil {
-			keys[i] = reuseKey(p, *task.Model)
+			keys[i] = reuseKey(p, *tasks[i].Model)
 		}
 	}
 	firstOf := make([]int, len(keys))
@@ -418,6 +412,25 @@ func (c *coordinator) runBatch(ctx context.Context, request contract.DelegatedTa
 	return tasks, nil
 }
 
+// recordTasks are a planned batch's task records, each published queued.
+func (c *coordinator) recordTasks(plans []*planned) []*contract.DelegatedTask {
+	tasks := make([]*contract.DelegatedTask, len(plans))
+	for i, p := range plans {
+		budget := p.budget
+		task := &contract.DelegatedTask{ID: uuid(), ParentRunID: c.parentRunID, Title: p.request.Title, Objective: p.request.Objective, Profile: p.request.Profile,
+			State: "queued", CreatedAt: now(), Steps: []contract.DelegatedTaskStepsItem{}, Budget: &budget, Resumes: p.request.Resume}
+		if p.profile != nil {
+			task.Model = strPtr(c.childModelName(*p.profile))
+		}
+		for _, entry := range p.references {
+			task.References = append(task.References, entry.ID)
+		}
+		tasks[i] = task
+		c.publish(task)
+	}
+	return tasks
+}
+
 // batchAnswer is what the parent is answered for a batch: each task's state, its report and its
 // text or why it has neither, and its limits.
 func (c *coordinator) batchAnswer(tasks []*contract.DelegatedTask) runcontext.ToolResult {
@@ -475,6 +488,10 @@ func (c *coordinator) batchAnswer(tasks []*contract.DelegatedTask) runcontext.To
 // serves requests at once, the concurrentRequests of the host's answer for it, and
 // DefaultChildConcurrency where the answer names none.
 func (c *coordinator) concurrency() int {
+	if c.run.Agent != nil {
+		// The provider account of an agent capability is exclusive: one child at a time.
+		return 1
+	}
 	if c.run.Models == nil {
 		return DefaultChildConcurrency
 	}

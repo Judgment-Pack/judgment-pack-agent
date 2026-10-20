@@ -2,11 +2,18 @@
 // TypeScript suite runs on a model engine (the engine leg on three wires, streamed and whole, plain
 // and under the tracing variables; the text tool path; the strict turn order; the thinking,
 // refutation and wire legs) and the six certified scenarios, on the Eino adapter (go/adapter/eino)
-// with the delegation coordinator (go/adapter/delegate). It prints one line per leg and exits 1 when
-// any check does not hold, so a host's CI can run it at a locked revision.
+// with the delegation coordinator (go/adapter/delegate); then the agent capability's checks
+// (ADR-0007) on the agent adapter (go/adapter/agent) with the same coordinator. It prints one line
+// per leg and exits 1 when any check does not hold, so a host's CI can run it at a locked revision.
 //
 //	harness-check                      start the repository's shared server (node, npm ci done)
 //	harness-check -server http://127.0.0.1:PORT   use one already running
+//	harness-check -agent               the agent capability's checks alone
+//
+// The agent capability's checks here run against the package's stand-in, a fake exclusive account,
+// and the command says so: passing it certifies no host's bridge. A host certifies its own provider
+// bridge, account and tool handler by calling certification.CertifyAgent with its AgentHost from a
+// command or test of its own.
 //
 // Keyless and offline: the server is the repository's scripted model and recorded runtime.
 package main
@@ -19,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/agent"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/delegate"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/eino"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/certification"
@@ -27,11 +35,12 @@ import (
 func main() {
 	address := flag.String("server", "", "a shared scripted server already running (its listening address); empty starts the repository's")
 	only := flag.String("run", "", "run only the legs whose name holds this text")
+	agentOnly := flag.Bool("agent", false, "run only the agent capability's checks, on the package's stand-in")
 	flag.Parse()
-	os.Exit(run(*address, *only))
+	os.Exit(run(*address, *only, *agentOnly))
 }
 
-func run(address, only string) int {
+func run(address, only string, agentOnly bool) int {
 	var server *certification.Server
 	if address != "" {
 		server = certification.ConnectServer(address)
@@ -49,7 +58,29 @@ func run(address, only string) int {
 	with := func(inner certification.Adapter) certification.Adapter {
 		return delegate.With(inner, delegate.Options{})
 	}
-	return certify(server, eino.New(), with, only)
+	code := 0
+	if !agentOnly {
+		code = certify(server, eino.New(), with, only)
+	}
+	if agentCode := certifyAgent(server, certification.StandIn(), with, only); agentCode > code {
+		code = agentCode
+	}
+	return code
+}
+
+// certifyAgent runs the agent capability's checks against host: 0 where every check held, 1
+// otherwise.
+func certifyAgent(server *certification.Server, host certification.AgentHost, with func(certification.Adapter) certification.Adapter, only string) int {
+	passed, failed := certification.CertifyAgent(context.Background(), os.Stdout, server, host, with, agent.New(), only)
+	fmt.Printf("%d agent checks passed, %d failed", passed, failed)
+	if host.StandIn {
+		fmt.Printf(" (the package's stand-in only: no host's bridge was certified)")
+	}
+	fmt.Println()
+	if failed > 0 {
+		return 1
+	}
+	return 0
 }
 
 // certify runs every leg and scenario on adapter against server: 0 where every check held, 1

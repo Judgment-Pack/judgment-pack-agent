@@ -251,7 +251,12 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 	no := false
 	child := *c.run
 	child.ModelName = name
-	child.Model = c.childModel(task, p.budget, m)
+	if c.run.Agent != nil {
+		child.Model = nil
+		child.Agent = c.childAgent(task, name, m)
+	} else {
+		child.Model = c.childModel(task, p.budget, m)
+	}
 	child.Gate = calls
 	child.Tools = tools
 	child.HostTools = c.wrapHostTools(hosts, task, &p.budget)

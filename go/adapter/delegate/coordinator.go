@@ -22,20 +22,27 @@ type Options struct {
 // delegate_tasks, and whose children run on the same adapter. A run the host gives no Children
 // capability, or that is not interactive and conversational, is the adapter's own run.
 //
-// Not ported: the agent capability's half (a run that ends at delegation_requested and a next run
-// continued with the call's result, and the agent-run counts): the Go adapter is a model adapter,
-// whose step awaits the call.
+// On the agent capability (run.Agent, ADR-0007) the parent's delegate_tasks call is a handoff: the
+// parent's invocation ends at delegation_requested and releases its account, the batch's children run
+// one at a time on that account, and a new invocation of the parent continues the response with the
+// call's exact result (agent.go).
 func With(inner adapter.Adapter, options Options) adapter.Adapter {
 	return adapter.Func(func(ctx context.Context, run *adapter.Run) error {
 		if !run.AllowConversation || !run.Interactive || run.Children == nil {
 			return inner.Run(ctx, run)
+		}
+		if run.Agent != nil && run.ModelName == "" {
+			held := *run
+			held.ModelName = run.Agent.Model
+			run = &held
 		}
 		profiles := options.Profiles
 		if profiles == nil {
 			profiles = turn.TaskProfiles
 		}
 		c := &coordinator{inner: inner, run: run, profiles: profiles, parentRunID: newID(), models: map[string]string{},
-			refusedBy: map[string]string{}, childStarts: map[string]time.Time{}, childStops: map[string]context.CancelFunc{}, handedBack: map[string]bool{}}
+			refusedBy: map[string]string{}, childStarts: map[string]time.Time{}, childStops: map[string]context.CancelFunc{}, handedBack: map[string]bool{},
+			runs: agentRuns{children: map[string]int{}}, account: newAccount()}
 		return c.drive(ctx)
 	})
 }
@@ -201,6 +208,17 @@ type coordinator struct {
 	childStops   map[string]context.CancelFunc
 	handedBack   map[string]bool
 	shownReports sync.Map
+
+	// The agent capability's half (agent.go): the response's invocations, the account the
+	// invocations run on one at a time, the handoff in progress, whether the parent's context is
+	// open, and whether the parent's run reported its own failure.
+	runsMu       sync.Mutex
+	runs         agentRuns
+	account      *account
+	handoff      *handoff
+	parentOpen   bool
+	parentFailed bool
+	requested    *contract.RunEventDelegationRequested
 }
 
 type runningBatch struct {
@@ -304,6 +322,10 @@ func (c *coordinator) drive(ctx context.Context) error {
 			c.chat.Dispose()
 		}
 	}()
+	if run.Agent != nil {
+		c.driveAgent(ctx)
+		return nil
+	}
 
 	parent := *run
 	offered := c.batchesLeft()
@@ -348,9 +370,27 @@ func (c *coordinator) parentEmit(event contract.RunEvent) {
 	switch {
 	case event.End != nil:
 		return
+	case event.DelegationRequested != nil:
+		// The handoff (ADR-0007): the coordinator's, never the host's to see.
+		held := *event.DelegationRequested
+		c.emitMu.Lock()
+		c.requested = &held
+		c.emitMu.Unlock()
+		return
+	case event.Error != nil:
+		c.emitMu.Lock()
+		c.parentFailed = true
+		c.emitMu.Unlock()
 	case event.ExecutionCheckpoint != nil:
 		held := *event.ExecutionCheckpoint
-		held.Checkpoint = c.withFigures(held.Checkpoint)
+		held.Checkpoint = c.decorate(held.Checkpoint)
+		c.emitMu.Lock()
+		handedOff := c.requested != nil
+		c.emitMu.Unlock()
+		if handedOff {
+			// The parent's invocation ended at its handoff, and the response goes on.
+			held.Checkpoint.Status = "running"
+		}
 		c.emitMu.Lock()
 		state := held.Checkpoint
 		c.parentCheckpoint = &state
@@ -358,7 +398,7 @@ func (c *coordinator) parentEmit(event contract.RunEvent) {
 		event = contract.RunEvent{ExecutionCheckpoint: &held}
 	case event.BudgetPaused != nil:
 		held := *event.BudgetPaused
-		held.Checkpoint = c.withFigures(held.Checkpoint)
+		held.Checkpoint = c.decorate(held.Checkpoint)
 		event = contract.RunEvent{BudgetPaused: &held}
 	}
 	c.deliver(event)

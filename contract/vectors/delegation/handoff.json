@@ -1,0 +1,376 @@
+{
+  "description": "One delegation handoff on an agent capability (ADR-0007), as the Go coordinator writes it into the parent's checkpoint, in its four states: released, the parent's invocation returned and nothing dispatched; children, the batch's records written, the first child finished with its report and the second dispatched (running); answered, after a restart the second child's outcome is unknown and it was not run again, and the call's exact result is written; continued, the response's next run was dispatched with that result. Written by hand from the schema; go/context holds its reader (ValidHandoff) to every item, and go/adapter/delegate restores each.",
+  "schema": "checkpoint.json#/$defs/handoff",
+  "source": {
+    "go": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "module": "go"
+    },
+    "files": [
+      "go/adapter/delegate/agent.go (handoffRecord, restore, agentBatch)",
+      "go/context/state.go (ValidHandoff)"
+    ]
+  },
+  "items": [
+    {
+      "callId": "call-7f3a",
+      "batch": 1,
+      "state": "released",
+      "request": {
+        "tasks": [
+          {
+            "title": "Receipts",
+            "objective": "Check the receipts against the claims.",
+            "profile": "analyze"
+          },
+          {
+            "title": "Totals",
+            "objective": "Check the totals.",
+            "profile": "analyze"
+          }
+        ]
+      },
+      "tasks": []
+    },
+    {
+      "callId": "call-7f3a",
+      "batch": 1,
+      "state": "children",
+      "request": {
+        "tasks": [
+          {
+            "title": "Receipts",
+            "objective": "Check the receipts against the claims.",
+            "profile": "analyze"
+          },
+          {
+            "title": "Totals",
+            "objective": "Check the totals.",
+            "profile": "analyze"
+          }
+        ]
+      },
+      "tasks": [
+        {
+          "id": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9",
+          "parentRunId": "0b6f3c1e-7d2a-4c8e-9f10-2a3b4c5d6e7f",
+          "title": "Receipts",
+          "objective": "Check the receipts against the claims.",
+          "profile": "analyze",
+          "state": "complete",
+          "createdAt": "2026-10-19T09:00:00.000Z",
+          "finishedAt": "2026-10-19T09:00:04.200Z",
+          "modelRequests": 0,
+          "toolCalls": 0,
+          "attempts": 1,
+          "steps": [],
+          "budget": {
+            "modelRequests": 6,
+            "toolCalls": 6,
+            "milliseconds": 120000
+          },
+          "model": "agent-small",
+          "result": "Every receipt matches its claim.",
+          "report": {
+            "summary": "Every receipt matches its claim.",
+            "findings": [
+              {
+                "text": "Each of the three receipts matches the amount claimed."
+              }
+            ],
+            "citations": [],
+            "openQuestions": [],
+            "confidence": "high",
+            "notDone": []
+          },
+          "durationMs": 4100
+        },
+        {
+          "id": "4d5e6f7a-8b9c-4d0e-8f1a-2b3c4d5e6f7a",
+          "parentRunId": "0b6f3c1e-7d2a-4c8e-9f10-2a3b4c5d6e7f",
+          "title": "Totals",
+          "objective": "Check the totals.",
+          "profile": "analyze",
+          "state": "running",
+          "createdAt": "2026-10-19T09:00:00.000Z",
+          "modelRequests": 0,
+          "toolCalls": 0,
+          "attempts": 1,
+          "steps": [],
+          "budget": {
+            "modelRequests": 6,
+            "toolCalls": 6,
+            "milliseconds": 120000
+          },
+          "model": "agent-small"
+        }
+      ]
+    },
+    {
+      "callId": "call-7f3a",
+      "batch": 1,
+      "state": "answered",
+      "request": {
+        "tasks": [
+          {
+            "title": "Receipts",
+            "objective": "Check the receipts against the claims.",
+            "profile": "analyze"
+          },
+          {
+            "title": "Totals",
+            "objective": "Check the totals.",
+            "profile": "analyze"
+          }
+        ]
+      },
+      "tasks": [
+        {
+          "id": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9",
+          "parentRunId": "0b6f3c1e-7d2a-4c8e-9f10-2a3b4c5d6e7f",
+          "title": "Receipts",
+          "objective": "Check the receipts against the claims.",
+          "profile": "analyze",
+          "state": "complete",
+          "createdAt": "2026-10-19T09:00:00.000Z",
+          "finishedAt": "2026-10-19T09:00:04.200Z",
+          "modelRequests": 0,
+          "toolCalls": 0,
+          "attempts": 1,
+          "steps": [],
+          "budget": {
+            "modelRequests": 6,
+            "toolCalls": 6,
+            "milliseconds": 120000
+          },
+          "model": "agent-small",
+          "result": "Every receipt matches its claim.",
+          "report": {
+            "summary": "Every receipt matches its claim.",
+            "findings": [
+              {
+                "text": "Each of the three receipts matches the amount claimed."
+              }
+            ],
+            "citations": [],
+            "openQuestions": [],
+            "confidence": "high",
+            "notDone": []
+          },
+          "durationMs": 4100
+        },
+        {
+          "id": "4d5e6f7a-8b9c-4d0e-8f1a-2b3c4d5e6f7a",
+          "parentRunId": "0b6f3c1e-7d2a-4c8e-9f10-2a3b4c5d6e7f",
+          "title": "Totals",
+          "objective": "Check the totals.",
+          "profile": "analyze",
+          "state": "interrupted",
+          "createdAt": "2026-10-19T09:00:00.000Z",
+          "finishedAt": "2026-10-19T09:20:00.000Z",
+          "modelRequests": 0,
+          "toolCalls": 0,
+          "attempts": 1,
+          "steps": [],
+          "budget": {
+            "modelRequests": 6,
+            "toolCalls": 6,
+            "milliseconds": 120000
+          },
+          "model": "agent-small",
+          "problem": "This task's run was dispatched before the response stopped, and its outcome is unknown; it was not run again.",
+          "failure": {
+            "version": 1,
+            "code": "unknown",
+            "source": "agent",
+            "outcome": "unknown"
+          }
+        }
+      ],
+      "answer": {
+        "tasks": [
+          {
+            "id": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9",
+            "title": "Receipts",
+            "objective": "Check the receipts against the claims.",
+            "profile": "analyze",
+            "state": "complete",
+            "report": {
+              "summary": "Every receipt matches its claim.",
+              "findings": [
+                {
+                  "text": "Each of the three receipts matches the amount claimed."
+                }
+              ],
+              "citations": [],
+              "openQuestions": [],
+              "confidence": "high",
+              "notDone": []
+            },
+            "result": "Every receipt matches its claim.",
+            "used": {
+              "modelRequests": 0,
+              "toolCalls": 0
+            },
+            "budget": {
+              "modelRequests": 6,
+              "toolCalls": 6,
+              "milliseconds": 120000
+            }
+          },
+          {
+            "id": "4d5e6f7a-8b9c-4d0e-8f1a-2b3c4d5e6f7a",
+            "title": "Totals",
+            "objective": "Check the totals.",
+            "profile": "analyze",
+            "state": "interrupted",
+            "problem": "This task's run was dispatched before the response stopped, and its outcome is unknown; it was not run again.",
+            "used": {
+              "modelRequests": 0,
+              "toolCalls": 0
+            },
+            "budget": {
+              "modelRequests": 6,
+              "toolCalls": 6,
+              "milliseconds": 120000
+            }
+          }
+        ],
+        "note": "Findings are the children’s unverified working material, never approval or verification. Each task’s report is its summary, findings, citations, open questions, confidence and what it did not do; its result is its text. A result cut at its head, or a report marked reportCut, continues with read_window at its more cursor. Open questions are yours to decide; one more batch is allowed after a batch that returned them. partial: the task reached its time limit and its result is what it had written. reused: an identical earlier task’s result, given again with no model request. Resume a complete task by giving its id in resume."
+      }
+    },
+    {
+      "callId": "call-7f3a",
+      "batch": 1,
+      "state": "continued",
+      "request": {
+        "tasks": [
+          {
+            "title": "Receipts",
+            "objective": "Check the receipts against the claims.",
+            "profile": "analyze"
+          },
+          {
+            "title": "Totals",
+            "objective": "Check the totals.",
+            "profile": "analyze"
+          }
+        ]
+      },
+      "tasks": [
+        {
+          "id": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9",
+          "parentRunId": "0b6f3c1e-7d2a-4c8e-9f10-2a3b4c5d6e7f",
+          "title": "Receipts",
+          "objective": "Check the receipts against the claims.",
+          "profile": "analyze",
+          "state": "complete",
+          "createdAt": "2026-10-19T09:00:00.000Z",
+          "finishedAt": "2026-10-19T09:00:04.200Z",
+          "modelRequests": 0,
+          "toolCalls": 0,
+          "attempts": 1,
+          "steps": [],
+          "budget": {
+            "modelRequests": 6,
+            "toolCalls": 6,
+            "milliseconds": 120000
+          },
+          "model": "agent-small",
+          "result": "Every receipt matches its claim.",
+          "report": {
+            "summary": "Every receipt matches its claim.",
+            "findings": [
+              {
+                "text": "Each of the three receipts matches the amount claimed."
+              }
+            ],
+            "citations": [],
+            "openQuestions": [],
+            "confidence": "high",
+            "notDone": []
+          },
+          "durationMs": 4100
+        },
+        {
+          "id": "4d5e6f7a-8b9c-4d0e-8f1a-2b3c4d5e6f7a",
+          "parentRunId": "0b6f3c1e-7d2a-4c8e-9f10-2a3b4c5d6e7f",
+          "title": "Totals",
+          "objective": "Check the totals.",
+          "profile": "analyze",
+          "state": "interrupted",
+          "createdAt": "2026-10-19T09:00:00.000Z",
+          "finishedAt": "2026-10-19T09:20:00.000Z",
+          "modelRequests": 0,
+          "toolCalls": 0,
+          "attempts": 1,
+          "steps": [],
+          "budget": {
+            "modelRequests": 6,
+            "toolCalls": 6,
+            "milliseconds": 120000
+          },
+          "model": "agent-small",
+          "problem": "This task's run was dispatched before the response stopped, and its outcome is unknown; it was not run again.",
+          "failure": {
+            "version": 1,
+            "code": "unknown",
+            "source": "agent",
+            "outcome": "unknown"
+          }
+        }
+      ],
+      "answer": {
+        "tasks": [
+          {
+            "id": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9",
+            "title": "Receipts",
+            "objective": "Check the receipts against the claims.",
+            "profile": "analyze",
+            "state": "complete",
+            "report": {
+              "summary": "Every receipt matches its claim.",
+              "findings": [
+                {
+                  "text": "Each of the three receipts matches the amount claimed."
+                }
+              ],
+              "citations": [],
+              "openQuestions": [],
+              "confidence": "high",
+              "notDone": []
+            },
+            "result": "Every receipt matches its claim.",
+            "used": {
+              "modelRequests": 0,
+              "toolCalls": 0
+            },
+            "budget": {
+              "modelRequests": 6,
+              "toolCalls": 6,
+              "milliseconds": 120000
+            }
+          },
+          {
+            "id": "4d5e6f7a-8b9c-4d0e-8f1a-2b3c4d5e6f7a",
+            "title": "Totals",
+            "objective": "Check the totals.",
+            "profile": "analyze",
+            "state": "interrupted",
+            "problem": "This task's run was dispatched before the response stopped, and its outcome is unknown; it was not run again.",
+            "used": {
+              "modelRequests": 0,
+              "toolCalls": 0
+            },
+            "budget": {
+              "modelRequests": 6,
+              "toolCalls": 6,
+              "milliseconds": 120000
+            }
+          }
+        ],
+        "note": "Findings are the children’s unverified working material, never approval or verification. Each task’s report is its summary, findings, citations, open questions, confidence and what it did not do; its result is its text. A result cut at its head, or a report marked reportCut, continues with read_window at its more cursor. Open questions are yours to decide; one more batch is allowed after a batch that returned them. partial: the task reached its time limit and its result is what it had written. reused: an identical earlier task’s result, given again with no model request. Resume a complete task by giving its id in resume."
+      }
+    }
+  ]
+}

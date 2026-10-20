@@ -52,6 +52,12 @@ func (c *coordinator) childFigures(task *contract.DelegatedTask, number int) con
 		yes := true
 		out.Reused = &yes
 	}
+	if c.run.Agent != nil {
+		// On an agent capability the child's invocations, counted where each was admitted; no model
+		// request or token figure is the coordinator's to give.
+		runs := int64(c.childRuns(task.ID))
+		out.AgentRuns = &runs
+	}
 	return out
 }
 
@@ -61,6 +67,13 @@ func totalOf(children []contract.ProvenanceChildFigures, duration int64) contrac
 		total.ModelRequests += child.ModelRequests
 		total.ToolCalls += child.ToolCalls
 		total.Tokens = addTokens(total.Tokens, child.Tokens)
+		if child.AgentRuns != nil {
+			if total.AgentRuns == nil {
+				zero := int64(0)
+				total.AgentRuns = &zero
+			}
+			*total.AgentRuns += *child.AgentRuns
+		}
 	}
 	return total
 }
@@ -82,16 +95,43 @@ func (c *coordinator) batchFigures() []contract.ProvenanceBatchFigures {
 	return out
 }
 
-// withFigures is the parent's checkpoint with the delegation figures, once a batch has started.
+// withFigures is the parent's checkpoint with the delegation figures, once a batch has started; on
+// an agent capability from the first admitted invocation, so the response's count survives a
+// restart (ADR-0007).
 func (c *coordinator) withFigures(checkpoint contract.Checkpoint) contract.Checkpoint {
 	batches := c.batchFigures()
-	if len(batches) == 0 {
+	agent := c.run.Agent != nil
+	runs := 0
+	if agent {
+		c.runsMu.Lock()
+		runs = c.runs.parent
+		c.runsMu.Unlock()
+	}
+	if len(batches) == 0 && (!agent || runs == 0) {
 		return checkpoint
+	}
+	if batches == nil {
+		batches = []contract.ProvenanceBatchFigures{}
 	}
 	c.batchMu.Lock()
 	requests := c.parentCount
 	c.batchMu.Unlock()
 	parent := contract.ProvenanceParentFigures{Model: c.run.ModelName, ModelRequests: int64(requests), Tokens: tokenFigures(checkpoint.Completions)}
+	if agent {
+		// The parent's own invocations; the provider reports no request or token count, and none is
+		// written.
+		held := int64(runs)
+		parent.AgentRuns = &held
+		parent.Tokens = nil
+	}
 	checkpoint.Delegation = &contract.ProvenanceDelegationReport{Batches: batches, Parent: parent}
+	return checkpoint
+}
+
+// decorate is the parent's checkpoint as the coordinator writes it: the delegation figures and, on
+// an agent capability, the handoff in progress.
+func (c *coordinator) decorate(checkpoint contract.Checkpoint) contract.Checkpoint {
+	checkpoint = c.withFigures(checkpoint)
+	checkpoint.Handoff = c.handoffRecord()
 	return checkpoint
 }

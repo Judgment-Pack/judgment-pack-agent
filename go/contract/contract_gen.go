@@ -28,6 +28,7 @@ var Registry = map[string]func() any{
 	"checkpoint.json#/$defs/taskStep":               func() any { return new(CheckpointTaskStep) },
 	"checkpoint.json#/$defs/operation":              func() any { return new(CheckpointOperation) },
 	"checkpoint.json#/$defs/retainedEntry":          func() any { return new(CheckpointRetainedEntry) },
+	"checkpoint.json#/$defs/handoff":                func() any { return new(CheckpointHandoff) },
 	"delegated-task.json":                           func() any { return new(DelegatedTask) },
 	"delegated-task.json#/$defs/uuid":               func() any { return new(string) },
 	"delegated-task.json#/$defs/time":               func() any { return new(string) },
@@ -851,15 +852,16 @@ func (v CapabilityStreamingQuirks) MarshalJSON() ([]byte, error) {
 // From checkpoint.json. A local record of one execution, carried whole on execution_checkpoint and
 // budget_paused events and handed back to resume: the request allowance and the grants that raised
 // it, the task plan, every operation with its exact arguments and result, the completions, and the
-// retained context the ledger holds. Never permissions, evidence approval or private reasoning.
-// Read from ExecutionCheckpoint (web/src/assistant/execution/state.ts, readExecution). Open:
-// readExecution accepts a member it does not name and keeps it. Rules the reader holds that JSON
-// Schema does not state: the serialized checkpoint is at most 4 MiB (MAX_CHECKPOINT_BYTES); used
-// is at most limit; the grants chain from the first limit (MAX_TURNS for model-requests, 1 for
-// provider-managed), each grant's from is the previous to, and limit equals the last to; operation
-// ids and entry ids are unique; every entry id starts with the context scope and a colon; a
-// completion's request is at most used; the prompts' request numbers increase; at most one plan
-// step is in_progress.
+// retained context the ledger holds. On an agent capability, the delegation handoff (ADR-0007):
+// the call, the batch's task records and the call's result. Never permissions, evidence approval
+// or private reasoning. Read from ExecutionCheckpoint (web/src/assistant/execution/state.ts,
+// readExecution). Open: readExecution accepts a member it does not name and keeps it. Rules the
+// reader holds that JSON Schema does not state: the serialized checkpoint is at most 4 MiB
+// (MAX_CHECKPOINT_BYTES); used is at most limit; the grants chain from the first limit (MAX_TURNS
+// for model-requests, 1 for provider-managed), each grant's from is the previous to, and limit
+// equals the last to; operation ids and entry ids are unique; every entry id starts with the
+// context scope and a colon; a completion's request is at most used; the prompts' request numbers
+// increase; at most one plan step is in_progress.
 type Checkpoint struct {
 	Version     int64                       `json:"version"`
 	ID          string                      `json:"id"`
@@ -878,12 +880,13 @@ type Checkpoint struct {
 	Reason      *string                     `json:"reason,omitzero"`
 	TestCalls   *int64                      `json:"testCalls,omitzero"`
 	Delegation  *ProvenanceDelegationReport `json:"delegation,omitzero"`
+	Handoff     *CheckpointHandoff          `json:"handoff,omitzero"`
 	Prompts     []ProvenancePromptDigest    `json:"prompts,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var checkpointMembers = []string{"version", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "prompts"}
+var checkpointMembers = []string{"version", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "prompts"}
 
 // UnmarshalJSON decodes a Checkpoint object and keeps the members the schema does not name.
 func (v *Checkpoint) UnmarshalJSON(data []byte) error {
@@ -966,6 +969,49 @@ func (v *CheckpointGrant) UnmarshalJSON(data []byte) error {
 func (v CheckpointGrant) MarshalJSON() ([]byte, error) {
 	type plain CheckpointGrant
 	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From checkpoint.json#/$defs/handoff. One delegation handoff on an agent capability (ADR-0007).
+// callId: the agent wire's id of the parent's delegate_tasks call. batch: the batch's number in
+// the response. state: released, the parent's invocation returned (the account it ran on released)
+// and no child has been dispatched; children, the batch's task records are written and its
+// children are dispatched one at a time, each record in its state (a task running in a restored
+// checkpoint is an admitted invocation whose outcome is unknown, never dispatched again);
+// answered, every child finished and answer is the call's exact result, given to no run yet;
+// continued, the response's next run has been dispatched with answer. request: the call's
+// arguments. tasks: the batch's task records, each child's result and report among them. A
+// restored checkpoint is continued only when the host hands it back, the person's explicit
+// continuation. A child a checkpoint shows running is never dispatched again; a restored answered
+// or continued handoff starts the parent's continuation again with answer, as any restored parent
+// run starts again, and the operations a checkpoint shows committed are not repeated.
+type CheckpointHandoff struct {
+	CallID  string               `json:"callId"`
+	Batch   int64                `json:"batch"`
+	State   string               `json:"state"`
+	Request DelegatedTaskRequest `json:"request"`
+	Tasks   []DelegatedTask      `json:"tasks"`
+	Answer  *DelegatedTaskAnswer `json:"answer,omitzero"`
+}
+
+var checkpointHandoffMembers = []string{"callId", "batch", "state", "request", "tasks", "answer"}
+
+// UnmarshalJSON decodes a CheckpointHandoff object and refuses a member the closed schema does not name.
+func (v *CheckpointHandoff) UnmarshalJSON(data []byte) error {
+	type plain CheckpointHandoff
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointHandoffMembers, true)
+	if err != nil {
+		return errorf("CheckpointHandoff: %w", err)
+	}
+	*v = CheckpointHandoff(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointHandoff object.
+func (v CheckpointHandoff) MarshalJSON() ([]byte, error) {
+	type plain CheckpointHandoff
+	return encodeObject(plain(v), nil)
 }
 
 // From checkpoint.json#/$defs/operation. One tool call as the host journaled it from the tool_call
@@ -2465,9 +2511,10 @@ func (v ProvenanceFiguresTotal) MarshalJSON() ([]byte, error) {
 }
 
 // From provenance.json#/$defs/parentFigures. The parent's own figures beside its batches
-// (agent#18): its model; its own model requests, the execution's used less its children's; on an
-// agent capability, its own agent runs of the response; its own token counts, from its completion
-// rows.
+// (agent#18): its model; its own model requests, the execution's used less its children's, and on
+// an agent capability 0, the provider running its own loop (no count is reported; see agent#71);
+// on an agent capability, its own agent runs of the response; its own token counts, from its
+// completion rows, absent on an agent capability.
 type ProvenanceParentFigures struct {
 	Model         string                  `json:"model"`
 	ModelRequests int64                   `json:"modelRequests"`
@@ -3344,11 +3391,12 @@ func (v RunEventDelegatedTask) MarshalJSON() ([]byte, error) {
 type RunEventDelegationRequested struct {
 	Type    string               `json:"type"`
 	Request DelegatedTaskRequest `json:"request"`
+	CallID  *string              `json:"callId,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var runEventDelegationRequestedMembers = []string{"type", "request"}
+var runEventDelegationRequestedMembers = []string{"type", "request", "callId"}
 
 // UnmarshalJSON decodes a RunEventDelegationRequested object and keeps the members the schema does not name.
 func (v *RunEventDelegationRequested) UnmarshalJSON(data []byte) error {

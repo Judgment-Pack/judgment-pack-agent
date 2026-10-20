@@ -283,6 +283,15 @@ class VectorTests(unittest.TestCase):
                 source = vector["source"]
                 if "desk" in source:
                     self.assertEqual(source["desk"]["repository"], "Judgment-Pack/judgment-pack-desk")
+                elif "go" in source:
+                    # Behaviour only the Go module has (ADR-0007's handoff record): rendered from the
+                    # module, and its files named there.
+                    self.assertEqual(source["go"], {"repository": "Judgment-Pack/judgment-pack-agent", "module": "go"})
+                    self.assertTrue(source["files"])
+                    for file in source["files"]:
+                        path = file.split(" (", 1)[0]
+                        self.assertTrue(path.startswith("go/"), file)
+                        self.assertTrue((ROOT / path).is_file(), f"{name} names {path}, which does not exist")
                 else:
                     # Behaviour the harness changed or added since the extraction: rendered from
                     # the package, and its files named there.

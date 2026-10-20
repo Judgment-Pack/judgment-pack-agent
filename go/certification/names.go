@@ -31,5 +31,9 @@ func AllCheckNames() []string {
 		out = append(out, scenario.Names...)
 	}
 	out = append(out, DelegationNames...)
-	return append(out, CapacityNames...)
+	out = append(out, CapacityNames...)
+	// The agent capability's checks that have a TypeScript counterpart (ADR-0007); the rest are the
+	// package's own (AgentOwnNames, parity.json's agentCapability).
+	out = append(out, AgentScenarioNames...)
+	return append(out, AgentDelegationNames...)
 }

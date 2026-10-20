@@ -263,3 +263,17 @@ func TestValidDelegatedTask(t *testing.T) {
 		t.Error("a negative count is not one")
 	}
 }
+
+// The line the response's next run on an agent capability starts its delegation part with
+// (ADR-0007) is the contract's (delegation/continuation.json), the call's result the data block
+// after it.
+func TestTheContinuationLineIsTheVectors(t *testing.T) {
+	var line string
+	if err := json.Unmarshal(vector(t, "delegation/continuation.json").Items[0], &line); err != nil {
+		t.Fatal(err)
+	}
+	first, _, _ := strings.Cut(line, "\n")
+	if first != Continuation {
+		t.Fatalf("the continuation line is\n%s\nand the vector's\n%s", Continuation, first)
+	}
+}
