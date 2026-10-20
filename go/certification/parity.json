@@ -707,6 +707,13 @@
           "9 restore",
           "9 agent restore"
         ]
+      },
+      {
+        "check": "9 \u00b7 the critic sees the skills the author loaded: on the model engines its step note carries the loaded set on every critic request; on the agent wire its load_skill of a skill already loaded is answered with the block",
+        "go": [
+          "9 critic",
+          "9 agent critic"
+        ]
       }
     ]
   },

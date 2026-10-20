@@ -40,7 +40,10 @@ import {
   type Skill,
   type SkillDeclaration
 } from './skills'
-import type { AssistantEvent, AssistantSession, HostTool, McpToolResult } from './engine'
+import { contextOf, managedContext } from './context/managed'
+import { withDelegation } from './delegation'
+import { DELEGATE_TOOL } from './delegationContract'
+import type { AssistantEvent, AssistantSession, Engine, EngineSession, HostTool, McpToolResult } from './engine'
 
 const SKILLS = declarations.items as unknown as SkillDeclaration[]
 const MARKER = catalogueVector.marker
@@ -297,6 +300,44 @@ describe('the boundary over skills (ADR-0009)', () => {
     expect(context.execution.requestState()).toContain(`"expense_policy" from source "policies"`)
     // The loads counted before the resume are still counted: the report's rows carry them.
     expect(context.skills!.loads()).toBe(3)
+  })
+
+  it('does not restore a skill the host declares with the same id and another approved digest, and says so (#93)', async () => {
+    const saved = structuredClone(checkpointVector.items[0]) as unknown as ExecutionCheckpoint
+    saved.requestKey = await contextDigest(JSON.stringify({ request: 'Current request', phase: 'work', purpose: null }))
+    // The person re-approved expense_policy with changed instructions: the same id, a new pinned digest.
+    const changed = { ...SKILLS[0]!, instructions: `${SKILLS[0]!.instructions} Round each amount to the cent.` }
+    const repinned = { ...changed, pinnedDigest: await skillDigest(changed) }
+    expect(repinned.pinnedDigest).not.toBe(SKILLS[0]!.pinnedDigest)
+    const { context } = await contextualSession(session({ execution: JSON.parse(JSON.stringify(saved)) }, [repinned, SKILLS[1], SKILLS[2]]))
+    expect(context.takeNotices()).toEqual([{ type: 'guardrail', tool: 'expense-policy', action: 'refused', reason: 'skill withheld', detail: `the skill expense-policy loaded earlier in this response is no longer declared as it was loaded (${SKILLS[0]!.pinnedDigest}); it was not restored, and its instructions are not in this run` }])
+    expect(context.skills!.current().map((skill) => skill.id)).toEqual(['issue-style'])
+    expect(context.execution.state.skills!.map((load) => load.id)).toEqual(['issue-style'])
+    expect(context.execution.requestState()).not.toContain('Round each amount to the cent.')
+  })
+
+  it('hands a delegated child no skills: the parent’s system text holds the catalogue and its offer load_skill, the child’s neither (#93)', async () => {
+    const seen: { system: string; tools: string[] }[] = []
+    const engine: Engine = {
+      id: 'vercel',
+      start: (given) => managedContext(given, async function* (ready) {
+        seen.push({ system: contextOf(ready).system('GUIDANCE'), tools: ready.hostTools.map((tool) => tool.name) })
+        const delegate = ready.hostTools.find((tool) => tool.name === DELEGATE_TOOL)
+        if (delegate !== undefined) await delegate.execute({ tasks: [{ title: 'Look', objective: 'Look the rate up.', profile: 'review' }] }, ready.signal)
+        yield { type: 'message', text: 'done' }
+        yield { type: 'end' }
+      })
+    }
+    const events: AssistantEvent[] = []
+    for await (const event of withDelegation(engine).start({ ...session(), allowConversation: true, interactive: true } as EngineSession)) events.push(event)
+    expect(events.filter((event) => event.type === 'error')).toEqual([])
+    expect(seen).toHaveLength(2)
+    const [parent, child] = seen
+    expect(parent!.system).toContain(`\n${SKILLS_HEADER}\n`)
+    expect(parent!.tools).toEqual(expect.arrayContaining([LOAD_SKILL, UNLOAD_SKILL, DELEGATE_TOOL]))
+    expect(child!.system).not.toContain('SKILLS (')
+    expect(child!.tools).not.toContain(LOAD_SKILL)
+    expect(child!.tools).not.toContain(UNLOAD_SKILL)
   })
 
   it('reads the checkpoint’s loaded set closed', () => {

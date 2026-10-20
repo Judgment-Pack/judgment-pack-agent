@@ -3651,6 +3651,67 @@
    "status": "caught",
    "origin": "clean-room review of #92 (MEDIUM 1)",
    "note": "SessionContext.result; scenario 9 on codex holds the escape-heavy review_checklist's block to reach the agent whole, its instructions and its closing lines, in load_skill's answer; the Go twin is SessionContext.Result (go/context/session.go), caught by scenario 9's 9 agent block check in the Go harness-check (run by hand on a scratch copy)"
+  },
+  {
+   "name": "the vercel critic's step note no longer carries the run's loaded skills",
+   "file": "engines/vercel/loop.ts",
+   "find": "            const skills=context.skills?.section()??''\n",
+   "replace": "            const skills=''\n",
+   "tests": [
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "v0.6.0 release review (#93)",
+   "note": "the critic's step note on vercel (row 1); scenario 9's critic check holds every critic request to carry the author's loaded skill after its history; the Go twin is eino's critic note (go/adapter/eino/critic.go), caught by scenario 9's 9 critic check in the Go harness-check (run by hand on a scratch copy)"
+  },
+  {
+   "name": "the deepagents critic's step note no longer carries the run's loaded skills",
+   "file": "engines/deepagents/loop.ts",
+   "find": "            const skills = context.skills?.section() ?? ''\n",
+   "replace": "            const skills = ''\n",
+   "tests": [
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "v0.6.0 release review (#93)",
+   "note": "the critic's step note on deepagents (row 1); scenario 9's critic check, as for vercel"
+  },
+  {
+   "name": "on the agent wire the critic's load of a skill already loaded answers already loaded, with no block",
+   "file": "skills.ts",
+   "find": "      if (this.run.agentWire && this.run.critic?.() === true) {",
+   "replace": "      if (this.run.agentWire && this.run.critic?.() === true && false) {",
+   "tests": [
+    "certification/scenarios.test.ts",
+    "skills.test.ts"
+   ],
+   "status": "caught",
+   "origin": "v0.6.0 release review (#93)",
+   "note": "SkillGate.load (row 1); scenario 9's critic check on codex holds the critic's answer to carry the block and the critic's note; the Go twin is SkillGate.load (go/context/skills.go), caught by scenario 9's 9 agent critic check in the Go harness-check (run by hand on a scratch copy)"
+  },
+  {
+   "name": "a delegated child is handed the parent's skills",
+   "file": "delegation.ts",
+   "find": "        skills:undefined,\n",
+   "replace": "",
+   "tests": [
+    "skills.test.ts"
+   ],
+   "status": "caught",
+   "origin": "v0.6.0 release review (#93)",
+   "note": "runChild's base session (row 2); skills.test.ts holds the child's system text free of the catalogue and its offer free of the loaders; the Go twin is child.Skills = nil (go/adapter/delegate/batch.go), caught by TestADelegatedChildIsHandedNoSkills (run by hand on a scratch copy)"
+  },
+  {
+   "name": "a restore no longer compares the loaded digest with the one declared now",
+   "file": "skills.ts",
+   "find": "      if (skill === undefined || skill.digest !== load.digest) {",
+   "replace": "      if (skill === undefined) {",
+   "tests": [
+    "skills.test.ts"
+   ],
+   "status": "caught",
+   "origin": "v0.6.0 release review (#93)",
+   "note": "SkillGate.restore (row 3); skills.test.ts restores against expense-policy re-approved with a new digest and expects no restore and the guardrail; the Go twin is SkillGate.Restore (go/context/skills.go), caught by TestAReapprovedSkillIsNotRestoredFromTheCheckpoint (run by hand on a scratch copy)"
   }
  ]
 }

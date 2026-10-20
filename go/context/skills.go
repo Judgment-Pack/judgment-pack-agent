@@ -121,6 +121,13 @@ const (
 	LoadedAgentNote   = "Loaded: its instructions follow this answer, at the rank of the project’s own instructions, for the rest of this response. A skill grants no tool."
 	AlreadyLoadedNote = "Already loaded: nothing was loaded again, and no load was counted."
 	UnloadedNote      = "Unloaded: its instructions leave the later requests of this response. Loading it again counts as another load."
+	// AlreadyLoadedCriticNote is what the critic is told on the agent wire of a skill the run already
+	// loaded: the state reached it once per run, before the author's loads, so the answer carries the
+	// block the author was given.
+	AlreadyLoadedCriticNote = "Already loaded in this response: its instructions follow this answer, as the author was given them, at the rank of the project’s own instructions. Nothing was loaded again, and no load was counted."
+	// UnloadedAgentNote is the unload's words on the agent wire: a later invocation's state drops the
+	// block, and the current invocation keeps the answer it was given.
+	UnloadedAgentNote = "Unloaded: a later run of this response no longer carries its instructions; this run keeps the answer that gave them to you. Loading it again counts as another load."
 )
 
 var skillName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
@@ -434,12 +441,15 @@ type SkillGate struct {
 	agentWire bool
 	limit     int
 	loaded    []AdmittedSkill
+	// critic says the critic is reading: on the agent wire it is answered an already loaded skill's block.
+	critic func() bool
 }
 
 // NewSkillGate holds a run's catalogued skills; sourceIDs are every source a skill is declared from,
 // whose rows count its loads from 0.
 func NewSkillGate(catalogued []AdmittedSkill, policy Policy, sources *SourceGate, state *Execution, marker string, agentWire bool, sourceIDs []string) *SkillGate {
-	g := &SkillGate{byName: map[string]AdmittedSkill{}, sources: sources, state: state, marker: marker, agentWire: agentWire, limit: policy.SkillsPerRun}
+	g := &SkillGate{byName: map[string]AdmittedSkill{}, sources: sources, state: state, marker: marker, agentWire: agentWire, limit: policy.SkillsPerRun,
+		critic: func() bool { return false }}
 	for _, skill := range catalogued {
 		g.byName[skill.Name] = skill
 		g.order = append(g.order, skill.Name)
@@ -567,6 +577,12 @@ func (g *SkillGate) load(asked any) (ToolResult, error) {
 		return ToolResult{}, failure.ToolInput(LoadSkill + " loads a catalogued skill, and " + QuoteJSON(shownName(asked)) + " is not one; nothing was loaded.")
 	}
 	if g.isLoaded(skill.ID) {
+		// The agent wire sends the state once per run, so the critic's run never saw what the author
+		// loaded: its load of a skill already loaded is answered with the block, counted nothing.
+		if g.agentWire && g.critic() {
+			value := ObjectOf("skill", loadedSkillValue(skill), "bytes", Number(float64(skill.Bytes)), "note", String(AlreadyLoadedCriticNote))
+			return ResultOf([]Content{TextContent(value.Text() + "\n" + SkillSection([]Skill{skill.Skill}, g.marker))}, nil), nil
+		}
 		return Answer(ObjectOf("skill", loadedSkillValue(skill), "bytes", Number(float64(skill.Bytes)), "note", String(AlreadyLoadedNote))), nil
 	}
 	if !g.sources.claimSkillLoad(skill.Source.ID, g.limit) {
@@ -617,7 +633,11 @@ func (g *SkillGate) unload(asked any) (ToolResult, error) {
 	}
 	g.state.Skills = kept
 	g.sources.Notify(contract.RunEvent{SkillUnloaded: &contract.RunEventSkillUnloaded{Type: "skill_unloaded", ID: skill.ID}})
-	return Answer(ObjectOf("unloaded", ObjectOf("id", String(skill.ID), "name", String(skill.Name)), "note", String(UnloadedNote))), nil
+	note := UnloadedNote
+	if g.agentWire {
+		note = UnloadedAgentNote
+	}
+	return Answer(ObjectOf("unloaded", ObjectOf("id", String(skill.ID), "name", String(skill.Name)), "note", String(note))), nil
 }
 
 // countSkills sets the skills count of each named source's row to 0 where it has none.

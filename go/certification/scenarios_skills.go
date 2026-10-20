@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/turn"
 	runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
@@ -75,6 +76,12 @@ type skillsFile struct {
 	Withdrawn string         `json:"withdrawn"`
 	Turns     []sourcesTurn  `json:"turns"`
 	Restored  []sourcesTurn  `json:"restored"`
+	// Critic is the critic's run (#93): the author loads a skill and proposes, the critic loads it too.
+	Critic struct {
+		TestPrompt string        `json:"testPrompt"`
+		Author     []sourcesTurn `json:"author"`
+		Critic     []sourcesTurn `json:"critic"`
+	} `json:"critic"`
 }
 
 const ratesTool = "rates__lookup_rate"
@@ -139,14 +146,20 @@ type skillsRun struct {
 	Prefixes []string
 	Offered  [][]string
 	Answers  []ObservedAnswer
+	// Critics say, for each model request, whether it is the critic's; Phases, for each answer an
+	// agent invocation was given, its invocation's phase.
+	Critics []bool
+	Phases  []string
 }
 
 // skilled is what scenario 9 left on one capability.
 type skilled struct {
 	first, restored *skillsRun
-	saved           *contract.Checkpoint
-	host            *skillsHost
-	file            skillsFile
+	// critic is the critic's run (#93).
+	critic *skillsRun
+	saved  *contract.Checkpoint
+	host   *skillsHost
+	file   skillsFile
 }
 
 // messageText is a message's content as text: its string, or its text parts joined.
@@ -259,8 +272,8 @@ func onlyInSkill(whole, text string) bool {
 type skillsPlay func(ctx context.Context, turns []sourcesTurn, skills []runcontext.Skill, input *runcontext.Input) (*skillsRun, error)
 
 // skillsScenario plays scenario 9 with play: the first run, then a fresh run from its last
-// checkpoint's JSON text, the withdrawn skill no longer declared.
-func skillsScenario(ctx context.Context, file skillsFile, host *skillsHost, play skillsPlay) (*skilled, error) {
+// checkpoint's JSON text, the withdrawn skill no longer declared; then, with critic, the critic's run.
+func skillsScenario(ctx context.Context, file skillsFile, host *skillsHost, play skillsPlay, critic func(ctx context.Context, skills []runcontext.Skill, input *runcontext.Input) (*skillsRun, error)) (*skilled, error) {
 	out := &skilled{host: host, file: file}
 	var err error
 	if out.first, err = play(ctx, file.Turns, skillsOf(file, ""), requestInput(file.Request)); err != nil {
@@ -278,7 +291,83 @@ func skillsScenario(ctx context.Context, file skillsFile, host *skillsHost, play
 	if out.restored, err = play(ctx, file.Restored, skillsOf(file, file.Withdrawn), input); err != nil {
 		return nil, err
 	}
+	if out.critic, err = critic(ctx, skillsOf(file, ""), requestInput(file.Request)); err != nil {
+		return nil, err
+	}
 	return out, nil
+}
+
+// collectRequests are a model run's requests as a scenario-9 run keeps them.
+func collectRequests(out *skillsRun, requests []EndpointRequest) {
+	for _, request := range requests {
+		system, after, whole := requestParts(request)
+		out.System = append(out.System, system)
+		out.After = append(out.After, after)
+		out.Whole = append(out.Whole, whole)
+		prefix, _ := stablePrefix(string(request.Body))
+		out.Prefixes = append(out.Prefixes, prefix)
+		out.Offered = append(out.Offered, offeredNames(request))
+		out.Critics = append(out.Critics, strings.Contains(string(request.Body), turn.RefutationMarker))
+	}
+}
+
+// skillsCriticFindings are the findings of the critic's run (#93): the critic ran, the author's load
+// is the one load, and the critic sees the loaded skill: on a model capability in its step note on
+// every critic request, on the agent wire in its load_skill's answer, the block the author was given.
+func skillsCriticFindings(f *findings, critic *skillsRun, agent bool) {
+	critiques, failed := 0, 0
+	var loaded []string
+	for _, event := range critic.Events {
+		switch {
+		case event.Critique != nil:
+			critiques++
+		case event.Error != nil:
+			failed++
+		case event.SkillLoaded != nil:
+			loaded = append(loaded, event.SkillLoaded.Skill.Name)
+		}
+	}
+	if critiques != 1 || failed != 0 || !slices.Equal(loaded, []string{"expense_policy"}) {
+		f.fail("%d critiques, %d errors, loads %v", critiques, failed, loaded)
+	}
+	if last := lastCheckpointOf(critic.Events); last != nil {
+		for _, row := range last.Sources {
+			if row.Source == "policies" && (row.Skills == nil || *row.Skills != 1) {
+				f.fail("the critic's run counted %s", comparisonJSON(row))
+			}
+		}
+	}
+	if !agent {
+		reviewing := 0
+		for at, isCritic := range critic.Critics {
+			if !isCritic {
+				continue
+			}
+			reviewing++
+			if !slices.Equal(blockSkills(critic.After[at]), []string{"expense_policy"}) || strings.Contains(critic.System[at], runcontext.SkillInstructionsHeader) {
+				f.fail("critic request %d does not carry the loaded skill after its history alone", at+1)
+			}
+		}
+		if reviewing < 2 {
+			f.fail("%d critic requests", reviewing)
+		}
+		return
+	}
+	var author, reviewing []ObservedAnswer
+	for at, answer := range critic.Answers {
+		if critic.Phases[at] == "critic" {
+			reviewing = append(reviewing, answer)
+		} else {
+			author = append(author, answer)
+		}
+	}
+	if len(author) != 1 || !slices.Equal(blockSkills(author[0].Text), []string{"expense_policy"}) {
+		f.fail("the author's answers were %s", comparisonJSON(author))
+	}
+	if len(reviewing) != 1 || reviewing[0].IsError || !strings.Contains(reviewing[0].Text, runcontext.AlreadyLoadedCriticNote) ||
+		!slices.Equal(blockSkills(reviewing[0].Text), []string{"expense_policy"}) || !strings.HasSuffix(reviewing[0].Text, "\n"+runcontext.SkillInstructionsEnd) {
+		f.fail("the critic's load_skill answered %s", comparisonJSON(reviewing))
+	}
 }
 
 // skillsFlow are a run's events less its checkpoints and its prose so far.
@@ -539,13 +628,21 @@ func skillsFindings(state *skilled, prefix string, agent bool) []Finding {
 	if !slices.Equal(kept, []string{"expense-policy", "fast-track"}) {
 		f.fail("the restored run's loaded set is %v", kept)
 	}
+	out = append(out, f.list...)
+
+	f = &findings{check: prefix + "critic"}
+	if state.critic == nil {
+		f.fail("the critic's run did not happen")
+	} else {
+		skillsCriticFindings(f, state.critic, agent)
+	}
 	return append(out, f.list...)
 }
 
 // Skills is scenario 9 on a model capability.
 var Skills = ScenarioCheck{
 	Scenario: "skills",
-	Names:    []string{"9 catalogue", "9 events", "9 block", "9 budget", "9 poisoned", "9 report", "9 restore"},
+	Names:    []string{"9 catalogue", "9 events", "9 block", "9 budget", "9 poisoned", "9 report", "9 restore", "9 critic"},
 	Run: func(ctx context.Context, server *Server, answerAs string, adapter Adapter) ([]Finding, error) {
 		var file skillsFile
 		if err := ScenarioFile("skills", &file); err != nil {
@@ -577,19 +674,32 @@ var Skills = ScenarioCheck{
 				return nil, err
 			}
 			out := &skillsRun{Events: ran.Events}
-			for _, request := range ran.Requests[sent:] {
-				system, after, whole := requestParts(request)
-				out.System = append(out.System, system)
-				out.After = append(out.After, after)
-				out.Whole = append(out.Whole, whole)
-				prefix, _ := stablePrefix(string(request.Body))
-				out.Prefixes = append(out.Prefixes, prefix)
-				out.Offered = append(out.Offered, offeredNames(request))
-			}
+			collectRequests(out, ran.Requests[sent:])
 			sent = len(ran.Requests)
 			return out, nil
 		}
-		state, err := skillsScenario(ctx, file, host, play)
+		// The critic's run (#93): the session advanced once more, the critic on.
+		critic := func(ctx context.Context, skills []runcontext.Skill, input *runcontext.Input) (*skillsRun, error) {
+			if err := scenario.session.Advance(ctx); err != nil {
+				return nil, err
+			}
+			offer, err := skillsOffer(tools, skills)
+			if err != nil {
+				return nil, err
+			}
+			scenario.gate.SetOffer(contract.ToolOffer{Tools: scenario.offer.Tools, HostTools: offer})
+			review := true
+			ran, err := scenario.runOn(ctx, adapter, &Run{Prompt: file.Request, TestPrompt: file.Critic.TestPrompt, Review: &review, AllowConversation: true, Interactive: true,
+				HostTools: tools, Skills: skills, Context: input})
+			if err != nil {
+				return nil, err
+			}
+			out := &skillsRun{Events: ran.Events}
+			collectRequests(out, ran.Requests[sent:])
+			sent = len(ran.Requests)
+			return out, nil
+		}
+		state, err := skillsScenario(ctx, file, host, play, critic)
 		if err != nil {
 			return nil, err
 		}
@@ -601,7 +711,7 @@ var Skills = ScenarioCheck{
 // same names, made at the provider-run function's seam (the TypeScript suite's agent engine makes the
 // same ones). The agent wire sends the state once per run, so a load's block is read off load_skill's
 // answer, and the restored run's off its invocation's prompt.
-var AgentSkillsNames = []string{"9 agent catalogue", "9 agent events", "9 agent block", "9 agent budget", "9 agent poisoned", "9 agent report", "9 agent restore"}
+var AgentSkillsNames = []string{"9 agent catalogue", "9 agent events", "9 agent block", "9 agent budget", "9 agent poisoned", "9 agent report", "9 agent restore", "9 agent critic"}
 
 // agentSkillsChecks is scenario 9 on the agent capability, each run played as the scenario's turns by
 // the binding's provider-run function.
@@ -647,7 +757,42 @@ func agentSkillsChecks(ctx context.Context, server *Server, host AgentHost, _ fu
 		}
 		return out, nil
 	}
-	held, err := skillsScenario(ctx, file, state, play)
+	// The critic's run (#93): the author's invocation and the critic's, each playing its phase's turns.
+	critic := func(ctx context.Context, skills []runcontext.Skill, input *runcontext.Input) (*skillsRun, error) {
+		offer, err := skillsOffer(tools, skills)
+		if err != nil {
+			return nil, err
+		}
+		scenario.gate.SetOffer(contract.ToolOffer{Tools: scenario.offer.Tools, HostTools: offer})
+		watch := &monitor{}
+		review := true
+		run := &Run{ModelName: parentModel, Gate: scenario.gate.Calls(), Tools: scenario.offer.Tools, Prompt: file.Request, TestPrompt: file.Critic.TestPrompt, Review: &review,
+			AllowConversation: true, Interactive: true, HostTools: tools, Skills: skills, Context: input, Emit: scenario.emit,
+			Agent: &adapter.Agent{Model: parentModel, Run: watch.wrap(host.Bind(func(request adapter.AgentRequest, _ int) AgentPlay {
+				if request.Phase == "critic" {
+					return AgentPlay{Steps: sourcesSteps(file.Critic.Critic)}
+				}
+				return AgentPlay{Steps: sourcesSteps(file.Critic.Author)}
+			}))}}
+		seal := sealNetwork()
+		_ = inner.Run(ctx, run)
+		reached := seal.lift()
+		events := scenario.take()
+		if len(reached) > 0 {
+			events = append(events, contract.RunEvent{Error: &contract.RunEventError{Type: "error", Message: "the adapter reached for http.DefaultTransport: " + strings.Join(reached, ", ")}})
+		}
+		out := &skillsRun{Events: events}
+		for _, call := range watch.admitted() {
+			out.System = append(out.System, call.Request.Instructions)
+			out.After = append(out.After, call.Request.Prompt)
+			for _, answer := range call.Answers {
+				out.Answers = append(out.Answers, answer)
+				out.Phases = append(out.Phases, call.Request.Phase)
+			}
+		}
+		return out, nil
+	}
+	held, err := skillsScenario(ctx, file, state, play, critic)
 	if err != nil {
 		return nil, err
 	}

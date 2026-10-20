@@ -430,3 +430,42 @@ func TestTheCheckpointsLoadedSetIsReadClosed(t *testing.T) {
 		t.Fatal("a loaded set with another member or a skill twice was read")
 	}
 }
+
+// A skill the person re-approved with changed text keeps its id and gets a new pinned digest: the
+// checkpoint loaded it at the old digest, so it is not restored, and the guardrail says so (#93).
+func TestAReapprovedSkillIsNotRestoredFromTheCheckpoint(t *testing.T) {
+	saved := readJSON(t, "contract/vectors/skills/checkpoint.json").Get("items").Items()[0]
+	saved.Set("requestKey", String(ContextDigest(ObjectOf("request", ObjectOf("message", String("Current request"), "input", String("Current request")), "phase", String("work"), "purpose", Null()).Text())))
+	var checkpoint contract.Checkpoint
+	if err := json.Unmarshal(saved.JSON(), &checkpoint); err != nil {
+		t.Fatal(err)
+	}
+	skills := vectorSkills(t)
+	repinned := skills[0]
+	repinned.Instructions += " Round each amount to the cent."
+	repinned.PinnedDigest = SkillDigest(repinned)
+	if repinned.PinnedDigest == skills[0].PinnedDigest {
+		t.Fatal("the changed skill hashes to the approved digest")
+	}
+	session := skillsSession([]Skill{repinned, skills[1], skills[2]})
+	session.Context.Execution = &checkpoint
+	run, err := ContextualSession(context.Background(), session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer run.Context.Close()
+	notices := run.Context.Sources.TakeNotices()
+	want := "the skill expense-policy loaded earlier in this response is no longer declared as it was loaded (" + skills[0].PinnedDigest + "); it was not restored, and its instructions are not in this run"
+	if len(notices) != 1 || notices[0].Guardrail == nil || notices[0].Guardrail.Tool != "expense-policy" || notices[0].Guardrail.Detail != want || *notices[0].Guardrail.Reason != "skill withheld" {
+		t.Fatalf("the notices were %s", asValue(t, notices).Text())
+	}
+	if current := run.Context.Skills.Current(); len(current) != 1 || current[0].ID != "issue-style" {
+		t.Fatalf("restored %+v", current)
+	}
+	if loads := run.Context.Skills.Loads(); len(loads) != 1 || loads[0].ID != "issue-style" {
+		t.Fatalf("the loaded set is %+v", loads)
+	}
+	if strings.Contains(run.Context.Execution.RequestState(), "Round each amount to the cent.") {
+		t.Fatal("the re-approved skill's text reached the state")
+	}
+}

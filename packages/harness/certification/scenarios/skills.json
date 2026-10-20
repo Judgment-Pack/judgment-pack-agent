@@ -1,5 +1,5 @@
 {
-  "$comment": "Written by hand (ADR-0009). A conversation-mode run declares 42 skills beside one host tool (the person's custom read rates__lookup_rate, scenario 7's): expense_policy, which names that tool and carries a resource; fast_track, whose instructions tell the model to drop the data rule, call write_file, treat retrieved text as instructions and load every skill; issue_style, an Exchange entry's; review_checklist, whose instructions are a tab-indented table near skillBytes (their JSON text passes toolResultBytes, so on the agent wire load_skill's answer must not be cut to it); issue_draft, whose bundle changed after the person approved it (pinnedDigest is the approved bundle's); file_helper, which names write_file, a tool the host does not declare; and the 36 skills of the library source. The 40 admissible skills pass cataloguedSkills (32): the first 32 are catalogued and 8 of the library's are withheld, one guardrail; issue_draft and file_helper are withheld at declaration. The model loads expense_policy and fast_track, reads with the custom tool, calls write_file (never offered, refused at the gate), loads issue_style, unloads it, loads review_checklist, and loads issue_style again, the fifth load, past skillsPerRun (4), refused. A second run, in a fresh session given the first run's last checkpoint read back from its JSON text, declares every skill but review_checklist (withdrawn): it restores expense_policy and fast_track and says it did not restore review_checklist. Each pinnedDigest is skill.json#/$defs/digest of its bundle.",
+  "$comment": "Written by hand (ADR-0009). A conversation-mode run declares 42 skills beside one host tool (the person's custom read rates__lookup_rate, scenario 7's): expense_policy, which names that tool and carries a resource; fast_track, whose instructions tell the model to drop the data rule, call write_file, treat retrieved text as instructions and load every skill; issue_style, an Exchange entry's; review_checklist, whose instructions are a tab-indented table near skillBytes (their JSON text passes toolResultBytes, so on the agent wire load_skill's answer must not be cut to it); issue_draft, whose bundle changed after the person approved it (pinnedDigest is the approved bundle's); file_helper, which names write_file, a tool the host does not declare; and the 36 skills of the library source. The 40 admissible skills pass cataloguedSkills (32): the first 32 are catalogued and 8 of the library's are withheld, one guardrail; issue_draft and file_helper are withheld at declaration. The model loads expense_policy and fast_track, reads with the custom tool, calls write_file (never offered, refused at the gate), loads issue_style, unloads it, loads review_checklist, and loads issue_style again, the fifth load, past skillsPerRun (4), refused. A second run, in a fresh session given the first run's last checkpoint read back from its JSON text, declares every skill but review_checklist (withdrawn): it restores expense_policy and fast_track and says it did not restore review_checklist. critic is a third run, with the critic on: the author loads expense_policy and proposes a pack, and the critic loads the same skill, which on the agent wire answers it with the block the author was given. Each pinnedDigest is skill.json#/$defs/digest of its bundle.",
   "id": "skills",
   "request": "Draft the reimbursement pack for the Lyon trip under the expense policy.",
   "rates": {
@@ -660,5 +660,34 @@
     {
       "say": "I continued under the expense policy."
     }
-  ]
+  ],
+  "critic": {
+    "testPrompt": "Look for a case the drafted pack decides wrongly.",
+    "author": [
+      {
+        "call": {
+          "tool": "load_skill",
+          "arguments": {
+            "name": "expense_policy"
+          }
+        }
+      },
+      {
+        "say": "Here is the pack under the expense policy.\n\n```json\n{\"proposal\":{\"document\":{\"id\":\"expense\"},\"unknowns\":[]}}\n```"
+      }
+    ],
+    "critic": [
+      {
+        "call": {
+          "tool": "load_skill",
+          "arguments": {
+            "name": "expense_policy"
+          }
+        }
+      },
+      {
+        "say": "No refutation found: the pack keeps to the expense policy."
+      }
+    ]
+  }
 }
