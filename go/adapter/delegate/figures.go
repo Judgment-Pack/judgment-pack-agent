@@ -33,7 +33,7 @@ func ms(d time.Duration) int64 {
 // taskMu.
 func (c *coordinator) childFigures(task *contract.DelegatedTask, number int) contract.ProvenanceChildFigures {
 	out := contract.ProvenanceChildFigures{Task: task.ID, Batch: int64(number), Profile: task.Profile, Model: task.Model, State: task.State,
-		ModelRequests: task.ModelRequests, ToolCalls: task.ToolCalls, Tokens: task.Tokens, FirstByteMs: task.FirstByteMs}
+		ToolCalls: task.ToolCalls, Tokens: task.Tokens, FirstByteMs: task.FirstByteMs}
 	switch {
 	case task.DurationMs != nil:
 		out.DurationMs = *task.DurationMs
@@ -54,9 +54,13 @@ func (c *coordinator) childFigures(task *contract.DelegatedTask, number int) con
 	}
 	if c.run.Agent != nil {
 		// On an agent capability the child's invocations, counted where each was admitted; no model
-		// request or token figure is the coordinator's to give.
+		// request or token figure is the coordinator's to give, and the member is absent, not 0
+		// (agent#71).
 		runs := int64(c.childRuns(task.ID))
 		out.AgentRuns = &runs
+	} else {
+		requests := task.ModelRequests
+		out.ModelRequests = &requests
 	}
 	return out
 }
@@ -64,7 +68,15 @@ func (c *coordinator) childFigures(task *contract.DelegatedTask, number int) con
 func totalOf(children []contract.ProvenanceChildFigures, duration int64) contract.ProvenanceFiguresTotal {
 	total := contract.ProvenanceFiguresTotal{DurationMs: duration}
 	for _, child := range children {
-		total.ModelRequests += child.ModelRequests
+		// Model requests only: a child that reports none (an agent capability's) adds none, and a
+		// total no child has a count for carries none.
+		if child.ModelRequests != nil {
+			if total.ModelRequests == nil {
+				zero := int64(0)
+				total.ModelRequests = &zero
+			}
+			*total.ModelRequests += *child.ModelRequests
+		}
 		total.ToolCalls += child.ToolCalls
 		total.Tokens = addTokens(total.Tokens, child.Tokens)
 		if child.AgentRuns != nil {
@@ -116,13 +128,16 @@ func (c *coordinator) withFigures(checkpoint contract.Checkpoint) contract.Check
 	c.batchMu.Lock()
 	requests := c.parentCount
 	c.batchMu.Unlock()
-	parent := contract.ProvenanceParentFigures{Model: c.run.ModelName, ModelRequests: int64(requests), Tokens: tokenFigures(checkpoint.Completions)}
+	parent := contract.ProvenanceParentFigures{Model: c.run.ModelName}
 	if agent {
 		// The parent's own invocations; the provider reports no request or token count, and none is
-		// written.
+		// written (agent#71).
 		held := int64(runs)
 		parent.AgentRuns = &held
-		parent.Tokens = nil
+	} else {
+		held := int64(requests)
+		parent.ModelRequests = &held
+		parent.Tokens = tokenFigures(checkpoint.Completions)
 	}
 	checkpoint.Delegation = &contract.ProvenanceDelegationReport{Batches: batches, Parent: parent}
 	return checkpoint

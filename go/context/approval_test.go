@@ -383,3 +383,47 @@ type sourcesFile struct {
 		InputSchema json.RawMessage `json:"inputSchema"`
 	} `json:"server"`
 }
+
+// A refused continuation writes the refusal and then says so once: a guardrail with the reason
+// approval refused, in the refused result's words, without the person's note (agent#80). A restored
+// refused approval, continued as it stands, says nothing again.
+func TestARefusedContinuationSaysSoOnceAfterTheWrite(t *testing.T) {
+	ran := 0
+	session, saved := pausedSession(t, &ran)
+	note := "Use the repository's issue template next time."
+	input := *session.Context
+	input.Execution = &saved
+	input.Approval = &contract.CheckpointApprovalDecision{CallID: "call-a", Approved: false, Note: &note}
+	session.Context = &input
+	opened, err := ContextualSession(context.Background(), session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opened.Context.Close()
+	events := opened.Context.TakeContinued()
+	if len(events) != 2 || events[0].ExecutionCheckpoint == nil || events[0].ExecutionCheckpoint.Checkpoint.Approval.State != "refused" || events[1].Guardrail == nil {
+		t.Fatalf("the continued events were %s", comparison(events))
+	}
+	notice := events[1].Guardrail
+	if notice.Tool != "tracker__create_issue" || notice.Action != "refused" || notice.Reason == nil || *notice.Reason != "approval refused" ||
+		notice.Detail != RefusedDetail("tracker__create_issue") || strings.Contains(notice.Detail, note) || ran != 0 {
+		t.Fatalf("the guardrail was %s, %d calls run", comparison(notice), ran)
+	}
+	// The same checkpoint restored with its refusal written: continued as it stands, no guardrail.
+	written := events[0].ExecutionCheckpoint.Checkpoint
+	again := *session.Context
+	again.Execution = &written
+	again.Approval = nil
+	session.Context = &again
+	restored, err := ContextualSession(context.Background(), session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restored.Context.Close()
+	if held := restored.Context.TakeContinued(); len(held) != 0 {
+		t.Fatalf("a restored refusal said so again: %s", comparison(held))
+	}
+	if !strings.Contains(restored.Session.Prompt, ApprovalContinuation) {
+		t.Fatalf("the restored refusal's continuation: %q", restored.Session.Prompt)
+	}
+}

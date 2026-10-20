@@ -111,9 +111,19 @@ func validTokens(v *Value) bool {
 }
 
 // ValidDelegationFigures is validDelegationFigures: the checkpoint's delegation figures, read
-// closed (agent#18).
-func ValidDelegationFigures(v *Value) bool {
+// closed (agent#18). unit is the checkpoint's: where it is model-requests each figure carries
+// modelRequests; where it is provider-managed the member is optional, absent on an agent
+// capability's figures (agent#71).
+func ValidDelegationFigures(v *Value, unit string) bool {
 	const day = 86400000
+	// requests reads a figure's modelRequests, which only a provider-managed unit may leave out.
+	requests := func(x *Value, max float64) bool {
+		held := x.Get("modelRequests")
+		if held == nil {
+			return unit == "provider-managed"
+		}
+		return isCount(held, max)
+	}
 	tokens := func(x *Value) bool { return x.Get("tokens") == nil || validTokens(x.Get("tokens")) }
 	child := func(c *Value) bool {
 		if !isObject(c) || !hasOnly(c, "task", "batch", "profile", "model", "state", "modelRequests", "toolCalls",
@@ -133,7 +143,7 @@ func ValidDelegationFigures(v *Value) bool {
 		if !oneOf(c.Get("state"), "queued", "running", "complete", "failed", "interrupted") {
 			return false
 		}
-		if !isCount(c.Get("modelRequests"), 100) || !isCount(c.Get("toolCalls"), 100) {
+		if !requests(c, 100) || !isCount(c.Get("toolCalls"), 100) {
 			return false
 		}
 		if runs := c.Get("agentRuns"); runs != nil && !isCount(runs, 100) {
@@ -160,7 +170,7 @@ func ValidDelegationFigures(v *Value) bool {
 		if !isObject(t) || !hasOnly(t, "modelRequests", "toolCalls", "agentRuns", "tokens", "durationMs") {
 			return false
 		}
-		if !isCount(t.Get("modelRequests"), 9007199254740991) || !isCount(t.Get("toolCalls"), 9007199254740991) {
+		if !requests(t, 9007199254740991) || !isCount(t.Get("toolCalls"), 9007199254740991) {
 			return false
 		}
 		if runs := t.Get("agentRuns"); runs != nil && !isCount(runs, 9007199254740991) {
@@ -190,7 +200,7 @@ func ValidDelegationFigures(v *Value) bool {
 		if !isObject(p) || !hasOnly(p, "model", "modelRequests", "agentRuns", "tokens") {
 			return false
 		}
-		if !isText(p.Get("model"), 200) || !isCount(p.Get("modelRequests"), 9007199254740991) {
+		if !isText(p.Get("model"), 200) || !requests(p, 9007199254740991) {
 			return false
 		}
 		if runs := p.Get("agentRuns"); runs != nil && !isCount(runs, 9007199254740991) {
@@ -284,7 +294,7 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 	if calls := value.Get("testCalls"); calls != nil && (!isInteger(calls) || calls.Num() < 0 || calls.Num() > 400) {
 		return nil, errSavedExecution
 	}
-	if figures := value.Get("delegation"); figures != nil && !ValidDelegationFigures(figures) {
+	if figures := value.Get("delegation"); figures != nil && !ValidDelegationFigures(figures, value.Get("unit").Str()) {
 		return nil, errSavedExecution
 	}
 	if handoff := value.Get("handoff"); handoff != nil && !ValidHandoff(handoff) {
@@ -552,7 +562,13 @@ func ValidApproval(v *Value) bool {
 // RefusedResult is the refused result an act call the person refused carries (ADR-0008;
 // refusedResult): never run.
 func RefusedResult(name string) ToolResult {
-	return failedResult(failure.Authored("permission", "The person refused this call of "+name+"; it was not run and nothing was changed.", "tool"), "not-started")
+	return failedResult(failure.Authored("permission", RefusedDetail(name), "tool"), "not-started")
+}
+
+// RefusedDetail is the sentence of the refused result and of the guardrail that says the person
+// refused the call.
+func RefusedDetail(name string) string {
+	return "The person refused this call of " + name + "; it was not run and nothing was changed."
 }
 
 // UnknownOutcome is what an approved call restored before its result was written carries (ADR-0008;

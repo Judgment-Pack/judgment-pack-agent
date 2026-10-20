@@ -94,24 +94,29 @@ const TOKEN_KEYS=['inputTokens','outputTokens','reasoningTokens','cacheReadToken
  * where the provider runs its own loop; agentRuns counts its runs there), its tool calls, the provider's
  * token counts where reported, the time to its first answer byte and its whole duration.
  */
-export interface ChildFigures {task:string;batch:number;profile:string;model?:string;state:'queued'|'running'|'complete'|'failed'|'interrupted';modelRequests:number;toolCalls:number;agentRuns?:number;tokens?:TokenFigures;firstByteMs?:number;durationMs:number;partial?:true;reused?:true}
-/** A batch's sums, and its wall time from its first child's start to its last child's end. */
-export interface FiguresTotal {modelRequests:number;toolCalls:number;agentRuns?:number;tokens?:TokenFigures;durationMs:number}
+export interface ChildFigures {task:string;batch:number;profile:string;model?:string;state:'queued'|'running'|'complete'|'failed'|'interrupted';modelRequests?:number;toolCalls:number;agentRuns?:number;tokens?:TokenFigures;firstByteMs?:number;durationMs:number;partial?:true;reused?:true}
+/** A batch's sums, and its wall time from its first child's start to its last child's end. modelRequests counts model requests only: absent on an agent capability (agent#71). */
+export interface FiguresTotal {modelRequests?:number;toolCalls:number;agentRuns?:number;tokens?:TokenFigures;durationMs:number}
 export interface BatchFigures {batch:number;children:ChildFigures[];total:FiguresTotal}
-/** The parent's own: its model, its own model requests (the response's less its children's), and its own token counts. */
-export interface ParentFigures {model:string;modelRequests:number;agentRuns?:number;tokens?:TokenFigures}
+/** The parent's own: its model, its own model requests (the response's less its children's; none on an agent capability), and its own token counts. */
+export interface ParentFigures {model:string;modelRequests?:number;agentRuns?:number;tokens?:TokenFigures}
 export interface DelegationFigures {batches:BatchFigures[];parent:ParentFigures}
 const count=(v:unknown,max=Number.MAX_SAFE_INTEGER)=>Number.isSafeInteger(v)&&Number(v)>=0&&Number(v)<=max
 const exact=(v:Record<string,unknown>,names:readonly string[])=>Object.keys(v).every(k=>names.includes(k))
 function validTokens(v:unknown):boolean{return object(v)&&exact(v,TOKEN_KEYS)&&TOKEN_KEYS.every(k=>v[k]===undefined||count(v[k]))}
-/** The checkpoint's delegation figures, read closed (agent#18). */
-export function validDelegationFigures(v:unknown):v is DelegationFigures {
+/**
+ * The checkpoint's delegation figures, read closed (agent#18). `unit` is the checkpoint's: where it counts
+ * model requests each figure carries modelRequests; where the provider manages them (an agent capability)
+ * the member is optional and the agent capability's figures omit it (agent#71).
+ */
+export function validDelegationFigures(v:unknown,unit:'model-requests'|'provider-managed'='model-requests'):v is DelegationFigures {
  const DAY=86400000
+ const requests=(x:Record<string,unknown>,max=Number.MAX_SAFE_INTEGER)=>x.modelRequests===undefined?unit==='provider-managed':count(x.modelRequests,max)
  const tokens=(x:Record<string,unknown>)=>x.tokens===undefined||validTokens(x.tokens)
- const child=(c:unknown)=>object(c)&&exact(c,['task','batch','profile','model','state','modelRequests','toolCalls','agentRuns','tokens','firstByteMs','durationMs','partial','reused'])&&text(c.task,36)&&/^[a-f0-9-]{36}$/.test(c.task)&&count(c.batch,100)&&Number(c.batch)>=1&&text(c.profile,48)&&(c.model===undefined||text(c.model,200))&&['queued','running','complete','failed','interrupted'].includes(String(c.state))&&count(c.modelRequests,100)&&count(c.toolCalls,100)&&(c.agentRuns===undefined||count(c.agentRuns,100))&&tokens(c)&&(c.firstByteMs===undefined||count(c.firstByteMs,DAY))&&count(c.durationMs,DAY)&&(c.partial===undefined||c.partial===true)&&(c.reused===undefined||c.reused===true)
- const total=(t:unknown)=>object(t)&&exact(t,['modelRequests','toolCalls','agentRuns','tokens','durationMs'])&&count(t.modelRequests)&&count(t.toolCalls)&&(t.agentRuns===undefined||count(t.agentRuns))&&tokens(t)&&count(t.durationMs,DAY)
+ const child=(c:unknown)=>object(c)&&exact(c,['task','batch','profile','model','state','modelRequests','toolCalls','agentRuns','tokens','firstByteMs','durationMs','partial','reused'])&&text(c.task,36)&&/^[a-f0-9-]{36}$/.test(c.task)&&count(c.batch,100)&&Number(c.batch)>=1&&text(c.profile,48)&&(c.model===undefined||text(c.model,200))&&['queued','running','complete','failed','interrupted'].includes(String(c.state))&&requests(c,100)&&count(c.toolCalls,100)&&(c.agentRuns===undefined||count(c.agentRuns,100))&&tokens(c)&&(c.firstByteMs===undefined||count(c.firstByteMs,DAY))&&count(c.durationMs,DAY)&&(c.partial===undefined||c.partial===true)&&(c.reused===undefined||c.reused===true)
+ const total=(t:unknown)=>object(t)&&exact(t,['modelRequests','toolCalls','agentRuns','tokens','durationMs'])&&requests(t)&&count(t.toolCalls)&&(t.agentRuns===undefined||count(t.agentRuns))&&tokens(t)&&count(t.durationMs,DAY)
  const batch=(b:unknown)=>object(b)&&exact(b,['batch','children','total'])&&count(b.batch,100)&&Number(b.batch)>=1&&Array.isArray(b.children)&&b.children.length>=1&&b.children.length<=3&&b.children.every(child)&&total(b.total)
- const parent=(p:unknown)=>object(p)&&exact(p,['model','modelRequests','agentRuns','tokens'])&&text(p.model,200)&&count(p.modelRequests)&&(p.agentRuns===undefined||count(p.agentRuns))&&tokens(p)
+ const parent=(p:unknown)=>object(p)&&exact(p,['model','modelRequests','agentRuns','tokens'])&&text(p.model,200)&&requests(p)&&(p.agentRuns===undefined||count(p.agentRuns))&&tokens(p)
  return object(v)&&exact(v,['batches','parent'])&&Array.isArray(v.batches)&&v.batches.length<=20&&v.batches.every(batch)&&parent(v.parent)
 }
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v)
@@ -126,7 +131,7 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(!Number.isInteger(value.used)||Number(value.used)<0||!Number.isInteger(value.limit)||Number(value.limit)<1||Number(value.limit)>MAX_REQUEST_ALLOWANCE||Number(value.used)>Number(value.limit)||!Array.isArray(value.grants)||value.grants.length>8)return fail()
  let limit=value.unit==='model-requests'?MAX_TURNS:1
  for(const grant of value.grants){if(!object(grant)||grant.from!==limit||!Number.isInteger(grant.to)||Number(grant.to)<=limit||Number(grant.to)>MAX_REQUEST_ALLOWANCE||typeof grant.at!=='string'||!Number.isFinite(Date.parse(grant.at)))return fail();limit=Number(grant.to)}
- if(value.limit!==limit||!Array.isArray(value.plan)||(value.plan.length&&!validTaskSteps(value.plan))||!text(value.explanation,2000)||(value.reason!==undefined&&!text(value.reason,2000))||(value.testCalls!==undefined&&(!Number.isInteger(value.testCalls)||Number(value.testCalls)<0||Number(value.testCalls)>400))||(value.delegation!==undefined&&!validDelegationFigures(value.delegation)))return fail()
+ if(value.limit!==limit||!Array.isArray(value.plan)||(value.plan.length&&!validTaskSteps(value.plan))||!text(value.explanation,2000)||(value.reason!==undefined&&!text(value.reason,2000))||(value.testCalls!==undefined&&(!Number.isInteger(value.testCalls)||Number(value.testCalls)<0||Number(value.testCalls)>400))||(value.delegation!==undefined&&!validDelegationFigures(value.delegation,value.unit as 'model-requests'|'provider-managed')))return fail()
  if(value.completions!==undefined&&(!Array.isArray(value.completions)||value.completions.length>MAX_REQUEST_ALLOWANCE||value.completions.some(row=>!object(row)||!Number.isInteger(row.request)||Number(row.request)<1||Number(row.request)>Number(value.used)||!['work','synthesis','review'].includes(String(row.phase))||!readCompletion(row.result)||row.attempt!==undefined&&(!Number.isInteger(row.attempt)||Number(row.attempt)<1||Number(row.attempt)>3)||row.failure!==undefined&&!readFailure(row.failure)||row.waitMs!==undefined&&(!Number.isInteger(row.waitMs)||Number(row.waitMs)<0||Number(row.waitMs)>86400000))))return fail()
  if(value.prompts!==undefined&&(!Array.isArray(value.prompts)||value.prompts.length>MAX_PROMPT_DIGESTS||value.prompts.some((row,at,rows)=>!object(row)||!exact(row,['request','sha256'])||!Number.isSafeInteger(row.request)||Number(row.request)<1||at>0&&Number(row.request)<=Number((rows[at-1] as Record<string,unknown>).request)||typeof row.sha256!=='string'||!/^[a-f0-9]{64}$/.test(row.sha256))))return fail()
  if(value.sources!==undefined&&!validSourceFigures(value.sources))return fail()

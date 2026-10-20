@@ -416,3 +416,40 @@ func TestLimitToHoldsAChildToItsBudget(t *testing.T) {
 		t.Errorf("the ceiling answered %v", err)
 	}
 }
+
+// agent#71: a provider-managed execution's delegation figures may omit modelRequests, as the agent
+// capability's do; a model-requests execution's carry it on the parent, each child and each total.
+func TestDelegationFiguresReadModelRequestsByUnit(t *testing.T) {
+	items := vectorItems(t, "delegation/figures-agent-runs.json")
+	agent, model := items[0], items[1]
+	if !ValidDelegationFigures(agent, "provider-managed") || ValidDelegationFigures(agent, "model-requests") {
+		t.Fatalf("the agent capability's figures, without modelRequests: %s", agent.Text())
+	}
+	if !ValidDelegationFigures(model, "model-requests") || !ValidDelegationFigures(model, "provider-managed") {
+		t.Fatalf("a model capability's figures: %s", model.Text())
+	}
+	// Each of the parent, a child and a total is held to the member where the unit counts requests.
+	for _, cut := range []func(map[string]any) map[string]any{
+		func(v map[string]any) map[string]any { return v["parent"].(map[string]any) },
+		func(v map[string]any) map[string]any {
+			return v["batches"].([]any)[0].(map[string]any)["children"].([]any)[0].(map[string]any)
+		},
+		func(v map[string]any) map[string]any {
+			return v["batches"].([]any)[0].(map[string]any)["total"].(map[string]any)
+		},
+	} {
+		var whole map[string]any
+		if err := json.Unmarshal([]byte(model.Text()), &whole); err != nil {
+			t.Fatal(err)
+		}
+		delete(cut(whole), "modelRequests")
+		encoded, _ := json.Marshal(whole)
+		held, err := ParseJSON(encoded)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ValidDelegationFigures(held, "model-requests") {
+			t.Fatalf("a model-requests execution's figures without modelRequests were read: %s", encoded)
+		}
+	}
+}

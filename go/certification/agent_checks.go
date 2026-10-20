@@ -279,15 +279,15 @@ func handoffChecks(ctx context.Context, _ *Server, host AgentHost, with func(Ada
 	}
 	if final != nil && final.Delegation != nil {
 		report := final.Delegation
-		if report.Parent.Tokens != nil || report.Parent.ModelRequests != 0 {
+		if report.Parent.Tokens != nil || report.Parent.ModelRequests != nil {
 			f.fail("the parent carries model-request or token figures: %+v", report.Parent)
 		}
 		for _, batch := range report.Batches {
-			if batch.Total.Tokens != nil || batch.Total.ModelRequests != 0 {
+			if batch.Total.Tokens != nil || batch.Total.ModelRequests != nil {
 				f.fail("the batch's total carries model-request or token figures")
 			}
 			for _, child := range batch.Children {
-				if child.Tokens != nil || child.ModelRequests != 0 {
+				if child.Tokens != nil || child.ModelRequests != nil {
 					f.fail("a child carries model-request or token figures")
 				}
 			}

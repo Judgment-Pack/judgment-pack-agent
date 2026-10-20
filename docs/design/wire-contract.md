@@ -106,7 +106,7 @@ Desk's eighteen and the harness's `approval_requested` (ADR-0008):
   it in `approval` and the run ends paused, the person decides).
 - **Host reports:** `guardrail` (`rewrote` and `refused` from the tool gate, between the call and
   its result, with `reason` `approval refused` or `approval pending` where an act call's approval
-  refused it (ADR-0008); `narrowed` before the model is asked anything, where a family's wire cannot carry a
+  refused it (ADR-0008), and `approval refused` again after the person's refusal is written; `narrowed` before the model is asked anything, where a family's wire cannot carry a
   served schema keyword; `refused` with tool `proposal` where Plan mode or a conversation withholds
   proposals), `execution_checkpoint` (state to save, `durable` where it must be saved before the
   next operation), `delegated_task` (a child's state, whole, at each transition; on `vercel`
@@ -333,7 +333,8 @@ so the person is never asked about a call that could not run.
   after its context opens. Every act call carries an id, its decision kept by it and the call's
   arguments. A decision for another call, or none for a paused
   approval, ends the run with `stale-state` before anything runs. Refused: the approval written
-  `refused` with `decidedAt`, the note and the refused result. Approved: written `approved` and
+  `refused` with `decidedAt`, the note and the refused result, then one `guardrail` `refused` with
+  `reason: approval refused` (the refused result's sentence; the note is not in it). Approved: written `approved` and
   acknowledged; the call run once through the host's function (`SourceGate.approved`), the policy
   not asked again, under the gate's bounds (still offered as the person saw it, the source's list
   unchanged, a catalogued tool's arguments against its declared schema, the calls per turn, the
@@ -808,7 +809,11 @@ of its first answer; on an agent capability its agent's first event) and `durati
 checkpoint carries them too (`delegation`, `provenance.json#/$defs/delegationReport`): each batch's
 children and its total (the sums, and its wall time), and the parent's own figures (its model, its
 own requests and, on an agent capability, its own runs, each counted where the parent makes it, and
-its own tokens). The coordinator writes it on every checkpoint of the parent once a batch has
+its own tokens). `modelRequests` counts model requests only (agent#71): on an agent capability, where
+the provider runs its own loop and reports no count, the parent's, each child's and each total's
+figures omit it, never writing 0, and `checkpoint.json` holds it required where its `unit` is
+`model-requests`; a report line shows `provider-managed` where it would show a count, and a sum over
+both capabilities adds no model request for an agent child. The coordinator writes it on every checkpoint of the parent once a batch has
 started: the running batch with each child in its state (`running`, or `interrupted` once a resume
 reads it back), so a request a child made before a checkpoint is in that child's figure. It is
 carried through a resume as `used` is, and the harness's reader refuses one that does not read

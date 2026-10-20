@@ -1,5 +1,5 @@
 {
-  "description": "What delegation cost in two executions (agent#18). The first, on the codex engine: two children that each took one agent run and made no model request (no token counts, which the bridge does not report), the parent's own two agent runs counted beside them; each total is its children's sums, agentRuns included. The second, on a model capability: two children whose token counts carry reasoning and cache-write tokens, summed in the total. Written by hand from the schema; the contract tests check each total against its children.",
+  "description": "What delegation cost in two executions, one on each capability (agent#18, agent#71). The first, on the codex engine: two children that each took one agent run, with no modelRequests member and no token counts, which the provider does not report, the parent's own two agent runs counted beside them; each total is its children's sums, agentRuns included, and carries no modelRequests. The second, on a model capability: two children whose token counts carry reasoning and cache-write tokens, summed in the total, each figure carrying its modelRequests. A sum of modelRequests over both executions counts model requests only: the first adds none. Written by hand from the schema; the contract tests check each total against its children.",
   "schema": "provenance.json#/$defs/delegationReport",
   "source": {
     "harness": {
@@ -24,7 +24,6 @@
               "profile": "review",
               "model": "agent-model",
               "state": "complete",
-              "modelRequests": 0,
               "toolCalls": 2,
               "agentRuns": 1,
               "firstByteMs": 1400,
@@ -36,14 +35,12 @@
               "profile": "analyze",
               "model": "agent-model",
               "state": "complete",
-              "modelRequests": 0,
               "toolCalls": 0,
               "agentRuns": 1,
               "durationMs": 4100
             }
           ],
           "total": {
-            "modelRequests": 0,
             "toolCalls": 2,
             "agentRuns": 2,
             "durationMs": 8200
@@ -52,7 +49,6 @@
       ],
       "parent": {
         "model": "agent-model",
-        "modelRequests": 0,
         "agentRuns": 2
       }
     },

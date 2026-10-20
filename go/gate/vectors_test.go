@@ -59,6 +59,7 @@ var notTheGates = map[string]string{
 	"approval/continue-refused.json":         "the continuation of a refused act call: the boundary's (go/context, ContextualSession)",
 	"approval/continue-approved.json":        "the continuation of an approved act call: the boundary's (go/context, ContextualSession, SourceGate.Approved)",
 	"approval/wrong-call-id.json":            "a decision for another call, refused before the run: the execution's (go/context, ExecutionController.Initialize)",
+	"approval/policy.json":                   "the host's approval policy's three answers: the source gate's (go/context, askPolicy, SourceGate.Decide)",
 }
 
 type vectorFile struct {

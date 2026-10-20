@@ -182,6 +182,9 @@ func tokensAre(tokens *contract.ProvenanceTokenFigures, input, output int64) boo
 	return tokens != nil && tokens.InputTokens != nil && tokens.OutputTokens != nil && *tokens.InputTokens == input && *tokens.OutputTokens == output
 }
 
+// requestsAre reports a figure's modelRequests that is present and is n.
+func requestsAre(held *int64, n int64) bool { return held != nil && *held == n }
+
 // Delegation is scenario 2: a batch of two children, their findings, and a resumed child.
 func Delegation(with func(adapter.Adapter) adapter.Adapter) ScenarioCheck {
 	return ScenarioCheck{
@@ -401,14 +404,14 @@ func Delegation(with func(adapter.Adapter) adapter.Adapter) ScenarioCheck {
 				if !tokensAre(review.Tokens, 680, 60) || !tokensAre(research.Tokens, 710, 58) {
 					f.fail("the children's tokens were %s and %s", comparisonJSON(review.Tokens), comparisonJSON(research.Tokens))
 				}
-				if batch.Total.ModelRequests != 4 || !tokensAre(batch.Total.Tokens, 1390, 118) {
+				if !requestsAre(batch.Total.ModelRequests, 4) || !tokensAre(batch.Total.Tokens, 1390, 118) {
 					f.fail("the batch's total was %s", comparisonJSON(batch.Total))
 				}
-				if figures.Parent.Model != "scripted-model" || figures.Parent.ModelRequests != 3 || !tokensAre(figures.Parent.Tokens, 2030, 158) {
+				if figures.Parent.Model != "scripted-model" || !requestsAre(figures.Parent.ModelRequests, 3) || !tokensAre(figures.Parent.Tokens, 2030, 158) {
 					f.fail("the parent's figures were %s", comparisonJSON(figures.Parent))
 				}
 			}
-			if second := lastCheckpoint(ran[1].Events); second == nil || second.Delegation == nil || second.Delegation.Parent.ModelRequests != 2 || !tokensAre(second.Delegation.Parent.Tokens, 1600, 80) {
+			if second := lastCheckpoint(ran[1].Events); second == nil || second.Delegation == nil || !requestsAre(second.Delegation.Parent.ModelRequests, 2) || !tokensAre(second.Delegation.Parent.Tokens, 1600, 80) {
 				f.fail("the second response's parent figures were wrong")
 			}
 			if messages := messagesOf(ran[0].Events); len(messages) == 0 || !strings.Contains(messages[len(messages)-1], "0.58 per mile") {

@@ -613,6 +613,20 @@
         ]
       },
       {
+        "check": "8 \u00b7 refused: one guardrail with the reason approval refused follows the written refusal, and it is not the person\u2019s note",
+        "go": [
+          "8 refused",
+          "8 agent refused"
+        ]
+      },
+      {
+        "check": "8 \u00b7 the stable prefix, the tool list and the system text, is the same bytes in the pausing run and in each continued run, but for the marker each run draws for its framed descriptions",
+        "go": [
+          "8 continuation",
+          "8 agent continuation"
+        ]
+      },
+      {
         "check": "8 \u00b7 approved: the decision is written and acknowledged before the call runs, once, and its result is written and acknowledged before anything else",
         "go": [
           "8 approved",
