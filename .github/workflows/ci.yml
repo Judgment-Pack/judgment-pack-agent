@@ -49,6 +49,7 @@ jobs:
           tc = m.get("toolchains", {})
           print("node=" + tc.get("node", {}).get("version", ""))
           print("go=" + ("true" if "go" in tc else "false"))
+          print("goversion=" + tc.get("go", {}).get("version", ""))
           print("python=" + tc.get("python", {}).get("version", "3.12"))
           PY
           # The Desk commit scripts/parity.sh was made against, read from the script.
@@ -59,12 +60,13 @@ jobs:
         if: steps.dev.outputs.node != ''
         with:
           node-version: ${{ steps.dev.outputs.node }}
-      # The Go module's own version, go/go.mod's `go` line, is the lowest the module builds with;
-      # CI keeps running the release the module was measured on (ADR-0004), which is newer.
+      # The Go release is the manifest's (toolchains.go.version), not a pin here. The Go module's
+      # own version, go/go.mod's `go` line, is the lowest the module builds with; CI runs the
+      # release the module was measured on (ADR-0004), which is newer.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: steps.dev.outputs.go == 'true'
         with:
-          go-version: '1.26.5'
+          go-version: ${{ steps.dev.outputs.goversion }}
           cache: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
