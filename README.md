@@ -75,6 +75,16 @@ The contract is extracted (`contract/`, #19), and the harness is extracted as a 
 v0.1.0 means parity with the Desk's harness, plus the improvements of #1 to #18 that land before
 it; the rest follow in later releases.
 
+## Checks and agent instructions
+
+`scripts/dev/check.sh` runs every check CI runs, in order, and prints one summary block of passes,
+failures and skips; `--setup` runs the install steps first, `--only NAME` re-runs one check. The
+checks are listed in [`dev.json`](dev.json), the manifest of the Judgment Pack devkit
+(v0.1.0), whose runner is vendored here unchanged. `AGENTS.md` and `CLAUDE.md` carry the same
+instructions for agent sessions, shared rules first and this repository's own after them; CI checks
+the two are identical (`scripts/sync-agent-docs.sh` writes `CLAUDE.md` from `AGENTS.md`). The parity
+step needs a checkout of the Desk named by `JPDEV_DESK`, at the commit `scripts/parity.sh` pins.
+
 ## Release
 
 A release is a signed tag on `main`. The workflow builds `@judgment-pack/harness` into a tarball

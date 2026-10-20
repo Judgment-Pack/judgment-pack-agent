@@ -3,12 +3,16 @@ name: Mutation check
 # Each row of packages/harness/scripts/mutation-rows.json breaks one safeguard on purpose, in a scratch
 # copy, and a test must fail (agent#37). A row costs a few test files, and the table has more than a
 # hundred, so CI time is bounded two ways: a pull request runs the rows whose file it changes, capped,
-# and a sample; the full table runs weekly, in shards, and on demand.
+# and a sample; the full table runs on every push to main, in shards, and weekly and on demand.
+# release.yml requires a successful run of this workflow on the tagged commit (docs/releasing.md).
 on:
   pull_request:
     paths:
       - 'packages/harness/**'
       - '.github/workflows/mutation.yml'
+  # No path filter: any commit on main can be tagged, so each one has a full run.
+  push:
+    branches: [main]
   schedule:
     - cron: '23 4 * * 1'
   workflow_dispatch:
@@ -16,9 +20,11 @@ on:
 permissions:
   contents: read
 
+# A newer pull request push replaces the one before it. A run on main or by dispatch is never
+# replaced: a cancelled run would leave its commit without the green table a tag needs.
 concurrency:
-  group: mutation-${{ github.ref }}
-  cancel-in-progress: true
+  group: mutation-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   rows-apply:
