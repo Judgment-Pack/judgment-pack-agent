@@ -2,7 +2,7 @@
   "version": 1,
   "toolchains": {
     "node": {"version": "22"},
-    "go": {},
+    "go": {"version": "1.26.5"},
     "python": {"version": "3.12", "venv": ".venv"}
   },
   "setup": [
