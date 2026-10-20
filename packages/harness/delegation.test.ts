@@ -803,6 +803,20 @@ describe('limits after the review of agent#35',()=>{
   expect(codexRuns.prompts.at(-1)).toContain('delegate_tasks is not offered for the rest of this response')
  })
 
+ // ADR-0008: an act call pauses the response and the next counted run continues it, so a parent run is offered
+ // an act only while that run remains beside it, as delegate_tasks is offered only while its batch's runs remain.
+ it('offers a Codex parent an act with a source only while the run that continues after its pause remains',async()=>{
+  const codexRuns=greedyCodex(batch=>[task(`Batch ${batch}`,'analyze')])
+  const offered:string[][]=[]
+  const run:AgentRun=async(r,cb)=>{if(!r.prompt.includes('Complete this read-only task'))offered.push(r.tools.map((t:{description:string})=>t.description.slice(0,t.description.indexOf(':'))));return codexRuns.run(r,cb)}
+  const act:HostTool={name:'create_issue',description:'Open an issue.',inputSchema:{type:'object'},source:{kind:'custom',id:'tracker',trust:'person',version:'1'},effectClass:'act',approve:()=>'allow',execute:vi.fn()}
+  const {model:_model,thinking:_thinking,...base}=apiSession()
+  await collect(withDelegation(codex),{...base,hostTools:[act],agent:{model:'fixture',run}})
+  // Parent runs after none, two and four of the response's five runs: the third has no run left to continue a pause.
+  expect(offered.map(names=>names.includes('tracker__create_issue'))).toEqual([true,true,false])
+  expect(act.execute).not.toHaveBeenCalled()
+ })
+
  it('never lets a Codex child take the run kept for the parent’s answer',async()=>{
   // A second batch of three: one run is left for its children beside the parent's next, so the first runs, the
   // other two are refused, and the parent answers on the fifth run.

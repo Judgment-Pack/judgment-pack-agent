@@ -15,11 +15,19 @@ func LegChecks() []Check {
 // DelegationNames are the delegation scenario's checks.
 var DelegationNames = []string{"2 runs", "2 findings", "2 offers", "2 references", "2 reports", "2 figures", "2 resume"}
 
-// AllScenarios are the seven scenarios' checks (the seventh ADR-0006's) and the delegation capacity
+// AllScenarios are the eight scenarios' checks (the seventh ADR-0006's, the eighth ADR-0008's) and the delegation capacity
 // check, the delegation scenario's and the capacity check's made with the coordinator the caller
 // wraps the adapter in.
 func AllScenarios(with func(Adapter) Adapter) []ScenarioCheck {
-	return append(append([]ScenarioCheck{}, Scenarios...), Delegation(with), Capacity(with))
+	out := []ScenarioCheck{}
+	for _, scenario := range Scenarios {
+		// Scenario 8 runs through the coordinator, the path a continued run takes (ADR-0008).
+		if scenario.Scenario == "approval-pause" {
+			scenario = ApprovalPauseWith(with)
+		}
+		out = append(out, scenario)
+	}
+	return append(out, Delegation(with), Capacity(with))
 }
 
 // AllCheckNames are every check the Go runner makes, by name.
@@ -37,5 +45,6 @@ func AllCheckNames() []string {
 	// package's own (AgentOwnNames, parity.json's agentCapability).
 	out = append(out, AgentScenarioNames...)
 	out = append(out, AgentSourcesNames...)
+	out = append(out, AgentApprovalNames...)
 	return append(out, AgentDelegationNames...)
 }

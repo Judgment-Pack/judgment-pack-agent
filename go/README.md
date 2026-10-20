@@ -45,9 +45,14 @@ before the messages and the bytes through the request text grow on every request
 
 A tool from a gateway connection, a public MCP server or the person is a `runcontext.HostTool` with
 `Source` (`runcontext.ToolSource`, with `CurrentDigest` for an MCP server's served list),
-`EffectClass`, `Approval` and `Approve`, the host's approval reader, which is handed the call
-(`runcontext.ApprovalRequest`: the wire name, the tool's own name, the source record and a copy of the
-arguments) ([ADR-0006](../docs/adr/0006-tool-sources.md)). `ContextualSession` names each for the wire,
+`EffectClass`, `Approval` and `Approve`, the host's approval policy (`runcontext.ApprovalPolicy`), which
+is handed the call (`runcontext.ApprovalRequest`: the wire name, the tool's own name, the source record
+and a copy of the arguments) and answers at once `allow`, `refuse` or `ask`
+([ADR-0006](../docs/adr/0006-tool-sources.md), [ADR-0008](../docs/adr/0008-the-approval-pause.md)). On
+`ask` the run pauses (`approval_requested`, the call in the checkpoint's `approval`, `end`); the host
+continues the paused checkpoint with the person's decision in `runcontext.Input.Approval`, its durable
+callback acknowledging the approved write before the call runs once and the executed write before the
+continued run's first request, which carries the result as one data block. `ContextualSession` names each for the wire,
 frames its description, holds the schema budget with `load_tool`, and wraps each call in the source
 gate (`go/context/sources.go`); the boundary carries the source record on its events and the
 checkpoint's `sources` counts each source. The gate holds a host tool to its phase by the offered

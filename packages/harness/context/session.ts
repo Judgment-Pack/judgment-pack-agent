@@ -18,6 +18,7 @@ import {INDEX_SHARE,partBytes,type ChatScope,type ChatTurn,type RuntimeIdentity}
 import {readHostParts,systemText,type HostParts} from '../prompt'
 import {runModels,type AITarget,type AssistantEngine,type RunIdentity,type RunModels} from '../host'
 import {declareSources,offerSources,SourceGate,LOAD_TOOL,type Declared} from '../toolSources'
+import type {HostTool} from '../engine'
 export interface CurrentRequest {message:string;input:string}
 /** `currentState`: host-authored text that changes between requests or responses (the chat's
  * draft snapshot, the latest check). An adapter sends it after the history, at the end of every
@@ -43,8 +44,12 @@ export interface CurrentRequest {message:string;input:string}
  * `delegationReuse` (agent#17): `false` where this response's delegated tasks reuse no earlier result
  * of the chat, as for a Retry the person asked to run afresh; absent or `true`, an identical task's
  * complete result is reused.
+ *
+ * `approval` (ADR-0008): the person's decision on the act call a paused `execution` waits for
+ * (`checkpoint.json#/$defs/approvalDecision`), the continuation input beside a request grant. A
+ * decision for any other call is refused before anything runs (`stale-state`).
  */
-export interface ContextInput {currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatScope;runtime?:RuntimeIdentity;memory?:boolean;objective?:string;link?:ExecutionLink;connection?:AITarget;delegationReuse?:boolean}
+export interface ContextInput {currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatScope;runtime?:RuntimeIdentity;memory?:boolean;objective?:string;link?:ExecutionLink;connection?:AITarget;delegationReuse?:boolean;approval?:import('../execution/state').ApprovalDecision}
 /** How the delegation coordinator reaches a run it starts (agent#14): told the run's context once its execution is initialized, before its first request. */
 export interface ExecutionLink {attach(context:SessionContext):void;/** ADR-0006: the delegating run's source gate, which a child's gate shares the report's rows and the changed sources of. */sources?():SourceGate|undefined}
 export interface ContextUsage {inputBytes:number;estimatedInputTokens:number;inputBudgetBytes:number;outputReserveTokens:number;compactions:number;retainedItems:number}
@@ -83,9 +88,17 @@ export class SessionContext {
   * state, a guardrail for each declaration the package withheld, and the loaded schemas after the
   * history, in the request state.
   */
- openSources(declared:Declared,catalogue:boolean,parent?:SourceGate){
+ openSources(declared:Declared,catalogue:boolean,parent?:SourceGate,phase:'plan'|'work'='work'){
   this.execution.state.sources??=[]
-  this.sources=new SourceGate(declared.entries,declared.sources,this.policy,this.marker,(name,detail)=>this.refuse(name,detail),()=>this.execution.state.sources!,this.capabilities?.toolSchemas,parent)
+  // ADR-0008: the run's approval, in the execution state; no act call is admitted in a delegated child, in Plan mode or while the critic runs.
+  const book={
+   current:()=>this.execution.state.approval,
+   ask:(record:import('../execution/state').ApprovalRecord)=>{this.execution.state.approval=record},
+   closed:()=>parent!==undefined?'A delegated child admits reads only, and no act call; this call was not run and nothing was changed'
+    :phase==='plan'?'Plan mode admits reads only, and no act call; this call was not run and nothing was changed'
+    :this.narrowed!==null?'The critic and the reformat run admit no act call; this call was not run and nothing was changed':''
+  }
+  this.sources=new SourceGate(declared.entries,declared.sources,this.policy,this.marker,(name,detail,reason)=>this.refuse(name,detail,reason),()=>this.execution.state.sources!,this.capabilities?.toolSchemas,parent,book)
   this.catalogue=catalogue
   for(const held of declared.withheld)this.notices.push({type:'guardrail',tool:held.tool,action:'refused',detail:held.detail})
   this.execution.loadedSchemas=()=>this.sources?.loadedSection()??''
@@ -157,10 +170,28 @@ export class SessionContext {
   * A refusal the boundary makes itself: the guardrail event, put on the stream
   * before the call's result, and the failure the model reads.
   */
- refuse(name:string,detail:string):GateViolation{
-  this.notices.push({type:'guardrail',tool:name,action:'refused',detail})
+ refuse(name:string,detail:string,reason?:'approval refused'|'approval pending'):GateViolation{
+  this.notices.push({type:'guardrail',tool:name,action:'refused',detail,...(reason===undefined?{}:{reason})})
   return new GateViolation(name,detail)
  }
+ /**
+  * ADR-0008: the decision on one act call of a tool with a source, asked by an engine where it hands
+  * a host tool to the host, before the call's `tool_call` (`SourceGate.decide`): the
+  * `approval_requested` event the engine delivers in place of that `tool_call` where the host's
+  * policy answers ask, the call then never handed to the host; undefined where the call goes on (run,
+  * or refused by the gate with its guardrail).
+  */
+ async approval(name:string,args:Record<string,unknown>,callId?:string):Promise<Extract<AssistantEvent,{type:'approval_requested'}>|undefined>{
+  if(!this.sources?.needsApproval(name))return
+  if((await this.sources.decide(name,args,callId)).answer!=='ask')return
+  const asked=this.execution.state.approval!
+  return {type:'approval_requested',callId:asked.callId,name:asked.name,tool:asked.tool,source:{...asked.source},args:structuredClone(asked.args)}
+ }
+ /**
+  * ADR-0008: the act call the person approved, run once under its bounds through the host's own
+  * execute (`SourceGate.approved`); set by `contextualSession` where the run's approval asks it.
+  */
+ runApproved?:(signal:AbortSignal)=>Promise<{result:McpToolResult;ran:boolean}>
  /**
   * A name the session serves but this run was not offered (review row 5): refused
   * before any call is made, whatever the phase, with its own guardrail event.
@@ -388,6 +419,13 @@ export class SessionContext {
  check(instructions:string,prompt:string,tools:unknown){if(utf8Bytes(prompt)>this.budget(instructions,tools))throw new ContextBudgetError()}
  usage(input:unknown):ContextUsage {const bytes=utf8Bytes(encoded(input));return {inputBytes:bytes,estimatedInputTokens:Math.ceil(bytes/3),inputBudgetBytes:inputBytes(this.policy),outputReserveTokens:this.policy.outputTokens,compactions:this.compactions,retainedItems:this.ledger.list().items.length}}
 }
+/**
+ * A request refused because an act call of the run waits for the person's decision (ADR-0008): the
+ * shared boundary ends the run paused, with no error, once the engine reports it.
+ */
+export class ApprovalPaused extends Error {
+ constructor(){super('Work paused for the person’s decision on an act call. Continue with that decision.');this.name='ApprovalPaused'}
+}
 /** What a test call past the turn's cap earns: a failed tool result the model reads, naming the limit. */
 export function testCallCapFailure(limit:number):AIFailureError{
  return new AIFailureError({version:1,code:'tool-failed',source:'tool',outcome:'not-started',detail:`This turn has called ${TEST_TOOL} ${limit} time${limit===1?'':'s'}, the most one turn may (testCallsPerTurn); this call was not run. Use the reports already obtained: fix what they show and propose, or say what remains. The person can test again in a new turn.`})
@@ -406,7 +444,7 @@ export async function contextualSession<T extends EngineSession>(session:T):Prom
   const offered=offerSources(session.hostTools,declared.entries,context.policy,context.marker)
   session={...session,hostTools:offered.hostTools}
   declared.withheld.push(...offered.withheld)
-  context.openSources(declared,offered.catalogue,session.context?.link?.sources?.())
+  context.openSources(declared,offered.catalogue,session.context?.link?.sources?.(),session.context?.phase??'work')
  }
  await context.askHost(session)
  await context.initialize(session.context?.documents,true)
@@ -420,7 +458,16 @@ export async function contextualSession<T extends EngineSession>(session:T):Prom
  // ADR-0006: load_tool beside the ledger's tools where the tools with a source are a catalogue; each call
  // of a tool with a source is held by the source gate before the host's execute (SourceGate.call).
  const hostTools=[...session.hostTools,...context.ledger.tools(),...(context.catalogue?[context.sources!.loadTool()]:[]),...(session.allowConversation?[context.execution.tool(),context.execution.budgetTool()]:[])].map(tool=>({...tool,execute:async(args:Record<string,unknown>,signal:AbortSignal,callId?:string)=>{context.admit(tool.name,'host');await session.context?.authorize?.(signal);const run=(given:Record<string,unknown>,bounded:AbortSignal)=>context.execution.wrapRead(tool.name,a=>tool.execute(a,bounded,callId),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read',own.has(tool.name)?{runtime:false}:undefined)(given);return context.sources?context.sources.call(tool,args,signal,run,callId):run(args,signal)}}))
- const model='model'in session?{...session.model,call:async(suffix:string,request:import('../engine').ModelRequest)=>{await session.context?.authorize?.(session.signal);if(request.method!=='GET'){context.execution.claim();await context.execution.recordPrompt(request.body);try{await session.context?.checkpoint?.(context.execution.snapshot())}catch{throw failureError('storage','storage','not-started')}}return session.model.call(suffix,request)}}:undefined
- const agent='agent'in session?{...session.agent,run:async(request:import('../agent').AgentRequest,callbacks:import('../agent').AgentCallbacks)=>{await session.context?.authorize?.(callbacks.signal);const {delegated:_delegated,...sent}=request;await context.execution.recordPrompt(JSON.stringify(sent));return session.agent.run(request,callbacks)}}:undefined
+ // ADR-0008: the act call the person approved runs through the host's own execute, as every call of it would.
+ const approval=context.execution.state.approval
+ if(context.execution.approvalStep==='execute'&&approval){
+  const declaredTool=session.hostTools.find(tool=>tool.name===approval.name) as HostTool|undefined
+  context.runApproved=signal=>context.sources?context.sources.approved(approval,signal,declaredTool===undefined?undefined:(given,bounded)=>context.execution.wrapRead(declaredTool.name,a=>declaredTool.execute(a,bounded,approval.callId),declaredTool.contextPolicy,false)(given))
+   :Promise.resolve({result:{isError:true,content:[{type:'text',text:`${approval.name} is no longer offered; the call was not run and nothing was changed.`}]},ran:false})
+ }
+ // ADR-0008: while an act call waits for the person's decision, no request is sent: the run ends paused.
+ const held=()=>{if(context.execution.approvalAsked)throw new ApprovalPaused()}
+ const model='model'in session?{...session.model,call:async(suffix:string,request:import('../engine').ModelRequest)=>{await session.context?.authorize?.(session.signal);if(request.method!=='GET'){held();context.execution.claim();await context.execution.recordPrompt(request.body);try{await session.context?.checkpoint?.(context.execution.snapshot())}catch{throw failureError('storage','storage','not-started')}}return session.model.call(suffix,request)}}:undefined
+ const agent='agent'in session?{...session.agent,run:async(request:import('../agent').AgentRequest,callbacks:import('../agent').AgentCallbacks)=>{await session.context?.authorize?.(callbacks.signal);held();const {delegated:_delegated,...sent}=request;await context.execution.recordPrompt(JSON.stringify(sent));return session.agent.run(request,callbacks)}}:undefined
  return {context,session:{...session,...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{context.admit(name,'runtime');await session.context?.authorize?.(session.signal);context.claimTestCall(name);const call=()=>context.execution.wrapRead(name,a=>session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true,{runtime:true,offered:session.tools.some(t=>t.name===name)})(args);return context.sources?context.sources.runtime(call):call()}}}
 }

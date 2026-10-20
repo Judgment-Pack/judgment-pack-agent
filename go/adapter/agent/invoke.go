@@ -43,6 +43,12 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 	if phase == "reformat" {
 		r.run.Gate.BeginReformat()
 		defer r.run.Gate.EndReformat()
+		r.sc.Reformatting = true
+		defer func() { r.sc.Reformatting = false }()
+	}
+	// ADR-0008: while an act call waits for the person's decision, no invocation is dispatched.
+	if r.sc.Execution.ApprovalAsked() {
+		return "", runcontext.ErrApprovalPaused
 	}
 	instructions = r.sc.System(instructions+runcontext.DataRule+r.run.LanguageInstructions, "")
 	encoded, _ := json.Marshal(tools)
@@ -308,6 +314,18 @@ func (r *runState) tool(invCtx context.Context, offered map[string]bool, recorde
 		held, known := r.routes[call.Name]
 		if !known || !offered[call.Name] {
 			return r.refuseUnoffered(ctx, call, held, known, args)
+		}
+		// ADR-0008: an act call the host's policy asks about ends the invocation as a delegation
+		// handoff does: its approval_requested in place of the call, the call never run.
+		if held.host != nil {
+			if asked := r.sc.Approval(ctx, held.name, args, call.ID); asked != nil {
+				if !r.claimPause(false) {
+					return adapter.AgentToolAnswer{}, errWaiting
+				}
+				r.deliver(*asked)
+				r.pause()
+				return adapter.AgentToolAnswer{}, errWaiting
+			}
 		}
 		if held.host == nil || held.host.Interaction == "" {
 			r.deliver(callEvent(call.ID, held.name, args, ""))

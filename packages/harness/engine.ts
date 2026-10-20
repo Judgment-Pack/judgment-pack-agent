@@ -140,12 +140,13 @@ export interface HostTool {
   /** Whether each call needs the person's approval; by effect class where absent (`act` needs it). */
   approval?: import('./toolSources').Approval
   /**
-   * The host's approval reader for a tool with a source whose calls need approval (ADR-0006): asked
-   * before each call with the call (`ApprovalRequest`: the wire name, the tool's own name, its source
-   * record and a copy of its arguments), and the call runs only where it answers `true`. Absent,
-   * every such call is refused. The package holds no grant.
+   * The host's approval policy for a tool with a source whose calls need approval (ADR-0006,
+   * ADR-0008): asked at each call with the call (`ApprovalRequest`: the wire name, the tool's own
+   * name, its source record and a copy of its arguments) and answering at once, never waiting for the
+   * person: `allow` runs the call, `refuse` refuses it, `ask` pauses the run (`approval_requested`)
+   * until the person's decision continues it. Absent, every such call asks. The package holds no grant.
    */
-  approve?: (call: import('./toolSources').ApprovalRequest, signal: AbortSignal) => Promise<boolean>
+  approve?: import('./toolSources').ApprovalPolicy
   name: string
   description: string
   inputSchema: unknown
@@ -277,6 +278,11 @@ export interface AssistantSession {
 export type AssistantEvent =
   | {type:'execution_checkpoint'; durable?:boolean; checkpoint:import('./execution/state').ExecutionCheckpoint}
   | {type:'budget_paused'; checkpoint:import('./execution/state').ExecutionCheckpoint}
+  /**
+   * ADR-0008: an act call paused for the person's decision, in place of its `tool_call`: never run,
+   * written into the checkpoint's `approval`; the run then ends paused. Carried on the host's stream.
+   */
+  | { type: 'approval_requested'; callId: string; name: string; tool: string; source: import('./toolSources').SourceRecord; args: Record<string, unknown> }
   | { type: 'retry'; attempt: number }
   | { type: 'response_recovery' }
   | { type: 'delegation_requested'; request: import('./delegationContract').DelegationRequest }
@@ -308,7 +314,7 @@ export type AssistantEvent =
    * that fired — nothing was stopped — but it is the same kind of sentence: the
    * desk saying what it did rather than leaving it to be discovered.
    */
-  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string }
+  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string; reason?: 'approval refused' | 'approval pending' }
   | { type: 'thinking_unavailable'; detail: string }
   /**
    * `cases` and `incomplete` where the host declared cases (agent#10): each

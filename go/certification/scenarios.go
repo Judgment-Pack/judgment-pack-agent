@@ -15,7 +15,7 @@ import (
 	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
 )
 
-// The certified scenarios (agent#13, certification/scenarios.test.ts): seven scripted scenarios run
+// The certified scenarios (agent#13, certification/scenarios.test.ts): eight scripted scenarios run
 // on the OpenAI-compatible wire, once with each answer shape, through the shared server's scenario
 // sessions. The host's half of each (its host tools, the chat context, Plan mode, the correction
 // loop's checks, the delegation coordinator) is this runner's, as it is the TypeScript suite's.
@@ -181,7 +181,8 @@ func (h *scenarioHost) runOn(ctx context.Context, adapter Adapter, run *Run) (*S
 	if err == nil && len(reached) > 0 {
 		err = fmt.Errorf("the adapter reached for http.DefaultTransport: %v", reached)
 	}
-	observed, obsErr := h.session.Observations(ctx)
+	// What the server observed is read whatever ended the run, a host that broke it off included.
+	observed, obsErr := h.session.Observations(context.WithoutCancel(ctx))
 	if obsErr != nil {
 		return nil, obsErr
 	}

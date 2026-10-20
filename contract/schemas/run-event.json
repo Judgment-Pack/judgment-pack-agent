@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-event.json",
   "title": "Run event",
-  "description": "One event of a run, from the adapter to the host, in order, discriminated by type. Every kind of the Desk's AssistantEvent union (web/src/assistant/engine.ts) at the pinned commit, with its members spelled as the Desk spells them. A run ends with exactly one end and nothing follows it; a run the consumer left gets no end. Some events are the host's own, interleaved into the same stream rather than emitted by a loop: the tool gate's guardrail rewrote and refused, the shared context boundary's execution_checkpoint and budget_paused (which also replaces a loop's own budget_paused or request-limit error), and the delegation coordinator's delegated_task. Open: the stream is an in-process TypeScript union with no reader at run time that refuses another member; the type member alone decides the kind.",
+  "description": "One event of a run, from the adapter to the host, in order, discriminated by type. Every kind of the Desk's AssistantEvent union (web/src/assistant/engine.ts) at the pinned commit, with its members spelled as the Desk spells them. A run ends with exactly one end and nothing follows it; a run the consumer left gets no end. Some events are the host's own, interleaved into the same stream rather than emitted by a loop: the tool gate's guardrail rewrote and refused, the shared context boundary's execution_checkpoint, budget_paused (which also replaces a loop's own budget_paused or request-limit error) and approval_requested (ADR-0008: emitted in place of an act call's tool_call where the host's approval policy answers ask), and the delegation coordinator's delegated_task. Open: the stream is an in-process TypeScript union with no reader at run time that refuses another member; the type member alone decides the kind.",
   "type": "object",
   "required": [
     "type"
@@ -12,6 +12,7 @@
       "enum": [
         "execution_checkpoint",
         "budget_paused",
+        "approval_requested",
         "retry",
         "response_recovery",
         "delegation_requested",
@@ -37,6 +38,9 @@
     },
     {
       "$ref": "#/$defs/budget_paused"
+    },
+    {
+      "$ref": "#/$defs/approval_requested"
     },
     {
       "$ref": "#/$defs/retry"
@@ -124,6 +128,43 @@
         }
       },
       "additionalProperties": true
+    },
+    "approval_requested": {
+      "description": "An act call paused for the person (ADR-0008): the model called a tool with a source whose effect class is act and whose approval is required, and the host's approval policy answered ask. The shared context boundary emits this in place of the call's tool_call, never runs the call, writes the call into the checkpoint's approval (state asked) with status paused, emits the checkpoint durable, and ends the run with end and no error: a model engine once the step's other calls are answered (its next request is never sent), an agent engine at the call (the invocation is stopped, as at a delegation handoff). The host's stream carries it, unlike delegation_requested: the person has to see the call. The host continues the paused checkpoint with the person's decision (checkpoint.json#/$defs/approvalDecision). callId is the call's id, drawn by the boundary where the run's events carry none; name the wire name the model called; tool the tool's own name at its source; source its record; args the arguments the model sent. Closed.",
+      "type": "object",
+      "required": [
+        "type",
+        "callId",
+        "name",
+        "tool",
+        "source",
+        "args"
+      ],
+      "properties": {
+        "type": {
+          "const": "approval_requested"
+        },
+        "callId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "name": {
+          "$ref": "tool-offer.json#/$defs/wireName"
+        },
+        "tool": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "source": {
+          "$ref": "tool-offer.json#/$defs/sourceRecord"
+        },
+        "args": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
     },
     "retry": {
       "description": "The adapter is sending again within this turn, attempt n of at most two. The codex engine relays the Codex bridge's recovery notices. The vercel engine emits it before it sends again a model request the provider refused (packages/harness/engines/vercel/retry.ts, retryingCall): only a failure whose outcome is refused and that failures.ts names (canRetryRefusal: the rate-limited class, a 429 or a rate-limit alias, and a 4xx carrying the overload code overloaded_error), never an unknown outcome (a 5xx, 408, 504 or a transport failure) and never a response that answered: a stream that breaks after its first byte is reported, not sent again; at most two retries, each after the longer of the backoff (1 s, then 2 s) and the provider's Retry-After, and none where Retry-After asks for more than 30 s, when the refusal is reported at once with its retryAt, nor where the retry would take the allowance's last request, which is the turn's tool-free final answer. Each attempt is a model request: counted against the allowance and recorded in the checkpoint's completions (provenance.json: attempt, failure, waitMs).",
@@ -278,7 +319,7 @@
       "additionalProperties": true
     },
     "guardrail": {
-      "description": "The host saying what it did. rewrote and refused are the tool gate's, emitted by the host as the call's frame leaves the page, so they arrive between that call's tool_call and tool_result. narrowed is the adapter's notice, before the model is asked anything, that a tool's served schema lost a keyword on this family's wire. Also refused, with tool proposal, where the host withholds a proposal (Plan mode, or a conversation without artifact proposals).",
+      "description": "The host saying what it did. rewrote and refused are the tool gate's, emitted by the host as the call's frame leaves the page, so they arrive between that call's tool_call and tool_result. narrowed is the adapter's notice, before the model is asked anything, that a tool's served schema lost a keyword on this family's wire. Also refused, with tool proposal, where the host withholds a proposal (Plan mode, or a conversation without artifact proposals). reason (ADR-0008), on a refusal of an act call of a tool with a source: approval refused, the host's approval policy answered refuse; approval pending, the call came while another act call of the run waits for the person's decision (at most one approval is pending). Neither call is run.",
       "type": "object",
       "required": [
         "type",
@@ -302,6 +343,12 @@
         },
         "detail": {
           "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "approval refused",
+            "approval pending"
+          ]
         }
       },
       "additionalProperties": true

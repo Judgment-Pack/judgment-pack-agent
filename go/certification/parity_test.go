@@ -299,7 +299,7 @@ func TestTheParityTableHoldsTheGoChecksInStepWithTheTypeScriptLeg(t *testing.T) 
 		}
 	}
 	all := AllAgentCheckNames()
-	for _, name := range slices.Concat(AgentScenarioNames, AgentSourcesNames, AgentDelegationNames, AgentOwnNames) {
+	for _, name := range slices.Concat(AgentScenarioNames, AgentSourcesNames, AgentApprovalNames, AgentDelegationNames, AgentOwnNames) {
 		if !slices.Contains(all, name) {
 			t.Errorf("%s is named and no agent check reports it", name)
 		}

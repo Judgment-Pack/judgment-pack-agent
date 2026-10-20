@@ -122,6 +122,11 @@ func TestTheDelegationScenario(t *testing.T) {
 	runScenarios(t, certification.Delegation(withDelegation))
 }
 
+// Scenario 8 through the delegation coordinator, the path a continued run takes (ADR-0008).
+func TestTheApprovalPauseThroughTheCoordinator(t *testing.T) {
+	runScenarios(t, certification.ApprovalPauseWith(withDelegation))
+}
+
 // A batch runs as many children at once as the connection's answer says: one, two and three.
 func TestTheDelegationCapacity(t *testing.T) {
 	runScenarios(t, certification.CapacityAt(withDelegation, 1), certification.CapacityAt(withDelegation, 2), certification.CapacityAt(withDelegation, 3))

@@ -45,6 +45,12 @@ type Boundary struct {
 	paused  bool
 	failed  bool
 	stopped bool
+	// held are the adapter's results the boundary answered itself (ADR-0008: a call refused while
+	// another waits for the person), by call id, or by name where the events carry none; requested
+	// is the call id of the approval_requested event the run emitted.
+	held       map[string]bool
+	heldByName map[string]int
+	requested  string
 }
 
 // NewBoundary is the boundary for one opened run. A run is tracked where the host gave it a
@@ -54,7 +60,7 @@ func NewBoundary(run *Run) *Boundary {
 	if run.Session.Context != nil {
 		tracked = run.Session.Context.CurrentRequest != nil || run.Session.Context.Execution != nil
 	}
-	return &Boundary{run: run, tracked: tracked}
+	return &Boundary{run: run, tracked: tracked, held: map[string]bool{}, heldByName: map[string]int{}}
 }
 
 // Stopped says the run was stopped by its caller, as session.signal.aborted does: the closing
@@ -63,10 +69,13 @@ func (b *Boundary) Stopped() { b.stopped = true }
 
 // Open is the opening checkpoint of a tracked run, and nothing for a run that is not tracked.
 func (b *Boundary) Open() []contract.RunEvent {
+	// ADR-0008: the checkpoints the continuation of an approval wrote, acknowledged, before the
+	// run's first request.
+	continued := b.run.Context.TakeContinued()
 	if !b.tracked {
-		return b.notices()
+		return append(b.notices(), continued...)
 	}
-	return append(b.checkpoint(nil, ""), b.notices()...)
+	return append(append(b.checkpoint(nil, ""), continued...), b.notices()...)
 }
 
 // notices are the guardrail events the source gate's refusals earned (ADR-0006), put on the stream
@@ -98,6 +107,63 @@ var readNames = []string{"get_schema", "get_authoring_instructions", "list_conte
 func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 	out := append([]contract.RunEvent{}, b.notices()...)
 	context := b.run.Context
+	// ADR-0008: an adapter asks the host's approval policy where it hands an act call to the host
+	// (SessionContext.Approval) and delivers approval_requested in place of the call where it asks.
+	// A call made while another waits is refused: said here with its call, its guardrail and its
+	// refused result, whatever the adapter does with the call after, and the adapter's own result
+	// for it is not delivered again.
+	if event.ApprovalRequested != nil {
+		b.requested = event.ApprovalRequested.CallID
+	}
+	if call := event.ToolCall; call != nil && context.Sources != nil {
+		callID := ""
+		if call.CallID != nil {
+			callID = *call.CallID
+		}
+		if detail := context.Sources.Pending(callID, call.Name); detail != "" {
+			decorated := context.Sources.Decorate(event)
+			context.Execution.ObserveToolCall(*decorated.ToolCall)
+			reason := "approval pending"
+			out = append(out, decorated, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: call.Name, Action: "refused", Detail: detail, Reason: &reason}})
+			text, structured := failure.ToolFailure(failure.NewError(contract.Failure{Version: 1, Code: "permission", Source: "tool", Outcome: "not-started", Detail: &detail}))
+			result := contract.RunEvent{ToolResult: &contract.ToolResult{Type: "tool_result", CallID: call.CallID, Name: call.Name, IsError: true, Text: text, Structured: structured}}
+			result = context.Sources.Decorate(result)
+			context.Execution.ObserveToolResult(*result.ToolResult)
+			if callID != "" {
+				b.held[callID] = true
+			} else {
+				b.heldByName[call.Name]++
+			}
+			return append(out, result), false
+		}
+	}
+	if result := event.ToolResult; result != nil {
+		if result.CallID != nil && *result.CallID != "" && b.held[*result.CallID] {
+			delete(b.held, *result.CallID)
+			return out, false
+		}
+		if (result.CallID == nil || *result.CallID == "") && b.heldByName[result.Name] > 0 {
+			b.heldByName[result.Name]--
+			return out, false
+		}
+	}
+	// ADR-0008: the run ends once an act call waits for the person: the adapter's own end, the
+	// refused request's error, or a pause of its own all end it paused, with the checkpoint durable
+	// and no error.
+	if context.Execution.ApprovalAsked() && (event.End != nil || event.Error != nil || event.BudgetPaused != nil) {
+		asked := *context.Execution.State.Approval
+		if b.requested != asked.CallID {
+			out = append(out, *ApprovalRequested(asked))
+		}
+		b.paused = true
+		context.Execution.State.Status = "paused"
+		durable := true
+		if state, err := context.Execution.Snapshot("paused"); err == nil {
+			out = append(out, contract.RunEvent{ExecutionCheckpoint: &contract.RunEventExecutionCheckpoint{Type: "execution_checkpoint", Durable: &durable, Checkpoint: state}})
+		}
+		b.ended = true
+		return append(out, contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}}), true
+	}
 	// ADR-0006: a tool with a source's call and result carry its source record.
 	if context.Sources != nil {
 		event = context.Sources.Decorate(event)

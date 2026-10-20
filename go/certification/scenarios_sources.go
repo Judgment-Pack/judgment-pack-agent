@@ -52,13 +52,18 @@ type sourcesFile struct {
 	AfterApproval []sourcesTurn `json:"afterApproval"`
 }
 
-// sourcesTurn is one turn of a scenario: a call of a tool with arguments, or the words that end it.
+// sourcesTurn is one turn of a scenario: a call of a tool with arguments, several calls in one
+// answer (ADR-0008's second act call), or the words that end it.
 type sourcesTurn struct {
-	Say  string `json:"say"`
-	Call *struct {
-		Tool      string          `json:"tool"`
-		Arguments json.RawMessage `json:"arguments"`
-	} `json:"call"`
+	Say   string     `json:"say"`
+	Call  *turnCall  `json:"call"`
+	Calls []turnCall `json:"calls"`
+}
+
+// turnCall is one call of a turn.
+type turnCall struct {
+	Tool      string          `json:"tool"`
+	Arguments json.RawMessage `json:"arguments"`
 }
 
 // steps are the turns as an agent capability's invocation takes them.
@@ -67,6 +72,12 @@ func sourcesSteps(turns []sourcesTurn) []AgentStep {
 	for _, held := range turns {
 		if held.Call != nil {
 			steps = append(steps, AgentStep{Tool: held.Call.Tool, Arguments: held.Call.Arguments})
+		} else if len(held.Calls) > 0 {
+			var parallel []AgentStep
+			for _, call := range held.Calls {
+				parallel = append(parallel, AgentStep{Tool: call.Tool, Arguments: call.Arguments})
+			}
+			steps = append(steps, AgentStep{Parallel: parallel})
 		} else {
 			steps = append(steps, say(held.Say))
 		}
@@ -101,12 +112,12 @@ func sourceTools(file sourcesFile, list []sourcesListed, pinned, changeTo string
 					defer host.mu.Unlock()
 					return host.served, nil
 				}},
-			Approve: func(_ context.Context, call runcontext.ApprovalRequest) (bool, error) {
+			Approve: func(call runcontext.ApprovalRequest) string {
 				host.mu.Lock()
 				defer host.mu.Unlock()
 				host.approvals = append(host.approvals, held.Name)
 				host.requests = append(host.requests, call)
-				return true, nil
+				return "allow"
 			},
 			Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
 				host.mu.Lock()
@@ -123,12 +134,12 @@ func sourceTools(file sourcesFile, list []sourcesListed, pinned, changeTo string
 	out = append(out, runcontext.HostTool{
 		Name: custom.Name, Description: custom.Description, InputSchema: custom.InputSchema, EffectClass: "read",
 		Source: &runcontext.ToolSource{Kind: custom.Source.Kind, ID: custom.Source.ID, Trust: custom.Source.Trust, Version: custom.Source.Version},
-		Approve: func(_ context.Context, call runcontext.ApprovalRequest) (bool, error) {
+		Approve: func(call runcontext.ApprovalRequest) string {
 			host.mu.Lock()
 			defer host.mu.Unlock()
 			host.approvals = append(host.approvals, custom.Name)
 			host.requests = append(host.requests, call)
-			return true, nil
+			return "allow"
 		},
 		Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
 			host.mu.Lock()

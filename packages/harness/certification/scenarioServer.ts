@@ -16,13 +16,14 @@ import memory from './scenarios/memory.json'
 import multiTurn from './scenarios/multi-turn.json'
 import planMode from './scenarios/plan-mode.json'
 import toolSources from './scenarios/tool-sources.json'
+import approvalPause from './scenarios/approval-pause.json'
 import { RECORDED_TOOLS, recordedRuntime, type RecordedRuntime, type ServerObservation } from './scriptedServer'
 import { REFUTATION_MARKER } from '../refutation'
 import { TEST_CASES_TOOL, runtimeAnswer, type EndpointRequest } from '../testing/scripted'
 import { answerFrom, answerWith, resultsIn, rolesAnswer, type AnswerAs, type Known, type Roles, type Turn } from '../testing/scenarioDriver'
 
 /** The scenarios a session can play. */
-export const SCENARIOS = ['chat-host-tools', 'delegation', 'memory', 'plan-mode', 'correction-loop', 'multi-turn', 'tool-sources'] as const
+export const SCENARIOS = ['chat-host-tools', 'delegation', 'memory', 'plan-mode', 'correction-loop', 'multi-turn', 'tool-sources', 'approval-pause'] as const
 export type ScenarioName = (typeof SCENARIOS)[number]
 
 const DRAFTS = scenario.documents as unknown as Record<string, unknown>
@@ -119,6 +120,11 @@ export function scenarioSession(name: ScenarioName, answerAs: AnswerAs, options:
     case 'tool-sources':
       // ADR-0006: the first run's turns, then, once advanced (the person approved the new list), the second's.
       answer = (request) => answerFrom((position === 0 ? toolSources.turns : toolSources.afterApproval) as unknown as Turn[], answerAs)(request)
+      runtime = scenarioRuntime(ok)
+      break
+    case 'approval-pause':
+      // ADR-0008: the pausing run's turns, then, once advanced (each continued run), the continuation's.
+      answer = (request) => answerFrom((position === 0 ? approvalPause.pausing : approvalPause.continued) as unknown as Turn[], answerAs)(request)
       runtime = scenarioRuntime(ok)
       break
     case 'correction-loop':

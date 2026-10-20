@@ -1,4 +1,5 @@
 import {failure,failureError,failureEvent,normalizeFailure,canRetryAdmission,canRetryRefusal,readFailure,refusalCode,failureMessage,toolInputFailure,toolFailureResult,RETRYABLE_OVERLOAD_CODES,RETRYABLE_REFUSAL_CLASSES,type AIFailure} from './failures'
+import {asksApproval} from './toolSources'
 import {ExecutionPaused,type BatchFigures,type ChildFigures,type DelegationFigures,type ExecutionCheckpoint,type FiguresTotal,type TokenFigures} from './execution/state'
 import type { AssistantEvent, AssistantSession, Engine, EngineSession, HostTool, McpToolResult, ModelCall } from './engine'
 import type { UserQuestion } from './questions'
@@ -226,6 +227,8 @@ class ResponseAllowance {
   }
   /** Whether a parent run starting now may be offered delegate_tasks: one child run and the next parent run must both remain beside it. */
   mayDelegate() { return this.agentRuns + 3 <= MAX_AGENT_RUNS }
+  /** ADR-0008: whether a parent run starting now may be offered an act call: the run that continues after its pause must remain beside it. */
+  mayAct() { return this.agentRuns + 2 <= MAX_AGENT_RUNS }
   agentRun(child: boolean) {
     // A child never takes the last run: the response continues after its batch.
     if (this.agentRuns >= MAX_AGENT_RUNS - (child ? 1 : 0)) throw toolInputFailure('The shared agent-invocation limit was reached. No additional run was sent.')
@@ -843,7 +846,10 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
         // that would leave no child run and no next run of its own (review row 1).
         const offered=batches<batchLimit()&&(!agent||shared.mayDelegate())
         const prompt=session.prompt+'\n\n'+(offered?DELEGATION_INSTRUCTIONS+(agent?' '+AGENT_DELEGATION_INSTRUCTIONS:''):DELEGATION_SPENT)+continued
-        const parent=bind({...session,signal:parentSignal,prompt,hostTools:[...session.hostTools,...(offered?[delegate]:[])],context:{...session.context,chat,link:parentLink,...(execution?{execution}:{})}})
+        // ADR-0008: on an agent capability an act call pauses the response and the next counted run
+        // continues it, so an act is offered only while that run remains, as delegate_tasks is.
+        const hostTools=agent&&!shared.mayAct()?session.hostTools.filter(tool=>!asksApproval(tool)):session.hostTools
+        const parent=bind({...session,signal:parentSignal,prompt,hostTools:[...hostTools,...(offered?[delegate]:[])],context:{...session.context,chat,link:parentLink,...(execution?{execution}:{})}})
         try {
           for await(let event of engine.start(parent)) {
             // agent#18: the parent's checkpoints carry its children's figures and its own.
