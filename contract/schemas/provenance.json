@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/provenance.json",
   "title": "Provenance",
-  "description": "What the Desk records today about where a model answer came from: one row per model request, with the provider-neutral completion (finish reason and token counts) and the phase it served. Read from ExecutionCheckpoint.completions (web/src/assistant/execution/state.ts) and ModelCompletion (web/src/assistant/completion.ts, readCompletion; Go aifailure.Completion). Open: readCompletion and readExecution accept members they do not name. A request the provider refused and that was sent again has one row per attempt (packages/harness/engines/vercel/retry.ts; execution/controller.ts, recordRefusal): the refused attempt's row carries attempt, failure and waitMs, and the attempt that answered carries its attempt number. Since ADR-0005 the adapter assembles the whole prompt and records the digest of every request body it sent, in order, in the checkpoint's prompts ($defs/promptDigest). There is no model name, adapter or contract version or request timing in any record that crosses the slot (waitMs is the wait before a retry, not a timing) (see docs/design/wire-contract.md, Open questions). Delegation (agent#18): each delegated child's model, requests, tool calls, token counts, time to first byte and duration, each batch's total and the parent's own, carried by the checkpoint's delegation member ($defs/delegationReport) and each task record (delegated-task.json).",
+  "description": "What the Desk records today about where a model answer came from: one row per model request, with the provider-neutral completion (finish reason and token counts) and the phase it served. Read from ExecutionCheckpoint.completions (web/src/assistant/execution/state.ts) and ModelCompletion (web/src/assistant/completion.ts, readCompletion; Go aifailure.Completion). Open: readCompletion and readExecution accept members they do not name. A request the provider refused and that was sent again has one row per attempt (packages/harness/engines/vercel/retry.ts; execution/controller.ts, recordRefusal): the refused attempt's row carries attempt, failure and waitMs, and the attempt that answered carries its attempt number. Since ADR-0005 the adapter assembles the whole prompt and records the digest of every request body it sent, in order, in the checkpoint's prompts ($defs/promptDigest). There is no model name, adapter or contract version or request timing in any record that crosses the slot (waitMs is the wait before a retry, not a timing) (see docs/design/wire-contract.md, Open questions). Delegation (agent#18): each delegated child's model, requests, tool calls, token counts, time to first byte and duration, each batch's total and the parent's own, carried by the checkpoint's delegation member ($defs/delegationReport) and each task record (delegated-task.json). Tool sources (ADR-0006): each source's calls, refusals, proposals, bytes and time, the Runtime's among them, in the checkpoint's sources ($defs/sourceFigures).",
   "type": "object",
   "required": [
     "request",
@@ -371,6 +371,54 @@
         },
         "parent": {
           "$ref": "#/$defs/parentFigures"
+        }
+      },
+      "additionalProperties": false
+    },
+    "sourceFigures": {
+      "description": "What one source cost in one execution (ADR-0006): the run report's row for it, in the checkpoint's sources. calls: the calls the host ran; refused: the calls the boundary refused before the host (a changed tool list, no approval, a catalogued tool not loaded, past sourceCallsPerTurn); proposed: the calls held as proposals; bytes: the UTF-8 bytes of the answers' JSON text as the host gave them, before any bound; milliseconds: the time the host took, summed over the calls it ran. The Runtime's row is source runtime, kind runtime.",
+      "type": "object",
+      "required": [
+        "source",
+        "kind",
+        "calls",
+        "refused",
+        "proposed",
+        "bytes",
+        "milliseconds"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9-]{0,23}$"
+        },
+        "kind": {
+          "enum": [
+            "runtime",
+            "gateway",
+            "mcp",
+            "custom"
+          ]
+        },
+        "calls": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "refused": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "proposed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "milliseconds": {
+          "type": "integer",
+          "minimum": 0
         }
       },
       "additionalProperties": false

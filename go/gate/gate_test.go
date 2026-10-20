@@ -42,7 +42,7 @@ func TestTheListsAreTheSchemas(t *testing.T) {
 	}{
 		{"runtimeCeiling", Ceiling, enum(offer, "runtimeCeiling")},
 		{"criticTools", append(append([]string{}, CriticTools...), CriticReaders...), enum(offer, "criticTools")},
-		{"reservedName", ContextTools, enum(offer, "reservedName")},
+		{"reservedName", ReservedNames, enum(offer, "reservedName")},
 		{"action", ApprovalActions, enum(read("approval.json"), "action")},
 	} {
 		if !reflect.DeepEqual(held.have, held.want) {

@@ -28,6 +28,13 @@ it. The host supplies the parts only it holds through three injection points, `b
 instructions rank below the package's rules and cannot grant a tool. Every request body an adapter
 sends is digested in the run's checkpoint.
 
+Tools from outside the Runtime ([ADR-0006](docs/adr/0006-tool-sources.md)) are host tools: a
+gateway connection's, a public MCP server's or one the person created is declared by the host with
+its source record and executed by the host under the person's grants; the package keeps no MCP
+client. It offers each under a wire-safe name mapped to its source, frames its description as
+retrieved text, holds a pinned tool list, a schema budget with `load_tool`, an effect class with its
+approval default and per-source bounds, and reports each source's calls, bytes and time.
+
 ## Layout
 
 - `contract/`: the wire contract, schemas and vectors, extracted from the Desk's engine slot; see

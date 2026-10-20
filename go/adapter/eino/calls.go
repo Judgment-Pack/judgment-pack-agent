@@ -307,6 +307,11 @@ func (t *turnState) hostAnswer(ctx context.Context, tool runcontext.HostTool, ar
 func (t *turnState) refuseUnoffered(ctx context.Context, name string, args json.RawMessage) (runcontext.ToolResult, error) {
 	t.r.deliver(t.callEvent("", name, nonEmpty(args), ""))
 	refusal := "the call did not leave the page and nothing was written"
+	// ADR-0006: the Runtime's row of the run report counts the refusal, as the TypeScript boundary's
+	// wrapped callTool does.
+	if t.r.sc.Sources != nil {
+		t.r.sc.Sources.RuntimeRefused()
+	}
 	answered, err := t.r.run.Gate.CallTool(ctx, name, nonEmpty(args))
 	if err != nil {
 		if failure.IsCancelled(err) || ctx.Err() != nil {

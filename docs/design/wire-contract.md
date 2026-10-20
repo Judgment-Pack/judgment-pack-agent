@@ -31,7 +31,11 @@ on LangChain's Deep Agents, held to the same legs as `vercel` (see the adapters 
 engines disagree). Amended for [ADR-0005](../adr/0005-the-prompt-is-the-adapters.md): the adapter
 assembles the whole prompt in one layered order on every engine, the host supplies its parts through
 three injection points, the relay adds nothing, and every request body is digested (see [The
-prompt](#the-prompt)); the recall rule and its vectors are removed.
+prompt](#the-prompt)); the recall rule and its vectors are removed. Amended for
+[ADR-0006](../adr/0006-tool-sources.md): tools from a gateway connection, a public MCP server or the
+person are host tools with a source record, an effect class and approval default, a wire-safe name,
+a bounded and framed description, a pinned tool list, a schema budget with `load_tool`, and
+per-source bounds, reported by source (see [Tool sources](#tool-sources)).
 
 ## Host, adapter, and the slot between them
 
@@ -190,6 +194,98 @@ fenced proposals are. The critic is not offered it. For `propose_pack` and the h
 the model may call, retrieved text that asks for it included, and what holds is that a proposal is
 shown for the person's review and nothing is written or applied until the person acts. The gate
 holds the tools that are not offered.
+
+## Tool sources
+
+ADR-0006 (agent#66). A gateway connection's tools, a public MCP server's and a tool the person created
+reach the model as host tools: the host declares each with its source record and executes every call
+under the person's grants, and the package keeps no MCP client and never reaches a source. The
+Runtime's six-name ceiling is unchanged. The path of a tool, as the decision draws it:
+
+```
+  SOURCES (declared by the host; the package never executes)
+  ┌───────────────┐ ┌──────────────────────┐ ┌──────────────────┐ ┌──────────────────┐
+  │ JPS Runtime   │ │ Gateway connection   │ │ Public MCP server│ │ Custom tool      │
+  │ (6-name       │ │ (Databricks, ADO,    │ │ (tool list pinned│ │ (user-created;   │
+  │  ceiling,     │ │  Drive…; receipts)   │ │  by digest; change│ │  effect declared │
+  │  frames       │ │                      │ │  = re-approval)  │ │  by the user)    │
+  │  inspected)   │ │                      │ │                  │ │                  │
+  └──────┬────────┘ └──────────┬───────────┘ └─────────┬────────┘ └────────┬─────────┘
+         │                     │                       │                   │
+         ▼                     ▼                       ▼                   ▼
+  ┌─────────────────────────────────────────────────────────────────────────────────┐
+  │ DECLARATION (contract: tool-offer.json)                                          │
+  │  name (wire-safe, ≤64 chars, mapped ↔ source+real name) · description (bounded,  │
+  │  framed as text, not instruction) · inputSchema (narrowed per family) ·          │
+  │  effect: read | propose | act · approval default by effect · source record       │
+  │  {kind, version/digest, trust class, receipt id} · contextPolicy · bounds        │
+  └───────────────────────────────┬─────────────────────────────────────────────────┘
+                                  ▼
+  ┌─────────────────────────────────────────────────────────────────────────────────┐
+  │ THE GATE (TypeScript toolGate / go/gate — the only boundary)                     │
+  │  per-phase offer: loop | critic allow-list | plan reads | each child profile |   │
+  │  reformat (none)  ·  schema budget per run (count + bytes) → catalogue-then-load │
+  │  (`load_tool`, loaded schemas ride after the history)  ·  reserved names refused │
+  │  ·  unoffered name → refused + guardrail event, never reaches a source           │
+  └───────────────────────────────┬─────────────────────────────────────────────────┘
+                                  ▼
+     model names a tool ──▶ call_tool(name, args) ──▶ gate: offered? effect? approval? bounds?
+                                                      │
+                     ┌────────────────────────────────┼──────────────────────────────┐
+                     ▼                                ▼                              ▼
+              read: run it                   propose: review card              act: approval pause
+              (host executes under           (never acts; the person           (grant-states vector;
+               the user's grants)             accepts or rejects)               the host's approval reader)
+                     │
+                     ▼
+  RESULT ──▶ framed as data (per-run marker) ──▶ ledger (read_window / search; images named, never dropped)
+         ──▶ tool_call / tool_result events with the source record ──▶ run report (per source: calls, bytes, time)
+```
+
+What the contract states, and where:
+
+- **The declaration** (`tool-offer.json#/$defs/sourceDeclaration`): the tool's own name (1 to 128
+  characters), description and schema as the source serves them, `source`
+  (`$defs/sourceRecord`, closed: `kind` `gateway`, `mcp` or `custom`; `id`; `trust`; `version` or
+  `toolListDigest`, an `mcp` source the digest), and optionally `effectClass` and `approval`. A
+  declaration the package cannot read ends the run before any request (`configuration`). A tool
+  whose own name is a Runtime tool's, a reserved name, `load_tool` or `propose_pack`, and every tool
+  bearing a wire name that still collides, is withheld with a `guardrail` `refused`; so are all of an
+  `mcp` source's tools where their digest (`$defs/toolListDigest`) is not the pinned one.
+- **The offer** (`$defs/hostTool`, the vector `tool-offer/source-offer.json`): the wire name
+  (`$defs/wireName`, `[A-Za-z0-9_-]{1,64}`, the source's id first, a deterministic suffix where a
+  character was replaced or the name cut; `$defs/nameMapping`, the vector
+  `tool-offer/source-names.json`), the description cut at `toolDescriptionBytes` and framed as
+  retrieved data with the run's marker, the schema as declared (narrowed on the Gemini family's wire),
+  the record with `tool`, the effect class and approval with their defaults (`act`, approval
+  `required`, unless the host declares a read or a proposal), and `effect` set from the class, so
+  Plan mode and a child, which admit reads only, never offer an act.
+- **The schema budget** (`budget.json`, `offeredSchemas` 16 and `offeredSchemaBytes` 24,000): past
+  either, sources are made catalogues, the largest first, until the rest fit
+  (`$defs/catalogueEntry`: the wire name, the catalogue's words, the first line framed, the schema
+  `{"type":"object"}`), and `load_tool` (`$defs/loadTool`, a reserved name) is offered. It loads one
+  catalogued schema per call (`$defs/loadedSchema`), within `offeredSchemaBytes`; the loaded schemas
+  ride after the history in the execution state, one data block, on every later request, so the
+  tools and the system text hold for the run. A catalogued tool not yet loaded is refused
+  (`invalid-tool-input`).
+- **Each call**, after the phase admits the name: refused (a `guardrail` and a `permission` failure)
+  where the source's served list changed (the host's `currentDigest()`, asked before each `mcp`
+  call; once changed, every later call of the source in the run); refused past
+  `sourceCallsPerTurn` (`tool-failed`); a `propose` held for the review card and never run
+  (`tool_result` `proposed: true`); an `act` with approval required run only where the host's approval
+  reader (`approve`) answers yes; then the host's `execute` under `sourceCallMilliseconds`, at most
+  `toolCallMilliseconds`. The answer is framed as data whatever the class (a proposal's
+  acknowledgement aside), and shown whole up to `sourceResultBytes`, retained and referenced past it.
+- **The events and the report**: `tool_call` and `tool_result` carry `source`, the record with
+  `tool` (and `receipt` on a result where the host's answer gave one); their `name` is the wire name.
+  The checkpoint's `sources` (`provenance.json#/$defs/sourceFigures`) count calls, refusals,
+  proposals, bytes and time per source, the Runtime's row first.
+
+TypeScript holds these in `toolSources.ts`, entered from `contextualSession`, with the events
+decorated in `context/managed.ts`; Go in `go/context/sources.go`, entered from `ContextualSession`
+and `Boundary`. A Go host opens its gate with the names the boundary will offer
+(`runcontext.OfferedHostTools`), as it adds the boundary's context tools. Certified scenario 7
+(`certification/scenarios/tool-sources.json`) runs the path on every engine and on `eino`.
 
 ## The critic
 
@@ -1052,6 +1148,12 @@ Agents' subagents are off and delegation is the package's, an awaited `delegate_
   are recorded where the provider reports usage, which the agent wire does not. A `codex` child's
   prose so far, for a partial result and the streamed progress, is its agent's streamed `text`
   events.
+- **Tool sources** (ADR-0006). The model engines (`vercel`, `deepagents`, `eino`) carry the schemas
+  `load_tool` loaded in the execution state on every later request; the agent wire sends the state
+  once per run, so on `codex` a loaded schema reaches the agent in `load_tool`'s answer only. The Go
+  port narrows a loaded schema by the run's family, the TypeScript by the capability record's
+  `toolSchemas`. A name the run was not offered is counted refused in the Runtime's row on every
+  engine: through the boundary's wrapped `callTool` in TypeScript, and in `eino`'s own refusal in Go.
 - **The agent capability, TypeScript and Go** (ADR-0007). Both end the parent's run at
   `delegation_requested`, run children one at a time and continue in a new run with the call's
   result. The Go `agent` adapter waits for the host's provider-run function to return before its
@@ -1183,7 +1285,7 @@ Agents' subagents are off and delegation is the package's, an awaited `delegate_
     `grep`, `execute`, `task` or one of the async task tools ends the run as a `configuration`
     error on this engine.
   - **Certification.** Held to every leg `vercel` is held to (the six wire legs, text tool calls,
-    strict alternation, thinking, the six scenarios once per answer shape, delegation's
+    strict alternation, thinking, the seven scenarios once per answer shape, delegation's
     concurrency), with one recorded difference, scenario 1's, above.
 
 - **The `eino` engine** (Go, ADR-0004). A model engine on Eino's ADK, running in the host's Go
@@ -1222,7 +1324,7 @@ Agents' subagents are off and delegation is the package's, an awaited `delegate_
     agent capability's half (a run that ends at `delegation_requested`) is not ported, the Go
     adapter being a model adapter.
   - **Certification.** The Go runner (`go/certification`, `go/cmd/harness-check`) runs every leg the
-    TypeScript suite runs on a model engine, the six scenarios and the model engine's check of
+    TypeScript suite runs on a model engine, the seven scenarios and the model engine's check of
     `certification/delegation.test.ts` on this adapter, all passing; `go/certification/parity.json`
     maps every TypeScript check to the Go checks that make it. Where
     the host differs, the check says so: scenario 5's boundary check reads the refusals only, because
@@ -1232,7 +1334,9 @@ Agents' subagents are off and delegation is the package's, an awaited `delegate_
 ### Other departures
 
 - **No approval event.** The design draft had a call that needs a person's decision pause the run;
-  the Desk has no such event. A framework with its own approval interrupt (the AI SDK's tool
+  the Desk has no such event. A tool with a source whose calls need approval (ADR-0006) asks the
+  host's approval reader inside the call, and a proposal is marked on its `tool_result`
+  (`proposed`), so the run-event set stays the Desk's. A framework with its own approval interrupt (the AI SDK's tool
   approval, Deep Agents' interrupts) has nothing to map to except `user_question`. The boundary
   already refuses to compact across a pending approval part, so the shape is anticipated. The
   `deepagents` engine does not use Deep Agents' interrupts: they need `AsyncLocalStorage`, which the

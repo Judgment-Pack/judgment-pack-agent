@@ -1,0 +1,92 @@
+{
+  "description": "The wire names of tools with a source (ADR-0006, tool-offer.json#/$defs/wireName): names kept as they are, names in which a character was replaced (a dot, a colon, an accented letter) or which passed 64 characters, each given its suffix, and two names that differ only in a replaced character (issues.list, issues_list), which get different wire names. collisions: two declarations whose wire names are still the same (a name that spells out another's suffix); the package withholds both. held: own names a source's tool may not bear (a Runtime tool, a reserved name, load_tool, propose_pack); the package withholds each. Written by hand; the suffixes are the first 8 hex digits of the SHA-256 the rule names. toolSources.test.ts and go/context hold wireName and the declaration to each row, and the contract tests compute each.",
+  "schema": "tool-offer.json#/$defs/nameMapping",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/toolSources.ts (wireName, declareSources)"
+    ]
+  },
+  "items": [
+    {
+      "wire": "github__create_issue",
+      "source": "github",
+      "tool": "create_issue"
+    },
+    {
+      "wire": "github__issues_list_635dbdd8",
+      "source": "github",
+      "tool": "issues.list"
+    },
+    {
+      "wire": "github__issues_list",
+      "source": "github",
+      "tool": "issues_list"
+    },
+    {
+      "wire": "databricks__query_table",
+      "source": "databricks",
+      "tool": "query_table"
+    },
+    {
+      "wire": "ado__work-items_query_c0781b02",
+      "source": "ado",
+      "tool": "work-items:query"
+    },
+    {
+      "wire": "notes__summarize_every_page_of_the_shared_notebook_and__25e1d444",
+      "source": "notes",
+      "tool": "summarize_every_page_of_the_shared_notebook_and_list_open_questions_by_owner"
+    },
+    {
+      "wire": "drive__r_sum__search_bd7f38e2",
+      "source": "drive",
+      "tool": "résumé_search"
+    },
+    {
+      "wire": "rates__lookup_rate",
+      "source": "rates",
+      "tool": "lookup_rate"
+    }
+  ],
+  "collisions": [
+    {
+      "wire": "github__issues_list_635dbdd8",
+      "declared": [
+        {
+          "source": "github",
+          "tool": "issues.list"
+        },
+        {
+          "source": "github",
+          "tool": "issues_list_635dbdd8"
+        }
+      ]
+    }
+  ],
+  "held": [
+    {
+      "source": "tracker",
+      "tool": "validate"
+    },
+    {
+      "source": "tracker",
+      "tool": "search"
+    },
+    {
+      "source": "tracker",
+      "tool": "load_tool"
+    },
+    {
+      "source": "tracker",
+      "tool": "propose_pack"
+    },
+    {
+      "source": "tracker",
+      "tool": "get_pack"
+    }
+  ]
+}

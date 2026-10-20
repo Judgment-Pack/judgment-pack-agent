@@ -77,6 +77,7 @@ var Registry = map[string]func() any{
 	"provenance.json#/$defs/batchFigures":           func() any { return new(ProvenanceBatchFigures) },
 	"provenance.json#/$defs/parentFigures":          func() any { return new(ProvenanceParentFigures) },
 	"provenance.json#/$defs/delegationReport":       func() any { return new(ProvenanceDelegationReport) },
+	"provenance.json#/$defs/sourceFigures":          func() any { return new(ProvenanceSourceFigures) },
 	"question.json":                                 func() any { return new(Question) },
 	"question.json#/$defs/option":                   func() any { return new(QuestionOption) },
 	"question.json#/$defs/draft":                    func() any { return new(QuestionDraft) },
@@ -115,6 +116,15 @@ var Registry = map[string]func() any{
 	"tool-offer.json#/$defs/runtimeCeiling":         func() any { return new(string) },
 	"tool-offer.json#/$defs/reservedName":           func() any { return new(string) },
 	"tool-offer.json#/$defs/criticTools":            func() any { return new(string) },
+	"tool-offer.json#/$defs/effectClass":            func() any { return new(string) },
+	"tool-offer.json#/$defs/sourceRecord":           func() any { return new(ToolOfferSourceRecord) },
+	"tool-offer.json#/$defs/toolListDigest":         func() any { return new(string) },
+	"tool-offer.json#/$defs/wireName":               func() any { return new(string) },
+	"tool-offer.json#/$defs/nameMapping":            func() any { return new(ToolOfferNameMapping) },
+	"tool-offer.json#/$defs/sourceDeclaration":      func() any { return new(ToolOfferSourceDeclaration) },
+	"tool-offer.json#/$defs/catalogueEntry":         func() any { return new(ToolOfferCatalogueEntry) },
+	"tool-offer.json#/$defs/loadTool":               func() any { return new(ToolOfferLoadTool) },
+	"tool-offer.json#/$defs/loadedSchema":           func() any { return new(ToolOfferLoadedSchema) },
 	"tool-result.json":                              func() any { return new(ToolResult) },
 	"tool-result.json#/$defs/mcpToolResult":         func() any { return new(ToolResultMCPToolResult) },
 	"tool-result.json#/$defs/reference":             func() any { return new(ToolResultReference) },
@@ -263,7 +273,9 @@ func (v ApprovalRequest) MarshalJSON() ([]byte, error) {
 // agent#8), likewise: turnIndexEntries and turnIndexBytes; and the bound on the project's own
 // instructions (PROMPT_DEFAULTS, ADR-0005), likewise: projectInstructionsBytes. The table also
 // states the critic's default, adversarialReview (agent#10), which the harness adds to the Desk's
-// table: both engines read it where a session leaves adversarialReview unset.
+// table: both engines read it where a session leaves adversarialReview unset. And the bounds on
+// tools with a source (SOURCE_DEFAULTS, ADR-0006), likewise: toolDescriptionBytes, offeredSchemas,
+// offeredSchemaBytes, sourceResultBytes, sourceCallsPerTurn and sourceCallMilliseconds.
 type Budget struct {
 	Version                  int64  `json:"version"`
 	MaxInputBytes            int64  `json:"maxInputBytes"`
@@ -287,11 +299,17 @@ type Budget struct {
 	TurnIndexEntries         *int64 `json:"turnIndexEntries,omitzero"`
 	TurnIndexBytes           *int64 `json:"turnIndexBytes,omitzero"`
 	ProjectInstructionsBytes *int64 `json:"projectInstructionsBytes,omitzero"`
+	ToolDescriptionBytes     *int64 `json:"toolDescriptionBytes,omitzero"`
+	OfferedSchemas           *int64 `json:"offeredSchemas,omitzero"`
+	OfferedSchemaBytes       *int64 `json:"offeredSchemaBytes,omitzero"`
+	SourceResultBytes        *int64 `json:"sourceResultBytes,omitzero"`
+	SourceCallsPerTurn       *int64 `json:"sourceCallsPerTurn,omitzero"`
+	SourceCallMilliseconds   *int64 `json:"sourceCallMilliseconds,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var budgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "adversarialReview", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes"}
+var budgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "adversarialReview", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds"}
 
 // UnmarshalJSON decodes a Budget object and keeps the members the schema does not name.
 func (v *Budget) UnmarshalJSON(data []byte) error {
@@ -882,11 +900,12 @@ type Checkpoint struct {
 	Delegation  *ProvenanceDelegationReport `json:"delegation,omitzero"`
 	Handoff     *CheckpointHandoff          `json:"handoff,omitzero"`
 	Prompts     []ProvenancePromptDigest    `json:"prompts,omitzero"`
+	Sources     []ProvenanceSourceFigures   `json:"sources,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var checkpointMembers = []string{"version", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "prompts"}
+var checkpointMembers = []string{"version", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "prompts", "sources"}
 
 // UnmarshalJSON decodes a Checkpoint object and keeps the members the schema does not name.
 func (v *Checkpoint) UnmarshalJSON(data []byte) error {
@@ -2265,7 +2284,8 @@ func (v FailureToolFailureContent) MarshalJSON() ([]byte, error) {
 // questions). Delegation (agent#18): each delegated child's model, requests, tool calls, token
 // counts, time to first byte and duration, each batch's total and the parent's own, carried by the
 // checkpoint's delegation member ($defs/delegationReport) and each task record
-// (delegated-task.json).
+// (delegated-task.json). Tool sources (ADR-0006): each source's calls, refusals, proposals, bytes
+// and time, the Runtime's among them, in the checkpoint's sources ($defs/sourceFigures).
 type Provenance struct {
 	Request int64                `json:"request"`
 	Phase   string               `json:"phase"`
@@ -2575,6 +2595,44 @@ func (v *ProvenancePromptDigest) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a ProvenancePromptDigest object.
 func (v ProvenancePromptDigest) MarshalJSON() ([]byte, error) {
 	type plain ProvenancePromptDigest
+	return encodeObject(plain(v), nil)
+}
+
+// From provenance.json#/$defs/sourceFigures. What one source cost in one execution (ADR-0006): the
+// run report's row for it, in the checkpoint's sources. calls: the calls the host ran; refused:
+// the calls the boundary refused before the host (a changed tool list, no approval, a catalogued
+// tool not loaded, past sourceCallsPerTurn); proposed: the calls held as proposals; bytes: the
+// UTF-8 bytes of the answers' JSON text as the host gave them, before any bound; milliseconds: the
+// time the host took, summed over the calls it ran. The Runtime's row is source runtime, kind
+// runtime.
+type ProvenanceSourceFigures struct {
+	Source       string `json:"source"`
+	Kind         string `json:"kind"`
+	Calls        int64  `json:"calls"`
+	Refused      int64  `json:"refused"`
+	Proposed     int64  `json:"proposed"`
+	Bytes        int64  `json:"bytes"`
+	Milliseconds int64  `json:"milliseconds"`
+}
+
+var provenanceSourceFiguresMembers = []string{"source", "kind", "calls", "refused", "proposed", "bytes", "milliseconds"}
+
+// UnmarshalJSON decodes a ProvenanceSourceFigures object and refuses a member the closed schema does not name.
+func (v *ProvenanceSourceFigures) UnmarshalJSON(data []byte) error {
+	type plain ProvenanceSourceFigures
+	var p plain
+	extra, err := decodeObject(data, &p, provenanceSourceFiguresMembers, true)
+	if err != nil {
+		return errorf("ProvenanceSourceFigures: %w", err)
+	}
+	*v = ProvenanceSourceFigures(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ProvenanceSourceFigures object.
+func (v ProvenanceSourceFigures) MarshalJSON() ([]byte, error) {
+	type plain ProvenanceSourceFigures
 	return encodeObject(plain(v), nil)
 }
 
@@ -3905,17 +3963,18 @@ func (v RunEventUserQuestion) MarshalJSON() ([]byte, error) {
 // instead. Read from the AssistantEvent union (web/src/assistant/engine.ts). Open: no reader at
 // run time refuses another member.
 type ToolCall struct {
-	Type         string                `json:"type"`
-	CallID       *string               `json:"callId,omitzero"`
-	Name         string                `json:"name"`
-	Args         json.RawMessage       `json:"args"`
-	Presentation *ToolCallPresentation `json:"presentation,omitzero"`
-	Origin       *string               `json:"origin,omitzero"`
+	Type         string                 `json:"type"`
+	CallID       *string                `json:"callId,omitzero"`
+	Name         string                 `json:"name"`
+	Args         json.RawMessage        `json:"args"`
+	Presentation *ToolCallPresentation  `json:"presentation,omitzero"`
+	Origin       *string                `json:"origin,omitzero"`
+	Source       *ToolOfferSourceRecord `json:"source,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var toolCallMembers = []string{"type", "callId", "name", "args", "presentation", "origin"}
+var toolCallMembers = []string{"type", "callId", "name", "args", "presentation", "origin", "source"}
 
 // UnmarshalJSON decodes a ToolCall object and keeps the members the schema does not name.
 func (v *ToolCall) UnmarshalJSON(data []byte) error {
@@ -4127,7 +4186,15 @@ func (v ToolCallTextToolCall) MarshalJSON() ([]byte, error) {
 // ($defs/proposePack): the adapter reads that call itself as the run's proposal and never reaches
 // the host's execute, the instructions then tell the model to use it, the critic is not offered
 // it, and the fenced block stays the fallback. The critic is offered only $defs/criticTools, of
-// the runtime tools the session offers, and no host tool (agent#10).
+// the runtime tools the session offers, and no host tool (agent#10). Tool sources (ADR-0006): a
+// host tool that a source outside the host serves (a gateway connection, a public MCP server, a
+// tool the person created) is declared with its source record ($defs/sourceDeclaration) and is
+// still a host tool: the host executes it under the person's grants and the package never reaches
+// the source. The package offers it under a wire-safe name mapped to the source and its own name
+// ($defs/wireName, $defs/nameMapping), with its description bounded and framed as retrieved text,
+// its effect class and approval default ($defs/effectClass), and, where the source's tools pass
+// the schema budget, as a catalogue entry whose schema load_tool loads ($defs/catalogueEntry,
+// $defs/loadTool).
 type ToolOffer struct {
 	Tools     []ToolOfferRuntimeTool `json:"tools"`
 	HostTools []ToolOfferHostTool    `json:"hostTools"`
@@ -4219,6 +4286,52 @@ func (v ToolOfferAgentWireToolInputSchema) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), v.AdditionalMembers)
 }
 
+// From tool-offer.json#/$defs/catalogueEntry. A tool with a source as the offer shows it where the
+// source was made a catalogue (ADR-0006): where the tools with a source pass offeredSchemas or
+// offeredSchemaBytes (budget.json), sources are made catalogues, the largest first (by its tools
+// offered, then by their bytes, then by id), until the rest fit. A catalogued tool is offered with
+// its wire name; the words "Catalogued tool: call load_tool with this name for its schema before
+// calling it.", then its description's first line, cut to 160 bytes and framed as retrieved text;
+// and an open schema, so the request's tools, and the stable prefix with them, never change during
+// the run. The model asks load_tool for the real schema ($defs/loadTool); a call of a catalogued
+// tool whose schema the run has not loaded is refused (invalid-tool-input) and never run.
+type ToolOfferCatalogueEntry struct {
+	Name          string                          `json:"name"`
+	Description   string                          `json:"description"`
+	InputSchema   json.RawMessage                 `json:"inputSchema"`
+	Effect        *string                         `json:"effect,omitzero"`
+	Interaction   *string                         `json:"interaction,omitzero"`
+	Delegation    *string                         `json:"delegation,omitzero"`
+	ContextPolicy *ToolOfferHostToolContextPolicy `json:"contextPolicy,omitzero"`
+	Presentation  *ToolOfferHostToolPresentation  `json:"presentation,omitzero"`
+	Source        ToolOfferSourceRecord           `json:"source"`
+	EffectClass   *string                         `json:"effectClass,omitzero"`
+	Approval      *string                         `json:"approval,omitzero"`
+	// AdditionalMembers holds the members the schema does not name; the object is open.
+	AdditionalMembers map[string]json.RawMessage `json:"-"`
+}
+
+var toolOfferCatalogueEntryMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval"}
+
+// UnmarshalJSON decodes a ToolOfferCatalogueEntry object and keeps the members the schema does not name.
+func (v *ToolOfferCatalogueEntry) UnmarshalJSON(data []byte) error {
+	type plain ToolOfferCatalogueEntry
+	var p plain
+	extra, err := decodeObject(data, &p, toolOfferCatalogueEntryMembers, false)
+	if err != nil {
+		return errorf("ToolOfferCatalogueEntry: %w", err)
+	}
+	*v = ToolOfferCatalogueEntry(p)
+	v.AdditionalMembers = extra
+	return nil
+}
+
+// MarshalJSON encodes a ToolOfferCatalogueEntry object, with the members the schema does not name after the ones it does.
+func (v ToolOfferCatalogueEntry) MarshalJSON() ([]byte, error) {
+	type plain ToolOfferCatalogueEntry
+	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
 // From tool-offer.json#/$defs/hostTool. A host tool's declaration (HostTool, without its execute
 // function, which never crosses). Its schema is the host's, written in the subset every family's
 // wire carries.
@@ -4231,11 +4344,14 @@ type ToolOfferHostTool struct {
 	Delegation    *string                         `json:"delegation,omitzero"`
 	ContextPolicy *ToolOfferHostToolContextPolicy `json:"contextPolicy,omitzero"`
 	Presentation  *ToolOfferHostToolPresentation  `json:"presentation,omitzero"`
+	Source        *ToolOfferSourceRecord          `json:"source,omitzero"`
+	EffectClass   *string                         `json:"effectClass,omitzero"`
+	Approval      *string                         `json:"approval,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var toolOfferHostToolMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation"}
+var toolOfferHostToolMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval"}
 
 // UnmarshalJSON decodes a ToolOfferHostTool object and keeps the members the schema does not name.
 func (v *ToolOfferHostTool) UnmarshalJSON(data []byte) error {
@@ -4322,6 +4438,112 @@ func (v ToolOfferHostToolPresentation) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), v.AdditionalMembers)
 }
 
+// From tool-offer.json#/$defs/loadTool. The harness tool that loads one catalogued tool's schema
+// (ADR-0006): a reserved name, offered only where the run's tools with a source pass the schema
+// budget, and admitted only for a catalogued wire name (any other is invalid-tool-input). Its
+// answer ($defs/loadedSchema) is data and framed as such; the loaded schema then rides in the
+// execution state, after the history, on every later request of the run, as one data block, so the
+// stable prefix holds. Loaded schemas count against offeredSchemaBytes: a load past it is
+// tool-failed and nothing is loaded.
+type ToolOfferLoadTool struct {
+	Name          string                          `json:"name"`
+	Description   string                          `json:"description"`
+	InputSchema   json.RawMessage                 `json:"inputSchema"`
+	Effect        *string                         `json:"effect,omitzero"`
+	Interaction   *string                         `json:"interaction,omitzero"`
+	Delegation    *string                         `json:"delegation,omitzero"`
+	ContextPolicy *ToolOfferHostToolContextPolicy `json:"contextPolicy,omitzero"`
+	Presentation  *ToolOfferHostToolPresentation  `json:"presentation,omitzero"`
+	Source        *ToolOfferSourceRecord          `json:"source,omitzero"`
+	EffectClass   *string                         `json:"effectClass,omitzero"`
+	Approval      *string                         `json:"approval,omitzero"`
+	// AdditionalMembers holds the members the schema does not name; the object is open.
+	AdditionalMembers map[string]json.RawMessage `json:"-"`
+}
+
+var toolOfferLoadToolMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval"}
+
+// UnmarshalJSON decodes a ToolOfferLoadTool object and keeps the members the schema does not name.
+func (v *ToolOfferLoadTool) UnmarshalJSON(data []byte) error {
+	type plain ToolOfferLoadTool
+	var p plain
+	extra, err := decodeObject(data, &p, toolOfferLoadToolMembers, false)
+	if err != nil {
+		return errorf("ToolOfferLoadTool: %w", err)
+	}
+	*v = ToolOfferLoadTool(p)
+	v.AdditionalMembers = extra
+	return nil
+}
+
+// MarshalJSON encodes a ToolOfferLoadTool object, with the members the schema does not name after the ones it does.
+func (v ToolOfferLoadTool) MarshalJSON() ([]byte, error) {
+	type plain ToolOfferLoadTool
+	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From tool-offer.json#/$defs/loadedSchema. What load_tool answers for one catalogued tool
+// (ADR-0006), before it is framed: its wire name, its source record with its own name, its
+// description bounded by toolDescriptionBytes, and its schema as declared (narrowed on the Gemini
+// family's wire as every offered schema is).
+type ToolOfferLoadedSchema struct {
+	Name        string                `json:"name"`
+	Source      ToolOfferSourceRecord `json:"source"`
+	Description string                `json:"description"`
+	InputSchema json.RawMessage       `json:"inputSchema"`
+}
+
+var toolOfferLoadedSchemaMembers = []string{"name", "source", "description", "inputSchema"}
+
+// UnmarshalJSON decodes a ToolOfferLoadedSchema object and refuses a member the closed schema does not name.
+func (v *ToolOfferLoadedSchema) UnmarshalJSON(data []byte) error {
+	type plain ToolOfferLoadedSchema
+	var p plain
+	extra, err := decodeObject(data, &p, toolOfferLoadedSchemaMembers, true)
+	if err != nil {
+		return errorf("ToolOfferLoadedSchema: %w", err)
+	}
+	*v = ToolOfferLoadedSchema(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ToolOfferLoadedSchema object.
+func (v ToolOfferLoadedSchema) MarshalJSON() ([]byte, error) {
+	type plain ToolOfferLoadedSchema
+	return encodeObject(plain(v), nil)
+}
+
+// From tool-offer.json#/$defs/nameMapping. One row of the offer's mapping (ADR-0006): the wire
+// name the model sees and calls, the source's id and the tool's own name there. Stable: the same
+// source and name give the same wire name in every run, whatever else is declared.
+type ToolOfferNameMapping struct {
+	Wire   string `json:"wire"`
+	Source string `json:"source"`
+	Tool   string `json:"tool"`
+}
+
+var toolOfferNameMappingMembers = []string{"wire", "source", "tool"}
+
+// UnmarshalJSON decodes a ToolOfferNameMapping object and refuses a member the closed schema does not name.
+func (v *ToolOfferNameMapping) UnmarshalJSON(data []byte) error {
+	type plain ToolOfferNameMapping
+	var p plain
+	extra, err := decodeObject(data, &p, toolOfferNameMappingMembers, true)
+	if err != nil {
+		return errorf("ToolOfferNameMapping: %w", err)
+	}
+	*v = ToolOfferNameMapping(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ToolOfferNameMapping object.
+func (v ToolOfferNameMapping) MarshalJSON() ([]byte, error) {
+	type plain ToolOfferNameMapping
+	return encodeObject(plain(v), nil)
+}
+
 // From tool-offer.json#/$defs/proposePack. The host tool through which the model delivers its
 // proposal (packages/harness/engines/contract.ts: PROPOSE_PACK_TOOL, PROPOSE_PACK_SCHEMA). The
 // host registers it among its hostTools under this name and with this input schema, which is in
@@ -4341,11 +4563,14 @@ type ToolOfferProposePack struct {
 	Delegation    *string                         `json:"delegation,omitzero"`
 	ContextPolicy *ToolOfferHostToolContextPolicy `json:"contextPolicy,omitzero"`
 	Presentation  *ToolOfferHostToolPresentation  `json:"presentation,omitzero"`
+	Source        *ToolOfferSourceRecord          `json:"source,omitzero"`
+	EffectClass   *string                         `json:"effectClass,omitzero"`
+	Approval      *string                         `json:"approval,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var toolOfferProposePackMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation"}
+var toolOfferProposePackMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval"}
 
 // UnmarshalJSON decodes a ToolOfferProposePack object and keeps the members the schema does not name.
 func (v *ToolOfferProposePack) UnmarshalJSON(data []byte) error {
@@ -4398,6 +4623,94 @@ func (v ToolOfferRuntimeTool) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), v.AdditionalMembers)
 }
 
+// From tool-offer.json#/$defs/sourceDeclaration. A host tool with a source, as the host declares
+// it (ADR-0006): its own name at the source (name, 1 to 128 characters), its description and
+// schema as the source serves them, its source record, and optionally its effect class and
+// approval. A declaration whose record or members are not these, or which carries effect or
+// interaction (the package sets effect from effectClass; a source's tool is never a question or a
+// delegation), or delegation on anything but a read, is refused before any request
+// (configuration). A declaration whose name is a Runtime tool's (runtimeCeiling, and the Runtime
+// tools kept off it), a reserved name, load_tool or propose_pack is withheld from the offer with a
+// guardrail refused event: a Runtime's tools reach the model only through the gate.
+type ToolOfferSourceDeclaration struct {
+	Name          string                          `json:"name"`
+	Description   string                          `json:"description"`
+	InputSchema   json.RawMessage                 `json:"inputSchema"`
+	Effect        *string                         `json:"effect,omitzero"`
+	Interaction   *string                         `json:"interaction,omitzero"`
+	Delegation    *string                         `json:"delegation,omitzero"`
+	ContextPolicy *ToolOfferHostToolContextPolicy `json:"contextPolicy,omitzero"`
+	Presentation  *ToolOfferHostToolPresentation  `json:"presentation,omitzero"`
+	Source        ToolOfferSourceRecord           `json:"source"`
+	EffectClass   *string                         `json:"effectClass,omitzero"`
+	Approval      *string                         `json:"approval,omitzero"`
+	// AdditionalMembers holds the members the schema does not name; the object is open.
+	AdditionalMembers map[string]json.RawMessage `json:"-"`
+}
+
+var toolOfferSourceDeclarationMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval"}
+
+// UnmarshalJSON decodes a ToolOfferSourceDeclaration object and keeps the members the schema does not name.
+func (v *ToolOfferSourceDeclaration) UnmarshalJSON(data []byte) error {
+	type plain ToolOfferSourceDeclaration
+	var p plain
+	extra, err := decodeObject(data, &p, toolOfferSourceDeclarationMembers, false)
+	if err != nil {
+		return errorf("ToolOfferSourceDeclaration: %w", err)
+	}
+	*v = ToolOfferSourceDeclaration(p)
+	v.AdditionalMembers = extra
+	return nil
+}
+
+// MarshalJSON encodes a ToolOfferSourceDeclaration object, with the members the schema does not name after the ones it does.
+func (v ToolOfferSourceDeclaration) MarshalJSON() ([]byte, error) {
+	type plain ToolOfferSourceDeclaration
+	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From tool-offer.json#/$defs/sourceRecord. Where a host tool comes from (ADR-0006). Declared by
+// the host on each host tool a source outside the host serves; the package adds tool (the tool's
+// own name at its source) on the offer, carries the record on the tool's tool_call and tool_result
+// events (with receipt on a result where the host's answer gave one), and counts the source in the
+// run report (provenance.json#/$defs/sourceFigures). gateway: a gateway connection the person
+// configured (Databricks, Azure DevOps, Drive), which may give a receipt for each call; mcp: a
+// public MCP server the host connected, whose tool list is pinned by digest at connection time;
+// custom: a tool the person created. runtime is the Runtime's own row in the run report: its tools
+// come through tools/list behind the gate, carry no declaration, and a host tool declared with
+// kind runtime is refused. Either version or toolListDigest is present; mcp carries
+// toolListDigest. Closed: the package refuses another member before any request (configuration).
+type ToolOfferSourceRecord struct {
+	Kind           string  `json:"kind"`
+	ID             string  `json:"id"`
+	Version        *string `json:"version,omitzero"`
+	ToolListDigest *string `json:"toolListDigest,omitzero"`
+	Trust          string  `json:"trust"`
+	Tool           *string `json:"tool,omitzero"`
+	Receipt        *string `json:"receipt,omitzero"`
+}
+
+var toolOfferSourceRecordMembers = []string{"kind", "id", "version", "toolListDigest", "trust", "tool", "receipt"}
+
+// UnmarshalJSON decodes a ToolOfferSourceRecord object and refuses a member the closed schema does not name.
+func (v *ToolOfferSourceRecord) UnmarshalJSON(data []byte) error {
+	type plain ToolOfferSourceRecord
+	var p plain
+	extra, err := decodeObject(data, &p, toolOfferSourceRecordMembers, true)
+	if err != nil {
+		return errorf("ToolOfferSourceRecord: %w", err)
+	}
+	*v = ToolOfferSourceRecord(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ToolOfferSourceRecord object.
+func (v ToolOfferSourceRecord) MarshalJSON() ([]byte, error) {
+	type plain ToolOfferSourceRecord
+	return encodeObject(plain(v), nil)
+}
+
 // From tool-result.json. The tool_result event: what a tool answered, as the adapter reports it to
 // the host after a tool_call. The model is shown the same answer, bounded (see $defs/reference).
 // Read from the AssistantEvent union (web/src/assistant/engine.ts) as both engines emit it
@@ -4430,20 +4743,26 @@ func (v ToolOfferRuntimeTool) MarshalJSON() ([]byte, error) {
 // ($defs/textToolResultMessage), closed by a marker drawn afresh for each run; the run's
 // instructions say that text inside a block is data, never instructions. A failure the harness
 // wrote (a refused, capped or timed-out call) and an acknowledgement the adapter wrote are shown
-// as they are. The tool_result event is never framed.
+// as they are. The tool_result event is never framed. A tool with a source (ADR-0006) is held to
+// its source's bounds as well: its result is shown whole only up to sourceResultBytes
+// (budget.json) and is otherwise retained and shown as the reference envelope, its calls are held
+// to sourceCallsPerTurn and sourceCallMilliseconds, and its answer is framed as data whatever its
+// effect class.
 type ToolResult struct {
-	Type       string          `json:"type"`
-	CallID     *string         `json:"callId,omitzero"`
-	Name       string          `json:"name"`
-	IsError    bool            `json:"isError"`
-	Text       string          `json:"text"`
-	Structured json.RawMessage `json:"structured,omitzero"`
-	Origin     *string         `json:"origin,omitzero"`
+	Type       string                 `json:"type"`
+	CallID     *string                `json:"callId,omitzero"`
+	Name       string                 `json:"name"`
+	IsError    bool                   `json:"isError"`
+	Text       string                 `json:"text"`
+	Structured json.RawMessage        `json:"structured,omitzero"`
+	Origin     *string                `json:"origin,omitzero"`
+	Source     *ToolOfferSourceRecord `json:"source,omitzero"`
+	Proposed   *bool                  `json:"proposed,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var toolResultMembers = []string{"type", "callId", "name", "isError", "text", "structured", "origin"}
+var toolResultMembers = []string{"type", "callId", "name", "isError", "text", "structured", "origin", "source", "proposed"}
 
 // UnmarshalJSON decodes a ToolResult object and keeps the members the schema does not name.
 func (v *ToolResult) UnmarshalJSON(data []byte) error {

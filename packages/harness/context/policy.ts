@@ -31,10 +31,18 @@ export const INDEX_DEFAULTS = Object.freeze({turnIndexEntries:20,turnIndexBytes:
  * memory over `memoryBytes` are. Not in the Desk's table; a table that carries it wins.
  */
 export const PROMPT_DEFAULTS = Object.freeze({projectInstructionsBytes:4000})
-export type ContextPolicy = typeof defaults & {turnMilliseconds:number;toolCallMilliseconds:number;imagesPerRequest:number;imageBytesPerRequest:number;turnIndexEntries:number;turnIndexBytes:number;projectInstructionsBytes:number} & TestBounds
+/**
+ * The bounds on tools with a source (ADR-0006, `toolSources.ts`): the most bytes of a description the
+ * model is shown; how many such tools, and how many bytes of their names, descriptions and schemas,
+ * one run offers before they become a catalogue that `load_tool` loads from; the largest result shown
+ * whole; and per source, the calls one turn may make and one call's deadline. Not in the Desk's
+ * table; a table that carries them wins.
+ */
+export const SOURCE_DEFAULTS = Object.freeze({toolDescriptionBytes:1024,offeredSchemas:16,offeredSchemaBytes:24_000,sourceResultBytes:8000,sourceCallsPerTurn:8,sourceCallMilliseconds:30_000})
+export type ContextPolicy = typeof defaults & {turnMilliseconds:number;toolCallMilliseconds:number;imagesPerRequest:number;imageBytesPerRequest:number;turnIndexEntries:number;turnIndexBytes:number;projectInstructionsBytes:number} & TestBounds & {-readonly [K in keyof typeof SOURCE_DEFAULTS]:number}
 export interface ModelContextBudget {contextWindowTokens:number;outputTokens:number}
 export interface ContextConfiguration {version:1;projectBrief?:string;models?:Record<string,ModelContextBudget>}
-export const CONTEXT_DEFAULTS:Readonly<ContextPolicy> = Object.freeze({...TIME_DEFAULTS,...IMAGE_DEFAULTS,...TEST_DEFAULTS,...INDEX_DEFAULTS,...PROMPT_DEFAULTS,...defaults})
+export const CONTEXT_DEFAULTS:Readonly<ContextPolicy> = Object.freeze({...TIME_DEFAULTS,...IMAGE_DEFAULTS,...TEST_DEFAULTS,...INDEX_DEFAULTS,...PROMPT_DEFAULTS,...SOURCE_DEFAULTS,...defaults})
 export function contextConfiguration(value:unknown):ContextConfiguration {
  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid assistant context configuration')
  const c=value as Record<string,unknown>

@@ -57,6 +57,9 @@ type ToolResult struct {
 	// order is the member order the result was written in, so its JSON is the TypeScript's bytes;
 	// empty means content, structuredContent, isError, this struct's own order.
 	order []string
+	// Receipt is a host tool with a source's receipt id for this call (ADR-0006; a gateway
+	// connection's), carried on the tool_result's source record and never in the result's JSON.
+	Receipt string
 }
 
 // ResultOf is a tool result written content first, as a tool's own answer is.
@@ -163,6 +166,22 @@ type HostTool struct {
 	ContextPolicy *ToolContextPolicy
 	Presentation  *contract.ToolOfferHostToolPresentation
 	Execute       func(ctx context.Context, args json.RawMessage) (ToolResult, error)
+	// Source is where the tool comes from, for a tool a source outside the host serves (ADR-0006,
+	// sources.go): the host still executes it; the boundary names it for the wire, frames its
+	// description, holds it to its source's bounds and reports it by source.
+	Source *ToolSource
+	// SourceTool is the tool's own name at its source, set by the boundary on the offered tool,
+	// whose Name is then its wire name. A declaration leaves it empty.
+	SourceTool string
+	// EffectClass is what a call of a tool with a source may do: read, propose or act ("" is act).
+	EffectClass string
+	// Approval is whether each call needs the person's approval: none or required ("" is the
+	// effect class's default, required for act).
+	Approval string
+	// Approve is the host's approval reader for a tool with a source whose calls need approval:
+	// asked before each call with a copy of its arguments, and the call runs only where it answers
+	// true. Nil, every such call is refused. The package holds no grant.
+	Approve func(ctx context.Context, args json.RawMessage) (bool, error)
 }
 
 // Declaration is the tool as the offer declares it to the model (tool-offer.json#/$defs/hostTool).
@@ -197,6 +216,18 @@ func (t HostTool) Declaration() contract.ToolOfferHostTool {
 		out.ContextPolicy = policy
 	}
 	out.Presentation = t.Presentation
+	if t.Source != nil {
+		record := t.Source.Record(t.SourceTool)
+		out.Source = &record
+	}
+	if t.EffectClass != "" {
+		class := t.EffectClass
+		out.EffectClass = &class
+	}
+	if t.Approval != "" {
+		approval := t.Approval
+		out.Approval = &approval
+	}
 	return out
 }
 

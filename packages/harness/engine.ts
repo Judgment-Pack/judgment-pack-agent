@@ -86,6 +86,11 @@ export interface McpToolResult {
   content?: { type?: string; text?: string; [member: string]: unknown }[]
   isError?: boolean
   structuredContent?: unknown
+  /**
+   * A host tool with a source only (ADR-0006): the receipt id the source gave for this call (a
+   * gateway connection's), carried on the tool_result's source record and never shown to the model.
+   */
+  receipt?: string
 }
 
 /**
@@ -123,6 +128,23 @@ export interface HostTool {
   delegation?: 'read' | 'research'
   /** Host-owned presentation, frozen when this tool is offered; never model arguments. */
   presentation?: { provider: string }
+  /**
+   * Where the tool comes from, for a tool a source outside the host serves (ADR-0006, `toolSources.ts`):
+   * a gateway connection, a public MCP server or a tool the person created. The host still executes
+   * it; the package maps its name to a wire-safe one, frames its description, holds it to its source's
+   * bounds and reports it by source.
+   */
+  source?: import('./toolSources').ToolSource
+  /** What a call of a tool with a source may do (ADR-0006): `act` unless the host declares otherwise. */
+  effectClass?: import('./toolSources').EffectClass
+  /** Whether each call needs the person's approval; by effect class where absent (`act` needs it). */
+  approval?: import('./toolSources').Approval
+  /**
+   * The host's approval reader for a tool with a source whose calls need approval (ADR-0006): asked
+   * before each call with its arguments, and the call runs only where it answers `true`. Absent, every
+   * such call is refused. The package holds no grant.
+   */
+  approve?: (args: Record<string, unknown>, signal: AbortSignal) => Promise<boolean>
   name: string
   description: string
   inputSchema: unknown
@@ -270,8 +292,8 @@ export type AssistantEvent =
    * `origin` `harness` on a call the harness made itself, not the model: the
    * critic pass's own comparison of a declared case (agent#10 review row 8).
    */
-  | { type: 'tool_call'; callId?: string; name: string; args: unknown; presentation?: { provider: string }; origin?: 'harness' }
-  | { type: 'tool_result'; callId?: string; name: string; isError: boolean; text: string; structured?: unknown; origin?: 'harness' }
+  | { type: 'tool_call'; callId?: string; name: string; args: unknown; presentation?: { provider: string }; origin?: 'harness'; source?: import('./toolSources').SourceRecord }
+  | { type: 'tool_result'; callId?: string; name: string; isError: boolean; text: string; structured?: unknown; origin?: 'harness'; source?: import('./toolSources').SourceRecord; proposed?: true }
   /**
    * `rewrote` and `refused` are the ToolGate's, on the wire. `narrowed` is the
    * desk's own report on the **contract it showed the model**: on a wire whose

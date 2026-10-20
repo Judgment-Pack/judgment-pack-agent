@@ -1,0 +1,43 @@
+{
+  "description": "The run report's rows by source (ADR-0006, provenance.json#/$defs/sourceFigures), as the checkpoint's sources carries them after scenario 7's first run: the Runtime's row first (one call refused at the gate: write_file, which no source offered), then the MCP server (one call run, one refused once its list changed) and the person's custom read (one call run). bytes and milliseconds are the host's answers' and the host's time; here figures a run could give. Written by hand; scenario 7 holds every engine's checkpoint to the counts.",
+  "schema": "provenance.json#/$defs/sourceFigures",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/toolSources.ts (SourceGate)",
+      "packages/harness/execution/state.ts (SourceFigures, validSourceFigures)"
+    ]
+  },
+  "items": [
+    {
+      "source": "runtime",
+      "kind": "runtime",
+      "calls": 0,
+      "refused": 1,
+      "proposed": 0,
+      "bytes": 0,
+      "milliseconds": 0
+    },
+    {
+      "source": "tracker",
+      "kind": "mcp",
+      "calls": 1,
+      "refused": 1,
+      "proposed": 0,
+      "bytes": 72,
+      "milliseconds": 4
+    },
+    {
+      "source": "rates",
+      "kind": "custom",
+      "calls": 1,
+      "refused": 0,
+      "proposed": 0,
+      "bytes": 69,
+      "milliseconds": 1
+    }
+  ]
+}

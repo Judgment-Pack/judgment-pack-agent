@@ -290,6 +290,9 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 	if handoff := value.Get("handoff"); handoff != nil && !ValidHandoff(handoff) {
 		return nil, errSavedExecution
 	}
+	if sources := value.Get("sources"); sources != nil && !ValidSourceFigures(sources) {
+		return nil, errSavedExecution
+	}
 	if prompts := value.Get("prompts"); prompts != nil {
 		if !prompts.IsArray() || prompts.Len() > MaxPromptDigests {
 			return nil, errSavedExecution

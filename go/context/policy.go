@@ -39,6 +39,13 @@ type Policy struct {
 	TurnIndexBytes   int `json:"turnIndexBytes"`
 	// The bound on the project's own instructions (PROMPT_DEFAULTS, ADR-0005).
 	ProjectInstructionsBytes int `json:"projectInstructionsBytes"`
+	// The bounds on tools with a source (SOURCE_DEFAULTS, ADR-0006).
+	ToolDescriptionBytes   int `json:"toolDescriptionBytes"`
+	OfferedSchemas         int `json:"offeredSchemas"`
+	OfferedSchemaBytes     int `json:"offeredSchemaBytes"`
+	SourceResultBytes      int `json:"sourceResultBytes"`
+	SourceCallsPerTurn     int `json:"sourceCallsPerTurn"`
+	SourceCallMilliseconds int `json:"sourceCallMilliseconds"`
 }
 
 // TimeDefaults are the time bounds the harness adds to the Desk's table (TIME_DEFAULTS): one
@@ -67,6 +74,15 @@ var IndexDefaults = struct{ TurnIndexEntries, TurnIndexBytes int }{20, 8000}
 // first request, as a brief over BriefBytes and memory over MemoryBytes are. Not in the Desk's
 // table; a table that carries it wins.
 var PromptDefaults = struct{ ProjectInstructionsBytes int }{4000}
+
+// SourceDefaults are the bounds on tools with a source (ADR-0006, SOURCE_DEFAULTS): the most bytes
+// of a description the model is shown; how many such tools, and how many bytes of their names,
+// descriptions and schemas, one run offers before sources become catalogues that load_tool loads
+// from; the largest result shown whole; and per source, the calls one turn may make and one call's
+// deadline. Not in the Desk's table; a table that carries them wins.
+var SourceDefaults = struct {
+	ToolDescriptionBytes, OfferedSchemas, OfferedSchemaBytes, SourceResultBytes, SourceCallsPerTurn, SourceCallMilliseconds int
+}{1024, 16, 24_000, 8000, 8, 30_000}
 
 // DeskPolicy is the Desk's table itself (contract/desk/policy.json, packages/harness/contract/policy.json).
 var DeskPolicy = Policy{
@@ -98,6 +114,12 @@ var Defaults = func() Policy {
 	p.TurnIndexEntries = IndexDefaults.TurnIndexEntries
 	p.TurnIndexBytes = IndexDefaults.TurnIndexBytes
 	p.ProjectInstructionsBytes = PromptDefaults.ProjectInstructionsBytes
+	p.ToolDescriptionBytes = SourceDefaults.ToolDescriptionBytes
+	p.OfferedSchemas = SourceDefaults.OfferedSchemas
+	p.OfferedSchemaBytes = SourceDefaults.OfferedSchemaBytes
+	p.SourceResultBytes = SourceDefaults.SourceResultBytes
+	p.SourceCallsPerTurn = SourceDefaults.SourceCallsPerTurn
+	p.SourceCallMilliseconds = SourceDefaults.SourceCallMilliseconds
 	return p
 }()
 

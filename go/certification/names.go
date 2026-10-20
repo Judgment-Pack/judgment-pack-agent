@@ -15,8 +15,9 @@ func LegChecks() []Check {
 // DelegationNames are the delegation scenario's checks.
 var DelegationNames = []string{"2 runs", "2 findings", "2 offers", "2 references", "2 reports", "2 figures", "2 resume"}
 
-// AllScenarios are the six scenarios' checks and the delegation capacity check, the delegation
-// scenario's and the capacity check's made with the coordinator the caller wraps the adapter in.
+// AllScenarios are the seven scenarios' checks (the seventh ADR-0006's) and the delegation capacity
+// check, the delegation scenario's and the capacity check's made with the coordinator the caller
+// wraps the adapter in.
 func AllScenarios(with func(Adapter) Adapter) []ScenarioCheck {
 	return append(append([]ScenarioCheck{}, Scenarios...), Delegation(with), Capacity(with))
 }

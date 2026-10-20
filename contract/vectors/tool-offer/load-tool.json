@@ -1,0 +1,32 @@
+{
+  "description": "load_tool, the harness tool that loads one catalogued tool's schema (ADR-0006): its declaration as the boundary offers it, where the schema budget made any source a catalogue. Written by hand; toolSources.test.ts holds SourceGate.loadTool to it, and go/context its Go form.",
+  "schema": "tool-offer.json#/$defs/loadTool",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/toolSources.ts (LOAD_TOOL, LOAD_TOOL_SCHEMA, SourceGate.loadTool)"
+    ]
+  },
+  "items": [
+    {
+      "name": "load_tool",
+      "effect": "read",
+      "description": "Load the input schema of one catalogued tool before calling it. Pass its name as the tools list shows it; only a catalogued tool's schema loads. A loaded schema stays in the execution state for the rest of this response.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The catalogued tool's name, as the tools list shows it."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    }
+  ]
+}

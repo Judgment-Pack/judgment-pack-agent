@@ -131,6 +131,10 @@ type SessionContext struct {
 	// HostParts are the host's parts of this run's prompt (ADR-0005), asked once before its first
 	// request (AskHost); none until then.
 	HostParts HostParts
+	// Sources is the boundary's hold on the run's tools with a source (ADR-0006), where it declares
+	// any; Catalogue says the schema budget made a source a catalogue and load_tool is offered.
+	Sources   *SourceGate
+	Catalogue bool
 
 	session        Session
 	compactions    int
@@ -510,7 +514,14 @@ func (c *SessionContext) Result(name string, result ToolResult) (ToolResult, err
 			}
 		}
 	}
-	if UTF8Bytes(string(value.JSON())) <= c.Policy.ToolResultBytes {
+	// ADR-0006: a tool with a source is shown whole only up to its source's bound.
+	limit := c.Policy.ToolResultBytes
+	if c.Sources != nil {
+		if bound := c.Sources.ResultLimit(name); bound > 0 {
+			limit = bound
+		}
+	}
+	if UTF8Bytes(string(value.JSON())) <= limit {
 		return value, nil
 	}
 	isError := result.Err()
@@ -835,8 +846,20 @@ func (c *SessionContext) Turn() *ChatTurn { return c.turn }
 // errReserved is the host tool or runtime tool that takes a name the boundary reserves.
 var errReserved = &authoredError{"Context tool names are reserved by Desk."}
 
-// reservedNames are the names this package's own tools take.
-var reservedNames = []string{"read_context", "list_context", ReadTool, SearchTool, "update_plan", "request_budget_increase"}
+// reservedNames are the names this package's own tools take, load_tool among them (ADR-0006).
+var reservedNames = []string{"read_context", "list_context", ReadTool, SearchTool, "update_plan", "request_budget_increase", LoadTool}
+
+// OpenSources holds the run's tools with a source (ADR-0006, sources.go): the report's rows in the
+// execution state, a guardrail for each declaration the package withheld, and the loaded schemas
+// after the history, in the request state.
+func (c *SessionContext) OpenSources(declared *Declared, catalogue bool, family string) {
+	if c.Execution.State.Sources == nil {
+		c.Execution.State.Sources = []contract.ProvenanceSourceFigures{}
+	}
+	c.Sources = NewSourceGate(declared, c.Policy, c.Marker, family, func() *[]contract.ProvenanceSourceFigures { return &c.Execution.State.Sources })
+	c.Catalogue = catalogue
+	c.Execution.LoadedSchemas = c.Sources.LoadedSection
+}
 
 // Run is one run opened: its context, and the session with its tools wrapped.
 type Run struct {
@@ -853,6 +876,16 @@ type Run struct {
 // (gate counts it), and the refusal of a name the session serves but the run was not offered.
 // Plan mode's tool filtering is the gate's too (gate.PlanPhase); PlanningSession gives the prompt.
 func ContextualSession(ctx context.Context, session Session) (*Run, error) {
+	// ADR-0006: the tools with a source, read and named for the wire before anything else sees them.
+	served := make([]string, 0, len(session.Tools))
+	for _, tool := range session.Tools {
+		served = append(served, tool.Name)
+	}
+	declared, err := DeclareSources(session.HostTools, served)
+	if err != nil {
+		return nil, err
+	}
+	session.HostTools = declared.HostTools
 	session = PlanningSession(session)
 	authorize := func(ctx context.Context) error {
 		if session.Context != nil && session.Context.Authorize != nil {
@@ -871,6 +904,15 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 	opened := func() error {
 		if err := held.Execution.Initialize(); err != nil {
 			return err
+		}
+		if len(declared.Sources) > 0 {
+			family := ""
+			if session.Model != nil {
+				family = session.Model.Family
+			}
+			offered, catalogue := OfferSources(session.HostTools, declared.Entries, *held.Policy, held.Marker)
+			session.HostTools = offered
+			held.OpenSources(declared, catalogue, family)
 		}
 		if err := held.AskHost(ctx); err != nil {
 			return err
@@ -921,6 +963,10 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 	}
 	tools := append([]HostTool{}, session.HostTools...)
 	tools = append(tools, held.Ledger.Tools()...)
+	// ADR-0006: load_tool beside the ledger's tools where a source is a catalogue.
+	if held.Catalogue {
+		tools = append(tools, held.Sources.LoadToolHost())
+	}
 	if session.AllowConversation {
 		tools = append(tools, held.Execution.Tool(), held.Execution.BudgetTool())
 	}
@@ -933,11 +979,17 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 			kept = &KeptRead{Runtime: false}
 		}
 		inner := declared.Execute
+		run := held.Execution.WrapRead(declared.Name, inner, declared.ContextPolicy, readOnly, kept)
+		name := declared.Name
 		declared.Execute = func(ctx context.Context, args json.RawMessage) (ToolResult, error) {
 			if err := authorize(ctx); err != nil {
 				return ToolResult{}, err
 			}
-			return held.Execution.WrapRead(declared.Name, inner, declared.ContextPolicy, readOnly, kept)(ctx, args)
+			// ADR-0006: each call of a tool with a source is held by the source gate before the host's.
+			if held.Sources != nil {
+				return held.Sources.Call(ctx, name, args, run)
+			}
+			return run(ctx, args)
 		}
 		wrapped = append(wrapped, declared)
 	}
@@ -957,7 +1009,13 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		inner := func(ctx context.Context, args json.RawMessage) (ToolResult, error) {
 			return callTool(ctx, name, args)
 		}
-		return held.Execution.WrapRead(name, inner, &policy, policy.Immutable, &KeptRead{Runtime: true, Offered: &served})(ctx, args)
+		call := func() (ToolResult, error) {
+			return held.Execution.WrapRead(name, inner, &policy, policy.Immutable, &KeptRead{Runtime: true, Offered: &served})(ctx, args)
+		}
+		if held.Sources != nil {
+			return held.Sources.Runtime(call)
+		}
+		return call()
 	}
 	return &Run{Context: held, Session: out}, nil
 }

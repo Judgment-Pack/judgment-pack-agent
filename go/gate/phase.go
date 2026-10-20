@@ -27,6 +27,11 @@ var PlanRuntimeReads = func() []string {
 // offered the two readers) and the reformat run's (which is offered none).
 var ContextTools = []string{"list_context", "read_context", "read_window", "search", "update_plan", "request_budget_increase"}
 
+// ReservedNames are every name the host keeps for the package's own tools (tool-offer.json
+// $defs/reservedName): the context tools, and load_tool (ADR-0006), the catalogue loader the
+// boundary offers beside them only where the schema budget makes a tool source a catalogue.
+var ReservedNames = append(append([]string{}, ContextTools...), "load_tool")
+
 // PhaseKind names a phase of a run.
 type PhaseKind string
 

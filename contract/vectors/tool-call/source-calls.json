@@ -1,0 +1,62 @@
+{
+  "description": "tool_call events of tools with a source (ADR-0006): each under the wire name the model called, with the source record and its own name there. A Runtime tool's call and a host tool's own carry no source. Written by hand; the certified scenario 7 (certification/scenarios/tool-sources.json) holds every engine's events to the shape.",
+  "schema": "tool-call.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/toolSources.ts (SourceGate.decorate)",
+      "packages/harness/context/managed.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "tool_call",
+      "name": "databricks__query_table",
+      "args": {
+        "table": "expenses",
+        "limit": 20
+      },
+      "source": {
+        "kind": "gateway",
+        "id": "databricks",
+        "trust": "connected",
+        "version": "rev-7",
+        "tool": "query_table"
+      }
+    },
+    {
+      "type": "tool_call",
+      "callId": "c-2",
+      "name": "tracker__create_issue",
+      "args": {
+        "repository": "expense",
+        "title": "Missing mileage rate"
+      },
+      "source": {
+        "kind": "mcp",
+        "id": "tracker",
+        "trust": "public",
+        "toolListDigest": "sha256:895126e92b1c3eda6597de4263b32e07b712e1ffb6b59a308dd53f18de6f9d22",
+        "tool": "create_issue"
+      }
+    },
+    {
+      "type": "tool_call",
+      "name": "rates__submit_expense",
+      "args": {
+        "amount": 42.5,
+        "purpose": "Client visit"
+      },
+      "source": {
+        "kind": "custom",
+        "id": "rates",
+        "trust": "person",
+        "version": "3",
+        "tool": "submit_expense"
+      }
+    }
+  ]
+}

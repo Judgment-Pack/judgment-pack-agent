@@ -17,6 +17,7 @@ import {contextPolicy,inputBytes,utf8Bytes,prefix,ContextBudgetError,type Contex
 import {INDEX_SHARE,partBytes,type ChatScope,type ChatTurn,type RuntimeIdentity} from './chat'
 import {readHostParts,systemText,type HostParts} from '../prompt'
 import {runModels,type AITarget,type AssistantEngine,type RunIdentity,type RunModels} from '../host'
+import {declareSources,offerSources,SourceGate,LOAD_TOOL,type Declared} from '../toolSources'
 export interface CurrentRequest {message:string;input:string}
 /** `currentState`: host-authored text that changes between requests or responses (the chat's
  * draft snapshot, the latest check). An adapter sends it after the history, at the end of every
@@ -73,6 +74,22 @@ export class SessionContext {
  private readonly objective?:string
  /** The host's parts of this run's prompt (ADR-0005), asked once before its first request (`askHost`); none until then. */
  hostParts:HostParts={}
+ /** ADR-0006: the boundary's hold on the run's tools with a source, where it declares any. */
+ sources?:SourceGate
+ /** ADR-0006: the tools with a source passed the schema budget and are offered as a catalogue, with load_tool. */
+ catalogue=false
+ /**
+  * Hold the run's tools with a source (ADR-0006, `toolSources.ts`): the report's rows in the execution
+  * state, a guardrail for each declaration the package withheld, and the loaded schemas after the
+  * history, in the request state.
+  */
+ openSources(declared:Declared,catalogue:boolean){
+  this.execution.state.sources??=[]
+  this.sources=new SourceGate(declared.entries,declared.sources,this.policy,this.marker,(name,detail)=>this.refuse(name,detail),()=>this.execution.state.sources!,this.capabilities?.toolSchemas)
+  this.catalogue=catalogue
+  for(const held of declared.withheld)this.notices.push({type:'guardrail',tool:held.tool,action:'refused',detail:held.detail})
+  this.execution.loadedSchemas=()=>this.sources?.loadedSection()??''
+ }
  /**
   * Ask the host for its parts of the prompt, once for the run (ADR-0005): the brief, the project's
   * own instructions and the memory recalled for the person's message (a delegated child's
@@ -253,7 +270,8 @@ export class SessionContext {
    const texts=(result.content??[]).filter(p=>p.type==='text').map(p=>p.text??'')
    if(texts.length===1){try{if(encoded(JSON.parse(texts[0]!))===encoded(result.structuredContent))value={isError:result.isError,structuredContent:result.structuredContent}}catch{ /* Distinct prose stays exact. */ }}
   }
-  if(utf8Bytes(encoded(value))<=this.policy.toolResultBytes)return value
+  // ADR-0006: a tool with a source is shown whole only up to its source's bound.
+  if(utf8Bytes(encoded(value))<=(this.sources?.resultLimit(name)??this.policy.toolResultBytes))return value
   let e
   try{e=await this.ledger.retain({id:'result-'+name+'-'+await contextDigest(encoded(result)),kind:'tool',label:name,value:result})}
   catch(error){
@@ -375,23 +393,33 @@ export function testCallCapFailure(limit:number):AIFailureError{
  return new AIFailureError({version:1,code:'tool-failed',source:'tool',outcome:'not-started',detail:`This turn has called ${TEST_TOOL} ${limit} time${limit===1?'':'s'}, the most one turn may (testCallsPerTurn); this call was not run. Use the reports already obtained: fix what they show and propose, or say what remains. The person can test again in a new turn.`})
 }
 export async function contextualSession<T extends EngineSession>(session:T):Promise<{session:T;context:SessionContext}>{
+ // ADR-0006: the tools with a source, read and named for the wire before anything else sees them.
+ const declared=await declareSources(session.hostTools,session.tools.map(t=>t.name))
+ session={...session,hostTools:declared.hostTools}
  session=planningSession(session)
  await session.context?.authorize?.(session.signal)
  const context=new SessionContext(session)
  // A chat's turn is open from here: a run that cannot start closes it again.
  try{
  await context.execution.initialize()
+ if(declared.sources.length){
+  const offered=offerSources(session.hostTools,declared.entries,context.policy,context.marker)
+  session={...session,hostTools:offered.hostTools}
+  context.openSources(declared,offered.catalogue)
+ }
  await context.askHost(session)
  await context.initialize(session.context?.documents,true)
  await context.execution.retainProgress()
  if(session.context?.plan)await context.initialize([{id:'current-plan',kind:'artifact',label:'Current chat plan',value:session.context.plan}])
- if([...session.tools,...session.hostTools].some(t=>t.name==='read_context'||t.name==='list_context'||t.name===READ_TOOL||t.name===SEARCH_TOOL||t.name==='update_plan'||t.name==='request_budget_increase'))throw Error('Context tool names are reserved by Desk.')
+ if([...session.tools,...session.hostTools].some(t=>t.name==='read_context'||t.name==='list_context'||t.name===READ_TOOL||t.name===SEARCH_TOOL||t.name==='update_plan'||t.name==='request_budget_increase'||t.name===LOAD_TOOL))throw Error('Context tool names are reserved by Desk.')
  session.context?.link?.attach(context)
  }catch(error){context.close();throw error}
  // The session's own tools that read (agent#8): what a chat-scoped context keeps across its runs.
  const own=new Set(session.hostTools.filter(tool=>readingTool(tool)).map(tool=>tool.name))
- const hostTools=[...session.hostTools,...context.ledger.tools(),...(session.allowConversation?[context.execution.tool(),context.execution.budgetTool()]:[])].map(tool=>({...tool,execute:async(args:Record<string,unknown>,signal:AbortSignal)=>{context.admit(tool.name,'host');await session.context?.authorize?.(signal);return context.execution.wrapRead(tool.name,a=>tool.execute(a,signal),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read',own.has(tool.name)?{runtime:false}:undefined)(args)}}))
+ // ADR-0006: load_tool beside the ledger's tools where the tools with a source are a catalogue; each call
+ // of a tool with a source is held by the source gate before the host's execute (SourceGate.call).
+ const hostTools=[...session.hostTools,...context.ledger.tools(),...(context.catalogue?[context.sources!.loadTool()]:[]),...(session.allowConversation?[context.execution.tool(),context.execution.budgetTool()]:[])].map(tool=>({...tool,execute:async(args:Record<string,unknown>,signal:AbortSignal)=>{context.admit(tool.name,'host');await session.context?.authorize?.(signal);const run=(given:Record<string,unknown>,bounded:AbortSignal)=>context.execution.wrapRead(tool.name,a=>tool.execute(a,bounded),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read',own.has(tool.name)?{runtime:false}:undefined)(given);return context.sources?context.sources.call(tool,args,signal,run):run(args,signal)}}))
  const model='model'in session?{...session.model,call:async(suffix:string,request:import('../engine').ModelRequest)=>{await session.context?.authorize?.(session.signal);if(request.method!=='GET'){context.execution.claim();await context.execution.recordPrompt(request.body);try{await session.context?.checkpoint?.(context.execution.snapshot())}catch{throw failureError('storage','storage','not-started')}}return session.model.call(suffix,request)}}:undefined
  const agent='agent'in session?{...session.agent,run:async(request:import('../agent').AgentRequest,callbacks:import('../agent').AgentCallbacks)=>{await session.context?.authorize?.(callbacks.signal);const {delegated:_delegated,...sent}=request;await context.execution.recordPrompt(JSON.stringify(sent));return session.agent.run(request,callbacks)}}:undefined
- return {context,session:{...session,...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{context.admit(name,'runtime');await session.context?.authorize?.(session.signal);context.claimTestCall(name);return context.execution.wrapRead(name,a=>session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true,{runtime:true,offered:session.tools.some(t=>t.name===name)})(args)}}}
+ return {context,session:{...session,...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{context.admit(name,'runtime');await session.context?.authorize?.(session.signal);context.claimTestCall(name);const call=()=>context.execution.wrapRead(name,a=>session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true,{runtime:true,offered:session.tools.some(t=>t.name===name)})(args);return context.sources?context.sources.runtime(call):call()}}}
 }

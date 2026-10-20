@@ -1,0 +1,526 @@
+/**
+ * Tool sources (ADR-0006): tools from outside the Runtime, held at the boundary.
+ *
+ * A gateway connection's tools, a public MCP server's and a tool the person created all reach the
+ * model the same way: as host tools. The host declares each with its source record and executes
+ * every call under the person's grants; this package keeps no MCP client and never reaches a
+ * source. What it holds is the boundary every engine enters (`context/session.ts`,
+ * `contextualSession`), so no engine path reaches past it:
+ *
+ * - **the declaration** (`declareSources`): a source record the package can read or the run ends
+ *   before any request (`configuration`); a tool named like a Runtime tool, a reserved name,
+ *   `load_tool` or `propose_pack` withheld with a guardrail; an MCP source whose declared tools do
+ *   not hash to the digest the person approved withheld whole;
+ * - **the wire name** (`wireName`): `[A-Za-z0-9_-]`, at most 64 characters, the source's id first,
+ *   a deterministic suffix where characters were replaced or the name was cut, and a name that
+ *   still collides refused;
+ * - **the description** (`offerSources`): bounded by `toolDescriptionBytes` and framed as retrieved
+ *   text with the run's marker, never instruction;
+ * - **the schema budget** (`offerSources`): past `offeredSchemas` or `offeredSchemaBytes`, the
+ *   largest sources become catalogues until the rest fit (each tool its name, one framed line, an
+ *   open schema) and `load_tool` loads one schema at a time, which then rides in the execution state after the
+ *   history, so the request's tools and the stable prefix never change during the run;
+ * - **each call** (`SourceGate.call`): the source's changed tool list, a catalogued tool not yet
+ *   loaded, `sourceCallsPerTurn`, the effect class (a proposal is held for the review card and never
+ *   run; an act asks the host's approval reader and is refused without it), then the host's own
+ *   execute under `sourceCallMilliseconds`;
+ * - **the report** (`SourceGate.report`): calls, refusals, proposals, bytes and time per source in
+ *   the checkpoint's `sources`, and the source record on the tool's `tool_call` and `tool_result`.
+ */
+import { canonicalJSON } from './context/chat'
+import { answer, contextDigest } from './context/ledger'
+import { prefix, utf8Bytes, type ContextPolicy } from './context/policy'
+import { PROPOSE_PACK_TOOL, shownSchema, toolTimeout, withDeadline } from './engines/contract'
+import { AIFailureError, authoredFailure, toolInputFailure } from './failures'
+import { frameBlock } from './framing'
+import { ASSISTANT_TOOLS } from './host'
+import { REFUSED_RUNTIME_TOOLS } from './toolGate'
+import type { ToolSchemas } from './capabilities'
+import type { AssistantEvent, HostTool, McpToolResult } from './engine'
+
+/** The kinds a host may declare; `runtime` is the Runtime's own row in the report. */
+export const DECLARED_SOURCE_KINDS = ['gateway', 'mcp', 'custom'] as const
+export type SourceKind = 'runtime' | (typeof DECLARED_SOURCE_KINDS)[number]
+export const TRUST_CLASSES = ['first-party', 'connected', 'public', 'person'] as const
+export type TrustClass = (typeof TRUST_CLASSES)[number]
+export const EFFECT_CLASSES = ['read', 'propose', 'act'] as const
+export type EffectClass = (typeof EFFECT_CLASSES)[number]
+export type Approval = 'none' | 'required'
+
+/** The contract's `tool-offer.json#/$defs/sourceRecord`. */
+export interface SourceRecord {
+  kind: SourceKind
+  id: string
+  trust: TrustClass
+  version?: string
+  toolListDigest?: string
+  /** The tool's own name at its source: set by the package on the offer and the events. */
+  tool?: string
+  /** On a tool_result: the receipt id the host's answer gave. */
+  receipt?: string
+}
+
+/**
+ * A source as the host declares it on a host tool: the record without `tool` and `receipt`, and,
+ * for an MCP source, the host's check of the list the server serves now (`currentDigest`), asked
+ * before each call; a digest other than the pinned one refuses the source until the host declares
+ * the new one, which only the person's re-approval gives it.
+ */
+export interface ToolSource extends Omit<SourceRecord, 'tool' | 'receipt'> {
+  currentDigest?: () => string | Promise<string>
+}
+
+/** The harness tool that loads a catalogued tool's schema; a reserved name. */
+export const LOAD_TOOL = 'load_tool'
+/** `load_tool`'s schema: one name. In the subset every family's wire carries. */
+export const LOAD_TOOL_SCHEMA = {
+  type: 'object',
+  properties: { name: { type: 'string', description: "The catalogued tool's name, as the tools list shows it." } },
+  required: ['name']
+} as const
+/** A catalogued tool's schema, open, so the request's tools never change when one is loaded. */
+export const CATALOGUE_SCHEMA = { type: 'object' } as const
+/** The most UTF-8 bytes of a catalogued tool's one line. */
+export const CATALOGUE_LINE_BYTES = 160
+/** A source's id: a letter, then letters, digits and hyphens, at most 24 characters. */
+export const SOURCE_ID = /^[A-Za-z][A-Za-z0-9-]{0,23}$/
+const DIGEST = /^sha256:[0-9a-f]{64}$/
+const WIRE_CHARACTER = /^[A-Za-z0-9_-]$/
+const WIRE_LIMIT = 64
+
+/**
+ * The names a tool with a source may not bear as its own (ADR-0006): the Runtime's tools, on the
+ * ceiling and off it, reach the model only through the gate, and the harness's own names are the
+ * harness's.
+ */
+export const HELD_NAMES: ReadonlySet<string> = new Set([
+  ...ASSISTANT_TOOLS,
+  ...Object.keys(REFUSED_RUNTIME_TOOLS),
+  'list_context', 'read_context', 'read_window', 'search', 'update_plan', 'request_budget_increase',
+  LOAD_TOOL,
+  PROPOSE_PACK_TOOL
+])
+
+/** What the model is told of a proposed call: it was held for the person and not run. */
+export const PROPOSED =
+  'Proposed for the person’s review: this call was not run. The person accepts or rejects it after this response, ' +
+  'and the host runs it only on acceptance. Do not repeat it; say in your answer what you proposed and why.'
+
+/**
+ * The wire name of one tool of one source (`tool-offer.json#/$defs/wireName`): the source's id, two
+ * underscores and the tool's own name with every character outside `[A-Za-z0-9_-]` replaced by `_`;
+ * where anything was replaced or the result passes 64 characters, its first 55, an underscore and
+ * the first 8 hex digits of the SHA-256 of the id, a line feed and the own name. Stable: the same
+ * source and name always give the same wire name, whatever else is declared.
+ */
+export async function wireName(source: string, tool: string): Promise<string> {
+  const cleaned = [...tool].map((c) => (WIRE_CHARACTER.test(c) ? c : '_')).join('')
+  const base = `${source}__${cleaned}`
+  if (cleaned === tool && base.length <= WIRE_LIMIT) return base
+  return `${base.slice(0, 55)}_${(await contextDigest(`${source}\n${tool}`)).slice(0, 8)}`
+}
+
+/** One tool of a source as its list's digest reads it. */
+export interface ListedTool {
+  name: string
+  description?: string
+  inputSchema?: unknown
+}
+
+/**
+ * The digest of a source's tool list (`tool-offer.json#/$defs/toolListDigest`): `sha256:` and the
+ * SHA-256 of the canonical JSON of its tools, each `{name, description, inputSchema}` (description
+ * `''` where it has none), ordered by name in UTF-16 code units. A host computes it with this when
+ * the person approves a server, and again for `currentDigest`.
+ */
+export async function toolListDigest(tools: readonly ListedTool[]): Promise<string> {
+  const list = tools
+    .map((tool) => ({ name: tool.name, description: tool.description ?? '', inputSchema: tool.inputSchema }))
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+  return `sha256:${await contextDigest(canonicalJSON(list))}`
+}
+
+/** A tool with a source, as the boundary holds it after the declaration. */
+export interface SourceEntry {
+  wire: string
+  /** The record as the offer and the events carry it, `tool` set. */
+  record: SourceRecord
+  effectClass: EffectClass
+  approval: Approval
+  /** The host's declaration, as it declared it. */
+  declared: HostTool
+  /** The description as the model may be shown it: bounded, unframed. */
+  description: string
+  /** Offered as a catalogue entry: its schema is loaded by `load_tool`. */
+  catalogued: boolean
+}
+
+/** A declaration the package withheld, and why: the guardrail event it earns. */
+export interface Withheld {
+  tool: string
+  detail: string
+}
+
+/** What the declaration made of the host's tools. */
+export interface Declared {
+  /** The host's tools, each tool with a source replaced by its offered form, the withheld left out. */
+  hostTools: HostTool[]
+  entries: Map<string, SourceEntry>
+  /** Each declared source's record, once, in the order declared. */
+  sources: SourceRecord[]
+  withheld: Withheld[]
+}
+
+const object = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/** Why a declaration cannot be read, or `''`. */
+function declarationProblem(tool: HostTool): string {
+  const source = tool.source as unknown
+  if (!object(source)) return 'its source is not an object'
+  const known = ['kind', 'id', 'trust', 'version', 'toolListDigest', 'currentDigest']
+  const extra = Object.keys(source).filter((member) => !known.includes(member))
+  if (extra.length > 0) return `its source carries ${JSON.stringify(extra[0]!.slice(0, 64))}, which a source record does not name`
+  if (source.kind === 'runtime') return "its source is the Runtime, whose tools come through tools/list behind the gate and are never declared"
+  if (!(DECLARED_SOURCE_KINDS as readonly unknown[]).includes(source.kind)) return 'its source kind is not gateway, mcp or custom'
+  if (typeof source.id !== 'string' || !SOURCE_ID.test(source.id)) return "its source id is not a letter then up to 23 letters, digits and hyphens"
+  if (!(TRUST_CLASSES as readonly unknown[]).includes(source.trust)) return 'its trust class is not first-party, connected, public or person'
+  if (source.version !== undefined && (typeof source.version !== 'string' || source.version.length < 1 || source.version.length > 64)) return 'its source version is not 1 to 64 characters'
+  if (source.toolListDigest !== undefined && (typeof source.toolListDigest !== 'string' || !DIGEST.test(source.toolListDigest))) return 'its tool list digest is not sha256: and 64 lower-case hex digits'
+  if (source.version === undefined && source.toolListDigest === undefined) return 'its source names neither a version nor a tool list digest'
+  if (source.kind === 'mcp' && source.toolListDigest === undefined) return 'its source is an MCP server whose tool list is not pinned by digest'
+  if (source.currentDigest !== undefined && typeof source.currentDigest !== 'function') return "its source's currentDigest is not a function"
+  if (typeof tool.name !== 'string' || tool.name.length < 1 || tool.name.length > 128) return 'its name is not 1 to 128 characters'
+  if (typeof tool.description !== 'string') return 'its description is not text'
+  if (!object(tool.inputSchema)) return 'its input schema is not a JSON object'
+  if (tool.effect !== undefined) return 'it declares effect, which the package sets from effectClass for a tool with a source'
+  if (tool.interaction !== undefined) return 'it declares an interaction, and a tool with a source is never a question or a delegation'
+  if (tool.effectClass !== undefined && !(EFFECT_CLASSES as readonly unknown[]).includes(tool.effectClass)) return 'its effect class is not read, propose or act'
+  if (tool.approval !== undefined && tool.approval !== 'none' && tool.approval !== 'required') return 'its approval is not none or required'
+  if (tool.delegation !== undefined && tool.effectClass !== 'read') return 'it is offered to delegated children without being declared a read'
+  if (tool.approve !== undefined && typeof tool.approve !== 'function') return 'its approval reader is not a function'
+  return ''
+}
+
+/** The effect a tool of each class has on the offer: Plan mode and a child admit reads only. */
+const EFFECT_OF: Record<EffectClass, HostTool['effect']> = { read: 'read', propose: 'proposal', act: undefined }
+/** The approval each class has unless the host declares one. */
+export const APPROVAL_DEFAULT: Record<EffectClass, Approval> = { read: 'none', propose: 'none', act: 'required' }
+
+/**
+ * Read the host's tools with a source, map each to its wire name, and withhold what may not be
+ * offered (ADR-0006). A declaration the package cannot read ends the run before any request
+ * (`configuration`); a held name, a wire name that still collides and an MCP source whose declared
+ * tools are not the list the person approved are withheld, each with a guardrail. `served` are the
+ * Runtime tools' names the session offers.
+ */
+export async function declareSources(hostTools: readonly HostTool[], served: readonly string[]): Promise<Declared> {
+  const withheld: Withheld[] = []
+  const sources = new Map<string, SourceRecord>()
+  const bySource = new Map<string, HostTool[]>()
+  const declared: { tool: HostTool; wire: string }[] = []
+  for (const tool of hostTools) {
+    if (tool.source === undefined) continue
+    const problem = declarationProblem(tool)
+    if (problem !== '') {
+      throw authoredFailure('configuration', `The host tool ${JSON.stringify(String(tool.name).slice(0, 64))} has a source declaration this package cannot read: ${problem}. Nothing was sent.`, 'context')
+    }
+    const source = tool.source
+    const record: SourceRecord = { kind: source.kind, id: source.id, trust: source.trust, ...(source.version === undefined ? {} : { version: source.version }), ...(source.toolListDigest === undefined ? {} : { toolListDigest: source.toolListDigest }) }
+    const earlier = sources.get(source.id)
+    if (earlier !== undefined && canonicalJSON(earlier) !== canonicalJSON(record)) {
+      throw authoredFailure('configuration', `The source ${source.id} is declared twice with different records. Nothing was sent.`, 'context')
+    }
+    sources.set(source.id, record)
+    bySource.set(source.id, [...(bySource.get(source.id) ?? []), tool])
+    declared.push({ tool, wire: await wireName(source.id, tool.name) })
+  }
+  // The person approved the list, not each tool: an MCP source whose declared tools hash to another digest is withheld whole.
+  const unapproved = new Set<string>()
+  for (const [id, record] of sources) {
+    if (record.kind !== 'mcp') continue
+    const digest = await toolListDigest(bySource.get(id)!)
+    if (digest !== record.toolListDigest) {
+      unapproved.add(id)
+      withheld.push({ tool: id, detail: `the tools ${id} declares are not the list the person approved (approved ${record.toolListDigest}, declared ${digest}); none of its tools is offered until the person approves the new list` })
+    }
+  }
+  const taken = new Map<string, number>()
+  const others = new Set([...served, ...hostTools.filter((tool) => tool.source === undefined).map((tool) => tool.name), ...HELD_NAMES])
+  for (const { wire } of declared) taken.set(wire, (taken.get(wire) ?? 0) + 1)
+  const entries = new Map<string, SourceEntry>()
+  const offered = new Map<HostTool, HostTool>()
+  for (const { tool, wire } of declared) {
+    const id = tool.source!.id
+    if (unapproved.has(id)) continue
+    if (HELD_NAMES.has(tool.name)) {
+      withheld.push({ tool: wire, detail: `${id} serves a tool named ${tool.name}, a name the Runtime or the harness keeps; it is not offered, and a Runtime's tools reach the model only through the gate` })
+      continue
+    }
+    if (taken.get(wire)! > 1 || others.has(wire)) {
+      withheld.push({ tool: wire, detail: `the wire name ${wire} of ${id}'s ${JSON.stringify(tool.name.slice(0, 64))} is also another offered tool's; neither is offered` })
+      continue
+    }
+    const effectClass = tool.effectClass ?? 'act'
+    const record: SourceRecord = { ...sources.get(id)!, tool: tool.name }
+    const { effectClass: _class, approval: _approval, approve: _approve, source: _source, ...rest } = tool
+    const shown: HostTool = { ...rest, name: wire, source: { ...record }, effectClass, approval: tool.approval ?? APPROVAL_DEFAULT[effectClass], ...(EFFECT_OF[effectClass] === undefined ? {} : { effect: EFFECT_OF[effectClass] }) }
+    offered.set(tool, shown)
+    entries.set(wire, { wire, record, effectClass, approval: shown.approval!, declared: tool, description: tool.description, catalogued: false })
+  }
+  return {
+    hostTools: hostTools.flatMap((tool) => (tool.source === undefined ? [tool] : offered.has(tool) ? [offered.get(tool)!] : [])),
+    entries,
+    sources: [...sources.values()],
+    withheld
+  }
+}
+
+/** The bounds `offerSources` and the gate hold (budget.json). */
+export type SourceBounds = Pick<ContextPolicy, 'toolDescriptionBytes' | 'offeredSchemas' | 'offeredSchemaBytes' | 'sourceResultBytes' | 'sourceCallsPerTurn' | 'sourceCallMilliseconds' | 'toolCallMilliseconds' | 'toolResultBytes'>
+
+/** A description at most `bytes`, and a note saying where it was cut. */
+export function boundedDescription(text: string, bytes: number): string {
+  if (utf8Bytes(text) <= bytes) return text
+  return `${prefix(text, bytes)} [cut at ${bytes} bytes]`
+}
+
+/** The source's text, framed: the opening line says whose it is and that it is data. */
+export function framedDescription(entry: Pick<SourceEntry, 'wire' | 'record'>, text: string, marker: string): string {
+  return frameBlock(`the description of tool ${JSON.stringify(entry.wire)} from source ${JSON.stringify(entry.record.id)}`, text, marker)
+}
+
+/** The words before a catalogued tool's framed line. */
+export const CATALOGUED = `Catalogued tool: call ${LOAD_TOOL} with this name for its schema before calling it.`
+
+/**
+ * The offer of the tools with a source (ADR-0006): each description bounded and framed with the run's
+ * marker. Where they pass `offeredSchemas` or `offeredSchemaBytes`, sources are made catalogues, the
+ * largest first (by its tools offered, then by their bytes, then by id), until the rest fit: a
+ * catalogued source's tools are offered as catalogue entries (`CATALOGUED`, the first line framed,
+ * `CATALOGUE_SCHEMA`). Whether any source became one is returned; the boundary then offers `load_tool`.
+ */
+export function offerSources(hostTools: readonly HostTool[], entries: ReadonlyMap<string, SourceEntry>, bounds: SourceBounds, marker: string): { hostTools: HostTool[]; catalogue: boolean } {
+  const framed = new Map<string, string>()
+  const sizes = new Map<string, { count: number; bytes: number }>()
+  for (const tool of hostTools) {
+    const entry = entries.get(tool.name)
+    if (entry === undefined) continue
+    entry.description = boundedDescription(entry.declared.description, bounds.toolDescriptionBytes)
+    const text = framedDescription(entry, entry.description, marker)
+    framed.set(tool.name, text)
+    const size = sizes.get(entry.record.id) ?? { count: 0, bytes: 0 }
+    size.count++
+    size.bytes += utf8Bytes(JSON.stringify({ name: tool.name, description: text, inputSchema: tool.inputSchema }))
+    sizes.set(entry.record.id, size)
+  }
+  let count = [...sizes.values()].reduce((sum, size) => sum + size.count, 0)
+  let bytes = [...sizes.values()].reduce((sum, size) => sum + size.bytes, 0)
+  const largest = [...sizes].sort(([a, x], [b, y]) => y.count - x.count || y.bytes - x.bytes || (a < b ? -1 : a > b ? 1 : 0))
+  const catalogued = new Set<string>()
+  for (const [id, size] of largest) {
+    if (count <= bounds.offeredSchemas && bytes <= bounds.offeredSchemaBytes) break
+    catalogued.add(id)
+    count -= size.count
+    bytes -= size.bytes
+  }
+  return {
+    catalogue: catalogued.size > 0,
+    hostTools: hostTools.map((tool) => {
+      const entry = entries.get(tool.name)
+      if (entry === undefined) return tool
+      if (!catalogued.has(entry.record.id)) return { ...tool, description: framed.get(tool.name)! }
+      entry.catalogued = true
+      const line = prefix(entry.description.split('\n')[0]!.trim(), CATALOGUE_LINE_BYTES)
+      return { ...tool, description: `${CATALOGUED}\n${framedDescription(entry, line, marker)}`, inputSchema: CATALOGUE_SCHEMA }
+    })
+  }
+}
+
+export type { SourceFigures } from './execution/state'
+import type { SourceFigures } from './execution/state'
+
+/** What a tool's next result event carries beside the record. */
+interface Mark {
+  receipt?: string
+  proposed?: true
+}
+
+/** The words of a refusal that also earns a guardrail event. */
+export type Refuse = (tool: string, detail: string) => Error
+
+/**
+ * The boundary's hold on the tools with a source for one run (ADR-0006): each call's checks in
+ * order, the run report, `load_tool` and the loaded schemas, and the record on the events.
+ */
+export class SourceGate {
+  private readonly changed = new Set<string>()
+  private readonly loaded = new Map<string, unknown>()
+  private loadedBytes = 0
+  private readonly marks = new Map<string, Mark[]>()
+  constructor(
+    readonly entries: ReadonlyMap<string, SourceEntry>,
+    private readonly sources: readonly SourceRecord[],
+    private readonly bounds: SourceBounds,
+    private readonly marker: string,
+    private readonly refuse: Refuse,
+    /** The run report's rows: the execution state's, so a resume carries them. */
+    private readonly rows: () => SourceFigures[],
+    /** How the model's family is shown a loaded schema. */
+    private readonly schemas: ToolSchemas = 'json-schema'
+  ) {
+    const held = rows()
+    const want: SourceFigures[] = [{ source: 'runtime', kind: 'runtime', calls: 0, refused: 0, proposed: 0, bytes: 0, milliseconds: 0 }, ...sources.map((record) => ({ source: record.id, kind: record.kind, calls: 0, refused: 0, proposed: 0, bytes: 0, milliseconds: 0 }))]
+    for (const row of want) if (!held.some((kept) => kept.source === row.source)) held.push(row)
+  }
+
+  /** Whether this run declares any tool with a source. */
+  get declared(): boolean {
+    return this.sources.length > 0
+  }
+
+  private row(source: string): SourceFigures {
+    return this.rows().find((row) => row.source === source)!
+  }
+
+  private mark(wire: string, mark: Mark): void {
+    this.marks.set(wire, [...(this.marks.get(wire) ?? []), mark])
+  }
+
+  /** A refusal of one call: counted, its event marked, and thrown by the caller. */
+  private refused(entry: SourceEntry, error: Error): Error {
+    this.row(entry.record.id).refused++
+    this.mark(entry.wire, {})
+    return error
+  }
+
+  /** The largest result of `name` the model is shown whole, where it is a tool with a source. */
+  resultLimit(name: string): number | undefined {
+    return this.entries.has(name) ? Math.min(this.bounds.sourceResultBytes, this.bounds.toolResultBytes) : undefined
+  }
+
+  /**
+   * One call of a tool with a source, after the phase admitted it: refused, with the reason the
+   * model reads, where the source's tool list changed, the tool is catalogued and not loaded, the
+   * source has made `sourceCallsPerTurn` calls, or the call needs an approval the host's reader did
+   * not give; held for the review card where it is a proposal; otherwise the host's execute under
+   * the source's deadline, counted in the report.
+   */
+  async call(tool: HostTool, args: Record<string, unknown>, signal: AbortSignal, run: (args: Record<string, unknown>, signal: AbortSignal) => Promise<McpToolResult>): Promise<McpToolResult> {
+    const entry = this.entries.get(tool.name)
+    if (entry === undefined) return run(args, signal)
+    const id = entry.record.id
+    const row = this.row(id)
+    if (this.changed.has(id)) throw this.refused(entry, this.refuse(tool.name, this.changedDetail(entry)))
+    if (entry.catalogued && !this.loaded.has(tool.name)) {
+      throw this.refused(entry, toolInputFailure(`${tool.name} is catalogued: call ${LOAD_TOOL} with its name first and call it with the schema that loads. This call was not run.`))
+    }
+    if (row.calls + row.proposed >= this.bounds.sourceCallsPerTurn) {
+      const limit = this.bounds.sourceCallsPerTurn
+      throw this.refused(entry, new AIFailureError({ version: 1, code: 'tool-failed', source: 'tool', outcome: 'not-started', detail: `This turn has called ${id}'s tools ${limit} time${limit === 1 ? '' : 's'}, the most one turn may (sourceCallsPerTurn); this call was not run. Use the results already obtained, or say what remains.` }))
+    }
+    const check = entry.declared.source?.currentDigest
+    if (check !== undefined && entry.record.kind === 'mcp') {
+      let now: unknown
+      try { now = await check() } catch { now = undefined }
+      if (now !== entry.record.toolListDigest) {
+        this.changed.add(id)
+        throw this.refused(entry, this.refuse(tool.name, this.changedDetail(entry)))
+      }
+    }
+    if (entry.effectClass === 'propose') {
+      row.proposed++
+      this.mark(tool.name, { proposed: true })
+      return { content: [{ type: 'text', text: PROPOSED }] }
+    }
+    if (entry.approval === 'required') {
+      let approved = false
+      try { approved = (await entry.declared.approve?.(structuredClone(args), signal)) === true } catch { approved = false }
+      signal.throwIfAborted()
+      if (!approved) throw this.refused(entry, this.refuse(tool.name, `${tool.name} acts on ${id} and needs the person's approval for each call, which this call did not get; it was not run and nothing was changed`))
+    }
+    const limit = Math.min(this.bounds.sourceCallMilliseconds, this.bounds.toolCallMilliseconds)
+    const started = Date.now()
+    let result: McpToolResult
+    try {
+      result = await withDeadline((bounded) => run(args, bounded), signal, limit, () => toolTimeout(limit))
+    } catch (error) {
+      row.calls++
+      row.milliseconds += Date.now() - started
+      this.mark(tool.name, {})
+      throw error
+    }
+    row.calls++
+    row.milliseconds += Date.now() - started
+    const { receipt, ...shown } = result as McpToolResult & { receipt?: unknown }
+    row.bytes += utf8Bytes(JSON.stringify(shown) ?? '')
+    this.mark(tool.name, typeof receipt === 'string' && receipt.length >= 1 && receipt.length <= 128 ? { receipt } : {})
+    return shown
+  }
+
+  /** One Runtime call, in the Runtime's row. */
+  async runtime<T>(call: () => Promise<T>): Promise<T> {
+    if (!this.declared) return call()
+    const row = this.row('runtime')
+    const started = Date.now()
+    try {
+      const result = await call()
+      row.calls++
+      row.bytes += utf8Bytes(JSON.stringify(result) ?? '')
+      return result
+    } catch (error) {
+      if ((error as Error)?.name === 'GateViolation') row.refused++
+      else row.calls++
+      throw error
+    } finally {
+      row.milliseconds += Date.now() - started
+    }
+  }
+
+  private changedDetail(entry: SourceEntry): string {
+    return `the tool list ${entry.record.id} serves is no longer the one the person approved (${entry.record.toolListDigest}); its tools are refused until the person approves the new list, and this call was not run`
+  }
+
+  /** `load_tool`, offered where the schema budget tripped: one catalogued tool's schema per call. */
+  loadTool(): HostTool {
+    return {
+      name: LOAD_TOOL,
+      effect: 'read',
+      description: `Load the input schema of one catalogued tool before calling it. Pass its name as the tools list shows it; only a catalogued tool's schema loads. A loaded schema stays in the execution state for the rest of this response.`,
+      inputSchema: LOAD_TOOL_SCHEMA,
+      execute: async (args) => {
+        const name = args.name
+        const entry = typeof name === 'string' ? this.entries.get(name) : undefined
+        if (entry === undefined || !entry.catalogued) {
+          throw toolInputFailure(`${LOAD_TOOL} loads the schema of a catalogued tool, and ${JSON.stringify(String(name).slice(0, 64))} is not one; nothing was loaded.`)
+        }
+        const schema = shownSchema(this.schemas, { name: entry.wire, inputSchema: entry.declared.inputSchema })
+        if (!this.loaded.has(entry.wire)) {
+          const bytes = utf8Bytes(JSON.stringify(schema))
+          if (this.loadedBytes + bytes > this.bounds.offeredSchemaBytes) {
+            throw new AIFailureError({ version: 1, code: 'tool-failed', source: 'tool', outcome: 'not-started', detail: `Loading ${entry.wire} would pass the ${this.bounds.offeredSchemaBytes} bytes of schemas one response may load (offeredSchemaBytes); nothing was loaded. Use the tools already loaded.` })
+          }
+          this.loaded.set(entry.wire, schema)
+          this.loadedBytes += bytes
+        }
+        return answer({ name: entry.wire, source: entry.record, description: entry.description, inputSchema: schema })
+      }
+    }
+  }
+
+  /** The loaded schemas, as one data block for the execution state, or `''`. */
+  loadedSection(): string {
+    if (this.loaded.size === 0) return ''
+    return frameBlock(`the schemas ${LOAD_TOOL} loaded`, JSON.stringify([...this.loaded].map(([name, inputSchema]) => ({ name, inputSchema }))), this.marker)
+  }
+
+  /** One event with the record its tool's source gives it: a tool_call's, a tool_result's with its receipt or its proposal. */
+  decorate(event: AssistantEvent): AssistantEvent {
+    if (event.type !== 'tool_call' && event.type !== 'tool_result') return event
+    const entry = this.entries.get(event.name)
+    if (entry === undefined) return event
+    if (event.type === 'tool_call') return { ...event, source: { ...entry.record } }
+    const mark = this.marks.get(event.name)?.shift() ?? {}
+    return { ...event, source: { ...entry.record, ...(mark.receipt === undefined ? {} : { receipt: mark.receipt }) }, ...(mark.proposed ? { proposed: true as const } : {}) }
+  }
+}

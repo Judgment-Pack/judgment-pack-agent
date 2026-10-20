@@ -3135,6 +3135,82 @@
    "status": "caught",
    "origin": "ADR-0005 review",
    "note": "the rank check: placementMisses requires the system text to be the package's guidance through its last line, then the host's section, then the tools or the state"
+  },
+  {
+   "name": "a source's description reaches the model unframed",
+   "file": "toolSources.ts",
+   "find": "  return frameBlock(`the description of tool ${JSON.stringify(entry.wire)} from source ${JSON.stringify(entry.record.id)}`, text, marker)",
+   "replace": "  return text",
+   "tests": [
+    "toolSources.test.ts",
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0006",
+   "note": "the offer vector (source-offer.json, catalogue.json), the forged-closing-line test and scenario 7's framed check: the poisoned lines must sit inside a data block"
+  },
+  {
+   "name": "the pinned tool list is ignored when the served list changes",
+   "file": "toolSources.ts",
+   "find": "      if (now !== entry.record.toolListDigest) {",
+   "replace": "      if (false) {",
+   "tests": [
+    "toolSources.test.ts",
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0006",
+   "note": "scenario 7's changed-list check and the unit test that the changed list refuses every later call before the host"
+  },
+  {
+   "name": "a tool with a source defaults to a read",
+   "file": "toolSources.ts",
+   "find": "    const effectClass = tool.effectClass ?? 'act'",
+   "replace": "    const effectClass = tool.effectClass ?? 'read'",
+   "tests": [
+    "toolSources.test.ts",
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0006",
+   "note": "the offer vector (the MCP tool is act, approval required) and scenario 7's approval check: the act must ask the host's approval reader"
+  },
+  {
+   "name": "the schema budget is removed",
+   "file": "toolSources.ts",
+   "find": "    if (count <= bounds.offeredSchemas && bytes <= bounds.offeredSchemaBytes) break",
+   "replace": "    break",
+   "tests": [
+    "toolSources.test.ts",
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0006",
+   "note": "the catalogue vector and scenario 7's budget check: seventeen tools with a source must become a catalogue offered with load_tool"
+  },
+  {
+   "name": "a wire name collides silently",
+   "file": "toolSources.ts",
+   "find": "    if (taken.get(wire)! > 1 || others.has(wire)) {",
+   "replace": "    if (false) {",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0006",
+   "note": "the collision vector (source-names.json, collisions): both declarations must be withheld with a guardrail"
+  },
+  {
+   "name": "a source's result bound is removed",
+   "file": "context/session.ts",
+   "find": "  if(utf8Bytes(encoded(value))<=(this.sources?.resultLimit(name)??this.policy.toolResultBytes))return value",
+   "replace": "  if(utf8Bytes(encoded(value))<=this.policy.toolResultBytes)return value",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0006",
+   "note": "the boundary test: a 9,000-byte result of a source's tool is retained and shown as a reference (sourceResultBytes 8,000)"
   }
  ]
 }

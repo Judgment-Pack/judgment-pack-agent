@@ -33,6 +33,19 @@ in the policy table, and places it in its layer of every request
 ([ADR-0005](../docs/adr/0005-the-prompt-is-the-adapters.md)); the relay adds nothing. The digest of
 every request body is in the run's checkpoint (`prompts`).
 
+## Tool sources
+
+A tool from a gateway connection, a public MCP server or the person is a `runcontext.HostTool` with
+`Source` (`runcontext.ToolSource`, with `CurrentDigest` for an MCP server's served list),
+`EffectClass`, `Approval` and `Approve`, the host's approval reader
+([ADR-0006](../docs/adr/0006-tool-sources.md)). `ContextualSession` names each for the wire,
+frames its description, holds the schema budget with `load_tool`, and wraps each call in the source
+gate (`go/context/sources.go`); the boundary carries the source record on its events and the
+checkpoint's `sources` counts each source. The gate holds a host tool to its phase by the offered
+name, so a host opens its gate with `runcontext.OfferedHostTools(...)`, beside the boundary's
+context tools. `runcontext.ToolListDigest` is the digest a host pins when the person approves a
+server's list.
+
 ## The agent capability
 
 A run is on one of two capabilities: the model capability (`adapter.Run.Model`, the relay) or the

@@ -509,6 +509,64 @@
         "go": [
           "3 agent memory"
         ]
+      },
+      {
+        "check": "7 \u00b7 the server\u2019s list is the one the person approved: the declared tools hash to the pinned digest, the new list to the changed one",
+        "go": [
+          "7 digest"
+        ]
+      },
+      {
+        "check": "7 \u00b7 the schema budget trips: the server\u2019s seventeen tools are a catalogue offered with load_tool, beside the Runtime\u2019s six, the harness\u2019s six and the custom read, and no write_file",
+        "go": [
+          "7 budget"
+        ]
+      },
+      {
+        "check": "7 \u00b7 every description from a source is framed as retrieved data, the poisoned ones included, and changes nothing the gate admits",
+        "go": [
+          "7 framed"
+        ]
+      },
+      {
+        "check": "7 \u00b7 load_tool loads one schema, framed, and the later requests carry it after the history while the tools and the system text stay the same",
+        "go": [
+          "7 load"
+        ]
+      },
+      {
+        "check": "7 \u00b7 load_tool loads one schema, framed; the agent wire sends the state once per run, so the schema reaches the agent in load_tool\u2019s answer only",
+        "reason": "The agent engine's form of the load check (ADR-0006): the codex engine sends the state once per run. The Go runner's scenarios run the eino model engine, whose form is 7 load; the Go agent capability takes the same boundary (go/context, ContextualSession) and has no scenario 7 of its own."
+      },
+      {
+        "check": "7 \u00b7 each act asks the host\u2019s approval reader and runs; the custom read runs without asking",
+        "go": [
+          "7 approval"
+        ]
+      },
+      {
+        "check": "7 \u00b7 write_file is refused at the gate between its call and its result, and reaches neither the runtime nor a host tool",
+        "go": [
+          "7 refused"
+        ]
+      },
+      {
+        "check": "7 \u00b7 the server\u2019s changed list refuses its next call, with a guardrail, and the host\u2019s tool is not reached",
+        "go": [
+          "7 changed"
+        ]
+      },
+      {
+        "check": "7 \u00b7 each call and result of a source\u2019s tool carries its source record, and the run report counts each source",
+        "go": [
+          "7 records"
+        ]
+      },
+      {
+        "check": "7 \u00b7 after the person approves the new list, the next run is offered the server\u2019s tools again and its call runs",
+        "go": [
+          "7 approved"
+        ]
       }
     ]
   },

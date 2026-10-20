@@ -40,6 +40,17 @@ var notTheGates = map[string]string{
 	"bounds/rate-limited-retried.json":  "the model request's retry: the adapter's, on the relay",
 	"bounds/tool-timeout.json":          "the tool-call deadline: the adapter's dispatch",
 	"bounds/turn-clock.json":            "the turn's wall clock: the adapter's loop",
+	// ADR-0006: tools with a source are host tools, held by the boundary's source gate
+	// (go/context, sources_test.go), not by the gate on the Runtime's wire.
+	"tool-offer/source-declarations.json": "host tool declarations with a source: the boundary's (go/context, DeclareSources)",
+	"tool-offer/source-offer.json":        "the offer of tools with a source: the boundary's (go/context, OfferSources)",
+	"tool-offer/catalogue.json":           "catalogue entries: the boundary's schema budget (go/context, OfferSources)",
+	"tool-offer/load-tool.json":           "load_tool, a host tool the boundary adds (go/context, SourceGate.LoadToolHost)",
+	"tool-offer/source-names.json":        "wire names of tools with a source: the boundary's (go/context, WireName)",
+	"tool-offer/tool-list-digest.json":    "a source's pinned tool list: the boundary's (go/context, ToolListDigest)",
+	"tool-call/source-calls.json":         "the source record on a tool_call event: the boundary's (go/context, SourceGate.Decorate)",
+	"tool-result/loaded-schema.json":      "load_tool's answer: the boundary's (go/context, SourceGate.LoadToolHost)",
+	"tool-result/source-results.json":     "the source record on a tool_result event: the boundary's (go/context, SourceGate.Decorate)",
 }
 
 type vectorFile struct {
