@@ -5,6 +5,8 @@ import { AUTHOR_TEST_TOOLS, DELEGATE_TOOL, DELEGATION_INSTRUCTIONS, MAX_BATCHES,
 import type { AssistantEvent, AssistantSession, Engine, EngineSession, HostTool, McpToolResult } from './engine'
 import { ASSISTANT_TOOLS, configureHarness, type RunIdentity } from './host'
 import { ChatContext, readCacheKey } from './context/chat'
+import { contextualSession } from './context/session'
+import { criticDecidedEvent } from './criticSwitch'
 import { codex } from './engines/codex'
 import { vercel } from './engines/vercel'
 import { normalize } from './thinking'
@@ -787,6 +789,27 @@ describe('limits after the review of agent#35',()=>{
   })
   return {run,prompts,counts:()=>({batches,children})}
  }
+ // ADR-0010, issue #109: the parent may spend the invocation reserved from delegation. Once all
+ // five are taken, the shared context tells the switch there is no room and it records budget.
+ it('records budget when the response’s fifth agent run leaves no room for the critic',async()=>{
+  let room=true
+  const run=vi.fn<AgentRun>(async()=>{})
+  const engine:Engine={id:'codex',async *start(input){
+   if(!('agent' in input))throw Error('fixture')
+   const ready=await contextualSession(input)
+   try {
+    const callbacks={signal:input.signal,event:async()=>{},tool:async()=>({text:'',isError:false})}
+    const request={prompt:'p',instructions:'i',tools:[],phase:'author' as const}
+    for(let i=0;i<5;i++)await ready.session.agent.run(request,callbacks)
+    room=ready.context.criticRoom!()
+    yield criticDecidedEvent(ready.context.decideCritic(true))
+   } finally {ready.context.close()}
+  }}
+  const {model:_model,thinking:_thinking,...base}=apiSession({critic:'on'})
+  const events=await collect(withDelegation(engine),{...base,agent:{model:'fixture',run}})
+  expect(run).toHaveBeenCalledTimes(5);expect(room).toBe(false)
+  expect(events.find(event=>event.type==='critic_decided')).toMatchObject({mode:'on',ran:false,reason:'budget'})
+ })
  // Review row 1.
  it('offers a Codex parent delegate_tasks only while a child run and its next run remain, so a third batch never starts and the parent answers',async()=>{
   // agent#17: each batch its own task, so the second is not the first's result reused.

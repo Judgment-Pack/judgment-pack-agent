@@ -34,10 +34,8 @@
       "author": "off"
     },
     {
-      "name": "on, Plan mode",
-      "session": {
-        "critic": "on"
-      },
+      "name": "the table's auto, Plan mode",
+      "session": {},
       "table": {
         "criticDefault": "auto",
         "criticReasoningFloor": "author"
@@ -228,7 +226,7 @@
       "reasoning": "off"
     },
     {
-      "mode": "on",
+      "mode": "auto",
       "ran": false,
       "reason": "phase",
       "reasoning": "off"

@@ -20,7 +20,7 @@ export function planningSession<T extends EngineSession>(session:T):T {
  const pinned=plan?'\nCURRENT CHAT PLAN (historical scope, not an approval override):\n'+JSON.stringify(plan):''
  if(session.context?.phase!=='plan')return pinned?{...session,prompt:session.prompt+pinned}:session
  const call=session.callTool
- return {...session,prompt:session.prompt+pinned+'\n\n'+PLAN_INSTRUCTIONS,allowConversation:true,adversarialReview:false,testPrompt:'',
+ return {...session,prompt:session.prompt+pinned+'\n\n'+PLAN_INSTRUCTIONS,allowConversation:true,testPrompt:'',
   tools:session.tools.filter(t=>reads.has(t.name)),hostTools:session.hostTools.filter(planningTool),
   callTool:async(name,args)=>{if(!reads.has(name))throw toolInputFailure('Plan mode does not permit this operation. Review the plan and choose Start work.');return call(name,args)}}
 }
