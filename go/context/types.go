@@ -242,10 +242,10 @@ type RuntimeIdentity struct {
 // Chat (agent#8) is the chat-scoped context the host made for this run's chat: the ledger and the
 // read cache kept across the chat's runs; absent, the run's are its own and end with it. Runtime
 // is what the host knows the Runtime this run's tools reach by, which keys a Runtime-served read
-// in the chat's read cache. Memory (agent#11) is whether the server behind the adapter adds
-// recalled project memory to this run's requests: only false frees the memoryBytes reserve.
-// Objective (agent#11) is a delegated child's objective, its request text, sent as the first text
-// part of its first message. Link (agent#14) is set by the delegation coordinator on a run it
+// in the chat's read cache. Memory (agent#11) is whether the project's memory is on: false frees
+// the memoryBytes reserve and the host's MemoryFor is not asked (ADR-0005). Objective (agent#11) is
+// a delegated child's objective, its request text, sent as the first text part of its first
+// message, and the query its MemoryFor is asked with. Link (agent#14) is set by the delegation coordinator on a run it
 // starts. Connection is the AI connection the run's model or agent capability is bound to, as the
 // host names it (host.ts's AITarget, a string here). DelegationReuse (agent#17) is false where
 // this response's delegated tasks reuse no earlier result of the chat.
@@ -305,6 +305,9 @@ type Session struct {
 	// and its delegated children (modelsFor in host.ts), asked once per run through
 	// SessionContext.Models. Absent, the run's own model is both.
 	ModelsFor func(RunIdentity) (NamedModels, error)
+	// Host is the host's side of the prompt (ADR-0005): the brief, the project's own instructions
+	// and recalled memory, asked once per run through SessionContext.AskHost. Nil supplies none.
+	Host Host
 }
 
 // ModelName is the model the run is on, whichever capability it is.

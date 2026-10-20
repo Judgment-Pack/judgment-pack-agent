@@ -20,6 +20,7 @@ var (
 
 type scenarioFile struct {
 	Request   string             `json:"request"`
+	Memory    string             `json:"memory"`
 	HostTools []ScenarioHostTool `json:"hostTools"`
 	Turns     []struct {
 		Say string `json:"say"`
@@ -144,11 +145,11 @@ var ChatHostTools = ScenarioCheck{
 	},
 }
 
-// Memory is scenario 3: the request text on every request of a run over three tool steps, and the
-// memory reserve.
+// Memory is scenario 3: memory recalled once for the person's message and carried in its layer on
+// every request of a run over three tool steps (ADR-0005), and the memory reserve.
 var Memory = ScenarioCheck{
 	Scenario: "memory",
-	Names:    []string{"3 run", "3 recall", "3 reserve"},
+	Names:    []string{"3 run", "3 memory", "3 reserve"},
 	Run: func(ctx context.Context, server *Server, answerAs string, adapter Adapter) ([]Finding, error) {
 		var file scenarioFile
 		if err := ScenarioFile("memory", &file); err != nil {
@@ -161,7 +162,12 @@ var Memory = ScenarioCheck{
 		input := requestInput(file.Request)
 		on := true
 		input.Memory = &on
-		ran, err := host.runOn(ctx, adapter, &Run{Prompt: file.Request, AllowConversation: true, Context: input})
+		var asked []string
+		recall := runcontext.HostFuncs{MemoryForFunc: func(_ context.Context, query string) (string, error) {
+			asked = append(asked, query)
+			return file.Memory, nil
+		}}
+		ran, err := host.runOn(ctx, adapter, &Run{Prompt: file.Request, AllowConversation: true, Context: input, Host: recall})
 		if err != nil {
 			return nil, err
 		}
@@ -175,11 +181,23 @@ var Memory = ScenarioCheck{
 			f.fail("errors: %s", errs[0].Message)
 		}
 		out = append(out, f.list...)
-		f = &findings{check: "3 recall"}
+		f = &findings{check: "3 memory"}
+		if !slices.Equal(asked, []string{file.Request}) {
+			f.fail("memoryFor was asked %q", asked)
+		}
+		block := runcontext.MemoryHeader + "\n" + file.Memory + "\n" + runcontext.HostPartsTable[2].End
+		prefixes := map[string]bool{}
 		for at, request := range ran.Requests {
-			if found := runcontext.Recall("openai-compatible", request.Body); found == nil || found.Text != file.Request {
-				f.fail("request %d: %v", at+1, found)
+			system, rest := systemSplit("openai-compatible", request.Body)
+			place := strings.Index(system, block)
+			if place < 0 || strings.Contains(rest, runcontext.MemoryHeader) {
+				f.fail("request %d does not carry the memory in its system text alone", at+1)
+				continue
 			}
+			prefixes[system[:place+len(block)]] = true
+		}
+		if len(prefixes) > 1 {
+			f.fail("the stable prefix differs across the run's requests: %d different", len(prefixes))
 		}
 		out = append(out, f.list...)
 		f = &findings{check: "3 reserve"}

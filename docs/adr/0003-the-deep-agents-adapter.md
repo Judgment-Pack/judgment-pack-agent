@@ -153,8 +153,9 @@ events, limits, figures, retry, reuse and resume are unchanged. The coordinator 
 
 ### 4. Context and budget stay the package's
 
-The ledger, the chat context, the read cache, the index, the compaction and the recall rule are
-`context/session.ts`'s. The boundary's `wrapModelCall` hook asks for them on every request: the
+The ledger, the chat context, the read cache, the index and the compaction are
+`context/session.ts`'s (the recall rule this listed was removed by ADR-0005, and the host's parts of
+the prompt, asked once per run, are its too). The boundary's `wrapModelCall` hook asks for them on every request: the
 history is projected into the message shape `SessionContext.messages` counts and archives, and
 back (its summary becomes a user message); the state is placed; the step's completion and usage
 are recorded. Nothing of the agent's own state is a second ledger.

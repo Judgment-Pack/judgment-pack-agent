@@ -240,18 +240,25 @@ func TestTheRequestIsClaimedAndCheckpointedBeforeItIsSent(t *testing.T) {
 	session, _ := trackedSession(t)
 	order := []string{}
 	held := *session.Context
+	var saved []contract.ProvenancePromptDigest
 	held.Checkpoint = func(ctx context.Context, state contract.Checkpoint) error {
 		order = append(order, "saved-"+itoa(int(state.Used)))
+		saved = state.Prompts
 		return nil
 	}
 	session.Context = &held
 	run := openRun(t, session)
-	if err := run.Context.ClaimRequest(context.Background()); err != nil {
+	body := []byte(`{"model":"scripted-model","messages":[{"role":"user","content":"Check the pack."}]}`)
+	if err := run.Context.ClaimRequest(context.Background(), body); err != nil {
 		t.Fatal(err)
 	}
 	order = append(order, "sent")
 	if len(order) != 2 || order[0] != "saved-1" || order[1] != "sent" {
 		t.Errorf("the order is %v", order)
+	}
+	// ADR-0005: the checkpoint saved before the request carries the digest of its body.
+	if len(saved) != 1 || saved[0].Request != 1 || saved[0].Sha256 != ContextDigest(string(body)) {
+		t.Errorf("the saved prompts are %+v", saved)
 	}
 	// A checkpoint that cannot be saved stops the request, as a storage failure.
 	unavailable, _ := trackedSession(t)
@@ -261,7 +268,7 @@ func TestTheRequestIsClaimedAndCheckpointedBeforeItIsSent(t *testing.T) {
 	}
 	unavailable.Context = &other
 	run = openRun(t, unavailable)
-	err := run.Context.ClaimRequest(context.Background())
+	err := run.Context.ClaimRequest(context.Background(), []byte(`{}`))
 	if err == nil {
 		t.Fatal("the request was sent")
 	}

@@ -5,7 +5,8 @@
  *
  * 1. chat mode with host tools: a read, a proposal that stops at the review card, a refused name;
  * 2. delegation: a batch of two children, their findings, and a resumed child;
- * 3. memory: the request text on every request of a run over three tool steps, and the reserve;
+ * 3. memory: recalled once for the person's message and carried in its layer on every request of a
+ *    run over three tool steps (ADR-0005), and the reserve;
  * 4. plan mode: the offer, the refused actions, and the plan;
  * 5. the correction loop: a refused draft, one correction request, the critic's comparison;
  * 6. a multi-turn transcript: the chat's index and ledger across three runs.
@@ -37,11 +38,11 @@ import multiTurn from './scenarios/multi-turn.json'
 import { CONTEXT_DEFAULTS, inputBytes, utf8Bytes } from '../context/policy'
 import { SessionContext } from '../context/session'
 import { PLAN_RUNTIME_READS } from '../planning/policy'
-import { ASSISTANT_TOOLS, type EndpointKind } from '../host'
+import { ASSISTANT_TOOLS, configureHarness } from '../host'
+import { HOST_PARTS, MEMORY_HEADER } from '../prompt'
 import { REHEARSAL_TOOL, TEST_TOOL } from '../toolGate'
 import { normalize } from '../thinking'
 import type { AgentRun } from '../agent'
-import { recallQuery } from './recall'
 import {
   CHILD_BRIEF,
   agentRunFrom,
@@ -310,6 +311,14 @@ function bareSession(kind: 'model' | 'agent', memoryFlag?: boolean): EngineSessi
   return kind === 'model'
     ? { ...base, model: { family: 'openai-compatible', model: 'scripted-model', call: async () => new Response() }, thinking: normalize('off', 'openai-compatible') }
     : { ...base, agent: { model: 'scripted-agent', run: async () => undefined } }
+}
+
+/** The memory block every request of the memory scenario carries (ADR-0005, layer 5). */
+const MEMORY_BLOCK = `${MEMORY_HEADER}\n${memory.memory}\n${HOST_PARTS[2].end}`
+
+/** The host's memoryFor for the memory scenario: the scenario's memory, each query it was asked with kept. */
+function recallFor(asked: string[]) {
+  configureHarness({ memoryFor: (query) => { asked.push(query); return memory.memory } })
 }
 
 /** The checks both adapters make of the memory reserve: only the host's word that memory is off frees it. */
@@ -721,12 +730,18 @@ describe.each(MODEL_ENGINES)('engine %s · scenarios', (engineId) => {
 
     describe('3 · memory', () => {
       let ran: Ran
+      const asked: string[] = []
       beforeAll(async () => {
-        ran = await runOnModelEngine(answerFrom(memory.turns as unknown as Turn[], answerAs), {
-          engine: await loadEngine(engineId),
-          handle: memoryAnswers,
-          session: { prompt: memory.request, context: { memory: true, ...request(memory.request) } }
-        })
+        recallFor(asked)
+        try {
+          ran = await runOnModelEngine(answerFrom(memory.turns as unknown as Turn[], answerAs), {
+            engine: await loadEngine(engineId),
+            handle: memoryAnswers,
+            session: { prompt: memory.request, context: { memory: true, ...request(memory.request) } }
+          })
+        } finally {
+          configureHarness({ memoryFor: () => undefined })
+        }
       })
       afterAll(() => vi.unstubAllGlobals())
 
@@ -737,9 +752,16 @@ describe.each(MODEL_ENGINES)('engine %s · scenarios', (engineId) => {
         expect(ofType(ran.events, 'error')).toEqual([])
       })
 
-      it('3 · the recall rule finds the person’s message on every request', () => {
-        const found = ran.requests.map((sent) => recallQuery('openai-compatible' as EndpointKind, sent.body as Json))
-        expect(found.map((one) => one?.text)).toEqual(ran.requests.map(() => memory.request))
+      it('3 · memory is asked once, for the person’s message, and every request carries it in the same place', () => {
+        expect(asked).toEqual([memory.request])
+        const systems = ran.requests.map((sent) => {
+          const first = ((sent.body as Json).messages as { role: string; content: unknown }[])[0]!
+          return first.role === 'system' && typeof first.content === 'string' ? first.content : ''
+        })
+        for (const system of systems) expect(system).toContain(MEMORY_BLOCK)
+        // The stable prefix: the system text up to the memory's end line is the same bytes on every request.
+        expect(new Set(systems.map((system) => system.slice(0, system.indexOf(MEMORY_BLOCK) + MEMORY_BLOCK.length))).size).toBe(1)
+        expect(JSON.stringify(ran.requests.map((sent) => ((sent.body as Json).messages as unknown[]).slice(1)))).not.toContain(MEMORY_HEADER)
       })
 
       reserveChecks('model')
@@ -838,13 +860,19 @@ describe.each(AGENT_ENGINES)('agent engine %s · scenarios', (engineId) => {
 
   describe('3 · memory', () => {
     const answers: { text: string; isError: boolean }[] = []
+    const asked: string[] = []
     let ran: Ran
     beforeAll(async () => {
-      ran = await runOnAgentEngine(agentRunFrom(memory.turns as unknown as Turn[], answers), {
-        engine: await loadEngine(engineId),
-        handle: memoryAnswers,
-        session: { prompt: memory.request, context: { memory: true, ...request(memory.request) } }
-      })
+      recallFor(asked)
+      try {
+        ran = await runOnAgentEngine(agentRunFrom(memory.turns as unknown as Turn[], answers), {
+          engine: await loadEngine(engineId),
+          handle: memoryAnswers,
+          session: { prompt: memory.request, context: { memory: true, ...request(memory.request) } }
+        })
+      } finally {
+        configureHarness({ memoryFor: () => undefined })
+      }
     })
     afterAll(() => vi.unstubAllGlobals())
 
@@ -855,10 +883,12 @@ describe.each(AGENT_ENGINES)('agent engine %s · scenarios', (engineId) => {
       expect(ofType(ran.events, 'error')).toEqual([])
     })
 
-    // Recorded disagreement: the agent engine sends no model request the Desk's server could recall for; its one request is the run's prompt, which opens with the person's message.
-    it('3 · the person’s message opens the run’s one request (the agent wire has no later request to recall for)', () => {
-      // The contract's recall rule, as the codex engine's own test applies it: the text before the state's header is the person's message.
-      expect(recallQuery('agent', { prompt: ran.runs[0]!.prompt })).toEqual({ pointer: '/prompt', text: memory.request })
+    // Recorded disagreement: the agent engine makes one request, so "every request" is its one run's.
+    it('3 · memory is asked once, for the person’s message, and the run’s one request carries it at the end of its instructions', () => {
+      expect(asked).toEqual([memory.request])
+      expect(ran.runs[0]!.instructions.endsWith(MEMORY_BLOCK)).toBe(true)
+      expect(ran.runs[0]!.prompt.startsWith(memory.request)).toBe(true)
+      expect(ran.runs[0]!.prompt).not.toContain(MEMORY_HEADER)
     })
 
     reserveChecks('agent')

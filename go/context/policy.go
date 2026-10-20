@@ -37,6 +37,8 @@ type Policy struct {
 	// The bounds on a chat's index of earlier results (INDEX_DEFAULTS).
 	TurnIndexEntries int `json:"turnIndexEntries"`
 	TurnIndexBytes   int `json:"turnIndexBytes"`
+	// The bound on the project's own instructions (PROMPT_DEFAULTS, ADR-0005).
+	ProjectInstructionsBytes int `json:"projectInstructionsBytes"`
 }
 
 // TimeDefaults are the time bounds the harness adds to the Desk's table (TIME_DEFAULTS): one
@@ -59,6 +61,12 @@ var TestDefaults = struct{ TestCallsPerTurn, TestPackBytes, TestMatrixBytes int 
 // runs in its chat kept (agent#8, INDEX_DEFAULTS): how many results it lists, and its most bytes,
 // data block included. Not in the Desk's table; a table that carries them wins.
 var IndexDefaults = struct{ TurnIndexEntries, TurnIndexBytes int }{20, 8000}
+
+// PromptDefaults is the most UTF-8 bytes the project's own instructions may be (ADR-0005,
+// PROMPT_DEFAULTS): a longer answer of the host's ProjectInstructions is refused before the run's
+// first request, as a brief over BriefBytes and memory over MemoryBytes are. Not in the Desk's
+// table; a table that carries it wins.
+var PromptDefaults = struct{ ProjectInstructionsBytes int }{4000}
 
 // DeskPolicy is the Desk's table itself (contract/desk/policy.json, packages/harness/contract/policy.json).
 var DeskPolicy = Policy{
@@ -89,6 +97,7 @@ var Defaults = func() Policy {
 	p.TestMatrixBytes = TestDefaults.TestMatrixBytes
 	p.TurnIndexEntries = IndexDefaults.TurnIndexEntries
 	p.TurnIndexBytes = IndexDefaults.TurnIndexBytes
+	p.ProjectInstructionsBytes = PromptDefaults.ProjectInstructionsBytes
 	return p
 }()
 
@@ -202,9 +211,9 @@ func (c *Configuration) Check() error {
 // ContextPolicy is contextPolicy: the budget one model runs under. The table first, then the
 // window and output cap of the model's capability record where it carries them (agent#4), then
 // the assistant profile's own override for the model, which a person wrote and which therefore
-// stays the last word. memory (agent#11) is the host's word on whether the server adds recalled
-// project memory to the run's requests; false frees the memoryBytes reserve, and anything else
-// keeps it.
+// stays the last word. memory (agent#11) is the host's word on whether the project's memory is
+// on; false frees the memoryBytes reserve (and the host's MemoryFor is not asked, ADR-0005), and
+// anything else keeps it.
 //
 // capabilities is the capability record's two budget members where the host resolved them
 // (capabilitiesFor in capabilities.ts belongs to the wire package, so the record reaches this

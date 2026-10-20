@@ -31,7 +31,9 @@ another runtime is a second process to ship, or a service.
 ## Order of work
 
 1. Extract the contract from the Desk's engine slot and the Go server's share of the prompt; decide
-   which side assembles the prompt and record it here.
+   which side assembles the prompt and record it here. Decided by
+   [ADR-0005](0005-the-prompt-is-the-adapters.md): the adapter assembles the whole prompt, and the
+   host supplies its parts through `brief()`, `memoryFor(query)` and `projectInstructions()`.
 2. The **Vercel AI SDK adapter**, in two parts.
    (a) The existing loop extracted as it is, with the Codex engine as a second adapter of the same
    package, certified by the suite, and swapped into the Desk in place of its in-tree assistant.

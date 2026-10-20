@@ -18,7 +18,7 @@ var Registry = map[string]func() any{
 	"budget.json#/$defs/budgetIncreaseAnswer":       func() any { return new(BudgetBudgetIncreaseAnswer) },
 	"budget.json#/$defs/deskLimits":                 func() any { return new(BudgetDeskLimits) },
 	"budget.json#/$defs/stateLocation":              func() any { return new(BudgetStateLocation) },
-	"budget.json#/$defs/recallQuery":                func() any { return new(BudgetRecallQuery) },
+	"budget.json#/$defs/hostPart":                   func() any { return new(BudgetHostPart) },
 	"capability.json":                               func() any { return new(Capability) },
 	"capability.json#/$defs/reasoning":              func() any { return new(CapabilityReasoning) },
 	"capability.json#/$defs/streamingQuirks":        func() any { return new(CapabilityStreamingQuirks) },
@@ -67,6 +67,7 @@ var Registry = map[string]func() any{
 	"provenance.json#/$defs/tokens":                 func() any { return new(int64) },
 	"provenance.json#/$defs/sha256":                 func() any { return new(string) },
 	"provenance.json#/$defs/requestKey":             func() any { return new(string) },
+	"provenance.json#/$defs/promptDigest":           func() any { return new(ProvenancePromptDigest) },
 	"provenance.json#/$defs/engine":                 func() any { return new(string) },
 	"provenance.json#/$defs/criticFigures":          func() any { return new(ProvenanceCriticFigures) },
 	"provenance.json#/$defs/tokenFigures":           func() any { return new(ProvenanceTokenFigures) },
@@ -247,45 +248,49 @@ func (v ApprovalRequest) MarshalJSON() ([]byte, error) {
 // model by the assistant profile (configuration); everything else is fixed. Input bytes for one
 // request are min(maxInputBytes, max(1024, (contextWindowTokens - outputTokens) * 3)); the browser
 // further leaves briefBytes, and memoryBytes where the host has not said memory is off (the run's
-// context.memory, agent#11), for what the server adds behind the adapter, and the server refuses
-// before dispatch, never clipping, a request over the input bytes (context-limit, not-started).
-// Open: the Go reader ignores a member it does not name. The request allowance, the grants and the
-// fixed limits are in $defs. The harness adds two time bounds the Desk's table does not carry
+// context.memory, agent#11), a reserve kept from when the server added the brief and memory behind
+// the adapter; since ADR-0005 the adapter places them itself (each held to its bound,
+// $defs/hostPart) and counts them where they sit, and the server refuses before dispatch, never
+// clipping, a request over the input bytes (context-limit, not-started). Open: the Go reader
+// ignores a member it does not name. The request allowance, the grants and the fixed limits are in
+// $defs. The harness adds two time bounds the Desk's table does not carry
 // (packages/harness/context/policy.ts, TIME_DEFAULTS), each taken from the table where it does:
 // turnMilliseconds and toolCallMilliseconds; and three bounds on the Runtime's test tool
 // (TEST_DEFAULTS), likewise: testCallsPerTurn, testPackBytes and testMatrixBytes; and two image
 // bounds (IMAGE_DEFAULTS), likewise: imagesPerRequest and imageBytesPerRequest; and two bounds on
 // the index of earlier results a chat-scoped run's first message carries (INDEX_DEFAULTS,
-// agent#8), likewise: turnIndexEntries and turnIndexBytes. The table also states the critic's
-// default, adversarialReview (agent#10), which the harness adds to the Desk's table: both engines
-// read it where a session leaves adversarialReview unset.
+// agent#8), likewise: turnIndexEntries and turnIndexBytes; and the bound on the project's own
+// instructions (PROMPT_DEFAULTS, ADR-0005), likewise: projectInstructionsBytes. The table also
+// states the critic's default, adversarialReview (agent#10), which the harness adds to the Desk's
+// table: both engines read it where a session leaves adversarialReview unset.
 type Budget struct {
-	Version              int64  `json:"version"`
-	MaxInputBytes        int64  `json:"maxInputBytes"`
-	ContextWindowTokens  int64  `json:"contextWindowTokens"`
-	OutputTokens         int64  `json:"outputTokens"`
-	ToolResultBytes      int64  `json:"toolResultBytes"`
-	ReadBytes            int64  `json:"readBytes"`
-	RetainedBytes        int64  `json:"retainedBytes"`
-	RecentMessages       int64  `json:"recentMessages"`
-	HistoryBytes         int64  `json:"historyBytes"`
-	BriefBytes           int64  `json:"briefBytes"`
-	MemoryBytes          int64  `json:"memoryBytes"`
-	TurnMilliseconds     *int64 `json:"turnMilliseconds,omitzero"`
-	ToolCallMilliseconds *int64 `json:"toolCallMilliseconds,omitzero"`
-	ImagesPerRequest     *int64 `json:"imagesPerRequest,omitzero"`
-	ImageBytesPerRequest *int64 `json:"imageBytesPerRequest,omitzero"`
-	TestCallsPerTurn     *int64 `json:"testCallsPerTurn,omitzero"`
-	TestPackBytes        *int64 `json:"testPackBytes,omitzero"`
-	TestMatrixBytes      *int64 `json:"testMatrixBytes,omitzero"`
-	AdversarialReview    *bool  `json:"adversarialReview,omitzero"`
-	TurnIndexEntries     *int64 `json:"turnIndexEntries,omitzero"`
-	TurnIndexBytes       *int64 `json:"turnIndexBytes,omitzero"`
+	Version                  int64  `json:"version"`
+	MaxInputBytes            int64  `json:"maxInputBytes"`
+	ContextWindowTokens      int64  `json:"contextWindowTokens"`
+	OutputTokens             int64  `json:"outputTokens"`
+	ToolResultBytes          int64  `json:"toolResultBytes"`
+	ReadBytes                int64  `json:"readBytes"`
+	RetainedBytes            int64  `json:"retainedBytes"`
+	RecentMessages           int64  `json:"recentMessages"`
+	HistoryBytes             int64  `json:"historyBytes"`
+	BriefBytes               int64  `json:"briefBytes"`
+	MemoryBytes              int64  `json:"memoryBytes"`
+	TurnMilliseconds         *int64 `json:"turnMilliseconds,omitzero"`
+	ToolCallMilliseconds     *int64 `json:"toolCallMilliseconds,omitzero"`
+	ImagesPerRequest         *int64 `json:"imagesPerRequest,omitzero"`
+	ImageBytesPerRequest     *int64 `json:"imageBytesPerRequest,omitzero"`
+	TestCallsPerTurn         *int64 `json:"testCallsPerTurn,omitzero"`
+	TestPackBytes            *int64 `json:"testPackBytes,omitzero"`
+	TestMatrixBytes          *int64 `json:"testMatrixBytes,omitzero"`
+	AdversarialReview        *bool  `json:"adversarialReview,omitzero"`
+	TurnIndexEntries         *int64 `json:"turnIndexEntries,omitzero"`
+	TurnIndexBytes           *int64 `json:"turnIndexBytes,omitzero"`
+	ProjectInstructionsBytes *int64 `json:"projectInstructionsBytes,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var budgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "adversarialReview", "turnIndexEntries", "turnIndexBytes"}
+var budgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "adversarialReview", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes"}
 
 // UnmarshalJSON decodes a Budget object and keeps the members the schema does not name.
 func (v *Budget) UnmarshalJSON(data []byte) error {
@@ -341,8 +346,9 @@ func (v BudgetBudgetIncreaseAnswer) MarshalJSON() ([]byte, error) {
 
 // From budget.json#/$defs/configuration. The assistant profile's context member
 // (ContextConfiguration; aicontext.Configuration). Closed: contextConfiguration refuses another
-// member and the Go decoder disallows unknown fields. projectBrief is a relative project file,
-// read afresh by the server on every dispatch; models holds at most 128 overrides by model name.
+// member and the Go decoder disallows unknown fields. projectBrief is a relative project file the
+// host reads for its brief() answer, once per run (ADR-0005; before it, the server read it afresh
+// on every dispatch); models holds at most 128 overrides by model name.
 type BudgetConfiguration struct {
 	Version      int64                        `json:"version"`
 	ProjectBrief *string                      `json:"projectBrief,omitzero"`
@@ -425,6 +431,49 @@ func (v BudgetDeskLimits) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), v.AdditionalMembers)
 }
 
+// From budget.json#/$defs/hostPart. One of the host's parts of every request (ADR-0005;
+// packages/harness/prompt.ts, HOST_PARTS): the member it is, the layer it is placed in, the host's
+// injection point that answers it, the first and last lines of its block and the member of this
+// table that bounds it. The adapter asks each injection point once per run, before its first
+// request (memoryFor with the person's message, or a delegated child's objective, and not where
+// the host said memory is off), and places each part it answered in the system text (the agent
+// wire's instructions) after the package's guidance, in layer order, a blank line before each
+// block: the header, the text, the end line. A part answered with nothing is left out; one that is
+// not text, or is over its bound, is refused and the run fails before any request (configuration).
+// The project's instructions are instructions at the lowest rank: they follow the package's
+// guidance, and they cannot grant a tool or change an effect, because the offer and the gate are
+// code. The system text through the last part is the request's stable prefix: the same bytes on
+// every request of the run.
+type BudgetHostPart struct {
+	Name      string `json:"name"`
+	Layer     int64  `json:"layer"`
+	Injection string `json:"injection"`
+	Header    string `json:"header"`
+	End       string `json:"end"`
+	Bound     string `json:"bound"`
+}
+
+var budgetHostPartMembers = []string{"name", "layer", "injection", "header", "end", "bound"}
+
+// UnmarshalJSON decodes a BudgetHostPart object and refuses a member the closed schema does not name.
+func (v *BudgetHostPart) UnmarshalJSON(data []byte) error {
+	type plain BudgetHostPart
+	var p plain
+	extra, err := decodeObject(data, &p, budgetHostPartMembers, true)
+	if err != nil {
+		return errorf("BudgetHostPart: %w", err)
+	}
+	*v = BudgetHostPart(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a BudgetHostPart object.
+func (v BudgetHostPart) MarshalJSON() ([]byte, error) {
+	type plain BudgetHostPart
+	return encodeObject(plain(v), nil)
+}
+
 // From budget.json#/$defs/modelBudget. One model's override (ModelContextBudget). Closed: both
 // readers refuse another member.
 type BudgetModelBudget struct {
@@ -450,75 +499,6 @@ func (v *BudgetModelBudget) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a BudgetModelBudget object.
 func (v BudgetModelBudget) MarshalJSON() ([]byte, error) {
 	type plain BudgetModelBudget
-	return encodeObject(plain(v), nil)
-}
-
-// From budget.json#/$defs/recallQuery. Where the request text a run started from sits on each
-// model wire on any request of the run, and the rule a server applies to find it (agent#11; the
-// Desk server's memory recall adopts it in its swap, judgment-pack-desk#515). The rule: take the
-// request's first user turn, the first message with role user in messages (OpenAI-compatible,
-// where system messages may come before it, and Anthropic) or the first content with role user in
-// contents (Gemini); the request text is its first text part that does not start with STATE_HEADER
-// ($defs/stateLocation), a string content being one text part and, on Gemini, a part being text
-// when it carries text and is not a thought. The request text is the host's prompt where it fits
-// the prompt's allowance; where it does not, the prompt is retained and previewed, and the
-// person's message (currentRequest.message) is sent as its own first text part, before the
-// preview; for a delegated child it is the child's objective (context.objective), sent as its own
-// first text part before the child's prompt. It holds on every request of the run: the adapter
-// puts the request text first in the run's first user message and never moves, replaces or drops
-// that message. The state joins it only as a later part on the first request; a chat's index of
-// earlier results (tool-result.json#/$defs/turnIndex) is its second part; compaction keeps it
-// whole. Every other user text the loop adds comes after it: a text-path result, the images shown
-// beside a result, the finishing and reformat instructions, the compaction summary, the state. So
-// the newest user text is often not the request, and the first user turn always is. Measured on
-// all three wires in the review of judgment-pack-agent#33: the newest-remaining-text rule fails on
-// a text-path request, the finishing request, the reformat request and after compaction; the
-// Desk's code as ported fails the same, except after compaction on Anthropic, where the first
-// message and the compaction summary merge into one user turn. The critic's requests are a second
-// conversation, whose first user turn is the critic's own message. On the agent wire (the Codex
-// engine) the run sends one string, its prompt, and the request text is the prompt's text before
-// the first blank line followed by STATE_HEADER, or the whole prompt where there is none; the
-// prompt is the host's prompt, then the host's state and the execution guidance headed by
-// STATE_HEADER, then a chat's index of earlier results (agent#36). A prompt that starts with
-// STATE_HEADER has no request text. Where the prompt, state and guidance do not fit the prompt's
-// allowance, the whole is retained and previewed, and the prompt sent is the person's message
-// (currentRequest.message), a blank line, STATE_HEADER and the preview, so the rule finds the
-// person's message; where the host gives no currentRequest the preview is sent alone and the rule
-// finds its own opening. An item is one request of a run with tool calls: body is the request as
-// the adapter composed it, abbreviated to its turns (the system text, tool results and state
-// shortened, the tools left out); pointer is the JSON pointer the rule resolves to in it, and text
-// the request text found there. packages/harness/certification/recall.ts states the rule in code,
-// memory/recall.test.ts checks every item against a run, and the certification suite applies it to
-// every request of the recorded scenario on every certified leg: 21 legs in four families (the six
-// plain legs, the six text-path legs, three strict-alternation legs and the six thinking legs'
-// authoring requests).
-type BudgetRecallQuery struct {
-	Family    string                     `json:"family"`
-	Placement string                     `json:"placement"`
-	Request   int64                      `json:"request"`
-	Body      map[string]json.RawMessage `json:"body"`
-	Pointer   string                     `json:"pointer"`
-	Text      string                     `json:"text"`
-}
-
-var budgetRecallQueryMembers = []string{"family", "placement", "request", "body", "pointer", "text"}
-
-// UnmarshalJSON decodes a BudgetRecallQuery object and refuses a member the closed schema does not name.
-func (v *BudgetRecallQuery) UnmarshalJSON(data []byte) error {
-	type plain BudgetRecallQuery
-	var p plain
-	extra, err := decodeObject(data, &p, budgetRecallQueryMembers, true)
-	if err != nil {
-		return errorf("BudgetRecallQuery: %w", err)
-	}
-	*v = BudgetRecallQuery(p)
-	_ = extra
-	return nil
-}
-
-// MarshalJSON encodes a BudgetRecallQuery object.
-func (v BudgetRecallQuery) MarshalJSON() ([]byte, error) {
-	type plain BudgetRecallQuery
 	return encodeObject(plain(v), nil)
 }
 
@@ -639,13 +619,13 @@ func (v BudgetRequestAllowanceOption2) MarshalJSON() ([]byte, error) {
 // $defs/toolCallAllowance), plan and operations index the model is told, the host's changing text
 // and the step's own instruction. It is the text at pointer (a JSON pointer into the provider body
 // the adapter composed) from the header, which starts a line, to the end of that text; the header
-// occurs nowhere else in the request. The critic's step note carries the same header. A host that
-// reads requests (the Desk server's memory recall) drops every text part that starts with the
-// header, and finds the request text as $defs/recallQuery states. On the agent wire (the Codex
-// engine) the run is one request with one prompt string: the person's message, then, after a blank
-// line, the header, the host's changing text and, in a conversation, the execution guidance; a
-// chat's index of earlier results comes after them (agent#36). A host cuts the prompt at the
-// header.
+// occurs nowhere else in the request. The critic's step note carries the same header. The state is
+// the eighth layer of the request (ADR-0005): after the stable prefix (the package's guidance and
+// the host's parts, $defs/hostPart), the history and the tools. On the agent wire (the Codex
+// engine) the run is one request with one prompt string: the request text, then a chat's index of
+// earlier results, then, after a blank line, the header, the host's changing text and, in a
+// conversation, the execution guidance (agent#36). No host reads a request to find anything in it
+// (ADR-0005 removed the recall rule).
 type BudgetStateLocation struct {
 	Family       string                         `json:"family"`
 	Thinking     string                         `json:"thinking"`
@@ -878,7 +858,8 @@ func (v CapabilityStreamingQuirks) MarshalJSON() ([]byte, error) {
 // is at most limit; the grants chain from the first limit (MAX_TURNS for model-requests, 1 for
 // provider-managed), each grant's from is the previous to, and limit equals the last to; operation
 // ids and entry ids are unique; every entry id starts with the context scope and a colon; a
-// completion's request is at most used; at most one plan step is in_progress.
+// completion's request is at most used; the prompts' request numbers increase; at most one plan
+// step is in_progress.
 type Checkpoint struct {
 	Version     int64                       `json:"version"`
 	ID          string                      `json:"id"`
@@ -897,11 +878,12 @@ type Checkpoint struct {
 	Reason      *string                     `json:"reason,omitzero"`
 	TestCalls   *int64                      `json:"testCalls,omitzero"`
 	Delegation  *ProvenanceDelegationReport `json:"delegation,omitzero"`
+	Prompts     []ProvenancePromptDigest    `json:"prompts,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var checkpointMembers = []string{"version", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation"}
+var checkpointMembers = []string{"version", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "prompts"}
 
 // UnmarshalJSON decodes a Checkpoint object and keeps the members the schema does not name.
 func (v *Checkpoint) UnmarshalJSON(data []byte) error {
@@ -2230,12 +2212,14 @@ func (v FailureToolFailureContent) MarshalJSON() ([]byte, error) {
 // they do not name. A request the provider refused and that was sent again has one row per attempt
 // (packages/harness/engines/vercel/retry.ts; execution/controller.ts, recordRefusal): the refused
 // attempt's row carries attempt, failure and waitMs, and the attempt that answered carries its
-// attempt number. There is no model name, adapter or contract version, prompt digest or request
-// timing in any record that crosses the slot (waitMs is the wait before a retry, not a timing)
-// (see docs/design/wire-contract.md, Open questions). Delegation (agent#18): each delegated
-// child's model, requests, tool calls, token counts, time to first byte and duration, each batch's
-// total and the parent's own, carried by the checkpoint's delegation member
-// ($defs/delegationReport) and each task record (delegated-task.json).
+// attempt number. Since ADR-0005 the adapter assembles the whole prompt and records the digest of
+// every request body it sent, in order, in the checkpoint's prompts ($defs/promptDigest). There is
+// no model name, adapter or contract version or request timing in any record that crosses the slot
+// (waitMs is the wait before a retry, not a timing) (see docs/design/wire-contract.md, Open
+// questions). Delegation (agent#18): each delegated child's model, requests, tool calls, token
+// counts, time to first byte and duration, each batch's total and the parent's own, carried by the
+// checkpoint's delegation member ($defs/delegationReport) and each task record
+// (delegated-task.json).
 type Provenance struct {
 	Request int64                `json:"request"`
 	Phase   string               `json:"phase"`
@@ -2509,6 +2493,41 @@ func (v *ProvenanceParentFigures) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a ProvenanceParentFigures object.
 func (v ProvenanceParentFigures) MarshalJSON() ([]byte, error) {
 	type plain ProvenanceParentFigures
+	return encodeObject(plain(v), nil)
+}
+
+// From provenance.json#/$defs/promptDigest. The digest of one request body the adapter sent
+// (ADR-0005; packages/harness/execution/controller.ts, recordPrompt; Go
+// ExecutionController.RecordPrompt), recorded before the request is sent, in the checkpoint's
+// prompts. On a model engine the body is the provider body the adapter handed the relay capability
+// (model.call), each model request and each retried attempt its own; on the agent wire it is the
+// agent request as the transport sends it to the bridge, as JSON text, without the delegation
+// coordinator's delegated mark, one per agent run; there it reaches the host on the run's next
+// execution_checkpoint event, on a tracked run. The relay adds nothing to the prompt, so the
+// digest is of what the model was shown, the credential and the relay's own headers aside.
+type ProvenancePromptDigest struct {
+	Request int64  `json:"request"`
+	Sha256  string `json:"sha256"`
+}
+
+var provenancePromptDigestMembers = []string{"request", "sha256"}
+
+// UnmarshalJSON decodes a ProvenancePromptDigest object and refuses a member the closed schema does not name.
+func (v *ProvenancePromptDigest) UnmarshalJSON(data []byte) error {
+	type plain ProvenancePromptDigest
+	var p plain
+	extra, err := decodeObject(data, &p, provenancePromptDigestMembers, true)
+	if err != nil {
+		return errorf("ProvenancePromptDigest: %w", err)
+	}
+	*v = ProvenancePromptDigest(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ProvenancePromptDigest object.
+func (v ProvenancePromptDigest) MarshalJSON() ([]byte, error) {
+	type plain ProvenancePromptDigest
 	return encodeObject(plain(v), nil)
 }
 

@@ -6,7 +6,7 @@ import {answer,contextDigest,type ContextLedger} from '../context/ledger'
 import {readCacheKey} from '../context/chat'
 import {MAX_TURNS} from '../engines/contract'
 import {utf8Bytes} from '../context/policy'
-import {ExecutionPaused,MAX_CHECKPOINT_BYTES,readExecution,validTaskSteps,type ExecutionCheckpoint} from './state'
+import {ExecutionPaused,MAX_CHECKPOINT_BYTES,MAX_PROMPT_DIGESTS,readExecution,validTaskSteps,type ExecutionCheckpoint} from './state'
 
 export const EXECUTION_INSTRUCTIONS = `TASK EXECUTION: For work requiring several stages, use update_plan to track concrete pending, in_progress and completed steps. Skip planning overhead for simple replies. Use the current accepted plan when present; do not repeatedly re-plan or ask the user to repeat an already authorized request. Update progress at meaningful boundaries, and preserve completed work across continuation. A task list is working state, not approval or proof: mark a step complete only when its required result exists, and distinguish a proposed change from a saved change. Keep a multi-stage task plan current; it estimates work but cannot grant more requests. An unsaved working object remains in the exact arguments of its completed operations. Continue from those retained arguments after validation or evaluation; rereading the saved workspace does not retrieve an unsaved proposal. Recheck the saved revision before applying changes. Use tool results already obtained; do not reread unchanged instructions or schemas or scan the entire conversation. On continuation, inspect the latest completed result and its exact arguments before doing more work. A newer saved workspace object takes precedence over an older chat draft when editing that object; preserve its identity. For a focused change, inspect the relevant contract once, make the smallest proposal, verify the affected behavior and return it. Do not restart discovery after context compaction. Before repeating a failed read, correct its arguments using the current context index. If blocked, state the exact missing information. When requests run low, finish the concrete result or call request_budget_increase with the reason and next concrete step. Desk owns budget extensions; this tool requests but never grants one. Never modify expected tests merely to match actual results. Current user instructions and host permissions remain authoritative.`
 
@@ -87,6 +87,16 @@ export class ExecutionController {
  recordCompletion(result:import('../completion').ModelCompletion,phase:'work'|'synthesis'|'review'){
   const attempt=this.attempt;this.attempt=1
   this.state.completions=[...(this.state.completions??[]),{request:this.state.used,phase,result,...(attempt>1?{attempt}:{})}]
+ }
+ /**
+  * ADR-0005: the digest of one request body the adapter is about to send, recorded before it is
+  * sent: the SHA-256 of the body's text, numbered after the last one recorded. The newest
+  * MAX_PROMPT_DIGESTS are kept.
+  */
+ async recordPrompt(body:string){
+  const sha256=await contextDigest(body)
+  const prompts=this.state.prompts??[]
+  this.state.prompts=[...prompts,{request:(prompts.at(-1)?.request??0)+1,sha256}].slice(-MAX_PROMPT_DIGESTS)
  }
  /** Which attempt at a model request is being sent, said before each one, so a new call starts again at 1. */
  beginAttempt(attempt:number){this.attempt=attempt}

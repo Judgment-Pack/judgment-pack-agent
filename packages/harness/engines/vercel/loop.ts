@@ -250,9 +250,7 @@ export function cachedInstructions(family: EndpointKind, text: string): string |
 /**
  * The first line of every text that carries what changes between requests
  * (`STATE_HEADER`, defined in `engines/contract.ts` and shared with the Codex
- * engine). A host that reads the request (the Desk server's memory recall)
- * drops every text part that starts with it. The contract's
- * `budget.json#/$defs/stateLocation`.
+ * engine). The contract's `budget.json#/$defs/stateLocation`.
  */
 export { STATE_HEADER }
 
@@ -1068,17 +1066,19 @@ export function runVercelLoop(
       const single=!capabilities.parallelToolCalls&&nativeTools&&toolsOpen?oneCallPerTurn(session.model.family):undefined
       return single===undefined?tier:{...tier,providerOptions:mergeProviderOptions((tier as {providerOptions?:Record<string,Record<string,unknown>>}).providerOptions,single)}
     }
-    // **A stable prefix**: the system text and the execution instructions, then
-    // the tools, then the host's prompt and the history. What changes between
-    // requests goes after the cached part, where `placeState` puts it, so a
-    // step's request repeats the one before it up to the state. An endpoint
-    // without native tool calls has its tools described at the end of it (agent#4).
-    const system=instructions+'\n'+EXECUTION_INSTRUCTIONS+toolSection
+    // **A stable prefix** (agent#9, ADR-0005): the package's guidance with the
+    // execution instructions, then the host's parts (the brief, the project's own
+    // instructions, the memory recalled once for the run), then the tools, then
+    // the host's prompt and the history. What changes between requests goes after
+    // the cached part, where `placeState` puts it, so a step's request repeats the
+    // one before it up to the state. An endpoint without native tool calls has its
+    // tools described at the end of the system text, after the host's parts (agent#4).
+    const system=context.system(instructions+'\n'+EXECUTION_INSTRUCTIONS,toolSection)
     const cachedSystem=cachedInstructions(session.model.family,system)
     // The request text is the first text part of the first user message on every request of the
-    // run (agent#11): nothing moves it, and the state, where it joins this message, comes after it.
-    // A chat's index of the results earlier runs kept (agent#8) is its last part (`opening`).
-    const opening=await context.opening(session.prompt,instructions+toolSection+'\n'+context.execution.guidance(),schemas,session.context?.currentRequest)
+    // run: nothing moves it, and the state, where it joins this message, comes after it. A chat's
+    // index of the results earlier runs kept (agent#8) is its last part (`opening`).
+    const opening=await context.opening(session.prompt,context.system(instructions,toolSection)+'\n'+context.execution.guidance(),schemas,session.context?.currentRequest)
     let messages:ModelMessage[]=[{role:'user',content:opening.length===1?opening[0]!:opening.map(text=>({type:'text' as const,text}))}]
     // The history the last step was sent, without its state message.
     let lastMessages=messages
@@ -1438,7 +1438,7 @@ export function runVercelLoop(
         criticMayCall(name) ? session.tools.some(tool => tool.name === name) : criticMayRead(name) && session.hostTools.some(tool => tool.name === name)))
       const criticOffered = new Set(Object.keys(criticTools))
       // The critic's system text, set once: the call and every step use it.
-      const criticSystem = CRITIC_SYSTEM + DATA_RULE + assistantLanguageInstructions(session.replyLanguage) + (nativeTools ? '' : '\n\n' + described(criticOffered))
+      const criticSystem = context.system(CRITIC_SYSTEM + DATA_RULE + assistantLanguageInstructions(session.replyLanguage), nativeTools ? '' : '\n\n' + described(criticOffered))
       // On the text path the critic, like the loop, asks once per call (agent#4).
       let criticMessages: ModelMessage[] = []
       let criticHeld = criticMessages

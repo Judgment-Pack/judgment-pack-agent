@@ -81,16 +81,24 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
       phase === 'author' ? tools
         : phase === 'reformat' ? []
           : tools.filter(tool => { const route = routes.get(tool.name); return route !== undefined && (route.host === undefined ? criticMayCall(route.name) : criticMayRead(route.name)) })
-    const run = async (prompt: string, instructions: string, phase: 'author' | 'critic' | 'reformat', recorder?: CritiqueRecorder, model?: string) => {
+    /**
+     * One agent run. `prompt` is the run's request text; `state`, on the author's run, what changes
+     * between runs (ADR-0005, layer 8). The instructions are the system text: the package's guidance,
+     * then the host's parts (layers 3 to 5), the same on every run of the response. The prompt is the
+     * request text, or the person's message and its preview with its reference where it does not fit,
+     * then a chat's index of earlier results, then `STATE_HEADER` and the state: the parts and the
+     * order the model wires send in the first user message (`SessionContext.opening`).
+     */
+    const run = async (prompt: string, instructions: string, phase: 'author' | 'critic' | 'reformat', recorder?: CritiqueRecorder, model?: string, state = '') => {
       const offeredHere = offeredTo(phase)
       const offeredNames = new Set(offeredHere.map(tool => tool.name))
       // The critic's phase is its caller's (it spans the harness's own calls after
       // the run); the reformat run's is this run's: every call refused (review row 5).
       if(phase==='reformat')context.beginReformatPhase()
       try {
-      instructions += DATA_RULE + assistantLanguageInstructions(session.replyLanguage)
-      prompt = phase==='author' ? await context.agentPrompt(prompt,instructions,offeredHere,session.context?.currentRequest) : await context.prompt(prompt,instructions,offeredHere)
-      if(phase==='author')prompt=context.indexed(prompt,instructions,offeredHere)
+      instructions = context.system(instructions + DATA_RULE + assistantLanguageInstructions(session.replyLanguage))
+      const stated = state ? '\n\n' + STATE_HEADER + '\n' + state : ''
+      prompt = phase==='author' ? (await context.opening(prompt,instructions+stated,offeredHere,session.context?.currentRequest)).join('\n\n') + stated : await context.prompt(prompt,instructions,offeredHere)
       context.check(instructions,prompt,offeredHere)
       const partial = new Map<string, string>()
       let final = ''
@@ -229,16 +237,14 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
     const instructions = session.purpose === 'graph' ? GRAPH_SYSTEM : session.purpose === 'brief' ? BRIEF_SYSTEM
       : session.purpose === 'test-design' ? TEST_DESIGN_SYSTEM
       : session.allowConversation ? CONVERSATION_SYSTEM : SYSTEM
-    // The agent's prompt carries the host's changing state and the execution guidance at its end,
-    // after the person's message and headed by STATE_HEADER, as the relayed wires head the state
-    // part: a host that takes its recall query from the prompt cuts at the header and keeps the
-    // message (agent#36). Its instructions stay the stable system text. A chat's index of the
-    // results earlier runs kept (agent#8) is added after both, in the room it leaves (`run`).
-    const appended = [session.context?.currentState, session.allowConversation ? context.execution.guidance() : undefined].filter((part): part is string => !!part)
-    const prompt = session.prompt + (appended.length > 0 ? '\n\n' + STATE_HEADER + '\n' + appended.join('\n\n') : '')
+    // The agent's prompt ends with the host's changing state and, in a conversation, the execution
+    // guidance, headed by STATE_HEADER as the model wires head the state part (agent#36, ADR-0005
+    // layer 8), after the request text and a chat's index of earlier results (`run`). Its
+    // instructions stay the stable system text.
+    const state = [session.context?.currentState, session.allowConversation ? context.execution.guidance() : undefined].filter((part): part is string => !!part).join('\n\n')
     let final: string
     try {
-      final = await run(prompt, instructions + (offersProposeTool(session.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : ''), 'author')
+      final = await run(session.prompt, instructions + (offersProposeTool(session.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : ''), 'author', undefined, undefined, state)
     } catch (cause) {
       // **A proposal made through propose_pack is finished work.** The run
       // failing after it (the bridge's deadline, a lost connection) does not

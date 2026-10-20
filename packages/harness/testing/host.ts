@@ -111,6 +111,10 @@ export function testHost(): HarnessHost {
     // agent#10: no critic model named, so the critic runs on the run's own.
     // A render adapter that says what it was given, so a test can find the rendering.
     renderImageToText: async (image) => `TEST RENDERING of a ${image.mediaType} image, ${decodedBytes(image.bytes)} bytes`,
-    modelsFor: () => ({})
+    modelsFor: () => ({}),
+    // The prompt's host parts (ADR-0005): none, unless a test supplies them.
+    brief: () => undefined,
+    memoryFor: () => undefined,
+    projectInstructions: () => undefined
   }
 }

@@ -15,7 +15,7 @@ import {SEARCH_TOOL} from './search'
 import {capabilitiesFor,type ModelCapabilities} from '../capabilities'
 import {contextPolicy,inputBytes,utf8Bytes,prefix,ContextBudgetError,type ContextConfiguration} from './policy'
 import {INDEX_SHARE,partBytes,type ChatScope,type ChatTurn,type RuntimeIdentity} from './chat'
-import {STATE_HEADER} from '../engines/contract'
+import {readHostParts,systemText,type HostParts} from '../prompt'
 import {runModels,type AITarget,type AssistantEngine,type RunIdentity,type RunModels} from '../host'
 export interface CurrentRequest {message:string;input:string}
 /** `currentState`: host-authored text that changes between requests or responses (the chat's
@@ -26,11 +26,11 @@ export interface CurrentRequest {message:string;input:string}
  * the ledger and the read cache kept across the chat's runs. Absent, the run's are its own and end
  * with it. `runtime`: what the host knows the Runtime this run's tools reach by, which keys a
  * Runtime-served read in the chat's read cache; without it such a read is cached for the run only.
- * `memory` (agent#11): whether the server behind the adapter adds recalled project memory to this
- * run's requests (the project's memory setting). Only `false` frees the `memoryBytes` reserve:
- * absent, the reserve stays, so a server that adds memory never receives a request the harness
- * left no room for. `objective` (agent#11): a delegated child's objective, its request text,
- * sent as the first text part of its first message (`delegation.ts` sets it).
+ * `memory` (agent#11): whether the project's memory is on (the project's memory setting). `false`:
+ * the host's `memoryFor` is not asked (ADR-0005) and the `memoryBytes` reserve is freed; absent, both
+ * stay. `objective` (agent#11): a delegated child's objective, its request text, sent as the first
+ * text part of its first message (`delegation.ts` sets it), and the query its `memoryFor` is asked
+ * with.
  *
  * `chat` is a `ChatContext`, or the view of one a delegated child is handed (`ChatContext.childScope`,
  * agent#15). `link` (agent#14): set by the delegation coordinator on a run it starts, so it reaches
@@ -71,6 +71,20 @@ export class SessionContext {
  private readonly turn?:ChatTurn
  /** A delegated child's objective (agent#11): its request text, sent as the first text part of its first message. */
  private readonly objective?:string
+ /** The host's parts of this run's prompt (ADR-0005), asked once before its first request (`askHost`); none until then. */
+ hostParts:HostParts={}
+ /**
+  * Ask the host for its parts of the prompt, once for the run (ADR-0005): the brief, the project's
+  * own instructions and the memory recalled for the person's message (a delegated child's
+  * objective; the host's prompt where the host gives neither), unless the host said memory is off.
+  */
+ async askHost(session:EngineSession){
+  // An empty objective is no objective, as in Go (AskHost).
+  const query=this.objective?this.objective:session.context?.currentRequest?.message??session.prompt
+  this.hostParts=await readHostParts(query,this.policy,session.context?.memory!==false)
+ }
+ /** The system text of every request of the run: `guidance`, the host's parts, then `tools` described in text (`systemText`, ADR-0005). */
+ system(guidance:string,tools=''){return systemText(guidance,this.hostParts,tools)}
  /** Who the run is, as the host's `modelsFor` is asked: its connection, family and model; and the answer, once asked. */
  private readonly identity:Omit<RunIdentity,'engine'>
  private named?:{models?:RunModels;error?:unknown}
@@ -167,21 +181,6 @@ export class SessionContext {
  }
  async prompt(text:string,instructions:string,tools:unknown,currentRequest?:CurrentRequest):Promise<string>{return this.fit(text,this.allowance(instructions,tools),currentRequest)}
  /**
-  * The agent wire's one prompt string (agent#36, release review): the host's prompt, sent whole where
-  * it fits the allowance. Where it does not, the person's message (`currentRequest.message`), a blank
-  * line, `STATE_HEADER` and the preview, so the text before the header, which the recall rule reads
-  * as the request, is the person's message, as the model wires' first text part is. Without a
-  * `currentRequest` the preview is sent alone.
-  */
- async agentPrompt(text:string,instructions:string,tools:unknown,currentRequest?:CurrentRequest):Promise<string>{
-  const allowance=this.allowance(instructions,tools)
-  if(utf8Bytes(encoded([{role:'user',content:text}]))<=allowance||currentRequest===undefined)return this.fit(text,allowance,currentRequest)
-  const message=prefix(currentRequest.message,Math.floor(allowance/4))
-  if(!message.trim())return this.fit(text,allowance,currentRequest)
-  const head=message+'\n\n'+STATE_HEADER+'\n'
-  return head+await this.fit(text,allowance-utf8Bytes(encoded(head)),currentRequest)
- }
- /**
   * The text parts of the run's first user message (agent#8, agent#11). The request text comes
   * first: the host's prompt, sent whole where it fits the allowance; where it does not, the
   * person's message (`currentRequest.message`) as its own first part and the preview after it, so
@@ -203,12 +202,6 @@ export class SessionContext {
   }
   const index=this.indexWithin(allowance,allowance-size(parts))
   return index?[...parts,index]:parts
- }
- /** The agent wire's prompt with a chat's index after it (agent#8), cut to the room the allowance leaves. */
- indexed(prompt:string,instructions:string,tools:unknown):string{
-  const allowance=this.allowance(instructions,tools)
-  const index=this.indexWithin(allowance,allowance-utf8Bytes(encoded([{role:'user',content:prompt}])))
-  return index?prompt+'\n\n'+index:prompt
  }
  /** `text` within `budget`: whole where it fits, otherwise retained and previewed. */
  private async fit(text:string,budget:number,currentRequest?:CurrentRequest):Promise<string>{
@@ -388,6 +381,7 @@ export async function contextualSession<T extends EngineSession>(session:T):Prom
  // A chat's turn is open from here: a run that cannot start closes it again.
  try{
  await context.execution.initialize()
+ await context.askHost(session)
  await context.initialize(session.context?.documents,true)
  await context.execution.retainProgress()
  if(session.context?.plan)await context.initialize([{id:'current-plan',kind:'artifact',label:'Current chat plan',value:session.context.plan}])
@@ -397,7 +391,7 @@ export async function contextualSession<T extends EngineSession>(session:T):Prom
  // The session's own tools that read (agent#8): what a chat-scoped context keeps across its runs.
  const own=new Set(session.hostTools.filter(tool=>readingTool(tool)).map(tool=>tool.name))
  const hostTools=[...session.hostTools,...context.ledger.tools(),...(session.allowConversation?[context.execution.tool(),context.execution.budgetTool()]:[])].map(tool=>({...tool,execute:async(args:Record<string,unknown>,signal:AbortSignal)=>{context.admit(tool.name,'host');await session.context?.authorize?.(signal);return context.execution.wrapRead(tool.name,a=>tool.execute(a,signal),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read',own.has(tool.name)?{runtime:false}:undefined)(args)}}))
- const model='model'in session?{...session.model,call:async(suffix:string,request:import('../engine').ModelRequest)=>{await session.context?.authorize?.(session.signal);if(request.method!=='GET'){context.execution.claim();try{await session.context?.checkpoint?.(context.execution.snapshot())}catch{throw failureError('storage','storage','not-started')}}return session.model.call(suffix,request)}}:undefined
- const agent='agent'in session?{...session.agent,run:async(request:import('../agent').AgentRequest,callbacks:import('../agent').AgentCallbacks)=>{await session.context?.authorize?.(callbacks.signal);return session.agent.run(request,callbacks)}}:undefined
+ const model='model'in session?{...session.model,call:async(suffix:string,request:import('../engine').ModelRequest)=>{await session.context?.authorize?.(session.signal);if(request.method!=='GET'){context.execution.claim();await context.execution.recordPrompt(request.body);try{await session.context?.checkpoint?.(context.execution.snapshot())}catch{throw failureError('storage','storage','not-started')}}return session.model.call(suffix,request)}}:undefined
+ const agent='agent'in session?{...session.agent,run:async(request:import('../agent').AgentRequest,callbacks:import('../agent').AgentCallbacks)=>{await session.context?.authorize?.(callbacks.signal);const {delegated:_delegated,...sent}=request;await context.execution.recordPrompt(JSON.stringify(sent));return session.agent.run(request,callbacks)}}:undefined
  return {context,session:{...session,...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{context.admit(name,'runtime');await session.context?.authorize?.(session.signal);context.claimTestCall(name);return context.execution.wrapRead(name,a=>session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true,{runtime:true,offered:session.tools.some(t=>t.name===name)})(args)}}}
 }

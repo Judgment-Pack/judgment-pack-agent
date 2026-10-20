@@ -23,6 +23,15 @@ host's build.
 The Desk pins the module by version, the version of the package release it pins (the same release,
 by digest, in its component lock).
 
+## The host's side of the prompt
+
+A Go host hands an adapter its parts of the prompt on `adapter.Run`'s `Host`, a `runcontext.Host`
+(`Brief`, `ProjectInstructions` and `MemoryFor(query)`; `runcontext.HostFuncs` makes one of
+functions). The adapter asks each once per run, before its first request, holds each to its bound
+in the policy table, and places it in its layer of every request
+([ADR-0005](../docs/adr/0005-the-prompt-is-the-adapters.md)); the relay adds nothing. The digest of
+every request body is in the run's checkpoint (`prompts`).
+
 ## How the tag is made
 
 The release workflow creates `go/vX.Y.Z` on the release commit after the release is published, and

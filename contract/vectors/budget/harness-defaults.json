@@ -1,5 +1,5 @@
 {
-  "description": "The policy a session works under in the harness (CONTEXT_DEFAULTS): the table, with the critic's default (adversarialReview), the two time bounds, the two image bounds, the three test-tool bounds and the two bounds on a chat's index of earlier results the harness adds.",
+  "description": "The policy a session works under in the harness (CONTEXT_DEFAULTS): the table, with the critic's default (adversarialReview), the two time bounds, the two image bounds, the three test-tool bounds the two bounds on a chat's index of earlier results and the bound on the project's own instructions (ADR-0005) the harness adds.",
   "schema": "budget.json",
   "source": {
     "harness": {
@@ -7,7 +7,7 @@
       "package": "packages/harness"
     },
     "files": [
-      "packages/harness/context/policy.ts (TIME_DEFAULTS, IMAGE_DEFAULTS, TEST_DEFAULTS, INDEX_DEFAULTS, CONTEXT_DEFAULTS)",
+      "packages/harness/context/policy.ts (TIME_DEFAULTS, IMAGE_DEFAULTS, TEST_DEFAULTS, INDEX_DEFAULTS, PROMPT_DEFAULTS, CONTEXT_DEFAULTS)",
       "packages/harness/contract/policy.json"
     ]
   },
@@ -33,7 +33,8 @@
       "testPackBytes": 65536,
       "testMatrixBytes": 65536,
       "turnIndexEntries": 20,
-      "turnIndexBytes": 8000
+      "turnIndexBytes": 8000,
+      "projectInstructionsBytes": 4000
     }
   ]
 }

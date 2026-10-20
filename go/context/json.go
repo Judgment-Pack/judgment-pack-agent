@@ -1,9 +1,9 @@
 // Package runcontext is the run's context in Go: the budget table and its bounds, the data
 // framing, the context ledger and its reading tools, the chat-scoped context, the session's
-// prompt and compaction, the execution controller and its checkpoint, the recall rule and the
-// prompt half of Plan mode. It is the port of packages/harness/context/*.ts,
-// packages/harness/framing.ts, packages/harness/execution/*.ts,
-// packages/harness/certification/recall.ts and packages/harness/planning/policy.ts.
+// prompt and compaction, the execution controller and its checkpoint, the host's parts of the
+// prompt and the one assembler of its system text (ADR-0005) and the prompt half of Plan mode. It
+// is the port of packages/harness/context/*.ts, packages/harness/framing.ts,
+// packages/harness/execution/*.ts, packages/harness/prompt.ts and packages/harness/planning/policy.ts.
 //
 // The package name is runcontext because context would shadow the standard library's.
 //

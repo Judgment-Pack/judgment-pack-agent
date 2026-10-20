@@ -20,10 +20,11 @@
  *   through the package's `callTool` (and so `admit` and the gate) or the host tool's own function,
  *   with the contract's events. LangChain's own tool node, and its argument validation, are never
  *   reached: a call the gate must see is never refused before it.
- * - **The package keeps the context.** The ledger, the chat context, the read cache, the index, the
- *   compaction and the recall rule are `context/session.ts`'s, asked on every request from the
- *   `wrapModelCall` hook, which places the execution state, closes the tools on the final request and
- *   records each step's completion.
+ * - **The package keeps the context.** The ledger, the chat context, the read cache, the index and the
+ *   compaction are `context/session.ts`'s, asked on every request from the `wrapModelCall` hook, which
+ *   places the execution state, closes the tools on the final request and records each step's
+ *   completion. The host's parts of the prompt are `context/session.ts`'s too, asked once per run
+ *   before the first request and carried in the system text (ADR-0005).
  *
  * Delegation is the package's (`delegation.ts`): `delegate_tasks` is a host tool awaited inside the
  * step, as on `vercel`. Deep Agents' subagents are off; ADR-0003 records why.
@@ -625,9 +626,11 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
     context.reserveOutput(tier?.max_tokens)
     /** What one request asks besides its messages: the tier, and one call per turn where the record says so. */
     const settings = (toolsOpen: boolean): RelaySettings => ({ tier, oneCallPerTurn: !capabilities.parallelToolCalls && nativeTools && toolsOpen })
-    const system = instructions + '\n' + EXECUTION_INSTRUCTIONS + toolSection
-    // The request text is the first text part of the first user message on every request (agent#11).
-    const opening = await context.opening(session.prompt, instructions + toolSection + '\n' + context.execution.guidance(), schemas, session.context?.currentRequest)
+    // The stable prefix (ADR-0005): the package's guidance, then the host's parts, then the tools
+    // described in text where the endpoint takes no native tool calls.
+    const system = context.system(instructions + '\n' + EXECUTION_INSTRUCTIONS, toolSection)
+    // The request text is the first text part of the first user message on every request.
+    const opening = await context.opening(session.prompt, context.system(instructions, toolSection) + '\n' + context.execution.guidance(), schemas, session.context?.currentRequest)
     let messages: BaseMessage[] = [new HumanMessage({ content: opening.length === 1 ? opening[0]! : opening.map((text) => ({ type: 'text', text })) })]
     /** The history the last step was sent, without its state. */
     let lastMessages = messages
@@ -889,7 +892,7 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
           .map((tool) => tool.name)
           .filter((name) => (criticMayCall(name) ? session.tools.some((tool) => tool.name === name) : criticMayRead(name) && session.hostTools.some((tool) => tool.name === name)))
       )
-      const criticSystem = CRITIC_SYSTEM + DATA_RULE + assistantLanguageInstructions(session.replyLanguage) + (nativeTools ? '' : '\n\n' + described(criticOffered))
+      const criticSystem = context.system(CRITIC_SYSTEM + DATA_RULE + assistantLanguageInstructions(session.replyLanguage), nativeTools ? '' : '\n\n' + described(criticOffered))
       let criticMessages: BaseMessage[] = []
       let criticHeld = criticMessages
       let criticSteps = 0

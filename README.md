@@ -20,6 +20,14 @@ Three things never move into an adapter: the keyless model relay and its custody
 gate and the approvals that decide what a model may do, and the Runtime tools' rehearsal rule. A
 framework's own guardrails are a convenience inside an adapter, never the boundary.
 
+The prompt, on the other hand, is the adapter's ([ADR-0005](docs/adr/0005-the-prompt-is-the-adapters.md)):
+every engine assembles the whole request in the same layered order, and the relay adds nothing to
+it. The host supplies the parts only it holds through three injection points, `brief()`,
+`memoryFor(query)` and `projectInstructions()` (`configureHarness` in TypeScript, `adapter.Run`'s
+`Host` in Go), each asked once per run and placed by the adapter in its layer; the project's own
+instructions rank below the package's rules and cannot grant a tool. Every request body an adapter
+sends is digested in the run's checkpoint.
+
 ## Layout
 
 - `contract/`: the wire contract, schemas and vectors, extracted from the Desk's engine slot; see

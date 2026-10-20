@@ -35,7 +35,7 @@ func atPointer(body []byte, pointer string) any {
 
 // placementCheck holds where the execution state sits, headed STATE_HEADER, in the first and second
 // requests of the scenario on each wire and placement to budget/state-placement.json (agent#9): the
-// header the recall rule cuts at (agent#11) is where the vector says, on every item.
+// header is where the vector says, on every item, after the stable prefix.
 var placementCheck = Check{Name: "placement", Block: "engine %s", Legs: []Endpoint{{API: "openai-compatible", AnswerAs: "whole"}}, Run: func(ctx context.Context, server *Server, _ Endpoint, adapter Adapter) ([]Finding, error) {
 	_, items, err := ReadVector("budget/state-placement.json")
 	if err != nil {

@@ -1,7 +1,8 @@
 {
-  "$comment": "Written by hand. A run over three steps that call tools, once with the project's memory on (said, and not said) and once with it off. The tools answer with fixed text; the checks read the requests the run sent, not the answers.",
+  "$comment": "Written by hand. A run over three steps that call tools, once with the project's memory on (said, and not said) and once with it off. The tools answer with fixed text; the checks read the requests the run sent, not the answers. memory is what the host's memoryFor answers (ADR-0005): asked once, for the request, and carried in the same place on every request.",
   "id": "memory",
   "request": "Review the expense pack: read its schema, list the examples, read the closest one, and tell me what to add.",
+  "memory": "Recalled for this project: the March review sent two claims above 1000 USD to finance.",
   "runtimeAnswers": {
     "get_schema": {
       "title": "Judgment Pack Core",

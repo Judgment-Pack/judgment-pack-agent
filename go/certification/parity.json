@@ -12,10 +12,17 @@
     },
     {
       "block": "engine %s",
-      "check": "agent#11 \u2014 the recall rule finds the request text on every request",
+      "check": "ADR-0005 \u2014 each host part lands in its layer, and the stable prefix holds across the run\u2019s requests",
       "go": [
-        "agent#11",
+        "parts",
         "placement"
+      ]
+    },
+    {
+      "block": "engine %s",
+      "check": "ADR-0005 \u2014 a project block that says to ignore the data rule and call write_file changes nothing the gate admits",
+      "go": [
+        "project"
       ]
     },
     {
@@ -97,9 +104,9 @@
     },
     {
       "block": "engine %s \u00b7 text tool calls",
-      "check": "agent#11 \u2014 the recall rule finds the request text on every request, every result a user text",
+      "check": "ADR-0005 \u2014 each host part lands in its layer, before the tools described in text, and the stable prefix holds",
       "go": [
-        "text agent#11"
+        "text parts"
       ]
     },
     {
@@ -118,9 +125,9 @@
     },
     {
       "block": "engine %s \u00b7 strict alternation",
-      "check": "agent#11 \u2014 the recall rule finds the request text on every request, the state in the system tail ($api)",
+      "check": "ADR-0005 \u2014 each host part lands in its layer, the state in the system tail after them ($api)",
       "go": [
-        "strict agent#11"
+        "strict parts"
       ]
     },
     {
@@ -139,9 +146,9 @@
     },
     {
       "block": "engine %s \u00b7 thinking",
-      "check": "agent#11 \u2014 the recall rule finds the request text on every authoring request",
+      "check": "ADR-0005 \u2014 each host part lands in its layer on every authoring request",
       "go": [
-        "thinking agent#11"
+        "thinking parts"
       ]
     },
     {
@@ -486,9 +493,9 @@
         ]
       },
       {
-        "check": "3 \u00b7 the recall rule finds the person\u2019s message on every request",
+        "check": "3 \u00b7 memory is asked once, for the person\u2019s message, and every request carries it in the same place",
         "go": [
-          "3 recall"
+          "3 memory"
         ]
       },
       {
@@ -496,7 +503,7 @@
         "reason": "the agent engine's check (the codex engine's AgentRun seam): the Go adapter is a model adapter, and makes the model engine's check of the same scenario"
       },
       {
-        "check": "3 \u00b7 the person\u2019s message opens the run\u2019s one request (the agent wire has no later request to recall for)",
+        "check": "3 \u00b7 memory is asked once, for the person\u2019s message, and the run\u2019s one request carries it at the end of its instructions",
         "reason": "the agent engine's check (the codex engine's AgentRun seam): the Go adapter is a model adapter, and makes the model engine's check of the same scenario"
       }
     ]

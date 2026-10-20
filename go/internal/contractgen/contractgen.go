@@ -21,7 +21,7 @@
 //   - a type list of one type and "null" is Nullable[T]; a node with no type is json.RawMessage.
 //
 // Every schema root and every $defs entry is registered by the address a vector names it with
-// ("run-event.json", "budget.json#/$defs/recallQuery"), so a test can decode any vector.
+// ("run-event.json", "budget.json#/$defs/hostPart"), so a test can decode any vector.
 package contractgen
 
 import (

@@ -118,14 +118,16 @@ func (t *turnState) critic(ctx context.Context, proposal turn.Proposal) (*turn.C
 			offered[tool.Name] = true
 		}
 	}
-	system := turn.CriticSystem + runcontext.DataRule + r.run.LanguageInstructions
+	criticTools := ""
 	if !r.nativeTools {
 		described, err := r.described(offered)
 		if err != nil {
 			return nil, nil, err
 		}
-		system += "\n\n" + described
+		criticTools = "\n\n" + described
 	}
+	// The critic's system text carries the host's parts after its own guidance (ADR-0005).
+	system := r.sc.System(turn.CriticSystem+runcontext.DataRule+r.run.LanguageInstructions, criticTools)
 	criticText := ""
 	var unfinished error
 	t.streamed = nil

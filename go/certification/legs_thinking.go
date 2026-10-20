@@ -163,19 +163,19 @@ var ThinkingChecks = []Check{
 		}
 		return f.list, nil
 	}},
-	{Name: "thinking agent#11", Block: thinkingBlock, Legs: AllLegs, Run: func(ctx context.Context, server *Server, endpoint Endpoint, adapter Adapter) ([]Finding, error) {
-		r, err := thinkingLeg(ctx, server, endpoint, "on", "on", boolPtr(true), adapter, nil)
+	{Name: "thinking parts", Block: thinkingBlock, Legs: AllLegs, Run: func(ctx context.Context, server *Server, endpoint Endpoint, adapter Adapter) ([]Finding, error) {
+		r, err := thinkingLeg(ctx, server, endpoint, "on", "on", boolPtr(true), adapter, func(_ *Endpoint, options *LegOptions) { options.Host = &Supplied })
 		if err != nil {
 			return nil, err
 		}
-		f := &findings{check: "thinking agent#11"}
+		f := &findings{check: "thinking parts"}
 		if len(r.bodies) == authoringBodies(r.bodies) {
 			f.fail("no request of the critic among the bodies")
 		}
 		if authoringBodies(r.bodies) <= 7 {
 			f.fail("%d authoring bodies", authoringBodies(r.bodies))
 		}
-		for _, miss := range recallMisses(endpoint.API, r.bodies, r.scenario.Policy) {
+		for _, miss := range placementMisses(endpoint.API, r, Supplied, false) {
 			f.fail("%s", miss)
 		}
 		return f.list, nil
