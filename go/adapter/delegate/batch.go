@@ -175,14 +175,20 @@ type childRun struct {
 	err                              error
 }
 
-// childLink attaches a child's context to its grant, its tool budget and its meter.
+// childLink attaches a child's context to its grant, its tool budget and its meter, and hands its
+// boundary the parent's source gate (ADR-0006): the child's source calls count against the turn and
+// reach the parent's report, as its test calls do.
 type childLink struct {
-	limit  int
-	calls  func(*contract.DelegatedTask) int64
-	task   *contract.DelegatedTask
-	budget turn.TaskBudget
-	m      *meter
+	limit   int
+	calls   func(*contract.DelegatedTask) int64
+	task    *contract.DelegatedTask
+	budget  turn.TaskBudget
+	m       *meter
+	sources func() *runcontext.SourceGate
 }
+
+// ParentSources is the source gate of the run that delegated this one, or nil.
+func (l childLink) ParentSources() *runcontext.SourceGate { return l.sources() }
 
 func (l childLink) Attach(context *runcontext.SessionContext) {
 	context.Execution.LimitTo(l.limit)
@@ -243,7 +249,7 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 	} else {
 		tools = nil
 	}
-	input := &runcontext.Input{Objective: objective, Chat: c.chat.ChildScope(p.visible), Link: childLink{limit: limit, calls: c.toolCalls, task: task, budget: p.budget, m: m}}
+	input := &runcontext.Input{Objective: objective, Chat: c.chat.ChildScope(p.visible), Link: childLink{limit: limit, calls: c.toolCalls, task: task, budget: p.budget, m: m, sources: c.parentSources}}
 	if parent := c.run.Context; parent != nil {
 		input.Configuration, input.Phase, input.ArtifactProposals, input.Memory, input.Runtime, input.Authorize, input.Connection =
 			parent.Configuration, parent.Phase, parent.ArtifactProposals, parent.Memory, parent.Runtime, parent.Authorize, parent.Connection

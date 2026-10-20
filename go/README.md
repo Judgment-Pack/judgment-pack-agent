@@ -36,15 +36,18 @@ every request body is in the run's checkpoint (`prompts`).
 No reserve is taken out of a request's input allowance for the brief or the memory: `BriefBytes` and
 `MemoryBytes` are the parts' bounds, and a part is counted once, where it sits in the system text.
 `runcontext.ContextPolicy` takes no word on memory; `Input.Memory` only decides whether `MemoryFor`
-is asked. On the Anthropic wire the `eino` adapter marks three cache breakpoints: after the system
-head, after the tools and after the request text (the first text part of the first user turn).
+is asked. On the Anthropic wire the `eino` adapter marks cache breakpoints after the system head and
+after the tools and, under `trailing-user` placement only, after the request text (the first text part
+of the first user turn): three under `trailing-user`, two under `system-tail`, where the state sits
+before the messages and the bytes through the request text grow on every request.
 
 ## Tool sources
 
 A tool from a gateway connection, a public MCP server or the person is a `runcontext.HostTool` with
 `Source` (`runcontext.ToolSource`, with `CurrentDigest` for an MCP server's served list),
-`EffectClass`, `Approval` and `Approve`, the host's approval reader
-([ADR-0006](../docs/adr/0006-tool-sources.md)). `ContextualSession` names each for the wire,
+`EffectClass`, `Approval` and `Approve`, the host's approval reader, which is handed the call
+(`runcontext.ApprovalRequest`: the wire name, the tool's own name, the source record and a copy of the
+arguments) ([ADR-0006](../docs/adr/0006-tool-sources.md)). `ContextualSession` names each for the wire,
 frames its description, holds the schema budget with `load_tool`, and wraps each call in the source
 gate (`go/context/sources.go`); the boundary carries the source record on its events and the
 checkpoint's `sources` counts each source. The gate holds a host tool to its phase by the offered

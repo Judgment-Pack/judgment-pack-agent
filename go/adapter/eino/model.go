@@ -67,6 +67,7 @@ func (m *relayModel) Generate(ctx context.Context, input []*schema.Message, _ ..
 		ReasoningField:  r.reasoningField(),
 		WholeAnswer:     r.capabilities.StreamingQuirks.WholeJSONAnswer,
 		Images:          r.imageBounds(),
+		Placement:       r.placement,
 	})
 	response, err := r.call(ctx, encoded.Suffix, encoded.ModelRequest())
 	if err != nil {

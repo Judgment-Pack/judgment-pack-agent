@@ -135,7 +135,9 @@ files they were rendered from.
   (five host tools with a source as a host declares them, and six declarations the package refuses,
   each failing the schema), `tool-offer/source-offer.json` (the offer made of them, under their wire
   names, descriptions framed with a fixed marker, effect classes and approvals filled in),
-  `tool-offer/catalogue.json` (the same as catalogue entries) and `tool-offer/load-tool.json`;
+  `tool-offer/catalogue.json` (the same as catalogue entries), `tool-offer/source-schema.json` (a tool
+  whose input schema carries text its source wrote: the property descriptions framed, the title,
+  default and examples dropped, a long enum dropped) and `tool-offer/load-tool.json`;
   `tool-offer/source-names.json` (wire names, with the suffix where a character was replaced or the
   name was cut, a collision and the names a source may not bear) and `tool-offer/tool-list-digest.json`
   (two tool lists, their canonical JSON and the digest a host pins), each computed again by the
@@ -160,7 +162,8 @@ files they were rendered from.
   `read_window` cursor (`long-result.json`; the contract tests derive the head, cursor, length and
   ledger id from its fixture); the delegate call's result for a batch of two (`answer.json`); a
   delegating `vercel` turn as one run, the batch's records between the call and its result
-  (`one-run.json`); two children's briefs, one with references and one resumed (`brief.json`); and
+  (`one-run.json`) and the event an engine that cannot wait for the call sends instead, with the call's
+  id (`requested-run.json`); two children's briefs, one with references and one resumed (`brief.json`); and
   the text a codex parent's next run is given after a batch, the result as one data block
   (`continuation.json`; the contract tests hold its data to the answer's schema). `answer.json`'s
   second item is a batch with a report, a partial task and a reused one. One report per profile, in
@@ -169,7 +172,8 @@ files they were rendered from.
   prose streamed under its task (`child-progress.json`); what delegation cost in one execution,
   two batches and the parent's own figures (`figures.json`; the contract tests hold each total to its
   children's sums); task records with a report, `partial`, `reused`, `retried` and the figures
-  (`record.json`), a checkpoint saved during a batch with its `delegation` (`checkpoint.json`), and
+  (`record.json`), a checkpoint saved during a batch with its `delegation`, and a provider-managed run's with its
+  `handoff`, `prompts` and `sources` (`checkpoint.json`), and
   what a host passes to reuse nothing earlier (`host-request.json`); `delegationResults.test.ts`
   reads the first two with `validDelegatedTask` and `readExecution`. Written by hand from the schemas. This harness's (agent#13, agent#14, agent#15,
   agent#16, agent#17, agent#18).

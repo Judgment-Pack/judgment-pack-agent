@@ -235,7 +235,9 @@ class ResponseAllowance {
   /** The parent's checkpoint with the shared counts: its live state while its run is open, else the last it emitted. */
   checkpoint(last: ExecutionCheckpoint): ExecutionCheckpoint {
     if (this.parent && this.open) return this.parent.execution.snapshot('running')
-    return {...last, status: 'running', used: this.used, testCalls: Math.max(last.testCalls ?? 0, this.testCalls)}
+    // The children's source calls are in the parent's rows (ADR-0006), which `last`, a copy, may not hold yet.
+    const sources = this.parent?.execution.state.sources
+    return {...last, status: 'running', used: this.used, testCalls: Math.max(last.testCalls ?? 0, this.testCalls), ...(sources === undefined ? {} : {sources: structuredClone(sources)})}
   }
 }
 
@@ -410,12 +412,12 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
      * profile names; a call to any other is refused before it counts as a tool call (review row 7).
      */
     const bind = (base: EngineSession, task?: DelegatedTask, budget?: TaskBudget, offer?: ReadonlySet<string>, meter?: ChildMeter): EngineSession => {
-      const wrapTool = (tool: HostTool): HostTool => tool.interaction==='delegation'?tool:({...tool,execute:async(args,toolSignal)=>{
+      const wrapTool = (tool: HostTool): HostTool => tool.interaction==='delegation'?tool:({...tool,execute:async(args,toolSignal,callId)=>{
         toolSignal.throwIfAborted(); claimTool(task,budget)
         const step=task?{name:tool.name,state:'running' as const}:undefined
         if (task && step) {task.steps.push(step);await publish(task)}
         try {
-          const result=await withAbort(()=>tool.execute(args,toolSignal),toolSignal)
+          const result=await withAbort(()=>tool.execute(args,toolSignal,callId),toolSignal)
           if (task && step) {
             const held=result.structuredContent as {researchSuggestion?:boolean}|undefined
             Object.assign(step,{state:result.isError?'failed':'complete'})
@@ -561,7 +563,9 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
         if ('model' in session) context.execution.limitTo(requestLimit)
         context.execution.toolAllowance=()=>({used:task.toolCalls,limit:planned.budget.toolCalls,scope:'task'})
         meter.contexts.push(context)
-      }}
+      },
+      // ADR-0006: a child's source calls count against the turn and reach the parent's report, as its test calls do.
+      sources:()=>shared.context?.sources}
       const model = childModel(profile)
       childModels.set(task.id, model.name)
       const base = {...session,

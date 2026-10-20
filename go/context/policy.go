@@ -43,6 +43,8 @@ type Policy struct {
 	ToolDescriptionBytes   int `json:"toolDescriptionBytes"`
 	OfferedSchemas         int `json:"offeredSchemas"`
 	OfferedSchemaBytes     int `json:"offeredSchemaBytes"`
+	CataloguedTools        int `json:"cataloguedTools"`
+	CatalogueBytes         int `json:"catalogueBytes"`
 	SourceResultBytes      int `json:"sourceResultBytes"`
 	SourceCallsPerTurn     int `json:"sourceCallsPerTurn"`
 	SourceCallMilliseconds int `json:"sourceCallMilliseconds"`
@@ -78,11 +80,12 @@ var PromptDefaults = struct{ ProjectInstructionsBytes int }{4000}
 // SourceDefaults are the bounds on tools with a source (ADR-0006, SOURCE_DEFAULTS): the most bytes
 // of a description the model is shown; how many such tools, and how many bytes of their names,
 // descriptions and schemas, one run offers before sources become catalogues that load_tool loads
-// from; the largest result shown whole; and per source, the calls one turn may make and one call's
-// deadline. Not in the Desk's table; a table that carries them wins.
+// from; how many tools, and how many bytes, those catalogues hold before the rest are withheld; the
+// largest result shown whole; and per source, the calls one turn may make and one call's deadline.
+// Not in the Desk's table; a table that carries them wins.
 var SourceDefaults = struct {
-	ToolDescriptionBytes, OfferedSchemas, OfferedSchemaBytes, SourceResultBytes, SourceCallsPerTurn, SourceCallMilliseconds int
-}{1024, 16, 24_000, 8000, 8, 30_000}
+	ToolDescriptionBytes, OfferedSchemas, OfferedSchemaBytes, CataloguedTools, CatalogueBytes, SourceResultBytes, SourceCallsPerTurn, SourceCallMilliseconds int
+}{1024, 16, 24_000, 64, 24_000, 8000, 8, 30_000}
 
 // DeskPolicy is the Desk's table itself (contract/desk/policy.json, packages/harness/contract/policy.json).
 var DeskPolicy = Policy{
@@ -117,6 +120,8 @@ var Defaults = func() Policy {
 	p.ToolDescriptionBytes = SourceDefaults.ToolDescriptionBytes
 	p.OfferedSchemas = SourceDefaults.OfferedSchemas
 	p.OfferedSchemaBytes = SourceDefaults.OfferedSchemaBytes
+	p.CataloguedTools = SourceDefaults.CataloguedTools
+	p.CatalogueBytes = SourceDefaults.CatalogueBytes
 	p.SourceResultBytes = SourceDefaults.SourceResultBytes
 	p.SourceCallsPerTurn = SourceDefaults.SourceCallsPerTurn
 	p.SourceCallMilliseconds = SourceDefaults.SourceCallMilliseconds

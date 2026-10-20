@@ -19,7 +19,9 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BASE_AGENT_PROMPT } from 'deepagents/browser'
+import { HumanMessage } from '@langchain/core/messages'
 import { deepagents } from '.'
+import { encodeRequest } from './wire'
 import { loadEngine } from '../index'
 import { runOnModelEngine } from '../../testing/scenarioDriver'
 import { ofType, sseTurn, streamed, systemText, toolTexts, whole, wholeTurn, type EndpointRequest } from '../../testing/scripted'
@@ -29,6 +31,7 @@ import { REFORMAT_INSTRUCTIONS } from '../contract'
 import { configureHarness } from '../../host'
 import { normalize } from '../../thinking'
 import type { AssistantEvent, HostTool, ModelRequest } from '../../engine'
+import type { StatePlacement } from '../../host'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -379,5 +382,31 @@ describe('the browser entry', () => {
     const loop = sources[1]!
     expect(loop).not.toMatch(/\binterruptOn\s*:/)
     expect(loop).not.toMatch(/\bcheckpointer\s*:/)
+  })
+})
+
+describe('the request text’s cache breakpoint (agent#76)', () => {
+  /** An Anthropic request with a tool, the state in the system tail or trailing the history as the placement says. */
+  const encoded = (placement: StatePlacement) =>
+    JSON.parse(
+      encodeRequest({
+        family: 'anthropic', model: 'm', system: placement === 'system-tail' ? { head: 'SYSTEM', tail: 'STATE' } : { head: 'SYSTEM' },
+        messages: [new HumanMessage('Draft the pack.')], tools: [{ name: 'validate', description: 'Validate.', schema: { type: 'object' } }],
+        oneCallPerTurn: false, tier: null, maxOutputTokens: 1024, reasoningField: null, wholeAnswer: false, images: { count: 8, bytes: 1_000_000 }, placement
+      }).body
+    ) as { system: Record<string, unknown>[]; tools: Record<string, unknown>[]; messages: { content: Record<string, unknown>[] }[] }
+
+  it('is placed under trailing-user, the prefix through it being stable: three breakpoints', () => {
+    const body = encoded('trailing-user')
+    expect(body.messages[0]!.content[0]).toEqual({ type: 'text', text: 'Draft the pack.', cache_control: { type: 'ephemeral' } })
+    expect(JSON.stringify(body).split('"cache_control"').length - 1).toBe(3)
+  })
+
+  it('is not placed under system-tail, where the state sits before the messages and the prefix through it grows with every request: two breakpoints', () => {
+    const body = encoded('system-tail')
+    expect(body.messages[0]!.content[0]).toEqual({ type: 'text', text: 'Draft the pack.' })
+    expect(body.system[0]!.cache_control).toEqual({ type: 'ephemeral' })
+    expect(body.tools.at(-1)!.cache_control).toEqual({ type: 'ephemeral' })
+    expect(JSON.stringify(body).split('"cache_control"').length - 1).toBe(2)
   })
 })

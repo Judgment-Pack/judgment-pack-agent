@@ -9,8 +9,10 @@
  * says, one user message after the history (`trailing-user`) or the end of the
  * system text (`system-tail`). So each request repeats the one before it up to
  * the state, for each placement. The execution instructions are sent once.
- * Anthropic gets three breakpoints, after the system head, after the tools and after the request
- * text (the first text part of the first user turn), and no other wire gets any. The tier is held for the run. The provider's
+ * Anthropic gets breakpoints after the system head and after the tools and, under `trailing-user`
+ * only, after the request text (the first text part of the first user turn): three, or two under
+ * `system-tail`, where the state sits before the messages and the bytes through the request text
+ * grow on every request (agent#76); no other wire gets any. The tier is held for the run. The provider's
  * cache reads and writes are recorded with each completion.
  *
  * Measured on the recorded scenario, over the scripted model and the recorded
@@ -228,7 +230,7 @@ describe.each(APIS)('the %s wire', (api) => {
       }
     })
 
-    it(api === 'anthropic' ? 'marks three cache breakpoints, after the system head, after the tools and after the request text' : 'carries no cache breakpoint', async () => {
+    it(api === 'anthropic' ? (placement === 'trailing-user' ? 'marks three cache breakpoints, after the system head, after the tools and after the request text' : 'marks two cache breakpoints, after the system head and after the tools, and none on the request text, whose prefix grows with the state') : 'carries no cache breakpoint', async () => {
       const { bodies } = await scenarioRun(api, {}, { capabilities: { statePlacement: placement } })
       for (const body of bodies) {
         if (api !== 'anthropic') {
@@ -239,15 +241,18 @@ describe.each(APIS)('the %s wire', (api) => {
         const sent = JSON.parse(body) as { system: Json[]; tools: Json[]; messages: { role: string; content: Json[] }[] }
         expect(sent.system[0]!.cache_control).toEqual({ type: 'ephemeral' })
         expect(sent.tools.at(-1)!.cache_control).toEqual({ type: 'ephemeral' })
-        // The request text is the first text part of the first user turn, and it carries the third.
+        // The request text is the first text part of the first user turn: under trailing-user it carries
+        // the third breakpoint; under system-tail the state is a second system block before the messages,
+        // so the bytes through it grow on every request and it carries none.
         const opening = sent.messages[0]!
         expect(opening.role).toBe('user')
-        expect(opening.content[0]).toEqual({ type: 'text', text: scenario.policy, cache_control: { type: 'ephemeral' } })
-        expect(body.split('"cache_control"').length - 1).toBe(3)
+        if (placement === 'trailing-user') expect(opening.content[0]).toEqual({ type: 'text', text: scenario.policy, cache_control: { type: 'ephemeral' } })
+        else expect(opening.content[0]).toEqual({ type: 'text', text: scenario.policy })
+        expect(body.split('"cache_control"').length - 1).toBe(placement === 'trailing-user' ? 3 : 2)
       }
     })
 
-    if (api === 'anthropic') {
+    if (api === 'anthropic' && placement === 'trailing-user') {
       it('puts the request text inside the cached prefix and the state after it, and that is all that moves', async () => {
         const { bodies } = await scenarioRun(api, {}, { capabilities: { statePlacement: placement } })
         const first = JSON.parse(bodies[0]!) as { messages: { content: Json[] }[] }

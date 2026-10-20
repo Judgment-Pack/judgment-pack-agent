@@ -68,7 +68,7 @@ import {
 } from './scriptedModel'
 import { RECORDED_TOOLS, scriptedRuntime, type ServerObservation } from './scriptedServer'
 import { strictAlternation } from './strictAlternation'
-import { REFUTATION_MARKER } from '../refutation'
+import { CRITIC_SYSTEM, REFUTATION_MARKER } from '../refutation'
 import { DATA_RULE, OPENING } from '../framing'
 import { HOST_PARTS, hostSection, type HostParts } from '../prompt'
 import { EXECUTION_INSTRUCTIONS } from '../execution/controller'
@@ -89,7 +89,7 @@ import {
   schemaShown
 } from '../geminiSchema'
 import { servedSchemaFor } from '../engines/contract'
-import { ASSISTANT_TOOLS, configureHarness, type EndpointCapabilities, type EndpointKind, type ThinkingTier } from '../host'
+import { ASSISTANT_TOOLS, assistantLanguageInstructions, configureHarness, type EndpointCapabilities, type EndpointKind, type StatePlacement, type ThinkingTier } from '../host'
 import { TEST_CONFORMANCE_TOOL, gatedRuntime, runtimeAnswer } from '../testing/scripted'
 import runtime from './runtime.json'
 import type { CriticCase } from '../refutation'
@@ -865,12 +865,15 @@ function cacheMarks(value: unknown): number {
 }
 
 /**
- * The Anthropic cache breakpoints of one request (agent#69), three of the four the wire allows: on
- * the system head, on the last tool where the request offers any, and on the first text part of the
- * first user turn, which is the request text. So the system text, the tools and the request are in
- * the cached prefix; the state, a part after the request text or later, is not. One line per miss.
+ * The Anthropic cache breakpoints of one request (agent#69, #76): on the system head, on the last
+ * tool where the request offers any, and, under `trailing-user` placement only, on the first text
+ * part of the first user turn, which is the request text. So the system text, the tools and the
+ * request are in the cached prefix; the state, a part after the request text or later, is not. Under
+ * `system-tail` the state is a second system block before the messages, the bytes through the request
+ * text grow on every request, and the request text carries none: three breakpoints under
+ * `trailing-user`, two under `system-tail` (the tools counted). One line per miss.
  */
-function cacheMisses(raw: string, request: number): string[] {
+function cacheMisses(raw: string, request: number, placement: StatePlacement): string[] {
   const body = JSON.parse(raw) as { system?: unknown[]; tools?: unknown[]; messages?: { role?: string; content?: unknown }[] }
   const marked = (value: unknown) => JSON.stringify((value as { cache_control?: unknown } | undefined)?.cache_control) === '{"type":"ephemeral"}'
   const opening = body.messages?.[0]
@@ -878,15 +881,18 @@ function cacheMisses(raw: string, request: number): string[] {
   const misses: string[] = []
   if (!marked(body.system?.[0])) misses.push(`request ${request}: the system head carries no cache breakpoint`)
   if ((body.tools?.length ?? 0) > 0 && !marked(body.tools!.at(-1))) misses.push(`request ${request}: the last tool carries no cache breakpoint`)
-  if (!marked(text)) misses.push(`request ${request}: the first user turn's text part carries no cache breakpoint`)
+  if (placement === 'trailing-user' && !marked(text)) misses.push(`request ${request}: the first user turn's text part carries no cache breakpoint`)
+  if (placement === 'system-tail' && marked(text)) misses.push(`request ${request}: the first user turn's text part carries a cache breakpoint its prefix cannot read`)
   const count = cacheMarks(body)
-  const expected = 2 + ((body.tools?.length ?? 0) > 0 ? 1 : 0)
+  const expected = (placement === 'trailing-user' ? 2 : 1) + ((body.tools?.length ?? 0) > 0 ? 1 : 0)
   if (count !== expected) misses.push(`request ${request}: ${count} cache breakpoints, not ${expected}`)
   return misses
 }
 
 /**
- * ADR-0005 on every request a leg sent, the critic's second conversation aside: the package's
+ * ADR-0005 on every request a leg sent, the critic's second conversation aside unless `critic` is
+ * set, and then only it, with `CRITIC_SYSTEM` as the guidance (the critic's requests carry the run's
+ * host parts after the critic's guidance): the package's
  * guidance (its data rule) and then each host part in its layer's order in the system text, as its
  * header, its text and its end line; no part anywhere else in the request; the state, where it is
  * in the system text, after the last part; the system text through the last part the same bytes on
@@ -894,18 +900,22 @@ function cacheMisses(raw: string, request: number): string[] {
  * On the Anthropic wire also the cache breakpoints (`cacheMisses`): the request text is inside the
  * cached prefix. One line per miss; empty where all of it holds.
  */
-function placementMisses(api: EndpointKind, run: Pick<Run, 'bodies' | 'asked'>, parts: HostParts = SUPPLIED, textTools = false): string[] {
+function placementMisses(api: EndpointKind, run: Pick<Run, 'bodies' | 'asked'>, parts: HostParts = SUPPLIED, textTools = false, how: { critic?: boolean; placement?: StatePlacement } = {}): string[] {
   const misses: string[] = []
+  const critic = how.critic === true
+  const placement = how.placement ?? 'trailing-user'
+  // The guidance a request opens with: the author's ends with the execution instructions, the critic's with its data rule and the reply language.
+  const guidance = critic ? CRITIC_SYSTEM + DATA_RULE + assistantLanguageInstructions() : EXECUTION_INSTRUCTIONS
   const placed = HOST_PARTS.flatMap((part) => {
     const text = part.name === 'memory' && parts.memory !== undefined ? `${parts.memory} (recall 1)` : parts[part.name]
     return text === undefined ? [] : [{ ...part, text }]
   })
-  if (parts.memory !== undefined && JSON.stringify(run.asked) !== JSON.stringify([scenario.policy])) misses.push(`memoryFor was asked ${JSON.stringify(run.asked)}, not once with the request`)
+  if (!critic && parts.memory !== undefined && JSON.stringify(run.asked) !== JSON.stringify([scenario.policy])) misses.push(`memoryFor was asked ${JSON.stringify(run.asked)}, not once with the request`)
   const prefixes = new Set<string>()
-  const authoring = run.bodies.filter((body) => !body.includes(REFUTATION_MARKER))
+  const authoring = run.bodies.filter((body) => body.includes(REFUTATION_MARKER) === critic)
   if (authoring.length === 0) misses.push('no request')
   authoring.forEach((raw, at) => {
-    if (api === 'anthropic') misses.push(...cacheMisses(raw, at + 1))
+    if (api === 'anthropic') misses.push(...cacheMisses(raw, at + 1, placement))
     const { system, rest } = split(api, raw)
     // Each part's block by its header and the end line after it; the text between them is the part's.
     const blocks = placed.map((part) => {
@@ -922,10 +932,10 @@ function placementMisses(api: EndpointKind, run: Pick<Run, 'bodies' | 'asked'>, 
     // The rank: the system text is exactly the package's guidance, anchored on its last line (the
     // execution instructions), then the host's section and nothing between, then the tools described
     // in text or the state or nothing.
-    const guidanceEnd = system.indexOf(EXECUTION_INSTRUCTIONS) + EXECUTION_INSTRUCTIONS.length
+    const guidanceEnd = system.indexOf(guidance) + guidance.length
     const section = hostSection(Object.fromEntries(placed.map((part) => [part.name, part.text])))
     const after = system.slice(guidanceEnd + section.length)
-    if (guidanceEnd < EXECUTION_INSTRUCTIONS.length || system.indexOf(DATA_RULE) > guidanceEnd || system.slice(guidanceEnd, guidanceEnd + section.length) !== section ||
+    if (guidanceEnd < guidance.length || system.indexOf(DATA_RULE) > guidanceEnd || system.slice(guidanceEnd, guidanceEnd + section.length) !== section ||
       !(after === '' || after.startsWith(`\n\n${TEXT_TOOLS}`) || after.startsWith(`\n${STATE_HEADER}`))) {
       misses.push(`request ${at + 1}: the system text is not the package's guidance, then the host's parts, then the tools or the state`)
     }
@@ -1223,6 +1233,14 @@ describe.each(MODEL_ENGINES)('engine %s', (engineId) => {
       const ran = await runLeg(fromRegistry(engineId), leg, { host: SUPPLIED })
       expect(ran.events.filter((event) => event.type === 'error')).toEqual([])
       expect(ran.bodies.length).toBeGreaterThan(7)
+      expect(placementMisses(leg.api, ran)).toEqual([])
+    })
+
+    it('ADR-0005 — the critic’s requests carry the run’s host parts after the critic’s guidance, in the same layers and the same prefix', async () => {
+      const ran = await runLeg(fromRegistry(engineId), leg, { review: true, host: SUPPLIED })
+      expect(ran.events.filter((event) => event.type === 'error')).toEqual([])
+      expect(ran.bodies.filter((body) => body.includes(REFUTATION_MARKER)).length).toBeGreaterThan(0)
+      expect(placementMisses(leg.api, ran, SUPPLIED, false, { critic: true })).toEqual([])
       expect(placementMisses(leg.api, ran)).toEqual([])
     })
 
@@ -1599,7 +1617,7 @@ describe.each(MODEL_ENGINES)('engine %s · strict alternation', (engineId) => {
   it.each(legs)('ADR-0005 — each host part lands in its layer, the state in the system tail after them ($api)', async (leg) => {
     const ran = await runLeg(fromRegistry(engineId), leg, { strict: true, capabilities: { strictAlternation: true }, host: SUPPLIED })
     expect(ran.bodies.length).toBeGreaterThan(7)
-    expect(placementMisses(leg.api, ran)).toEqual([])
+    expect(placementMisses(leg.api, ran, SUPPLIED, false, { placement: 'system-tail' })).toEqual([])
   })
 
   it.each(legs)('is refused there with the state trailing, so the leg is not vacuous ($api)', async (leg) => {
@@ -1644,7 +1662,11 @@ describe.each(MODEL_ENGINES)('engine %s · thinking', (engineId) => {
       // The critic's requests are a second conversation, with a system text of their own: left aside.
       expect(ran.bodies.some((body) => body.includes(REFUTATION_MARKER))).toBe(true)
       expect(ran.bodies.filter((body) => !body.includes(REFUTATION_MARKER)).length).toBeGreaterThan(7)
-      expect(placementMisses(leg.api, ran)).toEqual([])
+      // A thinking tier on the Anthropic wire puts the state at the system's tail, where the request text is no breakpoint.
+      const placement = leg.api === 'anthropic' ? 'system-tail' : 'trailing-user'
+      expect(placementMisses(leg.api, ran, SUPPLIED, false, { placement })).toEqual([])
+      // And the critic's requests carry the same parts after the critic's guidance, the state in the same place.
+      expect(placementMisses(leg.api, ran, SUPPLIED, false, { critic: true, placement })).toEqual([])
     })
 
     it('ultra sends the deeper member, and the same on every request', async () => {

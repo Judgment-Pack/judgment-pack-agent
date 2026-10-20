@@ -16,10 +16,10 @@ func withDelegation(inner adapter.Adapter) adapter.Adapter {
 }
 
 // The agent capability's checks on the package's stand-in, the fake exclusive account: every group
-// but scenario 3, which reads the shared server's recorded runtime and runs in go/certification.
+// but scenarios 3 and 7, which read the shared server's recorded runtime and run in go/certification.
 func TestTheAgentChecksHoldOnTheStandIn(t *testing.T) {
 	for _, check := range certification.AgentChecks {
-		if check.Group == "scenario 3" {
+		if check.Group == "scenario 3" || check.Group == "scenario 7" {
 			continue
 		}
 		t.Run(check.Group, func(t *testing.T) {

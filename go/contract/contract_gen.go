@@ -276,7 +276,8 @@ func (v ApprovalRequest) MarshalJSON() ([]byte, error) {
 // states the critic's default, adversarialReview (agent#10), which the harness adds to the Desk's
 // table: both engines read it where a session leaves adversarialReview unset. And the bounds on
 // tools with a source (SOURCE_DEFAULTS, ADR-0006), likewise: toolDescriptionBytes, offeredSchemas,
-// offeredSchemaBytes, sourceResultBytes, sourceCallsPerTurn and sourceCallMilliseconds.
+// offeredSchemaBytes, cataloguedTools, catalogueBytes, sourceResultBytes, sourceCallsPerTurn and
+// sourceCallMilliseconds.
 type Budget struct {
 	Version                  int64  `json:"version"`
 	MaxInputBytes            int64  `json:"maxInputBytes"`
@@ -303,6 +304,8 @@ type Budget struct {
 	ToolDescriptionBytes     *int64 `json:"toolDescriptionBytes,omitzero"`
 	OfferedSchemas           *int64 `json:"offeredSchemas,omitzero"`
 	OfferedSchemaBytes       *int64 `json:"offeredSchemaBytes,omitzero"`
+	CataloguedTools          *int64 `json:"cataloguedTools,omitzero"`
+	CatalogueBytes           *int64 `json:"catalogueBytes,omitzero"`
 	SourceResultBytes        *int64 `json:"sourceResultBytes,omitzero"`
 	SourceCallsPerTurn       *int64 `json:"sourceCallsPerTurn,omitzero"`
 	SourceCallMilliseconds   *int64 `json:"sourceCallMilliseconds,omitzero"`
@@ -310,7 +313,7 @@ type Budget struct {
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var budgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "adversarialReview", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds"}
+var budgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "adversarialReview", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds"}
 
 // UnmarshalJSON decodes a Budget object and keeps the members the schema does not name.
 func (v *Budget) UnmarshalJSON(data []byte) error {

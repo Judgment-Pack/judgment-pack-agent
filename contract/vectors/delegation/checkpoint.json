@@ -1,5 +1,5 @@
 {
-  "description": "A parent's checkpoint saved during its second delegation batch (agent#18, review row 3): its delegation member carries the finished first batch and the running second, each child in its state, and the parent's own figures (its requests counted where it made them: 3 of the execution's 6, the children's 3 in their figures). The other members are a minimal execution's. Written by hand from the schema.",
+  "description": "A parent's checkpoint saved during its second delegation batch (agent#18, review row 3): its delegation member carries the finished first batch and the running second, each child in its state, and the parent's own figures (its requests counted where it made them: 3 of the execution's 6, the children's 3 in their figures). The other members are a minimal execution's. Written by hand from the schema. The second item is a provider-managed run's checkpoint written during a delegation batch on an agent capability (ADR-0007): the other members are a minimal execution's, its handoff is the second item of handoff.json (the first child finished, the second dispatched), its prompts are the three digests of prompt-digest.json (ADR-0005) its sources are the rows of source-report.json (ADR-0006), and its testCalls is the turn's count of the Runtime's test tool (go/context holds the reader of all three members). Written by hand from the schema.",
   "schema": "checkpoint.json",
   "source": {
     "harness": {
@@ -102,6 +102,143 @@
           }
         }
       }
+    },
+    {
+      "version": 1,
+      "id": "5b6c7d8e-9f01-4a2b-8c3d-4e5f6a7b8c9d",
+      "requestKey": "b3a29c1d0e8f7a6b5c4d3e2f10918273645566778899aabbccddeeff00112233",
+      "phase": "work",
+      "status": "running",
+      "unit": "provider-managed",
+      "used": 1,
+      "limit": 1,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [],
+      "completions": [],
+      "context": {
+        "scope": "chat-2",
+        "entries": []
+      },
+      "testCalls": 1,
+      "handoff": {
+        "callId": "call-7f3a",
+        "batch": 1,
+        "state": "children",
+        "request": {
+          "tasks": [
+            {
+              "title": "Receipts",
+              "objective": "Check the receipts against the claims.",
+              "profile": "analyze"
+            },
+            {
+              "title": "Totals",
+              "objective": "Check the totals.",
+              "profile": "analyze"
+            }
+          ]
+        },
+        "tasks": [
+          {
+            "id": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9",
+            "parentRunId": "0b6f3c1e-7d2a-4c8e-9f10-2a3b4c5d6e7f",
+            "title": "Receipts",
+            "objective": "Check the receipts against the claims.",
+            "profile": "analyze",
+            "state": "complete",
+            "createdAt": "2026-10-19T09:00:00.000Z",
+            "finishedAt": "2026-10-19T09:00:04.200Z",
+            "modelRequests": 0,
+            "toolCalls": 0,
+            "attempts": 1,
+            "steps": [],
+            "budget": {
+              "modelRequests": 6,
+              "toolCalls": 6,
+              "milliseconds": 120000
+            },
+            "model": "agent-small",
+            "result": "Every receipt matches its claim.",
+            "report": {
+              "summary": "Every receipt matches its claim.",
+              "findings": [
+                {
+                  "text": "Each of the three receipts matches the amount claimed."
+                }
+              ],
+              "citations": [],
+              "openQuestions": [],
+              "confidence": "high",
+              "notDone": []
+            },
+            "durationMs": 4100
+          },
+          {
+            "id": "4d5e6f7a-8b9c-4d0e-8f1a-2b3c4d5e6f7a",
+            "parentRunId": "0b6f3c1e-7d2a-4c8e-9f10-2a3b4c5d6e7f",
+            "title": "Totals",
+            "objective": "Check the totals.",
+            "profile": "analyze",
+            "state": "running",
+            "createdAt": "2026-10-19T09:00:00.000Z",
+            "modelRequests": 0,
+            "toolCalls": 0,
+            "attempts": 1,
+            "steps": [],
+            "budget": {
+              "modelRequests": 6,
+              "toolCalls": 6,
+              "milliseconds": 120000
+            },
+            "model": "agent-small"
+          }
+        ]
+      },
+      "prompts": [
+        {
+          "request": 1,
+          "sha256": "399e5cc8a4716956f4b2fcfbda585bdfc358482549a20a8caad3f717b1cb81b5"
+        },
+        {
+          "request": 2,
+          "sha256": "240d73199366d21388aa1c482952e3fa269df0fa6ea7d9431cad7d086e19bfd6"
+        },
+        {
+          "request": 3,
+          "sha256": "c45cd2af8609cf1ba9d53f84142783943efaccb11c1398e00e7f5e74a9979440"
+        }
+      ],
+      "sources": [
+        {
+          "source": "runtime",
+          "kind": "runtime",
+          "calls": 0,
+          "refused": 1,
+          "proposed": 0,
+          "bytes": 0,
+          "milliseconds": 0
+        },
+        {
+          "source": "tracker",
+          "kind": "mcp",
+          "calls": 1,
+          "refused": 1,
+          "proposed": 0,
+          "bytes": 72,
+          "milliseconds": 4
+        },
+        {
+          "source": "rates",
+          "kind": "custom",
+          "calls": 1,
+          "refused": 0,
+          "proposed": 0,
+          "bytes": 69,
+          "milliseconds": 1
+        }
+      ]
     }
   ]
 }

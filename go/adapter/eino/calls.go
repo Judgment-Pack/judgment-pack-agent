@@ -226,7 +226,8 @@ func (t *turnState) runHost(ctx context.Context, tool runcontext.HostTool, args 
 	if tool.Interaction != "question" {
 		t.r.deliver(t.callEvent(callID, tool.Name, args, ""))
 	}
-	answer, err := t.hostAnswer(ctx, tool, args)
+	// The call's id goes to the host tool in its context, as the TypeScript engines hand it to execute.
+	answer, err := t.hostAnswer(runcontext.WithCallID(ctx, callID), tool, args)
 	if err != nil {
 		if err == errWaiting {
 			return ran{}, err

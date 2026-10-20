@@ -432,6 +432,19 @@ func TestNoReserveIsTakenForTheBriefOrTheMemory(t *testing.T) {
 			if err := c.Check(instructions, strings.Repeat("p", full+1), noTools()); err == nil {
 				t.Errorf("%s: one byte past the allowance was admitted", kind)
 			}
+			// What it gains: the allowance used to take the brief's 8,000 bytes and, unless the host
+			// said memory is off, the memory's 4,000 out of it.
+			reserved, gain := 8000+4000, 12000
+			if said == &off {
+				reserved, gain = 8000, 8000
+			}
+			before := InputBytes(Defaults) - UTF8Bytes(instructions) - UTF8Bytes("[]") - reserved - 1536
+			if full-before != gain {
+				t.Errorf("%s: the allowance gained %d bytes, not %d", kind, full-before, gain)
+			}
+			if err := c.Check(instructions, strings.Repeat("p", before+1), noTools()); err != nil {
+				t.Errorf("%s: a prompt the old allowance refused was refused: %v", kind, err)
+			}
 			c.Close()
 		}
 	}

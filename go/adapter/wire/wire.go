@@ -36,7 +36,7 @@ const ImagesHeader = "IMAGES from"
 const UnparsedArguments = "__judgmentPackUnparsedArguments"
 
 // cacheBreakpoint is Anthropic's prompt-cache breakpoint, placed after the system head and after
-// the tools (CACHE_BREAKPOINT).
+// the tools and, under trailing-user placement only, after the request text (CACHE_BREAKPOINT).
 func cacheBreakpoint() *Value { return Obj(F("type", Str("ephemeral"))) }
 
 // ModelRequest is one model request as an adapter hands it to the host: the protocol's headers and
@@ -222,6 +222,9 @@ type Request struct {
 	WholeAnswer bool
 	// Images is the bound on the images one request carries.
 	Images ImageBounds
+	// Placement is where the run's state sits (decided once per run): the Anthropic request's third
+	// cache breakpoint, on the request text, is placed under trailing-user only.
+	Placement StatePlacement
 }
 
 // Encoded is the suffix, body and protocol headers one request is sent with (Encoded).

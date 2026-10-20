@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/turn"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/wire"
 	runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
 )
 
@@ -111,12 +112,15 @@ func cacheMarks(value any) int {
 	return count
 }
 
-// cacheMisses are the Anthropic cache breakpoints of one request (agent#69), three of the four the
-// wire allows: on the system head, on the last tool where the request offers any, and on the first
-// text part of the first user turn, which is the request text. So the system text, the tools and
-// the request are in the cached prefix; the state, a part after the request text or later, is not.
-// One line per miss (cacheMisses in conformance.test.ts).
-func cacheMisses(raw []byte, request int) []string {
+// cacheMisses are the Anthropic cache breakpoints of one request (agent#69, #76): on the system
+// head, on the last tool where the request offers any, and, under trailing-user placement only, on
+// the first text part of the first user turn, which is the request text. So the system text, the
+// tools and the request are in the cached prefix; the state, a part after the request text or
+// later, is not. Under system-tail the state is a second system block before the messages, the
+// bytes through the request text grow on every request, and the request text carries none: three
+// breakpoints under trailing-user, two under system-tail (the tools counted). One line per miss
+// (cacheMisses in conformance.test.ts).
+func cacheMisses(raw []byte, request int, placement wire.StatePlacement) []string {
 	var body struct {
 		System   []map[string]any `json:"system"`
 		Tools    []map[string]any `json:"tools"`
@@ -148,14 +152,20 @@ func cacheMisses(raw []byte, request int) []string {
 			}
 		}
 	}
-	if !opening {
+	if placement == wire.TrailingUser && !opening {
 		misses = append(misses, fmt.Sprintf("request %d: the first user turn's text part carries no cache breakpoint", request))
+	}
+	if placement == wire.SystemTail && opening {
+		misses = append(misses, fmt.Sprintf("request %d: the first user turn's text part carries a cache breakpoint its prefix cannot read", request))
 	}
 	var whole any
 	_ = json.Unmarshal(raw, &whole)
-	expected := 2
+	expected := 1
+	if placement == wire.TrailingUser {
+		expected = 2
+	}
 	if len(body.Tools) > 0 {
-		expected = 3
+		expected++
 	}
 	if count := cacheMarks(whole); count != expected {
 		misses = append(misses, fmt.Sprintf("request %d: %d cache breakpoints, not %d", request, count, expected))
@@ -163,18 +173,41 @@ func cacheMisses(raw []byte, request int) []string {
 	return misses
 }
 
-// placementMisses is ADR-0005 on every request a leg sent, the critic's second conversation aside:
-// the package's guidance (its data rule) and then each host part in its layer's order in the system
-// text, as its header, its text and its end line; no part anywhere else in the request; the state,
-// where it is in the system text, after the last part; on the text path, the tools described in
-// text after the last part; the system text through the last part the same bytes on every request
-// (the stable prefix); and memory asked once, with the request the run started from. One line per
-// miss; empty where all of it holds. On the Anthropic wire also the cache breakpoints
-// (cacheMisses): the request text is inside the cached prefix.
-func placementMisses(api string, r *LegResult, parts runcontext.HostParts, textTools bool) []string {
+// placementHow says which conversation placementMisses reads and where the run's state sits: the
+// zero value is the author's, with the state trailing the history (trailing-user).
+type placementHow struct {
+	// critic reads the critic's requests, and only them, with turn.CriticSystem as the guidance
+	// (the critic's requests carry the run's host parts after the critic's guidance).
+	critic bool
+	// placement is where the run's state sits; "" is trailing-user.
+	placement wire.StatePlacement
+}
+
+// placementMisses is ADR-0005 on every request a leg sent, the critic's second conversation aside
+// unless how.critic is set, and then only it: the package's guidance (its data rule) and then each
+// host part in its layer's order in the system text, as its header, its text and its end line; no
+// part anywhere else in the request; the state, where it is in the system text, after the last
+// part; on the text path, the tools described in text after the last part; the system text through
+// the last part the same bytes on every request (the stable prefix); and memory asked once, with
+// the request the run started from. One line per miss; empty where all of it holds. On the
+// Anthropic wire also the cache breakpoints (cacheMisses): the request text is inside the cached
+// prefix under trailing-user placement, and carries none under system-tail.
+func placementMisses(api string, r *LegResult, parts runcontext.HostParts, textTools bool, how placementHow) []string {
 	var misses []string
+	placement := how.placement
+	if placement == "" {
+		placement = wire.TrailingUser
+	}
+	// The guidance a request opens with: the author's ends with the execution instructions, the
+	// critic's with its data rule (the certification's hosts give no language instructions).
+	guidance := runcontext.ExecutionInstructions
+	if how.critic {
+		guidance = turn.CriticSystem + runcontext.DataRule
+	}
 	if parts.Memory != "" {
 		parts.Memory += " (recall 1)"
+	}
+	if !how.critic && parts.Memory != "" {
 		if !slices.Equal(r.asked, []string{r.scenario.Policy}) {
 			misses = append(misses, fmt.Sprintf("memoryFor was asked %q, not once with the request", r.asked))
 		}
@@ -198,12 +231,12 @@ func placementMisses(api string, r *LegResult, parts runcontext.HostParts, textT
 	prefixes := map[string]bool{}
 	at := 0
 	for _, raw := range r.bodies {
-		if strings.Contains(string(raw), RefutationMarker) {
+		if strings.Contains(string(raw), RefutationMarker) != how.critic {
 			continue
 		}
 		at++
 		if api == "anthropic" {
-			misses = append(misses, cacheMisses(raw, at)...)
+			misses = append(misses, cacheMisses(raw, at, placement)...)
 		}
 		system, rest := systemSplit(api, raw)
 		// Each part's block by its header and the end line after it; the text between them is the part's.
@@ -240,8 +273,8 @@ func placementMisses(api string, r *LegResult, parts runcontext.HostParts, textT
 		// execution instructions), then the host's section and nothing between, then the tools described
 		// in text or the state or nothing.
 		section := runcontext.HostSection(placedParts(supplied))
-		guidanceEnd := strings.Index(system, runcontext.ExecutionInstructions) + len(runcontext.ExecutionInstructions)
-		exact := guidanceEnd >= len(runcontext.ExecutionInstructions) && places[0] < guidanceEnd &&
+		guidanceEnd := strings.Index(system, guidance) + len(guidance)
+		exact := guidanceEnd >= len(guidance) && places[0] < guidanceEnd &&
 			strings.HasPrefix(system[guidanceEnd:], section)
 		if exact {
 			after := system[guidanceEnd+len(section):]
@@ -309,7 +342,29 @@ var PromptChecks = []Check{
 		if len(r.bodies) <= 7 {
 			f.fail("%d bodies", len(r.bodies))
 		}
-		for _, miss := range placementMisses(endpoint.API, r, Supplied, false) {
+		for _, miss := range placementMisses(endpoint.API, r, Supplied, false, placementHow{}) {
+			f.fail("%s", miss)
+		}
+		return f.list, nil
+	}},
+	{Name: "critic parts", Block: "engine %s", Legs: AllLegs, Run: func(ctx context.Context, server *Server, endpoint Endpoint, adapter Adapter) ([]Finding, error) {
+		r, err := run(ctx, server, endpoint, LegOptions{Host: &Supplied, Review: boolPtr(true)}, adapter)
+		if err != nil {
+			return nil, err
+		}
+		f := &findings{check: "critic parts"}
+		if errs := errorsOf(r.Events); len(errs) > 0 {
+			f.fail("error events: %v", errs[0].Message)
+		}
+		if len(r.bodies) == authoringBodies(r.bodies) {
+			f.fail("no request of the critic among the bodies")
+		}
+		// The critic's requests carry the run's host parts after the critic's guidance, in the same
+		// layers and the same prefix as the author's.
+		for _, miss := range placementMisses(endpoint.API, r, Supplied, false, placementHow{critic: true}) {
+			f.fail("%s", miss)
+		}
+		for _, miss := range placementMisses(endpoint.API, r, Supplied, false, placementHow{}) {
 			f.fail("%s", miss)
 		}
 		return f.list, nil
@@ -322,7 +377,7 @@ var PromptChecks = []Check{
 		}
 		f := &findings{check: "project"}
 		// The block is where instructions at the lowest rank go, after the package's guidance.
-		for _, miss := range placementMisses(endpoint.API, r, parts, false) {
+		for _, miss := range placementMisses(endpoint.API, r, parts, false, placementHow{}) {
 			f.fail("%s", miss)
 		}
 		// The offer is the host tools and the five; write_file is refused at the gate with its

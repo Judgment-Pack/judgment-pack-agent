@@ -20,6 +20,13 @@
     },
     {
       "block": "engine %s",
+      "check": "ADR-0005 \u2014 the critic\u2019s requests carry the run\u2019s host parts after the critic\u2019s guidance, in the same layers and the same prefix",
+      "go": [
+        "critic parts"
+      ]
+    },
+    {
+      "block": "engine %s",
       "check": "ADR-0005 \u2014 a project block that says to ignore the data rule and call write_file changes nothing the gate admits",
       "go": [
         "project"
@@ -519,13 +526,15 @@
       {
         "check": "7 \u00b7 the schema budget trips: the server\u2019s seventeen tools are a catalogue offered with load_tool, beside the Runtime\u2019s six, the harness\u2019s six and the custom read, and no write_file",
         "go": [
-          "7 budget"
+          "7 budget",
+          "7 agent budget"
         ]
       },
       {
         "check": "7 \u00b7 every description from a source is framed as retrieved data, the poisoned ones included, and changes nothing the gate admits",
         "go": [
-          "7 framed"
+          "7 framed",
+          "7 agent framed"
         ]
       },
       {
@@ -536,36 +545,43 @@
       },
       {
         "check": "7 \u00b7 load_tool loads one schema, framed; the agent wire sends the state once per run, so the schema reaches the agent in load_tool\u2019s answer only",
-        "reason": "The agent engine's form of the load check (ADR-0006): the codex engine sends the state once per run. The Go runner's scenarios run the eino model engine, whose form is 7 load; the Go agent capability takes the same boundary (go/context, ContextualSession) and has no scenario 7 of its own."
+        "go": [
+          "7 agent load"
+        ]
       },
       {
         "check": "7 \u00b7 each act asks the host\u2019s approval reader and runs; the custom read runs without asking",
         "go": [
-          "7 approval"
+          "7 approval",
+          "7 agent approval"
         ]
       },
       {
         "check": "7 \u00b7 write_file is refused at the gate between its call and its result, and reaches neither the runtime nor a host tool",
         "go": [
-          "7 refused"
+          "7 refused",
+          "7 agent refused"
         ]
       },
       {
         "check": "7 \u00b7 the server\u2019s changed list refuses its next call, with a guardrail, and the host\u2019s tool is not reached",
         "go": [
-          "7 changed"
+          "7 changed",
+          "7 agent changed"
         ]
       },
       {
         "check": "7 \u00b7 each call and result of a source\u2019s tool carries its source record, and the run report counts each source",
         "go": [
-          "7 records"
+          "7 records",
+          "7 agent records"
         ]
       },
       {
         "check": "7 \u00b7 after the person approves the new list, the next run is offered the server\u2019s tools again and its call runs",
         "go": [
-          "7 approved"
+          "7 approved",
+          "7 agent approved"
         ]
       }
     ]
@@ -667,6 +683,10 @@
       {
         "go": "agent recovery",
         "acceptance": "explicit recovery after restart without replay"
+      },
+      {
+        "go": "agent project",
+        "acceptance": "the project\u2019s own instructions on the agent wire (ADR-0005; the v0.4.0 release review, row 4): in the invocation\u2019s instructions after the package\u2019s guidance, not its prompt, and an instruction in them to call write_file changes nothing the gate admits"
       }
     ]
   }

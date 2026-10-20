@@ -170,6 +170,17 @@ func (l parentLink) Attach(context *runcontext.SessionContext) {
 	}
 }
 
+// parentSources is the source gate of the parent run's context, once it is attached; nil before, or
+// where the parent declares no tool with a source.
+func (c *coordinator) parentSources() *runcontext.SourceGate {
+	c.shared.mu.Lock()
+	defer c.shared.mu.Unlock()
+	if c.shared.parent == nil {
+		return nil
+	}
+	return c.shared.parent.Sources
+}
+
 // coordinator is one response's delegation.
 type coordinator struct {
 	inner       adapter.Adapter

@@ -367,6 +367,11 @@ func (r *runState) refuseUnoffered(ctx context.Context, call adapter.AgentToolCa
 		name = held.name
 	}
 	r.deliver(callEvent(call.ID, name, args, ""))
+	// ADR-0006: the Runtime's row of the run report counts the refusal, as the TypeScript boundary's
+	// wrapped callTool and the eino adapter's own refusal do.
+	if r.sc.Sources != nil {
+		r.sc.Sources.RuntimeRefused()
+	}
 	var text string
 	if known || r.served[name] {
 		text = gate.UnofferedRefusal(gate.ServedNotOffered(name))
@@ -449,7 +454,8 @@ func (r *runState) answer(ctx context.Context, call adapter.AgentToolCall, held 
 			return runcontext.ToolResult{}, false, err
 		}
 	}
-	result, err := turn.WithDeadline(ctx, limit, late, func(ctx context.Context) (runcontext.ToolResult, error) {
+	// The call's id goes to the host tool in its context, as the TypeScript engines hand it to execute.
+	result, err := turn.WithDeadline(runcontext.WithCallID(ctx, call.ID), limit, late, func(ctx context.Context) (runcontext.ToolResult, error) {
 		return host.Execute(ctx, args)
 	})
 	return result, err == nil, err

@@ -175,7 +175,17 @@ var ThinkingChecks = []Check{
 		if authoringBodies(r.bodies) <= 7 {
 			f.fail("%d authoring bodies", authoringBodies(r.bodies))
 		}
-		for _, miss := range placementMisses(endpoint.API, r, Supplied, false) {
+		// A thinking tier on the Anthropic wire puts the state at the system's tail, where the request
+		// text is no breakpoint; and the critic's requests carry the same parts after the critic's
+		// guidance, the state in the same place.
+		placement := wire.TrailingUser
+		if endpoint.API == "anthropic" {
+			placement = wire.SystemTail
+		}
+		for _, miss := range placementMisses(endpoint.API, r, Supplied, false, placementHow{placement: placement}) {
+			f.fail("%s", miss)
+		}
+		for _, miss := range placementMisses(endpoint.API, r, Supplied, false, placementHow{critic: true, placement: placement}) {
 			f.fail("%s", miss)
 		}
 		return f.list, nil

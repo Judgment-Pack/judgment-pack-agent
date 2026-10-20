@@ -66,6 +66,7 @@ func oneRequest(family EndpointKind, tier *Value) Request {
 		Tier:            tier,
 		MaxOutputTokens: 4096,
 		Images:          ImageBounds{Count: 8, Bytes: 16 << 20},
+		Placement:       SystemTail,
 	}
 }
 
@@ -94,7 +95,8 @@ func TestEncodeOnTheOpenAICompatibleWire(t *testing.T) {
 	contains(t, "a whole answer", body, `"stream":false`)
 }
 
-// TestEncodeOnTheAnthropicWire is the request that wire carries, with its cache breakpoints.
+// TestEncodeOnTheAnthropicWire is the request that wire carries, with its cache breakpoints: under
+// system-tail the system head and the last tool, and none on the request text.
 func TestEncodeOnTheAnthropicWire(t *testing.T) {
 	tier := WireFor(TierOn, DialectAnthropicAdaptive).Members
 	encoded := EncodeRequest(oneRequest(Anthropic, tier))
@@ -102,7 +104,7 @@ func TestEncodeOnTheAnthropicWire(t *testing.T) {
 	equalText(t, "the protocol header", encoded.Headers["anthropic-version"], "2023-06-01")
 	equalText(t, "the body", string(encoded.Body), `{"model":"scripted-model","max_tokens":4096,"thinking":{"type":"adaptive"},"output_config":{"effort":"high"},`+
 		`"system":[{"type":"text","text":"SYSTEM","cache_control":{"type":"ephemeral"}},{"type":"text","text":"STATE"}],`+
-		`"messages":[{"role":"user","content":[{"type":"text","text":"Draft the pack.","cache_control":{"type":"ephemeral"}}]},`+
+		`"messages":[{"role":"user","content":[{"type":"text","text":"Draft the pack."}]},`+
 		`{"role":"assistant","content":[{"type":"text","text":"Checking."},{"type":"tool_use","id":"call_1","name":"validate","input":{"document":{"id":"p"}}}]},`+
 		`{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_1","content":"valid"}]}],`+
 		`"tools":[{"name":"validate","description":"Validate a pack.","input_schema":{"type":"object"},"eager_input_streaming":true,"cache_control":{"type":"ephemeral"}}],`+
@@ -635,4 +637,26 @@ func mustParse(t *testing.T, text string) *Value {
 		t.Fatalf("%s: %v", text, err)
 	}
 	return value
+}
+
+// TestTheThirdBreakpointIsPlacedUnderTrailingUserOnly: the request text carries a cache breakpoint
+// only where the state trails the history. Under system-tail the state is a second system block
+// before the messages, the bytes through the request text grow on every request, and a breakpoint
+// there could never be read.
+func TestTheThirdBreakpointIsPlacedUnderTrailingUserOnly(t *testing.T) {
+	count := func(placement StatePlacement) (int, string) {
+		request := oneRequest(Anthropic, nil)
+		request.Placement = placement
+		if placement == TrailingUser {
+			request.System = SystemText{Head: "SYSTEM"}
+		}
+		body := string(EncodeRequest(request).Body)
+		return strings.Count(body, `"cache_control"`), body
+	}
+	if marks, body := count(TrailingUser); marks != 3 || !strings.Contains(body, `"text":"Draft the pack.","cache_control":{"type":"ephemeral"}`) {
+		t.Errorf("under trailing-user %d breakpoints: %s", marks, body)
+	}
+	if marks, body := count(SystemTail); marks != 2 || strings.Contains(body, `"text":"Draft the pack.","cache_control"`) {
+		t.Errorf("under system-tail %d breakpoints: %s", marks, body)
+	}
 }
