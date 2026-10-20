@@ -553,7 +553,7 @@ What the model is shown of a reading tool's answer (every runtime tool, `read_wi
 children as a read) is one data block (`$defs/framedData`): a first line naming the run's marker
 and the tool, the answer's text, and a last line, `END RETRIEVED DATA` and the marker. The marker is 128 random bits drawn when the
 run starts, the same for every block of the run and never written into the instructions, so text
-fetched before the run cannot close a block early; where an answer itself carries the marker (a
+fetched before the run cannot close a block early (a run continued from an approval pause uses the marker the paused run drew, carried in the checkpoint's `approval.marker`, and takes none from model output); where an answer itself carries the marker (a
 tool that echoes an argument the model wrote), each occurrence is replaced before framing. `vercel`
 hands the block to the model on purpose, through the SDK's `toModelOutput`, as a text output whose
 data is the bounded answer's JSON, and, on an endpoint without native tool calls, as the body of the

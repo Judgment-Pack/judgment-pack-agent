@@ -372,9 +372,32 @@ func withCallID(item json.RawMessage, callID string) []byte {
 	return out
 }
 
+// drawnMarker is the shape of the framing marker a run draws: 128 random bits, as hex.
+var drawnMarker = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
+// withMarker is a vector's approval with its marker the run's own (each run draws its own); the
+// run's must be a marker, or the item is left as the vector has it and the comparison fails.
+func withMarker(item []byte, marker *string) []byte {
+	var value map[string]any
+	if marker == nil || !drawnMarker.MatchString(*marker) || json.Unmarshal(item, &value) != nil {
+		return item
+	}
+	value["marker"] = *marker
+	out, _ := json.Marshal(value)
+	return out
+}
+
+// markerOf is the framing marker an approval carries, or nil.
+func markerOf(approval *contract.CheckpointApproval) *string {
+	if approval == nil {
+		return nil
+	}
+	return approval.Marker
+}
+
 // pauseAgainstVector compares the pausing run's last three events with approval/pause.json's items:
 // the same approval_requested, the checkpoint durable and paused with the same approval, then end,
-// the call id being the run's own; the checkpoint's other members (its id, operations, figures) are
+// the call id and the framing marker being the run's own; the checkpoint's other members (its id, operations, figures) are
 // each run's. It answers what differs, or "".
 func pauseAgainstVector(requested *contract.RunEventApprovalRequested, emitted *contract.RunEventExecutionCheckpoint, end contract.RunEvent) string {
 	vector, err := approvalVector("pause.json")
@@ -400,7 +423,7 @@ func pauseAgainstVector(requested *contract.RunEventApprovalRequested, emitted *
 		return "approval_requested was " + comparisonJSON(requested)
 	case emitted.Durable == nil || *emitted.Durable != checkpoint.Durable || emitted.Checkpoint.Status != checkpoint.Checkpoint.Status:
 		return "the checkpoint was " + comparisonJSON(emitted)
-	case !sameJSON([]byte(comparisonJSON(emitted.Checkpoint.Approval)), withCallID(checkpoint.Checkpoint.Approval, requested.CallID)):
+	case !sameJSON([]byte(comparisonJSON(emitted.Checkpoint.Approval)), withMarker(withCallID(checkpoint.Checkpoint.Approval, requested.CallID), markerOf(emitted.Checkpoint.Approval))):
 		return "the checkpoint's approval was " + comparisonJSON(emitted.Checkpoint.Approval)
 	case !sameJSON([]byte(comparisonJSON(end)), items[2]):
 		return "the last event was " + comparisonJSON(end)
@@ -600,19 +623,34 @@ func approvalPauseFindings(state *paused, prefix string, agent bool) []Finding {
 		f.fail("the continuations' markers were %v", markers)
 	}
 	// On a model capability the stable prefix, the tool list and the system text, is the pausing
-	// run's bytes in each continued run, but for the marker each run draws for the descriptions it
-	// frames (a pause moves nothing else of it).
-	if len(state.pausing.Bodies) > 0 {
-		held, found := stablePrefix(state.pausing.Bodies[0])
-		if !found {
-			f.fail("the pausing run's first request carries no tool list or system text")
+	// run's bytes in each continued run, the refused one and the approved one, with nothing
+	// normalised: the continued runs reuse the marker the paused checkpoint carries. A model
+	// capability's requests are bodies; a pausing run with none is a failure, not a skip.
+	if !agent {
+		held, found := "", false
+		if len(state.pausing.Bodies) > 0 {
+			held, found = stablePrefix(state.pausing.Bodies[0])
 		}
-		for name, run := range map[string]*pauseRun{"refused": state.refused, "restarted": state.restarted} {
-			if run == nil || len(run.Bodies) == 0 {
+		marker := ""
+		if state.saved != nil && state.saved.Approval != nil && state.saved.Approval.Marker != nil {
+			marker = *state.saved.Approval.Marker
+		}
+		switch {
+		case !found:
+			f.fail("the pausing run's first request carries no tool list or system text")
+		case marker == "" || !strings.Contains(held, "BEGIN RETRIEVED DATA "+marker+" from the description of tool"):
+			f.fail("the pausing run's framed descriptions do not carry the marker the paused checkpoint holds (%q)", marker)
+		}
+		for _, one := range []struct {
+			name string
+			run  *pauseRun
+		}{{"refused", state.refused}, {"approved", state.restarted}} {
+			if one.run == nil || len(one.run.Bodies) == 0 {
+				f.fail("the %s run sent no request body", one.name)
 				continue
 			}
-			if again, _ := stablePrefix(run.Bodies[0]); again != held {
-				f.fail("the %s run's tool list or system text is not the pausing run's", name)
+			if again, _ := stablePrefix(one.run.Bodies[0]); !found || again != held {
+				f.fail("the %s run's tool list or system text is not the pausing run's", one.name)
 			}
 		}
 	}
@@ -803,11 +841,8 @@ func runEvents(run *pauseRun) []contract.RunEvent {
 	return run.Events
 }
 
-// drawnMarker is a marker a run draws for the descriptions it frames.
-var drawnMarker = regexp.MustCompile(`[0-9a-f]{32}`)
-
-// stablePrefix is a model request's tool list and system text, as the wire spells them, with each
-// drawn marker replaced; false where the body carries neither.
+// stablePrefix is a model request's tool list and system text, as the wire spells them, byte for
+// byte; false where the body carries neither.
 func stablePrefix(body string) (string, bool) {
 	var whole map[string]json.RawMessage
 	if json.Unmarshal([]byte(body), &whole) != nil {
@@ -839,5 +874,5 @@ func stablePrefix(body string) (string, bool) {
 		return "", false
 	}
 	encoded, _ := json.Marshal(prefix)
-	return drawnMarker.ReplaceAllString(string(encoded), "<marker>"), true
+	return string(encoded), true
 }

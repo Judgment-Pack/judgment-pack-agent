@@ -620,7 +620,7 @@
         ]
       },
       {
-        "check": "8 \u00b7 the stable prefix, the tool list and the system text, is the same bytes in the pausing run and in each continued run, but for the marker each run draws for its framed descriptions",
+        "check": "8 \u00b7 the stable prefix, the tool list and the system text, is the same bytes in the pausing run and in each continued run, the refused one and the approved one, with nothing normalised",
         "go": [
           "8 continuation",
           "8 agent continuation"

@@ -58,8 +58,14 @@ export class SessionContext {
  readonly policy;readonly ledger;readonly execution:ExecutionController;private compactions=0
  /** The model's capability record (agent#4), resolved once for the run; none for an agent session. */
  readonly capabilities?:ModelCapabilities
- /** agent#12: this run's closing marker for retrieved data, drawn once, never written into the instructions. */
- readonly marker=dataMarker()
+ /**
+  * agent#12: this run's closing marker for retrieved data, drawn once, never written into the instructions.
+  * A run restored from an approval pause takes the marker the paused run drew (`carryMarker`, ADR-0008), so the tool list
+  * it frames is the same bytes across the pause; it is never read from model output.
+  */
+ marker=dataMarker()
+ /** ADR-0008: the marker the restored checkpoint's approval carries, where it carries one; a run with none keeps the one it drew. */
+ carryMarker(){const kept=this.execution.state.approval?.marker;if(kept!==undefined)this.marker=kept}
  private compactedSteps=new Map<string,Record<string,unknown>>()
  private summaries=new Set<string>()
  private contracts=new Map<string,unknown>()
@@ -93,7 +99,7 @@ export class SessionContext {
   // ADR-0008: the run's approval, in the execution state; no act call is admitted in a delegated child, in Plan mode or while the critic runs.
   const book={
    current:()=>this.execution.state.approval,
-   ask:(record:import('../execution/state').ApprovalRecord)=>{this.execution.state.approval=record},
+   ask:(record:import('../execution/state').ApprovalRecord)=>{this.execution.state.approval={...record,marker:this.marker}},
    closed:()=>parent!==undefined?'A delegated child admits reads only, and no act call; this call was not run and nothing was changed'
     :phase==='plan'?'Plan mode admits reads only, and no act call; this call was not run and nothing was changed'
     :this.narrowed!==null?'The critic and the reformat run admit no act call; this call was not run and nothing was changed':''
@@ -440,6 +446,7 @@ export async function contextualSession<T extends EngineSession>(session:T):Prom
  // A chat's turn is open from here: a run that cannot start closes it again.
  try{
  await context.execution.initialize()
+ context.carryMarker()
  if(declared.sources.length){
   const offered=offerSources(session.hostTools,declared.entries,context.policy,context.marker)
   session={...session,hostTools:offered.hostTools}

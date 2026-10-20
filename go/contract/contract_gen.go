@@ -943,7 +943,12 @@ func (v Checkpoint) MarshalJSON() ([]byte, error) {
 // the call runs with. state: asked, approved, refused, executed or answered (see checkpoint.json's
 // approval). decidedAt: when the person's decision reached the run, a time Date.parse reads. note:
 // the person's words with the decision, carried to the model only inside the continuation's data
-// block. result: the call's result once executed, or the refused result. Closed.
+// block. result: the call's result once executed, or the refused result; marker: the run's framing
+// marker (the one that frames each description from outside the Runtime and each reading tool's
+// answer), written with the asked approval and reused by the continued run, so the tool list on
+// the wire is the same bytes across the pause. It is a drawn token, never taken from model output
+// and never shown in it; absent from a checkpoint written before it was carried, where the
+// continued run draws a fresh one. Closed.
 type CheckpointApproval struct {
 	CallID    string                     `json:"callId"`
 	Name      string                     `json:"name"`
@@ -954,9 +959,10 @@ type CheckpointApproval struct {
 	DecidedAt *string                    `json:"decidedAt,omitzero"`
 	Note      *string                    `json:"note,omitzero"`
 	Result    *ToolResultMCPToolResult   `json:"result,omitzero"`
+	Marker    *string                    `json:"marker,omitzero"`
 }
 
-var checkpointApprovalMembers = []string{"callId", "name", "tool", "source", "args", "state", "decidedAt", "note", "result"}
+var checkpointApprovalMembers = []string{"callId", "name", "tool", "source", "args", "state", "decidedAt", "note", "result", "marker"}
 
 // UnmarshalJSON decodes a CheckpointApproval object and refuses a member the closed schema does not name.
 func (v *CheckpointApproval) UnmarshalJSON(data []byte) error {

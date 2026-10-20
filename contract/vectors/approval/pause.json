@@ -1,5 +1,5 @@
 {
-  "description": "ADR-0008: an act call the host's approval policy answers ask for pauses the run. In place of the call's tool_call the boundary emits approval_requested (the call's id, the wire name, the tool's own name, its source record and the arguments the model sent); the call is never run; the checkpoint carries the call in approval, state asked, with status paused, and is emitted durable; the run ends with end and no error. The checkpoint's operations show the run's load_tool and a second act call refused while this one waits. Written by hand from the schemas. Certified scenario 8 (certification/scenarios.test.ts, go/certification) holds every engine's pausing run to its three items: the same approval_requested, the checkpoint durable and paused with the same approval, and end, the call id being each run's own; the checkpoint's other members (its id, its operations, its figures) are each run's.",
+  "description": "ADR-0008: an act call the host's approval policy answers ask for pauses the run. In place of the call's tool_call the boundary emits approval_requested (the call's id, the wire name, the tool's own name, its source record and the arguments the model sent); the call is never run; the checkpoint carries the call in approval, state asked, with status paused, and is emitted durable; the run ends with end and no error. The checkpoint's operations show the run's load_tool and a second act call refused while this one waits. Written by hand from the schemas. Certified scenario 8 (certification/scenarios.test.ts, go/certification) holds every engine's pausing run to its three items: the same approval_requested, the checkpoint durable and paused with the same approval, and end, the call id and the approval's framing marker (the one the continued run reuses, so its tool list is the pausing run's bytes) being each run's own; the checkpoint's other members (its id, its operations, its figures) are each run's.",
   "schema": "run-event.json",
   "source": {
     "harness": {
@@ -120,7 +120,8 @@
             "repository": "expense",
             "title": "Missing mileage rate"
           },
-          "state": "asked"
+          "state": "asked",
+          "marker": "5b0e7a94c1d3482fa6e90b17d2c83f4e"
         }
       }
     },

@@ -533,9 +533,12 @@ var approvalStates = []string{"asked", "approved", "refused", "executed", "answe
 
 var approvalWireName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
+// approvalMarker is the framing marker an approval carries: 128 random bits, as hex (DataMarker).
+var approvalMarker = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
 // ValidApproval is the checkpoint's approval (ADR-0008; validApproval), read closed: its call id,
 // its wire name, the tool's own name, its source record, its arguments (an object), its state, and
-// where present when it was decided, the person's note and the result.
+// where present when it was decided, the person's note, the result and the run's framing marker.
 func ValidApproval(v *Value) bool {
 	var held contract.CheckpointApproval
 	if !isObject(v) || json.Unmarshal(v.JSON(), &held) != nil {
@@ -554,6 +557,9 @@ func ValidApproval(v *Value) bool {
 		return false
 	}
 	if held.DecidedAt != nil && !parsableDate(*held.DecidedAt) || held.Note != nil && U16Length(*held.Note) > 2000 {
+		return false
+	}
+	if held.Marker != nil && !approvalMarker.MatchString(*held.Marker) {
 		return false
 	}
 	return v.Get("result") == nil || isObject(v.Get("result"))
