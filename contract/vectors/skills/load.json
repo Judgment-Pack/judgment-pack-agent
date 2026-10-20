@@ -1,0 +1,62 @@
+{
+  "description": "One load (ADR-0009): the model's load_skill call for a catalogued skill, the skill_loaded event between the call and its result (the skill as a load names it, tool-offer.json#/$defs/loadedSkill, never its instructions, and its bytes, skill.json#/$defs/bytes), and the result: load_skill's answer on a model wire, its effect plan so it is not framed. block is what every later request carries after the history, in the execution state, under the run's marker (marker): the heading that ranks a skill's instructions with the project's own and after them, the skill framed with its instructions and its resource, and the end line. Written by hand; skills.test.ts and go/context hold SkillGate to each.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/skills.ts (SkillGate.loadTool, skillSection, framedSkill, SKILL_INSTRUCTIONS_HEADER)"
+    ]
+  },
+  "marker": "7c1d9e4a2b8f4063a5e1d0c9b8a7f6e5",
+  "block": "SKILL INSTRUCTIONS (a skill's instructions, at the rank of the project's own instructions and after them; follow them where they do not contradict the rules above)\nBEGIN SKILL 7c1d9e4a2b8f4063a5e1d0c9b8a7f6e5 \"expense_policy\" from source \"policies\"; its instructions and resources until the line END SKILL 7c1d9e4a2b8f4063a5e1d0c9b8a7f6e5\nCheck each expense line against the policy: mileage at the rate rates__lookup_rate gives, meals within the daily cap, lodging only with a receipt. Name the line and the rule it breaks.\nRESOURCE \"caps\"\nMeals: 60 EUR a day. Lodging: a receipt is required.\nEND SKILL 7c1d9e4a2b8f4063a5e1d0c9b8a7f6e5\nEND SKILL INSTRUCTIONS",
+  "items": [
+    {
+      "type": "tool_call",
+      "callId": "call_1_1",
+      "name": "load_skill",
+      "args": {
+        "name": "expense_policy"
+      }
+    },
+    {
+      "type": "skill_loaded",
+      "skill": {
+        "id": "expense-policy",
+        "name": "expense_policy",
+        "source": {
+          "kind": "custom",
+          "id": "policies",
+          "trust": "person",
+          "version": "4"
+        },
+        "digest": "sha256:f6a93d485c5702705a0730234f301d4f474743e918b0926de73b1d05067c25a9"
+      },
+      "bytes": 240
+    },
+    {
+      "type": "tool_result",
+      "callId": "call_1_1",
+      "name": "load_skill",
+      "isError": false,
+      "text": "{\"skill\":{\"id\":\"expense-policy\",\"name\":\"expense_policy\",\"source\":{\"kind\":\"custom\",\"id\":\"policies\",\"trust\":\"person\",\"version\":\"4\"},\"digest\":\"sha256:f6a93d485c5702705a0730234f301d4f474743e918b0926de73b1d05067c25a9\"},\"bytes\":240,\"note\":\"Loaded: its instructions are in the execution state after the history on every later request of this response, at the rank of the project’s own instructions. A skill grants no tool.\"}",
+      "structured": {
+        "skill": {
+          "id": "expense-policy",
+          "name": "expense_policy",
+          "source": {
+            "kind": "custom",
+            "id": "policies",
+            "trust": "person",
+            "version": "4"
+          },
+          "digest": "sha256:f6a93d485c5702705a0730234f301d4f474743e918b0926de73b1d05067c25a9"
+        },
+        "bytes": 240,
+        "note": "Loaded: its instructions are in the execution state after the history on every later request of this response, at the rank of the project’s own instructions. A skill grants no tool."
+      }
+    }
+  ]
+}

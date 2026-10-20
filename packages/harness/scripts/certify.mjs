@@ -10,13 +10,13 @@
 //   `engine <id> · thinking`, `engine <id> · strict alternation` (an endpoint
 //   that refuses a broken turn order, agent#9) and `engine <id> · text tool
 //   calls` (the scenario on an endpoint without native tool calls, agent#4), in
-//   certification/conformance.test.ts, the eight certified scenarios (agent#13; the seventh ADR-0006's, the eighth ADR-0008's),
+//   certification/conformance.test.ts, the nine certified scenarios (agent#13; the seventh ADR-0006's, the eighth ADR-0008's, the ninth ADR-0009's),
 //   `engine <id> · scenarios`, in certification/scenarios.test.ts, and
 //   `engine <id> · delegation` (a batch's concurrency from the connection's
 //   answer, agent#17), in certification/delegation.test.ts;
 // - an agent engine: the recorded scenario behind the real tool gate and the
 //   agent-engine checks, `agent engine <id>`, in engines/<id>/<id>.test.ts, the
-//   same eight scenarios, `agent engine <id> · scenarios`, and one delegated child
+//   same nine scenarios, `agent engine <id> · scenarios`, and one delegated child
 //   at a time, in certification/delegation.test.ts.
 //
 // The ids and kinds are the registry's own (engines/index.ts,

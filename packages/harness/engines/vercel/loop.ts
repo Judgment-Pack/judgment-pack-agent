@@ -1519,8 +1519,10 @@ export function runVercelLoop(
             // it has one, is the last message rather than a change to the system.
             const instructions=criticSystem
             const step=progressStep==='recover'?RECOVER_REPEATED_WORK_INSTRUCTIONS:progressStep==='finish'?REPEATED_WORK_INSTRUCTIONS:toolsClosed?finalInstructions:''
-            // The note carries the header like every state, and is placed the same way.
-            const note=step?stateText(step):''
+            // The note carries the header like every state, and is placed the same way. ADR-0009: a skill
+            // the run loaded rides in it too, after the history, as in the loop's state.
+            const skills=context.skills?.section()??''
+            const note=step||skills?stateText(step,skills):''
             const held=await context.messages(withoutImages(withoutState(messages,stated)),instructions+(note?'\n'+note:''),schemas)
             criticHeld=held
             return {...callOptions(!toolsClosed),...(toolsClosed&&nativeTools?{activeTools:[],toolChoice:'none' as const}:{}),...(note?placeState(session.model.family,placement,cachedOpening(session.model.family,placement,withImages(held)),instructions,note,stated):{instructions:cachedInstructions(session.model.family,instructions),messages:cachedOpening(session.model.family,placement,withImages(held))})}

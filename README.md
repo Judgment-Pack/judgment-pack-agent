@@ -35,6 +35,13 @@ client. It offers each under a wire-safe name mapped to its source, frames its d
 retrieved text, holds a pinned tool list, a schema budget with `load_tool`, an effect class with its
 approval default and per-source bounds, and reports each source's calls, bytes and time.
 
+Skills ([ADR-0009](docs/adr/0009-skills.md)) are bundles of instructions the host declares beside its
+host tools, each from a source and pinned to the digest the person approved. The package admits them
+(a skill naming a tool the host did not declare, or whose bundle changed, is withheld), lists them in
+the system text with one framed line each, loads one on the model's `load_skill` call under a
+budget, and places its instructions after the history at the rank of the project's own
+instructions. A skill grants no tool.
+
 ## Layout
 
 - `contract/`: the wire contract, schemas and vectors, extracted from the Desk's engine slot; see

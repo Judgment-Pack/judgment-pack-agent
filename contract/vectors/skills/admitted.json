@@ -1,0 +1,66 @@
+{
+  "description": "The skills of declarations.json as the package admits them (ADR-0009, skill.json): each declaration with its digest, the digest of its bundle, which is the pinned one. Written by hand; skills.test.ts holds declareSkills to each digest.",
+  "schema": "skill.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/skills.ts (declareSkills)"
+    ]
+  },
+  "items": [
+    {
+      "id": "expense-policy",
+      "name": "expense_policy",
+      "description": "Apply the expense policy when drafting a reimbursement pack.\nCovers mileage, meals and lodging.",
+      "source": {
+        "kind": "custom",
+        "id": "policies",
+        "trust": "person",
+        "version": "4"
+      },
+      "instructions": "Check each expense line against the policy: mileage at the rate rates__lookup_rate gives, meals within the daily cap, lodging only with a receipt. Name the line and the rule it breaks.",
+      "tools": [
+        "rates__lookup_rate"
+      ],
+      "resources": [
+        {
+          "name": "caps",
+          "text": "Meals: 60 EUR a day. Lodging: a receipt is required."
+        }
+      ],
+      "pinnedDigest": "sha256:f6a93d485c5702705a0730234f301d4f474743e918b0926de73b1d05067c25a9",
+      "digest": "sha256:f6a93d485c5702705a0730234f301d4f474743e918b0926de73b1d05067c25a9"
+    },
+    {
+      "id": "issue-style",
+      "name": "issue_style",
+      "description": "Write tracker issues in the team's style.",
+      "source": {
+        "kind": "exchange",
+        "id": "jx-issue-style",
+        "trust": "public",
+        "version": "1.2.0"
+      },
+      "instructions": "An issue's title is one line in the imperative. Its body says what was expected, what happened, and how to see it.",
+      "pinnedDigest": "sha256:dee1273431aac3e04266abaeeb4522d6d9857366c9d501fda20758dbb14e7c34",
+      "digest": "sha256:dee1273431aac3e04266abaeeb4522d6d9857366c9d501fda20758dbb14e7c34"
+    },
+    {
+      "id": "review-checklist",
+      "name": "review_checklist",
+      "description": "The tracker's review checklist, served as a prompt.",
+      "source": {
+        "kind": "mcp",
+        "id": "tracker",
+        "trust": "public",
+        "toolListDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820"
+      },
+      "instructions": "Before proposing a change, list what it touches and how it was tested.",
+      "pinnedDigest": "sha256:c1d1cb7f7b5c046c9dc67e9e2df4f4c1950d463ee87ae5782812ee91dbdcb148",
+      "digest": "sha256:c1d1cb7f7b5c046c9dc67e9e2df4f4c1950d463ee87ae5782812ee91dbdcb148"
+    }
+  ]
+}

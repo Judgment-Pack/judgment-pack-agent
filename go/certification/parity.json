@@ -653,6 +653,60 @@
           "8 figures",
           "8 agent figures"
         ]
+      },
+      {
+        "check": "9 \u00b7 forty admissible skills pass cataloguedSkills: the first thirty-two are listed after the tools, each line framed as data, eight of the library\u2019s are withheld with one guardrail, and the changed and the undeclared skill are withheld before any request",
+        "go": [
+          "9 catalogue",
+          "9 agent catalogue"
+        ]
+      },
+      {
+        "check": "9 \u00b7 each load and unload is said between its call and its result: four skill_loaded and one skill_unloaded, in order",
+        "go": [
+          "9 events",
+          "9 agent events"
+        ]
+      },
+      {
+        "check": "9 \u00b7 a load\u2019s block rides after the history on every later request, a second load beside the first and an unload taking its own out, while the tool list and the system text are the same bytes on every request",
+        "go": [
+          "9 block"
+        ]
+      },
+      {
+        "check": "9 \u00b7 the agent wire sends the state once per run, so each load\u2019s block reaches the agent in load_skill\u2019s answer, headed at the project instructions\u2019 rank",
+        "go": [
+          "9 agent block"
+        ]
+      },
+      {
+        "check": "9 \u00b7 a load past skillsPerRun is refused with its guardrail between its call and its result, and nothing is loaded",
+        "go": [
+          "9 budget",
+          "9 agent budget"
+        ]
+      },
+      {
+        "check": "9 \u00b7 a poisoned skill changes nothing the gate admits: write_file is refused with its event and reaches nothing, the offer is the same, its words are only inside its block, and a retrieved text keeps the data framing",
+        "go": [
+          "9 poisoned",
+          "9 agent poisoned"
+        ]
+      },
+      {
+        "check": "9 \u00b7 the checkpoint keeps the loaded set in load order, and the run report counts each source\u2019s loads",
+        "go": [
+          "9 report",
+          "9 agent report"
+        ]
+      },
+      {
+        "check": "9 \u00b7 a restore in a fresh session, from the checkpoint\u2019s JSON text, restores the loaded set; the withdrawn skill is not restored, and a guardrail says so",
+        "go": [
+          "9 restore",
+          "9 agent restore"
+        ]
       }
     ]
   },

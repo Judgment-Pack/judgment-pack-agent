@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/skill.json",
+  "title": "Skill",
+  "description": "A skill (ADR-0009): a named, versioned bundle the host declares and supplies beside its host tools (tool-offer.json#/$defs/skillDeclaration): instructions, optionally the names of host tools it uses, optionally small text resources. It comes from a source as a tool does and carries the same source record; the package never fetches one. The package admits it (the record readable, every tools[] name a host tool the host declared, its bytes within skillBytes, its digest the one the person approved), catalogues it in the system text (its name and one framed line), loads it on the model's load_skill call under the skills budget, places its instructions and resources after the history as one block at the rank of the project's own instructions, and records every load on the events, in the checkpoint and in the run report. A skill grants nothing: the tools it names are the host's declared tools under their own effect classes and approvals, offered or not by phase as before, and its text changes nothing the gate admits. Closed: a declaration carrying any other member is refused before any request (configuration).",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "description",
+    "source",
+    "instructions"
+  ],
+  "properties": {
+    "id": {
+      "description": "The skill's id as the host names it: a letter, then letters, digits and hyphens, at most 24 characters. The checkpoint's loaded set and the skill_unloaded event name a skill by it.",
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9-]{0,23}$"
+    },
+    "name": {
+      "$ref": "#/$defs/name"
+    },
+    "description": {
+      "description": "What the skill is for, as its author wrote it: untrusted text. The catalogue shows its first line, cut to 160 bytes and framed as retrieved data under the run's marker.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "source": {
+      "description": "Where the skill comes from: tool-offer.json#/$defs/sourceRecord, the record a tool with a source carries, with its kind one a host declares (gateway, mcp, custom or exchange; runtime is refused, as for a tool) and without the members the package sets on a tool's offer (tool, receipt). exchange: a skill whose bytes the host fetched from a Judgment Exchange entry, the entry's id and version the record's id and version. Reported, never a grant.",
+      "allOf": [
+        {
+          "$ref": "tool-offer.json#/$defs/sourceRecord"
+        },
+        {
+          "properties": {
+            "kind": {
+              "enum": [
+                "gateway",
+                "mcp",
+                "custom",
+                "exchange"
+              ]
+            }
+          },
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "tool"
+                ]
+              },
+              {
+                "required": [
+                  "receipt"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "instructions": {
+      "description": "The skill's instructions: text, placed only when the skill is loaded, after the history, under the heading that ranks them with the project's own instructions and after them. Counted with the resources against skillBytes.",
+      "type": "string",
+      "minLength": 1
+    },
+    "tools": {
+      "description": "The names of the host's declared tools the skill uses, at most 16: each must be a host tool the host declared for the run (a tool with a source by its wire name), or the skill is withheld at declaration with a guardrail naming the tool. A skill names tools; it carries none of its own and changes no tool's offer, effect class or approval.",
+      "type": "array",
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
+    },
+    "resources": {
+      "description": "Small text resources placed with the instructions when the skill is loaded, at most 8, each its name and text. Counted with the instructions against skillBytes.",
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "$ref": "#/$defs/resource"
+      }
+    },
+    "pinnedDigest": {
+      "description": "On the declaration: the digest of the bundle the person approved, pinned by the host when the person approved the skill ($defs/digest). A skill whose bundle does not hash to it is withheld at declaration with a guardrail, until the person re-approves the skill and the host declares the new digest.",
+      "$ref": "#/$defs/digest"
+    },
+    "digest": {
+      "description": "On admission: the digest of the bundle as declared ($defs/digest), which is the pinned one. The skill_loaded event and the checkpoint's loaded set carry it.",
+      "$ref": "#/$defs/digest"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "name": {
+      "description": "The name the model loads a skill by (load_skill's name) and the catalogue lists: 1 to 64 of the characters a tool name on every provider wire takes. Unique among the skills one run declares.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+    },
+    "resource": {
+      "description": "One text resource of a skill: its name (1 to 64 characters) and its text.",
+      "type": "object",
+      "required": [
+        "name",
+        "text"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "digest": {
+      "description": "The digest of a skill's bundle (ADR-0009): sha256: then the SHA-256, lower-case hex, of the UTF-8 text of the canonical JSON (tool-result.json#/$defs/readCacheKey's: members sorted by name in UTF-16 code units, no whitespace, strings and numbers as JSON.stringify writes them) of {name, description, instructions, tools, resources}, tools and resources the empty list where the skill has none and each resource {name, text} (skillDigest in skills.ts; Go runcontext.SkillDigest). The host computes it when the person approves the skill and declares it as pinnedDigest; the package computes it again at declaration.",
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "bytes": {
+      "description": "The size a skill is counted at against skillBytes, and that skill_loaded and the checkpoint's loaded set carry: the UTF-8 bytes of its instructions, and of each resource's name and text.",
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

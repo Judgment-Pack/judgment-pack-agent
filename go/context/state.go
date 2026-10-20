@@ -303,6 +303,9 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 	if sources := value.Get("sources"); sources != nil && !ValidSourceFigures(sources) {
 		return nil, errSavedExecution
 	}
+	if skills := value.Get("skills"); skills != nil && !ValidSkillLoads(skills) {
+		return nil, errSavedExecution
+	}
 	if approval := value.Get("approval"); approval != nil && !ValidApproval(approval) {
 		return nil, errSavedExecution
 	}
@@ -533,6 +536,25 @@ var approvalStates = []string{"asked", "approved", "refused", "executed", "answe
 
 var approvalWireName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
+// ValidSkillLoads are the checkpoint's loaded skills (ADR-0009; validSkillLoads), read closed: at most
+// 64, each its id (once), its digest, its bytes and when it was loaded.
+func ValidSkillLoads(v *Value) bool {
+	if !v.IsArray() || v.Len() > 64 {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, load := range v.Items() {
+		if !isObject(load) || !hasOnly(load, "id", "digest", "bytes", "loadedAt") || !load.Get("id").IsString() ||
+			!sourceID.MatchString(load.Get("id").Str()) || seen[load.Get("id").Str()] || !load.Get("digest").IsString() ||
+			!sourceDigest.MatchString(load.Get("digest").Str()) || !isInteger(load.Get("bytes")) || load.Get("bytes").Num() < 0 ||
+			!load.Get("loadedAt").IsString() || !parsableDate(load.Get("loadedAt").Str()) {
+			return false
+		}
+		seen[load.Get("id").Str()] = true
+	}
+	return true
+}
+
 // approvalMarker is the framing marker an approval carries: 128 random bits, as hex (DataMarker).
 var approvalMarker = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
@@ -547,7 +569,7 @@ func ValidApproval(v *Value) bool {
 	source := v.Get("source")
 	if held.CallID == "" || U16Length(held.CallID) > 256 || !approvalWireName.MatchString(held.Name) ||
 		held.Tool == "" || U16Length(held.Tool) > 128 || !v.Get("args").IsObject() || !oneOf(v.Get("state"), approvalStates...) ||
-		!isObject(source) || !oneOf(source.Get("kind"), "runtime", "gateway", "mcp", "custom") || !sourceID.MatchString(held.Source.ID) ||
+		!isObject(source) || !oneOf(source.Get("kind"), "runtime", "gateway", "mcp", "custom", "exchange") || !sourceID.MatchString(held.Source.ID) ||
 		!oneOf(source.Get("trust"), "first-party", "connected", "public", "person") {
 		return false
 	}

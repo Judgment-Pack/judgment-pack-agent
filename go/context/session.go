@@ -151,6 +151,10 @@ type SessionContext struct {
 	// any; Catalogue says the schema budget made a source a catalogue and load_tool is offered.
 	Sources   *SourceGate
 	Catalogue bool
+	// Skills is the boundary's hold on the run's skills (ADR-0009), where it declares any; the
+	// SkillCatalogue is what the system text carries of them after the tools described in text, or "".
+	Skills         *SkillGate
+	SkillCatalogue string
 
 	session        Session
 	compactions    int
@@ -542,6 +546,11 @@ func (c *SessionContext) Result(name string, result ToolResult) (ToolResult, err
 			limit = bound
 		}
 	}
+	// ADR-0009: load_skill's answer is bounded by SkillBytes and a constant, and on the agent wire
+	// carries the skill's block, which must arrive whole and framed: it is never cut to the result bound.
+	if name == LoadSkill && c.Skills != nil && c.Skills.Offered() {
+		return value, nil
+	}
 	if UTF8Bytes(string(value.JSON())) <= limit {
 		return value, nil
 	}
@@ -868,7 +877,7 @@ func (c *SessionContext) Turn() *ChatTurn { return c.turn }
 var errReserved = &authoredError{"Context tool names are reserved by Desk."}
 
 // reservedNames are the names this package's own tools take, load_tool among them (ADR-0006).
-var reservedNames = []string{"read_context", "list_context", ReadTool, SearchTool, "update_plan", "request_budget_increase", LoadTool}
+var reservedNames = []string{"read_context", "list_context", ReadTool, SearchTool, "update_plan", "request_budget_increase", LoadTool, LoadSkill, UnloadSkill}
 
 // OpenSources holds the run's tools with a source (ADR-0006, sources.go): the report's rows in the
 // execution state, a guardrail for each declaration the package withheld, and the loaded schemas
@@ -884,6 +893,23 @@ func (c *SessionContext) OpenSources(declared *Declared, catalogue bool, toolSch
 	c.Catalogue = catalogue
 	c.Execution.LoadedSchemas = c.Sources.LoadedSection
 	c.Execution.SourceRows = func() []contract.ProvenanceSourceFigures { return c.Sources.Rows(nil) }
+}
+
+// OpenSkills holds the run's skills (ADR-0009, skills.go): the catalogue in the system text, a
+// guardrail for each skill withheld at declaration or by the catalogue's bounds, the loaded set a
+// continued run restores from its checkpoint (a guardrail for each it does not), and the loaded skills
+// after the history, in the request state. The run's source gate holds their report rows. agentWire:
+// the run is on an agent capability, whose state is sent once per run.
+func (c *SessionContext) OpenSkills(declared *DeclaredSkills, agentWire bool) {
+	section, catalogued, withheld := CatalogueSkills(declared.Skills, *c.Policy, c.Marker)
+	c.SkillCatalogue = section
+	c.Skills = NewSkillGate(catalogued, *c.Policy, c.Sources, c.Execution.State, c.Marker, agentWire, declared.SourceIDs)
+	notices := append(append(append([]SkillNotice{}, declared.Withheld...), withheld...), c.Skills.Restore()...)
+	for _, notice := range notices {
+		c.Sources.Notify(notice.Event())
+	}
+	c.Execution.LoadedSkills = c.Skills.Section
+	c.Execution.SkillLoads = c.Skills.Loads
 }
 
 // approvalBook is the run's approval as its source gate sees it (ADR-0008, ApprovalBook).
@@ -969,6 +995,11 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 	if err != nil {
 		return nil, err
 	}
+	// ADR-0009: a skill may name only the host's declared tools, whatever this phase offers of them.
+	declaredNames := make([]string, 0, len(declared.HostTools))
+	for _, tool := range declared.HostTools {
+		declaredNames = append(declaredNames, tool.Name)
+	}
 	session.HostTools = declared.HostTools
 	session = PlanningSession(session)
 	authorize := func(ctx context.Context) error {
@@ -986,6 +1017,14 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 	}
 	// A chat's turn is open from here: a run that cannot start closes it again.
 	opened := func() error {
+		// ADR-0009: the skills, read and admitted before any request; their sources report beside the tools'.
+		skills, err := DeclareSkills(session.Skills, declaredNames, *held.Policy, declared.Sources)
+		if err != nil {
+			return err
+		}
+		for _, source := range skills.Sources {
+			declared.Sources = append(declared.Sources, ToolSource{Kind: source.Kind, ID: source.ID, Trust: source.Trust, Version: source.Version, ToolListDigest: source.ToolListDigest})
+		}
 		if err := held.Execution.Initialize(); err != nil {
 			return err
 		}
@@ -1010,6 +1049,9 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 				}
 			}
 			held.OpenSources(declared, catalogue, toolSchemas, parent)
+		}
+		if len(session.Skills) > 0 {
+			held.OpenSkills(skills, session.Agent != nil)
 		}
 		if err := held.AskHost(ctx); err != nil {
 			return err
@@ -1063,6 +1105,11 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 	// ADR-0006: load_tool beside the ledger's tools where a source is a catalogue.
 	if held.Catalogue {
 		tools = append(tools, held.Sources.LoadToolHost())
+	}
+	// ADR-0009: load_skill and unload_skill beside them where any skill is catalogued, in every phase
+	// but a child's (which is handed no skills).
+	if held.Skills != nil && held.Skills.Offered() {
+		tools = append(tools, held.Skills.LoadSkillHost(), held.Skills.UnloadSkillHost())
 	}
 	if session.AllowConversation {
 		tools = append(tools, held.Execution.Tool(), held.Execution.BudgetTool())

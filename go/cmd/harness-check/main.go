@@ -1,7 +1,7 @@
 // Command harness-check runs the Go certification against a shared scripted server: every leg the
 // TypeScript suite runs on a model engine (the engine leg on three wires, streamed and whole, plain
 // and under the tracing variables; the text tool path; the strict turn order; the thinking,
-// refutation and wire legs) and the eight certified scenarios, on the Eino adapter (go/adapter/eino)
+// refutation and wire legs) and the nine certified scenarios, on the Eino adapter (go/adapter/eino)
 // with the delegation coordinator (go/adapter/delegate); then the agent capability's checks
 // (ADR-0007) on the agent adapter (go/adapter/agent) with the same coordinator. It prints one line
 // per leg and exits 1 when any check does not hold, so a host's CI can run it at a locked revision.

@@ -41,6 +41,14 @@ export interface ExecutionCheckpoint {
  sources?:SourceFigures[];
  /** ADR-0008: the act call the run paused at for the person's decision, and what became of it. */
  approval?:ApprovalRecord;
+ /** ADR-0009: the skills loaded, in load order, carried through a resume (`skills.ts`, SkillGate). */
+ skills?:SkillLoad[];
+}
+/** One loaded skill as the checkpoint keeps it (ADR-0009; `provenance.json#/$defs/skillLoad`). */
+export interface SkillLoad {id:string;digest:string;bytes:number;loadedAt:string}
+/** The checkpoint's loaded skills, read closed (ADR-0009). */
+export function validSkillLoads(value:unknown):value is SkillLoad[]{
+ return Array.isArray(value)&&value.length<=64&&new Set(value.map(load=>object(load)?load.id:undefined)).size===value.length&&value.every(load=>object(load)&&exact(load,['id','digest','bytes','loadedAt'])&&typeof load.id==='string'&&/^[A-Za-z][A-Za-z0-9-]{0,23}$/.test(load.id)&&typeof load.digest==='string'&&/^sha256:[0-9a-f]{64}$/.test(load.digest)&&count(load.bytes)&&typeof load.loadedAt==='string'&&Number.isFinite(Date.parse(load.loadedAt)))
 }
 /**
  * One act call paused for the person's decision (ADR-0008; `checkpoint.json#/$defs/approval`): the
@@ -56,7 +64,7 @@ const APPROVAL_STATES=['asked','approved','refused','executed','answered']
 const WIRE_NAME=/^[A-Za-z0-9_-]{1,64}$/
 /** A source record as an approval carries it, read closed (`tool-offer.json#/$defs/sourceRecord`). */
 function validRecord(v:unknown):boolean{
- return object(v)&&exact(v,['kind','id','trust','version','toolListDigest','tool','receipt'])&&['runtime','gateway','mcp','custom'].includes(String(v.kind))&&typeof v.id==='string'&&/^[A-Za-z][A-Za-z0-9-]{0,23}$/.test(v.id)&&['first-party','connected','public','person'].includes(String(v.trust))&&(v.version===undefined||typeof v.version==='string'&&v.version.length>=1&&v.version.length<=64)&&(v.toolListDigest===undefined||typeof v.toolListDigest==='string'&&/^sha256:[0-9a-f]{64}$/.test(v.toolListDigest))&&(v.tool===undefined||text(v.tool,128))&&(v.receipt===undefined||text(v.receipt,128))
+ return object(v)&&exact(v,['kind','id','trust','version','toolListDigest','tool','receipt'])&&['runtime','gateway','mcp','custom','exchange'].includes(String(v.kind))&&typeof v.id==='string'&&/^[A-Za-z][A-Za-z0-9-]{0,23}$/.test(v.id)&&['first-party','connected','public','person'].includes(String(v.trust))&&(v.version===undefined||typeof v.version==='string'&&v.version.length>=1&&v.version.length<=64)&&(v.toolListDigest===undefined||typeof v.toolListDigest==='string'&&/^sha256:[0-9a-f]{64}$/.test(v.toolListDigest))&&(v.tool===undefined||text(v.tool,128))&&(v.receipt===undefined||text(v.receipt,128))
 }
 /** The checkpoint's approval, read closed (ADR-0008). */
 export function validApproval(v:unknown):v is ApprovalRecord{
@@ -81,10 +89,10 @@ export function unknownOutcome(name:string):McpToolResult{
  * One source's row of the run report (ADR-0006, `toolSources.ts`): the contract's
  * `provenance.json#/$defs/sourceFigures`. The Runtime's row is source `runtime`, kind `runtime`.
  */
-export interface SourceFigures {source:string;kind:'runtime'|'gateway'|'mcp'|'custom';calls:number;refused:number;proposed:number;bytes:number;milliseconds:number}
+export interface SourceFigures {source:string;kind:'runtime'|'gateway'|'mcp'|'custom'|'exchange';calls:number;refused:number;proposed:number;bytes:number;milliseconds:number;/** ADR-0009: the source's skills the model loaded, each load counted; on a source that declares a skill. */skills?:number}
 /** The run report's rows, read closed (`checkpoint.json`, sources). */
 export function validSourceFigures(value:unknown):value is SourceFigures[]{
- return Array.isArray(value)&&value.length<=64&&value.every(row=>object(row)&&exact(row,['source','kind','calls','refused','proposed','bytes','milliseconds'])&&typeof row.source==='string'&&/^[A-Za-z][A-Za-z0-9-]{0,23}$/.test(row.source)&&['runtime','gateway','mcp','custom'].includes(String(row.kind))&&count(row.calls)&&count(row.refused)&&count(row.proposed)&&count(row.bytes)&&count(row.milliseconds))
+ return Array.isArray(value)&&value.length<=64&&value.every(row=>object(row)&&exact(row,['source','kind','calls','refused','proposed','bytes','milliseconds','skills'])&&typeof row.source==='string'&&/^[A-Za-z][A-Za-z0-9-]{0,23}$/.test(row.source)&&['runtime','gateway','mcp','custom','exchange'].includes(String(row.kind))&&count(row.calls)&&count(row.refused)&&count(row.proposed)&&count(row.bytes)&&count(row.milliseconds)&&(row.skills===undefined||count(row.skills)))
 }
 /** Token counts the provider reported, summed; a member is absent where no request reported it (agent#18). */
 export interface TokenFigures {inputTokens?:number;outputTokens?:number;reasoningTokens?:number;cacheReadTokens?:number;cacheWriteTokens?:number}
@@ -136,6 +144,7 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value.prompts!==undefined&&(!Array.isArray(value.prompts)||value.prompts.length>MAX_PROMPT_DIGESTS||value.prompts.some((row,at,rows)=>!object(row)||!exact(row,['request','sha256'])||!Number.isSafeInteger(row.request)||Number(row.request)<1||at>0&&Number(row.request)<=Number((rows[at-1] as Record<string,unknown>).request)||typeof row.sha256!=='string'||!/^[a-f0-9]{64}$/.test(row.sha256))))return fail()
  if(value.sources!==undefined&&!validSourceFigures(value.sources))return fail()
  if(value.approval!==undefined&&!validApproval(value.approval))return fail()
+ if(value.skills!==undefined&&!validSkillLoads(value.skills))return fail()
  if(!Array.isArray(value.operations)||value.operations.length>400||new Set(value.operations.map(o=>o.id)).size!==value.operations.length)return fail()
  for(const op of value.operations){if(!object(op)||!text(op.id,100)||!text(op.name,150)||!['running','complete','failed','interrupted'].includes(String(op.status))||op.result!==undefined&&(!object(op.result)||(op.result.content!==undefined&&(!Array.isArray(op.result.content)||op.result.content.some(p=>!object(p)||p.type!==undefined&&typeof p.type!=='string'||p.text!==undefined&&typeof p.text!=='string')))))return fail()}
  if(!object(value.context)||!text(value.context.scope,100)||!Array.isArray(value.context.entries)||value.context.entries.length>800||new Set(value.context.entries.map(e=>e.id)).size!==value.context.entries.length)return fail()

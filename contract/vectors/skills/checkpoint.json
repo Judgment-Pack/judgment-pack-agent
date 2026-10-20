@@ -1,0 +1,131 @@
+{
+  "description": "The checkpoint's loaded skills (ADR-0009): a response that loaded expense_policy, unloaded it, loaded issue_style and loaded expense_policy again. skills (provenance.json#/$defs/skillLoad) is the loaded set in load order, each its id, the digest it was loaded at, its bytes and when; the report's rows count each source's loads (provenance.json#/$defs/sourceFigures, skills), the reload counted again, an Exchange entry's source of kind exchange, and an MCP server whose prompt was declared and not loaded at 0. A continued run restores the set where the host still declares each skill with that digest. Written by hand; skills.test.ts and go/context read it and restore from it.",
+  "schema": "checkpoint.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/execution/state.ts (SkillLoad, validSkillLoads, readExecution)",
+      "packages/harness/skills.ts (SkillGate.restore)"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "id": "5e2a7c91-0b3d-4f6e-8a1c-9d2e3f4a5b6c",
+      "requestKey": "2b4d6f8091a3c5e7f9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a3c5",
+      "phase": "work",
+      "status": "running",
+      "unit": "model-requests",
+      "used": 4,
+      "limit": 20,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [
+        {
+          "id": "6a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "name": "load_skill",
+          "args": {
+            "name": "expense_policy"
+          },
+          "status": "complete"
+        },
+        {
+          "id": "7b2c3d4e-5f6a-4b7c-9d8e-0f1a2b3c4d5e",
+          "name": "unload_skill",
+          "args": {
+            "name": "expense_policy"
+          },
+          "status": "complete"
+        },
+        {
+          "id": "8c3d4e5f-6a7b-4c8d-ae9f-1a2b3c4d5e6f",
+          "name": "load_skill",
+          "args": {
+            "name": "issue_style"
+          },
+          "status": "complete"
+        },
+        {
+          "id": "9d4e5f6a-7b8c-4d9e-bfa0-2b3c4d5e6f7a",
+          "name": "load_skill",
+          "args": {
+            "name": "expense_policy"
+          },
+          "status": "complete"
+        }
+      ],
+      "context": {
+        "scope": "run-9",
+        "entries": []
+      },
+      "sources": [
+        {
+          "source": "runtime",
+          "kind": "runtime",
+          "calls": 0,
+          "refused": 0,
+          "proposed": 0,
+          "bytes": 0,
+          "milliseconds": 0
+        },
+        {
+          "source": "rates",
+          "kind": "custom",
+          "calls": 0,
+          "refused": 0,
+          "proposed": 0,
+          "bytes": 0,
+          "milliseconds": 0
+        },
+        {
+          "source": "policies",
+          "kind": "custom",
+          "calls": 0,
+          "refused": 0,
+          "proposed": 0,
+          "bytes": 0,
+          "milliseconds": 0,
+          "skills": 2
+        },
+        {
+          "source": "jx-issue-style",
+          "kind": "exchange",
+          "calls": 0,
+          "refused": 0,
+          "proposed": 0,
+          "bytes": 0,
+          "milliseconds": 0,
+          "skills": 1
+        },
+        {
+          "source": "tracker",
+          "kind": "mcp",
+          "calls": 0,
+          "refused": 0,
+          "proposed": 0,
+          "bytes": 0,
+          "milliseconds": 0,
+          "skills": 0
+        }
+      ],
+      "skills": [
+        {
+          "id": "issue-style",
+          "digest": "sha256:dee1273431aac3e04266abaeeb4522d6d9857366c9d501fda20758dbb14e7c34",
+          "bytes": 114,
+          "loadedAt": "2026-10-20T14:02:11.000Z"
+        },
+        {
+          "id": "expense-policy",
+          "digest": "sha256:f6a93d485c5702705a0730234f301d4f474743e918b0926de73b1d05067c25a9",
+          "bytes": 240,
+          "loadedAt": "2026-10-20T14:02:19.000Z"
+        }
+      ]
+    }
+  ]
+}

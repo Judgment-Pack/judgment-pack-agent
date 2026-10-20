@@ -13,6 +13,8 @@
         "execution_checkpoint",
         "budget_paused",
         "approval_requested",
+        "skill_loaded",
+        "skill_unloaded",
         "retry",
         "response_recovery",
         "delegation_requested",
@@ -41,6 +43,12 @@
     },
     {
       "$ref": "#/$defs/approval_requested"
+    },
+    {
+      "$ref": "#/$defs/skill_loaded"
+    },
+    {
+      "$ref": "#/$defs/skill_unloaded"
     },
     {
       "$ref": "#/$defs/retry"
@@ -165,6 +173,45 @@
         }
       },
       "additionalProperties": false
+    },
+    "skill_loaded": {
+      "description": "A skill loaded (ADR-0009): the model's load_skill call loaded it, between that call and its result. skill names it (tool-offer.json#/$defs/loadedSkill: id, name, source record, digest; never its instructions); bytes is what it counts against skillBytes (skill.json#/$defs/bytes). The checkpoint's skills carries it from here.",
+      "type": "object",
+      "required": [
+        "type",
+        "skill",
+        "bytes"
+      ],
+      "properties": {
+        "type": {
+          "const": "skill_loaded"
+        },
+        "skill": {
+          "$ref": "tool-offer.json#/$defs/loadedSkill"
+        },
+        "bytes": {
+          "$ref": "skill.json#/$defs/bytes"
+        }
+      },
+      "additionalProperties": true
+    },
+    "skill_unloaded": {
+      "description": "A skill unloaded (ADR-0009): the model's unload_skill call dropped it, between that call and its result; id is the skill's id. Its block leaves every later request.",
+      "type": "object",
+      "required": [
+        "type",
+        "id"
+      ],
+      "properties": {
+        "type": {
+          "const": "skill_unloaded"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9-]{0,23}$"
+        }
+      },
+      "additionalProperties": true
     },
     "retry": {
       "description": "The adapter is sending again within this turn, attempt n of at most two. The codex engine relays the Codex bridge's recovery notices. The vercel engine emits it before it sends again a model request the provider refused (packages/harness/engines/vercel/retry.ts, retryingCall): only a failure whose outcome is refused and that failures.ts names (canRetryRefusal: the rate-limited class, a 429 or a rate-limit alias, and a 4xx carrying the overload code overloaded_error), never an unknown outcome (a 5xx, 408, 504 or a transport failure) and never a response that answered: a stream that breaks after its first byte is reported, not sent again; at most two retries, each after the longer of the backoff (1 s, then 2 s) and the provider's Retry-After, and none where Retry-After asks for more than 30 s, when the refusal is reported at once with its retryAt, nor where the retry would take the allowance's last request, which is the turn's tool-free final answer. Each attempt is a model request: counted against the allowance and recorded in the checkpoint's completions (provenance.json: attempt, failure, waitMs).",
@@ -319,7 +366,7 @@
       "additionalProperties": true
     },
     "guardrail": {
-      "description": "The host saying what it did. rewrote and refused are the tool gate's, emitted by the host as the call's frame leaves the page, so they arrive between that call's tool_call and tool_result. narrowed is the adapter's notice, before the model is asked anything, that a tool's served schema lost a keyword on this family's wire. Also refused, with tool proposal, where the host withholds a proposal (Plan mode, or a conversation without artifact proposals). reason (ADR-0008), on a refusal of an act call of a tool with a source: approval refused, the host's approval policy answered refuse; approval pending, the call came while another act call of the run waits for the person's decision (at most one approval is pending); approval stale, the gate's own refusal of a call whose decision no longer holds for it (its arguments not those its approval was decided for, a call that reaches its run without an allow, or, on the continued run, its tool no longer offered as the person decided). None of these calls is run.",
+      "description": "The host saying what it did. rewrote and refused are the tool gate's, emitted by the host as the call's frame leaves the page, so they arrive between that call's tool_call and tool_result. narrowed is the adapter's notice, before the model is asked anything, that a tool's served schema lost a keyword on this family's wire. Also refused, with tool proposal, where the host withholds a proposal (Plan mode, or a conversation without artifact proposals). reason (ADR-0008), on a refusal of an act call of a tool with a source: approval refused, the host's approval policy answered refuse; approval pending, the call came while another act call of the run waits for the person's decision (at most one approval is pending); approval stale, the gate's own refusal of a call whose decision no longer holds for it (its arguments not those its approval was decided for, a call that reaches its run without an allow, or, on the continued run, its tool no longer offered as the person decided). None of these calls is run. skill withheld (ADR-0009), on a skill the package did not catalogue or restore, tool its name (or, for the catalogue's bounds, its source's id): its tools[] names a tool the host did not declare, its bytes pass skillBytes, its bundle does not hash to the digest the person approved, the catalogue's bounds left it out, or a skill the checkpoint had loaded is no longer declared as it was; skill budget, on a load_skill call refused past skillsPerRun, between that call and its failed result. Nothing of a withheld skill reaches the model.",
       "type": "object",
       "required": [
         "type",
@@ -348,7 +395,9 @@
           "enum": [
             "approval refused",
             "approval pending",
-            "approval stale"
+            "approval stale",
+            "skill withheld",
+            "skill budget"
           ]
         }
       },

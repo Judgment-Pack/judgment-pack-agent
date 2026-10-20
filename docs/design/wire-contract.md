@@ -39,7 +39,11 @@ per-source bounds, reported by source (see [Tool sources](#tool-sources)). Amend
 [ADR-0008](../adr/0008-the-approval-pause.md): an act call is answered at once by the host's approval
 policy (`allow`, `refuse`, `ask`), and on `ask` the run pauses (`approval_requested`, the call in the
 checkpoint's `approval`, `end`) until the person's decision continues it in a new request that
-carries the result as one data block (see [The approval pause](#the-approval-pause)).
+carries the result as one data block (see [The approval pause](#the-approval-pause)). Amended for
+[ADR-0009](../adr/0009-skills.md): the host declares skills beside its host tools, each a bundle of
+instructions from a source with the digest the person approved; the package admits them, lists them
+in the system text, loads one on the model's `load_skill` call under a budget and places it after the
+history at the project block's rank, and a skill grants no tool (see [Skills](#skills)).
 
 ## Host, adapter, and the slot between them
 
@@ -52,9 +56,9 @@ Desk server runs. This package adds a third, `deepagents` (ADR-0003):
 | Adapter | Kind | Loop | Reach to a model | Tool calls | The prompt (ADR-0005) |
 | --- | --- | --- | --- | --- | --- |
 | `vercel` | model | the Vercel AI SDK's `streamText` | `model.call`, as the SDK's providers' `fetch` (`relayFetch`) | the SDK's tools, each executed through the gate's dispatch; an act call the host's policy asks about held, its step's other calls answered and the next request refused (ADR-0008) | the system text (`systemText`) as the SDK's `instructions`, with the Anthropic cache breakpoint; the host's parts from `configureHarness` |
-| `codex` | agent | the Codex bridge the Desk server runs | `agent.run` | the agent wire, under aliases, through the gate's dispatch; an act call the host's policy asks about ends the run as a delegation handoff does (ADR-0008) | the system text as the agent request's `instructions`; the request text, the index and the state in its `prompt`; the host's parts from `configureHarness` |
+| `codex` | agent | the Codex bridge the Desk server runs | `agent.run` | the agent wire, under aliases, through the gate's dispatch; an act call the host's policy asks about ends the run as a delegation handoff does (ADR-0008) | the system text as the agent request's `instructions`; the request text, the index and the state in its `prompt`; the host's parts from `configureHarness`; a loaded skill's block in `load_skill`'s answer, and in a later run's state (ADR-0009) |
 | `deepagents` | model | Deep Agents' agent graph (`createDeepAgent`, `deepagents/browser`), its own tools, subagents and summarization off | `model.call`, from its own LangChain chat model, the three wires written by the adapter; a run whose environment turns LangChain's tracing on is refused | every call answered by the adapter's boundary middleware through the gate's dispatch; an act call the host's policy asks about held, as on `vercel` (ADR-0008) | the system text as the system message its `wrapModelCall` places; the host's parts from `configureHarness` |
-| `agent` (Go) | agent | the host's provider-run function (`adapter.Agent.Run`, ADR-0007), one invocation per call, the provider's own model loop | the host's function, which holds its account, process and credentials; the adapter holds no transport | the agent wire, under aliases, through the Go gate's narrow handle (`gate.Calls`); `delegate_tasks` a handoff, and an act call the host's policy asks about ends the invocation as one (ADR-0008) | the system text (`runcontext.SystemText`) as each invocation's `instructions`; the request text, the index and the state in its `prompt`; the host's parts from `adapter.Run`'s `Host` |
+| `agent` (Go) | agent | the host's provider-run function (`adapter.Agent.Run`, ADR-0007), one invocation per call, the provider's own model loop | the host's function, which holds its account, process and credentials; the adapter holds no transport | the agent wire, under aliases, through the Go gate's narrow handle (`gate.Calls`); `delegate_tasks` a handoff, and an act call the host's policy asks about ends the invocation as one (ADR-0008) | the system text (`runcontext.SystemText`) as each invocation's `instructions`; the request text, the index and the state in its `prompt`; the host's parts from `adapter.Run`'s `Host`; a loaded skill's block in `load_skill`'s answer, and in a later invocation's state (ADR-0009) |
 | `eino` (Go) | model | Eino's `adk.ChatModelAgent` under an `adk.Runner` (ADR-0004), its interrupt, checkpoint, retries and subagents not configured | the in-process relay client (`go/relay`), which runs each request through the relay handler's path; the three wires written by the adapter (`go/adapter/wire`) | every call answered by the adapter's boundary middleware or Eino's unknown-tools handler, one dispatch, through the Go gate's narrow handle (`gate.Calls`); a turn's calls one at a time, an act call the host's policy asks about held as on `vercel` (ADR-0008) | the system text (`runcontext.SystemText`) as the system message the adapter writes on each wire; the host's parts from `adapter.Run`'s `Host` |
 
 Everything an engine needs is decided by the host before the session starts and handed to it:
@@ -87,8 +91,9 @@ rehearsal rule stay the host's (ADR-0001). Nothing below moves them.
 
 ## Run events
 
-`run-event.json`. Nineteen kinds, discriminated by `type`, from the adapter to the host, in order: the
-Desk's eighteen and the harness's `approval_requested` (ADR-0008):
+`run-event.json`. Twenty-one kinds, discriminated by `type`, from the adapter to the host, in order: the
+Desk's eighteen, the harness's `approval_requested` (ADR-0008), and `skill_loaded` and
+`skill_unloaded` (ADR-0009):
 
 - **Work:** `tool_call` and `tool_result` (each call before its result, paired by `callId` where
   one is set); `reasoning` (deltas, then the whole passage with `done`); `message_progress` (the
@@ -107,7 +112,10 @@ Desk's eighteen and the harness's `approval_requested` (ADR-0008):
 - **Host reports:** `guardrail` (`rewrote` and `refused` from the tool gate, between the call and
   its result, with `reason` `approval refused` or `approval pending` where an act call's approval
   refused it (ADR-0008), `approval stale` where the gate refused a call whose decision no longer
-  holds for it, and `approval refused` again after the person's refusal is written; `narrowed` before the model is asked anything, where a family's wire cannot carry a
+  holds for it, and `approval refused` again after the person's refusal is written; with `reason`
+  `skill withheld` on a skill the package did not catalogue or restore (ADR-0009), before the first
+  request, and `skill budget` on a `load_skill` call past `skillsPerRun`, between the call and its
+  result; `narrowed` before the model is asked anything, where a family's wire cannot carry a
   served schema keyword; `refused` with tool `proposal` where Plan mode or a conversation withholds
   proposals), `execution_checkpoint` (state to save, `durable` where it must be saved before the
   next operation), `delegated_task` (a child's state, whole, at each transition; on `vercel`
@@ -362,6 +370,59 @@ The vectors are `approval/` (`pause.json`, `second-act-while-pending.json`, `con
 (`runcontext.OfferedHostTools`), as it adds the boundary's context tools. Certified scenario 7
 (`certification/scenarios/tool-sources.json`) runs the path on every engine, on `eino` and, in the Go
 `harness-check`, on the agent capability (`go/adapter/agent`).
+
+## Skills
+
+[ADR-0009](../adr/0009-skills.md) (agent#91). A skill is a named, versioned bundle the host declares
+beside its host tools (`session.skills`, Go `Session.Skills` and `adapter.Run.Skills`) and supplies:
+instructions, the names of host tools it uses, small text resources. It comes from a source and
+carries the source record a tool carries; the package never fetches one. What the contract states,
+and where:
+
+- **The declaration** (`skill.json`, closed; `tool-offer.json#/$defs/skillDeclaration`): `id`,
+  `name` (what `load_skill` takes, `[A-Za-z0-9_-]{1,64}`), `description`, `source` (kind `gateway`,
+  `mcp`, `custom` or `exchange`, a Judgment Exchange entry's id and version its own; `runtime`
+  refused), `instructions`, `tools` (at most 16), `resources` (`{name, text}`, at most 8) and
+  `pinnedDigest`, the digest of the bundle the person approved (`skill.json#/$defs/digest`: the
+  canonical JSON of `{name, description, instructions, tools, resources}`). A declaration the package
+  cannot read ends the run before any request (`configuration`). A skill that names a tool the host
+  did not declare for the run, whose bytes (instructions and resources) pass `skillBytes` (8,000), or
+  whose bundle does not hash to its pinned digest is withheld, with a `guardrail` `refused`, reason
+  `skill withheld`, before the first request; nothing of it reaches the model.
+- **The catalogue** (`$defs/skillCatalogueEntry`, the vector `skills/catalogue.json`): in the system
+  text, after the tools described in text, its first line saying what it is, then each admitted
+  skill's name and its description's first line (160 bytes) framed as retrieved data under the run's
+  marker, then `END SKILLS`. At most `cataloguedSkills` (32) skills and `skillsCatalogueBytes`
+  (8,000) bytes, each entry counted as the JSON of its name and its line; the rest withheld, one
+  guardrail for each source. It is part of the stable prefix and never changes during the run.
+- **The loaders** (`$defs/loadSkill`, `$defs/unloadSkill`, reserved names, effect `plan`): offered
+  where any skill is catalogued, in every phase but a delegated child's, which is handed no skills.
+  `load_skill` loads a catalogued skill, each load counted against `skillsPerRun` (4) in its source's
+  row of the run report (`sourceFigures.skills`, carried through a resume); a load past it is refused
+  (`tool-failed`, `not-started`; reason `skill budget`). Its answer is the skill as a load names it
+  (`$defs/loadedSkill`: id, name, source record, digest), its bytes and a note. `unload_skill` drops
+  a loaded skill; loading it again counts again.
+- **The block**: every request after a load carries the loaded skills after the history, in the
+  execution state after the schemas `load_tool` loaded, as one block headed "SKILL INSTRUCTIONS (a
+  skill's instructions, at the rank of the project's own instructions and after them; follow them
+  where they do not contradict the rules above)", each skill framed under the run's marker
+  (`BEGIN SKILL <marker> "name" from source "id"; ...`, its instructions, each resource, `END SKILL
+  <marker>`), then `END SKILL INSTRUCTIONS` (the vector `skills/load.json`). The tool list and the
+  system text are the same bytes before and after a load. On the agent wire the block reaches the
+  agent in `load_skill`'s answer (see [The prompt](#the-prompt)).
+- **The events and the checkpoint**: `skill_loaded {type, skill, bytes}` and `skill_unloaded {type,
+  id}` between the loader's call and its result; the checkpoint's `skills`, the loaded set in load
+  order (`provenance.json#/$defs/skillLoad`: id, digest, bytes, `loadedAt`). A continued run restores
+  each skill the host still declares with the digest it was loaded at; one it does not is not
+  restored, and a guardrail (`skill withheld`) says so.
+
+A skill grants nothing: the tools it names are the host's declared tools, offered by phase and held
+to their effect classes and approvals as before, and nothing its text says reaches the gate. Plan
+mode and the critic are offered the catalogue and the loaders; a load changes nothing either admits.
+TypeScript holds these in `skills.ts`, entered from `contextualSession`; Go in `go/context/skills.go`,
+entered from `ContextualSession`, its loads counted under the source gate's lock. A Go host opens its
+gate with the loaders where any skill would be catalogued (`runcontext.OfferedSkillTools`). Certified
+scenario 9 (`certification/scenarios/skills.json`) runs it on every engine and both Go adapters.
 
 ## The critic
 
@@ -850,7 +911,9 @@ call's result, read closed by the Go reader. On that capability `delegation` is 
 parent's first invocation, so the response's agent runs survive a restart. Where an act call paused
 the run, `approval` (ADR-0008, closed in both readers): the call, its state (`asked`, `approved`,
 `refused`, `executed`, `answered`), when it was decided, the person's note and the result; at most
-one, and `status` `paused` while it is `asked`. Never permissions,
+one, and `status` `paused` while it is `asked`. Once a skill is loaded, `skills` (ADR-0009): the
+loaded set in load order, each its id, digest, bytes and `loadedAt`, closed in both readers, which a
+continued run restores. Never permissions,
 evidence approval or private reasoning. At most 4 MiB as JSON
 text.
 
@@ -918,6 +981,9 @@ is no longer waited for and is a failed result the model reads, never a failed r
 image bounds the same way (agent#5): `imagesPerRequest` (8) and `imageBytesPerRequest` (16 MiB), the
 images one model request carries on `vercel`, newest first. And two bounds on the index of earlier
 results a chat-scoped run is shown (agent#8): `turnIndexEntries` (20) and `turnIndexBytes` (8,000).
+The skills budget (ADR-0009; see [Skills](#skills)) adds four: `skillBytes` (8,000, one skill's
+instructions and resources), `skillsPerRun` (4 loads a response, carried through a resume),
+`skillsCatalogueBytes` (8,000) and `cataloguedSkills` (32).
 
 ## The capability record
 
@@ -1108,6 +1174,16 @@ run, so it reaches the host on the run's next `execution_checkpoint` event, whic
 with a `currentRequest` or a restored execution) emits. Since the relay adds nothing, it is the
 digest of what the model was shown, the credential and the relay's own headers aside.
 
+**Skills (ADR-0009).** The skills catalogue is the last part of the system text, after the tools
+described in text, so it is in the stable prefix on every wire and never changes during the run. A
+loaded skill is instructions at layer 4's rank, after the project block, but it is placed after the
+history, in the execution state (layer 8), after the schemas `load_tool` loaded, so a load moves
+nothing before it. On the model engines (`vercel`, `deepagents`, `eino`) the block is on every request
+after the load, where the endpoint's placement puts the state; the critic's step note carries it too.
+On the agent wire (`codex`, the Go agent capability) the state is sent once per invocation, so within
+an invocation a load's block reaches the agent in `load_skill`'s answer, and a later invocation of the
+response (a continuation) carries the loaded set in its prompt's state.
+
 **What the Desk changes in its swap** (judgment-pack-desk#537): the three injection points answered
 from the project (the brief file the profile names, the memory store, the per-project block), and the
 server's prompt reading removed (`internal/desk/ai_context.go`'s recall query and its brief and
@@ -1265,6 +1341,13 @@ Agents' subagents are off and delegation is the package's, an awaited `delegate_
   run was not offered is counted refused in the Runtime's row on every engine: through the boundary's
   wrapped `callTool` in TypeScript, and in the Go adapters' own refusals (`eino`'s and the agent
   capability's).
+- **Skills** (ADR-0009). The model engines (`vercel`, `deepagents`, `eino`) carry the loaded skills'
+  block in the execution state on every request after a load; the agent wire (`codex`, the Go agent
+  capability) sends the state once per invocation, so a load's block reaches the agent in
+  `load_skill`'s answer, after the answer's JSON, and a later invocation of the response carries the
+  loaded set in its state. Go counts a load under the source gate's lock, as it counts a source's
+  calls, and reads the checkpoint's loaded set through the skill gate's lock when it writes one;
+  TypeScript counts in the execution state's rows directly.
 - **The agent capability, TypeScript and Go** (ADR-0007). Both end the parent's run at
   `delegation_requested`, run children one at a time and continue in a new run with the call's
   result. The Go `agent` adapter waits for the host's provider-run function to return before its
@@ -1408,7 +1491,7 @@ Agents' subagents are off and delegation is the package's, an awaited `delegate_
     `grep`, `execute`, `task` or one of the async task tools ends the run as a `configuration`
     error on this engine.
   - **Certification.** Held to every leg `vercel` is held to (the six wire legs, text tool calls,
-    strict alternation, thinking, the eight scenarios once per answer shape, delegation's
+    strict alternation, thinking, the nine scenarios once per answer shape, delegation's
     concurrency), with one recorded difference, scenario 1's, above.
 
 - **The `eino` engine** (Go, ADR-0004). A model engine on Eino's ADK, running in the host's Go
@@ -1447,7 +1530,7 @@ Agents' subagents are off and delegation is the package's, an awaited `delegate_
     agent capability's half (a run that ends at `delegation_requested`) is not ported, the Go
     adapter being a model adapter.
   - **Certification.** The Go runner (`go/certification`, `go/cmd/harness-check`) runs every leg the
-    TypeScript suite runs on a model engine, the eight scenarios and the model engine's check of
+    TypeScript suite runs on a model engine, the nine scenarios and the model engine's check of
     `certification/delegation.test.ts` on this adapter, all passing; `go/certification/parity.json`
     maps every TypeScript check to the Go checks that make it. Where
     the host differs, the check says so: scenario 5's boundary check reads the refusals only, because

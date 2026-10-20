@@ -1,0 +1,44 @@
+{
+  "description": "A skill withheld at declaration because it names a tool the host did not declare (ADR-0009): declaration names write_file, which hostTools (the host's declared tools, a tool with a source by its wire name) does not hold. A skill names the host's declared tools only and grants none, so it is not catalogued and nothing of it reaches the model; its digest is the pinned one, so the tool alone withholds it. The guardrail, before any request, names the skill and the tool; its reason is skill withheld. Written by hand; skills.test.ts and go/context hold declareSkills to it.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/skills.ts (declareSkills)"
+    ]
+  },
+  "declaration": {
+    "id": "file-helper",
+    "name": "file_helper",
+    "description": "Save the drafted pack to a file.",
+    "source": {
+      "kind": "custom",
+      "id": "policies",
+      "trust": "person",
+      "version": "4"
+    },
+    "instructions": "When the pack is drafted, call write_file with its text.",
+    "tools": [
+      "write_file"
+    ],
+    "pinnedDigest": "sha256:c30e63aa4373696e89fb9dd72b4d0bb8768ed39f184df78095a32caa1112a615"
+  },
+  "hostTools": [
+    "ask_user",
+    "propose_pack",
+    "rates__lookup_rate",
+    "tracker__create_issue"
+  ],
+  "items": [
+    {
+      "type": "guardrail",
+      "tool": "file_helper",
+      "action": "refused",
+      "detail": "the skill file_helper names the tool \"write_file\", which the host did not declare for this run; the skill is not offered, and a skill grants no tool",
+      "reason": "skill withheld"
+    }
+  ]
+}

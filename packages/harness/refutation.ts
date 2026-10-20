@@ -69,9 +69,10 @@ export function criticMayCall(name: string): boolean {
   return CRITIC_TOOL_SET.has(name)
 }
 
-/** Whether the critic may call a host tool of this name: only the harness's own readers. */
+/** Whether the critic may call a host tool of this name: the harness's own readers, and the skill loaders (ADR-0009). */
 export function criticMayRead(name: string): boolean {
-  return CRITIC_READER_SET.has(name)
+  // ADR-0009: the skill loaders too, where the run catalogues skills; a skill grants no tool.
+  return CRITIC_READER_SET.has(name) || name === 'load_skill' || name === 'unload_skill'
 }
 
 /** Why the critic's call of `name` did not leave the page: the guardrail's detail. */

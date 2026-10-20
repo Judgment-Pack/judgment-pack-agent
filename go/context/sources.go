@@ -796,6 +796,37 @@ func OfferedHostTools(tools []HostTool, served []string, policy Policy) ([]contr
 	return out, nil
 }
 
+// OfferedSkillTools are the declarations a Go host opens the gate with for the skill loaders
+// (ADR-0009): load_skill and unload_skill where any of skills would be catalogued, none otherwise.
+// tools are the host's tools and served the Runtime tools' names, as OfferedHostTools takes them. A
+// declaration the package cannot read is the error the run would end with.
+func OfferedSkillTools(tools []HostTool, served []string, skills []Skill, policy Policy) ([]contract.ToolOfferHostTool, error) {
+	if len(skills) == 0 {
+		return nil, nil
+	}
+	declared, err := DeclareSources(tools, served)
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(declared.HostTools))
+	for _, tool := range declared.HostTools {
+		names = append(names, tool.Name)
+	}
+	admitted, err := DeclareSkills(skills, names, policy, declared.Sources)
+	if err != nil {
+		return nil, err
+	}
+	// A marker of the run's length, so the catalogue's bounds count what the run's will.
+	if _, catalogued, _ := CatalogueSkills(admitted.Skills, policy, strings.Repeat("0", 32)); len(catalogued) == 0 {
+		return nil, nil
+	}
+	plan := "plan"
+	return []contract.ToolOfferHostTool{
+		{Name: LoadSkill, Description: LoadSkillDescription, InputSchema: json.RawMessage(LoadSkillSchema), Effect: &plan},
+		{Name: UnloadSkill, Description: UnloadSkillDescription, InputSchema: json.RawMessage(UnloadSkillSchema), Effect: &plan},
+	}, nil
+}
+
 // SourceGate is the boundary's hold on the tools with a source for one run (SourceGate in
 // toolSources.ts): each call's checks in order, the run report, load_tool and the loaded schemas,
 // and the record on the events. Its methods are safe for concurrent use.
@@ -1623,9 +1654,12 @@ func ValidSourceFigures(rows *Value) bool {
 		return false
 	}
 	for _, row := range rows.Items() {
-		if !isObject(row) || !hasOnly(row, "source", "kind", "calls", "refused", "proposed", "bytes", "milliseconds") ||
+		if !isObject(row) || !hasOnly(row, "source", "kind", "calls", "refused", "proposed", "bytes", "milliseconds", "skills") ||
 			!row.Get("source").IsString() || !sourceID.MatchString(row.Get("source").Str()) ||
-			!oneOf(row.Get("kind"), "runtime", "gateway", "mcp", "custom") {
+			!oneOf(row.Get("kind"), "runtime", "gateway", "mcp", "custom", "exchange") {
+			return false
+		}
+		if held := row.Get("skills"); held != nil && (!isInteger(held) || held.Num() < 0) {
 			return false
 		}
 		for _, member := range []string{"calls", "refused", "proposed", "bytes", "milliseconds"} {

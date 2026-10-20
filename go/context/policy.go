@@ -48,6 +48,11 @@ type Policy struct {
 	SourceResultBytes      int `json:"sourceResultBytes"`
 	SourceCallsPerTurn     int `json:"sourceCallsPerTurn"`
 	SourceCallMilliseconds int `json:"sourceCallMilliseconds"`
+	// The skills budget (SKILL_DEFAULTS, ADR-0009).
+	SkillBytes           int `json:"skillBytes"`
+	SkillsPerRun         int `json:"skillsPerRun"`
+	SkillsCatalogueBytes int `json:"skillsCatalogueBytes"`
+	CataloguedSkills     int `json:"cataloguedSkills"`
 }
 
 // TimeDefaults are the time bounds the harness adds to the Desk's table (TIME_DEFAULTS): one
@@ -87,6 +92,13 @@ var SourceDefaults = struct {
 	ToolDescriptionBytes, OfferedSchemas, OfferedSchemaBytes, CataloguedTools, CatalogueBytes, SourceResultBytes, SourceCallsPerTurn, SourceCallMilliseconds int
 }{1024, 16, 24_000, 64, 24_000, 8000, 8, 30_000}
 
+// SkillDefaults are the skills budget (ADR-0009, SKILL_DEFAULTS): the most bytes one skill's
+// instructions and resources may take, how many loads one response may make, and how many skills, and
+// how many bytes of their names and lines (each line unframed: the frame's lines are the same for
+// every entry and not counted), the catalogue in the system text lists before the rest are withheld.
+// Not in the Desk's table; a table that carries them wins.
+var SkillDefaults = struct{ SkillBytes, SkillsPerRun, SkillsCatalogueBytes, CataloguedSkills int }{8000, 4, 8000, 32}
+
 // DeskPolicy is the Desk's table itself (contract/desk/policy.json, packages/harness/contract/policy.json).
 var DeskPolicy = Policy{
 	Version:             1,
@@ -125,6 +137,10 @@ var Defaults = func() Policy {
 	p.SourceResultBytes = SourceDefaults.SourceResultBytes
 	p.SourceCallsPerTurn = SourceDefaults.SourceCallsPerTurn
 	p.SourceCallMilliseconds = SourceDefaults.SourceCallMilliseconds
+	p.SkillBytes = SkillDefaults.SkillBytes
+	p.SkillsPerRun = SkillDefaults.SkillsPerRun
+	p.SkillsCatalogueBytes = SkillDefaults.SkillsCatalogueBytes
+	p.CataloguedSkills = SkillDefaults.CataloguedSkills
 	return p
 }()
 

@@ -355,6 +355,9 @@ type Session struct {
 	// Host is the host's side of the prompt (ADR-0005): the brief, the project's own instructions
 	// and recalled memory, asked once per run through SessionContext.AskHost. Nil supplies none.
 	Host Host
+	// Skills are the skills the host declares for the run (ADR-0009, skills.go), beside its host
+	// tools, each with the digest the person approved. A delegated child is handed none.
+	Skills []Skill
 }
 
 // ModelName is the model the run is on, whichever capability it is.

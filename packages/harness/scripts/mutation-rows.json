@@ -3560,6 +3560,97 @@
    "status": "caught",
    "origin": "#82, the framing marker across the approval pause",
    "note": "the check holds the pausing run's framed descriptions to the marker the paused checkpoint carries, which a normalised text cannot show; the Go check has no normalisation to put back (stablePrefix returns the bytes)"
+  },
+  {
+   "name": "the loaded skills' block drops its heading, so nothing ranks a skill's instructions after the project's",
+   "file": "skills.ts",
+   "find": "  return `${SKILL_INSTRUCTIONS_HEADER}\\n${skills.map((skill) => framedSkill(skill, marker)).join('\\n')}\\n${SKILL_INSTRUCTIONS_END}`",
+   "replace": "  return `${skills.map((skill) => framedSkill(skill, marker)).join('\\n')}\\n${SKILL_INSTRUCTIONS_END}`",
+   "tests": [
+    "skills.test.ts",
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0009, skills (#91)",
+   "note": "skillSection; skills.test.ts holds the block to the contract's skills/load.json and scenario 9 reads the skills of a block from its heading on every engine; the Go twin is SkillSection (go/context/skills.go), caught by TestLoadSkillAndUnloadSkillAreTheVectors and by scenario 9's block check in the Go harness-check (run by hand on a scratch copy)"
+  },
+  {
+   "name": "admission no longer checks a skill's tools against the host's declared tools",
+   "file": "skills.ts",
+   "find": "    if (unknown !== undefined) {",
+   "replace": "    if (unknown !== undefined && false) {",
+   "tests": [
+    "skills.test.ts",
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0009, skills (#91)",
+   "note": "declareSkills; skills.test.ts holds the guardrail to skills/withheld-tool.json and scenario 9 to file_helper's guardrail before any request; the Go twin is DeclareSkills (go/context/skills.go), caught by TestASkillWithAChangedBundleOrAnUndeclaredToolIsWithheldWithTheVectorsGuardrail and scenario 9 in the Go harness-check (run by hand on a scratch copy)"
+  },
+  {
+   "name": "admission no longer compares a skill's digest with the one the person approved",
+   "file": "skills.ts",
+   "find": "    if (digest !== skill.pinnedDigest) {",
+   "replace": "    if (digest !== skill.pinnedDigest && false) {",
+   "tests": [
+    "skills.test.ts",
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0009, skills (#91)",
+   "note": "declareSkills; skills.test.ts holds the guardrail to skills/withheld-digest.json and scenario 9 to issue_draft's guardrail and its text reaching no request; the Go twin is DeclareSkills, caught by TestASkillWithAChangedBundleOrAnUndeclaredToolIsWithheldWithTheVectorsGuardrail and scenario 9 in the Go harness-check (run by hand on a scratch copy)"
+  },
+  {
+   "name": "a load is not counted against skillsPerRun",
+   "file": "skills.ts",
+   "find": "    if (row !== undefined) row.skills = (row.skills ?? 0) + 1",
+   "replace": "    void row",
+   "tests": [
+    "skills.test.ts",
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0009, skills (#91)",
+   "note": "SkillGate.load; skills.test.ts holds the fifth load to skills/budget.json and the report's rows, and scenario 9 its refusal and the checkpoint's rows on every engine; the Go twin is SourceGate.claimSkillLoad (go/context/skills.go), caught by TestEachLoadIsCountedAgainstSkillsPerRunAndTheLoadPastItRefused and scenario 9 in the Go harness-check (run by hand on a scratch copy)"
+  },
+  {
+   "name": "the loaded skills' block is placed in the system text, so the stable prefix moves with a load",
+   "file": "context/session.ts",
+   "find": " system(guidance:string,tools=''){return systemText(guidance,this.hostParts,tools)+this.skillCatalogue}",
+   "replace": " system(guidance:string,tools=''){return systemText(guidance,this.hostParts,tools)+this.skillCatalogue+(this.skills?.section()??'')}",
+   "tests": [
+    "skills.test.ts",
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0009, skills (#91)",
+   "note": "SessionContext.system; skills.test.ts holds the system text the same bytes across a load and an unload, and scenario 9 holds the restored run's system text free of the block on every engine (the restore runs before an engine builds its system text, so the restored set would reach it there). The Go twin is SessionContext.System (go/context/prompt.go), caught by TestTheBoundaryKeepsTheSystemTextAcrossALoadWhileTheStateCarriesTheBlock and by scenario 9's restore check in the Go harness-check (run by hand on a scratch copy)"
+  },
+  {
+   "name": "a catalogued skill's line is not framed as retrieved data",
+   "file": "skills.ts",
+   "find": "  return frameBlock(`the description of skill ${JSON.stringify(skill.name)} from source ${JSON.stringify(skill.source.id)}`, skillLine(skill), marker)",
+   "replace": "  return skillLine(skill)",
+   "tests": [
+    "skills.test.ts",
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0009, skills (#91)",
+   "note": "framedSkillLine; skills.test.ts holds the catalogue to skills/catalogue.json and scenario 9 reads each catalogued name with its framed line on every engine; the Go twin is FramedSkillLine (go/context/skills.go), caught by TestTheCatalogueIsTheVectorsSectionAndIsBoundedByCountAndBytes and scenario 9's catalogue check in the Go harness-check (run by hand on a scratch copy)"
+  },
+  {
+   "name": "load_skill's answer is cut to the result bound, so a skill whose JSON text passes toolResultBytes reaches the agent as a preview",
+   "file": "context/session.ts",
+   "find": "  if(name===LOAD_SKILL&&this.skills?.offered)return value\n",
+   "replace": "",
+   "tests": [
+    "certification/scenarios.test.ts",
+    "skills.test.ts"
+   ],
+   "status": "caught",
+   "origin": "clean-room review of #92 (MEDIUM 1)",
+   "note": "SessionContext.result; scenario 9 on codex holds the escape-heavy review_checklist's block to reach the agent whole, its instructions and its closing lines, in load_skill's answer; the Go twin is SessionContext.Result (go/context/session.go), caught by scenario 9's 9 agent block check in the Go harness-check (run by hand on a scratch copy)"
   }
  ]
 }

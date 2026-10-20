@@ -1,0 +1,181 @@
+{
+  "description": "Skills as a host declares them (ADR-0009, tool-offer.json#/$defs/skillDeclaration): the person's custom skill that names one declared host tool and carries one resource, an Exchange entry's skill (kind exchange, the entry's id and version the record's), and an MCP server's prompt declared as a skill under the server's pinned tool list. Each pinnedDigest is the digest of its bundle (skill.json#/$defs/digest); the contract tests compute it again. refused are declarations the package cannot read, each with the words its configuration failure carries (problem): a Runtime source, a digest of its own, a name the wire does not take, a source member a record does not name, seventeen tools, and no pinned digest; the contract tests hold each to fail the schema. Written by hand; skills.test.ts and go/context hold the declaration to each.",
+  "schema": "tool-offer.json#/$defs/skillDeclaration",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/skills.ts (declareSkills, skillDigest, skillBytes)",
+      "packages/harness/engine.ts (AssistantSession.skills)"
+    ]
+  },
+  "refused": [
+    {
+      "problem": "its source is the Runtime, which declares no skill",
+      "declaration": {
+        "id": "issue-style",
+        "name": "issue_style",
+        "description": "Write tracker issues in the team's style.",
+        "source": {
+          "kind": "runtime",
+          "id": "jx-issue-style",
+          "trust": "public",
+          "version": "1.2.0"
+        },
+        "instructions": "An issue's title is one line in the imperative. Its body says what was expected, what happened, and how to see it.",
+        "pinnedDigest": "sha256:dee1273431aac3e04266abaeeb4522d6d9857366c9d501fda20758dbb14e7c34"
+      }
+    },
+    {
+      "problem": "it carries a digest, which the package computes; the host declares the approved one as pinnedDigest",
+      "declaration": {
+        "id": "issue-style",
+        "name": "issue_style",
+        "description": "Write tracker issues in the team's style.",
+        "source": {
+          "kind": "exchange",
+          "id": "jx-issue-style",
+          "trust": "public",
+          "version": "1.2.0"
+        },
+        "instructions": "An issue's title is one line in the imperative. Its body says what was expected, what happened, and how to see it.",
+        "digest": "sha256:dee1273431aac3e04266abaeeb4522d6d9857366c9d501fda20758dbb14e7c34"
+      }
+    },
+    {
+      "problem": "its name is not 1 to 64 letters, digits, underscores and hyphens",
+      "declaration": {
+        "id": "issue-style",
+        "name": "issue style",
+        "description": "Write tracker issues in the team's style.",
+        "source": {
+          "kind": "exchange",
+          "id": "jx-issue-style",
+          "trust": "public",
+          "version": "1.2.0"
+        },
+        "instructions": "An issue's title is one line in the imperative. Its body says what was expected, what happened, and how to see it.",
+        "pinnedDigest": "sha256:dee1273431aac3e04266abaeeb4522d6d9857366c9d501fda20758dbb14e7c34"
+      }
+    },
+    {
+      "problem": "its source carries \"currentDigest\", which a skill's source record does not name",
+      "declaration": {
+        "id": "issue-style",
+        "name": "issue_style",
+        "description": "Write tracker issues in the team's style.",
+        "source": {
+          "kind": "exchange",
+          "id": "jx-issue-style",
+          "trust": "public",
+          "version": "1.2.0",
+          "currentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "instructions": "An issue's title is one line in the imperative. Its body says what was expected, what happened, and how to see it.",
+        "pinnedDigest": "sha256:dee1273431aac3e04266abaeeb4522d6d9857366c9d501fda20758dbb14e7c34"
+      }
+    },
+    {
+      "problem": "its tools are not a list of at most 16 names",
+      "declaration": {
+        "id": "issue-style",
+        "name": "issue_style",
+        "description": "Write tracker issues in the team's style.",
+        "source": {
+          "kind": "exchange",
+          "id": "jx-issue-style",
+          "trust": "public",
+          "version": "1.2.0"
+        },
+        "instructions": "An issue's title is one line in the imperative. Its body says what was expected, what happened, and how to see it.",
+        "pinnedDigest": "sha256:dee1273431aac3e04266abaeeb4522d6d9857366c9d501fda20758dbb14e7c34",
+        "tools": [
+          "tool_0",
+          "tool_1",
+          "tool_2",
+          "tool_3",
+          "tool_4",
+          "tool_5",
+          "tool_6",
+          "tool_7",
+          "tool_8",
+          "tool_9",
+          "tool_10",
+          "tool_11",
+          "tool_12",
+          "tool_13",
+          "tool_14",
+          "tool_15",
+          "tool_16"
+        ]
+      }
+    },
+    {
+      "problem": "its pinned digest is not sha256: and 64 lower-case hex digits",
+      "declaration": {
+        "id": "issue-style",
+        "name": "issue_style",
+        "description": "Write tracker issues in the team's style.",
+        "source": {
+          "kind": "exchange",
+          "id": "jx-issue-style",
+          "trust": "public",
+          "version": "1.2.0"
+        },
+        "instructions": "An issue's title is one line in the imperative. Its body says what was expected, what happened, and how to see it."
+      }
+    }
+  ],
+  "items": [
+    {
+      "id": "expense-policy",
+      "name": "expense_policy",
+      "description": "Apply the expense policy when drafting a reimbursement pack.\nCovers mileage, meals and lodging.",
+      "source": {
+        "kind": "custom",
+        "id": "policies",
+        "trust": "person",
+        "version": "4"
+      },
+      "instructions": "Check each expense line against the policy: mileage at the rate rates__lookup_rate gives, meals within the daily cap, lodging only with a receipt. Name the line and the rule it breaks.",
+      "tools": [
+        "rates__lookup_rate"
+      ],
+      "resources": [
+        {
+          "name": "caps",
+          "text": "Meals: 60 EUR a day. Lodging: a receipt is required."
+        }
+      ],
+      "pinnedDigest": "sha256:f6a93d485c5702705a0730234f301d4f474743e918b0926de73b1d05067c25a9"
+    },
+    {
+      "id": "issue-style",
+      "name": "issue_style",
+      "description": "Write tracker issues in the team's style.",
+      "source": {
+        "kind": "exchange",
+        "id": "jx-issue-style",
+        "trust": "public",
+        "version": "1.2.0"
+      },
+      "instructions": "An issue's title is one line in the imperative. Its body says what was expected, what happened, and how to see it.",
+      "pinnedDigest": "sha256:dee1273431aac3e04266abaeeb4522d6d9857366c9d501fda20758dbb14e7c34"
+    },
+    {
+      "id": "review-checklist",
+      "name": "review_checklist",
+      "description": "The tracker's review checklist, served as a prompt.",
+      "source": {
+        "kind": "mcp",
+        "id": "tracker",
+        "trust": "public",
+        "toolListDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820"
+      },
+      "instructions": "Before proposing a change, list what it touches and how it was tested.",
+      "pinnedDigest": "sha256:c1d1cb7f7b5c046c9dc67e9e2df4f4c1950d463ee87ae5782812ee91dbdcb148"
+    }
+  ]
+}

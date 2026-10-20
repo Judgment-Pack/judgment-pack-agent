@@ -1,0 +1,32 @@
+{
+  "description": "unload_skill, the harness tool that drops one loaded skill (ADR-0009): its declaration as the boundary offers it beside load_skill. Written by hand; skills.test.ts holds SkillGate.unloadTool to it, and go/context its Go form.",
+  "schema": "tool-offer.json#/$defs/unloadSkill",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/skills.ts (UNLOAD_SKILL, UNLOAD_SKILL_SCHEMA, UNLOAD_SKILL_DESCRIPTION)"
+    ]
+  },
+  "items": [
+    {
+      "name": "unload_skill",
+      "effect": "plan",
+      "description": "Drop one loaded skill’s instructions from the rest of this response. Pass its name. Loading it again counts as another load.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The loaded skill's name."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    }
+  ]
+}

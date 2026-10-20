@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/tool-offer.json",
   "title": "Tool offer",
-  "description": "The tools the host offers a run, as the session's two members: the runtime's tools (session.tools: McpTool, exactly as tools/list served them, filtered to this session's allow-list, reached only through callTool and the host's gate) and the host's own tools (session.hostTools: HostTool, run by the host on the adapter's behalf, answered in the shape a runtime answer takes). An adapter offers the model exactly these, under their served schemas (servedSchema: a tool served without an input schema ends the session; the Gemini family alone is shown the schema less a closed list of keywords, with a guardrail narrowed event per tool that lost one). The host also adds its own context tools (list_context, read_context, read_window and, in a conversation, update_plan and request_budget_increase), whose names an offered tool may not take. Read from web/src/assistant/engine.ts (McpTool, HostTool) and context/session.ts (contextualSession). Open: the session is an in-process value with no reader, and the runtime's answer is passed through as served. A host may offer propose_pack ($defs/proposePack): the adapter reads that call itself as the run's proposal and never reaches the host's execute, the instructions then tell the model to use it, the critic is not offered it, and the fenced block stays the fallback. The critic is offered only $defs/criticTools, of the runtime tools the session offers, and no host tool (agent#10). Tool sources (ADR-0006): a host tool that a source outside the host serves (a gateway connection, a public MCP server, a tool the person created) is declared with its source record ($defs/sourceDeclaration) and is still a host tool: the host executes it under the person's grants and the package never reaches the source. The package offers it under a wire-safe name mapped to the source and its own name ($defs/wireName, $defs/nameMapping), with its description bounded and framed as retrieved text, its effect class and approval default ($defs/effectClass), and, where the source's tools pass the schema budget, as a catalogue entry whose schema load_tool loads ($defs/catalogueEntry, $defs/loadTool).",
+  "description": "The tools the host offers a run, as the session's two members: the runtime's tools (session.tools: McpTool, exactly as tools/list served them, filtered to this session's allow-list, reached only through callTool and the host's gate) and the host's own tools (session.hostTools: HostTool, run by the host on the adapter's behalf, answered in the shape a runtime answer takes). An adapter offers the model exactly these, under their served schemas (servedSchema: a tool served without an input schema ends the session; the Gemini family alone is shown the schema less a closed list of keywords, with a guardrail narrowed event per tool that lost one). The host also adds its own context tools (list_context, read_context, read_window and, in a conversation, update_plan and request_budget_increase), whose names an offered tool may not take. Read from web/src/assistant/engine.ts (McpTool, HostTool) and context/session.ts (contextualSession). Open: the session is an in-process value with no reader, and the runtime's answer is passed through as served. A host may offer propose_pack ($defs/proposePack): the adapter reads that call itself as the run's proposal and never reaches the host's execute, the instructions then tell the model to use it, the critic is not offered it, and the fenced block stays the fallback. The critic is offered only $defs/criticTools, of the runtime tools the session offers, and no host tool (agent#10). Tool sources (ADR-0006): a host tool that a source outside the host serves (a gateway connection, a public MCP server, a tool the person created) is declared with its source record ($defs/sourceDeclaration) and is still a host tool: the host executes it under the person's grants and the package never reaches the source. The package offers it under a wire-safe name mapped to the source and its own name ($defs/wireName, $defs/nameMapping), with its description bounded and framed as retrieved text, its effect class and approval default ($defs/effectClass), and, where the source's tools pass the schema budget, as a catalogue entry whose schema load_tool loads ($defs/catalogueEntry, $defs/loadTool). Skills (ADR-0009): the host declares skills beside its host tools (skills, $defs/skillDeclaration, skill.json): the package admits each, lists the admitted ones in the system text after the tools described in text ($defs/skillCatalogueEntry), and offers load_skill and unload_skill beside load_tool ($defs/loadSkill, $defs/unloadSkill) where any is catalogued; a loaded skill ($defs/loadedSkill) rides after the history, and grants no tool.",
   "type": "object",
   "required": [
     "tools",
@@ -21,6 +21,13 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/hostTool"
+      }
+    },
+    "skills": {
+      "description": "The skills the host declares for the run (ADR-0009), beside hostTools: each a skill with the digest the person approved ($defs/skillDeclaration). Absent or empty, the run has no skills catalogue and no load_skill.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/skillDeclaration"
       }
     }
   },
@@ -217,7 +224,7 @@
       ]
     },
     "reservedName": {
-      "description": "Names the host keeps for its own context tools; an offered tool that takes one ends the session (context/session.ts, contextualSession). read_window (agent#1) and search (agent#5) are the harness's own readers. load_tool (ADR-0006) is the harness's catalogue loader, offered only where the schema budget trips.",
+      "description": "Names the host keeps for its own context tools; an offered tool that takes one ends the session (context/session.ts, contextualSession). read_window (agent#1) and search (agent#5) are the harness's own readers. load_tool (ADR-0006) is the harness's catalogue loader, offered only where the schema budget trips. load_skill and unload_skill (ADR-0009) are the harness's skill loaders, offered only where the run catalogues a skill.",
       "enum": [
         "list_context",
         "read_context",
@@ -225,11 +232,13 @@
         "search",
         "update_plan",
         "request_budget_increase",
-        "load_tool"
+        "load_tool",
+        "load_skill",
+        "unload_skill"
       ]
     },
     "criticTools": {
-      "description": "The critic's tools (agent#10; packages/harness/refutation.ts, CRITIC_TOOLS and CRITIC_READERS): an allow-list, and the whole of what the critic may call. Four of the runtime's reads about the document: validate, experimental_evaluate (only as a rehearsal, the gate's rewrite) and get_schema, and experimental_test_cases under its own bounds (tool-call.json $defs/testCasesArguments, and budget.json testCallsPerTurn, which the critic shares with the loop). Then two of the harness's own context readers, read_window and search (review row 6): the context ledger's tools, whose names a host tool may not take ($defs/reservedName), which reach no Runtime tool and no action; with them the critic reads its own first message where that message was retained to fit its request. The critic is offered these, of the tools the session offers, in the session's order. Any other name it calls (the runtime's other reads, every host tool, propose_* and request_* among them, and the other context tools) is refused by the shared boundary while the critic runs (context/session.ts, admit on the wrapped callTool and host tools), before the tool gate and before a host tool runs: the call is not made, the model reads a permission failure, and a guardrail refused event names the tool.",
+      "description": "The critic's tools (agent#10; packages/harness/refutation.ts, CRITIC_TOOLS and CRITIC_READERS): an allow-list, and the whole of what the critic may call. Four of the runtime's reads about the document: validate, experimental_evaluate (only as a rehearsal, the gate's rewrite) and get_schema, and experimental_test_cases under its own bounds (tool-call.json $defs/testCasesArguments, and budget.json testCallsPerTurn, which the critic shares with the loop). Then two of the harness's own context readers, read_window and search (review row 6): the context ledger's tools, whose names a host tool may not take ($defs/reservedName), which reach no Runtime tool and no action; with them the critic reads its own first message where that message was retained to fit its request. The critic is offered these, of the tools the session offers, in the session's order. Any other name it calls (the runtime's other reads, every host tool, propose_* and request_* among them, and the other context tools) is refused by the shared boundary while the critic runs (context/session.ts, admit on the wrapped callTool and host tools), before the tool gate and before a host tool runs: the call is not made, the model reads a permission failure, and a guardrail refused event names the tool. Where the run catalogues skills (ADR-0009), the critic is also offered load_skill and unload_skill: a skill grants no tool, so a load leaves this list as it is.",
       "enum": [
         "validate",
         "experimental_evaluate",
@@ -256,7 +265,7 @@
       ]
     },
     "sourceRecord": {
-      "description": "Where a host tool comes from (ADR-0006). Declared by the host on each host tool a source outside the host serves; the package adds tool (the tool's own name at its source) on the offer, carries the record on the tool's tool_call and tool_result events (with receipt on a result where the host's answer gave one), and counts the source in the run report (provenance.json#/$defs/sourceFigures). gateway: a gateway connection the person configured (Databricks, Azure DevOps, Drive), which may give a receipt for each call; mcp: a public MCP server the host connected, whose tool list is pinned by digest at connection time; custom: a tool the person created. runtime is the Runtime's own row in the run report: its tools come through tools/list behind the gate, carry no declaration, and a host tool declared with kind runtime is refused. Either version or toolListDigest is present; mcp carries toolListDigest. Closed: the package refuses another member before any request (configuration).",
+      "description": "Where a host tool comes from (ADR-0006). Declared by the host on each host tool a source outside the host serves; the package adds tool (the tool's own name at its source) on the offer, carries the record on the tool's tool_call and tool_result events (with receipt on a result where the host's answer gave one), and counts the source in the run report (provenance.json#/$defs/sourceFigures). gateway: a gateway connection the person configured (Databricks, Azure DevOps, Drive), which may give a receipt for each call; mcp: a public MCP server the host connected, whose tool list is pinned by digest at connection time; custom: a tool the person created; exchange (ADR-0009): a skill whose bytes the host fetched from a Judgment Exchange entry, the entry's id and version the record's id and version, which a host tool may not declare. runtime is the Runtime's own row in the run report: its tools come through tools/list behind the gate, carry no declaration, and a host tool declared with kind runtime is refused. Either version or toolListDigest is present; mcp carries toolListDigest. Closed: the package refuses another member before any request (configuration).",
       "type": "object",
       "required": [
         "kind",
@@ -269,7 +278,8 @@
             "runtime",
             "gateway",
             "mcp",
-            "custom"
+            "custom",
+            "exchange"
           ]
         },
         "id": {
@@ -503,6 +513,131 @@
           "type": "string"
         },
         "inputSchema": {}
+      },
+      "additionalProperties": false
+    },
+    "skillDeclaration": {
+      "description": "A skill as the host declares it (ADR-0009, skill.json): the bundle, its source record and the digest the person approved (pinnedDigest), and no digest of its own (the package computes it). A declaration the package cannot read (skill.json's members and bounds, a source of kind runtime, two skills of one name or one id, a source declared twice with different records) ends the run before any request (configuration). A readable one is withheld from the catalogue, with a guardrail refused event whose reason is skill withheld, where a tools[] name is not a host tool the host declared for the run, where its bytes pass skillBytes, or where its bundle does not hash to pinnedDigest (until the person re-approves it).",
+      "allOf": [
+        {
+          "$ref": "skill.json"
+        },
+        {
+          "required": [
+            "pinnedDigest"
+          ],
+          "not": {
+            "required": [
+              "digest"
+            ]
+          }
+        }
+      ]
+    },
+    "skillCatalogueEntry": {
+      "description": "One admitted skill as the skills catalogue in the system text lists it (ADR-0009): its name, then its description's first line, cut to 160 bytes and framed as retrieved data under the run's marker. The catalogue sits after the tools described in text, in the stable prefix: it never changes during the run, and a load or an unload changes neither it nor the tool list. Its entries, in the order declared, are held to cataloguedSkills and skillsCatalogueBytes (each counted as the JSON text of its name and its line, the frame's constant lines not counted); the skills past either are withheld, one guardrail for each source saying how many.",
+      "type": "object",
+      "required": [
+        "name",
+        "description"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "skill.json#/$defs/name"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "loadSkill": {
+      "description": "The harness tool that loads one catalogued skill (ADR-0009): a reserved name, offered beside load_tool where the run catalogues any skill, in Plan mode and to the critic too (a skill grants no tool), never to a delegated child. Its effect is plan, so its answer is not framed as data. It loads only a catalogued, admitted skill (any other name is invalid-tool-input); each load counts against skillsPerRun, the response's loads carried through a resume in the run report's rows (provenance.json#/$defs/sourceFigures, skills), and a load past it is refused (tool-failed, not-started) with a guardrail whose reason is skill budget. Loading a skill already loaded loads nothing and counts nothing. A load emits skill_loaded, writes the checkpoint's skills, and the skill's instructions and resources ride after the history on every later request as one block, under the heading that ranks them with the project's own instructions; on the agent wire, which sends the execution state once per run, the answer carries the block itself. Its answer: the loaded skill ($defs/loadedSkill), its bytes, and a note.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/hostTool"
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "load_skill"
+            },
+            "effect": {
+              "const": "plan"
+            },
+            "inputSchema": {
+              "const": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "The skill's name, as the skills catalogue lists it."
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "unloadSkill": {
+      "description": "The harness tool that drops one loaded skill (ADR-0009): a reserved name, offered with load_skill. The skill's block leaves every later request, skill_unloaded is emitted and the checkpoint's skills is written; the skill stays catalogued, and loading it again counts again. A name not loaded is invalid-tool-input.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/hostTool"
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "unload_skill"
+            },
+            "effect": {
+              "const": "plan"
+            },
+            "inputSchema": {
+              "const": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "The loaded skill's name."
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "loadedSkill": {
+      "description": "A skill as a load names it (ADR-0009): its id, its name, its source record and its digest. load_skill's answer and the skill_loaded event carry it; the instructions are never on the event.",
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "source",
+        "digest"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9-]{0,23}$"
+        },
+        "name": {
+          "$ref": "skill.json#/$defs/name"
+        },
+        "source": {
+          "$ref": "#/$defs/sourceRecord"
+        },
+        "digest": {
+          "$ref": "skill.json#/$defs/digest"
+        }
       },
       "additionalProperties": false
     }
