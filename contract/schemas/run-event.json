@@ -170,6 +170,12 @@
         },
         "request": {
           "$ref": "delegated-task.json#/$defs/request"
+        },
+        "callId": {
+          "description": "The agent wire's id of the delegate_tasks call (ADR-0007), where the engine has one: the Go agent engine sends it, and the coordinator keeps it in the checkpoint's handoff. The TypeScript codex engine sends none.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
         }
       },
       "additionalProperties": true

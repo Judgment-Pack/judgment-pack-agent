@@ -1,5 +1,5 @@
 {
-  "description": "The Go certification runner's checks held in step with the TypeScript suite's (agent#53): every check of the describe.each(MODEL_ENGINES) blocks of packages/harness/certification/conformance.test.ts, by its block and its name, every check of packages/harness/certification/scenarios.test.ts, by its name, and every check of packages/harness/certification/delegation.test.ts, by its name, mapped to the Go checks that make it (the engine leg's LegResult.Checks by CheckNames; each other block's Check by its name, LegChecks; each scenario's ScenarioCheck names) or to the reason Go does not run it. parity_test.go reads the three TypeScript files and fails where one has a check this table lacks, where this table names one it does not have, or where a Go check is named that the runner does not make.",
+  "description": "The Go certification runner's checks held in step with the TypeScript suite's (agent#53): every check of the describe.each(MODEL_ENGINES) blocks of packages/harness/certification/conformance.test.ts, by its block and its name, every check of packages/harness/certification/scenarios.test.ts, by its name, and every check of packages/harness/certification/delegation.test.ts, by its name, mapped to the Go checks that make it (the engine leg's LegResult.Checks by CheckNames; each other block's Check by its name, LegChecks; each scenario's ScenarioCheck names) or to the reason Go does not run it. parity_test.go reads the three TypeScript files and fails where one has a check this table lacks, where this table names one it does not have, or where a Go check is named that the runner does not make. agentCapability lists the Go checks of the agent capability (ADR-0007) that have no TypeScript counterpart, each with the item of agent#67's acceptance list it holds; parity_test.go holds the list to the runner's AgentOwnNames.",
   "source": "packages/harness/certification/conformance.test.ts",
   "checks": [
     {
@@ -500,11 +500,15 @@
       },
       {
         "check": "3 \u00b7 the run makes three tool calls inside its one agent run",
-        "reason": "the agent engine's check (the codex engine's AgentRun seam): the Go adapter is a model adapter, and makes the model engine's check of the same scenario"
+        "go": [
+          "3 agent run"
+        ]
       },
       {
         "check": "3 \u00b7 memory is asked once, for the person\u2019s message, and the run\u2019s one request carries it at the end of its instructions",
-        "reason": "the agent engine's check (the codex engine's AgentRun seam): the Go adapter is a model adapter, and makes the model engine's check of the same scenario"
+        "go": [
+          "3 agent memory"
+        ]
       }
     ]
   },
@@ -525,7 +529,86 @@
       },
       {
         "check": "runs one delegated child at a time, whatever the connection\u2019s answer says",
-        "reason": "An agent engine's check: the Go adapter is a model adapter, and the agent capability's half of delegation (a run that ends at delegation_requested, its children run one at a time) is not ported, so no Go run has an agent child to hold to one at a time."
+        "go": [
+          "delegation serial"
+        ]
+      }
+    ]
+  },
+  "agentCapability": {
+    "source": "https://github.com/Judgment-Pack/judgment-pack-agent/issues/67",
+    "checks": [
+      {
+        "go": "agent handoff",
+        "acceptance": "parent \u2192 handoff/release \u2192 serial children \u2192 parent continuation, each transition written and acknowledged before the next dispatch"
+      },
+      {
+        "go": "agent result once",
+        "acceptance": "the exact call result delivered once"
+      },
+      {
+        "go": "agent references",
+        "acceptance": "stable scoped references"
+      },
+      {
+        "go": "agent reports",
+        "acceptance": "valid profile-shaped reports"
+      },
+      {
+        "go": "agent siblings",
+        "acceptance": "successful sibling retention"
+      },
+      {
+        "go": "agent figures",
+        "acceptance": "correct parent/child/batch/response figures"
+      },
+      {
+        "go": "agent counts absent",
+        "acceptance": "unknown provider model counts: no model-request or token figure invented"
+      },
+      {
+        "go": "agent exclusive",
+        "acceptance": "the exclusive fake account: no invocation starts while another holds the account"
+      },
+      {
+        "go": "agent ceiling",
+        "acceptance": "the invocation ceiling and the continuation reserve"
+      },
+      {
+        "go": "agent admission",
+        "acceptance": "enabled-model admission on parent, critic and child invocations"
+      },
+      {
+        "go": "agent restrictions",
+        "acceptance": "inherited Plan and offer restrictions"
+      },
+      {
+        "go": "agent tool ceilings",
+        "acceptance": "response and child tool and test ceilings"
+      },
+      {
+        "go": "agent recursion",
+        "acceptance": "refusal of recursive delegation"
+      },
+      {
+        "go": "agent cancellation",
+        "acceptance": "cancellation at each transition"
+      },
+      {
+        "go": "agent busy",
+        "acceptance": "not-admitted busy versus uncertain errors"
+      },
+      {
+        "go": "agent persistence",
+        "acceptance": "persistence failure before dispatch"
+      },
+      {
+        "go": "agent lost acknowledgement",
+        "acceptance": "lost result acknowledgement"
+      },
+      {
+        "go": "agent recovery",
+        "acceptance": "explicit recovery after restart without replay"
       }
     ]
   }

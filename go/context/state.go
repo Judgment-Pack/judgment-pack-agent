@@ -287,6 +287,9 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 	if figures := value.Get("delegation"); figures != nil && !ValidDelegationFigures(figures) {
 		return nil, errSavedExecution
 	}
+	if handoff := value.Get("handoff"); handoff != nil && !ValidHandoff(handoff) {
+		return nil, errSavedExecution
+	}
 	if prompts := value.Get("prompts"); prompts != nil {
 		if !prompts.IsArray() || prompts.Len() > MaxPromptDigests {
 			return nil, errSavedExecution
@@ -478,4 +481,33 @@ func ExtendExecution(checkpoint contract.Checkpoint, interrupted bool, now time.
 	out.Grants = append(append([]contract.CheckpointGrant{}, saved.Grants...),
 		contract.CheckpointGrant{From: saved.Limit, To: limit, At: now.UTC().Format("2006-01-02T15:04:05.000Z")})
 	return &out, nil
+}
+
+// handoffStates are the states of a delegation handoff on an agent capability (ADR-0007).
+var handoffStates = []string{"released", "children", "answered", "continued"}
+
+// ValidHandoff is the checkpoint's delegation handoff (ADR-0007), read closed: its call id, its
+// batch's number, its state, the call's arguments, at most three task records, each with its id and
+// state, and the call's result, present once the state is answered or continued and absent before.
+func ValidHandoff(v *Value) bool {
+	var held contract.CheckpointHandoff
+	if !isObject(v) || json.Unmarshal(v.JSON(), &held) != nil {
+		return false
+	}
+	if held.CallID == "" || U16Length(held.CallID) > 256 || held.Batch < 1 || held.Batch > 5 ||
+		!oneOf(v.Get("state"), handoffStates...) || len(held.Request.Tasks) < 1 || len(held.Request.Tasks) > 3 ||
+		!v.Get("tasks").IsArray() || len(held.Tasks) > len(held.Request.Tasks) {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, task := range v.Get("tasks").Items() {
+		id := task.Get("id")
+		if !isText(id, 36) || !taskID.MatchString(id.Str()) || seen[id.Str()] ||
+			!oneOf(task.Get("state"), "queued", "running", "complete", "failed", "interrupted") {
+			return false
+		}
+		seen[id.Str()] = true
+	}
+	answered := held.State == "answered" || held.State == "continued"
+	return answered == (held.Answer != nil)
 }

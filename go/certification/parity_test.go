@@ -147,6 +147,12 @@ func TestTheParityTableHoldsTheGoChecksInStepWithTheTypeScriptLeg(t *testing.T) 
 			Source string      `json:"source"`
 			Checks []parityRow `json:"checks"`
 		} `json:"delegation"`
+		AgentCapability struct {
+			Checks []struct {
+				Go         string `json:"go"`
+				Acceptance string `json:"acceptance"`
+			} `json:"checks"`
+		} `json:"agentCapability"`
 	}
 	raw, err := os.ReadFile("parity.json")
 	if err != nil {
@@ -272,6 +278,30 @@ func TestTheParityTableHoldsTheGoChecksInStepWithTheTypeScriptLeg(t *testing.T) 
 		}
 		if !used {
 			t.Errorf("the Go check %q is no TypeScript check's counterpart", check)
+		}
+	}
+	// The agent capability's own checks (ADR-0007): every one the runner makes is listed, with the
+	// acceptance item it holds, and none the runner does not make; none is a TypeScript check's
+	// counterpart, and the Eino model leg certifies none of them.
+	var own []string
+	for _, row := range table.AgentCapability.Checks {
+		if row.Acceptance == "" {
+			t.Errorf("%s: no acceptance item", row.Go)
+		}
+		own = append(own, row.Go)
+	}
+	if !slices.Equal(own, AgentOwnNames) {
+		t.Errorf("the agentCapability table lists %v, and the runner makes %v", own, AgentOwnNames)
+	}
+	for _, name := range own {
+		if slices.Contains(AllCheckNames(), name) {
+			t.Errorf("%s is the agent capability's own check and also a TypeScript check's counterpart", name)
+		}
+	}
+	all := AllAgentCheckNames()
+	for _, name := range append(append(append([]string{}, AgentScenarioNames...), AgentDelegationNames...), AgentOwnNames...) {
+		if !slices.Contains(all, name) {
+			t.Errorf("%s is named and no agent check reports it", name)
 		}
 	}
 	t.Logf("%d TypeScript checks: %d with their Go counterparts, %d with a reason", mapped+reasoned, mapped, reasoned)

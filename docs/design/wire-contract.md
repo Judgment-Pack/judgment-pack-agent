@@ -46,6 +46,7 @@ Desk server runs. This package adds a third, `deepagents` (ADR-0003):
 | `vercel` | model | the Vercel AI SDK's `streamText` | `model.call`, as the SDK's providers' `fetch` (`relayFetch`) | the SDK's tools, each executed through the gate's dispatch | the system text (`systemText`) as the SDK's `instructions`, with the Anthropic cache breakpoint; the host's parts from `configureHarness` |
 | `codex` | agent | the Codex bridge the Desk server runs | `agent.run` | the agent wire, under aliases, through the gate's dispatch | the system text as the agent request's `instructions`; the request text, the index and the state in its `prompt`; the host's parts from `configureHarness` |
 | `deepagents` | model | Deep Agents' agent graph (`createDeepAgent`, `deepagents/browser`), its own tools, subagents and summarization off | `model.call`, from its own LangChain chat model, the three wires written by the adapter; a run whose environment turns LangChain's tracing on is refused | every call answered by the adapter's boundary middleware through the gate's dispatch | the system text as the system message its `wrapModelCall` places; the host's parts from `configureHarness` |
+| `agent` (Go) | agent | the host's provider-run function (`adapter.Agent.Run`, ADR-0007), one invocation per call, the provider's own model loop | the host's function, which holds its account, process and credentials; the adapter holds no transport | the agent wire, under aliases, through the Go gate's narrow handle (`gate.Calls`); `delegate_tasks` a handoff | the system text (`runcontext.SystemText`) as each invocation's `instructions`; the request text, the index and the state in its `prompt`; the host's parts from `adapter.Run`'s `Host` |
 | `eino` (Go) | model | Eino's `adk.ChatModelAgent` under an `adk.Runner` (ADR-0004), its interrupt, checkpoint, retries and subagents not configured | the in-process relay client (`go/relay`), which runs each request through the relay handler's path; the three wires written by the adapter (`go/adapter/wire`) | every call answered by the adapter's boundary middleware or Eino's unknown-tools handler, one dispatch, through the Go gate's narrow handle (`gate.Calls`) | the system text (`runcontext.SystemText`) as the system message the adapter writes on each wire; the host's parts from `adapter.Run`'s `Host` |
 
 Everything an engine needs is decided by the host before the session starts and handed to it:
@@ -55,7 +56,9 @@ Everything an engine needs is decided by the host before the session starts and 
   them, bound through the host's tool gate;
 - the host's own tools (`hostTools`), executed by the host on the engine's behalf;
 - a model capability (`model.call(suffix, request)`: a path suffix and a body, no address, no
-  credential) or, for `codex`, an agent capability (`agent.run`);
+  credential) or, for `codex` and the Go `agent` adapter, an agent capability (`agent.run`; in Go
+  `adapter.Agent`, its `Run` the host's provider-run function and its `Enabled` the host's
+  enabled-model admission, ADR-0007);
 - the reasoning tier, normalized by the host's table; an abort signal; and the session's options
   (purpose, reply language, conversation, interactive presentation, critic, context inputs), and,
   for the critic, the cases whose outcomes the host declares (`criticCases`, agent#10);
@@ -456,6 +459,21 @@ its children's, so the delegate tool is offered to a parent run only while one c
 next run both remain beside it (at most five agent runs, `MAX_AGENT_RUNS`; the parent is told the
 limit), and a run past it is told delegation is spent.
 
+**The agent capability in Go** (ADR-0007). The Go coordinator's lifecycle on `adapter.Agent` is the
+`codex` one, with every transition durable. The Go `agent` adapter emits `delegation_requested` with
+the call's id (`callId`) and ends its run only once the host's provider-run function has returned,
+its account released; the coordinator consumes the event and writes the checkpoint's `handoff`
+(`released`), then the batch's records (`children`), then, for each child one at a time, the child
+counted and its record `running` before it is dispatched and its result after; then the call's
+result (`answered`); then the parent's next invocation counted and the handoff `continued` before
+it is dispatched. Each write waits for the host's acknowledgement (`runcontext.Input.Checkpoint`),
+and one not acknowledged dispatches nothing more: the response ends with `storage`. A child or a
+continuation is dispatched only once no invocation of the response is running on the account. A
+checkpoint handed back after a restart continues where it stood, and a child it shows `running` is
+`interrupted` with an unknown outcome, never dispatched again. The certification's fake exclusive
+account (`certification.StandIn`) and its monitor hold this; a host certifies its own bridge with
+`certification.CertifyAgent`.
+
 **The children.** The coordinator runs each child on the same engine with a fresh session: its
 profile's instructions, its rules, the JSON of its objective, references and time limit (`$defs/brief`;
 on a resumed task its earlier work), the host
@@ -644,7 +662,12 @@ restore refuses a changed one; for a run handed a chat-scoped context, the entri
 or read), and, once the turn has called the test tool, `testCalls`, carried
 as `used` is, and, once a delegation batch has finished, `delegation`: what each child and batch
 cost, beside the parent's own (agent#18; see Provenance), and, once a request has been sent,
-`prompts`: the digest of every request body, in order (ADR-0005). Never permissions, evidence approval or private reasoning. At most 4 MiB as JSON
+`prompts`: the digest of every request body, in order (ADR-0005), and, on the Go coordinator's
+agent capability, `handoff`: the delegation handoff (ADR-0007), its call id, batch, state
+(`released`, `children`, `answered`, `continued`), request, task records and, once answered, the
+call's result, read closed by the Go reader. On that capability `delegation` is written from the
+parent's first invocation, so the response's agent runs survive a restart. Never permissions,
+evidence approval or private reasoning. At most 4 MiB as JSON
 text.
 
 ## Failures
@@ -1027,6 +1050,15 @@ Agents' subagents are off and delegation is the package's, an awaited `delegate_
   are recorded where the provider reports usage, which the agent wire does not. A `codex` child's
   prose so far, for a partial result and the streamed progress, is its agent's streamed `text`
   events.
+- **The agent capability, TypeScript and Go** (ADR-0007). Both end the parent's run at
+  `delegation_requested`, run children one at a time and continue in a new run with the call's
+  result. The Go `agent` adapter waits for the host's provider-run function to return before its
+  run ends; `codex` ends its run when the call's signal is aborted. The Go coordinator writes each
+  transition into the checkpoint's `handoff` and waits for the host's acknowledgement before the
+  next invocation, and continues a restored handoff without dispatching again what it shows
+  dispatched; the TypeScript coordinator keeps the handoff in memory. The Go adapter also writes
+  the checkpoint, acknowledged, before a host tool that is not a read, and carries the `delegation`
+  figures from the parent's first invocation.
 - **Retries.** `vercel` keeps the SDK's own retries off (`maxRetries: 0`) and sends a model request
   again only after a `refused` outcome whose recovery is `wait` or `retry`, at most twice, with a
   `retry` event each time (see Failures); separately, it starts the whole session again only for a

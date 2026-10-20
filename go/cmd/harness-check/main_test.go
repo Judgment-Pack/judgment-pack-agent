@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/delegate"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/eino"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/certification"
@@ -29,5 +30,16 @@ func TestTheCommandExitsByTheChecks(t *testing.T) {
 	idle := certification.AdapterFunc(func(context.Context, *certification.Run) error { return nil })
 	if code := certify(server, idle, with, "engine openai-compatible/whole"); code != 1 {
 		t.Fatalf("an idle adapter exited %d", code)
+	}
+	if code := certifyAgent(server, certification.StandIn(), with, "agent handoff"); code != 0 {
+		t.Fatalf("the agent adapter's handoff checks on the stand-in exited %d", code)
+	}
+	// A binding whose function runs nothing fails the agent checks: the command certifies what it
+	// was given, and a stand-in passing says nothing of another binding.
+	empty := certification.AgentHost{Name: "a binding that runs nothing", Bind: func(certification.AgentScript) adapter.AgentRun {
+		return func(context.Context, adapter.AgentRequest, adapter.AgentCallbacks) error { return nil }
+	}}
+	if code := certifyAgent(server, empty, with, "agent handoff"); code != 1 {
+		t.Fatalf("a binding that runs nothing exited %d", code)
 	}
 }

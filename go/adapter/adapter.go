@@ -2,9 +2,12 @@
 // AssistantSession, engine.ts), and the shape of an adapter: capabilities, never an address or a
 // credential.
 //
-// The host builds a Run: the model is the relay capability (go/relay), the runtime is reached only
-// through the gate's narrow handle (go/gate, gate.Calls), host tools are the host's own functions
-// beside their declarations, and the events go to Emit in order. The certification runner
+// The host builds a Run on one of two capabilities (ENGINE_CAPABILITIES in the TypeScript package):
+// the model capability, the relay (go/relay), whose requests the adapter makes and the host relays;
+// or the agent capability (Agent, ADR-0007), a host-owned function that runs one invocation of a
+// provider-managed agent, whose model loop is the provider's. The runtime is reached only through
+// the gate's narrow handle (go/gate, gate.Calls), host tools are the host's own functions beside
+// their declarations, and the events go to Emit in order. The certification runner
 // (go/certification) is one host; the Desk's server is another.
 package adapter
 
@@ -31,8 +34,12 @@ type Run struct {
 	Wire string
 	// ModelName is the model the requests name.
 	ModelName string
-	// Model is the relay capability: a path suffix and a request.
+	// Model is the relay capability: a path suffix and a request. Nil on a run on the agent
+	// capability.
 	Model relay.Call
+	// Agent is the agent capability (ADR-0007): set instead of Model, never beside it. ModelName is
+	// then Agent.Model, and Wire, Capabilities and Thinking are not read.
+	Agent *Agent
 	// Capabilities are the members of the endpoint's capability record the host knows (agent#4),
 	// over the family's default record; nil where it knows none.
 	Capabilities *contract.CapabilityEndpointCapabilities
