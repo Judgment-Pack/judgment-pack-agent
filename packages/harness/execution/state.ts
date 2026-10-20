@@ -49,7 +49,7 @@ export interface ExecutionCheckpoint {
  * result, written and acknowledged before anything else; `answered` once the continuation request
  * carrying the result has been sent.
  */
-export interface ApprovalRecord {callId:string;name:string;tool:string;source:import('../toolSources').SourceRecord;args:Record<string,unknown>;state:'asked'|'approved'|'refused'|'executed'|'answered';decidedAt?:string;note?:string;result?:McpToolResult}
+export interface ApprovalRecord {callId:string;name:string;tool:string;source:import('../toolSources').SourceRecord;args:Record<string,unknown>;state:'asked'|'approved'|'refused'|'executed'|'answered';decidedAt?:string;note?:string;result?:McpToolResult;marker?:string}
 /** The person's decision on a paused act call (ADR-0008; `checkpoint.json#/$defs/approvalDecision`), handed to the run as `context.approval`. */
 export interface ApprovalDecision {callId:string;approved:boolean;note?:string}
 const APPROVAL_STATES=['asked','approved','refused','executed','answered']
@@ -60,7 +60,7 @@ function validRecord(v:unknown):boolean{
 }
 /** The checkpoint's approval, read closed (ADR-0008). */
 export function validApproval(v:unknown):v is ApprovalRecord{
- return object(v)&&exact(v,['callId','name','tool','source','args','state','decidedAt','note','result'])&&text(v.callId,256)&&v.callId.length>=1&&typeof v.name==='string'&&WIRE_NAME.test(v.name)&&text(v.tool,128)&&v.tool.length>=1&&validRecord(v.source)&&object(v.args)&&APPROVAL_STATES.includes(String(v.state))&&(v.decidedAt===undefined||typeof v.decidedAt==='string'&&Number.isFinite(Date.parse(v.decidedAt)))&&(v.note===undefined||text(v.note,2000))&&(v.result===undefined||object(v.result))
+ return object(v)&&exact(v,['callId','name','tool','source','args','state','decidedAt','note','result','marker'])&&text(v.callId,256)&&v.callId.length>=1&&typeof v.name==='string'&&WIRE_NAME.test(v.name)&&text(v.tool,128)&&v.tool.length>=1&&validRecord(v.source)&&object(v.args)&&APPROVAL_STATES.includes(String(v.state))&&(v.decidedAt===undefined||typeof v.decidedAt==='string'&&Number.isFinite(Date.parse(v.decidedAt)))&&(v.note===undefined||text(v.note,2000))&&(v.result===undefined||object(v.result))&&(v.marker===undefined||typeof v.marker==='string'&&/^[0-9a-f]{32}$/.test(v.marker))
 }
 /** The person's decision, read closed (ADR-0008), or undefined where it is not one. */
 export function readApprovalDecision(v:unknown):ApprovalDecision|undefined{

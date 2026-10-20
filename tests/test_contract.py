@@ -615,6 +615,10 @@ class VectorTests(unittest.TestCase):
         result_check = validator(self.schemas, "tool-result.json#/$defs/mcpToolResult")
         paused = self.vectors["approval/pause.json"]["items"][1]["checkpoint"]
         self.assertEqual((paused["status"], paused["approval"]["state"]), ("paused", "asked"))
+        # The run's framing marker is written with the asked approval and carried unchanged by every checkpoint
+        # the continued run writes; the continuation's own block is closed by another marker, drawn for it.
+        run_marker = paused["approval"]["marker"]
+        self.assertRegex(run_marker, r"^[0-9a-f]{32}$")
         self.assertEqual(self.vectors["approval/pause.json"]["items"][0]["callId"], paused["approval"]["callId"])
         for name, approved in (("approval/continue-refused.json", False), ("approval/continue-approved.json", True)):
             with self.subTest(vector=name):
@@ -656,7 +660,8 @@ class VectorTests(unittest.TestCase):
                     self.assertNotIn(decision["note"], notices[0]["detail"])
                     self.assertEqual(problems(validator(self.schemas, "run-event.json"), [notices[0]]), [])
                 for held in written:
-                    self.assertEqual({k: held[k] for k in ("callId", "name", "tool", "source", "args")}, {k: paused["approval"][k] for k in ("callId", "name", "tool", "source", "args")})
+                    self.assertEqual({k: held[k] for k in ("callId", "name", "tool", "source", "args", "marker")}, {k: paused["approval"][k] for k in ("callId", "name", "tool", "source", "args", "marker")})
+                self.assertNotEqual(marker, run_marker)
                 # The continuation request counts as one more model request.
                 self.assertEqual(vector["items"][-2]["checkpoint"]["used"], paused["used"] + 1)
         policy = self.vectors["approval/policy.json"]

@@ -1057,13 +1057,14 @@ function approvalPauseChecks(get: () => Paused, adapter: 'model' | 'agent') {
     expect(ofType(pausing.events, 'end')).toHaveLength(1)
     expect(ofType(pausing.events, 'error')).toEqual([])
     expect(JSON.parse(saved)).toEqual((checkpoint as { checkpoint: unknown }).checkpoint)
-    // The contract's vector (approval/pause.json): the same event, the same approval, durable and paused, then end; only the call id is the run's own.
+    // The contract's vector (approval/pause.json): the same event, the same approval, durable and paused, then end; only the call id and the framing marker are the run's own.
     const [vectorEvent, vectorCheckpoint, vectorEnd] = pauseVector.items as [Record<string, unknown>, { durable: boolean; checkpoint: ExecutionCheckpoint }, unknown]
     expect(asked[0]).toEqual({ ...vectorEvent, callId: asked[0]!.callId })
     const emitted = (checkpoint as { durable?: boolean; checkpoint: ExecutionCheckpoint })
     expect(emitted.durable).toBe(vectorCheckpoint.durable)
     expect(emitted.checkpoint.status).toBe(vectorCheckpoint.checkpoint.status)
-    expect(emitted.checkpoint.approval).toEqual({ ...vectorCheckpoint.checkpoint.approval, callId: asked[0]!.callId })
+    expect(emitted.checkpoint.approval?.marker).toMatch(/^[0-9a-f]{32}$/)
+    expect(emitted.checkpoint.approval).toEqual({ ...vectorCheckpoint.checkpoint.approval, callId: asked[0]!.callId, marker: emitted.checkpoint.approval?.marker })
     expect(end).toEqual(vectorEnd)
     expect(counts[0]).toBe(0)
     // No request is sent once the call waits: the two of the scripted turns, and no third.
@@ -1125,19 +1126,23 @@ function approvalPauseChecks(get: () => Paused, adapter: 'model' | 'agent') {
     expect(ofType(restarted.events, 'guardrail').filter((event) => event.reason === 'approval refused')).toEqual([])
   })
 
-  it('8 · the stable prefix, the tool list and the system text, is the same bytes in the pausing run and in each continued run, but for the marker each run draws for its framed descriptions', () => {
+  it('8 · the stable prefix, the tool list and the system text, is the same bytes in the pausing run and in each continued run, the refused one and the approved one, with nothing normalised', () => {
     // A model capability's requests carry them; the agent engine's invocation is a prompt, with no tool list of its own.
     if (adapter !== 'model') return
-    const { pausing, refused, restarted } = get()
+    const { pausing, refused, restarted, saved } = get()
     const prefix = (ran: Ran) => {
+      expect(ran.requests.length, 'a run of this scenario sent no request').toBeGreaterThan(0)
       const body = ran.requests[0]!.body as Json
-      // Each run draws its own marker for the descriptions it frames (agent#12): the one thing that moves.
-      return JSON.stringify({ tools: body.tools, system: (body.messages as { role: string }[]).filter((message) => message.role === 'system') }).replace(/[0-9a-f]{32}/g, '<marker>')
+      return JSON.stringify({ tools: body.tools, system: (body.messages as { role: string }[]).filter((message) => message.role === 'system') })
     }
-    expect(prefix(pausing)).toContain('create_issue')
-    expect(prefix(pausing)).toContain('<marker>')
-    expect(prefix(refused)).toBe(prefix(pausing))
-    expect(prefix(restarted)).toBe(prefix(pausing))
+    const held = prefix(pausing)
+    expect(held).toContain('create_issue')
+    // The framed descriptions carry the run's marker, and it is the one the paused checkpoint carries: the continued runs reuse it.
+    const marker = (JSON.parse(saved) as ExecutionCheckpoint).approval!.marker
+    expect(marker).toMatch(/^[0-9a-f]{32}$/)
+    expect(held).toContain(`BEGIN RETRIEVED DATA ${marker} from the description of tool`)
+    expect(prefix(refused)).toBe(held)
+    expect(prefix(restarted)).toBe(held)
   })
 
   it('8 · approved: the decision is written and acknowledged before the call runs, once, and its result is written and acknowledged before anything else', () => {

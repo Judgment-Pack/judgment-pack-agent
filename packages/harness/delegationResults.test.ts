@@ -727,6 +727,30 @@ describe('the review’s rules',()=>{
   expect(busy).toMatchObject({state:'complete',agentRuns:1})
  })
 
+ // v0.5.0 release review: a checkpoint written by v0.4.0 on an agent capability carries modelRequests: 0 on its children and totals.
+ it('restores an agent capability’s v0.4.0 batches without their modelRequests of 0',async()=>{
+  const agentRun=()=>{
+   const run=vi.fn<AgentRun>(async(r,cb)=>{
+    const delegate=r.tools.find(t=>t.description.startsWith('delegate_tasks:'))
+    if(delegate&&!r.prompt.includes('DELEGATION RESULT')){await cb.tool({id:'call',name:delegate.name,arguments:{tasks:[{title:'Scan',objective:'Scan everything.',profile:'analyze'}]}},cb.signal);throw Error('Parent must yield')}
+    await cb.event({type:'message',id:'m',text:delegate?'Parent finished.':'Checked.',phase:'final'})
+   })
+   const {model:_model,thinking:_thinking,...base}=apiSession({context:{currentRequest:REQUEST}})
+   return {run,base}
+  }
+  const first=agentRun()
+  const written=lastCheckpoint(await collect(withDelegation(codex),{...first.base,agent:{model:'fixture',run:first.run}}))
+  expect(written.delegation!.batches[0]!.children[0]).not.toHaveProperty('modelRequests')
+  // The v0.4.0 shape: the zero written on each child and on the batch's total.
+  const old=structuredClone(written) as ExecutionCheckpoint
+  for(const batch of old.delegation!.batches){batch.total.modelRequests=0;for(const child of batch.children)child.modelRequests=0}
+  const second=agentRun()
+  const restored=lastCheckpoint(await collect(withDelegation(codex),{...second.base,context:{currentRequest:REQUEST,execution:JSON.parse(JSON.stringify(old))},agent:{model:'fixture',run:second.run}}))
+  expect(restored.delegation!.batches).toHaveLength(2)
+  expect(restored.delegation!.batches[0]).toEqual(written.delegation!.batches[0])
+  for(const batch of restored.delegation!.batches){expect(batch.total).not.toHaveProperty('modelRequests');for(const child of batch.children)expect(child).not.toHaveProperty('modelRequests')}
+ })
+
  // Row 8.
  it('fails a run that reported an error, keeps its open questions on the record, and never keeps it for reuse',async()=>{
   const chat=new ChatContext()

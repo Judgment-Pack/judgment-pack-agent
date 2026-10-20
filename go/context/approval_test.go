@@ -427,3 +427,62 @@ func TestARefusedContinuationSaysSoOnceAfterTheWrite(t *testing.T) {
 		t.Fatalf("the restored refusal's continuation: %q", restored.Session.Prompt)
 	}
 }
+
+// The run's framing marker is written with the asked approval and reused by the continued run, so the
+// descriptions it frames, and with them the tool list on the wire, are the pausing run's bytes
+// (ADR-0008). A checkpoint that carries none, as one written before the marker was carried, draws a
+// fresh marker, and a marker that is not 128 bits of hex is not read.
+func TestTheContinuedRunUsesThePausedRunsMarker(t *testing.T) {
+	ran := 0
+	session, saved := pausedSession(t, &ran)
+	if saved.Approval.Marker == nil || !regexp.MustCompile(`^[0-9a-f]{32}$`).MatchString(*saved.Approval.Marker) {
+		t.Fatalf("the paused approval carries marker %v", saved.Approval.Marker)
+	}
+	marker := *saved.Approval.Marker
+	offered := func(run *Run) string {
+		var text strings.Builder
+		for _, tool := range run.Session.HostTools {
+			text.WriteString(tool.Description)
+		}
+		return text.String()
+	}
+	input := *session.Context
+	input.Execution = &saved
+	input.Approval = &contract.CheckpointApprovalDecision{CallID: "call-a", Approved: false}
+	session.Context = &input
+	continued, err := ContextualSession(context.Background(), session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer continued.Context.Close()
+	if continued.Context.Marker != marker || !strings.Contains(offered(continued), "BEGIN RETRIEVED DATA "+marker+" from the description of tool") {
+		t.Fatalf("the continued run's marker is %q, the paused run's %q; offered: %s", continued.Context.Marker, marker, offered(continued))
+	}
+	if approval := continued.Context.Execution.State.Approval; approval == nil || approval.Marker == nil || *approval.Marker != marker {
+		t.Fatalf("the continued run's approval carries %+v", approval)
+	}
+	// A checkpoint with none: a run draws its own.
+	older := saved
+	bare := *saved.Approval
+	bare.Marker = nil
+	older.Approval = &bare
+	input.Execution = &older
+	fresh, err := ContextualSession(context.Background(), session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fresh.Context.Close()
+	if fresh.Context.Marker == marker || !regexp.MustCompile(`^[0-9a-f]{32}$`).MatchString(fresh.Context.Marker) {
+		t.Fatalf("a checkpoint with no marker gave %q", fresh.Context.Marker)
+	}
+	// Read closed: a marker that is not 128 bits of hex is no approval.
+	approval := `{"callId":"call-a","name":"tracker__create_issue","tool":"create_issue","source":{"kind":"mcp","id":"tracker","trust":"public","tool":"create_issue"},"args":{},"state":"asked","marker":`
+	if !ValidApproval(MustParseJSON(approval + `"` + marker + `"}`)) {
+		t.Fatal("an approval with its marker was refused")
+	}
+	for _, bad := range []string{`"` + marker[:31] + `"`, `"` + strings.ToUpper(marker) + `"`, `7`, `"` + marker + `0"`} {
+		if ValidApproval(MustParseJSON(approval + bad + "}")) {
+			t.Errorf("an approval with marker %s was read", bad)
+		}
+	}
+}

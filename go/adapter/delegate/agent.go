@@ -358,7 +358,7 @@ func (c *coordinator) restore(saved *contract.Checkpoint) *handoff {
 			c.runsMu.Unlock()
 			continue
 		}
-		c.figures = append(c.figures, batch)
+		c.figures = append(c.figures, withoutZeroRequests(batch))
 		c.runsMu.Lock()
 		c.runs.earlier += runs
 		c.runsMu.Unlock()
@@ -366,6 +366,26 @@ func (c *coordinator) restore(saved *contract.Checkpoint) *handoff {
 	c.batches = len(c.figures)
 	c.batchMu.Unlock()
 	return pending
+}
+
+// withoutZeroRequests is a restored batch's figures without a modelRequests of 0. A v0.4.0
+// checkpoint on an agent capability wrote 0 on its children and its total; nothing writes it there
+// now (agent#71), so the restored batch does not mix 0 and absence. The batch is copied: the
+// checkpoint the host handed back is left as it was.
+func withoutZeroRequests(batch contract.ProvenanceBatchFigures) contract.ProvenanceBatchFigures {
+	zero := func(held *int64) bool { return held != nil && *held == 0 }
+	children := make([]contract.ProvenanceChildFigures, len(batch.Children))
+	copy(children, batch.Children)
+	for at := range children {
+		if zero(children[at].ModelRequests) {
+			children[at].ModelRequests = nil
+		}
+	}
+	batch.Children = children
+	if zero(batch.Total.ModelRequests) {
+		batch.Total.ModelRequests = nil
+	}
+	return batch
 }
 
 // driveAgent is the response on an agent capability: parent invocations, each ending at its answer,

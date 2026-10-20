@@ -3535,6 +3535,31 @@
    "status": "caught",
    "origin": "v0.5.0 release review (#83, row 7)",
    "note": "SourceGate.approved's refusal of a tool no longer offered as the person saw it; the Go twin in SourceGate.Approved is caught by TestAContinuedCallTheGateNoLongerAdmitsIsApprovalStale"
+  },
+  {
+   "name": "the continued run redraws the framing marker instead of taking the paused approval's",
+   "file": "context/session.ts",
+   "find": "if(kept!==undefined)this.marker=kept",
+   "replace": "void kept",
+   "tests": [
+    "certification/scenarios.test.ts",
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "#82, the framing marker across the approval pause",
+   "note": "SessionContext.carryMarker; scenario 8's prefix check on vercel and deepagents compares the tool list byte for byte, and toolSources.test.ts holds the marker of a restored approval; the Go twin is SessionContext.CarryMarker (go/context/session.go), caught by TestTheContinuedRunUsesThePausedRunsMarker and by scenario 8's continuation check in the Go harness-check (run by hand on a scratch copy)"
+  },
+  {
+   "name": "the prefix check normalises the marker again, so a redrawn marker passes",
+   "file": "certification/scenarios.test.ts",
+   "find": "      return JSON.stringify({ tools: body.tools, system: (body.messages as { role: string }[]).filter((message) => message.role === 'system') })\n",
+   "replace": "      return JSON.stringify({ tools: body.tools, system: (body.messages as { role: string }[]).filter((message) => message.role === 'system') }).replace(/[0-9a-f]{32}/g, '<marker>')\n",
+   "tests": [
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "#82, the framing marker across the approval pause",
+   "note": "the check holds the pausing run's framed descriptions to the marker the paused checkpoint carries, which a normalised text cannot show; the Go check has no normalisation to put back (stablePrefix returns the bytes)"
   }
  ]
 }

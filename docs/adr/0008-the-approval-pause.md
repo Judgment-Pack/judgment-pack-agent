@@ -133,6 +133,17 @@ without it is refused (`configuration`) and nothing runs, so it never runs a cal
   longer offered as the person saw it, a `guardrail` `refused` with `reason: approval stale` says
   so.
 
+The run's framing marker, the one that frames each description from outside the Runtime
+(ADR-0006) and each reading tool's answer, is carried across the pause: it is written with the
+asked approval (`approval.marker`, `checkpoint.json#/$defs/approval`) and the continued run uses it
+instead of drawing one, so the tool list on the wire is the same bytes in the pausing run and in
+the continuation. Without it the continuation's descriptions would carry another marker, and on a
+provider that caches the tool list the tools breakpoint would miss once after every pause. The
+marker is a drawn token: it is never written into the instructions, never shown in model output and
+never taken from it, and a run with no checkpoint, or a checkpoint written before the marker was
+carried, draws a fresh one. The continuation's own data block, below, still has a marker drawn
+for it.
+
 The run's first request then carries, after the request text, one line (`APPROVAL_CONTINUATION`,
 Go `runcontext.ApprovalContinuation`) and one data block under a marker drawn for it, from the tool
 the model called, whose data is `{callId, name, tool, approved, result, note}`
@@ -240,10 +251,11 @@ drawn afresh; it counts as one model request on a model engine, and on the agent
 counted invocation with no model-request figure. Mutants, each caught (`mutation-rows.json`): a
 restored `executed` approval running its call again; the pause skipped under `ask`; the
 wrong-`callId` check removed; the pending check removed; the note outside the block; the guardrail
-dropped from a refused continuation. The refused run's events carry the one guardrail after the
-written refusal, and on a model engine the tool list and the system text of the continued run's
-first request are the pausing run's bytes, but for the marker each run draws for the descriptions
-it frames (a framed description is the one part of the prefix a pause changes).
+dropped from a refused continuation; the framing marker redrawn on the continuation (TypeScript and
+Go); the normalisation put back in the prefix check (TypeScript). The refused run's events carry the
+one guardrail after the written refusal, and on a model engine, under `trailing-user`, the tool list
+and the system text of the continued run's first request are the pausing run's bytes, the refused
+continuation's and the approved one's alike, compared with nothing normalised.
 
 ## Consequences
 

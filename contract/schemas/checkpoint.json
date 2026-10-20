@@ -139,7 +139,7 @@
       "$ref": "#/$defs/handoff"
     },
     "approval": {
-      "description": "The act call the run paused at for the person's decision, and what became of it (ADR-0008): written by the shared context boundary in both languages, at most one per checkpoint. asked: the call is pending and the status is paused; the run continues only with the person's decision (approvalDecision) for this callId, and a decision for any other call is refused. On the continued run, approved is written and acknowledged before the call runs, once, under its bounds; executed, with the result, is written and acknowledged before anything else; refused carries the refused result instead; answered once the continuation request carrying the result has been sent. A restored executed or refused approval starts the continuation with the recorded result and never runs the call; a restored approved one, whose call may have run, is not run again: its result says its outcome is unknown.",
+      "description": "The act call the run paused at for the person's decision, and what became of it (ADR-0008): written by the shared context boundary in both languages, at most one per checkpoint. asked: the call is pending and the status is paused; the run continues only with the person's decision (approvalDecision) for this callId, and a decision for any other call is refused. On the continued run, approved is written and acknowledged before the call runs, once, under its bounds; executed, with the result, is written and acknowledged before anything else; refused carries the refused result instead; answered once the continuation request carrying the result has been sent. A restored executed or refused approval starts the continuation with the recorded result and never runs the call; a restored approved one, whose call may have run, is not run again: its result says its outcome is unknown. The approval carries the run's framing marker (marker), and the continued run uses it for the descriptions it frames.",
       "$ref": "#/$defs/approval"
     },
     "prompts": {
@@ -383,7 +383,7 @@
       "additionalProperties": false
     },
     "approval": {
-      "description": "One act call paused for the person's decision (ADR-0008). callId: the id of its approval_requested event; name: the wire name the model called; tool: the tool's own name at its source; source: its record; args: the arguments the model sent, the ones the call runs with. state: asked, approved, refused, executed or answered (see checkpoint.json's approval). decidedAt: when the person's decision reached the run, a time Date.parse reads. note: the person's words with the decision, carried to the model only inside the continuation's data block. result: the call's result once executed, or the refused result. Closed.",
+      "description": "One act call paused for the person's decision (ADR-0008). callId: the id of its approval_requested event; name: the wire name the model called; tool: the tool's own name at its source; source: its record; args: the arguments the model sent, the ones the call runs with. state: asked, approved, refused, executed or answered (see checkpoint.json's approval). decidedAt: when the person's decision reached the run, a time Date.parse reads. note: the person's words with the decision, carried to the model only inside the continuation's data block. result: the call's result once executed, or the refused result; marker: the run's framing marker (the one that frames each description from outside the Runtime and each reading tool's answer), written with the asked approval and reused by the continued run, so the tool list on the wire is the same bytes across the pause. It is a drawn token, never taken from model output and never shown in it; absent from a checkpoint written before it was carried, where the continued run draws a fresh one. Closed.",
       "type": "object",
       "required": [
         "callId",
@@ -431,6 +431,10 @@
         },
         "result": {
           "$ref": "tool-result.json#/$defs/mcpToolResult"
+        },
+        "marker": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
         }
       },
       "additionalProperties": false

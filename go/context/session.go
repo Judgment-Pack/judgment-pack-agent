@@ -124,7 +124,9 @@ type SessionContext struct {
 	// Execution is the run's request allowance, journal and checkpoint.
 	Execution *ExecutionController
 	// Marker is this run's closing marker for retrieved data (agent#12), drawn once, never written
-	// into the instructions.
+	// into the instructions. A run restored from an approval pause takes the marker the paused run
+	// drew (CarryMarker, ADR-0008), so the tool list it frames is the same bytes across the pause; it
+	// is never read from model output.
 	Marker string
 	// CriticReading says the critic is reading: a preview then names the readers its allow-list
 	// admits. The narrowing itself is the gate's (gate.Calls.BeginCritic), not this package's.
@@ -291,6 +293,14 @@ func (c *SessionContext) ReserveOutput(tokens int) error {
 		c.Policy.OutputTokens = tokens
 	}
 	return nil
+}
+
+// CarryMarker takes the marker the restored checkpoint's approval carries (ADR-0008), where it
+// carries one; a run with none keeps the one it drew.
+func (c *SessionContext) CarryMarker() {
+	if approval := c.Execution.State.Approval; approval != nil && approval.Marker != nil {
+		c.Marker = *approval.Marker
+	}
 }
 
 // Initialize retains the host's documents for the run. attachments says they are the run's
@@ -888,6 +898,8 @@ func (b approvalBook) Ask(record contract.CheckpointApproval) bool {
 	if b.c.PauseClaim != nil && !b.c.PauseClaim() {
 		return false
 	}
+	marker := b.c.Marker
+	record.Marker = &marker
 	b.c.Execution.State.Approval = &record
 	return true
 }
@@ -977,6 +989,7 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		if err := held.Execution.Initialize(); err != nil {
 			return err
 		}
+		held.CarryMarker()
 		if len(declared.Sources) > 0 {
 			// How a loaded schema is shown: by the capability record's toolSchemas where the adapter carries
 			// it, else by the family's default record.

@@ -138,7 +138,8 @@ these schemas as to every offered schema.
 ### 4. Poisoning held off
 
 An external tool's description is untrusted text. It is cut at `toolDescriptionBytes` (1,024) and
-framed as retrieved data with the run's marker, the block that frames a reading tool's answer, so a
+framed as retrieved data with the run's marker (a drawn token, never taken from model output; carried
+across an approval pause, ADR-0008), the block that frames a reading tool's answer, so a
 line in it that claims to be an instruction or the block's end is data. So is the text the source
 wrote inside the tool's input schema (`tool-offer/source-schema.json`) is held to an allowlist, not a
 list of what is refused: each `description`, at any depth, is cut the same way and framed; only the
@@ -228,7 +229,9 @@ call id, Plan mode with a read, a propose and an act source, and the arguments o
 
 - The offer, the events and the checkpoint carry what a source is; a host's report reads it.
 - A run declaring a source sends its source tools' descriptions framed with the run's marker, so their
-  bytes differ from one run to the next and hold within a run.
+  bytes differ from one run to the next and hold within a run, and across an approval pause: the
+  marker is carried in the paused checkpoint's `approval` and reused by the continued run
+  (ADR-0008). It is never shown in model output and never taken from it.
 - An `act` costs the person an approval per call unless the host declares otherwise.
 - `load_tool` and the catalogue add a request where the model needs a catalogued tool.
 

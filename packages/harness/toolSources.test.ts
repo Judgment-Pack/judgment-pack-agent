@@ -764,6 +764,57 @@ describe('the approval pause (ADR-0008)', () => {
   })
 })
 
+describe('the framing marker across the approval pause (ADR-0008)', () => {
+  const MARKER = '0123456789abcdef0123456789abcdef'
+  const base = { version: 1, id: 'x', requestKey: 'a'.repeat(64), phase: 'work', status: 'paused', unit: 'model-requests', used: 2, limit: 20, grants: [], plan: [], explanation: '', operations: [], context: { scope: 's', entries: [] } }
+  const approval = { callId: 'call-a', name: 'tracker__create_issue', tool: 'create_issue', source: { ...declarations.items[1]!.source, tool: 'create_issue' }, args: { repository: 'expense', title: 'a' }, state: 'asked' }
+  const session = (hostTools: HostTool[], request: string, context: Record<string, unknown>): AssistantSession => ({
+    prompt: request, testPrompt: '', tools: [], hostTools, callTool: async () => ({ content: [] }),
+    model: { family: 'openai-compatible', model: 'small', call: async () => { throw Error('no model call here') } },
+    thinking: normalize('off', 'openai-compatible'), signal: new AbortController().signal, context: { currentRequest: { message: request, input: request }, ...context } as never
+  })
+  /** What a run continued from `execution` offers: the descriptions of its host tools, and the checkpoints it wrote. */
+  const continued = async (execution: Record<string, unknown>) => {
+    const request = 'Open the issue.'
+    const requestKey = await contextDigest(JSON.stringify({ request: { message: request, input: request }, phase: 'work', purpose: null }))
+    const offered: string[] = []
+    const written: ExecutionCheckpoint[] = []
+    const engine: Engine = { id: 'vercel', start: (given) => managedContext(given, async function* (ready) { offered.push(...ready.hostTools.map((tool) => tool.description)); yield { type: 'message', text: 'done' }; yield { type: 'end' } }) }
+    for await (const event of engine.start(session(declared(declarations.items).map((tool) => ({ ...tool, approve: () => 'ask' as const })), request, { execution: { ...base, requestKey, status: 'running', ...execution }, approval: { callId: 'call-a', approved: false } }))) {
+      if (event.type === 'execution_checkpoint') written.push(event.checkpoint)
+    }
+    return { offered: offered.join('\n'), written }
+  }
+
+  it('reads the marker closed: 128 bits of hex, or none', () => {
+    expect(validApproval({ ...approval, marker: MARKER })).toBe(true)
+    expect(validApproval(approval)).toBe(true)
+    for (const bad of [MARKER.slice(1), MARKER.toUpperCase(), `${MARKER}0`, 7, '']) expect(validApproval({ ...approval, marker: bad })).toBe(false)
+    expect(() => readExecution({ ...base, approval: { ...approval, marker: 'short' } })).toThrow()
+  })
+
+  it('writes the run’s marker with the asked approval', async () => {
+    const tools = declared(declarations.items).map((tool) => ({ ...tool, approve: () => 'ask' as const }))
+    const { context } = await contextualSession(session(tools, 'Open the issue.', {}))
+    try {
+      expect(context.marker).toMatch(/^[0-9a-f]{32}$/)
+      expect(await context.sources!.decide('tracker__create_issue', { repository: 'expense', title: 'a' }, 'call-a')).toMatchObject({ answer: 'ask' })
+      expect(context.execution.state.approval).toMatchObject({ callId: 'call-a', state: 'asked', marker: context.marker })
+    } finally { context.close() }
+  })
+
+  it('reuses the marker the paused checkpoint carries for the descriptions it frames, and draws a fresh one where it carries none', async () => {
+    const same = await continued({ approval: { ...approval, marker: MARKER } })
+    expect(same.offered).toContain(`BEGIN RETRIEVED DATA ${MARKER} from the description of tool`)
+    // The checkpoints the continued run writes keep it.
+    expect(same.written.length).toBeGreaterThan(0)
+    for (const checkpoint of same.written) expect(checkpoint.approval?.marker).toBe(MARKER)
+    const older = await continued({ approval: approval })
+    expect(older.offered).not.toContain(MARKER)
+    expect(older.offered).toMatch(/BEGIN RETRIEVED DATA [0-9a-f]{32} from the description of tool/)
+  })
+})
+
 describe('the approval pause’s words, the contract’s vectors (ADR-0008)', () => {
   it('writes the continuation’s line, the refused result and the pending refusal as the vectors state them', async () => {
     for (const vector of [continueRefused, continueApproved]) expect(vector.continuation.split('\n')[0]).toBe(APPROVAL_CONTINUATION)

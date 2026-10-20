@@ -48,3 +48,29 @@ func TestATotalCountsModelRequestsOnly(t *testing.T) {
 		t.Fatalf("two agent children: %s", encoded)
 	}
 }
+
+// A checkpoint written by v0.4.0 on an agent capability carries modelRequests: 0 on its children and
+// on each batch's total. Restored, those batches drop the member, so the checkpoint the coordinator
+// writes next does not mix 0 and absence (agent#71); the checkpoint the host handed back is not
+// edited.
+func TestARestoredV040BatchDropsItsZeroModelRequests(t *testing.T) {
+	zero, one := int64(0), int64(1)
+	saved := contract.Checkpoint{Version: 1, ID: "x", RequestKey: "k", Phase: "work", Status: "running", Unit: "provider-managed", Limit: 1,
+		Delegation: &contract.ProvenanceDelegationReport{Parent: contract.ProvenanceParentFigures{Model: "agent-model", AgentRuns: &one},
+			Batches: []contract.ProvenanceBatchFigures{{Batch: 1,
+				Children: []contract.ProvenanceChildFigures{{Task: "a", Batch: 1, Profile: "analyze", State: "complete", ModelRequests: &zero, AgentRuns: &one, ToolCalls: 1}},
+				Total:    contract.ProvenanceFiguresTotal{ModelRequests: &zero, AgentRuns: &one, ToolCalls: 1, DurationMs: 5}}}}}
+	c := &coordinator{run: &adapter.Run{Agent: &adapter.Agent{Model: "agent-model"}}, runs: agentRuns{children: map[string]int{}}, account: newAccount()}
+	c.restore(&saved)
+	if len(c.figures) != 1 {
+		t.Fatalf("%d batches restored", len(c.figures))
+	}
+	encoded, _ := json.Marshal(c.figures)
+	if c.figures[0].Children[0].ModelRequests != nil || c.figures[0].Total.ModelRequests != nil || strings.Contains(string(encoded), "modelRequests") ||
+		*c.figures[0].Children[0].AgentRuns != 1 || c.figures[0].Total.ToolCalls != 1 {
+		t.Fatalf("the restored batch: %s", encoded)
+	}
+	if saved.Delegation.Batches[0].Children[0].ModelRequests == nil || saved.Delegation.Batches[0].Total.ModelRequests == nil {
+		t.Fatal("the checkpoint the host handed back was edited")
+	}
+}
