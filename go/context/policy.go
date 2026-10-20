@@ -94,8 +94,9 @@ var SourceDefaults = struct {
 
 // SkillDefaults are the skills budget (ADR-0009, SKILL_DEFAULTS): the most bytes one skill's
 // instructions and resources may take, how many loads one response may make, and how many skills, and
-// how many bytes of their names and framed lines, the catalogue in the system text lists before the
-// rest are withheld. Not in the Desk's table; a table that carries them wins.
+// how many bytes of their names and lines (each line unframed: the frame's lines are the same for
+// every entry and not counted), the catalogue in the system text lists before the rest are withheld.
+// Not in the Desk's table; a table that carries them wins.
 var SkillDefaults = struct{ SkillBytes, SkillsPerRun, SkillsCatalogueBytes, CataloguedSkills int }{8000, 4, 8000, 32}
 
 // DeskPolicy is the Desk's table itself (contract/desk/policy.json, packages/harness/contract/policy.json).

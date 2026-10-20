@@ -546,6 +546,11 @@ func (c *SessionContext) Result(name string, result ToolResult) (ToolResult, err
 			limit = bound
 		}
 	}
+	// ADR-0009: load_skill's answer is bounded by SkillBytes and a constant, and on the agent wire
+	// carries the skill's block, which must arrive whole and framed: it is never cut to the result bound.
+	if name == LoadSkill && c.Skills != nil && c.Skills.Offered() {
+		return value, nil
+	}
 	if UTF8Bytes(string(value.JSON())) <= limit {
 		return value, nil
 	}

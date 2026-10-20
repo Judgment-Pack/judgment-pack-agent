@@ -43,8 +43,9 @@ export const SOURCE_DEFAULTS = Object.freeze({toolDescriptionBytes:1024,offeredS
 /**
  * The skills budget (ADR-0009, `skills.ts`): the most bytes one skill's instructions and resources may
  * take, how many loads one response may make, and how many skills, and how many bytes of their names and
- * framed lines, the catalogue in the system text lists before the rest are withheld. Not in the Desk's
- * table; a table that carries them wins.
+ * lines (each line unframed: the frame's lines are the same for every entry and not counted), the
+ * catalogue in the system text lists before the rest are withheld. Not in the Desk's table; a table that
+ * carries them wins.
  */
 export const SKILL_DEFAULTS = Object.freeze({skillBytes:8000,skillsPerRun:4,skillsCatalogueBytes:8000,cataloguedSkills:32})
 export type ContextPolicy = typeof defaults & {turnMilliseconds:number;toolCallMilliseconds:number;imagesPerRequest:number;imageBytesPerRequest:number;turnIndexEntries:number;turnIndexBytes:number;projectInstructionsBytes:number} & TestBounds & {-readonly [K in keyof typeof SOURCE_DEFAULTS]:number} & {-readonly [K in keyof typeof SKILL_DEFAULTS]:number}

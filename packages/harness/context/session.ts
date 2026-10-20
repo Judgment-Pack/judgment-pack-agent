@@ -329,6 +329,9 @@ export class SessionContext {
    const texts=(result.content??[]).filter(p=>p.type==='text').map(p=>p.text??'')
    if(texts.length===1){try{if(encoded(JSON.parse(texts[0]!))===encoded(result.structuredContent))value={isError:result.isError,structuredContent:result.structuredContent}}catch{ /* Distinct prose stays exact. */ }}
   }
+  // ADR-0009: load_skill's answer is bounded by skillBytes and a constant, and on the agent wire carries the
+  // skill's block, which must arrive whole and framed: it is never cut to the result bound.
+  if(name===LOAD_SKILL&&this.skills?.offered)return value
   // ADR-0006: a tool with a source is shown whole only up to its source's bound.
   if(utf8Bytes(encoded(value))<=(this.sources?.resultLimit(name)??this.policy.toolResultBytes))return value
   let e

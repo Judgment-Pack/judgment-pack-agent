@@ -3619,11 +3619,12 @@
    "find": " system(guidance:string,tools=''){return systemText(guidance,this.hostParts,tools)+this.skillCatalogue}",
    "replace": " system(guidance:string,tools=''){return systemText(guidance,this.hostParts,tools)+this.skillCatalogue+(this.skills?.section()??'')}",
    "tests": [
-    "skills.test.ts"
+    "skills.test.ts",
+    "certification/scenarios.test.ts"
    ],
    "status": "caught",
    "origin": "ADR-0009, skills (#91)",
-   "note": "SessionContext.system; skills.test.ts holds the system text the same bytes across a load and an unload. Scenario 9's prefix check does not see this row: each engine builds its system text once per run, before any load, so the block would reach no request's system text there. The Go twin is SessionContext.System (go/context/prompt.go), caught by TestTheBoundaryKeepsTheSystemTextAcrossALoadWhileTheStateCarriesTheBlock (run by hand on a scratch copy; scenario 9 in the Go harness-check does not see it either)"
+   "note": "SessionContext.system; skills.test.ts holds the system text the same bytes across a load and an unload, and scenario 9 holds the restored run's system text free of the block on every engine (the restore runs before an engine builds its system text, so the restored set would reach it there). The Go twin is SessionContext.System (go/context/prompt.go), caught by TestTheBoundaryKeepsTheSystemTextAcrossALoadWhileTheStateCarriesTheBlock and by scenario 9's restore check in the Go harness-check (run by hand on a scratch copy)"
   },
   {
    "name": "a catalogued skill's line is not framed as retrieved data",
@@ -3637,6 +3638,19 @@
    "status": "caught",
    "origin": "ADR-0009, skills (#91)",
    "note": "framedSkillLine; skills.test.ts holds the catalogue to skills/catalogue.json and scenario 9 reads each catalogued name with its framed line on every engine; the Go twin is FramedSkillLine (go/context/skills.go), caught by TestTheCatalogueIsTheVectorsSectionAndIsBoundedByCountAndBytes and scenario 9's catalogue check in the Go harness-check (run by hand on a scratch copy)"
+  },
+  {
+   "name": "load_skill's answer is cut to the result bound, so a skill whose JSON text passes toolResultBytes reaches the agent as a preview",
+   "file": "context/session.ts",
+   "find": "  if(name===LOAD_SKILL&&this.skills?.offered)return value\n",
+   "replace": "",
+   "tests": [
+    "certification/scenarios.test.ts",
+    "skills.test.ts"
+   ],
+   "status": "caught",
+   "origin": "clean-room review of #92 (MEDIUM 1)",
+   "note": "SessionContext.result; scenario 9 on codex holds the escape-heavy review_checklist's block to reach the agent whole, its instructions and its closing lines, in load_skill's answer; the Go twin is SessionContext.Result (go/context/session.go), caught by scenario 9's 9 agent block check in the Go harness-check (run by hand on a scratch copy)"
   }
  ]
 }

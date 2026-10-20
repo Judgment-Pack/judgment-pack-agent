@@ -86,7 +86,7 @@ import pauseVector from '../../../contract/vectors/approval/pause.json'
 import wrongCallVector from '../../../contract/vectors/approval/wrong-call-id.json'
 import type { ContextInput } from '../context/session'
 import skillsScenario from './scenarios/skills.json'
-import { LOAD_SKILL, SKILLS_HEADER, SKILL_CLOSING, SKILL_INSTRUCTIONS_HEADER, SKILL_OPENING, UNLOAD_SKILL, type SkillDeclaration } from '../skills'
+import { LOAD_SKILL, SKILLS_HEADER, SKILL_CLOSING, SKILL_INSTRUCTIONS_END, SKILL_INSTRUCTIONS_HEADER, SKILL_OPENING, UNLOAD_SKILL, type SkillDeclaration } from '../skills'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -1332,6 +1332,9 @@ function skillsChecks(get: () => Skilled, adapter: 'model' | 'agent') {
         [], ['expense_policy'], ['expense_policy', 'fast_track'], ['expense_policy', 'fast_track'], ['expense_policy', 'fast_track'],
         ['expense_policy', 'fast_track', 'issue_style'], ['expense_policy', 'fast_track'], ['expense_policy', 'fast_track', 'review_checklist'], ['expense_policy', 'fast_track', 'review_checklist']
       ])
+      // The escape-heavy skill's block reaches the request whole.
+      const review = (skillsScenario.skills as unknown as SkillDeclaration[]).find((skill) => skill.name === 'review_checklist')!
+      expect(partsOf(first.requests[7]!).after).toContain(`\n${review.instructions}\n`)
       // The block is headed at the project instructions' rank, and the system text never carries it.
       for (const request of first.requests.slice(1)) {
         expect(partsOf(request).after).toContain(SKILL_INSTRUCTIONS_HEADER)
@@ -1346,6 +1349,15 @@ function skillsChecks(get: () => Skilled, adapter: 'model' | 'agent') {
       const { answers } = get()
       expect(answers!.map((answer) => blockSkills(answer.text))).toEqual([['expense_policy'], ['fast_track'], [], [], ['issue_style'], [], ['review_checklist'], []])
       expect(answers![7]!.isError).toBe(true)
+      // review_checklist is within skillBytes, and its JSON text passes toolResultBytes: its block still
+      // reaches the agent whole, its instructions and its closing lines, never cut to the result bound.
+      const review = (skillsScenario.skills as unknown as SkillDeclaration[]).find((skill) => skill.name === 'review_checklist')!
+      expect(utf8Bytes(review.instructions)).toBeLessThanOrEqual(CONTEXT_DEFAULTS.skillBytes)
+      expect(utf8Bytes(JSON.stringify(review.instructions))).toBeGreaterThan(CONTEXT_DEFAULTS.toolResultBytes)
+      const answered = answers![6]!.text
+      expect(answered).toContain(`\n${review.instructions}\n`)
+      expect(answered.endsWith(`\n${SKILL_INSTRUCTIONS_END}`)).toBe(true)
+      expect(answered.split('\n').filter((line) => /^END SKILL [0-9a-f]{32}$/.test(line))).toHaveLength(1)
     })
   }
 
@@ -1401,6 +1413,10 @@ function skillsChecks(get: () => Skilled, adapter: 'model' | 'agent') {
     expect(guards[0]).toMatchObject({ action: 'refused', reason: 'skill withheld', detail: expect.stringContaining('was not restored') })
     const first = restored.requests[0] !== undefined ? partsOf(restored.requests[0]).after : (restored.runs[0]?.prompt ?? '')
     expect(blockSkills(first)).toEqual(['expense_policy', 'fast_track'])
+    // The restored set rides after the history: the restored run's system text carries no block.
+    const system = restored.requests[0] !== undefined ? partsOf(restored.requests[0]).system : (restored.runs[0]?.instructions ?? '')
+    expect(system).toContain(SKILLS_HEADER)
+    expect(system).not.toContain(SKILL_INSTRUCTIONS_HEADER)
     expect(lastCheckpoint(restored.events).skills!.map((load) => load.id)).toEqual(['expense-policy', 'fast-track'])
     expect(ofType(restored.events, 'error')).toEqual([])
   })

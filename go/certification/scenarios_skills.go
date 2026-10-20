@@ -192,6 +192,18 @@ func requestParts(request EndpointRequest) (system, after, whole string) {
 var blockSkill = regexp.MustCompile(`(?m)^` + runcontext.SkillOpening + ` [0-9a-f]{32} "([A-Za-z0-9_-]+)" from source `)
 var catalogueEntry = regexp.MustCompile(`(?m)^- ([A-Za-z0-9_-]+)\n` + runcontext.Opening + ` [0-9a-f]{32} from the description of skill "`)
 
+var skillClosingLine = regexp.MustCompile(`^` + runcontext.SkillClosing + ` [0-9a-f]{32}$`)
+
+// skillNamed is the file's skill of name.
+func skillNamed(file skillsFile, name string) skillsListed {
+	for _, listed := range file.Skills {
+		if listed.Name == name {
+			return listed
+		}
+	}
+	return skillsListed{}
+}
+
 // blockSkills are the skills a text's block carries, by name, in order.
 func blockSkills(text string) []string {
 	at := strings.Index(text, runcontext.SkillInstructionsHeader)
@@ -374,6 +386,9 @@ func skillsFindings(state *skilled, prefix string, agent bool) []Finding {
 				}
 			}
 		}
+		if review := skillNamed(file, "review_checklist"); len(first.After) > 7 && !strings.Contains(first.After[7], "\n"+review.Instructions+"\n") {
+			f.fail("the escape-heavy skill's block did not reach request 8 whole")
+		}
 		prefixes := map[string]bool{}
 		for _, held := range first.Prefixes {
 			prefixes[held] = true
@@ -399,6 +414,22 @@ func skillsFindings(state *skilled, prefix string, agent bool) []Finding {
 			}
 			if !first.Answers[7].IsError {
 				f.fail("the load past the budget was answered")
+			}
+			// review_checklist is within skillBytes and its JSON text passes toolResultBytes: its block
+			// still reaches the agent whole, never cut to the result bound.
+			review := skillNamed(file, "review_checklist")
+			answered := first.Answers[6].Text
+			closing := 0
+			for _, line := range strings.Split(answered, "\n") {
+				if skillClosingLine.MatchString(line) {
+					closing++
+				}
+			}
+			if runcontext.UTF8Bytes(review.Instructions) > runcontext.Defaults.SkillBytes || len(runcontext.String(review.Instructions).JSON()) <= runcontext.Defaults.ToolResultBytes {
+				f.fail("the escape-heavy skill is %d bytes, %d as JSON", runcontext.UTF8Bytes(review.Instructions), len(runcontext.String(review.Instructions).JSON()))
+			}
+			if !strings.Contains(answered, "\n"+review.Instructions+"\n") || !strings.HasSuffix(answered, "\n"+runcontext.SkillInstructionsEnd) || closing != 1 {
+				f.fail("the escape-heavy skill's block did not reach the agent whole: %d bytes", len(answered))
 			}
 		}
 		out = append(out, f.list...)
@@ -494,6 +525,10 @@ func skillsFindings(state *skilled, prefix string, agent bool) []Finding {
 	}
 	if len(restored.After) == 0 || !slices.Equal(blockSkills(restored.After[0]), []string{"expense_policy", "fast_track"}) {
 		f.fail("the restored run's first request carried %v", restored.After)
+	}
+	// The restored set rides after the history: the restored run's system text carries no block.
+	if len(restored.System) == 0 || !strings.Contains(restored.System[0], runcontext.SkillsHeader) || strings.Contains(restored.System[0], runcontext.SkillInstructionsHeader) {
+		f.fail("the restored run's system text carries the block, or no catalogue")
 	}
 	var kept []string
 	if held := lastCheckpointOf(restored.Events); held != nil {

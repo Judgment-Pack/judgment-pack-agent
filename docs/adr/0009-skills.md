@@ -148,8 +148,10 @@ trimmed, cut to 160 bytes and framed as retrieved data under the run's marker, t
 (the vector `skills/catalogue.json`). The catalogue holds at most `cataloguedSkills` skills and
 `skillsCatalogueBytes` bytes, each entry counted as the JSON text of its name and its line (the
 frame's lines are the same for every entry and are not counted, so both bounds can bind: counted with
-the frame, every entry costs some 330 bytes and the count would never be reached). The skills past
-either are withheld, one guardrail for each source saying how many. The catalogue is part of the
+the frame, every entry costs some 330 bytes and the count would never be reached). So
+`skillsCatalogueBytes` bounds the entries' names and lines, not the catalogue's bytes on the wire:
+those are bounded by `cataloguedSkills` times a constant (each entry's name, its frame's lines under
+the 32-character marker and its line of at most 160 bytes). The skills past either are withheld, one guardrail for each source saying how many. The catalogue is part of the
 stable prefix: a load or an unload changes neither it nor the tool list. Where any skill is
 catalogued, `load_skill` and `unload_skill` are offered beside the context tools.
 
@@ -184,7 +186,9 @@ tool list once per run and the state after the history on every request, so the 
 model on the request after the load and every later one, and the system text and the tool list are
 the same bytes before and after. The agent wire (`codex`, the Go agent capability) sends the state
 once per run, at the invocation's start, so within an invocation the block reaches the agent in
-`load_skill`'s answer, after the answer's JSON; a later invocation of the response (a continuation
+`load_skill`'s answer, after the answer's JSON, whole: that answer is never cut to `toolResultBytes`
+(it is bounded by `skillBytes` and a constant), so the block arrives with its closing line however
+its text encodes; a later invocation of the response (a continuation
 after a delegation or an approval pause) carries the loaded set in its state.
 
 ### The restore
@@ -278,7 +282,8 @@ catalogue, the load, the unload, the budget and the checkpoint to the vectors, t
 same across a load at the boundary, the restore, the marker replaced inside a skill's text, and the
 forty-skill catalogue by count and by bytes. Mutation rows: the rank heading dropped, the admission
 tool check removed, the digest check removed, the load not counted, the block placed in the system
-text, and the catalogue line unframed; each is caught, and so is each Go twin.
+text, the catalogue line unframed, and `load_skill`'s answer cut to the result bound; each is caught,
+and so is each Go twin.
 
 ## Consequences
 
