@@ -91,6 +91,8 @@ rehearsal rule stay the host's (ADR-0001). Nothing below moves them.
 
 ## Run events
 
+Generated reference: [`docs/reference/events.md`](../reference/events.md) lists these from the schemas and the package's constants.
+
 `run-event.json`. Twenty-one kinds, discriminated by `type`, from the adapter to the host, in order: the
 Desk's eighteen, the harness's `approval_requested` (ADR-0008), and `skill_loaded` and
 `skill_unloaded` (ADR-0009):
@@ -161,6 +163,8 @@ The stream is open: it is an in-process union with no reader at run time that re
 
 ## Tool offers
 
+Generated reference: [`docs/reference/tools.md`](../reference/tools.md) lists these from the schemas and the package's constants.
+
 `tool-offer.json`, the session's two members, `tools` and `hostTools`. The runtime's tools arrive
 as served (`name`, `description`, `inputSchema`), already filtered to the session's allow-list,
 which is a subset of a six-tool ceiling, so each name is one of the six: the Desk's five
@@ -213,6 +217,8 @@ shown for the person's review and nothing is written or applied until the person
 holds the tools that are not offered.
 
 ## Tool sources
+
+Generated reference: [`docs/reference/tools.md`](../reference/tools.md) lists these from the schemas and the package's constants.
 
 ADR-0006 (agent#66). A gateway connection's tools, a public MCP server's and a tool the person created
 reach the model as host tools: the host declares each with its source record and executes every call
@@ -373,6 +379,8 @@ The vectors are `approval/` (`pause.json`, `second-act-while-pending.json`, `con
 
 ## Skills
 
+Generated reference: [`docs/reference/skills.md`](../reference/skills.md) lists these from the schemas and the package's constants.
+
 [ADR-0009](../adr/0009-skills.md) (agent#91). A skill is a named, versioned bundle the host declares
 beside its host tools (`session.skills`, Go `Session.Skills` and `adapter.Run.Skills`) and supplies:
 instructions, the names of host tools it uses, small text resources. It comes from a source and
@@ -425,6 +433,8 @@ gate with the loaders where any skill would be catalogued (`runcontext.OfferedSk
 scenario 9 (`certification/scenarios/skills.json`) runs it on every engine and both Go adapters.
 
 ## The critic
+
+Generated reference: [`docs/reference/critic.md`](../reference/critic.md) lists these from the schemas and the package's constants.
 
 The refutation pass, after the proposal exists and before it is delivered (`refutation.ts`; agent#10,
 with the fixes of its clean-room review, rows 1 to 11).
@@ -670,6 +680,8 @@ the model asks again in the same turn. The reader is closed: no member it does n
 
 ## Delegated tasks
 
+Generated reference: [`docs/reference/delegation.md`](../reference/delegation.md) lists these from the schemas and the package's constants.
+
 `delegated-task.json`; the vectors `delegation/`. The model asks for a batch of one to three tasks
 with the host tool `delegate_tasks` (`$defs/request`): each a `title`, an `objective` (the child's
 request text, sent as the first text part of its first message), an offered `profile`, and,
@@ -895,6 +907,8 @@ cancellation of the children with the parent. The research hand-back now returns
 
 ## Checkpoints
 
+Generated reference: [`docs/reference/checkpoint.md`](../reference/checkpoint.md) lists these from the schemas and the package's constants.
+
 `checkpoint.json`. The execution's record, carried whole on `execution_checkpoint` and
 `budget_paused` and handed back to resume: `requestKey` (binding it to the request it was made
 for), `phase` (`plan` or `work`), `status`, the allowance (`unit`, `used`, `limit`, and `grants`
@@ -918,6 +932,8 @@ evidence approval or private reasoning. At most 4 MiB as JSON
 text.
 
 ## Failures
+
+Generated reference: [`docs/reference/reasons.md`](../reference/reasons.md) lists these from the schemas and the package's constants.
 
 `failure.json`. One catalogue (`contract/desk/catalog.json`, 23 classes, each with the sentence a
 person sees and a recovery), and one failure shape: `version` 1, `code`, `source` (`model`,
@@ -943,6 +959,8 @@ a whole answer where a stream was asked for, and what Retry does after each, is 
 [AI error handling](ai-error-handling.md).
 
 ## Budgets
+
+Generated reference: [`docs/reference/budget.md`](../reference/budget.md) lists these from the schemas and the package's constants.
 
 `budget.json`. One table both the browser and the server read: the input ceiling
 (`maxInputBytes`, and the window and output reserve it is computed from, overridable per model),
