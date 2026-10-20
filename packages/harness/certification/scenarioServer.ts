@@ -129,8 +129,11 @@ export function scenarioSession(name: ScenarioName, answerAs: AnswerAs, options:
       runtime = scenarioRuntime(ok)
       break
     case 'skills':
-      // ADR-0009: the first run's turns, then, once advanced (the restored run), the restored run's.
-      answer = (request) => answerFrom((position === 0 ? skills.turns : skills.restored) as unknown as Turn[], answerAs)(request)
+      // ADR-0009: the first run's turns, then, once advanced (the restored run), the restored run's; then
+      // the critic's run (#93), its author's turns and, on a request carrying the critic's marker, the critic's.
+      answer = (request) => position < 2
+        ? answerFrom((position === 0 ? skills.turns : skills.restored) as unknown as Turn[], answerAs)(request)
+        : answerFrom((JSON.stringify(request.body).includes(REFUTATION_MARKER) ? skills.critic.critic : skills.critic.author) as unknown as Turn[], answerAs)(request)
       runtime = scenarioRuntime(ok)
       break
     case 'correction-loop':

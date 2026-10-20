@@ -175,8 +175,9 @@ files they were rendered from.
   carries after the history), `unload.json`, `withheld-digest.json` (a bundle changed after the person
   approved it), `withheld-tool.json` (a skill naming a tool the host did not declare), `budget.json` (a
   load past `skillsPerRun` refused), `checkpoint.json` (the loaded set and each source's loads, a reload
-  counted again), and `load-skill.json` and `unload-skill.json` (the loaders as the boundary offers
-  them). `skills.test.ts` holds the package to each; `go/context` holds the Go port to the same.
+  counted again), `load-skill.json` and `unload-skill.json` (the loaders as the boundary offers
+  them), and `offer.json` (a tool offer whose declaration carries scenario 9's skills beside its
+  tools, the root member `skills`). `skills.test.ts` holds the package to each; `go/context` holds the Go port to the same.
 - The gate's own vectors (agent#53), written by hand: `tool-call/gate-frames.json`, what the host's
   gate decides about outbound frames (each item the params of a `tools/call` frame, each of its
   `frames` a whole frame, with the verdict, the guardrail notice and what left, under the vector's

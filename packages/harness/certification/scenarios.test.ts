@@ -86,7 +86,7 @@ import pauseVector from '../../../contract/vectors/approval/pause.json'
 import wrongCallVector from '../../../contract/vectors/approval/wrong-call-id.json'
 import type { ContextInput } from '../context/session'
 import skillsScenario from './scenarios/skills.json'
-import { LOAD_SKILL, SKILLS_HEADER, SKILL_CLOSING, SKILL_INSTRUCTIONS_END, SKILL_INSTRUCTIONS_HEADER, SKILL_OPENING, UNLOAD_SKILL, type SkillDeclaration } from '../skills'
+import { ALREADY_LOADED_CRITIC_NOTE, LOAD_SKILL, SKILLS_HEADER, SKILL_CLOSING, SKILL_INSTRUCTIONS_END, SKILL_INSTRUCTIONS_HEADER, SKILL_OPENING, UNLOAD_SKILL, type SkillDeclaration } from '../skills'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -1226,13 +1226,37 @@ interface Skilled {
   executed: Record<string, number>
   /** The answers the agent was given in the first run, on the agent engine. */
   answers: { text: string; isError: boolean }[] | null
+  /** The critic's run (#93): the author loads a skill and proposes, the critic loads the same skill. */
+  critic: Ran
+  /** The answers each agent run of the critic's run was given, by its phase, on the agent engine. */
+  criticAnswers: { phase: string; text: string; isError: boolean }[] | null
+}
+
+/** The critic's run of scenario 9: the host tools, the skills declared and the context given, the critic on. */
+type CriticRun = (hostTools: HostTool[], skills: SkillDeclaration[], context: ContextInput) => Promise<{ ran: Ran; answers: Skilled['criticAnswers'] }>
+
+/** The critic's run on the agent engine: each agent run plays its phase's turns, its answers kept by phase. */
+function criticAgentRun(answers: NonNullable<Skilled['criticAnswers']>): AgentRun {
+  return async (incoming, callbacks) => {
+    const turns = (incoming.phase === 'critic' ? skillsScenario.critic.critic : skillsScenario.critic.author) as unknown as Turn[]
+    let at = 0
+    for (const turn of turns) {
+      if ('call' in turn) {
+        const offered = incoming.tools.find((tool) => tool.description.startsWith(`${turn.call.tool}:`))
+        const answer = await callbacks.tool({ id: `${incoming.phase}-${++at}`, name: offered?.name ?? turn.call.tool, arguments: structuredClone(turn.call.arguments) }, callbacks.signal)
+        answers.push({ phase: incoming.phase, ...answer })
+      } else if ('say' in turn) {
+        await callbacks.event({ type: 'message', id: `${incoming.phase}-say`, text: turn.say, phase: 'final' })
+      }
+    }
+  }
 }
 
 /** One run of scenario 9: its turns, the host tools, the skills declared and the context given. */
 type SkillsRun = (turns: Turn[], hostTools: HostTool[], skills: SkillDeclaration[], context: ContextInput) => Promise<Ran>
 
 /** Run scenario 9 on one engine: the first run, then a fresh session from its last checkpoint's JSON text, review_checklist withdrawn. */
-async function skillsRun(run: SkillsRun, answers: Skilled['answers']): Promise<Skilled> {
+async function skillsRun(run: SkillsRun, answers: Skilled['answers'], criticRun: CriticRun): Promise<Skilled> {
   const executed: Record<string, number> = {}
   const asked: ContextInput = { currentRequest: { message: skillsScenario.request, input: skillsScenario.request } }
   const declared = skillsScenario.skills as unknown as SkillDeclaration[]
@@ -1240,7 +1264,8 @@ async function skillsRun(run: SkillsRun, answers: Skilled['answers']): Promise<S
   const last = first.events.filter((event) => event.type === 'execution_checkpoint').at(-1) as { checkpoint: ExecutionCheckpoint } | undefined
   const saved = JSON.stringify(last?.checkpoint ?? null)
   const restored = await run(skillsScenario.restored as unknown as Turn[], skillsHostTools(executed), declared.filter((skill) => skill.name !== skillsScenario.withdrawn), { ...asked, execution: JSON.parse(saved) as ExecutionCheckpoint })
-  return { first, saved, restored, executed, answers }
+  const critic = await criticRun(skillsHostTools({}), declared, asked)
+  return { first, saved, restored, executed, answers, critic: critic.ran, criticAnswers: critic.answers }
 }
 
 /** A message's text: its string, or its text parts joined. */
@@ -1420,6 +1445,32 @@ function skillsChecks(get: () => Skilled, adapter: 'model' | 'agent') {
     expect(lastCheckpoint(restored.events).skills!.map((load) => load.id)).toEqual(['expense-policy', 'fast-track'])
     expect(ofType(restored.events, 'error')).toEqual([])
   })
+
+  it('9 · the critic sees the skills the author loaded: on the model engines its step note carries the loaded set on every critic request; on the agent wire its load_skill of a skill already loaded is answered with the block', () => {
+    const { critic, criticAnswers } = get()
+    expect(ofType(critic.events, 'error')).toEqual([])
+    expect(ofType(critic.events, 'critique')).toHaveLength(1)
+    // The author's load is the one load: the critic's counts nothing.
+    expect(ofType(critic.events, 'skill_loaded').map((event) => event.skill.name)).toEqual(['expense_policy'])
+    expect(lastCheckpoint(critic.events).sources!.find((row) => row.source === 'policies')!.skills).toBe(1)
+    if (adapter === 'model') {
+      const reviewing = critic.requests.filter((request) => JSON.stringify(request.body).includes(REFUTATION_MARKER))
+      expect(reviewing.length).toBeGreaterThan(1)
+      for (const request of reviewing) {
+        expect(blockSkills(partsOf(request).after)).toEqual(['expense_policy'])
+        expect(partsOf(request).system).not.toContain(SKILL_INSTRUCTIONS_HEADER)
+      }
+    } else {
+      const author = criticAnswers!.filter((answer) => answer.phase === 'author')
+      const reviewing = criticAnswers!.filter((answer) => answer.phase === 'critic')
+      expect(author.map((answer) => blockSkills(answer.text))).toEqual([['expense_policy']])
+      expect(reviewing).toHaveLength(1)
+      expect(reviewing[0]!.isError).toBe(false)
+      expect(reviewing[0]!.text).toContain(ALREADY_LOADED_CRITIC_NOTE)
+      expect(blockSkills(reviewing[0]!.text)).toEqual(['expense_policy'])
+      expect(reviewing[0]!.text.endsWith(`\n${SKILL_INSTRUCTIONS_END}`)).toBe(true)
+    }
+  })
 }
 
 describe.each(MODEL_ENGINES)('engine %s · scenarios', (engineId) => {
@@ -1568,7 +1619,12 @@ describe.each(MODEL_ENGINES)('engine %s · scenarios', (engineId) => {
       beforeAll(async () => {
         const engine = await loadEngine(engineId)
         state = await skillsRun((turns, hostTools, skills, context) =>
-          runOnModelEngine(answerFrom(turns, answerAs), { engine, hostTools, session: { prompt: skillsScenario.request, interactive: true, skills, context } }), null)
+          runOnModelEngine(answerFrom(turns, answerAs), { engine, hostTools, session: { prompt: skillsScenario.request, interactive: true, skills, context } }), null,
+        async (hostTools, skills, context) => ({
+          ran: await runOnModelEngine((request) => answerFrom((JSON.stringify(request.body).includes(REFUTATION_MARKER) ? skillsScenario.critic.critic : skillsScenario.critic.author) as unknown as Turn[], answerAs)(request),
+            { engine, hostTools, session: { prompt: skillsScenario.request, interactive: true, skills, context, adversarialReview: true, testPrompt: skillsScenario.critic.testPrompt } }),
+          answers: null
+        }))
       })
       afterAll(() => vi.unstubAllGlobals())
       skillsChecks(() => state, 'model')
@@ -1750,7 +1806,11 @@ describe.each(AGENT_ENGINES)('agent engine %s · scenarios', (engineId) => {
         const kept = first ? answers : []
         first = false
         return runOnAgentEngine(agentRunFrom(turns, kept), { engine, hostTools, session: { prompt: skillsScenario.request, interactive: true, skills, context } })
-      }, answers)
+      }, answers, async (hostTools, skills, context) => {
+        const criticAnswers: NonNullable<Skilled['criticAnswers']> = []
+        const ran = await runOnAgentEngine(criticAgentRun(criticAnswers), { engine, hostTools, session: { prompt: skillsScenario.request, interactive: true, skills, context, adversarialReview: true, testPrompt: skillsScenario.critic.testPrompt } })
+        return { ran, answers: criticAnswers }
+      })
     })
     skillsChecks(() => state, 'agent')
   })

@@ -69,7 +69,8 @@ The path of a skill, as #91 draws it:
  the skill's named tools ──────────────────────────────────▶  the host's own declared tools: offered or not by phase and
                                                               effect as today (Plan mode: reads only; act: the approval
                                                               pause). A skill changes no offer, effect or approval.
- model calls unload_skill(name) ──────────────────────────▶  the block dropped from later requests; event skill_unloaded
+ model calls unload_skill(name) ──────────────────────────▶  the block dropped from later requests (on the agent wire, from
+                                                              a later invocation's state); event skill_unloaded
  run end / resume ─────────────────────────────────────────▶  the loaded set restored from the checkpoint; a skill the
                                                               host no longer declares is not restored and the report says so
 ```
@@ -176,8 +177,9 @@ END SKILL INSTRUCTIONS
 
 Each skill is framed under the run's marker, and an occurrence of the marker inside its text is
 replaced, so the only closing line of a skill is the block's own (the vector `skills/load.json`).
-`unload_skill(name)` drops a loaded skill: its block leaves the later requests, the checkpoint is
-written and `skill_unloaded` emitted; loading it again counts as another load. Both loaders are effect
+`unload_skill(name)` drops a loaded skill: on the model engines the block leaves the later requests; on the agent wire a later invocation's state drops it, and the current invocation keeps the answer it was given. The checkpoint is written and
+`skill_unloaded` emitted; loading it again counts as another load. The note the model is told says
+the same, by its wire (`UNLOADED_NOTE`, `UNLOADED_AGENT_NOTE`). Both loaders are effect
 `plan`: Plan mode offers them, and their answers are not framed as data (an answer carries the
 package's own words, and on the agent wire the skill's block, which a data frame would contradict).
 
@@ -252,9 +254,12 @@ withheld`, says so. The loads counted before the resume stay counted.
   skill grants no tool, so a load in Plan mode changes nothing Plan mode admits.
 - **The critic** is offered the catalogue (its system text is built by the same assembler) and the
   loaders (`criticMayRead`, Go `CriticMayRead` and `gate.CriticPhase`), beside its allow-list, which a
-  skill leaves as it is. On the model engines the run's loaded set rides in the critic's step note,
-  after its history, as in the loop's state; on the agent wire a load's answer carries its block, as
-  in the loop.
+  skill leaves as it is. What the critic sees of the skills the author loaded differs by wire. On the
+  model engines the run's loaded set rides in the critic's step note, after its history, on every
+  critic request, as in the loop's state. On the agent wire the critic's invocation is sent the state
+  once, carrying no loaded set, so its `load_skill` of a skill already loaded is answered with the
+  block the author was given (`ALREADY_LOADED_CRITIC_NOTE`, then the framed block), counted nothing; a
+  skill not yet loaded loads as in the loop. Scenario 9's critic run holds both.
 - **A delegated child** is handed no skills (`delegation.ts`, `go/adapter/delegate`): no catalogue,
   no loaders, none of the parent's loaded set.
 
@@ -276,14 +281,19 @@ text the same bytes on every request of the run (compared as scenario 8 compares
 the budget refused; the poisoned skill held off (`write_file` refused with its event, its words only
 inside its block, the retrieved text inside its data block); the checkpoint's loaded set and each
 source's loads; and the restore (the loaded set less the withdrawn skill, and a guardrail saying so).
+A third run turns the critic on: the author loads `expense_policy` and proposes, and the critic loads
+the same skill; the critic sees it on every engine (its step note on the model engines, the block in
+its `load_skill` answer on the agent wire), and the author's load is the run's one load (#93).
 
 The unit tests (`skills.test.ts`, `go/context/skills_test.go`) hold the declaration, the digest, the
 catalogue, the load, the unload, the budget and the checkpoint to the vectors, the system text the
 same across a load at the boundary, the restore, the marker replaced inside a skill's text, and the
 forty-skill catalogue by count and by bytes. Mutation rows: the rank heading dropped, the admission
 tool check removed, the digest check removed, the load not counted, the block placed in the system
-text, the catalogue line unframed, and `load_skill`'s answer cut to the result bound; each is caught,
-and so is each Go twin.
+text, the catalogue line unframed, and `load_skill`'s answer cut to the result bound; and from the
+v0.6.0 release review (#93), the critic's step note emptied on `vercel` and on `deepagents`, the
+agent-wire critic answered with no block, a child handed the parent's skills, and a restore that
+does not compare the digest. Each is caught, and so is each Go twin.
 
 ## Consequences
 

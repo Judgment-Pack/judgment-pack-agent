@@ -130,7 +130,20 @@ export const LOADED_NOTE =
 export const LOADED_AGENT_NOTE =
   'Loaded: its instructions follow this answer, at the rank of the project’s own instructions, for the rest of this response. A skill grants no tool.'
 export const ALREADY_LOADED_NOTE = 'Already loaded: nothing was loaded again, and no load was counted.'
+/**
+ * What the critic is told on the agent wire of a skill the run already loaded: the state reached it
+ * once per run, before the author's loads, so the answer carries the block the author was given.
+ */
+export const ALREADY_LOADED_CRITIC_NOTE =
+  'Already loaded in this response: its instructions follow this answer, as the author was given them, at the rank of the project’s own instructions. Nothing was loaded again, and no load was counted.'
+/**
+ * What the model is told of an unload, by the wire it is on: on the model engines the block leaves the
+ * later requests; on the agent wire a later invocation's state drops it, and the current invocation
+ * keeps the answer it was given.
+ */
 export const UNLOADED_NOTE = 'Unloaded: its instructions leave the later requests of this response. Loading it again counts as another load.'
+export const UNLOADED_AGENT_NOTE =
+  'Unloaded: a later run of this response no longer carries its instructions; this run keeps the answer that gave them to you. Loading it again counts as another load.'
 
 const object = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -336,6 +349,8 @@ export interface SkillRun {
   marker: () => string
   /** The agent wire sends the state once per run: a load's answer carries the block itself there. */
   agentWire: boolean
+  /** Whether the critic is running: on the agent wire it is answered an already loaded skill's block. */
+  critic?: () => boolean
   /** An event for the stream, between the call and its result. */
   notify: (event: AssistantEvent) => void
 }
@@ -438,7 +453,14 @@ export class SkillGate {
   private load(name: unknown): McpToolResult {
     const skill = typeof name === 'string' ? this.byName.get(name) : undefined
     if (skill === undefined) throw toolInputFailure(`${LOAD_SKILL} loads a catalogued skill, and ${JSON.stringify(String(name).slice(0, 64))} is not one; nothing was loaded.`)
-    if (this.loaded.some((held) => held.id === skill.id)) return answer({ skill: loadedSkill(skill), bytes: skill.bytes, note: ALREADY_LOADED_NOTE })
+    if (this.loaded.some((held) => held.id === skill.id)) {
+      // The agent wire sends the state once per run, so the critic's run never saw what the author
+      // loaded: its load of a skill already loaded is answered with the block, counted nothing.
+      if (this.run.agentWire && this.run.critic?.() === true) {
+        return { content: [{ type: 'text', text: `${JSON.stringify({ skill: loadedSkill(skill), bytes: skill.bytes, note: ALREADY_LOADED_CRITIC_NOTE })}\n${skillSection([skill], this.run.marker())}` }] }
+      }
+      return answer({ skill: loadedSkill(skill), bytes: skill.bytes, note: ALREADY_LOADED_NOTE })
+    }
     const limit = this.bounds.skillsPerRun
     if (this.loads() >= limit) {
       const detail = `This response has loaded skills ${limit} time${limit === 1 ? '' : 's'}, the most one response may (skillsPerRun); ${skill.name} was not loaded. Use the skills already loaded.`
@@ -462,6 +484,6 @@ export class SkillGate {
     this.loaded = this.loaded.filter((held) => held.id !== skill.id)
     this.write((this.run.state().skills ?? []).filter((load) => load.id !== skill.id))
     this.run.notify({ type: 'skill_unloaded', id: skill.id })
-    return answer({ unloaded: { id: skill.id, name: skill.name }, note: UNLOADED_NOTE })
+    return answer({ unloaded: { id: skill.id, name: skill.name }, note: this.run.agentWire ? UNLOADED_AGENT_NOTE : UNLOADED_NOTE })
   }
 }

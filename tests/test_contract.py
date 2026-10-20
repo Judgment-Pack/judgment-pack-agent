@@ -726,7 +726,7 @@ class VectorTests(unittest.TestCase):
         targets = []
         for name, definition in RELEASE_REVIEWED_DEFS:
             targets += [(name, ["$defs", definition] + path) for path in members(schemas_[name]["$defs"][definition], [])]
-        for name in ("checkpoint.json", "delegated-task.json", "tool-call.json", "tool-result.json", "skill.json"):
+        for name in ("checkpoint.json", "delegated-task.json", "tool-call.json", "tool-result.json", "skill.json", "tool-offer.json"):
             root = {key: value for key, value in schemas_[name].items() if key != "$defs"}
             targets += [(name, path) for path in members(root, [])]
         self.assertGreater(len(targets), 250)

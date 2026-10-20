@@ -401,7 +401,7 @@ and where:
   row of the run report (`sourceFigures.skills`, carried through a resume); a load past it is refused
   (`tool-failed`, `not-started`; reason `skill budget`). Its answer is the skill as a load names it
   (`$defs/loadedSkill`: id, name, source record, digest), its bytes and a note. `unload_skill` drops
-  a loaded skill; loading it again counts again.
+  a loaded skill: on the model engines the block leaves the later requests; on the agent wire a later invocation's state drops it, and the current invocation keeps the answer it was given; loading it again counts again.
 - **The block**: every request after a load carries the loaded skills after the history, in the
   execution state after the schemas `load_tool` loaded, as one block headed "SKILL INSTRUCTIONS (a
   skill's instructions, at the rank of the project's own instructions and after them; follow them
@@ -1179,10 +1179,12 @@ described in text, so it is in the stable prefix on every wire and never changes
 loaded skill is instructions at layer 4's rank, after the project block, but it is placed after the
 history, in the execution state (layer 8), after the schemas `load_tool` loaded, so a load moves
 nothing before it. On the model engines (`vercel`, `deepagents`, `eino`) the block is on every request
-after the load, where the endpoint's placement puts the state; the critic's step note carries it too.
+after the load, where the endpoint's placement puts the state; the critic's step note carries the
+loaded set on every critic request.
 On the agent wire (`codex`, the Go agent capability) the state is sent once per invocation, so within
 an invocation a load's block reaches the agent in `load_skill`'s answer, and a later invocation of the
-response (a continuation) carries the loaded set in its prompt's state.
+response (a continuation) carries the loaded set in its prompt's state; the critic's invocation is
+sent no loaded set, and its `load_skill` of a skill already loaded is answered with the block.
 
 **What the Desk changes in its swap** (judgment-pack-desk#537): the three injection points answered
 from the project (the brief file the profile names, the memory store, the per-project block), and the
@@ -1348,6 +1350,14 @@ Agents' subagents are off and delegation is the package's, an awaited `delegate_
   loaded set in its state. Go counts a load under the source gate's lock, as it counts a source's
   calls, and reads the checkpoint's loaded set through the skill gate's lock when it writes one;
   TypeScript counts in the execution state's rows directly.
+- **What the critic sees of the loaded skills** (ADR-0009, #93). On the model engines the critic's
+  step note carries the run's loaded set after its history on every critic request. On the agent
+  wire the critic's invocation is sent the state once, with no loaded set, so the critic sees a skill
+  the author loaded only by loading it: its `load_skill` of a skill already loaded is answered with
+  the block the author was given, counted nothing.
+- **An unload** (ADR-0009, #93). On the model engines the block leaves the later requests. On the
+  agent wire a later invocation's state drops it, and the current invocation keeps the answer it was
+  given: the block already reached the agent in `load_skill`'s answer and stays in its transcript.
 - **The agent capability, TypeScript and Go** (ADR-0007). Both end the parent's run at
   `delegation_requested`, run children one at a time and continue in a new run with the call's
   result. The Go `agent` adapter waits for the host's provider-run function to return before its

@@ -103,7 +103,7 @@ export class SessionContext {
  openSkills(declared:DeclaredSkills,agentWire:boolean){
   const catalogue=catalogueSkills(declared.skills,this.policy,this.marker)
   this.skillCatalogue=catalogue.section
-  this.skills=new SkillGate(catalogue.catalogued,this.policy,{state:()=>this.execution.state,marker:()=>this.marker,agentWire,notify:event=>{this.notices.push(event)}},declared.sourceIds)
+  this.skills=new SkillGate(catalogue.catalogued,this.policy,{state:()=>this.execution.state,marker:()=>this.marker,agentWire,critic:()=>this.criticRunning,notify:event=>{this.notices.push(event)}},declared.sourceIds)
   const notices:SkillNotice[]=[...declared.withheld,...catalogue.withheld,...this.skills.restore()]
   for(const held of notices)this.notices.push({type:'guardrail',tool:held.tool,action:'refused',detail:held.detail,reason:held.reason})
   this.execution.loadedSkills=()=>this.skills?.section()??''

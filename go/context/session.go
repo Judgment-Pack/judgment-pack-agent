@@ -904,6 +904,8 @@ func (c *SessionContext) OpenSkills(declared *DeclaredSkills, agentWire bool) {
 	section, catalogued, withheld := CatalogueSkills(declared.Skills, *c.Policy, c.Marker)
 	c.SkillCatalogue = section
 	c.Skills = NewSkillGate(catalogued, *c.Policy, c.Sources, c.Execution.State, c.Marker, agentWire, declared.SourceIDs)
+	// The critic reading (agent#10): on the agent wire its load of a skill already loaded is answered with the block.
+	c.Skills.critic = func() bool { return c.CriticReading }
 	notices := append(append(append([]SkillNotice{}, declared.Withheld...), withheld...), c.Skills.Restore()...)
 	for _, notice := range notices {
 		c.Sources.Notify(notice.Event())
