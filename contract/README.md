@@ -8,6 +8,10 @@ value spelled as the Desk spells it. Where the Desk departs from a clean contrac
 written down as an open question in [`docs/design/wire-contract.md`](../docs/design/wire-contract.md),
 not fixed here. See also [ADR-0001](../docs/adr/0001-one-contract-many-adapters.md).
 
+## Reference
+
+[`docs/reference/`](../docs/reference/) lists the contract's components page by page (tools, skills, delegation, the critic, events, budget, reasons, the checkpoint), generated from these schemas and the package's constants by `scripts/gen-reference.mjs` and checked in CI.
+
 ## Schemas
 
 JSON Schema, draft 2020-12, one file per thing that crosses, in `schemas/`. Each `$id` is the file's
