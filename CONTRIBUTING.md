@@ -24,8 +24,10 @@ a model may reach is material. Cosmetic and documentation changes need no round.
 
 ## Local checks
 
-Run what `.github/workflows/ci.yml` runs: every JSON document under `contract/` parses, and
-`git diff --check` is clean. Adapter directories carry their own checks.
+Run `scripts/dev/check.sh` once before opening a pull request, and paste its summary block in the
+pull request body. It runs what `.github/workflows/ci.yml` runs, from the list in `dev.json`
+(`scripts/dev/check.sh --setup` installs the dependencies first). Adapter directories carry their
+own checks.
 
 ## Developer Certificate of Origin
 

@@ -113,6 +113,27 @@ jobs:
             exit 1
           fi
 
+      # The full mutation table (mutation.yml, every row) runs on every push to main. A tag on a
+      # commit whose latest completed run is not a success is refused, and so is one with no
+      # completed run yet.
+      - name: Require the full mutation table green on the tagged commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          latest="$(gh api "repos/${GH_REPO}/actions/workflows/mutation.yml/runs?head_sha=${GITHUB_SHA}&status=completed&per_page=100" \
+            --jq '[.workflow_runs[] | select(.event != "pull_request")] | sort_by(.created_at) | last | (.conclusion // "none") + " " + (.html_url // "")')" \
+            || { echo "The runs of mutation.yml could not be read" >&2; exit 1; }
+          conclusion="${latest%% *}"
+          if [ "${conclusion}" != "success" ]; then
+            echo "The latest completed run of mutation.yml on ${GITHUB_SHA} is: ${latest}" >&2
+            echo "The full mutation table must be green on the tagged commit. It runs on every push to main: wait for that run, or run mutation.yml on main (Actions, Mutation check, Run workflow), then tag again (docs/releasing.md)." >&2
+            exit 1
+          fi
+          echo "mutation.yml: ${latest}"
+
       - name: Require release notes
         shell: bash
         run: |
@@ -138,7 +159,7 @@ jobs:
           [ "${reviewers}" -ge 1 ] || { echo "The release environment requires no reviewer" >&2; exit 1; }
 
   # The tagged commit's own ci.yml, called, so release.yml carries no second
-  # copy of the `contract`, `tests`, `harness`, `go` and `certify` jobs. A check main
+  # copy of the `contract` and `check` jobs. A check main
   # has gained since that commit is not run.
   verify:
     name: CI at the tag

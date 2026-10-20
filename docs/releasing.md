@@ -55,15 +55,18 @@ rule.
      release page will carry. It names the Go module, `github.com/Judgment-Pack/judgment-pack-agent/go`,
      and the tag `go/<tag>` that the workflow makes (a test holds every notes file from v0.3.0 on to
      this). Remove the coordinator placeholder comment from it before tagging.
-2. Run the checks locally, as `ci.yml` does:
+2. Run the check list once locally, as `ci.yml` does:
 
    ```sh
-   python -m unittest discover -s tests -v
-   npm ci && npm run build && npm test
-   npm run certify -- --adapter vercel && npm run certify -- --adapter codex
-   (cd go && go vet ./... && go test -count=1 ./...)
+   scripts/dev/check.sh --setup
+   scripts/dev/check.sh
    ```
 
+   `scripts/dev/check.sh` runs the steps of [`dev.json`](../dev.json) in order and prints one summary
+   block: the three certification suites, the Go steps, `harness-check`, the Python tests, the
+   mutation table's `--check`, the parity run against the Desk, and the whitespace and path checks.
+   The parity step needs a checkout of the Desk at the commit `scripts/parity.sh` names (`desk_pin`),
+   which it reads from `JPDEV_DESK`. The runner is the devkit's, vendored (see the README).
 3. Merge the pull request.
 
 ## Tag
@@ -91,12 +94,15 @@ prerelease and no build metadata. A tag is never moved or reused. A fix is a new
 Every job works on the commit the run was started for, by its digest, not on the tag's name.
 
 1. **Admits the tag.** It is in the grammar; it is an annotated tag; it names the commit the run was started for; that
-   commit is on `main`; `docs/releases/<tag>.md` exists, is not empty and names the tag on its first line; and the `release`
+   commit is on `main`; the latest completed run of
+   [`mutation.yml`](../.github/workflows/mutation.yml) on that commit, not counting pull request runs,
+   concluded `success` (the full mutation table: see below); `docs/releases/<tag>.md` exists, is not empty and names the tag on its first line; and the `release`
    environment has a reviewer rule. If a `go/<tag>` tag already exists it must name that same commit, or the
    run is refused: a `go/` tag never points anywhere but at a `v` release commit.
 2. **Runs CI at that commit.** The release calls the commit's own
-   [`ci.yml`](../.github/workflows/ci.yml): `contract`, `tests`, `harness`, `go` and `certify` for
-   each adapter. A check `main` has gained since that commit is not run.
+   [`ci.yml`](../.github/workflows/ci.yml): `contract`, and `check`, which runs every step of
+   `dev.json` (the certification of each adapter, the Go steps, the unit tests and the parity run
+   among them). A check `main` has gained since that commit is not run.
 3. **Builds the package.** It refuses unless the package's version, in `package.json` and in
    `package-lock.json`, equals the tag without `v`. Then `npm ci`, `npm run build`, `npm pack`
    into `judgment-pack-harness-<version>.tgz`, and `checksums.txt` written over it and checked.
@@ -128,6 +134,16 @@ Every job works on the commit the run was started for, by its digest, not on the
 
 An approval given more than thirty days after the run finds the run's files gone, and the job
 fails: release a new version.
+
+### The mutation table
+
+The full mutation table (`mutation.yml`, the four sharded `every row` jobs) runs on every push to
+`main`, so each commit that can be tagged has a run of its own; a run is never cancelled by a later
+push. It also runs weekly and on demand (`workflow_dispatch`). A pull request runs the rows of the
+files it changes and a sample. No dispatch is needed before a tag: the release job reads the latest
+completed run of `mutation.yml` on the tagged commit through the API and refuses the tag unless it
+concluded `success`. If the run has not finished, or has no run, the job fails with a line saying
+so; wait for the run on that commit, or run `mutation.yml` on `main`, and tag again.
 
 ### The window that remains
 

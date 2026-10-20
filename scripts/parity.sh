@@ -5,7 +5,7 @@
 #   scripts/parity.sh <desk-checkout>
 #
 # <desk-checkout> is a checkout of Judgment-Pack/judgment-pack-desk (the extraction was read from
-# integration/v0.13 at d9251ec). Each row of the table below is one moved file: its place in the
+# integration/v0.13 at the commit `desk_pin` below, which CI reads to check the Desk out). Each row of the table below is one moved file: its place in the
 # package, its place in the Desk, the sha256 of its expected diff, and why it differs. A row whose
 # digest and reason are "-" must be byte for byte the Desk's. A row with a reason prints its hunks
 # under that reason, and its diff (the `diff -u` hunks printed below the row's header) must hash to
@@ -15,6 +15,9 @@
 # hunks printed are the only differences. After an intended change, the failure prints the new
 # digest to put in the row.
 set -euo pipefail
+
+# The Desk commit the table was made against, in full: .github/workflows/ci.yml reads this line.
+desk_pin=d9251ecc272b9ac4f182fdfe652af54a0b2ead23
 
 if [ $# -ne 1 ] || [ ! -d "$1/web/src/assistant" ]; then
   echo "usage: scripts/parity.sh <desk-checkout>   (a checkout of judgment-pack-desk)" >&2
@@ -186,7 +189,7 @@ hunks() {
   { diff -u --label "desk/$2" --label "$1" "$desk/$2" "$root/$1" || true; } | tail -n +3
 }
 
-echo "parity: $pkg against the Desk at $(git -C "$desk" rev-parse --short HEAD 2>/dev/null || echo 'an unversioned checkout')"
+echo "parity: $pkg against the Desk at $(git -C "$desk" rev-parse --short HEAD 2>/dev/null || echo 'an unversioned checkout'); the table was made against ${desk_pin:0:7}"
 failed=0
 same=0
 differing=0

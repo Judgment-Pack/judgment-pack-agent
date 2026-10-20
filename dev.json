@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "toolchains": {
+    "node": {"version": "22"},
+    "go": {},
+    "python": {"version": "3.12", "venv": ".venv"}
+  },
+  "setup": [
+    {"name": "npm-ci", "run": "npm ci", "toolchain": "node", "timeout": 900},
+    {"name": "python-deps", "run": "python3 -m pip install --disable-pip-version-check -q -r requirements-dev.txt", "toolchain": "python", "timeout": 600}
+  ],
+  "checks": [
+    {"name": "contract", "run": "python3 -I -c 'import json, pathlib; files = sorted(pathlib.Path(\"contract\").rglob(\"*.json\")); [json.load(open(f, encoding=\"utf-8\")) for f in files]; print(\"checked %d JSON documents\" % len(files))'",
+     "toolchain": "shell", "summary": "^checked ", "timeout": 120},
+    {"name": "local-paths", "run": "if git grep -nE '(^|[^A-Za-z0-9_])/(home|tmp)/[A-Za-z0-9_.-]+' -- ':!*.png' ':!*.jpg'; then echo 'a machine-local path is in tracked text'; exit 1; fi", "toolchain": "shell"},
+    {"name": "agent-docs", "run": "scripts/sync-agent-docs.sh --check .", "toolchain": "shell", "summary": "^sync-agent-docs:"},
+    {"name": "diff-check", "run": "git diff --check \"$(git hash-object -t tree /dev/null)\"", "toolchain": "shell"},
+    {"name": "python-tests", "run": "python3 -m unittest discover -s tests", "toolchain": "python",
+     "summary": "^(Ran |OK|FAILED)", "timeout": 600},
+    {"name": "mutation-rows", "run": "node packages/harness/scripts/mutation-check.mjs --check", "toolchain": "node",
+     "summary": "rows checked", "timeout": 300},
+    {"name": "build", "run": "npm run build", "toolchain": "node", "timeout": 900},
+    {"name": "unit-tests", "run": "npm test", "cwd": "packages/harness", "toolchain": "node",
+     "summary": "^\\s*(Test Files|Tests)\\s", "timeout": 1200},
+    {"name": "certify-vercel", "run": "npm run certify -- --adapter vercel", "toolchain": "node", "summary": "^certify [a-z]+: (passed|failed)", "timeout": 900},
+    {"name": "certify-codex", "run": "npm run certify -- --adapter codex", "toolchain": "node", "summary": "^certify [a-z]+: (passed|failed)", "timeout": 900},
+    {"name": "certify-deepagents", "run": "npm run certify -- --adapter deepagents", "toolchain": "node", "summary": "^certify [a-z]+: (passed|failed)", "timeout": 900},
+    {"name": "go-module-path", "run": "path=$(awk '$1 == \"module\" { print $2 }' go/go.mod); if [ \"$path\" != \"github.com/Judgment-Pack/judgment-pack-agent/go\" ]; then echo \"go/go.mod declares module '$path'; it must be github.com/Judgment-Pack/judgment-pack-agent/go\"; exit 1; fi", "toolchain": "shell"},
+    {"name": "gofmt", "run": "unformatted=$(gofmt -l go); if [ -n \"$unformatted\" ]; then echo 'not gofmt-formatted:'; echo \"$unformatted\"; exit 1; fi", "toolchain": "shell"},
+    {"name": "go-vet", "run": "go vet ./...", "cwd": "go", "toolchain": "go", "timeout": 3000},
+    {"name": "go-generate", "run": "go generate ./contract && git diff --exit-code -- contract", "cwd": "go", "toolchain": "go", "timeout": 3000},
+    {"name": "go-test", "run": "go test -count=1 ./...", "cwd": "go", "toolchain": "go",
+     "summary": "^(ok|FAIL|---) ", "timeout": 3000},
+    {"name": "go-race", "run": "go test -count=1 -race ./context/... ./adapter/...", "cwd": "go", "toolchain": "go",
+     "summary": "^(ok|FAIL|---) ", "timeout": 3000},
+    {"name": "harness-check", "run": "go run ./cmd/harness-check", "cwd": "go", "toolchain": "go",
+     "summary": "passed", "timeout": 3000}
+  ],
+  "mutants": {"run": "node scripts/mutation-check.mjs {rows}", "cwd": "packages/harness", "toolchain": "node", "timeout": 3000},
+  "parity": {"run": "scripts/parity.sh \"$JPDEV_DESK\"", "toolchain": "shell", "requires_env": "JPDEV_DESK", "summary": "^parity:|every difference", "timeout": 600}
+}
