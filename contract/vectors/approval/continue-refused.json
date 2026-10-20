@@ -1,5 +1,5 @@
 {
-  "description": "ADR-0008: the paused checkpoint of pause.json continued with the person's decision, refused, with a note (decision, checkpoint.json#/$defs/approvalDecision). The run writes the approval refused, with when it was decided, the note and the refused result (permission, not-started), durable, before anything else; the call is never run. Its first request carries continuation (checkpoint.json#/$defs/approvalContinuation) after the request text: one line, then the decision, the refused result and the note as one data block under a marker drawn for it (fixed here), so the person's words reach the model as data. Once that request is sent the approval is answered. Written by hand from the schemas; tests/test_contract.py holds the block's data to the decision and the result.",
+  "description": "ADR-0008: the paused checkpoint of pause.json continued with the person's decision, refused, with a note (decision, checkpoint.json#/$defs/approvalDecision). The run writes the approval refused, with when it was decided, the note and the refused result (permission, not-started), durable, before anything else; the call is never run. It then says so once with a guardrail, action refused and reason approval refused (run-event.json#/$defs/guardrail), whose detail is the refused result's sentence: the person's note is not in it, and reaches the model only inside the continuation's block. Its first request carries continuation (checkpoint.json#/$defs/approvalContinuation) after the request text: one line, then the decision, the refused result and the note as one data block under a marker drawn for it (fixed here), so the person's words reach the model as data. Once that request is sent the approval is answered. Written by hand from the schemas; tests/test_contract.py holds the block's data to the decision and the result.",
   "schema": "run-event.json",
   "source": {
     "harness": {
@@ -8,7 +8,7 @@
     },
     "files": [
       "packages/harness/toolSources.ts (SourceGate.decide, SourceGate.approved, approvalContinuation, APPROVAL_CONTINUATION)",
-      "packages/harness/context/managed.ts (the pause, the continuation's writes)",
+      "packages/harness/context/managed.ts (the pause, the continuation's writes, the guardrail on a refusal)",
       "packages/harness/execution/controller.ts (initialize, recordPrompt)"
     ]
   },
@@ -132,6 +132,13 @@
           }
         }
       }
+    },
+    {
+      "type": "guardrail",
+      "tool": "tracker__create_issue",
+      "action": "refused",
+      "detail": "The person refused this call of tracker__create_issue; it was not run and nothing was changed.",
+      "reason": "approval refused"
     },
     {
       "type": "message",

@@ -2432,9 +2432,11 @@ func (v ProvenanceBatchFigures) MarshalJSON() ([]byte, error) {
 
 // From provenance.json#/$defs/childFigures. One delegated child's figures (agent#18), as its task
 // record carries them. modelRequests: on a model capability, its requests, a retried attempt
-// counted; on an agent capability 0, the provider running its own loop, and agentRuns its runs.
-// firstByteMs: from its start to the first byte of its first answer (an agent's first event),
-// absent where none came. durationMs: from its start to its end. partial and reused as the
+// counted; absent on an agent capability (agent#71), the provider running its own loop and
+// reporting no request count, and agentRuns its runs. The checkpoint requires it where its unit is
+// model-requests and leaves it optional where the unit is provider-managed (checkpoint.json,
+// delegation). firstByteMs: from its start to the first byte of its first answer (an agent's first
+// event), absent where none came. durationMs: from its start to its end. partial and reused as the
 // record's.
 type ProvenanceChildFigures struct {
 	Task          string                  `json:"task"`
@@ -2442,7 +2444,7 @@ type ProvenanceChildFigures struct {
 	Profile       string                  `json:"profile"`
 	Model         *string                 `json:"model,omitzero"`
 	State         string                  `json:"state"`
-	ModelRequests int64                   `json:"modelRequests"`
+	ModelRequests *int64                  `json:"modelRequests,omitzero"`
 	ToolCalls     int64                   `json:"toolCalls"`
 	AgentRuns     *int64                  `json:"agentRuns,omitzero"`
 	Tokens        *ProvenanceTokenFigures `json:"tokens,omitzero"`
@@ -2584,9 +2586,11 @@ func (v ProvenanceDelegationReport) MarshalJSON() ([]byte, error) {
 
 // From provenance.json#/$defs/figuresTotal. A batch's total (agent#18): its children's
 // modelRequests, toolCalls, agentRuns and tokens summed (a token member present where any child's
-// was), and its wall time from its first child's start to its last child's end.
+// was), and its wall time from its first child's start to its last child's end. modelRequests
+// counts model requests only: absent on an agent capability, where no child has one (agent#71),
+// and required where the checkpoint's unit is model-requests (checkpoint.json, delegation).
 type ProvenanceFiguresTotal struct {
-	ModelRequests int64                   `json:"modelRequests"`
+	ModelRequests *int64                  `json:"modelRequests,omitzero"`
 	ToolCalls     int64                   `json:"toolCalls"`
 	AgentRuns     *int64                  `json:"agentRuns,omitzero"`
 	Tokens        *ProvenanceTokenFigures `json:"tokens,omitzero"`
@@ -2615,13 +2619,14 @@ func (v ProvenanceFiguresTotal) MarshalJSON() ([]byte, error) {
 }
 
 // From provenance.json#/$defs/parentFigures. The parent's own figures beside its batches
-// (agent#18): its model; its own model requests, the execution's used less its children's, and on
-// an agent capability 0, the provider running its own loop (no count is reported; see agent#71);
-// on an agent capability, its own agent runs of the response; its own token counts, from its
-// completion rows, absent on an agent capability.
+// (agent#18): its model; its own model requests, the execution's used less its children's, absent
+// on an agent capability, where the provider runs its own loop and reports no count (agent#71;
+// required where the checkpoint's unit is model-requests, checkpoint.json, delegation); on an
+// agent capability, its own agent runs of the response; its own token counts, from its completion
+// rows, absent on an agent capability.
 type ProvenanceParentFigures struct {
 	Model         string                  `json:"model"`
-	ModelRequests int64                   `json:"modelRequests"`
+	ModelRequests *int64                  `json:"modelRequests,omitzero"`
 	AgentRuns     *int64                  `json:"agentRuns,omitzero"`
 	Tokens        *ProvenanceTokenFigures `json:"tokens,omitzero"`
 }

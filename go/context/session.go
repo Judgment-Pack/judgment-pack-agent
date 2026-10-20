@@ -1175,7 +1175,17 @@ func (c *SessionContext) continueApproval(ctx context.Context, step string, tool
 		}
 		return write()
 	case "write":
-		return write()
+		if err := write(); err != nil {
+			return err
+		}
+		// The person refused the call: said once, after the refusal is written, with the refused
+		// result's own sentence. The person's note is not in it; it reaches the model only inside
+		// the continuation's block.
+		if approval := c.Execution.State.Approval; approval != nil && approval.State == "refused" {
+			reason := "approval refused"
+			c.continued = append(c.continued, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: approval.Name, Action: "refused", Detail: RefusedDetail(approval.Name), Reason: &reason}})
+		}
+		return nil
 	}
 	return nil
 }

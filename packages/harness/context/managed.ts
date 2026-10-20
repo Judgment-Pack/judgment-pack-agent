@@ -59,7 +59,13 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
     context.execution.state.approval={...context.execution.state.approval!,state:'executed',result:ran.result}
     for(const notice of context.takeNotices())yield notice
     yield await write()
-   }else if(step==='write')yield await write()
+   }else if(step==='write'){
+    yield await write()
+    // The person refused the call: said once, after the refusal is written, with the refused result's
+    // own sentence. The person's note is not in it; it reaches the model only inside the continuation's block.
+    const refused=context.execution.state.approval!
+    if(refused.state==='refused')yield {type:'guardrail',tool:refused.name,action:'refused',detail:refused.result?.content?.[0]?.text??'The person refused this call; it was not run and nothing was changed.',reason:'approval refused'}
+   }
    ready.session.prompt=ready.session.prompt+'\n\n'+approvalContinuation(context.execution.state.approval!)
   }
   for await (let event of run(ready.session)){

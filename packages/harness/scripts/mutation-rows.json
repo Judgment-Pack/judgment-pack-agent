@@ -3461,6 +3461,31 @@
    "status": "caught",
    "origin": "clean-room review of #79 (ADR-0008)",
    "note": "two calls of one act tool in one answer, on a run with interactive false, reaching the gate in the other order: only the call the policy allowed runs"
+  },
+  {
+   "name": "an agent capability's child figures write modelRequests again (0, the task record's count)",
+   "file": "delegation.ts",
+   "find": "state:task.state,...('agent' in session?{}:{modelRequests:task.modelRequests}),toolCalls:task.toolCalls,",
+   "replace": "state:task.state,modelRequests:task.modelRequests,toolCalls:task.toolCalls,",
+   "tests": [
+    "certification/scenarios.test.ts",
+    "delegationResults.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#71 and ADR-0008 pre-release batch (#71, #80)",
+   "note": "scenario 2 on the agent engine: no figure of the parent, a child or a total carries modelRequests, and the figures are not valid as a model capability's; the Go mutant is the same write in go/adapter/delegate/figures.go (figures_test.go, the agent counts check of harness-check)"
+  },
+  {
+   "name": "a refused continuation emits no approval refused guardrail",
+   "file": "context/managed.ts",
+   "find": "    if(refused.state==='refused')yield {type:'guardrail',tool:refused.name,action:'refused',detail:refused.result?.content?.[0]?.text??'The person refused this call; it was not run and nothing was changed.',reason:'approval refused'}\n",
+   "replace": "",
+   "tests": [
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#80, the review of #79 (ADR-0008)",
+   "note": "scenario 8's refusal: one guardrail with reason approval refused follows the written refusal, and the approved and restarted runs say none; the Go mutant drops the same event in go/context/session.go (the 8 refused check of harness-check)"
   }
  ]
 }

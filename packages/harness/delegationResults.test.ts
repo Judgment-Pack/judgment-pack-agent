@@ -16,7 +16,7 @@
  */
 import type { AgentRun } from './agent'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DEFAULT_CHILD_CONCURRENCY, fitReport, withDelegation } from './delegation'
+import { DEFAULT_CHILD_CONCURRENCY, figuresTotal, fitReport, withDelegation } from './delegation'
 import { DELEGATE_TOOL, MAX_BATCHES, REPORT_BOUNDS, TASK_PROFILES, readReport, reportInstructions, validDelegatedTask, type DelegatedTask, type ReportKind, type TaskProfile, type TaskReport } from './delegationContract'
 import type { AssistantEvent, AssistantSession, Engine, EngineSession, McpToolResult } from './engine'
 import { ChatContext } from './context/chat'
@@ -24,7 +24,7 @@ import { codex } from './engines/codex'
 import { vercel } from './engines/vercel'
 import { normalize } from './thinking'
 import { configureHarness } from './host'
-import { readExecution, validDelegationFigures, type ExecutionCheckpoint } from './execution/state'
+import { readExecution, validDelegationFigures, type ChildFigures, type ExecutionCheckpoint } from './execution/state'
 import taskSchema from '../../contract/schemas/delegated-task.json'
 import provenanceSchema from '../../contract/schemas/provenance.json'
 import analyzeVector from '../../contract/vectors/delegation/report-analyze.json'
@@ -449,7 +449,9 @@ describe('cost and time (agent#18)',()=>{
    for(const key of Object.keys(task))expect(Object.keys(taskSchema.properties)).toContain(key)
   }
   expect(resumedVector.items[0]).toMatchObject({resumes:expect.any(String),summarized:true})
-  for(const item of agentRunsVector.items)expect(validDelegationFigures(item)).toBe(true)
+  expect(validDelegationFigures(agentRunsVector.items[0],'provider-managed')).toBe(true)
+  expect(validDelegationFigures(agentRunsVector.items[0])).toBe(false)
+  expect(validDelegationFigures(agentRunsVector.items[1])).toBe(true)
   expect((agentRunsVector.items[0]!.batches[0]!.total as {agentRuns?:number}).agentRuns).toBe(2)
   for(const task of answerResumedVector.items[0]!.tasks)for(const key of Object.keys(task))expect(Object.keys(taskSchema.$defs.answerTask.properties)).toContain(key)
  })
@@ -464,6 +466,29 @@ describe('cost and time (agent#18)',()=>{
   expect(checkpoint.delegation).toEqual(checkpointVector.items[0]!.delegation)
   expect(validDelegationFigures(checkpoint.delegation)).toBe(true)
   expect(()=>readExecution({...checkpointVector.items[0]!,delegation:{batches:[],parent:{model:'a-model'}}})).toThrow()
+ })
+
+ // agent#71: the agent capability's figures carry no modelRequests; the sum over both capabilities counts model requests only.
+ it('reads an agent capability’s figures without modelRequests, holds a model capability’s to the member, and sums model requests only',()=>{
+  const managed=checkpointVector.items[1]!
+  expect(readExecution(managed)!.delegation).toEqual(managed.delegation)
+  for(const held of [managed.delegation.parent,managed.delegation.batches[0]!.total,...managed.delegation.batches[0]!.children])expect(held).not.toHaveProperty('modelRequests')
+  // Under the other unit the same figures are refused, and a member cut from a model execution's figures is.
+  expect(()=>readExecution({...managed,unit:'model-requests',limit:20})).toThrow()
+  const modeled=checkpointVector.items[0]!
+  const cut=(figures:typeof modeled.delegation,at:'parent'|'child'|'total')=>{
+   const held=structuredClone(figures) as {parent:Record<string,unknown>;batches:{children:Record<string,unknown>[];total:Record<string,unknown>}[]}
+   delete (at==='parent'?held.parent:at==='child'?held.batches[0]!.children[0]!:held.batches[0]!.total).modelRequests
+   return held
+  }
+  for(const at of ['parent','child','total'] as const)expect(()=>readExecution({...modeled,delegation:cut(modeled.delegation,at)})).toThrow()
+  // One model child and one agent child: the total counts the model child's requests and the agent child adds none.
+  const [model,agent]=[modeled.delegation.batches[0]!.children[0]!,managed.delegation.batches[0]!.children[0]!] as ChildFigures[]
+  expect(figuresTotal([model,agent],50)).toEqual({modelRequests:model.modelRequests,toolCalls:model.toolCalls+agent.toolCalls,agentRuns:agent.agentRuns,...(model.tokens?{tokens:model.tokens}:{}),durationMs:50})
+  expect(model.modelRequests).toBeGreaterThan(0)
+  const alone=figuresTotal([agent,agent],50)
+  expect(alone).toEqual({toolCalls:agent.toolCalls*2,agentRuns:2,durationMs:50})
+  expect(alone).not.toHaveProperty('modelRequests')
  })
 })
 
@@ -678,7 +703,7 @@ describe('the review’s rules',()=>{
   expect(parentSent).toBe(2)
   expect(end.delegation!.parent.modelRequests).toBe(sentBefore+resumedParent)
   expect(end.delegation!.batches.map(batch=>batch.children.map(child=>[child.state,child.modelRequests]))).toEqual([[['interrupted',1]],[['complete',1]]])
-  expect(end.used).toBe(end.delegation!.parent.modelRequests+2)
+  expect(end.used).toBe(end.delegation!.parent.modelRequests!+2)
  })
 
  // Row 4.

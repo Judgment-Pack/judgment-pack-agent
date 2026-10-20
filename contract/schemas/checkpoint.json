@@ -160,6 +160,52 @@
     }
   },
   "additionalProperties": true,
+  "allOf": [
+    {
+      "description": "Where unit is model-requests, the delegation figures count model requests and carry modelRequests on the parent, on each child and on each batch's total (agent#71); where unit is provider-managed (an agent capability) they may omit it, and nothing writes 0 there.",
+      "if": {
+        "required": [
+          "unit"
+        ],
+        "properties": {
+          "unit": {
+            "const": "model-requests"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "delegation": {
+            "properties": {
+              "batches": {
+                "items": {
+                  "properties": {
+                    "children": {
+                      "items": {
+                        "required": [
+                          "modelRequests"
+                        ]
+                      }
+                    },
+                    "total": {
+                      "required": [
+                        "modelRequests"
+                      ]
+                    }
+                  }
+                }
+              },
+              "parent": {
+                "required": [
+                  "modelRequests"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
     "grant": {
       "type": "object",

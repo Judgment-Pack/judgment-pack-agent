@@ -113,7 +113,12 @@ write is held before the call runs only through `Input.Checkpoint`: an approved 
 without it is refused (`configuration`) and nothing runs, so it never runs a call twice.
 
 - **refused**: the approval is written `refused`, with `decidedAt`, the `note` and the refused
-  result (`permission`, `not-started`); the call is never run.
+  result (`permission`, `not-started`); the call is never run. The run then says so once, after the
+  write: a `guardrail` `refused` with `reason: approval refused` for the call, whose detail is the
+  refused result's sentence. The note is in the data block of the continuation and not in the
+  guardrail. A restored `refused` approval continues with its recorded result and emits no guardrail
+  again (the refusal was said when it was decided). #74 accepted a refused result with a guardrail;
+  the first text of this section kept the result only, and #80 restores the guardrail.
 - **approved**: the approval is written `approved`, with `decidedAt` and the `note`, and
   acknowledged; the call runs once through the host's own function (`SourceGate.approved`, Go
   `SourceGate.Approved`), the policy not asked again, under the gate's bounds: its tool still
@@ -191,7 +196,8 @@ model calls act tool ──▶ gate: offered? effect act? bounds? ──▶ host
 
 1. `run-event.json`: a new event, `approval_requested {type, callId, name, tool, source, args}`
    (closed), the harness's addition to the Desk's eighteen kinds; `guardrail` gains `reason`,
-   `approval refused` or `approval pending`.
+   `approval refused` (the host's policy answered `refuse`, or the person refused the call) or
+   `approval pending`.
 2. `checkpoint.json`: `approval` (`$defs/approval`, closed), at most one per checkpoint, `status`
    `paused` while it is `asked`; `$defs/approvalDecision` (closed), the continuation input beside the
    grant; `$defs/approvalContinuation`, the continuation's text.
@@ -221,7 +227,11 @@ count stays one). The continuation is one line and one block after the request t
 drawn afresh; it counts as one model request on a model engine, and on the agent capability as one
 counted invocation with no model-request figure. Mutants, each caught (`mutation-rows.json`): a
 restored `executed` approval running its call again; the pause skipped under `ask`; the
-wrong-`callId` check removed; the pending check removed; the note outside the block.
+wrong-`callId` check removed; the pending check removed; the note outside the block; the guardrail
+dropped from a refused continuation. The refused run's events carry the one guardrail after the
+written refusal, and on a model engine the tool list and the system text of the continued run's
+first request are the pausing run's bytes, but for the marker each run draws for the descriptions
+it frames (a framed description is the one part of the prefix a pause changes).
 
 ## Consequences
 
@@ -249,4 +259,4 @@ becoming the policy.
   stay the host's.
 - Timing out a pause: the person's host decides when a paused run is abandoned.
 - `modelRequests` on the agent capability's figures (agent#71) rides in the same release, in its own
-  change.
+  change: optional there and absent, not 0 ([ADR-0007](0007-provider-managed-delegation-in-go.md) §3).

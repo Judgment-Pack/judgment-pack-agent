@@ -114,6 +114,16 @@ function addTokens(a: TokenFigures | undefined, b: TokenFigures | undefined): To
   for (const key of TOKEN_MEMBERS) if (b[key] !== undefined) sum[key] = (sum[key] ?? 0) + b[key]!
   return sum
 }
+/**
+ * A batch's total (agent#18): its children's sums and the batch's wall time. modelRequests counts model
+ * requests only, so a child on an agent capability, which carries none, adds none and a total none of whose
+ * children has one carries none (agent#71); agentRuns and tokens are present where any child's was.
+ */
+export function figuresTotal(children: readonly ChildFigures[], durationMs: number): FiguresTotal {
+  const tokens = children.reduce<TokenFigures|undefined>((sum,child)=>addTokens(sum,child.tokens),undefined)
+  const sum = (member: 'modelRequests' | 'agentRuns') => children.some(c=>c[member]!==undefined) ? {[member]: children.reduce((n,c)=>n+(c[member]??0),0)} : {}
+  return {...sum('modelRequests'),toolCalls:children.reduce((n,c)=>n+c.toolCalls,0),...sum('agentRuns'),...(tokens?{tokens}:{}),durationMs}
+}
 /** The whole lines of `prose` within a report's summary bound, or the start of its first line. */
 function summaryOf(prose: string): string {
   let head = ''
@@ -344,7 +354,7 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
     /** The parent's own figures: its model, its own requests and agent runs, and the tokens of its own completion rows. */
     const parentFigures = (checkpoint: ExecutionCheckpoint): DelegationFigures['parent'] => {
       const tokens = sumTokens(checkpoint.completions ?? [])
-      return {model:modelName,modelRequests:parentRequests,...('agent' in session?{agentRuns:parentRuns}:{}),...(tokens?{tokens}:{})}
+      return {model:modelName,...('agent' in session?{agentRuns:parentRuns}:{modelRequests:parentRequests}),...(tokens?{tokens}:{})}
     }
     /** The batches' figures: the finished ones, and the one running now with each child in its state. */
     const batchFigures = (): BatchFigures[] => {
@@ -744,12 +754,9 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
       }
     }
     /** A task's figures as the checkpoint carries them (agent#18). */
-    const childFigures = (task: DelegatedTask, number: number): ChildFigures => ({task:task.id,batch:number,profile:task.profile,...(task.model?{model:task.model}:{}),state:task.state,modelRequests:task.modelRequests,toolCalls:task.toolCalls,
+    const childFigures = (task: DelegatedTask, number: number): ChildFigures => ({task:task.id,batch:number,profile:task.profile,...(task.model?{model:task.model}:{}),state:task.state,...('agent' in session?{}:{modelRequests:task.modelRequests}),toolCalls:task.toolCalls,
       ...('agent' in session?{agentRuns:childRuns.get(task.id)??0}:{}),...(task.tokens?{tokens:task.tokens}:{}),...(task.firstByteMs!==undefined?{firstByteMs:task.firstByteMs}:{}),durationMs:task.durationMs??(childStarts.has(task.id)?Math.max(0,Date.now()-childStarts.get(task.id)!):0),...(task.partial?{partial:true as const}:{}),...(task.reused?{reused:true as const}:{})})
-    const totalOf = (children: ChildFigures[], durationMs: number): FiguresTotal => {
-      const tokens = children.reduce<TokenFigures|undefined>((sum,child)=>addTokens(sum,child.tokens),undefined)
-      return {modelRequests:children.reduce((n,c)=>n+c.modelRequests,0),toolCalls:children.reduce((n,c)=>n+c.toolCalls,0),...('agent' in session?{agentRuns:children.reduce((n,c)=>n+(c.agentRuns??0),0)}:{}),...(tokens?{tokens}:{}),durationMs}
-    }
+    const totalOf = (children: ChildFigures[], durationMs: number): FiguresTotal => figuresTotal(children, durationMs)
     /** One batch: planned whole before any task exists, its children run within their limits and the batch's. */
     const runBatch = async (request: DelegationRequest, batchSignal: AbortSignal): Promise<DelegatedTask[]> => {
       batchSignal.throwIfAborted()

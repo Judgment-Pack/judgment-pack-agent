@@ -95,8 +95,11 @@ remain; a child never takes the last invocation. Nothing is given back through a
 continuation, and a restored checkpoint's counts are where the count resumes. The checkpoint's
 `delegation` figures carry the parent's `agentRuns` from its first invocation, each child's
 `agentRuns`, and each batch's total. No model-request or token figure is invented: token members
-are absent, the execution's unit is `provider-managed`, and `modelRequests`, which the schema
-requires, is 0 as its description defines it for an agent capability. The response's tool calls
+are absent, the execution's unit is `provider-managed`, and `modelRequests` is optional there
+(agent#71) and absent from the parent's, each child's and each total's figures, never written as 0;
+a report shows `provider-managed` where it would show a count, and a sum of `modelRequests` over
+both capabilities counts model requests only. The checkpoint's schema holds the member required
+where its unit is `model-requests`. The response's tool calls
 (`MAX_TOOLS`), the turn's test calls (`testCallsPerTurn`, one count through the parent's gate) and
 each profile's narrower bounds hold across the parent and its children.
 

@@ -1,0 +1,23 @@
+{
+  "description": "ADR-0008: the three answers of the host's approval policy for one act call (tool-offer.json#/$defs/approvalPolicy; HostTool.approve in TypeScript, ApprovalPolicy in Go, go/context/sources.go), asked with the call and answered at once. outcomes says what each does: allow, the call runs under the gate's bounds, as an act call ran before the pause; refuse, it is refused at the gate with a guardrail whose reason is approval refused (second-act-while-pending.json shows the other reason, approval pending) and never run; ask, the run pauses with approval_requested and the checkpoint paused (pause.json). An answer that is none of the three, or a policy that fails, is refuse. Written by hand from the schema; tests/test_contract.py holds the outcomes to the items.",
+  "schema": "tool-offer.json#/$defs/approvalPolicy",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/toolSources.ts (ApprovalPolicy, SourceGate.decide)"
+    ]
+  },
+  "items": [
+    "allow",
+    "refuse",
+    "ask"
+  ],
+  "outcomes": {
+    "allow": "the call runs under its bounds",
+    "refuse": "refused with the approval refused guardrail, never run",
+    "ask": "the run pauses with approval_requested, the checkpoint paused"
+  }
+}

@@ -457,6 +457,30 @@ func approvalPauseFindings(state *paused, prefix string, agent bool) []Finding {
 		len(errorsOf(state.refused.Events)) > 0 || count(2) != 0 {
 		f.fail("the refused run ended on %s with %d errors, %d calls run", comparisonJSON(last), len(errorsOf(state.refused.Events)), count(2))
 	}
+	// The person's refusal is said once, after the written refusal: a guardrail with the reason
+	// approval refused, its sentence the refused result's and not the person's note.
+	notices := guardrailsOf(state.refused.Events, "")
+	if len(notices) != 1 || notices[0].Tool != "tracker__create_issue" || notices[0].Action != "refused" || notices[0].Reason == nil || *notices[0].Reason != "approval refused" ||
+		strings.Contains(notices[0].Detail, state.file.Note) || !strings.Contains(notices[0].Detail, "The person refused this call of tracker__create_issue") {
+		f.fail("the refused run's guardrails were %s", comparisonJSON(notices))
+	} else {
+		at := -1
+		for i, event := range state.refused.Events {
+			if held := event.ExecutionCheckpoint; held != nil && held.Durable != nil && *held.Durable && held.Checkpoint.Approval != nil && held.Checkpoint.Approval.State == "refused" {
+				at = i
+			}
+		}
+		if at < 0 || at+1 >= len(state.refused.Events) || state.refused.Events[at+1].Guardrail == nil {
+			f.fail("the guardrail does not follow the written refusal")
+		}
+	}
+	for name, run := range map[string]*pauseRun{"approved": state.approved, "restarted": state.restarted} {
+		for _, notice := range guardrailsOf(runEvents(run), "") {
+			if notice.Reason != nil && *notice.Reason == "approval refused" {
+				f.fail("the %s run said the person refused the call", name)
+			}
+		}
+	}
 	out = append(out, f.list...)
 
 	f = &findings{check: prefix + "approved"}
@@ -500,6 +524,23 @@ func approvalPauseFindings(state *paused, prefix string, agent bool) []Finding {
 	}
 	if len(markers) != 2 || markers[0] == markers[1] {
 		f.fail("the continuations' markers were %v", markers)
+	}
+	// On a model capability the stable prefix, the tool list and the system text, is the pausing
+	// run's bytes in each continued run, but for the marker each run draws for the descriptions it
+	// frames (a pause moves nothing else of it).
+	if len(state.pausing.Bodies) > 0 {
+		held, found := stablePrefix(state.pausing.Bodies[0])
+		if !found {
+			f.fail("the pausing run's first request carries no tool list or system text")
+		}
+		for name, run := range map[string]*pauseRun{"refused": state.refused, "restarted": state.restarted} {
+			if run == nil || len(run.Bodies) == 0 {
+				continue
+			}
+			if again, _ := stablePrefix(run.Bodies[0]); again != held {
+				f.fail("the %s run's tool list or system text is not the pausing run's", name)
+			}
+		}
 	}
 	out = append(out, f.list...)
 
@@ -678,4 +719,51 @@ func agentApprovalChecks(ctx context.Context, server *Server, host AgentHost, wi
 		findings = append(findings, Finding{Check: "8 agent restart", Detail: "the scenario stopped after " + strconv.Itoa(n) + " runs"})
 	}
 	return findings, nil
+}
+
+// runEvents are a run's events, none where the run did not happen.
+func runEvents(run *pauseRun) []contract.RunEvent {
+	if run == nil {
+		return nil
+	}
+	return run.Events
+}
+
+// drawnMarker is a marker a run draws for the descriptions it frames.
+var drawnMarker = regexp.MustCompile(`[0-9a-f]{32}`)
+
+// stablePrefix is a model request's tool list and system text, as the wire spells them, with each
+// drawn marker replaced; false where the body carries neither.
+func stablePrefix(body string) (string, bool) {
+	var whole map[string]json.RawMessage
+	if json.Unmarshal([]byte(body), &whole) != nil {
+		return "", false
+	}
+	prefix := map[string]json.RawMessage{}
+	for _, key := range []string{"tools", "system", "systemInstruction"} {
+		if held, ok := whole[key]; ok {
+			prefix[key] = held
+		}
+	}
+	var messages []json.RawMessage
+	if json.Unmarshal(whole["messages"], &messages) == nil {
+		var system []json.RawMessage
+		for _, message := range messages {
+			var role struct {
+				Role string `json:"role"`
+			}
+			if json.Unmarshal(message, &role) == nil && role.Role == "system" {
+				system = append(system, message)
+			}
+		}
+		if len(system) > 0 {
+			encoded, _ := json.Marshal(system)
+			prefix["messages"] = encoded
+		}
+	}
+	if len(prefix) == 0 {
+		return "", false
+	}
+	encoded, _ := json.Marshal(prefix)
+	return drawnMarker.ReplaceAllString(string(encoded), "<marker>"), true
 }

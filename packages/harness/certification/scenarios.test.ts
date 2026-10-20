@@ -271,7 +271,7 @@ function delegationChecks(get: () => Delegated, adapter: 'model' | 'agent') {
       expect(task.firstByteMs).toBeGreaterThanOrEqual(0)
     }
     const figures = lastCheckpoint(ran[0]!.events).delegation!
-    expect(validDelegationFigures(figures)).toBe(true)
+    expect(validDelegationFigures(figures, adapter === 'model' ? 'model-requests' : 'provider-managed')).toBe(true)
     expect(figures.batches).toHaveLength(1)
     expect(figures.batches[0]!.children.map((child) => child.profile)).toEqual(['review', 'research'])
     expect(figures.batches[0]!.total.toolCalls).toBe(1)
@@ -285,8 +285,11 @@ function delegationChecks(get: () => Delegated, adapter: 'model' | 'agent') {
     } else {
       // Recorded disagreement: the agent wire reports no usage and no model request; its runs are counted instead.
       expect(byTitle('Review section 4').tokens).toBeUndefined()
-      expect(figures.batches[0]!.total).toMatchObject({ modelRequests: 0, agentRuns: 2 })
-      expect(figures.parent).toMatchObject({ model: 'scripted-agent', modelRequests: 0, agentRuns: 2 })
+      // The member is absent, not 0 (agent#71), and the figures are not valid as a model capability's.
+      expect(figures.batches[0]!.total).toMatchObject({ agentRuns: 2 })
+      expect(figures.parent).toMatchObject({ model: 'scripted-agent', agentRuns: 2 })
+      for (const held of [figures.parent, figures.batches[0]!.total, ...figures.batches[0]!.children]) expect(held).not.toHaveProperty('modelRequests')
+      expect(validDelegationFigures(figures)).toBe(false)
     }
     // The figure the children found reaches the person.
     expect(ofType(ran[0]!.events, 'message').at(-1)!.text).toContain('0.58 per mile')
@@ -1094,6 +1097,35 @@ function approvalPauseChecks(get: () => Paused, adapter: 'model' | 'agent') {
     expect(lastCheckpoint(refused.events).approval).toMatchObject({ callId, state: 'answered' })
     expect(ofType(refused.events, 'error')).toEqual([])
     expect(counts[2]).toBe(0)
+  })
+
+  it('8 · refused: one guardrail with the reason approval refused follows the written refusal, and it is not the person’s note', () => {
+    const { refused, approved, restarted } = get()
+    const notices = ofType(refused.events, 'guardrail')
+    expect(notices).toEqual([{ type: 'guardrail', tool: 'tracker__create_issue', action: 'refused', detail: expect.stringContaining('The person refused this call of tracker__create_issue'), reason: 'approval refused' }])
+    expect(notices[0]!.detail).not.toContain(approvalPause.note)
+    const flow = refused.events
+    const written = flow.findIndex((event) => event.type === 'execution_checkpoint' && event.durable === true && event.checkpoint.approval?.state === 'refused')
+    expect(written).toBeGreaterThan(-1)
+    expect(flow[written + 1]).toBe(notices[0])
+    // Said once, at the decision: an approved continuation and a restart from a written result say nothing of the kind.
+    expect(ofType(approved.events, 'guardrail').filter((event) => event.reason === 'approval refused')).toEqual([])
+    expect(ofType(restarted.events, 'guardrail').filter((event) => event.reason === 'approval refused')).toEqual([])
+  })
+
+  it('8 · the stable prefix, the tool list and the system text, is the same bytes in the pausing run and in each continued run, but for the marker each run draws for its framed descriptions', () => {
+    // A model capability's requests carry them; the agent engine's invocation is a prompt, with no tool list of its own.
+    if (adapter !== 'model') return
+    const { pausing, refused, restarted } = get()
+    const prefix = (ran: Ran) => {
+      const body = ran.requests[0]!.body as Json
+      // Each run draws its own marker for the descriptions it frames (agent#12): the one thing that moves.
+      return JSON.stringify({ tools: body.tools, system: (body.messages as { role: string }[]).filter((message) => message.role === 'system') }).replace(/[0-9a-f]{32}/g, '<marker>')
+    }
+    expect(prefix(pausing)).toContain('create_issue')
+    expect(prefix(pausing)).toContain('<marker>')
+    expect(prefix(refused)).toBe(prefix(pausing))
+    expect(prefix(restarted)).toBe(prefix(pausing))
   })
 
   it('8 · approved: the decision is written and acknowledged before the call runs, once, and its result is written and acknowledged before anything else', () => {

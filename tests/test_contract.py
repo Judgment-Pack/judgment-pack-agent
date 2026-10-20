@@ -539,8 +539,11 @@ class VectorTests(unittest.TestCase):
                 with self.subTest(batch=batch["batch"]):
                     children, total = batch["children"], batch["total"]
                     self.assertTrue(all(child["batch"] == batch["batch"] for child in children))
-                    for member in ("modelRequests", "toolCalls"):
-                        self.assertEqual(total[member], sum(child[member] for child in children))
+                    # modelRequests counts model requests only (agent#71): a child on an agent
+                    # capability has none, and a total none of whose children has one has none.
+                    self.assertEqual(total.get("modelRequests", 0), sum(child.get("modelRequests", 0) for child in children))
+                    self.assertEqual("modelRequests" in total, any("modelRequests" in child for child in children))
+                    self.assertEqual(total["toolCalls"], sum(child["toolCalls"] for child in children))
                     # agentRuns is present on a total where any child's was (the codex engine's unit).
                     self.assertEqual(total.get("agentRuns", 0), sum(child.get("agentRuns", 0) for child in children))
                     self.assertEqual("agentRuns" in total, any("agentRuns" in child for child in children))
@@ -553,6 +556,43 @@ class VectorTests(unittest.TestCase):
                     for child in children:
                         if child.get("reused"):
                             self.assertEqual((child["modelRequests"], child["toolCalls"]), (0, 0))
+
+    def test_no_agent_capability_figure_carries_modelrequests(self):
+        # agent#71: the provider runs its own loop and reports no request count, so the figures of an
+        # agent capability omit modelRequests (checkpoint.json holds it required where the unit is
+        # model-requests), nothing writes 0, and a sum over both capabilities counts model requests only.
+        checks = validator(self.schemas, "checkpoint.json")
+        figures = validator(self.schemas, "provenance.json#/$defs/delegationReport")
+        agent_report, model_report = self.vectors["delegation/figures-agent-runs.json"]["items"]
+        everywhere = lambda report: [report["parent"], *[batch["total"] for batch in report["batches"]], *[child for batch in report["batches"] for child in batch["children"]]]
+        self.assertTrue(all("modelRequests" not in held for held in everywhere(agent_report)))
+        self.assertTrue(all("modelRequests" in held for held in everywhere(model_report)))
+        self.assertEqual(problems(figures, [agent_report, model_report]), [])
+        totals = [batch["total"].get("modelRequests", 0) for report in (agent_report, model_report) for batch in report["batches"]]
+        self.assertEqual(sum(totals), 5)
+        # The checkpoint vector's two executions: the model-requests one carries the member everywhere,
+        # the provider-managed one carries agent figures without it, and each is read by its unit.
+        modeled, managed = self.vectors["delegation/checkpoint.json"]["items"]
+        self.assertEqual((modeled["unit"], managed["unit"]), ("model-requests", "provider-managed"))
+        self.assertTrue(all("modelRequests" in held for held in everywhere(modeled["delegation"])))
+        self.assertTrue(all("modelRequests" not in held and "agentRuns" in held for held in everywhere(managed["delegation"])))
+        self.assertEqual(problems(checks, [modeled, managed]), [])
+        # Held required where the unit counts requests, on the parent, each child and each total.
+        for where in ("parent", "child", "total"):
+            with self.subTest(removed_from=where):
+                cut = copy.deepcopy(modeled)
+                held = {"parent": cut["delegation"]["parent"], "child": cut["delegation"]["batches"][0]["children"][0], "total": cut["delegation"]["batches"][0]["total"]}[where]
+                del held["modelRequests"]
+                self.assertTrue(problems(checks, [cut]))
+        # Optional where it is provider-managed: the member present is still read.
+        kept = copy.deepcopy(managed)
+        kept["delegation"]["parent"]["modelRequests"] = 0
+        self.assertEqual(problems(checks, [kept]), [])
+        # The same figures under the other unit are refused.
+        wrong = copy.deepcopy(managed)
+        wrong["unit"] = "model-requests"
+        self.assertTrue(any("modelRequests" in found for found in problems(checks, [wrong])))
+
     def test_the_codex_continuation_carries_the_answer_as_one_data_block(self):
         # delegated-task.json#/$defs/continuation (review of agent#35, rows 4 and 9): a line, then one
         # block opened and closed by the same marker, whose data is a batch's answer.
@@ -602,10 +642,28 @@ class VectorTests(unittest.TestCase):
                 states = [held["state"] for held in written]
                 self.assertEqual(states, ["refused", "answered"] if not approved else ["approved", "executed", "answered"])
                 self.assertEqual(written[-2]["result"], data["result"])
+                # A refusal is said once, right after it is written: a guardrail with the reason approval
+                # refused whose sentence is the refused result's, never the person's note (#80).
+                notices = [item for item in vector["items"] if item["type"] == "guardrail"]
+                if approved:
+                    self.assertEqual(notices, [])
+                else:
+                    self.assertEqual(len(notices), 1)
+                    self.assertIs(vector["items"][1], notices[0])
+                    self.assertEqual(vector["items"][0]["checkpoint"]["approval"]["state"], "refused")
+                    self.assertEqual((notices[0]["tool"], notices[0]["action"], notices[0]["reason"]), (paused["approval"]["name"], "refused", "approval refused"))
+                    self.assertEqual(notices[0]["detail"], data["result"]["content"][0]["text"])
+                    self.assertNotIn(decision["note"], notices[0]["detail"])
+                    self.assertEqual(problems(validator(self.schemas, "run-event.json"), [notices[0]]), [])
                 for held in written:
                     self.assertEqual({k: held[k] for k in ("callId", "name", "tool", "source", "args")}, {k: paused["approval"][k] for k in ("callId", "name", "tool", "source", "args")})
                 # The continuation request counts as one more model request.
                 self.assertEqual(vector["items"][-2]["checkpoint"]["used"], paused["used"] + 1)
+        policy = self.vectors["approval/policy.json"]
+        self.assertEqual(policy["items"], ["allow", "refuse", "ask"])
+        self.assertEqual(set(policy["outcomes"]), set(policy["items"]))
+        self.assertEqual(problems(validator(self.schemas, policy["schema"]), policy["items"]), [])
+        self.assertTrue(problems(validator(self.schemas, policy["schema"]), ["wait", "", None]))
         wrong = self.vectors["approval/wrong-call-id.json"]
         self.assertNotEqual(wrong["items"][0]["callId"], wrong["approval"]["callId"])
         self.assertEqual(problems(validator(self.schemas, "checkpoint.json#/$defs/approval"), [wrong["approval"]]), [])
@@ -655,6 +713,25 @@ class VectorTests(unittest.TestCase):
         self.assertGreater(len(targets), 250)
         missing = [f"{name} {'/'.join(str(step) for step in path)}" for name, path in targets if not carried(name, path)]
         self.assertEqual(missing, [], "members no vector carries")
+
+        # The values of the two approval enums (ADR-0008, #80): the guardrail's reasons and the policy's
+        # answers. A value is carried when taking it out of the enum makes a vector invalid; the policy
+        # definition is a member itself, carried when a vector is held to it.
+        self.assertTrue(carried("tool-offer.json", ["$defs", "approvalPolicy"]))
+        unused = []
+        for name, path in (("run-event.json", ["$defs", "guardrail", "properties", "reason"]), ("tool-offer.json", ["$defs", "approvalPolicy"])):
+            node = schemas_[name]
+            for step in path:
+                node = node[step]
+            for value in node["enum"]:
+                changed = copy.deepcopy(schemas_)
+                held = changed[name]
+                for step in path:
+                    held = held[step]
+                held["enum"] = [other for other in held["enum"] if other != value]
+                if not any(problems(validator(changed, vector["schema"]), vector["items"]) for vector in vectors_.values()):
+                    unused.append(f"{name} {'/'.join(path)} {value}")
+        self.assertEqual(unused, [], "enum values no vector carries")
 
     def test_every_wire_name_follows_the_rule(self):
         # ADR-0006: tool-offer.json#/$defs/wireName, computed here from its words.

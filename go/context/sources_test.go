@@ -282,6 +282,28 @@ func TestLoadToolLoadsOnlyACataloguedSchema(t *testing.T) {
 	}
 }
 
+// The policy's answers are the vector's three: each is read as it is, and any other, or a policy
+// that panics, is a refusal (approval/policy.json, tool-offer.json#/$defs/approvalPolicy).
+func TestThePoliciesAnswersAreTheVectorsThree(t *testing.T) {
+	items := vectorItems(t, "approval/policy.json")
+	if len(items) != 3 {
+		t.Fatalf("the vector holds %d answers", len(items))
+	}
+	for _, item := range items {
+		if got := askPolicy(func(ApprovalRequest) string { return item.Str() }, ApprovalRequest{}); got != item.Str() {
+			t.Errorf("the policy answered %q and it was read as %q", item.Str(), got)
+		}
+	}
+	for _, other := range []string{"", "yes", "ALLOW", "wait"} {
+		if got := askPolicy(func(ApprovalRequest) string { return other }, ApprovalRequest{}); got != "refuse" {
+			t.Errorf("the answer %q was read as %q", other, got)
+		}
+	}
+	if got := askPolicy(func(ApprovalRequest) string { panic("no") }, ApprovalRequest{}); got != "refuse" {
+		t.Errorf("a policy that panics was read as %q", got)
+	}
+}
+
 func TestAnActRunsOnlyWhereTheHostsPolicyAllowsIt(t *testing.T) {
 	answer := "refuse"
 	var seen []string

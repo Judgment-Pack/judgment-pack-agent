@@ -1,5 +1,5 @@
 {
-  "description": "A parent's checkpoint saved during its second delegation batch (agent#18, review row 3): its delegation member carries the finished first batch and the running second, each child in its state, and the parent's own figures (its requests counted where it made them: 3 of the execution's 6, the children's 3 in their figures). The other members are a minimal execution's. Written by hand from the schema. The second item is a provider-managed run's checkpoint written during a delegation batch on an agent capability (ADR-0007): the other members are a minimal execution's, its handoff is the second item of handoff.json (the first child finished, the second dispatched), its prompts are the three digests of prompt-digest.json (ADR-0005) its sources are the rows of source-report.json (ADR-0006), and its testCalls is the turn's count of the Runtime's test tool (go/context holds the reader of all three members). Written by hand from the schema.",
+  "description": "A parent's checkpoint saved during its second delegation batch (agent#18, review row 3): its delegation member carries the finished first batch and the running second, each child in its state, and the parent's own figures (its requests counted where it made them: 3 of the execution's 6, the children's 3 in their figures). The other members are a minimal execution's. Written by hand from the schema. The second item is a provider-managed run's checkpoint written during a delegation batch on an agent capability (ADR-0007): the other members are a minimal execution's, its delegation member carries each child's and the parent's agent runs and no modelRequests (agent#71), its handoff is the second item of handoff.json (the first child finished, the second dispatched), its prompts are the three digests of prompt-digest.json (ADR-0005) its sources are the rows of source-report.json (ADR-0006), and its testCalls is the turn's count of the Runtime's test tool (go/context holds the reader of all three members). Written by hand from the schema.",
   "schema": "checkpoint.json",
   "source": {
     "harness": {
@@ -122,6 +122,44 @@
         "entries": []
       },
       "testCalls": 1,
+      "delegation": {
+        "batches": [
+          {
+            "batch": 1,
+            "children": [
+              {
+                "task": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9",
+                "batch": 1,
+                "profile": "analyze",
+                "model": "agent-small",
+                "state": "complete",
+                "toolCalls": 0,
+                "agentRuns": 1,
+                "durationMs": 4100
+              },
+              {
+                "task": "4d5e6f7a-8b9c-4d0e-8f1a-2b3c4d5e6f7a",
+                "batch": 1,
+                "profile": "analyze",
+                "model": "agent-small",
+                "state": "running",
+                "toolCalls": 0,
+                "agentRuns": 1,
+                "durationMs": 2300
+              }
+            ],
+            "total": {
+              "toolCalls": 0,
+              "agentRuns": 2,
+              "durationMs": 4100
+            }
+          }
+        ],
+        "parent": {
+          "model": "agent-model",
+          "agentRuns": 1
+        }
+      },
       "handoff": {
         "callId": "call-7f3a",
         "batch": 1,
