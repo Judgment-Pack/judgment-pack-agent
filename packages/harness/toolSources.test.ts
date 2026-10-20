@@ -17,13 +17,21 @@ import sourceCalls from '../../contract/vectors/tool-call/source-calls.json'
 import sourceResults from '../../contract/vectors/tool-result/source-results.json'
 import sourceReport from '../../contract/vectors/provenance/source-report.json'
 import harnessDefaults from '../../contract/vectors/budget/harness-defaults.json'
+import continueRefused from '../../contract/vectors/approval/continue-refused.json'
+import continueApproved from '../../contract/vectors/approval/continue-approved.json'
+import secondAct from '../../contract/vectors/approval/second-act-while-pending.json'
+import toolSourcesServer from './certification/scenarios/tool-sources.json'
 import { CONTEXT_DEFAULTS, SOURCE_DEFAULTS } from './context/policy'
 import { readingTool } from './framing'
 import { toolFailureResult, AIFailureError } from './failures'
 import { GateViolation } from './toolGate'
-import { readExecution, validSourceFigures, type SourceFigures } from './execution/state'
+import { readApprovalDecision, readExecution, refusedResult, validApproval, validSourceFigures, type ApprovalRecord, type ExecutionCheckpoint, type SourceFigures } from './execution/state'
+import { contextDigest } from './context/ledger'
 import {
+  APPROVAL_CONTINUATION,
   APPROVAL_DEFAULT,
+  ApprovalHeld,
+  approvalContinuation,
   CATALOGUE_SCHEMA,
   describedSchema,
   type SchemaNote,
@@ -35,6 +43,7 @@ import {
   offerSources,
   toolListDigest,
   wireName,
+  type ApprovalBook,
   type ApprovalRequest,
   type SourceBounds
 } from './toolSources'
@@ -244,16 +253,16 @@ describe('the declaration (ADR-0006)', () => {
 })
 
 /** A SourceGate over the vector's declarations, with its refusals' guardrails and its report collected. */
-async function gateFor(tools: HostTool[], bounds: Partial<SourceBounds> = {}, catalogue = false) {
+async function gateFor(tools: HostTool[], bounds: Partial<SourceBounds> = {}, catalogue = false, book?: ApprovalBook) {
   const out = await declareSources(tools, [])
   const policy = { ...CONTEXT_DEFAULTS, ...bounds }
   const offered = offerSources(out.hostTools, out.entries, catalogue ? { ...policy, offeredSchemas: 0 } : policy, MARKER)
-  const notices: { tool: string; detail: string }[] = []
+  const notices: { tool: string; detail: string; reason?: string }[] = []
   const rows: SourceFigures[] = []
-  const gate = new SourceGate(out.entries, out.sources, policy, MARKER, (tool, detail) => {
-    notices.push({ tool, detail })
+  const gate = new SourceGate(out.entries, out.sources, policy, MARKER, (tool, detail, reason) => {
+    notices.push({ tool, detail, ...(reason === undefined ? {} : { reason }) })
     return new GateViolation(tool, detail)
-  }, () => rows)
+  }, () => rows, 'json-schema', undefined, book)
   const byName = new Map(offered.hostTools.map((tool) => [tool.name, tool]))
   const call = (name: string, args: Record<string, unknown> = {}, signal = new AbortController().signal, callId?: string) => gate.call(byName.get(name)!, args, signal, (given, bounded) => byName.get(name)!.execute(given, bounded), callId)
   return { gate, notices, rows, call, offered }
@@ -281,21 +290,27 @@ describe('each call of a tool with a source (ADR-0006)', () => {
     expect(gate.loadedSection()).toBe('')
   })
 
-  it('refuses an act whose approval the host’s reader does not give, and runs it where it does, handing the reader the call: its wire name, the tool’s own name, its source and a copy of the arguments', async () => {
-    let answer: boolean | undefined
+  it('refuses an act the host’s approval policy refuses, with the approval refused guardrail, and runs it where the policy allows, handing the policy the call: its wire name, the tool’s own name, its source and a copy of the arguments', async () => {
+    let answer: unknown
     const seen: ApprovalRequest[] = []
-    const tools = declared(declarations.items).map((tool) => (tool.name === 'update_work_item' ? { ...tool, approve: async (call: ApprovalRequest) => { seen.push(structuredClone(call)); call.args.state = 'Tampered'; return answer as boolean } } : tool))
+    const tools = declared(declarations.items).map((tool) => (tool.name === 'update_work_item' ? { ...tool, approve: (call: ApprovalRequest) => { seen.push(structuredClone(call)); call.args.state = 'Tampered'; return answer as 'allow' } } : tool))
     const ran: Record<string, unknown>[] = []
     const { call, notices } = await gateFor(tools.map((tool) => ({ ...tool, execute: async (args: Record<string, unknown>) => { ran.push(args); return { content: [{ type: 'text', text: 'done' }] } } })))
-    answer = false
+    answer = 'refuse'
     await expect(call('ado__update_work_item', { id: 7, state: 'Done' })).rejects.toBeInstanceOf(GateViolation)
-    expect(notices.at(-1)!.detail).toContain('needs the person\'s approval')
+    expect(notices.at(-1)).toMatchObject({ detail: expect.stringContaining('approval policy refused'), reason: 'approval refused' })
+    // An answer that is none of the three is a refusal.
     answer = true
+    await expect(call('ado__update_work_item', { id: 7, state: 'Done' })).rejects.toBeInstanceOf(GateViolation)
+    answer = 'allow'
     await call('ado__update_work_item', { id: 7, state: 'Done' })
     expect(ran).toEqual([{ id: 7, state: 'Done' }])
     const source = declarations.items.find((tool) => tool.name === 'update_work_item')!.source
-    expect(seen).toEqual([0, 1].map(() => ({ name: 'ado__update_work_item', tool: 'update_work_item', source: { ...source, tool: 'update_work_item' }, args: { id: 7, state: 'Done' } })))
-    // An act with no reader is refused: the package holds no grant.
+    expect(seen).toEqual([0, 1, 2].map(() => ({ name: 'ado__update_work_item', tool: 'update_work_item', source: { ...source, tool: 'update_work_item' }, args: { id: 7, state: 'Done' } })))
+    // A policy that throws refuses.
+    const throwing = await gateFor(declared(declarations.items).map((tool) => ({ ...tool, approve: () => { throw Error('policy failed') } })))
+    await expect(throwing.call('ado__update_work_item', { id: 7, state: 'Done' })).rejects.toBeInstanceOf(GateViolation)
+    // An act with no policy asks; a gate with nowhere to write the pause refuses it, and never runs it.
     const bare = await gateFor(declared(declarations.items))
     await expect(bare.call('tracker__create_issue', { repository: 'r', title: 't' })).rejects.toBeInstanceOf(GateViolation)
   })
@@ -324,7 +339,7 @@ describe('each call of a tool with a source (ADR-0006)', () => {
     let served = declarations.items[1]!.source.toolListDigest!
     let ran = 0
     const tools = declared(declarations.items).map((tool) => tool.name === 'create_issue'
-      ? { ...tool, source: { ...tool.source!, currentDigest: () => served }, approve: async () => true, execute: async () => { ran++; return { content: [{ type: 'text', text: 'opened' }] } } }
+      ? { ...tool, source: { ...tool.source!, currentDigest: () => served }, approve: () => 'allow' as const, execute: async () => { ran++; return { content: [{ type: 'text', text: 'opened' }] } } }
       : tool)
     const { gate, call, notices, rows } = await gateFor(tools)
     await call('tracker__create_issue', { repository: 'expense', title: 'Missing mileage rate' })
@@ -368,13 +383,13 @@ describe('each call of a tool with a source (ADR-0006)', () => {
     expect(rows.find((row) => row.source === 'databricks')).toMatchObject({ calls: 8, refused: 12 })
   })
 
-  it('gives the slot back on a refusal after the claim: a changed list, a denied approval and a stopped run take none', async () => {
+  it('gives the slot back on a refusal after the claim: a changed list, a refused approval and a stopped run take none', async () => {
     let served = declarations.items[1]!.source.toolListDigest!
-    const answers: ('deny' | 'stop' | 'allow')[] = ['deny', 'stop', 'allow', 'allow']
+    const answers: ('refuse' | 'stop' | 'allow')[] = ['refuse', 'stop', 'allow', 'allow']
     const stop = new AbortController()
     const tools = declared(declarations.items).map((tool) => {
-      if (tool.name === 'create_issue') return { ...tool, source: { ...tool.source!, currentDigest: () => served }, approve: async () => true }
-      if (tool.name === 'update_work_item') return { ...tool, approve: async () => { const answer = answers.shift(); if (answer === 'stop') stop.abort(); return answer !== 'deny' } }
+      if (tool.name === 'create_issue') return { ...tool, source: { ...tool.source!, currentDigest: () => served }, approve: () => 'allow' as const }
+      if (tool.name === 'update_work_item') return { ...tool, approve: () => { const answer = answers.shift(); if (answer === 'stop') { stop.abort(); return 'allow' as const } return answer! } }
       return tool
     })
     const { call, rows } = await gateFor(tools, { sourceCallsPerTurn: 1 })
@@ -416,7 +431,7 @@ describe('each call of a tool with a source (ADR-0006)', () => {
 
   it('marks the result of a call stopped after its approval, so no other call’s mark is taken for it', async () => {
     const stop = new AbortController()
-    const tools = declared(declarations.items).map((tool) => (tool.name === 'update_work_item' ? { ...tool, approve: async () => { stop.abort(); return true } } : { ...tool, execute: async (): Promise<McpToolResult> => ({ content: [{ type: 'text', text: 'ok' }], receipt: 'rcpt_other' }) }))
+    const tools = declared(declarations.items).map((tool) => (tool.name === 'update_work_item' ? { ...tool, approve: () => { stop.abort(); return 'allow' as const } } : { ...tool, execute: async (): Promise<McpToolResult> => ({ content: [{ type: 'text', text: 'ok' }], receipt: 'rcpt_other' }) }))
     const { gate, call, rows } = await gateFor(tools)
     await expect(call('ado__update_work_item', { id: 1, state: 'Done' }, stop.signal, 'call-stopped')).rejects.toMatchObject({ name: 'AbortError' })
     await call('databricks__query_table', {}, signal(), 'call-other')
@@ -435,7 +450,7 @@ describe('each call of a tool with a source (ADR-0006)', () => {
 
   it('holds a catalogued tool’s arguments to the schema load_tool loaded, before the host’s execute, and a refusal takes no slot', async () => {
     let ran = 0
-    const { gate, call, rows } = await gateFor(declared(declarations.items).map((tool) => ({ ...tool, approve: async () => true, execute: async () => { ran++; return { content: [] } } })), { sourceCallsPerTurn: 1 }, true)
+    const { gate, call, rows } = await gateFor(declared(declarations.items).map((tool) => ({ ...tool, approve: () => 'allow' as const, execute: async () => { ran++; return { content: [] } } })), { sourceCallsPerTurn: 1 }, true)
     await gate.loadTool().execute({ name: 'tracker__create_issue' }, signal())
     for (const args of [{}, { repository: 'expense' }, { repository: 'expense', title: 7 }]) {
       await expect(call('tracker__create_issue', args)).rejects.toMatchObject({ failure: { code: 'invalid-tool-input', detail: expect.stringContaining('do not match the schema load_tool loaded') } })
@@ -539,11 +554,12 @@ describe('the boundary over tools with a source (ADR-0006)', () => {
     expect(ofType(events, 'error')).toEqual([])
   })
 
-  it('offers Plan mode only the reads of a source: a propose and an act are not offered, and a call of either is refused with its event and never reaches the host', async () => {
+  it('offers Plan mode only the reads of a source: a propose and an act are not offered, and a call of either is refused with its event, never asks the approval policy and never reaches the host', async () => {
     const executed: string[] = []
+    const asked: string[] = []
     const mine = { kind: 'custom' as const, id: 'mine', trust: 'person' as const, version: '1' }
     const tools: HostTool[] = (['read', 'propose', 'act'] as const).map((effectClass) => ({
-      name: `${effectClass}_note`, description: `A ${effectClass}.`, inputSchema: { type: 'object' }, source: mine, effectClass, approve: async () => true,
+      name: `${effectClass}_note`, description: `A ${effectClass}.`, inputSchema: { type: 'object' }, source: mine, effectClass, approve: () => { asked.push(effectClass); return 'allow' as const },
       execute: async () => { executed.push(effectClass); return { content: [{ type: 'text' as const, text: effectClass }] } }
     }))
     const turns: Turn[] = [
@@ -564,5 +580,156 @@ describe('the boundary over tools with a source (ADR-0006)', () => {
       expect(flow[at + 1]).toMatchObject({ type: 'tool_result', name, isError: true, text: expect.stringContaining('Plan mode does not permit this operation') })
     }
     expect(executed).toEqual(['read'])
+    // ADR-0008: Plan mode admits no act call, so none pauses the run or asks the policy.
+    expect(asked).toEqual([])
+    expect(ofType(ran.events, 'approval_requested')).toEqual([])
+  })
+})
+
+describe('the approval pause (ADR-0008)', () => {
+  const session = (hostTools: HostTool[]): AssistantSession => ({
+    prompt: 'Current request', testPrompt: '', tools: [], hostTools, callTool: async () => ({ content: [] }),
+    model: { family: 'openai-compatible', model: 'small', call: async () => { throw Error('no model call here') } },
+    thinking: normalize('off', 'openai-compatible'), signal: new AbortController().signal
+  })
+  /** A book the gate writes an asked approval into, closed where `closed` says. */
+  const bookOf = (closed = '') => {
+    const held: { approval?: ApprovalRecord } = {}
+    const book: ApprovalBook = { current: () => held.approval, ask: (record) => { held.approval = record }, closed: () => closed }
+    return { book, held }
+  }
+  const asking = (asked: string[], answer: 'ask' | 'allow' | 'refuse' = 'ask') => declared(declarations.items).map((tool) => ({ ...tool, approve: (call: ApprovalRequest) => { asked.push(call.name); return answer } }))
+
+  it('answers an act call once: ask writes the approval asked and holds the call, a second while it waits is pending, counted refused and never asks the policy, and neither runs', async () => {
+    const asked: string[] = []
+    let ran = 0
+    const { book, held } = bookOf()
+    const { gate, call, rows } = await gateFor(asking(asked).map((tool) => ({ ...tool, execute: async () => { ran++; return { content: [] } } })), {}, false, book)
+    expect(gate.needsApproval('tracker__create_issue')).toBe(true)
+    expect(gate.needsApproval('databricks__query_table')).toBe(false)
+    const first = await gate.decide('tracker__create_issue', { repository: 'expense', title: 'a' }, 'call-a')
+    expect(first).toMatchObject({ answer: 'ask', callId: 'call-a' })
+    expect(held.approval).toEqual({ callId: 'call-a', name: 'tracker__create_issue', tool: 'create_issue', source: { ...declarations.items[1]!.source, tool: 'create_issue' }, args: { repository: 'expense', title: 'a' }, state: 'asked' })
+    await expect(call('tracker__create_issue', { repository: 'expense', title: 'a' }, signal(), 'call-a')).rejects.toBeInstanceOf(ApprovalHeld)
+    const second = await gate.decide('ado__update_work_item', { id: 1, state: 'Done' }, 'call-b')
+    expect(second).toMatchObject({ answer: 'pending', detail: expect.stringContaining('waits for the person') })
+    await expect(call('ado__update_work_item', { id: 1, state: 'Done' }, signal(), 'call-b')).rejects.toBeInstanceOf(GateViolation)
+    expect(asked).toEqual(['tracker__create_issue'])
+    expect(ran).toBe(0)
+    expect(held.approval!.callId).toBe('call-a')
+    expect(rows.find((row) => row.source === 'ado')).toMatchObject({ calls: 0, refused: 1 })
+    // Where the events carry no call id, the decision draws one and keeps it for the call in order.
+    const unnamed = bookOf()
+    const queued = await gateFor(asking([]), {}, false, unnamed.book)
+    const drawn = await queued.gate.decide('tracker__create_issue', {}, undefined)
+    expect(drawn.callId).toMatch(/^[0-9a-f-]{36}$/)
+    expect(unnamed.held.approval!.callId).toBe(drawn.callId)
+    // A call that reaches the gate with no call id while one waits is refused, and never runs.
+    await expect(queued.call('tracker__create_issue', {})).rejects.toBeInstanceOf(GateViolation)
+  })
+
+  it('admits no act call in a delegated child, in Plan mode or while the critic runs: refused with its guardrail, the policy never asked, the call never run', async () => {
+    for (const where of ['A delegated child admits reads only', 'Plan mode admits reads only', 'The critic and the reformat run admit no act call']) {
+      const asked: string[] = []
+      const { book, held } = bookOf(where)
+      const { gate, call, notices } = await gateFor(asking(asked, 'allow'), {}, false, book)
+      expect((await gate.decide('tracker__create_issue', {}, 'c')).answer).toBe('closed')
+      await expect(call('tracker__create_issue', {}, signal(), 'c')).rejects.toBeInstanceOf(GateViolation)
+      expect(notices.at(-1)!.detail).toBe(where)
+      expect(asked).toEqual([])
+      expect(held.approval).toBeUndefined()
+    }
+    // The boundary's own book says so: the critic's phase closes it.
+    const tools = asking([], 'allow')
+    const { context } = await contextualSession({ prompt: 'Current request', testPrompt: '', tools: [], hostTools: tools, callTool: async () => ({ content: [] }), model: { family: 'openai-compatible', model: 'small', call: async () => { throw Error('no model call here') } }, thinking: normalize('off', 'openai-compatible'), signal: new AbortController().signal })
+    expect((await context.sources!.decide('tracker__create_issue', {}, 'open')).answer).toBe('allow')
+    context.beginCriticPhase()
+    expect(await context.sources!.decide('tracker__create_issue', {}, 'critic')).toMatchObject({ answer: 'closed', detail: expect.stringContaining('critic') })
+    context.close()
+    const plan = await contextualSession({ prompt: 'Plan.', testPrompt: '', tools: [], hostTools: tools, callTool: async () => ({ content: [] }), context: { phase: 'plan' }, model: { family: 'openai-compatible', model: 'small', call: async () => { throw Error('no model call here') } }, thinking: normalize('off', 'openai-compatible'), signal: new AbortController().signal })
+    expect(plan.session.hostTools.map((tool) => tool.name)).not.toContain('tracker__create_issue')
+    expect((await plan.context.sources!.decide('tracker__create_issue', {}, 'plan')).answer).toBe('closed')
+    plan.context.close()
+  })
+
+  it('ties each act call’s decision to its own call on a run whose events carry no call ids: two calls of one tool reaching the gate in the other order run only the allowed one', async () => {
+    const ran: Record<string, unknown>[] = []
+    const asked: Record<string, unknown>[] = []
+    let delayed = false
+    const tools = declared(declarations.items).map((tool) => (tool.name === 'update_work_item'
+      ? { ...tool, approve: (call: ApprovalRequest) => { asked.push(call.args); return call.args.state === 'Deleted' ? 'refuse' as const : 'allow' as const }, execute: async (args: Record<string, unknown>) => { ran.push(args); return { content: [{ type: 'text' as const, text: 'updated' }] } } }
+      : tool))
+    // The host's authorization holds the first call back, so the second reaches the gate first.
+    const authorize = async () => { if (asked.length === 2 && !delayed) { delayed = true; await new Promise((resolve) => setTimeout(resolve, 30)) } }
+    const turns: Turn[] = [
+      { calls: [{ tool: 'ado__update_work_item', arguments: { id: 1, state: 'Deleted' } }, { tool: 'ado__update_work_item', arguments: { id: 2, state: 'Done' } }] },
+      { say: 'unused' },
+      { say: 'One work item updated, one refused.' }
+    ]
+    const run = await runOnModelEngine(answerFrom(turns, 'stream'), { hostTools: tools, session: { prompt: 'Update the items.', interactive: false, context: { authorize } } })
+    expect(delayed).toBe(true)
+    expect(ran).toEqual([{ id: 2, state: 'Done' }])
+    const results = ofType(run.events, 'tool_result').filter((event) => event.name === 'ado__update_work_item')
+    const calls = ofType(run.events, 'tool_call').filter((event) => event.name === 'ado__update_work_item')
+    expect(calls.every((event) => typeof event.callId === 'string')).toBe(true)
+    const refusedCall = calls.find((event) => (event.args as { state?: string }).state === 'Deleted')!
+    expect(results.find((event) => event.callId === refusedCall.callId)).toMatchObject({ isError: true })
+    expect(ofType(run.events, 'guardrail')).toContainEqual(expect.objectContaining({ tool: 'ado__update_work_item', reason: 'approval refused' }))
+  })
+
+  it('reads the approval and the decision closed, and continues a restored approved call whose result was never written without running it again', async () => {
+    const base = { version: 1, id: 'x', requestKey: 'a'.repeat(64), phase: 'work', status: 'paused', unit: 'model-requests', used: 2, limit: 20, grants: [], plan: [], explanation: '', operations: [], context: { scope: 's', entries: [] } }
+    const approval = { callId: 'call-a', name: 'tracker__create_issue', tool: 'create_issue', source: { ...declarations.items[1]!.source, tool: 'create_issue' }, args: { repository: 'expense', title: 'a' }, state: 'asked' }
+    expect(validApproval(approval)).toBe(true)
+    expect(validApproval({ ...approval, approved: true })).toBe(false)
+    expect(validApproval({ ...approval, state: 'pending' })).toBe(false)
+    expect(validApproval({ ...approval, name: 'tracker:create' })).toBe(false)
+    expect(() => readExecution({ ...base, approval: { ...approval, extra: 1 } })).toThrow()
+    expect(readApprovalDecision({ callId: 'call-a', approved: true })).toEqual({ callId: 'call-a', approved: true })
+    expect(readApprovalDecision({ callId: 'call-a', approved: 'yes' })).toBeUndefined()
+    expect(readApprovalDecision({ callId: 'call-a', approved: false, note: 'n', more: 1 })).toBeUndefined()
+    // A restored approved call: it may have run, so it is not run again; its result says the outcome is unknown.
+    let ran = 0
+    const tools = asking([]).map((tool) => ({ ...tool, execute: async () => { ran++; return { content: [] } } }))
+    const request = 'Open the issue.'
+    const requestKey = await contextDigest(JSON.stringify({ request: { message: request, input: request }, phase: 'work', purpose: null }))
+    const sent: string[] = []
+    const engine: Engine = { id: 'vercel', start: (given) => managedContext(given, async function* (ready) { sent.push(ready.prompt); yield { type: 'message', text: 'done' }; yield { type: 'end' } }) }
+    const events: AssistantEvent[] = []
+    const restored = { ...base, requestKey, status: 'running', approval: { ...approval, state: 'approved', decidedAt: '2026-10-20T10:00:00.000Z' } }
+    for await (const event of engine.start({ ...session(tools), prompt: request, context: { currentRequest: { message: request, input: request }, execution: restored as never } })) events.push(event)
+    expect(ran).toBe(0)
+    const written = events.find((event) => event.type === 'execution_checkpoint' && event.durable === true && event.checkpoint.approval?.state === 'executed') as { checkpoint: ExecutionCheckpoint } | undefined
+    expect(written?.checkpoint.approval?.result).toMatchObject({ isError: true, structuredContent: { failure: { code: 'unknown', outcome: 'unknown' } } })
+    expect(sent[0]).toContain(APPROVAL_CONTINUATION)
+    expect(sent[0]).toContain('it may have run')
+    // A decision handed again for a call already decided (here refused, then executed) is refused before anything runs.
+    for (const state of ['refused', 'executed', 'answered']) {
+      const again: AssistantEvent[] = []
+      for await (const event of engine.start({ ...session(tools), prompt: request, context: { currentRequest: { message: request, input: request }, execution: { ...restored, approval: { ...approval, state, decidedAt: '2026-10-20T10:00:00.000Z' } } as never, approval: { callId: 'call-a', approved: true } } })) again.push(event)
+      expect(ofType(again, 'error')).toEqual([expect.objectContaining({ failure: expect.objectContaining({ code: 'stale-state' }) })])
+    }
+    expect(ran).toBe(0)
+    expect(sent).toHaveLength(1)
+  })
+})
+
+describe('the approval pause’s words, the contract’s vectors (ADR-0008)', () => {
+  it('writes the continuation’s line, the refused result and the pending refusal as the vectors state them', async () => {
+    for (const vector of [continueRefused, continueApproved]) expect(vector.continuation.split('\n')[0]).toBe(APPROVAL_CONTINUATION)
+    const refusedApproval = continueRefused.items[0]!.checkpoint!.approval!
+    expect(refusedResult(refusedApproval.name)).toEqual(refusedApproval.result)
+    // The continuation of the refused call, its marker the vector's, is the vector's text.
+    const marker = /^BEGIN RETRIEVED DATA ([0-9a-f]{32})/m.exec(continueRefused.continuation)![1]!
+    expect(approvalContinuation({ ...(refusedApproval as unknown as ApprovalRecord) }, marker)).toBe(continueRefused.continuation)
+    const executed = continueApproved.items[1]!.checkpoint!.approval!
+    expect(approvalContinuation({ ...(executed as unknown as ApprovalRecord) }, marker)).toBe(continueApproved.continuation)
+    // The pending refusal's words.
+    const pendingVector = secondAct.items[2] as { detail: string }
+    const held: { approval?: ApprovalRecord } = {}
+    const tools = declared(toolSourcesServer.server.map((tool) => ({ ...tool, source: { kind: 'mcp', id: 'tracker', trust: 'public', toolListDigest: toolSourcesServer.tracker.pinned } }))).map((tool) => ({ ...tool, approve: () => 'ask' as const }))
+    const { gate } = await gateFor(tools, { offeredSchemas: 100, offeredSchemaBytes: 1_000_000 }, false, { current: () => held.approval, ask: (record) => { held.approval = record }, closed: () => '' })
+    expect((await gate.decide('tracker__create_issue', {}, 'a')).answer).toBe('ask')
+    expect((await gate.decide('tracker__create_issue', {}, 'b')).detail).toBe(pendingVector.detail)
   })
 })

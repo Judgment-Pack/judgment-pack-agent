@@ -1,0 +1,131 @@
+{
+  "description": "ADR-0008: an act call the host's approval policy answers ask for pauses the run. In place of the call's tool_call the boundary emits approval_requested (the call's id, the wire name, the tool's own name, its source record and the arguments the model sent); the call is never run; the checkpoint carries the call in approval, state asked, with status paused, and is emitted durable; the run ends with end and no error. The checkpoint's operations show the run's load_tool and a second act call refused while this one waits. Written by hand from the schemas; certified scenario 8 (certification/scenarios.test.ts, go/certification) holds every engine to the same events, and toolSources.test.ts holds the package's words to these.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/toolSources.ts (SourceGate.decide, SourceGate.approved, approvalContinuation, APPROVAL_CONTINUATION)",
+      "packages/harness/context/managed.ts (the pause, the continuation's writes)",
+      "packages/harness/execution/controller.ts (initialize, recordPrompt)"
+    ]
+  },
+  "items": [
+    {
+      "type": "approval_requested",
+      "callId": "call_2_1",
+      "name": "tracker__create_issue",
+      "tool": "create_issue",
+      "source": {
+        "kind": "mcp",
+        "id": "tracker",
+        "trust": "public",
+        "toolListDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820",
+        "tool": "create_issue"
+      },
+      "args": {
+        "repository": "expense",
+        "title": "Missing mileage rate"
+      }
+    },
+    {
+      "type": "execution_checkpoint",
+      "durable": true,
+      "checkpoint": {
+        "version": 1,
+        "id": "3c9e1a7b-5d2f-4e8a-9b6c-0d1e2f3a4b5c",
+        "requestKey": "7e4f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5061728394a5b6c7d",
+        "phase": "work",
+        "status": "paused",
+        "unit": "model-requests",
+        "used": 2,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [
+          {
+            "id": "0f1e2d3c-4b5a-4968-8778-695a4b3c2d1e",
+            "name": "load_tool",
+            "args": {
+              "name": "tracker__create_issue"
+            },
+            "status": "complete",
+            "result": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\"name\":\"tracker__create_issue\"}"
+                }
+              ]
+            }
+          },
+          {
+            "id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+            "name": "tracker__create_issue",
+            "args": {
+              "repository": "expense",
+              "title": "Mileage rate for the UK"
+            },
+            "status": "failed",
+            "result": {
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "tracker__create_issue acts on tracker, and another act call of this run waits for the person's decision; one call waits at a time, so this call was not run and nothing was changed. Call it again once the person has decided."
+                }
+              ]
+            }
+          }
+        ],
+        "context": {
+          "scope": "run-8",
+          "entries": []
+        },
+        "sources": [
+          {
+            "source": "runtime",
+            "kind": "runtime",
+            "calls": 0,
+            "refused": 0,
+            "proposed": 0,
+            "bytes": 0,
+            "milliseconds": 0
+          },
+          {
+            "source": "tracker",
+            "kind": "mcp",
+            "calls": 0,
+            "refused": 1,
+            "proposed": 0,
+            "bytes": 0,
+            "milliseconds": 0
+          }
+        ],
+        "approval": {
+          "callId": "call_2_1",
+          "name": "tracker__create_issue",
+          "tool": "create_issue",
+          "source": {
+            "kind": "mcp",
+            "id": "tracker",
+            "trust": "public",
+            "toolListDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820",
+            "tool": "create_issue"
+          },
+          "args": {
+            "repository": "expense",
+            "title": "Missing mileage rate"
+          },
+          "state": "asked"
+        }
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

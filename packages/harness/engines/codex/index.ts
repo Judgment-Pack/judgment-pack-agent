@@ -143,6 +143,15 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
             await deliver({ type: 'tool_result', callId: call.id, name, isError: true, text })
             return { isError: true, text }
           }
+          // ADR-0008: an act call the host's policy asks about ends the run as a delegation handoff
+          // does: its approval_requested in place of the call, the call never run, the invocation stopped.
+          const held = route.host ? await context.approval(route.name, call.arguments, call.id) : undefined
+          if (held !== undefined) {
+            await deliver(held)
+            awaitingInput = true
+            inputPause.abort()
+            throw new DOMException('Waiting for the person’s decision', 'AbortError')
+          }
           if (!route.host?.interaction) await deliver({ type: 'tool_call', callId: call.id, name: route.name, args: call.arguments })
           let result: McpToolResult
           let runtimeAnswered = false

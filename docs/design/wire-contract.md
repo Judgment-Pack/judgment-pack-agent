@@ -35,7 +35,11 @@ prompt](#the-prompt)); the recall rule and its vectors are removed. Amended for
 [ADR-0006](../adr/0006-tool-sources.md): tools from a gateway connection, a public MCP server or the
 person are host tools with a source record, an effect class and approval default, a wire-safe name,
 a bounded and framed description, a pinned tool list, a schema budget with `load_tool`, and
-per-source bounds, reported by source (see [Tool sources](#tool-sources)).
+per-source bounds, reported by source (see [Tool sources](#tool-sources)). Amended for
+[ADR-0008](../adr/0008-the-approval-pause.md): an act call is answered at once by the host's approval
+policy (`allow`, `refuse`, `ask`), and on `ask` the run pauses (`approval_requested`, the call in the
+checkpoint's `approval`, `end`) until the person's decision continues it in a new request that
+carries the result as one data block (see [The approval pause](#the-approval-pause)).
 
 ## Host, adapter, and the slot between them
 
@@ -47,11 +51,11 @@ Desk server runs. This package adds a third, `deepagents` (ADR-0003):
 
 | Adapter | Kind | Loop | Reach to a model | Tool calls | The prompt (ADR-0005) |
 | --- | --- | --- | --- | --- | --- |
-| `vercel` | model | the Vercel AI SDK's `streamText` | `model.call`, as the SDK's providers' `fetch` (`relayFetch`) | the SDK's tools, each executed through the gate's dispatch | the system text (`systemText`) as the SDK's `instructions`, with the Anthropic cache breakpoint; the host's parts from `configureHarness` |
-| `codex` | agent | the Codex bridge the Desk server runs | `agent.run` | the agent wire, under aliases, through the gate's dispatch | the system text as the agent request's `instructions`; the request text, the index and the state in its `prompt`; the host's parts from `configureHarness` |
-| `deepagents` | model | Deep Agents' agent graph (`createDeepAgent`, `deepagents/browser`), its own tools, subagents and summarization off | `model.call`, from its own LangChain chat model, the three wires written by the adapter; a run whose environment turns LangChain's tracing on is refused | every call answered by the adapter's boundary middleware through the gate's dispatch | the system text as the system message its `wrapModelCall` places; the host's parts from `configureHarness` |
-| `agent` (Go) | agent | the host's provider-run function (`adapter.Agent.Run`, ADR-0007), one invocation per call, the provider's own model loop | the host's function, which holds its account, process and credentials; the adapter holds no transport | the agent wire, under aliases, through the Go gate's narrow handle (`gate.Calls`); `delegate_tasks` a handoff | the system text (`runcontext.SystemText`) as each invocation's `instructions`; the request text, the index and the state in its `prompt`; the host's parts from `adapter.Run`'s `Host` |
-| `eino` (Go) | model | Eino's `adk.ChatModelAgent` under an `adk.Runner` (ADR-0004), its interrupt, checkpoint, retries and subagents not configured | the in-process relay client (`go/relay`), which runs each request through the relay handler's path; the three wires written by the adapter (`go/adapter/wire`) | every call answered by the adapter's boundary middleware or Eino's unknown-tools handler, one dispatch, through the Go gate's narrow handle (`gate.Calls`) | the system text (`runcontext.SystemText`) as the system message the adapter writes on each wire; the host's parts from `adapter.Run`'s `Host` |
+| `vercel` | model | the Vercel AI SDK's `streamText` | `model.call`, as the SDK's providers' `fetch` (`relayFetch`) | the SDK's tools, each executed through the gate's dispatch; an act call the host's policy asks about held, its step's other calls answered and the next request refused (ADR-0008) | the system text (`systemText`) as the SDK's `instructions`, with the Anthropic cache breakpoint; the host's parts from `configureHarness` |
+| `codex` | agent | the Codex bridge the Desk server runs | `agent.run` | the agent wire, under aliases, through the gate's dispatch; an act call the host's policy asks about ends the run as a delegation handoff does (ADR-0008) | the system text as the agent request's `instructions`; the request text, the index and the state in its `prompt`; the host's parts from `configureHarness` |
+| `deepagents` | model | Deep Agents' agent graph (`createDeepAgent`, `deepagents/browser`), its own tools, subagents and summarization off | `model.call`, from its own LangChain chat model, the three wires written by the adapter; a run whose environment turns LangChain's tracing on is refused | every call answered by the adapter's boundary middleware through the gate's dispatch; an act call the host's policy asks about held, as on `vercel` (ADR-0008) | the system text as the system message its `wrapModelCall` places; the host's parts from `configureHarness` |
+| `agent` (Go) | agent | the host's provider-run function (`adapter.Agent.Run`, ADR-0007), one invocation per call, the provider's own model loop | the host's function, which holds its account, process and credentials; the adapter holds no transport | the agent wire, under aliases, through the Go gate's narrow handle (`gate.Calls`); `delegate_tasks` a handoff, and an act call the host's policy asks about ends the invocation as one (ADR-0008) | the system text (`runcontext.SystemText`) as each invocation's `instructions`; the request text, the index and the state in its `prompt`; the host's parts from `adapter.Run`'s `Host` |
+| `eino` (Go) | model | Eino's `adk.ChatModelAgent` under an `adk.Runner` (ADR-0004), its interrupt, checkpoint, retries and subagents not configured | the in-process relay client (`go/relay`), which runs each request through the relay handler's path; the three wires written by the adapter (`go/adapter/wire`) | every call answered by the adapter's boundary middleware or Eino's unknown-tools handler, one dispatch, through the Go gate's narrow handle (`gate.Calls`); a turn's calls one at a time, an act call the host's policy asks about held as on `vercel` (ADR-0008) | the system text (`runcontext.SystemText`) as the system message the adapter writes on each wire; the host's parts from `adapter.Run`'s `Host` |
 
 Everything an engine needs is decided by the host before the session starts and handed to it:
 
@@ -83,7 +87,8 @@ rehearsal rule stay the host's (ADR-0001). Nothing below moves them.
 
 ## Run events
 
-`run-event.json`. Eighteen kinds, discriminated by `type`, from the adapter to the host, in order:
+`run-event.json`. Nineteen kinds, discriminated by `type`, from the adapter to the host, in order: the
+Desk's eighteen and the harness's `approval_requested` (ADR-0008):
 
 - **Work:** `tool_call` and `tool_result` (each call before its result, paired by `callId` where
   one is set); `reasoning` (deltas, then the whole passage with `done`); `message_progress` (the
@@ -96,9 +101,12 @@ rehearsal rule stay the host's (ADR-0001). Nothing below moves them.
   asked for a batch of child tasks; the coordinator runs them and starts the response's next run;
   on `vercel` the batch is an awaited `delegate_tasks` call, a `tool_call` and a `tool_result`),
   `budget_paused` (the request allowance ran out, the model asked for more or, on `vercel`, the
-  turn's wall clock passed; the person decides).
+  turn's wall clock passed; the person decides), `approval_requested` (ADR-0008: an act call the
+  host's approval policy asked about, in place of its `tool_call`; never run; the checkpoint carries
+  it in `approval` and the run ends paused, the person decides).
 - **Host reports:** `guardrail` (`rewrote` and `refused` from the tool gate, between the call and
-  its result; `narrowed` before the model is asked anything, where a family's wire cannot carry a
+  its result, with `reason` `approval refused` or `approval pending` where an act call's approval
+  refused it (ADR-0008); `narrowed` before the model is asked anything, where a family's wire cannot carry a
   served schema keyword; `refused` with tool `proposal` where Plan mode or a conversation withholds
   proposals), `execution_checkpoint` (state to save, `durable` where it must be saved before the
   next operation), `delegated_task` (a child's state, whole, at each transition; on `vercel`
@@ -234,8 +242,8 @@ Runtime's six-name ceiling is unchanged. The path of a tool, as the decision dra
                      ┌────────────────────────────────┼──────────────────────────────┐
                      ▼                                ▼                              ▼
               read: run it                   propose: review card              act: approval pause
-              (host executes under           (never acts; the person           (grant-states vector;
-               the user's grants)             accepts or rejects)               the host's approval reader)
+              (host executes under           (never acts; the person           (the host's policy:
+               the user's grants)             accepts or rejects)               allow, refuse, ask; ADR-0008)
                      │
                      ▼
   RESULT ──▶ framed as data (per-run marker) ──▶ ledger (read_window / search; images named, never dropped)
@@ -283,7 +291,8 @@ What the contract states, and where:
   and given back on a later refusal, so concurrent calls cannot pass the bound, and a delegated
   child's calls take their slots from the parent's report); a `propose` held for the review card and
   never run (`tool_result` `proposed: true`); an `act` with approval required run only where the
-  host's approval reader (`approve`, handed `{name, tool, source, args}`) answers yes; then the host's `execute` under `sourceCallMilliseconds`, at most
+  host's approval policy (`approve`, handed `{name, tool, source, args}`) answers `allow` (refused
+  with a guardrail on `refuse`; paused on `ask`, below); then the host's `execute` under `sourceCallMilliseconds`, at most
   `toolCallMilliseconds`. The answer is framed as data whatever the class (a proposal's
   acknowledgement aside), and shown whole up to `sourceResultBytes`, retained and referenced past it.
 - **The events and the report**: `tool_call` and `tool_result` carry `source`, the record with
@@ -293,7 +302,57 @@ What the contract states, and where:
 
 TypeScript holds these in `toolSources.ts`, entered from `contextualSession`, with the events
 decorated in `context/managed.ts`; Go in `go/context/sources.go`, entered from `ContextualSession`
-and `Boundary`. A Go host opens its gate with the names the boundary will offer
+and `Boundary`.
+
+### The approval pause
+
+[ADR-0008](../adr/0008-the-approval-pause.md) (agent#74). The policy is a function,
+`HostTool.approve` (Go `HostTool.Approve`, `ApprovalPolicy`): `(call) → 'allow' | 'refuse' | 'ask'`
+(`tool-offer.json#/$defs/approvalPolicy`), asked with the call and answering at once, never waiting
+for the person; any other answer, or a policy that throws, is `refuse`, and a `required` tool
+without a policy answers `ask`. Each engine asks it once per act call, where it hands the call to
+the host, before the call's `tool_call` (`SessionContext.approval`, over `SourceGate.decide`), after
+the engine's own refusals (repeated work, the reserved final request, an unoffered name) and the
+gate's own checks (the source's list, a catalogued tool's load and arguments, the calls per turn),
+so the person is never asked about a call that could not run.
+
+- **The pause.** On `ask`: `approval_requested {type, callId, name, tool, source, args}` (closed) in
+  place of the `tool_call`; the call never handed to the host; the checkpoint's `approval`
+  (`checkpoint.json#/$defs/approval`, closed) written `asked` with the call; then, at the shared
+  boundary, the checkpoint with status `paused` emitted `durable`, `end`, and no error. A model engine
+  gets there once its step's other calls are answered (its next request is refused before it is
+  claimed or sent); an agent engine at the call, its invocation stopped as at a handoff.
+- **One at a time.** An act call while one waits is refused: its `tool_call`, a `guardrail`
+  `refused` with `reason: approval pending`, and its refused result (`permission`, `not-started`),
+  said by the boundary whatever the engine does with the call after; never run, the policy not asked.
+- **The continuation.** The host hands the run the paused checkpoint and the person's decision
+  (`checkpoint.json#/$defs/approvalDecision`: `callId`, `approved`, `note`; `context.approval`, Go
+  `Input.Approval`), beside a request grant. A decision for an approval already decided is refused
+  (`stale-state`), a restored checkpoint continued without one; in Go an approved continuation
+  needs the host's durable callback (`Input.Checkpoint`), since the run's events reach the host only
+  after its context opens. Every act call carries an id, its decision kept by it and the call's
+  arguments. A decision for another call, or none for a paused
+  approval, ends the run with `stale-state` before anything runs. Refused: the approval written
+  `refused` with `decidedAt`, the note and the refused result. Approved: written `approved` and
+  acknowledged; the call run once through the host's function (`SourceGate.approved`), the policy
+  not asked again, under the gate's bounds (still offered as the person saw it, the source's list
+  unchanged, a catalogued tool's arguments against its declared schema, the calls per turn, the
+  deadline); written `executed` with the result and acknowledged before anything else. The run's
+  first request then carries, after the request text, one line (`APPROVAL_CONTINUATION`) and the
+  decision, the result and the note as one data block under a marker drawn for it
+  (`checkpoint.json#/$defs/approvalContinuation`), then a chat's bounded index where the run has one;
+  once it is sent the approval is `answered`. A restored `executed` or `refused` approval runs the
+  continuation and never the call; a restored `approved` one, whose result was never written, is not
+  run again and is answered with an unknown outcome.
+- **Where no act call is admitted.** A delegated child, Plan mode, the critic and the reformat run:
+  an act call that reaches the gate there is refused with a guardrail, and the policy is not asked.
+- **Counting.** The continuation's request is one model request on a model capability; on an agent
+  capability it is the response's next invocation, which a delegation coordinator counts, and an act
+  is offered to a parent invocation only while it and that invocation both remain. Nothing invented.
+
+The vectors are `approval/` (`pause.json`, `second-act-while-pending.json`, `continue-refused.json`,
+`continue-approved.json`, `wrong-call-id.json`); certified scenario 8
+(`certification/scenarios/approval-pause.json`) runs the path on every engine and both Go adapters. A Go host opens its gate with the names the boundary will offer
 (`runcontext.OfferedHostTools`), as it adds the boundary's context tools. Certified scenario 7
 (`certification/scenarios/tool-sources.json`) runs the path on every engine, on `eino` and, in the Go
 `harness-check`, on the agent capability (`go/adapter/agent`).
@@ -524,8 +583,11 @@ server's dispatcher admits (`policy-update`, `pack-update`, `portable-research`,
 by the commit, with `state` `ready`, `used`, `expired`, `revoked` or `stale`. Model output never
 mints one.
 
-The run's own pauses for a person are the question (`user_question`) and the budget
-(`budget_paused`, resumed only by a grant recorded in the checkpoint). A delegation is not a pause
+The run's own pauses for a person are the question (`user_question`), the budget
+(`budget_paused`, resumed only by a grant recorded in the checkpoint) and, since ADR-0008, an act
+call's approval (`approval_requested`, resumed only by the person's decision for that call; see [The
+approval pause](#the-approval-pause)). The decision is the person's for one call; it is no grant of
+`approval.json`'s kind, and the host's grants stay the host's. A delegation is not a pause
 on `vercel`, where the call is awaited, and ends the run on `codex`, where the coordinator starts the
 response's next run itself. The model's call of an unoffered or refused tool is not a pause: the gate refuses it.
 
@@ -775,7 +837,10 @@ cost, beside the parent's own (agent#18; see Provenance), and, once a request ha
 agent capability, `handoff`: the delegation handoff (ADR-0007), its call id, batch, state
 (`released`, `children`, `answered`, `continued`), request, task records and, once answered, the
 call's result, read closed by the Go reader. On that capability `delegation` is written from the
-parent's first invocation, so the response's agent runs survive a restart. Never permissions,
+parent's first invocation, so the response's agent runs survive a restart. Where an act call paused
+the run, `approval` (ADR-0008, closed in both readers): the call, its state (`asked`, `approved`,
+`refused`, `executed`, `answered`), when it was decided, the person's note and the result; at most
+one, and `status` `paused` while it is `asked`. Never permissions,
 evidence approval or private reasoning. At most 4 MiB as JSON
 text.
 
@@ -1321,7 +1386,7 @@ Agents' subagents are off and delegation is the package's, an awaited `delegate_
     `grep`, `execute`, `task` or one of the async task tools ends the run as a `configuration`
     error on this engine.
   - **Certification.** Held to every leg `vercel` is held to (the six wire legs, text tool calls,
-    strict alternation, thinking, the seven scenarios once per answer shape, delegation's
+    strict alternation, thinking, the eight scenarios once per answer shape, delegation's
     concurrency), with one recorded difference, scenario 1's, above.
 
 - **The `eino` engine** (Go, ADR-0004). A model engine on Eino's ADK, running in the host's Go
@@ -1360,7 +1425,7 @@ Agents' subagents are off and delegation is the package's, an awaited `delegate_
     agent capability's half (a run that ends at `delegation_requested`) is not ported, the Go
     adapter being a model adapter.
   - **Certification.** The Go runner (`go/certification`, `go/cmd/harness-check`) runs every leg the
-    TypeScript suite runs on a model engine, the seven scenarios and the model engine's check of
+    TypeScript suite runs on a model engine, the eight scenarios and the model engine's check of
     `certification/delegation.test.ts` on this adapter, all passing; `go/certification/parity.json`
     maps every TypeScript check to the Go checks that make it. Where
     the host differs, the check says so: scenario 5's boundary check reads the refusals only, because
@@ -1369,10 +1434,10 @@ Agents' subagents are off and delegation is the package's, an awaited `delegate_
 
 ### Other departures
 
-- **No approval event.** The design draft had a call that needs a person's decision pause the run;
-  the Desk has no such event. A tool with a source whose calls need approval (ADR-0006) asks the
-  host's approval reader inside the call, and a proposal is marked on its `tool_result`
-  (`proposed`), so the run-event set stays the Desk's. A framework with its own approval interrupt (the AI SDK's tool
+- **An approval event the Desk does not have yet.** The design draft had a call that needs a
+  person's decision pause the run; the Desk has no such event. ADR-0008 adds it,
+  `approval_requested`, the harness's one kind beyond the Desk's eighteen; the Desk takes it in its
+  follow-up. A proposal is still marked on its `tool_result` (`proposed`). A framework with its own approval interrupt (the AI SDK's tool
   approval, Deep Agents' interrupts) has nothing to map to except `user_question`. The boundary
   already refuses to compact across a pending approval part, so the shape is anticipated. The
   `deepagents` engine does not use Deep Agents' interrupts: they need `AsyncLocalStorage`, which the

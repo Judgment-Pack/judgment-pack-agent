@@ -1,12 +1,12 @@
 import {ExecutionProgressTracker} from './progress'
 import type {ContextToolPolicy} from '../context/toolPolicy'
-import {toolInputFailure} from '../failures'
+import {authoredFailure,toolInputFailure} from '../failures'
 import type {AssistantEvent,EngineSession,HostTool,McpToolResult} from '../engine'
 import {answer,contextDigest,type ContextLedger} from '../context/ledger'
 import {readCacheKey} from '../context/chat'
 import {MAX_TURNS} from '../engines/contract'
 import {utf8Bytes} from '../context/policy'
-import {ExecutionPaused,MAX_CHECKPOINT_BYTES,MAX_PROMPT_DIGESTS,readExecution,validTaskSteps,type ExecutionCheckpoint} from './state'
+import {ExecutionPaused,MAX_CHECKPOINT_BYTES,MAX_PROMPT_DIGESTS,readApprovalDecision,readExecution,refusedResult,unknownOutcome,validTaskSteps,type ExecutionCheckpoint} from './state'
 
 export const EXECUTION_INSTRUCTIONS = `TASK EXECUTION: For work requiring several stages, use update_plan to track concrete pending, in_progress and completed steps. Skip planning overhead for simple replies. Use the current accepted plan when present; do not repeatedly re-plan or ask the user to repeat an already authorized request. Update progress at meaningful boundaries, and preserve completed work across continuation. A task list is working state, not approval or proof: mark a step complete only when its required result exists, and distinguish a proposed change from a saved change. Keep a multi-stage task plan current; it estimates work but cannot grant more requests. An unsaved working object remains in the exact arguments of its completed operations. Continue from those retained arguments after validation or evaluation; rereading the saved workspace does not retrieve an unsaved proposal. Recheck the saved revision before applying changes. Use tool results already obtained; do not reread unchanged instructions or schemas or scan the entire conversation. On continuation, inspect the latest completed result and its exact arguments before doing more work. A newer saved workspace object takes precedence over an older chat draft when editing that object; preserve its identity. For a focused change, inspect the relevant contract once, make the smallest proposal, verify the affected behavior and return it. Do not restart discovery after context compaction. Before repeating a failed read, correct its arguments using the current context index. If blocked, state the exact missing information. When requests run low, finish the concrete result or call request_budget_increase with the reason and next concrete step. Desk owns budget extensions; this tool requests but never grants one. Never modify expected tests merely to match actual results. Current user instructions and host permissions remain authoritative.`
 
@@ -26,6 +26,12 @@ export class ExecutionController {
  /** ADR-0006: the schemas load_tool loaded this run, as one data block, or ''; stated after the request state. */
  loadedSchemas?:()=>string
  private restored=false
+ /**
+  * ADR-0008: what the restored approval asks of this run before its first request: `execute`, the
+  * person approved the call and it runs once; `continue`, its result (or the refused result) is
+  * written and the continuation carries it; `write`, as `continue`, the state rewritten first.
+  */
+ approvalStep?:'execute'|'continue'|'write'
  private attempt=1
  private operationsReference:unknown
  private restoredResults:unknown[]=[]
@@ -37,12 +43,33 @@ export class ExecutionController {
   const restored=readExecution(this.session.context?.execution)
   if(restored){
    if(restored.requestKey!==requestKey||restored.phase!==(this.session.context?.phase??'work'))throw toolInputFailure('The request or execution phase changed. Start a new response with the current context.')
-   if(restored.status==='paused'||restored.used>=restored.limit)throw new ExecutionPaused()
+   // ADR-0008: a paused act call continues only with the person's decision for that call.
+   const given=this.session.context?.approval
+   const decision=given===undefined?undefined:readApprovalDecision(given)
+   if(given!==undefined&&decision===undefined)throw authoredFailure('configuration','The approval decision is not one this package reads: a callId, approved, and an optional note of at most 2,000 characters. Nothing was decided or run.','context')
+   const asked=restored.approval?.state==='asked'
+   if(decision!==undefined&&decision.callId!==restored.approval?.callId)throw authoredFailure('stale-state','This decision is for a call this response is not waiting on; nothing was decided or run. Continue it with the decision on the call it asked about.','context')
+   // A decision on an act call already decided (refused, executed, answered) is no decision this response waits for.
+   if(decision!==undefined&&!asked)throw authoredFailure('stale-state','This response’s act call was already decided; nothing was decided or run. Continue it without a decision.','context')
+   if(asked&&decision===undefined)throw authoredFailure('stale-state',`This response waits for the person’s decision on ${restored.approval!.name}; continue it with that decision.`,'context')
+   if((restored.status==='paused'&&!asked)||restored.used>=restored.limit)throw new ExecutionPaused()
    if(restored.unit!==('model'in this.session?'model-requests':'provider-managed'))throw toolInputFailure('Continue this response with the same connection type, or start a new response.')
    await this.ledger.restore(restored.context)
    this.progress.seed(restored.operations)
    this.state={...restored,operations:restored.operations.map(op=>op.status==='running'?{...op,status:'interrupted'}:op),status:'running'}
    this.restored=true
+   const approval=this.state.approval
+   if(approval?.state==='asked'){
+    const decidedAt=new Date().toISOString()
+    this.state.approval=decision!.approved
+     ?{...approval,state:'approved',decidedAt,...(decision!.note===undefined?{}:{note:decision!.note})}
+     :{...approval,state:'refused',decidedAt,...(decision!.note===undefined?{}:{note:decision!.note}),result:refusedResult(approval.name)}
+    this.approvalStep=decision!.approved?'execute':'write'
+   }else if(approval?.state==='approved'){
+    // Approved, and its result never written: it may have run, and it is not run again.
+    this.state.approval={...approval,state:'executed',result:unknownOutcome(approval.name)}
+    this.approvalStep='write'
+   }else if(approval?.state==='executed'||approval?.state==='refused')this.approvalStep='continue'
   }else{
    this.state={version:1,id:crypto.randomUUID(),requestKey,phase:this.session.context?.phase??'work',status:'running',unit:'model'in this.session?'model-requests':'provider-managed',used:0,limit:'model'in this.session?MAX_TURNS:1,grants:[],plan:[],explanation:'',operations:[],context:{scope:this.ledger.scope,entries:[]}}
    const plan=this.session.context?.plan
@@ -50,6 +77,8 @@ export class ExecutionController {
   }
  }
  get remaining(){return this.state.limit-this.state.used}
+ /** ADR-0008: whether an act call of this run waits for the person's decision; no request is sent while one does. */
+ get approvalAsked(){return this.state.approval?.state==='asked'}
  claim(){if(this.remaining<=0)throw new ExecutionPaused();this.state.used++}
  /**
   * A first allowance below MAX_TURNS, for a delegated child (agent#15): its profile's request budget,
@@ -96,6 +125,9 @@ export class ExecutionController {
   * MAX_PROMPT_DIGESTS are kept.
   */
  async recordPrompt(body:string){
+  // ADR-0008: the continuation request carries the approval's result; once it is sent, the approval is answered.
+  const approval=this.state.approval
+  if(approval&&(approval.state==='executed'||approval.state==='refused'))this.state.approval={...approval,state:'answered'}
   const sha256=await contextDigest(body)
   const prompts=this.state.prompts??[]
   this.state.prompts=[...prompts,{request:(prompts.at(-1)?.request??0)+1,sha256}].slice(-MAX_PROMPT_DIGESTS)

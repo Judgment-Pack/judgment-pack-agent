@@ -26,9 +26,9 @@ type AgentCheck struct {
 	Run   func(ctx context.Context, server *Server, host AgentHost, with func(Adapter) Adapter, inner Adapter) ([]Finding, error)
 }
 
-// AgentScenarioNames, AgentSourcesNames and AgentDelegationNames are the agent checks the TypeScript
-// suite also makes on its agent engine (scenario 3's, scenario 7's, and
-// certification/delegation.test.ts's one child at a time).
+// AgentScenarioNames, AgentSourcesNames, AgentApprovalNames and AgentDelegationNames are the agent
+// checks the TypeScript suite also makes on its agent engine (scenario 3's, scenario 7's, scenario
+// 8's, and certification/delegation.test.ts's one child at a time).
 var (
 	AgentScenarioNames   = []string{"3 agent run", "3 agent memory"}
 	AgentDelegationNames = []string{"delegation serial"}
@@ -57,6 +57,7 @@ var AgentChecks = []AgentCheck{
 	{Group: "recovery", Names: []string{"agent lost acknowledgement", "agent recovery"}, Run: recoveryChecks},
 	{Group: "scenario 3", Names: AgentScenarioNames, Run: agentMemoryChecks},
 	{Group: "scenario 7", Names: AgentSourcesNames, Run: agentSourcesChecks},
+	{Group: "scenario 8", Names: AgentApprovalNames, Run: agentApprovalChecks},
 	{Group: "project", Names: []string{"agent project"}, Run: projectCheck},
 }
 

@@ -122,7 +122,7 @@
           "$ref": "#/$defs/effectClass"
         },
         "approval": {
-          "description": "Whether a call needs the person's approval before the host runs it (ADR-0006): the host's approval reader is asked before every call (HostTool.approve), and a call it does not approve is refused and never run; none: the call runs without asking. Default by effect class: none for read and propose (a proposal's approval is its review card), required for act. Read on a tool with a source; the host's own tools keep their own rules.",
+          "description": "Whether a call needs the person's approval before the host runs it (ADR-0006, ADR-0008): the host's approval policy (HostTool.approve, Go ApprovalPolicy) answers each call at once, $defs/approvalPolicy: allow runs it, refuse refuses it (the model reads a refused result and a guardrail says why), ask pauses the run (run-event.json#/$defs/approval_requested) until the person decides. A required tool without a policy answers ask. none: the call runs without asking, the host's declared decision. Default by effect class: none for read and propose (a proposal's approval is its review card), required for act. Read on a tool with a source; the host's own tools keep their own rules.",
           "enum": [
             "none",
             "required"
@@ -245,6 +245,14 @@
         "read",
         "propose",
         "act"
+      ]
+    },
+    "approvalPolicy": {
+      "description": "What the host's approval policy answers for one act call (ADR-0008; HostTool.approve, Go ApprovalPolicy), asked with the call (the wire name, the tool's own name, its source record, a copy of the arguments) and answered at once, never waiting for the person: allow, the call runs under its bounds; refuse, it is refused with a guardrail (reason approval refused) and never run; ask, the run pauses (approval_requested). An answer that is none of the three, or a policy that fails, is refuse.",
+      "enum": [
+        "allow",
+        "refuse",
+        "ask"
       ]
     },
     "sourceRecord": {

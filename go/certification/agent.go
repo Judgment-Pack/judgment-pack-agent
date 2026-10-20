@@ -26,10 +26,12 @@ import (
 
 // AgentStep is one thing a scripted provider does in an invocation, in order: a call of the tool
 // offered under the name Tool (an alias's description starts with the tool's own name and a colon),
-// with its arguments; a commentary message; or the final message.
+// with its arguments; several such calls made at once (Parallel, as a provider that calls tools in
+// parallel makes them; ADR-0008's second act call); a commentary message; or the final message.
 type AgentStep struct {
 	Tool       string
 	Arguments  json.RawMessage
+	Parallel   []AgentStep
 	Commentary string
 	Say        string
 }
@@ -142,6 +144,27 @@ func Play(ctx context.Context, request adapter.AgentRequest, callbacks adapter.A
 		}
 		id := fmt.Sprintf("item-%d", at+1)
 		switch {
+		case len(step.Parallel) > 0:
+			// The calls at once; the invocation ends with the first error any of them answers.
+			errs := make([]error, len(step.Parallel))
+			var wg sync.WaitGroup
+			for n, call := range step.Parallel {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					args := call.Arguments
+					if len(args) == 0 {
+						args = json.RawMessage(`{}`)
+					}
+					_, errs[n] = callbacks.Tool(ctx, adapter.AgentToolCall{ID: fmt.Sprintf("call-%s-%d", id, n+1), Name: OfferedName(request, call.Tool), Arguments: args})
+				}()
+			}
+			wg.Wait()
+			for _, err := range errs {
+				if err != nil {
+					return err
+				}
+			}
 		case step.Tool != "":
 			args := step.Arguments
 			if len(args) == 0 {

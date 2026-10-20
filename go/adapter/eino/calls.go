@@ -223,6 +223,12 @@ func (t *turnState) runHost(ctx context.Context, tool runcontext.HostTool, args 
 		return bare(*refusal), nil
 	}
 	callID := t.correlation()
+	// ADR-0008: an act call the host's policy asks about is held for the person, never run: its
+	// approval_requested in place of the call, and the run's next request is refused.
+	if held := t.r.sc.Approval(ctx, tool.Name, args, callID); held != nil {
+		t.r.deliver(*held)
+		return bare(textResult(runcontext.ApprovalHeld, true)), nil
+	}
 	if tool.Interaction != "question" {
 		t.r.deliver(t.callEvent(callID, tool.Name, args, ""))
 	}

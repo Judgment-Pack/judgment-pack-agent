@@ -29,6 +29,9 @@ var Registry = map[string]func() any{
 	"checkpoint.json#/$defs/operation":              func() any { return new(CheckpointOperation) },
 	"checkpoint.json#/$defs/retainedEntry":          func() any { return new(CheckpointRetainedEntry) },
 	"checkpoint.json#/$defs/handoff":                func() any { return new(CheckpointHandoff) },
+	"checkpoint.json#/$defs/approval":               func() any { return new(CheckpointApproval) },
+	"checkpoint.json#/$defs/approvalDecision":       func() any { return new(CheckpointApprovalDecision) },
+	"checkpoint.json#/$defs/approvalContinuation":   func() any { return new(string) },
 	"delegated-task.json":                           func() any { return new(DelegatedTask) },
 	"delegated-task.json#/$defs/uuid":               func() any { return new(string) },
 	"delegated-task.json#/$defs/time":               func() any { return new(string) },
@@ -86,6 +89,7 @@ var Registry = map[string]func() any{
 	"run-event.json":                                func() any { return new(RunEvent) },
 	"run-event.json#/$defs/execution_checkpoint":    func() any { return new(RunEventExecutionCheckpoint) },
 	"run-event.json#/$defs/budget_paused":           func() any { return new(RunEventBudgetPaused) },
+	"run-event.json#/$defs/approval_requested":      func() any { return new(RunEventApprovalRequested) },
 	"run-event.json#/$defs/retry":                   func() any { return new(RunEventRetry) },
 	"run-event.json#/$defs/response_recovery":       func() any { return new(RunEventResponseRecovery) },
 	"run-event.json#/$defs/delegation_requested":    func() any { return new(RunEventDelegationRequested) },
@@ -117,6 +121,7 @@ var Registry = map[string]func() any{
 	"tool-offer.json#/$defs/reservedName":           func() any { return new(string) },
 	"tool-offer.json#/$defs/criticTools":            func() any { return new(string) },
 	"tool-offer.json#/$defs/effectClass":            func() any { return new(string) },
+	"tool-offer.json#/$defs/approvalPolicy":         func() any { return new(string) },
 	"tool-offer.json#/$defs/sourceRecord":           func() any { return new(ToolOfferSourceRecord) },
 	"tool-offer.json#/$defs/toolListDigest":         func() any { return new(string) },
 	"tool-offer.json#/$defs/wireName":               func() any { return new(string) },
@@ -875,8 +880,9 @@ func (v CapabilityStreamingQuirks) MarshalJSON() ([]byte, error) {
 // budget_paused events and handed back to resume: the request allowance and the grants that raised
 // it, the task plan, every operation with its exact arguments and result, the completions, and the
 // retained context the ledger holds. On an agent capability, the delegation handoff (ADR-0007):
-// the call, the batch's task records and the call's result. Never permissions, evidence approval
-// or private reasoning. Read from ExecutionCheckpoint (web/src/assistant/execution/state.ts,
+// the call, the batch's task records and the call's result. An act call paused for the person's
+// decision, and what became of it (ADR-0008, approval). Never permissions, evidence approval or
+// private reasoning. Read from ExecutionCheckpoint (web/src/assistant/execution/state.ts,
 // readExecution). Open: readExecution accepts a member it does not name and keeps it. Rules the
 // reader holds that JSON Schema does not state: the serialized checkpoint is at most 4 MiB
 // (MAX_CHECKPOINT_BYTES); used is at most limit; the grants chain from the first limit (MAX_TURNS
@@ -903,13 +909,14 @@ type Checkpoint struct {
 	TestCalls   *int64                      `json:"testCalls,omitzero"`
 	Delegation  *ProvenanceDelegationReport `json:"delegation,omitzero"`
 	Handoff     *CheckpointHandoff          `json:"handoff,omitzero"`
+	Approval    *CheckpointApproval         `json:"approval,omitzero"`
 	Prompts     []ProvenancePromptDigest    `json:"prompts,omitzero"`
 	Sources     []ProvenanceSourceFigures   `json:"sources,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var checkpointMembers = []string{"version", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "prompts", "sources"}
+var checkpointMembers = []string{"version", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources"}
 
 // UnmarshalJSON decodes a Checkpoint object and keeps the members the schema does not name.
 func (v *Checkpoint) UnmarshalJSON(data []byte) error {
@@ -928,6 +935,79 @@ func (v *Checkpoint) UnmarshalJSON(data []byte) error {
 func (v Checkpoint) MarshalJSON() ([]byte, error) {
 	type plain Checkpoint
 	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From checkpoint.json#/$defs/approval. One act call paused for the person's decision (ADR-0008).
+// callId: the id of its approval_requested event; name: the wire name the model called; tool: the
+// tool's own name at its source; source: its record; args: the arguments the model sent, the ones
+// the call runs with. state: asked, approved, refused, executed or answered (see checkpoint.json's
+// approval). decidedAt: when the person's decision reached the run, a time Date.parse reads. note:
+// the person's words with the decision, carried to the model only inside the continuation's data
+// block. result: the call's result once executed, or the refused result. Closed.
+type CheckpointApproval struct {
+	CallID    string                     `json:"callId"`
+	Name      string                     `json:"name"`
+	Tool      string                     `json:"tool"`
+	Source    ToolOfferSourceRecord      `json:"source"`
+	Args      map[string]json.RawMessage `json:"args"`
+	State     string                     `json:"state"`
+	DecidedAt *string                    `json:"decidedAt,omitzero"`
+	Note      *string                    `json:"note,omitzero"`
+	Result    *ToolResultMCPToolResult   `json:"result,omitzero"`
+}
+
+var checkpointApprovalMembers = []string{"callId", "name", "tool", "source", "args", "state", "decidedAt", "note", "result"}
+
+// UnmarshalJSON decodes a CheckpointApproval object and refuses a member the closed schema does not name.
+func (v *CheckpointApproval) UnmarshalJSON(data []byte) error {
+	type plain CheckpointApproval
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointApprovalMembers, true)
+	if err != nil {
+		return errorf("CheckpointApproval: %w", err)
+	}
+	*v = CheckpointApproval(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointApproval object.
+func (v CheckpointApproval) MarshalJSON() ([]byte, error) {
+	type plain CheckpointApproval
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/approvalDecision. The person's decision on a paused act call
+// (ADR-0008), the continuation input beside the request grant: the host hands it to the run with
+// the paused checkpoint (context.approval in TypeScript, Input.Approval in Go). callId must be the
+// pending approval's, or the run is refused before anything runs (stale-state); approved: whether
+// the call may run; note: the person's words, at most 2,000 characters, shown to the model as
+// data. Closed.
+type CheckpointApprovalDecision struct {
+	CallID   string  `json:"callId"`
+	Approved bool    `json:"approved"`
+	Note     *string `json:"note,omitzero"`
+}
+
+var checkpointApprovalDecisionMembers = []string{"callId", "approved", "note"}
+
+// UnmarshalJSON decodes a CheckpointApprovalDecision object and refuses a member the closed schema does not name.
+func (v *CheckpointApprovalDecision) UnmarshalJSON(data []byte) error {
+	type plain CheckpointApprovalDecision
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointApprovalDecisionMembers, true)
+	if err != nil {
+		return errorf("CheckpointApprovalDecision: %w", err)
+	}
+	*v = CheckpointApprovalDecision(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointApprovalDecision object.
+func (v CheckpointApprovalDecision) MarshalJSON() ([]byte, error) {
+	type plain CheckpointApprovalDecision
+	return encodeObject(plain(v), nil)
 }
 
 // From checkpoint.json#/properties/context. The retained context to restore on resume: the
@@ -2859,10 +2939,12 @@ func (v QuestionSavedResolution) MarshalJSON() ([]byte, error) {
 // pinned commit, with its members spelled as the Desk spells them. A run ends with exactly one end
 // and nothing follows it; a run the consumer left gets no end. Some events are the host's own,
 // interleaved into the same stream rather than emitted by a loop: the tool gate's guardrail
-// rewrote and refused, the shared context boundary's execution_checkpoint and budget_paused (which
-// also replaces a loop's own budget_paused or request-limit error), and the delegation
-// coordinator's delegated_task. Open: the stream is an in-process TypeScript union with no reader
-// at run time that refuses another member; the type member alone decides the kind.
+// rewrote and refused, the shared context boundary's execution_checkpoint, budget_paused (which
+// also replaces a loop's own budget_paused or request-limit error) and approval_requested
+// (ADR-0008: emitted in place of an act call's tool_call where the host's approval policy answers
+// ask), and the delegation coordinator's delegated_task. Open: the stream is an in-process
+// TypeScript union with no reader at run time that refuses another member; the type member alone
+// decides the kind.
 //
 // A union: exactly one member is set. An object is decoded by its "type" member.
 type RunEvent struct {
@@ -2870,6 +2952,8 @@ type RunEvent struct {
 	ExecutionCheckpoint *RunEventExecutionCheckpoint
 	// BudgetPaused is set where type is "budget_paused".
 	BudgetPaused *RunEventBudgetPaused
+	// ApprovalRequested is set where type is "approval_requested".
+	ApprovalRequested *RunEventApprovalRequested
 	// Retry is set where type is "retry".
 	Retry *RunEventRetry
 	// ResponseRecovery is set where type is "response_recovery".
@@ -2920,6 +3004,9 @@ func (v *RunEvent) UnmarshalJSON(data []byte) error {
 		case "budget_paused":
 			v.BudgetPaused = new(RunEventBudgetPaused)
 			return json.Unmarshal(data, v.BudgetPaused)
+		case "approval_requested":
+			v.ApprovalRequested = new(RunEventApprovalRequested)
+			return json.Unmarshal(data, v.ApprovalRequested)
 		case "retry":
 			v.Retry = new(RunEventRetry)
 			return json.Unmarshal(data, v.Retry)
@@ -2983,6 +3070,9 @@ func (v RunEvent) MarshalJSON() ([]byte, error) {
 	if v.BudgetPaused != nil {
 		set = append(set, v.BudgetPaused)
 	}
+	if v.ApprovalRequested != nil {
+		set = append(set, v.ApprovalRequested)
+	}
 	if v.Retry != nil {
 		set = append(set, v.Retry)
 	}
@@ -3035,6 +3125,48 @@ func (v RunEvent) MarshalJSON() ([]byte, error) {
 		return nil, errorf("RunEvent: %d members are set; a union holds exactly one", len(set))
 	}
 	return json.Marshal(set[0])
+}
+
+// From run-event.json#/$defs/approval_requested. An act call paused for the person (ADR-0008): the
+// model called a tool with a source whose effect class is act and whose approval is required, and
+// the host's approval policy answered ask. The shared context boundary emits this in place of the
+// call's tool_call, never runs the call, writes the call into the checkpoint's approval (state
+// asked) with status paused, emits the checkpoint durable, and ends the run with end and no error:
+// a model engine once the step's other calls are answered (its next request is never sent), an
+// agent engine at the call (the invocation is stopped, as at a delegation handoff). The host's
+// stream carries it, unlike delegation_requested: the person has to see the call. The host
+// continues the paused checkpoint with the person's decision
+// (checkpoint.json#/$defs/approvalDecision). callId is the call's id, drawn by the boundary where
+// the run's events carry none; name the wire name the model called; tool the tool's own name at
+// its source; source its record; args the arguments the model sent. Closed.
+type RunEventApprovalRequested struct {
+	Type   string                     `json:"type"`
+	CallID string                     `json:"callId"`
+	Name   string                     `json:"name"`
+	Tool   string                     `json:"tool"`
+	Source ToolOfferSourceRecord      `json:"source"`
+	Args   map[string]json.RawMessage `json:"args"`
+}
+
+var runEventApprovalRequestedMembers = []string{"type", "callId", "name", "tool", "source", "args"}
+
+// UnmarshalJSON decodes a RunEventApprovalRequested object and refuses a member the closed schema does not name.
+func (v *RunEventApprovalRequested) UnmarshalJSON(data []byte) error {
+	type plain RunEventApprovalRequested
+	var p plain
+	extra, err := decodeObject(data, &p, runEventApprovalRequestedMembers, true)
+	if err != nil {
+		return errorf("RunEventApprovalRequested: %w", err)
+	}
+	*v = RunEventApprovalRequested(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunEventApprovalRequested object.
+func (v RunEventApprovalRequested) MarshalJSON() ([]byte, error) {
+	type plain RunEventApprovalRequested
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/budget_paused. Work paused at the request allowance: the allowance
@@ -3579,17 +3711,21 @@ func (v RunEventExecutionCheckpoint) MarshalJSON() ([]byte, error) {
 // that call's tool_call and tool_result. narrowed is the adapter's notice, before the model is
 // asked anything, that a tool's served schema lost a keyword on this family's wire. Also refused,
 // with tool proposal, where the host withholds a proposal (Plan mode, or a conversation without
-// artifact proposals).
+// artifact proposals). reason (ADR-0008), on a refusal of an act call of a tool with a source:
+// approval refused, the host's approval policy answered refuse; approval pending, the call came
+// while another act call of the run waits for the person's decision (at most one approval is
+// pending). Neither call is run.
 type RunEventGuardrail struct {
-	Type   string `json:"type"`
-	Tool   string `json:"tool"`
-	Action string `json:"action"`
-	Detail string `json:"detail"`
+	Type   string  `json:"type"`
+	Tool   string  `json:"tool"`
+	Action string  `json:"action"`
+	Detail string  `json:"detail"`
+	Reason *string `json:"reason,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var runEventGuardrailMembers = []string{"type", "tool", "action", "detail"}
+var runEventGuardrailMembers = []string{"type", "tool", "action", "detail", "reason"}
 
 // UnmarshalJSON decodes a RunEventGuardrail object and keeps the members the schema does not name.
 func (v *RunEventGuardrail) UnmarshalJSON(data []byte) error {
@@ -3964,8 +4100,9 @@ func (v RunEventUserQuestion) MarshalJSON() ([]byte, error) {
 // a host tool). Emitted before the call is made, so the host can journal it; its arguments are the
 // model's own, before the host's gate rewrites anything. A host tool with an interaction
 // (ask_user, delegate_tasks) gets no tool_call: it gets user_question or delegation_requested
-// instead. Read from the AssistantEvent union (web/src/assistant/engine.ts). Open: no reader at
-// run time refuses another member.
+// instead. An act call of a tool with a source whose approval policy answers ask gets
+// approval_requested instead (ADR-0008). Read from the AssistantEvent union
+// (web/src/assistant/engine.ts). Open: no reader at run time refuses another member.
 type ToolCall struct {
 	Type         string                 `json:"type"`
 	CallID       *string                `json:"callId,omitzero"`

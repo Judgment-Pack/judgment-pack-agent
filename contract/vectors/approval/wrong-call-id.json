@@ -1,0 +1,55 @@
+{
+  "description": "ADR-0008: a decision for a call the paused response is not waiting on (approval, the pending one, from pause.json) is refused before anything runs: the run ends with the stale-state failure, source context, and end; no request is sent, the call is not run and the checkpoint is not changed. Written by hand from the schemas; certified scenario 8 holds every engine to it.",
+  "schema": "checkpoint.json#/$defs/approvalDecision",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/toolSources.ts (SourceGate.decide, SourceGate.approved, approvalContinuation, APPROVAL_CONTINUATION)",
+      "packages/harness/context/managed.ts (the pause, the continuation's writes)",
+      "packages/harness/execution/controller.ts (initialize, recordPrompt)"
+    ]
+  },
+  "approval": {
+    "callId": "call_2_1",
+    "name": "tracker__create_issue",
+    "tool": "create_issue",
+    "source": {
+      "kind": "mcp",
+      "id": "tracker",
+      "trust": "public",
+      "toolListDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820",
+      "tool": "create_issue"
+    },
+    "args": {
+      "repository": "expense",
+      "title": "Missing mileage rate"
+    },
+    "state": "asked"
+  },
+  "events": [
+    {
+      "type": "error",
+      "message": "This decision is for a call this response is not waiting on; nothing was decided or run. Continue it with the decision on the call it asked about.",
+      "failure": {
+        "version": 1,
+        "code": "stale-state",
+        "source": "context",
+        "outcome": "unknown",
+        "detail": "This decision is for a call this response is not waiting on; nothing was decided or run. Continue it with the decision on the call it asked about."
+      }
+    },
+    {
+      "type": "end"
+    }
+  ],
+  "items": [
+    {
+      "callId": "call-the-run-did-not-ask-about",
+      "approved": true,
+      "note": "Go ahead."
+    }
+  ]
+}

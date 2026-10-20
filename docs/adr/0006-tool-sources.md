@@ -1,6 +1,7 @@
 # ADR-0006: Tool sources
 
-Status: proposed, 2026-10-19. Issue agent#66. The Desk's side (the custom-tool form, the MCP server
+Status: proposed, 2026-10-19. Issue agent#66. §2's act calls amended by
+[ADR-0008](0008-the-approval-pause.md) (the approval pause), 2026-10-20. The Desk's side (the custom-tool form, the MCP server
 connection with its pinned tool list and re-approval, the source provenance in the task view and the
 run report) is a Desk follow-up.
 
@@ -58,7 +59,7 @@ The path of a tool, as #66 draws it:
                      ▼                                ▼                              ▼
               read: run it                   propose: review card              act: approval pause
               (host executes under           (never acts; the person           (grant-states vector;
-               the user's grants)             accepts or rejects)               the host's approval reader)
+               the user's grants)             accepts or rejects)               the host's policy, ADR-0008)
                      │
                      ▼
   RESULT ──▶ framed as data (per-run marker) ──▶ ledger (read_window / search; images named, never dropped)
@@ -109,13 +110,16 @@ only, never offer an act, and a declaration may not carry `effect` or `interacti
   `propose_pack`'s proposal is: the model is told the call was proposed and nothing ran, the
   `tool_result` carries `proposed: true`, and the host runs the call on acceptance, after the run,
   under its grants.
-- **act**: before each call the host's approval reader for the tool (`HostTool.approve`, Go
-  `HostTool.Approve`) is asked about the call, `{name, tool, source, args}` (Go `ApprovalRequest`): the
-  wire name the model called, the tool's own name at its source, its source record and a copy of the
-  arguments, and the call runs only where it answers yes. A tool without a reader is refused every
-  call. The reader may wait for the person; the
-  package holds no grant and mints none, as `approval.json` already states for the host's actions.
-  A host may declare `approval: none` on an act; that is its decision, stated in its declaration.
+- **act**: amended by [ADR-0008](0008-the-approval-pause.md). Each call is answered at once by the
+  host's approval policy for the tool (`HostTool.approve`, Go `HostTool.Approve`), handed the call
+  `{name, tool, source, args}` (Go `ApprovalRequest`): the wire name the model called, the tool's own
+  name at its source, its source record and a copy of the arguments. `allow` runs the call, `refuse`
+  refuses it with a guardrail, and `ask` pauses the run: `approval_requested` in place of the call,
+  the call in the checkpoint's `approval`, the run ended, and the person's decision continuing it in
+  a new request that carries the result as one data block. A tool without a policy asks. The policy
+  never waits for the person, and the package holds no grant and mints none, as `approval.json`
+  already states for the host's actions. A host may declare `approval: none` on an act; that is its
+  decision, stated in its declaration.
 
 ### 3. Wire-safe names and the mapping
 
@@ -195,8 +199,9 @@ handed the abort and the call is answered as a timeout.
 The phase admits the name (the critic, the reformat run, Plan mode and a child keep their own
 offers); then the source's list has not changed; the tool, if catalogued, is loaded and its arguments
 match the schema it loaded; the source has calls left this turn, and the call takes its slot; the
-served list is still the pinned one; a proposal is held; an act has the host's approval; and the
-host's `execute` runs under the source's deadline. A result's receipt and a proposal's mark are kept
+served list is still the pinned one; a proposal is held; an act has the host's policy's `allow`
+(ADR-0008: the policy is asked where the engine hands the call to the host, after the gate's own
+checks, and `ask` pauses the run); and the host's `execute` runs under the source's deadline. A result's receipt and a proposal's mark are kept
 by the call's id (`HostTool.execute` is handed it as a third argument, Go carries it in the context,
 `WithCallID`), so results reported in any order carry their own; a run whose events carry no call id
 keeps them per tool in the order the calls finished.
@@ -213,7 +218,7 @@ host approves), reads with the custom tool, calls `write_file` (never offered, r
 and calls the server's tool again after its list changed (refused before the host). A second run,
 after the new list is declared with its digest, is offered the server's tools again and its call
 runs. The checks: the digests, the budget, the framing and the unchanged offer, the load and the
-unchanged prefix, the approvals (the reader is handed the wire name, the tool's own name, the source
+unchanged prefix, the approvals (the policy is handed the wire name, the tool's own name, the source
 record and the arguments), the refusals between their calls and results, the source records and the
 run report, and the second run. The unit tests hold the concurrent bound (20 calls, 8 run), the
 framed and dropped text inside a schema, the 400-tool catalogue, a child's shared gate, the marks by
@@ -229,8 +234,8 @@ call id, Plan mode with a read, a propose and an act source, and the arguments o
 
 ## What stays the host's
 
-The MCP client, the connection and its credentials, executing every call, the approval reader and
-whatever it asks the person, the review card for a proposal and running the call on acceptance,
+The MCP client, the connection and its credentials, executing every call, the approval policy
+(ADR-0008) and showing the person a paused call, the review card for a proposal and running the call on acceptance,
 pinning the tool list (`toolListDigest`) when the person approves a server and checking the served
 list (`currentDigest`), and showing the source provenance in the task view and the run report. A Go
 host opens the gate with the names the boundary will offer (`runcontext.OfferedHostTools`), as it
@@ -238,8 +243,8 @@ adds the boundary's context tools.
 
 ## Not decided here
 
-- An approval event that pauses the run and resumes it: the reader is asked inside the call, and the
-  run-event set stays the Desk's (no new kind).
+- An approval event that pauses the run and resumes it: decided by
+  [ADR-0008](0008-the-approval-pause.md), which replaces the reader asked inside the call.
 - A proposal's review card as a run event of its own: the `tool_result` carries `proposed`, and the
   `tool_call` carries the arguments.
 - Per-source overrides of the eight bounds: the policy's values hold for every source.

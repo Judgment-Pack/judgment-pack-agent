@@ -7,6 +7,7 @@ package runcontext
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"regexp"
 	"strings"
@@ -128,6 +129,19 @@ type SessionContext struct {
 	// CriticReading says the critic is reading: a preview then names the readers its allow-list
 	// admits. The narrowing itself is the gate's (gate.Calls.BeginCritic), not this package's.
 	CriticReading bool
+	// PauseClaim is an agent adapter's claim on ending its invocation (ADR-0008): asked before an
+	// act call's approval is written asked, so a call that loses the claim to a handoff or a question
+	// leaves no asked approval; nil, the approval is written.
+	PauseClaim func() bool
+	// Reformatting says the tool-free reformat run is running (ADR-0008: no act call is admitted
+	// in it); the refusal of its calls is the gate's (gate.Calls.BeginReformat).
+	Reformatting bool
+	// RunApproved is the act call the person approved, run once under its bounds through the host's
+	// own function (ADR-0008, SourceGate.Approved); set where the run's approval asks it.
+	RunApproved func(ctx context.Context) (ToolResult, bool, error)
+	// continued are the checkpoints the continuation of an approval wrote and the host
+	// acknowledged before the run's first request (ADR-0008), for the boundary to deliver.
+	continued []contract.RunEvent
 	// HostParts are the host's parts of this run's prompt (ADR-0005), asked once before its first
 	// request (AskHost); none until then.
 	HostParts HostParts
@@ -854,10 +868,70 @@ func (c *SessionContext) OpenSources(declared *Declared, catalogue bool, toolSch
 		c.Execution.State.Sources = []contract.ProvenanceSourceFigures{}
 	}
 	c.Sources = NewSourceGate(declared, c.Policy, c.Marker, toolSchemas, func() *[]contract.ProvenanceSourceFigures { return &c.Execution.State.Sources }, parent)
+	// ADR-0008: the run's approval, in the execution state; no act call is admitted in a delegated
+	// child, in Plan mode, while the critic reads or in the reformat run.
+	c.Sources.SetApprovals(approvalBook{c: c, child: parent != nil})
 	c.Catalogue = catalogue
 	c.Execution.LoadedSchemas = c.Sources.LoadedSection
 	c.Execution.SourceRows = func() []contract.ProvenanceSourceFigures { return c.Sources.Rows(nil) }
 }
+
+// approvalBook is the run's approval as its source gate sees it (ADR-0008, ApprovalBook).
+type approvalBook struct {
+	c     *SessionContext
+	child bool
+}
+
+func (b approvalBook) Current() *contract.CheckpointApproval { return b.c.Execution.State.Approval }
+
+func (b approvalBook) Ask(record contract.CheckpointApproval) bool {
+	if b.c.PauseClaim != nil && !b.c.PauseClaim() {
+		return false
+	}
+	b.c.Execution.State.Approval = &record
+	return true
+}
+
+func (b approvalBook) Closed() string {
+	switch {
+	case b.child:
+		return "A delegated child admits reads only, and no act call; this call was not run and nothing was changed"
+	case b.c.session.Context != nil && b.c.session.Context.Phase == "plan":
+		return "Plan mode admits reads only, and no act call; this call was not run and nothing was changed"
+	case b.c.CriticReading || b.c.Reformatting:
+		return "The critic and the reformat run admit no act call; this call was not run and nothing was changed"
+	}
+	return ""
+}
+
+// Approval is the decision on one act call of a tool with a source (ADR-0008, approval), asked by an
+// adapter where it hands a host tool to the host, before the call's tool_call (SourceGate.Decide):
+// the approval_requested event the adapter delivers in place of that tool_call where the host's
+// policy answers ask, the call then never handed to the host; nil where the call goes on (run, or
+// refused by the gate with its guardrail).
+func (c *SessionContext) Approval(ctx context.Context, name string, args json.RawMessage, callID string) *contract.RunEvent {
+	if c.Sources == nil || !c.Sources.NeedsApproval(name) {
+		return nil
+	}
+	if answer, _, _ := c.Sources.Decide(ctx, name, args, callID, true); answer != "ask" {
+		return nil
+	}
+	return ApprovalRequested(*c.Execution.State.Approval)
+}
+
+// ApprovalRequested is the approval_requested event of an asked approval (ADR-0008).
+func ApprovalRequested(asked contract.CheckpointApproval) *contract.RunEvent {
+	args := map[string]json.RawMessage{}
+	for key, value := range asked.Args {
+		args[key] = append(json.RawMessage(nil), value...)
+	}
+	return &contract.RunEvent{ApprovalRequested: &contract.RunEventApprovalRequested{Type: "approval_requested", CallID: asked.CallID,
+		Name: asked.Name, Tool: asked.Tool, Source: copyRecord(asked.Source), Args: args}}
+}
+
+// ErrApprovalPaused is a request refused because an act call of the run waits for the person's
+// decision (ADR-0008): the boundary ends the run paused, with no error, once the adapter reports it.
+var ErrApprovalPaused = errors.New("Work paused for the person’s decision on an act call. Continue with that decision.")
 
 // Run is one run opened: its context, and the session with its tools wrapped.
 type Run struct {
@@ -1027,7 +1101,96 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		}
 		return call()
 	}
+	// ADR-0008: a paused act call the person decided on. Approved: the decision is written and
+	// acknowledged through the host's durable callback, the call runs once under its bounds through
+	// the host's own function, and its result is written and acknowledged before anything else;
+	// refused, or restored with its result: written. The run's first request then carries the result
+	// as one data block (ApprovalContinuationText).
+	if step := held.Execution.ApprovalStep; step != "" {
+		if err := held.continueApproval(ctx, step, session.HostTools); err != nil {
+			held.Close()
+			return nil, err
+		}
+		out.Prompt += "\n\n" + ApprovalContinuationText(*held.Execution.State.Approval, DataMarker())
+	}
 	return &Run{Context: held, Session: out}, nil
+}
+
+// continueApproval runs the continuation's writes and, approved, the call, before the run's first
+// request (ADR-0008). tools are the offered host tools before the boundary wraps them.
+func (c *SessionContext) continueApproval(ctx context.Context, step string, tools []HostTool) error {
+	write := func() error {
+		state, err := c.Execution.Snapshot("")
+		if err != nil {
+			return err
+		}
+		if c.session.Context != nil && c.session.Context.Checkpoint != nil {
+			if err := c.session.Context.Checkpoint(ctx, state); err != nil {
+				if failure.IsCancelled(err) || ctx.Err() != nil {
+					return failure.Cancelled
+				}
+				return failure.Err("storage", "storage", "not-started")
+			}
+		}
+		durable := true
+		c.continued = append(c.continued, contract.RunEvent{ExecutionCheckpoint: &contract.RunEventExecutionCheckpoint{Type: "execution_checkpoint", Durable: &durable, Checkpoint: state}})
+		return nil
+	}
+	switch step {
+	case "execute":
+		// The run's checkpoint events reach the host only after its context opens, so the approved
+		// write is held before the call runs only through the host's durable callback: without it the
+		// approved call is not run.
+		if c.session.Context == nil || c.session.Context.Checkpoint == nil {
+			return failure.Authored("configuration", "An approved act call runs only where the host acknowledges the run's writes through its durable callback (Input.Checkpoint), so the approval is written before the call runs; nothing was run.", "context")
+		}
+		if err := write(); err != nil {
+			return err
+		}
+		approval := *c.Execution.State.Approval
+		var run func(context.Context, json.RawMessage) (ToolResult, error)
+		for _, tool := range tools {
+			if tool.Name == approval.Name && tool.Execute != nil {
+				execute := tool.Execute
+				run = func(ctx context.Context, args json.RawMessage) (ToolResult, error) {
+					return execute(WithCallID(ctx, approval.CallID), args)
+				}
+			}
+		}
+		var result ToolResult
+		var err error
+		if c.Sources != nil {
+			result, _, err = c.Sources.Approved(ctx, approval, run)
+		} else {
+			result = textFailure(approval.Name + " is no longer offered; the call was not run and nothing was changed.")
+		}
+		if err != nil {
+			return err
+		}
+		approval.State = "executed"
+		approval.Result = contractResult(result)
+		c.Execution.State.Approval = &approval
+		if c.Sources != nil {
+			c.continued = append(c.continued, c.Sources.TakeNotices()...)
+		}
+		return write()
+	case "write":
+		return write()
+	}
+	return nil
+}
+
+// textFailure is a failed result with one sentence.
+func textFailure(text string) ToolResult {
+	return ResultOf([]Content{TextContent(text)}, nil).WithIsError(true)
+}
+
+// TakeContinued are the checkpoints the continuation of an approval wrote before the run's first
+// request (ADR-0008), once.
+func (c *SessionContext) TakeContinued() []contract.RunEvent {
+	out := c.continued
+	c.continued = nil
+	return out
 }
 
 // ClaimRequest is what contextualSession's wrapped model call does before each model request that
@@ -1035,6 +1198,10 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 // recorded (ADR-0005, RecordPrompt), and the host's checkpoint written before anything is sent, so a
 // checkpoint that cannot be saved stops the request.
 func (c *SessionContext) ClaimRequest(ctx context.Context, body []byte) error {
+	// ADR-0008: while an act call waits for the person's decision, no request is sent.
+	if c.Execution.ApprovalAsked() {
+		return ErrApprovalPaused
+	}
 	if err := c.Execution.Claim(); err != nil {
 		return err
 	}

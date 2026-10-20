@@ -1,5 +1,5 @@
 import {readCompletion,type ModelCompletion} from '../completion'
-import {readFailure,type AIFailure} from '../failures'
+import {failure,readFailure,type AIFailure} from '../failures'
 import type {McpToolResult} from '../engine'
 import {MAX_TURNS} from '../engines/contract'
 import {utf8Bytes} from '../context/policy'
@@ -39,6 +39,43 @@ export interface ExecutionCheckpoint {
  prompts?:PromptDigest[];
  /** ADR-0006: the run report's rows by source, the Runtime's first, carried as `used` is. */
  sources?:SourceFigures[];
+ /** ADR-0008: the act call the run paused at for the person's decision, and what became of it. */
+ approval?:ApprovalRecord;
+}
+/**
+ * One act call paused for the person's decision (ADR-0008; `checkpoint.json#/$defs/approval`): the
+ * call as the model made it, and its state. `asked`: pending, the status paused; `approved`, written
+ * and acknowledged before the call runs; `refused`, with the refused result; `executed`, with the
+ * result, written and acknowledged before anything else; `answered` once the continuation request
+ * carrying the result has been sent.
+ */
+export interface ApprovalRecord {callId:string;name:string;tool:string;source:import('../toolSources').SourceRecord;args:Record<string,unknown>;state:'asked'|'approved'|'refused'|'executed'|'answered';decidedAt?:string;note?:string;result?:McpToolResult}
+/** The person's decision on a paused act call (ADR-0008; `checkpoint.json#/$defs/approvalDecision`), handed to the run as `context.approval`. */
+export interface ApprovalDecision {callId:string;approved:boolean;note?:string}
+const APPROVAL_STATES=['asked','approved','refused','executed','answered']
+const WIRE_NAME=/^[A-Za-z0-9_-]{1,64}$/
+/** A source record as an approval carries it, read closed (`tool-offer.json#/$defs/sourceRecord`). */
+function validRecord(v:unknown):boolean{
+ return object(v)&&exact(v,['kind','id','trust','version','toolListDigest','tool','receipt'])&&['runtime','gateway','mcp','custom'].includes(String(v.kind))&&typeof v.id==='string'&&/^[A-Za-z][A-Za-z0-9-]{0,23}$/.test(v.id)&&['first-party','connected','public','person'].includes(String(v.trust))&&(v.version===undefined||typeof v.version==='string'&&v.version.length>=1&&v.version.length<=64)&&(v.toolListDigest===undefined||typeof v.toolListDigest==='string'&&/^sha256:[0-9a-f]{64}$/.test(v.toolListDigest))&&(v.tool===undefined||text(v.tool,128))&&(v.receipt===undefined||text(v.receipt,128))
+}
+/** The checkpoint's approval, read closed (ADR-0008). */
+export function validApproval(v:unknown):v is ApprovalRecord{
+ return object(v)&&exact(v,['callId','name','tool','source','args','state','decidedAt','note','result'])&&text(v.callId,256)&&v.callId.length>=1&&typeof v.name==='string'&&WIRE_NAME.test(v.name)&&text(v.tool,128)&&v.tool.length>=1&&validRecord(v.source)&&object(v.args)&&APPROVAL_STATES.includes(String(v.state))&&(v.decidedAt===undefined||typeof v.decidedAt==='string'&&Number.isFinite(Date.parse(v.decidedAt)))&&(v.note===undefined||text(v.note,2000))&&(v.result===undefined||object(v.result))
+}
+/** The person's decision, read closed (ADR-0008), or undefined where it is not one. */
+export function readApprovalDecision(v:unknown):ApprovalDecision|undefined{
+ if(!object(v)||!exact(v,['callId','approved','note'])||!text(v.callId,256)||v.callId.length<1||typeof v.approved!=='boolean'||v.note!==undefined&&!text(v.note,2000))return
+ return {callId:v.callId,approved:v.approved,...(v.note===undefined?{}:{note:v.note as string})}
+}
+/** The refused result an act call the person refused carries (ADR-0008): never run. */
+export function refusedResult(name:string):McpToolResult{
+ const held={...failure('permission','tool','not-started'),detail:`The person refused this call of ${name}; it was not run and nothing was changed.`}
+ return {isError:true,content:[{type:'text',text:held.detail}],structuredContent:{failure:held}}
+}
+/** What an approved call restored before its result was written carries (ADR-0008): it may have run, and it is not run again. */
+export function unknownOutcome(name:string):McpToolResult{
+ const held={...failure('unknown','tool','unknown'),detail:`This call of ${name} was approved, and the run stopped before its result was written, so it may have run. It was not run again: check its outcome before calling it again.`}
+ return {isError:true,content:[{type:'text',text:held.detail}],structuredContent:{failure:held}}
 }
 /**
  * One source's row of the run report (ADR-0006, `toolSources.ts`): the contract's
@@ -93,6 +130,7 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value.completions!==undefined&&(!Array.isArray(value.completions)||value.completions.length>MAX_REQUEST_ALLOWANCE||value.completions.some(row=>!object(row)||!Number.isInteger(row.request)||Number(row.request)<1||Number(row.request)>Number(value.used)||!['work','synthesis','review'].includes(String(row.phase))||!readCompletion(row.result)||row.attempt!==undefined&&(!Number.isInteger(row.attempt)||Number(row.attempt)<1||Number(row.attempt)>3)||row.failure!==undefined&&!readFailure(row.failure)||row.waitMs!==undefined&&(!Number.isInteger(row.waitMs)||Number(row.waitMs)<0||Number(row.waitMs)>86400000))))return fail()
  if(value.prompts!==undefined&&(!Array.isArray(value.prompts)||value.prompts.length>MAX_PROMPT_DIGESTS||value.prompts.some((row,at,rows)=>!object(row)||!exact(row,['request','sha256'])||!Number.isSafeInteger(row.request)||Number(row.request)<1||at>0&&Number(row.request)<=Number((rows[at-1] as Record<string,unknown>).request)||typeof row.sha256!=='string'||!/^[a-f0-9]{64}$/.test(row.sha256))))return fail()
  if(value.sources!==undefined&&!validSourceFigures(value.sources))return fail()
+ if(value.approval!==undefined&&!validApproval(value.approval))return fail()
  if(!Array.isArray(value.operations)||value.operations.length>400||new Set(value.operations.map(o=>o.id)).size!==value.operations.length)return fail()
  for(const op of value.operations){if(!object(op)||!text(op.id,100)||!text(op.name,150)||!['running','complete','failed','interrupted'].includes(String(op.status))||op.result!==undefined&&(!object(op.result)||(op.result.content!==undefined&&(!Array.isArray(op.result.content)||op.result.content.some(p=>!object(p)||p.type!==undefined&&typeof p.type!=='string'||p.text!==undefined&&typeof p.text!=='string')))))return fail()}
  if(!object(value.context)||!text(value.context.scope,100)||!Array.isArray(value.context.entries)||value.context.entries.length>800||new Set(value.context.entries.map(e=>e.id)).size!==value.context.entries.length)return fail()

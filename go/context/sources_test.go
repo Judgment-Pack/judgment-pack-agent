@@ -282,34 +282,39 @@ func TestLoadToolLoadsOnlyACataloguedSchema(t *testing.T) {
 	}
 }
 
-func TestAnActRunsOnlyWithTheHostsApproval(t *testing.T) {
-	answer := false
+func TestAnActRunsOnlyWhereTheHostsPolicyAllowsIt(t *testing.T) {
+	answer := "refuse"
 	var seen []string
 	tools := declaredTools(t, vectorItems(t, "tool-offer/source-declarations.json"))
 	for at := range tools {
 		if tools[at].Name == "update_work_item" {
-			tools[at].Approve = func(_ context.Context, call ApprovalRequest) (bool, error) {
+			tools[at].Approve = func(call ApprovalRequest) string {
 				raw, _ := json.Marshal(call)
 				seen = append(seen, string(raw))
 				call.Args[0] = ' ' // a copy: the call's own arguments are untouched
-				return answer, nil
+				return answer
 			}
 		}
 	}
 	gate, byName, _ := sourceGate(t, tools, Defaults, false)
 	_, err := callThrough(gate, byName, "ado__update_work_item", `{"id":7,"state":"Done"}`)
-	refused(t, err, "needs the person's approval")
-	if notices := gate.TakeNotices(); len(notices) != 1 || notices[0].Guardrail.Tool != "ado__update_work_item" {
+	refused(t, err, "approval policy refused")
+	if notices := gate.TakeNotices(); len(notices) != 1 || notices[0].Guardrail.Tool != "ado__update_work_item" || notices[0].Guardrail.Reason == nil || *notices[0].Guardrail.Reason != "approval refused" {
 		t.Fatalf("notices %+v", notices)
 	}
-	answer = true
+	// An answer that is none of the three is a refusal.
+	answer = "yes"
+	_, err = callThrough(gate, byName, "ado__update_work_item", `{"id":7,"state":"Done"}`)
+	refused(t, err, "approval policy refused")
+	gate.TakeNotices()
+	answer = "allow"
 	if _, err := callThrough(gate, byName, "ado__update_work_item", `{"id":7,"state":"Done"}`); err != nil {
 		t.Fatal(err)
 	}
 	// The reader is handed the call: its wire name, the tool's own name, its source record and the arguments.
 	want := `{"Name":"ado__update_work_item","Tool":"update_work_item","Source":{"kind":"gateway","id":"ado","trust":"connected","version":"2026-10","tool":"update_work_item"},"Args":{"id":7,"state":"Done"}}`
-	if len(seen) != 2 {
-		t.Fatalf("the reader was asked %d times", len(seen))
+	if len(seen) != 3 {
+		t.Fatalf("the policy was asked %d times", len(seen))
 	}
 	for _, got := range seen {
 		held, err := ParseJSON([]byte(got))
@@ -369,7 +374,7 @@ func TestAChangedListRefusesEveryLaterCallOfTheSource(t *testing.T) {
 	ran := 0
 	tools := declaredTools(t, declarations)
 	tools[1].Source.CurrentDigest = func(context.Context) (string, error) { return served, nil }
-	tools[1].Approve = func(context.Context, ApprovalRequest) (bool, error) { return true, nil }
+	tools[1].Approve = func(ApprovalRequest) string { return "allow" }
 	tools[1].Execute = func(context.Context, json.RawMessage) (ToolResult, error) {
 		ran++
 		return ResultOf([]Content{TextContent("opened")}, nil), nil
@@ -707,15 +712,19 @@ func TestTheSlotIsGivenBackOnARefusalAfterTheClaim(t *testing.T) {
 		switch tools[at].Name {
 		case "create_issue":
 			tools[at].Source.CurrentDigest = func(context.Context) (string, error) { return served, nil }
-			tools[at].Approve = func(context.Context, ApprovalRequest) (bool, error) { return true, nil }
+			tools[at].Approve = func(ApprovalRequest) string { return "allow" }
 		case "update_work_item":
-			tools[at].Approve = func(context.Context, ApprovalRequest) (bool, error) {
+			tools[at].Approve = func(ApprovalRequest) string {
 				answer := answers[0]
 				answers = answers[1:]
 				if answer == "stop" {
 					cancel()
+					return "allow"
 				}
-				return answer != "deny", nil
+				if answer == "deny" {
+					return "refuse"
+				}
+				return answer
 			}
 		}
 	}
@@ -730,7 +739,7 @@ func TestTheSlotIsGivenBackOnARefusalAfterTheClaim(t *testing.T) {
 	}
 	// With the bound at one, each of these passes the bound only if the one before gave its slot back.
 	_, err = callThrough(gate, byName, "ado__update_work_item", `{"id":1,"state":"Done"}`)
-	refused(t, err, "needs the person's approval")
+	refused(t, err, "approval policy refused")
 	_, err = gate.Call(stop, "ado__update_work_item", json.RawMessage(`{"id":1,"state":"Done"}`), byName["ado__update_work_item"].Execute)
 	if !failure.IsCancelled(err) || (*rows)[4].Calls != 0 || (*rows)[4].Refused != 1 {
 		t.Fatalf("a stopped run: %v, ado %+v", err, (*rows)[4])
@@ -808,7 +817,7 @@ func TestTheResultOfACallStoppedAfterItsApprovalIsMarkedAndTakesNoOthersMark(t *
 	tools := declaredTools(t, vectorItems(t, "tool-offer/source-declarations.json"))
 	for at := range tools {
 		if tools[at].Name == "update_work_item" {
-			tools[at].Approve = func(context.Context, ApprovalRequest) (bool, error) { cancel(); return true, nil }
+			tools[at].Approve = func(ApprovalRequest) string { cancel(); return "allow" }
 		} else {
 			tools[at].Execute = func(context.Context, json.RawMessage) (ToolResult, error) {
 				result := ResultOf([]Content{TextContent("ok")}, nil)
@@ -846,7 +855,7 @@ func TestACataloguedToolsArgumentsAreHeldToTheSchemaLoadToolLoaded(t *testing.T)
 	ran := 0
 	tools := declaredTools(t, vectorItems(t, "tool-offer/source-declarations.json"))
 	for at := range tools {
-		tools[at].Approve = func(context.Context, ApprovalRequest) (bool, error) { return true, nil }
+		tools[at].Approve = func(ApprovalRequest) string { return "allow" }
 		tools[at].Execute = func(context.Context, json.RawMessage) (ToolResult, error) { ran++; return ResultOf(nil, nil), nil }
 	}
 	policy := Defaults
@@ -979,7 +988,7 @@ func TestPlanModeOffersOnlyTheReadsOfASource(t *testing.T) {
 	var tools []HostTool
 	for _, class := range []string{"read", "propose", "act"} {
 		tools = append(tools, HostTool{Name: class + "_note", Description: "A " + class + ".", InputSchema: json.RawMessage(`{"type":"object"}`), EffectClass: class, Source: mine,
-			Approve: func(context.Context, ApprovalRequest) (bool, error) { return true, nil },
+			Approve: func(ApprovalRequest) string { return "allow" },
 			Execute: func(context.Context, json.RawMessage) (ToolResult, error) {
 				executed = append(executed, class)
 				return ResultOf([]Content{TextContent(class)}, nil), nil

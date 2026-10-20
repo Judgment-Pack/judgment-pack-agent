@@ -45,6 +45,7 @@ import { readDelegationRequest } from '../../delegationContract'
 import { assistantLanguageInstructions } from '../../host'
 import { DATA_RULE, readingTool } from '../../framing'
 import { GateViolation } from '../../toolGate'
+import { APPROVAL_HELD } from '../../toolSources'
 import { readModelQuestion } from '../../questions'
 import { questionFailureResult } from '../../questionFailure'
 import { separateImages, type HeldImage, type ImageRouting } from '../../images'
@@ -470,7 +471,16 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
       executionSignal.throwIfAborted()
       const refusal = await rejectToolStep(tool.name, args)
       if (refusal) return bare(refusal)
-      const correlation = session.interactive ? { callId: crypto.randomUUID() } : {}
+      // ADR-0008: an act call of a tool with a source always carries an id, whether or not the run's
+      // events carry one, so the decision taken before its call is its own, never another call's.
+      const correlation = session.interactive || context.sources?.needsApproval(tool.name) ? { callId: crypto.randomUUID() } : {}
+      // ADR-0008: an act call the host's policy asks about is held for the person, never run: its
+      // approval_requested in place of the call, and the run's next request is refused.
+      const held = await context.approval(tool.name, args, correlation.callId)
+      if (held !== undefined) {
+        await deliver(held)
+        return bare({ content: [{ type: 'text', text: APPROVAL_HELD }], isError: true })
+      }
       // A question pauses the turn and is reported as user_question; every other call, the delegation
       // among them (agent#14), is a call and a result.
       if (tool.interaction !== 'question') await deliver({ type: 'tool_call', ...correlation, name: tool.name, args })

@@ -178,11 +178,12 @@ type HostTool struct {
 	// Approval is whether each call needs the person's approval: none or required ("" is the
 	// effect class's default, required for act).
 	Approval string
-	// Approve is the host's approval reader for a tool with a source whose calls need approval:
-	// asked before each call with the call (ApprovalRequest: its wire name, the tool's own name,
-	// its source record and a copy of its arguments), and the call runs only where it answers
-	// true. Nil, every such call is refused. The package holds no grant.
-	Approve func(ctx context.Context, call ApprovalRequest) (bool, error)
+	// Approve is the host's approval policy for a tool with a source whose calls need approval
+	// (ADR-0006, ADR-0008): asked at each call with the call (ApprovalRequest: its wire name, the
+	// tool's own name, its source record and a copy of its arguments) and answering at once:
+	// "allow" runs it, "refuse" refuses it, "ask" pauses the run (approval_requested) until the
+	// person's decision continues it. Nil, every such call asks. The package holds no grant.
+	Approve ApprovalPolicy
 }
 
 // Declaration is the tool as the offer declares it to the model (tool-offer.json#/$defs/hostTool).
@@ -299,6 +300,10 @@ type Input struct {
 	Link              ExecutionLink
 	Connection        string
 	DelegationReuse   *bool
+	// Approval is the person's decision on the act call a paused Execution waits for (ADR-0008;
+	// checkpoint.json#/$defs/approvalDecision), the continuation input beside a request grant. A
+	// decision for any other call is refused before anything runs (stale-state).
+	Approval *contract.CheckpointApprovalDecision
 }
 
 // ExecutionLink is how the delegation coordinator reaches a run it starts (agent#14): told the

@@ -26,6 +26,10 @@ HARNESS_CEILING_ADDITIONS = ["experimental_test_cases"]
 # Deep Agents adapter (docs/adr/0003-the-deep-agents-adapter.md).
 HARNESS_ENGINE_ADDITIONS = ["deepagents", "eino"]
 
+# Event kinds the harness emits beyond the Desk's (contract/desk/inventory.json): the approval pause
+# (docs/adr/0008-the-approval-pause.md), on the host's stream.
+HARNESS_EVENT_ADDITIONS = ["approval_requested"]
+
 EXPECTED_SCHEMAS = {
     "run-event.json",
     "tool-offer.json",
@@ -67,6 +71,9 @@ RELEASE_REVIEWED_DEFS = [
     ("provenance.json", "sourceFigures"),
     # ADR-0005 and ADR-0007, and the checkpoint's root: the members the v0.4.0 release review found no vector carried (#76).
     ("provenance.json", "promptDigest"), ("checkpoint.json", "handoff"), ("run-event.json", "delegation_requested"),
+    # ADR-0008: the approval pause.
+    ("run-event.json", "approval_requested"), ("run-event.json", "guardrail"), ("checkpoint.json", "approval"),
+    ("checkpoint.json", "approvalDecision"),
 ]
 
 # The reasoning kinds each wire speaks (WIRE_REASONING in packages/harness/capabilities.ts): a
@@ -192,7 +199,7 @@ class SchemaTests(unittest.TestCase):
         for line in (CONTRACT / "README.md").read_text(encoding="utf-8").splitlines():
             row = re.match(r"^\| `([a-z-]+\.json)` \|[^|]*\| (closed|open) \|([^|]*)\|", line)
             if row:
-                table[row.group(1)] = (row.group(2), set(re.findall(r"`\$defs/([A-Za-z]+)`", row.group(3))))
+                table[row.group(1)] = (row.group(2), set(re.findall(r"`\$defs/([A-Za-z_]+)`", row.group(3))))
         self.assertEqual(set(table), EXPECTED_SCHEMAS)
         for name, schema in schemas().items():
             with self.subTest(schema=name):
@@ -214,7 +221,7 @@ class DeskInventoryTests(unittest.TestCase):
         declared = schema["properties"]["type"]["enum"]
         desk = self.inventory["eventTypes"]["values"]
         self.assertEqual(sorted(set(desk) - set(declared)), [], "kinds the Desk emits that run-event.json lacks")
-        self.assertEqual(sorted(set(declared) - set(desk)), [], "kinds run-event.json names that the Desk does not")
+        self.assertEqual(sorted(set(declared) - set(desk)), sorted(HARNESS_EVENT_ADDITIONS), "kinds run-event.json names beyond the Desk's and the harness's additions")
 
     def test_every_run_event_kind_has_exactly_one_definition(self):
         documents = self.schemas
@@ -558,6 +565,57 @@ class VectorTests(unittest.TestCase):
         data = rest[: -len(closing)]
         self.assertNotIn(marker, data)
         self.assertEqual(problems(validator(self.schemas, "delegated-task.json#/$defs/answer"), [json.loads(data)]), [])
+
+    def test_the_approval_continuation_carries_the_decision_as_one_data_block(self):
+        # ADR-0008: checkpoint.json#/$defs/approvalContinuation. A line, then one block opened and
+        # closed by the same marker, whose data is the decision and the result; the person's note
+        # only inside it.
+        decision_check = validator(self.schemas, "checkpoint.json#/$defs/approvalDecision")
+        continuation_check = validator(self.schemas, "checkpoint.json#/$defs/approvalContinuation")
+        result_check = validator(self.schemas, "tool-result.json#/$defs/mcpToolResult")
+        paused = self.vectors["approval/pause.json"]["items"][1]["checkpoint"]
+        self.assertEqual((paused["status"], paused["approval"]["state"]), ("paused", "asked"))
+        self.assertEqual(self.vectors["approval/pause.json"]["items"][0]["callId"], paused["approval"]["callId"])
+        for name, approved in (("approval/continue-refused.json", False), ("approval/continue-approved.json", True)):
+            with self.subTest(vector=name):
+                vector = self.vectors[name]
+                decision = vector["decision"]
+                self.assertEqual(problems(decision_check, [decision]), [])
+                self.assertEqual(decision["approved"], approved)
+                self.assertEqual(decision["callId"], paused["approval"]["callId"])
+                text = vector["continuation"]
+                self.assertEqual(problems(continuation_check, [text]), [])
+                line, opening, rest = text.split("\n", 2)
+                self.assertTrue(line.startswith("APPROVAL RESULT: "))
+                marker = re.match(r'^BEGIN RETRIEVED DATA ([0-9a-f]{32}) from tool "tracker__create_issue"; ', opening).group(1)
+                closing = f"\nEND RETRIEVED DATA {marker}"
+                self.assertTrue(rest.endswith(closing))
+                data = json.loads(rest[: -len(closing)])
+                self.assertEqual(data["callId"], decision["callId"])
+                self.assertEqual(data["approved"], approved)
+                self.assertEqual(problems(result_check, [data["result"]]), [])
+                self.assertEqual(data["result"].get("isError", False), not approved)
+                if "note" in decision:
+                    self.assertEqual(data["note"], decision["note"])
+                    self.assertEqual(text.count(decision["note"]), 1)
+                written = [item["checkpoint"]["approval"] for item in vector["items"] if item["type"] == "execution_checkpoint"]
+                states = [held["state"] for held in written]
+                self.assertEqual(states, ["refused", "answered"] if not approved else ["approved", "executed", "answered"])
+                self.assertEqual(written[-2]["result"], data["result"])
+                for held in written:
+                    self.assertEqual({k: held[k] for k in ("callId", "name", "tool", "source", "args")}, {k: paused["approval"][k] for k in ("callId", "name", "tool", "source", "args")})
+                # The continuation request counts as one more model request.
+                self.assertEqual(vector["items"][-2]["checkpoint"]["used"], paused["used"] + 1)
+        wrong = self.vectors["approval/wrong-call-id.json"]
+        self.assertNotEqual(wrong["items"][0]["callId"], wrong["approval"]["callId"])
+        self.assertEqual(problems(validator(self.schemas, "checkpoint.json#/$defs/approval"), [wrong["approval"]]), [])
+        self.assertEqual(problems(validator(self.schemas, "run-event.json"), wrong["events"]), [])
+        self.assertEqual([event["type"] for event in wrong["events"]], ["error", "end"])
+        self.assertEqual(wrong["events"][0]["failure"]["code"], "stale-state")
+        pending = self.vectors["approval/second-act-while-pending.json"]["items"]
+        self.assertEqual([item["type"] for item in pending], ["approval_requested", "tool_call", "guardrail", "tool_result", "execution_checkpoint", "end"])
+        self.assertEqual(pending[2]["reason"], "approval pending")
+        self.assertEqual(pending[1]["callId"], pending[3]["callId"])
 
     def test_every_member_the_release_review_named_is_carried_by_a_vector(self):
         # The members of the $defs added or changed between v0.1.0 and the v0.2.0 review, and the

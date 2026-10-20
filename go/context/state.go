@@ -293,6 +293,9 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 	if sources := value.Get("sources"); sources != nil && !ValidSourceFigures(sources) {
 		return nil, errSavedExecution
 	}
+	if approval := value.Get("approval"); approval != nil && !ValidApproval(approval) {
+		return nil, errSavedExecution
+	}
 	if prompts := value.Get("prompts"); prompts != nil {
 		if !prompts.IsArray() || prompts.Len() > MaxPromptDigests {
 			return nil, errSavedExecution
@@ -513,4 +516,60 @@ func ValidHandoff(v *Value) bool {
 	}
 	answered := held.State == "answered" || held.State == "continued"
 	return answered == (held.Answer != nil)
+}
+
+// approvalStates are the states of an act call paused for the person's decision (ADR-0008).
+var approvalStates = []string{"asked", "approved", "refused", "executed", "answered"}
+
+var approvalWireName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
+// ValidApproval is the checkpoint's approval (ADR-0008; validApproval), read closed: its call id,
+// its wire name, the tool's own name, its source record, its arguments (an object), its state, and
+// where present when it was decided, the person's note and the result.
+func ValidApproval(v *Value) bool {
+	var held contract.CheckpointApproval
+	if !isObject(v) || json.Unmarshal(v.JSON(), &held) != nil {
+		return false
+	}
+	source := v.Get("source")
+	if held.CallID == "" || U16Length(held.CallID) > 256 || !approvalWireName.MatchString(held.Name) ||
+		held.Tool == "" || U16Length(held.Tool) > 128 || !v.Get("args").IsObject() || !oneOf(v.Get("state"), approvalStates...) ||
+		!isObject(source) || !oneOf(source.Get("kind"), "runtime", "gateway", "mcp", "custom") || !sourceID.MatchString(held.Source.ID) ||
+		!oneOf(source.Get("trust"), "first-party", "connected", "public", "person") {
+		return false
+	}
+	if held.Source.Version != nil && (U16Length(*held.Source.Version) < 1 || U16Length(*held.Source.Version) > 64) ||
+		held.Source.ToolListDigest != nil && !sourceDigest.MatchString(*held.Source.ToolListDigest) ||
+		held.Source.Tool != nil && U16Length(*held.Source.Tool) > 128 || held.Source.Receipt != nil && U16Length(*held.Source.Receipt) > 128 {
+		return false
+	}
+	if held.DecidedAt != nil && !parsableDate(*held.DecidedAt) || held.Note != nil && U16Length(*held.Note) > 2000 {
+		return false
+	}
+	return v.Get("result") == nil || isObject(v.Get("result"))
+}
+
+// RefusedResult is the refused result an act call the person refused carries (ADR-0008;
+// refusedResult): never run.
+func RefusedResult(name string) ToolResult {
+	return failedResult(failure.Authored("permission", "The person refused this call of "+name+"; it was not run and nothing was changed.", "tool"), "not-started")
+}
+
+// UnknownOutcome is what an approved call restored before its result was written carries (ADR-0008;
+// unknownOutcome): it may have run, and it is not run again.
+func UnknownOutcome(name string) ToolResult {
+	return failedResult(failure.Authored("unknown", "This call of "+name+" was approved, and the run stopped before its result was written, so it may have run. It was not run again: check its outcome before calling it again.", "tool"), "unknown")
+}
+
+// failedResult is a failure as the result the model reads, with its outcome.
+func failedResult(err *failure.Error, outcome string) ToolResult {
+	held := err.Failure
+	held.Outcome = outcome
+	detail := ""
+	if held.Detail != nil {
+		detail = *held.Detail
+	}
+	encoded, _ := json.Marshal(map[string]any{"failure": held})
+	structured, _ := ParseJSON(encoded)
+	return ResultOf([]Content{TextContent(detail)}, structured).WithIsError(true)
 }

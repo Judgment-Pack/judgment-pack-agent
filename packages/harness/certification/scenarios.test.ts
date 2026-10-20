@@ -1,5 +1,5 @@
 /**
- * The certified scenarios (agent#13, ADR-0006): seven scripted scenarios beside the bake-off's, each
+ * The certified scenarios (agent#13, ADR-0006, ADR-0008): eight scripted scenarios beside the bake-off's, each
  * written by hand as `scenario.json` is (`certification/scenarios/*.json`) and run on every adapter of its kind
  * by `npm run certify -- --adapter <id>`:
  *
@@ -11,7 +11,10 @@
  * 5. the correction loop: a refused draft, one correction request, the critic's comparison;
  * 6. a multi-turn transcript: the chat's index and ledger across three runs;
  * 7. tool sources (ADR-0006): a scripted MCP server whose descriptions tell the model to drop the
- *    data rule, whose tool list passes the schema budget and changes mid-run, and one custom read.
+ *    data rule, whose tool list passes the schema budget and changes mid-run, and one custom read;
+ * 8. the approval pause (ADR-0008): an act call on that server paused for the person, a second one
+ *    refused while it waits, and the paused checkpoint continued from its JSON text with a decision
+ *    for another call, refused, approved and broken off after the call's result was written.
  *
  * The model engine runs each on the OpenAI-compatible wire, once with each answer shape (a stream,
  * a whole object), through a scripted endpoint. The agent engine runs each at its own seam
@@ -75,7 +78,9 @@ import delegation from './scenarios/delegation.json'
 import memory from './scenarios/memory.json'
 import planMode from './scenarios/plan-mode.json'
 import toolSourcesScenario from './scenarios/tool-sources.json'
-import { CATALOGUE_SCHEMA, LOAD_TOOL, toolListDigest, type ApprovalRequest } from '../toolSources'
+import { APPROVAL_CONTINUATION, CATALOGUE_SCHEMA, LOAD_TOOL, toolListDigest, type ApprovalRequest } from '../toolSources'
+import approvalPause from './scenarios/approval-pause.json'
+import type { ContextInput } from '../context/session'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -444,7 +449,7 @@ async function correctionLoop(kind: 'model' | 'agent', engine: Engine, answerAs:
           // A tool the critic was not offered is called by its own name, as a model that ignored its offer would.
           const offered = incoming.tools.find((tool) => tool.description.startsWith(`${turn.call.tool}:`))
           await callbacks.tool({ id: `critic-${at}`, name: offered?.name ?? turn.call.tool, arguments: structuredClone(turn.call.arguments) }, callbacks.signal)
-        } else {
+        } else if ('say' in turn) {
           await callbacks.event({ type: 'message', id: 'critic', text: turn.say, phase: 'final' })
         }
       }
@@ -716,10 +721,10 @@ function sourceTools(list: readonly { name: string; description: string; inputSc
     description: tool.description,
     inputSchema: tool.inputSchema,
     source: { kind: 'mcp', id: 'tracker', trust: 'public', toolListDigest: pinned, currentDigest: () => host.served },
-    approve: async (call) => {
+    approve: (call) => {
       host.approvals.push(tool.name)
       host.requests.push(structuredClone(call))
-      return true
+      return 'allow'
     },
     execute: async () => {
       host.executed[`tracker__${tool.name}`] = (host.executed[`tracker__${tool.name}`] ?? 0) + 1
@@ -736,10 +741,10 @@ function sourceTools(list: readonly { name: string; description: string; inputSc
       inputSchema: custom.inputSchema,
       source: custom.source as HostTool['source'],
       effectClass: 'read',
-      approve: async (call) => {
+      approve: (call) => {
         host.approvals.push(custom.name)
         host.requests.push(structuredClone(call))
-        return true
+        return 'allow'
       },
       execute: async () => {
         host.executed[CUSTOM] = (host.executed[CUSTOM] ?? 0) + 1
@@ -850,7 +855,7 @@ function toolSourcesChecks(get: () => Sourced, adapter: 'model' | 'agent') {
     })
   }
 
-  it('7 · each act asks the host’s approval reader and runs; the custom read runs without asking', () => {
+  it('7 · each act asks the host’s approval policy and runs where it allows; the custom read runs without asking', () => {
     const { host } = get()
     // Run one's act, then run two's.
     expect(host.approvals).toEqual(['create_issue', 'create_issue'])
@@ -913,6 +918,228 @@ function toolSourcesChecks(get: () => Sourced, adapter: 'model' | 'agent') {
     expect(offeredNames(second)).toContain('tracker__delete_repository')
     expect(ofType(second.events, 'guardrail').filter((event) => event.action === 'refused')).toEqual([])
     expect(ofType(second.events, 'tool_result').filter((event) => event.name === 'tracker__create_issue').map((event) => event.isError)).toEqual([false])
+  })
+}
+
+// ---------------------------------------------------------------------------------------------
+// 8. The approval pause (ADR-0008)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Scenario 7's scripted MCP server as one external system, across every session of the scenario:
+ * the calls it ran, by wire name, and what the host's policy was asked. The order its acknowledged
+ * writes and its runs happened in, where a session records them.
+ */
+interface PauseServer {
+  executed: Record<string, number>
+  asked: ApprovalRequest[]
+  log: string[]
+}
+
+/**
+ * The host's declarations for one session, fresh each time: scenario 7's server, pinned to its
+ * digest; the policy answers ask for create_issue and allow for every other act.
+ */
+function pauseTools(server: PauseServer): HostTool[] {
+  const { pinned } = toolSourcesScenario.tracker
+  return toolSourcesScenario.server.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
+    source: { kind: 'mcp', id: 'tracker', trust: 'public', toolListDigest: pinned, currentDigest: () => pinned },
+    approve: (call) => {
+      server.asked.push(structuredClone(call))
+      return tool.name === approvalPause.asked.tool ? 'ask' : 'allow'
+    },
+    execute: async () => {
+      server.executed[`tracker__${tool.name}`] = (server.executed[`tracker__${tool.name}`] ?? 0) + 1
+      server.log.push('execute')
+      return { content: [{ type: 'text', text: toolSourcesScenario.issue }] }
+    }
+  }))
+}
+
+/** What scenario 8 left: each session's run, the paused checkpoint's JSON text, and the server's runs after each session. */
+interface Paused {
+  pausing: Ran
+  /** The paused checkpoint, as the host saved it: its JSON text. */
+  saved: string
+  wrong: Ran
+  refused: Ran
+  /** The approved session, broken off once the call's result was written. */
+  approved: Ran
+  /** Its acknowledged writes and the server's runs, in order. */
+  approvedLog: string[]
+  restarted: Ran
+  /** The calls the server ran after each session, in order: pausing, wrong, refused, approved, restarted. */
+  counts: number[]
+  server: PauseServer
+}
+
+/** One session of scenario 8: `turns`, fresh host tools, the context given; `stopAt` breaks the session off. */
+type PauseRun = (turns: Turn[], hostTools: HostTool[], context: ContextInput, stopAt?: (event: AssistantEvent) => boolean) => Promise<Ran>
+
+/** The executed checkpoint a session wrote, durable, where it wrote one. */
+const writtenAt = (events: AssistantEvent[], state: string): ExecutionCheckpoint | undefined =>
+  (events.filter((event) => event.type === 'execution_checkpoint' && event.durable === true && event.checkpoint.approval?.state === state).at(-1) as { checkpoint: ExecutionCheckpoint } | undefined)?.checkpoint
+
+/** Run scenario 8 on one engine. Each continued session starts from the checkpoint's JSON text, as a fresh process reads it back. */
+async function approvalScenario(run: PauseRun): Promise<Paused> {
+  const server: PauseServer = { executed: {}, asked: [], log: [] }
+  const ran = () => Object.values(server.executed).reduce((sum, n) => sum + n, 0)
+  const counts: number[] = []
+  const asked: ContextInput = { currentRequest: { message: approvalPause.request, input: approvalPause.request } }
+  const pausing = await run(approvalPause.pausing as unknown as Turn[], pauseTools(server), asked)
+  counts.push(ran())
+  const paused = pausing.events.filter((event) => event.type === 'execution_checkpoint' && event.checkpoint.status === 'paused').at(-1) as { checkpoint: ExecutionCheckpoint } | undefined
+  const saved = JSON.stringify(paused?.checkpoint ?? null)
+  const read = () => JSON.parse(saved) as ExecutionCheckpoint
+  const callId = read()?.approval?.callId ?? 'none'
+  const continued = approvalPause.continued as unknown as Turn[]
+  const wrong = await run(continued, pauseTools(server), { ...asked, execution: read(), approval: { callId: approvalPause.wrongCallId, approved: true } })
+  counts.push(ran())
+  const refused = await run(continued, pauseTools(server), { ...asked, execution: read(), approval: { callId, approved: false, note: approvalPause.note } })
+  counts.push(ran())
+  server.log = []
+  const approved = await run(continued, pauseTools(server), { ...asked, execution: read(), approval: { callId, approved: true }, checkpoint: async (state) => { server.log.push(`acknowledged ${state.approval?.state}`) } },
+    (event) => event.type === 'execution_checkpoint' && event.durable === true && event.checkpoint.approval?.state === 'executed')
+  const approvedLog = [...server.log]
+  counts.push(ran())
+  // The restart: the last checkpoint the host acknowledged, read back from its JSON text.
+  const written = JSON.parse(JSON.stringify(writtenAt(approved.events, 'executed') ?? null)) as ExecutionCheckpoint
+  // The restart continues the checkpoint as it stood; the decision was already taken, so none is handed again.
+  const restarted = await run(continued, pauseTools(server), { ...asked, execution: written })
+  counts.push(ran())
+  return { pausing, saved, wrong, refused, approved, approvedLog, restarted, counts, server }
+}
+
+/** The text a continued session's first request or run carried after the request text, from the continuation's line on. */
+function continuationIn(ran: Ran): string {
+  const whole = ran.requests[0] !== undefined ? openingTexts(ran.requests[0]).join('\n') : (ran.runs[0]?.prompt ?? '')
+  const at = whole.indexOf(APPROVAL_CONTINUATION)
+  if (at < 0) return ''
+  const rest = whole.slice(at)
+  const close = /\nEND RETRIEVED DATA [0-9a-f]{32}/.exec(rest)
+  return close === null ? rest : rest.slice(0, close.index + close[0].length)
+}
+
+/** The data of a continuation's one block. */
+function continuationData(text: string): Record<string, unknown> {
+  const [line, opening, ...rest] = text.split('\n')
+  expect(line).toBe(APPROVAL_CONTINUATION)
+  const marker = /^BEGIN RETRIEVED DATA ([0-9a-f]{32}) from tool "tracker__create_issue"; /.exec(opening ?? '')?.[1]
+  expect(marker).toBeDefined()
+  const body = rest.join('\n')
+  expect(body.endsWith(`\nEND RETRIEVED DATA ${marker}`)).toBe(true)
+  return JSON.parse(body.slice(0, body.length - `\nEND RETRIEVED DATA ${marker}`.length)) as Record<string, unknown>
+}
+
+/** The checks every adapter makes of scenario 8. */
+function approvalPauseChecks(get: () => Paused, adapter: 'model' | 'agent') {
+  const { pinned } = toolSourcesScenario.tracker
+  const record = { kind: 'mcp', id: 'tracker', trust: 'public', toolListDigest: pinned, tool: 'create_issue' }
+
+  it('8 · an act call the policy asks about pauses the run: approval_requested in place of its call, the checkpoint paused and durable with the call, end and no error, and nothing runs', () => {
+    const { pausing, saved, counts } = get()
+    const asked = ofType(pausing.events, 'approval_requested')
+    expect(asked).toHaveLength(1)
+    expect(asked[0]).toEqual({ type: 'approval_requested', callId: expect.any(String), name: 'tracker__create_issue', tool: 'create_issue', source: record, args: approvalPause.asked.arguments })
+    // Its call is never on the stream as a call or a result.
+    expect(pausing.events.filter((event) => (event.type === 'tool_call' || event.type === 'tool_result') && event.callId === asked[0]!.callId)).toEqual([])
+    const [checkpoint, end] = pausing.events.slice(-2)
+    expect(checkpoint).toMatchObject({ type: 'execution_checkpoint', durable: true, checkpoint: { status: 'paused', approval: { callId: asked[0]!.callId, name: 'tracker__create_issue', tool: 'create_issue', source: record, args: approvalPause.asked.arguments, state: 'asked' } } })
+    expect(end).toEqual({ type: 'end' })
+    expect(ofType(pausing.events, 'end')).toHaveLength(1)
+    expect(ofType(pausing.events, 'error')).toEqual([])
+    expect(JSON.parse(saved)).toEqual((checkpoint as { checkpoint: unknown }).checkpoint)
+    expect(counts[0]).toBe(0)
+    // No request is sent once the call waits: the two of the scripted turns, and no third.
+    if (adapter === 'model') expect(get().pausing.requests).toHaveLength(2)
+    else expect(get().pausing.runs).toHaveLength(1)
+  })
+
+  it('8 · a second act call while one waits is refused with its guardrail between its call and its result, and never runs', () => {
+    const { pausing, counts, server } = get()
+    const flow = pausing.events.filter((event) => event.type !== 'execution_checkpoint')
+    const second = flow.findIndex((event) => event.type === 'tool_call' && event.name === 'tracker__create_issue')
+    expect(second).toBeGreaterThan(-1)
+    expect(flow[second]).toMatchObject({ type: 'tool_call', args: { repository: 'expense', title: 'Mileage rate for the UK' }, source: record })
+    expect(flow[second + 1]).toMatchObject({ type: 'guardrail', tool: 'tracker__create_issue', action: 'refused', reason: 'approval pending' })
+    expect(flow[second + 2]).toMatchObject({ type: 'tool_result', name: 'tracker__create_issue', isError: true, callId: (flow[second] as { callId?: string }).callId, source: record })
+    expect(ofType(pausing.events, 'tool_call').filter((event) => event.name === 'tracker__create_issue')).toHaveLength(1)
+    // The policy was asked about the first call only, and nothing ran.
+    expect(server.asked.map((call) => call.args)).toEqual([approvalPause.asked.arguments])
+    expect(counts[0]).toBe(0)
+  })
+
+  it('8 · the paused checkpoint, read back from its JSON text in a fresh session, refuses a decision for another call before anything runs', () => {
+    const { wrong, counts } = get()
+    expect(ofType(wrong.events, 'error')).toEqual([expect.objectContaining({ failure: expect.objectContaining({ code: 'stale-state', source: 'context' }) })])
+    expect(wrong.events.at(-1)).toEqual({ type: 'end' })
+    expect(wrong.requests).toHaveLength(0)
+    expect(wrong.runs).toHaveLength(0)
+    expect(counts[1]).toBe(0)
+  })
+
+  it('8 · refused: the refused result and the person’s note reach the model inside one data block, the approval is answered, and nothing runs', () => {
+    const { refused, counts, saved } = get()
+    const callId = (JSON.parse(saved) as ExecutionCheckpoint).approval!.callId
+    expect(writtenAt(refused.events, 'refused')?.approval).toMatchObject({ callId, state: 'refused', decidedAt: expect.any(String), note: approvalPause.note, result: { isError: true, structuredContent: { failure: { code: 'permission', outcome: 'not-started' } } } })
+    const text = continuationIn(refused)
+    expect(continuationData(text)).toMatchObject({ callId, name: 'tracker__create_issue', tool: 'create_issue', approved: false, note: approvalPause.note, result: { isError: true } })
+    // The person's words are data: inside the block, and nowhere else in what the model is sent.
+    const whole = refused.requests[0] !== undefined ? JSON.stringify(refused.requests[0].body) : JSON.stringify(refused.runs[0])
+    expect(whole.split(approvalPause.note).length - 1).toBe(1)
+    expect(onlyFramed(text, approvalPause.note)).toBe(true)
+    expect(lastCheckpoint(refused.events).approval).toMatchObject({ callId, state: 'answered' })
+    expect(ofType(refused.events, 'error')).toEqual([])
+    expect(counts[2]).toBe(0)
+  })
+
+  it('8 · approved: the decision is written and acknowledged before the call runs, once, and its result is written and acknowledged before anything else', () => {
+    const { approved, approvedLog, counts } = get()
+    expect(approvedLog).toEqual(['acknowledged approved', 'execute', 'acknowledged executed'])
+    expect(writtenAt(approved.events, 'approved')).toBeDefined()
+    expect(writtenAt(approved.events, 'executed')?.approval?.result).toMatchObject({ content: [{ type: 'text', text: toolSourcesScenario.issue }] })
+    // Broken off there: no request was sent.
+    expect(approved.requests).toHaveLength(0)
+    expect(approved.runs).toHaveLength(0)
+    expect(counts[3]).toBe(1)
+  })
+
+  it('8 · a restart after the result was written and before the continuation runs the continuation and never the call again', () => {
+    const { restarted, counts } = get()
+    expect(counts[4]).toBe(1)
+    expect(writtenAt(restarted.events, 'approved')).toBeUndefined()
+    expect(continuationData(continuationIn(restarted))).toMatchObject({ approved: true, result: { content: [{ type: 'text', text: toolSourcesScenario.issue }] } })
+    expect(lastCheckpoint(restarted.events).approval?.state).toBe('answered')
+    expect(ofType(restarted.events, 'error')).toEqual([])
+  })
+
+  it('8 · the continuation request carries one line and the result as one data block under a marker drawn for it, after the request text', () => {
+    const { refused, restarted } = get()
+    for (const ran of [refused, restarted]) {
+      const whole = ran.requests[0] !== undefined ? openingTexts(ran.requests[0]).join('\n') : ran.runs[0]!.prompt
+      expect(whole.indexOf(approvalPause.request)).toBeGreaterThan(-1)
+      expect(whole.indexOf(APPROVAL_CONTINUATION)).toBeGreaterThan(whole.indexOf(approvalPause.request))
+      expect(whole.split(APPROVAL_CONTINUATION)).toHaveLength(2)
+    }
+    const markers = [refused, restarted].map((ran) => /BEGIN RETRIEVED DATA ([0-9a-f]{32}) from tool "tracker__create_issue"/.exec(continuationIn(ran))![1])
+    expect(markers[0]).not.toBe(markers[1])
+  })
+
+  it('8 · the continuation counts as one model request on the model engine; on the agent engine no model-request figure is invented', () => {
+    const { saved, restarted } = get()
+    const before = JSON.parse(saved) as ExecutionCheckpoint
+    const after = lastCheckpoint(restarted.events)
+    if (adapter === 'model') {
+      expect(after.unit).toBe('model-requests')
+      expect(after.used).toBe(before.used + 1)
+    } else {
+      expect(after.unit).toBe('provider-managed')
+      expect(after.used).toBe(0)
+      expect(after.completions ?? []).toEqual([])
+    }
   })
 }
 
@@ -1044,6 +1271,17 @@ describe.each(MODEL_ENGINES)('engine %s · scenarios', (engineId) => {
       })
       afterAll(() => vi.unstubAllGlobals())
       toolSourcesChecks(() => state, 'model')
+    })
+
+    describe('8 · the approval pause', () => {
+      let state: Paused
+      beforeAll(async () => {
+        const engine = await loadEngine(engineId)
+        state = await approvalScenario((turns, hostTools, context, stopAt) =>
+          runOnModelEngine(answerFrom(turns, answerAs), { engine, hostTools, stopAt, session: { prompt: approvalPause.request, interactive: true, context } }))
+      })
+      afterAll(() => vi.unstubAllGlobals())
+      approvalPauseChecks(() => state, 'model')
     })
 
     describe('6 · a multi-turn transcript', () => {
@@ -1199,5 +1437,15 @@ describe.each(AGENT_ENGINES)('agent engine %s · scenarios', (engineId) => {
       )
     })
     toolSourcesChecks(() => state, 'agent')
+  })
+
+  describe('8 · the approval pause', () => {
+    let state: Paused
+    beforeAll(async () => {
+      const engine = await loadEngine(engineId)
+      state = await approvalScenario((turns, hostTools, context, stopAt) =>
+        runOnAgentEngine(agentRunFrom(turns), { engine, hostTools, stopAt, session: { prompt: approvalPause.request, interactive: true, context } }))
+    })
+    approvalPauseChecks(() => state, 'agent')
   })
 })

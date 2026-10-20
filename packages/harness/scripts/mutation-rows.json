@@ -3383,6 +3383,84 @@
    "status": "caught",
    "origin": "pre-release batch for v0.4.0 (#73, #76)",
    "note": "the source-schema vector and the allowlist test: a keyword the package does not name (x-instructions, pattern, contentMediaType) must not reach the offer"
+  },
+  {
+   "name": "a restored executed approval runs its call again: the execute not held to the executed write",
+   "file": "execution/controller.ts",
+   "find": "   }else if(approval?.state==='executed'||approval?.state==='refused')this.approvalStep='continue'",
+   "replace": "   }else if(approval?.state==='executed'){this.state.approval={...approval,state:'approved'};this.approvalStep='execute'}else if(approval?.state==='refused')this.approvalStep='continue'",
+   "tests": [
+    "certification/scenarios.test.ts",
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0008, the approval pause (#74)",
+   "note": "scenario 8's restart: the session restored from the checkpoint written after the call's result runs the continuation, and the scripted server's execute count stays one"
+  },
+  {
+   "name": "an act call the policy asks about runs: the pause skipped under ask",
+   "file": "toolSources.ts",
+   "find": "      answer = typeof given === 'string' && APPROVAL_ANSWERS.includes(given) ? given as ApprovalAnswer : 'refuse'",
+   "replace": "      answer = given === 'ask' ? 'allow' : typeof given === 'string' && APPROVAL_ANSWERS.includes(given) ? given as ApprovalAnswer : 'refuse'",
+   "tests": [
+    "certification/scenarios.test.ts",
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0008, the approval pause (#74)",
+   "note": "scenario 8's pause: approval_requested in place of the call, the checkpoint paused, and nothing run on the scripted server"
+  },
+  {
+   "name": "a decision for another call continues the paused run: the wrong-callId check removed",
+   "file": "execution/controller.ts",
+   "find": "   if(decision!==undefined&&decision.callId!==restored.approval?.callId)throw",
+   "replace": "   if(decision!==undefined&&restored.approval===undefined)throw",
+   "tests": [
+    "certification/scenarios.test.ts",
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0008, the approval pause (#74)",
+   "note": "scenario 8: the paused checkpoint continued with a decision for another call ends with stale-state before any request, and nothing runs"
+  },
+  {
+   "name": "a second act call while one waits asks the policy too: the pending check removed, two acts pending",
+   "file": "toolSources.ts",
+   "find": "    } else if (this.book?.current()?.state === 'asked') {",
+   "replace": "    } else if (this.book?.current()?.state === 'none') {",
+   "tests": [
+    "certification/scenarios.test.ts",
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0008, the approval pause (#74)",
+   "note": "scenario 8's second act: one approval_requested, the second call refused with the approval pending guardrail, the policy asked once"
+  },
+  {
+   "name": "the person's note reaches the model outside the continuation's data block",
+   "file": "toolSources.ts",
+   "find": "  const data = { callId: record.callId, name: record.name, tool: record.tool, approved: record.state !== 'refused', result: record.result ?? null, ...(record.note === undefined ? {} : { note: record.note }) }\n  return `${APPROVAL_CONTINUATION}\\n${frameData(record.name, JSON.stringify(data), marker)}`",
+   "replace": "  const data = { callId: record.callId, name: record.name, tool: record.tool, approved: record.state !== 'refused', result: record.result ?? null }\n  return `${APPROVAL_CONTINUATION}${record.note === undefined ? '' : ` ${record.note}`}\\n${frameData(record.name, JSON.stringify(data), marker)}`",
+   "tests": [
+    "certification/scenarios.test.ts",
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0008, the approval pause (#74)",
+   "note": "scenario 8's refusal: the note is in the block's data and nowhere else in what the model is sent"
+  },
+  {
+   "name": "an act call on a run whose events carry no call ids gets no id: its decision taken by name, another call's",
+   "file": "engines/vercel/loop.ts",
+   "find": "      const correlation = session.interactive || context.sources?.needsApproval(tool.name) ? { callId: crypto.randomUUID() } : {}",
+   "replace": "      const correlation = session.interactive ? { callId: crypto.randomUUID() } : {}",
+   "tests": [
+    "toolSources.test.ts",
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "clean-room review of #79 (ADR-0008)",
+   "note": "two calls of one act tool in one answer, on a run with interactive false, reaching the gate in the other order: only the call the policy allowed runs"
   }
  ]
 }

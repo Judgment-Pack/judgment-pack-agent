@@ -76,22 +76,26 @@ export function runtimeAnswer(value: unknown): McpToolResult {
   return { content: [{ type: 'text', text: JSON.stringify(value) }], structuredContent: value }
 }
 
-/** One assistant turn on the OpenAI-compatible wire, streamed: text, or one tool call. */
-export function sseTurn(step: { text?: string; tool?: { name: string; args: unknown; id?: string } }): string {
+/** One tool call of a turn, as the wire names it. */
+type ScriptedCall = { name: string; args: unknown; id?: string }
+
+/** One assistant turn on the OpenAI-compatible wire, streamed: text, one tool call, or several in one answer (`tools`). */
+export function sseTurn(step: { text?: string; tool?: ScriptedCall; tools?: ScriptedCall[] }): string {
   const frame = (choices: unknown[]) =>
     `data: ${JSON.stringify({ id: 'c', object: 'chat.completion.chunk', model: 'm', choices })}\n\n`
   const lines = [frame([{ index: 0, delta: { role: 'assistant', content: null }, finish_reason: null }])]
-  if (step.tool !== undefined) {
-    const call = {
-      index: 0,
-      id: step.tool.id ?? `call_${step.tool.name}`,
-      type: 'function',
-      function: { name: step.tool.name, arguments: JSON.stringify(step.tool.args) }
+  const calls = step.tools ?? (step.tool === undefined ? undefined : [step.tool])
+  if (calls !== undefined) {
+    for (const [index, tool] of calls.entries()) {
+      const call = {
+        index,
+        id: tool.id ?? `call_${tool.name}`,
+        type: 'function',
+        function: { name: tool.name, arguments: JSON.stringify(tool.args) }
+      }
+      lines.push(frame([{ index: 0, delta: { tool_calls: [call] }, finish_reason: null }]))
     }
-    lines.push(
-      frame([{ index: 0, delta: { tool_calls: [call] }, finish_reason: null }]),
-      frame([{ index: 0, delta: {}, finish_reason: 'tool_calls' }])
-    )
+    lines.push(frame([{ index: 0, delta: {}, finish_reason: 'tool_calls' }]))
   } else {
     lines.push(
       frame([{ index: 0, delta: { content: step.text ?? '' }, finish_reason: null }]),
@@ -103,19 +107,18 @@ export function sseTurn(step: { text?: string; tool?: { name: string; args: unkn
 }
 
 /** The same turn as one whole JSON answer, as an endpoint that ignores `stream` sends it. */
-export function wholeTurn(step: { text?: string; tool?: { name: string; args: unknown; id?: string } }): string {
+export function wholeTurn(step: { text?: string; tool?: ScriptedCall; tools?: ScriptedCall[] }): string {
+  const calls = step.tools ?? (step.tool === undefined ? undefined : [step.tool])
   const message =
-    step.tool !== undefined
+    calls !== undefined
       ? {
           role: 'assistant',
           content: null,
-          tool_calls: [
-            {
-              id: step.tool.id ?? `call_${step.tool.name}`,
-              type: 'function',
-              function: { name: step.tool.name, arguments: JSON.stringify(step.tool.args) }
-            }
-          ]
+          tool_calls: calls.map((tool) => ({
+            id: tool.id ?? `call_${tool.name}`,
+            type: 'function',
+            function: { name: tool.name, arguments: JSON.stringify(tool.args) }
+          }))
         }
       : { role: 'assistant', content: step.text ?? '' }
   return JSON.stringify({
@@ -123,7 +126,7 @@ export function wholeTurn(step: { text?: string; tool?: { name: string; args: un
     object: 'chat.completion',
     created: 0,
     model: 'm',
-    choices: [{ index: 0, message, finish_reason: step.tool !== undefined ? 'tool_calls' : 'stop' }],
+    choices: [{ index: 0, message, finish_reason: calls !== undefined ? 'tool_calls' : 'stop' }],
     usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
   })
 }

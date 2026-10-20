@@ -550,7 +550,7 @@
         ]
       },
       {
-        "check": "7 \u00b7 each act asks the host\u2019s approval reader and runs; the custom read runs without asking",
+        "check": "7 \u00b7 each act asks the host\u2019s approval policy and runs where it allows; the custom read runs without asking",
         "go": [
           "7 approval",
           "7 agent approval"
@@ -582,6 +582,62 @@
         "go": [
           "7 approved",
           "7 agent approved"
+        ]
+      },
+      {
+        "check": "8 \u00b7 an act call the policy asks about pauses the run: approval_requested in place of its call, the checkpoint paused and durable with the call, end and no error, and nothing runs",
+        "go": [
+          "8 pause",
+          "8 agent pause"
+        ]
+      },
+      {
+        "check": "8 \u00b7 a second act call while one waits is refused with its guardrail between its call and its result, and never runs",
+        "go": [
+          "8 pending",
+          "8 agent pending"
+        ]
+      },
+      {
+        "check": "8 \u00b7 the paused checkpoint, read back from its JSON text in a fresh session, refuses a decision for another call before anything runs",
+        "go": [
+          "8 wrong",
+          "8 agent wrong"
+        ]
+      },
+      {
+        "check": "8 \u00b7 refused: the refused result and the person\u2019s note reach the model inside one data block, the approval is answered, and nothing runs",
+        "go": [
+          "8 refused",
+          "8 agent refused"
+        ]
+      },
+      {
+        "check": "8 \u00b7 approved: the decision is written and acknowledged before the call runs, once, and its result is written and acknowledged before anything else",
+        "go": [
+          "8 approved",
+          "8 agent approved"
+        ]
+      },
+      {
+        "check": "8 \u00b7 a restart after the result was written and before the continuation runs the continuation and never the call again",
+        "go": [
+          "8 restart",
+          "8 agent restart"
+        ]
+      },
+      {
+        "check": "8 \u00b7 the continuation request carries one line and the result as one data block under a marker drawn for it, after the request text",
+        "go": [
+          "8 continuation",
+          "8 agent continuation"
+        ]
+      },
+      {
+        "check": "8 \u00b7 the continuation counts as one model request on the model engine; on the agent engine no model-request figure is invented",
+        "go": [
+          "8 figures",
+          "8 agent figures"
         ]
       }
     ]

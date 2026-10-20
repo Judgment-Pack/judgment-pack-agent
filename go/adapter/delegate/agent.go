@@ -56,6 +56,14 @@ func (c *coordinator) mayDelegate() bool {
 	return c.runs.total()+3 <= turn.MaxAgentRuns
 }
 
+// mayAct is whether a parent invocation starting now may be offered an act call (ADR-0008): the
+// invocation that continues after its pause must remain beside it.
+func (c *coordinator) mayAct() bool {
+	c.runsMu.Lock()
+	defer c.runsMu.Unlock()
+	return c.runs.total()+2 <= turn.MaxAgentRuns
+}
+
 // reserveContinuation holds a batch to the room it needs before it is admitted: one child and the
 // invocation that continues the response with its result.
 func (c *coordinator) reserveContinuation() error {
@@ -444,12 +452,23 @@ func (c *coordinator) parentInvocation(ctx context.Context, execution *contract.
 	run := c.run
 	offered := c.batchesLeft() && c.mayDelegate()
 	parent := *run
+	// ADR-0008: an act call pauses the response and the next counted invocation continues it, so an
+	// act is offered only while that invocation remains, as delegate_tasks is.
+	hostTools := run.HostTools
+	if !c.mayAct() {
+		hostTools = nil
+		for _, tool := range run.HostTools {
+			if !runcontext.AsksApproval(tool) {
+				hostTools = append(hostTools, tool)
+			}
+		}
+	}
 	if offered {
 		parent.Prompt = run.Prompt + "\n\n" + turn.DelegationInstructions + " " + turn.AgentDelegationInstructions + continued
-		parent.HostTools = append(append([]runcontext.HostTool{}, c.wrapHostTools(run.HostTools, nil, nil)...), c.handoffTool())
+		parent.HostTools = append(append([]runcontext.HostTool{}, c.wrapHostTools(hostTools, nil, nil)...), c.handoffTool())
 	} else {
 		parent.Prompt = run.Prompt + "\n\n" + turn.DelegationSpent + continued
-		parent.HostTools = c.wrapHostTools(run.HostTools, nil, nil)
+		parent.HostTools = c.wrapHostTools(hostTools, nil, nil)
 	}
 	input := runcontext.Input{}
 	if run.Context != nil {

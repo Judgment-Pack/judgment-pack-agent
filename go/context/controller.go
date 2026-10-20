@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
@@ -73,6 +74,9 @@ type Execution struct {
 	// Sources are the run report's rows by source (ADR-0006), the Runtime's first, carried as Used
 	// is; nil where the session declares no tool with a source.
 	Sources []contract.ProvenanceSourceFigures
+	// Approval is the act call the run paused at for the person's decision, and what became of it
+	// (ADR-0008); nil where there is none.
+	Approval *contract.CheckpointApproval
 }
 
 // Value is the state as the checkpoint's JSON, in the order the TypeScript writes it.
@@ -146,6 +150,13 @@ func (e *Execution) Value() *Value {
 		}
 		out.Set("sources", rows)
 	}
+	if e.Approval != nil {
+		if raw, err := json.Marshal(e.Approval); err == nil {
+			if held, err := ParseJSON(raw); err == nil {
+				out.Set("approval", held)
+			}
+		}
+	}
 	return out
 }
 
@@ -177,7 +188,7 @@ func executionOf(saved *contract.Checkpoint) (*Execution, error) {
 		Phase: saved.Phase, Status: saved.Status, Unit: saved.Unit, Used: int(saved.Used),
 		Limit: int(saved.Limit), Grants: saved.Grants, Plan: value.Get("plan"),
 		Explanation: saved.Explanation, Completions: saved.Completions, Context: saved.Context,
-		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources}
+		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, Approval: saved.Approval}
 	if saved.TestCalls != nil {
 		calls := int(*saved.TestCalls)
 		out.TestCalls = &calls
@@ -214,6 +225,11 @@ type ExecutionController struct {
 	// gate shares with this run's: a snapshot reads them through it, since a delegated child's
 	// calls count in them while this run's checkpoint is written.
 	SourceRows func() []contract.ProvenanceSourceFigures
+	// ApprovalStep is what the restored approval asks of this run before its first request
+	// (ADR-0008): "execute", the person approved the call and it runs once; "continue", its result
+	// (or the refused result) is written and the continuation carries it; "write", as continue, the
+	// state written first; "" for none.
+	ApprovalStep string
 
 	session  Session
 	ledger   *ContextLedger
@@ -275,7 +291,27 @@ func (c *ExecutionController) Initialize() error {
 		if saved.RequestKey != requestKey || saved.Phase != phase {
 			return failure.ToolInput("The request or execution phase changed. Start a new response with the current context.")
 		}
-		if saved.Status == "paused" || saved.Used >= saved.Limit {
+		// ADR-0008: a paused act call continues only with the person's decision for that call.
+		var decision *contract.CheckpointApprovalDecision
+		if c.session.Context != nil {
+			decision = c.session.Context.Approval
+		}
+		if decision != nil && (decision.CallID == "" || U16Length(decision.CallID) > 256 || decision.Note != nil && U16Length(*decision.Note) > 2000) {
+			return failure.Authored("configuration", "The approval decision is not one this package reads: a callId, approved, and an optional note of at most 2,000 characters. Nothing was decided or run.", "context")
+		}
+		asked := saved.Approval != nil && saved.Approval.State == "asked"
+		if decision != nil && (saved.Approval == nil || decision.CallID != saved.Approval.CallID) {
+			return failure.Authored("stale-state", "This decision is for a call this response is not waiting on; nothing was decided or run. Continue it with the decision on the call it asked about.", "context")
+		}
+		// A decision on an act call already decided (refused, executed, answered) is no decision this
+		// response waits for.
+		if decision != nil && !asked {
+			return failure.Authored("stale-state", "This response’s act call was already decided; nothing was decided or run. Continue it without a decision.", "context")
+		}
+		if asked && decision == nil {
+			return failure.Authored("stale-state", "This response waits for the person’s decision on "+saved.Approval.Name+"; continue it with that decision.", "context")
+		}
+		if (saved.Status == "paused" && !asked) || saved.Used >= saved.Limit {
 			return ErrExecutionPaused
 		}
 		if saved.Unit != unit {
@@ -297,6 +333,34 @@ func (c *ExecutionController) Initialize() error {
 		state.Status = "running"
 		c.State = state
 		c.restored = true
+		if approval := state.Approval; approval != nil {
+			held := *approval
+			switch approval.State {
+			case "asked":
+				decidedAt := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+				held.DecidedAt = &decidedAt
+				if decision.Note != nil {
+					note := *decision.Note
+					held.Note = &note
+				}
+				if decision.Approved {
+					held.State = "approved"
+					c.ApprovalStep = "execute"
+				} else {
+					held.State = "refused"
+					held.Result = contractResult(RefusedResult(held.Name))
+					c.ApprovalStep = "write"
+				}
+			case "approved":
+				// Approved, and its result never written: it may have run, and it is not run again.
+				held.State = "executed"
+				held.Result = contractResult(UnknownOutcome(held.Name))
+				c.ApprovalStep = "write"
+			case "executed", "refused":
+				c.ApprovalStep = "continue"
+			}
+			state.Approval = &held
+		}
 		return nil
 	}
 	c.State = &Execution{Version: 1, ID: randomUUID(), RequestKey: requestKey, Phase: phase,
@@ -315,6 +379,21 @@ func (c *ExecutionController) Initialize() error {
 		}
 	}
 	return nil
+}
+
+// ApprovalAsked reports an act call of this run waiting for the person's decision (ADR-0008): no
+// request is sent while one does.
+func (c *ExecutionController) ApprovalAsked() bool {
+	return c.State.Approval != nil && c.State.Approval.State == "asked"
+}
+
+// contractResult is a tool result as the checkpoint's approval carries it.
+func contractResult(result ToolResult) *contract.ToolResultMCPToolResult {
+	var out contract.ToolResultMCPToolResult
+	if json.Unmarshal(result.JSON(), &out) != nil {
+		return nil
+	}
+	return &out
 }
 
 // Remaining is how many model requests the response may still make.
@@ -505,6 +584,12 @@ func (c *ExecutionController) RecordCompletion(result contract.ProvenanceComplet
 // send, recorded before it is sent: the SHA-256 of the body, numbered after the last one recorded.
 // The newest MaxPromptDigests are kept.
 func (c *ExecutionController) RecordPrompt(body []byte) {
+	// ADR-0008: the continuation request carries the approval's result; once it is sent, the approval is answered.
+	if held := c.State.Approval; held != nil && (held.State == "executed" || held.State == "refused") {
+		answered := *held
+		answered.State = "answered"
+		c.State.Approval = &answered
+	}
 	next := int64(1)
 	if held := len(c.State.Prompts); held > 0 {
 		next = c.State.Prompts[held-1].Request + 1

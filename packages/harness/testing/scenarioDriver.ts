@@ -34,9 +34,10 @@ import {
 import type { AgentRun } from '../agent'
 import type { AgentAssistantSession, AssistantEvent, AssistantSession, Engine, HostTool } from '../engine'
 
-/** One turn of a scripted model: one tool call, or the words that end the run. */
+/** One turn of a scripted model: one tool call, several in one answer (ADR-0008's second act), or the words that end the run. */
 export type Turn =
   | { call: { tool: string; arguments: Record<string, unknown> }; usage?: Usage }
+  | { calls: { tool: string; arguments: Record<string, unknown> }[]; usage?: Usage }
   | { say: string; report?: unknown; usage?: Usage }
 
 /** What a provider says one answer cost, as it reports it. */
@@ -89,7 +90,9 @@ export const textOf = (turn: { say: string; report?: unknown }): string =>
 /** One turn as the endpoint's answer on the OpenAI-compatible wire, its usage on the last frame where the turn gives it. */
 export function answerWith(turn: Turn, answerAs: AnswerAs, at: number): Response {
   const usage = turn.usage === undefined ? undefined : { prompt_tokens: turn.usage.input, completion_tokens: turn.usage.output }
-  const step = 'call' in turn ? { tool: { name: turn.call.tool, args: turn.call.arguments, id: `call_${at + 1}` } } : { text: textOf(turn) }
+  const step = 'call' in turn ? { tool: { name: turn.call.tool, args: turn.call.arguments, id: `call_${at + 1}` } }
+    : 'calls' in turn ? { tools: turn.calls.map((call, index) => ({ name: call.tool, args: call.arguments, id: `call_${at + 1}_${index + 1}` })) }
+      : { text: textOf(turn) }
   if (answerAs === 'whole') {
     const body = JSON.parse(wholeTurn(step)) as Record<string, unknown>
     if (usage !== undefined) body.usage = { ...usage, total_tokens: usage.prompt_tokens + usage.completion_tokens }
@@ -228,7 +231,7 @@ export function rolesRun(roles: Roles, known: Known, answers: { who: string; too
       for (const [at, listed] of turns.entries()) {
         const turn = resolved(listed, known)
         if ('call' in turn) await call(turn, at, brief.objective)
-        else await callbacks.event({ type: 'message', id: `say-${at}`, text: textOf(turn), phase: 'final' })
+        else if ('say' in turn) await callbacks.event({ type: 'message', id: `say-${at}`, text: textOf(turn), phase: 'final' })
       }
       return
     }
@@ -239,7 +242,7 @@ export function rolesRun(roles: Roles, known: Known, answers: { who: string; too
       if ('call' in turn) {
         await call(turn, at, 'parent')
         if (turn.call.tool === 'delegate_tasks') return
-      } else {
+      } else if ('say' in turn) {
         await callbacks.event({ type: 'message', id: `say-${at}`, text: textOf(turn), phase: 'final' })
       }
     }
@@ -259,6 +262,15 @@ export function agentRunFrom(turns: readonly Turn[], answers: { text: string; is
       if ('call' in turn) {
         const offered = request.tools.find((tool) => tool.description.startsWith(`${turn.call.tool}:`))
         answers.push(await callbacks.tool({ id: `call-${++at}`, name: offered?.name ?? turn.call.tool, arguments: turn.call.arguments }, callbacks.signal))
+      } else if ('calls' in turn) {
+        // Several calls at once, as an agent that calls tools in parallel makes them; a call the run
+        // stopped at answers nothing, and the run goes no further once it is stopped.
+        const made = await Promise.allSettled(turn.calls.map((call) => {
+          const offered = request.tools.find((tool) => tool.description.startsWith(`${call.tool}:`))
+          return callbacks.tool({ id: `call-${++at}`, name: offered?.name ?? call.tool, arguments: call.arguments }, callbacks.signal)
+        }))
+        for (const settled of made) if (settled.status === 'fulfilled') answers.push(settled.value)
+        if (callbacks.signal.aborted) return
       } else {
         await callbacks.event({ type: 'message', id: `say-${++at}`, text: textOf(turn), phase: 'final' })
       }
@@ -284,6 +296,19 @@ interface Options {
   /** The runtime tools the run is offered; the recorded five and the test tool where absent. */
   tools?: typeof RECORDED_TOOLS
   session?: Partial<AssistantSession> & Partial<AgentAssistantSession>
+  /** Break the run off after the event this answers true for, as a host that stops there does (ADR-0008's restart). */
+  stopAt?: (event: AssistantEvent) => boolean
+}
+
+/** Why a run was broken off: not a failure of the run. */
+class BrokenOff extends Error {}
+
+/** The event sink of a run that `stopAt` may break off. */
+function sinkOf(events: AssistantEvent[], stopAt?: (event: AssistantEvent) => boolean) {
+  return (event: AssistantEvent) => {
+    events.push(event)
+    if (stopAt?.(event)) throw new BrokenOff()
+  }
 }
 
 /** One run on the model engine through a scripted endpoint, the runtime behind the real gate. */
@@ -312,8 +337,8 @@ export async function runOnModelEngine(answer: (request: EndpointRequest) => Res
         signal: new AbortController().signal,
         ...options.session
       } as AssistantSession,
-      (event) => events.push(event)
-    )
+      sinkOf(events, options.stopAt)
+    ).catch((cause: unknown) => { if (!(cause instanceof BrokenOff)) throw cause })
   } finally {
     await runtime.close()
   }
@@ -350,8 +375,8 @@ export async function runOnAgentEngine(run: AgentRun, options: Options = {}): Pr
         signal: new AbortController().signal,
         ...options.session
       } as AgentAssistantSession,
-      (event) => events.push(event)
-    )
+      sinkOf(events, options.stopAt)
+    ).catch((cause: unknown) => { if (!(cause instanceof BrokenOff)) throw cause })
   } finally {
     await runtime.close()
   }
