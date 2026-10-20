@@ -584,7 +584,7 @@ export interface ApprovalBook {
  * call of the run waits for the person; `closed`, no act call is admitted in this run; `checked`, the
  * gate's own checks refuse the call before any approval is asked.
  */
-export type ApprovalDecided = ApprovalAnswer | 'pending' | 'closed' | 'checked'
+export type ApprovalDecided = ApprovalAnswer | 'pending' | 'closed' | 'checked' | 'stale'
 
 /** A decision kept for its call (ADR-0008): the answer, its words, and the canonical JSON of the arguments it was taken for. */
 interface HeldDecision {
@@ -603,7 +603,7 @@ interface Mark {
  * The words of a refusal that also earns a guardrail event; `reason` (ADR-0008) names an approval's
  * refusal on the event (`run-event.json#/$defs/guardrail`).
  */
-export type Refuse = (tool: string, detail: string, reason?: 'approval refused' | 'approval pending') => Error
+export type Refuse = (tool: string, detail: string, reason?: 'approval refused' | 'approval pending' | 'approval stale') => Error
 
 /**
  * The boundary's hold on the tools with a source for one run (ADR-0006): each call's checks in
@@ -778,7 +778,7 @@ export class SourceGate {
     const entry = this.entries.get(record.name)
     const refusedWith = (error: unknown) => ({ result: toolFailureResult(error), ran: false })
     if (entry === undefined || run === undefined || !this.needsApproval(record.name) || canonicalJSON(entry.record) !== canonicalJSON(record.source)) {
-      return refusedWith(this.refuse(record.name, `${record.name} is no longer offered as it was when the person decided; the call was not run and nothing was changed`, 'approval refused'))
+      return refusedWith(this.refuse(record.name, `${record.name} is no longer offered as it was when the person decided; the call was not run and nothing was changed`, 'approval stale'))
     }
     const id = entry.record.id
     const row = this.row(id)
@@ -840,12 +840,13 @@ export class SourceGate {
     // A decision taken for other arguments is not this call's: refused, never run.
     const mismatched = taken !== undefined && taken.args !== canonicalJSON(args)
     const decided = !this.needsApproval(tool.name) ? undefined
-      : mismatched ? { answer: 'refuse' as const, detail: `${tool.name} was called with arguments other than those its approval was decided for; it was not run and nothing was changed` }
+      : mismatched ? { answer: 'stale' as const, detail: `${tool.name} was called with arguments other than those its approval was decided for; it was not run and nothing was changed` }
       : taken ?? (asked?.state === 'asked' && callId !== undefined && asked.callId === callId ? { answer: 'ask' as const, detail: '' } : await this.decide(tool.name, args, callId, false))
     if (decided?.answer === 'ask') throw new ApprovalHeld()
     // The boundary already said why, with the call and its result: refused here without a second notice.
     if (decided?.answer === 'pending') throw new GateViolation(tool.name, decided.detail)
-    if (decided?.answer === 'refuse' || decided?.answer === 'closed') throw this.refused(entry, this.refuse(tool.name, decided.detail, decided.answer === 'refuse' ? 'approval refused' : undefined), callId)
+    // The policy's refusal is approval refused; a decision that no longer holds for this call is the gate's, approval stale.
+    if (decided?.answer === 'refuse' || decided?.answer === 'closed' || decided?.answer === 'stale') throw this.refused(entry, this.refuse(tool.name, decided.detail, decided.answer === 'refuse' ? 'approval refused' : decided.answer === 'stale' ? 'approval stale' : undefined), callId)
     if (this.alteredSources.has(id)) throw this.refused(entry, this.refuse(tool.name, this.changedDetail(entry)), callId)
     if (entry.catalogued) {
       if (!this.loaded.has(tool.name)) {
@@ -882,7 +883,7 @@ export class SourceGate {
     // ADR-0008: only an allowed act call reaches here; one whose checks refused it before any approval was asked never does.
     if (decided !== undefined && decided.answer !== 'allow') {
       giveBack()
-      throw this.refused(entry, this.refuse(tool.name, `${tool.name} acts on ${id}, and this call's approval was not given; it was not run and nothing was changed`, 'approval refused'), callId)
+      throw this.refused(entry, this.refuse(tool.name, `${tool.name} acts on ${id}, and this call's approval was not given; it was not run and nothing was changed`, 'approval stale'), callId)
     }
     if (signal.aborted) {
       giveBack()

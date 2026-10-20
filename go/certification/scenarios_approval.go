@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -342,6 +344,70 @@ func resultText(data map[string]any) string {
 	return text
 }
 
+// approvalVector is one vector file under contract/vectors/approval, by member.
+func approvalVector(name string) (map[string]json.RawMessage, error) {
+	root, err := RepositoryRoot()
+	if err != nil {
+		return nil, err
+	}
+	raw, err := os.ReadFile(filepath.Join(root, "contract", "vectors", "approval", name))
+	if err != nil {
+		return nil, err
+	}
+	var vector map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &vector); err != nil {
+		return nil, err
+	}
+	return vector, nil
+}
+
+// withCallID is a vector item with its callId the run's own (each run draws its own).
+func withCallID(item json.RawMessage, callID string) []byte {
+	var value map[string]any
+	if json.Unmarshal(item, &value) != nil {
+		return nil
+	}
+	value["callId"] = callID
+	out, _ := json.Marshal(value)
+	return out
+}
+
+// pauseAgainstVector compares the pausing run's last three events with approval/pause.json's items:
+// the same approval_requested, the checkpoint durable and paused with the same approval, then end,
+// the call id being the run's own; the checkpoint's other members (its id, operations, figures) are
+// each run's. It answers what differs, or "".
+func pauseAgainstVector(requested *contract.RunEventApprovalRequested, emitted *contract.RunEventExecutionCheckpoint, end contract.RunEvent) string {
+	vector, err := approvalVector("pause.json")
+	if err != nil {
+		return err.Error()
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(vector["items"], &items); err != nil || len(items) != 3 {
+		return "its items are not the three events"
+	}
+	var checkpoint struct {
+		Durable    bool `json:"durable"`
+		Checkpoint struct {
+			Status   string          `json:"status"`
+			Approval json.RawMessage `json:"approval"`
+		} `json:"checkpoint"`
+	}
+	if err := json.Unmarshal(items[1], &checkpoint); err != nil {
+		return err.Error()
+	}
+	switch {
+	case !sameJSON([]byte(comparisonJSON(requested)), withCallID(items[0], requested.CallID)):
+		return "approval_requested was " + comparisonJSON(requested)
+	case emitted.Durable == nil || *emitted.Durable != checkpoint.Durable || emitted.Checkpoint.Status != checkpoint.Checkpoint.Status:
+		return "the checkpoint was " + comparisonJSON(emitted)
+	case !sameJSON([]byte(comparisonJSON(emitted.Checkpoint.Approval)), withCallID(checkpoint.Checkpoint.Approval, requested.CallID)):
+		return "the checkpoint's approval was " + comparisonJSON(emitted.Checkpoint.Approval)
+	case !sameJSON([]byte(comparisonJSON(end)), items[2]):
+		return "the last event was " + comparisonJSON(end)
+	}
+	return ""
+}
+
 // approvalPauseFindings are scenario 8's checks over what one capability left, by names prefixed
 // with prefix ("8 " for a model capability, "8 agent " for an agent capability).
 func approvalPauseFindings(state *paused, prefix string, agent bool) []Finding {
@@ -378,6 +444,8 @@ func approvalPauseFindings(state *paused, prefix string, agent bool) []Finding {
 			events[n-2].ExecutionCheckpoint.Checkpoint.Status != "paused" || events[n-2].ExecutionCheckpoint.Checkpoint.Approval == nil ||
 			events[n-2].ExecutionCheckpoint.Checkpoint.Approval.State != "asked" || events[n-2].ExecutionCheckpoint.Checkpoint.Approval.CallID != requested[0].CallID {
 			f.fail("the run did not end with the paused checkpoint, durable, and end")
+		} else if detail := pauseAgainstVector(requested[0], events[n-2].ExecutionCheckpoint, events[n-1]); detail != "" {
+			f.fail("against approval/pause.json: %s", detail)
 		}
 	}
 	if len(errorsOf(state.pausing.Events)) > 0 || endsOf(state.pausing.Events) != 1 || count(0) != 0 {
@@ -425,6 +493,12 @@ func approvalPauseFindings(state *paused, prefix string, agent bool) []Finding {
 	if len(errs) != 1 || errs[0].Failure == nil || errs[0].Failure.Code != "stale-state" || endsOf(state.wrong.Events) != 1 ||
 		state.wrong.Events[len(state.wrong.Events)-1].End == nil || len(state.wrong.Sent) != 0 || count(1) != 0 {
 		f.fail("the decision for another call: errors %s, %d sent, %d calls run", comparisonJSON(errs), len(state.wrong.Sent), count(1))
+	}
+	// The contract's vector (approval/wrong-call-id.json): the run's events are its events, word for word.
+	if vector, err := approvalVector("wrong-call-id.json"); err != nil {
+		f.fail("approval/wrong-call-id.json: %v", err)
+	} else if got := comparisonJSON(withoutCheckpoints(state.wrong.Events)); !sameJSON([]byte(got), vector["events"]) {
+		f.fail("the events were %s, not approval/wrong-call-id.json's", got)
 	}
 	out = append(out, f.list...)
 

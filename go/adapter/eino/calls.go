@@ -223,6 +223,11 @@ func (t *turnState) runHost(ctx context.Context, tool runcontext.HostTool, args 
 		return bare(*refusal), nil
 	}
 	callID := t.correlation()
+	// ADR-0008: an act call of a tool with a source always carries an id, whether or not the run's
+	// events carry one, so the decision taken before its call is its own, never another call's.
+	if callID == "" && t.r.sc.Sources != nil && t.r.sc.Sources.NeedsApproval(tool.Name) {
+		callID = wire.RandomUUID()
+	}
 	// ADR-0008: an act call the host's policy asks about is held for the person, never run: its
 	// approval_requested in place of the call, and the run's next request is refused.
 	if held := t.r.sc.Approval(ctx, tool.Name, args, callID); held != nil {

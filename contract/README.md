@@ -141,9 +141,13 @@ files they were rendered from.
   and after a refusal's write the one `guardrail` with `reason: approval refused`;
   and the continuation's text, one line and the result as one data block with the note inside it) and
   `approval/wrong-call-id.json` (a decision for another call, refused before anything runs) and
-  `approval/policy.json` (the host's approval policy's three answers, `tool-offer.json#/$defs/approvalPolicy`). The
-  contract tests hold each continuation's data to its decision and result; `toolSources.test.ts` holds
-  the package's words to them, and certified scenario 8 runs the same on every engine.
+  `approval/policy.json` (the host's approval policy's three answers, `tool-offer.json#/$defs/approvalPolicy`) and
+  `approval/stale-decision.json` (the gate's own refusal of an act call whose decision no longer
+  holds for it, the `guardrail` with `reason: approval stale` between the call and its failed
+  result). The contract tests hold each continuation's data to its decision and result;
+  `toolSources.test.ts` and `go/context` hold the package's words to them, and certified scenario 8
+  runs the same on every engine and compares the pausing run and the run with a decision for another
+  call with `pause.json` and `wrong-call-id.json`.
 - Tool sources (ADR-0006), written by hand from the schemas: `tool-offer/source-declarations.json`
   (five host tools with a source as a host declares them, and six declarations the package refuses,
   each failing the schema), `tool-offer/source-offer.json` (the offer made of them, under their wire

@@ -140,6 +140,9 @@ type ApprovalBook interface {
 type decision struct {
 	answer string
 	detail string
+	// args is the canonical JSON of the arguments the decision was taken for (HeldDecision.args):
+	// a call that reaches the gate with others is refused.
+	args string
 }
 type callIDKey struct{}
 
@@ -1003,6 +1006,7 @@ func (g *SourceGate) Decide(ctx context.Context, name string, args json.RawMessa
 	}
 	// An asked call is never handed to the host, so its decision is not kept for a Call.
 	if hold && held.answer != "ask" {
+		held.args = canonicalArgs(args)
 		if callID != "" {
 			g.decisions[callID] = held
 		} else {
@@ -1096,7 +1100,7 @@ func (g *SourceGate) Approved(ctx context.Context, record contract.CheckpointApp
 	}
 	if entry == nil || run == nil || !g.NeedsApproval(record.Name) || CanonicalJSON(recordValue(entry.Record)) != CanonicalJSON(recordValue(record.Source)) {
 		g.mu.Lock()
-		err := g.refuse(record.Name, record.Name+" is no longer offered as it was when the person decided; the call was not run and nothing was changed", "approval refused")
+		err := g.refuse(record.Name, record.Name+" is no longer offered as it was when the person decided; the call was not run and nothing was changed", "approval stale")
 		g.mu.Unlock()
 		return refusedWith(err)
 	}
@@ -1161,6 +1165,15 @@ func (g *SourceGate) Approved(ctx context.Context, record contract.CheckpointApp
 	result.Receipt = ""
 	g.row(id).Bytes += int64(UTF8Bytes(string(result.JSON())))
 	return result, true, nil
+}
+
+// canonicalArgs is the canonical JSON of a call's arguments (canonicalJSON), what a decision is tied to.
+func canonicalArgs(args json.RawMessage) string {
+	value, err := ParseJSON(nonEmptyArgs(args))
+	if err != nil {
+		return string(args)
+	}
+	return CanonicalJSON(value)
 }
 
 // recordValue is a source record as a JSON value, for comparing two records.
@@ -1240,6 +1253,10 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 	if g.NeedsApproval(name) {
 		g.mu.Lock()
 		held, ok := g.takeDecision(name, callID)
+		// A decision taken for other arguments is not this call's: refused, never run.
+		if ok && held.args != canonicalArgs(args) {
+			held = decision{answer: "stale", detail: name + " was called with arguments other than those its approval was decided for; it was not run and nothing was changed"}
+		}
 		g.mu.Unlock()
 		if !ok {
 			if asked := g.currentApproval(); asked != nil && asked.State == "asked" && callID != "" && asked.CallID == callID {
@@ -1260,10 +1277,15 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 		return ToolResult{}, failure.NewError(contract.Failure{Version: 1, Code: "permission", Source: "tool", Outcome: "not-started", Detail: &detail})
 	}
 	g.mu.Lock()
-	if decided != nil && (decided.answer == "refuse" || decided.answer == "closed") {
+	// The policy's refusal is approval refused; a decision that no longer holds for this call is the
+	// gate's, approval stale.
+	if decided != nil && (decided.answer == "refuse" || decided.answer == "closed" || decided.answer == "stale") {
 		reason := ""
-		if decided.answer == "refuse" {
+		switch decided.answer {
+		case "refuse":
 			reason = "approval refused"
+		case "stale":
+			reason = "approval stale"
 		}
 		err := g.refused(entry, callID, g.refuse(name, decided.detail, reason))
 		g.mu.Unlock()
@@ -1337,7 +1359,7 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 	if decided != nil && decided.answer != "allow" {
 		g.mu.Lock()
 		giveBack()
-		err := g.refused(entry, callID, g.refuse(name, name+" acts on "+id+", and this call's approval was not given; it was not run and nothing was changed", "approval refused"))
+		err := g.refused(entry, callID, g.refuse(name, name+" acts on "+id+", and this call's approval was not given; it was not run and nothing was changed", "approval stale"))
 		g.mu.Unlock()
 		return ToolResult{}, err
 	}

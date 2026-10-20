@@ -80,6 +80,8 @@ import planMode from './scenarios/plan-mode.json'
 import toolSourcesScenario from './scenarios/tool-sources.json'
 import { APPROVAL_CONTINUATION, CATALOGUE_SCHEMA, LOAD_TOOL, toolListDigest, type ApprovalRequest } from '../toolSources'
 import approvalPause from './scenarios/approval-pause.json'
+import pauseVector from '../../../contract/vectors/approval/pause.json'
+import wrongCallVector from '../../../contract/vectors/approval/wrong-call-id.json'
 import type { ContextInput } from '../context/session'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -1055,6 +1057,14 @@ function approvalPauseChecks(get: () => Paused, adapter: 'model' | 'agent') {
     expect(ofType(pausing.events, 'end')).toHaveLength(1)
     expect(ofType(pausing.events, 'error')).toEqual([])
     expect(JSON.parse(saved)).toEqual((checkpoint as { checkpoint: unknown }).checkpoint)
+    // The contract's vector (approval/pause.json): the same event, the same approval, durable and paused, then end; only the call id is the run's own.
+    const [vectorEvent, vectorCheckpoint, vectorEnd] = pauseVector.items as [Record<string, unknown>, { durable: boolean; checkpoint: ExecutionCheckpoint }, unknown]
+    expect(asked[0]).toEqual({ ...vectorEvent, callId: asked[0]!.callId })
+    const emitted = (checkpoint as { durable?: boolean; checkpoint: ExecutionCheckpoint })
+    expect(emitted.durable).toBe(vectorCheckpoint.durable)
+    expect(emitted.checkpoint.status).toBe(vectorCheckpoint.checkpoint.status)
+    expect(emitted.checkpoint.approval).toEqual({ ...vectorCheckpoint.checkpoint.approval, callId: asked[0]!.callId })
+    expect(end).toEqual(vectorEnd)
     expect(counts[0]).toBe(0)
     // No request is sent once the call waits: the two of the scripted turns, and no third.
     if (adapter === 'model') expect(get().pausing.requests).toHaveLength(2)
@@ -1079,6 +1089,8 @@ function approvalPauseChecks(get: () => Paused, adapter: 'model' | 'agent') {
     const { wrong, counts } = get()
     expect(ofType(wrong.events, 'error')).toEqual([expect.objectContaining({ failure: expect.objectContaining({ code: 'stale-state', source: 'context' }) })])
     expect(wrong.events.at(-1)).toEqual({ type: 'end' })
+    // The contract's vector (approval/wrong-call-id.json): the run's events are its events, word for word.
+    expect(wrong.events.filter((event) => event.type !== 'execution_checkpoint')).toEqual(wrongCallVector.events)
     expect(wrong.requests).toHaveLength(0)
     expect(wrong.runs).toHaveLength(0)
     expect(counts[1]).toBe(0)
