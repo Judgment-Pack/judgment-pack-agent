@@ -11,10 +11,14 @@
  *   same, so a host passes its values in unchanged.
  * - **Injection points.** What only a host can do: hold the session and its
  *   bearer, build its own addresses and headers, open its socket, choose the
- *   reply language, read its files and preparations. Each is a binding the host
+ *   reply language, read its files and preparations, and supply the parts of
+ *   the prompt only it holds (the project brief, the project's own
+ *   instructions, recalled memory; ADR-0005). Each is a binding the host
  *   replaces once, with `configureHarness`, before it starts a run. One the
  *   host has not supplied throws and names itself; nothing here guesses a
- *   host's answer.
+ *   host's answer. The three prompt parts, `endpointCapabilities` and
+ *   `modelsFor` are the exceptions: each has an answer before the host
+ *   supplies it, nothing.
  *
  * Every moved file that read a Desk module reads this one instead, under the
  * same names, so the moved code is the Desk's code with its import lines
@@ -118,6 +122,13 @@ export function sourceMessage(source: string, values: Record<string, unknown> = 
 export type { StatePlacement } from './capabilities'
 export type EndpointCapabilities = Partial<import('./capabilities').ModelCapabilities>
 
+/**
+ * One part of the prompt the host supplies (ADR-0005): its text, or nothing (`undefined`, `null` or
+ * the empty string), now or as a promise. The adapter places it in its layer of the request; the
+ * host never rewrites a request behind the relay.
+ */
+export type HostPart = string | null | undefined | Promise<string | null | undefined>
+
 /** What a host supplies. Every member is an injection point; see the package README. */
 export interface HarnessHost {
   /** The reply-language section a run's instructions end with (was `i18n/assistantLanguage`). */
@@ -198,6 +209,34 @@ export interface HarnessHost {
    * child at a time whatever this says.
    */
   modelsFor(run: RunIdentity): { critic?: string | null; child?: string | null; concurrentRequests?: number | null }
+
+  /**
+   * The project brief (ADR-0005): the text of the project file the host's profile names, or nothing.
+   * Asked once per run, before its first request; the adapter places it in the third layer of every
+   * request, after the package's guidance and before the project instructions, headed as background
+   * that is not approval, evidence or authority (`BRIEF_HEADER`, `prompt.ts`). At most `briefBytes`;
+   * a longer answer is refused and the run fails before any request (`configuration`). Unsupplied,
+   * nothing.
+   */
+  brief(): HostPart
+  /**
+   * Recalled project memory for `query` (ADR-0005): the text, or nothing. Asked once per run, before
+   * its first request, with the person's message (`context.currentRequest.message`; a delegated
+   * child's objective; the host's prompt where neither is given), and not asked where the host said
+   * memory is off (`context.memory: false`). Placed in the fifth layer, the last of the stable
+   * prefix, so it is the same on every request of the run. At most `memoryBytes`; a longer answer is
+   * refused as the brief's is. Unsupplied, nothing.
+   */
+  memoryFor(query: string): HostPart
+  /**
+   * The project's own instructions (ADR-0005): the per-project block the person wrote, or nothing.
+   * Instructions at the lowest rank, not data: placed in the fourth layer, after the package's
+   * guidance and the brief, headed "the project's own instructions; follow them where they do not
+   * contradict the rules above" (`PROJECT_INSTRUCTIONS_HEADER`). They cannot grant a tool or change an
+   * effect: the offer and the gate are code. At most `projectInstructionsBytes`; a longer answer is
+   * refused as the brief's is. Asked once per run. Unsupplied, nothing.
+   */
+  projectInstructions(): HostPart
 }
 
 /** What `modelsFor` is asked with: the run's connection, engine, family (a model engine's) and model. */
@@ -253,6 +292,9 @@ export let dialectAPI: HarnessHost['dialectAPI'] = () => unsupplied('dialectAPI'
 export let endpointCapabilities: HarnessHost['endpointCapabilities'] = () => ({})
 export let renderImageToText: HarnessHost['renderImageToText'] = () => unsupplied('renderImageToText')
 export let modelsFor: HarnessHost['modelsFor'] = () => ({})
+export let brief: HarnessHost['brief'] = () => undefined
+export let memoryFor: HarnessHost['memoryFor'] = () => undefined
+export let projectInstructions: HarnessHost['projectInstructions'] = () => undefined
 
 /**
  * The host's `modelsFor` answer for one run, read: each member a model name, or the run's own model
@@ -307,4 +349,7 @@ export function configureHarness(host: Partial<HarnessHost>): void {
   if (host.endpointCapabilities) endpointCapabilities = host.endpointCapabilities
   if (host.renderImageToText) renderImageToText = host.renderImageToText
   if (host.modelsFor) modelsFor = host.modelsFor
+  if (host.brief) brief = host.brief
+  if (host.memoryFor) memoryFor = host.memoryFor
+  if (host.projectInstructions) projectInstructions = host.projectInstructions
 }

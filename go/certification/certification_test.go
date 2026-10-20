@@ -132,7 +132,7 @@ func TestAnIdleAdapterFailsTheLeg(t *testing.T) {
 	for _, finding := range result.Checks() {
 		failed[finding.Check] = true
 	}
-	for _, check := range []string{"scenario", "agent#11", "K1a", "K1", "K3a", "K3b", "K3c", "sequence", "steps"} {
+	for _, check := range []string{"scenario", "K1a", "K1", "K3a", "K3b", "K3c", "sequence", "steps"} {
 		if !failed[check] {
 			t.Errorf("an idle adapter passed %s", check)
 		}
@@ -183,27 +183,20 @@ func TestAKeySentUnderTracingFailsK1b(t *testing.T) {
 	}
 }
 
-// The recall rule in Go finds what the contract's recall vectors say it finds, on each wire.
-func TestTheRecallRuleIsTheVectors(t *testing.T) {
-	for _, name := range []string{"openai-compatible", "anthropic", "gemini", "agent", "delegated-child"} {
-		_, items, err := certification.ReadVector("recall/" + name + ".json")
-		if err != nil {
-			t.Fatal(err)
-		}
-		for i, raw := range items {
-			var item struct {
-				Family  string          `json:"family"`
-				Body    json.RawMessage `json:"body"`
-				Pointer string          `json:"pointer"`
-				Text    string          `json:"text"`
-			}
-			if err := json.Unmarshal(raw, &item); err != nil {
-				t.Fatal(err)
-			}
-			found := certification.Recall(item.Family, item.Body)
-			if found == nil || found.Pointer != item.Pointer || found.Text != item.Text {
-				t.Errorf("%s item %d: the rule found %+v", name, i, found)
-			}
+// A loop that places none of the host's parts, and asks the host for none, fails the placement
+// check (ADR-0005): the check is not vacuous.
+func TestALoopThatDropsTheHostsPartsFailsThePlacement(t *testing.T) {
+	ctx := context30s(t)
+	findings, err := certification.PromptChecks[0].Run(ctx, server, certification.Endpoint{API: "openai-compatible", AnswerAs: "whole"}, certification.AdapterFunc(referenceLoop))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) == 0 {
+		t.Fatal("a loop with no system text passed the placement check")
+	}
+	for _, finding := range findings {
+		if finding.Check != "parts" {
+			t.Errorf("the finding is %s", finding)
 		}
 	}
 }

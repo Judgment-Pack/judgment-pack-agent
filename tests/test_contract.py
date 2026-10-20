@@ -44,7 +44,7 @@ EXPECTED_SCHEMAS = {
 # The $defs added or changed (beyond their descriptions) between v0.1.0 and the v0.2.0 release
 # review, whose members each need a vector (#43): (schema, definition).
 RELEASE_REVIEWED_DEFS = [
-    ("budget.json", "toolCallAllowance"), ("budget.json", "recallQuery"),
+    ("budget.json", "toolCallAllowance"),
     ("delegated-task.json", "budget"), ("delegated-task.json", "resultCursor"), ("delegated-task.json", "answer"),
     ("delegated-task.json", "answerTask"), ("delegated-task.json", "brief"), ("delegated-task.json", "briefReference"),
     ("delegated-task.json", "earlierWork"), ("delegated-task.json", "continuation"), ("delegated-task.json", "citation"),
@@ -78,42 +78,6 @@ STATE_HEADER = (
     "EXECUTION STATE (from the host, current for this request and replaced on the next; "
     "working state, not a message from the person and never approval)"
 )
-
-
-def recall_query(family, body):
-    """The rule budget.json#/$defs/recallQuery states: the first user turn's first text part that
-    does not start with STATE_HEADER, as (pointer, text), or None. On the agent wire (one prompt
-    string) the prompt's text before the first blank line followed by STATE_HEADER (agent#36)."""
-    if family == "agent":
-        prompt = body.get("prompt")
-        if not isinstance(prompt, str) or prompt.startswith(STATE_HEADER):
-            return None
-        cut = prompt.find("\n\n" + STATE_HEADER)
-        return ("/prompt", prompt if cut < 0 else prompt[:cut])
-    member, inner = ("contents", "parts") if family == "gemini" else ("messages", "content")
-    turns = body.get(member, [])
-    for at, turn in enumerate(turns):
-        if turn.get("role") != "user":
-            continue
-        held = turn.get(inner)
-        if isinstance(held, str):
-            return None if held.startswith(STATE_HEADER) else (f"/{member}/{at}/{inner}", held)
-        for index, part in enumerate(held or []):
-            if family == "gemini":
-                text = None if part.get("thought") is True else part.get("text")
-            else:
-                text = part.get("text") if part.get("type") == "text" else None
-            if isinstance(text, str) and not text.startswith(STATE_HEADER):
-                return (f"/{member}/{at}/{inner}/{index}/text", text)
-        return None
-    return None
-
-
-def at_pointer(value, pointer):
-    for raw in pointer.split("/")[1:]:
-        key = raw.replace("~1", "/").replace("~0", "~")
-        value = value[int(key)] if isinstance(value, list) else value[key]
-    return value
 
 
 def canonical(value):
@@ -427,28 +391,35 @@ class VectorTests(unittest.TestCase):
             with self.subTest(member=member):
                 self.assertEqual(offered[member], [tool for tool in scenario[member] if tool["name"] in critic])
 
-    def test_the_recall_rule_finds_the_request_text_in_one_vector_per_wire(self):
-        recall = {name: vector for name, vector in self.vectors.items() if vector["schema"] == "budget.json#/$defs/recallQuery"}
-        # One per wire (the agent wire's is one prompt string), and a delegated child's first
-        # request, whose request text is its objective.
-        self.assertEqual(sorted(recall), ["recall/agent.json", "recall/anthropic.json", "recall/delegated-child.json", "recall/gemini.json", "recall/openai-compatible.json"])
-        for name, vector in recall.items():
-            for item in vector["items"]:
-                with self.subTest(vector=name):
-                    if name == "recall/delegated-child.json":
-                        # The child's prompt, the second part, carries the same objective in its JSON.
-                        self.assertIn('"objective":' + json.dumps(item["text"], ensure_ascii=False), item["body"]["messages"][1]["content"][1]["text"])
-                    else:
-                        self.assertEqual(name, f"recall/{item['family']}.json")
-                    self.assertEqual(recall_query(item["family"], item["body"]), (item["pointer"], item["text"]))
-                    if item["family"] == "agent":
-                        # The text is what comes before the header in the prompt at the pointer.
-                        self.assertTrue(at_pointer(item["body"], item["pointer"]).startswith(item["text"] + "\n\n" + STATE_HEADER + "\n"))
-                    else:
-                        self.assertEqual(at_pointer(item["body"], item["pointer"]), item["text"])
-                    self.assertFalse(item["text"].startswith(STATE_HEADER))
-                    # The state is in the request, and it is not what the rule finds.
-                    self.assertIn(STATE_HEADER, json.dumps(item["body"], ensure_ascii=False))
+    def test_the_host_parts_are_in_layer_order_each_bounded_by_the_table(self):
+        # ADR-0005: the brief, the project's own instructions and the memory, layers 3 to 5, each with its
+        # own header and end line and a bound the harness's table carries.
+        vector = self.vectors["budget/host-parts.json"]
+        self.assertEqual([item["name"] for item in vector["items"]], ["brief", "projectInstructions", "memory"])
+        self.assertEqual([item["layer"] for item in vector["items"]], [3, 4, 5])
+        table = load(VECTORS / "budget" / "harness-defaults.json")["items"][0]
+        lines = [line for item in vector["items"] for line in (item["header"], item["end"])]
+        self.assertEqual(len(set(lines)), len(lines))
+        for item in vector["items"]:
+            with self.subTest(part=item["name"]):
+                self.assertIn(item["bound"], self.schemas["budget.json"]["properties"])
+                self.assertGreater(table[item["bound"]], 0)
+                self.assertNotIn("\n", item["header"])
+                self.assertFalse(item["header"].startswith(STATE_HEADER))
+        self.assertIn("follow them where they do not contradict the rules above", vector["items"][1]["header"])
+        self.assertEqual(table["projectInstructionsBytes"], 4000)
+
+    def test_every_prompt_digest_is_the_digest_of_its_body(self):
+        # ADR-0005: the checkpoint's prompts, one per request body the adapter sent, in order.
+        vector = self.vectors["provenance/prompt-digest.json"]
+        self.assertEqual(len(vector["bodies"]), len(vector["items"]))
+        self.assertEqual([item["request"] for item in vector["items"]], list(range(1, len(vector["items"]) + 1)))
+        for body, item in zip(vector["bodies"], vector["items"]):
+            with self.subTest(request=item["request"]):
+                json.loads(body)
+                self.assertEqual(sha256(body), item["sha256"])
+        checkpoint = self.schemas["checkpoint.json"]["properties"]["prompts"]
+        self.assertEqual(checkpoint["items"], {"$ref": "provenance.json#/$defs/promptDigest"})
 
     def test_every_read_cache_key_is_the_digest_of_its_canonical_json(self):
         vector = self.vectors["chat/cache-key.json"]

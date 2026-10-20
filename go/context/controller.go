@@ -67,6 +67,9 @@ type Execution struct {
 	TestCalls *int
 	// Delegation is each delegated child's cost and time (agent#18), carried as Used is.
 	Delegation *Value
+	// Prompts is the digest of every request body the adapter sent (ADR-0005), in order, carried
+	// as Used is; nil where none was sent.
+	Prompts []contract.ProvenancePromptDigest
 }
 
 // Value is the state as the checkpoint's JSON, in the order the TypeScript writes it.
@@ -124,6 +127,13 @@ func (e *Execution) Value() *Value {
 	if e.Delegation != nil {
 		out.Set("delegation", e.Delegation)
 	}
+	if e.Prompts != nil {
+		rows := Array()
+		for _, row := range e.Prompts {
+			rows.Append(ObjectOf("request", Number(float64(row.Request)), "sha256", String(row.Sha256)))
+		}
+		out.Set("prompts", rows)
+	}
 	return out
 }
 
@@ -155,7 +165,7 @@ func executionOf(saved *contract.Checkpoint) (*Execution, error) {
 		Phase: saved.Phase, Status: saved.Status, Unit: saved.Unit, Used: int(saved.Used),
 		Limit: int(saved.Limit), Grants: saved.Grants, Plan: value.Get("plan"),
 		Explanation: saved.Explanation, Completions: saved.Completions, Context: saved.Context,
-		Reason: saved.Reason, Delegation: value.Get("delegation")}
+		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts}
 	if saved.TestCalls != nil {
 		calls := int(*saved.TestCalls)
 		out.TestCalls = &calls
@@ -464,6 +474,20 @@ func (c *ExecutionController) RecordCompletion(result contract.ProvenanceComplet
 		row.Attempt = &held
 	}
 	c.State.Completions = append(c.State.Completions, row)
+}
+
+// RecordPrompt is recordPrompt (ADR-0005): the digest of one request body the adapter is about to
+// send, recorded before it is sent: the SHA-256 of the body, numbered after the last one recorded.
+// The newest MaxPromptDigests are kept.
+func (c *ExecutionController) RecordPrompt(body []byte) {
+	next := int64(1)
+	if held := len(c.State.Prompts); held > 0 {
+		next = c.State.Prompts[held-1].Request + 1
+	}
+	c.State.Prompts = append(c.State.Prompts, contract.ProvenancePromptDigest{Request: next, Sha256: ContextDigest(string(body))})
+	if extra := len(c.State.Prompts) - MaxPromptDigests; extra > 0 {
+		c.State.Prompts = append([]contract.ProvenancePromptDigest{}, c.State.Prompts[extra:]...)
+	}
 }
 
 // BeginAttempt says which attempt at a model request is being sent, before each one, so a new

@@ -138,12 +138,14 @@ func (r *runState) runOnce(ctx context.Context) error {
 		}
 	}
 	t.instructions = instructions
-	t.system = instructions + "\n" + runcontext.ExecutionInstructions + toolSection
+	// The stable prefix (ADR-0005): the package's guidance with the execution instructions, then
+	// the host's parts, then the tools described in text where the endpoint takes no native calls.
+	t.system = r.sc.System(instructions+"\n"+runcontext.ExecutionInstructions, toolSection)
 	var currentRequest *runcontext.CurrentRequest
 	if r.run.Context != nil {
 		currentRequest = r.run.Context.CurrentRequest
 	}
-	opening, err := r.sc.Opening(r.session.Prompt, instructions+toolSection+"\n"+r.sc.Execution.Guidance(), t.schemas, currentRequest)
+	opening, err := r.sc.Opening(r.session.Prompt, r.sc.System(instructions, toolSection)+"\n"+r.sc.Execution.Guidance(), t.schemas, currentRequest)
 	if err != nil {
 		return err
 	}

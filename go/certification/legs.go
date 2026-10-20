@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strings"
 
-	runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 )
 
@@ -128,24 +127,6 @@ func steps(requests []RecordedRequest) ([]string, []int) {
 	return names, results
 }
 
-// recallMisses is the recall rule (agent#11) on every request a leg sent, the critic's second
-// conversation aside: what it finds where it does not find the text the run started from.
-func recallMisses(api string, bodies [][]byte, policy string) []string {
-	var misses []string
-	at := 0
-	for _, body := range bodies {
-		if strings.Contains(string(body), RefutationMarker) {
-			continue
-		}
-		at++
-		found := runcontext.Recall(api, body)
-		if found == nil || found.Text != policy {
-			misses = append(misses, fmt.Sprintf("request %d: %v", at, found))
-		}
-	}
-	return misses
-}
-
 func authoringBodies(bodies [][]byte) int {
 	n := 0
 	for _, body := range bodies {
@@ -248,17 +229,17 @@ var TextChecks = []Check{
 		}
 		return f.list, nil
 	}},
-	{Name: "text agent#11", Block: "engine %s · text tool calls", Legs: AllLegs, Run: func(ctx context.Context, server *Server, endpoint Endpoint, adapter Adapter) ([]Finding, error) {
+	{Name: "text parts", Block: "engine %s · text tool calls", Legs: AllLegs, Run: func(ctx context.Context, server *Server, endpoint Endpoint, adapter Adapter) ([]Finding, error) {
 		endpoint.ToolCalls = "text"
-		r, err := run(ctx, server, endpoint, LegOptions{Capabilities: textCapabilities}, adapter)
+		r, err := run(ctx, server, endpoint, LegOptions{Capabilities: textCapabilities, Host: &Supplied}, adapter)
 		if err != nil {
 			return nil, err
 		}
-		f := &findings{check: "text agent#11"}
+		f := &findings{check: "text parts"}
 		if len(r.bodies) <= 7 {
 			f.fail("%d bodies", len(r.bodies))
 		}
-		for _, miss := range recallMisses(endpoint.API, r.bodies, r.scenario.Policy) {
+		for _, miss := range placementMisses(endpoint.API, r, Supplied, true) {
 			f.fail("%s", miss)
 		}
 		return f.list, nil
@@ -310,17 +291,17 @@ var StrictChecks = []Check{
 		}
 		return f.list, nil
 	}},
-	{Name: "strict agent#11", Block: "engine %s · strict alternation", Legs: streamLegs, Run: func(ctx context.Context, server *Server, endpoint Endpoint, adapter Adapter) ([]Finding, error) {
+	{Name: "strict parts", Block: "engine %s · strict alternation", Legs: streamLegs, Run: func(ctx context.Context, server *Server, endpoint Endpoint, adapter Adapter) ([]Finding, error) {
 		endpoint.Strict = true
-		r, err := run(ctx, server, endpoint, LegOptions{Capabilities: strictCapabilities}, adapter)
+		r, err := run(ctx, server, endpoint, LegOptions{Capabilities: strictCapabilities, Host: &Supplied}, adapter)
 		if err != nil {
 			return nil, err
 		}
-		f := &findings{check: "strict agent#11"}
+		f := &findings{check: "strict parts"}
 		if len(r.bodies) <= 7 {
 			f.fail("%d bodies", len(r.bodies))
 		}
-		for _, miss := range recallMisses(endpoint.API, r.bodies, r.scenario.Policy) {
+		for _, miss := range placementMisses(endpoint.API, r, Supplied, false) {
 			f.fail("%s", miss)
 		}
 		return f.list, nil

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/budget.json",
   "title": "Budget",
-  "description": "The context budget one run works under: the provider-independent byte and token limits both the browser and the Desk server read from one table (internal/aicontext/policy.json, ContextPolicy in web/src/assistant/context/policy.ts, aicontext.Policy in Go). The model's context window and output reserve may be overridden per model by the assistant profile (configuration); everything else is fixed. Input bytes for one request are min(maxInputBytes, max(1024, (contextWindowTokens - outputTokens) * 3)); the browser further leaves briefBytes, and memoryBytes where the host has not said memory is off (the run's context.memory, agent#11), for what the server adds behind the adapter, and the server refuses before dispatch, never clipping, a request over the input bytes (context-limit, not-started). Open: the Go reader ignores a member it does not name. The request allowance, the grants and the fixed limits are in $defs. The harness adds two time bounds the Desk's table does not carry (packages/harness/context/policy.ts, TIME_DEFAULTS), each taken from the table where it does: turnMilliseconds and toolCallMilliseconds; and three bounds on the Runtime's test tool (TEST_DEFAULTS), likewise: testCallsPerTurn, testPackBytes and testMatrixBytes; and two image bounds (IMAGE_DEFAULTS), likewise: imagesPerRequest and imageBytesPerRequest; and two bounds on the index of earlier results a chat-scoped run's first message carries (INDEX_DEFAULTS, agent#8), likewise: turnIndexEntries and turnIndexBytes. The table also states the critic's default, adversarialReview (agent#10), which the harness adds to the Desk's table: both engines read it where a session leaves adversarialReview unset.",
+  "description": "The context budget one run works under: the provider-independent byte and token limits both the browser and the Desk server read from one table (internal/aicontext/policy.json, ContextPolicy in web/src/assistant/context/policy.ts, aicontext.Policy in Go). The model's context window and output reserve may be overridden per model by the assistant profile (configuration); everything else is fixed. Input bytes for one request are min(maxInputBytes, max(1024, (contextWindowTokens - outputTokens) * 3)); the browser further leaves briefBytes, and memoryBytes where the host has not said memory is off (the run's context.memory, agent#11), a reserve kept from when the server added the brief and memory behind the adapter; since ADR-0005 the adapter places them itself (each held to its bound, $defs/hostPart) and counts them where they sit, and the server refuses before dispatch, never clipping, a request over the input bytes (context-limit, not-started). Open: the Go reader ignores a member it does not name. The request allowance, the grants and the fixed limits are in $defs. The harness adds two time bounds the Desk's table does not carry (packages/harness/context/policy.ts, TIME_DEFAULTS), each taken from the table where it does: turnMilliseconds and toolCallMilliseconds; and three bounds on the Runtime's test tool (TEST_DEFAULTS), likewise: testCallsPerTurn, testPackBytes and testMatrixBytes; and two image bounds (IMAGE_DEFAULTS), likewise: imagesPerRequest and imageBytesPerRequest; and two bounds on the index of earlier results a chat-scoped run's first message carries (INDEX_DEFAULTS, agent#8), likewise: turnIndexEntries and turnIndexBytes; and the bound on the project's own instructions (PROMPT_DEFAULTS, ADR-0005), likewise: projectInstructionsBytes. The table also states the critic's default, adversarialReview (agent#10), which the harness adds to the Desk's table: both engines read it where a session leaves adversarialReview unset.",
   "type": "object",
   "required": [
     "version",
@@ -63,12 +63,12 @@
       "minimum": 0
     },
     "briefBytes": {
-      "description": "The most of the project brief the server adds behind the adapter.",
+      "description": "The most UTF-8 bytes of the project brief the host's brief() may answer (ADR-0005; before it, the most the server added behind the adapter). A longer answer is refused before the run's first request (configuration) and nothing is sent.",
       "type": "integer",
       "minimum": 0
     },
     "memoryBytes": {
-      "description": "The most of recalled project memory the server adds behind the adapter. The harness leaves it out of a run's input allowance only while memory may be added: a run whose host says memory is off (context.memory: false, agent#11) reserves none and has the full allowance; absent, the reserve stays (contextPolicy in packages/harness/context/policy.ts).",
+      "description": "The most UTF-8 bytes of recalled project memory the host's memoryFor(query) may answer (ADR-0005; before it, the most the server added behind the adapter); a longer answer is refused as a brief's is. The harness leaves it out of a run's input allowance only while memory may be on: a run whose host says memory is off (context.memory: false, agent#11) reserves none, has the full allowance and asks memoryFor nothing; absent, the reserve stays (contextPolicy in packages/harness/context/policy.ts).",
       "type": "integer",
       "minimum": 0
     },
@@ -130,6 +130,12 @@
       "type": "integer",
       "minimum": 0,
       "default": 8000
+    },
+    "projectInstructionsBytes": {
+      "description": "The most UTF-8 bytes of the project's own instructions the host's projectInstructions() may answer (ADR-0005): instructions at the lowest rank, placed after the package's guidance and the brief. A longer answer is refused before the run's first request (configuration) and nothing is sent. Not in the Desk's table; the harness's default is 4000.",
+      "type": "integer",
+      "minimum": 0,
+      "default": 4000
     }
   },
   "additionalProperties": true,
@@ -353,7 +359,7 @@
       "additionalProperties": true
     },
     "stateLocation": {
-      "description": "Where the execution state sits in one request on one wire (agent#9). The state is one text: the header, then the request counters ($defs/requestAllowance, and in a conversation the delegation coordinator wraps the tool-call cap, $defs/toolCallAllowance), plan and operations index the model is told, the host's changing text and the step's own instruction. It is the text at pointer (a JSON pointer into the provider body the adapter composed) from the header, which starts a line, to the end of that text; the header occurs nowhere else in the request. The critic's step note carries the same header. A host that reads requests (the Desk server's memory recall) drops every text part that starts with the header, and finds the request text as $defs/recallQuery states. On the agent wire (the Codex engine) the run is one request with one prompt string: the person's message, then, after a blank line, the header, the host's changing text and, in a conversation, the execution guidance; a chat's index of earlier results comes after them (agent#36). A host cuts the prompt at the header.",
+      "description": "Where the execution state sits in one request on one wire (agent#9). The state is one text: the header, then the request counters ($defs/requestAllowance, and in a conversation the delegation coordinator wraps the tool-call cap, $defs/toolCallAllowance), plan and operations index the model is told, the host's changing text and the step's own instruction. It is the text at pointer (a JSON pointer into the provider body the adapter composed) from the header, which starts a line, to the end of that text; the header occurs nowhere else in the request. The critic's step note carries the same header. The state is the eighth layer of the request (ADR-0005): after the stable prefix (the package's guidance and the host's parts, $defs/hostPart), the history and the tools. On the agent wire (the Codex engine) the run is one request with one prompt string: the request text, then a chat's index of earlier results, then, after a blank line, the header, the host's changing text and, in a conversation, the execution guidance (agent#36). No host reads a request to find anything in it (ADR-0005 removed the recall rule).",
       "type": "object",
       "required": [
         "family",
@@ -405,51 +411,56 @@
       },
       "additionalProperties": true
     },
-    "recallQuery": {
-      "description": "Where the request text a run started from sits on each model wire on any request of the run, and the rule a server applies to find it (agent#11; the Desk server's memory recall adopts it in its swap, judgment-pack-desk#515). The rule: take the request's first user turn, the first message with role user in messages (OpenAI-compatible, where system messages may come before it, and Anthropic) or the first content with role user in contents (Gemini); the request text is its first text part that does not start with STATE_HEADER ($defs/stateLocation), a string content being one text part and, on Gemini, a part being text when it carries text and is not a thought. The request text is the host's prompt where it fits the prompt's allowance; where it does not, the prompt is retained and previewed, and the person's message (currentRequest.message) is sent as its own first text part, before the preview; for a delegated child it is the child's objective (context.objective), sent as its own first text part before the child's prompt. It holds on every request of the run: the adapter puts the request text first in the run's first user message and never moves, replaces or drops that message. The state joins it only as a later part on the first request; a chat's index of earlier results (tool-result.json#/$defs/turnIndex) is its second part; compaction keeps it whole. Every other user text the loop adds comes after it: a text-path result, the images shown beside a result, the finishing and reformat instructions, the compaction summary, the state. So the newest user text is often not the request, and the first user turn always is. Measured on all three wires in the review of judgment-pack-agent#33: the newest-remaining-text rule fails on a text-path request, the finishing request, the reformat request and after compaction; the Desk's code as ported fails the same, except after compaction on Anthropic, where the first message and the compaction summary merge into one user turn. The critic's requests are a second conversation, whose first user turn is the critic's own message. On the agent wire (the Codex engine) the run sends one string, its prompt, and the request text is the prompt's text before the first blank line followed by STATE_HEADER, or the whole prompt where there is none; the prompt is the host's prompt, then the host's state and the execution guidance headed by STATE_HEADER, then a chat's index of earlier results (agent#36). A prompt that starts with STATE_HEADER has no request text. Where the prompt, state and guidance do not fit the prompt's allowance, the whole is retained and previewed, and the prompt sent is the person's message (currentRequest.message), a blank line, STATE_HEADER and the preview, so the rule finds the person's message; where the host gives no currentRequest the preview is sent alone and the rule finds its own opening. An item is one request of a run with tool calls: body is the request as the adapter composed it, abbreviated to its turns (the system text, tool results and state shortened, the tools left out); pointer is the JSON pointer the rule resolves to in it, and text the request text found there. packages/harness/certification/recall.ts states the rule in code, memory/recall.test.ts checks every item against a run, and the certification suite applies it to every request of the recorded scenario on every certified leg: 21 legs in four families (the six plain legs, the six text-path legs, three strict-alternation legs and the six thinking legs' authoring requests).",
+    "hostPart": {
+      "description": "One of the host's parts of every request (ADR-0005; packages/harness/prompt.ts, HOST_PARTS): the member it is, the layer it is placed in, the host's injection point that answers it, the first and last lines of its block and the member of this table that bounds it. The adapter asks each injection point once per run, before its first request (memoryFor with the person's message, or a delegated child's objective, and not where the host said memory is off), and places each part it answered in the system text (the agent wire's instructions) after the package's guidance, in layer order, a blank line before each block: the header, the text, the end line. A part answered with nothing is left out; one that is not text, or is over its bound, is refused and the run fails before any request (configuration). The project's instructions are instructions at the lowest rank: they follow the package's guidance, and they cannot grant a tool or change an effect, because the offer and the gate are code. The system text through the last part is the request's stable prefix: the same bytes on every request of the run.",
       "type": "object",
       "required": [
-        "family",
-        "placement",
-        "request",
-        "body",
-        "pointer",
-        "text"
+        "name",
+        "layer",
+        "injection",
+        "header",
+        "end",
+        "bound"
       ],
       "properties": {
-        "family": {
+        "name": {
           "enum": [
-            "openai-compatible",
-            "anthropic",
-            "gemini",
-            "agent"
+            "brief",
+            "projectInstructions",
+            "memory"
           ]
         },
-        "placement": {
-          "description": "Where the run places the state after its first request ($defs/stateLocation); appended on the agent wire, where the state follows the person's message in the one prompt.",
-          "enum": [
-            "trailing-user",
-            "system-tail",
-            "appended"
-          ]
-        },
-        "request": {
-          "description": "Which request of the run, counted from 1.",
+        "layer": {
+          "description": "The part's layer of the request: 3 the brief, 4 the project's instructions, 5 the memory, after 1 the package's guidance and 2 the Runtime's prompt (which reaches the adapter with the person's request as one text and is sent where the request goes).",
           "type": "integer",
-          "minimum": 1
+          "minimum": 3,
+          "maximum": 5
         },
-        "body": {
-          "description": "The request body as the adapter composed it, abbreviated: messages (or contents and systemInstruction, or system and messages), each turn's role and parts as the wire spells them, or on the agent wire the one member prompt; long texts shortened with an ellipsis, tools and settings left out.",
-          "type": "object"
+        "injection": {
+          "description": "The host's injection point (host.ts, HarnessHost; the Go adapter.Run's Host).",
+          "enum": [
+            "brief",
+            "projectInstructions",
+            "memoryFor"
+          ]
         },
-        "pointer": {
-          "description": "The JSON pointer (RFC 6901) the rule resolves to in body.",
+        "header": {
+          "description": "The block's first line.",
           "type": "string",
-          "pattern": "^(/[^/]*)+$"
+          "minLength": 1
         },
-        "text": {
-          "description": "The request text: the value at pointer; on the agent wire the part of it before the first blank line followed by STATE_HEADER.",
-          "type": "string"
+        "end": {
+          "description": "The block's last line.",
+          "type": "string",
+          "minLength": 1
+        },
+        "bound": {
+          "description": "The member of this table that bounds the part's UTF-8 bytes.",
+          "enum": [
+            "briefBytes",
+            "projectInstructionsBytes",
+            "memoryBytes"
+          ]
         }
       },
       "additionalProperties": false

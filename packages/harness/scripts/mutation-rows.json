@@ -30,8 +30,8 @@
     "execution/execution.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts",
     "toolGate.test.ts"
@@ -68,8 +68,8 @@
     "execution/execution.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts",
     "toolGate.test.ts"
@@ -97,7 +97,7 @@
     "engines/vercel/bounds.test.ts",
     "engines/vercel/prefix.test.ts",
     "framing.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts"
    ],
@@ -123,7 +123,7 @@
     "engines/vercel/bounds.test.ts",
     "engines/vercel/prefix.test.ts",
     "framing.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts"
    ],
@@ -160,7 +160,7 @@
     "engines/vercel/bounds.test.ts",
     "engines/vercel/prefix.test.ts",
     "framing.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts"
    ],
@@ -207,8 +207,8 @@
     "execution/execution.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts",
     "toolGate.test.ts"
@@ -235,7 +235,7 @@
     "engines/vercel/bounds.test.ts",
     "engines/vercel/prefix.test.ts",
     "framing.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts"
    ],
@@ -261,7 +261,7 @@
     "engines/vercel/bounds.test.ts",
     "engines/vercel/prefix.test.ts",
     "framing.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts"
    ],
@@ -367,8 +367,8 @@
     "execution/execution.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts",
     "toolGate.test.ts"
@@ -405,8 +405,8 @@
     "execution/execution.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts",
     "toolGate.test.ts"
@@ -443,8 +443,8 @@
     "execution/execution.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts",
     "toolGate.test.ts"
@@ -481,8 +481,8 @@
     "execution/execution.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts",
     "toolGate.test.ts"
@@ -509,7 +509,7 @@
     "engines/vercel/bounds.test.ts",
     "engines/vercel/prefix.test.ts",
     "framing.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts"
    ],
@@ -535,7 +535,7 @@
     "engines/vercel/bounds.test.ts",
     "engines/vercel/prefix.test.ts",
     "framing.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts"
    ],
@@ -561,7 +561,7 @@
     "engines/vercel/bounds.test.ts",
     "engines/vercel/prefix.test.ts",
     "framing.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts"
    ],
@@ -587,7 +587,7 @@
     "engines/vercel/bounds.test.ts",
     "engines/vercel/prefix.test.ts",
     "framing.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts"
    ],
@@ -613,7 +613,7 @@
     "engines/vercel/bounds.test.ts",
     "engines/vercel/prefix.test.ts",
     "framing.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts"
    ],
@@ -639,7 +639,7 @@
     "engines/vercel/bounds.test.ts",
     "engines/vercel/prefix.test.ts",
     "framing.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts"
    ],
@@ -678,8 +678,8 @@
     "framing.test.ts",
     "geminiSchema.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "testCases.test.ts"
    ],
    "status": "caught",
@@ -702,7 +702,7 @@
     "engines/vercel/prefix.test.ts",
     "failures.integration.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "testCases.test.ts"
    ],
    "status": "caught",
@@ -725,7 +725,7 @@
     "engines/vercel/prefix.test.ts",
     "failures.integration.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "testCases.test.ts"
    ],
    "status": "caught",
@@ -740,7 +740,7 @@
     "engines/vercel/capabilities.test.ts",
     "engines/vercel/engine.test.ts",
     "engines/vercel/prefix.test.ts",
-    "memory/recall.test.ts"
+    "prompt.test.ts"
    ],
    "status": "caught",
    "origin": "desk"
@@ -754,7 +754,7 @@
     "engines/vercel/capabilities.test.ts",
     "engines/vercel/engine.test.ts",
     "engines/vercel/prefix.test.ts",
-    "memory/recall.test.ts"
+    "prompt.test.ts"
    ],
    "status": "caught",
    "origin": "desk"
@@ -776,7 +776,7 @@
     "engines/vercel/prefix.test.ts",
     "failures.integration.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "testCases.test.ts"
    ],
    "status": "caught",
@@ -799,7 +799,7 @@
     "engines/vercel/prefix.test.ts",
     "failures.integration.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "testCases.test.ts"
    ],
    "status": "caught",
@@ -824,7 +824,7 @@
     "engines/vercel/engine.test.ts",
     "engines/vercel/prefix.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "testCases.test.ts"
    ],
    "status": "caught",
@@ -847,7 +847,7 @@
     "engines/vercel/prefix.test.ts",
     "failures.integration.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "testCases.test.ts"
    ],
    "status": "caught",
@@ -870,7 +870,7 @@
     "engines/vercel/prefix.test.ts",
     "failures.integration.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "testCases.test.ts"
    ],
    "status": "caught",
@@ -908,8 +908,8 @@
     "framing.test.ts",
     "geminiSchema.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "testCases.test.ts"
    ],
    "status": "caught",
@@ -955,7 +955,7 @@
     "engines/vercel/engine.test.ts",
     "engines/vercel/prefix.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "testCases.test.ts"
    ],
    "status": "caught",
@@ -1005,8 +1005,8 @@
     "framing.test.ts",
     "geminiSchema.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "testCases.test.ts"
    ],
    "status": "caught",
@@ -1044,8 +1044,8 @@
     "framing.test.ts",
     "geminiSchema.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "testCases.test.ts"
    ],
    "status": "caught",
@@ -1070,7 +1070,7 @@
     "engines/vercel/bounds.test.ts",
     "engines/vercel/prefix.test.ts",
     "framing.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts"
    ],
@@ -1109,8 +1109,8 @@
     "framing.test.ts",
     "geminiSchema.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "testCases.test.ts"
    ],
    "status": "caught",
@@ -1148,8 +1148,8 @@
     "framing.test.ts",
     "geminiSchema.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "testCases.test.ts"
    ],
    "status": "caught",
@@ -1187,8 +1187,8 @@
     "framing.test.ts",
     "geminiSchema.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "testCases.test.ts"
    ],
    "status": "caught",
@@ -1226,8 +1226,8 @@
     "framing.test.ts",
     "geminiSchema.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "testCases.test.ts"
    ],
    "status": "caught",
@@ -1322,8 +1322,8 @@
     "failures.integration.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts",
     "thinking.test.ts"
@@ -1364,8 +1364,8 @@
     "failures.integration.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts",
     "thinking.test.ts"
@@ -1406,8 +1406,8 @@
     "failures.integration.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts",
     "thinking.test.ts"
@@ -1448,8 +1448,8 @@
     "failures.integration.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts",
     "thinking.test.ts"
@@ -1474,7 +1474,7 @@
     "engines/vercel/prefix.test.ts",
     "failures.integration.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "testCases.test.ts"
    ],
    "status": "caught",
@@ -1514,8 +1514,8 @@
     "failures.integration.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts",
     "thinking.test.ts"
@@ -1556,8 +1556,8 @@
     "failures.integration.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts",
     "thinking.test.ts"
@@ -1598,8 +1598,8 @@
     "failures.integration.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts",
     "thinking.test.ts"
@@ -1640,8 +1640,8 @@
     "failures.integration.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts",
     "thinking.test.ts"
@@ -1682,8 +1682,8 @@
     "failures.integration.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts",
     "thinking.test.ts"
@@ -1700,7 +1700,7 @@
     "engines/vercel/capabilities.test.ts",
     "engines/vercel/engine.test.ts",
     "engines/vercel/prefix.test.ts",
-    "memory/recall.test.ts"
+    "prompt.test.ts"
    ],
    "status": "caught",
    "origin": "desk"
@@ -1714,7 +1714,7 @@
     "engines/vercel/capabilities.test.ts",
     "engines/vercel/engine.test.ts",
     "engines/vercel/prefix.test.ts",
-    "memory/recall.test.ts"
+    "prompt.test.ts"
    ],
    "status": "caught",
    "origin": "desk"
@@ -1728,7 +1728,7 @@
     "engines/vercel/capabilities.test.ts",
     "engines/vercel/engine.test.ts",
     "engines/vercel/prefix.test.ts",
-    "memory/recall.test.ts"
+    "prompt.test.ts"
    ],
    "status": "caught",
    "origin": "desk"
@@ -1742,7 +1742,7 @@
     "engines/vercel/capabilities.test.ts",
     "engines/vercel/engine.test.ts",
     "engines/vercel/prefix.test.ts",
-    "memory/recall.test.ts"
+    "prompt.test.ts"
    ],
    "status": "caught",
    "origin": "desk"
@@ -1756,7 +1756,7 @@
     "engines/vercel/capabilities.test.ts",
     "engines/vercel/engine.test.ts",
     "engines/vercel/prefix.test.ts",
-    "memory/recall.test.ts"
+    "prompt.test.ts"
    ],
    "status": "caught",
    "origin": "desk"
@@ -1770,7 +1770,7 @@
     "engines/vercel/capabilities.test.ts",
     "engines/vercel/engine.test.ts",
     "engines/vercel/prefix.test.ts",
-    "memory/recall.test.ts"
+    "prompt.test.ts"
    ],
    "status": "caught",
    "origin": "desk"
@@ -1808,8 +1808,8 @@
     "failures.integration.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "refutation.test.ts",
     "session.test.ts",
     "testCases.test.ts",
@@ -1852,8 +1852,8 @@
     "failures.integration.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "refutation.test.ts",
     "session.test.ts",
     "testCases.test.ts",
@@ -1896,8 +1896,8 @@
     "failures.integration.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "refutation.test.ts",
     "session.test.ts",
     "testCases.test.ts",
@@ -1940,8 +1940,8 @@
     "failures.integration.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "refutation.test.ts",
     "session.test.ts",
     "testCases.test.ts",
@@ -1983,8 +1983,8 @@
     "failures.integration.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "refutation.test.ts",
     "session.test.ts",
     "testCases.test.ts",
@@ -2026,8 +2026,8 @@
     "failures.integration.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "refutation.test.ts",
     "session.test.ts",
     "testCases.test.ts",
@@ -2080,8 +2080,8 @@
     "failures.integration.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "refutation.test.ts",
     "session.test.ts",
     "testCases.test.ts",
@@ -2122,8 +2122,8 @@
     "framing.test.ts",
     "geminiSchema.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "testCases.test.ts"
    ],
    "status": "caught",
@@ -2148,7 +2148,7 @@
     "engines/vercel/bounds.test.ts",
     "engines/vercel/prefix.test.ts",
     "framing.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts"
    ],
@@ -2174,7 +2174,7 @@
     "engines/vercel/bounds.test.ts",
     "engines/vercel/prefix.test.ts",
     "framing.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts"
    ],
@@ -2200,7 +2200,7 @@
     "engines/vercel/bounds.test.ts",
     "engines/vercel/prefix.test.ts",
     "framing.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts"
    ],
@@ -2226,7 +2226,7 @@
     "engines/vercel/bounds.test.ts",
     "engines/vercel/prefix.test.ts",
     "framing.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts"
    ],
@@ -2252,7 +2252,7 @@
     "engines/vercel/prefix.test.ts",
     "framing.test.ts",
     "geminiSchema.test.ts",
-    "memory/recall.test.ts"
+    "prompt.test.ts"
    ],
    "status": "caught",
    "origin": "desk"
@@ -2276,7 +2276,7 @@
     "engines/vercel/prefix.test.ts",
     "framing.test.ts",
     "geminiSchema.test.ts",
-    "memory/recall.test.ts"
+    "prompt.test.ts"
    ],
    "status": "caught",
    "origin": "desk"
@@ -2298,7 +2298,7 @@
     "engines/vercel/prefix.test.ts",
     "failures.integration.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "testCases.test.ts"
    ],
    "status": "caught",
@@ -2337,8 +2337,8 @@
     "failures.integration.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts",
     "thinking.test.ts"
@@ -2379,8 +2379,8 @@
     "failures.integration.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts",
     "thinking.test.ts"
@@ -2422,8 +2422,8 @@
     "failures.integration.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
     "planning/planning.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts",
     "thinking.test.ts"
@@ -2448,7 +2448,7 @@
     "engines/vercel/prefix.test.ts",
     "failures.integration.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "testCases.test.ts"
    ],
    "status": "caught",
@@ -2463,7 +2463,7 @@
     "engines/vercel/capabilities.test.ts",
     "engines/vercel/engine.test.ts",
     "engines/vercel/prefix.test.ts",
-    "memory/recall.test.ts"
+    "prompt.test.ts"
    ],
    "status": "caught",
    "origin": "desk"
@@ -2477,7 +2477,7 @@
     "engines/vercel/capabilities.test.ts",
     "engines/vercel/engine.test.ts",
     "engines/vercel/prefix.test.ts",
-    "memory/recall.test.ts"
+    "prompt.test.ts"
    ],
    "status": "caught",
    "origin": "desk"
@@ -2491,7 +2491,7 @@
     "engines/vercel/capabilities.test.ts",
     "engines/vercel/engine.test.ts",
     "engines/vercel/prefix.test.ts",
-    "memory/recall.test.ts"
+    "prompt.test.ts"
    ],
    "status": "caught",
    "origin": "desk"
@@ -2515,7 +2515,7 @@
     "engines/vercel/prefix.test.ts",
     "framing.test.ts",
     "geminiSchema.test.ts",
-    "memory/recall.test.ts"
+    "prompt.test.ts"
    ],
    "status": "caught",
    "origin": "desk"
@@ -2539,7 +2539,7 @@
     "engines/vercel/prefix.test.ts",
     "framing.test.ts",
     "geminiSchema.test.ts",
-    "memory/recall.test.ts"
+    "prompt.test.ts"
    ],
    "status": "caught",
    "origin": "desk"
@@ -2555,7 +2555,7 @@
     "certification/scriptedModel.test.ts",
     "engines/vercel/bounds.test.ts",
     "engines/vercel/prefix.test.ts",
-    "memory/recall.test.ts"
+    "prompt.test.ts"
    ],
    "status": "caught",
    "origin": "desk"
@@ -2569,7 +2569,7 @@
     "engines/vercel/capabilities.test.ts",
     "engines/vercel/engine.test.ts",
     "engines/vercel/prefix.test.ts",
-    "memory/recall.test.ts"
+    "prompt.test.ts"
    ],
    "status": "caught",
    "origin": "desk"
@@ -2593,7 +2593,7 @@
     "engines/vercel/prefix.test.ts",
     "framing.test.ts",
     "geminiSchema.test.ts",
-    "memory/recall.test.ts"
+    "prompt.test.ts"
    ],
    "status": "caught",
    "origin": "desk"
@@ -2617,7 +2617,7 @@
     "engines/vercel/prefix.test.ts",
     "framing.test.ts",
     "geminiSchema.test.ts",
-    "memory/recall.test.ts"
+    "prompt.test.ts"
    ],
    "status": "caught",
    "origin": "desk"
@@ -2641,7 +2641,7 @@
     "engines/vercel/prefix.test.ts",
     "framing.test.ts",
     "geminiSchema.test.ts",
-    "memory/recall.test.ts"
+    "prompt.test.ts"
    ],
    "status": "caught",
    "origin": "desk"
@@ -2665,7 +2665,7 @@
     "engines/vercel/prefix.test.ts",
     "framing.test.ts",
     "geminiSchema.test.ts",
-    "memory/recall.test.ts"
+    "prompt.test.ts"
    ],
    "status": "caught",
    "origin": "desk"
@@ -2709,7 +2709,7 @@
     "engines/vercel/prefix.test.ts",
     "failures.integration.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "testCases.test.ts"
    ],
    "status": "caught",
@@ -2727,7 +2727,7 @@
     "certification/scriptedModel.test.ts",
     "engines/vercel/bounds.test.ts",
     "engines/vercel/prefix.test.ts",
-    "memory/recall.test.ts"
+    "prompt.test.ts"
    ],
    "status": "caught",
    "origin": "desk"
@@ -2751,7 +2751,7 @@
     "engines/vercel/bounds.test.ts",
     "engines/vercel/prefix.test.ts",
     "framing.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "session.test.ts",
     "testCases.test.ts"
    ],
@@ -2822,7 +2822,7 @@
     "engines/codex/reformat.test.ts",
     "engines/failurePaths.test.ts",
     "framing.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "testCases.test.ts"
    ],
    "status": "caught",
@@ -2845,7 +2845,7 @@
     "engines/vercel/prefix.test.ts",
     "failures.integration.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "testCases.test.ts"
    ],
    "status": "caught",
@@ -2871,7 +2871,7 @@
     "engines/vercel/engine.test.ts",
     "framing.test.ts",
     "images.test.ts",
-    "memory/recall.test.ts",
+    "prompt.test.ts",
     "testCases.test.ts"
    ],
    "status": "caught",
@@ -2880,8 +2880,8 @@
   {
    "name": "the state header is dropped from the codex prompt",
    "file": "engines/codex/index.ts",
-   "find": "'\\n\\n' + STATE_HEADER + '\\n' + appended.join('\\n\\n')",
-   "replace": "'\\n\\n' + appended.join('\\n\\n')",
+   "find": "'\\n\\n' + STATE_HEADER + '\\n' + state : ''",
+   "replace": "'\\n\\n' + state : ''",
    "tests": [
     "engines/codex/codex.test.ts"
    ],
@@ -3034,16 +3034,17 @@
    "note": "the offer condition's caller: a name outside the offer is not marked unoffered, so the cache serves it"
   },
   {
-   "name": "the previewed codex prompt drops the person's message",
+   "name": "the previewed prompt drops the person's message",
    "file": "context/session.ts",
-   "find": "  const head=message+'\\n\\n'+STATE_HEADER+'\\n'",
-   "replace": "  const head=STATE_HEADER+'\\n'",
+   "find": "   const first=objective??lead(currentRequest?.message)",
+   "replace": "   const first=objective",
    "tests": [
-    "engines/codex/codex.test.ts"
+    "engines/codex/codex.test.ts",
+    "prompt.test.ts"
    ],
    "status": "caught",
    "origin": "review of #44",
-   "note": "where the prompt does not fit, the text before the state header is the person's message"
+   "note": "where the prompt does not fit, the person's message leads the preview on every engine (ADR-0005, layer 9; the codex prompt is built by opening since ADR-0005, where agentPrompt built it before)"
   },
   {
    "name": "the runtime tools skip the critic's allow-list",
@@ -3068,6 +3069,59 @@
    "status": "caught",
    "origin": "agent#54",
    "note": "caught by the barrier in certification/delegation.test.ts, which holds the first children until the bound's worth are in flight and counts any further child that arrives (three tasks against an answer of two); no clock decides it"
+  },
+  {
+   "name": "a host part is dropped from the system text",
+   "file": "prompt.ts",
+   "find": "  return HOST_PARTS.filter((part) => parts[part.name] !== undefined).map(",
+   "replace": "  return HOST_PARTS.filter((part) => parts[part.name] !== undefined && part.name !== 'projectInstructions').map(",
+   "tests": [
+    "certification/conformance.test.ts",
+    "engines/codex/codex.test.ts",
+    "prompt.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0005",
+   "note": "the placement check (placementMisses in certification/conformance.test.ts) finds the project instructions in no layer"
+  },
+  {
+   "name": "the project block is placed above the package guidance",
+   "file": "prompt.ts",
+   "find": "  return guidance + hostSection(parts) + tools",
+   "replace": "  return (parts.projectInstructions === undefined ? '' : hostSection({ projectInstructions: parts.projectInstructions }).slice(2) + '\\n\\n') + guidance + hostSection({ ...parts, projectInstructions: undefined }) + tools",
+   "tests": [
+    "certification/conformance.test.ts",
+    "prompt.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0005",
+   "note": "the rank check: the placement check requires the package's guidance (its data rule) before every host part"
+  },
+  {
+   "name": "the prompt's digest is omitted",
+   "file": "context/session.ts",
+   "find": "context.execution.claim();await context.execution.recordPrompt(request.body);",
+   "replace": "context.execution.claim();",
+   "tests": [
+    "prompt.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0005",
+   "note": "the provenance test (prompt.test.ts, the prompt's digest) holds the checkpoint's prompts to the digests of the bodies sent"
+  },
+  {
+   "name": "memory is recalled per request instead of once",
+   "file": "engines/vercel/loop.ts",
+   "find": "            ...placeState(session.model.family,placement,withImages(lastMessages),system,state,stated)}",
+   "replace": "            ...placeState(session.model.family,placement,withImages(lastMessages),(await context.askHost(session),context.system(instructions+'\\n'+EXECUTION_INSTRUCTIONS,toolSection)),state,stated)}",
+   "tests": [
+    "certification/conformance.test.ts",
+    "certification/scenarios.test.ts",
+    "prompt.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0005",
+   "note": "the stable-prefix check: the certification host answers each memoryFor call with its number, so memory recalled per request changes the prefix"
   }
  ]
 }

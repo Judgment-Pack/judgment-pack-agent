@@ -128,6 +128,9 @@ type SessionContext struct {
 	// CriticReading says the critic is reading: a preview then names the readers its allow-list
 	// admits. The narrowing itself is the gate's (gate.Calls.BeginCritic), not this package's.
 	CriticReading bool
+	// HostParts are the host's parts of this run's prompt (ADR-0005), asked once before its first
+	// request (AskHost); none until then.
+	HostParts HostParts
 
 	session        Session
 	compactions    int
@@ -315,31 +318,6 @@ func (c *SessionContext) Prompt(text, instructions string, tools *Value, current
 	return c.fit(text, allowance, currentRequest)
 }
 
-// AgentPrompt is agentPrompt: the agent wire's one prompt string (agent#36). The host's prompt,
-// sent whole where it fits the allowance. Where it does not, the person's message
-// (currentRequest.Message), a blank line, StateHeader and the preview, so the text before the
-// header, which the recall rule reads as the request, is the person's message, as the model
-// wires' first text part is. Without a currentRequest the preview is sent alone.
-func (c *SessionContext) AgentPrompt(text, instructions string, tools *Value, currentRequest *CurrentRequest) (string, error) {
-	allowance, err := c.allowance(instructions, tools)
-	if err != nil {
-		return "", err
-	}
-	if userMessageBytes(text) <= allowance || currentRequest == nil {
-		return c.fit(text, allowance, currentRequest)
-	}
-	message := Prefix(currentRequest.Message, allowance/4)
-	if strings.TrimSpace(message) == "" {
-		return c.fit(text, allowance, currentRequest)
-	}
-	head := message + "\n\n" + StateHeader + "\n"
-	rest, err := c.fit(text, allowance-UTF8Bytes(QuoteJSON(head)), currentRequest)
-	if err != nil {
-		return "", err
-	}
-	return head + rest, nil
-}
-
 // Opening is opening: the text parts of the run's first user message (agent#8, agent#11). The
 // request text comes first: the host's prompt, sent whole where it fits the allowance; where it
 // does not, the person's message as its own first part and the preview after it, so the first
@@ -404,20 +382,6 @@ func (c *SessionContext) Opening(text, instructions string, tools *Value, curren
 		return append(parts, index), nil
 	}
 	return parts, nil
-}
-
-// Indexed is indexed: the agent wire's prompt with a chat's index after it (agent#8), cut to the
-// room the allowance leaves.
-func (c *SessionContext) Indexed(prompt, instructions string, tools *Value) (string, error) {
-	allowance, err := c.allowance(instructions, tools)
-	if err != nil {
-		return "", err
-	}
-	index := c.indexWithin(allowance, allowance-userMessageBytes(prompt))
-	if index != "" {
-		return prompt + "\n\n" + index, nil
-	}
-	return prompt, nil
 }
 
 // tail is the end of a text, held to bytes: its code points reversed, cut, and reversed again.
@@ -908,6 +872,9 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		if err := held.Execution.Initialize(); err != nil {
 			return err
 		}
+		if err := held.AskHost(ctx); err != nil {
+			return err
+		}
 		var documents []Document
 		if session.Context != nil {
 			documents = session.Context.Documents
@@ -996,12 +963,14 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 }
 
 // ClaimRequest is what contextualSession's wrapped model call does before each model request that
-// is not a GET: the request is claimed against the response's allowance and the host's checkpoint
-// is written before anything is sent, so a checkpoint that cannot be saved stops the request.
-func (c *SessionContext) ClaimRequest(ctx context.Context) error {
+// is not a GET: the request is claimed against the response's allowance, the digest of its body
+// recorded (ADR-0005, RecordPrompt), and the host's checkpoint written before anything is sent, so a
+// checkpoint that cannot be saved stops the request.
+func (c *SessionContext) ClaimRequest(ctx context.Context, body []byte) error {
 	if err := c.Execution.Claim(); err != nil {
 		return err
 	}
+	c.Execution.RecordPrompt(body)
 	if c.session.Context == nil || c.session.Context.Checkpoint == nil {
 		return nil
 	}

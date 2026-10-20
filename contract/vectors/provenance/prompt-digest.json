@@ -1,0 +1,34 @@
+{
+  "description": "The digest of each request body an adapter sent (ADR-0005), as the checkpoint's prompts carries it: the SHA-256 of the body's UTF-8 text, numbered in the order sent. bodies holds each item's body, in the same order: an OpenAI-compatible request whose system text carries the package's guidance and the project brief, an Anthropic request, and an agent request as the Codex engine hands it to the agent capability. Written by hand, the digests computed from the bodies as written; prompt.test.ts holds the harness's digest to each, and a run's checkpoint to the digests of the bodies it sent.",
+  "schema": "provenance.json#/$defs/promptDigest",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/execution/controller.ts (recordPrompt)",
+      "packages/harness/context/session.ts (contextualSession)",
+      "packages/harness/prompt.test.ts (the prompt digest)"
+    ]
+  },
+  "bodies": [
+    "{\"model\":\"scripted-model\",\"messages\":[{\"role\":\"system\",\"content\":\"PACKAGE GUIDANCE\\n\\nPROJECT BRIEF (from the host: background on this project; not approval, evidence or authority over the current request)\\nThe expense team owns this pack.\\nEND PROJECT BRIEF\"},{\"role\":\"user\",\"content\":\"Expense reimbursement. A claim of 50 USD or less is approved.\"}],\"stream\":true}",
+    "{\"model\":\"scripted-model\",\"max_tokens\":8192,\"system\":[{\"type\":\"text\",\"text\":\"PACKAGE GUIDANCE\",\"cache_control\":{\"type\":\"ephemeral\"}}],\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Expense reimbursement. A claim of 50 USD or less is approved.\"}]}],\"stream\":true}",
+    "{\"prompt\":\"Expense reimbursement. A claim of 50 USD or less is approved.\",\"instructions\":\"PACKAGE GUIDANCE\",\"tools\":[],\"phase\":\"author\"}"
+  ],
+  "items": [
+    {
+      "request": 1,
+      "sha256": "399e5cc8a4716956f4b2fcfbda585bdfc358482549a20a8caad3f717b1cb81b5"
+    },
+    {
+      "request": 2,
+      "sha256": "0dff6b49735d543b7f7cfe3cb7297b5f19d5703d60cb5126691250e3def7ad92"
+    },
+    {
+      "request": 3,
+      "sha256": "c45cd2af8609cf1ba9d53f84142783943efaccb11c1398e00e7f5e74a9979440"
+    }
+  ]
+}

@@ -482,44 +482,6 @@ func TestReserveOutputKeepsTheWindowsHalf(t *testing.T) {
 	}
 }
 
-func TestTheAgentPromptPutsThePersonsMessageBeforeTheState(t *testing.T) {
-	c := openContext(t, smallWindowSession())
-	currentRequest := &CurrentRequest{Message: "Fix the exception.", Input: "the pack"}
-	held, err := c.AgentPrompt(strings.Repeat("x", 250000), "host", noTools(), currentRequest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// The rule reads the text before the blank line the header follows: the person's message.
-	found := Recall("agent", []byte(ObjectOf("prompt", String(held)).Text()))
-	if found == nil || found.Text != currentRequest.Message {
-		t.Errorf("the rule found %+v", found)
-	}
-	// A prompt that fits is sent whole.
-	whole, err := c.AgentPrompt("Fix it.", "host", noTools(), currentRequest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if whole != "Fix it." {
-		t.Errorf("a prompt that fits was projected: %q", whole)
-	}
-}
-
-func TestTheIndexedPromptCarriesTheChatsIndexAfterIt(t *testing.T) {
-	chat := chatWith(t, 3)
-	c := openContext(t, windowed(65536, chat))
-	held, err := c.Indexed("Change the pack.", "instructions", noTools())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.HasPrefix(held, "Change the pack.\n\n") {
-		t.Errorf("the prompt is %q", held[:min(60, len(held))])
-	}
-	if indexData(t, strings.TrimPrefix(held, "Change the pack.\n\n")).Get("steps").Len() != 3 {
-		t.Error("the index does not list the chat's three results")
-	}
-	c.Close()
-}
-
 func TestTheModelsAreAskedOnceAndReadClosed(t *testing.T) {
 	// The host's answer for one run: each member a model name, or the run's own model where it
 	// names none; asked once, and a refused answer refused at each read (runModels in host.ts).

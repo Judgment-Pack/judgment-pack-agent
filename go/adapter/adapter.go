@@ -77,6 +77,12 @@ type Run struct {
 	BeforeRuntimeCall func(ctx context.Context, name string) error
 	// Emit receives the run's events, in order.
 	Emit func(contract.RunEvent)
+	// Host is the host's side of the prompt (ADR-0005; brief, memoryFor and projectInstructions in
+	// host.ts): the project brief, the project's own instructions and the memory recalled for the
+	// person's message, each asked once per run before its first request and placed by the adapter
+	// in its layer of every request. A delegated child's run is handed the same Host and asks its
+	// own, memory for its objective. Nil supplies none.
+	Host runcontext.Host
 }
 
 // Children starts a delegated child's gated session: the host enters the child's phase (its

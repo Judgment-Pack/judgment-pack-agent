@@ -10,10 +10,12 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter"
+	runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
 )
@@ -41,6 +43,8 @@ type LegResult struct {
 	reached      []string
 	bodies       [][]byte
 	traced       string
+	// asked is each query the host's MemoryFor was asked with (ADR-0005).
+	asked []string
 }
 
 // sealed is http.DefaultTransport while a leg runs: an adapter's only reach to a model is the
@@ -117,7 +121,9 @@ const TestPrompt = "THE RUNTIME’S TEST_PACK GUIDANCE, AS PROMPTS/GET SERVED IT
 // LegOptions are what a leg asks of the host beside the endpoint (the TypeScript runLeg's `how`):
 // the tier the desk's file asked for, the endpoint's capability record as the host knows it,
 // whether the session asks for the critic and the cases it declares, the tools the desk's file
-// granted, and one tool set in place of the runtime's five (a schema probe).
+// granted, one tool set in place of the runtime's five (a schema probe), and the host's parts of
+// the prompt (ADR-0005), the memory answered with the number of the call that asked for it, so
+// memory asked more than once is not the same text twice.
 type LegOptions struct {
 	Tier         string
 	Capabilities *contract.CapabilityEndpointCapabilities
@@ -125,6 +131,7 @@ type LegOptions struct {
 	Cases        []json.RawMessage
 	Allowed      []string
 	Tools        []contract.ToolOfferRuntimeTool
+	Host         *runcontext.HostParts
 }
 
 // Leg runs the recorded scenario against an adapter on one endpoint with the host's options.
@@ -245,6 +252,22 @@ func scenarioLeg(ctx context.Context, server *Server, endpoint Endpoint, adapter
 	if options.Tools != nil {
 		run.Tools = options.Tools
 	}
+	if parts := options.Host; parts != nil {
+		var askedMu sync.Mutex
+		run.Host = runcontext.HostFuncs{
+			BriefFunc:               func(context.Context) (string, error) { return parts.Brief, nil },
+			ProjectInstructionsFunc: func(context.Context) (string, error) { return parts.ProjectInstructions, nil },
+			MemoryForFunc: func(_ context.Context, query string) (string, error) {
+				askedMu.Lock()
+				defer askedMu.Unlock()
+				result.asked = append(result.asked, query)
+				if parts.Memory == "" {
+					return "", nil
+				}
+				return parts.Memory + " (recall " + strconv.Itoa(len(result.asked)) + ")", nil
+			},
+		}
+	}
 	seal := sealNetwork()
 	result.RunError = adapter.Run(ctx, run)
 	result.reached = seal.lift()
@@ -294,11 +317,11 @@ var (
 
 // CheckNames are the checks a leg reports by name, in the order Checks makes them; parity.json
 // maps each TypeScript check of the `engine <id>` leg to these.
-var CheckNames = []string{"run", "scenario", "agent#11", "K1a", "K1", "K1b", "K2", "K3a", "K3b", "K3c", "sequence", "wire", "steps"}
+var CheckNames = []string{"run", "scenario", "K1a", "K1", "K1b", "K2", "K3a", "K3b", "K3c", "sequence", "wire", "steps"}
 
 // Checks holds a leg to the checks of the TypeScript `engine <id>` leg that read the events, the
 // request bodies and the server's records (certification/parity.json says which is which): the
-// scenario's calls, reaches and answers; the recall rule (agent#11); K1a (as
+// scenario's calls, reaches and answers; K1a (as
 // http.DefaultTransport), K1, K1b (on the traced leg), K2, K3a, K3b, K3c; the event sequence the
 // contract's scenario vector states, with no error event and one end; the wire's body members;
 // and the eight steps with no repeat. It returns the checks that did not hold, each by its name.
@@ -378,19 +401,6 @@ func (r *LegResult) Checks() []Finding {
 	disposition, _ := evaluated["disposition"].(map[string]any)
 	if evaluated == nil || evaluated["rehearsal"] != expect.T6.Rehearsal || disposition["kind"] != expect.T6.Disposition.Kind || disposition["outcomeId"] != expect.T6.Disposition.OutcomeID {
 		fail("scenario", "the evaluate result is not T6's rehearsal with %s %s", expect.T6.Disposition.Kind, expect.T6.Disposition.OutcomeID)
-	}
-
-	// agent#11: the recall rule finds the request text on every request but the critic's.
-	if len(r.bodies) <= 7 {
-		fail("agent#11", "%d request bodies, not more than seven", len(r.bodies))
-	}
-	for i, body := range r.bodies {
-		if strings.Contains(string(body), RefutationMarker) {
-			continue
-		}
-		if found := Recall(r.Endpoint.API, body); found == nil || found.Text != r.scenario.Policy {
-			fail("agent#11", "request %d: the recall rule found %v", i+1, found)
-		}
 	}
 
 	// K1a: nothing reached for the process's default transport; no error event, and a proposal.

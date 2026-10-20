@@ -1,6 +1,8 @@
 # ADR-0002: who assembles the prompt
 
-Status: proposed, 2026-10-18. No decision is taken here: the decision is for the maintainer.
+Status: superseded by [ADR-0005](0005-the-prompt-is-the-adapters.md), 2026-10-19, which decides it: the adapter
+assembles the whole prompt, and the host supplies its parts (option 2, with the parts asked through
+injection points). Proposed 2026-10-18; the text below is as it was proposed, its Decision aside.
 
 ## Context
 
@@ -81,7 +83,7 @@ The research worker the server runs on its own uses the same policy table and th
 
 ## Decision
 
-For the maintainer.
+Decided by [ADR-0005](0005-the-prompt-is-the-adapters.md).
 
 ## Consequences
 

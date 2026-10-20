@@ -26,7 +26,8 @@ repository root prints every difference from the Desk's files and names its reas
 changes made here since the extraction, each by its issue (agent#1, the read window and the reader;
 agent#9, the stable prefix and the state's placement; agent#4, the capability record and the text
 tool path; agent#5, search, numbered reads and images; agent#8, the chat-scoped context; agent#11,
-the request text on every request and the memory reserve; agent#10, the critic; agent#25, the
+the request text on every request and the memory reserve; ADR-0005, the prompt assembled whole by
+the adapter, with the host's parts and the prompt's digest; agent#10, the critic; agent#25, the
 agent-engine certification leg; agent#29, the Codex adapter's reformat run; agent#14, agent#15 and
 agent#13, delegation as one parent run with context by reference and per-profile budgets).
 
@@ -38,7 +39,7 @@ agent#13, delegation as one parent run with context by reference and per-profile
 | `@judgment-pack/harness/vercel` | The Vercel AI SDK adapter, `engines/vercel/index.ts`. |
 | `@judgment-pack/harness/codex` | The Codex adapter, `engines/codex/index.ts`. |
 | `@judgment-pack/harness/deepagents` | The Deep Agents adapter, `engines/deepagents/index.ts` (see The Deep Agents adapter). |
-| `@judgment-pack/harness/certification` | The scripted model and runtime server, the recorded scenario and runtime the suite runs on, and the recall rule (`recallQuery`, `certification/recall.ts`). |
+| `@judgment-pack/harness/certification` | The scripted model and runtime server, and the recorded scenario and runtime the suite runs on. |
 | `@judgment-pack/harness/<path>` | Any module at its Desk path, for example `context/session` or `failures`. |
 
 `npm run build` typechecks every file, tests included, and emits ES modules with declarations to
@@ -64,7 +65,8 @@ reaches (none passes a `count`).
 supplies it with `configureHarness`. (`NO_SESSION_MESSAGE` is a sentence and cannot throw; it is
 read only to build a `NoSession`, which does. `endpointCapabilities` has an answer of its own,
 nothing known, so a host that knows nothing about its endpoints may leave it out; so does
-`modelsFor`, none, every run's subordinate work on its own model.)
+`modelsFor`, none, every run's subordinate work on its own model; and so do the three parts of the
+prompt, `brief`, `memoryFor` and `projectInstructions`, nothing.)
 
 | Injection point | What the host supplies | The Desk feature it replaces | Read by |
 | --- | --- | --- | --- |
@@ -88,6 +90,9 @@ nothing known, so a host that knows nothing about its endpoints may leave it out
 | `dialectAPI(path, …)` | A request to the host's input-preparation API | `dialects/client` | `planning/tools.ts` |
 | `endpointCapabilities({ family, model })` | What the host knows about an endpoint and model: any members of its capability record (see The capability record), its probe result. Answers `{}`, nothing known, until supplied | none (new, agent#9, agent#4: the Desk decides by its three families) | `capabilities.ts`, read once per run by `context/session.ts` |
 | `renderImageToText(image, signal)` | An image as text, for a model whose record says no vision: the host's render adapter | none (new, agent#5) | `images.ts`, from `engines/vercel/loop.ts`, `engines/codex/index.ts` and `engines/deepagents/loop.ts` |
+| `brief()` | The project brief: the text of the project file the host's profile names, or nothing; at most `briefBytes`. Asked once per run, before its first request, and placed in the third layer of every request (see The prompt) | the Desk server's addition behind the relay (`internal/desk/ai_context.go`, `aiContext`) | `prompt.ts`, `readHostParts`, read by `context/session.ts`, `SessionContext.askHost` |
+| `memoryFor(query)` | Recalled project memory for `query`, the person's message (a delegated child's objective; the host's prompt where neither is given), or nothing; at most `memoryBytes`. Asked once per run, not where `context.memory` is `false`, and placed in the fifth layer, the end of the stable prefix | the Desk server's recall behind the relay (`ai_context.go`, `memoryBackground`) | as `brief` |
+| `projectInstructions()` | The project's own instructions, the per-project block the person wrote, or nothing; at most `projectInstructionsBytes`. Instructions at the lowest rank, placed in the fourth layer after the package's guidance and the brief; they cannot grant a tool or change an effect | none (new, ADR-0005) | as `brief` |
 | `modelsFor({ connection, engine, family, model })` | The models a run's connection names for its subordinate work: `child`, delegated children's, and `critic`, the critic's; each absent or null for the run's own model. Asked once per run with the run's connection (`context.connection`), engine, family and model. Answers none until supplied. It replaces agent#10's `criticModel` (see The critic) | none (new, agent#10; one seam since the review of agent#35) | `host.ts`, `runModels`, read by `context/session.ts`, `SessionContext.models`, for `engines/vercel/loop.ts`, `engines/codex/index.ts`, `engines/deepagents/loop.ts` and `delegation.ts` |
 
 The failure catalogue and the context budget table are the package's own copies of the Desk's
@@ -106,7 +111,8 @@ configureHarness({
   sessionBearer, sessionEnded, whenSessionEnds, forgetSession, refusalCode, discardBody,
   NoSession, NO_SESSION_MESSAGE,
   chassisUrl, deskHeaders, deskSocketURL, aiHeaders, socketURL, socketProtocols, DeskWebSocketTransport,
-  deskFetch, answer, readFile, dialectAPI, endpointCapabilities, renderImageToText, modelsFor
+  deskFetch, answer, readFile, dialectAPI, endpointCapabilities, renderImageToText, modelsFor,
+  brief, memoryFor, projectInstructions
 })
 ```
 
@@ -280,23 +286,40 @@ chat's. Nothing is global: a run reaches only the chat context it was handed, an
 gets a view of its parent's that shows it its references and what it reads itself (see Delegation).
 `wire-contract.md` has the rules; `tool-result.json` the index and the cache key.
 
-### The request text and project memory
+### The prompt (ADR-0005)
 
-The request text is the first text part of a run's first user turn on every request of the run, on
-every wire (agent#11): nothing the loop does moves it, and every other user text the loop adds comes
-after it. Where the prompt is previewed, the person's message (`currentRequest.message`) is that
-first part, before the preview; for a delegated child, its objective (`context.objective`). The
-contract states the rule a server applies to find it (`budget.json#/$defs/recallQuery`,
-`certification/recall.ts`), and the certification suite applies it to every request on every
-certified leg, 21 legs in four families. On the agent wire (`codex`) the request text is the
-prompt's text before the first blank line followed by `STATE_HEADER`, or the whole prompt where
-there is none (agent#36; `contract/vectors/recall/agent.json`, and the `agent engine codex` check in
-`engines/codex/codex.test.ts`); where the prompt, state and guidance do not fit the allowance, the
-prompt sent is the person's message (`currentRequest.message`), a blank line, `STATE_HEADER` and the
-preview, so the rule still finds the person's message (a host that gives no `currentRequest` gets the
-preview alone).
+The adapter assembles the whole prompt, and the host's relay adds nothing to it
+([ADR-0005](../../docs/adr/0005-the-prompt-is-the-adapters.md)). Every engine builds the same
+layered request with one assembler (`prompt.ts`, `systemText`): the system text (the agent wire's
+`instructions`) is the package's guidance, then the project brief, the project's own instructions
+and the memory, each asked of the host once per run before its first request (`brief()`,
+`projectInstructions()`, `memoryFor(query)`), each as a header, its text and an end line
+(`budget/host-parts.json`); on an endpoint without native tool calls the tools described in text
+follow. That text is the stable prefix: the same bytes on every request of the run. Then the
+messages: the first user turn carries the request text (the host's prompt, which carries the
+Runtime's prompt and the person's request as one text), then a chat's index of earlier results,
+then on the first request the state headed `STATE_HEADER`; the turn's steps follow, and the state
+after them where the endpoint's placement puts it. On the agent wire (`codex`) the one prompt
+string carries the same parts in the same order: the request text, the index, then a blank line,
+`STATE_HEADER` and the state. Where the prompt does not fit its allowance, the person's message
+(`currentRequest.message`) leads the preview with its reference; a delegated child's objective
+(`context.objective`) leads its first message and is its memory query.
+
+A part over its bound (`briefBytes`, `projectInstructionsBytes`, `memoryBytes`), or one that is not
+text, is refused and the run fails before any request (`configuration`). The project's instructions
+are instructions at the lowest rank: they follow the package's guidance, under a header that says
+to follow them where they do not contradict the rules above, and they cannot grant a tool or change
+an effect, because the offer and the gate are code; a certification leg holds that a block saying
+to ignore the data rule and call `write_file` changes nothing the gate admits. The certification
+suite checks that each part lands in its layer, and that the stable prefix holds, on every request
+of 21 certified legs in four families.
+
+Every request body the adapter sent is digested in the checkpoint's `prompts`, in order (the
+SHA-256 of the provider body on a model engine, of the agent request's JSON on the agent wire;
+`provenance.json#/$defs/promptDigest`).
+
 The host says per run whether the project's memory is on (`context.memory`): `false` frees the
-`memoryBytes` reserve, and a run whose host says nothing keeps it.
+`memoryBytes` reserve and `memoryFor` is not asked, and a run whose host says nothing keeps both.
 
 ### Delegation
 
@@ -427,11 +450,13 @@ leg: an endpoint that answers 400 to two user turns in a row or a user text afte
 which the loop passes with the state in the system tail; and (agent#4) the text tool calls legs: the
 whole scenario, on each of the six wire legs, at an endpoint whose record says it takes no native
 tool calls and which refuses any request that carries tools, with the same calls, gate events and
-proposal, and once more where it also keeps a strict turn order; and (agent#11) on every request
-of 21 certified legs in four families (plain, text-path, strict-alternation and thinking), the
-recall rule finds the request text the run started from; an agent engine (`codex`) the recorded
-scenario behind the real tool gate and the agent-engine checks in `engines/codex/codex.test.ts`,
-among them (agent#36) the recall rule applied to the prompt, which yields the person's message.
+proposal, and once more where it also keeps a strict turn order; and (ADR-0005) on every request
+of 21 certified legs in four families (plain, text-path, strict-alternation and thinking), each of
+the host's parts in its layer and the stable prefix the same bytes, and on the six plain legs a
+project block that asks for `write_file` refused at the gate as before; an agent engine (`codex`)
+the recorded scenario behind the real tool gate and the agent-engine checks in
+`engines/codex/codex.test.ts`, among them (ADR-0005) the host's parts at the end of the
+instructions and the request text before the state in the prompt.
 
 ### The recorded runtime and its recorder (agent#37)
 
@@ -474,7 +499,10 @@ carried by the swap (judgment-pack-desk#516); the rest are this repository's own
 agent#38 each add one, ADR-0003 five for the Deep Agents adapter: its boundary, its built-ins
 off, its question pause, its tracing refusal and its critic dispatch; the review of #44 and the
 release review of v0.3.0 add more, for the chat's cache offer, the codex prompt's message head, the
-critic's allow-list, the tracing variables, and a call on a request with its tools closed). Nine of the Desk's needles no longer matched the moved code: eight were
+critic's allow-list, the tracing variables, and a call on a request with its tools closed; ADR-0005
+four, for a host part dropped, the project block above the package's guidance, the prompt's digest
+omitted and memory recalled per request, and re-anchors the codex prompt's message head on the
+preview every engine builds). Nine of the Desk's needles no longer matched the moved code: eight were
 re-anchored on the same safeguard (a row's `note` says why), and one row is retired, with its
 reason in the table, because the code it broke is gone. A row's `tests` are the files that
 import the mutated file or a module that does, and those that name it in a string; a run in which
@@ -497,7 +525,7 @@ it. The suite is `certification/scenarios.test.ts`; its turns and runs are drive
 | --- | --- | --- | --- |
 | 1 Chat mode with host tools: a read, a proposal, a name never offered | the offer (two host tools beside the Runtime's six and the harness's six); the gate refuses the third name between its call and its result; the proposal reaches the review card and nothing is acted on; the answer is delivered | 4 | 4 |
 | 2 Delegation: a batch of a review and a research child, then a follow-up that resumes the research child | one parent run per response (vercel) or the next run's result and the chat's index (codex); the children's offers closed; a reference resolved within the chat; each result in its profile's shape and valid against the contract; the figures; the resumed child's earlier work | 7 | 7 |
-| 3 Memory: three tool steps | the request text found on every request by the recall rule; the reserve kept with memory on or unsaid; the full allowance with memory off | 4 | 4 |
+| 3 Memory: three tool steps | memory asked once, for the person's message, and carried in the same place on every request (ADR-0005); the reserve kept with memory on or unsaid; the full allowance with memory off | 4 | 4 |
 | 4 Plan mode | no action tool offered; the Runtime reads offered are the gate's ceiling less the evaluation and the test run; a call to an action tool refused and visible; the plan delivered | 4 | 4 |
 | 5 The correction loop: a draft validate refuses, one correction request, the critic (the correction request's text is the scenario's own script; the scenario exercises `correctArtifact`, one correction then ready, the engines' critic and the gate's rehearsal rule) | the first draft fails validate with its diagnostic; one correction request and a passing draft; the request count; the critic's comparison rows for the declared case; no `incomplete` mark; the critic's call of a tool outside its allow-list refused by `admit`, reaching no Runtime tool, with the pass still ending | 6 | 6 |
 | 6 A multi-turn transcript: three turns of one chat | no unchanged source read again on turns two and three; the index present and within its bound; the ledger kept across the runs and gone after `dispose()` | 3 | 3 |
@@ -506,11 +534,11 @@ The checks the adapters make differently are recorded here, with the reason, and
 
 - **1** The agent transport refuses a name outside the agent's offer before the gate sees it (the run ends), so the agent engine is driven at `AgentRun`, where the gate refuses it and the agent's answer is the refusal (agent#25). On the `vercel` model engine the SDK answers the unoffered call first, with its own no-such-tool error naming the tool, and the model reads that; on the `deepagents` model engine the adapter's boundary answers every call before LangChain's tool node, so the model reads the gate's refusal, as the agent's does (ADR-0003); the stream shows the gate's refusal on all three.
 - **2** The agent's run ends at the delegate call, so a response is the call's run, the children's runs and the next run: four runs for a batch of two, three for the resumed child. The agent wire reports no usage and no model request, so a child's record carries no `tokens` and no model requests, and the batch's figures count `agentRuns` instead; its `firstByteMs` and `durationMs` are present.
-- **3** The agent engine sends the Desk's server no model request to recall for: its one request is the run's prompt, which opens with the person's message. The reserve checks are the same on both.
+- **3** The agent engine makes one request, so "every request" is its one run's: the memory at the end of its instructions, the person's message opening its prompt. The reserve checks are the same on both.
 - **5** The model engine's loop is five model requests (two authoring requests, the critic's three); the agent engine's is three agent runs (author, author, critic). The critic's boundary check runs the loop once more with a call of `write_file` first in the critic's script, on both adapters; the guardrail's detail, "is not one of the tools the critic may call", is what shows `admit` refused it.
 - **4** and **6** make the same checks on both. The index is a text part of the first message on the model engine and the end of the prompt on the agent engine.
 
-Not covered by these scenarios: the network seal (the recorded scenario's legs hold it) and the other two wires (the recall rule's vectors and the recorded scenario cover them). A model engine is added by registering it, as `deepagents` was, and then runs every scenario.
+Not covered by these scenarios: the network seal (the recorded scenario's legs hold it) and the other two wires (the recorded scenario's legs cover them). A model engine is added by registering it, as `deepagents` was, and then runs every scenario.
 
 ### The Deep Agents adapter (ADR-0003)
 

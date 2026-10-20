@@ -95,6 +95,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		Interactive:       run.Interactive,
 		CallTool:          r.gatedCall,
 		Model:             &runcontext.ModelSession{Family: run.Wire, Model: run.ModelName, Budget: budgetOf(capabilities)},
+		Host:              run.Host,
 	}
 	if run.Review != nil {
 		session.AdversarialReview = *run.Review
@@ -207,7 +208,7 @@ func (r *runState) turnTimeFailure() error {
 func (r *runState) modelCall(phase func() string) wire.ModelCall {
 	claimed := func(ctx context.Context, suffix string, request wire.ModelRequest) (*http.Response, error) {
 		if request.Method != http.MethodGet {
-			if err := r.sc.ClaimRequest(ctx); err != nil {
+			if err := r.sc.ClaimRequest(ctx, request.Body); err != nil {
 				return nil, err
 			}
 		}

@@ -25,10 +25,16 @@ export type TestBounds = {testCallsPerTurn:number;testPackBytes:number;testMatri
  * Desk's table; a table that carries them wins.
  */
 export const INDEX_DEFAULTS = Object.freeze({turnIndexEntries:20,turnIndexBytes:8000})
-export type ContextPolicy = typeof defaults & {turnMilliseconds:number;toolCallMilliseconds:number;imagesPerRequest:number;imageBytesPerRequest:number;turnIndexEntries:number;turnIndexBytes:number} & TestBounds
+/**
+ * The most UTF-8 bytes the project's own instructions may be (ADR-0005, `projectInstructions` in
+ * host.ts): a longer answer is refused before the run's first request, as a brief over `briefBytes` and
+ * memory over `memoryBytes` are. Not in the Desk's table; a table that carries it wins.
+ */
+export const PROMPT_DEFAULTS = Object.freeze({projectInstructionsBytes:4000})
+export type ContextPolicy = typeof defaults & {turnMilliseconds:number;toolCallMilliseconds:number;imagesPerRequest:number;imageBytesPerRequest:number;turnIndexEntries:number;turnIndexBytes:number;projectInstructionsBytes:number} & TestBounds
 export interface ModelContextBudget {contextWindowTokens:number;outputTokens:number}
 export interface ContextConfiguration {version:1;projectBrief?:string;models?:Record<string,ModelContextBudget>}
-export const CONTEXT_DEFAULTS:Readonly<ContextPolicy> = Object.freeze({...TIME_DEFAULTS,...IMAGE_DEFAULTS,...TEST_DEFAULTS,...INDEX_DEFAULTS,...defaults})
+export const CONTEXT_DEFAULTS:Readonly<ContextPolicy> = Object.freeze({...TIME_DEFAULTS,...IMAGE_DEFAULTS,...TEST_DEFAULTS,...INDEX_DEFAULTS,...PROMPT_DEFAULTS,...defaults})
 export function contextConfiguration(value:unknown):ContextConfiguration {
  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid assistant context configuration')
  const c=value as Record<string,unknown>

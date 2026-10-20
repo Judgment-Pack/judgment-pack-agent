@@ -35,6 +35,10 @@ const MaxRequestAllowance = 100
 // MaxCheckpointBytes is the largest a serialized checkpoint may be.
 const MaxCheckpointBytes = 4 * 1024 * 1024
 
+// MaxPromptDigests is MAX_PROMPT_DIGESTS: the most prompt digests a checkpoint keeps, the newest,
+// three attempts at each request of the largest allowance (ADR-0005).
+const MaxPromptDigests = 300
+
 // ExecutionPaused is the work paused at the approved request limit (ExecutionPaused), as an error
 // of class request-limit.
 type ExecutionPaused struct{}
@@ -282,6 +286,20 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 	}
 	if figures := value.Get("delegation"); figures != nil && !ValidDelegationFigures(figures) {
 		return nil, errSavedExecution
+	}
+	if prompts := value.Get("prompts"); prompts != nil {
+		if !prompts.IsArray() || prompts.Len() > MaxPromptDigests {
+			return nil, errSavedExecution
+		}
+		last := 0.0
+		for _, row := range prompts.Items() {
+			request, sha := row.Get("request"), row.Get("sha256")
+			if !isObject(row) || !hasOnly(row, "request", "sha256") || !isInteger(request) || request.Num() < 1 || request.Num() <= last ||
+				!sha.IsString() || !digest64.MatchString(sha.Str()) {
+				return nil, errSavedExecution
+			}
+			last = request.Num()
+		}
 	}
 	if completions := value.Get("completions"); completions != nil {
 		if !completions.IsArray() || completions.Len() > MaxRequestAllowance {
