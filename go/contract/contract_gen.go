@@ -3719,7 +3719,10 @@ func (v RunEventExecutionCheckpoint) MarshalJSON() ([]byte, error) {
 // artifact proposals). reason (ADR-0008), on a refusal of an act call of a tool with a source:
 // approval refused, the host's approval policy answered refuse; approval pending, the call came
 // while another act call of the run waits for the person's decision (at most one approval is
-// pending). Neither call is run.
+// pending); approval stale, the gate's own refusal of a call whose decision no longer holds for it
+// (its arguments not those its approval was decided for, a call that reaches its run without an
+// allow, or, on the continued run, its tool no longer offered as the person decided). None of
+// these calls is run.
 type RunEventGuardrail struct {
 	Type   string  `json:"type"`
 	Tool   string  `json:"tool"`

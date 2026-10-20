@@ -674,6 +674,14 @@ class VectorTests(unittest.TestCase):
         self.assertEqual([item["type"] for item in pending], ["approval_requested", "tool_call", "guardrail", "tool_result", "execution_checkpoint", "end"])
         self.assertEqual(pending[2]["reason"], "approval pending")
         self.assertEqual(pending[1]["callId"], pending[3]["callId"])
+        # The gate's own refusal (#83): approval stale between the call and its failed result.
+        stale = self.vectors["approval/stale-decision.json"]["items"]
+        self.assertEqual([item["type"] for item in stale], ["tool_call", "guardrail", "tool_result"])
+        self.assertEqual((stale[1]["action"], stale[1]["reason"]), ("refused", "approval stale"))
+        self.assertEqual(stale[0]["callId"], stale[2]["callId"])
+        self.assertTrue(stale[2]["isError"])
+        self.assertEqual(stale[2]["structured"]["failure"]["outcome"], "not-started")
+        self.assertEqual(stale[1]["detail"], stale[2]["text"])
 
     def test_every_member_the_release_review_named_is_carried_by_a_vector(self):
         # The members of the $defs added or changed between v0.1.0 and the v0.2.0 review, and the

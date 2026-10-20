@@ -3486,6 +3486,55 @@
    "status": "caught",
    "origin": "agent#80, the review of #79 (ADR-0008)",
    "note": "scenario 8's refusal: one guardrail with reason approval refused follows the written refusal, and the approved and restarted runs say none; the Go mutant drops the same event in go/context/session.go (the 8 refused check of harness-check)"
+  },
+  {
+   "name": "an act call on a run whose events carry no call ids gets no id on deepagents: its decision taken by name, another call's",
+   "file": "engines/deepagents/loop.ts",
+   "find": "      const correlation = session.interactive || context.sources?.needsApproval(tool.name) ? { callId: crypto.randomUUID() } : {}",
+   "replace": "      const correlation = session.interactive ? { callId: crypto.randomUUID() } : {}",
+   "tests": [
+    "toolSources.test.ts",
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "v0.5.0 release review (#83, row 3)",
+   "note": "the reversed-order case on deepagents: two calls of one act tool in one answer, on a run with interactive false, reaching the gate in the other order; only the call the policy allowed runs"
+  },
+  {
+   "name": "a decision taken for other arguments is taken as this call's: the call runs under another call's allow",
+   "file": "toolSources.ts",
+   "find": "    const mismatched = taken !== undefined && taken.args !== canonicalJSON(args)",
+   "replace": "    const mismatched = false",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "v0.5.0 release review (#83, rows 1 and 7)",
+   "note": "the decision tied to the call's canonical arguments (HeldDecision.args); the Go twin is the args check in SourceGate.Call (go/context/sources.go), caught by TestTheSecondCallIsRefusedWhenAuthorizeStopsTheFirst"
+  },
+  {
+   "name": "the gate's refusal of a call whose decision was taken for other arguments says approval refused, the policy's reason",
+   "file": "toolSources.ts",
+   "find": "      : mismatched ? { answer: 'stale' as const,",
+   "replace": "      : mismatched ? { answer: 'refuse' as const,",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "v0.5.0 release review (#83, row 7)",
+   "note": "approval stale is the gate's own reason (approval/stale-decision.json); approval refused stays the policy's or the person's"
+  },
+  {
+   "name": "an approved call the gate no longer admits at the continuation says approval refused, the person's reason",
+   "file": "toolSources.ts",
+   "find": "is no longer offered as it was when the person decided; the call was not run and nothing was changed`, 'approval stale'))",
+   "replace": "is no longer offered as it was when the person decided; the call was not run and nothing was changed`, 'approval refused'))",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "v0.5.0 release review (#83, row 7)",
+   "note": "SourceGate.approved's refusal of a tool no longer offered as the person saw it; the Go twin in SourceGate.Approved is caught by TestAContinuedCallTheGateNoLongerAdmitsIsApprovalStale"
   }
  ]
 }

@@ -55,7 +55,10 @@ the policy is not asked. The package holds no grant and mints none.
 
 Every act call carries an id, whether or not the run's events carry one, and its decision is kept
 by that id and the call's arguments: a call that reaches the gate with another call's id or other
-arguments is refused, never run under another call's answer. The policy is asked once per call, where the engine hands the call to the host, before the call's
+arguments is refused, never run under another call's answer (a decision taken for other arguments
+is refused with a `guardrail` whose `reason` is `approval stale`). On `eino`, whose run's events
+carry no id on a run that is not interactive, the id is drawn for each act call of a tool whose
+calls need approval, as the TypeScript engines draw it. The policy is asked once per call, where the engine hands the call to the host, before the call's
 `tool_call` (`SessionContext.approval`, Go `SessionContext.Approval`, over `SourceGate.decide`, Go
 `SourceGate.Decide`, in `toolSources.ts` and `go/context/sources.go`), and after what the gate and the
 engine refuse on their own: a call the engine refuses itself (repeated work, the request reserved
@@ -126,7 +129,9 @@ without it is refused (`configuration`) and nothing runs, so it never runs a cal
   and still the one it serves, a catalogued tool's arguments held to its declared schema, a slot
   under `sourceCallsPerTurn`, and `sourceCallMilliseconds`. The approval is written `executed`
   with the result, and acknowledged, before anything else. A refusal by the gate at this point is
-  the call's result (the call not run) and is written `executed` the same way.
+  the call's result (the call not run) and is written `executed` the same way; where the tool is no
+  longer offered as the person saw it, a `guardrail` `refused` with `reason: approval stale` says
+  so.
 
 The run's first request then carries, after the request text, one line (`APPROVAL_CONTINUATION`,
 Go `runcontext.ApprovalContinuation`) and one data block under a marker drawn for it, from the tool
@@ -180,7 +185,10 @@ model calls act tool ──▶ gate: offered? effect act? bounds? ──▶ host
   exactly as it ends at a handoff (the account released, the host's function returned); the
   continuation is the response's next run, whose invocation carries the continuation block in its
   prompt. On a delegation coordinator (`withDelegation`, Go `go/adapter/delegate`) that invocation is
-  counted against `MAX_AGENT_RUNS` (Go `turn.MaxAgentRuns`) from the restored figures, and an act is
+  counted against `MAX_AGENT_RUNS` (Go `turn.MaxAgentRuns`): in Go from the restored figures (the
+  checkpoint's `delegation` counts); in TypeScript within the continued response only, since
+  `withDelegation` reads no invocation count from the checkpoint and starts the continued
+  response's count at zero (wire contract, Where the engines disagree). In both, an act is
   offered to a parent invocation only while it and the continuation's invocation both remain, as
   `delegate_tasks` is offered only while its batch and its continuation remain. No model-request or
   token figure is invented.
@@ -196,8 +204,11 @@ model calls act tool ──▶ gate: offered? effect act? bounds? ──▶ host
 
 1. `run-event.json`: a new event, `approval_requested {type, callId, name, tool, source, args}`
    (closed), the harness's addition to the Desk's eighteen kinds; `guardrail` gains `reason`,
-   `approval refused` (the host's policy answered `refuse`, or the person refused the call) or
-   `approval pending`.
+   `approval refused` (the host's policy answered `refuse`, or the person refused the call),
+   `approval pending`, or `approval stale` (the gate's own refusal of a call whose decision no
+   longer holds for it: its arguments not those the decision was taken for, a call that reaches
+   its run without an allow (the gate's last check), or, on the continued run, its tool no longer
+   offered as the person saw it).
 2. `checkpoint.json`: `approval` (`$defs/approval`, closed), at most one per checkpoint, `status`
    `paused` while it is `asked`; `$defs/approvalDecision` (closed), the continuation input beside the
    grant; `$defs/approvalContinuation`, the continuation's text.
@@ -205,8 +216,9 @@ model calls act tool ──▶ gate: offered? effect act? bounds? ──▶ host
    answers; `tool-call.json`'s `tool_call` names `approval_requested` as what an asked act call gets
    in its place.
 4. The vectors `approval/pause.json`, `approval/second-act-while-pending.json`,
-   `approval/continue-refused.json`, `approval/continue-approved.json` and
-   `approval/wrong-call-id.json`, written by hand.
+   `approval/continue-refused.json`, `approval/continue-approved.json`,
+   `approval/wrong-call-id.json`, `approval/policy.json` and `approval/stale-decision.json`,
+   written by hand.
 
 ## Certification
 

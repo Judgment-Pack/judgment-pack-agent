@@ -106,7 +106,8 @@ Desk's eighteen and the harness's `approval_requested` (ADR-0008):
   it in `approval` and the run ends paused, the person decides).
 - **Host reports:** `guardrail` (`rewrote` and `refused` from the tool gate, between the call and
   its result, with `reason` `approval refused` or `approval pending` where an act call's approval
-  refused it (ADR-0008), and `approval refused` again after the person's refusal is written; `narrowed` before the model is asked anything, where a family's wire cannot carry a
+  refused it (ADR-0008), `approval stale` where the gate refused a call whose decision no longer
+  holds for it, and `approval refused` again after the person's refusal is written; `narrowed` before the model is asked anything, where a family's wire cannot carry a
   served schema keyword; `refused` with tool `proposal` where Plan mode or a conversation withholds
   proposals), `execution_checkpoint` (state to save, `durable` where it must be saved before the
   next operation), `delegated_task` (a child's state, whole, at each transition; on `vercel`
@@ -331,7 +332,9 @@ so the person is never asked about a call that could not run.
   (`stale-state`), a restored checkpoint continued without one; in Go an approved continuation
   needs the host's durable callback (`Input.Checkpoint`), since the run's events reach the host only
   after its context opens. Every act call carries an id, its decision kept by it and the call's
-  arguments. A decision for another call, or none for a paused
+  arguments (on `eino` too, which draws one for an act call on a run whose events carry none); a
+  call that reaches the gate with other arguments than its decision's is refused with `reason:
+  approval stale`, as is an approved call whose tool is no longer offered as the person saw it at the continuation. A decision for another call, or none for a paused
   approval, ends the run with `stale-state` before anything runs. Refused: the approval written
   `refused` with `decidedAt`, the note and the refused result, then one `guardrail` `refused` with
   `reason: approval refused` (the refused result's sentence; the note is not in it). Approved: written `approved` and
@@ -348,11 +351,13 @@ so the person is never asked about a call that could not run.
 - **Where no act call is admitted.** A delegated child, Plan mode, the critic and the reformat run:
   an act call that reaches the gate there is refused with a guardrail, and the policy is not asked.
 - **Counting.** The continuation's request is one model request on a model capability; on an agent
-  capability it is the response's next invocation, which a delegation coordinator counts, and an act
+  capability it is the response's next invocation, which a delegation coordinator counts (Go's from
+  the restored figures, TypeScript's within the continued response only; see Where the engines
+  disagree), and an act
   is offered to a parent invocation only while it and that invocation both remain. Nothing invented.
 
 The vectors are `approval/` (`pause.json`, `second-act-while-pending.json`, `continue-refused.json`,
-`continue-approved.json`, `wrong-call-id.json`); certified scenario 8
+`continue-approved.json`, `wrong-call-id.json`, `policy.json`, `stale-decision.json`); certified scenario 8
 (`certification/scenarios/approval-pause.json`) runs the path on every engine and both Go adapters. A Go host opens its gate with the names the boundary will offer
 (`runcontext.OfferedHostTools`), as it adds the boundary's context tools. Certified scenario 7
 (`certification/scenarios/tool-sources.json`) runs the path on every engine, on `eino` and, in the Go
@@ -1269,6 +1274,17 @@ Agents' subagents are off and delegation is the package's, an awaited `delegate_
   running (a restored continuation starts again, as any restored parent run does); the TypeScript coordinator keeps the handoff in memory. The Go adapter also writes
   the checkpoint, acknowledged, before a host tool that is not a read, and carries the `delegation`
   figures from the parent's first invocation.
+- **The approval pause's continuation on the agent capability** (ADR-0008). Both coordinators
+  count the continuation's invocation against `MAX_AGENT_RUNS`. Go's (`go/adapter/delegate`) counts
+  it from the restored figures, the checkpoint's `delegation` counts; TypeScript's (`withDelegation`)
+  reads no invocation count from the checkpoint and counts within the continued response only, its
+  count starting at zero there.
+- **An approved continuation's durable write** (ADR-0008). TypeScript yields each `durable`
+  checkpoint and waits for the host to take it, so a host that saves only from the stream holds the
+  `approved` write before the call runs. Go's run events reach the host only after its context
+  opens, so Go requires the host's durable callback (`Input.Checkpoint`) on an approved
+  continuation and refuses one without it (`configuration`), nothing run; TypeScript does not
+  require `context.checkpoint`.
 - **Retries.** `vercel` keeps the SDK's own retries off (`maxRetries: 0`) and sends a model request
   again only after a `refused` outcome whose recovery is `wait` or `retry`, at most twice, with a
   `retry` event each time (see Failures); separately, it starts the whole session again only for a
@@ -1300,7 +1316,8 @@ Agents' subagents are off and delegation is the package's, an awaited `delegate_
   coordinator counts agent runs rather than requests.
 - **Call ids.** `codex` sets `callId` on every call and result. `vercel` sets it on an interactive
   session, and always on its refusal of a repeated call or of a call on the final, tool-free
-  request; never on a call to a tool the model was not offered.
+  request, and on an act call of a tool whose calls need approval (ADR-0008, as `deepagents` and
+  `eino` do); never on a call to a tool the model was not offered.
 - **An unoffered tool.** Both engines put a call to a tool the phase did not offer through the gate
   as the model made it, report the call and a refused result, and go on (on `codex` since agent#25,
   by the tool's real name where the alias names one). On `codex` a name the session serves, by its

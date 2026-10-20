@@ -47,6 +47,9 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 		defer func() { r.sc.Reformatting = false }()
 	}
 	// ADR-0008: while an act call waits for the person's decision, no invocation is dispatched.
+	// Defence in depth: drive does not call invoke in that state (the pause cancels the run's
+	// execution before a reformat or a critic, and a continuation of an asked approval without a
+	// decision is refused before the run opens); guard_test.go holds the line directly.
 	if r.sc.Execution.ApprovalAsked() {
 		return "", runcontext.ErrApprovalPaused
 	}

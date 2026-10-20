@@ -20,6 +20,8 @@ import harnessDefaults from '../../contract/vectors/budget/harness-defaults.json
 import continueRefused from '../../contract/vectors/approval/continue-refused.json'
 import continueApproved from '../../contract/vectors/approval/continue-approved.json'
 import secondAct from '../../contract/vectors/approval/second-act-while-pending.json'
+import policyVector from '../../contract/vectors/approval/policy.json'
+import staleVector from '../../contract/vectors/approval/stale-decision.json'
 import toolSourcesServer from './certification/scenarios/tool-sources.json'
 import { CONTEXT_DEFAULTS, SOURCE_DEFAULTS } from './context/policy'
 import { readingTool } from './framing'
@@ -50,6 +52,7 @@ import {
 import { contextualSession } from './context/session'
 import { contextOf, managedContext } from './context/managed'
 import { withDelegation } from './delegation'
+import { loadEngine } from './engines'
 import { DELEGATE_TOOL } from './delegationContract'
 import { normalize } from './thinking'
 import { answerFrom, offeredNames, runOnModelEngine, type Turn } from './testing/scenarioDriver'
@@ -652,7 +655,7 @@ describe('the approval pause (ADR-0008)', () => {
     plan.context.close()
   })
 
-  it('ties each act call’s decision to its own call on a run whose events carry no call ids: two calls of one tool reaching the gate in the other order run only the allowed one', async () => {
+  it.each(['vercel', 'deepagents'])('ties each act call’s decision to its own call on a run whose events carry no call ids, on %s: two calls of one tool reaching the gate in the other order run only the allowed one', async (engineId) => {
     const ran: Record<string, unknown>[] = []
     const asked: Record<string, unknown>[] = []
     let delayed = false
@@ -666,7 +669,7 @@ describe('the approval pause (ADR-0008)', () => {
       { say: 'unused' },
       { say: 'One work item updated, one refused.' }
     ]
-    const run = await runOnModelEngine(answerFrom(turns, 'stream'), { hostTools: tools, session: { prompt: 'Update the items.', interactive: false, context: { authorize } } })
+    const run = await runOnModelEngine(answerFrom(turns, 'stream'), { engine: await loadEngine(engineId), hostTools: tools, session: { prompt: 'Update the items.', interactive: false, context: { authorize } } })
     expect(delayed).toBe(true)
     expect(ran).toEqual([{ id: 2, state: 'Done' }])
     const results = ofType(run.events, 'tool_result').filter((event) => event.name === 'ado__update_work_item')
@@ -675,6 +678,53 @@ describe('the approval pause (ADR-0008)', () => {
     const refusedCall = calls.find((event) => (event.args as { state?: string }).state === 'Deleted')!
     expect(results.find((event) => event.callId === refusedCall.callId)).toMatchObject({ isError: true })
     expect(ofType(run.events, 'guardrail')).toContainEqual(expect.objectContaining({ tool: 'ado__update_work_item', reason: 'approval refused' }))
+  })
+
+  it.each(['vercel', 'deepagents'])('refuses, on %s, an act call whose decision was taken for another: the first call allowed and stopped by the host’s authorization before the gate, the second, with other arguments, refused and never run', async (engineId) => {
+    const ran: Record<string, unknown>[] = []
+    let failNext = false
+    const tools = declared(declarations.items).map((tool) => (tool.name === 'update_work_item'
+      ? { ...tool, approve: (call: ApprovalRequest) => { if (call.args.state === 'Deleted') return 'refuse' as const; failNext = true; return 'allow' as const }, execute: async (args: Record<string, unknown>) => { ran.push(args); return { content: [{ type: 'text' as const, text: 'updated' }] } } }
+      : tool))
+    // The host's authorization fails once, for the first call, after its decision and before the source gate.
+    const authorize = async () => { if (failNext) { failNext = false; throw new AIFailureError({ version: 1, code: 'permission', source: 'desk', outcome: 'not-started', detail: 'Not authorized this time.' }) } }
+    const turns: Turn[] = [
+      { call: { tool: 'ado__update_work_item', arguments: { id: 7, state: 'Done' } } },
+      { call: { tool: 'ado__update_work_item', arguments: { id: 7, state: 'Deleted' } } },
+      { say: 'Neither was changed.' }
+    ]
+    const run = await runOnModelEngine(answerFrom(turns, 'stream'), { engine: await loadEngine(engineId), hostTools: tools, session: { prompt: 'Update the item.', interactive: false, context: { authorize } } })
+    expect(ran).toEqual([])
+    const results = ofType(run.events, 'tool_result').filter((event) => event.name === 'ado__update_work_item')
+    expect(results.map((event) => event.isError)).toEqual([true, true])
+    expect(ofType(run.events, 'guardrail')).toContainEqual(expect.objectContaining({ tool: 'ado__update_work_item', reason: 'approval refused' }))
+  })
+
+  it('refuses, with the approval stale guardrail, a call that reaches the gate with arguments other than its decision’s, and a continued call whose tool is no longer offered as decided', async () => {
+    let ran = 0
+    const { book } = bookOf()
+    const tools = declared(declarations.items).map((tool) => ({ ...tool, approve: () => 'allow' as const, execute: async () => { ran++; return { content: [] } } }))
+    const { gate, call, notices } = await gateFor(tools, {}, false, book)
+    expect((await gate.decide('ado__update_work_item', { id: 7, state: 'Done' }, undefined)).answer).toBe('allow')
+    await expect(call('ado__update_work_item', { id: 7, state: 'Deleted' })).rejects.toBeInstanceOf(GateViolation)
+    // The gate's words are the vector's (approval/stale-decision.json).
+    const staleGuardrail = staleVector.items[1] as { tool: string; detail: string; reason: string }
+    expect(notices.at(-1)).toEqual({ tool: staleGuardrail.tool, detail: staleGuardrail.detail, reason: staleGuardrail.reason })
+    const approved = { callId: 'call-a', name: 'tracker__gone', tool: 'gone', source: { kind: 'mcp' as const, id: 'tracker', trust: 'public' as const, tool: 'gone' }, args: {}, state: 'approved' as const }
+    const answer = await gate.approved(approved, signal(), async () => { ran++; return { content: [] } })
+    expect(answer.ran).toBe(false)
+    expect(notices.at(-1)).toMatchObject({ tool: 'tracker__gone', reason: 'approval stale' })
+    expect(ran).toBe(0)
+  })
+
+  it('reads the policy’s three answers as the vector states them, and any other, or a policy that throws, as refuse (approval/policy.json)', async () => {
+    expect(policyVector.items).toEqual(['allow', 'refuse', 'ask'])
+    for (const item of [...policyVector.items, 'yes', 'ALLOW', '', 'throws']) {
+      const { book } = bookOf()
+      const tools = declared(declarations.items).map((tool) => ({ ...tool, approve: () => { if (item === 'throws') throw Error('policy failed'); return item as 'allow' } }))
+      const { gate } = await gateFor(tools, {}, false, book)
+      expect((await gate.decide('ado__update_work_item', { id: 7 }, 'c')).answer).toBe((policyVector.items as string[]).includes(item) ? item : 'refuse')
+    }
   })
 
   it('reads the approval and the decision closed, and continues a restored approved call whose result was never written without running it again', async () => {

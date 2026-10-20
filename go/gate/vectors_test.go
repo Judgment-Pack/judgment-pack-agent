@@ -53,13 +53,15 @@ var notTheGates = map[string]string{
 	"tool-result/loaded-schema.json":      "load_tool's answer: the boundary's (go/context, SourceGate.LoadToolHost)",
 	"tool-result/source-results.json":     "the source record on a tool_result event: the boundary's (go/context, SourceGate.Decorate)",
 	// ADR-0008: the approval pause is the boundary's and the source gate's (go/context,
-	// approval_test.go; certified scenario 8), not a decision of the gate on the Runtime's wire.
+	// approval_test.go, decision_test.go; certified scenario 8), not a decision of the gate on the
+	// Runtime's wire.
 	"approval/pause.json":                    "an act call paused for the person: the boundary's (go/context, SourceGate.Decide, Boundary)",
 	"approval/second-act-while-pending.json": "an act call refused while another waits: the boundary's (go/context, SourceGate.Decide, Boundary)",
 	"approval/continue-refused.json":         "the continuation of a refused act call: the boundary's (go/context, ContextualSession)",
 	"approval/continue-approved.json":        "the continuation of an approved act call: the boundary's (go/context, ContextualSession, SourceGate.Approved)",
 	"approval/wrong-call-id.json":            "a decision for another call, refused before the run: the execution's (go/context, ExecutionController.Initialize)",
 	"approval/policy.json":                   "the host's approval policy's three answers: the source gate's (go/context, askPolicy, SourceGate.Decide)",
+	"approval/stale-decision.json":           "an act call whose decision no longer holds for it, refused: the source gate's (go/context, SourceGate.Call, SourceGate.Approved)",
 }
 
 type vectorFile struct {

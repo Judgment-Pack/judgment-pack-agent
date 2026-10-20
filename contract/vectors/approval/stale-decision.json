@@ -1,0 +1,61 @@
+{
+  "description": "ADR-0008: the gate's own refusal of an act call whose decision no longer holds for it, the guardrail's reason approval stale (run-event.json#/$defs/guardrail): here a call that reached the gate with arguments other than those its approval was decided for (each decision is kept by its call's id and the call's canonical arguments); also a call that reaches its run without an allow, and a continued call whose tool is no longer offered as the person decided. The call is never run: its tool_call, the guardrail between it and its result, and its failed result (permission, not-started). approval refused stays the policy's or the person's refusal. Written by hand from the schemas; toolSources.test.ts and go/context (decision_test.go) hold the gate's words to the guardrail.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/toolSources.ts (SourceGate.call, SourceGate.approved)"
+    ]
+  },
+  "items": [
+    {
+      "type": "tool_call",
+      "callId": "call_3",
+      "name": "ado__update_work_item",
+      "args": {
+        "id": 7,
+        "state": "Deleted"
+      },
+      "source": {
+        "kind": "gateway",
+        "id": "ado",
+        "trust": "connected",
+        "version": "2026-10",
+        "tool": "update_work_item"
+      }
+    },
+    {
+      "type": "guardrail",
+      "tool": "ado__update_work_item",
+      "action": "refused",
+      "detail": "ado__update_work_item was called with arguments other than those its approval was decided for; it was not run and nothing was changed",
+      "reason": "approval stale"
+    },
+    {
+      "type": "tool_result",
+      "callId": "call_3",
+      "name": "ado__update_work_item",
+      "isError": true,
+      "text": "ado__update_work_item was called with arguments other than those its approval was decided for; it was not run and nothing was changed",
+      "structured": {
+        "failure": {
+          "version": 1,
+          "code": "permission",
+          "source": "tool",
+          "outcome": "not-started",
+          "detail": "ado__update_work_item was called with arguments other than those its approval was decided for; it was not run and nothing was changed"
+        }
+      },
+      "source": {
+        "kind": "gateway",
+        "id": "ado",
+        "trust": "connected",
+        "version": "2026-10",
+        "tool": "update_work_item"
+      }
+    }
+  ]
+}

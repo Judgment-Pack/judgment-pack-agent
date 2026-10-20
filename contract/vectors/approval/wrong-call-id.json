@@ -1,5 +1,5 @@
 {
-  "description": "ADR-0008: a decision for a call the paused response is not waiting on (approval, the pending one, from pause.json) is refused before anything runs: the run ends with the stale-state failure, source context, and end; no request is sent, the call is not run and the checkpoint is not changed. Written by hand from the schemas; certified scenario 8 holds every engine to it.",
+  "description": "ADR-0008: a decision for a call the paused response is not waiting on (approval, the pending one, from pause.json) is refused before anything runs: the run ends with the stale-state failure, source context, and end; no request is sent, the call is not run and the checkpoint is not changed. Written by hand from the schemas; certified scenario 8 (certification/scenarios.test.ts, go/certification) holds every engine's run with the decision for another call to events, word for word.",
   "schema": "checkpoint.json#/$defs/approvalDecision",
   "source": {
     "harness": {
