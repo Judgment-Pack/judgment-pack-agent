@@ -469,8 +469,10 @@ result (`answered`); then the parent's next invocation counted and the handoff `
 it is dispatched. Each write waits for the host's acknowledgement (`runcontext.Input.Checkpoint`),
 and one not acknowledged dispatches nothing more: the response ends with `storage`. A child or a
 continuation is dispatched only once no invocation of the response is running on the account. A
-checkpoint handed back after a restart continues where it stood, and a child it shows `running` is
-`interrupted` with an unknown outcome, never dispatched again. The certification's fake exclusive
+checkpoint handed back after a restart (the person's explicit continuation) continues where it
+stood: a child it shows `running` is `interrupted` with an unknown outcome, never dispatched again;
+a restored `answered` or `continued` handoff starts the parent's continuation again with the
+recorded result, as any restored parent run starts again; committed operations are not repeated. The certification's fake exclusive
 account (`certification.StandIn`) and its monitor hold this; a host certifies its own bridge with
 `certification.CertifyAgent`.
 
@@ -1055,8 +1057,8 @@ Agents' subagents are off and delegation is the package's, an awaited `delegate_
   result. The Go `agent` adapter waits for the host's provider-run function to return before its
   run ends; `codex` ends its run when the call's signal is aborted. The Go coordinator writes each
   transition into the checkpoint's `handoff` and waits for the host's acknowledgement before the
-  next invocation, and continues a restored handoff without dispatching again what it shows
-  dispatched; the TypeScript coordinator keeps the handoff in memory. The Go adapter also writes
+  next invocation, and continues a restored handoff without dispatching again a child it shows
+  running (a restored continuation starts again, as any restored parent run does); the TypeScript coordinator keeps the handoff in memory. The Go adapter also writes
   the checkpoint, acknowledged, before a host tool that is not a read, and carries the `delegation`
   figures from the parent's first invocation.
 - **Retries.** `vercel` keeps the SDK's own retries off (`maxRetries: 0`) and sends a model request

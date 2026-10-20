@@ -99,15 +99,23 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 	invCtx, stop := context.WithCancel(ctx)
 	defer stop()
 	held := &invocation{partial: map[string]string{}}
-	callbacks := adapter.AgentCallbacks{Event: r.event(invCtx, phase, held), Tool: r.tool(invCtx, offered, recorder)}
+	// Every callback of the invocation is held: whether one ran (the invocation was admitted), and
+	// that none is still running when invoke returns, so a host tool cannot overlap what follows.
+	watched := &callbacksHeld{}
+	watched.idle = sync.NewCond(&watched.mu)
+	defer watched.closeAndWait()
+	callbacks := watched.wrap(adapter.AgentCallbacks{Event: r.event(invCtx, phase, held), Tool: r.tool(invCtx, offered, recorder)})
 	var runErr error
 	for attempt := 1; ; attempt++ {
 		runErr = agent.Run(invCtx, request, callbacks)
-		if runErr == nil || r.stopping() || invCtx.Err() != nil ||
+		watched.wait()
+		// An attempt that reached any callback was admitted: whatever its error says, it is an
+		// outcome and is never sent again.
+		if runErr == nil || watched.reached() || r.stopping() || invCtx.Err() != nil ||
 			!failure.CanRetryAdmission(failure.Normalize(runErr, "agent", time.Now()), attempt, MaxAdmissionAttempts) {
 			break
 		}
-		// Busy proves admission refused the invocation: nothing ran, and nothing is replayed.
+		// Busy, and no callback ran: admission refused the invocation, nothing ran, nothing is replayed.
 		select {
 		case <-time.After(time.Duration(attempt) * 250 * time.Millisecond):
 		case <-invCtx.Done():
@@ -143,6 +151,81 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 		return "", failure.Err("invalid-response", "agent", "unknown")
 	}
 	return held.final, nil
+}
+
+// callbacksHeld is one invocation's callbacks, held: whether any ran, how many are running, and,
+// once the invocation is over, a refusal of any that comes late.
+type callbacksHeld struct {
+	mu      sync.Mutex
+	idle    *sync.Cond
+	active  int
+	touched bool
+	closed  bool
+}
+
+// errLate answers a callback the host makes after its invocation was over.
+var errLate = errors.New("the invocation is over; this callback was not run")
+
+func (h *callbacksHeld) enter() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.closed {
+		return false
+	}
+	h.active++
+	h.touched = true
+	return true
+}
+
+func (h *callbacksHeld) leave() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.active--
+	if h.active == 0 {
+		h.idle.Broadcast()
+	}
+}
+
+// wait returns once no callback is running.
+func (h *callbacksHeld) wait() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for h.active > 0 {
+		h.idle.Wait()
+	}
+}
+
+func (h *callbacksHeld) reached() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.touched
+}
+
+// closeAndWait refuses every later callback and waits for the running ones.
+func (h *callbacksHeld) closeAndWait() {
+	h.mu.Lock()
+	h.closed = true
+	h.mu.Unlock()
+	h.wait()
+}
+
+func (h *callbacksHeld) wrap(callbacks adapter.AgentCallbacks) adapter.AgentCallbacks {
+	return adapter.AgentCallbacks{
+		Event: func(ctx context.Context, event adapter.AgentEvent) error {
+			if !h.enter() {
+				return errLate
+			}
+			defer h.leave()
+			return callbacks.Event(ctx, event)
+		},
+		Tool: func(ctx context.Context, call adapter.AgentToolCall) (adapter.AgentToolAnswer, error) {
+			if !h.enter() {
+				return adapter.AgentToolAnswer{}, errLate
+			}
+			defer h.leave()
+			return callbacks.Tool(ctx, call)
+		},
+	}
 }
 
 // stopping is whether a tool call ended the invocation: a handoff, a question or a failed save.

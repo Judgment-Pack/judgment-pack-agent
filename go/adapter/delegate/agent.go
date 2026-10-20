@@ -21,8 +21,9 @@ import (
 // batch's children one at a time, each only after every earlier invocation has returned, each
 // counted and its record written before it is dispatched and after it finishes; writes the call's
 // result; and starts a new invocation of the parent with that result as one data block (the
-// continuation). A restored checkpoint carrying a handoff continues from where it stood, and nothing
-// it shows as dispatched is dispatched again.
+// continuation). A restored checkpoint carrying a handoff continues from where it stood: a child it
+// shows dispatched is never dispatched again, and a restored continuation starts again, as any
+// restored parent run does.
 
 // agentRuns is one response's admitted invocations (MAX_AGENT_RUNS): the parent's (its critic's
 // among them), each child's by task, and those of the batches a restored checkpoint carried. Guarded

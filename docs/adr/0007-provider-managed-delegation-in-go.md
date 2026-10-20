@@ -139,8 +139,9 @@ explicit continuation; nothing is continued without it. The coordinator continue
 checkpoint stood: `released` plans the batch; `children` runs the tasks still `queued`, keeps the
 finished ones, and marks a task still `running` `interrupted` with failure `unknown` and the problem
 "its outcome is unknown; it was not run again", never dispatching it again; `answered` and
-`continued` start the parent's next invocation with the recorded result. A lost acknowledgement is
-the same case: the last checkpoint the host holds says what was dispatched, and that is never
+`continued` start the parent's next invocation with the recorded result, as any restored parent
+run starts again, its committed operations not repeated. A lost acknowledgement is the same case:
+the last checkpoint the host holds says which child was dispatched, and that child is never
 dispatched again. Saved model text and a restored checkpoint authorise nothing: every action is
 still held to the gate and the host's approvals.
 

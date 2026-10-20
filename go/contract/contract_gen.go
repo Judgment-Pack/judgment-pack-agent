@@ -981,7 +981,9 @@ func (v CheckpointGrant) MarshalJSON() ([]byte, error) {
 // continued, the response's next run has been dispatched with answer. request: the call's
 // arguments. tasks: the batch's task records, each child's result and report among them. A
 // restored checkpoint is continued only when the host hands it back, the person's explicit
-// continuation, and nothing a checkpoint shows as dispatched is dispatched again.
+// continuation. A child a checkpoint shows running is never dispatched again; a restored answered
+// or continued handoff starts the parent's continuation again with answer, as any restored parent
+// run starts again, and the operations a checkpoint shows committed are not repeated.
 type CheckpointHandoff struct {
 	CallID  string               `json:"callId"`
 	Batch   int64                `json:"batch"`
@@ -2509,9 +2511,10 @@ func (v ProvenanceFiguresTotal) MarshalJSON() ([]byte, error) {
 }
 
 // From provenance.json#/$defs/parentFigures. The parent's own figures beside its batches
-// (agent#18): its model; its own model requests, the execution's used less its children's; on an
-// agent capability, its own agent runs of the response; its own token counts, from its completion
-// rows.
+// (agent#18): its model; its own model requests, the execution's used less its children's, and on
+// an agent capability 0, the provider running its own loop (no count is reported; see agent#71);
+// on an agent capability, its own agent runs of the response; its own token counts, from its
+// completion rows, absent on an agent capability.
 type ProvenanceParentFigures struct {
 	Model         string                  `json:"model"`
 	ModelRequests int64                   `json:"modelRequests"`

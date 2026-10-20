@@ -412,6 +412,37 @@ func ceilingCheck(ctx context.Context, _ *Server, host AgentHost, with func(Adap
 		saved.Handoff.Tasks[1].State != "failed" || saved.Handoff.Tasks[1].Problem == nil || !strings.Contains(*saved.Handoff.Tasks[1].Problem, "agent-invocation limit") {
 		f.fail("the second child was not refused at the limit")
 	}
+
+	// A handoff restored at released with four of five runs used: the batch is refused before any
+	// record is written (the continuation's reserve), and the continuation runs as the fifth.
+	w, err = newAgentWorld(ctx, host, false)
+	if err != nil {
+		return nil, err
+	}
+	if saved, err = restored(4); err != nil {
+		return nil, err
+	}
+	saved.Handoff = &contract.CheckpointHandoff{CallID: "call-restored", Batch: 1, State: "released", Tasks: []contract.DelegatedTask{},
+		Request: contract.DelegatedTaskRequest{Tasks: []contract.DelegatedTaskTaskRequest{{Title: "A", Objective: "Check part A.", Profile: "analyze"}}}}
+	w.run(ctx, with, inner, func(request adapter.AgentRequest, _ int) AgentPlay {
+		return AgentPlay{Steps: []AgentStep{say("Answered without the batch.")}}
+	}, nil, saved, nil)
+	events = w.take()
+	calls = w.watch.admitted()
+	endsCleanly(f, events)
+	if got := kinds(calls); !slices.Equal(got, []string{"parent"}) || !isContinuation(calls[0].Request) ||
+		!strings.Contains(calls[0].Request.Prompt, "a batch needs one for a child and one for the run that continues") {
+		f.fail("restored at released with four runs used, the invocations were %v and the continuation did not carry the batch's refusal", got)
+	}
+	for _, state := range w.acknowledged() {
+		if state.Handoff != nil && len(state.Handoff.Tasks) > 0 {
+			f.fail("restored at released with four runs used, the batch's records were written")
+			break
+		}
+	}
+	if final := lastCheckpoint(events); final == nil || final.Delegation == nil || final.Delegation.Parent.AgentRuns == nil || *final.Delegation.Parent.AgentRuns != 5 {
+		f.fail("the continuation was not the response's fifth run")
+	}
 	return f.list, nil
 }
 
@@ -508,6 +539,14 @@ func restrictionsCheck(ctx context.Context, _ *Server, host AgentHost, with func
 	for _, name := range OfferedTools(calls[1].Request) {
 		if !slices.Contains(allowed, name) {
 			f.fail("the review child was offered %s, outside its profile within Plan mode", name)
+		}
+	}
+	// No transcript of the parent: the child's prompt and instructions carry neither the person's
+	// request to the parent nor the parent's delegation instructions.
+	for _, part := range []string{calls[1].Request.Prompt, calls[1].Request.Instructions} {
+		if strings.Contains(part, agentRequest) || strings.Contains(part, turn.DelegationInstructions) || strings.Contains(part, turn.AgentDelegationInstructions) {
+			f.fail("the child's prompt or instructions carry the parent's request or its delegation instructions")
+			break
 		}
 	}
 	for _, answer := range calls[1].Answers {

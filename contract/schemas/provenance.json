@@ -328,7 +328,7 @@
       "additionalProperties": false
     },
     "parentFigures": {
-      "description": "The parent's own figures beside its batches (agent#18): its model; its own model requests, the execution's used less its children's; on an agent capability, its own agent runs of the response; its own token counts, from its completion rows.",
+      "description": "The parent's own figures beside its batches (agent#18): its model; its own model requests, the execution's used less its children's, and on an agent capability 0, the provider running its own loop (no count is reported; see agent#71); on an agent capability, its own agent runs of the response; its own token counts, from its completion rows, absent on an agent capability.",
       "type": "object",
       "required": [
         "model",
