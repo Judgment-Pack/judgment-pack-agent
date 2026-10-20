@@ -1,0 +1,279 @@
+{
+  "description": "The forced-off cases (ADR-0010): a delegated child, Plan mode (phase plan), a graph-purpose run and a human reviewer assigned turn the critic off in every mode, each with its named reason, read in the order child, phase, purpose, reviewer-assigned and before the mode itself. Another purpose, and the work phase, force nothing. Each item is the decision for the case beside it in cases (by position): session, the session's critic members (tool-offer.json: critic, criticProject, criticReasoning, adversarialReview); table, the policy table's (budget.json: criticDefault, criticReasoningFloor, adversarialReview); forced, the forced-off facts (child, phase, purpose, reviewerAssigned); run, the run's facts where the critic would start (proposal, cases, changesExisting, modelAsked, room); author, the author's tier on the run's capability (absent: none stated). Written by hand; criticSwitch.test.ts and go/context/critic_test.go compute each decision and hold it equal.",
+  "schema": "provenance.json#/$defs/criticDecision",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/criticSwitch.ts (criticMode, criticForcedOff, criticDecision, criticTier)"
+    ]
+  },
+  "cases": [
+    {
+      "name": "on, a delegated child",
+      "session": {
+        "critic": "on"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": true
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "on, Plan mode",
+      "session": {
+        "critic": "on"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false,
+        "phase": "plan"
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "on, a graph-purpose run",
+      "session": {
+        "critic": "on"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false,
+        "purpose": "graph"
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "on, a reviewer assigned",
+      "session": {
+        "critic": "on"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false,
+        "reviewerAssigned": true
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "auto with cases, a reviewer assigned",
+      "session": {},
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false,
+        "reviewerAssigned": true
+      },
+      "run": {
+        "proposal": true,
+        "cases": true,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "off, a delegated child: the child's reason, not off",
+      "session": {
+        "critic": "off"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": true
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "every forced fact at once: the child first",
+      "session": {
+        "critic": "on"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": true,
+        "phase": "plan",
+        "purpose": "graph",
+        "reviewerAssigned": true
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "Plan mode and a graph purpose: the phase first",
+      "session": {
+        "critic": "on"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false,
+        "phase": "plan",
+        "purpose": "graph"
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "on, a test-design purpose in the work phase: nothing forced",
+      "session": {
+        "critic": "on"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false,
+        "phase": "work",
+        "purpose": "test-design",
+        "reviewerAssigned": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    }
+  ],
+  "items": [
+    {
+      "mode": "on",
+      "ran": false,
+      "reason": "child",
+      "reasoning": "off"
+    },
+    {
+      "mode": "on",
+      "ran": false,
+      "reason": "phase",
+      "reasoning": "off"
+    },
+    {
+      "mode": "on",
+      "ran": false,
+      "reason": "purpose",
+      "reasoning": "off"
+    },
+    {
+      "mode": "on",
+      "ran": false,
+      "reason": "reviewer-assigned",
+      "reasoning": "off"
+    },
+    {
+      "mode": "auto",
+      "ran": false,
+      "reason": "reviewer-assigned",
+      "reasoning": "off"
+    },
+    {
+      "mode": "off",
+      "ran": false,
+      "reason": "child",
+      "reasoning": "off"
+    },
+    {
+      "mode": "on",
+      "ran": false,
+      "reason": "child",
+      "reasoning": "off"
+    },
+    {
+      "mode": "on",
+      "ran": false,
+      "reason": "phase",
+      "reasoning": "off"
+    },
+    {
+      "mode": "on",
+      "ran": true,
+      "reason": "person",
+      "reasoning": "off"
+    }
+  ]
+}

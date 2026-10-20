@@ -17,7 +17,9 @@ import {
   offersProposeTool, readProposedPack, twoProposals, reformatRequest, refusedUnoffered, unofferedRefusal, STATE_HEADER, type Proposal
 } from '../contract'
 import { eventChannel } from '../vercel/channel'
-import { CRITIC_SYSTEM, compareTheRest, criticMayCall, criticMayRead, criticMessage, criticCannotRun, criticRuns, critiqueEvent, critiqueOnProposal, criticNote, proposalNote, openCritique } from '../../refutation'
+import { criticDecidedEvent } from '../../criticSwitch'
+import type { CodexEffort } from '../../agent'
+import { CRITIC_SYSTEM, compareTheRest, criticMayCall, criticMayRead, criticMessage, criticCannotRun, critiqueEvent, critiqueOnProposal, criticNote, proposalNote, openCritique } from '../../refutation'
 import type { CritiqueRecorder, Critique, CriticFigures } from '../../refutation'
 
 /** Candidate contract. No fake model endpoint, and no selectable registry entry
@@ -89,7 +91,7 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
      * then a chat's index of earlier results, then `STATE_HEADER` and the state: the parts and the
      * order the model wires send in the first user message (`SessionContext.opening`).
      */
-    const run = async (prompt: string, instructions: string, phase: 'author' | 'critic' | 'reformat', recorder?: CritiqueRecorder, model?: string, state = '') => {
+    const run = async (prompt: string, instructions: string, phase: 'author' | 'critic' | 'reformat', recorder?: CritiqueRecorder, model?: string, state = '', effort: CodexEffort | undefined = session.effort) => {
       const offeredHere = offeredTo(phase)
       const offeredNames = new Set(offeredHere.map(tool => tool.name))
       // The critic's phase is its caller's (it spans the harness's own calls after
@@ -103,7 +105,7 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
       const partial = new Map<string, string>()
       let final = ''
       let messages = 0
-      await withAbort(() => session.agent.run({ prompt, instructions, tools: offeredHere, effort: session.effort, phase: phase === 'critic' ? 'critic' : 'author', ...(model === undefined ? {} : { model }) }, {
+      await withAbort(() => session.agent.run({ prompt, instructions, tools: offeredHere, effort, phase: phase === 'critic' ? 'critic' : 'author', ...(model === undefined ? {} : { model }) }, {
         signal: executionSignal,
         event: async (event: AgentEvent) => {
           if (executionSignal.aborted) return
@@ -272,6 +274,8 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
       return
     }
     if (session.allowConversation && toolProposal === null && !hasProposalFence(final)) {
+      // ADR-0010: nothing to refute; the decision says so.
+      await deliver(criticDecidedEvent(context.decideCritic(false)))
       await deliver({ type: 'message', text: proseOf(final) })
       return
     }
@@ -323,7 +327,11 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
     if (prose) await deliver({ type: 'message', text: prose })
     let critique: Critique | null = null
     let note: ProposalNote | null = null
-    if (criticRuns(session, context.policy)) {
+    // ADR-0010: one decision on every engine, emitted before anything the critic does; on the agent
+    // capability the critic has room where the response's invocations leave it one.
+    const decided = context.decideCritic(true)
+    await deliver(criticDecidedEvent(decided))
+    if (decided.ran) {
       critique = criticCannotRun(session.testPrompt)
       if (!critique) {
         const recorder = openCritique({ cases: context.criticCases, document: proposal.document })
@@ -342,7 +350,8 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
           // The host's modelsFor answer for the run's connection, asked once per run (review of agent#35, row 5).
           const model = context.models('codex').critic
           figures = { model, unit: 'agent-runs', requests: 1 }
-          const text = await run(criticMessage(session.testPrompt, proposal.document, context.criticCases), CRITIC_SYSTEM, 'critic', recorder, model === session.agent.model ? undefined : model)
+          // ADR-0010: the critic's effort, the decision's tier (at least the author's unless lowered).
+          const text = await run(criticMessage(session.testPrompt, proposal.document, context.criticCases), CRITIC_SYSTEM, 'critic', recorder, model === session.agent.model ? undefined : model, '', decided.reasoning as CodexEffort | undefined)
           // agent#10: the declared cases the critic's run left uncompared, run once each by the harness.
           const offered = new Set(offeredTo('critic').map(tool => routes.get(tool.name)!.name))
           await compareTheRest(recorder, proposal.document, offered, async (name, args) => {

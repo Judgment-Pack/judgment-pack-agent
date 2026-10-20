@@ -155,7 +155,17 @@ type SessionContext struct {
 	// SkillCatalogue is what the system text carries of them after the tools described in text, or "".
 	Skills         *SkillGate
 	SkillCatalogue string
+	// Review is the critic's switch for the run (ADR-0010, critic.go): its mode and the layer it came
+	// from, the forced-off reason, the model's ask and the decision, written into the execution state.
+	Review *CriticSwitch
+	// CriticRoom says whether the critic has room to run where something other than the request
+	// allowance decides it: on the agent capability the delegation coordinator's count of the
+	// response's invocations (set at attach). Nil, the critic has room where the allowance leaves a
+	// request.
+	CriticRoom func() bool
 
+	existingPack   bool
+	authorTier     string
 	session        Session
 	compactions    int
 	compactedSteps *orderedValues
@@ -211,6 +221,28 @@ func NewSessionContext(session Session) (*SessionContext, error) {
 	}
 	out.Ledger = NewContextLedger(out.Policy, store)
 	out.Execution = NewExecutionController(session, out.Ledger)
+	// ADR-0010: the session's critic members, read closed before any request; the forced-off facts
+	// are the session's: a delegated child (its objective), Plan mode, a graph purpose, a reviewer.
+	settings := CriticSettings{Critic: session.Critic, CriticProject: session.CriticProject, CriticReasoning: session.CriticReasoning, AdversarialReview: session.AdversarialReview}
+	if err := ReadCriticSettings(settings, session.Agent != nil); err != nil {
+		return nil, failure.Authored("configuration", err.Error(), "context")
+	}
+	forced := CriticForcedFacts{Child: out.objective != "", Purpose: session.Purpose, ReviewerAssigned: session.ReviewerAssigned}
+	if session.Context != nil {
+		forced.Phase = session.Context.Phase
+	}
+	table := CriticTable{CriticDefault: policy.CriticDefault, CriticReasoningFloor: policy.CriticReasoningFloor, AdversarialReview: policy.AdversarialReview}
+	out.Review = NewCriticSwitch(settings, table, forced, func() *Execution { return out.Execution.State })
+	out.existingPack = session.ExistingPack
+	switch {
+	case session.Model != nil:
+		out.authorTier = session.Model.Thinking
+		if out.authorTier == "" {
+			out.authorTier = "off"
+		}
+	case session.Agent != nil:
+		out.authorTier = session.Agent.Effort
+	}
 	for _, tool := range session.HostTools {
 		if tool.ContextPolicy != nil && tool.ContextPolicy.Reference {
 			out.referenceTools[tool.Name] = true
@@ -222,6 +254,34 @@ func NewSessionContext(session Session) (*SessionContext, error) {
 		}
 	}
 	return out, nil
+}
+
+// DecideCritic is decideCritic (ADR-0010): the critic's decision, at the point the critic would start
+// (a proposal) or where the run ends without one, written into the execution state and answered for
+// the adapter to emit as critic_decided before anything the critic does. cases: the host declared
+// cases for the critic. The critic has room where the request allowance leaves a request, or where
+// CriticRoom says so.
+func (c *SessionContext) DecideCritic(proposal, cases bool) CriticDecision {
+	room := c.Execution.Remaining() > 0
+	if c.CriticRoom != nil {
+		room = c.CriticRoom()
+	}
+	return c.Review.Decide(CriticRunFacts{Proposal: proposal, Cases: cases, ChangesExisting: proposal && c.existingPack, Room: room}, c.authorTier)
+}
+
+// ReviewAdmitted is whether a request_review call reaches the switch's own tool (ADR-0010): it is
+// offered on this run and the run is in the author's phase, not the critic's or the reformat run's.
+func (c *SessionContext) ReviewAdmitted() bool {
+	return c.Review.Offered() && !c.CriticReading && !c.Reformatting
+}
+
+// RefuseReview is the refusal of a request_review call ReviewAdmitted does not admit: the guardrail
+// (reason review refused) put on the stream before the call's result, and its sentence. Nothing is
+// recorded.
+func (c *SessionContext) RefuseReview() string {
+	detail := c.Review.Ask(false)
+	_ = c.Review.Refuse(detail)
+	return detail
 }
 
 // Models is models: the models the run's connection names for its critic and its delegated
@@ -877,7 +937,7 @@ func (c *SessionContext) Turn() *ChatTurn { return c.turn }
 var errReserved = &authoredError{"Context tool names are reserved by Desk."}
 
 // reservedNames are the names this package's own tools take, load_tool among them (ADR-0006).
-var reservedNames = []string{"read_context", "list_context", ReadTool, SearchTool, "update_plan", "request_budget_increase", LoadTool, LoadSkill, UnloadSkill}
+var reservedNames = []string{"read_context", "list_context", ReadTool, SearchTool, "update_plan", "request_budget_increase", LoadTool, LoadSkill, UnloadSkill, RequestReview}
 
 // OpenSources holds the run's tools with a source (ADR-0006, sources.go): the report's rows in the
 // execution state, a guardrail for each declaration the package withheld, and the loaded schemas
@@ -1112,6 +1172,11 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 	// but a child's (which is handed no skills).
 	if held.Skills != nil && held.Skills.Offered() {
 		tools = append(tools, held.Skills.LoadSkillHost(), held.Skills.UnloadSkillHost())
+	}
+	// ADR-0010: request_review where the critic's mode is auto and nothing forces it off, after the
+	// loaders; a call outside the author's phase is refused by the switch.
+	if held.Review.Offered() {
+		tools = append(tools, held.Review.ReviewHost(func() bool { return !held.CriticReading && !held.Reformatting }))
 	}
 	if session.AllowConversation {
 		tools = append(tools, held.Execution.Tool(), held.Execution.BudgetTool())

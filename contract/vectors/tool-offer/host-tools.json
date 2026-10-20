@@ -1,5 +1,5 @@
 {
-  "description": "The scenario's host tools, one by one: the four context tools the boundary adds to every session. The third, read_window (the reader over retained items by line or page, with a cursor, its lines numbered), is this harness's (agent#1, agent#5), and so is the fourth, search (a regular expression over retained items, line by line, with a cursor; agent#5); both reach the Desk in its swap; the first two are the Desk's.",
+  "description": "The scenario's host tools, one by one: the four context tools the boundary adds to every session, then request_review, which it adds where the critic's mode is auto, the policy table's default (ADR-0010: the model's ask for a review, offered in the author's phase only). The third, read_window (the reader over retained items by line or page, with a cursor, its lines numbered), is this harness's (agent#1, agent#5), and so is the fourth, search (a regular expression over retained items, line by line, with a cursor; agent#5); both reach the Desk in its swap; the first two are the Desk's.",
   "schema": "tool-offer.json#/$defs/hostTool",
   "source": {
     "desk": {
@@ -11,7 +11,8 @@
       "web/src/assistant/context/ledger.ts (ContextLedger.tools)",
       "web/src/assistant/context/session.ts (contextualSession)",
       "packages/harness/context/reader.ts (READ_TOOL, READ_DESCRIPTION, readInputSchema), in this repository",
-      "packages/harness/context/search.ts (SEARCH_TOOL, SEARCH_DESCRIPTION, searchInputSchema), in this repository"
+      "packages/harness/context/search.ts (SEARCH_TOOL, SEARCH_DESCRIPTION, searchInputSchema), in this repository",
+      "packages/harness/criticSwitch.ts (REQUEST_REVIEW, REQUEST_REVIEW_DESCRIPTION, REQUEST_REVIEW_SCHEMA), in this repository"
     ]
   },
   "items": [
@@ -148,6 +149,20 @@
           "pattern"
         ],
         "additionalProperties": false
+      }
+    },
+    {
+      "name": "request_review",
+      "effect": "plan",
+      "description": "Ask for an independent review of the proposal this response makes. Call it at most once, before you propose, where a second check would help: a critic then checks the proposal with the runtime’s own tools before it is shown. Its findings come from the runtime’s results; your reason is not shown to it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Why a review of this run’s proposal is wanted, in one sentence."
+          }
+        }
       }
     }
   ]

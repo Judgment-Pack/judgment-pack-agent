@@ -18,13 +18,14 @@ import planMode from './scenarios/plan-mode.json'
 import toolSources from './scenarios/tool-sources.json'
 import approvalPause from './scenarios/approval-pause.json'
 import skills from './scenarios/skills.json'
+import criticSwitch from './scenarios/critic-switch.json'
 import { RECORDED_TOOLS, recordedRuntime, type RecordedRuntime, type ServerObservation } from './scriptedServer'
 import { REFUTATION_MARKER } from '../refutation'
 import { TEST_CASES_TOOL, runtimeAnswer, type EndpointRequest } from '../testing/scripted'
 import { answerFrom, answerWith, resultsIn, rolesAnswer, type AnswerAs, type Known, type Roles, type Turn } from '../testing/scenarioDriver'
 
 /** The scenarios a session can play. */
-export const SCENARIOS = ['chat-host-tools', 'delegation', 'memory', 'plan-mode', 'correction-loop', 'multi-turn', 'tool-sources', 'approval-pause', 'skills'] as const
+export const SCENARIOS = ['chat-host-tools', 'delegation', 'memory', 'plan-mode', 'correction-loop', 'multi-turn', 'tool-sources', 'approval-pause', 'skills', 'critic-switch'] as const
 export type ScenarioName = (typeof SCENARIOS)[number]
 
 const DRAFTS = scenario.documents as unknown as Record<string, unknown>
@@ -136,6 +137,17 @@ export function scenarioSession(name: ScenarioName, answerAs: AnswerAs, options:
         : answerFrom((JSON.stringify(request.body).includes(REFUTATION_MARKER) ? skills.critic.critic : skills.critic.author) as unknown as Turn[], answerAs)(request)
       runtime = scenarioRuntime(ok)
       break
+    case 'critic-switch': {
+      // ADR-0010: each run of the file's list plays its author's script, the session advanced once per
+      // run; a request carrying the critic's marker is answered with the critic's turns.
+      const runs = criticSwitch.runs
+      const author = criticSwitch.author as unknown as Record<string, Turn[]>
+      answer = (request) => answerFrom(JSON.stringify(request.body).includes(REFUTATION_MARKER)
+        ? criticSwitch.critic as unknown as Turn[]
+        : author[runs[Math.min(position, runs.length - 1)]!.author]!, answerAs)(request)
+      runtime = scenarioRuntime((call) => runtimeAnswer((criticSwitch.runtimeAnswers as Record<string, unknown>)[call.name] ?? { status: 'ok' }))
+      break
+    }
     case 'correction-loop':
       answer = correctionAnswer(answerAs, options.beforeCritic === undefined ? undefined : { call: { recorded: options.beforeCritic } })
       runtime = recordedRuntime()

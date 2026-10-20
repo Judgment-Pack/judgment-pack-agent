@@ -1,5 +1,5 @@
 {
-  "description": "The Desk's recorded conformance scenario (the 2026-09-05 engine bake-off: author one expense-reimbursement pack over the runtime's five tools, eight scripted model steps T1 to T8) rendered as the event sequence the model-engine leg asserts, in order: every call before its result, the gate's rewrite of T6 and refusal of T7 between call and result, the prose beside the proposal fence, the proposal (DRAFT_V2 and the scenario's unknowns), and one end. Session: not interactive (so no callId and no message_progress), reasoning tier off (so no reasoning, thinking_unavailable or critique), no current request (so no execution_checkpoint), the five runtime tools allowed. Tool arguments are the model's own (T6 without rehearsal); tool results are the recorded runtime answers; texts the host writes are rendered from the source that writes them.",
+  "description": "The Desk's recorded conformance scenario (the 2026-09-05 engine bake-off: author one expense-reimbursement pack over the runtime's five tools, eight scripted model steps T1 to T8) rendered as the event sequence the model-engine leg asserts, in order: every call before its result, the gate's rewrite of T6 and refusal of T7 between call and result, the prose beside the proposal fence, the critic's decision (ADR-0010: the table's default auto, and no trigger holds, since the session declares no cases, no existing pack and the model asked no review, so no critic runs, at the author's tier), the proposal (DRAFT_V2 and the scenario's unknowns), and one end. Session: not interactive (so no callId and no message_progress), reasoning tier off (so no reasoning, thinking_unavailable or critique), no current request (so no execution_checkpoint), the five runtime tools allowed. Tool arguments are the model's own (T6 without rehearsal); tool results are the recorded runtime answers; texts the host writes are rendered from the source that writes them.",
   "schema": "run-event.json",
   "source": {
     "desk": {
@@ -13,7 +13,8 @@
       "web/src/assistant/conformance/conformance.test.ts ('emits the event stream the ADR names, in order, ending once', K3a, K3b, K3c)",
       "web/src/assistant/toolGate.ts (inspectOutboundFrame: the rewrote and refused details)",
       "web/src/assistant/engines/vercel/loop.ts (the unoffered-tool result text, outcome)",
-      "web/src/assistant/engines/contract.ts (proseOf, extractProposal, textOf)"
+      "web/src/assistant/engines/contract.ts (proseOf, extractProposal, textOf)",
+      "packages/harness/criticSwitch.ts (criticDecision, criticDecidedEvent), in this repository"
     ]
   },
   "steps": [
@@ -33,6 +34,7 @@
     "T7",
     "T7",
     "T7",
+    "T8",
     "T8",
     "T8",
     "end"
@@ -375,6 +377,13 @@
     {
       "type": "message",
       "text": "I read the 0.2.0-draft schema, took the shape of the bundled minimal-expense-approval fixture, and encoded the reimbursement policy as one pack. My first draft named an outcome it never declared and `validate` refused it; the runtime's diagnostic was:\n\n    JPS-SEMANTIC-UNRESOLVED-OUTCOME /rules/3/outcome: Outcome reference \"escalate-to-finance\" does not resolve to a declared outcome.\n\nSo the 1000 USD ceiling became an `escalate` exception rather than an outcome. `validate` reports the corrected draft valid, and a rehearsal evaluation over a 120.00 claim with a receipt reaches `approve`. I decide nothing here: the runtime's own report is quoted above, and this is a proposal for you to accept or reject."
+    },
+    {
+      "type": "critic_decided",
+      "mode": "auto",
+      "ran": false,
+      "reason": "table",
+      "reasoning": "off"
     },
     {
       "type": "proposal",

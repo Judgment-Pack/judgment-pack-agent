@@ -20,7 +20,9 @@ func PlanningSession(session Session) Session {
 	}
 	session.Prompt += pinned + "\n\n" + PlanInstructions
 	session.AllowConversation = true
-	session.AdversarialReview = false
+	// ADR-0010: Plan mode forces the critic off (the reason phase); the alias says so too.
+	off := false
+	session.AdversarialReview = &off
 	session.TestPrompt = ""
 	return session
 }

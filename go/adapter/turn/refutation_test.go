@@ -553,22 +553,6 @@ func TestReadCriticCasesRefusals(t *testing.T) {
 	}
 }
 
-// criticDefault.test.ts: the critic's default is the policy table's, and every adapter reads it
-// from there — the session's adversarialReview where the host set it, the table's otherwise.
-func TestCriticRuns(t *testing.T) {
-	for _, policy := range []bool{true, false} {
-		if CriticRuns(nil, policy) != policy {
-			t.Errorf("a session that leaves it unset runs the critic as the table says (%v)", policy)
-		}
-		if CriticRuns(ptr(false), policy) {
-			t.Error("a session that says false runs no critic, whatever the table says")
-		}
-		if !CriticRuns(ptr(true), policy) {
-			t.Error("a session that asks for the critic gets one, whatever the table says")
-		}
-	}
-}
-
 // CompareTheRest: the harness's own calls for the declared cases the critic left uncompared
 // (critic.test.ts, "each declared case the critic's calls left uncompared is rehearsed once" and
 // "at most CRITIC_REHEARSALS of them").

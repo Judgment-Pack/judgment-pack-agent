@@ -34,9 +34,14 @@ var SkillTools = []string{"load_skill", "unload_skill"}
 
 // ReservedNames are every name the host keeps for the package's own tools (tool-offer.json
 // $defs/reservedName): the context tools, load_tool (ADR-0006), the catalogue loader the boundary
-// offers beside them only where the schema budget makes a tool source a catalogue, and the skill
-// loaders (ADR-0009).
-var ReservedNames = append(append(append([]string{}, ContextTools...), "load_tool"), SkillTools...)
+// offers beside them only where the schema budget makes a tool source a catalogue, the skill
+// loaders (ADR-0009), and request_review (ADR-0010).
+var ReservedNames = append(append(append(append([]string{}, ContextTools...), "load_tool"), SkillTools...), ReviewTool)
+
+// ReviewTool is request_review (ADR-0010): the model's ask for a review, which the boundary offers in
+// the author's phase where the critic's mode is auto; never to the critic, a child, Plan mode or the
+// reformat run, whose phases do not admit it.
+const ReviewTool = "request_review"
 
 // PhaseKind names a phase of a run.
 type PhaseKind string
@@ -128,7 +133,8 @@ func PlanPhase(offer contract.ToolOffer) Phase {
 	r, h := names(offer,
 		func(tool contract.ToolOfferRuntimeTool) bool { return contains(PlanRuntimeReads, tool.Name) },
 		func(tool contract.ToolOfferHostTool) bool {
-			return contains(ContextTools, tool.Name) || PlanningTool(tool)
+			// ADR-0010: Plan mode runs no critic, so the ask for one is not admitted there.
+			return tool.Name != ReviewTool && (contains(ContextTools, tool.Name) || PlanningTool(tool))
 		})
 	return Phase{Kind: PhasePlan, Runtime: r, Host: h}
 }

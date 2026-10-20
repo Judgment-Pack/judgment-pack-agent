@@ -15,7 +15,7 @@ import (
 	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
 )
 
-// The certified scenarios (agent#13, certification/scenarios.test.ts): nine scripted scenarios run
+// The certified scenarios (agent#13, certification/scenarios.test.ts): ten scripted scenarios run
 // on the OpenAI-compatible wire, once with each answer shape, through the shared server's scenario
 // sessions. The host's half of each (its host tools, the chat context, Plan mode, the correction
 // loop's checks, the delegation coordinator) is this runner's, as it is the TypeScript suite's.
@@ -94,17 +94,19 @@ func HostToolsOf(listed []ScenarioHostTool, ledger *HostLedger) []runcontext.Hos
 }
 
 // boundaryTools are the declarations of the context tools the boundary adds to a run: the
-// ledger's readers, and the execution's two where the run permits conversation.
+// ledger's readers, and the execution's two where the run permits conversation; and request_review
+// (ADR-0010), which the gate admits in the loop's phase and the boundary offers where the critic's
+// mode is auto, the table's default (runcontext.OfferedReviewTool).
 func boundaryTools(allowConversation bool) []contract.ToolOfferHostTool {
 	names := []string{"list_context", "read_context", "read_window", "search"}
 	if allowConversation {
 		names = append(names, "update_plan", "request_budget_increase")
 	}
-	out := make([]contract.ToolOfferHostTool, 0, len(names))
+	out := make([]contract.ToolOfferHostTool, 0, len(names)+1)
 	for _, name := range names {
 		out = append(out, contract.ToolOfferHostTool{Name: name})
 	}
-	return out
+	return append(out, runcontext.OfferedReviewTool(runcontext.Session{}, runcontext.Defaults)...)
 }
 
 // ScenarioRun is one run of a scenario: its events, what reached the runtime, the requests the
@@ -124,12 +126,26 @@ type scenarioHost struct {
 	offer   contract.ToolOffer
 	mu      sync.Mutex
 	events  []contract.RunEvent
+	// watcher sees each event after it is collected: a host that breaks a run off at an event
+	// (scenario 10's resume) cancels it there.
+	watcher func(contract.RunEvent)
 }
 
 func (h *scenarioHost) emit(event contract.RunEvent) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	h.events = append(h.events, event)
+	watcher := h.watcher
+	h.mu.Unlock()
+	if watcher != nil {
+		watcher(event)
+	}
+}
+
+// watch sets the watcher, or clears it with nil.
+func (h *scenarioHost) watch(watcher func(contract.RunEvent)) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.watcher = watcher
 }
 
 func (h *scenarioHost) take() []contract.RunEvent {

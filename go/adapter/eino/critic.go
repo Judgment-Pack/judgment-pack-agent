@@ -13,12 +13,14 @@ import (
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
 )
 
-// finish delivers the turn's prose, runs the critic where the session asks for it, and delivers
-// the proposal: the critic is a second agent on the same relay, the same boundary and the same
-// dispatch, offered its allow-list, after the proposal exists and before it is delivered.
+// finish delivers the turn's prose, runs the critic where the switch decides it (ADR-0010), and
+// delivers the proposal: the critic is a second agent on the same relay, the same boundary and the
+// same dispatch, offered its allow-list, after the proposal exists and before it is delivered.
 func (t *turnState) finish(ctx context.Context, proposal *turn.Proposal, unread *unreadAnswer) error {
 	r := t.r
 	if proposal == nil {
+		// ADR-0010: nothing to refute; the decision says so.
+		r.deliver(runcontext.CriticDecidedEvent(r.sc.DecideCritic(false, len(r.run.Cases) > 0)))
 		r.deliver(messageEvent(turn.ProseOf(t.finalText)))
 		if r.sc.Execution.Remaining() <= 0 && planUnfinished(r.sc.Execution.State.Plan) {
 			return runcontext.ErrExecutionPaused
@@ -37,19 +39,17 @@ func (t *turnState) finish(ctx context.Context, proposal *turn.Proposal, unread 
 	}
 	var critique *turn.Critique
 	var note *contract.RunEventProposalNote
-	// Plan mode runs no critic (planningSession sets adversarialReview false).
-	asked := r.run.Review
-	if r.run.Context != nil && r.run.Context.Phase == "plan" {
-		no := false
-		asked = &no
-	}
-	review := turn.CriticRuns(asked, r.sc.Policy.AdversarialReview)
-	if review {
+	// ADR-0010: one decision on every adapter, from the session's words, the table and the run's
+	// facts (Plan mode, a child, a graph purpose and a reviewer force it off), emitted before anything
+	// the critic does.
+	decided := r.sc.DecideCritic(true, len(r.run.Cases) > 0)
+	r.deliver(runcontext.CriticDecidedEvent(decided))
+	if decided.Ran {
 		if cannot := turn.CriticCannotRun(r.session.TestPrompt); cannot != nil {
 			critique = cannot
 			r.deliver(turn.CritiqueEvent(*cannot))
 		} else {
-			held, heldNote, err := t.critic(ctx, *proposal)
+			held, heldNote, err := t.critic(ctx, *proposal, decided.Reasoning)
 			if err != nil {
 				return err
 			}
@@ -78,8 +78,23 @@ func planUnfinished(plan *runcontext.Value) bool {
 
 // critic runs the refutation pass (agent#10) and answers its critique, or the note a critic that
 // did not finish leaves on the proposal.
-func (t *turnState) critic(ctx context.Context, proposal turn.Proposal) (*turn.Critique, *contract.RunEventProposalNote, error) {
+func (t *turnState) critic(ctx context.Context, proposal turn.Proposal, tier string) (*turn.Critique, *contract.RunEventProposalNote, error) {
 	r := t.r
+	// ADR-0010: the critic's tier, at least the author's unless the host lowered it: a tier other than
+	// the author's opens a slot of its own, whose members every critic request carries. A decision with
+	// no tier sends the critic none: off.
+	if tier = orOff(tier); tier != orOff(r.run.Thinking) {
+		r.slot = wire.OpenThinking(wire.ThinkingTier(tier), r.family, &r.capabilities.Reasoning)
+		r.tier = r.slot.Members()
+		if r.tier != nil {
+			if maximum := r.tier.Get("max_tokens"); maximum != nil {
+				tokens, _ := maximum.Number()
+				if err := r.sc.ReserveOutput(int(tokens)); err != nil {
+					return nil, nil, err
+				}
+			}
+		}
+	}
 	cases, err := turn.ReadCriticCases(casesOf(r.run.Cases))
 	if err != nil {
 		return nil, nil, failure.Authored("configuration", err.Error(), "context")

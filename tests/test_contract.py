@@ -28,8 +28,8 @@ HARNESS_ENGINE_ADDITIONS = ["deepagents", "eino"]
 
 # Event kinds the harness emits beyond the Desk's (contract/desk/inventory.json): the approval pause
 # (docs/adr/0008-the-approval-pause.md) and a skill's load and unload (docs/adr/0009-skills.md), on
-# the host's stream.
-HARNESS_EVENT_ADDITIONS = ["approval_requested", "skill_loaded", "skill_unloaded"]
+# the host's stream; and the critic's decision (docs/adr/0010-the-critics-switch.md).
+HARNESS_EVENT_ADDITIONS = ["approval_requested", "skill_loaded", "skill_unloaded", "critic_decided"]
 
 EXPECTED_SCHEMAS = {
     "run-event.json",
@@ -80,6 +80,9 @@ RELEASE_REVIEWED_DEFS = [
     ("tool-offer.json", "skillDeclaration"), ("tool-offer.json", "skillCatalogueEntry"), ("tool-offer.json", "loadSkill"),
     ("tool-offer.json", "unloadSkill"), ("tool-offer.json", "loadedSkill"), ("run-event.json", "skill_loaded"),
     ("run-event.json", "skill_unloaded"), ("provenance.json", "skillLoad"), ("skill.json", "resource"),
+    # ADR-0010: the critic's switch.
+    ("tool-offer.json", "criticMode"), ("tool-offer.json", "criticReasoning"), ("tool-offer.json", "requestReview"),
+    ("provenance.json", "criticReason"), ("provenance.json", "criticDecision"), ("run-event.json", "critic_decided"),
 ]
 
 # The reasoning kinds each wire speaks (WIRE_REASONING in packages/harness/capabilities.ts): a
@@ -405,13 +408,17 @@ class VectorTests(unittest.TestCase):
 
     def test_the_critic_reads_within_the_ceiling_and_runs_only_where_asked(self):
         # agent#10: the critic's allow-list is four of the ceiling's reads and two of the harness's
-        # reserved context readers (review row 6), and the table's default is off.
+        # reserved context readers (review row 6). ADR-0010: the table's default is auto, the
+        # critic's tier at least the author's, and the boolean before it is no longer in the table.
         offer = self.schemas["tool-offer.json"]["$defs"]
         critic = offer["criticTools"]["enum"]
         self.assertEqual(critic, ["validate", "experimental_evaluate", "get_schema", "experimental_test_cases", "read_window", "search"])
         self.assertTrue(set(critic[:4]) <= set(offer["runtimeCeiling"]["enum"]))
         self.assertTrue(set(critic[4:]) <= set(offer["reservedName"]["enum"]))
-        self.assertIs(load(CONTRACT / "desk" / "policy.json")["adversarialReview"], False)
+        table = load(CONTRACT / "desk" / "policy.json")
+        self.assertEqual((table["criticDefault"], table["criticReasoningFloor"]), ("auto", "author"))
+        self.assertNotIn("adversarialReview", table)
+        self.assertNotIn("request_review", critic)
         self.assertEqual(self.vectors["tool-offer/critic-tools.json"]["items"], critic)
         offered = self.vectors["tool-offer/critic-offer.json"]["items"][0]
         scenario = self.vectors["tool-offer/scenario-offer.json"]["items"][0]
@@ -752,6 +759,36 @@ class VectorTests(unittest.TestCase):
                     unused.append(f"{name} {'/'.join(path)} {value}")
         self.assertEqual(unused, [], "enum values no vector carries")
 
+        # ADR-0010: every value of the switch's enums is carried by a vector: the modes, the tiers of both
+        # capabilities, the thirteen reasons, the three triggers wherever they are stated, the reserved
+        # name, and the guardrail's reason review refused (above).
+        enums = [
+            ("tool-offer.json", ["$defs", "criticMode"]),
+            ("tool-offer.json", ["$defs", "criticReasoning"]),
+            ("provenance.json", ["$defs", "criticReason"]),
+            ("provenance.json", ["$defs", "criticDecision", "properties", "trigger"]),
+            ("run-event.json", ["$defs", "critic_decided", "properties", "trigger"]),
+            ("checkpoint.json", ["properties", "critic", "properties", "trigger"]),
+        ]
+        for name, path in enums:
+            node = schemas_[name]
+            for step in path:
+                node = node[step]
+            for value in node["enum"]:
+                changed = copy.deepcopy(schemas_)
+                held = changed[name]
+                for step in path:
+                    held = held[step]
+                held["enum"] = [other for other in held["enum"] if other != value]
+                if not any(problems(validator(changed, vector["schema"]), vector["items"]) for vector in vectors_.values()):
+                    unused.append(f"{name} {'/'.join(path)} {value}")
+        changed = copy.deepcopy(schemas_)
+        changed["tool-offer.json"]["$defs"]["reservedName"]["enum"].remove("request_review")
+        changed["tool-offer.json"]["$defs"]["requestReview"]["allOf"][1]["properties"]["name"] = {"$ref": "#/$defs/reservedName"}
+        if not any(problems(validator(changed, vector["schema"]), vector["items"]) for vector in vectors_.values()):
+            unused.append("tool-offer.json $defs/reservedName request_review")
+        self.assertEqual(unused, [], "enum values no vector carries")
+
         # ADR-0009: the source kind a skill's record and the report's row gain is carried by a vector.
         for name, path in (("tool-offer.json", ["$defs", "sourceRecord", "properties", "kind"]), ("provenance.json", ["$defs", "sourceFigures", "properties", "kind"])):
             with self.subTest(enum=name):
@@ -924,13 +961,100 @@ class VectorTests(unittest.TestCase):
         reserved = self.schemas["tool-offer.json"]["$defs"]["reservedName"]["enum"]
         self.assertTrue({"load_skill", "unload_skill"} <= set(reserved))
 
+    def test_every_critic_decision_follows_from_its_case(self):
+        # ADR-0010: the decision vectors state each case beside its decision; the rule, written once
+        # more here from the ADR's words, gives each decision again, and each case's session members
+        # are a session tool-offer.json reads.
+        modes = ("off", "auto", "on")
+        model_tiers = ("off", "on", "ultra")
+        agent_tiers = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
+        session_check = validator(self.schemas, "tool-offer.json")
+
+        def alias(value):
+            return None if value is None else ("on" if value else "off")
+
+        def decide(case):
+            session, table, forced, run = case["session"], case["table"], case["forced"], case["run"]
+            word = session.get("critic") or alias(session.get("adversarialReview"))
+            if word is not None:
+                mode, layer = word, "person"
+            elif session.get("criticProject") is not None:
+                mode, layer = session["criticProject"], "project"
+            else:
+                stated = table.get("criticDefault") if table.get("criticDefault") in modes else alias(table.get("adversarialReview"))
+                mode, layer = stated or "auto", "table"
+            tier = session.get("criticReasoning")
+            if tier is None and table.get("criticReasoningFloor", "author") == "author":
+                tier = case.get("author")
+            out = {"mode": mode}
+            off = "child" if forced.get("child") else "phase" if forced.get("phase") == "plan" else "purpose" if forced.get("purpose") == "graph" else "reviewer-assigned" if forced.get("reviewerAssigned") else None
+            trigger = None
+            if off is not None:
+                out.update(ran=False, reason=off)
+            elif mode == "off":
+                out.update(ran=False, reason="off")
+            elif not run["proposal"]:
+                out.update(ran=False, reason="no-proposal")
+            else:
+                if mode == "auto":
+                    trigger = "model-asked" if run["modelAsked"] else "cases" if run["cases"] else "changes-existing" if run["changesExisting"] else None
+                if mode == "auto" and trigger is None:
+                    out.update(ran=False, reason=layer)
+                elif not run["room"]:
+                    out.update(ran=False, reason="budget")
+                else:
+                    out.update(ran=True, reason=trigger or layer)
+            if tier is not None:
+                out["reasoning"] = tier
+            if trigger is not None:
+                out["trigger"] = trigger
+            return out
+
+        names = sorted(name for name in self.vectors if name.startswith("critic/switch-") and name != "critic/switch-sessions.json")
+        self.assertEqual(names, ["critic/switch-alias.json", "critic/switch-budget.json", "critic/switch-forced-off.json", "critic/switch-modes.json", "critic/switch-tier.json", "critic/switch-triggers.json"])
+        seen = set()
+        for name in names:
+            vector = self.vectors[name]
+            self.assertEqual(len(vector["cases"]), len(vector["items"]), name)
+            for case, item in zip(vector["cases"], vector["items"]):
+                with self.subTest(vector=name, case=case["name"]):
+                    self.assertEqual(decide(case), item)
+                    self.assertEqual(problems(session_check, [{"tools": [], "hostTools": [], **case["session"]}]), [])
+                    tiers = agent_tiers if case["capability"] == "agent" else model_tiers
+                    for tier in (case.get("author"), case["session"].get("criticReasoning")):
+                        if tier is not None:
+                            self.assertIn(tier, tiers)
+                    self.assertNotIn(case["name"], seen)
+                    seen.add(case["name"])
+
+    def test_the_review_ask_is_reserved_and_offered_as_declared(self):
+        # ADR-0010: request_review is a reserved name; the scenario's offer under the table's auto
+        # carries it after the context tools, as request-review.json declares it.
+        reserved = self.schemas["tool-offer.json"]["$defs"]["reservedName"]["enum"]
+        self.assertIn("request_review", reserved)
+        declared = self.vectors["critic/request-review.json"]["items"][0]
+        offer = self.vectors["tool-offer/scenario-offer.json"]["items"][0]["hostTools"]
+        self.assertEqual(offer[-1], declared)
+        self.assertEqual(self.vectors["tool-offer/host-tools.json"]["items"][-1], declared)
+        self.assertNotIn("request_review", [tool["name"] for tool in self.vectors["tool-offer/critic-offer.json"]["items"][0]["hostTools"]])
+        # The refused asks carry the guardrail's reason between each call and its failed result.
+        refused = self.vectors["critic/review-refused.json"]["items"]
+        self.assertEqual([item["type"] for item in refused], ["tool_call", "guardrail", "tool_result"] * 2 + ["critic_decided"])
+        for at in (1, 4):
+            self.assertEqual((refused[at]["action"], refused[at]["reason"]), ("refused", "review refused"))
+            self.assertTrue(refused[at + 1]["isError"])
+        # The checkpoint's critic: the ask alone, then the decision.
+        first, second = self.vectors["critic/checkpoint.json"]["items"][:2]
+        self.assertEqual(first["critic"], {"mode": "auto", "trigger": "model-asked"})
+        self.assertEqual(set(second["critic"]), {"mode", "ran", "reason", "reasoning", "trigger"})
+
     def test_the_scenario_is_the_order_the_conformance_session_asserts(self):
         vector = self.vectors["scenario/expense-reimbursement.json"]
         self.assertEqual(
             [item["type"] for item in vector["items"]],
             ["tool_call", "tool_result"] * 5
             + ["tool_call", "guardrail", "tool_result"] * 2
-            + ["message", "proposal", "end"],
+            + ["message", "critic_decided", "proposal", "end"],
         )
         self.assertEqual(len(vector["steps"]), len(vector["items"]))
 

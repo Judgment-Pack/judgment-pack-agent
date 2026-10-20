@@ -1,0 +1,68 @@
+{
+  "description": "The model's ask refused (ADR-0010), each with a guardrail whose reason is review refused, between the call and its failed result, nothing recorded. First, a second request_review of the run under auto: the offered tool refuses it (tool-failed, not-started). Then a request_review under off, where it is not offered: the boundary refuses the name before anything runs, as it refuses any tool the run was not offered, and the run's decision is off. The vercel engine's stream, not interactive. Written by hand; criticSwitch.test.ts holds the vercel engine's stream to it, and go/context/critic_test.go the Go boundary's guardrails.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/criticSwitch.ts (reviewRefusal, CriticSwitch.ask)",
+      "packages/harness/context/session.ts (SessionContext.reviewTool, SessionContext.admit)"
+    ]
+  },
+  "items": [
+    {
+      "type": "tool_call",
+      "name": "request_review",
+      "args": {}
+    },
+    {
+      "type": "guardrail",
+      "tool": "request_review",
+      "action": "refused",
+      "detail": "request_review was already called in this response, and a response asks for one review; nothing more was recorded.",
+      "reason": "review refused"
+    },
+    {
+      "type": "tool_result",
+      "name": "request_review",
+      "isError": true,
+      "text": "request_review was already called in this response, and a response asks for one review; nothing more was recorded.",
+      "structured": {
+        "failure": {
+          "version": 1,
+          "code": "tool-failed",
+          "source": "tool",
+          "outcome": "not-started",
+          "detail": "request_review was already called in this response, and a response asks for one review; nothing more was recorded."
+        }
+      }
+    },
+    {
+      "type": "tool_call",
+      "name": "request_review",
+      "args": {}
+    },
+    {
+      "type": "guardrail",
+      "tool": "request_review",
+      "action": "refused",
+      "detail": "request_review is refused: the critic is off for this run, and the model's ask cannot turn it on; nothing was recorded.",
+      "reason": "review refused"
+    },
+    {
+      "type": "tool_result",
+      "name": "request_review",
+      "isError": true,
+      "text": "refused: request_review is refused: the critic is off for this run, and the model's ask cannot turn it on; nothing was recorded. This assistant proposes; it never writes a file and never calls a tool it was not offered."
+    },
+    {
+      "type": "critic_decided",
+      "mode": "off",
+      "ran": false,
+      "reason": "off",
+      "reasoning": "off"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 // Command harness-check runs the Go certification against a shared scripted server: every leg the
 // TypeScript suite runs on a model engine (the engine leg on three wires, streamed and whole, plain
 // and under the tracing variables; the text tool path; the strict turn order; the thinking,
-// refutation and wire legs) and the nine certified scenarios, on the Eino adapter (go/adapter/eino)
+// refutation and wire legs) and the ten certified scenarios, on the Eino adapter (go/adapter/eino)
 // with the delegation coordinator (go/adapter/delegate); then the agent capability's checks
 // (ADR-0007) on the agent adapter (go/adapter/agent) with the same coordinator. It prints one line
 // per leg and exits 1 when any check does not hold, so a host's CI can run it at a locked revision.
@@ -65,7 +65,41 @@ func run(address, only string, agentOnly bool) int {
 	if agentCode := certifyAgent(server, certification.StandIn(), with, only); agentCode > code {
 		code = agentCode
 	}
+	printMeasurement(certification.TakeMeasurement())
 	return code
+}
+
+// printMeasurement prints scenario 10's measurement (ADR-0010) as a table: the same proposal at two
+// author tiers, with and without the critic, one line per run. Recorded, not judged.
+func printMeasurement(rows []certification.MeasuredRow) {
+	if len(rows) == 0 {
+		return
+	}
+	fmt.Println("scenario 10, the measurement (the same proposal at two author tiers, with and without the critic; no verdict)")
+	columns := []string{"adapter", "leg", "author", "critic", "ran", "reasoning", "refuted", "checks", "criticRequests"}
+	table := [][]string{columns}
+	orDash := func(value string) string {
+		if value == "" {
+			return "-"
+		}
+		return value
+	}
+	for _, row := range rows {
+		table = append(table, []string{row.Adapter, row.Leg, row.Author, row.Critic, fmt.Sprint(row.Ran), orDash(row.Reasoning), orDash(row.Refuted), fmt.Sprint(row.Checks), fmt.Sprint(row.CriticRequests)})
+	}
+	widths := make([]int, len(columns))
+	for _, line := range table {
+		for at, cell := range line {
+			widths[at] = max(widths[at], len(cell))
+		}
+	}
+	for _, line := range table {
+		var cells []string
+		for at, cell := range line {
+			cells = append(cells, cell+strings.Repeat(" ", widths[at]-len(cell)))
+		}
+		fmt.Println("  " + strings.TrimRight(strings.Join(cells, "  "), " "))
+	}
 }
 
 // certifyAgent runs the agent capability's checks against host: 0 where every check held, 1

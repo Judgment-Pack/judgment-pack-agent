@@ -680,7 +680,7 @@ describe('the tools this engine offers, and the schemas it writes', () => {
       )
     )
     const tools = seen[0]!.body.tools as { function: { name: string; parameters: unknown } }[]
-    expect(tools.map((tool) => tool.function.name)).toEqual(['list_context', 'read_context', 'read_window', 'search', 'validate'])
+    expect(tools.map((tool) => tool.function.name)).toEqual(['list_context', 'read_context', 'read_window', 'search', 'request_review', 'validate'])
     expect(tools.find(t=>t.function.name==='validate')!.function.parameters).toEqual(served)
   })
 
@@ -727,6 +727,7 @@ describe('exactly one end, on every path', () => {
       'tool_call',
       'tool_result',
       'message', // "Here it is." — the model's prose beside the fence
+      'critic_decided', // ADR-0010: the table's auto, and no trigger holds
       'proposal',
       'end'
     ])
@@ -1163,6 +1164,7 @@ describe('what the model said about its own reasoning', () => {
       'reasoning',
       'reasoning',
       'message',
+      'critic_decided', // ADR-0010: the table's auto, and no trigger holds
       'proposal',
       'end'
     ])
@@ -2146,12 +2148,12 @@ describe('host tools: the desk’s own, executed on the page', () => {
     )
     expect(executed).toEqual([{ query: 'federal skilled worker' }])
     expect(gated).toBe(0)
-    expect(events.map((event) => event.type)).toEqual(['tool_call', 'tool_result', 'message', 'proposal', 'end'])
+    expect(events.map((event) => event.type)).toEqual(['tool_call', 'tool_result', 'message', 'critic_decided', 'proposal', 'end'])
     expect(events[0]).toEqual({ type: 'tool_call', name: 'search_sources', args: { query: 'federal skilled worker' } })
     expect(events[1]).toMatchObject({ type: 'tool_result', name: 'search_sources', isError: false, text: 'src-1: a hit' })
     // The model was offered the host tool beside the runtime's, under the desk's schema.
     const offered = (seen[0]!.body.tools as { function: { name: string } }[]).map((tool) => tool.function.name)
-    expect(offered).toEqual(['search_sources', 'list_context', 'read_context', 'read_window', 'search', 'validate', 'experimental_evaluate'])
+    expect(offered).toEqual(['search_sources', 'list_context', 'read_context', 'read_window', 'search', 'request_review', 'validate', 'experimental_evaluate'])
   })
 
   it('reports a host tool that threw as a refused result, and goes on', async () => {
@@ -2234,7 +2236,7 @@ describe('host tools: the desk’s own, executed on the page', () => {
     const { call, seen } = scriptedCall([turn({ text: PROPOSAL_TEXT })])
     await drain(vercel.start(session(call)))
     const offered = (seen[0]!.body.tools as { function: { name: string } }[]).map((tool) => tool.function.name)
-    expect(offered).toEqual(['list_context', 'read_context', 'read_window', 'search', 'validate', 'experimental_evaluate'])
+    expect(offered).toEqual(['list_context', 'read_context', 'read_window', 'search', 'request_review', 'validate', 'experimental_evaluate'])
   })
 })
 
@@ -2243,7 +2245,7 @@ describe('opt-in conversational authoring', () => {
   it('allows a clarification without fabricating a proposal or running a critic', async () => {
     const { call, seen } = scriptedCall([turn({ text: 'Which outcomes should this decision allow?' })])
     const events = await drain(vercel.start(session(call, { allowConversation: true })))
-    expect(events).toEqual([{ type: 'message', text: 'Which outcomes should this decision allow?' }, { type: 'end' }])
+    expect(events).toEqual([{ type: 'critic_decided', mode: 'auto', ran: false, reason: 'no-proposal', reasoning: 'off' }, { type: 'message', text: 'Which outcomes should this decision allow?' }, { type: 'end' }])
     expect(seen).toHaveLength(1)
   })
   it('retains explicit proposal extraction and refuses ambiguous proposals', async () => {
@@ -2535,9 +2537,9 @@ describe('nothing finished is lost (agent#6)', () => {
     const broken = 'I validated the draft; the runtime reports it valid.\n\n' + fence('{"proposal":{"document":{"id":"p"},"unknowns":[],}}')
     const { call, seen } = scriptedCall([turn({ text: broken }), turn({ text: fence(JSON.stringify({ proposal: { document: { id: 'p' }, unknowns: ['who signs'] } })) })])
     const events = await drain(vercel.start(session(call)))
-    expect(events.map((event) => event.type)).toEqual(['response_recovery', 'message', 'proposal', 'end'])
+    expect(events.map((event) => event.type)).toEqual(['response_recovery', 'message', 'critic_decided', 'proposal', 'end'])
     expect(events[1]).toEqual({ type: 'message', text: 'I validated the draft; the runtime reports it valid.' })
-    expect(events[2]).toMatchObject({ document: { id: 'p' }, unknowns: ['who signs'] })
+    expect(events[3]).toMatchObject({ document: { id: 'p' }, unknowns: ['who signs'] })
     expect(seen).toHaveLength(2)
   })
 
@@ -2581,9 +2583,9 @@ describe('nothing finished is lost (agent#6)', () => {
         turn({ text: 'Proposed for your review.' })
       ])
       const events = await drain(vercel.start(session(call, { hostTools: [tool] })))
-      expect(events.map((event) => event.type)).toEqual(['tool_call', 'tool_result', 'message', 'proposal', 'end'])
+      expect(events.map((event) => event.type)).toEqual(['tool_call', 'tool_result', 'message', 'critic_decided', 'proposal', 'end'])
       expect(events[1]).toMatchObject({ name: PROPOSE_PACK_TOOL, isError: false, text: PROPOSAL_RECEIVED })
-      expect(events[3]).toEqual({ type: 'proposal', document: { id: 'p' }, unknowns: ['who signs'] })
+      expect(events[4]).toEqual({ type: 'proposal', document: { id: 'p' }, unknowns: ['who signs'] })
       // The engine reads the call; the host's own function is never reached.
       expect(execute).not.toHaveBeenCalled()
       expect(JSON.stringify(seen[0]!.body)).toContain(`calling ${PROPOSE_PACK_TOOL}`)
@@ -2598,10 +2600,10 @@ describe('nothing finished is lost (agent#6)', () => {
         turn({ text: '' })
       ])
       const events = await drain(vercel.start(session(call, { hostTools: [tool] })))
-      expect(events.map((event) => event.type)).toEqual(['tool_call', 'tool_result', 'tool_call', 'tool_result', 'proposal', 'end'])
+      expect(events.map((event) => event.type)).toEqual(['tool_call', 'tool_result', 'tool_call', 'tool_result', 'critic_decided', 'proposal', 'end'])
       expect(events[1]).toMatchObject({ isError: true, structured: { failure: { code: 'invalid-tool-input' } } })
       expect((events[1] as { text: string }).text).toContain('not as a JSON string')
-      expect(events[4]).toEqual({ type: 'proposal', document: { id: 'p' }, unknowns: [] })
+      expect(events[5]).toEqual({ type: 'proposal', document: { id: 'p' }, unknowns: [] })
       expect(seen).toHaveLength(3)
     })
 
@@ -2640,10 +2642,10 @@ describe('nothing finished is lost (agent#6)', () => {
         turn({ text: '' })
       ])
       const events = await drain(vercel.start(session(call, { hostTools: [tool] })))
-      expect(events.map((event) => event.type)).toEqual(['tool_call', 'tool_result', 'tool_call', 'tool_result', 'proposal', 'end'])
+      expect(events.map((event) => event.type)).toEqual(['tool_call', 'tool_result', 'tool_call', 'tool_result', 'critic_decided', 'proposal', 'end'])
       expect(events[1]).toMatchObject({ isError: true, structured: { failure: { code: 'invalid-tool-input' } } })
       expect((events[1] as { text: string }).text).toContain('Only a new pack can be proposed')
-      expect(events[4]).toEqual({ type: 'proposal', document: { id: 'p' }, unknowns: [] })
+      expect(events[5]).toEqual({ type: 'proposal', document: { id: 'p' }, unknowns: [] })
     })
 
     it('refuses a tool proposal beside a fenced one as ambiguous, as two fences are', async () => {

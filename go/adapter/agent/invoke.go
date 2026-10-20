@@ -84,7 +84,12 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 		wirePhase = "critic"
 	}
 	agent := r.run.Agent
-	request := adapter.AgentRequest{Prompt: prompt, Instructions: instructions, Tools: tools, Effort: agent.Effort, Phase: wirePhase, Model: model}
+	effort := agent.Effort
+	if phase == "critic" {
+		// ADR-0010: the critic's effort is the decision's tier, the author's unless the host named one.
+		effort = r.criticEffort
+	}
+	request := adapter.AgentRequest{Prompt: prompt, Instructions: instructions, Tools: tools, Effort: effort, Phase: wirePhase, Model: model}
 	if agent.Delegated != "" && agent.Delegated != agent.Model {
 		request.Model, request.Delegated = agent.Delegated, true
 	}
@@ -315,6 +320,12 @@ func (r *runState) tool(invCtx context.Context, offered map[string]bool, recorde
 		}
 		args := nonEmpty(call.Arguments)
 		held, known := r.routes[call.Name]
+		// ADR-0010: request_review reaches the switch's own tool only in the author's invocation of a
+		// run it is offered to; anywhere else it is refused here, with the guardrail review refused,
+		// before anything runs and before the gate, and nothing is recorded.
+		if (known && held.name == runcontext.RequestReview || !known && call.Name == runcontext.RequestReview) && (!known || !offered[call.Name] || !r.sc.ReviewAdmitted()) {
+			return r.refuseReview(call, args)
+		}
 		if !known || !offered[call.Name] {
 			return r.refuseUnoffered(ctx, call, held, known, args)
 		}
@@ -375,6 +386,15 @@ func (r *runState) tool(invCtx context.Context, offered map[string]bool, recorde
 		}
 		return adapter.AgentToolAnswer{Text: text, IsError: result.Err()}, nil
 	}
+}
+
+// refuseReview answers a request_review call the run does not admit (ADR-0010): its call, the
+// switch's guardrail (put on the stream by the boundary before the result) and the refused result.
+func (r *runState) refuseReview(call adapter.AgentToolCall, args json.RawMessage) (adapter.AgentToolAnswer, error) {
+	r.deliver(callEvent(call.ID, runcontext.RequestReview, args, ""))
+	text := gate.UnofferedRefusal(r.sc.RefuseReview())
+	r.deliver(resultEvent(call.ID, runcontext.RequestReview, textResult(text, true), ""))
+	return adapter.AgentToolAnswer{Text: text, IsError: true}, nil
 }
 
 // refuseUnoffered answers a call to a name this invocation was not offered, refused, and the

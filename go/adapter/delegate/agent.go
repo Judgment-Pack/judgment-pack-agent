@@ -53,7 +53,7 @@ func (c *coordinator) childRuns(id string) int {
 func (c *coordinator) mayDelegate() bool {
 	c.runsMu.Lock()
 	defer c.runsMu.Unlock()
-	return c.runs.total()+3 <= turn.MaxAgentRuns
+	return c.runs.total()+3+c.criticReserve <= turn.MaxAgentRuns
 }
 
 // mayAct is whether a parent invocation starting now may be offered an act call (ADR-0008): the
@@ -65,10 +65,18 @@ func (c *coordinator) mayAct() bool {
 }
 
 // reserveContinuation holds a batch to the room it needs before it is admitted: one child and the
-// invocation that continues the response with its result.
-func (c *coordinator) reserveContinuation() error {
+// invocation that continues the response with its result; under auto and on (ADR-0010) one invocation
+// for each of its tasks, the continuation and the one held back for the critic.
+func (c *coordinator) reserveContinuation(tasks int) error {
 	c.runsMu.Lock()
 	defer c.runsMu.Unlock()
+	if c.criticReserve > 0 {
+		if c.runs.total()+tasks+1+c.criticReserve > turn.MaxAgentRuns {
+			return failure.ToolInput("This response has started " + itoa(c.runs.total()) + " of its " + itoa(turn.MaxAgentRuns) + " agent runs, and a batch of " + itoa(tasks) +
+				" needs one for each child, one for the run that continues with its result and one kept for the critic; no task was started. Delegate fewer tasks, or answer from the findings you have.")
+		}
+		return nil
+	}
 	if c.runs.total()+2 > turn.MaxAgentRuns {
 		return failure.ToolInput("This response has started " + itoa(c.runs.total()) + " of its " + itoa(turn.MaxAgentRuns) +
 			" agent runs, and a batch needs one for a child and one for the run that continues with its result; no task was started. Answer from the findings you have.")
@@ -84,7 +92,9 @@ func (c *coordinator) admitRun(task *contract.DelegatedTask) error {
 	defer c.runsMu.Unlock()
 	limit := turn.MaxAgentRuns
 	if task != nil {
-		limit--
+		// A child never takes the continuation's invocation, nor under auto and on (ADR-0010) the
+		// critic's.
+		limit -= 1 + c.criticReserve
 	}
 	if c.runs.total() >= limit {
 		return failure.ToolInput("The shared agent-invocation limit was reached. No additional run was sent.")
@@ -546,6 +556,12 @@ type agentLink struct{ c *coordinator }
 
 func (l agentLink) Attach(context *runcontext.SessionContext) {
 	parentLink(l).Attach(context)
+	// ADR-0010: the critic has room where the response has an invocation left for it.
+	context.CriticRoom = func() bool {
+		l.c.runsMu.Lock()
+		defer l.c.runsMu.Unlock()
+		return l.c.runs.total() < turn.MaxAgentRuns
+	}
 	l.c.emitMu.Lock()
 	l.c.parentOpen = true
 	l.c.emitMu.Unlock()
@@ -600,7 +616,7 @@ func (c *coordinator) agentBatch(ctx context.Context, pending *handoff) (contrac
 			}
 			plans = append(plans, p)
 		}
-		if err := c.reserveContinuation(); err != nil {
+		if err := c.reserveContinuation(len(plans)); err != nil {
 			return contract.DelegatedTaskAnswer{}, err
 		}
 		if err := c.claimBatch(); err != nil {

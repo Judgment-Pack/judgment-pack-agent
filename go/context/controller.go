@@ -80,6 +80,9 @@ type Execution struct {
 	// Skills are the skills loaded (ADR-0009), in load order, carried through a resume; nil where
 	// none is loaded.
 	Skills []contract.ProvenanceSkillLoad
+	// Critic is the critic's decision (ADR-0010), or before it the model's ask; carried through a
+	// resume; nil where neither was written.
+	Critic *contract.CheckpointCritic
 }
 
 // Value is the state as the checkpoint's JSON, in the order the TypeScript writes it.
@@ -171,6 +174,21 @@ func (e *Execution) Value() *Value {
 		}
 		out.Set("skills", rows)
 	}
+	if e.Critic != nil {
+		held := ObjectOf("mode", String(e.Critic.Mode))
+		if e.Critic.Ran != nil {
+			held.Set("ran", Bool(*e.Critic.Ran))
+		}
+		for _, member := range []struct {
+			name  string
+			value *string
+		}{{"reason", e.Critic.Reason}, {"reasoning", e.Critic.Reasoning}, {"trigger", e.Critic.Trigger}} {
+			if member.value != nil {
+				held.Set(member.name, String(*member.value))
+			}
+		}
+		out.Set("critic", held)
+	}
 	return out
 }
 
@@ -202,7 +220,7 @@ func executionOf(saved *contract.Checkpoint) (*Execution, error) {
 		Phase: saved.Phase, Status: saved.Status, Unit: saved.Unit, Used: int(saved.Used),
 		Limit: int(saved.Limit), Grants: saved.Grants, Plan: value.Get("plan"),
 		Explanation: saved.Explanation, Completions: saved.Completions, Context: saved.Context,
-		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, Approval: saved.Approval, Skills: saved.Skills}
+		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, Approval: saved.Approval, Skills: saved.Skills, Critic: saved.Critic}
 	if saved.TestCalls != nil {
 		calls := int(*saved.TestCalls)
 		out.TestCalls = &calls

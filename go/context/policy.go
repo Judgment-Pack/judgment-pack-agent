@@ -12,18 +12,23 @@ import (
 // (contract/desk/policy.json), and the bounds the harness adds to it. Go cannot embed a file
 // outside its module, so the table is written here and policy_test.go holds it equal to that file.
 type Policy struct {
-	Version             int  `json:"version"`
-	MaxInputBytes       int  `json:"maxInputBytes"`
-	ContextWindowTokens int  `json:"contextWindowTokens"`
-	OutputTokens        int  `json:"outputTokens"`
-	ToolResultBytes     int  `json:"toolResultBytes"`
-	ReadBytes           int  `json:"readBytes"`
-	RetainedBytes       int  `json:"retainedBytes"`
-	RecentMessages      int  `json:"recentMessages"`
-	HistoryBytes        int  `json:"historyBytes"`
-	BriefBytes          int  `json:"briefBytes"`
-	MemoryBytes         int  `json:"memoryBytes"`
-	AdversarialReview   bool `json:"adversarialReview"`
+	Version             int `json:"version"`
+	MaxInputBytes       int `json:"maxInputBytes"`
+	ContextWindowTokens int `json:"contextWindowTokens"`
+	OutputTokens        int `json:"outputTokens"`
+	ToolResultBytes     int `json:"toolResultBytes"`
+	ReadBytes           int `json:"readBytes"`
+	RetainedBytes       int `json:"retainedBytes"`
+	RecentMessages      int `json:"recentMessages"`
+	HistoryBytes        int `json:"historyBytes"`
+	BriefBytes          int `json:"briefBytes"`
+	MemoryBytes         int `json:"memoryBytes"`
+	// The critic's switch the harness adds (ADR-0010): the mode where neither the run nor the project
+	// states one, and the critic's tier where the host names none; and the switch before it, read as
+	// an alias of CriticDefault for one release (nil states none; the harness's table carries none).
+	CriticDefault        string `json:"criticDefault"`
+	CriticReasoningFloor string `json:"criticReasoningFloor"`
+	AdversarialReview    *bool  `json:"adversarialReview,omitempty"`
 	// The time bounds the harness adds (TIME_DEFAULTS).
 	TurnMilliseconds     int `json:"turnMilliseconds"`
 	ToolCallMilliseconds int `json:"toolCallMilliseconds"`
@@ -112,7 +117,9 @@ var DeskPolicy = Policy{
 	HistoryBytes:        32000,
 	BriefBytes:          8000,
 	MemoryBytes:         4000,
-	AdversarialReview:   false,
+	// ADR-0010: the critic's switch, which replaced agent#10's adversarialReview false.
+	CriticDefault:        "auto",
+	CriticReasoningFloor: "author",
 }
 
 // Defaults is the policy a session works under (CONTEXT_DEFAULTS): the Desk's table with the

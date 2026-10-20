@@ -327,11 +327,19 @@ type ModelSession struct {
 	// record says ("json-schema" or "gemini-subset"): how a schema load_tool loads is shown. Empty,
 	// it is read from Family, as the family's default record reads it.
 	ToolSchemas string
+	// Thinking is the tier the run asks at (off, on or ultra; "" is off): the author's tier, which
+	// the critic's floor reads (ADR-0010).
+	Thinking string
 }
 
 // AgentSession is a run on an agent capability (the agent member of EngineSession): the provider
 // runs its own model loop.
-type AgentSession struct{ Model string }
+type AgentSession struct {
+	Model string
+	// Effort is the reasoning effort the host's configuration asks for, or "": the author's tier,
+	// which the critic's floor reads (ADR-0010).
+	Effort string
+}
 
 // Session is one run as the harness is handed it (EngineSession in engine.ts), in the members
 // this package reads. Model and Agent are exclusive: a run is on one capability or the other.
@@ -346,8 +354,21 @@ type Session struct {
 	Context           *Input
 	Purpose           string
 	AllowConversation bool
-	AdversarialReview bool
 	Interactive       bool
+	// Critic is the run's word on the critic (ADR-0010): off, auto or on, the person's per-run
+	// control; it wins over CriticProject and the table's CriticDefault. "" states none.
+	Critic string
+	// CriticProject is the project's word on the critic, read where the run states none.
+	CriticProject string
+	// CriticReasoning is the critic's tier in the enum of the run's capability; "" is the author's.
+	CriticReasoning string
+	// ExistingPack is the host's fact that the run works on a pack that already exists.
+	ExistingPack bool
+	// ReviewerAssigned is the host's fact that a human reviewer is assigned: no critic in any mode.
+	ReviewerAssigned bool
+	// AdversarialReview is the switch before ADR-0010, read for one release as an alias of Critic
+	// (true on, false off); Critic wins where both are set. Nil states none.
+	AdversarialReview *bool
 	// ModelsFor is the host's injection point for the models a connection names for its critic
 	// and its delegated children (modelsFor in host.ts), asked once per run through
 	// SessionContext.Models. Absent, the run's own model is both.

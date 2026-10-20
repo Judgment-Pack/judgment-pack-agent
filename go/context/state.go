@@ -306,6 +306,13 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 	if skills := value.Get("skills"); skills != nil && !ValidSkillLoads(skills) {
 		return nil, errSavedExecution
 	}
+	// ADR-0010: the critic's decision, or the model's ask before it, read closed.
+	if critic := value.Get("critic"); critic != nil {
+		var held contract.CheckpointCritic
+		if !isObject(critic) || json.Unmarshal(critic.JSON(), &held) != nil || !ValidCriticRecord(&held) {
+			return nil, errSavedExecution
+		}
+	}
 	if approval := value.Get("approval"); approval != nil && !ValidApproval(approval) {
 		return nil, errSavedExecution
 	}

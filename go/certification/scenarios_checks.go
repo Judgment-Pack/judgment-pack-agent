@@ -16,6 +16,9 @@ import (
 var (
 	runtimeSix = []string{"get_schema", "list_examples", "get_example", "validate", "experimental_evaluate", "experimental_test_cases"}
 	contextSix = []string{"list_context", "read_context", "read_window", "search", "update_plan", "request_budget_increase"}
+	// reviewAsk is request_review (ADR-0010), which the author's run is offered under auto, the
+	// policy table's default.
+	reviewAsk = runcontext.RequestReview
 )
 
 type scenarioFile struct {
@@ -75,7 +78,7 @@ var ChatHostTools = ScenarioCheck{
 			f.fail("no request")
 		} else {
 			offered := offeredNames(ran.Requests[0])
-			want := sortedCopy(append(append(append([]string{}, runtimeSix...), contextSix...), "read_policy", "propose_pack"))
+			want := sortedCopy(append(append(append([]string{}, runtimeSix...), contextSix...), reviewAsk, "read_policy", "propose_pack"))
 			if !slices.Equal(sortedCopy(offered), want) || slices.Contains(offered, "save_pack") {
 				f.fail("offered %v", offered)
 			}
@@ -334,4 +337,4 @@ var PlanMode = ScenarioCheck{
 }
 
 // Scenarios are the certified scenarios, each run once on each answer shape.
-var Scenarios = []ScenarioCheck{ChatHostTools, Memory, PlanMode, CorrectionLoop, Transcript, ToolSources, ApprovalPause, Skills}
+var Scenarios = []ScenarioCheck{ChatHostTools, Memory, PlanMode, CorrectionLoop, Transcript, ToolSources, ApprovalPause, Skills, CriticSwitch}

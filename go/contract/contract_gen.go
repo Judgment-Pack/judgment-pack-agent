@@ -82,6 +82,8 @@ var Registry = map[string]func() any{
 	"provenance.json#/$defs/delegationReport":       func() any { return new(ProvenanceDelegationReport) },
 	"provenance.json#/$defs/sourceFigures":          func() any { return new(ProvenanceSourceFigures) },
 	"provenance.json#/$defs/skillLoad":              func() any { return new(ProvenanceSkillLoad) },
+	"provenance.json#/$defs/criticReason":           func() any { return new(string) },
+	"provenance.json#/$defs/criticDecision":         func() any { return new(ProvenanceCriticDecision) },
 	"question.json":                                 func() any { return new(Question) },
 	"question.json#/$defs/option":                   func() any { return new(QuestionOption) },
 	"question.json#/$defs/draft":                    func() any { return new(QuestionDraft) },
@@ -103,6 +105,7 @@ var Registry = map[string]func() any{
 	"run-event.json#/$defs/message_progress":        func() any { return new(RunEventMessageProgress) },
 	"run-event.json#/$defs/guardrail":               func() any { return new(RunEventGuardrail) },
 	"run-event.json#/$defs/thinking_unavailable":    func() any { return new(RunEventThinkingUnavailable) },
+	"run-event.json#/$defs/critic_decided":          func() any { return new(RunEventCriticDecided) },
 	"run-event.json#/$defs/critique":                func() any { return new(RunEventCritique) },
 	"run-event.json#/$defs/proposal":                func() any { return new(RunEventProposal) },
 	"run-event.json#/$defs/error":                   func() any { return new(RunEventError) },
@@ -143,6 +146,9 @@ var Registry = map[string]func() any{
 	"tool-offer.json#/$defs/loadSkill":              func() any { return new(ToolOfferLoadSkill) },
 	"tool-offer.json#/$defs/unloadSkill":            func() any { return new(ToolOfferUnloadSkill) },
 	"tool-offer.json#/$defs/loadedSkill":            func() any { return new(ToolOfferLoadedSkill) },
+	"tool-offer.json#/$defs/criticMode":             func() any { return new(string) },
+	"tool-offer.json#/$defs/criticReasoning":        func() any { return new(string) },
+	"tool-offer.json#/$defs/requestReview":          func() any { return new(ToolOfferRequestReview) },
 	"tool-result.json":                              func() any { return new(ToolResult) },
 	"tool-result.json#/$defs/mcpToolResult":         func() any { return new(ToolResultMCPToolResult) },
 	"tool-result.json#/$defs/reference":             func() any { return new(ToolResultReference) },
@@ -291,52 +297,56 @@ func (v ApprovalRequest) MarshalJSON() ([]byte, error) {
 // the index of earlier results a chat-scoped run's first message carries (INDEX_DEFAULTS,
 // agent#8), likewise: turnIndexEntries and turnIndexBytes; and the bound on the project's own
 // instructions (PROMPT_DEFAULTS, ADR-0005), likewise: projectInstructionsBytes. The table also
-// states the critic's default, adversarialReview (agent#10), which the harness adds to the Desk's
-// table: both engines read it where a session leaves adversarialReview unset. And the bounds on
-// tools with a source (SOURCE_DEFAULTS, ADR-0006), likewise: toolDescriptionBytes, offeredSchemas,
+// states the critic's switch (ADR-0010), which the harness adds to the Desk's table:
+// criticDefault, the mode where neither the run nor the project states one, and
+// criticReasoningFloor, the critic's tier where the host names none; adversarialReview, the switch
+// before ADR-0010, is read as an alias of criticDefault for one release. And the bounds on tools
+// with a source (SOURCE_DEFAULTS, ADR-0006), likewise: toolDescriptionBytes, offeredSchemas,
 // offeredSchemaBytes, cataloguedTools, catalogueBytes, sourceResultBytes, sourceCallsPerTurn and
 // sourceCallMilliseconds. The skills budget (ADR-0009): skillBytes, skillsPerRun,
 // skillsCatalogueBytes and cataloguedSkills.
 type Budget struct {
-	Version                  int64  `json:"version"`
-	MaxInputBytes            int64  `json:"maxInputBytes"`
-	ContextWindowTokens      int64  `json:"contextWindowTokens"`
-	OutputTokens             int64  `json:"outputTokens"`
-	ToolResultBytes          int64  `json:"toolResultBytes"`
-	ReadBytes                int64  `json:"readBytes"`
-	RetainedBytes            int64  `json:"retainedBytes"`
-	RecentMessages           int64  `json:"recentMessages"`
-	HistoryBytes             int64  `json:"historyBytes"`
-	BriefBytes               int64  `json:"briefBytes"`
-	MemoryBytes              int64  `json:"memoryBytes"`
-	TurnMilliseconds         *int64 `json:"turnMilliseconds,omitzero"`
-	ToolCallMilliseconds     *int64 `json:"toolCallMilliseconds,omitzero"`
-	ImagesPerRequest         *int64 `json:"imagesPerRequest,omitzero"`
-	ImageBytesPerRequest     *int64 `json:"imageBytesPerRequest,omitzero"`
-	TestCallsPerTurn         *int64 `json:"testCallsPerTurn,omitzero"`
-	TestPackBytes            *int64 `json:"testPackBytes,omitzero"`
-	TestMatrixBytes          *int64 `json:"testMatrixBytes,omitzero"`
-	AdversarialReview        *bool  `json:"adversarialReview,omitzero"`
-	TurnIndexEntries         *int64 `json:"turnIndexEntries,omitzero"`
-	TurnIndexBytes           *int64 `json:"turnIndexBytes,omitzero"`
-	ProjectInstructionsBytes *int64 `json:"projectInstructionsBytes,omitzero"`
-	ToolDescriptionBytes     *int64 `json:"toolDescriptionBytes,omitzero"`
-	OfferedSchemas           *int64 `json:"offeredSchemas,omitzero"`
-	OfferedSchemaBytes       *int64 `json:"offeredSchemaBytes,omitzero"`
-	CataloguedTools          *int64 `json:"cataloguedTools,omitzero"`
-	CatalogueBytes           *int64 `json:"catalogueBytes,omitzero"`
-	SourceResultBytes        *int64 `json:"sourceResultBytes,omitzero"`
-	SourceCallsPerTurn       *int64 `json:"sourceCallsPerTurn,omitzero"`
-	SourceCallMilliseconds   *int64 `json:"sourceCallMilliseconds,omitzero"`
-	SkillBytes               *int64 `json:"skillBytes,omitzero"`
-	SkillsPerRun             *int64 `json:"skillsPerRun,omitzero"`
-	SkillsCatalogueBytes     *int64 `json:"skillsCatalogueBytes,omitzero"`
-	CataloguedSkills         *int64 `json:"cataloguedSkills,omitzero"`
+	Version                  int64   `json:"version"`
+	MaxInputBytes            int64   `json:"maxInputBytes"`
+	ContextWindowTokens      int64   `json:"contextWindowTokens"`
+	OutputTokens             int64   `json:"outputTokens"`
+	ToolResultBytes          int64   `json:"toolResultBytes"`
+	ReadBytes                int64   `json:"readBytes"`
+	RetainedBytes            int64   `json:"retainedBytes"`
+	RecentMessages           int64   `json:"recentMessages"`
+	HistoryBytes             int64   `json:"historyBytes"`
+	BriefBytes               int64   `json:"briefBytes"`
+	MemoryBytes              int64   `json:"memoryBytes"`
+	TurnMilliseconds         *int64  `json:"turnMilliseconds,omitzero"`
+	ToolCallMilliseconds     *int64  `json:"toolCallMilliseconds,omitzero"`
+	ImagesPerRequest         *int64  `json:"imagesPerRequest,omitzero"`
+	ImageBytesPerRequest     *int64  `json:"imageBytesPerRequest,omitzero"`
+	TestCallsPerTurn         *int64  `json:"testCallsPerTurn,omitzero"`
+	TestPackBytes            *int64  `json:"testPackBytes,omitzero"`
+	TestMatrixBytes          *int64  `json:"testMatrixBytes,omitzero"`
+	AdversarialReview        *bool   `json:"adversarialReview,omitzero"`
+	CriticDefault            *string `json:"criticDefault,omitzero"`
+	CriticReasoningFloor     *string `json:"criticReasoningFloor,omitzero"`
+	TurnIndexEntries         *int64  `json:"turnIndexEntries,omitzero"`
+	TurnIndexBytes           *int64  `json:"turnIndexBytes,omitzero"`
+	ProjectInstructionsBytes *int64  `json:"projectInstructionsBytes,omitzero"`
+	ToolDescriptionBytes     *int64  `json:"toolDescriptionBytes,omitzero"`
+	OfferedSchemas           *int64  `json:"offeredSchemas,omitzero"`
+	OfferedSchemaBytes       *int64  `json:"offeredSchemaBytes,omitzero"`
+	CataloguedTools          *int64  `json:"cataloguedTools,omitzero"`
+	CatalogueBytes           *int64  `json:"catalogueBytes,omitzero"`
+	SourceResultBytes        *int64  `json:"sourceResultBytes,omitzero"`
+	SourceCallsPerTurn       *int64  `json:"sourceCallsPerTurn,omitzero"`
+	SourceCallMilliseconds   *int64  `json:"sourceCallMilliseconds,omitzero"`
+	SkillBytes               *int64  `json:"skillBytes,omitzero"`
+	SkillsPerRun             *int64  `json:"skillsPerRun,omitzero"`
+	SkillsCatalogueBytes     *int64  `json:"skillsCatalogueBytes,omitzero"`
+	CataloguedSkills         *int64  `json:"cataloguedSkills,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var budgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "adversarialReview", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds", "skillBytes", "skillsPerRun", "skillsCatalogueBytes", "cataloguedSkills"}
+var budgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "adversarialReview", "criticDefault", "criticReasoningFloor", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds", "skillBytes", "skillsPerRun", "skillsCatalogueBytes", "cataloguedSkills"}
 
 // UnmarshalJSON decodes a Budget object and keeps the members the schema does not name.
 func (v *Budget) UnmarshalJSON(data []byte) error {
@@ -907,7 +917,8 @@ func (v CapabilityStreamingQuirks) MarshalJSON() ([]byte, error) {
 // for model-requests, 1 for provider-managed), each grant's from is the previous to, and limit
 // equals the last to; operation ids and entry ids are unique; every entry id starts with the
 // context scope and a colon; a completion's request is at most used; the prompts' request numbers
-// increase; at most one plan step is in_progress. The loaded skills (ADR-0009): skills.
+// increase; at most one plan step is in_progress. The loaded skills (ADR-0009): skills. The
+// critic's decision (ADR-0010): critic.
 type Checkpoint struct {
 	Version     int64                       `json:"version"`
 	ID          string                      `json:"id"`
@@ -931,11 +942,12 @@ type Checkpoint struct {
 	Prompts     []ProvenancePromptDigest    `json:"prompts,omitzero"`
 	Sources     []ProvenanceSourceFigures   `json:"sources,omitzero"`
 	Skills      []ProvenanceSkillLoad       `json:"skills,omitzero"`
+	Critic      *CheckpointCritic           `json:"critic,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var checkpointMembers = []string{"version", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills"}
+var checkpointMembers = []string{"version", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic"}
 
 // UnmarshalJSON decodes a Checkpoint object and keeps the members the schema does not name.
 func (v *Checkpoint) UnmarshalJSON(data []byte) error {
@@ -1067,6 +1079,42 @@ func (v *CheckpointContext) UnmarshalJSON(data []byte) error {
 func (v CheckpointContext) MarshalJSON() ([]byte, error) {
 	type plain CheckpointContext
 	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From checkpoint.json#/properties/critic. The critic's switch for the run (ADR-0010;
+// provenance.json#/$defs/criticDecision): written by the shared context boundary in both
+// languages, durably, when the run decides (ran and reason present, with critic_decided), and
+// before that, under auto, when the model's request_review is taken (mode auto and trigger
+// model-asked alone). Carried through a resume: a continued run keeps the model's ask, so its
+// proposal is reviewed under auto and a second ask is refused, and writes its own decision over
+// the carried one. Closed.
+type CheckpointCritic struct {
+	Mode      string  `json:"mode"`
+	Ran       *bool   `json:"ran,omitzero"`
+	Reason    *string `json:"reason,omitzero"`
+	Reasoning *string `json:"reasoning,omitzero"`
+	Trigger   *string `json:"trigger,omitzero"`
+}
+
+var checkpointCriticMembers = []string{"mode", "ran", "reason", "reasoning", "trigger"}
+
+// UnmarshalJSON decodes a CheckpointCritic object and refuses a member the closed schema does not name.
+func (v *CheckpointCritic) UnmarshalJSON(data []byte) error {
+	type plain CheckpointCritic
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointCriticMembers, true)
+	if err != nil {
+		return errorf("CheckpointCritic: %w", err)
+	}
+	*v = CheckpointCritic(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointCritic object.
+func (v CheckpointCritic) MarshalJSON() ([]byte, error) {
+	type plain CheckpointCritic
+	return encodeObject(plain(v), nil)
 }
 
 // From checkpoint.json#/$defs/grant.
@@ -2394,7 +2442,9 @@ func (v FailureToolFailureContent) MarshalJSON() ([]byte, error) {
 // counts, time to first byte and duration, each batch's total and the parent's own, carried by the
 // checkpoint's delegation member ($defs/delegationReport) and each task record
 // (delegated-task.json). Tool sources (ADR-0006): each source's calls, refusals, proposals, bytes
-// and time, the Runtime's among them, in the checkpoint's sources ($defs/sourceFigures).
+// and time, the Runtime's among them, in the checkpoint's sources ($defs/sourceFigures). The
+// critic's switch (ADR-0010): whether the critic ran on the run, why, at which tier and on which
+// trigger, in the checkpoint's critic and the critic_decided event ($defs/criticDecision).
 type Provenance struct {
 	Request int64                `json:"request"`
 	Phase   string               `json:"phase"`
@@ -2533,6 +2583,46 @@ func (v *ProvenanceCompletion) UnmarshalJSON(data []byte) error {
 func (v ProvenanceCompletion) MarshalJSON() ([]byte, error) {
 	type plain ProvenanceCompletion
 	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From provenance.json#/$defs/criticDecision. The critic's decision for one run, the report's row
+// (ADR-0010): the mode (run > project > table), whether the critic ran, the reason, the tier the
+// critic ran or would run at, and under auto the trigger. reason: a forced-off reason (child,
+// phase, purpose, reviewer-assigned, in that order) whatever the mode; else off under off; else
+// no-proposal where the run proposed nothing; else under on the layer that set it; else under auto
+// the trigger, in the order model-asked, cases, changes-existing, or, with none, the layer that
+// set auto and ran false; a critic that would run but has no room left is not run, with budget.
+// reasoning: the critic's tier, the host's criticReasoning, else the author's
+// (criticReasoningFloor); absent where the run states no tier (an agent capability with no
+// effort). trigger: under auto, the trigger that held, kept on a budget skip; absent otherwise.
+// Emitted once per run as critic_decided and written in the checkpoint's critic.
+type ProvenanceCriticDecision struct {
+	Mode      string  `json:"mode"`
+	Ran       bool    `json:"ran"`
+	Reason    string  `json:"reason"`
+	Reasoning *string `json:"reasoning,omitzero"`
+	Trigger   *string `json:"trigger,omitzero"`
+}
+
+var provenanceCriticDecisionMembers = []string{"mode", "ran", "reason", "reasoning", "trigger"}
+
+// UnmarshalJSON decodes a ProvenanceCriticDecision object and refuses a member the closed schema does not name.
+func (v *ProvenanceCriticDecision) UnmarshalJSON(data []byte) error {
+	type plain ProvenanceCriticDecision
+	var p plain
+	extra, err := decodeObject(data, &p, provenanceCriticDecisionMembers, true)
+	if err != nil {
+		return errorf("ProvenanceCriticDecision: %w", err)
+	}
+	*v = ProvenanceCriticDecision(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ProvenanceCriticDecision object.
+func (v ProvenanceCriticDecision) MarshalJSON() ([]byte, error) {
+	type plain ProvenanceCriticDecision
+	return encodeObject(plain(v), nil)
 }
 
 // From provenance.json#/$defs/criticFigures. What one critic pass cost (agent#10;
@@ -3007,9 +3097,10 @@ func (v QuestionSavedResolution) MarshalJSON() ([]byte, error) {
 // rewrote and refused, the shared context boundary's execution_checkpoint, budget_paused (which
 // also replaces a loop's own budget_paused or request-limit error) and approval_requested
 // (ADR-0008: emitted in place of an act call's tool_call where the host's approval policy answers
-// ask), and the delegation coordinator's delegated_task. Open: the stream is an in-process
-// TypeScript union with no reader at run time that refuses another member; the type member alone
-// decides the kind.
+// ask), and the delegation coordinator's delegated_task. critic_decided (ADR-0010) is emitted by
+// the adapter once per run, where the critic would start or where it is skipped. Open: the stream
+// is an in-process TypeScript union with no reader at run time that refuses another member; the
+// type member alone decides the kind.
 //
 // A union: exactly one member is set. An object is decoded by its "type" member.
 type RunEvent struct {
@@ -3047,6 +3138,8 @@ type RunEvent struct {
 	Guardrail *RunEventGuardrail
 	// ThinkingUnavailable is set where type is "thinking_unavailable".
 	ThinkingUnavailable *RunEventThinkingUnavailable
+	// CriticDecided is set where type is "critic_decided".
+	CriticDecided *RunEventCriticDecided
 	// Critique is set where type is "critique".
 	Critique *RunEventCritique
 	// Proposal is set where type is "proposal".
@@ -3118,6 +3211,9 @@ func (v *RunEvent) UnmarshalJSON(data []byte) error {
 		case "thinking_unavailable":
 			v.ThinkingUnavailable = new(RunEventThinkingUnavailable)
 			return json.Unmarshal(data, v.ThinkingUnavailable)
+		case "critic_decided":
+			v.CriticDecided = new(RunEventCriticDecided)
+			return json.Unmarshal(data, v.CriticDecided)
 		case "critique":
 			v.Critique = new(RunEventCritique)
 			return json.Unmarshal(data, v.Critique)
@@ -3189,6 +3285,9 @@ func (v RunEvent) MarshalJSON() ([]byte, error) {
 	}
 	if v.ThinkingUnavailable != nil {
 		set = append(set, v.ThinkingUnavailable)
+	}
+	if v.CriticDecided != nil {
+		set = append(set, v.CriticDecided)
 	}
 	if v.Critique != nil {
 		set = append(set, v.Critique)
@@ -3551,6 +3650,44 @@ func (v RunEventCriticCaseExpectedDisposition) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), v.AdditionalMembers)
 }
 
+// From run-event.json#/$defs/critic_decided. The critic's decision for the run (ADR-0010;
+// provenance.json#/$defs/criticDecision): emitted once per run, after the proposal exists and
+// before the critic would start (and before its critique), or where the critic is skipped, a run
+// with no proposal included, before the run's last message. mode, ran and reason always;
+// reasoning, the critic's tier, where the run states one; trigger under auto. The checkpoint's
+// critic carries the same members, written durably after it.
+type RunEventCriticDecided struct {
+	Type      string  `json:"type"`
+	Mode      string  `json:"mode"`
+	Ran       bool    `json:"ran"`
+	Reason    string  `json:"reason"`
+	Reasoning *string `json:"reasoning,omitzero"`
+	Trigger   *string `json:"trigger,omitzero"`
+	// AdditionalMembers holds the members the schema does not name; the object is open.
+	AdditionalMembers map[string]json.RawMessage `json:"-"`
+}
+
+var runEventCriticDecidedMembers = []string{"type", "mode", "ran", "reason", "reasoning", "trigger"}
+
+// UnmarshalJSON decodes a RunEventCriticDecided object and keeps the members the schema does not name.
+func (v *RunEventCriticDecided) UnmarshalJSON(data []byte) error {
+	type plain RunEventCriticDecided
+	var p plain
+	extra, err := decodeObject(data, &p, runEventCriticDecidedMembers, false)
+	if err != nil {
+		return errorf("RunEventCriticDecided: %w", err)
+	}
+	*v = RunEventCriticDecided(p)
+	v.AdditionalMembers = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunEventCriticDecided object, with the members the schema does not name after the ones it does.
+func (v RunEventCriticDecided) MarshalJSON() ([]byte, error) {
+	type plain RunEventCriticDecided
+	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
 // From run-event.json#/$defs/critique. The critic pass's report, before the proposal it reviewed:
 // refuted is decided from the runtime's own results and never from the critic's prose, true where
 // a check came back as something other than the runtime's settled word (validate valid,
@@ -3803,7 +3940,9 @@ func (v RunEventExecutionCheckpoint) MarshalJSON() ([]byte, error) {
 // tool the host did not declare, its bytes pass skillBytes, its bundle does not hash to the digest
 // the person approved, the catalogue's bounds left it out, or a skill the checkpoint had loaded is
 // no longer declared as it was; skill budget, on a load_skill call refused past skillsPerRun,
-// between that call and its failed result. Nothing of a withheld skill reaches the model.
+// between that call and its failed result. Nothing of a withheld skill reaches the model. review
+// refused (ADR-0010), on a request_review call refused: a second ask of the run, an ask under off
+// or on, or one outside the author's phase; nothing is recorded and no review is asked.
 type RunEventGuardrail struct {
 	Type   string  `json:"type"`
 	Tool   string  `json:"tool"`
@@ -4605,16 +4744,24 @@ func (v ToolCallTextToolCall) MarshalJSON() ([]byte, error) {
 // $defs/skillDeclaration, skill.json): the package admits each, lists the admitted ones in the
 // system text after the tools described in text ($defs/skillCatalogueEntry), and offers load_skill
 // and unload_skill beside load_tool ($defs/loadSkill, $defs/unloadSkill) where any is catalogued;
-// a loaded skill ($defs/loadedSkill) rides after the history, and grants no tool.
+// a loaded skill ($defs/loadedSkill) rides after the history, and grants no tool. The critic's
+// switch (ADR-0010) rides beside them: critic, criticProject, criticReasoning, existingPack,
+// reviewerAssigned and the alias adversarialReview, each optional.
 type ToolOffer struct {
-	Tools     []ToolOfferRuntimeTool `json:"tools"`
-	HostTools []ToolOfferHostTool    `json:"hostTools"`
-	Skills    []json.RawMessage      `json:"skills,omitzero"`
+	Tools             []ToolOfferRuntimeTool `json:"tools"`
+	HostTools         []ToolOfferHostTool    `json:"hostTools"`
+	Skills            []json.RawMessage      `json:"skills,omitzero"`
+	Critic            *string                `json:"critic,omitzero"`
+	CriticProject     *string                `json:"criticProject,omitzero"`
+	CriticReasoning   *string                `json:"criticReasoning,omitzero"`
+	ExistingPack      *bool                  `json:"existingPack,omitzero"`
+	ReviewerAssigned  *bool                  `json:"reviewerAssigned,omitzero"`
+	AdversarialReview *bool                  `json:"adversarialReview,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var toolOfferMembers = []string{"tools", "hostTools", "skills"}
+var toolOfferMembers = []string{"tools", "hostTools", "skills", "critic", "criticProject", "criticReasoning", "existingPack", "reviewerAssigned", "adversarialReview"}
 
 // UnmarshalJSON decodes a ToolOffer object and keeps the members the schema does not name.
 func (v *ToolOffer) UnmarshalJSON(data []byte) error {
@@ -5081,6 +5228,53 @@ func (v *ToolOfferProposePack) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a ToolOfferProposePack object, with the members the schema does not name after the ones it does.
 func (v ToolOfferProposePack) MarshalJSON() ([]byte, error) {
 	type plain ToolOfferProposePack
+	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From tool-offer.json#/$defs/requestReview. The harness tool by which the model asks for a review
+// (ADR-0010): a reserved name, offered only where the critic's mode is auto, in the author's
+// phase, on a run the critic is not forced off for; never offered to the critic, to a delegated
+// child, in Plan mode or to the reformat run. It takes one optional reason. The first call of a
+// run is recorded as the trigger model-asked (the checkpoint's critic, carried through a resume)
+// and answered with a note; the package then runs the critic on the run's proposal. A second call
+// of the run, a call under off or on, and a call outside the author's phase are refused
+// (tool-failed, not-started) with a guardrail whose reason is review refused, and nothing is
+// recorded. The model's ask is a trigger, never a verdict: it cannot turn a review off or decide
+// what the critic finds. Its effect is plan, so its answer is not framed as data.
+type ToolOfferRequestReview struct {
+	Name          string                          `json:"name"`
+	Description   string                          `json:"description"`
+	InputSchema   json.RawMessage                 `json:"inputSchema"`
+	Effect        *string                         `json:"effect,omitzero"`
+	Interaction   *string                         `json:"interaction,omitzero"`
+	Delegation    *string                         `json:"delegation,omitzero"`
+	ContextPolicy *ToolOfferHostToolContextPolicy `json:"contextPolicy,omitzero"`
+	Presentation  *ToolOfferHostToolPresentation  `json:"presentation,omitzero"`
+	Source        *ToolOfferSourceRecord          `json:"source,omitzero"`
+	EffectClass   *string                         `json:"effectClass,omitzero"`
+	Approval      *string                         `json:"approval,omitzero"`
+	// AdditionalMembers holds the members the schema does not name; the object is open.
+	AdditionalMembers map[string]json.RawMessage `json:"-"`
+}
+
+var toolOfferRequestReviewMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval"}
+
+// UnmarshalJSON decodes a ToolOfferRequestReview object and keeps the members the schema does not name.
+func (v *ToolOfferRequestReview) UnmarshalJSON(data []byte) error {
+	type plain ToolOfferRequestReview
+	var p plain
+	extra, err := decodeObject(data, &p, toolOfferRequestReviewMembers, false)
+	if err != nil {
+		return errorf("ToolOfferRequestReview: %w", err)
+	}
+	*v = ToolOfferRequestReview(p)
+	v.AdditionalMembers = extra
+	return nil
+}
+
+// MarshalJSON encodes a ToolOfferRequestReview object, with the members the schema does not name after the ones it does.
+func (v ToolOfferRequestReview) MarshalJSON() ([]byte, error) {
+	type plain ToolOfferRequestReview
 	return encodeObject(plain(v), v.AdditionalMembers)
 }
 

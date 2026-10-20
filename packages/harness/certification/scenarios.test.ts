@@ -1,5 +1,5 @@
 /**
- * The certified scenarios (agent#13, ADR-0006, ADR-0008, ADR-0009): nine scripted scenarios beside the bake-off's, each
+ * The certified scenarios (agent#13, ADR-0006, ADR-0008, ADR-0009, ADR-0010): ten scripted scenarios beside the bake-off's, each
  * written by hand as `scenario.json` is (`certification/scenarios/*.json`) and run on every adapter of its kind
  * by `npm run certify -- --adapter <id>`:
  *
@@ -17,6 +17,10 @@
  *    for another call, refused, approved and broken off after the call's result was written;
  * 9. skills (ADR-0009): forty-two skills declared, the catalogue bounded, loads, an unload, a load past
  *    the budget, a poisoned skill held off, and the loaded set restored in a fresh session.
+ * 10. the critic's switch (ADR-0010): each mode, each auto trigger, the model's ask taken and refused,
+ *    a reviewer assigned, the critic's tier, a resume, on the agent capability the invocation held back
+ *    for the critic, and the measurement: the same proposal at two author tiers, with and without the
+ *    critic, written as a table for `npm run certify` to print.
  *
  * The model engine runs each on the OpenAI-compatible wire, once with each answer shape (a stream,
  * a whole object), through a scripted endpoint. The agent engine runs each at its own seam
@@ -36,6 +40,10 @@ import { ChatContext, INDEX_NOTICE, INDEX_SOURCE } from '../context/chat'
 import { CLOSING, OPENING, unframeData } from '../framing'
 import { correctArtifact } from '../execution/correctArtifact'
 import { REFUTATION_MARKER, type CriticCase } from '../refutation'
+import { REQUEST_REVIEW, REVIEW_TAKEN, reviewRefusal } from '../criticSwitch'
+import criticSwitch from './scenarios/critic-switch.json'
+import { appendFileSync } from 'node:fs'
+import type { ThinkingTier } from '../host'
 import { bindModelCall, openAssistantConnection, runAssistantSession } from '../session'
 import { scriptedRuntime } from './scriptedServer'
 import { authorText, criticTurn } from './scenarioServer'
@@ -73,7 +81,7 @@ import {
   type Turn
 } from '../testing/scenarioDriver'
 import { ofType, runtimeAnswer, scriptedEndpoint, type RuntimeCall } from '../testing/scripted'
-import type { AssistantEvent, Engine, EngineSession, HostTool } from '../engine'
+import type { AgentAssistantSession, AssistantEvent, AssistantSession, Engine, EngineSession, HostTool } from '../engine'
 import taskSchema from '../../../contract/schemas/delegated-task.json'
 import chatHostTools from './scenarios/chat-host-tools.json'
 import delegation from './scenarios/delegation.json'
@@ -96,6 +104,8 @@ const LEGS: AnswerAs[] = ['stream', 'whole']
 /** The Runtime's six tools the gate serves, and the six the harness adds to every conversation. */
 const RUNTIME_SIX = ['get_schema', 'list_examples', 'get_example', 'validate', 'experimental_evaluate', 'experimental_test_cases']
 const CONTEXT_SIX = ['list_context', 'read_context', 'read_window', 'search', 'update_plan', 'request_budget_increase']
+/** ADR-0010: the model's ask for a review, which the author's run is offered under auto, the table's default. */
+const REVIEW_ASK = REQUEST_REVIEW
 const sorted = (names: string[]) => [...names].sort()
 
 const request = (message: string) => ({ currentRequest: { message, input: message } })
@@ -117,9 +127,9 @@ const lastCheckpoint = (events: AssistantEvent[]): ExecutionCheckpoint =>
 
 /** The checks every adapter makes of scenario 1, over one run of it. */
 function chatHostToolsChecks(run: () => Ran, executed: () => Record<string, number>, answers: () => { text: string; isError: boolean }[] | null, engineId?: string) {
-  it('1 · the offer is the two host tools beside the Runtime’s six and the harness’s six, and no third name', () => {
+  it('1 · the offer is the two host tools beside the Runtime’s six, the harness’s six and request_review, and no third name', () => {
     const offered = offeredNames(run())
-    expect(sorted(offered)).toEqual(sorted([...RUNTIME_SIX, ...CONTEXT_SIX, 'read_policy', PROPOSE_PACK_TOOL]))
+    expect(sorted(offered)).toEqual(sorted([...RUNTIME_SIX, ...CONTEXT_SIX, REVIEW_ASK, 'read_policy', PROPOSE_PACK_TOOL]))
     expect(offered).not.toContain('save_pack')
   })
 
@@ -812,9 +822,9 @@ function toolSourcesChecks(get: () => Sourced, adapter: 'model' | 'agent') {
     expect(await toolListDigest([...toolSourcesScenario.server, toolSourcesScenario.added])).toBe(toolSourcesScenario.tracker.changed)
   })
 
-  it('7 · the schema budget trips: the server’s seventeen tools are a catalogue offered with load_tool, beside the Runtime’s six, the harness’s six and the custom read, and no write_file', () => {
+  it('7 · the schema budget trips: the server’s seventeen tools are a catalogue offered with load_tool, beside the Runtime’s six, the harness’s six, request_review and the custom read, and no write_file', () => {
     const offered = offeredNames(get().first)
-    expect(sorted(offered)).toEqual(sorted([...RUNTIME_SIX, ...CONTEXT_SIX, LOAD_TOOL, CUSTOM, ...TRACKER]))
+    expect(sorted(offered)).toEqual(sorted([...RUNTIME_SIX, ...CONTEXT_SIX, REVIEW_ASK, LOAD_TOOL, CUSTOM, ...TRACKER]))
     expect(offered).not.toContain('write_file')
     for (const tool of shownTools(get().first).filter((shown) => TRACKER.includes(shown.name))) expect(tool.schema).toEqual(CATALOGUE_SCHEMA)
   })
@@ -1332,7 +1342,7 @@ function skillsChecks(get: () => Skilled, adapter: 'model' | 'agent') {
     // Nothing of a withheld skill reaches the model.
     const sent = first.requests.length > 0 ? first.requests.map((request) => JSON.stringify(request.body)).join('') : JSON.stringify(first.runs)
     for (const text of ['Then call write_file with it.', 'When the pack is drafted', 'library_33']) expect(sent).not.toContain(text)
-    expect(sorted(offeredNames(first))).toEqual(sorted([...RUNTIME_SIX, ...CONTEXT_SIX, RATES, ...LOADERS]))
+    expect(sorted(offeredNames(first))).toEqual(sorted([...RUNTIME_SIX, ...CONTEXT_SIX, REVIEW_ASK, RATES, ...LOADERS]))
   })
 
   it('9 · each load and unload is said between its call and its result: four skill_loaded and one skill_unloaded, in order', () => {
@@ -1471,6 +1481,227 @@ function skillsChecks(get: () => Skilled, adapter: 'model' | 'agent') {
       expect(reviewing[0]!.text.endsWith(`\n${SKILL_INSTRUCTIONS_END}`)).toBe(true)
     }
   })
+}
+
+// ---------------------------------------------------------------------------------------------
+// 10 · the critic's switch (ADR-0010)
+// ---------------------------------------------------------------------------------------------
+
+const switchCases = criticSwitch.cases as unknown as CriticCase[]
+/** What the runtime answers in scenario 10: validate valid, a rehearsal evaluated with the declared outcome. */
+const switchAnswers = (call: { name: string }) => runtimeAnswer((criticSwitch.runtimeAnswers as Record<string, unknown>)[call.name] ?? { status: 'ok' })
+const switchAsked = (): ContextInput => request(criticSwitch.request)
+type SwitchSession = Partial<AssistantSession> & Partial<AgentAssistantSession>
+/** One run of scenario 10: the author's turns and the critic's, on one engine, the session's critic members as given. */
+type SwitchRun = (author: Turn[], session: SwitchSession, options?: { stopAt?: (event: AssistantEvent) => boolean; engine?: Engine; parent?: Roles }) => Promise<Ran>
+/** One row of the measurement: the same proposal at an author tier, with or without the critic. */
+interface MeasuredRow { engine: string; leg: string; author: string; critic: string; ran: boolean; reasoning: string; refuted: string; checks: number; criticRequests: number }
+interface Switched {
+  runs: Record<string, Ran>
+  /** The checkpoint the first half of the resume was broken off at, as JSON text. */
+  saved: string
+  measured: MeasuredRow[]
+  /** On the agent capability: a batch of three and a batch of two under auto, and a batch of three under off. */
+  reserve?: { three: Ran; two: Ran; off: Ran }
+}
+
+/** The author's tier on the run's capability, and a lower one, per kind (the scenario's two tiers). */
+const switchTiers = (kind: 'model' | 'agent') => criticSwitch.tiers[kind] as [string, string]
+const tierSession = (kind: 'model' | 'agent', tier: string): SwitchSession =>
+  kind === 'model' ? { thinking: normalize(tier as ThinkingTier, 'openai-compatible') } : { effort: tier as AgentAssistantSession['effort'] }
+
+/** One run of scenario 10's list (critic-switch.json, runs). */
+interface SwitchListed { name: string; author: string; session: { cases?: boolean; existingPack?: boolean; critic?: 'off' | 'auto' | 'on'; reviewerAssigned?: boolean; tier?: 'low' | 'high'; criticReasoning?: 'low' | 'high' }; breakAtAsk?: boolean; resumeFrom?: string; measure?: boolean }
+
+/** Run scenario 10 on one engine: each run of the file's list in order, then on the agent capability the reserve's three responses. */
+async function switchScenario(kind: 'model' | 'agent', run: SwitchRun, label: { engine: string; leg: string }, delegated?: (session: SwitchSession, tasks: number) => Promise<Ran>): Promise<Switched> {
+  const base: SwitchSession = { prompt: criticSwitch.request, testPrompt: criticSwitch.testPrompt, context: switchAsked() }
+  const author = criticSwitch.author as unknown as Record<string, Turn[]>
+  const [low, high] = switchTiers(kind)
+  const tierOf = (symbol: 'low' | 'high') => (symbol === 'low' ? low : high)
+  const runs: Record<string, Ran> = {}
+  const measured: MeasuredRow[] = []
+  let saved = 'null'
+  for (const listed of criticSwitch.runs as unknown as SwitchListed[]) {
+    const { cases, tier, criticReasoning, ...members } = listed.session
+    const session: SwitchSession = { ...base, ...members, ...(cases === true ? { criticCases: switchCases } : {}), ...(tier === undefined ? {} : tierSession(kind, tierOf(tier))),
+      ...(criticReasoning === undefined ? {} : { criticReasoning: tierOf(criticReasoning) as never }),
+      ...(listed.resumeFrom === undefined ? {} : { context: { ...switchAsked(), execution: JSON.parse(saved) as ExecutionCheckpoint } }) }
+    // The resume: broken off once the model's ask is written, then continued from the checkpoint's JSON text.
+    const stopAt = listed.breakAtAsk === true ? (event: AssistantEvent) => event.type === 'execution_checkpoint' && event.checkpoint.critic?.trigger === 'model-asked' : undefined
+    const ran = await run(author[listed.author]!, session, stopAt === undefined ? undefined : { stopAt })
+    runs[listed.name] = ran
+    if (listed.breakAtAsk === true) {
+      const last = ran.events.filter((event) => event.type === 'execution_checkpoint').at(-1) as { checkpoint: ExecutionCheckpoint } | undefined
+      saved = JSON.stringify(last?.checkpoint ?? null)
+    }
+    if (listed.measure === true) {
+      // The measurement: the same proposal at the two tiers, with and without the critic.
+      const decided = ofType(ran.events, 'critic_decided')[0]
+      const critique = ofType(ran.events, 'critique')[0]
+      measured.push({ ...label, author: tierOf(tier!), critic: members.critic ?? 'auto', ran: decided?.ran ?? false, reasoning: decided?.reasoning ?? '', refuted: critique === undefined ? '' : String(critique.refuted),
+        checks: critique?.checks.length ?? 0, criticRequests: critique?.figures?.requests ?? 0 })
+    }
+  }
+  const out = process.env.CERTIFY_MEASUREMENT
+  if (out !== undefined && out !== '') appendFileSync(out, measured.map((row) => JSON.stringify(row)).join('\n') + '\n')
+  let reserve: Switched['reserve']
+  if (delegated !== undefined) {
+    reserve = {
+      three: await delegated({ ...base, criticCases: switchCases }, 3),
+      two: await delegated({ ...base, criticCases: switchCases }, 2),
+      off: await delegated({ ...base, critic: 'off', criticCases: switchCases }, 3)
+    }
+  }
+  return { runs, saved, measured, reserve }
+}
+
+/** The events of a run with no checkpoint between them, in order. */
+const plain = (ran: Ran) => ran.events.filter((event) => event.type !== 'execution_checkpoint')
+/** Whether a run sent a critic request or ran a critic invocation. */
+const criticRan = (ran: Ran) => ran.requests.some((one) => JSON.stringify(one.body).includes(REFUTATION_MARKER)) || ran.runs.some((one) => one.phase === 'critic')
+/** The one decision a run made. */
+const decidedIn = (ran: Ran) => {
+  const decided = ofType(ran.events, 'critic_decided')
+  expect(decided).toHaveLength(1)
+  const { type: _type, ...decision } = decided[0]!
+  return decision
+}
+/** The decision is followed at once by the durable checkpoint that carries it, and comes before the critique and the proposal. */
+function decidedInOrder(ran: Ran) {
+  const at = ran.events.findIndex((event) => event.type === 'critic_decided')
+  const next = ran.events[at + 1]
+  expect(next?.type).toBe('execution_checkpoint')
+  const { type: _type, ...decision } = ran.events[at] as Extract<AssistantEvent, { type: 'critic_decided' }>
+  expect(next).toMatchObject({ durable: true, checkpoint: { critic: decision } })
+  const critique = ran.events.findIndex((event) => event.type === 'critique')
+  const proposal = ran.events.findIndex((event) => event.type === 'proposal')
+  if (critique >= 0) expect(at).toBeLessThan(critique)
+  if (proposal >= 0) expect(at).toBeLessThan(proposal)
+}
+
+/** The checks every adapter makes of scenario 10. */
+function criticSwitchChecks(get: () => Switched, kind: 'model' | 'agent') {
+  const [low, high] = switchTiers(kind)
+  // The author's tier where the scenario sets none: the model's off; the agent's effort is unstated.
+  const unset = kind === 'model' ? { reasoning: 'off' } : {}
+
+  it('10 · auto with a proposal and declared cases runs the critic: the decision says cases, before the critique, the proposal after', () => {
+    const ran = get().runs.cases!
+    expect(decidedIn(ran)).toEqual({ mode: 'auto', ran: true, reason: 'cases', trigger: 'cases', ...unset })
+    expect(criticRan(ran)).toBe(true)
+    decidedInOrder(ran)
+    expect(plain(ran).map((event) => event.type).slice(-3)).toEqual(['critique', 'proposal', 'end'])
+  })
+
+  it('10 · auto with a conversation turn runs none: the decision says no-proposal and no critic is asked anything', () => {
+    const ran = get().runs.converse!
+    expect(decidedIn(ran)).toEqual({ mode: 'auto', ran: false, reason: 'no-proposal', ...unset })
+    expect(criticRan(ran)).toBe(false)
+    expect(ofType(ran.events, 'critique')).toEqual([])
+  })
+
+  it('10 · auto with a proposal that changes an existing pack runs the critic: changes-existing; a new pack with no cases runs none', () => {
+    expect(decidedIn(get().runs.existing!)).toEqual({ mode: 'auto', ran: true, reason: 'changes-existing', trigger: 'changes-existing', ...unset })
+    expect(criticRan(get().runs.existing!)).toBe(true)
+    expect(decidedIn(get().runs.fresh!)).toEqual({ mode: 'auto', ran: false, reason: 'table', ...unset })
+    expect(criticRan(get().runs.fresh!)).toBe(false)
+  })
+
+  it('10 · request_review under auto runs the critic: model-asked, the first ask answered and the second refused with review refused', () => {
+    const ran = get().runs.asked!
+    expect(decidedIn(ran)).toEqual({ mode: 'auto', ran: true, reason: 'model-asked', trigger: 'model-asked', ...unset })
+    expect(criticRan(ran)).toBe(true)
+    const results = ofType(ran.events, 'tool_result').filter((event) => event.name === REQUEST_REVIEW)
+    expect(results.map((event) => event.isError)).toEqual([false, true])
+    expect(results[0]!.structured).toEqual({ asked: true, note: REVIEW_TAKEN })
+    expect(ofType(ran.events, 'guardrail').filter((event) => event.tool === REQUEST_REVIEW).map((event) => [event.reason, event.detail])).toEqual([['review refused', reviewRefusal('asked')]])
+    // The author's offer carries the ask; the critic's never does.
+    expect(offeredNames(ran)).toContain(REQUEST_REVIEW)
+    if (kind === 'model') expect(ran.requests.filter((one) => JSON.stringify(one.body).includes(REFUTATION_MARKER)).every((one) => !((one.body as { tools?: { function: { name: string } }[] }).tools ?? []).some((tool) => tool.function.name === REQUEST_REVIEW))).toBe(true)
+    else expect(offeredNames(ran, ran.runs.findIndex((one) => one.phase === 'critic'))).not.toContain(REQUEST_REVIEW)
+  })
+
+  it('10 · request_review under off is refused with the guardrail review refused, nothing recorded, and no critic runs', () => {
+    const ran = get().runs.off!
+    expect(decidedIn(ran)).toEqual({ mode: 'off', ran: false, reason: 'off', ...unset })
+    expect(criticRan(ran)).toBe(false)
+    expect(offeredNames(ran)).not.toContain(REQUEST_REVIEW)
+    expect(ofType(ran.events, 'guardrail').filter((event) => event.tool === REQUEST_REVIEW).map((event) => [event.reason, event.detail])).toEqual([['review refused', reviewRefusal('off')]])
+    expect(ofType(ran.events, 'tool_result').filter((event) => event.name === REQUEST_REVIEW).map((event) => event.isError)).toEqual([true])
+    expect(lastCheckpoint(ran.events).critic).toEqual({ mode: 'off', ran: false, reason: 'off', ...unset })
+  })
+
+  it('10 · on runs the critic on every proposal, a new pack with no cases included: person', () => {
+    const ran = get().runs.on!
+    expect(decidedIn(ran)).toEqual({ mode: 'on', ran: true, reason: 'person', ...unset })
+    expect(criticRan(ran)).toBe(true)
+    expect(offeredNames(ran)).not.toContain(REQUEST_REVIEW)
+    decidedInOrder(ran)
+  })
+
+  it('10 · a reviewer assigned under on runs none: reviewer-assigned', () => {
+    const ran = get().runs.reviewer!
+    expect(decidedIn(ran)).toEqual({ mode: 'on', ran: false, reason: 'reviewer-assigned', ...unset })
+    expect(criticRan(ran)).toBe(false)
+    expect(ofType(ran.events, 'critique')).toEqual([])
+  })
+
+  it('10 · the critic\'s tier is the author\'s unless the host lowers it explicitly, shown in the decision and sent with the critic\'s requests or its run', () => {
+    expect(decidedIn(get().runs.tier!)).toEqual({ mode: 'on', ran: true, reason: 'person', reasoning: high })
+    expect(decidedIn(get().runs.lowered!)).toEqual({ mode: 'on', ran: true, reason: 'person', reasoning: low })
+    if (kind === 'model') {
+      // On the OpenAI-compatible wire on is reasoning_effort high and off is no member at all.
+      const sent = (ran: Ran, critic: boolean) => ran.requests.filter((one) => JSON.stringify(one.body).includes(REFUTATION_MARKER) === critic).map((one) => (one.body as { reasoning_effort?: string }).reasoning_effort)
+      expect(sent(get().runs.tier!, false).every((effort) => effort === 'high')).toBe(true)
+      expect(sent(get().runs.tier!, true).length).toBeGreaterThan(0)
+      expect(sent(get().runs.tier!, true).every((effort) => effort === 'high')).toBe(true)
+      expect(sent(get().runs.lowered!, true).length).toBeGreaterThan(0)
+      expect(sent(get().runs.lowered!, true).every((effort) => effort === undefined)).toBe(true)
+    } else {
+      const efforts = (ran: Ran) => ran.runs.map((one) => [one.phase, one.effort])
+      expect(efforts(get().runs.tier!)).toEqual([['author', high], ['critic', high]])
+      expect(efforts(get().runs.lowered!)).toEqual([['author', high], ['critic', low]])
+    }
+  })
+
+  it('10 · a resume carries the decision: the ask written before the break is the restored run\'s trigger, and its own ask is refused', () => {
+    const { runs, saved } = get()
+    expect((JSON.parse(saved) as ExecutionCheckpoint).critic).toEqual({ mode: 'auto', trigger: 'model-asked' })
+    expect(ofType(runs.broken!.events, 'critic_decided')).toEqual([])
+    const ran = runs.resumed!
+    expect(decidedIn(ran)).toEqual({ mode: 'auto', ran: true, reason: 'model-asked', trigger: 'model-asked', ...unset })
+    expect(criticRan(ran)).toBe(true)
+    expect(ofType(ran.events, 'guardrail').filter((event) => event.tool === REQUEST_REVIEW).map((event) => event.detail)).toEqual([reviewRefusal('asked')])
+    expect(lastCheckpoint(ran.events).critic).toEqual({ mode: 'auto', ran: true, reason: 'model-asked', trigger: 'model-asked', ...unset })
+  })
+
+  it('10 · the measurement: the same proposal at two author tiers, with and without the critic, recorded as a table (no verdict)', () => {
+    const rows = get().measured
+    expect(rows.map((row) => [row.author, row.critic, row.ran, row.reasoning])).toEqual([[low, 'off', false, low], [low, 'on', true, low], [high, 'off', false, high], [high, 'on', true, high]])
+    for (const row of rows) expect(row.checks > 0 || row.refuted === '').toBe(true)
+  })
+
+  if (kind === 'agent') {
+    it('10 · on the agent capability a delegation batch that would take the critic\'s held invocation is refused while a smaller one proceeds, and under off the larger one proceeds', () => {
+      const { three, two, off } = get().reserve!
+      const children = (ran: Ran) => ran.runs.filter((one) => one.prompt.includes(CHILD_BRIEF)).length
+      // Five invocations a response: the parent, a child each, the continuation and, held back under auto, the critic.
+      expect(children(three)).toBe(0)
+      // The call's refusal is the result the continuation starts with (the agent wire ends a run at its delegate call).
+      const continued = three.runs.filter((one) => one.phase === 'author')
+      expect(continued).toHaveLength(2)
+      expect(continued[1]!.prompt).toContain('one kept for the critic; no task was started')
+      expect(decidedIn(three)).toEqual({ mode: 'auto', ran: true, reason: 'cases', trigger: 'cases' })
+      expect(children(two)).toBe(2)
+      expect(decidedIn(two)).toEqual({ mode: 'auto', ran: true, reason: 'cases', trigger: 'cases' })
+      expect(two.runs.map((one) => one.phase).filter((phase) => phase === 'critic')).toHaveLength(1)
+      expect(two.runs).toHaveLength(5)
+      expect(children(off)).toBe(3)
+      expect(decidedIn(off)).toEqual({ mode: 'off', ran: false, reason: 'off' })
+      expect(off.runs).toHaveLength(5)
+    })
+  }
 }
 
 describe.each(MODEL_ENGINES)('engine %s · scenarios', (engineId) => {
@@ -1628,6 +1859,19 @@ describe.each(MODEL_ENGINES)('engine %s · scenarios', (engineId) => {
       })
       afterAll(() => vi.unstubAllGlobals())
       skillsChecks(() => state, 'model')
+    })
+
+    describe('10 · the critic’s switch', () => {
+      let state: Switched
+      beforeAll(async () => {
+        const engine = await loadEngine(engineId)
+        const criticTurns = criticSwitch.critic as unknown as Turn[]
+        state = await switchScenario('model', (author, session, options) =>
+          runOnModelEngine((request) => answerFrom(JSON.stringify(request.body).includes(REFUTATION_MARKER) ? criticTurns : author, answerAs)(request),
+            { engine, handle: switchAnswers, session, ...(options?.stopAt === undefined ? {} : { stopAt: options.stopAt }) }), { engine: engineId, leg: answerAs })
+      })
+      afterAll(() => vi.unstubAllGlobals())
+      criticSwitchChecks(() => state, 'model')
     })
 
     describe('6 · a multi-turn transcript', () => {
@@ -1813,5 +2057,26 @@ describe.each(AGENT_ENGINES)('agent engine %s · scenarios', (engineId) => {
       })
     })
     skillsChecks(() => state, 'agent')
+  })
+
+  describe('10 · the critic’s switch', () => {
+    let state: Switched
+    beforeAll(async () => {
+      const engine = await loadEngine(engineId)
+      const criticTurns = criticSwitch.critic as unknown as Turn[]
+      const author = criticSwitch.author as unknown as Record<string, Turn[]>
+      const plan = criticSwitch.delegation
+      state = await switchScenario('agent', (turns, session, options) =>
+        runOnAgentEngine(async (request, callbacks) => agentRunFrom(request.phase === 'critic' ? criticTurns : turns)(request, callbacks),
+          { engine, handle: switchAnswers, session, ...(options?.stopAt === undefined ? {} : { stopAt: options.stopAt }) }), { engine: engineId, leg: 'agent' },
+      async (session, tasks) => {
+        // A parent that delegates a batch of `tasks`, then proposes; each child answers once; the critic checks.
+        const roles = { parent: [{ call: { tool: DELEGATE_TOOL, arguments: { tasks: plan.tasks.slice(0, tasks) } } }, ...author.propose!], children: plan.tasks.map((task) => ({ objective: task.objective, turns: [plan.child] })) } as unknown as Roles
+        const parentRun = rolesRun(roles, { references: [], tasks: {} })
+        return runOnAgentEngine(async (request, callbacks) => request.phase === 'critic' ? agentRunFrom(criticTurns)(request, callbacks) : parentRun(request, callbacks),
+          { engine: withDelegation(engine), handle: switchAnswers, session: { ...session, interactive: true } })
+      })
+    })
+    criticSwitchChecks(() => state, 'agent')
   })
 })

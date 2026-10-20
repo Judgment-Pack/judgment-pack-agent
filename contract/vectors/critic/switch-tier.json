@@ -1,0 +1,355 @@
+{
+  "description": "The critic's tier (ADR-0010): the host's criticReasoning where it names one, honoured as it is, lower than the author's included, and recorded; otherwise the floor, author, the author's own tier on the run's capability: the thinking tier (off, on, ultra) on the model capability, the effort (none to max) on the agent capability. Absent where neither is stated. The decision records the tier whether or not the critic runs. Each item is the decision for the case beside it in cases (by position): session, the session's critic members (tool-offer.json: critic, criticProject, criticReasoning, adversarialReview); table, the policy table's (budget.json: criticDefault, criticReasoningFloor, adversarialReview); forced, the forced-off facts (child, phase, purpose, reviewerAssigned); run, the run's facts where the critic would start (proposal, cases, changesExisting, modelAsked, room); author, the author's tier on the run's capability (absent: none stated). Written by hand; criticSwitch.test.ts and go/context/critic_test.go compute each decision and hold it equal.",
+  "schema": "provenance.json#/$defs/criticDecision",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/criticSwitch.ts (criticMode, criticForcedOff, criticDecision, criticTier)"
+    ]
+  },
+  "cases": [
+    {
+      "name": "model: unset, at the author's on",
+      "session": {
+        "critic": "on"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "on"
+    },
+    {
+      "name": "model: raised to ultra over the author's off",
+      "session": {
+        "critic": "on",
+        "criticReasoning": "ultra"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "model: lowered to off below the author's ultra, honoured",
+      "session": {
+        "critic": "on",
+        "criticReasoning": "off"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "ultra"
+    },
+    {
+      "name": "agent: unset, at the author's high",
+      "session": {
+        "critic": "on"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "agent",
+      "author": "high"
+    },
+    {
+      "name": "agent: raised to xhigh over the author's medium",
+      "session": {
+        "critic": "on",
+        "criticReasoning": "xhigh"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "agent",
+      "author": "medium"
+    },
+    {
+      "name": "agent: lowered to none below the author's max, honoured",
+      "session": {
+        "critic": "on",
+        "criticReasoning": "none"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "agent",
+      "author": "max"
+    },
+    {
+      "name": "agent: lowered to minimal below the author's low",
+      "session": {
+        "critic": "on",
+        "criticReasoning": "minimal"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "agent",
+      "author": "low"
+    },
+    {
+      "name": "agent: unset, at the author's low",
+      "session": {
+        "critic": "on"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "agent",
+      "author": "low"
+    },
+    {
+      "name": "agent: the same tier named, medium",
+      "session": {
+        "critic": "on",
+        "criticReasoning": "medium"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "agent",
+      "author": "medium"
+    },
+    {
+      "name": "agent: no effort stated and none named: no tier",
+      "session": {
+        "critic": "on"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "agent"
+    },
+    {
+      "name": "agent: no effort stated, max named",
+      "session": {
+        "critic": "on",
+        "criticReasoning": "max"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "agent"
+    },
+    {
+      "name": "the tier is recorded where the critic does not run",
+      "session": {},
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": false,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "on"
+    }
+  ],
+  "items": [
+    {
+      "mode": "on",
+      "ran": true,
+      "reason": "person",
+      "reasoning": "on"
+    },
+    {
+      "mode": "on",
+      "ran": true,
+      "reason": "person",
+      "reasoning": "ultra"
+    },
+    {
+      "mode": "on",
+      "ran": true,
+      "reason": "person",
+      "reasoning": "off"
+    },
+    {
+      "mode": "on",
+      "ran": true,
+      "reason": "person",
+      "reasoning": "high"
+    },
+    {
+      "mode": "on",
+      "ran": true,
+      "reason": "person",
+      "reasoning": "xhigh"
+    },
+    {
+      "mode": "on",
+      "ran": true,
+      "reason": "person",
+      "reasoning": "none"
+    },
+    {
+      "mode": "on",
+      "ran": true,
+      "reason": "person",
+      "reasoning": "minimal"
+    },
+    {
+      "mode": "on",
+      "ran": true,
+      "reason": "person",
+      "reasoning": "low"
+    },
+    {
+      "mode": "on",
+      "ran": true,
+      "reason": "person",
+      "reasoning": "medium"
+    },
+    {
+      "mode": "on",
+      "ran": true,
+      "reason": "person"
+    },
+    {
+      "mode": "on",
+      "ran": true,
+      "reason": "person",
+      "reasoning": "max"
+    },
+    {
+      "mode": "auto",
+      "ran": false,
+      "reason": "no-proposal",
+      "reasoning": "on"
+    }
+  ]
+}

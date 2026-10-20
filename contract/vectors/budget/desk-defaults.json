@@ -1,5 +1,5 @@
 {
-  "description": "The Desk's context budget table: the defaults both the browser and the server read, verbatim at the pinned commit, and one member the harness adds, adversarialReview (agent#10: the critic's default on both engines, false), which the Desk's table takes in its swap.",
+  "description": "The Desk's context budget table: the defaults both the browser and the server read, verbatim at the pinned commit, and two members the harness adds, criticDefault (auto) and criticReasoningFloor (author), the critic's switch (ADR-0010; they replaced agent#10's adversarialReview, false), which the Desk's table takes in its swap.",
   "schema": "budget.json",
   "source": {
     "desk": {
@@ -24,7 +24,8 @@
       "historyBytes": 32000,
       "briefBytes": 8000,
       "memoryBytes": 4000,
-      "adversarialReview": false
+      "criticDefault": "auto",
+      "criticReasoningFloor": "author"
     }
   ]
 }

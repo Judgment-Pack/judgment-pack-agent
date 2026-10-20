@@ -97,7 +97,8 @@ import {
 } from '../contract'
 import { decodedBytes, separateImages, type HeldImage, type ImageRouting } from '../../images'
 import type { ModelCapabilities, StreamingQuirks } from '../../capabilities'
-import { openThinking } from '../../thinking'
+import { normalize, openThinking } from '../../thinking'
+import { criticDecidedEvent } from '../../criticSwitch'
 import { capabilitiesFor } from '../../capabilities'
 import {
   CRITIC_SYSTEM,
@@ -106,7 +107,6 @@ import {
   criticMayCall,
   criticMayRead,
   criticMessage,
-  criticRuns,
   compareTheRest,
   critiqueEvent,
   critiqueOnProposal,
@@ -643,7 +643,8 @@ export function runVercelLoop(
   const schemaOf = (tool: McpTool) => shownSchema(capabilities.toolSchemas, tool)
   // The tier, held by the desk. This adapter asks it for members and pushes
   // whatever notice it hands back; it never decides what a refusal meant.
-  const slot = openThinking(session, capabilities.reasoning)
+  // ADR-0010: the critic's own tier opens a slot of its own when the critic starts.
+  let slot = openThinking(session, capabilities.reasoning)
   /**
    * **The tier this run asks at, held for every step.** A request whose tier
    * changed mid-run changes the request's prefix, and the provider's cache with
@@ -1421,6 +1422,8 @@ export function runVercelLoop(
       throw first.cause
     }
     if (proposal === null) {
+      // ADR-0010: nothing to refute; the decision says so.
+      await deliver(criticDecidedEvent(context.decideCritic(false)))
       await deliver({ type: 'message', text: proseOf(finalText) })
       if(context.execution.remaining<=0&&context.execution.state.plan.some(step=>step.status!=='completed'))throw new ExecutionPaused()
       return
@@ -1442,8 +1445,11 @@ export function runVercelLoop(
     let note: ProposalNote | null = null
     // **No runtime prompt, no critic.** The instructions are the runtime's; this
     // desk adds one sentence and has none of its own to fall back on.
-    // agent#10: one rule on both engines, the session's choice or the policy table's.
-    const review = criticRuns(session, context.policy)
+    // ADR-0010: one decision on every engine, from the session's words, the table and the run's facts,
+    // emitted before anything the critic does.
+    const decided = context.decideCritic(true)
+    await deliver(criticDecidedEvent(decided))
+    const review = decided.ran
     const cannot = review ? criticCannotRun(session.testPrompt) : null
     if (cannot !== null) {
       critique = cannot
@@ -1458,6 +1464,16 @@ export function runVercelLoop(
       context.beginCriticPhase()
       // What the critic costs is counted from here (agent#10).
       const before = { used: context.execution.state.used, rows: (context.execution.state.completions ?? []).length }
+      // ADR-0010: the critic's tier, at least the author's unless the host lowered it: a tier other than
+      // the author's opens a slot of its own, read for every critic request.
+      // A decision with no tier sends the critic none: off.
+      const criticTier = (decided.reasoning ?? 'off') as ThinkingTier
+      const retiered = criticTier !== session.thinking.tier
+      if (retiered) {
+        slot = openThinking({ ...session, thinking: normalize(criticTier, session.model.family) }, capabilities.reasoning)
+        tier = sdkThinking(session.model.family, slot.members())
+        context.reserveOutput(tier.maxOutputTokens)
+      }
       // The critic's model: the host's for this connection, or the run's (agent#10),
       // read inside the pass so a host answer it refuses is the critic's note.
       let criticModelId = session.model.model
@@ -1491,7 +1507,7 @@ export function runVercelLoop(
        criticHeld = criticMessages
        // The host's modelsFor answer for the run's connection, asked once per run (review of agent#35, row 5).
        criticModelId = context.models(id).critic
-       if (criticModelId !== session.model.model) {
+       if (criticModelId !== session.model.model || retiered) {
          // The same connection, relay and capability record: only the model id differs.
          criticModel = modelFor({ ...session, model: { ...session.model, model: criticModelId } }, call, executionSignal, ledger, onTruncated, slot, capabilities.streamingQuirks)
        }

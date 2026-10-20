@@ -45,16 +45,8 @@ func CriticMayRead(name string) bool {
 // page. The gate's sentence (gate.CriticRefusalDetail), which is the same sentence.
 func CriticRefusalDetail(name string) string { return gate.CriticRefusalDetail(name) }
 
-// CriticRuns is criticRuns: whether the critic runs, by one rule every adapter reads (agent#10) —
-// the session's adversarialReview where the host set it (a non-nil session), and otherwise the
-// policy table's, which is false. So the critic runs only where the host asks for it, at any
-// reasoning tier and on any adapter.
-func CriticRuns(session *bool, policy bool) bool {
-	if session != nil {
-		return *session
-	}
-	return policy
-}
+// Whether the critic runs is decided in one place since ADR-0010: runcontext.DecideCritic (go/context
+// critic.go), read by every adapter through SessionContext.DecideCritic, which replaced CriticRuns.
 
 // RefutationMarker is REFUTATION_MARKER: the literal a critic's request carries, so a scripted
 // endpoint — and a reader of a transcript — can tell the two conversations apart.

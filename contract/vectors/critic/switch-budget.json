@@ -1,0 +1,182 @@
+{
+  "description": "The critic skipped for budget (ADR-0010): where it would run and the request allowance, or on the agent capability the response's invocations, leave it no room, it does not run and the reason is budget, the trigger kept under auto. Where it would not run anyway, the reason is why not, room or none. Each item is the decision for the case beside it in cases (by position): session, the session's critic members (tool-offer.json: critic, criticProject, criticReasoning, adversarialReview); table, the policy table's (budget.json: criticDefault, criticReasoningFloor, adversarialReview); forced, the forced-off facts (child, phase, purpose, reviewerAssigned); run, the run's facts where the critic would start (proposal, cases, changesExisting, modelAsked, room); author, the author's tier on the run's capability (absent: none stated). Written by hand; criticSwitch.test.ts and go/context/critic_test.go compute each decision and hold it equal.",
+  "schema": "provenance.json#/$defs/criticDecision",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/criticSwitch.ts (criticMode, criticForcedOff, criticDecision, criticTier)"
+    ]
+  },
+  "cases": [
+    {
+      "name": "on, no room",
+      "session": {
+        "critic": "on"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": false
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "auto with cases, no room: the trigger kept",
+      "session": {},
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": true,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": false
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "auto with no trigger, no room",
+      "session": {},
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": false
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "off, no room",
+      "session": {
+        "critic": "off"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": false
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "on, nothing proposed, no room",
+      "session": {
+        "critic": "on"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": false,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": false
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "on, no room, on the agent capability",
+      "session": {
+        "critic": "on"
+      },
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": false
+      },
+      "capability": "agent",
+      "author": "high"
+    }
+  ],
+  "items": [
+    {
+      "mode": "on",
+      "ran": false,
+      "reason": "budget",
+      "reasoning": "off"
+    },
+    {
+      "mode": "auto",
+      "ran": false,
+      "reason": "budget",
+      "reasoning": "off",
+      "trigger": "cases"
+    },
+    {
+      "mode": "auto",
+      "ran": false,
+      "reason": "table",
+      "reasoning": "off"
+    },
+    {
+      "mode": "off",
+      "ran": false,
+      "reason": "off",
+      "reasoning": "off"
+    },
+    {
+      "mode": "on",
+      "ran": false,
+      "reason": "no-proposal",
+      "reasoning": "off"
+    },
+    {
+      "mode": "on",
+      "ran": false,
+      "reason": "budget",
+      "reasoning": "high"
+    }
+  ]
+}

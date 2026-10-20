@@ -64,9 +64,10 @@ describe.each(AGENT_ENGINES)('agent engine %s', engineId => {
         if (passes === 1) {
           // **K2, on the agent wire (agent#25).** The offer is compared with the
           // contract's scenario offer, both members, by real name, description
-          // and served schema: the runtime's five, then the context tools.
+          // and served schema: the runtime's five, then the context tools. ADR-0010: the session says
+          // on, so request_review, which the scenario's offer carries under auto, is not offered.
           expect(offered(request.tools, 'runtime')).toEqual(asOffered(offer.tools))
-          expect(offered(request.tools, 'host')).toEqual(asOffered(offer.hostTools))
+          expect(offered(request.tools, 'host')).toEqual(asOffered(offer.hostTools.filter(tool => tool.name !== 'request_review')))
         } else {
           // The critic is offered its allow-list: the scenario's runtime reads and the harness's two readers (agent#10).
           expect(offered(request.tools, 'runtime')).toEqual(asOffered(criticOfferVector.items[0]!.tools))
@@ -138,9 +139,9 @@ describe.each(AGENT_ENGINES)('agent engine %s', engineId => {
       let writeAnswer: { text: string; isError: boolean } | undefined
       const run: AgentRun = async (request, callbacks) => {
         sent.push({ instructions: request.instructions, prompt: request.prompt })
-        // The offer is the scenario's, as without the block.
+        // The offer is the scenario's, as without the block; ADR-0010: off, so no request_review.
         expect(offered(request.tools, 'runtime')).toEqual(asOffered(offer.tools))
-        expect(offered(request.tools, 'host')).toEqual(asOffered(offer.hostTools))
+        expect(offered(request.tools, 'host')).toEqual(asOffered(offer.hostTools.filter(tool => tool.name !== 'request_review')))
         for (const [index, call] of recording.calls.entries()) {
           const route = ready.tools.findIndex(tool => tool.name === call.tool)
           answers.push(await callbacks.tool({ id: `c${index}`, name: `desk_runtime_${route}`, arguments: structuredClone(call.arguments) as Record<string, unknown> }, callbacks.signal))
@@ -229,7 +230,8 @@ describe.each(AGENT_ENGINES)('agent engine %s', engineId => {
 
   it('does not manufacture proposals or claim verification for an ordinary chat reply', async () => {
     const events = await collect(session(reply('Hello.'), { allowConversation: true }))
-    expect(events).toEqual([{ type: 'message', text: 'Hello.' }, { type: 'end' }])
+    // ADR-0010: the decision says no critic ran, nothing having been proposed; no tier, since the session states no effort.
+    expect(events).toEqual([{ type: 'critic_decided', mode: 'auto', ran: false, reason: 'no-proposal' }, { type: 'message', text: 'Hello.' }, { type: 'end' }])
   })
 
   it('executes a host tool with cancellation and returns structured content without treating it as a runtime check', async () => {
@@ -259,7 +261,7 @@ describe.each(AGENT_ENGINES)('agent engine %s', engineId => {
     }, { callTool }))
     expect(callTool).toHaveBeenCalledExactlyOnceWith('write_file', { path: 'x' })
     expect(answered).toEqual({ isError: true, text: expect.stringContaining('refused: write_file is not one of the tools') })
-    expect(refused.map(event => event.type)).toEqual(['tool_call', 'tool_result', 'message', 'proposal', 'end'])
+    expect(refused.map(event => event.type)).toEqual(['tool_call', 'tool_result', 'message', 'critic_decided', 'proposal', 'end'])
     expect(CERTIFIED_ENGINES).toContain(engineId)
   })
 

@@ -116,6 +116,8 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
     const read=tool?.effect==='read'||tool?.delegation==='read'||tool?.delegation==='research'||event.type!=='user_question'&&['get_schema','get_authoring_instructions','list_context','read_context','list_examples','get_example'].includes(event.name)
     yield {type:'execution_checkpoint',durable:!read,checkpoint:context.execution.snapshot()}
    }
+   // ADR-0010: the critic's decision is written durably: the checkpoint carrying it follows the event.
+   if(event.type==='critic_decided'){yield event;if(tracked)yield {type:'execution_checkpoint',durable:true,checkpoint:context.execution.snapshot()};continue}
    if(event.type==='end'&&tracked&&!paused){context.execution.state.status=session.signal.aborted||failed?'stopped':'complete';yield {type:'execution_checkpoint',durable:true,checkpoint:context.execution.snapshot()}}
    if(session.context?.artifactProposals===false&&event.type==='proposal'){yield {type:'guardrail',tool:'proposal',action:'refused',detail:'Artifact proposals are unavailable in this conversation. Use its host tools or start a new artifact conversation.'};continue}
    if(session.context?.phase==='plan'&&event.type==='proposal'){yield {type:'guardrail',tool:'proposal',action:'refused',detail:'Artifact proposals are unavailable in Plan mode. Use propose_plan and wait for Start work.'};continue}

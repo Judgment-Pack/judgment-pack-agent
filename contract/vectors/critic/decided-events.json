@@ -1,0 +1,109 @@
+{
+  "description": "critic_decided, once per run (ADR-0010; run-event.json), one event for each reason a run can record: the three layers (person and project under on, table under auto with no trigger), the three triggers under auto, a run that proposed nothing, the critic off, a skip for budget with its trigger kept, and the four forced-off reasons. reasoning is the critic's tier, absent on the agent capability where the run states no effort (the project row). Written by hand; criticSwitch.test.ts reads each through criticDecidedEvent, and go/context/critic_test.go through CriticDecidedEvent.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/criticSwitch.ts (criticDecidedEvent, criticDecision)"
+    ]
+  },
+  "items": [
+    {
+      "type": "critic_decided",
+      "mode": "on",
+      "ran": true,
+      "reason": "person",
+      "reasoning": "on"
+    },
+    {
+      "type": "critic_decided",
+      "mode": "on",
+      "ran": true,
+      "reason": "project"
+    },
+    {
+      "type": "critic_decided",
+      "mode": "auto",
+      "ran": false,
+      "reason": "table",
+      "reasoning": "off"
+    },
+    {
+      "type": "critic_decided",
+      "mode": "auto",
+      "ran": true,
+      "reason": "model-asked",
+      "reasoning": "on",
+      "trigger": "model-asked"
+    },
+    {
+      "type": "critic_decided",
+      "mode": "auto",
+      "ran": true,
+      "reason": "cases",
+      "reasoning": "ultra",
+      "trigger": "cases"
+    },
+    {
+      "type": "critic_decided",
+      "mode": "auto",
+      "ran": true,
+      "reason": "changes-existing",
+      "reasoning": "high",
+      "trigger": "changes-existing"
+    },
+    {
+      "type": "critic_decided",
+      "mode": "auto",
+      "ran": false,
+      "reason": "no-proposal",
+      "reasoning": "off"
+    },
+    {
+      "type": "critic_decided",
+      "mode": "off",
+      "ran": false,
+      "reason": "off",
+      "reasoning": "medium"
+    },
+    {
+      "type": "critic_decided",
+      "mode": "auto",
+      "ran": false,
+      "reason": "budget",
+      "reasoning": "low",
+      "trigger": "cases"
+    },
+    {
+      "type": "critic_decided",
+      "mode": "on",
+      "ran": false,
+      "reason": "reviewer-assigned",
+      "reasoning": "on"
+    },
+    {
+      "type": "critic_decided",
+      "mode": "on",
+      "ran": false,
+      "reason": "purpose",
+      "reasoning": "off"
+    },
+    {
+      "type": "critic_decided",
+      "mode": "auto",
+      "ran": false,
+      "reason": "phase",
+      "reasoning": "off"
+    },
+    {
+      "type": "critic_decided",
+      "mode": "auto",
+      "ran": false,
+      "reason": "child",
+      "reasoning": "minimal"
+    }
+  ]
+}

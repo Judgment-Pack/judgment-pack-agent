@@ -1,0 +1,37 @@
+{
+  "description": "Sessions as a host hands them, with the critic's switch beside the tools (ADR-0010; tool-offer.json): the run's word (critic), the project's (criticProject), the critic's tier (criticReasoning), the host's two facts (existingPack, reviewerAssigned) and the alias before ADR-0010 (adversarialReview). The first is the composer's auto on a project whose default is off, the critic at ultra, on an existing pack; the second a reviewer's run the Desk sends as before, through the alias; the third an agent capability's run at an effort. Written by hand; criticSwitch.test.ts reads each through readCriticSettings, and go/context/critic_test.go through ReadCriticSettings.",
+  "schema": "tool-offer.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/engine.ts (AssistantSession: critic, criticProject, criticReasoning, existingPack, reviewerAssigned, adversarialReview)",
+      "packages/harness/criticSwitch.ts (readCriticSettings)"
+    ]
+  },
+  "items": [
+    {
+      "tools": [],
+      "hostTools": [],
+      "critic": "auto",
+      "criticProject": "off",
+      "criticReasoning": "ultra",
+      "existingPack": true,
+      "reviewerAssigned": false
+    },
+    {
+      "tools": [],
+      "hostTools": [],
+      "adversarialReview": false,
+      "reviewerAssigned": true
+    },
+    {
+      "tools": [],
+      "hostTools": [],
+      "critic": "on",
+      "criticReasoning": "high"
+    }
+  ]
+}

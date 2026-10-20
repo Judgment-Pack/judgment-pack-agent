@@ -1,5 +1,5 @@
 {
-  "description": "The critic's request answered 503 after a valid proposal: the proposal is delivered with a note and no critique, and the run ends without an error event. vercel engine, the session asking for the critic (adversarialReview true). The note's figures (agent#10) are the critic's one model request, written by hand from provenance.json $defs/criticFigures.",
+  "description": "The critic's request answered 503 after a valid proposal: the proposal is delivered with a note and no critique, and the run ends without an error event. vercel engine, the session asking for the critic (adversarialReview true, read as the run's word on, ADR-0010): the decision (critic_decided, the person's on, at the author's tier off) comes before the proposal. The note's figures (agent#10) are the critic's one model request, written by hand from provenance.json $defs/criticFigures.",
   "schema": "run-event.json",
   "source": {
     "harness": {
@@ -9,13 +9,21 @@
     "files": [
       "packages/harness/engines/vercel/loop.ts (the critic's catch: unfinished)",
       "packages/harness/refutation.ts (criticNote)",
-      "packages/harness/refutation.ts (modelCriticFigures)"
+      "packages/harness/refutation.ts (modelCriticFigures)",
+      "packages/harness/criticSwitch.ts (criticDecision, criticDecidedEvent)"
     ]
   },
   "items": [
     {
       "type": "message",
       "text": "Here it is."
+    },
+    {
+      "type": "critic_decided",
+      "mode": "on",
+      "ran": true,
+      "reason": "person",
+      "reasoning": "off"
     },
     {
       "type": "proposal",

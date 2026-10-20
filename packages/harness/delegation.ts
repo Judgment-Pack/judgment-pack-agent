@@ -9,6 +9,7 @@ import { RETRY_BACKOFF_MS, RETRY_WAIT_LIMIT_MS, waitFor } from './engines/vercel
 import { AGENT_DELEGATION_INSTRUCTIONS, DELEGATION_INSTRUCTIONS, DELEGATION_SPENT, DELEGATE_TOOL, MAX_AGENT_RUNS, MAX_BATCHES, MAX_TOOLS, REPORT_BOUNDS, TASK_PROFILES, TOKEN_MEMBERS, delegationTool, profileBudget, readDelegationRequest, readProfiles, readReport, reportInstructions, type DelegatedTask, type DelegatedTaskRequest, type DelegationRequest, type OpenQuestion, type ResultCursor, type TaskBudget, type TaskProfile, type TaskReport } from './delegationContract'
 import { TEST_TOOL } from './toolGate'
 import { contextPolicy, encodedPrefix, utf8Bytes } from './context/policy'
+import { criticForcedOff, criticMode } from './criticSwitch'
 import { ChatContext, type ReusableResult, type TaskThread } from './context/chat'
 import { ContextBudgetError } from './context/policy'
 import { ContextLedger, answer, type Entry } from './context/ledger'
@@ -180,7 +181,13 @@ class ResponseAllowance {
   agentRuns = 0
   /** agent#18: the agent runs of this response that were its children's. */
   childAgentRuns = 0
-  constructor(checkpoint?: ExecutionCheckpoint) {
+  /**
+   * ADR-0010: the agent run held back for the critic, 1 under `auto` and `on` on an agent capability
+   * (where nothing forces the critic off), from the first run on; 0 under `off`, where nothing is held.
+   */
+  private readonly criticReserve: number
+  constructor(checkpoint?: ExecutionCheckpoint, criticReserve = 0) {
+    this.criticReserve = criticReserve
     this.usedHere = checkpoint?.used ?? 0
     this.limitHere = checkpoint?.limit ?? MAX_TURNS
     this.testCallsHere = checkpoint?.testCalls ?? 0
@@ -236,12 +243,24 @@ class ResponseAllowance {
     this.testCallsHere++
   }
   /** Whether a parent run starting now may be offered delegate_tasks: one child run and the next parent run must both remain beside it. */
-  mayDelegate() { return this.agentRuns + 3 <= MAX_AGENT_RUNS }
+  mayDelegate() { return this.agentRuns + 3 + this.criticReserve <= MAX_AGENT_RUNS }
   /** ADR-0008: whether a parent run starting now may be offered an act call: the run that continues after its pause must remain beside it. */
   mayAct() { return this.agentRuns + 2 <= MAX_AGENT_RUNS }
+  /**
+   * ADR-0010: a batch of `tasks` children on an agent capability is admitted only while the critic's
+   * held run and the run that continues the response both remain beside one run for each child; under
+   * `off` nothing is held and the batch is held to its children's runs one at a time, as before.
+   */
+  admitBatch(tasks: number) {
+    if (this.criticReserve === 0 || this.agentRuns + tasks + 1 + this.criticReserve <= MAX_AGENT_RUNS) return
+    throw toolInputFailure(`This response has started ${this.agentRuns} of its ${MAX_AGENT_RUNS} agent runs, and a batch of ${tasks} needs one for each child, one for the run that continues with its result and one kept for the critic; no task was started. Delegate fewer tasks, or answer from the findings you have.`)
+  }
+  /** ADR-0010: whether the critic's run has room: the response has an agent run left for it. */
+  criticRoom() { return this.agentRuns < MAX_AGENT_RUNS }
   agentRun(child: boolean) {
-    // A child never takes the last run: the response continues after its batch.
-    if (this.agentRuns >= MAX_AGENT_RUNS - (child ? 1 : 0)) throw toolInputFailure('The shared agent-invocation limit was reached. No additional run was sent.')
+    // A child never takes the last run: the response continues after its batch; under auto and on
+    // (ADR-0010) a child never takes the run held back for the critic either.
+    if (this.agentRuns >= MAX_AGENT_RUNS - (child ? 1 + this.criticReserve : 0)) throw toolInputFailure('The shared agent-invocation limit was reached. No additional run was sent.')
     this.agentRuns++
     if (child) this.childAgentRuns++
   }
@@ -312,9 +331,12 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
     const profiles = options.profiles ?? TASK_PROFILES
     const parentRunId = crypto.randomUUID()
     const childStops = new Map<string,AbortController>()
-    const shared = new ResponseAllowance(session.context?.execution)
     const modelName = 'model' in session ? session.model.model : session.agent.model
     const policy = contextPolicy(session.context?.configuration,modelName)
+    // ADR-0010: on an agent capability one run is held back for the critic where the switch may run it.
+    const forced = criticForcedOff({child:!!session.context?.objective,phase:session.context?.phase,purpose:session.purpose,reviewerAssigned:session.reviewerAssigned===true})
+    const reserve = 'agent' in session && forced === undefined && criticMode(session, policy).mode !== 'off' ? 1 : 0
+    const shared = new ResponseAllowance(session.context?.execution, reserve)
     // The chat the parent's context lives in (agent#8): the host's, or one for this response alone.
     const hostChat = session.context?.chat instanceof ChatContext ? session.context.chat : undefined
     const chat = hostChat ?? new ChatContext()
@@ -767,6 +789,8 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
       batchSignal.throwIfAborted()
       // Planned whole first: a reference or a resume the chat cannot honour fails the call, and no batch is spent.
       const planned = request.tasks.map(plan)
+      // ADR-0010: the critic's held run and the continuation both remain beside the batch's children.
+      if ('agent' in session) shared.admitBatch(planned.length)
       claimBatch()
       pending = []
       await deliver({type:'message_progress',text:''})
@@ -840,6 +864,8 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
     }}
     const parentLink: ExecutionLink = {attach:context=>{
       shared.attach(context)
+      // ADR-0010: on an agent capability the critic has room where the response has a run left.
+      if ('agent' in session) context.criticRoom=()=>shared.criticRoom()
       context.execution.toolAllowance=()=>({used:shared.toolCalls,limit:MAX_TOOLS,scope:'response'})
     }}
     const drive = async () => {

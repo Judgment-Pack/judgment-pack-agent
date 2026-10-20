@@ -81,10 +81,15 @@ func (b *Boundary) Open() []contract.RunEvent {
 // notices are the guardrail events the source gate's refusals earned (ADR-0006), put on the stream
 // before the next event: a withheld declaration's at the start, a refused call's before its result.
 func (b *Boundary) notices() []contract.RunEvent {
-	if b.run.Context.Sources == nil {
-		return nil
+	var out []contract.RunEvent
+	if b.run.Context.Sources != nil {
+		out = b.run.Context.Sources.TakeNotices()
 	}
-	return b.run.Context.Sources.TakeNotices()
+	// ADR-0010: a refused request_review's guardrail, before its result.
+	if b.run.Context.Review != nil {
+		out = append(out, b.run.Context.Review.TakeNotices()...)
+	}
+	return out
 }
 
 // checkpoint is one execution_checkpoint event, or nothing where the checkpoint is too large to
@@ -225,6 +230,15 @@ func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 		}
 		durable := !read
 		out = append(out, b.checkpoint(&durable, "")...)
+	}
+	// ADR-0010: the critic's decision is written durably: the checkpoint carrying it follows the event.
+	if event.CriticDecided != nil {
+		out = append(out, event)
+		if b.tracked {
+			durable := true
+			out = append(out, b.checkpoint(&durable, "")...)
+		}
+		return out, false
 	}
 	if event.End != nil && b.tracked && !b.paused {
 		status := "complete"

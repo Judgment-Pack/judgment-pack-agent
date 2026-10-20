@@ -81,15 +81,11 @@ export function criticRefusalDetail(name: string): string {
 }
 
 
-/**
- * **Whether the critic runs, by one rule both engines read** (agent#10): the
- * session's `adversarialReview` where the host set it, and otherwise the
- * policy table's `adversarialReview`, which is `false`. So the critic runs
- * only where the host asks for it, at any reasoning tier and on either engine.
+/*
+ * Whether the critic runs is decided in one place since ADR-0010: `criticSwitch.ts`
+ * (`criticDecision`, read by every engine through the boundary's `decideCritic`),
+ * which replaced `criticRuns`.
  */
-export function criticRuns(session: { adversarialReview?: boolean }, policy: { adversarialReview: boolean }): boolean {
-  return session.adversarialReview ?? policy.adversarialReview
-}
 
 /**
  * The literal a critic's request carries, so a scripted endpoint — and a

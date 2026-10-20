@@ -1,0 +1,204 @@
+{
+  "description": "Each auto trigger (ADR-0010), read in the order model-asked, cases, changes-existing, and only where the run proposed something: declared cases exist (the pack's saved tests), the proposal changes an existing pack, or the model called request_review. The trigger that held is the reason and the trigger; with none, the critic does not run and the reason is the layer that set auto. Each item is the decision for the case beside it in cases (by position): session, the session's critic members (tool-offer.json: critic, criticProject, criticReasoning, adversarialReview); table, the policy table's (budget.json: criticDefault, criticReasoningFloor, adversarialReview); forced, the forced-off facts (child, phase, purpose, reviewerAssigned); run, the run's facts where the critic would start (proposal, cases, changesExisting, modelAsked, room); author, the author's tier on the run's capability (absent: none stated). Written by hand; criticSwitch.test.ts and go/context/critic_test.go compute each decision and hold it equal.",
+  "schema": "provenance.json#/$defs/criticDecision",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/criticSwitch.ts (criticMode, criticForcedOff, criticDecision, criticTier)"
+    ]
+  },
+  "cases": [
+    {
+      "name": "auto, a proposal, declared cases",
+      "session": {},
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": true,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "auto, a proposal changing an existing pack",
+      "session": {},
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": true,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "auto, a proposal the model asked a review of",
+      "session": {},
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": true,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "the model's ask is read before the cases",
+      "session": {},
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": true,
+        "changesExisting": false,
+        "modelAsked": true,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "the cases are read before the existing pack",
+      "session": {},
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": true,
+        "changesExisting": true,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "a conversation turn: nothing to refute, whatever was asked",
+      "session": {},
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": false,
+        "cases": true,
+        "changesExisting": false,
+        "modelAsked": true,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    },
+    {
+      "name": "auto, a new pack, no cases, no ask",
+      "session": {},
+      "table": {
+        "criticDefault": "auto",
+        "criticReasoningFloor": "author"
+      },
+      "forced": {
+        "child": false
+      },
+      "run": {
+        "proposal": true,
+        "cases": false,
+        "changesExisting": false,
+        "modelAsked": false,
+        "room": true
+      },
+      "capability": "model",
+      "author": "off"
+    }
+  ],
+  "items": [
+    {
+      "mode": "auto",
+      "ran": true,
+      "reason": "cases",
+      "reasoning": "off",
+      "trigger": "cases"
+    },
+    {
+      "mode": "auto",
+      "ran": true,
+      "reason": "changes-existing",
+      "reasoning": "off",
+      "trigger": "changes-existing"
+    },
+    {
+      "mode": "auto",
+      "ran": true,
+      "reason": "model-asked",
+      "reasoning": "off",
+      "trigger": "model-asked"
+    },
+    {
+      "mode": "auto",
+      "ran": true,
+      "reason": "model-asked",
+      "reasoning": "off",
+      "trigger": "model-asked"
+    },
+    {
+      "mode": "auto",
+      "ran": true,
+      "reason": "cases",
+      "reasoning": "off",
+      "trigger": "cases"
+    },
+    {
+      "mode": "auto",
+      "ran": false,
+      "reason": "no-proposal",
+      "reasoning": "off"
+    },
+    {
+      "mode": "auto",
+      "ran": false,
+      "reason": "table",
+      "reasoning": "off"
+    }
+  ]
+}

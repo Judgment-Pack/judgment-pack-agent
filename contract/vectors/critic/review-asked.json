@@ -1,0 +1,41 @@
+{
+  "description": "The model's ask taken (ADR-0010): under auto, in the author's phase, the first request_review of the run is answered with a note and recorded (the checkpoint's critic: mode auto, trigger model-asked); the run's proposal then has the trigger model-asked, so the decision runs the critic at the author's tier, before its critique and the proposal. A session with no cases, a new pack, the table's auto, tier off; not interactive, so no call ids. Written by hand; criticSwitch.test.ts holds the vercel engine's stream to it, and scenario 10 makes the same run on every engine and both Go adapters.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/context/session.ts (SessionContext.reviewTool, decideCritic)",
+      "packages/harness/criticSwitch.ts (CriticSwitch.ask, CriticSwitch.decide, criticDecidedEvent)"
+    ]
+  },
+  "items": [
+    {
+      "type": "tool_call",
+      "name": "request_review",
+      "args": {
+        "reason": "The pack changes the approval threshold."
+      }
+    },
+    {
+      "type": "tool_result",
+      "name": "request_review",
+      "isError": false,
+      "text": "{\"asked\":true,\"note\":\"A review was asked for: the critic will check the proposal this response makes before it is shown. Its verdict comes from the runtime’s results.\"}",
+      "structured": {
+        "asked": true,
+        "note": "A review was asked for: the critic will check the proposal this response makes before it is shown. Its verdict comes from the runtime’s results."
+      }
+    },
+    {
+      "type": "critic_decided",
+      "mode": "auto",
+      "ran": true,
+      "reason": "model-asked",
+      "reasoning": "off",
+      "trigger": "model-asked"
+    }
+  ]
+}
