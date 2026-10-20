@@ -194,9 +194,14 @@ func (t *turnState) critic(ctx context.Context, proposal turn.Proposal) (*turn.C
 				case t.toolsClosed:
 					instruction = finalInstructions
 				}
+				// ADR-0009: a skill the run loaded rides in the note too, after the history, as in the loop's state.
+				skills := ""
+				if r.sc.Skills != nil {
+					skills = r.sc.Skills.Section()
+				}
 				note := ""
-				if instruction != "" {
-					note = stateText(instruction)
+				if instruction != "" || skills != "" {
+					note = stateText(instruction, skills)
 				}
 				budgetText := system
 				if note != "" {

@@ -588,6 +588,8 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
         // agent#11: the objective is the child's request text, the first text part of its first message.
         context:{configuration:session.context?.configuration,phase:session.context?.phase,authorize:session.context?.authorize,artifactProposals:session.context?.artifactProposals,memory:session.context?.memory,objective,runtime:session.context?.runtime,chat:chat.childScope(planned.visible),link,...(session.context?.connection?{connection:session.context.connection}:{})},
         purpose:undefined,prompt,testPrompt:'',allowConversation:true,interactive:true,adversarialReview:false,
+        // ADR-0009: a child is handed no skills; it inherits none of the parent's loaded set.
+        skills:undefined,
         // agent#15: the gate's Runtime tools the profile names, and nothing beside them.
         tools,callTool:async(name:string,args:Record<string,unknown>)=>{if(!runtime.has(name))throw toolInputFailure('This task was not offered that Runtime tool.');return session.callTool(name,args)},
         hostTools,signal:childSignal,

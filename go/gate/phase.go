@@ -27,10 +27,16 @@ var PlanRuntimeReads = func() []string {
 // offered the two readers) and the reformat run's (which is offered none).
 var ContextTools = []string{"list_context", "read_context", "read_window", "search", "update_plan", "request_budget_increase"}
 
+// SkillTools are the skill loaders (ADR-0009): load_skill and unload_skill, which the boundary offers
+// where the run catalogues a skill, in every phase but a child's, the critic's included (a skill
+// grants no tool).
+var SkillTools = []string{"load_skill", "unload_skill"}
+
 // ReservedNames are every name the host keeps for the package's own tools (tool-offer.json
-// $defs/reservedName): the context tools, and load_tool (ADR-0006), the catalogue loader the
-// boundary offers beside them only where the schema budget makes a tool source a catalogue.
-var ReservedNames = append(append([]string{}, ContextTools...), "load_tool")
+// $defs/reservedName): the context tools, load_tool (ADR-0006), the catalogue loader the boundary
+// offers beside them only where the schema budget makes a tool source a catalogue, and the skill
+// loaders (ADR-0009).
+var ReservedNames = append(append(append([]string{}, ContextTools...), "load_tool"), SkillTools...)
 
 // PhaseKind names a phase of a run.
 type PhaseKind string
@@ -95,11 +101,14 @@ func LoopPhase(offer contract.ToolOffer) Phase {
 }
 
 // CriticPhase is the critic's (agent#10): of the session's Runtime tools those on CriticTools, and
-// of its host tools only CriticReaders.
+// of its host tools only CriticReaders and, where the run catalogues skills, the skill loaders
+// (ADR-0009).
 func CriticPhase(offer contract.ToolOffer) Phase {
 	r, h := names(offer,
 		func(tool contract.ToolOfferRuntimeTool) bool { return contains(CriticTools, tool.Name) },
-		func(tool contract.ToolOfferHostTool) bool { return contains(CriticReaders, tool.Name) })
+		func(tool contract.ToolOfferHostTool) bool {
+			return contains(CriticReaders, tool.Name) || contains(SkillTools, tool.Name)
+		})
 	return Phase{Kind: PhaseCritic, Runtime: r, Host: h}
 }
 

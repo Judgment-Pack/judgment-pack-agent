@@ -110,7 +110,7 @@ func (g *Gate) current() Phase {
 	defer g.mu.Unlock()
 	switch g.narrowed {
 	case PhaseCritic:
-		return Phase{Kind: PhaseCritic, Runtime: intersect(g.phase.Runtime, CriticTools), Host: intersect(g.phase.Host, CriticReaders)}
+		return Phase{Kind: PhaseCritic, Runtime: intersect(g.phase.Runtime, CriticTools), Host: intersect(g.phase.Host, append(append([]string{}, CriticReaders...), SkillTools...))}
 	case PhaseReformat:
 		return ReformatPhase()
 	}

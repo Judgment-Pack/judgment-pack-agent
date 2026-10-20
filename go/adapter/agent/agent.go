@@ -107,6 +107,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		CallTool:          r.gatedCall,
 		Agent:             &runcontext.AgentSession{Model: run.Agent.Model},
 		Host:              run.Host,
+		Skills:            run.Skills,
 	}
 	if run.Review != nil {
 		session.AdversarialReview = *run.Review

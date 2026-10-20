@@ -81,6 +81,7 @@ var Registry = map[string]func() any{
 	"provenance.json#/$defs/parentFigures":          func() any { return new(ProvenanceParentFigures) },
 	"provenance.json#/$defs/delegationReport":       func() any { return new(ProvenanceDelegationReport) },
 	"provenance.json#/$defs/sourceFigures":          func() any { return new(ProvenanceSourceFigures) },
+	"provenance.json#/$defs/skillLoad":              func() any { return new(ProvenanceSkillLoad) },
 	"question.json":                                 func() any { return new(Question) },
 	"question.json#/$defs/option":                   func() any { return new(QuestionOption) },
 	"question.json#/$defs/draft":                    func() any { return new(QuestionDraft) },
@@ -90,6 +91,8 @@ var Registry = map[string]func() any{
 	"run-event.json#/$defs/execution_checkpoint":    func() any { return new(RunEventExecutionCheckpoint) },
 	"run-event.json#/$defs/budget_paused":           func() any { return new(RunEventBudgetPaused) },
 	"run-event.json#/$defs/approval_requested":      func() any { return new(RunEventApprovalRequested) },
+	"run-event.json#/$defs/skill_loaded":            func() any { return new(RunEventSkillLoaded) },
+	"run-event.json#/$defs/skill_unloaded":          func() any { return new(RunEventSkillUnloaded) },
 	"run-event.json#/$defs/retry":                   func() any { return new(RunEventRetry) },
 	"run-event.json#/$defs/response_recovery":       func() any { return new(RunEventResponseRecovery) },
 	"run-event.json#/$defs/delegation_requested":    func() any { return new(RunEventDelegationRequested) },
@@ -107,6 +110,11 @@ var Registry = map[string]func() any{
 	"run-event.json#/$defs/caseOutcome":             func() any { return new(RunEventCaseOutcome) },
 	"run-event.json#/$defs/caseComparison":          func() any { return new(RunEventCaseComparison) },
 	"run-event.json#/$defs/criticCase":              func() any { return new(RunEventCriticCase) },
+	"skill.json":                                    func() any { return new(Skill) },
+	"skill.json#/$defs/name":                        func() any { return new(string) },
+	"skill.json#/$defs/resource":                    func() any { return new(SkillResource) },
+	"skill.json#/$defs/digest":                      func() any { return new(string) },
+	"skill.json#/$defs/bytes":                       func() any { return new(int64) },
 	"tool-call.json":                                func() any { return new(ToolCall) },
 	"tool-call.json#/$defs/mcpCall":                 func() any { return new(ToolCallMCPCall) },
 	"tool-call.json#/$defs/agentWireCall":           func() any { return new(ToolCallAgentWireCall) },
@@ -130,6 +138,11 @@ var Registry = map[string]func() any{
 	"tool-offer.json#/$defs/catalogueEntry":         func() any { return new(ToolOfferCatalogueEntry) },
 	"tool-offer.json#/$defs/loadTool":               func() any { return new(ToolOfferLoadTool) },
 	"tool-offer.json#/$defs/loadedSchema":           func() any { return new(ToolOfferLoadedSchema) },
+	"tool-offer.json#/$defs/skillDeclaration":       func() any { return new(json.RawMessage) },
+	"tool-offer.json#/$defs/skillCatalogueEntry":    func() any { return new(ToolOfferSkillCatalogueEntry) },
+	"tool-offer.json#/$defs/loadSkill":              func() any { return new(ToolOfferLoadSkill) },
+	"tool-offer.json#/$defs/unloadSkill":            func() any { return new(ToolOfferUnloadSkill) },
+	"tool-offer.json#/$defs/loadedSkill":            func() any { return new(ToolOfferLoadedSkill) },
 	"tool-result.json":                              func() any { return new(ToolResult) },
 	"tool-result.json#/$defs/mcpToolResult":         func() any { return new(ToolResultMCPToolResult) },
 	"tool-result.json#/$defs/reference":             func() any { return new(ToolResultReference) },
@@ -282,7 +295,8 @@ func (v ApprovalRequest) MarshalJSON() ([]byte, error) {
 // table: both engines read it where a session leaves adversarialReview unset. And the bounds on
 // tools with a source (SOURCE_DEFAULTS, ADR-0006), likewise: toolDescriptionBytes, offeredSchemas,
 // offeredSchemaBytes, cataloguedTools, catalogueBytes, sourceResultBytes, sourceCallsPerTurn and
-// sourceCallMilliseconds.
+// sourceCallMilliseconds. The skills budget (ADR-0009): skillBytes, skillsPerRun,
+// skillsCatalogueBytes and cataloguedSkills.
 type Budget struct {
 	Version                  int64  `json:"version"`
 	MaxInputBytes            int64  `json:"maxInputBytes"`
@@ -314,11 +328,15 @@ type Budget struct {
 	SourceResultBytes        *int64 `json:"sourceResultBytes,omitzero"`
 	SourceCallsPerTurn       *int64 `json:"sourceCallsPerTurn,omitzero"`
 	SourceCallMilliseconds   *int64 `json:"sourceCallMilliseconds,omitzero"`
+	SkillBytes               *int64 `json:"skillBytes,omitzero"`
+	SkillsPerRun             *int64 `json:"skillsPerRun,omitzero"`
+	SkillsCatalogueBytes     *int64 `json:"skillsCatalogueBytes,omitzero"`
+	CataloguedSkills         *int64 `json:"cataloguedSkills,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var budgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "adversarialReview", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds"}
+var budgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "adversarialReview", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds", "skillBytes", "skillsPerRun", "skillsCatalogueBytes", "cataloguedSkills"}
 
 // UnmarshalJSON decodes a Budget object and keeps the members the schema does not name.
 func (v *Budget) UnmarshalJSON(data []byte) error {
@@ -889,7 +907,7 @@ func (v CapabilityStreamingQuirks) MarshalJSON() ([]byte, error) {
 // for model-requests, 1 for provider-managed), each grant's from is the previous to, and limit
 // equals the last to; operation ids and entry ids are unique; every entry id starts with the
 // context scope and a colon; a completion's request is at most used; the prompts' request numbers
-// increase; at most one plan step is in_progress.
+// increase; at most one plan step is in_progress. The loaded skills (ADR-0009): skills.
 type Checkpoint struct {
 	Version     int64                       `json:"version"`
 	ID          string                      `json:"id"`
@@ -912,11 +930,12 @@ type Checkpoint struct {
 	Approval    *CheckpointApproval         `json:"approval,omitzero"`
 	Prompts     []ProvenancePromptDigest    `json:"prompts,omitzero"`
 	Sources     []ProvenanceSourceFigures   `json:"sources,omitzero"`
+	Skills      []ProvenanceSkillLoad       `json:"skills,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var checkpointMembers = []string{"version", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources"}
+var checkpointMembers = []string{"version", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills"}
 
 // UnmarshalJSON decodes a Checkpoint object and keeps the members the schema does not name.
 func (v *Checkpoint) UnmarshalJSON(data []byte) error {
@@ -2693,13 +2712,47 @@ func (v ProvenancePromptDigest) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From provenance.json#/$defs/skillLoad. One loaded skill as the checkpoint keeps it (ADR-0009;
+// checkpoint.json skills): its id, the digest it was loaded at, its bytes
+// (skill.json#/$defs/bytes) and when it was loaded. A continued run restores it only where the
+// host still declares the skill with that digest.
+type ProvenanceSkillLoad struct {
+	ID       string `json:"id"`
+	Digest   string `json:"digest"`
+	Bytes    int64  `json:"bytes"`
+	LoadedAt string `json:"loadedAt"`
+}
+
+var provenanceSkillLoadMembers = []string{"id", "digest", "bytes", "loadedAt"}
+
+// UnmarshalJSON decodes a ProvenanceSkillLoad object and refuses a member the closed schema does not name.
+func (v *ProvenanceSkillLoad) UnmarshalJSON(data []byte) error {
+	type plain ProvenanceSkillLoad
+	var p plain
+	extra, err := decodeObject(data, &p, provenanceSkillLoadMembers, true)
+	if err != nil {
+		return errorf("ProvenanceSkillLoad: %w", err)
+	}
+	*v = ProvenanceSkillLoad(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ProvenanceSkillLoad object.
+func (v ProvenanceSkillLoad) MarshalJSON() ([]byte, error) {
+	type plain ProvenanceSkillLoad
+	return encodeObject(plain(v), nil)
+}
+
 // From provenance.json#/$defs/sourceFigures. What one source cost in one execution (ADR-0006): the
 // run report's row for it, in the checkpoint's sources. calls: the calls the host ran; refused:
 // the calls the boundary refused before the host (a changed tool list, no approval, a catalogued
 // tool not loaded, past sourceCallsPerTurn); proposed: the calls held as proposals; bytes: the
 // UTF-8 bytes of the answers' JSON text as the host gave them, before any bound; milliseconds: the
 // time the host took, summed over the calls it ran. The Runtime's row is source runtime, kind
-// runtime.
+// runtime. skills (ADR-0009): the skills of this source the model loaded, each load counted, a
+// reload again; present on a source that declares a skill. A source that declares only skills
+// reports its loads and no calls; exchange is a skill's kind only.
 type ProvenanceSourceFigures struct {
 	Source       string `json:"source"`
 	Kind         string `json:"kind"`
@@ -2708,9 +2761,10 @@ type ProvenanceSourceFigures struct {
 	Proposed     int64  `json:"proposed"`
 	Bytes        int64  `json:"bytes"`
 	Milliseconds int64  `json:"milliseconds"`
+	Skills       *int64 `json:"skills,omitzero"`
 }
 
-var provenanceSourceFiguresMembers = []string{"source", "kind", "calls", "refused", "proposed", "bytes", "milliseconds"}
+var provenanceSourceFiguresMembers = []string{"source", "kind", "calls", "refused", "proposed", "bytes", "milliseconds", "skills"}
 
 // UnmarshalJSON decodes a ProvenanceSourceFigures object and refuses a member the closed schema does not name.
 func (v *ProvenanceSourceFigures) UnmarshalJSON(data []byte) error {
@@ -2965,6 +3019,10 @@ type RunEvent struct {
 	BudgetPaused *RunEventBudgetPaused
 	// ApprovalRequested is set where type is "approval_requested".
 	ApprovalRequested *RunEventApprovalRequested
+	// SkillLoaded is set where type is "skill_loaded".
+	SkillLoaded *RunEventSkillLoaded
+	// SkillUnloaded is set where type is "skill_unloaded".
+	SkillUnloaded *RunEventSkillUnloaded
 	// Retry is set where type is "retry".
 	Retry *RunEventRetry
 	// ResponseRecovery is set where type is "response_recovery".
@@ -3018,6 +3076,12 @@ func (v *RunEvent) UnmarshalJSON(data []byte) error {
 		case "approval_requested":
 			v.ApprovalRequested = new(RunEventApprovalRequested)
 			return json.Unmarshal(data, v.ApprovalRequested)
+		case "skill_loaded":
+			v.SkillLoaded = new(RunEventSkillLoaded)
+			return json.Unmarshal(data, v.SkillLoaded)
+		case "skill_unloaded":
+			v.SkillUnloaded = new(RunEventSkillUnloaded)
+			return json.Unmarshal(data, v.SkillUnloaded)
 		case "retry":
 			v.Retry = new(RunEventRetry)
 			return json.Unmarshal(data, v.Retry)
@@ -3083,6 +3147,12 @@ func (v RunEvent) MarshalJSON() ([]byte, error) {
 	}
 	if v.ApprovalRequested != nil {
 		set = append(set, v.ApprovalRequested)
+	}
+	if v.SkillLoaded != nil {
+		set = append(set, v.SkillLoaded)
+	}
+	if v.SkillUnloaded != nil {
+		set = append(set, v.SkillUnloaded)
 	}
 	if v.Retry != nil {
 		set = append(set, v.Retry)
@@ -3728,7 +3798,12 @@ func (v RunEventExecutionCheckpoint) MarshalJSON() ([]byte, error) {
 // pending); approval stale, the gate's own refusal of a call whose decision no longer holds for it
 // (its arguments not those its approval was decided for, a call that reaches its run without an
 // allow, or, on the continued run, its tool no longer offered as the person decided). None of
-// these calls is run.
+// these calls is run. skill withheld (ADR-0009), on a skill the package did not catalogue or
+// restore, tool its name (or, for the catalogue's bounds, its source's id): its tools[] names a
+// tool the host did not declare, its bytes pass skillBytes, its bundle does not hash to the digest
+// the person approved, the catalogue's bounds left it out, or a skill the checkpoint had loaded is
+// no longer declared as it was; skill budget, on a load_skill call refused past skillsPerRun,
+// between that call and its failed result. Nothing of a withheld skill reaches the model.
 type RunEventGuardrail struct {
 	Type   string  `json:"type"`
 	Tool   string  `json:"tool"`
@@ -4046,6 +4121,70 @@ func (v RunEventRetry) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), v.AdditionalMembers)
 }
 
+// From run-event.json#/$defs/skill_loaded. A skill loaded (ADR-0009): the model's load_skill call
+// loaded it, between that call and its result. skill names it (tool-offer.json#/$defs/loadedSkill:
+// id, name, source record, digest; never its instructions); bytes is what it counts against
+// skillBytes (skill.json#/$defs/bytes). The checkpoint's skills carries it from here.
+type RunEventSkillLoaded struct {
+	Type  string               `json:"type"`
+	Skill ToolOfferLoadedSkill `json:"skill"`
+	Bytes int64                `json:"bytes"`
+	// AdditionalMembers holds the members the schema does not name; the object is open.
+	AdditionalMembers map[string]json.RawMessage `json:"-"`
+}
+
+var runEventSkillLoadedMembers = []string{"type", "skill", "bytes"}
+
+// UnmarshalJSON decodes a RunEventSkillLoaded object and keeps the members the schema does not name.
+func (v *RunEventSkillLoaded) UnmarshalJSON(data []byte) error {
+	type plain RunEventSkillLoaded
+	var p plain
+	extra, err := decodeObject(data, &p, runEventSkillLoadedMembers, false)
+	if err != nil {
+		return errorf("RunEventSkillLoaded: %w", err)
+	}
+	*v = RunEventSkillLoaded(p)
+	v.AdditionalMembers = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunEventSkillLoaded object, with the members the schema does not name after the ones it does.
+func (v RunEventSkillLoaded) MarshalJSON() ([]byte, error) {
+	type plain RunEventSkillLoaded
+	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From run-event.json#/$defs/skill_unloaded. A skill unloaded (ADR-0009): the model's unload_skill
+// call dropped it, between that call and its result; id is the skill's id. Its block leaves every
+// later request.
+type RunEventSkillUnloaded struct {
+	Type string `json:"type"`
+	ID   string `json:"id"`
+	// AdditionalMembers holds the members the schema does not name; the object is open.
+	AdditionalMembers map[string]json.RawMessage `json:"-"`
+}
+
+var runEventSkillUnloadedMembers = []string{"type", "id"}
+
+// UnmarshalJSON decodes a RunEventSkillUnloaded object and keeps the members the schema does not name.
+func (v *RunEventSkillUnloaded) UnmarshalJSON(data []byte) error {
+	type plain RunEventSkillUnloaded
+	var p plain
+	extra, err := decodeObject(data, &p, runEventSkillUnloadedMembers, false)
+	if err != nil {
+		return errorf("RunEventSkillUnloaded: %w", err)
+	}
+	*v = RunEventSkillUnloaded(p)
+	v.AdditionalMembers = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunEventSkillUnloaded object, with the members the schema does not name after the ones it does.
+func (v RunEventSkillUnloaded) MarshalJSON() ([]byte, error) {
+	type plain RunEventSkillUnloaded
+	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
 // From run-event.json#/$defs/thinking_unavailable. The reasoning tier the host asked for could not
 // be expressed on this endpoint, said once. Only the vercel engine emits it; the sentence is the
 // host's thinking table's.
@@ -4106,6 +4245,119 @@ func (v *RunEventUserQuestion) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a RunEventUserQuestion object, with the members the schema does not name after the ones it does.
 func (v RunEventUserQuestion) MarshalJSON() ([]byte, error) {
 	type plain RunEventUserQuestion
+	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From skill.json. A skill (ADR-0009): a named, versioned bundle the host declares and supplies
+// beside its host tools (tool-offer.json#/$defs/skillDeclaration): instructions, optionally the
+// names of host tools it uses, optionally small text resources. It comes from a source as a tool
+// does and carries the same source record; the package never fetches one. The package admits it
+// (the record readable, every tools[] name a host tool the host declared, its bytes within
+// skillBytes, its digest the one the person approved), catalogues it in the system text (its name
+// and one framed line), loads it on the model's load_skill call under the skills budget, places
+// its instructions and resources after the history as one block at the rank of the project's own
+// instructions, and records every load on the events, in the checkpoint and in the run report. A
+// skill grants nothing: the tools it names are the host's declared tools under their own effect
+// classes and approvals, offered or not by phase as before, and its text changes nothing the gate
+// admits. Closed: a declaration carrying any other member is refused before any request
+// (configuration).
+type Skill struct {
+	ID           string          `json:"id"`
+	Name         string          `json:"name"`
+	Description  string          `json:"description"`
+	Source       SkillSource     `json:"source"`
+	Instructions string          `json:"instructions"`
+	Tools        []string        `json:"tools,omitzero"`
+	Resources    []SkillResource `json:"resources,omitzero"`
+	PinnedDigest *string         `json:"pinnedDigest,omitzero"`
+	Digest       *string         `json:"digest,omitzero"`
+}
+
+var skillMembers = []string{"id", "name", "description", "source", "instructions", "tools", "resources", "pinnedDigest", "digest"}
+
+// UnmarshalJSON decodes a Skill object and refuses a member the closed schema does not name.
+func (v *Skill) UnmarshalJSON(data []byte) error {
+	type plain Skill
+	var p plain
+	extra, err := decodeObject(data, &p, skillMembers, true)
+	if err != nil {
+		return errorf("Skill: %w", err)
+	}
+	*v = Skill(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a Skill object.
+func (v Skill) MarshalJSON() ([]byte, error) {
+	type plain Skill
+	return encodeObject(plain(v), nil)
+}
+
+// From skill.json#/$defs/resource. One text resource of a skill: its name (1 to 64 characters) and
+// its text.
+type SkillResource struct {
+	Name string `json:"name"`
+	Text string `json:"text"`
+}
+
+var skillResourceMembers = []string{"name", "text"}
+
+// UnmarshalJSON decodes a SkillResource object and refuses a member the closed schema does not name.
+func (v *SkillResource) UnmarshalJSON(data []byte) error {
+	type plain SkillResource
+	var p plain
+	extra, err := decodeObject(data, &p, skillResourceMembers, true)
+	if err != nil {
+		return errorf("SkillResource: %w", err)
+	}
+	*v = SkillResource(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a SkillResource object.
+func (v SkillResource) MarshalJSON() ([]byte, error) {
+	type plain SkillResource
+	return encodeObject(plain(v), nil)
+}
+
+// From skill.json#/properties/source. Where the skill comes from:
+// tool-offer.json#/$defs/sourceRecord, the record a tool with a source carries, with its kind one
+// a host declares (gateway, mcp, custom or exchange; runtime is refused, as for a tool) and
+// without the members the package sets on a tool's offer (tool, receipt). exchange: a skill whose
+// bytes the host fetched from a Judgment Exchange entry, the entry's id and version the record's
+// id and version. Reported, never a grant.
+type SkillSource struct {
+	Kind           string  `json:"kind"`
+	ID             string  `json:"id"`
+	Version        *string `json:"version,omitzero"`
+	ToolListDigest *string `json:"toolListDigest,omitzero"`
+	Trust          string  `json:"trust"`
+	Tool           *string `json:"tool,omitzero"`
+	Receipt        *string `json:"receipt,omitzero"`
+	// AdditionalMembers holds the members the schema does not name; the object is open.
+	AdditionalMembers map[string]json.RawMessage `json:"-"`
+}
+
+var skillSourceMembers = []string{"kind", "id", "version", "toolListDigest", "trust", "tool", "receipt"}
+
+// UnmarshalJSON decodes a SkillSource object and keeps the members the schema does not name.
+func (v *SkillSource) UnmarshalJSON(data []byte) error {
+	type plain SkillSource
+	var p plain
+	extra, err := decodeObject(data, &p, skillSourceMembers, false)
+	if err != nil {
+		return errorf("SkillSource: %w", err)
+	}
+	*v = SkillSource(p)
+	v.AdditionalMembers = extra
+	return nil
+}
+
+// MarshalJSON encodes a SkillSource object, with the members the schema does not name after the ones it does.
+func (v SkillSource) MarshalJSON() ([]byte, error) {
+	type plain SkillSource
 	return encodeObject(plain(v), v.AdditionalMembers)
 }
 
@@ -4349,15 +4601,20 @@ func (v ToolCallTextToolCall) MarshalJSON() ([]byte, error) {
 // ($defs/wireName, $defs/nameMapping), with its description bounded and framed as retrieved text,
 // its effect class and approval default ($defs/effectClass), and, where the source's tools pass
 // the schema budget, as a catalogue entry whose schema load_tool loads ($defs/catalogueEntry,
-// $defs/loadTool).
+// $defs/loadTool). Skills (ADR-0009): the host declares skills beside its host tools (skills,
+// $defs/skillDeclaration, skill.json): the package admits each, lists the admitted ones in the
+// system text after the tools described in text ($defs/skillCatalogueEntry), and offers load_skill
+// and unload_skill beside load_tool ($defs/loadSkill, $defs/unloadSkill) where any is catalogued;
+// a loaded skill ($defs/loadedSkill) rides after the history, and grants no tool.
 type ToolOffer struct {
 	Tools     []ToolOfferRuntimeTool `json:"tools"`
 	HostTools []ToolOfferHostTool    `json:"hostTools"`
+	Skills    []json.RawMessage      `json:"skills,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var toolOfferMembers = []string{"tools", "hostTools"}
+var toolOfferMembers = []string{"tools", "hostTools", "skills"}
 
 // UnmarshalJSON decodes a ToolOffer object and keeps the members the schema does not name.
 func (v *ToolOffer) UnmarshalJSON(data []byte) error {
@@ -4593,6 +4850,56 @@ func (v ToolOfferHostToolPresentation) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), v.AdditionalMembers)
 }
 
+// From tool-offer.json#/$defs/loadSkill. The harness tool that loads one catalogued skill
+// (ADR-0009): a reserved name, offered beside load_tool where the run catalogues any skill, in
+// Plan mode and to the critic too (a skill grants no tool), never to a delegated child. Its effect
+// is plan, so its answer is not framed as data. It loads only a catalogued, admitted skill (any
+// other name is invalid-tool-input); each load counts against skillsPerRun, the response's loads
+// carried through a resume in the run report's rows (provenance.json#/$defs/sourceFigures,
+// skills), and a load past it is refused (tool-failed, not-started) with a guardrail whose reason
+// is skill budget. Loading a skill already loaded loads nothing and counts nothing. A load emits
+// skill_loaded, writes the checkpoint's skills, and the skill's instructions and resources ride
+// after the history on every later request as one block, under the heading that ranks them with
+// the project's own instructions; on the agent wire, which sends the execution state once per run,
+// the answer carries the block itself. Its answer: the loaded skill ($defs/loadedSkill), its
+// bytes, and a note.
+type ToolOfferLoadSkill struct {
+	Name          string                          `json:"name"`
+	Description   string                          `json:"description"`
+	InputSchema   json.RawMessage                 `json:"inputSchema"`
+	Effect        *string                         `json:"effect,omitzero"`
+	Interaction   *string                         `json:"interaction,omitzero"`
+	Delegation    *string                         `json:"delegation,omitzero"`
+	ContextPolicy *ToolOfferHostToolContextPolicy `json:"contextPolicy,omitzero"`
+	Presentation  *ToolOfferHostToolPresentation  `json:"presentation,omitzero"`
+	Source        *ToolOfferSourceRecord          `json:"source,omitzero"`
+	EffectClass   *string                         `json:"effectClass,omitzero"`
+	Approval      *string                         `json:"approval,omitzero"`
+	// AdditionalMembers holds the members the schema does not name; the object is open.
+	AdditionalMembers map[string]json.RawMessage `json:"-"`
+}
+
+var toolOfferLoadSkillMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval"}
+
+// UnmarshalJSON decodes a ToolOfferLoadSkill object and keeps the members the schema does not name.
+func (v *ToolOfferLoadSkill) UnmarshalJSON(data []byte) error {
+	type plain ToolOfferLoadSkill
+	var p plain
+	extra, err := decodeObject(data, &p, toolOfferLoadSkillMembers, false)
+	if err != nil {
+		return errorf("ToolOfferLoadSkill: %w", err)
+	}
+	*v = ToolOfferLoadSkill(p)
+	v.AdditionalMembers = extra
+	return nil
+}
+
+// MarshalJSON encodes a ToolOfferLoadSkill object, with the members the schema does not name after the ones it does.
+func (v ToolOfferLoadSkill) MarshalJSON() ([]byte, error) {
+	type plain ToolOfferLoadSkill
+	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
 // From tool-offer.json#/$defs/loadTool. The harness tool that loads one catalogued tool's schema
 // (ADR-0006): a reserved name, offered only where the run's tools with a source pass the schema
 // budget, and admitted only for a catalogued wire name (any other is invalid-tool-input). Its
@@ -4666,6 +4973,37 @@ func (v *ToolOfferLoadedSchema) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a ToolOfferLoadedSchema object.
 func (v ToolOfferLoadedSchema) MarshalJSON() ([]byte, error) {
 	type plain ToolOfferLoadedSchema
+	return encodeObject(plain(v), nil)
+}
+
+// From tool-offer.json#/$defs/loadedSkill. A skill as a load names it (ADR-0009): its id, its
+// name, its source record and its digest. load_skill's answer and the skill_loaded event carry it;
+// the instructions are never on the event.
+type ToolOfferLoadedSkill struct {
+	ID     string                `json:"id"`
+	Name   string                `json:"name"`
+	Source ToolOfferSourceRecord `json:"source"`
+	Digest string                `json:"digest"`
+}
+
+var toolOfferLoadedSkillMembers = []string{"id", "name", "source", "digest"}
+
+// UnmarshalJSON decodes a ToolOfferLoadedSkill object and refuses a member the closed schema does not name.
+func (v *ToolOfferLoadedSkill) UnmarshalJSON(data []byte) error {
+	type plain ToolOfferLoadedSkill
+	var p plain
+	extra, err := decodeObject(data, &p, toolOfferLoadedSkillMembers, true)
+	if err != nil {
+		return errorf("ToolOfferLoadedSkill: %w", err)
+	}
+	*v = ToolOfferLoadedSkill(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ToolOfferLoadedSkill object.
+func (v ToolOfferLoadedSkill) MarshalJSON() ([]byte, error) {
+	type plain ToolOfferLoadedSkill
 	return encodeObject(plain(v), nil)
 }
 
@@ -4778,6 +5116,40 @@ func (v ToolOfferRuntimeTool) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), v.AdditionalMembers)
 }
 
+// From tool-offer.json#/$defs/skillCatalogueEntry. One admitted skill as the skills catalogue in
+// the system text lists it (ADR-0009): its name, then its description's first line, cut to 160
+// bytes and framed as retrieved data under the run's marker. The catalogue sits after the tools
+// described in text, in the stable prefix: it never changes during the run, and a load or an
+// unload changes neither it nor the tool list. Its entries, in the order declared, are held to
+// cataloguedSkills and skillsCatalogueBytes (each counted as the JSON text of its name and its
+// line, the frame's constant lines not counted); the skills past either are withheld, one
+// guardrail for each source saying how many.
+type ToolOfferSkillCatalogueEntry struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+var toolOfferSkillCatalogueEntryMembers = []string{"name", "description"}
+
+// UnmarshalJSON decodes a ToolOfferSkillCatalogueEntry object and refuses a member the closed schema does not name.
+func (v *ToolOfferSkillCatalogueEntry) UnmarshalJSON(data []byte) error {
+	type plain ToolOfferSkillCatalogueEntry
+	var p plain
+	extra, err := decodeObject(data, &p, toolOfferSkillCatalogueEntryMembers, true)
+	if err != nil {
+		return errorf("ToolOfferSkillCatalogueEntry: %w", err)
+	}
+	*v = ToolOfferSkillCatalogueEntry(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ToolOfferSkillCatalogueEntry object.
+func (v ToolOfferSkillCatalogueEntry) MarshalJSON() ([]byte, error) {
+	type plain ToolOfferSkillCatalogueEntry
+	return encodeObject(plain(v), nil)
+}
+
 // From tool-offer.json#/$defs/sourceDeclaration. A host tool with a source, as the host declares
 // it (ADR-0006): its own name at the source (name, 1 to 128 characters), its description and
 // schema as the source serves them, its source record, and optionally its effect class and
@@ -4831,10 +5203,12 @@ func (v ToolOfferSourceDeclaration) MarshalJSON() ([]byte, error) {
 // run report (provenance.json#/$defs/sourceFigures). gateway: a gateway connection the person
 // configured (Databricks, Azure DevOps, Drive), which may give a receipt for each call; mcp: a
 // public MCP server the host connected, whose tool list is pinned by digest at connection time;
-// custom: a tool the person created. runtime is the Runtime's own row in the run report: its tools
-// come through tools/list behind the gate, carry no declaration, and a host tool declared with
-// kind runtime is refused. Either version or toolListDigest is present; mcp carries
-// toolListDigest. Closed: the package refuses another member before any request (configuration).
+// custom: a tool the person created; exchange (ADR-0009): a skill whose bytes the host fetched
+// from a Judgment Exchange entry, the entry's id and version the record's id and version, which a
+// host tool may not declare. runtime is the Runtime's own row in the run report: its tools come
+// through tools/list behind the gate, carry no declaration, and a host tool declared with kind
+// runtime is refused. Either version or toolListDigest is present; mcp carries toolListDigest.
+// Closed: the package refuses another member before any request (configuration).
 type ToolOfferSourceRecord struct {
 	Kind           string  `json:"kind"`
 	ID             string  `json:"id"`
@@ -4864,6 +5238,47 @@ func (v *ToolOfferSourceRecord) UnmarshalJSON(data []byte) error {
 func (v ToolOfferSourceRecord) MarshalJSON() ([]byte, error) {
 	type plain ToolOfferSourceRecord
 	return encodeObject(plain(v), nil)
+}
+
+// From tool-offer.json#/$defs/unloadSkill. The harness tool that drops one loaded skill
+// (ADR-0009): a reserved name, offered with load_skill. The skill's block leaves every later
+// request, skill_unloaded is emitted and the checkpoint's skills is written; the skill stays
+// catalogued, and loading it again counts again. A name not loaded is invalid-tool-input.
+type ToolOfferUnloadSkill struct {
+	Name          string                          `json:"name"`
+	Description   string                          `json:"description"`
+	InputSchema   json.RawMessage                 `json:"inputSchema"`
+	Effect        *string                         `json:"effect,omitzero"`
+	Interaction   *string                         `json:"interaction,omitzero"`
+	Delegation    *string                         `json:"delegation,omitzero"`
+	ContextPolicy *ToolOfferHostToolContextPolicy `json:"contextPolicy,omitzero"`
+	Presentation  *ToolOfferHostToolPresentation  `json:"presentation,omitzero"`
+	Source        *ToolOfferSourceRecord          `json:"source,omitzero"`
+	EffectClass   *string                         `json:"effectClass,omitzero"`
+	Approval      *string                         `json:"approval,omitzero"`
+	// AdditionalMembers holds the members the schema does not name; the object is open.
+	AdditionalMembers map[string]json.RawMessage `json:"-"`
+}
+
+var toolOfferUnloadSkillMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval"}
+
+// UnmarshalJSON decodes a ToolOfferUnloadSkill object and keeps the members the schema does not name.
+func (v *ToolOfferUnloadSkill) UnmarshalJSON(data []byte) error {
+	type plain ToolOfferUnloadSkill
+	var p plain
+	extra, err := decodeObject(data, &p, toolOfferUnloadSkillMembers, false)
+	if err != nil {
+		return errorf("ToolOfferUnloadSkill: %w", err)
+	}
+	*v = ToolOfferUnloadSkill(p)
+	v.AdditionalMembers = extra
+	return nil
+}
+
+// MarshalJSON encodes a ToolOfferUnloadSkill object, with the members the schema does not name after the ones it does.
+func (v ToolOfferUnloadSkill) MarshalJSON() ([]byte, error) {
+	type plain ToolOfferUnloadSkill
+	return encodeObject(plain(v), v.AdditionalMembers)
 }
 
 // From tool-result.json. The tool_result event: what a tool answered, as the adapter reports it to

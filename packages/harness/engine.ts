@@ -246,6 +246,14 @@ export interface AssistantSession {
   /** The desk's own tools, executed on the page. Empty where the desk offers none. */
   hostTools: HostTool[]
   /**
+   * The skills the host declares for the run (ADR-0009, `skills.ts`), beside its host tools: each a
+   * bundle of instructions from a source, with the digest the person approved (`pinnedDigest`). The
+   * package admits each, lists the admitted ones in the system text, and loads one on the model's
+   * `load_skill` call; a skill grants no tool. Absent or empty, the run has no skills. A delegated child
+   * is handed none.
+   */
+  skills?: import('./skills').SkillDeclaration[]
+  /**
    * A capability and a name. No address, and no credential. `capabilities`:
    * members of the endpoint's own capability record where the host has them on
    * the session (agent#4), over its `endpointCapabilities` answer and the
@@ -283,6 +291,13 @@ export type AssistantEvent =
    * written into the checkpoint's `approval`; the run then ends paused. Carried on the host's stream.
    */
   | { type: 'approval_requested'; callId: string; name: string; tool: string; source: import('./toolSources').SourceRecord; args: Record<string, unknown> }
+  /**
+   * ADR-0009: a skill loaded by the model's `load_skill` call, between that call and its result: the
+   * skill as a load names it (never its instructions) and its bytes. Carried on the host's stream.
+   */
+  | { type: 'skill_loaded'; skill: import('./skills').LoadedSkill; bytes: number }
+  /** ADR-0009: a skill dropped by the model's `unload_skill` call, by its id. */
+  | { type: 'skill_unloaded'; id: string }
   | { type: 'retry'; attempt: number }
   | { type: 'response_recovery' }
   | { type: 'delegation_requested'; request: import('./delegationContract').DelegationRequest }
@@ -314,7 +329,7 @@ export type AssistantEvent =
    * that fired — nothing was stopped — but it is the same kind of sentence: the
    * desk saying what it did rather than leaving it to be discovered.
    */
-  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string; reason?: 'approval refused' | 'approval pending' | 'approval stale' }
+  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string; reason?: 'approval refused' | 'approval pending' | 'approval stale' | 'skill withheld' | 'skill budget' }
   | { type: 'thinking_unavailable'; detail: string }
   /**
    * `cases` and `incomplete` where the host declared cases (agent#10): each

@@ -77,6 +77,9 @@ type Execution struct {
 	// Approval is the act call the run paused at for the person's decision, and what became of it
 	// (ADR-0008); nil where there is none.
 	Approval *contract.CheckpointApproval
+	// Skills are the skills loaded (ADR-0009), in load order, carried through a resume; nil where
+	// none is loaded.
+	Skills []contract.ProvenanceSkillLoad
 }
 
 // Value is the state as the checkpoint's JSON, in the order the TypeScript writes it.
@@ -144,9 +147,13 @@ func (e *Execution) Value() *Value {
 	if e.Sources != nil {
 		rows := Array()
 		for _, row := range e.Sources {
-			rows.Append(ObjectOf("source", String(row.Source), "kind", String(row.Kind), "calls", Number(float64(row.Calls)),
+			held := ObjectOf("source", String(row.Source), "kind", String(row.Kind), "calls", Number(float64(row.Calls)),
 				"refused", Number(float64(row.Refused)), "proposed", Number(float64(row.Proposed)),
-				"bytes", Number(float64(row.Bytes)), "milliseconds", Number(float64(row.Milliseconds))))
+				"bytes", Number(float64(row.Bytes)), "milliseconds", Number(float64(row.Milliseconds)))
+			if row.Skills != nil {
+				held.Set("skills", Number(float64(*row.Skills)))
+			}
+			rows.Append(held)
 		}
 		out.Set("sources", rows)
 	}
@@ -156,6 +163,13 @@ func (e *Execution) Value() *Value {
 				out.Set("approval", held)
 			}
 		}
+	}
+	if len(e.Skills) > 0 {
+		rows := Array()
+		for _, load := range e.Skills {
+			rows.Append(ObjectOf("id", String(load.ID), "digest", String(load.Digest), "bytes", Number(float64(load.Bytes)), "loadedAt", String(load.LoadedAt)))
+		}
+		out.Set("skills", rows)
 	}
 	return out
 }
@@ -188,7 +202,7 @@ func executionOf(saved *contract.Checkpoint) (*Execution, error) {
 		Phase: saved.Phase, Status: saved.Status, Unit: saved.Unit, Used: int(saved.Used),
 		Limit: int(saved.Limit), Grants: saved.Grants, Plan: value.Get("plan"),
 		Explanation: saved.Explanation, Completions: saved.Completions, Context: saved.Context,
-		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, Approval: saved.Approval}
+		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, Approval: saved.Approval, Skills: saved.Skills}
 	if saved.TestCalls != nil {
 		calls := int(*saved.TestCalls)
 		out.TestCalls = &calls
@@ -221,6 +235,11 @@ type ExecutionController struct {
 	// LoadedSchemas are the schemas load_tool loaded this run (ADR-0006), as one data block, or "";
 	// stated after the request state.
 	LoadedSchemas func() string
+	// LoadedSkills are the skills loaded (ADR-0009), as one block headed at the project
+	// instructions' rank, or ""; stated last, after the loaded schemas.
+	LoadedSkills func() string
+	// SkillLoads are the checkpoint's loaded set (ADR-0009), copied under the skill gate's lock.
+	SkillLoads func() []contract.ProvenanceSkillLoad
 	// SourceRows are the run report's rows by source (ADR-0006), copied under the lock a child's
 	// gate shares with this run's: a snapshot reads them through it, since a delegated child's
 	// calls count in them while this run's checkpoint is written.
@@ -477,6 +496,11 @@ func (c *ExecutionController) RequestState() string {
 	if c.LoadedSchemas != nil {
 		if section := c.LoadedSchemas(); section != "" {
 			loaded = "\n" + section
+		}
+	}
+	if c.LoadedSkills != nil {
+		if section := c.LoadedSkills(); section != "" {
+			loaded += "\n" + section
 		}
 	}
 	return c.Progress.Guidance() + "\n" + state.Text() + loaded
@@ -796,6 +820,9 @@ func (c *ExecutionController) Snapshot(status string) (contract.Checkpoint, erro
 	held.Status = status
 	if c.SourceRows != nil {
 		held.Sources = c.SourceRows()
+	}
+	if c.SkillLoads != nil {
+		held.Skills = c.SkillLoads()
 	}
 	held.Context = c.ledger.Snapshot()
 	value := held.Value()

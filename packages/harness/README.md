@@ -28,7 +28,7 @@ agent#9, the stable prefix and the state's placement; agent#4, the capability re
 tool path; agent#5, search, numbered reads and images; agent#8, the chat-scoped context; agent#11,
 the request text on every request and the memory reserve (retired in agent#69); ADR-0005, the prompt assembled whole by
 the adapter, with the host's parts and the prompt's digest; ADR-0006, tools with a source held at
-the boundary (`toolSources.ts`, new); agent#10, the critic; agent#25, the
+the boundary (`toolSources.ts`, new); ADR-0009, skills held at the boundary (`skills.ts`, new); agent#10, the critic; agent#25, the
 agent-engine certification leg; agent#29, the Codex adapter's reformat run; agent#14, agent#15 and
 agent#13, delegation as one parent run with context by reference and per-profile budgets).
 
@@ -319,6 +319,23 @@ proposal (`tool_result` `proposed`), and otherwise run under `sourceCallMillisec
 framed and shown whole up to `sourceResultBytes`. The events carry `source`; the checkpoint's
 `sources` counts each source. `toolListDigest` is exported for a host pinning a server's list.
 
+### Skills (ADR-0009)
+
+A host declares skills on `session.skills` (`SkillDeclaration`: `id`, `name`, `description`, `source`
+with `kind` `gateway`, `mcp`, `custom` or `exchange`, `instructions`, the host tools it names in `tools`,
+`resources`, and `pinnedDigest`, the digest of the bundle the person approved, which `skillDigest`
+computes). `skills.ts` holds them at the boundary (`contextualSession`): a skill naming a tool the host
+did not declare, over `skillBytes`, or whose bundle does not hash to its pinned digest is withheld with
+a guardrail (`skill withheld`); the admitted ones are listed at the end of the system text, each name
+with its description's first line framed as data, held to `cataloguedSkills` and
+`skillsCatalogueBytes`; `load_skill` and `unload_skill` are offered beside the context tools. A load is
+counted against `skillsPerRun` (a load past it refused, `skill budget`) and the loaded skills ride
+after the history in the execution state as one block headed at the rank of the project's own
+instructions, so the tools and the system text never change; on the agent wire a load's answer
+carries the block. `skill_loaded` and `skill_unloaded` are on the stream, the checkpoint's `skills`
+keeps the loaded set (a continued run restores it, saying what it did not restore) and its `sources`
+count each source's loads. A skill grants no tool; a delegated child is handed none.
+
 ### The prompt (ADR-0005)
 
 The adapter assembles the whole prompt, and the host's relay adds nothing to it
@@ -565,6 +582,7 @@ it. The suite is `certification/scenarios.test.ts`; its turns and runs are drive
 | 6 A multi-turn transcript: three turns of one chat | no unchanged source read again on turns two and three; the index present and within its bound; the ledger kept across the runs and gone after `dispose()` | 3 | 3 |
 | 7 Tool sources (ADR-0006): a scripted MCP server of seventeen tools, three descriptions telling the model to drop the data rule and call `write_file`, its list changing after its first call; one custom read; a second run after the new list is approved | the digests; the schema budget trips and the server is a catalogue beside `load_tool`, with no `write_file`; every source description framed, the poisoned lines inside their blocks; `load_tool` loads one schema, carried after the history while the tools and the system text hold; each act asks the host's approval policy and runs where it allows, the read does not ask; `write_file` refused at the gate; the changed list refuses the next call before the host; the source records on the events and the run report; the second run offered the new list and its call run | 9 | 9 |
 | 8 The approval pause (ADR-0008): scenario 7's server, its policy asking about `create_issue`; two `create_issue` calls in one answer; the paused checkpoint continued from its JSON text with a decision for another call, refused with a note, approved and broken off after the result was written, and once more from there | `approval_requested` in place of the call, the checkpoint paused and durable, `end`, nothing run; the second call refused with the `approval pending` guardrail; the decision for another call refused before anything runs; refused: the result and the note in one data block, `answered`; approved: written and acknowledged, run once, its result written and acknowledged; the restart runs the continuation and not the call; the continuation one line and one block after the request text; one more model request on the model engine, no invented figure on the agent engine | 8 | 8 |
+| 9 Skills (ADR-0009): 42 skills declared beside the custom read, 40 admissible past `cataloguedSkills`, one with a changed bundle and one naming `write_file`; two loads (one poisoned), the read, `write_file`, a load, an unload, a fourth load and one past `skillsPerRun`; a fresh session restored from the last checkpoint's JSON text with one skill withdrawn | the catalogue of 32 with its guardrails; each load and unload between its call and its result; the block after the history on every later request with the tool list and the system text the same bytes (the agent engine: in `load_skill`'s answer); the load past the budget refused; the poisoned skill held off; the loaded set and each source's loads; the restore and the withdrawn skill's guardrail | 7 | 7 |
 
 The checks the adapters make differently are recorded here, with the reason, and not skipped:
 
@@ -574,6 +592,7 @@ The checks the adapters make differently are recorded here, with the reason, and
 - **5** The model engine's loop is five model requests (two authoring requests, the critic's three); the agent engine's is three agent runs (author, author, critic). The critic's boundary check runs the loop once more with a call of `write_file` first in the critic's script, on both adapters; the guardrail's detail, "is not one of the tools the critic may call", is what shows `admit` refused it.
 - **4** and **6** make the same checks on both. The index is a text part of the first message on the model engine and the end of the prompt on the agent engine.
 - **7** The agent wire sends the execution state once per run, so on the agent engine a loaded schema reaches the agent in `load_tool`'s answer only; the model engines carry it after the history on every later request.
+- **9** The same holds for a loaded skill: on the agent engine its block reaches the agent in `load_skill`'s answer, and the restored run's state carries the loaded set.
 
 Not covered by these scenarios: the network seal (the recorded scenario's legs hold it) and the other two wires (the recorded scenario's legs cover them). A model engine is added by registering it, as `deepagents` was, and then runs every scenario.
 

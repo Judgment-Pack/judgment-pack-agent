@@ -1,0 +1,46 @@
+{
+  "description": "A load past skillsPerRun refused (ADR-0009): the response has made its four loads (an unload gives none back), so load_skill for another catalogued skill is refused between its call and its failed result (tool-failed, not-started) with a guardrail whose reason is skill budget; nothing is loaded and nothing counted. Written by hand; skills.test.ts and go/context hold SkillGate to it.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/skills.ts (SkillGate.loadTool)"
+    ]
+  },
+  "items": [
+    {
+      "type": "tool_call",
+      "callId": "call_6_1",
+      "name": "load_skill",
+      "args": {
+        "name": "issue_style"
+      }
+    },
+    {
+      "type": "guardrail",
+      "tool": "load_skill",
+      "action": "refused",
+      "detail": "This response has loaded skills 4 times, the most one response may (skillsPerRun); issue_style was not loaded. Use the skills already loaded.",
+      "reason": "skill budget"
+    },
+    {
+      "type": "tool_result",
+      "callId": "call_6_1",
+      "name": "load_skill",
+      "isError": true,
+      "text": "This response has loaded skills 4 times, the most one response may (skillsPerRun); issue_style was not loaded. Use the skills already loaded.",
+      "structured": {
+        "failure": {
+          "version": 1,
+          "code": "tool-failed",
+          "source": "tool",
+          "outcome": "not-started",
+          "detail": "This response has loaded skills 4 times, the most one response may (skillsPerRun); issue_style was not loaded. Use the skills already loaded."
+        }
+      }
+    }
+  ]
+}

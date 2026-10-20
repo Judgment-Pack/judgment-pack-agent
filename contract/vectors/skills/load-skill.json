@@ -1,0 +1,32 @@
+{
+  "description": "load_skill, the harness tool that loads one catalogued skill (ADR-0009): its declaration as the boundary offers it where any skill is catalogued. Its effect is plan: Plan mode offers it, and its answer is not framed as data. Written by hand; skills.test.ts holds SkillGate.loadTool to it, and go/context its Go form.",
+  "schema": "tool-offer.json#/$defs/loadSkill",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/skills.ts (LOAD_SKILL, LOAD_SKILL_SCHEMA, LOAD_SKILL_DESCRIPTION)"
+    ]
+  },
+  "items": [
+    {
+      "name": "load_skill",
+      "effect": "plan",
+      "description": "Load one catalogued skill for the rest of this response. Pass its name as the skills catalogue lists it. Its instructions then reach you at the rank of the project’s own instructions; each load counts against the loads one response may make, and a skill grants no tool.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The skill's name, as the skills catalogue lists it."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    }
+  ]
+}

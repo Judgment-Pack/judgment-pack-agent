@@ -61,6 +61,14 @@ name, so a host opens its gate with `runcontext.OfferedHostTools(...)`, beside t
 context tools. `runcontext.ToolListDigest` is the digest a host pins when the person approves a
 server's list.
 
+A host declares skills ([ADR-0009](../docs/adr/0009-skills.md)) on `adapter.Run.Skills`
+(`runcontext.Skill`: id, name, description, source, instructions, the host tools it names, resources
+and `PinnedDigest`, the digest the person approved, `runcontext.SkillDigest`). `ContextualSession`
+admits them (`go/context/skills.go`), lists the admitted ones at the end of the system text, offers
+`load_skill` and `unload_skill`, and carries a loaded skill's block after the history; the gate holds
+the loaders by name, so a host adds `runcontext.OfferedSkillTools(...)` to the names it opens the gate
+with. A delegated child's run is handed no skills.
+
 ## The agent capability
 
 A run is on one of two capabilities: the model capability (`adapter.Run.Model`, the relay) or the

@@ -273,6 +273,8 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 	child.Interactive = true
 	child.Review = &no
 	child.Cases = nil
+	// ADR-0009: a child is handed no skills; it inherits none of the parent's loaded set.
+	child.Skills = nil
 	child.Context = input
 	child.Children = nil
 	child.BeforeRuntimeCall = func(context.Context, string) error { return c.claimTool(task, &p.budget) }

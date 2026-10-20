@@ -35,9 +35,11 @@ var (
 // CriticMayCall is criticMayCall: whether the critic may call a runtime tool of this name.
 func CriticMayCall(name string) bool { return contains(CriticTools, name) }
 
-// CriticMayRead is criticMayRead: whether the critic may call a host tool of this name — only the
-// harness's own readers.
-func CriticMayRead(name string) bool { return contains(CriticReaders, name) }
+// CriticMayRead is criticMayRead: whether the critic may call a host tool of this name — the
+// harness's own readers, and the skill loaders (ADR-0009; a skill grants no tool).
+func CriticMayRead(name string) bool {
+	return contains(CriticReaders, name) || contains(gate.SkillTools, name)
+}
 
 // CriticRefusalDetail is criticRefusalDetail: why the critic's call of name did not leave the
 // page. The gate's sentence (gate.CriticRefusalDetail), which is the same sentence.

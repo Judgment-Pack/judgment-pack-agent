@@ -200,7 +200,8 @@ func (c *SessionContext) AskHost(ctx context.Context) error {
 }
 
 // System is system: the system text of every request of the run, guidance, the host's parts, then
-// tools described in text (SystemText).
+// tools described in text (SystemText), then the skills catalogue (ADR-0009), which a load never
+// changes.
 func (c *SessionContext) System(guidance, tools string) string {
-	return SystemText(guidance, c.HostParts, tools)
+	return SystemText(guidance, c.HostParts, tools) + c.SkillCatalogue
 }

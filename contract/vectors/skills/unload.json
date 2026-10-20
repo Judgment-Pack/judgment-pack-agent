@@ -1,0 +1,41 @@
+{
+  "description": "One unload (ADR-0009): the model's unload_skill call for a loaded skill, the skill_unloaded event between the call and its result (the skill's id), and the result. The skill's block leaves every later request; the skill stays catalogued, and loading it again counts as another load. Written by hand; skills.test.ts and go/context hold SkillGate to each.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/skills.ts (SkillGate.unloadTool)"
+    ]
+  },
+  "items": [
+    {
+      "type": "tool_call",
+      "callId": "call_3_1",
+      "name": "unload_skill",
+      "args": {
+        "name": "expense_policy"
+      }
+    },
+    {
+      "type": "skill_unloaded",
+      "id": "expense-policy"
+    },
+    {
+      "type": "tool_result",
+      "callId": "call_3_1",
+      "name": "unload_skill",
+      "isError": false,
+      "text": "{\"unloaded\":{\"id\":\"expense-policy\",\"name\":\"expense_policy\"},\"note\":\"Unloaded: its instructions leave the later requests of this response. Loading it again counts as another load.\"}",
+      "structured": {
+        "unloaded": {
+          "id": "expense-policy",
+          "name": "expense_policy"
+        },
+        "note": "Unloaded: its instructions leave the later requests of this response. Loading it again counts as another load."
+      }
+    }
+  ]
+}

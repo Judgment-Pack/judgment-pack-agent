@@ -49,6 +49,9 @@ type Run struct {
 	Tools    []contract.ToolOfferRuntimeTool
 	// HostTools are the host's tools; the boundary adds its own context tools beside them.
 	HostTools []runcontext.HostTool
+	// Skills are the skills the host declares for the run (ADR-0009), each with the digest the person
+	// approved; the boundary admits, catalogues and loads them. A delegated child's run is handed none.
+	Skills []runcontext.Skill
 	// Prompt is the runtime's prompt (prompts/get), TestPrompt its testing prompt for the critic, or
 	// empty.
 	Prompt     string

@@ -18,6 +18,7 @@ import {INDEX_SHARE,partBytes,type ChatScope,type ChatTurn,type RuntimeIdentity}
 import {readHostParts,systemText,type HostParts} from '../prompt'
 import {runModels,type AITarget,type AssistantEngine,type RunIdentity,type RunModels} from '../host'
 import {declareSources,offerSources,SourceGate,LOAD_TOOL,type Declared} from '../toolSources'
+import {catalogueSkills,declareSkills,SkillGate,LOAD_SKILL,UNLOAD_SKILL,type DeclaredSkills,type SkillNotice} from '../skills'
 import type {HostTool} from '../engine'
 export interface CurrentRequest {message:string;input:string}
 /** `currentState`: host-authored text that changes between requests or responses (the chat's
@@ -89,6 +90,24 @@ export class SessionContext {
  sources?:SourceGate
  /** ADR-0006: the tools with a source passed the schema budget and are offered as a catalogue, with load_tool. */
  catalogue=false
+ /** ADR-0009: the boundary's hold on the run's skills, where it declares any. */
+ skills?:SkillGate
+ /** ADR-0009: the skills catalogue the system text carries after the tools described in text, or ''. */
+ skillCatalogue=''
+ /**
+  * Hold the run's skills (ADR-0009, `skills.ts`): the catalogue in the system text, a guardrail for each
+  * skill withheld at declaration or by the catalogue's bounds, the loaded set a continued run restores
+  * from its checkpoint (a guardrail for each it does not), and the loaded skills after the history, in
+  * the request state. `agentWire`: the run is on an agent capability, whose state is sent once per run.
+  */
+ openSkills(declared:DeclaredSkills,agentWire:boolean){
+  const catalogue=catalogueSkills(declared.skills,this.policy,this.marker)
+  this.skillCatalogue=catalogue.section
+  this.skills=new SkillGate(catalogue.catalogued,this.policy,{state:()=>this.execution.state,marker:()=>this.marker,agentWire,notify:event=>{this.notices.push(event)}},declared.sourceIds)
+  const notices:SkillNotice[]=[...declared.withheld,...catalogue.withheld,...this.skills.restore()]
+  for(const held of notices)this.notices.push({type:'guardrail',tool:held.tool,action:'refused',detail:held.detail,reason:held.reason})
+  this.execution.loadedSkills=()=>this.skills?.section()??''
+ }
  /**
   * Hold the run's tools with a source (ADR-0006, `toolSources.ts`): the report's rows in the execution
   * state, a guardrail for each declaration the package withheld, and the loaded schemas after the
@@ -119,8 +138,11 @@ export class SessionContext {
   const query=this.objective?this.objective:session.context?.currentRequest?.message??session.prompt
   this.hostParts=await readHostParts(query,this.policy,session.context?.memory!==false)
  }
- /** The system text of every request of the run: `guidance`, the host's parts, then `tools` described in text (`systemText`, ADR-0005). */
- system(guidance:string,tools=''){return systemText(guidance,this.hostParts,tools)}
+ /**
+  * The system text of every request of the run: `guidance`, the host's parts, then `tools` described in
+  * text (`systemText`, ADR-0005), then the skills catalogue (ADR-0009), which a load never changes.
+  */
+ system(guidance:string,tools=''){return systemText(guidance,this.hostParts,tools)+this.skillCatalogue}
  /** Who the run is, as the host's `modelsFor` is asked: its connection, family and model; and the answer, once asked. */
  private readonly identity:Omit<RunIdentity,'engine'>
  private named?:{models?:RunModels;error?:unknown}
@@ -176,7 +198,7 @@ export class SessionContext {
   * A refusal the boundary makes itself: the guardrail event, put on the stream
   * before the call's result, and the failure the model reads.
   */
- refuse(name:string,detail:string,reason?:'approval refused'|'approval pending'|'approval stale'):GateViolation{
+ refuse(name:string,detail:string,reason?:'approval refused'|'approval pending'|'approval stale'|'skill withheld'|'skill budget'):GateViolation{
   this.notices.push({type:'guardrail',tool:name,action:'refused',detail,...(reason===undefined?{}:{reason})})
   return new GateViolation(name,detail)
  }
@@ -439,12 +461,17 @@ export function testCallCapFailure(limit:number):AIFailureError{
 export async function contextualSession<T extends EngineSession>(session:T):Promise<{session:T;context:SessionContext}>{
  // ADR-0006: the tools with a source, read and named for the wire before anything else sees them.
  const declared=await declareSources(session.hostTools,session.tools.map(t=>t.name))
+ // ADR-0009: a skill may name only the host's declared tools, whatever this phase offers of them.
+ const declaredNames=declared.hostTools.map(t=>t.name)
  session={...session,hostTools:declared.hostTools}
  session=planningSession(session)
  await session.context?.authorize?.(session.signal)
  const context=new SessionContext(session)
  // A chat's turn is open from here: a run that cannot start closes it again.
  try{
+ // ADR-0009: the skills, read and admitted before any request; their sources report beside the tools'.
+ const skills=await declareSkills(session.skills,declaredNames,context.policy,declared.sources)
+ declared.sources.push(...skills.sources)
  await context.execution.initialize()
  context.carryMarker()
  if(declared.sources.length){
@@ -453,18 +480,20 @@ export async function contextualSession<T extends EngineSession>(session:T):Prom
   declared.withheld.push(...offered.withheld)
   context.openSources(declared,offered.catalogue,session.context?.link?.sources?.(),session.context?.phase??'work')
  }
+ if(session.skills?.length)context.openSkills(skills,'agent'in session)
  await context.askHost(session)
  await context.initialize(session.context?.documents,true)
  await context.execution.retainProgress()
  if(session.context?.plan)await context.initialize([{id:'current-plan',kind:'artifact',label:'Current chat plan',value:session.context.plan}])
- if([...session.tools,...session.hostTools].some(t=>t.name==='read_context'||t.name==='list_context'||t.name===READ_TOOL||t.name===SEARCH_TOOL||t.name==='update_plan'||t.name==='request_budget_increase'||t.name===LOAD_TOOL))throw Error('Context tool names are reserved by Desk.')
+ if([...session.tools,...session.hostTools].some(t=>t.name==='read_context'||t.name==='list_context'||t.name===READ_TOOL||t.name===SEARCH_TOOL||t.name==='update_plan'||t.name==='request_budget_increase'||t.name===LOAD_TOOL||t.name===LOAD_SKILL||t.name===UNLOAD_SKILL))throw Error('Context tool names are reserved by Desk.')
  session.context?.link?.attach(context)
  }catch(error){context.close();throw error}
  // The session's own tools that read (agent#8): what a chat-scoped context keeps across its runs.
  const own=new Set(session.hostTools.filter(tool=>readingTool(tool)).map(tool=>tool.name))
  // ADR-0006: load_tool beside the ledger's tools where the tools with a source are a catalogue; each call
  // of a tool with a source is held by the source gate before the host's execute (SourceGate.call).
- const hostTools=[...session.hostTools,...context.ledger.tools(),...(context.catalogue?[context.sources!.loadTool()]:[]),...(session.allowConversation?[context.execution.tool(),context.execution.budgetTool()]:[])].map(tool=>({...tool,execute:async(args:Record<string,unknown>,signal:AbortSignal,callId?:string)=>{context.admit(tool.name,'host');await session.context?.authorize?.(signal);const run=(given:Record<string,unknown>,bounded:AbortSignal)=>context.execution.wrapRead(tool.name,a=>tool.execute(a,bounded,callId),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read',own.has(tool.name)?{runtime:false}:undefined)(given);return context.sources?context.sources.call(tool,args,signal,run,callId):run(args,signal)}}))
+ // ADR-0009: load_skill and unload_skill beside them where any skill is catalogued, in every phase but a child's (which is handed no skills).
+ const hostTools=[...session.hostTools,...context.ledger.tools(),...(context.catalogue?[context.sources!.loadTool()]:[]),...(context.skills?.offered?[context.skills.loadTool(),context.skills.unloadTool()]:[]),...(session.allowConversation?[context.execution.tool(),context.execution.budgetTool()]:[])].map(tool=>({...tool,execute:async(args:Record<string,unknown>,signal:AbortSignal,callId?:string)=>{context.admit(tool.name,'host');await session.context?.authorize?.(signal);const run=(given:Record<string,unknown>,bounded:AbortSignal)=>context.execution.wrapRead(tool.name,a=>tool.execute(a,bounded,callId),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read',own.has(tool.name)?{runtime:false}:undefined)(given);return context.sources?context.sources.call(tool,args,signal,run,callId):run(args,signal)}}))
  // ADR-0008: the act call the person approved runs through the host's own execute, as every call of it would.
  const approval=context.execution.state.approval
  if(context.execution.approvalStep==='execute'&&approval){

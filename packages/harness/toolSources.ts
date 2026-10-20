@@ -55,7 +55,8 @@ import type { AssistantEvent, HostTool, McpToolResult } from './engine'
 
 /** The kinds a host may declare; `runtime` is the Runtime's own row in the report. */
 export const DECLARED_SOURCE_KINDS = ['gateway', 'mcp', 'custom'] as const
-export type SourceKind = 'runtime' | (typeof DECLARED_SOURCE_KINDS)[number]
+/** `exchange` (ADR-0009) is a skill's kind only: a host tool declared with it is refused. */
+export type SourceKind = 'runtime' | (typeof DECLARED_SOURCE_KINDS)[number] | 'exchange'
 export const TRUST_CLASSES = ['first-party', 'connected', 'public', 'person'] as const
 export type TrustClass = (typeof TRUST_CLASSES)[number]
 export const EFFECT_CLASSES = ['read', 'propose', 'act'] as const
@@ -136,6 +137,8 @@ export const HELD_NAMES: ReadonlySet<string> = new Set([
   ...Object.keys(REFUSED_RUNTIME_TOOLS),
   'list_context', 'read_context', 'read_window', 'search', 'update_plan', 'request_budget_increase',
   LOAD_TOOL,
+  'load_skill',
+  'unload_skill',
   PROPOSE_PACK_TOOL
 ])
 

@@ -373,7 +373,7 @@
       "additionalProperties": false
     },
     "sourceFigures": {
-      "description": "What one source cost in one execution (ADR-0006): the run report's row for it, in the checkpoint's sources. calls: the calls the host ran; refused: the calls the boundary refused before the host (a changed tool list, no approval, a catalogued tool not loaded, past sourceCallsPerTurn); proposed: the calls held as proposals; bytes: the UTF-8 bytes of the answers' JSON text as the host gave them, before any bound; milliseconds: the time the host took, summed over the calls it ran. The Runtime's row is source runtime, kind runtime.",
+      "description": "What one source cost in one execution (ADR-0006): the run report's row for it, in the checkpoint's sources. calls: the calls the host ran; refused: the calls the boundary refused before the host (a changed tool list, no approval, a catalogued tool not loaded, past sourceCallsPerTurn); proposed: the calls held as proposals; bytes: the UTF-8 bytes of the answers' JSON text as the host gave them, before any bound; milliseconds: the time the host took, summed over the calls it ran. The Runtime's row is source runtime, kind runtime. skills (ADR-0009): the skills of this source the model loaded, each load counted, a reload again; present on a source that declares a skill. A source that declares only skills reports its loads and no calls; exchange is a skill's kind only.",
       "type": "object",
       "required": [
         "source",
@@ -394,7 +394,8 @@
             "runtime",
             "gateway",
             "mcp",
-            "custom"
+            "custom",
+            "exchange"
           ]
         },
         "calls": {
@@ -416,6 +417,37 @@
         "milliseconds": {
           "type": "integer",
           "minimum": 0
+        },
+        "skills": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "skillLoad": {
+      "description": "One loaded skill as the checkpoint keeps it (ADR-0009; checkpoint.json skills): its id, the digest it was loaded at, its bytes (skill.json#/$defs/bytes) and when it was loaded. A continued run restores it only where the host still declares the skill with that digest.",
+      "type": "object",
+      "required": [
+        "id",
+        "digest",
+        "bytes",
+        "loadedAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9-]{0,23}$"
+        },
+        "digest": {
+          "$ref": "skill.json#/$defs/digest"
+        },
+        "bytes": {
+          "$ref": "skill.json#/$defs/bytes"
+        },
+        "loadedAt": {
+          "type": "string",
+          "format": "date-time"
         }
       },
       "additionalProperties": false

@@ -40,10 +40,17 @@ export const PROMPT_DEFAULTS = Object.freeze({projectInstructionsBytes:4000})
  * table; a table that carries them wins.
  */
 export const SOURCE_DEFAULTS = Object.freeze({toolDescriptionBytes:1024,offeredSchemas:16,offeredSchemaBytes:24_000,cataloguedTools:64,catalogueBytes:24_000,sourceResultBytes:8000,sourceCallsPerTurn:8,sourceCallMilliseconds:30_000})
-export type ContextPolicy = typeof defaults & {turnMilliseconds:number;toolCallMilliseconds:number;imagesPerRequest:number;imageBytesPerRequest:number;turnIndexEntries:number;turnIndexBytes:number;projectInstructionsBytes:number} & TestBounds & {-readonly [K in keyof typeof SOURCE_DEFAULTS]:number}
+/**
+ * The skills budget (ADR-0009, `skills.ts`): the most bytes one skill's instructions and resources may
+ * take, how many loads one response may make, and how many skills, and how many bytes of their names and
+ * framed lines, the catalogue in the system text lists before the rest are withheld. Not in the Desk's
+ * table; a table that carries them wins.
+ */
+export const SKILL_DEFAULTS = Object.freeze({skillBytes:8000,skillsPerRun:4,skillsCatalogueBytes:8000,cataloguedSkills:32})
+export type ContextPolicy = typeof defaults & {turnMilliseconds:number;toolCallMilliseconds:number;imagesPerRequest:number;imageBytesPerRequest:number;turnIndexEntries:number;turnIndexBytes:number;projectInstructionsBytes:number} & TestBounds & {-readonly [K in keyof typeof SOURCE_DEFAULTS]:number} & {-readonly [K in keyof typeof SKILL_DEFAULTS]:number}
 export interface ModelContextBudget {contextWindowTokens:number;outputTokens:number}
 export interface ContextConfiguration {version:1;projectBrief?:string;models?:Record<string,ModelContextBudget>}
-export const CONTEXT_DEFAULTS:Readonly<ContextPolicy> = Object.freeze({...TIME_DEFAULTS,...IMAGE_DEFAULTS,...TEST_DEFAULTS,...INDEX_DEFAULTS,...PROMPT_DEFAULTS,...SOURCE_DEFAULTS,...defaults})
+export const CONTEXT_DEFAULTS:Readonly<ContextPolicy> = Object.freeze({...TIME_DEFAULTS,...IMAGE_DEFAULTS,...TEST_DEFAULTS,...INDEX_DEFAULTS,...PROMPT_DEFAULTS,...SOURCE_DEFAULTS,...SKILL_DEFAULTS,...defaults})
 export function contextConfiguration(value:unknown):ContextConfiguration {
  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid assistant context configuration')
  const c=value as Record<string,unknown>

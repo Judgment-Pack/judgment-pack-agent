@@ -931,7 +931,9 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
             toolsClosed = progressStep === 'finish' || at >= MAX_CRITIC_TURNS - 1
             const step = progressStep === 'recover' ? RECOVER_REPEATED_WORK_INSTRUCTIONS : progressStep === 'finish' ? REPEATED_WORK_INSTRUCTIONS : toolsClosed ? finalInstructions : ''
             // The critic's step note carries the header like every state, and is placed the same way.
-            const stepNote = step ? stateText(step) : ''
+            // ADR-0009: a skill the run loaded rides in it too, after the history, as in the loop's state.
+            const skills = context.skills?.section() ?? ''
+            const stepNote = step || skills ? stateText(step, skills) : ''
             const held = await budgeted(request.messages, criticSystem + (stepNote ? '\n' + stepNote : ''))
             criticHeld = held
             const placed = stepNote ? placeState(placement, held, criticSystem, stepNote) : { system: systemMessage(criticSystem), messages: held }
