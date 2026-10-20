@@ -257,9 +257,10 @@ What the contract states, and where:
   character was replaced or the name cut; `$defs/nameMapping`, the vector
   `tool-offer/source-names.json`), the description cut at `toolDescriptionBytes` and framed as
   retrieved data with the run's marker, the schema with the text its source wrote in it treated the
-  same way (each `description` cut and framed; `title`, `$comment`, `default` and `examples`
-  dropped; an `enum` or `const` with a string over 64 bytes, or a line break, dropped whole; the
-  vector `tool-offer/source-schema.json`), and narrowed on the Gemini family's wire,
+  same way (an allowlist: each `description` cut and framed, only the structural keywords offered,
+  every other keyword not; a name or `required` entry over 64 bytes or with white space, and an
+  `enum` or `const` with a string over 64 bytes or a line break, or an `enum` that is no list,
+  dropped, each with a `guardrail` naming where; the vector `tool-offer/source-schema.json`), and narrowed on the Gemini family's wire,
   the record with `tool`, the effect class and approval with their defaults (`act`, approval
   `required`, unless the host declares a read or a proposal), and `effect` set from the class, so
   Plan mode and a child, which admit reads only, never offer an act.

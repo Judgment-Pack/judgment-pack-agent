@@ -3371,6 +3371,18 @@
    "status": "caught",
    "origin": "pre-release batch for v0.4.0 (#73, #76)",
    "note": "the placement check on the Anthropic legs under system-tail: two breakpoints, none on the request text"
+  },
+  {
+   "name": "a source's input schema is offered by a denylist, every unnamed keyword verbatim",
+   "file": "toolSources.ts",
+   "find": "      // Every other keyword is not offered.\n",
+   "replace": "      else kept.push([key, member])\n",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "pre-release batch for v0.4.0 (#73, #76)",
+   "note": "the source-schema vector and the allowlist test: a keyword the package does not name (x-instructions, pattern, contentMediaType) must not reach the offer"
   }
  ]
 }

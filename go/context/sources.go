@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"sort"
 	"strings"
@@ -392,20 +393,42 @@ func FramedDescription(wire, source, text, marker string) string {
 }
 
 // EnumMemberBytes is the most UTF-8 bytes of a string an enum or a const of a source's schema may
-// hold and still be offered (ENUM_MEMBER_BYTES).
-const EnumMemberBytes = 64
+// hold and still be offered (ENUM_MEMBER_BYTES); NameBytes the most of a property name, a required
+// entry or a definition's name that is offered (NAME_BYTES).
+const (
+	EnumMemberBytes = 64
+	NameBytes       = 64
+)
 
-// schemaDepth is how deep a source's schema is read for descriptive text; a branch past it is
-// offered empty (SCHEMA_DEPTH).
+// schemaDepth is how deep a source's schema is read; a branch past it is offered empty
+// (SCHEMA_DEPTH).
 const schemaDepth = 16
 
-// descriptive are the members of a schema that only describe, or only illustrate: dropped on the
-// offer (DESCRIPTIVE); schemaMaps are the members that map a name to a schema: the names stay, each
-// schema is read (SCHEMA_MAPS).
+// The keywords describedSchema offers and how (NUMBER_KEYWORDS, SCHEMA_MAPS, SCHEMA_LISTS, TYPES,
+// FORMATS, REFERENCE): every other keyword is not offered.
 var (
-	descriptive = map[string]bool{"title": true, "$comment": true, "default": true, "examples": true}
-	schemaMaps  = map[string]bool{"properties": true, "patternProperties": true, "$defs": true, "definitions": true, "dependentSchemas": true}
+	numberKeywords = map[string]bool{"minimum": true, "maximum": true, "exclusiveMinimum": true, "exclusiveMaximum": true, "multipleOf": true,
+		"minLength": true, "maxLength": true, "minItems": true, "maxItems": true, "minProperties": true, "maxProperties": true}
+	schemaMaps  = map[string]bool{"properties": true, "$defs": true, "definitions": true}
+	schemaLists = map[string]bool{"oneOf": true, "anyOf": true, "allOf": true}
+	jsonTypes   = map[string]bool{"string": true, "number": true, "integer": true, "boolean": true, "object": true, "array": true, "null": true}
+	jsonFormats = map[string]bool{"date": true, "date-time": true, "time": true, "email": true, "hostname": true, "ipv4": true, "ipv6": true,
+		"uri": true, "uuid": true, "int32": true, "int64": true, "float": true, "double": true}
+	schemaReference = regexp.MustCompile(`^#(/[A-Za-z0-9_$.~%-]{1,64}){0,8}$`)
 )
+
+// blankPoint reports a code point that is white space or a control character, in the set the
+// TypeScript holds (blank).
+func blankPoint(point rune) bool {
+	return point <= 0x20 || (point >= 0x7f && point <= 0xa0) || point == 0x1680 || (point >= 0x2000 && point <= 0x200a) ||
+		point == 0x2028 || point == 0x2029 || point == 0x202f || point == 0x205f || point == 0x3000 || point == 0xfeff
+}
+
+// plainName reports a name that may be offered: not empty, at most NameBytes bytes, and no white
+// space or line break (plainName).
+func plainName(name string) bool {
+	return name != "" && UTF8Bytes(name) <= NameBytes && !strings.ContainsFunc(name, blankPoint)
+}
 
 // plainValue reports whether value may stay in an offered enum or const: a short, one-line string,
 // or a short value (plainValue).
@@ -416,71 +439,169 @@ func plainValue(value *Value) bool {
 	return UTF8Bytes(value.Text()) <= EnumMemberBytes
 }
 
+// SchemaNote is something the offer left out of a source's schema that the model would need to know
+// of: where (a path of the schema's keywords and names), and what ("enum", "const", "name" or
+// "required").
+type SchemaNote struct{ Path, What string }
+
 // DescribedSchema is a source's input schema as the model may be shown it (describedSchema): the
-// text the source wrote inside it is as untrusted as its description. Each description is cut to
-// bytes and, where frame is given, framed as retrieved text; title, $comment, default and examples
-// are dropped; an enum or const with a string over EnumMemberBytes bytes, or one with a line break,
-// is dropped (the host validates what it executes). Property names, types, required and every
-// other keyword stay. A branch deeper than sixteen levels is offered empty.
-func DescribedSchema(node *Value, bytes int, frame func(string) string) *Value {
-	return described(node, bytes, frame, 0)
+// text the source wrote inside it is as untrusted as its description, so only what the package
+// knows to be structure is offered (an allowlist, never a list of what is refused). Offered: type
+// (the seven JSON types), format (a short fixed set), $ref (a short pointer within the schema), the
+// numeric bounds, uniqueItems, additionalProperties, items, oneOf, anyOf, allOf, properties, $defs
+// and definitions (a name over NameBytes bytes, or with white space, is dropped with its schema),
+// required (its entries the same), enum and const (dropped where a string is over EnumMemberBytes
+// bytes or has a line break, or where enum is no list) and description, cut to bytes and, where
+// frame is given, framed as retrieved text. Every other keyword, its value whatever it is, is not
+// offered. A branch deeper than sixteen levels is offered empty. What is dropped that the model would
+// need is said in notes, when given.
+func DescribedSchema(node *Value, bytes int, frame func(string) string, notes *[]SchemaNote) *Value {
+	note := func(path, what string) {
+		if notes != nil {
+			*notes = append(*notes, SchemaNote{path, what})
+		}
+	}
+	var walk func(value *Value, depth int, path string) *Value
+	walk = func(value *Value, depth int, path string) *Value {
+		if value != nil && value.Kind() == KindBool {
+			return value
+		}
+		if !value.IsObject() || depth >= schemaDepth {
+			return Object()
+		}
+		out := Object()
+		for _, key := range value.Keys() {
+			member := value.Get(key)
+			at := path + "/" + key
+			switch {
+			case key == "description":
+				if member.IsString() {
+					cut := BoundedDescription(member.Str(), bytes)
+					if frame != nil {
+						cut = frame(cut)
+					}
+					out.Set(key, String(cut))
+				}
+			case key == "type":
+				types := []*Value{member}
+				if member.IsArray() {
+					types = member.Items()
+				}
+				valid := len(types) > 0
+				for _, kind := range types {
+					valid = valid && kind.IsString() && jsonTypes[kind.Str()]
+				}
+				if valid {
+					out.Set(key, member)
+				}
+			case key == "format":
+				if member.IsString() && jsonFormats[member.Str()] {
+					out.Set(key, member)
+				}
+			case key == "$ref":
+				if member.IsString() && schemaReference.MatchString(member.Str()) {
+					out.Set(key, member)
+				}
+			case key == "enum":
+				plain := member.IsArray()
+				for _, item := range member.Items() {
+					plain = plain && plainValue(item)
+				}
+				if plain {
+					out.Set(key, member)
+				} else {
+					note(path, "enum")
+				}
+			case key == "const":
+				if plainValue(member) {
+					out.Set(key, member)
+				} else {
+					note(path, "const")
+				}
+			case numberKeywords[key]:
+				if member != nil && member.Kind() == KindNumber && !math.IsInf(member.Num(), 0) && !math.IsNaN(member.Num()) {
+					out.Set(key, member)
+				}
+			case key == "uniqueItems":
+				if member != nil && member.Kind() == KindBool {
+					out.Set(key, member)
+				}
+			case key == "additionalProperties":
+				if member != nil && (member.Kind() == KindBool || member.IsObject()) {
+					out.Set(key, walk(member, depth+1, at))
+				}
+			case key == "items":
+				if member.IsArray() {
+					list := Array()
+					for index, item := range member.Items() {
+						list.Append(walk(item, depth+1, at+"/"+itoa(index)))
+					}
+					out.Set(key, list)
+				} else if member != nil && (member.Kind() == KindBool || member.IsObject()) {
+					out.Set(key, walk(member, depth+1, at))
+				}
+			case schemaLists[key]:
+				if member.IsArray() {
+					list := Array()
+					for index, item := range member.Items() {
+						list.Append(walk(item, depth+1, at+"/"+itoa(index)))
+					}
+					out.Set(key, list)
+				}
+			case schemaMaps[key]:
+				if member.IsObject() {
+					named := Object()
+					for _, name := range member.Keys() {
+						if plainName(name) {
+							named.Set(name, walk(member.Get(name), depth+1, at+"/"+name))
+						} else {
+							note(at, "name")
+						}
+					}
+					out.Set(key, named)
+				}
+			case key == "required":
+				if member.IsArray() {
+					names := Array()
+					for _, name := range member.Items() {
+						if name.IsString() && plainName(name.Str()) {
+							names.Append(name)
+						}
+					}
+					if names.Len() < member.Len() {
+						note(path, "required")
+					}
+					out.Set(key, names)
+				}
+			}
+			// Every other keyword is not offered.
+		}
+		return out
+	}
+	return walk(node, 0, "")
 }
 
-func described(node *Value, bytes int, frame func(string) string, depth int) *Value {
-	if node.IsArray() {
-		out := Array()
-		if depth >= schemaDepth {
-			return out
-		}
-		for _, item := range node.Items() {
-			out.Append(described(item, bytes, frame, depth+1))
-		}
-		return out
+// schemaNoteDetail is the words a note of DescribedSchema earns as a guardrail (schemaNoteDetail).
+func schemaNoteDetail(wire string, note SchemaNote) string {
+	where := note.Path
+	if where == "" {
+		where = "the schema"
 	}
-	if !node.IsObject() {
-		return node
+	var what string
+	switch note.What {
+	case "name":
+		what = "a property or definition name there is over " + itoa(NameBytes) + " bytes or holds white space, and it is not offered with its schema"
+	case "required":
+		what = "a required entry there is over " + itoa(NameBytes) + " bytes or holds white space, and it is not offered"
+	default:
+		what = "its " + note.What + " holds a string over " + itoa(EnumMemberBytes) + " bytes or a line break, or is no list, and it is not offered"
 	}
-	out := Object()
-	if depth >= schemaDepth {
-		return out
-	}
-	for _, key := range node.Keys() {
-		value := node.Get(key)
-		switch {
-		case descriptive[key]:
-		case key == "description" && value.IsString():
-			cut := BoundedDescription(value.Str(), bytes)
-			if frame != nil {
-				cut = frame(cut)
-			}
-			out.Set(key, String(cut))
-		case key == "enum" && value.IsArray():
-			plain := true
-			for _, member := range value.Items() {
-				plain = plain && plainValue(member)
-			}
-			if plain {
-				out.Set(key, value)
-			}
-		case key == "const":
-			if plainValue(value) {
-				out.Set(key, value)
-			}
-		case schemaMaps[key] && value.IsObject():
-			named := Object()
-			for _, name := range value.Keys() {
-				named.Set(name, described(value.Get(name), bytes, frame, depth+1))
-			}
-			out.Set(key, named)
-		default:
-			out.Set(key, described(value, bytes, frame, depth+1))
-		}
-	}
-	return out
+	return "in the input schema of " + wire + ", at " + where + ": " + what + "; the host still validates the arguments it executes"
 }
 
 // OfferSources is offerSources: each description, and each descriptive string of the input schema,
-// bounded and framed with the run's marker. Where the tools with a source pass OfferedSchemas or
+// bounded and framed with the run's marker, only the schema's structure offered (DescribedSchema),
+// and a note, which the withheld list also holds, for each thing the model would need that was left out. Where the tools with a source pass OfferedSchemas or
 // OfferedSchemaBytes, sources are made catalogues, the largest first (by its tools offered, then by
 // their bytes, then by id), until the rest fit; a catalogued source's tools are offered as
 // catalogue entries, at most CataloguedTools of them and CatalogueBytes bytes in all. The tools
@@ -489,6 +610,7 @@ func described(node *Value, bytes int, frame func(string) string, depth int) *Va
 func OfferSources(tools []HostTool, entries map[string]*SourceEntry, policy Policy, marker string) ([]HostTool, bool, []Withheld) {
 	type size struct{ count, bytes int }
 	framed := map[string]string{}
+	var schemaNotes []Withheld
 	schemas := map[string]json.RawMessage{}
 	sizes := map[string]*size{}
 	var ids []string
@@ -512,7 +634,11 @@ func OfferSources(tools []HostTool, entries map[string]*SourceEntry, policy Poli
 			schema = Null()
 		}
 		label := "a description in the input schema of tool " + QuoteJSON(entry.Wire) + " from source " + QuoteJSON(entry.Record.ID)
-		schema = DescribedSchema(schema, policy.ToolDescriptionBytes, func(cut string) string { return FrameBlock(label, cut, marker) })
+		var notes []SchemaNote
+		schema = DescribedSchema(schema, policy.ToolDescriptionBytes, func(cut string) string { return FrameBlock(label, cut, marker) }, &notes)
+		for _, held := range notes {
+			schemaNotes = append(schemaNotes, Withheld{Tool: entry.Wire, Detail: schemaNoteDetail(entry.Wire, held)})
+		}
 		schemas[tool.Name] = json.RawMessage(schema.JSON())
 		held.bytes += UTF8Bytes(ObjectOf("name", String(tool.Name), "description", String(text), "inputSchema", schema).Text())
 	}
@@ -582,7 +708,7 @@ func OfferSources(tools []HostTool, entries map[string]*SourceEntry, policy Poli
 		withheld = append(withheld, Withheld{Tool: id, Detail: "the catalogue holds at most " + itoa(policy.CataloguedTools) + " tools and " + itoa(policy.CatalogueBytes) +
 			" bytes (cataloguedTools, catalogueBytes), so " + itoa(cut[id]) + " of " + id + "'s tools " + verb + " not offered; " + itoa(kept) + " are offered across the catalogue"})
 	}
-	return out, kept > 0, withheld
+	return out, kept > 0, append(schemaNotes, withheld...)
 }
 
 // OfferedHostTools are the declarations a Go host opens the gate with for tools with a source: the
@@ -995,7 +1121,7 @@ func (g *SourceGate) LoadToolHost() HostTool {
 			if err != nil {
 				return ToolResult{}, err
 			}
-			schema, err := g.shownSchema(json.RawMessage(DescribedSchema(declared, g.policy.ToolDescriptionBytes, nil).JSON()))
+			schema, err := g.shownSchema(json.RawMessage(DescribedSchema(declared, g.policy.ToolDescriptionBytes, nil, nil).JSON()))
 			if err != nil {
 				return ToolResult{}, err
 			}

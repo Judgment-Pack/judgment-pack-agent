@@ -136,11 +136,17 @@ these schemas as to every offered schema.
 An external tool's description is untrusted text. It is cut at `toolDescriptionBytes` (1,024) and
 framed as retrieved data with the run's marker, the block that frames a reading tool's answer, so a
 line in it that claims to be an instruction or the block's end is data. So is the text the source
-wrote inside the tool's input schema (`tool-offer/source-schema.json`): each `description`, at any
-depth, is cut the same way and framed; `title`, `$comment`, `default` and `examples` are dropped; an
-`enum` or `const` that holds a string over 64 bytes, or one with a line break, is dropped whole, where
-the host still validates what it executes. Property names, types, `required` and every other keyword
-stay, and a branch deeper than sixteen levels is offered empty. A schema `load_tool` loads is
+wrote inside the tool's input schema (`tool-offer/source-schema.json`) is held to an allowlist, not a
+list of what is refused: each `description`, at any depth, is cut the same way and framed; only the
+structural keywords are offered (`type` of the seven JSON types, `format` from a short fixed set,
+`$ref` as a short pointer within the schema, the numeric bounds, `uniqueItems`, `additionalProperties`,
+`items`, `oneOf`, `anyOf`, `allOf`, `properties`, `$defs`, `definitions`, `required`, `enum` and
+`const`); every other keyword, whatever its value (`title`, `$comment`, `default`, `examples`,
+`pattern`, an `x-` extension), is not offered. A property or definition name, or a `required` entry,
+over 64 bytes or holding white space is dropped (a name with its schema); an `enum` or `const` that
+holds a string over 64 bytes or a line break, or an `enum` that is no list, is dropped whole. Each
+such drop earns a `guardrail` naming where, at the start of the run, since the host still validates
+what it executes. A branch deeper than sixteen levels is offered empty. A schema `load_tool` loads is
 treated the same, its descriptions cut and unframed, for it rides inside a block framed as a whole.
 Its results are framed the same way whatever its effect class. An MCP source's declared tools must hash to the pinned digest,
 or none of its tools is offered (one guardrail names the source). Before each call of an MCP

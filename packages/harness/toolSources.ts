@@ -16,9 +16,10 @@
  *   still collides refused;
  * - **the description** (`offerSources`): bounded by `toolDescriptionBytes` and framed as retrieved
  *   text with the run's marker, never instruction; so is every descriptive string inside the input
- *   schema (`describedSchema`): a property's `description` is bounded and framed, a `title`, a
- *   `$comment`, a `default` and `examples` are dropped, and an `enum` or `const` holding a long
- *   string is dropped, where the host still validates what it executes;
+ *   schema (`describedSchema`, an allowlist): a `description` is bounded and framed, only the
+ *   structural keywords are offered (every other keyword is not), a name over 64 bytes or with white
+ *   space is dropped, and an `enum` or `const` holding a long string is dropped, each with a
+ *   guardrail naming where, since the host still validates what it executes;
  * - **the schema budget** (`offerSources`): past `offeredSchemas` or `offeredSchemaBytes`, the
  *   largest sources become catalogues until the rest fit (each tool its name, one framed line, an
  *   open schema) and `load_tool` loads one schema at a time, which then rides in the execution state after the
@@ -314,12 +315,32 @@ export const CATALOGUED = `Catalogued tool: call ${LOAD_TOOL} with this name for
 
 /** The most UTF-8 bytes of a string an `enum` or a `const` of a source's schema may hold and still be offered. */
 export const ENUM_MEMBER_BYTES = 64
-/** How deep a source's schema is read for descriptive text; a branch past it is offered empty. */
+/** The most UTF-8 bytes of a property name, a `required` entry or a definition's name that is offered. */
+export const NAME_BYTES = 64
+/** How deep a source's schema is read; a branch past it is offered empty. */
 const SCHEMA_DEPTH = 16
-/** The members of a schema that only describe, or only illustrate: dropped on the offer. */
-const DESCRIPTIVE = new Set(['title', '$comment', 'default', 'examples'])
-/** The members that map a name to a schema: the names stay, each schema is read. */
-const SCHEMA_MAPS = new Set(['properties', 'patternProperties', '$defs', 'definitions', 'dependentSchemas'])
+/** The keywords whose value is a number: kept where it is one. */
+const NUMBER_KEYWORDS = new Set(['minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf', 'minLength', 'maxLength', 'minItems', 'maxItems', 'minProperties', 'maxProperties'])
+/** The keywords that map a name to a schema: the names that are short and plain stay, each schema is read. */
+const SCHEMA_MAPS = new Set(['properties', '$defs', 'definitions'])
+/** The keywords whose value is a list of schemas. */
+const SCHEMA_LISTS = new Set(['oneOf', 'anyOf', 'allOf'])
+/** The JSON Schema types, and the formats a source's schema may name: any other string is not offered. */
+const TYPES = new Set(['string', 'number', 'integer', 'boolean', 'object', 'array', 'null'])
+const FORMATS = new Set(['date', 'date-time', 'time', 'email', 'hostname', 'ipv4', 'ipv6', 'uri', 'uuid', 'int32', 'int64', 'float', 'double'])
+/** A reference within the schema: `#` and at most eight short pointer steps. */
+const REFERENCE = /^#(\/[A-Za-z0-9_$.~%-]{1,64}){0,8}$/
+
+/** Whether a code point is white space or a control character, in a set both languages hold alike. */
+function blank(point: number): boolean {
+  return point <= 0x20 || (point >= 0x7f && point <= 0xa0) || point === 0x1680 || (point >= 0x2000 && point <= 0x200a) ||
+    point === 0x2028 || point === 0x2029 || point === 0x202f || point === 0x205f || point === 0x3000 || point === 0xfeff
+}
+
+/** Whether a name may be offered: not empty, at most `NAME_BYTES` bytes, and no white space or line break. */
+function plainName(name: string): boolean {
+  return name !== '' && utf8Bytes(name) <= NAME_BYTES && ![...name].some((character) => blank(character.codePointAt(0)!))
+}
 
 /** Whether `value` may stay in an offered `enum` or `const`: a short, one-line string, or a short value. */
 function plainValue(value: unknown): boolean {
@@ -327,35 +348,93 @@ function plainValue(value: unknown): boolean {
   return utf8Bytes(JSON.stringify(value) ?? '') <= ENUM_MEMBER_BYTES
 }
 
+/** Something the offer left out of a source's schema that the model would need to know of: where, and what. */
+export interface SchemaNote {
+  path: string
+  what: string
+}
+
 /**
  * A source's input schema as the model may be shown it (ADR-0006): the text the source wrote inside
- * it is as untrusted as its description. Each `description` is cut to `bytes` and, where `frame` is
- * given, framed as retrieved text; `title`, `$comment`, `default` and `examples` are dropped; an
- * `enum` or `const` with a string over `ENUM_MEMBER_BYTES` bytes, or one with a line break, is
- * dropped (the host validates what it executes). Property names, types, `required` and every other
- * keyword stay. A branch deeper than `SCHEMA_DEPTH` is offered empty.
+ * it is as untrusted as its description, so only what the package knows to be structure is offered
+ * (an allowlist, never a list of what is refused). Offered: `type` (the seven JSON types), `format`
+ * (a short fixed set), `$ref` (a short pointer within the schema), the numeric bounds, `uniqueItems`,
+ * `additionalProperties`, `items`, `oneOf`, `anyOf`, `allOf`, `properties`, `$defs` and `definitions`
+ * (a name over `NAME_BYTES` bytes, or with white space or a line break, is dropped with its schema),
+ * `required` (its entries the same), `enum` and `const` (dropped where a string is over
+ * `ENUM_MEMBER_BYTES` bytes or has a line break, or where `enum` is no list) and `description`, which
+ * is cut to `bytes` and, where `frame` is given, framed as retrieved text. Every other keyword, its
+ * value whatever it is, is not offered: `title`, `$comment`, `default`, `examples`, `pattern`, the
+ * `x-` extensions and the rest. A branch deeper than `SCHEMA_DEPTH` is offered empty. What is dropped
+ * that the model would need (an `enum`, a `const`, a name) is said in `notes`.
  */
-export function describedSchema(node: unknown, bytes: number, frame?: (text: string) => string, depth = 0): unknown {
-  if (Array.isArray(node)) return depth >= SCHEMA_DEPTH ? [] : node.map((item) => describedSchema(item, bytes, frame, depth + 1))
-  if (!object(node)) return node
-  if (depth >= SCHEMA_DEPTH) return {}
-  const kept: [string, unknown][] = []
-  for (const [key, value] of Object.entries(node)) {
-    if (DESCRIPTIVE.has(key)) continue
-    if (key === 'description' && typeof value === 'string') {
-      const cut = boundedDescription(value, bytes)
-      kept.push([key, frame === undefined ? cut : frame(cut)])
-    } else if (key === 'enum' && Array.isArray(value)) {
-      if (value.every(plainValue)) kept.push([key, value])
-    } else if (key === 'const') {
-      if (plainValue(value)) kept.push([key, value])
-    } else if (SCHEMA_MAPS.has(key) && object(value)) {
-      kept.push([key, Object.fromEntries(Object.entries(value).map(([name, member]) => [name, describedSchema(member, bytes, frame, depth + 1)]))])
-    } else {
-      kept.push([key, describedSchema(value, bytes, frame, depth + 1)])
+export function describedSchema(node: unknown, bytes: number, frame?: (text: string) => string, notes?: SchemaNote[]): unknown {
+  const note = (path: string, what: string) => notes?.push({ path, what })
+  const walk = (value: unknown, depth: number, path: string): unknown => {
+    if (typeof value === 'boolean') return value
+    if (!object(value) || depth >= SCHEMA_DEPTH) return {}
+    const kept: [string, unknown][] = []
+    for (const [key, member] of Object.entries(value)) {
+      const at = `${path}/${key}`
+      if (key === 'description') {
+        if (typeof member === 'string') {
+          const cut = boundedDescription(member, bytes)
+          kept.push([key, frame === undefined ? cut : frame(cut)])
+        }
+      } else if (key === 'type') {
+        const types = Array.isArray(member) ? member : [member]
+        if (types.length > 0 && types.every((type) => typeof type === 'string' && TYPES.has(type))) kept.push([key, member])
+      } else if (key === 'format') {
+        if (typeof member === 'string' && FORMATS.has(member)) kept.push([key, member])
+      } else if (key === '$ref') {
+        if (typeof member === 'string' && REFERENCE.test(member)) kept.push([key, member])
+      } else if (key === 'enum') {
+        if (Array.isArray(member) && member.every(plainValue)) kept.push([key, member])
+        else note(path, 'enum')
+      } else if (key === 'const') {
+        if (plainValue(member)) kept.push([key, member])
+        else note(path, 'const')
+      } else if (NUMBER_KEYWORDS.has(key)) {
+        if (typeof member === 'number' && Number.isFinite(member)) kept.push([key, member])
+      } else if (key === 'uniqueItems') {
+        if (typeof member === 'boolean') kept.push([key, member])
+      } else if (key === 'additionalProperties') {
+        if (typeof member === 'boolean' || object(member)) kept.push([key, walk(member, depth + 1, at)])
+      } else if (key === 'items') {
+        if (Array.isArray(member)) kept.push([key, member.map((item, index) => walk(item, depth + 1, `${at}/${index}`))])
+        else if (typeof member === 'boolean' || object(member)) kept.push([key, walk(member, depth + 1, at)])
+      } else if (SCHEMA_LISTS.has(key)) {
+        if (Array.isArray(member)) kept.push([key, member.map((item, index) => walk(item, depth + 1, `${at}/${index}`))])
+      } else if (SCHEMA_MAPS.has(key)) {
+        if (object(member)) {
+          const named: [string, unknown][] = []
+          for (const [name, schema] of Object.entries(member)) {
+            if (plainName(name)) named.push([name, walk(schema, depth + 1, `${at}/${name}`)])
+            else note(at, 'name')
+          }
+          kept.push([key, Object.fromEntries(named)])
+        }
+      } else if (key === 'required') {
+        if (Array.isArray(member)) {
+          const names = member.filter((name): name is string => typeof name === 'string' && plainName(name))
+          if (names.length < member.length) note(path, 'required')
+          kept.push([key, names])
+        }
+      }
+      // Every other keyword is not offered.
     }
+    return Object.fromEntries(kept)
   }
-  return Object.fromEntries(kept)
+  return walk(node, 0, '')
+}
+
+/** The words a note of `describedSchema` earns as a guardrail: what was left out, where, and that the host still validates. */
+function schemaNoteDetail(wire: string, note: SchemaNote): string {
+  const where = note.path === '' ? 'the schema' : note.path
+  const what = note.what === 'name' ? `a property or definition name there is over ${NAME_BYTES} bytes or holds white space, and it is not offered with its schema`
+    : note.what === 'required' ? `a required entry there is over ${NAME_BYTES} bytes or holds white space, and it is not offered`
+    : `its ${note.what} holds a string over ${ENUM_MEMBER_BYTES} bytes or a line break, or is no list, and it is not offered`
+  return `in the input schema of ${wire}, at ${where}: ${what}; the host still validates the arguments it executes`
 }
 
 /**
@@ -365,12 +444,14 @@ export function describedSchema(node: unknown, bytes: number, frame?: (text: str
  * by their bytes, then by id), until the rest fit: a catalogued source's tools are offered as
  * catalogue entries (`CATALOGUED`, the first line framed, `CATALOGUE_SCHEMA`), at most
  * `cataloguedTools` of them and `catalogueBytes` bytes in all; the tools past either are withheld,
- * out of `entries` too, and said in `withheld` (one note for each source). Whether any source became
- * a catalogue is returned; the boundary then offers `load_tool`.
+ * out of `entries` too, and said in `withheld` (one note for each source). `withheld` also holds a
+ * note for each thing `describedSchema` left out of a tool's schema that the model would need. Whether
+ * any source became a catalogue is returned; the boundary then offers `load_tool`.
  */
 export function offerSources(hostTools: readonly HostTool[], entries: Map<string, SourceEntry>, bounds: SourceBounds, marker: string): { hostTools: HostTool[]; catalogue: boolean; withheld: Withheld[] } {
   const framed = new Map<string, string>()
   const schemas = new Map<string, unknown>()
+  const schemaNotes: Withheld[] = []
   const sizes = new Map<string, { count: number; bytes: number }>()
   for (const tool of hostTools) {
     const entry = entries.get(tool.name)
@@ -378,7 +459,9 @@ export function offerSources(hostTools: readonly HostTool[], entries: Map<string
     entry.description = boundedDescription(entry.declared.description, bounds.toolDescriptionBytes)
     const text = framedDescription(entry, entry.description, marker)
     framed.set(tool.name, text)
-    const schema = describedSchema(tool.inputSchema, bounds.toolDescriptionBytes, (cut) => frameBlock(`a description in the input schema of tool ${JSON.stringify(entry.wire)} from source ${JSON.stringify(entry.record.id)}`, cut, marker))
+    const notes: SchemaNote[] = []
+    const schema = describedSchema(tool.inputSchema, bounds.toolDescriptionBytes, (cut) => frameBlock(`a description in the input schema of tool ${JSON.stringify(entry.wire)} from source ${JSON.stringify(entry.record.id)}`, cut, marker), notes)
+    for (const held of notes) schemaNotes.push({ tool: entry.wire, detail: schemaNoteDetail(entry.wire, held) })
     schemas.set(tool.name, schema)
     const size = sizes.get(entry.record.id) ?? { count: 0, bytes: 0 }
     size.count++
@@ -417,7 +500,7 @@ export function offerSources(hostTools: readonly HostTool[], entries: Map<string
     offered.push(shown)
   }
   const withheld = [...cut].map(([id, tools]) => ({ tool: id, detail: `the catalogue holds at most ${bounds.cataloguedTools} tools and ${bounds.catalogueBytes} bytes (cataloguedTools, catalogueBytes), so ${tools} of ${id}'s tools ${tools === 1 ? 'is' : 'are'} not offered; ${kept} are offered across the catalogue` }))
-  return { catalogue: kept > 0, hostTools: offered, withheld }
+  return { catalogue: kept > 0, hostTools: offered, withheld: [...schemaNotes, ...withheld] }
 }
 
 export type { SourceFigures } from './execution/state'

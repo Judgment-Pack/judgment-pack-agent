@@ -302,8 +302,8 @@ host's approval reader (the wire name, the tool's own name, its source record an
 (`contextualSession`): each is offered under its wire name (`wireName`: the source's id, `__`, the
 name made wire-safe, a hash suffix where a character was replaced or the name cut), its description
 cut at `toolDescriptionBytes` and framed with the run's marker, as is each description inside its
-input schema (`title`, `$comment`, `default` and `examples` are dropped, and so is an `enum` or `const`
-with a string over 64 bytes); past `offeredSchemas` or
+input schema (only the structural keywords are offered, every other is not, and a name over 64 bytes
+or with white space and an `enum` or `const` with a string over 64 bytes are dropped, with a guardrail); past `offeredSchemas` or
 `offeredSchemaBytes` the largest sources become catalogues that `load_tool` loads from, the loaded
 schemas riding in the execution state after the history, the catalogue itself held to `cataloguedTools`
 and `catalogueBytes` (the tools past them are withheld, with a guardrail); and each call is refused where the

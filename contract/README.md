@@ -136,8 +136,8 @@ files they were rendered from.
   each failing the schema), `tool-offer/source-offer.json` (the offer made of them, under their wire
   names, descriptions framed with a fixed marker, effect classes and approvals filled in),
   `tool-offer/catalogue.json` (the same as catalogue entries), `tool-offer/source-schema.json` (a tool
-  whose input schema carries text its source wrote: the property descriptions framed, the title,
-  default and examples dropped, a long enum dropped) and `tool-offer/load-tool.json`;
+  whose input schema carries text its source wrote: the property descriptions framed, every keyword
+  but the structural ones dropped, a long name and a long enum dropped, and the guardrails they earn) and `tool-offer/load-tool.json`;
   `tool-offer/source-names.json` (wire names, with the suffix where a character was replaced or the
   name was cut, a collision and the names a source may not bear) and `tool-offer/tool-list-digest.json`
   (two tool lists, their canonical JSON and the digest a host pins), each computed again by the
