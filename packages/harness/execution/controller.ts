@@ -49,6 +49,8 @@ export class ExecutionController {
    if(given!==undefined&&decision===undefined)throw authoredFailure('configuration','The approval decision is not one this package reads: a callId, approved, and an optional note of at most 2,000 characters. Nothing was decided or run.','context')
    const asked=restored.approval?.state==='asked'
    if(decision!==undefined&&decision.callId!==restored.approval?.callId)throw authoredFailure('stale-state','This decision is for a call this response is not waiting on; nothing was decided or run. Continue it with the decision on the call it asked about.','context')
+   // A decision on an act call already decided (refused, executed, answered) is no decision this response waits for.
+   if(decision!==undefined&&!asked)throw authoredFailure('stale-state','This response’s act call was already decided; nothing was decided or run. Continue it without a decision.','context')
    if(asked&&decision===undefined)throw authoredFailure('stale-state',`This response waits for the person’s decision on ${restored.approval!.name}; continue it with that decision.`,'context')
    if((restored.status==='paused'&&!asked)||restored.used>=restored.limit)throw new ExecutionPaused()
    if(restored.unit!==('model'in this.session?'model-requests':'provider-managed'))throw toolInputFailure('Continue this response with the same connection type, or start a new response.')

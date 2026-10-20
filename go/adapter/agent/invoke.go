@@ -318,10 +318,8 @@ func (r *runState) tool(invCtx context.Context, offered map[string]bool, recorde
 		// ADR-0008: an act call the host's policy asks about ends the invocation as a delegation
 		// handoff does: its approval_requested in place of the call, the call never run.
 		if held.host != nil {
+			// The pause is claimed before the approval is written asked (SessionContext.PauseClaim).
 			if asked := r.sc.Approval(ctx, held.name, args, call.ID); asked != nil {
-				if !r.claimPause(false) {
-					return adapter.AgentToolAnswer{}, errWaiting
-				}
 				r.deliver(*asked)
 				r.pause()
 				return adapter.AgentToolAnswer{}, errWaiting

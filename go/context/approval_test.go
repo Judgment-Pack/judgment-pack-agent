@@ -20,9 +20,9 @@ type book struct {
 	closed   string
 }
 
-func (b *book) Current() *contract.CheckpointApproval  { return b.approval }
-func (b *book) Ask(record contract.CheckpointApproval) { b.approval = &record }
-func (b *book) Closed() string                         { return b.closed }
+func (b *book) Current() *contract.CheckpointApproval       { return b.approval }
+func (b *book) Ask(record contract.CheckpointApproval) bool { b.approval = &record; return true }
+func (b *book) Closed() string                              { return b.closed }
 
 // asking are the vector's declarations, each act's policy answering answer and noting what it was asked.
 func asking(t *testing.T, answer string, asked *[]string) []HostTool {
@@ -187,7 +187,6 @@ func TestARestoredApprovedCallIsNotRunAgain(t *testing.T) {
 	}
 	var written []contract.Checkpoint
 	session.Context = &Input{CurrentRequest: &CurrentRequest{Message: request, Input: request}, Execution: &saved,
-		Approval:   &contract.CheckpointApprovalDecision{CallID: "call-a", Approved: true},
 		Checkpoint: func(_ context.Context, state contract.Checkpoint) error { written = append(written, state); return nil }}
 	restored, err := ContextualSession(context.Background(), session)
 	if err != nil {
@@ -205,6 +204,108 @@ func TestARestoredApprovedCallIsNotRunAgain(t *testing.T) {
 	session.Context.Approval = &contract.CheckpointApprovalDecision{CallID: "call-b", Approved: true}
 	if _, err := ContextualSession(context.Background(), session); err == nil || !strings.Contains(err.Error(), "not waiting on") {
 		t.Fatalf("a decision for another call answered %v", err)
+	}
+	// A decision handed again for a call already decided is refused before anything runs.
+	for _, state := range []string{"refused", "executed", "answered"} {
+		saved.Approval.State = state
+		saved.Status = "running"
+		session.Context.Approval = &contract.CheckpointApprovalDecision{CallID: "call-a", Approved: true}
+		if _, err := ContextualSession(context.Background(), session); err == nil || !strings.Contains(err.Error(), "already decided") {
+			t.Fatalf("a decision on a %s approval answered %v", state, err)
+		}
+	}
+	if ran != 0 {
+		t.Fatalf("ran %d", ran)
+	}
+}
+
+// pausedSession is a session paused at an act call, and its checkpoint, the policy asking.
+func pausedSession(t *testing.T, ran *int) (Session, contract.Checkpoint) {
+	t.Helper()
+	var asked []string
+	request := "Open the issue."
+	session := modelSession()
+	session.Prompt = request
+	session.HostTools = asking(t, "ask", &asked)
+	for at := range session.HostTools {
+		session.HostTools[at].Execute = func(context.Context, json.RawMessage) (ToolResult, error) { *ran++; return ResultOf(nil, nil), nil }
+	}
+	session.Context = &Input{CurrentRequest: &CurrentRequest{Message: request, Input: request}}
+	opened, err := ContextualSession(context.Background(), session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opened.Context.Close()
+	if held := opened.Context.Approval(context.Background(), "tracker__create_issue", json.RawMessage(`{"repository":"expense","title":"a"}`), "call-a"); held == nil {
+		t.Fatal("the act call was not held")
+	}
+	saved, err := opened.Context.Execution.Snapshot("paused")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return session, saved
+}
+
+// A Go host that saves only from the run's stream holds no approved write before the call would run,
+// since the run's events reach it after its context opens: an approved continuation is refused there,
+// and so never runs the call twice; with the durable callback the call runs once.
+func TestAnApprovedCallRunsOnlyWhereTheHostAcknowledgesItsWrites(t *testing.T) {
+	ran := 0
+	session, saved := pausedSession(t, &ran)
+	for attempt := 0; attempt < 2; attempt++ {
+		held := saved
+		session.Context = &Input{CurrentRequest: session.Context.CurrentRequest, Execution: &held,
+			Approval: &contract.CheckpointApprovalDecision{CallID: "call-a", Approved: true}}
+		if _, err := ContextualSession(context.Background(), session); err == nil || !strings.Contains(err.Error(), "durable callback") {
+			t.Fatalf("a continuation without the callback answered %v", err)
+		}
+	}
+	if ran != 0 {
+		t.Fatalf("the call ran %d times without the callback", ran)
+	}
+	var states []string
+	held := saved
+	session.Context = &Input{CurrentRequest: session.Context.CurrentRequest, Execution: &held,
+		Approval: &contract.CheckpointApprovalDecision{CallID: "call-a", Approved: true},
+		Checkpoint: func(_ context.Context, state contract.Checkpoint) error {
+			states = append(states, state.Approval.State)
+			return nil
+		}}
+	run, err := ContextualSession(context.Background(), session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run.Context.Close()
+	if ran != 1 || strings.Join(states, ",") != "approved,executed" {
+		t.Fatalf("ran %d, acknowledged %v", ran, states)
+	}
+}
+
+// An agent adapter claims its pause before an approval is written asked: a call that loses the claim
+// to a handoff or a question leaves no asked approval, and is refused, never run.
+func TestAnActCallThatLosesThePauseLeavesNoAskedApproval(t *testing.T) {
+	var asked []string
+	session := modelSession()
+	session.HostTools = asking(t, "ask", &asked)
+	ran := 0
+	for at := range session.HostTools {
+		session.HostTools[at].Execute = func(context.Context, json.RawMessage) (ToolResult, error) { ran++; return ResultOf(nil, nil), nil }
+	}
+	run, err := ContextualSession(context.Background(), session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer run.Context.Close()
+	run.Context.PauseClaim = func() bool { return false }
+	if held := run.Context.Approval(context.Background(), "tracker__create_issue", json.RawMessage(`{}`), "call-a"); held != nil || run.Context.Execution.State.Approval != nil {
+		t.Fatalf("an act call that lost the pause was held: %+v, %+v", held, run.Context.Execution.State.Approval)
+	}
+	for _, tool := range run.Session.HostTools {
+		if tool.Name == "tracker__create_issue" {
+			if _, err := tool.Execute(WithCallID(context.Background(), "call-a"), json.RawMessage(`{}`)); err == nil {
+				t.Fatal("the call ran")
+			}
+		}
 	}
 	if ran != 0 {
 		t.Fatalf("ran %d", ran)

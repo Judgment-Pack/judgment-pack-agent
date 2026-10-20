@@ -53,7 +53,9 @@ that is none of the three, and a policy that throws (Go: panics), is `refuse`. A
 tool without a policy answers `ask`. `approval: none` on an act stays the host's declared decision:
 the policy is not asked. The package holds no grant and mints none.
 
-The policy is asked once per call, where the engine hands the call to the host, before the call's
+Every act call carries an id, whether or not the run's events carry one, and its decision is kept
+by that id and the call's arguments: a call that reaches the gate with another call's id or other
+arguments is refused, never run under another call's answer. The policy is asked once per call, where the engine hands the call to the host, before the call's
 `tool_call` (`SessionContext.approval`, Go `SessionContext.Approval`, over `SourceGate.decide`, Go
 `SourceGate.Decide`, in `toolSources.ts` and `go/context/sources.go`), and after what the gate and the
 engine refuse on their own: a call the engine refuses itself (repeated work, the request reserved
@@ -97,11 +99,18 @@ most 2,000 characters), handed to the run beside the checkpoint (`context.approv
 
 - a decision whose `callId` is not the pending approval's is refused: the run ends with
   `stale-state` (source `context`), no request is sent and nothing runs;
-- a paused approval without a decision is refused the same way;
+- a paused approval without a decision is refused the same way, and so is a decision for an
+  approval already decided (`refused`, `approved`, `executed` or `answered`): a restored checkpoint
+  is continued as it stands, without a decision;
 - a decision that is not one the package reads is `configuration`.
 
 Then, in order, each write through the host's durable callback (`context.checkpoint`, Go
-`Input.Checkpoint`) and emitted `durable` before the next step:
+`Input.Checkpoint`), where the host gives one, and emitted `durable`, before the next step. In
+TypeScript the boundary yields each `durable` checkpoint and waits for the host to take it before
+the next step, so a host that saves only from the stream holds the `approved` write before the
+call runs. In Go the run's events reach the host only after its context opens, so the `approved`
+write is held before the call runs only through `Input.Checkpoint`: an approved continuation
+without it is refused (`configuration`) and nothing runs, so it never runs a call twice.
 
 - **refused**: the approval is written `refused`, with `decidedAt`, the `note` and the refused
   result (`permission`, `not-started`); the call is never run.

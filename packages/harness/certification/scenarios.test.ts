@@ -1007,7 +1007,8 @@ async function approvalScenario(run: PauseRun): Promise<Paused> {
   counts.push(ran())
   // The restart: the last checkpoint the host acknowledged, read back from its JSON text.
   const written = JSON.parse(JSON.stringify(writtenAt(approved.events, 'executed') ?? null)) as ExecutionCheckpoint
-  const restarted = await run(continued, pauseTools(server), { ...asked, execution: written, approval: { callId, approved: true } })
+  // The restart continues the checkpoint as it stood; the decision was already taken, so none is handed again.
+  const restarted = await run(continued, pauseTools(server), { ...asked, execution: written })
   counts.push(ran())
   return { pausing, saved, wrong, refused, approved, approvedLog, restarted, counts, server }
 }

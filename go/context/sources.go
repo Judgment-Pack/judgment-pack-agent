@@ -130,7 +130,7 @@ func ApprovalContinuationText(record contract.CheckpointApproval, marker string)
 // (a delegated child, Plan mode, the critic or the reformat run), or "".
 type ApprovalBook interface {
 	Current() *contract.CheckpointApproval
-	Ask(record contract.CheckpointApproval)
+	Ask(record contract.CheckpointApproval) bool
 	Closed() string
 }
 
@@ -995,7 +995,10 @@ func (g *SourceGate) Decide(ctx context.Context, name string, args json.RawMessa
 			if json.Unmarshal(nonEmptyArgs(args), &asked) != nil || asked == nil {
 				asked = map[string]json.RawMessage{}
 			}
-			g.book.Ask(contract.CheckpointApproval{CallID: drawn, Name: name, Tool: *entry.Record.Tool, Source: copyRecord(entry.Record), Args: asked, State: "asked"})
+			if !g.book.Ask(contract.CheckpointApproval{CallID: drawn, Name: name, Tool: *entry.Record.Tool, Source: copyRecord(entry.Record), Args: asked, State: "asked"}) {
+				// The run is already ending at a handoff or a question: the call is refused, never run.
+				held = decision{answer: "closed", detail: name + " acts on " + id + ", and this run is already ending; the call was not run and nothing was changed"}
+			}
 		}
 	}
 	// An asked call is never handed to the host, so its decision is not kept for a Call.

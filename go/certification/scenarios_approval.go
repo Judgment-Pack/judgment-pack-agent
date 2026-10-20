@@ -219,23 +219,23 @@ func approvalScenario(ctx context.Context, play pausePlay, choreograph bool) (*p
 	if out.saved.Approval != nil {
 		callID = out.saved.Approval.CallID
 	}
-	continued := func(decision contract.CheckpointApprovalDecision, from *contract.Checkpoint, save func(context.Context, contract.Checkpoint) error) (*pauseRun, error) {
+	continued := func(decision *contract.CheckpointApprovalDecision, from *contract.Checkpoint, save func(context.Context, contract.Checkpoint) error) (*pauseRun, error) {
 		execution, err := readBack(from)
 		if err != nil {
 			return nil, err
 		}
 		input := request()
 		input.Execution = execution
-		input.Approval = &decision
+		input.Approval = decision
 		input.Checkpoint = save
 		return play(ctx, out.file.Continued, tools(), input)
 	}
-	if out.wrong, err = continued(contract.CheckpointApprovalDecision{CallID: out.file.WrongCallID, Approved: true}, out.saved, nil); err != nil {
+	if out.wrong, err = continued(&contract.CheckpointApprovalDecision{CallID: out.file.WrongCallID, Approved: true}, out.saved, nil); err != nil {
 		return nil, err
 	}
 	out.counts = append(out.counts, out.server.ran())
 	note := out.file.Note
-	if out.refused, err = continued(contract.CheckpointApprovalDecision{CallID: callID, Approved: false, Note: &note}, out.saved, nil); err != nil {
+	if out.refused, err = continued(&contract.CheckpointApprovalDecision{CallID: callID, Approved: false, Note: &note}, out.saved, nil); err != nil {
 		return nil, err
 	}
 	out.counts = append(out.counts, out.server.ran())
@@ -283,7 +283,8 @@ func approvalScenario(ctx context.Context, play pausePlay, choreograph bool) (*p
 	if written == nil {
 		return out, nil
 	}
-	if out.restarted, err = continued(contract.CheckpointApprovalDecision{CallID: callID, Approved: true}, written, nil); err != nil {
+	// The restart continues the checkpoint as it stood; the decision was already taken, so none is handed again.
+	if out.restarted, err = continued(nil, written, nil); err != nil {
 		return nil, err
 	}
 	out.counts = append(out.counts, out.server.ran())

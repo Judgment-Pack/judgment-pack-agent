@@ -327,7 +327,11 @@ so the person is never asked about a call that could not run.
   said by the boundary whatever the engine does with the call after; never run, the policy not asked.
 - **The continuation.** The host hands the run the paused checkpoint and the person's decision
   (`checkpoint.json#/$defs/approvalDecision`: `callId`, `approved`, `note`; `context.approval`, Go
-  `Input.Approval`), beside a request grant. A decision for another call, or none for a paused
+  `Input.Approval`), beside a request grant. A decision for an approval already decided is refused
+  (`stale-state`), a restored checkpoint continued without one; in Go an approved continuation
+  needs the host's durable callback (`Input.Checkpoint`), since the run's events reach the host only
+  after its context opens. Every act call carries an id, its decision kept by it and the call's
+  arguments. A decision for another call, or none for a paused
   approval, ends the run with `stale-state` before anything runs. Refused: the approval written
   `refused` with `decidedAt`, the note and the refused result. Approved: written `approved` and
   acknowledged; the call run once through the host's function (`SourceGate.approved`), the policy

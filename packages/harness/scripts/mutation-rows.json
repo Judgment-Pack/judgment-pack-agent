@@ -3448,6 +3448,19 @@
    "status": "caught",
    "origin": "ADR-0008, the approval pause (#74)",
    "note": "scenario 8's refusal: the note is in the block's data and nowhere else in what the model is sent"
+  },
+  {
+   "name": "an act call on a run whose events carry no call ids gets no id: its decision taken by name, another call's",
+   "file": "engines/vercel/loop.ts",
+   "find": "      const correlation = session.interactive || context.sources?.needsApproval(tool.name) ? { callId: crypto.randomUUID() } : {}",
+   "replace": "      const correlation = session.interactive ? { callId: crypto.randomUUID() } : {}",
+   "tests": [
+    "toolSources.test.ts",
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "clean-room review of #79 (ADR-0008)",
+   "note": "two calls of one act tool in one answer, on a run with interactive false, reaching the gate in the other order: only the call the policy allowed runs"
   }
  ]
 }

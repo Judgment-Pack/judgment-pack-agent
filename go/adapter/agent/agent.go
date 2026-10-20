@@ -120,6 +120,8 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		return nil
 	}
 	r.sc = opened.Context
+	// ADR-0008: an act call's approval is written asked only once this run has claimed its pause.
+	r.sc.PauseClaim = func() bool { return r.claimPause(false) }
 	r.session = opened.Session
 	r.boundary = runcontext.NewBoundary(opened)
 	defer r.boundary.Close()

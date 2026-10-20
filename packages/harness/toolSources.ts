@@ -586,6 +586,13 @@ export interface ApprovalBook {
  */
 export type ApprovalDecided = ApprovalAnswer | 'pending' | 'closed' | 'checked'
 
+/** A decision kept for its call (ADR-0008): the answer, its words, and the canonical JSON of the arguments it was taken for. */
+interface HeldDecision {
+  answer: ApprovalDecided
+  detail: string
+  args: string
+}
+
 /** What a tool's result event carries beside the record. */
 interface Mark {
   receipt?: string
@@ -616,8 +623,8 @@ export class SourceGate {
   /** The marks of calls with none (a run whose events carry no call id), by wire name, in the order they completed. */
   private readonly queued = new Map<string, Mark[]>()
   /** ADR-0008: the boundary's decision for each act call, by call id, or by wire name in order where the events carry none. */
-  private readonly decisions = new Map<string, { answer: ApprovalDecided; detail: string }>()
-  private readonly queuedDecisions = new Map<string, { answer: ApprovalDecided; detail: string }[]>()
+  private readonly decisions = new Map<string, HeldDecision>()
+  private readonly queuedDecisions = new Map<string, HeldDecision[]>()
   constructor(
     readonly entries: ReadonlyMap<string, SourceEntry>,
     private readonly sources: readonly SourceRecord[],
@@ -728,9 +735,10 @@ export class SourceGate {
       if (answer === 'refuse') detail = `${name} acts on ${id}, and the host's approval policy refused this call; it was not run and nothing was changed`
       if (answer === 'ask') this.book!.ask({ callId: drawn, name, tool: entry.record.tool!, source: { ...entry.record }, args: structuredClone(args), state: 'asked' })
     }
-    // An asked call is never handed to the host, so its decision is not kept for a `call`.
+    // An asked call is never handed to the host, so its decision is not kept for a `call`. A kept
+    // decision is tied to its call's arguments too: a call that reaches the gate with others is refused.
     if (hold && answer !== 'ask') {
-      const held = { answer, detail }
+      const held = { answer, detail, args: canonicalJSON(args) }
       if (callId !== undefined) this.decisions.set(callId, held)
       else this.queuedDecisions.set(name, [...(this.queuedDecisions.get(name) ?? []), held])
     }
@@ -748,7 +756,7 @@ export class SourceGate {
   }
 
   /** The decision the boundary took for one act call, taken once: by its call id, or the tool's next where the events carry none. */
-  private takeDecision(name: string, callId: string | undefined): { answer: ApprovalDecided; detail: string } | undefined {
+  private takeDecision(name: string, callId: string | undefined): HeldDecision | undefined {
     if (callId !== undefined) {
       const held = this.decisions.get(callId)
       this.decisions.delete(callId)
@@ -828,8 +836,12 @@ export class SourceGate {
     // ADR-0008: an act call is answered by the decision taken before its tool_call, or by one taken now;
     // the call the run's approval waits on is held whatever reaches here.
     const asked = this.book?.current()
+    const taken = this.needsApproval(tool.name) ? this.takeDecision(tool.name, callId) : undefined
+    // A decision taken for other arguments is not this call's: refused, never run.
+    const mismatched = taken !== undefined && taken.args !== canonicalJSON(args)
     const decided = !this.needsApproval(tool.name) ? undefined
-      : this.takeDecision(tool.name, callId) ?? (asked?.state === 'asked' && callId !== undefined && asked.callId === callId ? { answer: 'ask' as const, detail: '' } : await this.decide(tool.name, args, callId, false))
+      : mismatched ? { answer: 'refuse' as const, detail: `${tool.name} was called with arguments other than those its approval was decided for; it was not run and nothing was changed` }
+      : taken ?? (asked?.state === 'asked' && callId !== undefined && asked.callId === callId ? { answer: 'ask' as const, detail: '' } : await this.decide(tool.name, args, callId, false))
     if (decided?.answer === 'ask') throw new ApprovalHeld()
     // The boundary already said why, with the call and its result: refused here without a second notice.
     if (decided?.answer === 'pending') throw new GateViolation(tool.name, decided.detail)

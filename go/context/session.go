@@ -129,6 +129,10 @@ type SessionContext struct {
 	// CriticReading says the critic is reading: a preview then names the readers its allow-list
 	// admits. The narrowing itself is the gate's (gate.Calls.BeginCritic), not this package's.
 	CriticReading bool
+	// PauseClaim is an agent adapter's claim on ending its invocation (ADR-0008): asked before an
+	// act call's approval is written asked, so a call that loses the claim to a handoff or a question
+	// leaves no asked approval; nil, the approval is written.
+	PauseClaim func() bool
 	// Reformatting says the tool-free reformat run is running (ADR-0008: no act call is admitted
 	// in it); the refusal of its calls is the gate's (gate.Calls.BeginReformat).
 	Reformatting bool
@@ -880,7 +884,13 @@ type approvalBook struct {
 
 func (b approvalBook) Current() *contract.CheckpointApproval { return b.c.Execution.State.Approval }
 
-func (b approvalBook) Ask(record contract.CheckpointApproval) { b.c.Execution.State.Approval = &record }
+func (b approvalBook) Ask(record contract.CheckpointApproval) bool {
+	if b.c.PauseClaim != nil && !b.c.PauseClaim() {
+		return false
+	}
+	b.c.Execution.State.Approval = &record
+	return true
+}
 
 func (b approvalBook) Closed() string {
 	switch {
@@ -1128,6 +1138,12 @@ func (c *SessionContext) continueApproval(ctx context.Context, step string, tool
 	}
 	switch step {
 	case "execute":
+		// The run's checkpoint events reach the host only after its context opens, so the approved
+		// write is held before the call runs only through the host's durable callback: without it the
+		// approved call is not run.
+		if c.session.Context == nil || c.session.Context.Checkpoint == nil {
+			return failure.Authored("configuration", "An approved act call runs only where the host acknowledges the run's writes through its durable callback (Input.Checkpoint), so the approval is written before the call runs; nothing was run.", "context")
+		}
 		if err := write(); err != nil {
 			return err
 		}

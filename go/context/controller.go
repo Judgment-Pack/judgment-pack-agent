@@ -303,6 +303,11 @@ func (c *ExecutionController) Initialize() error {
 		if decision != nil && (saved.Approval == nil || decision.CallID != saved.Approval.CallID) {
 			return failure.Authored("stale-state", "This decision is for a call this response is not waiting on; nothing was decided or run. Continue it with the decision on the call it asked about.", "context")
 		}
+		// A decision on an act call already decided (refused, executed, answered) is no decision this
+		// response waits for.
+		if decision != nil && !asked {
+			return failure.Authored("stale-state", "This response’s act call was already decided; nothing was decided or run. Continue it without a decision.", "context")
+		}
 		if asked && decision == nil {
 			return failure.Authored("stale-state", "This response waits for the person’s decision on "+saved.Approval.Name+"; continue it with that decision.", "context")
 		}

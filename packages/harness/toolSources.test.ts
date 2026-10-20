@@ -652,6 +652,31 @@ describe('the approval pause (ADR-0008)', () => {
     plan.context.close()
   })
 
+  it('ties each act call’s decision to its own call on a run whose events carry no call ids: two calls of one tool reaching the gate in the other order run only the allowed one', async () => {
+    const ran: Record<string, unknown>[] = []
+    const asked: Record<string, unknown>[] = []
+    let delayed = false
+    const tools = declared(declarations.items).map((tool) => (tool.name === 'update_work_item'
+      ? { ...tool, approve: (call: ApprovalRequest) => { asked.push(call.args); return call.args.state === 'Deleted' ? 'refuse' as const : 'allow' as const }, execute: async (args: Record<string, unknown>) => { ran.push(args); return { content: [{ type: 'text' as const, text: 'updated' }] } } }
+      : tool))
+    // The host's authorization holds the first call back, so the second reaches the gate first.
+    const authorize = async () => { if (asked.length === 2 && !delayed) { delayed = true; await new Promise((resolve) => setTimeout(resolve, 30)) } }
+    const turns: Turn[] = [
+      { calls: [{ tool: 'ado__update_work_item', arguments: { id: 1, state: 'Deleted' } }, { tool: 'ado__update_work_item', arguments: { id: 2, state: 'Done' } }] },
+      { say: 'unused' },
+      { say: 'One work item updated, one refused.' }
+    ]
+    const run = await runOnModelEngine(answerFrom(turns, 'stream'), { hostTools: tools, session: { prompt: 'Update the items.', interactive: false, context: { authorize } } })
+    expect(delayed).toBe(true)
+    expect(ran).toEqual([{ id: 2, state: 'Done' }])
+    const results = ofType(run.events, 'tool_result').filter((event) => event.name === 'ado__update_work_item')
+    const calls = ofType(run.events, 'tool_call').filter((event) => event.name === 'ado__update_work_item')
+    expect(calls.every((event) => typeof event.callId === 'string')).toBe(true)
+    const refusedCall = calls.find((event) => (event.args as { state?: string }).state === 'Deleted')!
+    expect(results.find((event) => event.callId === refusedCall.callId)).toMatchObject({ isError: true })
+    expect(ofType(run.events, 'guardrail')).toContainEqual(expect.objectContaining({ tool: 'ado__update_work_item', reason: 'approval refused' }))
+  })
+
   it('reads the approval and the decision closed, and continues a restored approved call whose result was never written without running it again', async () => {
     const base = { version: 1, id: 'x', requestKey: 'a'.repeat(64), phase: 'work', status: 'paused', unit: 'model-requests', used: 2, limit: 20, grants: [], plan: [], explanation: '', operations: [], context: { scope: 's', entries: [] } }
     const approval = { callId: 'call-a', name: 'tracker__create_issue', tool: 'create_issue', source: { ...declarations.items[1]!.source, tool: 'create_issue' }, args: { repository: 'expense', title: 'a' }, state: 'asked' }
@@ -672,12 +697,20 @@ describe('the approval pause (ADR-0008)', () => {
     const engine: Engine = { id: 'vercel', start: (given) => managedContext(given, async function* (ready) { sent.push(ready.prompt); yield { type: 'message', text: 'done' }; yield { type: 'end' } }) }
     const events: AssistantEvent[] = []
     const restored = { ...base, requestKey, status: 'running', approval: { ...approval, state: 'approved', decidedAt: '2026-10-20T10:00:00.000Z' } }
-    for await (const event of engine.start({ ...session(tools), prompt: request, context: { currentRequest: { message: request, input: request }, execution: restored as never, approval: { callId: 'call-a', approved: true } } })) events.push(event)
+    for await (const event of engine.start({ ...session(tools), prompt: request, context: { currentRequest: { message: request, input: request }, execution: restored as never } })) events.push(event)
     expect(ran).toBe(0)
     const written = events.find((event) => event.type === 'execution_checkpoint' && event.durable === true && event.checkpoint.approval?.state === 'executed') as { checkpoint: ExecutionCheckpoint } | undefined
     expect(written?.checkpoint.approval?.result).toMatchObject({ isError: true, structuredContent: { failure: { code: 'unknown', outcome: 'unknown' } } })
     expect(sent[0]).toContain(APPROVAL_CONTINUATION)
     expect(sent[0]).toContain('it may have run')
+    // A decision handed again for a call already decided (here refused, then executed) is refused before anything runs.
+    for (const state of ['refused', 'executed', 'answered']) {
+      const again: AssistantEvent[] = []
+      for await (const event of engine.start({ ...session(tools), prompt: request, context: { currentRequest: { message: request, input: request }, execution: { ...restored, approval: { ...approval, state, decidedAt: '2026-10-20T10:00:00.000Z' } } as never, approval: { callId: 'call-a', approved: true } } })) again.push(event)
+      expect(ofType(again, 'error')).toEqual([expect.objectContaining({ failure: expect.objectContaining({ code: 'stale-state' }) })])
+    }
+    expect(ran).toBe(0)
+    expect(sent).toHaveLength(1)
   })
 })
 
