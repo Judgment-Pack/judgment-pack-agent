@@ -233,14 +233,34 @@ export function sdkThinking(
 /**
  * Anthropic's prompt-cache breakpoint, in the SDK's spelling.
  *
- * Placed twice, after the system text and after the tools, and only on the
- * Anthropic wire: the provider reads `providerOptions.anthropic` and no other
- * family does, but a breakpoint is never put where it means nothing, so the
- * OpenAI-compatible and Gemini bodies are what they were and those two rely on
- * the stable prefix alone. Everything that changes between requests is sent
- * after the cached prefix (`placeState`), so the prefix survives a step.
+ * Placed three times, after the system text, after the tools and after the
+ * request text (`cachedOpening`), and only on the Anthropic wire: the provider
+ * reads `providerOptions.anthropic` and no other family does, but a breakpoint
+ * is never put where it means nothing, so the OpenAI-compatible and Gemini
+ * bodies are what they were and those two rely on the stable prefix alone.
+ * Everything that changes between requests is sent after the cached prefix
+ * (`placeState`), so the prefix survives a step.
  */
 export const CACHE_BREAKPOINT = { anthropic: { cacheControl: { type: 'ephemeral' } } } as const
+
+/**
+ * The first user turn with the third breakpoint on its first text part, on the Anthropic wire only.
+ *
+ * The first text part is the request (the Runtime's prompt and the person's request, or a delegated
+ * child's objective), and the state, where it joins this message, is a part after it, so the cached
+ * prefix runs through the request. The system text and the tools are before it in Anthropic's order,
+ * which makes the prefix the system text, the tools and the request. A history that does not begin
+ * with a user message, or a user message with no text part, is returned as it is.
+ */
+export function cachedOpening(family: EndpointKind, messages: ModelMessage[]): ModelMessage[] {
+  const first = messages[0]
+  if (family !== 'anthropic' || first === undefined || first.role !== 'user') return messages
+  const parts = typeof first.content === 'string' ? [{ type: 'text' as const, text: first.content }] : [...first.content]
+  const at = parts.findIndex((part) => part.type === 'text')
+  if (at < 0) return messages
+  parts[at] = { ...parts[at]!, providerOptions: CACHE_BREAKPOINT } as (typeof parts)[number]
+  return [{ ...first, content: parts }, ...messages.slice(1)]
+}
 
 /** The run's stable system text, carrying its breakpoint where the wire has one. */
 export function cachedInstructions(family: EndpointKind, text: string): string | SystemModelMessage {
@@ -1147,7 +1167,7 @@ export function runVercelLoop(
           lastMessages=await context.messages(withoutImages(withoutState(messages,stated)),system+'\n'+state,schemas)
           return {...callOptions(!toolsClosed),
             ...(toolsClosed&&nativeTools?{activeTools:[],toolChoice:'none' as const}:{}),
-            ...placeState(session.model.family,placement,withImages(lastMessages),system,state,stated)}
+            ...placeState(session.model.family,placement,cachedOpening(session.model.family,withImages(lastMessages)),system,state,stated)}
         },
         // **No retries, deliberately.** The SDK's default is two, with an
         // exponential backoff, and its retryable set includes 409 — which is the
@@ -1486,7 +1506,7 @@ export function runVercelLoop(
             const note=step?stateText(step):''
             const held=await context.messages(withoutImages(withoutState(messages,stated)),instructions+(note?'\n'+note:''),schemas)
             criticHeld=held
-            return {...callOptions(!toolsClosed),...(toolsClosed&&nativeTools?{activeTools:[],toolChoice:'none' as const}:{}),...(note?placeState(session.model.family,placement,withImages(held),instructions,note,stated):{instructions:cachedInstructions(session.model.family,instructions),messages:withImages(held)})}
+            return {...callOptions(!toolsClosed),...(toolsClosed&&nativeTools?{activeTools:[],toolChoice:'none' as const}:{}),...(note?placeState(session.model.family,placement,cachedOpening(session.model.family,withImages(held)),instructions,note,stated):{instructions:cachedInstructions(session.model.family,instructions),messages:cachedOpening(session.model.family,withImages(held))})}
           },
           maxOutputTokens:context.policy.outputTokens,
           [REHEARSAL_HOOK]: refine

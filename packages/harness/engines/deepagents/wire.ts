@@ -41,7 +41,7 @@ import type { ModelCompletion } from '../../completion'
 /** The head of the message that shows a vision model a result's images (agent#5). The `vercel` adapter's words. */
 export const IMAGES_HEADER = 'IMAGES from'
 
-/** Anthropic's prompt-cache breakpoint, placed after the system head and after the tools. */
+/** Anthropic's prompt-cache breakpoint, placed after the system head, after the tools and after the request text. */
 const CACHE_BREAKPOINT = { type: 'ephemeral' } as const
 
 /** One tool as the model is shown it: its name, description and the schema the record says it takes. */
@@ -373,6 +373,12 @@ function anthropicRequest(request: WireRequest): Encoded {
       push('user', [{ type: 'tool_result', tool_use_id: turn.message.tool_call_id, content: messageText(turn.message), ...(turn.message.status === 'error' ? { is_error: true } : {}) }])
     }
   }
+  // The third breakpoint, on the first text block of the first user turn: the request text (the
+  // Runtime's prompt and the person's request, or a delegated child's objective), with the state a
+  // block after it. The system text and the tools come before it in Anthropic's order.
+  const opening = messages[0]
+  const text = opening?.role === 'user' ? opening.content.find((block) => block.type === 'text') : undefined
+  if (text !== undefined) text.cache_control = CACHE_BREAKPOINT
   const tier = request.tier ?? {}
   const body: Record<string, unknown> = {
     model: request.model,

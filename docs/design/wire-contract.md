@@ -797,11 +797,12 @@ a whole answer where a stream was asked for, and what Retry does after each, is 
 
 `budget.json`. One table both the browser and the server read: the input ceiling
 (`maxInputBytes`, and the window and output reserve it is computed from, overridable per model),
-`toolResultBytes`, `readBytes`, `retainedBytes`, and the bytes reserved for the project brief and
-memory (`briefBytes`, `memoryBytes`), which the server added behind the adapter before ADR-0005.
-Since agent#11 `memoryBytes` is reserved only while memory may be on: the host says per run whether
-the project's memory is on (`context.memory`), `false` frees the reserve and the run has the full
-input allowance, and a run whose host says nothing keeps it. The request allowance is counted by the host in
+`toolResultBytes`, `readBytes`, `retainedBytes`, and the bounds on the project brief and memory
+(`briefBytes`, `memoryBytes`). Before ADR-0005 the server added the brief and the memory behind the
+adapter and the table reserved their bytes in every request's input; since agent#69 nothing is
+reserved for either, and a part is counted once, where it sits in the system text. The host says
+per run whether the project's memory is on (`context.memory`); `false` means `memoryFor` is not
+asked, and the policy is the same either way. The request allowance is counted by the host in
 model requests: twenty to start (`MAX_TURNS`, also the turn bound), ten more per grant the person
 makes, never above a hundred. The model is told the counts in its execution guidance and may ask
 for more with `request_budget_increase`, which never grants: with two or fewer requests left it
@@ -810,9 +811,11 @@ pauses the run for the person.
 Since ADR-0005 `briefBytes` and `memoryBytes` are also the bounds the host's `brief()` and
 `memoryFor(query)` answers are held to, and the harness adds a third, `projectInstructionsBytes`
 (4,000), for `projectInstructions()`: a part over its bound is refused before the run's first
-request (`configuration`). The parts are counted where they sit, in the system text; the two
-reserves above are still taken as well, which double counts them, and their retirement is left to a
-later change (see [The prompt](#the-prompt)).
+request (`configuration`). The parts are counted where they sit, in the system text, and no reserve
+is taken for them: every request's input allowance is up to 12,000 bytes (`briefBytes` and
+`memoryBytes` together) larger than it was before agent#69, and the prompt's own allowance, 60% of
+the input left after the instructions and the tools, up to 7,200 bytes larger (see
+[The prompt](#the-prompt)).
 
 The table also states the critic's default, `adversarialReview` (`false`; agent#10), which the
 harness adds to the Desk's table (`contract/desk/policy.json`) and both engines read; see [The
@@ -886,7 +889,7 @@ and the header occurs nowhere else in a request. On the first request the state 
 part of the person's own message, on every wire. After that it goes where the endpoint's placement
 says: `trailing-user`, one user message after the history (merged by the Anthropic provider into the
 tool-result turn it follows), or `system-tail`, the end of the system text after the head that
-carries the Anthropic cache breakpoint (one string with the head on the OpenAI-compatible wire, a
+carries the first Anthropic cache breakpoint (one string with the head on the OpenAI-compatible wire, a
 second block or part on the other two). The host sets the placement through `configureHarness`
 (`endpointCapabilities`, members of the capability record): `system-tail` for an endpoint marked `strictAlternation` (it refuses two
 user turns in a row and a user text after a tool result), and by default for Anthropic when a
@@ -939,6 +942,19 @@ the request text comes first, then a chat's index of earlier results, then the s
 Runtime's prompt (2) and the person's request (9) as one text, `session.prompt`, which the adapter
 can neither split nor raise into the system text; it is sent where the request goes. The system
 text (1, 3, 4, 5 and the tools described in text) is as drawn.
+
+**The cache breakpoints on Anthropic.** The request text leads the first user turn, after the system
+text and the tools in Anthropic's cache order, so a third breakpoint marks the first text part of
+the first user turn (`cache_control` `ephemeral`, on every request, on all three adapters). The
+three, with the one on the system head and the one on the last tool, are within Anthropic's four.
+The cached prefix then runs through the request text, which no request of a run changes, and the
+state is a part after it (the first request) or a later message. Measured on the scripted run, the
+breakpoint moves the request text, 230 bytes, into the cached prefix; a real author-pack prompt
+is about 5 KB. Under `system-tail` the state is in the system text before the messages, so the
+prefix to the third breakpoint changes with every request and only the first two read the cache;
+the third is still placed, so that the rule is one rule on every request. No other wire is given
+a breakpoint. The certification suite checks the three on every Anthropic request
+(`placementMisses`).
 
 **As sent.** The system text (the agent wire's `instructions`) is layer 1, then 3, 4 and 5, each
 part the host supplied as its header line, its text and its end line, a blank line before each

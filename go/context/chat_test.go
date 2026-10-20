@@ -318,11 +318,11 @@ func TestTheIndexNeverPreviewsAPromptSentWhole(t *testing.T) {
 		}
 		kept.Close()
 		// With room, an index is sent within a quarter of the allowance.
-		policy, err := ContextPolicy(windowed(window, nil).Context.Configuration, "scripted-model", nil, nil)
+		policy, err := ContextPolicy(windowed(window, nil).Context.Configuration, "scripted-model", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		allowance := int(math.Floor(float64(InputBytes(policy)-UTF8Bytes(instructions)-2-policy.BriefBytes-policy.MemoryBytes-1536) * 0.6))
+		allowance := int(math.Floor(float64(InputBytes(policy)-UTF8Bytes(instructions)-2-1536) * 0.6))
 		room := openContext(t, windowed(window, chat))
 		short, err := room.Opening("Change the pack.", instructions, noTools(), nil)
 		if err != nil {
@@ -342,8 +342,9 @@ func TestTheIndexNeverPreviewsAPromptSentWhole(t *testing.T) {
 		}
 		room.Close()
 	}
-	// A quarter of the allowance holds an index from 9,216 tokens up; at 8,192, none is sent.
-	if len(indexed) != 4 || indexed[0] != 9216 {
+	// A quarter of the allowance holds an index at every one of these windows. At 8,192 tokens none
+	// was sent while the brief and memory reserves came off the allowance (agent#69).
+	if len(indexed) != 5 || indexed[0] != 8192 {
 		t.Errorf("an index was sent at %v", indexed)
 	}
 }

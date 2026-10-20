@@ -33,6 +33,12 @@ in the policy table, and places it in its layer of every request
 ([ADR-0005](../docs/adr/0005-the-prompt-is-the-adapters.md)); the relay adds nothing. The digest of
 every request body is in the run's checkpoint (`prompts`).
 
+No reserve is taken out of a request's input allowance for the brief or the memory: `BriefBytes` and
+`MemoryBytes` are the parts' bounds, and a part is counted once, where it sits in the system text.
+`runcontext.ContextPolicy` takes no word on memory; `Input.Memory` only decides whether `MemoryFor`
+is asked. On the Anthropic wire the `eino` adapter marks three cache breakpoints: after the system
+head, after the tools and after the request text (the first text part of the first user turn).
+
 ## Tool sources
 
 A tool from a gateway connection, a public MCP server or the person is a `runcontext.HostTool` with

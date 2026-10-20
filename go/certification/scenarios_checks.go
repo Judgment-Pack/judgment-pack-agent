@@ -146,7 +146,7 @@ var ChatHostTools = ScenarioCheck{
 }
 
 // Memory is scenario 3: memory recalled once for the person's message and carried in its layer on
-// every request of a run over three tool steps (ADR-0005), and the memory reserve.
+// every request of a run over three tool steps (ADR-0005), and the allowance, which takes no reserve.
 var Memory = ScenarioCheck{
 	Scenario: "memory",
 	Names:    []string{"3 run", "3 memory", "3 reserve"},
@@ -208,12 +208,13 @@ var Memory = ScenarioCheck{
 	},
 }
 
-// reserveChecks are the memory reserve's (reserveChecks): only the host's word that memory is off
-// frees the 4,000-byte reserve. The same for every adapter, because the budget is the context's.
+// reserveChecks are the allowance's (reserveChecks): no reserve is taken for the brief or the
+// memory, whatever the host says of memory. The same for every adapter, because the budget is the
+// context's.
 func reserveChecks() []string {
 	var out []string
 	instructions := "instructions"
-	full := runcontext.InputBytes(runcontext.Defaults) - runcontext.UTF8Bytes(instructions) - runcontext.UTF8Bytes("[]") - runcontext.Defaults.BriefBytes - 1536
+	full := runcontext.InputBytes(runcontext.Defaults) - runcontext.UTF8Bytes(instructions) - runcontext.UTF8Bytes("[]") - 1536
 	session := func(memory *bool) runcontext.Session {
 		input := &runcontext.Input{Memory: memory}
 		return runcontext.Session{Model: &runcontext.ModelSession{Family: "openai-compatible", Model: "scripted-model"}, Context: input}
@@ -233,8 +234,8 @@ func reserveChecks() []string {
 		}
 	}
 	on, off := true, false
-	check(&on, full-4000, full-4000+1)
-	check(nil, full-4000, full-4000+1)
+	check(&on, full, full+1)
+	check(nil, full, full+1)
 	check(&off, full, full+1)
 	return out
 }

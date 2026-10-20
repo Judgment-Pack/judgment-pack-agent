@@ -233,14 +233,14 @@ func (c *Configuration) Check() error {
 // ContextPolicy is contextPolicy: the budget one model runs under. The table first, then the
 // window and output cap of the model's capability record where it carries them (agent#4), then
 // the assistant profile's own override for the model, which a person wrote and which therefore
-// stays the last word. memory (agent#11) is the host's word on whether the project's memory is
-// on; false frees the memoryBytes reserve (and the host's MemoryFor is not asked, ADR-0005), and
-// anything else keeps it.
+// stays the last word. BriefBytes and MemoryBytes are the bounds on the host's parts (ADR-0005);
+// the policy takes no reserve for either, so the host's word on memory (Input.Memory) does not
+// change it.
 //
 // capabilities is the capability record's two budget members where the host resolved them
 // (capabilitiesFor in capabilities.ts belongs to the wire package, so the record reaches this
 // package as these two numbers).
-func ContextPolicy(config *Configuration, model string, capabilities *ModelBudget, memory *bool) (Policy, error) {
+func ContextPolicy(config *Configuration, model string, capabilities *ModelBudget) (Policy, error) {
 	policy := Defaults
 	if capabilities != nil && capabilities.ContextWindowTokens != 0 && capabilities.OutputTokens != 0 {
 		policy.ContextWindowTokens = capabilities.ContextWindowTokens
@@ -254,9 +254,6 @@ func ContextPolicy(config *Configuration, model string, capabilities *ModelBudge
 			policy.ContextWindowTokens = budget.ContextWindowTokens
 			policy.OutputTokens = budget.OutputTokens
 		}
-	}
-	if memory != nil && !*memory {
-		policy.MemoryBytes = 0
 	}
 	return policy, nil
 }

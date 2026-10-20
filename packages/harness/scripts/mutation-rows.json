@@ -3112,8 +3112,8 @@
   {
    "name": "memory is recalled per request instead of once",
    "file": "engines/vercel/loop.ts",
-   "find": "            ...placeState(session.model.family,placement,withImages(lastMessages),system,state,stated)}",
-   "replace": "            ...placeState(session.model.family,placement,withImages(lastMessages),(await context.askHost(session),context.system(instructions+'\\n'+EXECUTION_INSTRUCTIONS,toolSection)),state,stated)}",
+   "find": "            ...placeState(session.model.family,placement,cachedOpening(session.model.family,withImages(lastMessages)),system,state,stated)}",
+   "replace": "            ...placeState(session.model.family,placement,cachedOpening(session.model.family,withImages(lastMessages)),(await context.askHost(session),context.system(instructions+'\\n'+EXECUTION_INSTRUCTIONS,toolSection)),state,stated)}",
    "tests": [
     "certification/conformance.test.ts",
     "certification/scenarios.test.ts",
@@ -3211,6 +3211,46 @@
    "status": "caught",
    "origin": "ADR-0006",
    "note": "the boundary test: a 9,000-byte result of a source's tool is retained and shown as a reference (sourceResultBytes 8,000)"
+  },
+  {
+   "name": "the third Anthropic breakpoint is not put on the request text (vercel)",
+   "file": "engines/vercel/loop.ts",
+   "find": "  parts[at] = { ...parts[at]!, providerOptions: CACHE_BREAKPOINT } as (typeof parts)[number]",
+   "replace": "  parts[at] = parts[at]!",
+   "tests": [
+    "engines/vercel/prefix.test.ts",
+    "certification/conformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#69",
+   "note": "the prefix test (the first user turn's text part carries cache_control) and the placement check on every Anthropic leg"
+  },
+  {
+   "name": "the third Anthropic breakpoint is not put on the request text (deepagents)",
+   "file": "engines/deepagents/wire.ts",
+   "find": "  if (text !== undefined) text.cache_control = CACHE_BREAKPOINT",
+   "replace": "  if (text !== undefined) text.cache_control = undefined",
+   "tests": [
+    "engines/deepagents/deepagents.test.ts",
+    "certification/conformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#69",
+   "note": "the placement check on every Anthropic leg of the deepagents engine"
+  },
+  {
+   "name": "the brief and memory reserves are taken out of the allowance again",
+   "file": "context/session.ts",
+   "find": "-utf8Bytes(encoded(tools))-1536}",
+   "replace": "-utf8Bytes(encoded(tools))-this.policy.briefBytes-this.policy.memoryBytes-1536}",
+   "tests": [
+    "prompt.test.ts",
+    "certification/scenarios.test.ts",
+    "context/chat.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#69",
+   "note": "the allowance tests: a prompt of the full allowance is refused, and the chat index's room is computed without a reserve"
   }
  ]
 }

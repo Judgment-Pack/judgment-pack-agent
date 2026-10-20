@@ -857,13 +857,42 @@ function split(api: EndpointKind, raw: string): { system: string; rest: string }
   return { system: texts((systemInstruction as { parts?: unknown } | undefined)?.parts).join('\n'), rest: JSON.stringify(rest) }
 }
 
+/** The members of a JSON value, at any depth, that are named `cache_control`. */
+function cacheMarks(value: unknown): number {
+  if (Array.isArray(value)) return value.reduce<number>((sum, item) => sum + cacheMarks(item), 0)
+  if (typeof value !== 'object' || value === null) return 0
+  return Object.entries(value).reduce((sum, [name, item]) => sum + (name === 'cache_control' ? 1 : 0) + cacheMarks(item), 0)
+}
+
+/**
+ * The Anthropic cache breakpoints of one request (agent#69), three of the four the wire allows: on
+ * the system head, on the last tool where the request offers any, and on the first text part of the
+ * first user turn, which is the request text. So the system text, the tools and the request are in
+ * the cached prefix; the state, a part after the request text or later, is not. One line per miss.
+ */
+function cacheMisses(raw: string, request: number): string[] {
+  const body = JSON.parse(raw) as { system?: unknown[]; tools?: unknown[]; messages?: { role?: string; content?: unknown }[] }
+  const marked = (value: unknown) => JSON.stringify((value as { cache_control?: unknown } | undefined)?.cache_control) === '{"type":"ephemeral"}'
+  const opening = body.messages?.[0]
+  const text = opening?.role === 'user' && Array.isArray(opening.content) ? (opening.content as { type?: string }[]).find((block) => block.type === 'text') : undefined
+  const misses: string[] = []
+  if (!marked(body.system?.[0])) misses.push(`request ${request}: the system head carries no cache breakpoint`)
+  if ((body.tools?.length ?? 0) > 0 && !marked(body.tools!.at(-1))) misses.push(`request ${request}: the last tool carries no cache breakpoint`)
+  if (!marked(text)) misses.push(`request ${request}: the first user turn's text part carries no cache breakpoint`)
+  const count = cacheMarks(body)
+  const expected = 2 + ((body.tools?.length ?? 0) > 0 ? 1 : 0)
+  if (count !== expected) misses.push(`request ${request}: ${count} cache breakpoints, not ${expected}`)
+  return misses
+}
+
 /**
  * ADR-0005 on every request a leg sent, the critic's second conversation aside: the package's
  * guidance (its data rule) and then each host part in its layer's order in the system text, as its
  * header, its text and its end line; no part anywhere else in the request; the state, where it is
  * in the system text, after the last part; the system text through the last part the same bytes on
  * every request (the stable prefix); and memory asked once, with the request the run started from.
- * One line per miss; empty where all of it holds.
+ * On the Anthropic wire also the cache breakpoints (`cacheMisses`): the request text is inside the
+ * cached prefix. One line per miss; empty where all of it holds.
  */
 function placementMisses(api: EndpointKind, run: Pick<Run, 'bodies' | 'asked'>, parts: HostParts = SUPPLIED, textTools = false): string[] {
   const misses: string[] = []
@@ -876,6 +905,7 @@ function placementMisses(api: EndpointKind, run: Pick<Run, 'bodies' | 'asked'>, 
   const authoring = run.bodies.filter((body) => !body.includes(REFUTATION_MARKER))
   if (authoring.length === 0) misses.push('no request')
   authoring.forEach((raw, at) => {
+    if (api === 'anthropic') misses.push(...cacheMisses(raw, at + 1))
     const { system, rest } = split(api, raw)
     // Each part's block by its header and the end line after it; the text between them is the part's.
     const blocks = placed.map((part) => {

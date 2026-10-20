@@ -456,7 +456,7 @@ describe('the index, cut to the room the prompt leaves', () => {
       kept.close()
       // With room, an index is sent within a quarter of the allowance.
       const policy = contextPolicy(windowed(window).context!.configuration, 'scripted-model')
-      const allowance = Math.floor((inputBytes(policy) - utf8Bytes(instructions) - 2 - policy.briefBytes - policy.memoryBytes - 1536) * 0.6)
+      const allowance = Math.floor((inputBytes(policy) - utf8Bytes(instructions) - 2 - 1536) * 0.6)
       const room = new SessionContext(windowed(window, chat))
       const short = await room.opening('Change the pack.', instructions, [])
       expect(short[0]).toBe('Change the pack.')
@@ -468,8 +468,9 @@ describe('the index, cut to the room the prompt leaves', () => {
       }
       room.close()
     }
-    // A quarter of the allowance holds an index from 9,216 tokens up; at 8,192, none is sent.
-    expect(indexed).toEqual([9216, 10240, 11264, 12288])
+    // A quarter of the allowance holds an index at every one of these windows. At 8,192 tokens none
+    // was sent while the brief and memory reserves came off the allowance (agent#69).
+    expect(indexed).toEqual([8192, 9216, 10240, 11264, 12288])
   })
 
   it('sends turn two with a chat context as without one at a 14,336-token window (twelve kept results, a 6,949-byte first message)', async () => {

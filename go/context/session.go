@@ -161,16 +161,14 @@ func NewSessionContext(session Session) (*SessionContext, error) {
 		identity.Family = session.Model.Family
 	}
 	var configuration *Configuration
-	var memory *bool
 	var budget *ModelBudget
 	if session.Context != nil {
 		configuration = session.Context.Configuration
-		memory = session.Context.Memory
 	}
 	if session.Model != nil {
 		budget = session.Model.Budget
 	}
-	policy, err := ContextPolicy(configuration, session.ModelName(), budget, memory)
+	policy, err := ContextPolicy(configuration, session.ModelName(), budget)
 	if err != nil {
 		return nil, failure.Authored("configuration", err.Error(), "context")
 	}
@@ -293,8 +291,7 @@ func (c *SessionContext) Initialize(documents []Document, attachments bool) erro
 }
 
 func (c *SessionContext) budget(instructions string, tools *Value) int {
-	return InputBytes(*c.Policy) - UTF8Bytes(instructions) - UTF8Bytes(orArray(tools).Text()) -
-		c.Policy.BriefBytes - c.Policy.MemoryBytes - 1536
+	return InputBytes(*c.Policy) - UTF8Bytes(instructions) - UTF8Bytes(orArray(tools).Text()) - 1536
 }
 
 // allowance is the prompt's allowance: what the first message may take, leaving headroom for
