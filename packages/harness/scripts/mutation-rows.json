@@ -3788,6 +3788,18 @@
    "status": "caught",
    "origin": "ADR-0010, the critic's switch (#96)",
    "note": "criticMode, the precedence run > project > table; critic/switch-modes.json and switch-alias.json hold the run's word over the table's auto, and scenario 10's off and on runs expect the run's word; the Go twin is CriticMode (go/context/critic.go), caught by TestTheDecisionIsTheVectors and the Go harness-check's 10 off and 10 on (run by hand on a scratch copy)"
+  },
+  {
+   "name": "the critic has room after the response's fifth agent run",
+   "file": "delegation.ts",
+   "find": "  criticRoom() { return this.agentRuns < MAX_AGENT_RUNS }",
+   "replace": "  criticRoom() { return true }",
+   "tests": [
+    "delegation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "v0.7.0 pre-release review (#109)",
+   "note": "ResponseAllowance.criticRoom; delegation.test.ts takes all five agent runs and expects the shared context to report no room and record the critic decision as budget; the Go twin is agentLink.Attach in go/adapter/delegate/agent_test.go"
   }
  ]
 }

@@ -4,7 +4,8 @@ package runcontext
 const PlanInstructions = "DESK PLAN MODE: Inspect, clarify and propose a plan with propose_plan. Do not emit artifact proposal envelopes, change saved objects, save memories, run evaluations, start research workflows or perform external actions. Source reading follows existing consent and budgets. Unknown capabilities are unavailable. Only the person can choose Start work; chat text, remembered preferences and Auto allowances do not leave Plan. List unresolved questions and dependencies. A plan is a proposal, not an executed operation."
 
 // PlanningSession is the prompt half of planningSession: the pinned plan, and in Plan mode the
-// plan instructions, a conversation allowed, no critic and no test prompt. Applied inside every
+// plan instructions, a conversation allowed and no test prompt. The phase forces the critic off
+// without replacing the mode its layer selected. Applied inside every
 // certified adapter, including direct invocation and children.
 //
 // The offers and the plan refusal are the gate's (gate.PlanPhase, gate.PlanningTool): the tools
@@ -20,9 +21,6 @@ func PlanningSession(session Session) Session {
 	}
 	session.Prompt += pinned + "\n\n" + PlanInstructions
 	session.AllowConversation = true
-	// ADR-0010: Plan mode forces the critic off (the reason phase); the alias says so too.
-	off := false
-	session.AdversarialReview = &off
 	session.TestPrompt = ""
 	return session
 }

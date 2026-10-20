@@ -138,6 +138,9 @@ critic does, before its `critique` and the proposal event) or where the run ends
 proposal delivered with a `turn-unfinished` note says no critic ran. The shared boundary writes the
 checkpoint carrying the decision, durable, straight after the event, on a tracked run.
 
+`ran` means the switch allowed the critic pass. The pass may still report that it could not run,
+with zero checks, when the run supplies no test prompt.
+
 ## The ownership boundary, stated
 
 - **The person** sets the run's word and the project's default, and sees the decision and its reason.
@@ -167,15 +170,16 @@ checkpoint carrying the decision, durable, straight after the event, on a tracke
    reason; nothing is recorded. The switch refuses the ask under `off` and `on` even where it reaches
    it in the author's phase. In Go the adapters refuse it before the gate, since it reaches no host
    function and no Runtime tool.
-4. **On the agent capability one invocation is held back for the critic from the first invocation
-   on, under `auto` and `on`**: a parent is offered `delegate_tasks` only while it, a child, the
-   continuation and the critic's invocation remain; a batch of `n` tasks is admitted only while `n`
-   children, the continuation and the critic's invocation remain (otherwise it is refused whole,
-   `invalid-tool-input`, no task started); a child never takes the continuation's or the critic's
-   invocation. Under `off` nothing is held back and the rules are ADR-0007's. A critic skipped for
-   budget is the recorded reason `budget`, never silent. On the model capability the critic's
-   requests are claimed against the request allowance as before, and a critic with no request left is
-   skipped for `budget`.
+4. **On the agent capability one invocation is reserved for the critic under `auto` and `on`**:
+   the reserve applies to `delegate_tasks`, batches and children. A parent is offered
+   `delegate_tasks` only while it, a child, the continuation and the critic's invocation remain; a
+   batch of `n` tasks is admitted only while `n` children, the continuation and the critic's
+   invocation remain (otherwise it is refused whole, `invalid-tool-input`, no task started); a child
+   never takes the continuation's or the critic's invocation. A parent's own continuation may still
+   take the invocation; a critic squeezed out that way is recorded as `budget`. Under `off` nothing
+   is reserved and the rules are ADR-0007's. On the model capability the critic's requests are
+   claimed against the request allowance as before, and a critic with no request left is skipped for
+   `budget`.
 5. **A human reviewer assigned turns the critic off in every mode**, with the reason
    `reviewer-assigned`, in the package, so every host behaves the same.
 

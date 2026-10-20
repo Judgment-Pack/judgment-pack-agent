@@ -18,7 +18,7 @@ describe('shared planning boundary',()=>{
   await expect(ready.session.callTool('experimental_evaluate',{})).rejects.toThrow(/Plan mode/)
   expect(before.callTool).not.toHaveBeenCalled()
   await ready.session.callTool('get_schema',{});expect(before.callTool).toHaveBeenCalledOnce()
-  expect(ready.session.adversarialReview).toBe(false);expect(ready.session.testPrompt).toBe('')
+  expect(ready.session.adversarialReview).toBe(true);expect(ready.session.testPrompt).toBe('')
   expect(ready.context.ledger.list().items[0]?.label).toBe('Current chat plan')
   expect(ready.session.prompt).toContain('Only the person can choose Start work')
  })
