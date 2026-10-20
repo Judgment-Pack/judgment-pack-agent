@@ -1,5 +1,5 @@
 {
-  "description": "The policy a session works under in the harness (CONTEXT_DEFAULTS): the table, with the critic's default (adversarialReview), the two time bounds, the two image bounds, the three test-tool bounds the two bounds on a chat's index of earlier results and the bound on the project's own instructions (ADR-0005) the harness adds, and the six bounds on tools with a source (ADR-0006), and the six bounds on tools with a source (ADR-0006).",
+  "description": "The policy a session works under in the harness (CONTEXT_DEFAULTS): the table, with the critic's default (adversarialReview), the two time bounds, the two image bounds, the three test-tool bounds the two bounds on a chat's index of earlier results and the bound on the project's own instructions (ADR-0005) the harness adds, and the eight bounds on tools with a source (ADR-0006).",
   "schema": "budget.json",
   "source": {
     "harness": {
@@ -38,6 +38,8 @@
       "toolDescriptionBytes": 1024,
       "offeredSchemas": 16,
       "offeredSchemaBytes": 24000,
+      "cataloguedTools": 64,
+      "catalogueBytes": 24000,
       "sourceResultBytes": 8000,
       "sourceCallsPerTurn": 8,
       "sourceCallMilliseconds": 30000

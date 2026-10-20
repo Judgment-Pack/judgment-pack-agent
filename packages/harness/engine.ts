@@ -141,14 +141,20 @@ export interface HostTool {
   approval?: import('./toolSources').Approval
   /**
    * The host's approval reader for a tool with a source whose calls need approval (ADR-0006): asked
-   * before each call with its arguments, and the call runs only where it answers `true`. Absent, every
-   * such call is refused. The package holds no grant.
+   * before each call with the call (`ApprovalRequest`: the wire name, the tool's own name, its source
+   * record and a copy of its arguments), and the call runs only where it answers `true`. Absent,
+   * every such call is refused. The package holds no grant.
    */
-  approve?: (args: Record<string, unknown>, signal: AbortSignal) => Promise<boolean>
+  approve?: (call: import('./toolSources').ApprovalRequest, signal: AbortSignal) => Promise<boolean>
   name: string
   description: string
   inputSchema: unknown
-  execute: (args: Record<string, unknown>, signal: AbortSignal) => Promise<McpToolResult>
+  /**
+   * `callId` is the id the call's `tool_call` and `tool_result` events carry, where the run's events
+   * carry one (an interactive run's); the boundary keys a tool with a source's receipt and proposal
+   * marks by it (ADR-0006).
+   */
+  execute: (args: Record<string, unknown>, signal: AbortSignal, callId?: string) => Promise<McpToolResult>
 }
 
 /**

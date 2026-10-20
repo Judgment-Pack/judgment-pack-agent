@@ -849,13 +849,14 @@ var reservedNames = []string{"read_context", "list_context", ReadTool, SearchToo
 // OpenSources holds the run's tools with a source (ADR-0006, sources.go): the report's rows in the
 // execution state, a guardrail for each declaration the package withheld, and the loaded schemas
 // after the history, in the request state.
-func (c *SessionContext) OpenSources(declared *Declared, catalogue bool, family string) {
+func (c *SessionContext) OpenSources(declared *Declared, catalogue bool, toolSchemas string, parent *SourceGate) {
 	if c.Execution.State.Sources == nil {
 		c.Execution.State.Sources = []contract.ProvenanceSourceFigures{}
 	}
-	c.Sources = NewSourceGate(declared, c.Policy, c.Marker, family, func() *[]contract.ProvenanceSourceFigures { return &c.Execution.State.Sources })
+	c.Sources = NewSourceGate(declared, c.Policy, c.Marker, toolSchemas, func() *[]contract.ProvenanceSourceFigures { return &c.Execution.State.Sources }, parent)
 	c.Catalogue = catalogue
 	c.Execution.LoadedSchemas = c.Sources.LoadedSection
+	c.Execution.SourceRows = func() []contract.ProvenanceSourceFigures { return c.Sources.Rows(nil) }
 }
 
 // Run is one run opened: its context, and the session with its tools wrapped.
@@ -903,13 +904,25 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 			return err
 		}
 		if len(declared.Sources) > 0 {
-			family := ""
+			// How a loaded schema is shown: by the capability record's toolSchemas where the adapter carries
+			// it, else by the family's default record.
+			toolSchemas := ""
 			if session.Model != nil {
-				family = session.Model.Family
+				toolSchemas = session.Model.ToolSchemas
+				if toolSchemas == "" && session.Model.Family == "gemini" {
+					toolSchemas = "gemini-subset"
+				}
 			}
-			offered, catalogue := OfferSources(session.HostTools, declared.Entries, *held.Policy, held.Marker)
+			offered, catalogue, withheld := OfferSources(session.HostTools, declared.Entries, *held.Policy, held.Marker)
 			session.HostTools = offered
-			held.OpenSources(declared, catalogue, family)
+			declared.Withheld = append(declared.Withheld, withheld...)
+			var parent *SourceGate
+			if session.Context != nil {
+				if linked, ok := session.Context.Link.(SourceLinked); ok {
+					parent = linked.ParentSources()
+				}
+			}
+			held.OpenSources(declared, catalogue, toolSchemas, parent)
 		}
 		if err := held.AskHost(ctx); err != nil {
 			return err

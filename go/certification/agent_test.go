@@ -21,10 +21,11 @@ func withDelegation(inner adapter.Adapter) adapter.Adapter {
 	return delegate.With(inner, delegate.Options{})
 }
 
-// Scenario 3 on the agent capability, against the shared server's recorded runtime, on the stand-in.
-func TestScenarioThreeHoldsOnTheAgentCapability(t *testing.T) {
+// Scenarios 3 and 7 on the agent capability, against the shared server's recorded runtime, on the
+// stand-in.
+func TestScenariosThreeAndSevenHoldOnTheAgentCapability(t *testing.T) {
 	for _, check := range certification.AgentChecks {
-		if check.Group != "scenario 3" {
+		if check.Group != "scenario 3" && check.Group != "scenario 7" {
 			continue
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)

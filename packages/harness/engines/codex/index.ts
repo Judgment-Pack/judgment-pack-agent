@@ -174,7 +174,7 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
               result = { content: [{ type: 'text', text: PROPOSAL_RECEIVED }] }
             } else {
               result = route.host
-                ? await withDeadline((signal) => route.host!.execute(call.arguments, signal), toolSignal, limit, () => toolTimeout(limit))
+                ? await withDeadline((signal) => route.host!.execute(call.arguments, signal, call.id), toolSignal, limit, () => toolTimeout(limit))
                 : await withDeadline(() => callTool(route.name, call.arguments), toolSignal, limit, () => toolTimeout(limit))
               toolAnswered = true
             }

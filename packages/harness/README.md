@@ -244,8 +244,11 @@ the first request it is a second text part of the person's message, on every wir
 goes where the endpoint's placement says: `trailing-user`, one user message after the history (the
 default), or `system-tail`, the end of the system text (for an endpoint marked `strictAlternation`,
 and by default for Anthropic when a thinking tier is on). A host sets both through
-`endpointCapabilities`; they are two members of the capability record. On the Anthropic wire the adapter marks three cache breakpoints, after the system
-head, after the tools and after the request text (the first text part of the first user turn). The tier is held for the run, changed only where the endpoint refused it
+`endpointCapabilities`; they are two members of the capability record. On the Anthropic wire the adapter
+marks cache breakpoints after the system head and after the tools and, under `trailing-user` only, after
+the request text (the first text part of the first user turn): three under `trailing-user`, two under
+`system-tail`, where the state sits before the messages and the bytes through the request text grow on
+every request. The tier is held for the run, changed only where the endpoint refused it
 or a thinking signature came back truncated. The provider's cache reads and writes are recorded with
 each completion (`cacheReadTokens`, `cacheWriteTokens`). The contract states the header and where it
 sits on each wire (`budget.json`, `contract/vectors/budget/state-placement.json`).
@@ -293,15 +296,21 @@ A tool from a gateway connection, a public MCP server or the person is a host to
 carries `source` (`ToolSource`: `kind` `gateway`, `mcp` or `custom`, `id`, `trust`, and `version` or,
 for an MCP server, the `toolListDigest` the person approved, with `currentDigest()` to check the
 list it serves now), and optionally `effectClass` (`read`, `propose`, `act`; `act` where absent),
-`approval` (`none`, `required`; required for `act` where absent) and `approve(args, signal)`, the
-host's approval reader. The host executes every call; `toolSources.ts` holds them at the boundary
+`approval` (`none`, `required`; required for `act` where absent) and `approve({name, tool, source, args}, signal)`, the
+host's approval reader (the wire name, the tool's own name, its source record and a copy of the arguments);
+`execute(args, signal, callId)` is handed the id of the call's events, where the run's events carry one. The host executes every call; `toolSources.ts` holds them at the boundary
 (`contextualSession`): each is offered under its wire name (`wireName`: the source's id, `__`, the
 name made wire-safe, a hash suffix where a character was replaced or the name cut), its description
-cut at `toolDescriptionBytes` and framed with the run's marker; past `offeredSchemas` or
+cut at `toolDescriptionBytes` and framed with the run's marker, as is each description inside its
+input schema (only the structural keywords are offered, every other is not, and a name over 64 bytes
+or with white space and an `enum` or `const` with a string over 64 bytes are dropped, with a guardrail); past `offeredSchemas` or
 `offeredSchemaBytes` the largest sources become catalogues that `load_tool` loads from, the loaded
-schemas riding in the execution state after the history; and each call is refused where the
-source's list changed, the tool is catalogued and not loaded, the source has made
-`sourceCallsPerTurn` calls, or an act has no approval, held for the review card where it is a
+schemas riding in the execution state after the history, the catalogue itself held to `cataloguedTools`
+and `catalogueBytes` (the tools past them are withheld, with a guardrail); and each call is refused where the
+source's list changed, the tool is catalogued and not loaded or its arguments do not match the schema it
+loaded, the source has made
+`sourceCallsPerTurn` calls (the slot is claimed at the check, so concurrent calls cannot pass it, and a
+delegated child's calls count against the same turn), or an act has no approval, held for the review card where it is a
 proposal (`tool_result` `proposed`), and otherwise run under `sourceCallMilliseconds`, its result
 framed and shown whole up to `sourceResultBytes`. The events carry `source`; the checkpoint's
 `sources` counts each source. `toolListDigest` is exported for a host pinning a server's list.

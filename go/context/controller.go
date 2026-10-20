@@ -210,6 +210,10 @@ type ExecutionController struct {
 	// LoadedSchemas are the schemas load_tool loaded this run (ADR-0006), as one data block, or "";
 	// stated after the request state.
 	LoadedSchemas func() string
+	// SourceRows are the run report's rows by source (ADR-0006), copied under the lock a child's
+	// gate shares with this run's: a snapshot reads them through it, since a delegated child's
+	// calls count in them while this run's checkpoint is written.
+	SourceRows func() []contract.ProvenanceSourceFigures
 
 	session  Session
 	ledger   *ContextLedger
@@ -705,6 +709,9 @@ func (c *ExecutionController) Snapshot(status string) (contract.Checkpoint, erro
 	}
 	held := *c.State
 	held.Status = status
+	if c.SourceRows != nil {
+		held.Sources = c.SourceRows()
+	}
 	held.Context = c.ledger.Snapshot()
 	value := held.Value()
 	if UTF8Bytes(value.Text()) > MaxCheckpointBytes {

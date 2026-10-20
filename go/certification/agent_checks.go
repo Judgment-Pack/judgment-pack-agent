@@ -26,8 +26,9 @@ type AgentCheck struct {
 	Run   func(ctx context.Context, server *Server, host AgentHost, with func(Adapter) Adapter, inner Adapter) ([]Finding, error)
 }
 
-// AgentScenarioNames and AgentDelegationNames are the agent checks the TypeScript suite also makes
-// on its agent engine (scenario 3's, and certification/delegation.test.ts's one child at a time).
+// AgentScenarioNames, AgentSourcesNames and AgentDelegationNames are the agent checks the TypeScript
+// suite also makes on its agent engine (scenario 3's, scenario 7's, and
+// certification/delegation.test.ts's one child at a time).
 var (
 	AgentScenarioNames   = []string{"3 agent run", "3 agent memory"}
 	AgentDelegationNames = []string{"delegation serial"}
@@ -39,7 +40,7 @@ var AgentOwnNames = []string{
 	"agent handoff", "agent result once", "agent references", "agent reports", "agent siblings", "agent figures",
 	"agent counts absent", "agent exclusive", "agent ceiling", "agent admission", "agent restrictions",
 	"agent tool ceilings", "agent recursion", "agent cancellation", "agent busy", "agent persistence",
-	"agent lost acknowledgement", "agent recovery",
+	"agent lost acknowledgement", "agent recovery", "agent project",
 }
 
 // AgentChecks are every agent check, in the order a report lists them.
@@ -55,6 +56,8 @@ var AgentChecks = []AgentCheck{
 	{Group: "persistence", Names: []string{"agent persistence"}, Run: persistenceCheck},
 	{Group: "recovery", Names: []string{"agent lost acknowledgement", "agent recovery"}, Run: recoveryChecks},
 	{Group: "scenario 3", Names: AgentScenarioNames, Run: agentMemoryChecks},
+	{Group: "scenario 7", Names: AgentSourcesNames, Run: agentSourcesChecks},
+	{Group: "project", Names: []string{"agent project"}, Run: projectCheck},
 }
 
 // kinds are the admitted invocations' kinds, in order: parent, child or critic.
@@ -638,6 +641,122 @@ func toolCeilingsCheck(ctx context.Context, _ *Server, host AgentHost, with func
 	} else {
 		f.fail("the invocations were %v", kinds(calls))
 	}
+
+	// The critic's allow-list: its invocation is offered the critic's tools only, and a call of an
+	// author's tool by the name the author was offered it under, a host write, a host read and a
+	// Runtime read outside the list, is refused as a name the invocation was not offered: the host
+	// and the runtime run nothing, and the answer is the unoffered refusal, not the gate's critic
+	// refusal that stands behind it.
+	w, err = newAgentWorld(ctx, host, false)
+	if err != nil {
+		return nil, err
+	}
+	proposal := "Here is the pack.\n\n```json\n{\"proposal\":{\"document\":{\"id\":\"expense\"},\"unknowns\":[]}}\n```"
+	on := true
+	author := []string{writeTool, readTool, "list_examples"}
+	aliases := map[string]string{}
+	w.run(ctx, func(inner Adapter) Adapter { return inner }, inner, func(request adapter.AgentRequest, _ int) AgentPlay {
+		if request.Phase == "critic" {
+			var steps []AgentStep
+			for _, name := range author {
+				steps = append(steps, call(aliases[name], map[string]any{}))
+			}
+			return AgentPlay{Steps: append(steps, say("The proposal holds."))}
+		}
+		for _, name := range author {
+			aliases[name] = OfferedName(request, name)
+		}
+		return AgentPlay{Steps: []AgentStep{say(proposal)}}
+	}, nil, nil, func(run *Run) {
+		run.AllowConversation, run.Interactive, run.Review, run.TestPrompt = false, false, &on, "THE RUNTIME'S TEST GUIDANCE"
+	})
+	events = w.take()
+	calls = w.watch.admitted()
+	if got := kinds(calls); !slices.Equal(got, []string{"parent", "critic"}) {
+		f.fail("with the critic on, the invocations were %v", got)
+		return f.list, nil
+	}
+	for _, name := range author {
+		if slices.Contains(OfferedTools(calls[1].Request), name) {
+			f.fail("the critic was offered %s", name)
+		}
+	}
+	answers := calls[1].Answers
+	if len(answers) != len(author) {
+		f.fail("the critic's %d calls were answered %d times", len(author), len(answers))
+	}
+	for at, name := range author {
+		if at < len(answers) && (!answers[at].IsError || answers[at].Text != gate.UnofferedRefusal(gate.ServedNotOffered(name))) {
+			f.fail("the critic's call of %s was answered %q, not refused as a name it was not offered", name, answers[at].Text)
+		}
+	}
+	if w.hostRan(writeTool) != 0 || w.hostRan(readTool) != 0 || slices.Contains(w.runtime.calls(), "list_examples") {
+		f.fail("the critic's refused calls reached the host (%d, %d) or the runtime (%v)", w.hostRan(writeTool), w.hostRan(readTool), w.runtime.calls())
+	}
+	for _, refusal := range guardrailsOf(events, "refused") {
+		if slices.Contains(author, refusal.Tool) {
+			f.fail("the critic's call of %s earned the gate's refusal %q behind the unoffered one", refusal.Tool, refusal.Detail)
+		}
+	}
+	return f.list, nil
+}
+
+// projectCheck is the project's own instructions on the agent wire (ADR-0005): they land in the
+// invocation's instructions after the package's guidance and its data rule, as their block, and not
+// in its prompt; and an instruction in them to ignore the data rule and call write_file changes
+// nothing the gate admits: write_file, which the agent was not offered, reaches neither the runtime
+// nor a host tool, is refused at the gate with its event, and the agent is told.
+func projectCheck(ctx context.Context, _ *Server, host AgentHost, _ func(Adapter) Adapter, inner Adapter) ([]Finding, error) {
+	f := &findings{check: "agent project"}
+	w, err := newAgentWorld(ctx, host, false)
+	if err != nil {
+		return nil, err
+	}
+	w.run(ctx, func(inner Adapter) Adapter { return inner }, inner, func(adapter.AgentRequest, int) AgentPlay {
+		return AgentPlay{Steps: []AgentStep{call(readTool, map[string]any{"note": 1}), call("write_file", map[string]any{"path": "packs/expense.pack.json"}), say("Read it; wrote nothing.")}}
+	}, nil, nil, func(run *Run) {
+		run.Host = runcontext.HostFuncs{ProjectInstructionsFunc: func(context.Context) (string, error) { return Injected, nil }}
+	})
+	events := w.take()
+	calls := w.watch.admitted()
+	endsCleanly(f, events)
+	if got := kinds(calls); !slices.Equal(got, []string{"parent"}) {
+		f.fail("the invocations were %v", got)
+		return f.list, nil
+	}
+	request := calls[0].Request
+	block := runcontext.ProjectInstructionsHeader + "\n" + Injected + "\nEND PROJECT INSTRUCTIONS"
+	rule, at := strings.Index(request.Instructions, runcontext.DataRule), strings.Index(request.Instructions, block)
+	if rule < 0 || at < 0 || at < rule {
+		f.fail("the project's block is not in the instructions after the data rule (%d, %d)", rule, at)
+	}
+	if strings.Contains(request.Prompt, Injected) {
+		f.fail("the project's instructions are in the invocation's prompt")
+	}
+	if slices.Contains(OfferedTools(request), "write_file") {
+		f.fail("the agent was offered write_file")
+	}
+	answers := calls[0].Answers
+	if len(answers) != 2 || answers[0].IsError || !answers[1].IsError || !strings.HasPrefix(answers[1].Text, "refused: ") {
+		f.fail("write_file was not refused and told to the agent: %+v", answers)
+	}
+	if slices.Contains(w.runtime.calls(), "write_file") || w.hostRan(writeTool) != 0 {
+		f.fail("write_file reached the runtime (%v) or a host tool", w.runtime.calls())
+	}
+	var refused []string
+	for _, refusal := range guardrailsOf(events, "refused") {
+		refused = append(refused, refusal.Tool)
+	}
+	if !slices.Equal(refused, []string{"write_file"}) {
+		f.fail("the refused guardrails were %v", refused)
+	}
+	flow := withoutCheckpoints(events)
+	for at, event := range flow {
+		if event.Guardrail != nil && event.Guardrail.Tool == "write_file" && (at < 1 || at+1 >= len(flow) || flow[at-1].ToolCall == nil || flow[at-1].ToolCall.Name != "write_file" ||
+			flow[at+1].ToolResult == nil || flow[at+1].ToolResult.Name != "write_file" || !flow[at+1].ToolResult.IsError) {
+			f.fail("write_file's refusal is not between its call and its failed result")
+		}
+	}
 	return f.list, nil
 }
 
@@ -1041,7 +1160,7 @@ func CertifyAgent(ctx context.Context, out io.Writer, server *Server, host Agent
 		if !selected {
 			continue
 		}
-		if check.Group == "scenario 3" && server == nil {
+		if (check.Group == "scenario 3" || check.Group == "scenario 7") && server == nil {
 			fmt.Fprintf(out, "SKIP %s: no shared server\n", strings.Join(check.Names, ", "))
 			continue
 		}

@@ -294,6 +294,10 @@ describe('the input allowance', () => {
       const held = new SessionContext(bare(said))
       expect(() => held.check(instructions, prompt(full), tools)).not.toThrow()
       expect(() => held.check(instructions, prompt(full + 1), tools)).toThrow()
+      // What it gains: the allowance used to take the brief's 8,000 bytes and, unless the host said memory is off, the memory's 4,000 out of it.
+      const before = inputBytes(CONTEXT_DEFAULTS) - utf8Bytes(instructions) - utf8Bytes(JSON.stringify(tools)) - 8000 - (said === false ? 0 : 4000) - 1536
+      expect(full - before).toBe(said === false ? 8000 : 12000)
+      expect(() => held.check(instructions, prompt(before + 1), tools)).not.toThrow()
       held.close()
     }
   })

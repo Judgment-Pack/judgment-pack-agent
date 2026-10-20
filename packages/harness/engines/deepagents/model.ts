@@ -25,7 +25,7 @@ import { SystemMessage, type BaseMessage } from '@langchain/core/messages'
 import type { ChatResult } from '@langchain/core/outputs'
 import { withAbort } from '../contract'
 import { answerMessage, encodeRequest, readAnswer, RelayRefusal, type WireListener, type WireTool } from './wire'
-import type { EndpointKind } from '../../host'
+import type { EndpointKind, StatePlacement } from '../../host'
 import type { ModelCall } from '../../engine'
 import type { ReasoningField } from '../../capabilities'
 
@@ -35,6 +35,8 @@ export interface RelaySettings {
   tier: Record<string, unknown> | null
   /** One call per turn on a request that offers tools, where the record says so (agent#4). */
   oneCallPerTurn: boolean
+  /** Where the run's state sits (decided once per run): the request's third cache breakpoint is placed under `trailing-user` only. */
+  placement: StatePlacement
 }
 
 export interface RelayCallOptions extends BaseChatModelCallOptions {
@@ -112,6 +114,7 @@ export class RelayChatModel extends BaseChatModel<RelayCallOptions> {
       messages: rest,
       tools,
       oneCallPerTurn: settings.oneCallPerTurn && tools.length > 0,
+      placement: settings.placement,
       tier: settings.tier,
       maxOutputTokens: relay.maxOutputTokens(),
       reasoningField: relay.family === 'openai-compatible' ? relay.reasoningField : null,

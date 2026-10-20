@@ -3112,8 +3112,8 @@
   {
    "name": "memory is recalled per request instead of once",
    "file": "engines/vercel/loop.ts",
-   "find": "            ...placeState(session.model.family,placement,cachedOpening(session.model.family,withImages(lastMessages)),system,state,stated)}",
-   "replace": "            ...placeState(session.model.family,placement,cachedOpening(session.model.family,withImages(lastMessages)),(await context.askHost(session),context.system(instructions+'\\n'+EXECUTION_INSTRUCTIONS,toolSection)),state,stated)}",
+   "find": "            ...placeState(session.model.family,placement,cachedOpening(session.model.family,placement,withImages(lastMessages)),system,state,stated)}",
+   "replace": "            ...placeState(session.model.family,placement,cachedOpening(session.model.family,placement,withImages(lastMessages)),(await context.askHost(session),context.system(instructions+'\\n'+EXECUTION_INSTRUCTIONS,toolSection)),state,stated)}",
    "tests": [
     "certification/conformance.test.ts",
     "certification/scenarios.test.ts",
@@ -3251,6 +3251,138 @@
    "status": "caught",
    "origin": "agent#69",
    "note": "the allowance tests: a prompt of the full allowance is refused, and the chat index's room is computed without a reserve"
+  },
+  {
+   "name": "a source call's slot is claimed after an await",
+   "file": "toolSources.ts",
+   "find": "    if (proposal) row.proposed++\n    else row.calls++\n",
+   "replace": "    await Promise.resolve()\n    if (proposal) row.proposed++\n    else row.calls++\n",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "pre-release batch for v0.4.0 (#73, #76)",
+   "note": "the concurrent case: twenty calls with sourceCallsPerTurn at 8 must run eight, and the slot given back on a refusal"
+  },
+  {
+   "name": "the descriptive text inside a source's schema is offered unchanged",
+   "file": "toolSources.ts",
+   "find": "offered.push({ ...tool, description: framed.get(tool.name)!, inputSchema: schemas.get(tool.name) }); continue",
+   "replace": "offered.push({ ...tool, description: framed.get(tool.name)! }); continue",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "pre-release batch for v0.4.0 (#73, #76)",
+   "note": "the source-schema vector: the poisoned property description must sit inside a frame, the title and the long enum gone"
+  },
+  {
+   "name": "the catalogue is not bounded by count and bytes",
+   "file": "toolSources.ts",
+   "find": "if (kept + 1 > bounds.cataloguedTools || keptBytes + size > bounds.catalogueBytes) {",
+   "replace": "if (false) {",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "pre-release batch for v0.4.0 (#73, #76)",
+   "note": "four hundred declared tools: the catalogue must stop at cataloguedTools and catalogueBytes, the rest withheld with a guardrail"
+  },
+  {
+   "name": "a catalogued tool's arguments are not held to its loaded schema",
+   "file": "toolSources.ts",
+   "find": "const problem = argumentProblem(this.loaded.get(tool.name), args)",
+   "replace": "const problem = undefined as string | undefined",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "pre-release batch for v0.4.0 (#73, #76)",
+   "note": "arguments that do not match the schema load_tool loaded must be refused before the host's execute"
+  },
+  {
+   "name": "a delegated child is given a source gate of its own",
+   "file": "delegation.ts",
+   "find": "sources:()=>shared.context?.sources",
+   "replace": "sources:()=>undefined",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "pre-release batch for v0.4.0 (#73, #76)",
+   "note": "a child's source calls must count against the turn and reach the parent's report"
+  },
+  {
+   "name": "Plan mode's source offer is built from the declared tools",
+   "file": "context/session.ts",
+   "find": "offerSources(session.hostTools,declared.entries,context.policy,context.marker)",
+   "replace": "offerSources(declared.hostTools,declared.entries,context.policy,context.marker)",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "pre-release batch for v0.4.0 (#73, #76)",
+   "note": "a propose and an act source must not be offered in Plan mode, and a call of either is refused"
+  },
+  {
+   "name": "the vercel critic's system text omits the run's host parts",
+   "file": "engines/vercel/loop.ts",
+   "find": "const criticSystem = context.system(CRITIC_SYSTEM + DATA_RULE + assistantLanguageInstructions(session.replyLanguage), nativeTools ? '' : '\\n\\n' + described(criticOffered))",
+   "replace": "const criticSystem = CRITIC_SYSTEM + DATA_RULE + assistantLanguageInstructions(session.replyLanguage) + (nativeTools ? '' : '\\n\\n' + described(criticOffered))",
+   "tests": [
+    "certification/conformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "pre-release batch for v0.4.0 (#73, #76)",
+   "note": "the placement check over the critic's requests, with CRITIC_SYSTEM as the guidance"
+  },
+  {
+   "name": "the deepagents critic's system text omits the run's host parts",
+   "file": "engines/deepagents/loop.ts",
+   "find": "const criticSystem = context.system(CRITIC_SYSTEM + DATA_RULE + assistantLanguageInstructions(session.replyLanguage), nativeTools ? '' : '\\n\\n' + described(criticOffered))",
+   "replace": "const criticSystem = CRITIC_SYSTEM + DATA_RULE + assistantLanguageInstructions(session.replyLanguage) + (nativeTools ? '' : '\\n\\n' + described(criticOffered))",
+   "tests": [
+    "certification/conformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "pre-release batch for v0.4.0 (#73, #76)",
+   "note": "the placement check over the critic's requests, with CRITIC_SYSTEM as the guidance"
+  },
+  {
+   "name": "the third Anthropic breakpoint is placed under system-tail (vercel)",
+   "file": "engines/vercel/loop.ts",
+   "find": "if (family !== 'anthropic' || placement !== 'trailing-user' || first === undefined",
+   "replace": "if (family !== 'anthropic' || first === undefined",
+   "tests": [
+    "certification/conformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "pre-release batch for v0.4.0 (#73, #76)",
+   "note": "the placement check on the Anthropic legs under system-tail: two breakpoints, none on the request text"
+  },
+  {
+   "name": "the third Anthropic breakpoint is placed under system-tail (deepagents)",
+   "file": "engines/deepagents/wire.ts",
+   "find": "const text = request.placement === 'trailing-user' && opening?.role === 'user'",
+   "replace": "const text = opening?.role === 'user'",
+   "tests": [
+    "certification/conformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "pre-release batch for v0.4.0 (#73, #76)",
+   "note": "the placement check on the Anthropic legs under system-tail: two breakpoints, none on the request text"
+  },
+  {
+   "name": "a source's input schema is offered by a denylist, every unnamed keyword verbatim",
+   "file": "toolSources.ts",
+   "find": "      // Every other keyword is not offered.\n",
+   "replace": "      else kept.push([key, member])\n",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "pre-release batch for v0.4.0 (#73, #76)",
+   "note": "the source-schema vector and the allowlist test: a keyword the package does not name (x-instructions, pattern, contentMediaType) must not reach the offer"
   }
  ]
 }

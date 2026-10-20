@@ -232,6 +232,11 @@ func (c *coordinator) save(ctx context.Context) error {
 		state = held
 	case last != nil:
 		state = *last
+		// The parent's invocation has returned and its children run: their source calls are in the
+		// parent's rows (ADR-0006), which the last checkpoint, a copy, may not hold yet.
+		if live != nil {
+			state.Sources = live.Sources.Rows(state.Sources)
+		}
 	default:
 		return nil
 	}

@@ -45,6 +45,7 @@ var notTheGates = map[string]string{
 	"tool-offer/source-declarations.json": "host tool declarations with a source: the boundary's (go/context, DeclareSources)",
 	"tool-offer/source-offer.json":        "the offer of tools with a source: the boundary's (go/context, OfferSources)",
 	"tool-offer/catalogue.json":           "catalogue entries: the boundary's schema budget (go/context, OfferSources)",
+	"tool-offer/source-schema.json":       "the text inside a source's input schema, framed and bounded: the boundary's (go/context, OfferSources, DescribedSchema)",
 	"tool-offer/load-tool.json":           "load_tool, a host tool the boundary adds (go/context, SourceGate.LoadToolHost)",
 	"tool-offer/source-names.json":        "wire names of tools with a source: the boundary's (go/context, WireName)",
 	"tool-offer/tool-list-digest.json":    "a source's pinned tool list: the boundary's (go/context, ToolListDigest)",

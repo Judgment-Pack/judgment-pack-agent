@@ -280,8 +280,10 @@ func anthropicRequest(request Request) Encoded {
 	}
 	// The third breakpoint, on the first text block of the first user turn: the request text (the
 	// Runtime's prompt and the person's request, or a delegated child's objective), with the state a
-	// block after it. The system text and the tools come before it in Anthropic's order.
-	if len(messages.Items()) > 0 {
+	// block after it. The system text and the tools come before it in Anthropic's order. Under
+	// system-tail the state is a second system block before the messages, the bytes through the
+	// request text grow on every request, a breakpoint there can never be read, and none is placed.
+	if request.Placement == TrailingUser && len(messages.Items()) > 0 {
 		opening := messages.Items()[0]
 		if opening.Get("role").Text() == "user" {
 			for _, block := range opening.Get("content").Items() {

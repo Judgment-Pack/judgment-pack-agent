@@ -32,7 +32,7 @@
 import { AIMessage, HumanMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages'
 import { isCancelled, isEventStream, withAbort } from '../contract'
 import { failureError } from '../../failures'
-import type { EndpointKind } from '../../host'
+import type { EndpointKind, StatePlacement } from '../../host'
 import type { ReasoningField } from '../../capabilities'
 import type { HeldImage } from '../../images'
 import { decodedBytes } from '../../images'
@@ -41,7 +41,7 @@ import type { ModelCompletion } from '../../completion'
 /** The head of the message that shows a vision model a result's images (agent#5). The `vercel` adapter's words. */
 export const IMAGES_HEADER = 'IMAGES from'
 
-/** Anthropic's prompt-cache breakpoint, placed after the system head, after the tools and after the request text. */
+/** Anthropic's prompt-cache breakpoint, placed after the system head, after the tools and, under trailing-user placement only, after the request text. */
 const CACHE_BREAKPOINT = { type: 'ephemeral' } as const
 
 /** One tool as the model is shown it: its name, description and the schema the record says it takes. */
@@ -63,6 +63,8 @@ export interface WireRequest {
   tools: WireTool[]
   /** One call per turn, where the record says the endpoint takes no parallel calls (agent#4). */
   oneCallPerTurn: boolean
+  /** Where the run's state sits: the third cache breakpoint, on the request text, is placed under `trailing-user` only. */
+  placement: StatePlacement
   /** The tier's members, from the host's table (`thinking.ts`), or none. */
   tier: Record<string, unknown> | null
   /** The output reserve the budget table states. */
@@ -375,9 +377,11 @@ function anthropicRequest(request: WireRequest): Encoded {
   }
   // The third breakpoint, on the first text block of the first user turn: the request text (the
   // Runtime's prompt and the person's request, or a delegated child's objective), with the state a
-  // block after it. The system text and the tools come before it in Anthropic's order.
+  // block after it. The system text and the tools come before it in Anthropic's order. Under
+  // `system-tail` the state is a second system block before the messages, the bytes through the
+  // request text grow on every request, and no breakpoint is placed there.
   const opening = messages[0]
-  const text = opening?.role === 'user' ? opening.content.find((block) => block.type === 'text') : undefined
+  const text = request.placement === 'trailing-user' && opening?.role === 'user' ? opening.content.find((block) => block.type === 'text') : undefined
   if (text !== undefined) text.cache_control = CACHE_BREAKPOINT
   const tier = request.tier ?? {}
   const body: Record<string, unknown> = {

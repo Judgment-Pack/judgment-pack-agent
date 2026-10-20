@@ -65,6 +65,8 @@ RELEASE_REVIEWED_DEFS = [
     ("tool-offer.json", "sourceRecord"), ("tool-offer.json", "nameMapping"), ("tool-offer.json", "sourceDeclaration"),
     ("tool-offer.json", "catalogueEntry"), ("tool-offer.json", "loadTool"), ("tool-offer.json", "loadedSchema"),
     ("provenance.json", "sourceFigures"),
+    # ADR-0005 and ADR-0007, and the checkpoint's root: the members the v0.4.0 release review found no vector carried (#76).
+    ("provenance.json", "promptDigest"), ("checkpoint.json", "handoff"), ("run-event.json", "delegation_requested"),
 ]
 
 # The reasoning kinds each wire speaks (WIRE_REASONING in packages/harness/capabilities.ts): a
@@ -589,7 +591,7 @@ class VectorTests(unittest.TestCase):
         targets = []
         for name, definition in RELEASE_REVIEWED_DEFS:
             targets += [(name, ["$defs", definition] + path) for path in members(schemas_[name]["$defs"][definition], [])]
-        for name in ("delegated-task.json", "tool-call.json", "tool-result.json"):
+        for name in ("checkpoint.json", "delegated-task.json", "tool-call.json", "tool-result.json"):
             root = {key: value for key, value in schemas_[name].items() if key != "$defs"}
             targets += [(name, path) for path in members(root, [])]
         self.assertGreater(len(targets), 250)
@@ -642,7 +644,7 @@ class VectorTests(unittest.TestCase):
 
     def test_the_source_bounds_are_in_the_harness_table(self):
         table = load(VECTORS / "budget" / "harness-defaults.json")["items"][0]
-        bounds = {"toolDescriptionBytes": 1024, "offeredSchemas": 16, "offeredSchemaBytes": 24000, "sourceResultBytes": 8000, "sourceCallsPerTurn": 8, "sourceCallMilliseconds": 30000}
+        bounds = {"toolDescriptionBytes": 1024, "offeredSchemas": 16, "offeredSchemaBytes": 24000, "cataloguedTools": 64, "catalogueBytes": 24000, "sourceResultBytes": 8000, "sourceCallsPerTurn": 8, "sourceCallMilliseconds": 30000}
         for name, value in bounds.items():
             with self.subTest(bound=name):
                 self.assertEqual(table[name], value)

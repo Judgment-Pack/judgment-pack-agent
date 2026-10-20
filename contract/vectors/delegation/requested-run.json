@@ -1,0 +1,29 @@
+{
+  "description": "The event an engine that cannot wait for a delegate_tasks call sends in place of the call's tool_call and tool_result, and ends its run (agent#14), as the Go agent engine sends it on an agent capability (ADR-0007): the request, and callId, the agent wire's id of the call, which the coordinator keeps in the checkpoint's handoff (delegation/handoff.json). The coordinator consumes the event, so a host reading its stream sees no end after it; the TypeScript codex engine sends no callId. Written by hand from the schema.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/engine.ts (AssistantEvent, delegation_requested)",
+      "packages/harness/delegation.ts (withDelegation)"
+    ]
+  },
+  "items": [
+    {
+      "type": "delegation_requested",
+      "callId": "call-7f3a",
+      "request": {
+        "tasks": [
+          {
+            "title": "Receipts",
+            "objective": "Check the receipts of every trip.",
+            "profile": "analyze"
+          }
+        ]
+      }
+    }
+  ]
+}

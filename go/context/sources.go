@@ -8,8 +8,11 @@ package runcontext
 // the person's grants; the package keeps no MCP client and never reaches a source. ContextualSession
 // reads the declarations (DeclareSources), names each tool for the wire (WireName), bounds and frames
 // its description and holds the schema budget (OfferSources), and wraps each call in the source gate
-// (SourceGate.Call): the source's changed tool list, a catalogued tool not yet loaded, the calls per
-// turn, the effect class and its approval, and the source's deadline. The boundary carries the source
+// (SourceGate.Call): the source's changed tool list, a catalogued tool not yet loaded, a catalogued
+// tool's arguments against the schema it loaded, the calls per turn (the slot is claimed at the
+// check and given back on a refusal), the effect class and its approval, and the source's deadline.
+// The descriptive text inside a source's input schema is bounded and framed as its description is
+// (DescribedSchema), and the catalogue is held to CataloguedTools and CatalogueBytes. The boundary carries the source
 // record on the tool's events (SourceGate.Decorate) and the report in the checkpoint's sources.
 //
 // A Go host opens the gate with the names the boundary will offer (OfferedHostTools), as it adds the
@@ -20,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"sort"
 	"strings"
@@ -61,6 +65,36 @@ func (s ToolSource) Record(tool string) contract.ToolOfferSourceRecord {
 		out.Tool = &own
 	}
 	return out
+}
+
+// ApprovalRequest is what the host's approval reader is asked about (ApprovalRequest in
+// toolSources.ts): the call as the model made it. Name is the wire name the model called, Tool the
+// tool's own name at its source, Source its record, and Args a copy the reader may change without
+// touching the call.
+type ApprovalRequest struct {
+	Name   string
+	Tool   string
+	Source contract.ToolOfferSourceRecord
+	Args   json.RawMessage
+}
+
+type callIDKey struct{}
+
+// WithCallID is ctx carrying the id the call's tool_call and tool_result events carry, where the
+// run's events carry one (an interactive run's): an adapter hands it to a host tool's Execute, and
+// the source gate keys a tool's receipt and proposal marks by it (the callId HostTool.execute takes
+// in TypeScript). An empty id leaves ctx as it was.
+func WithCallID(ctx context.Context, id string) context.Context {
+	if id == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, callIDKey{}, id)
+}
+
+// CallIDOf is the call id WithCallID put in ctx, or "".
+func CallIDOf(ctx context.Context) string {
+	id, _ := ctx.Value(callIDKey{}).(string)
+	return id
 }
 
 // LoadTool is the harness tool that loads a catalogued tool's schema; a reserved name.
@@ -358,14 +392,226 @@ func FramedDescription(wire, source, text, marker string) string {
 	return FrameBlock("the description of tool "+QuoteJSON(wire)+" from source "+QuoteJSON(source), text, marker)
 }
 
-// OfferSources is offerSources: each description bounded and framed with the run's marker. Where the
-// tools with a source pass OfferedSchemas or OfferedSchemaBytes, sources are made catalogues, the
-// largest first (by its tools offered, then by their bytes, then by id), until the rest fit; a
-// catalogued source's tools are offered as catalogue entries. Whether any source became one is
-// answered; the boundary then offers load_tool.
-func OfferSources(tools []HostTool, entries map[string]*SourceEntry, policy Policy, marker string) ([]HostTool, bool) {
+// EnumMemberBytes is the most UTF-8 bytes of a string an enum or a const of a source's schema may
+// hold and still be offered (ENUM_MEMBER_BYTES); NameBytes the most of a property name, a required
+// entry or a definition's name that is offered (NAME_BYTES).
+const (
+	EnumMemberBytes = 64
+	NameBytes       = 64
+)
+
+// schemaDepth is how deep a source's schema is read; a branch past it is offered empty
+// (SCHEMA_DEPTH).
+const schemaDepth = 16
+
+// The keywords describedSchema offers and how (NUMBER_KEYWORDS, SCHEMA_MAPS, SCHEMA_LISTS, TYPES,
+// FORMATS, REFERENCE): every other keyword is not offered.
+var (
+	numberKeywords = map[string]bool{"minimum": true, "maximum": true, "exclusiveMinimum": true, "exclusiveMaximum": true, "multipleOf": true,
+		"minLength": true, "maxLength": true, "minItems": true, "maxItems": true, "minProperties": true, "maxProperties": true}
+	schemaMaps  = map[string]bool{"properties": true, "$defs": true, "definitions": true}
+	schemaLists = map[string]bool{"oneOf": true, "anyOf": true, "allOf": true}
+	jsonTypes   = map[string]bool{"string": true, "number": true, "integer": true, "boolean": true, "object": true, "array": true, "null": true}
+	jsonFormats = map[string]bool{"date": true, "date-time": true, "time": true, "email": true, "hostname": true, "ipv4": true, "ipv6": true,
+		"uri": true, "uuid": true, "int32": true, "int64": true, "float": true, "double": true}
+	schemaReference = regexp.MustCompile(`^#(/[A-Za-z0-9_$.~%-]{1,64}){0,8}$`)
+)
+
+// blankPoint reports a code point that is white space or a control character, in the set the
+// TypeScript holds (blank).
+func blankPoint(point rune) bool {
+	return point <= 0x20 || (point >= 0x7f && point <= 0xa0) || point == 0x1680 || (point >= 0x2000 && point <= 0x200a) ||
+		point == 0x2028 || point == 0x2029 || point == 0x202f || point == 0x205f || point == 0x3000 || point == 0xfeff
+}
+
+// plainName reports a name that may be offered: not empty, at most NameBytes bytes, and no white
+// space or line break (plainName).
+func plainName(name string) bool {
+	return name != "" && UTF8Bytes(name) <= NameBytes && !strings.ContainsFunc(name, blankPoint)
+}
+
+// plainValue reports whether value may stay in an offered enum or const: a short, one-line string,
+// or a short value (plainValue).
+func plainValue(value *Value) bool {
+	if value.IsString() {
+		return UTF8Bytes(value.Str()) <= EnumMemberBytes && !strings.ContainsAny(value.Str(), "\r\n")
+	}
+	return UTF8Bytes(value.Text()) <= EnumMemberBytes
+}
+
+// SchemaNote is something the offer left out of a source's schema that the model would need to know
+// of: where (a path of the schema's keywords and names), and what ("enum", "const", "name" or
+// "required").
+type SchemaNote struct{ Path, What string }
+
+// DescribedSchema is a source's input schema as the model may be shown it (describedSchema): the
+// text the source wrote inside it is as untrusted as its description, so only what the package
+// knows to be structure is offered (an allowlist, never a list of what is refused). Offered: type
+// (the seven JSON types), format (a short fixed set), $ref (a short pointer within the schema), the
+// numeric bounds, uniqueItems, additionalProperties, items, oneOf, anyOf, allOf, properties, $defs
+// and definitions (a name over NameBytes bytes, or with white space, is dropped with its schema),
+// required (its entries the same), enum and const (dropped where a string is over EnumMemberBytes
+// bytes or has a line break, or where enum is no list) and description, cut to bytes and, where
+// frame is given, framed as retrieved text. Every other keyword, its value whatever it is, is not
+// offered. A branch deeper than sixteen levels is offered empty. What is dropped that the model would
+// need is said in notes, when given.
+func DescribedSchema(node *Value, bytes int, frame func(string) string, notes *[]SchemaNote) *Value {
+	note := func(path, what string) {
+		if notes != nil {
+			*notes = append(*notes, SchemaNote{path, what})
+		}
+	}
+	var walk func(value *Value, depth int, path string) *Value
+	walk = func(value *Value, depth int, path string) *Value {
+		if value != nil && value.Kind() == KindBool {
+			return value
+		}
+		if !value.IsObject() || depth >= schemaDepth {
+			return Object()
+		}
+		out := Object()
+		for _, key := range value.Keys() {
+			member := value.Get(key)
+			at := path + "/" + key
+			switch {
+			case key == "description":
+				if member.IsString() {
+					cut := BoundedDescription(member.Str(), bytes)
+					if frame != nil {
+						cut = frame(cut)
+					}
+					out.Set(key, String(cut))
+				}
+			case key == "type":
+				types := []*Value{member}
+				if member.IsArray() {
+					types = member.Items()
+				}
+				valid := len(types) > 0
+				for _, kind := range types {
+					valid = valid && kind.IsString() && jsonTypes[kind.Str()]
+				}
+				if valid {
+					out.Set(key, member)
+				}
+			case key == "format":
+				if member.IsString() && jsonFormats[member.Str()] {
+					out.Set(key, member)
+				}
+			case key == "$ref":
+				if member.IsString() && schemaReference.MatchString(member.Str()) {
+					out.Set(key, member)
+				}
+			case key == "enum":
+				plain := member.IsArray()
+				for _, item := range member.Items() {
+					plain = plain && plainValue(item)
+				}
+				if plain {
+					out.Set(key, member)
+				} else {
+					note(path, "enum")
+				}
+			case key == "const":
+				if plainValue(member) {
+					out.Set(key, member)
+				} else {
+					note(path, "const")
+				}
+			case numberKeywords[key]:
+				if member != nil && member.Kind() == KindNumber && !math.IsInf(member.Num(), 0) && !math.IsNaN(member.Num()) {
+					out.Set(key, member)
+				}
+			case key == "uniqueItems":
+				if member != nil && member.Kind() == KindBool {
+					out.Set(key, member)
+				}
+			case key == "additionalProperties":
+				if member != nil && (member.Kind() == KindBool || member.IsObject()) {
+					out.Set(key, walk(member, depth+1, at))
+				}
+			case key == "items":
+				if member.IsArray() {
+					list := Array()
+					for index, item := range member.Items() {
+						list.Append(walk(item, depth+1, at+"/"+itoa(index)))
+					}
+					out.Set(key, list)
+				} else if member != nil && (member.Kind() == KindBool || member.IsObject()) {
+					out.Set(key, walk(member, depth+1, at))
+				}
+			case schemaLists[key]:
+				if member.IsArray() {
+					list := Array()
+					for index, item := range member.Items() {
+						list.Append(walk(item, depth+1, at+"/"+itoa(index)))
+					}
+					out.Set(key, list)
+				}
+			case schemaMaps[key]:
+				if member.IsObject() {
+					named := Object()
+					for _, name := range member.Keys() {
+						if plainName(name) {
+							named.Set(name, walk(member.Get(name), depth+1, at+"/"+name))
+						} else {
+							note(at, "name")
+						}
+					}
+					out.Set(key, named)
+				}
+			case key == "required":
+				if member.IsArray() {
+					names := Array()
+					for _, name := range member.Items() {
+						if name.IsString() && plainName(name.Str()) {
+							names.Append(name)
+						}
+					}
+					if names.Len() < member.Len() {
+						note(path, "required")
+					}
+					out.Set(key, names)
+				}
+			}
+			// Every other keyword is not offered.
+		}
+		return out
+	}
+	return walk(node, 0, "")
+}
+
+// schemaNoteDetail is the words a note of DescribedSchema earns as a guardrail (schemaNoteDetail).
+func schemaNoteDetail(wire string, note SchemaNote) string {
+	where := note.Path
+	if where == "" {
+		where = "the schema"
+	}
+	var what string
+	switch note.What {
+	case "name":
+		what = "a property or definition name there is over " + itoa(NameBytes) + " bytes or holds white space, and it is not offered with its schema"
+	case "required":
+		what = "a required entry there is over " + itoa(NameBytes) + " bytes or holds white space, and it is not offered"
+	default:
+		what = "its " + note.What + " holds a string over " + itoa(EnumMemberBytes) + " bytes or a line break, or is no list, and it is not offered"
+	}
+	return "in the input schema of " + wire + ", at " + where + ": " + what + "; the host still validates the arguments it executes"
+}
+
+// OfferSources is offerSources: each description, and each descriptive string of the input schema,
+// bounded and framed with the run's marker, only the schema's structure offered (DescribedSchema),
+// and a note, which the withheld list also holds, for each thing the model would need that was left out. Where the tools with a source pass OfferedSchemas or
+// OfferedSchemaBytes, sources are made catalogues, the largest first (by its tools offered, then by
+// their bytes, then by id), until the rest fit; a catalogued source's tools are offered as
+// catalogue entries, at most CataloguedTools of them and CatalogueBytes bytes in all. The tools
+// past either are withheld, out of entries too, and said in the withheld notes, one for each
+// source. Whether any source became a catalogue is answered; the boundary then offers load_tool.
+func OfferSources(tools []HostTool, entries map[string]*SourceEntry, policy Policy, marker string) ([]HostTool, bool, []Withheld) {
 	type size struct{ count, bytes int }
 	framed := map[string]string{}
+	var schemaNotes []Withheld
+	schemas := map[string]json.RawMessage{}
 	sizes := map[string]*size{}
 	var ids []string
 	for _, tool := range tools {
@@ -387,6 +633,13 @@ func OfferSources(tools []HostTool, entries map[string]*SourceEntry, policy Poli
 		if err != nil {
 			schema = Null()
 		}
+		label := "a description in the input schema of tool " + QuoteJSON(entry.Wire) + " from source " + QuoteJSON(entry.Record.ID)
+		var notes []SchemaNote
+		schema = DescribedSchema(schema, policy.ToolDescriptionBytes, func(cut string) string { return FrameBlock(label, cut, marker) }, &notes)
+		for _, held := range notes {
+			schemaNotes = append(schemaNotes, Withheld{Tool: entry.Wire, Detail: schemaNoteDetail(entry.Wire, held)})
+		}
+		schemas[tool.Name] = json.RawMessage(schema.JSON())
 		held.bytes += UTF8Bytes(ObjectOf("name", String(tool.Name), "description", String(text), "inputSchema", schema).Text())
 	}
 	count, bytes := 0, 0
@@ -413,6 +666,9 @@ func OfferSources(tools []HostTool, entries map[string]*SourceEntry, policy Poli
 		count -= sizes[id].count
 		bytes -= sizes[id].bytes
 	}
+	kept, keptBytes := 0, 0
+	cut := map[string]int{}
+	var cutOrder []string
 	out := make([]HostTool, 0, len(tools))
 	for _, tool := range tools {
 		entry := entries[tool.Name]
@@ -422,16 +678,37 @@ func OfferSources(tools []HostTool, entries map[string]*SourceEntry, policy Poli
 		}
 		if !catalogued[entry.Record.ID] {
 			tool.Description = framed[tool.Name]
+			tool.InputSchema = schemas[tool.Name]
 			out = append(out, tool)
 			continue
 		}
-		entry.Catalogued = true
 		line := Prefix(strings.TrimSpace(strings.SplitN(entry.Description, "\n", 2)[0]), CatalogueLineBytes)
 		tool.Description = Catalogued + "\n" + FramedDescription(entry.Wire, entry.Record.ID, line, marker)
 		tool.InputSchema = json.RawMessage(CatalogueSchema)
+		shown := UTF8Bytes(ObjectOf("name", String(tool.Name), "description", String(tool.Description), "inputSchema", MustParseJSON(CatalogueSchema)).Text())
+		if kept+1 > policy.CataloguedTools || keptBytes+shown > policy.CatalogueBytes {
+			delete(entries, tool.Name)
+			if cut[entry.Record.ID] == 0 {
+				cutOrder = append(cutOrder, entry.Record.ID)
+			}
+			cut[entry.Record.ID]++
+			continue
+		}
+		kept++
+		keptBytes += shown
+		entry.Catalogued = true
 		out = append(out, tool)
 	}
-	return out, len(catalogued) > 0
+	var withheld []Withheld
+	for _, id := range cutOrder {
+		verb := "are"
+		if cut[id] == 1 {
+			verb = "is"
+		}
+		withheld = append(withheld, Withheld{Tool: id, Detail: "the catalogue holds at most " + itoa(policy.CataloguedTools) + " tools and " + itoa(policy.CatalogueBytes) +
+			" bytes (cataloguedTools, catalogueBytes), so " + itoa(cut[id]) + " of " + id + "'s tools " + verb + " not offered; " + itoa(kept) + " are offered across the catalogue"})
+	}
+	return out, kept > 0, append(schemaNotes, withheld...)
 }
 
 // OfferedHostTools are the declarations a Go host opens the gate with for tools with a source: the
@@ -442,7 +719,7 @@ func OfferedHostTools(tools []HostTool, served []string, policy Policy) ([]contr
 	if err != nil {
 		return nil, err
 	}
-	shown, catalogue := OfferSources(declared.HostTools, declared.Entries, policy, "")
+	shown, catalogue, _ := OfferSources(declared.HostTools, declared.Entries, policy, "")
 	out := make([]contract.ToolOfferHostTool, 0, len(shown)+1)
 	for _, tool := range shown {
 		out = append(out, tool.Declaration())
@@ -456,20 +733,31 @@ func OfferedHostTools(tools []HostTool, served []string, policy Policy) ([]contr
 // SourceGate is the boundary's hold on the tools with a source for one run (SourceGate in
 // toolSources.ts): each call's checks in order, the run report, load_tool and the loaded schemas,
 // and the record on the events. Its methods are safe for concurrent use.
+//
+// A delegated child's gate has its parent's (NewSourceGate's parent): the report's rows, and so
+// SourceCallsPerTurn, the sources found changed and the lock they are held under are the parent's,
+// as the turn's test-call cap is shared; a child's own gate keeps what is its own, the schemas it
+// loaded and the marks of its calls' events.
 type SourceGate struct {
 	Entries map[string]*SourceEntry
 	sources []ToolSource
 	policy  *Policy
 	marker  string
-	family  string
+	// schemas is the capability record's toolSchemas for the run's model ("json-schema" or
+	// "gemini-subset"): how a loaded schema is shown (ModelSession.ToolSchemas).
+	schemas string
 	rows    func() *[]contract.ProvenanceSourceFigures
 
-	mu          sync.Mutex
+	// mu is the lock every member below is held under: the gate's own, or its parent's.
+	mu          *sync.Mutex
 	changed     map[string]bool
 	loaded      []loadedSchema
 	loadedBytes int
-	marks       map[string][]mark
-	notices     []contract.RunEvent
+	// marks are the marks of the calls that have a call id, by it; queued those of calls with none
+	// (a run whose events carry no call id), by wire name, in the order they completed.
+	marks   map[string]mark
+	queued  map[string][]mark
+	notices []contract.RunEvent
 }
 
 type loadedSchema struct {
@@ -483,11 +771,16 @@ type mark struct {
 }
 
 // NewSourceGate holds a run's declared sources; rows are the execution state's report rows, which
-// it completes with the Runtime's row and each declared source's.
-func NewSourceGate(declared *Declared, policy *Policy, marker, family string, rows func() *[]contract.ProvenanceSourceFigures) *SourceGate {
-	g := &SourceGate{Entries: declared.Entries, sources: declared.Sources, policy: policy, marker: marker, family: family, rows: rows,
-		changed: map[string]bool{}, marks: map[string][]mark{}}
-	held := rows()
+// it completes with the Runtime's row and each declared source's. A child's gate is given the gate
+// of the run that delegated it, nil otherwise, and then reports into that gate's rows.
+func NewSourceGate(declared *Declared, policy *Policy, marker, schemas string, rows func() *[]contract.ProvenanceSourceFigures, parent *SourceGate) *SourceGate {
+	g := &SourceGate{Entries: declared.Entries, sources: declared.Sources, policy: policy, marker: marker, schemas: schemas, rows: rows,
+		mu: &sync.Mutex{}, changed: map[string]bool{}, marks: map[string]mark{}, queued: map[string][]mark{}}
+	if parent != nil {
+		g.rows, g.mu, g.changed = parent.rows, parent.mu, parent.changed
+	}
+	g.mu.Lock()
+	held := g.rows()
 	want := []contract.ProvenanceSourceFigures{{Source: "runtime", Kind: "runtime"}}
 	for _, source := range declared.Sources {
 		want = append(want, contract.ProvenanceSourceFigures{Source: source.ID, Kind: source.Kind})
@@ -503,12 +796,14 @@ func NewSourceGate(declared *Declared, policy *Policy, marker, family string, ro
 			*held = append(*held, row)
 		}
 	}
+	g.mu.Unlock()
 	for _, withheld := range declared.Withheld {
 		g.notices = append(g.notices, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: withheld.Tool, Action: "refused", Detail: withheld.Detail}})
 	}
 	return g
 }
 
+// row is the report's row of one source; the lock is held, and the row is valid until it is let go.
 func (g *SourceGate) row(source string) *contract.ProvenanceSourceFigures {
 	held := g.rows()
 	for at := range *held {
@@ -520,7 +815,15 @@ func (g *SourceGate) row(source string) *contract.ProvenanceSourceFigures {
 	return &(*held)[len(*held)-1]
 }
 
-func (g *SourceGate) mark(wire string, held mark) { g.marks[wire] = append(g.marks[wire], held) }
+// mark keeps the mark of one call's result: by its call id, or queued by the tool's wire name where
+// the call has none.
+func (g *SourceGate) mark(wire, callID string, held mark) {
+	if callID != "" {
+		g.marks[callID] = held
+		return
+	}
+	g.queued[wire] = append(g.queued[wire], held)
+}
 
 // refuse is a refusal that earns a guardrail: the notice, put on the stream before the call's
 // result, and the permission failure the model reads.
@@ -529,10 +832,22 @@ func (g *SourceGate) refuse(tool, detail string) error {
 	return failure.NewError(contract.Failure{Version: 1, Code: "permission", Source: "tool", Outcome: "not-started", Detail: &detail})
 }
 
-func (g *SourceGate) refused(entry *SourceEntry, err error) error {
+// refused counts one refusal and marks its call's result; the lock is held.
+func (g *SourceGate) refused(entry *SourceEntry, callID string, err error) error {
 	g.row(entry.Record.ID).Refused++
-	g.mark(entry.Wire, mark{})
+	g.mark(entry.Wire, callID, mark{})
 	return err
+}
+
+// Rows are the run report's rows now, a copy taken under the lock the gate and its children's gates
+// share, or fallback where the gate is nil.
+func (g *SourceGate) Rows(fallback []contract.ProvenanceSourceFigures) []contract.ProvenanceSourceFigures {
+	if g == nil {
+		return fallback
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return append([]contract.ProvenanceSourceFigures{}, *g.rows()...)
 }
 
 // TakeNotices are the guardrail events the source gate's refusals earned since the last take.
@@ -564,68 +879,105 @@ func (g *SourceGate) changedDetail(entry *SourceEntry) string {
 
 // Call is one call of a tool with a source, after the phase admitted it (SourceGate.call): refused,
 // with the reason the model reads, where the source's tool list changed, the tool is catalogued and
-// not loaded, the source has made SourceCallsPerTurn calls, or the call needs an approval the host's
-// reader did not give; held for the review card where it is a proposal; otherwise run under the
-// source's deadline and counted in the report.
+// not loaded, a catalogued tool's arguments do not match the schema it loaded, the source has made
+// SourceCallsPerTurn calls, or the call needs an approval the host's reader did not give; held for
+// the review card where it is a proposal; otherwise run under the source's deadline and counted in
+// the report. The call's slot under SourceCallsPerTurn is claimed at the check, under the lock and
+// before anything is awaited, so calls made together cannot pass the bound; a refusal after it
+// gives the slot back. The call id in ctx (WithCallID) is the id of the call's events, which its
+// marks are kept by.
 func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage, run func(context.Context, json.RawMessage) (ToolResult, error)) (ToolResult, error) {
 	entry := g.Entries[name]
 	if entry == nil {
 		return run(ctx, args)
 	}
 	id := entry.Record.ID
+	callID := CallIDOf(ctx)
 	g.mu.Lock()
-	row := g.row(id)
 	switch {
 	case g.changed[id]:
-		err := g.refused(entry, g.refuse(name, g.changedDetail(entry)))
+		err := g.refused(entry, callID, g.refuse(name, g.changedDetail(entry)))
 		g.mu.Unlock()
 		return ToolResult{}, err
 	case entry.Catalogued && !g.isLoaded(name):
-		err := g.refused(entry, failure.ToolInput(name+" is catalogued: call "+LoadTool+" with its name first and call it with the schema that loads. This call was not run."))
+		err := g.refused(entry, callID, failure.ToolInput(name+" is catalogued: call "+LoadTool+" with its name first and call it with the schema that loads. This call was not run."))
 		g.mu.Unlock()
 		return ToolResult{}, err
-	case int(row.Calls+row.Proposed) >= g.policy.SourceCallsPerTurn:
+	}
+	if entry.Catalogued {
+		given, err := ParseJSON(args)
+		if err != nil {
+			given = Null()
+		}
+		if problem := ArgumentProblem(g.loadedSchema(name), given); problem != "" {
+			err := g.refused(entry, callID, failure.ToolInput(name+"'s arguments do not match the schema "+LoadTool+" loaded: "+problem+". This call was not run."))
+			g.mu.Unlock()
+			return ToolResult{}, err
+		}
+	}
+	if row := g.row(id); int(row.Calls+row.Proposed) >= g.policy.SourceCallsPerTurn {
 		limit := g.policy.SourceCallsPerTurn
 		plural := "s"
 		if limit == 1 {
 			plural = ""
 		}
 		detail := fmt.Sprintf("This turn has called %s's tools %d time%s, the most one turn may (sourceCallsPerTurn); this call was not run. Use the results already obtained, or say what remains.", id, limit, plural)
-		err := g.refused(entry, failure.NewError(contract.Failure{Version: 1, Code: "tool-failed", Source: "tool", Outcome: "not-started", Detail: &detail}))
+		err := g.refused(entry, callID, failure.NewError(contract.Failure{Version: 1, Code: "tool-failed", Source: "tool", Outcome: "not-started", Detail: &detail}))
 		g.mu.Unlock()
 		return ToolResult{}, err
 	}
+	// The slot, claimed under the lock the check was made under; a proposal's is the proposed count.
+	proposal := entry.EffectClass == "propose"
+	if proposal {
+		g.row(id).Proposed++
+	} else {
+		g.row(id).Calls++
+	}
 	g.mu.Unlock()
+	giveBack := func() {
+		if proposal {
+			g.row(id).Proposed--
+		} else {
+			g.row(id).Calls--
+		}
+	}
 	if check := entry.Declared.Source.CurrentDigest; check != nil && entry.Record.Kind == "mcp" {
 		now, err := check(ctx)
 		if err != nil || entry.Record.ToolListDigest == nil || now != *entry.Record.ToolListDigest {
 			g.mu.Lock()
 			g.changed[id] = true
-			err := g.refused(entry, g.refuse(name, g.changedDetail(entry)))
+			giveBack()
+			err := g.refused(entry, callID, g.refuse(name, g.changedDetail(entry)))
 			g.mu.Unlock()
 			return ToolResult{}, err
 		}
 	}
-	if entry.EffectClass == "propose" {
+	if proposal {
 		g.mu.Lock()
-		g.row(id).Proposed++
-		g.mark(name, mark{proposed: true})
+		g.mark(name, callID, mark{proposed: true})
 		g.mu.Unlock()
 		return ResultOf([]Content{TextContent(Proposed)}, nil), nil
 	}
 	if entry.Approval == "required" {
 		approved := false
 		if entry.Declared.Approve != nil {
-			copied := append(json.RawMessage(nil), args...)
-			held, err := entry.Declared.Approve(ctx, copied)
+			record, _ := json.Marshal(entry.Record)
+			var source contract.ToolOfferSourceRecord
+			_ = json.Unmarshal(record, &source)
+			held, err := entry.Declared.Approve(ctx, ApprovalRequest{Name: name, Tool: *entry.Record.Tool, Source: source, Args: append(json.RawMessage(nil), args...)})
 			approved = err == nil && held
 		}
 		if ctx.Err() != nil {
+			g.mu.Lock()
+			giveBack()
+			g.mark(name, callID, mark{})
+			g.mu.Unlock()
 			return ToolResult{}, failure.Cancelled
 		}
 		if !approved {
 			g.mu.Lock()
-			err := g.refused(entry, g.refuse(name, name+" acts on "+id+" and needs the person's approval for each call, which this call did not get; it was not run and nothing was changed"))
+			giveBack()
+			err := g.refused(entry, callID, g.refuse(name, name+" acts on "+id+" and needs the person's approval for each call, which this call did not get; it was not run and nothing was changed"))
 			g.mu.Unlock()
 			return ToolResult{}, err
 		}
@@ -635,20 +987,18 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 	result, err := withSourceDeadline(ctx, limit, func(bounded context.Context) (ToolResult, error) { return run(bounded, args) })
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	row = g.row(id)
-	row.Calls++
-	row.Milliseconds += time.Since(started).Milliseconds()
+	g.row(id).Milliseconds += time.Since(started).Milliseconds()
 	if err != nil {
-		g.mark(name, mark{})
+		g.mark(name, callID, mark{})
 		return ToolResult{}, err
 	}
 	receipt := result.Receipt
 	result.Receipt = ""
-	row.Bytes += int64(UTF8Bytes(string(result.JSON())))
+	g.row(id).Bytes += int64(UTF8Bytes(string(result.JSON())))
 	if U16Length(receipt) > 128 {
 		receipt = ""
 	}
-	g.mark(name, mark{receipt: receipt})
+	g.mark(name, callID, mark{receipt: receipt})
 	return result, nil
 }
 
@@ -732,13 +1082,16 @@ func textOf(result ToolResult) string {
 	return strings.Join(parts, "\n")
 }
 
-func (g *SourceGate) isLoaded(name string) bool {
+func (g *SourceGate) isLoaded(name string) bool { return g.loadedSchema(name) != nil }
+
+// loadedSchema is the schema load_tool loaded for name, or nil; the lock is held.
+func (g *SourceGate) loadedSchema(name string) *Value {
 	for _, held := range g.loaded {
 		if held.name == name {
-			return true
+			return held.schema
 		}
 	}
-	return false
+	return nil
 }
 
 // LoadToolHost is load_tool, offered where the schema budget made a source a catalogue: one
@@ -763,7 +1116,12 @@ func (g *SourceGate) LoadToolHost() HostTool {
 				}
 				return ToolResult{}, failure.ToolInput(LoadTool + " loads the schema of a catalogued tool, and " + QuoteJSON(shown) + " is not one; nothing was loaded.")
 			}
-			schema, err := g.shownSchema(entry.Declared.InputSchema)
+			// The loaded schema rides inside a block framed as a whole, so its descriptions are bounded and not framed again.
+			declared, err := ParseJSON(entry.Declared.InputSchema)
+			if err != nil {
+				return ToolResult{}, err
+			}
+			schema, err := g.shownSchema(json.RawMessage(DescribedSchema(declared, g.policy.ToolDescriptionBytes, nil, nil).JSON()))
 			if err != nil {
 				return ToolResult{}, err
 			}
@@ -792,9 +1150,10 @@ func (g *SourceGate) LoadToolHost() HostTool {
 	}
 }
 
-// shownSchema is the schema as the run's family is shown it: on the Gemini family's wire, narrowed.
+// shownSchema is the schema as the run's model is shown it, by its capability record's toolSchemas:
+// on an endpoint that takes the Gemini subset, narrowed.
 func (g *SourceGate) shownSchema(raw json.RawMessage) (*Value, error) {
-	if g.family == "gemini" {
+	if g.schemas == "gemini-subset" {
 		narrowed, err := wire.Parse(raw)
 		if err != nil {
 			return nil, err
@@ -838,9 +1197,12 @@ func (g *SourceGate) Decorate(event contract.RunEvent) contract.RunEvent {
 		}
 		g.mu.Lock()
 		var taken mark
-		if queue := g.marks[event.ToolResult.Name]; len(queue) > 0 {
+		if event.ToolResult.CallID != nil && *event.ToolResult.CallID != "" {
+			taken = g.marks[*event.ToolResult.CallID]
+			delete(g.marks, *event.ToolResult.CallID)
+		} else if queue := g.queued[event.ToolResult.Name]; len(queue) > 0 {
 			taken = queue[0]
-			g.marks[event.ToolResult.Name] = queue[1:]
+			g.queued[event.ToolResult.Name] = queue[1:]
 		}
 		g.mu.Unlock()
 		held := *event.ToolResult

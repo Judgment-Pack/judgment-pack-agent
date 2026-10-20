@@ -256,7 +256,11 @@ What the contract states, and where:
   (`$defs/wireName`, `[A-Za-z0-9_-]{1,64}`, the source's id first, a deterministic suffix where a
   character was replaced or the name cut; `$defs/nameMapping`, the vector
   `tool-offer/source-names.json`), the description cut at `toolDescriptionBytes` and framed as
-  retrieved data with the run's marker, the schema as declared (narrowed on the Gemini family's wire),
+  retrieved data with the run's marker, the schema with the text its source wrote in it treated the
+  same way (an allowlist: each `description` cut and framed, only the structural keywords offered,
+  every other keyword not; a name or `required` entry over 64 bytes or with white space, and an
+  `enum` or `const` with a string over 64 bytes or a line break, or an `enum` that is no list,
+  dropped, each with a `guardrail` naming where; the vector `tool-offer/source-schema.json`), and narrowed on the Gemini family's wire,
   the record with `tool`, the effect class and approval with their defaults (`act`, approval
   `required`, unless the host declares a read or a proposal), and `effect` set from the class, so
   Plan mode and a child, which admit reads only, never offer an act.
@@ -266,26 +270,33 @@ What the contract states, and where:
   `{"type":"object"}`), and `load_tool` (`$defs/loadTool`, a reserved name) is offered. It loads one
   catalogued schema per call (`$defs/loadedSchema`), within `offeredSchemaBytes`; the loaded schemas
   ride after the history in the execution state, one data block, on every later request, so the
-  tools and the system text hold for the run. A catalogued tool not yet loaded is refused
-  (`invalid-tool-input`).
+  tools and the system text hold for the run. The catalogue is bounded too (`cataloguedTools` 64 and
+  `catalogueBytes` 24,000, over its entries as declared): the tools past either are withheld, out of
+  the offer and of `load_tool`, with one `guardrail` `refused` for each source. A catalogued tool
+  not yet loaded is refused (`invalid-tool-input`), and so is one whose arguments do not match the
+  schema it loaded (`invalid-tool-input`, checked by the package against the subset of JSON Schema
+  `sourceArguments.ts` and `go/context/arguments.go` read; the host validates the rest).
 - **Each call**, after the phase admits the name: refused (a `guardrail` and a `permission` failure)
   where the source's served list changed (the host's `currentDigest()`, asked before each `mcp`
   call; once changed, every later call of the source in the run); refused past
-  `sourceCallsPerTurn` (`tool-failed`); a `propose` held for the review card and never run
-  (`tool_result` `proposed: true`); an `act` with approval required run only where the host's approval
-  reader (`approve`) answers yes; then the host's `execute` under `sourceCallMilliseconds`, at most
+  `sourceCallsPerTurn` (`tool-failed`; the slot is claimed at the check, before anything is awaited,
+  and given back on a later refusal, so concurrent calls cannot pass the bound, and a delegated
+  child's calls take their slots from the parent's report); a `propose` held for the review card and
+  never run (`tool_result` `proposed: true`); an `act` with approval required run only where the
+  host's approval reader (`approve`, handed `{name, tool, source, args}`) answers yes; then the host's `execute` under `sourceCallMilliseconds`, at most
   `toolCallMilliseconds`. The answer is framed as data whatever the class (a proposal's
   acknowledgement aside), and shown whole up to `sourceResultBytes`, retained and referenced past it.
 - **The events and the report**: `tool_call` and `tool_result` carry `source`, the record with
-  `tool` (and `receipt` on a result where the host's answer gave one); their `name` is the wire name.
-  The checkpoint's `sources` (`provenance.json#/$defs/sourceFigures`) count calls, refusals,
+  `tool` (and `receipt` on a result where the host's answer gave one, kept by the call's id); their
+  `name` is the wire name. The checkpoint's `sources` (`provenance.json#/$defs/sourceFigures`) count calls, refusals,
   proposals, bytes and time per source, the Runtime's row first.
 
 TypeScript holds these in `toolSources.ts`, entered from `contextualSession`, with the events
 decorated in `context/managed.ts`; Go in `go/context/sources.go`, entered from `ContextualSession`
 and `Boundary`. A Go host opens its gate with the names the boundary will offer
 (`runcontext.OfferedHostTools`), as it adds the boundary's context tools. Certified scenario 7
-(`certification/scenarios/tool-sources.json`) runs the path on every engine and on `eino`.
+(`certification/scenarios/tool-sources.json`) runs the path on every engine, on `eino` and, in the Go
+`harness-check`, on the agent capability (`go/adapter/agent`).
 
 ## The critic
 
@@ -944,17 +955,23 @@ can neither split nor raise into the system text; it is sent where the request g
 text (1, 3, 4, 5 and the tools described in text) is as drawn.
 
 **The cache breakpoints on Anthropic.** The request text leads the first user turn, after the system
-text and the tools in Anthropic's cache order, so a third breakpoint marks the first text part of
-the first user turn (`cache_control` `ephemeral`, on every request, on all three adapters). The
-three, with the one on the system head and the one on the last tool, are within Anthropic's four.
-The cached prefix then runs through the request text, which no request of a run changes, and the
-state is a part after it (the first request) or a later message. Measured on the scripted run, the
-breakpoint moves the request text, 230 bytes, into the cached prefix; a real author-pack prompt
-is about 5 KB. Under `system-tail` the state is in the system text before the messages, so the
-prefix to the third breakpoint changes with every request and only the first two read the cache;
-the third is still placed, so that the rule is one rule on every request. No other wire is given
-a breakpoint. The certification suite checks the three on every Anthropic request
-(`placementMisses`).
+text and the tools in Anthropic's cache order, so under `trailing-user` placement a third breakpoint
+marks the first text part of the first user turn (`cache_control` `ephemeral`, on every request, on
+all three adapters). The three, with the one on the system head and the one on the last tool, are
+within Anthropic's four. The cached prefix then runs through the request text, which no request of a
+run changes, and the state is a part after it (the first request) or a later message. Measured on the
+scripted run, the breakpoint moves the request text, 230 bytes, into the cached prefix; a real
+author-pack prompt is about 5 KB. Under `system-tail` the state is a second system block before the
+messages, so the bytes through the request text grow on every request (13,783 B, 14,363, 14,587 and
+on to 15,698 over the scripted run's eight): a breakpoint there could never be read and, by a
+reading of Anthropic's cache billing that was not measured, each request would write a new cache
+entry at the write price. So the third is placed under `trailing-user`
+only, and the placement is passed to the encoders that mark it (`cachedOpening` on `vercel`,
+`WireRequest.placement` on `deepagents`, `Request.Placement` on Go): the rule is one rule, a
+breakpoint only where its prefix is stable. No other wire is given a breakpoint. The certification
+suite checks the breakpoints on every Anthropic request (`placementMisses`): three under
+`trailing-user`, two under `system-tail` (the tools counted), on the author's requests and the
+critic's.
 
 **As sent.** The system text (the agent wire's `instructions`) is layer 1, then 3, 4 and 5, each
 part the host supplied as its header line, its text and its end line, a blank line before each
@@ -1166,10 +1183,13 @@ Agents' subagents are off and delegation is the package's, an awaited `delegate_
   events.
 - **Tool sources** (ADR-0006). The model engines (`vercel`, `deepagents`, `eino`) carry the schemas
   `load_tool` loaded in the execution state on every later request; the agent wire sends the state
-  once per run, so on `codex` a loaded schema reaches the agent in `load_tool`'s answer only. The Go
-  port narrows a loaded schema by the run's family, the TypeScript by the capability record's
-  `toolSchemas`. A name the run was not offered is counted refused in the Runtime's row on every
-  engine: through the boundary's wrapped `callTool` in TypeScript, and in `eino`'s own refusal in Go.
+  once per run, so on `codex` a loaded schema reaches the agent in `load_tool`'s answer only. Both
+  languages narrow a loaded schema by the capability record's `toolSchemas` (Go carries it on
+  `ModelSession`, and reads the family's default record where an adapter gives none); an agent
+  capability has no model capability, and its `load_tool` answers the schema as written. A name the
+  run was not offered is counted refused in the Runtime's row on every engine: through the boundary's
+  wrapped `callTool` in TypeScript, and in the Go adapters' own refusals (`eino`'s and the agent
+  capability's).
 - **The agent capability, TypeScript and Go** (ADR-0007). Both end the parent's run at
   `delegation_requested`, run children one at a time and continue in a new run with the call's
   result. The Go `agent` adapter waits for the host's provider-run function to return before its

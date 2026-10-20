@@ -162,9 +162,11 @@ handler bound to each check's script (`AgentHost.Bind`). Every binding is held i
 that records each invocation and any invocation started while another still runs on the account.
 `TestTheFakeAccountCatchesANaiveSynchronousWrapper` runs the handoff checks on a wrapper that runs
 each child inside the parent's callback: the exclusive, serial and handoff checks fail. The parity
-table maps the three agent checks the TypeScript suite also makes (scenario 3's two and "one
-delegated child at a time") and lists the package's own under `agentCapability`; the Eino model leg
-certifies none of them. `go/cmd/harness-check` runs the agent checks on the stand-in and says so; a
+table maps the agent checks the TypeScript suite also makes (scenario 3's two, scenario 7's eight, run
+at the provider-run function's seam, and "one delegated child at a time") and lists the package's own
+under `agentCapability`, among them the project's instructions on the agent wire and the critic's
+allow-list (an author's tool called by the critic is refused as a name it was not offered); the Eino
+model leg certifies none of them. `go/cmd/harness-check` runs the agent checks on the stand-in and says so; a
 host certifies its own binding with `certification.CertifyAgent` and its `AgentHost`.
 
 ## Consequences

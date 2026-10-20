@@ -499,7 +499,7 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
           answer = { content: [{ type: 'text', text: PROPOSAL_RECEIVED }] }
         } else {
           const limit = context.policy.toolCallMilliseconds
-          answer = await withDeadline((signal) => tool.execute(args, signal), executionSignal, limit, () => toolTimeout(limit))
+          answer = await withDeadline((signal) => tool.execute(args, signal, correlation.callId), executionSignal, limit, () => toolTimeout(limit))
         }
       } catch (cause) {
         if (isCancelled(cause)) {
@@ -625,7 +625,7 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
     // The enabled dialect spends its budget out of the maximum, so the reserve is the table's.
     context.reserveOutput(tier?.max_tokens)
     /** What one request asks besides its messages: the tier, and one call per turn where the record says so. */
-    const settings = (toolsOpen: boolean): RelaySettings => ({ tier, oneCallPerTurn: !capabilities.parallelToolCalls && nativeTools && toolsOpen })
+    const settings = (toolsOpen: boolean): RelaySettings => ({ tier, oneCallPerTurn: !capabilities.parallelToolCalls && nativeTools && toolsOpen, placement })
     // The stable prefix (ADR-0005): the package's guidance, then the host's parts, then the tools
     // described in text where the endpoint takes no native tool calls.
     const system = context.system(instructions + '\n' + EXECUTION_INSTRUCTIONS, toolSection)

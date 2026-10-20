@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/wire"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 )
 
@@ -239,7 +240,7 @@ var TextChecks = []Check{
 		if len(r.bodies) <= 7 {
 			f.fail("%d bodies", len(r.bodies))
 		}
-		for _, miss := range placementMisses(endpoint.API, r, Supplied, true) {
+		for _, miss := range placementMisses(endpoint.API, r, Supplied, true, placementHow{}) {
 			f.fail("%s", miss)
 		}
 		return f.list, nil
@@ -301,7 +302,7 @@ var StrictChecks = []Check{
 		if len(r.bodies) <= 7 {
 			f.fail("%d bodies", len(r.bodies))
 		}
-		for _, miss := range placementMisses(endpoint.API, r, Supplied, false) {
+		for _, miss := range placementMisses(endpoint.API, r, Supplied, false, placementHow{placement: wire.SystemTail}) {
 			f.fail("%s", miss)
 		}
 		return f.list, nil

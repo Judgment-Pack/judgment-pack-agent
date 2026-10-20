@@ -179,9 +179,10 @@ type HostTool struct {
 	// effect class's default, required for act).
 	Approval string
 	// Approve is the host's approval reader for a tool with a source whose calls need approval:
-	// asked before each call with a copy of its arguments, and the call runs only where it answers
+	// asked before each call with the call (ApprovalRequest: its wire name, the tool's own name,
+	// its source record and a copy of its arguments), and the call runs only where it answers
 	// true. Nil, every such call is refused. The package holds no grant.
-	Approve func(ctx context.Context, args json.RawMessage) (bool, error)
+	Approve func(ctx context.Context, call ApprovalRequest) (bool, error)
 }
 
 // Declaration is the tool as the offer declares it to the model (tool-offer.json#/$defs/hostTool).
@@ -304,6 +305,12 @@ type Input struct {
 // run's context once its execution is initialized, before its first request.
 type ExecutionLink interface{ Attach(c *SessionContext) }
 
+// SourceLinked is the link of a run the delegation coordinator starts as a child (ADR-0006): it
+// hands the child's boundary the source gate of the run that delegated it, whose report rows and
+// changed sources the child's gate shares, so a child's source calls count against the turn and
+// reach the parent's report. Nil where the parent holds none.
+type SourceLinked interface{ ParentSources() *SourceGate }
+
 // ModelSession is a run on a model capability (the model member of EngineSession): the family and
 // the model the host named, and the capability record's two budget members where the host
 // resolved them (capabilitiesFor belongs to the wire package).
@@ -311,6 +318,10 @@ type ModelSession struct {
 	Family string
 	Model  string
 	Budget *ModelBudget
+	// ToolSchemas is what the model's endpoint takes for a tool's parameters, as its capability
+	// record says ("json-schema" or "gemini-subset"): how a schema load_tool loads is shown. Empty,
+	// it is read from Family, as the family's default record reads it.
+	ToolSchemas string
 }
 
 // AgentSession is a run on an agent capability (the agent member of EngineSession): the provider
