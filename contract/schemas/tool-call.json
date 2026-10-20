@@ -18,7 +18,7 @@
       "type": "string"
     },
     "name": {
-      "description": "The tool's own name. The codex engine offers its tools on the agent wire under aliases (desk_runtime_N, desk_host_N) and reports the real name here.",
+      "description": "The tool's own name. The codex engine offers its tools on the agent wire under aliases (desk_runtime_N, desk_host_N) and reports the real name here. A tool with a source is reported by its wire name, its own name in source.tool (ADR-0006).",
       "type": "string"
     },
     "args": {
@@ -40,6 +40,10 @@
     "origin": {
       "description": "harness: the harness made this call itself, not the model: the critic pass's own run of a declared case nothing compared yet (agent#10 review row 8; refutation.ts, compareTheRest). Absent on every call a model made.",
       "const": "harness"
+    },
+    "source": {
+      "description": "The tool's source record (ADR-0006), on the call of a tool with a source, with tool, its own name there; name is then the wire name the model called. Absent on the Runtime's tools and the host's own.",
+      "$ref": "tool-offer.json#/$defs/sourceRecord"
     }
   },
   "additionalProperties": true,

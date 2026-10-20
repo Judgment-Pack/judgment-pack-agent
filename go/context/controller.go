@@ -70,6 +70,9 @@ type Execution struct {
 	// Prompts is the digest of every request body the adapter sent (ADR-0005), in order, carried
 	// as Used is; nil where none was sent.
 	Prompts []contract.ProvenancePromptDigest
+	// Sources are the run report's rows by source (ADR-0006), the Runtime's first, carried as Used
+	// is; nil where the session declares no tool with a source.
+	Sources []contract.ProvenanceSourceFigures
 }
 
 // Value is the state as the checkpoint's JSON, in the order the TypeScript writes it.
@@ -134,6 +137,15 @@ func (e *Execution) Value() *Value {
 		}
 		out.Set("prompts", rows)
 	}
+	if e.Sources != nil {
+		rows := Array()
+		for _, row := range e.Sources {
+			rows.Append(ObjectOf("source", String(row.Source), "kind", String(row.Kind), "calls", Number(float64(row.Calls)),
+				"refused", Number(float64(row.Refused)), "proposed", Number(float64(row.Proposed)),
+				"bytes", Number(float64(row.Bytes)), "milliseconds", Number(float64(row.Milliseconds))))
+		}
+		out.Set("sources", rows)
+	}
 	return out
 }
 
@@ -165,7 +177,7 @@ func executionOf(saved *contract.Checkpoint) (*Execution, error) {
 		Phase: saved.Phase, Status: saved.Status, Unit: saved.Unit, Used: int(saved.Used),
 		Limit: int(saved.Limit), Grants: saved.Grants, Plan: value.Get("plan"),
 		Explanation: saved.Explanation, Completions: saved.Completions, Context: saved.Context,
-		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts}
+		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources}
 	if saved.TestCalls != nil {
 		calls := int(*saved.TestCalls)
 		out.TestCalls = &calls
@@ -195,6 +207,9 @@ type ExecutionController struct {
 	// one (agent#13): the response's, shared by a parent and its children, or a child's own budget.
 	// Stated in the request state as toolCalls.
 	ToolAllowance func() *ToolAllowance
+	// LoadedSchemas are the schemas load_tool loaded this run (ADR-0006), as one data block, or "";
+	// stated after the request state.
+	LoadedSchemas func() string
 
 	session  Session
 	ledger   *ContextLedger
@@ -375,7 +390,13 @@ func (c *ExecutionController) RequestState() string {
 		state.Set("resumeFromCompletedResults", rows)
 	}
 	state.Set("completedOperationCount", Number(float64(len(c.State.Operations))))
-	return c.Progress.Guidance() + "\n" + state.Text()
+	loaded := ""
+	if c.LoadedSchemas != nil {
+		if section := c.LoadedSchemas(); section != "" {
+			loaded = "\n" + section
+		}
+	}
+	return c.Progress.Guidance() + "\n" + state.Text() + loaded
 }
 
 // RetainProgress is retainProgress: each completed operation retained once, and the index of them

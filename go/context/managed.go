@@ -64,9 +64,18 @@ func (b *Boundary) Stopped() { b.stopped = true }
 // Open is the opening checkpoint of a tracked run, and nothing for a run that is not tracked.
 func (b *Boundary) Open() []contract.RunEvent {
 	if !b.tracked {
+		return b.notices()
+	}
+	return append(b.checkpoint(nil, ""), b.notices()...)
+}
+
+// notices are the guardrail events the source gate's refusals earned (ADR-0006), put on the stream
+// before the next event: a withheld declaration's at the start, a refused call's before its result.
+func (b *Boundary) notices() []contract.RunEvent {
+	if b.run.Context.Sources == nil {
 		return nil
 	}
-	return b.checkpoint(nil, "")
+	return b.run.Context.Sources.TakeNotices()
 }
 
 // checkpoint is one execution_checkpoint event, or nothing where the checkpoint is too large to
@@ -87,8 +96,12 @@ var readNames = []string{"get_schema", "get_authoring_instructions", "list_conte
 // Event is one of the adapter's events put through the boundary: the events to deliver in its
 // place, and whether the run is over.
 func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
-	out := []contract.RunEvent{}
+	out := append([]contract.RunEvent{}, b.notices()...)
 	context := b.run.Context
+	// ADR-0006: a tool with a source's call and result carry its source record.
+	if context.Sources != nil {
+		event = context.Sources.Decorate(event)
+	}
 	if event.Error != nil {
 		b.failed = true
 	}

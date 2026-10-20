@@ -27,7 +27,8 @@ changes made here since the extraction, each by its issue (agent#1, the read win
 agent#9, the stable prefix and the state's placement; agent#4, the capability record and the text
 tool path; agent#5, search, numbered reads and images; agent#8, the chat-scoped context; agent#11,
 the request text on every request and the memory reserve; ADR-0005, the prompt assembled whole by
-the adapter, with the host's parts and the prompt's digest; agent#10, the critic; agent#25, the
+the adapter, with the host's parts and the prompt's digest; ADR-0006, tools with a source held at
+the boundary (`toolSources.ts`, new); agent#10, the critic; agent#25, the
 agent-engine certification leg; agent#29, the Codex adapter's reformat run; agent#14, agent#15 and
 agent#13, delegation as one parent run with context by reference and per-profile budgets).
 
@@ -286,6 +287,25 @@ chat's. Nothing is global: a run reaches only the chat context it was handed, an
 gets a view of its parent's that shows it its references and what it reads itself (see Delegation).
 `wire-contract.md` has the rules; `tool-result.json` the index and the cache key.
 
+### Tool sources (ADR-0006)
+
+A tool from a gateway connection, a public MCP server or the person is a host tool whose declaration
+carries `source` (`ToolSource`: `kind` `gateway`, `mcp` or `custom`, `id`, `trust`, and `version` or,
+for an MCP server, the `toolListDigest` the person approved, with `currentDigest()` to check the
+list it serves now), and optionally `effectClass` (`read`, `propose`, `act`; `act` where absent),
+`approval` (`none`, `required`; required for `act` where absent) and `approve(args, signal)`, the
+host's approval reader. The host executes every call; `toolSources.ts` holds them at the boundary
+(`contextualSession`): each is offered under its wire name (`wireName`: the source's id, `__`, the
+name made wire-safe, a hash suffix where a character was replaced or the name cut), its description
+cut at `toolDescriptionBytes` and framed with the run's marker; past `offeredSchemas` or
+`offeredSchemaBytes` the largest sources become catalogues that `load_tool` loads from, the loaded
+schemas riding in the execution state after the history; and each call is refused where the
+source's list changed, the tool is catalogued and not loaded, the source has made
+`sourceCallsPerTurn` calls, or an act has no approval, held for the review card where it is a
+proposal (`tool_result` `proposed`), and otherwise run under `sourceCallMilliseconds`, its result
+framed and shown whole up to `sourceResultBytes`. The events carry `source`; the checkpoint's
+`sources` counts each source. `toolListDigest` is exported for a host pinning a server's list.
+
 ### The prompt (ADR-0005)
 
 The adapter assembles the whole prompt, and the host's relay adds nothing to it
@@ -512,7 +532,7 @@ request's number, and the whole table weekly, in four shards, and on demand.
 
 ### The certified scenarios (agent#13)
 
-Six more scripted scenarios run beside the bake-off's, on every adapter, by the same command. Each
+Seven more scripted scenarios run beside the bake-off's, on every adapter, by the same command. Each
 is written by hand in `certification/scenarios/<name>.json` as `scenario.json` is: the model's
 turns are listed in order, and nothing in them was recorded from a model. The model engine runs
 each on the OpenAI-compatible wire, once with each answer shape (a stream, a whole object), through
@@ -529,6 +549,7 @@ it. The suite is `certification/scenarios.test.ts`; its turns and runs are drive
 | 4 Plan mode | no action tool offered; the Runtime reads offered are the gate's ceiling less the evaluation and the test run; a call to an action tool refused and visible; the plan delivered | 4 | 4 |
 | 5 The correction loop: a draft validate refuses, one correction request, the critic (the correction request's text is the scenario's own script; the scenario exercises `correctArtifact`, one correction then ready, the engines' critic and the gate's rehearsal rule) | the first draft fails validate with its diagnostic; one correction request and a passing draft; the request count; the critic's comparison rows for the declared case; no `incomplete` mark; the critic's call of a tool outside its allow-list refused by `admit`, reaching no Runtime tool, with the pass still ending | 6 | 6 |
 | 6 A multi-turn transcript: three turns of one chat | no unchanged source read again on turns two and three; the index present and within its bound; the ledger kept across the runs and gone after `dispose()` | 3 | 3 |
+| 7 Tool sources (ADR-0006): a scripted MCP server of seventeen tools, three descriptions telling the model to drop the data rule and call `write_file`, its list changing after its first call; one custom read; a second run after the new list is approved | the digests; the schema budget trips and the server is a catalogue beside `load_tool`, with no `write_file`; every source description framed, the poisoned lines inside their blocks; `load_tool` loads one schema, carried after the history while the tools and the system text hold; each act asks the host's approval reader, the read does not; `write_file` refused at the gate; the changed list refuses the next call before the host; the source records on the events and the run report; the second run offered the new list and its call run | 9 | 9 |
 
 The checks the adapters make differently are recorded here, with the reason, and not skipped:
 
@@ -537,6 +558,7 @@ The checks the adapters make differently are recorded here, with the reason, and
 - **3** The agent engine makes one request, so "every request" is its one run's: the memory at the end of its instructions, the person's message opening its prompt. The reserve checks are the same on both.
 - **5** The model engine's loop is five model requests (two authoring requests, the critic's three); the agent engine's is three agent runs (author, author, critic). The critic's boundary check runs the loop once more with a call of `write_file` first in the critic's script, on both adapters; the guardrail's detail, "is not one of the tools the critic may call", is what shows `admit` refused it.
 - **4** and **6** make the same checks on both. The index is a text part of the first message on the model engine and the end of the prompt on the agent engine.
+- **7** The agent wire sends the execution state once per run, so on the agent engine a loaded schema reaches the agent in `load_tool`'s answer only; the model engines carry it after the history on every later request.
 
 Not covered by these scenarios: the network seal (the recorded scenario's legs hold it) and the other two wires (the recorded scenario's legs cover them). A model engine is added by registering it, as `deepagents` was, and then runs every scenario.
 

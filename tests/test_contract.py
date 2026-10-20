@@ -61,6 +61,10 @@ RELEASE_REVIEWED_DEFS = [
     ("run-event.json", "message_progress"), ("run-event.json", "critique"), ("run-event.json", "proposal"),
     ("tool-offer.json", "criticTools"), ("tool-offer.json", "hostTool"), ("tool-offer.json", "reservedName"),
     ("tool-result.json", "turnIndex"), ("tool-result.json", "readCacheKey"),
+    # ADR-0006: tool sources.
+    ("tool-offer.json", "sourceRecord"), ("tool-offer.json", "nameMapping"), ("tool-offer.json", "sourceDeclaration"),
+    ("tool-offer.json", "catalogueEntry"), ("tool-offer.json", "loadTool"), ("tool-offer.json", "loadedSchema"),
+    ("provenance.json", "sourceFigures"),
 ]
 
 # The reasoning kinds each wire speaks (WIRE_REASONING in packages/harness/capabilities.ts): a
@@ -591,6 +595,59 @@ class VectorTests(unittest.TestCase):
         self.assertGreater(len(targets), 250)
         missing = [f"{name} {'/'.join(str(step) for step in path)}" for name, path in targets if not carried(name, path)]
         self.assertEqual(missing, [], "members no vector carries")
+
+    def test_every_wire_name_follows_the_rule(self):
+        # ADR-0006: tool-offer.json#/$defs/wireName, computed here from its words.
+        def wire(source, tool):
+            cleaned = "".join(ch if re.fullmatch(r"[A-Za-z0-9_-]", ch) else "_" for ch in tool)
+            base = f"{source}__{cleaned}"
+            if cleaned == tool and len(base) <= 64:
+                return base
+            return base[:55] + "_" + sha256(f"{source}\n{tool}")[:8]
+
+        vector = self.vectors["tool-offer/source-names.json"]
+        for item in vector["items"]:
+            with self.subTest(tool=item["tool"]):
+                self.assertEqual(wire(item["source"], item["tool"]), item["wire"])
+                self.assertLessEqual(len(item["wire"]), 64)
+        self.assertEqual(len({item["wire"] for item in vector["items"]}), len(vector["items"]))
+        for collision in vector["collisions"]:
+            self.assertEqual({wire(d["source"], d["tool"]) for d in collision["declared"]}, {collision["wire"]})
+        offer = self.schemas["tool-offer.json"]["$defs"]
+        held = set(offer["runtimeCeiling"]["enum"]) | set(offer["reservedName"]["enum"]) | {"propose_pack", "get_pack"}
+        for item in vector["held"]:
+            self.assertIn(item["tool"], held)
+
+    def test_every_tool_list_digest_is_the_digest_of_its_canonical_list(self):
+        # ADR-0006: tool-offer.json#/$defs/toolListDigest.
+        vector = self.vectors["tool-offer/tool-list-digest.json"]
+        self.assertEqual(len(vector["lists"]), len(vector["items"]))
+        for listed, item in zip(vector["lists"], vector["items"]):
+            with self.subTest(digest=item["toolListDigest"]):
+                tools = sorted(
+                    ({"name": t["name"], "description": t.get("description", ""), **({"inputSchema": t["inputSchema"]} if "inputSchema" in t else {})} for t in listed["tools"]),
+                    key=lambda t: t["name"].encode("utf-16-be"),
+                )
+                self.assertEqual(canonical(tools), listed["canonical"])
+                self.assertEqual("sha256:" + sha256(listed["canonical"]), item["toolListDigest"])
+        self.assertNotEqual(vector["items"][0]["toolListDigest"], vector["items"][1]["toolListDigest"])
+
+    def test_every_refused_source_declaration_fails_the_schema(self):
+        vector = self.vectors["tool-offer/source-declarations.json"]
+        check = validator(self.schemas, vector["schema"])
+        self.assertEqual(len(vector["refused"]), 6)
+        for refused in vector["refused"]:
+            with self.subTest(problem=refused["problem"]):
+                self.assertNotEqual(problems(check, [refused["declaration"]]), [])
+
+    def test_the_source_bounds_are_in_the_harness_table(self):
+        table = load(VECTORS / "budget" / "harness-defaults.json")["items"][0]
+        bounds = {"toolDescriptionBytes": 1024, "offeredSchemas": 16, "offeredSchemaBytes": 24000, "sourceResultBytes": 8000, "sourceCallsPerTurn": 8, "sourceCallMilliseconds": 30000}
+        for name, value in bounds.items():
+            with self.subTest(bound=name):
+                self.assertEqual(table[name], value)
+                self.assertEqual(self.schemas["budget.json"]["properties"][name]["default"], value)
+        self.assertLessEqual(table["sourceResultBytes"], table["toolResultBytes"])
 
     def test_the_scenario_is_the_order_the_conformance_session_asserts(self):
         vector = self.vectors["scenario/expense-reimbursement.json"]

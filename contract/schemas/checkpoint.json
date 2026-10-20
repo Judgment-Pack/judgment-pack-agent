@@ -144,6 +144,14 @@
       "items": {
         "$ref": "provenance.json#/$defs/promptDigest"
       }
+    },
+    "sources": {
+      "description": "The run report's rows by source (ADR-0006; provenance.json#/$defs/sourceFigures): present where the session declares a tool with a source, the Runtime's row first, then each declared source in the order declared; at most 64. Carried as used is through a resume, so sourceCallsPerTurn counts the turn.",
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "$ref": "provenance.json#/$defs/sourceFigures"
+      }
     }
   },
   "additionalProperties": true,

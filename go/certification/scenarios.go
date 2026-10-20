@@ -15,7 +15,7 @@ import (
 	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
 )
 
-// The certified scenarios (agent#13, certification/scenarios.test.ts): six scripted scenarios run
+// The certified scenarios (agent#13, certification/scenarios.test.ts): seven scripted scenarios run
 // on the OpenAI-compatible wire, once with each answer shape, through the shared server's scenario
 // sessions. The host's half of each (its host tools, the chat context, Plan mode, the correction
 // loop's checks, the delegation coordinator) is this runner's, as it is the TypeScript suite's.
@@ -147,9 +147,11 @@ func openScenario(ctx context.Context, server *Server, endpoint ScenarioEndpoint
 	}
 	h := &scenarioHost{session: session}
 	h.gate = gate.New(gate.Options{Runtime: gate.Call(session.RuntimeCall()), Granted: gate.Ceiling, Emit: h.emit})
-	var declared []contract.ToolOfferHostTool
-	for _, tool := range hostTools {
-		declared = append(declared, tool.Declaration())
+	// The host's tools as the boundary will offer them (ADR-0006): a tool with a source by its wire
+	// name, and load_tool where the schema budget makes a source a catalogue.
+	declared, err := runcontext.OfferedHostTools(hostTools, gate.Ceiling, runcontext.Defaults)
+	if err != nil {
+		return nil, err
 	}
 	declared = append(declared, boundaryTools(allowConversation)...)
 	h.offer, err = h.gate.Open(ctx, declared)

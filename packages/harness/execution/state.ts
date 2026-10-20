@@ -37,6 +37,17 @@ export interface ExecutionCheckpoint {
  delegation?:DelegationFigures;
  /** ADR-0005: the digest of every request body the adapter sent, in order, carried as `used` is. */
  prompts?:PromptDigest[];
+ /** ADR-0006: the run report's rows by source, the Runtime's first, carried as `used` is. */
+ sources?:SourceFigures[];
+}
+/**
+ * One source's row of the run report (ADR-0006, `toolSources.ts`): the contract's
+ * `provenance.json#/$defs/sourceFigures`. The Runtime's row is source `runtime`, kind `runtime`.
+ */
+export interface SourceFigures {source:string;kind:'runtime'|'gateway'|'mcp'|'custom';calls:number;refused:number;proposed:number;bytes:number;milliseconds:number}
+/** The run report's rows, read closed (`checkpoint.json`, sources). */
+export function validSourceFigures(value:unknown):value is SourceFigures[]{
+ return Array.isArray(value)&&value.length<=64&&value.every(row=>object(row)&&exact(row,['source','kind','calls','refused','proposed','bytes','milliseconds'])&&typeof row.source==='string'&&/^[A-Za-z][A-Za-z0-9-]{0,23}$/.test(row.source)&&['runtime','gateway','mcp','custom'].includes(String(row.kind))&&count(row.calls)&&count(row.refused)&&count(row.proposed)&&count(row.bytes)&&count(row.milliseconds))
 }
 /** Token counts the provider reported, summed; a member is absent where no request reported it (agent#18). */
 export interface TokenFigures {inputTokens?:number;outputTokens?:number;reasoningTokens?:number;cacheReadTokens?:number;cacheWriteTokens?:number}
@@ -81,6 +92,7 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value.limit!==limit||!Array.isArray(value.plan)||(value.plan.length&&!validTaskSteps(value.plan))||!text(value.explanation,2000)||(value.reason!==undefined&&!text(value.reason,2000))||(value.testCalls!==undefined&&(!Number.isInteger(value.testCalls)||Number(value.testCalls)<0||Number(value.testCalls)>400))||(value.delegation!==undefined&&!validDelegationFigures(value.delegation)))return fail()
  if(value.completions!==undefined&&(!Array.isArray(value.completions)||value.completions.length>MAX_REQUEST_ALLOWANCE||value.completions.some(row=>!object(row)||!Number.isInteger(row.request)||Number(row.request)<1||Number(row.request)>Number(value.used)||!['work','synthesis','review'].includes(String(row.phase))||!readCompletion(row.result)||row.attempt!==undefined&&(!Number.isInteger(row.attempt)||Number(row.attempt)<1||Number(row.attempt)>3)||row.failure!==undefined&&!readFailure(row.failure)||row.waitMs!==undefined&&(!Number.isInteger(row.waitMs)||Number(row.waitMs)<0||Number(row.waitMs)>86400000))))return fail()
  if(value.prompts!==undefined&&(!Array.isArray(value.prompts)||value.prompts.length>MAX_PROMPT_DIGESTS||value.prompts.some((row,at,rows)=>!object(row)||!exact(row,['request','sha256'])||!Number.isSafeInteger(row.request)||Number(row.request)<1||at>0&&Number(row.request)<=Number((rows[at-1] as Record<string,unknown>).request)||typeof row.sha256!=='string'||!/^[a-f0-9]{64}$/.test(row.sha256))))return fail()
+ if(value.sources!==undefined&&!validSourceFigures(value.sources))return fail()
  if(!Array.isArray(value.operations)||value.operations.length>400||new Set(value.operations.map(o=>o.id)).size!==value.operations.length)return fail()
  for(const op of value.operations){if(!object(op)||!text(op.id,100)||!text(op.name,150)||!['running','complete','failed','interrupted'].includes(String(op.status))||op.result!==undefined&&(!object(op.result)||(op.result.content!==undefined&&(!Array.isArray(op.result.content)||op.result.content.some(p=>!object(p)||p.type!==undefined&&typeof p.type!=='string'||p.text!==undefined&&typeof p.text!=='string')))))return fail()}
  if(!object(value.context)||!text(value.context.scope,100)||!Array.isArray(value.context.entries)||value.context.entries.length>800||new Set(value.context.entries.map(e=>e.id)).size!==value.context.entries.length)return fail()

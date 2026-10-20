@@ -98,6 +98,10 @@ func ReadingTool(host *HostTool) bool {
 	if host == nil {
 		return true
 	}
+	// ADR-0006: a source's answer is data whatever its effect class; a proposal has none.
+	if host.Source != nil {
+		return host.EffectClass != "propose"
+	}
 	if host.Effect != "" {
 		return host.Effect == "read"
 	}

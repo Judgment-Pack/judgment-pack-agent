@@ -34,7 +34,13 @@
       "testMatrixBytes": 65536,
       "turnIndexEntries": 20,
       "turnIndexBytes": 8000,
-      "projectInstructionsBytes": 4000
+      "projectInstructionsBytes": 4000,
+      "toolDescriptionBytes": 1024,
+      "offeredSchemas": 16,
+      "offeredSchemaBytes": 24000,
+      "sourceResultBytes": 8000,
+      "sourceCallsPerTurn": 8,
+      "sourceCallMilliseconds": 30000
     },
     {
       "version": 1,
@@ -58,7 +64,13 @@
       "testMatrixBytes": 65536,
       "turnIndexEntries": 20,
       "turnIndexBytes": 8000,
-      "projectInstructionsBytes": 4000
+      "projectInstructionsBytes": 4000,
+      "toolDescriptionBytes": 1024,
+      "offeredSchemas": 16,
+      "offeredSchemaBytes": 24000,
+      "sourceResultBytes": 8000,
+      "sourceCallsPerTurn": 8,
+      "sourceCallMilliseconds": 30000
     },
     {
       "version": 1,
@@ -82,7 +94,13 @@
       "testMatrixBytes": 65536,
       "turnIndexEntries": 20,
       "turnIndexBytes": 8000,
-      "projectInstructionsBytes": 4000
+      "projectInstructionsBytes": 4000,
+      "toolDescriptionBytes": 1024,
+      "offeredSchemas": 16,
+      "offeredSchemaBytes": 24000,
+      "sourceResultBytes": 8000,
+      "sourceCallsPerTurn": 8,
+      "sourceCallMilliseconds": 30000
     }
   ]
 }

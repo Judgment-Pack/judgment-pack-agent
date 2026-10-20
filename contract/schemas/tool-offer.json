@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/tool-offer.json",
   "title": "Tool offer",
-  "description": "The tools the host offers a run, as the session's two members: the runtime's tools (session.tools: McpTool, exactly as tools/list served them, filtered to this session's allow-list, reached only through callTool and the host's gate) and the host's own tools (session.hostTools: HostTool, run by the host on the adapter's behalf, answered in the shape a runtime answer takes). An adapter offers the model exactly these, under their served schemas (servedSchema: a tool served without an input schema ends the session; the Gemini family alone is shown the schema less a closed list of keywords, with a guardrail narrowed event per tool that lost one). The host also adds its own context tools (list_context, read_context, read_window and, in a conversation, update_plan and request_budget_increase), whose names an offered tool may not take. Read from web/src/assistant/engine.ts (McpTool, HostTool) and context/session.ts (contextualSession). Open: the session is an in-process value with no reader, and the runtime's answer is passed through as served. A host may offer propose_pack ($defs/proposePack): the adapter reads that call itself as the run's proposal and never reaches the host's execute, the instructions then tell the model to use it, the critic is not offered it, and the fenced block stays the fallback. The critic is offered only $defs/criticTools, of the runtime tools the session offers, and no host tool (agent#10).",
+  "description": "The tools the host offers a run, as the session's two members: the runtime's tools (session.tools: McpTool, exactly as tools/list served them, filtered to this session's allow-list, reached only through callTool and the host's gate) and the host's own tools (session.hostTools: HostTool, run by the host on the adapter's behalf, answered in the shape a runtime answer takes). An adapter offers the model exactly these, under their served schemas (servedSchema: a tool served without an input schema ends the session; the Gemini family alone is shown the schema less a closed list of keywords, with a guardrail narrowed event per tool that lost one). The host also adds its own context tools (list_context, read_context, read_window and, in a conversation, update_plan and request_budget_increase), whose names an offered tool may not take. Read from web/src/assistant/engine.ts (McpTool, HostTool) and context/session.ts (contextualSession). Open: the session is an in-process value with no reader, and the runtime's answer is passed through as served. A host may offer propose_pack ($defs/proposePack): the adapter reads that call itself as the run's proposal and never reaches the host's execute, the instructions then tell the model to use it, the critic is not offered it, and the fenced block stays the fallback. The critic is offered only $defs/criticTools, of the runtime tools the session offers, and no host tool (agent#10). Tool sources (ADR-0006): a host tool that a source outside the host serves (a gateway connection, a public MCP server, a tool the person created) is declared with its source record ($defs/sourceDeclaration) and is still a host tool: the host executes it under the person's grants and the package never reaches the source. The package offers it under a wire-safe name mapped to the source and its own name ($defs/wireName, $defs/nameMapping), with its description bounded and framed as retrieved text, its effect class and approval default ($defs/effectClass), and, where the source's tools pass the schema budget, as a catalogue entry whose schema load_tool loads ($defs/catalogueEntry, $defs/loadTool).",
   "type": "object",
   "required": [
     "tools",
@@ -113,6 +113,20 @@
             }
           },
           "additionalProperties": true
+        },
+        "source": {
+          "description": "Where the tool comes from (ADR-0006), on a tool a source outside the host serves; absent on the host's own tools. On the offer it carries tool, the tool's own name at its source.",
+          "$ref": "#/$defs/sourceRecord"
+        },
+        "effectClass": {
+          "$ref": "#/$defs/effectClass"
+        },
+        "approval": {
+          "description": "Whether a call needs the person's approval before the host runs it (ADR-0006): the host's approval reader is asked before every call (HostTool.approve), and a call it does not approve is refused and never run; none: the call runs without asking. Default by effect class: none for read and propose (a proposal's approval is its review card), required for act. Read on a tool with a source; the host's own tools keep their own rules.",
+          "enum": [
+            "none",
+            "required"
+          ]
         }
       },
       "additionalProperties": true
@@ -203,14 +217,15 @@
       ]
     },
     "reservedName": {
-      "description": "Names the host keeps for its own context tools; an offered tool that takes one ends the session (context/session.ts, contextualSession). read_window (agent#1) and search (agent#5) are the harness's own readers.",
+      "description": "Names the host keeps for its own context tools; an offered tool that takes one ends the session (context/session.ts, contextualSession). read_window (agent#1) and search (agent#5) are the harness's own readers. load_tool (ADR-0006) is the harness's catalogue loader, offered only where the schema budget trips.",
       "enum": [
         "list_context",
         "read_context",
         "read_window",
         "search",
         "update_plan",
-        "request_budget_increase"
+        "request_budget_increase",
+        "load_tool"
       ]
     },
     "criticTools": {
@@ -223,6 +238,265 @@
         "read_window",
         "search"
       ]
+    },
+    "effectClass": {
+      "description": "What a call of a tool with a source may do (ADR-0006): read (it only reads; its result is data), propose (it is never run during the run: the call is held as a proposal for the person's review card, as propose_pack's is, and the host runs it on acceptance, after the run, under its grants) or act (it changes something outside the run, and by default needs the person's approval before each call). A tool with a source is act, with approval required, unless the host declares it a read or a proposal; the model's arguments never change it. On the offer the package sets the host tool's effect from it: read is effect read, propose is effect proposal, act is no effect, so Plan mode and a delegated child, which admit reads only, never offer an act.",
+      "enum": [
+        "read",
+        "propose",
+        "act"
+      ]
+    },
+    "sourceRecord": {
+      "description": "Where a host tool comes from (ADR-0006). Declared by the host on each host tool a source outside the host serves; the package adds tool (the tool's own name at its source) on the offer, carries the record on the tool's tool_call and tool_result events (with receipt on a result where the host's answer gave one), and counts the source in the run report (provenance.json#/$defs/sourceFigures). gateway: a gateway connection the person configured (Databricks, Azure DevOps, Drive), which may give a receipt for each call; mcp: a public MCP server the host connected, whose tool list is pinned by digest at connection time; custom: a tool the person created. runtime is the Runtime's own row in the run report: its tools come through tools/list behind the gate, carry no declaration, and a host tool declared with kind runtime is refused. Either version or toolListDigest is present; mcp carries toolListDigest. Closed: the package refuses another member before any request (configuration).",
+      "type": "object",
+      "required": [
+        "kind",
+        "id",
+        "trust"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "runtime",
+            "gateway",
+            "mcp",
+            "custom"
+          ]
+        },
+        "id": {
+          "description": "The source's name as the host names it (a connection, a server, the person's own tools): a letter, then letters, digits and hyphens, at most 24 characters. Every wire name of the source's tools begins with it.",
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9-]{0,23}$"
+        },
+        "version": {
+          "description": "The source's version as the host knows it: a connection's revision, a server's version, a custom tool's revision.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "toolListDigest": {
+          "$ref": "#/$defs/toolListDigest"
+        },
+        "trust": {
+          "description": "The trust class the host gives the source: first-party (the Runtime, and a source the host itself runs), connected (a connection the person configured with their own grants), public (a public server), person (a tool the person wrote). Reported, never a grant: whatever the class, the source's descriptions are untrusted text and its results data, and its tools are held to their effect class.",
+          "enum": [
+            "first-party",
+            "connected",
+            "public",
+            "person"
+          ]
+        },
+        "tool": {
+          "description": "The tool's own name at its source, set by the package on the offer and the events from the declaration's name (the wire name is the offered tool's name). A declaration leaves it out.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "receipt": {
+          "description": "On a tool_result only: the receipt id the host's answer gave for this call (HostToolResult.receipt; a gateway connection's), at most 128 characters.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "version"
+          ]
+        },
+        {
+          "required": [
+            "toolListDigest"
+          ]
+        }
+      ],
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "mcp"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "toolListDigest"
+        ]
+      },
+      "additionalProperties": false
+    },
+    "toolListDigest": {
+      "description": "The digest of a source's tool list (ADR-0006): sha256: then the SHA-256, lower-case hex, of the UTF-8 text of the canonical JSON (tool-result.json#/$defs/readCacheKey's: members sorted by name in UTF-16 code units, no whitespace, strings and numbers as JSON.stringify writes them) of the list of the source's tools, each {name, description, inputSchema} as the source serves it (description the empty string where it has none), ordered by name in UTF-16 code units (toolListDigest in toolSources.ts; Go runcontext.ToolListDigest). An mcp source's declaration carries the digest the person approved, pinned when the host connected the server. The package computes the digest of the tools the host declares for the source and, where the two differ, offers none of the source's tools; mid-run, where the host's source.currentDigest() answers another digest before a call, that call and every later call of the source are refused and never run. Only a new declaration with the new digest, which the person's re-approval gives the host, lifts it.",
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "wireName": {
+      "description": "The name the model is shown for a tool with a source, and the offered tool's name (ADR-0006). Provider wires take [A-Za-z0-9_-], at most 64 characters, and no colon. The rule (wireName in toolSources.ts; Go runcontext.WireName): every character of the tool's own name outside [A-Za-z0-9_-] becomes _; the name is the source's id, two underscores, then that. Where nothing was replaced and the result is at most 64 characters, that is the wire name; otherwise its first 55 characters, an underscore and the first 8 hex digits of the SHA-256 of the source's id, a line feed and the tool's own name (UTF-8), so two names that differ only in replaced characters, or past the 64th, get different wire names whatever their order. A wire name that still equals another offered name (another source's tool, a host tool, a Runtime tool, a reserved name) is refused: every tool that bears it is withheld, with a guardrail refused event naming it.",
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"
+    },
+    "nameMapping": {
+      "description": "One row of the offer's mapping (ADR-0006): the wire name the model sees and calls, the source's id and the tool's own name there. Stable: the same source and name give the same wire name in every run, whatever else is declared.",
+      "type": "object",
+      "required": [
+        "wire",
+        "source",
+        "tool"
+      ],
+      "properties": {
+        "wire": {
+          "$ref": "#/$defs/wireName"
+        },
+        "source": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9-]{0,23}$"
+        },
+        "tool": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "additionalProperties": false
+    },
+    "sourceDeclaration": {
+      "description": "A host tool with a source, as the host declares it (ADR-0006): its own name at the source (name, 1 to 128 characters), its description and schema as the source serves them, its source record, and optionally its effect class and approval. A declaration whose record or members are not these, or which carries effect or interaction (the package sets effect from effectClass; a source's tool is never a question or a delegation), or delegation on anything but a read, is refused before any request (configuration). A declaration whose name is a Runtime tool's (runtimeCeiling, and the Runtime tools kept off it), a reserved name, load_tool or propose_pack is withheld from the offer with a guardrail refused event: a Runtime's tools reach the model only through the gate.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/hostTool"
+        },
+        {
+          "required": [
+            "source"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "source": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "gateway",
+                    "mcp",
+                    "custom"
+                  ]
+                }
+              }
+            }
+          },
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "effect"
+                ]
+              },
+              {
+                "required": [
+                  "interaction"
+                ]
+              }
+            ]
+          },
+          "if": {
+            "required": [
+              "delegation"
+            ]
+          },
+          "then": {
+            "required": [
+              "effectClass"
+            ],
+            "properties": {
+              "effectClass": {
+                "const": "read"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "catalogueEntry": {
+      "description": "A tool with a source as the offer shows it where the source was made a catalogue (ADR-0006): where the tools with a source pass offeredSchemas or offeredSchemaBytes (budget.json), sources are made catalogues, the largest first (by its tools offered, then by their bytes, then by id), until the rest fit. A catalogued tool is offered with its wire name; the words \"Catalogued tool: call load_tool with this name for its schema before calling it.\", then its description's first line, cut to 160 bytes and framed as retrieved text; and an open schema, so the request's tools, and the stable prefix with them, never change during the run. The model asks load_tool for the real schema ($defs/loadTool); a call of a catalogued tool whose schema the run has not loaded is refused (invalid-tool-input) and never run.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/hostTool"
+        },
+        {
+          "required": [
+            "source"
+          ],
+          "properties": {
+            "inputSchema": {
+              "const": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "loadTool": {
+      "description": "The harness tool that loads one catalogued tool's schema (ADR-0006): a reserved name, offered only where the run's tools with a source pass the schema budget, and admitted only for a catalogued wire name (any other is invalid-tool-input). Its answer ($defs/loadedSchema) is data and framed as such; the loaded schema then rides in the execution state, after the history, on every later request of the run, as one data block, so the stable prefix holds. Loaded schemas count against offeredSchemaBytes: a load past it is tool-failed and nothing is loaded.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/hostTool"
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "load_tool"
+            },
+            "effect": {
+              "const": "read"
+            },
+            "inputSchema": {
+              "const": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "The catalogued tool's name, as the tools list shows it."
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "loadedSchema": {
+      "description": "What load_tool answers for one catalogued tool (ADR-0006), before it is framed: its wire name, its source record with its own name, its description bounded by toolDescriptionBytes, and its schema as declared (narrowed on the Gemini family's wire as every offered schema is).",
+      "type": "object",
+      "required": [
+        "name",
+        "source",
+        "description",
+        "inputSchema"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/wireName"
+        },
+        "source": {
+          "$ref": "#/$defs/sourceRecord"
+        },
+        "description": {
+          "type": "string"
+        },
+        "inputSchema": {}
+      },
+      "additionalProperties": false
     }
   }
 }
