@@ -39,7 +39,7 @@ func TestTheBoundaryCheckpointsTheOpeningAndEachCall(t *testing.T) {
 	session, _ := trackedSession(t)
 	run := openRun(t, session)
 	boundary := NewBoundary(run)
-	if held := eventTypes(boundary.Open()); len(held) != 1 || held[0] != "execution_checkpoint" {
+	if held := eventTypes(boundary.Open()); len(held) != 2 || held[0] != "policy_resolved" || held[1] != "execution_checkpoint" {
 		t.Errorf("the opening is %v", held)
 	}
 	callID := "call-1"
@@ -145,7 +145,7 @@ func TestTheBoundaryDoesNotCheckpointAnUntrackedRun(t *testing.T) {
 	session := modelSession()
 	run := openRun(t, session)
 	boundary := NewBoundary(run)
-	if held := boundary.Open(); held != nil {
+	if held := boundary.Open(); len(held) != 1 || held[0].PolicyResolved == nil {
 		t.Errorf("an untracked run opened with %v", eventTypes(held))
 	}
 	held, _ := boundary.Event(contract.RunEvent{ToolCall: &contract.ToolCall{Type: "tool_call",

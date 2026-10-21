@@ -1007,7 +1007,28 @@ engine reports on a dropped connection, a stall, a context-length refusal, a run
 a whole answer where a stream was asked for, and what Retry does after each, is in
 [AI error handling](ai-error-handling.md).
 
+## Policy
+
+[ADR-0011](../adr/0011-the-agents-policy-table.md) defines the closed `policy.json`
+table: `budget`, `critic`, `models`, `concurrency`, `pace`, and `taskClass`. The host
+passes partial `policy` and `policyProject` layers; every member resolves run >
+project > table. Unset members use table defaults; a required member with no default
+is refused at admission. Model-visible text cannot set a member.
+
+`policy_resolved` lists each dotted member's `value` and `layer`, once before the
+first request. `checkpoint.policy` carries the records durably through resume and
+the provenance report shows them. Models resolve against host connections; the
+critic keeps its author floor, and a higher child/sub-agent tier requires project
+permission. The host supplies project period totals in `paceUsed`: one warning at
+`warnAt`, refusal strictly past a period budget (`pace exceeded`) before a request.
+Guardrails `policy refused` and `pace warning` identify the member and layer.
+
+Generated reference: [policy.md](../reference/policy.md). `budget.json` remains a
+read alias of `policy.budget` for v0.8.0, then is retired.
+
 ## Budgets
+
+Budget members now resolve through [Policy](#policy).
 
 Generated reference: [`docs/reference/budget.md`](../reference/budget.md) lists these from the schemas and the package's constants.
 

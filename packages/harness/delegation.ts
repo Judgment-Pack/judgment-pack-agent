@@ -15,7 +15,7 @@ import { ContextBudgetError } from './context/policy'
 import { ContextLedger, answer, type Entry } from './context/ledger'
 import { dataMarker, frameData } from './framing'
 import { runModels, type RunModels } from './host'
-import { testCallCapFailure, type ExecutionLink, type SessionContext } from './context/session'
+import { testCallCapFailure, resolveSessionPolicy, type ExecutionLink, type SessionContext } from './context/session'
 
 /** Shared execution policy. Feature adapters supply capabilities, never larger child allowances. */
 export interface DelegationOptions {
@@ -335,7 +335,7 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
     const policy = contextPolicy(session.context?.configuration,modelName)
     // ADR-0010: on an agent capability one run is held back for the critic where the switch may run it.
     const forced = criticForcedOff({child:!!session.context?.objective,phase:session.context?.phase,purpose:session.purpose,reviewerAssigned:session.reviewerAssigned===true})
-    const reserve = 'agent' in session && forced === undefined && criticMode(session, policy).mode !== 'off' ? 1 : 0
+    const reserve = 'agent' in session && forced === undefined && criticMode({...session,resolvedPolicy:resolveSessionPolicy(session,engine.id).resolved.members}, policy).mode !== 'off' ? 1 : 0
     const shared = new ResponseAllowance(session.context?.execution, reserve)
     // The chat the parent's context lives in (agent#8): the host's, or one for this response alone.
     const hostChat = session.context?.chat instanceof ChatContext ? session.context.chat : undefined
@@ -542,7 +542,9 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
     const childModel = (profile: TaskProfile): {name: string; model?: AssistantSession['model']} => {
       const own = 'model' in session ? session.model.model : session.agent.model
       // The host's answer for the parent run's connection, asked once for that run (modelsFor in host.ts).
-      const named = profile.model === 'parent' ? own : shared.context?.models(engine.id).child ?? own
+      const selected=shared.context?.connection(`child.${profile.id}`)
+      const named = selected?('model'in selected?selected.model.model:selected.agent.model):profile.model === 'parent' ? own : shared.context?.models(engine.id).child ?? own
+      if(selected&&'model'in selected)return {name:named,model:selected.model}
       if (!('model' in session)) return {name: named}
       if (named === own) return {name: own, model: session.model}
       // The parent's own record members describe the parent's model; the child model's record is the host's answer for it.
@@ -606,7 +608,10 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
       sources:()=>shared.context?.sources}
       const model = childModel(profile)
       childModels.set(task.id, model.name)
+      const role=shared.context?.resolvedPolicy[`models.child.${profile.id}.reasoning`]
+      const roleModel=shared.context?.resolvedPolicy[`models.child.${profile.id}.model`]
       const base = {...session,
+        ...(role||roleModel?{policy:{...session.policy,models:{...session.policy?.models,author:{...(role?{reasoning:String(role.value)}:{}),...(roleModel?{model:String(roleModel.value)}:{})}}}}:{}),
         // agent#11: the objective is the child's request text, the first text part of its first message.
         context:{configuration:session.context?.configuration,phase:session.context?.phase,authorize:session.context?.authorize,artifactProposals:session.context?.artifactProposals,memory:session.context?.memory,objective,runtime:session.context?.runtime,chat:chat.childScope(planned.visible),link,...(session.context?.connection?{connection:session.context.connection}:{})},
         purpose:undefined,prompt,testPrompt:'',allowConversation:true,interactive:true,adversarialReview:false,
@@ -821,7 +826,7 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
       // agent#17: as many children at once as the connection serves requests (its concurrentRequests,
       // modelsFor's answer for the run's connection; two where it names none); the provider account of
       // an agent capability is exclusive.
-      const concurrency='agent' in session?1:Math.max(1,connectionAnswer().concurrentRequests??DEFAULT_CHILD_CONCURRENCY)
+      const concurrency='agent' in session?1:Math.max(1,Math.min(Number(shared.context?.resolvedPolicy['concurrency.children']?.value??connectionAnswer().concurrentRequests??DEFAULT_CHILD_CONCURRENCY),connectionAnswer().concurrentRequests??DEFAULT_CHILD_CONCURRENCY))
       let next=0,finished=0
       const slots=()=>Math.min(concurrency,tasks.length-finished)
       try {

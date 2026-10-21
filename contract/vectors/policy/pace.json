@@ -1,0 +1,29 @@
+{
+  "description": "Written by hand from ADR-0011; no output recorded from an implementation.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/policy.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "guardrail",
+      "tool": "pace.requestsPerDay",
+      "action": "refused",
+      "reason": "pace warning",
+      "detail": "pace.requestsPerDay (project): project period warning threshold reached"
+    },
+    {
+      "type": "guardrail",
+      "tool": "pace.requestsPerDay",
+      "action": "refused",
+      "reason": "policy refused",
+      "detail": "pace.requestsPerDay (project): project period budget exceeded"
+    }
+  ]
+}

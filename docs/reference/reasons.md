@@ -29,7 +29,7 @@ The host saying what it did. rewrote and refused are the tool gate's, emitted by
 | Member | Values |
 | --- | --- |
 | `action` | `rewrote`, `refused`, `narrowed` |
-| `reason` | `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused` |
+| `reason` | `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning` |
 
 ## Failure classes
 
@@ -60,6 +60,7 @@ The catalogue's classes, the keys of failures in contract/desk/catalog.json, spe
 | `output-limit` | `review` | The AI reached its output-token limit before completing the response. Completed work is retained. |  |
 | `content-filter` | `review` | The AI provider blocked this response. Review the request before continuing. |  |
 | `repeated-work` | `review` | The assistant kept repeating completed work. Desk stopped this response and retained the results. |  |
+| `pace exceeded` | `wait` | The project period budget is exhausted. Wait for the next period or change the project policy. |  |
 
 Overload codes a refusal is retried on: `overloaded_error`.
 

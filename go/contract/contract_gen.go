@@ -66,6 +66,11 @@ var Registry = map[string]func() any{
 	"failure.json#/$defs/recovery":                  func() any { return new(string) },
 	"failure.json#/$defs/catalogueEntry":            func() any { return new(FailureCatalogueEntry) },
 	"failure.json#/$defs/toolFailureContent":        func() any { return new(FailureToolFailureContent) },
+	"policy.json":                                   func() any { return new(Policy) },
+	"policy.json#/$defs/role":                       func() any { return new(PolicyRole) },
+	"policy.json#/$defs/member":                     func() any { return new(PolicyMember) },
+	"policy.json#/$defs/resolved":                   func() any { return new(map[string]PolicyMember) },
+	"policy.json#/$defs/paceUsed":                   func() any { return new(PolicyPaceUsed) },
 	"provenance.json":                               func() any { return new(Provenance) },
 	"provenance.json#/$defs/completion":             func() any { return new(ProvenanceCompletion) },
 	"provenance.json#/$defs/tokens":                 func() any { return new(int64) },
@@ -84,6 +89,7 @@ var Registry = map[string]func() any{
 	"provenance.json#/$defs/skillLoad":              func() any { return new(ProvenanceSkillLoad) },
 	"provenance.json#/$defs/criticReason":           func() any { return new(string) },
 	"provenance.json#/$defs/criticDecision":         func() any { return new(ProvenanceCriticDecision) },
+	"provenance.json#/$defs/policy":                 func() any { return new(map[string]PolicyMember) },
 	"question.json":                                 func() any { return new(Question) },
 	"question.json#/$defs/option":                   func() any { return new(QuestionOption) },
 	"question.json#/$defs/draft":                    func() any { return new(QuestionDraft) },
@@ -113,6 +119,7 @@ var Registry = map[string]func() any{
 	"run-event.json#/$defs/caseOutcome":             func() any { return new(RunEventCaseOutcome) },
 	"run-event.json#/$defs/caseComparison":          func() any { return new(RunEventCaseComparison) },
 	"run-event.json#/$defs/criticCase":              func() any { return new(RunEventCriticCase) },
+	"run-event.json#/$defs/policy_resolved":         func() any { return new(RunEventPolicyResolved) },
 	"skill.json":                                    func() any { return new(Skill) },
 	"skill.json#/$defs/name":                        func() any { return new(string) },
 	"skill.json#/$defs/resource":                    func() any { return new(SkillResource) },
@@ -276,35 +283,37 @@ func (v ApprovalRequest) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
-// From budget.json. The context budget one run works under: the provider-independent byte and
-// token limits both the browser and the Desk server read from one table
-// (internal/aicontext/policy.json, ContextPolicy in web/src/assistant/context/policy.ts,
-// aicontext.Policy in Go). The model's context window and output reserve may be overridden per
-// model by the assistant profile (configuration); everything else is fixed. Input bytes for one
-// request are min(maxInputBytes, max(1024, (contextWindowTokens - outputTokens) * 3)); the request
-// allowance takes no reserve for the host's parts: briefBytes and memoryBytes are the bounds on
-// the brief and the recalled memory (each held to its bound, $defs/hostPart), which the adapter
-// places itself (ADR-0005) and counts once, where they sit in the instructions (until agent#69 the
-// adapter left both out of every request's allowance whether or not the parts were present, a
-// reserve kept from when the server added them behind the adapter), and the server refuses before
-// dispatch, never clipping, a request over the input bytes (context-limit, not-started). Open: the
-// Go reader ignores a member it does not name. The request allowance, the grants and the fixed
-// limits are in $defs. The harness adds two time bounds the Desk's table does not carry
-// (packages/harness/context/policy.ts, TIME_DEFAULTS), each taken from the table where it does:
-// turnMilliseconds and toolCallMilliseconds; and three bounds on the Runtime's test tool
-// (TEST_DEFAULTS), likewise: testCallsPerTurn, testPackBytes and testMatrixBytes; and two image
-// bounds (IMAGE_DEFAULTS), likewise: imagesPerRequest and imageBytesPerRequest; and two bounds on
-// the index of earlier results a chat-scoped run's first message carries (INDEX_DEFAULTS,
-// agent#8), likewise: turnIndexEntries and turnIndexBytes; and the bound on the project's own
-// instructions (PROMPT_DEFAULTS, ADR-0005), likewise: projectInstructionsBytes. The table also
-// states the critic's switch (ADR-0010), which the harness adds to the Desk's table:
-// criticDefault, the mode where neither the run nor the project states one, and
-// criticReasoningFloor, the critic's tier where the host names none; adversarialReview, the switch
-// before ADR-0010, is read as an alias of criticDefault for one release. And the bounds on tools
-// with a source (SOURCE_DEFAULTS, ADR-0006), likewise: toolDescriptionBytes, offeredSchemas,
-// offeredSchemaBytes, cataloguedTools, catalogueBytes, sourceResultBytes, sourceCallsPerTurn and
-// sourceCallMilliseconds. The skills budget (ADR-0009): skillBytes, skillsPerRun,
-// skillsCatalogueBytes and cataloguedSkills.
+// From budget.json. Read alias for policy.budget for the v0.8.0 release; retired in the next
+// release. Legacy criticDefault, criticReasoningFloor and adversarialReview read into
+// policy.critic. New nested members win where both are stated. The context budget one run works
+// under: the provider-independent byte and token limits both the browser and the Desk server read
+// from one table (internal/aicontext/policy.json, ContextPolicy in
+// web/src/assistant/context/policy.ts, aicontext.Policy in Go). The model's context window and
+// output reserve may be overridden per model by the assistant profile (configuration); everything
+// else is fixed. Input bytes for one request are min(maxInputBytes, max(1024, (contextWindowTokens
+// - outputTokens) * 3)); the request allowance takes no reserve for the host's parts: briefBytes
+// and memoryBytes are the bounds on the brief and the recalled memory (each held to its bound,
+// $defs/hostPart), which the adapter places itself (ADR-0005) and counts once, where they sit in
+// the instructions (until agent#69 the adapter left both out of every request's allowance whether
+// or not the parts were present, a reserve kept from when the server added them behind the
+// adapter), and the server refuses before dispatch, never clipping, a request over the input bytes
+// (context-limit, not-started). Open: the Go reader ignores a member it does not name. The request
+// allowance, the grants and the fixed limits are in $defs. The harness adds two time bounds the
+// Desk's table does not carry (packages/harness/context/policy.ts, TIME_DEFAULTS), each taken from
+// the table where it does: turnMilliseconds and toolCallMilliseconds; and three bounds on the
+// Runtime's test tool (TEST_DEFAULTS), likewise: testCallsPerTurn, testPackBytes and
+// testMatrixBytes; and two image bounds (IMAGE_DEFAULTS), likewise: imagesPerRequest and
+// imageBytesPerRequest; and two bounds on the index of earlier results a chat-scoped run's first
+// message carries (INDEX_DEFAULTS, agent#8), likewise: turnIndexEntries and turnIndexBytes; and
+// the bound on the project's own instructions (PROMPT_DEFAULTS, ADR-0005), likewise:
+// projectInstructionsBytes. The table also states the critic's switch (ADR-0010), which the
+// harness adds to the Desk's table: criticDefault, the mode where neither the run nor the project
+// states one, and criticReasoningFloor, the critic's tier where the host names none;
+// adversarialReview, the switch before ADR-0010, is read as an alias of criticDefault for one
+// release. And the bounds on tools with a source (SOURCE_DEFAULTS, ADR-0006), likewise:
+// toolDescriptionBytes, offeredSchemas, offeredSchemaBytes, cataloguedTools, catalogueBytes,
+// sourceResultBytes, sourceCallsPerTurn and sourceCallMilliseconds. The skills budget (ADR-0009):
+// skillBytes, skillsPerRun, skillsCatalogueBytes and cataloguedSkills.
 type Budget struct {
 	Version                  int64   `json:"version"`
 	MaxInputBytes            int64   `json:"maxInputBytes"`
@@ -943,11 +952,12 @@ type Checkpoint struct {
 	Sources     []ProvenanceSourceFigures   `json:"sources,omitzero"`
 	Skills      []ProvenanceSkillLoad       `json:"skills,omitzero"`
 	Critic      *CheckpointCritic           `json:"critic,omitzero"`
+	Policy      map[string]PolicyMember     `json:"policy,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var checkpointMembers = []string{"version", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic"}
+var checkpointMembers = []string{"version", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy"}
 
 // UnmarshalJSON decodes a Checkpoint object and keeps the members the schema does not name.
 func (v *Checkpoint) UnmarshalJSON(data []byte) error {
@@ -2426,6 +2436,324 @@ func (v FailureToolFailureContent) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), v.AdditionalMembers)
 }
 
+// From policy.json. ADR-0011. Closed partial host layers: run > project > table, resolved per
+// member. Models default to the connected author and its tier; critic keeps the author floor.
+// Dynamic roles inherit the author unless explicitly set. Unset members without a table or
+// host-derived default are refused at admission. Model-visible text never supplies a layer.
+type Policy struct {
+	Budget      *PolicyBudget      `json:"budget,omitzero"`
+	Critic      *PolicyCritic      `json:"critic,omitzero"`
+	Models      *PolicyModels      `json:"models,omitzero"`
+	Concurrency *PolicyConcurrency `json:"concurrency,omitzero"`
+	Pace        *PolicyPace        `json:"pace,omitzero"`
+	TaskClass   *string            `json:"taskClass,omitzero"`
+}
+
+var policyMembers = []string{"budget", "critic", "models", "concurrency", "pace", "taskClass"}
+
+// UnmarshalJSON decodes a Policy object and refuses a member the closed schema does not name.
+func (v *Policy) UnmarshalJSON(data []byte) error {
+	type plain Policy
+	var p plain
+	extra, err := decodeObject(data, &p, policyMembers, true)
+	if err != nil {
+		return errorf("Policy: %w", err)
+	}
+	*v = Policy(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a Policy object.
+func (v Policy) MarshalJSON() ([]byte, error) {
+	type plain Policy
+	return encodeObject(plain(v), nil)
+}
+
+// From policy.json#/properties/budget.
+type PolicyBudget struct {
+	Version                  *int64 `json:"version,omitzero"`
+	MaxInputBytes            *int64 `json:"maxInputBytes,omitzero"`
+	ContextWindowTokens      *int64 `json:"contextWindowTokens,omitzero"`
+	OutputTokens             *int64 `json:"outputTokens,omitzero"`
+	ToolResultBytes          *int64 `json:"toolResultBytes,omitzero"`
+	ReadBytes                *int64 `json:"readBytes,omitzero"`
+	RetainedBytes            *int64 `json:"retainedBytes,omitzero"`
+	RecentMessages           *int64 `json:"recentMessages,omitzero"`
+	HistoryBytes             *int64 `json:"historyBytes,omitzero"`
+	BriefBytes               *int64 `json:"briefBytes,omitzero"`
+	MemoryBytes              *int64 `json:"memoryBytes,omitzero"`
+	TurnMilliseconds         *int64 `json:"turnMilliseconds,omitzero"`
+	ToolCallMilliseconds     *int64 `json:"toolCallMilliseconds,omitzero"`
+	ImagesPerRequest         *int64 `json:"imagesPerRequest,omitzero"`
+	ImageBytesPerRequest     *int64 `json:"imageBytesPerRequest,omitzero"`
+	TestCallsPerTurn         *int64 `json:"testCallsPerTurn,omitzero"`
+	TestPackBytes            *int64 `json:"testPackBytes,omitzero"`
+	TestMatrixBytes          *int64 `json:"testMatrixBytes,omitzero"`
+	TurnIndexEntries         *int64 `json:"turnIndexEntries,omitzero"`
+	TurnIndexBytes           *int64 `json:"turnIndexBytes,omitzero"`
+	ProjectInstructionsBytes *int64 `json:"projectInstructionsBytes,omitzero"`
+	ToolDescriptionBytes     *int64 `json:"toolDescriptionBytes,omitzero"`
+	OfferedSchemas           *int64 `json:"offeredSchemas,omitzero"`
+	OfferedSchemaBytes       *int64 `json:"offeredSchemaBytes,omitzero"`
+	CataloguedTools          *int64 `json:"cataloguedTools,omitzero"`
+	CatalogueBytes           *int64 `json:"catalogueBytes,omitzero"`
+	SourceResultBytes        *int64 `json:"sourceResultBytes,omitzero"`
+	SourceCallsPerTurn       *int64 `json:"sourceCallsPerTurn,omitzero"`
+	SourceCallMilliseconds   *int64 `json:"sourceCallMilliseconds,omitzero"`
+	SkillBytes               *int64 `json:"skillBytes,omitzero"`
+	SkillsPerRun             *int64 `json:"skillsPerRun,omitzero"`
+	SkillsCatalogueBytes     *int64 `json:"skillsCatalogueBytes,omitzero"`
+	CataloguedSkills         *int64 `json:"cataloguedSkills,omitzero"`
+}
+
+var policyBudgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds", "skillBytes", "skillsPerRun", "skillsCatalogueBytes", "cataloguedSkills"}
+
+// UnmarshalJSON decodes a PolicyBudget object and refuses a member the closed schema does not name.
+func (v *PolicyBudget) UnmarshalJSON(data []byte) error {
+	type plain PolicyBudget
+	var p plain
+	extra, err := decodeObject(data, &p, policyBudgetMembers, true)
+	if err != nil {
+		return errorf("PolicyBudget: %w", err)
+	}
+	*v = PolicyBudget(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a PolicyBudget object.
+func (v PolicyBudget) MarshalJSON() ([]byte, error) {
+	type plain PolicyBudget
+	return encodeObject(plain(v), nil)
+}
+
+// From policy.json#/properties/concurrency.
+type PolicyConcurrency struct {
+	Children *int64 `json:"children,omitzero"`
+	Requests *int64 `json:"requests,omitzero"`
+}
+
+var policyConcurrencyMembers = []string{"children", "requests"}
+
+// UnmarshalJSON decodes a PolicyConcurrency object and refuses a member the closed schema does not name.
+func (v *PolicyConcurrency) UnmarshalJSON(data []byte) error {
+	type plain PolicyConcurrency
+	var p plain
+	extra, err := decodeObject(data, &p, policyConcurrencyMembers, true)
+	if err != nil {
+		return errorf("PolicyConcurrency: %w", err)
+	}
+	*v = PolicyConcurrency(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a PolicyConcurrency object.
+func (v PolicyConcurrency) MarshalJSON() ([]byte, error) {
+	type plain PolicyConcurrency
+	return encodeObject(plain(v), nil)
+}
+
+// From policy.json#/properties/critic.
+type PolicyCritic struct {
+	Default        *string `json:"default,omitzero"`
+	ReasoningFloor *string `json:"reasoningFloor,omitzero"`
+}
+
+var policyCriticMembers = []string{"default", "reasoningFloor"}
+
+// UnmarshalJSON decodes a PolicyCritic object and refuses a member the closed schema does not name.
+func (v *PolicyCritic) UnmarshalJSON(data []byte) error {
+	type plain PolicyCritic
+	var p plain
+	extra, err := decodeObject(data, &p, policyCriticMembers, true)
+	if err != nil {
+		return errorf("PolicyCritic: %w", err)
+	}
+	*v = PolicyCritic(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a PolicyCritic object.
+func (v PolicyCritic) MarshalJSON() ([]byte, error) {
+	type plain PolicyCritic
+	return encodeObject(plain(v), nil)
+}
+
+// From policy.json#/$defs/member.
+type PolicyMember struct {
+	Value json.RawMessage `json:"value"`
+	Layer string          `json:"layer"`
+}
+
+var policyMemberMembers = []string{"value", "layer"}
+
+// UnmarshalJSON decodes a PolicyMember object and refuses a member the closed schema does not name.
+func (v *PolicyMember) UnmarshalJSON(data []byte) error {
+	type plain PolicyMember
+	var p plain
+	extra, err := decodeObject(data, &p, policyMemberMembers, true)
+	if err != nil {
+		return errorf("PolicyMember: %w", err)
+	}
+	*v = PolicyMember(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a PolicyMember object.
+func (v PolicyMember) MarshalJSON() ([]byte, error) {
+	type plain PolicyMember
+	return encodeObject(plain(v), nil)
+}
+
+// From policy.json#/properties/models.
+type PolicyModels struct {
+	Author      *PolicyRole              `json:"author,omitzero"`
+	Critic      *PolicyRole              `json:"critic,omitzero"`
+	TaskClasses *PolicyModelsTaskClasses `json:"taskClasses,omitzero"`
+	// AdditionalMembers holds the members the schema does not name; the object is open.
+	AdditionalMembers map[string]json.RawMessage `json:"-"`
+}
+
+var policyModelsMembers = []string{"author", "critic", "taskClasses"}
+
+// UnmarshalJSON decodes a PolicyModels object and keeps the members the schema does not name.
+func (v *PolicyModels) UnmarshalJSON(data []byte) error {
+	type plain PolicyModels
+	var p plain
+	extra, err := decodeObject(data, &p, policyModelsMembers, false)
+	if err != nil {
+		return errorf("PolicyModels: %w", err)
+	}
+	*v = PolicyModels(p)
+	if err := checkPatternMembers(extra, []string{"^(child|subagent)\\.[A-Za-z0-9_-]+$"}); err != nil {
+		return err
+	}
+	v.AdditionalMembers = extra
+	return nil
+}
+
+// MarshalJSON encodes a PolicyModels object, with the members the schema does not name after the ones it does.
+func (v PolicyModels) MarshalJSON() ([]byte, error) {
+	type plain PolicyModels
+	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From policy.json#/properties/models/properties/taskClasses.
+type PolicyModelsTaskClasses struct {
+	Routine  *string `json:"routine,omitzero"`
+	Material *string `json:"material,omitzero"`
+	Boundary *string `json:"boundary,omitzero"`
+}
+
+var policyModelsTaskClassesMembers = []string{"routine", "material", "boundary"}
+
+// UnmarshalJSON decodes a PolicyModelsTaskClasses object and refuses a member the closed schema does not name.
+func (v *PolicyModelsTaskClasses) UnmarshalJSON(data []byte) error {
+	type plain PolicyModelsTaskClasses
+	var p plain
+	extra, err := decodeObject(data, &p, policyModelsTaskClassesMembers, true)
+	if err != nil {
+		return errorf("PolicyModelsTaskClasses: %w", err)
+	}
+	*v = PolicyModelsTaskClasses(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a PolicyModelsTaskClasses object.
+func (v PolicyModelsTaskClasses) MarshalJSON() ([]byte, error) {
+	type plain PolicyModelsTaskClasses
+	return encodeObject(plain(v), nil)
+}
+
+// From policy.json#/properties/pace.
+type PolicyPace struct {
+	RequestsPerDay    Nullable[int64] `json:"requestsPerDay,omitzero"`
+	InvocationsPerDay Nullable[int64] `json:"invocationsPerDay,omitzero"`
+	BytesPerDay       Nullable[int64] `json:"bytesPerDay,omitzero"`
+	WarnAt            *float64        `json:"warnAt,omitzero"`
+}
+
+var policyPaceMembers = []string{"requestsPerDay", "invocationsPerDay", "bytesPerDay", "warnAt"}
+
+// UnmarshalJSON decodes a PolicyPace object and refuses a member the closed schema does not name.
+func (v *PolicyPace) UnmarshalJSON(data []byte) error {
+	type plain PolicyPace
+	var p plain
+	extra, err := decodeObject(data, &p, policyPaceMembers, true)
+	if err != nil {
+		return errorf("PolicyPace: %w", err)
+	}
+	*v = PolicyPace(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a PolicyPace object.
+func (v PolicyPace) MarshalJSON() ([]byte, error) {
+	type plain PolicyPace
+	return encodeObject(plain(v), nil)
+}
+
+// From policy.json#/$defs/paceUsed.
+type PolicyPaceUsed struct {
+	RequestsPerDay    *int64 `json:"requestsPerDay,omitzero"`
+	InvocationsPerDay *int64 `json:"invocationsPerDay,omitzero"`
+	BytesPerDay       *int64 `json:"bytesPerDay,omitzero"`
+}
+
+var policyPaceUsedMembers = []string{"requestsPerDay", "invocationsPerDay", "bytesPerDay"}
+
+// UnmarshalJSON decodes a PolicyPaceUsed object and refuses a member the closed schema does not name.
+func (v *PolicyPaceUsed) UnmarshalJSON(data []byte) error {
+	type plain PolicyPaceUsed
+	var p plain
+	extra, err := decodeObject(data, &p, policyPaceUsedMembers, true)
+	if err != nil {
+		return errorf("PolicyPaceUsed: %w", err)
+	}
+	*v = PolicyPaceUsed(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a PolicyPaceUsed object.
+func (v PolicyPaceUsed) MarshalJSON() ([]byte, error) {
+	type plain PolicyPaceUsed
+	return encodeObject(plain(v), nil)
+}
+
+// From policy.json#/$defs/role.
+type PolicyRole struct {
+	Model     *string `json:"model,omitzero"`
+	Reasoning *string `json:"reasoning,omitzero"`
+}
+
+var policyRoleMembers = []string{"model", "reasoning"}
+
+// UnmarshalJSON decodes a PolicyRole object and refuses a member the closed schema does not name.
+func (v *PolicyRole) UnmarshalJSON(data []byte) error {
+	type plain PolicyRole
+	var p plain
+	extra, err := decodeObject(data, &p, policyRoleMembers, true)
+	if err != nil {
+		return errorf("PolicyRole: %w", err)
+	}
+	*v = PolicyRole(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a PolicyRole object.
+func (v PolicyRole) MarshalJSON() ([]byte, error) {
+	type plain PolicyRole
+	return encodeObject(plain(v), nil)
+}
+
 // From provenance.json. What the Desk records today about where a model answer came from: one row
 // per model request, with the provider-neutral completion (finish reason and token counts) and the
 // phase it served. Read from ExecutionCheckpoint.completions
@@ -3148,6 +3476,8 @@ type RunEvent struct {
 	Error *RunEventError
 	// End is set where type is "end".
 	End *RunEventEnd
+	// PolicyResolved is set where type is "policy_resolved".
+	PolicyResolved *RunEventPolicyResolved
 }
 
 // UnmarshalJSON sets the one member the value decodes as.
@@ -3226,6 +3556,9 @@ func (v *RunEvent) UnmarshalJSON(data []byte) error {
 		case "end":
 			v.End = new(RunEventEnd)
 			return json.Unmarshal(data, v.End)
+		case "policy_resolved":
+			v.PolicyResolved = new(RunEventPolicyResolved)
+			return json.Unmarshal(data, v.PolicyResolved)
 		}
 		return errorf("RunEvent: no member has type %q", tag)
 	}
@@ -3300,6 +3633,9 @@ func (v RunEvent) MarshalJSON() ([]byte, error) {
 	}
 	if v.End != nil {
 		set = append(set, v.End)
+	}
+	if v.PolicyResolved != nil {
+		set = append(set, v.PolicyResolved)
 	}
 	if len(set) != 1 {
 		return nil, errorf("RunEvent: %d members are set; a union holds exactly one", len(set))
@@ -4046,6 +4382,33 @@ func (v RunEventMessageProgress) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), v.AdditionalMembers)
 }
 
+// From run-event.json#/$defs/policy_resolved.
+type RunEventPolicyResolved struct {
+	Type    string                  `json:"type"`
+	Members map[string]PolicyMember `json:"members"`
+}
+
+var runEventPolicyResolvedMembers = []string{"type", "members"}
+
+// UnmarshalJSON decodes a RunEventPolicyResolved object and refuses a member the closed schema does not name.
+func (v *RunEventPolicyResolved) UnmarshalJSON(data []byte) error {
+	type plain RunEventPolicyResolved
+	var p plain
+	extra, err := decodeObject(data, &p, runEventPolicyResolvedMembers, true)
+	if err != nil {
+		return errorf("RunEventPolicyResolved: %w", err)
+	}
+	*v = RunEventPolicyResolved(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunEventPolicyResolved object.
+func (v RunEventPolicyResolved) MarshalJSON() ([]byte, error) {
+	type plain RunEventPolicyResolved
+	return encodeObject(plain(v), nil)
+}
+
 // From run-event.json#/$defs/proposal. The one document the run proposes: from exactly one fenced
 // JSON block shaped {"proposal": {"kind": "create", "document": …, "unknowns": […]}} and never
 // from the prose around it, or from the model's call of the host tool propose_pack
@@ -4758,11 +5121,15 @@ type ToolOffer struct {
 	ExistingPack      *bool                  `json:"existingPack,omitzero"`
 	ReviewerAssigned  *bool                  `json:"reviewerAssigned,omitzero"`
 	AdversarialReview *bool                  `json:"adversarialReview,omitzero"`
+	Policy            *Policy                `json:"policy,omitzero"`
+	PolicyProject     *Policy                `json:"policyProject,omitzero"`
+	TaskClass         *string                `json:"taskClass,omitzero"`
+	PaceUsed          *PolicyPaceUsed        `json:"paceUsed,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var toolOfferMembers = []string{"tools", "hostTools", "skills", "critic", "criticProject", "criticReasoning", "existingPack", "reviewerAssigned", "adversarialReview"}
+var toolOfferMembers = []string{"tools", "hostTools", "skills", "critic", "criticProject", "criticReasoning", "existingPack", "reviewerAssigned", "adversarialReview", "policy", "policyProject", "taskClass", "paceUsed"}
 
 // UnmarshalJSON decodes a ToolOffer object and keeps the members the schema does not name.
 func (v *ToolOffer) UnmarshalJSON(data []byte) error {

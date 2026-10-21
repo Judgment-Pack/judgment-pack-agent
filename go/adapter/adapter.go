@@ -30,6 +30,13 @@ import (
 // is in flight. Tools are the Runtime tools tools/list served through the gate, those on the
 // allow-list; HostTools are the host's tools, each with its declaration and its function.
 type Run struct {
+	Policy            runcontext.PolicyLayer
+	PolicyProject     runcontext.PolicyLayer
+	TaskClass         string
+	PaceUsed          map[string]int64
+	PolicyConnections map[string]PolicyConnection
+	PolicyRequests    int
+
 	// Wire is the endpoint's family: openai-compatible, anthropic or gemini.
 	Wire string
 	// ModelName is the model the requests name.

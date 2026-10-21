@@ -13,6 +13,7 @@ type Entry struct {
 
 // Catalog is the failure catalogue, by class, in the catalogue's order (Codes).
 var Catalog = map[string]Entry{
+	"pace exceeded":      {Message: "The project period budget is exhausted. Wait for the next period or change the project policy.", Recovery: "wait"},
 	"cancelled":          {Message: "The response was stopped.", Recovery: "none"},
 	"request-limit":      {Message: "Work paused at the approved request limit.", Recovery: "increase"},
 	"provider-limit":     {Message: "The AI provider stopped this run at its limit.", Recovery: "review"},
@@ -39,7 +40,7 @@ var Catalog = map[string]Entry{
 }
 
 // Codes are the catalogue's classes in its order.
-var Codes = []string{"cancelled", "request-limit", "provider-limit", "context-limit", "authentication", "permission", "configuration", "busy", "rate-limited", "unavailable", "connection-lost", "timeout", "invalid-request", "invalid-response", "storage", "stale-state", "tool-failed", "unknown", "retries-exhausted", "invalid-tool-input", "output-limit", "content-filter", "repeated-work"}
+var Codes = []string{"cancelled", "request-limit", "provider-limit", "context-limit", "authentication", "permission", "configuration", "busy", "rate-limited", "unavailable", "connection-lost", "timeout", "invalid-request", "invalid-response", "storage", "stale-state", "tool-failed", "unknown", "retries-exhausted", "invalid-tool-input", "output-limit", "content-filter", "repeated-work", "pace exceeded"}
 
 // Aliases map a code a provider, the Desk or a search names to the class it is.
 var Aliases = map[string]string{

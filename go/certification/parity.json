@@ -790,6 +790,48 @@
         "go": [
           "10 agent reserve"
         ]
+      },
+      {
+        "check": "11 \u00b7 run beats project beats table in every section; every member has its value and layer before a request",
+        "go": [
+          "11 resolved",
+          "11 agent resolved"
+        ]
+      },
+      {
+        "check": "11 \u00b7 pace warns at the threshold and refuses past it before a request",
+        "go": [
+          "11 pace",
+          "11 agent pace"
+        ]
+      },
+      {
+        "check": "11 \u00b7 a project may raise a child tier and a run alone may not",
+        "go": [
+          "11 ceiling",
+          "11 agent ceiling"
+        ]
+      },
+      {
+        "check": "11 \u00b7 a resume carries checkpoint.policy through JSON without changing values or layers",
+        "go": [
+          "11 resume",
+          "11 agent resume"
+        ]
+      },
+      {
+        "check": "11 \u00b7 budget.json reads as policy.budget, with nested spelling winning",
+        "go": [
+          "11 alias",
+          "11 agent alias"
+        ]
+      },
+      {
+        "check": "11 \u00b7 zero period limits and totals refuse before the first dispatch",
+        "go": [
+          "11 pace",
+          "11 agent pace"
+        ]
       }
     ]
   },

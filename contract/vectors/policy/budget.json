@@ -1,0 +1,52 @@
+{
+  "description": "Written by hand from ADR-0011; no output recorded from an implementation.",
+  "schema": "policy.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/policy.ts"
+    ]
+  },
+  "items": [
+    {
+      "budget": {
+        "version": 1,
+        "maxInputBytes": 180000,
+        "contextWindowTokens": 65536,
+        "outputTokens": 8192,
+        "toolResultBytes": 12000,
+        "readBytes": 6000,
+        "retainedBytes": 8388608,
+        "recentMessages": 8,
+        "historyBytes": 32000,
+        "briefBytes": 8000,
+        "memoryBytes": 4000,
+        "turnMilliseconds": 900000,
+        "toolCallMilliseconds": 120000,
+        "imagesPerRequest": 8,
+        "imageBytesPerRequest": 16777216,
+        "testCallsPerTurn": 3,
+        "testPackBytes": 65536,
+        "testMatrixBytes": 65536,
+        "turnIndexEntries": 20,
+        "turnIndexBytes": 8000,
+        "projectInstructionsBytes": 4000,
+        "toolDescriptionBytes": 1024,
+        "offeredSchemas": 16,
+        "offeredSchemaBytes": 24000,
+        "cataloguedTools": 64,
+        "catalogueBytes": 24000,
+        "sourceResultBytes": 8000,
+        "sourceCallsPerTurn": 8,
+        "sourceCallMilliseconds": 30000,
+        "skillBytes": 8000,
+        "skillsPerRun": 4,
+        "skillsCatalogueBytes": 8000,
+        "cataloguedSkills": 32
+      }
+    }
+  ]
+}

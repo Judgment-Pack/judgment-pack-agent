@@ -18,7 +18,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { ASSISTANT_ENGINES, ASSISTANT_TOOLS } from '../../host'
 import { CERTIFICATION_IS_TOTAL, CERTIFIED_ENGINES, loadEngine } from '../index'
 import { ChannelHasOneConsumer, eventChannel } from './channel'
-import { vercel } from './index'
+import { vercel as admittedEngine } from './index'
+import { afterPolicy } from '../../testing/afterPolicy'
+const vercel = afterPolicy(admittedEngine)
 import { GOOGLE_OPTIONS, REHEARSAL_HOOK, claimPromises, runVercelLoop, sdkThinking } from './loop'
 import { managedContext } from '../../context/managed'
 import {
@@ -405,7 +407,7 @@ describe('the registry', () => {
     // the registry's old fallback used to do on purpose.
     const engine = await loadEngine('vercel')
     expect(engine.id).toBe('vercel')
-    expect(engine).toBe(vercel)
+    expect(engine).toBe(admittedEngine)
   })
 
   // The two below stood in the withdrawn engine's own suite and are properties
@@ -1007,6 +1009,7 @@ describe('a consumer that stops in the middle of a run', () => {
         })
       }
     })[Symbol.asyncIterator]()
+    expect((await events.next()).value).toMatchObject({ type: 'policy_resolved' })
     expect((await events.next()).value).toMatchObject({ type: 'tool_call', name: 'validate' })
     await events.return!(undefined)
     expect(closed).toEqual([{ value: undefined, done: true }])

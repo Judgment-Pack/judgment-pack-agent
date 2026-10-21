@@ -1,0 +1,44 @@
+{
+  "description": "Written by hand from ADR-0011; no output recorded from an implementation.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/policy.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "policy_resolved",
+      "members": {
+        "budget.readBytes": {
+          "value": 1024,
+          "layer": "run"
+        },
+        "critic.default": {
+          "value": "on",
+          "layer": "run"
+        },
+        "models.author.reasoning": {
+          "value": "ultra",
+          "layer": "run"
+        },
+        "concurrency.requests": {
+          "value": 3,
+          "layer": "run"
+        },
+        "pace.requestsPerDay": {
+          "value": 60,
+          "layer": "run"
+        },
+        "taskClass": {
+          "value": "boundary",
+          "layer": "run"
+        }
+      }
+    }
+  ]
+}

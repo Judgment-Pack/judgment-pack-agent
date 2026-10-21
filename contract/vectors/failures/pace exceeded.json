@@ -1,0 +1,29 @@
+{
+  "description": "Written by hand: the host project period total is past its policy budget. No request is admitted.",
+  "schema": "run-event.json",
+  "failureClass": "pace exceeded",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/policy.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "error",
+      "message": "The project period budget is exhausted. Wait for the next period or change the project policy.",
+      "failure": {
+        "version": 1,
+        "code": "pace exceeded",
+        "source": "context",
+        "outcome": "not-started"
+      }
+    },
+    {
+      "type": "end"
+    }
+  ]
+}

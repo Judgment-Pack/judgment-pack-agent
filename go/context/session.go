@@ -117,6 +117,8 @@ func (m *orderedValues) clear()          { m.order = nil; m.held = map[string]*V
 
 // SessionContext is the run's context (SessionContext).
 type SessionContext struct {
+	ResolvedPolicy PolicyMembers
+	PaceWarning    string
 	// Policy is the budget this run works under; ReserveOutput and a host may change it.
 	Policy *Policy
 	// Ledger is what the run retains and reads.
@@ -202,7 +204,21 @@ func NewSessionContext(session Session) (*SessionContext, error) {
 	if err != nil {
 		return nil, failure.Authored("configuration", err.Error(), "context")
 	}
-	out := &SessionContext{Policy: &policy, Marker: DataMarker(), session: session,
+	resolved, err := resolveSessionPolicy(session, policy)
+	if err != nil {
+		return nil, err
+	}
+	raw := map[string]any{}
+	for name, member := range resolved.Members {
+		if strings.HasPrefix(name, "budget.") {
+			raw[strings.TrimPrefix(name, "budget.")] = member.Value
+		}
+	}
+	encoded, _ := json.Marshal(raw)
+	if err := json.Unmarshal(encoded, &policy); err != nil {
+		return nil, err
+	}
+	out := &SessionContext{ResolvedPolicy: resolved.Members, PaceWarning: resolved.Warning, Policy: &policy, Marker: DataMarker(), session: session,
 		compactedSteps: newOrderedValues(), summaries: map[string]bool{}, contracts: newOrderedValues(),
 		referenceTools: map[string]bool{}, identity: identity}
 	if session.Context != nil && session.Context.Chat != nil {
@@ -223,7 +239,7 @@ func NewSessionContext(session Session) (*SessionContext, error) {
 	out.Execution = NewExecutionController(session, out.Ledger)
 	// ADR-0010: the session's critic members, read closed before any request; the forced-off facts
 	// are the session's: a delegated child (its objective), Plan mode, a graph purpose, a reviewer.
-	settings := CriticSettings{Critic: session.Critic, CriticProject: session.CriticProject, CriticReasoning: session.CriticReasoning, AdversarialReview: session.AdversarialReview}
+	settings := CriticSettings{ResolvedPolicy: out.ResolvedPolicy, Critic: session.Critic, CriticProject: session.CriticProject, CriticReasoning: session.CriticReasoning, AdversarialReview: session.AdversarialReview}
 	if err := ReadCriticSettings(settings, session.Agent != nil); err != nil {
 		return nil, failure.Authored("configuration", err.Error(), "context")
 	}
@@ -232,6 +248,7 @@ func NewSessionContext(session Session) (*SessionContext, error) {
 		forced.Phase = session.Context.Phase
 	}
 	table := CriticTable{CriticDefault: policy.CriticDefault, CriticReasoningFloor: policy.CriticReasoningFloor, AdversarialReview: policy.AdversarialReview}
+	settings.CriticReasoning, _ = out.ResolvedPolicy["models.critic.reasoning"].Value.(string)
 	out.Review = NewCriticSwitch(settings, table, forced, func() *Execution { return out.Execution.State })
 	out.Execution.criticMu = &out.Review.mu
 	out.existingPack = session.ExistingPack
@@ -244,6 +261,7 @@ func NewSessionContext(session Session) (*SessionContext, error) {
 	case session.Agent != nil:
 		out.authorTier = session.Agent.Effort
 	}
+	out.authorTier, _ = out.ResolvedPolicy["models.author.reasoning"].Value.(string)
 	for _, tool := range session.HostTools {
 		if tool.ContextPolicy != nil && tool.ContextPolicy.Reference {
 			out.referenceTools[tool.Name] = true
@@ -1090,6 +1108,25 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		}
 		if err := held.Execution.Initialize(); err != nil {
 			return err
+		}
+		record := held.ResolvedPolicy.Record()
+		if saved := held.Execution.State.Policy; saved != nil {
+			a, _ := json.Marshal(saved)
+			b, _ := json.Marshal(record)
+			if string(a) != string(b) {
+				return failure.Authored("stale-state", "The policy differs from the saved run.", "context")
+			}
+		}
+		freshPolicy := held.Execution.State.Policy == nil
+		held.Execution.State.Policy = record
+		if freshPolicy && session.Context != nil && session.Context.Checkpoint != nil {
+			state, err := held.Snapshot("")
+			if err != nil {
+				return err
+			}
+			if err = session.Context.Checkpoint(ctx, state); err != nil {
+				return failure.Authored("storage", "Policy checkpoint could not be saved.", "storage")
+			}
 		}
 		held.CarryMarker()
 		if len(declared.Sources) > 0 {

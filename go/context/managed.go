@@ -33,6 +33,7 @@ package runcontext
 // (gate.Options.Emit writes them between the call and its result) and the critic's own narrowing.
 
 import (
+	"errors"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
 )
@@ -67,15 +68,21 @@ func NewBoundary(run *Run) *Boundary {
 // checkpoint then says stopped rather than complete.
 func (b *Boundary) Stopped() { b.stopped = true }
 
-// Open is the opening checkpoint of a tracked run, and nothing for a run that is not tracked.
+// Open reports policy admission, then the opening checkpoint of a tracked run.
 func (b *Boundary) Open() []contract.RunEvent {
 	// ADR-0008: the checkpoints the continuation of an approval wrote, acknowledged, before the
 	// run's first request.
 	continued := b.run.Context.TakeContinued()
+	policy := []contract.RunEvent{{PolicyResolved: &contract.RunEventPolicyResolved{Type: "policy_resolved", Members: b.run.Context.ResolvedPolicy.Record()}}}
+	if b.run.Context.PaceWarning != "" {
+		reason := "pace warning"
+		policy = append(policy, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: "pace", Action: "refused", Reason: &reason, Detail: b.run.Context.PaceWarning}})
+	}
+	continued = append(policy, continued...)
 	if !b.tracked {
 		return append(b.notices(), continued...)
 	}
-	return append(append(b.checkpoint(nil, ""), continued...), b.notices()...)
+	return append(append(continued, b.checkpoint(nil, "")...), b.notices()...)
 }
 
 // notices are the guardrail events the source gate's refusals earned (ADR-0006), put on the stream
@@ -286,6 +293,11 @@ func (b *Boundary) Failed(cause error) []contract.RunEvent {
 // end. ContextualSession's error reaches an adapter before a boundary exists, so this is a
 // function of its own.
 func FailedToOpen(cause error) []contract.RunEvent {
+	var policy *PolicyRefusal
+	if errors.As(cause, &policy) {
+		return []contract.RunEvent{policy.Event(), failure.Event(cause, "context"), {End: &contract.RunEventEnd{Type: "end"}}}
+	}
+
 	if failure.IsCancelled(cause) {
 		return []contract.RunEvent{{End: &contract.RunEventEnd{Type: "end"}}}
 	}

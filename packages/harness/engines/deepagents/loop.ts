@@ -357,7 +357,7 @@ function unwrapped(cause: unknown): unknown {
 }
 
 export function runDeepAgents(session: AssistantSession, id: AssistantEngine): AsyncIterable<AssistantEvent> {
-  return managedContext(session, (held) => runDeepAgentsLoop(held, id))
+  return managedContext(session, (held) => runDeepAgentsLoop(held, id),id)
 }
 
 export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine): AsyncIterable<AssistantEvent> {

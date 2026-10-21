@@ -109,7 +109,7 @@ describe('thinking settings read the record', () => {
     const events = await drain(vercel.start(session('openai-compatible', call, { reasoning: { kind: 'none' } }, { tier: 'on' })))
     for (const request of sent) expect(request.body).not.toHaveProperty('reasoning_effort')
     expect(of(events, 'thinking_unavailable').map((event) => event.detail)).toEqual(['thinking is unavailable for this endpoint: its capability record names no reasoning parameter'])
-    expect(events[0]!.type).toBe('thinking_unavailable')
+    expect(events.slice(0,2).map(event=>event.type)).toEqual(['policy_resolved','thinking_unavailable'])
     expect(of(events, 'proposal')).toHaveLength(1)
   })
 

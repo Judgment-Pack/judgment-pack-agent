@@ -1,5 +1,11 @@
 # Judgment Pack Agent
 
+Budgets are the `budget` section of the [agent's policy table](docs/adr/0011-the-agents-policy-table.md).
+The host's run layer wins over its project layer, then table defaults. The same
+resolver covers critic, models, concurrency, pace, and task class, with each member's
+value and layer in `policy_resolved` and `checkpoint.policy`. `budget.json` is a
+read alias for one release. Model-visible text cannot set policy.
+
 Research preview, scaffolded 2026-10-18. This repository holds the agent harness behind
 [Judgment Pack Desk](https://github.com/Judgment-Pack/judgment-pack-desk): the loop that drives a
 model through tools, the context budget and ledger, delegation to subagents, the tool gate and the

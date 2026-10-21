@@ -64,6 +64,7 @@ let binary = ''
 
 beforeAll(() => {
   work = mkdtempSync(join(tmpdir(), 'recorder-'))
+  writeFileSync(join(work, 'package.json'), '{"type":"commonjs"}')
   binary = join(work, 'jpack')
   writeFileSync(binary, STAND_IN)
   chmodSync(binary, 0o755)

@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
 )
 
@@ -156,4 +157,21 @@ func hasMembers(data []byte, names ...string) bool {
 		}
 	}
 	return true
+}
+
+// checkPatternMembers keeps a patterned object closed to names outside its declared patterns.
+func checkPatternMembers(extra map[string]json.RawMessage, patterns []string) error {
+	for name := range extra {
+		allowed := false
+		for _, pattern := range patterns {
+			if regexp.MustCompile(pattern).MatchString(name) {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return errorf("member %q is not named by the closed schema", name)
+		}
+	}
+	return nil
 }

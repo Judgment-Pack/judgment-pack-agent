@@ -24,7 +24,7 @@ describe('shared planning boundary',()=>{
  })
  it('refuses artifact proposal events even if an adapter emits one',async()=>{
   const events=[];for await(const e of managedContext(session(),async function*(){yield {type:'proposal' as const,document:{},unknowns:[]};yield {type:'end' as const}}))events.push(e)
-  expect(events.map(e=>e.type)).toEqual(['guardrail','end'])
+  expect(events.map(e=>e.type)).toEqual(['policy_resolved','guardrail','end'])
  })
 })
 // agent#13 rewrote the next two cases: Plan mode's Runtime list is the gate's ceiling less the two that

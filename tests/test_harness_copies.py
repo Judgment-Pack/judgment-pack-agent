@@ -34,8 +34,10 @@ class HarnessCopyTests(unittest.TestCase):
 
     def test_the_policy_copy_is_a_budget_table_and_the_contracts_defaults(self):
         policy = load(HARNESS / "policy.json")
-        self.assertEqual(problems(validator(self.schemas, "budget.json"), [policy]), [])
-        self.assertEqual(policy, load(VECTORS / "budget" / "desk-defaults.json")["items"][0])
+        self.assertEqual(problems(validator(self.schemas, "policy.json"), [policy]), [])
+        legacy = {**policy["budget"], "criticDefault": policy["critic"]["default"], "criticReasoningFloor": policy["critic"]["reasoningFloor"]}
+        self.assertEqual(problems(validator(self.schemas, "budget.json"), [legacy]), [])
+        self.assertEqual(legacy, load(VECTORS / "budget" / "desk-defaults.json")["items"][0])
 
 
 if __name__ == "__main__":

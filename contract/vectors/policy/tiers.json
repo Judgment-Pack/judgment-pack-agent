@@ -1,0 +1,155 @@
+{
+  "description": "Written by hand from ADR-0011 and review #116; no implementation output recorded.",
+  "schema": "policy.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/context/session.ts"
+    ]
+  },
+  "items": [
+    {
+      "models": {
+        "author": {
+          "model": "connected",
+          "reasoning": "off"
+        },
+        "taskClasses": {
+          "routine": "off",
+          "material": "off",
+          "boundary": "off"
+        }
+      },
+      "taskClass": "routine"
+    },
+    {
+      "models": {
+        "author": {
+          "model": "connected",
+          "reasoning": "on"
+        },
+        "taskClasses": {
+          "routine": "on",
+          "material": "on",
+          "boundary": "on"
+        }
+      },
+      "taskClass": "material"
+    },
+    {
+      "models": {
+        "author": {
+          "model": "connected",
+          "reasoning": "ultra"
+        },
+        "taskClasses": {
+          "routine": "ultra",
+          "material": "ultra",
+          "boundary": "ultra"
+        }
+      },
+      "taskClass": "boundary"
+    },
+    {
+      "models": {
+        "author": {
+          "model": "connected",
+          "reasoning": "none"
+        },
+        "taskClasses": {
+          "routine": "none",
+          "material": "none",
+          "boundary": "none"
+        }
+      },
+      "taskClass": "routine"
+    },
+    {
+      "models": {
+        "author": {
+          "model": "connected",
+          "reasoning": "minimal"
+        },
+        "taskClasses": {
+          "routine": "minimal",
+          "material": "minimal",
+          "boundary": "minimal"
+        }
+      },
+      "taskClass": "material"
+    },
+    {
+      "models": {
+        "author": {
+          "model": "connected",
+          "reasoning": "low"
+        },
+        "taskClasses": {
+          "routine": "low",
+          "material": "low",
+          "boundary": "low"
+        }
+      },
+      "taskClass": "boundary"
+    },
+    {
+      "models": {
+        "author": {
+          "model": "connected",
+          "reasoning": "medium"
+        },
+        "taskClasses": {
+          "routine": "medium",
+          "material": "medium",
+          "boundary": "medium"
+        }
+      },
+      "taskClass": "routine"
+    },
+    {
+      "models": {
+        "author": {
+          "model": "connected",
+          "reasoning": "high"
+        },
+        "taskClasses": {
+          "routine": "high",
+          "material": "high",
+          "boundary": "high"
+        }
+      },
+      "taskClass": "material"
+    },
+    {
+      "models": {
+        "author": {
+          "model": "connected",
+          "reasoning": "xhigh"
+        },
+        "taskClasses": {
+          "routine": "xhigh",
+          "material": "xhigh",
+          "boundary": "xhigh"
+        }
+      },
+      "taskClass": "boundary"
+    },
+    {
+      "models": {
+        "author": {
+          "model": "connected",
+          "reasoning": "max"
+        },
+        "taskClasses": {
+          "routine": "max",
+          "material": "max",
+          "boundary": "max"
+        }
+      },
+      "taskClass": "routine"
+    }
+  ]
+}

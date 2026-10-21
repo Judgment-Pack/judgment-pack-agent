@@ -61,6 +61,7 @@ type CriticDecision struct {
 // CriticSettings are what the session says about the critic: the run's and the project's words, the
 // tier, and the alias.
 type CriticSettings struct {
+	ResolvedPolicy    PolicyMembers
 	Critic            string
 	CriticProject     string
 	CriticReasoning   string
@@ -111,24 +112,39 @@ func criticAlias(value *bool) string {
 // (Critic, else the alias AdversarialReview), else the project's, else the table's default
 // (CriticDefault, else the table's alias), else auto. It answers the mode and the layer that set it.
 func CriticMode(session CriticSettings, table CriticTable) (mode, layer string) {
-	run := session.Critic
-	if run == "" {
-		run = criticAlias(session.AdversarialReview)
+	members := session.ResolvedPolicy
+	if members == nil {
+		run, project := PolicyLayer{}, PolicyLayer{}
+		mode := session.Critic
+		if mode == "" {
+			mode = criticAlias(session.AdversarialReview)
+		}
+		if mode != "" {
+			run["critic"] = map[string]any{"default": mode}
+		}
+		if session.CriticProject != "" {
+			project["critic"] = map[string]any{"default": session.CriticProject}
+		}
+		mode = table.CriticDefault
+		if !slices.Contains(CriticModes, mode) {
+			mode = criticAlias(table.AdversarialReview)
+		}
+		if mode == "" {
+			mode = "auto"
+		}
+		resolved, err := ResolvePolicy(run, project, PolicyLayer{"critic": map[string]any{"default": mode}, "models": map[string]any{"author": map[string]any{"model": "current", "reasoning": "off"}}}, PolicyHost{Connections: []string{"current"}, Requests: 16})
+		if err != nil {
+			return "auto", "table"
+		}
+		members = resolved.Members
 	}
-	if run != "" {
-		return run, "person"
+	held := members["critic.default"]
+	mode, _ = held.Value.(string)
+	layer = held.Layer
+	if layer == "run" {
+		layer = "person"
 	}
-	if session.CriticProject != "" {
-		return session.CriticProject, "project"
-	}
-	stated := table.CriticDefault
-	if !slices.Contains(CriticModes, stated) {
-		stated = criticAlias(table.AdversarialReview)
-	}
-	if stated == "" {
-		stated = "auto"
-	}
-	return stated, "table"
+	return mode, layer
 }
 
 // CriticForcedOff is criticForcedOff: the forced-off reason that holds, in the order child, phase,

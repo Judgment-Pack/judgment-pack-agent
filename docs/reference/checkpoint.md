@@ -48,6 +48,7 @@ Open: a member the schema does not name is accepted.
 | `critic.reason` |  | `provenance.json $defs/criticReason` |  |
 | `critic.reasoning` |  | `tool-offer.json $defs/criticReasoning` |  |
 | `critic.trigger` |  | enum `cases`, `changes-existing`, `model-asked` |  |
+| `policy` |  | `policy.json $defs/resolved` |  |
 
 Conditions beyond the members (allOf) are in the schema file.
 

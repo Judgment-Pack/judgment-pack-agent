@@ -29,7 +29,7 @@ HARNESS_ENGINE_ADDITIONS = ["deepagents", "eino"]
 # Event kinds the harness emits beyond the Desk's (contract/desk/inventory.json): the approval pause
 # (docs/adr/0008-the-approval-pause.md) and a skill's load and unload (docs/adr/0009-skills.md), on
 # the host's stream; and the critic's decision (docs/adr/0010-the-critics-switch.md).
-HARNESS_EVENT_ADDITIONS = ["approval_requested", "skill_loaded", "skill_unloaded", "critic_decided"]
+HARNESS_EVENT_ADDITIONS = ["approval_requested", "skill_loaded", "skill_unloaded", "critic_decided", "policy_resolved"]
 
 EXPECTED_SCHEMAS = {
     "run-event.json",
@@ -42,6 +42,7 @@ EXPECTED_SCHEMAS = {
     "checkpoint.json",
     "failure.json",
     "budget.json",
+    "policy.json",
     "provenance.json",
     "capability.json",
     "skill.json",
@@ -50,6 +51,8 @@ EXPECTED_SCHEMAS = {
 # The $defs added or changed (beyond their descriptions) between v0.1.0 and the v0.2.0 release
 # review, whose members each need a vector (#43): (schema, definition).
 RELEASE_REVIEWED_DEFS = [
+    ("policy.json", "role"), ("policy.json", "member"), ("policy.json", "paceUsed"),
+    ("provenance.json", "policy"), ("run-event.json", "policy_resolved"),
     ("budget.json", "toolCallAllowance"),
     ("delegated-task.json", "budget"), ("delegated-task.json", "resultCursor"), ("delegated-task.json", "answer"),
     ("delegated-task.json", "answerTask"), ("delegated-task.json", "brief"), ("delegated-task.json", "briefReference"),
@@ -276,8 +279,9 @@ class DeskInventoryTests(unittest.TestCase):
 
     def test_the_budget_vector_is_the_desks_table(self):
         policy = load(CONTRACT / "desk" / "policy.json")
-        self.assertEqual(load(VECTORS / "budget" / "desk-defaults.json")["items"], [policy])
-        self.assertEqual(problems(validator(self.schemas, "budget.json"), [policy]), [])
+        self.assertEqual(load(VECTORS / "budget" / "desk-defaults.json")["items"], [{**policy["budget"], "criticDefault":policy["critic"]["default"], "criticReasoningFloor":policy["critic"]["reasoningFloor"]}])
+        self.assertEqual(problems(validator(self.schemas, "budget.json"), [policy["budget"]]), [])
+        self.assertEqual(problems(validator(self.schemas, "policy.json"), [policy]), [])
 
     def test_every_catalogue_entry_is_well_formed(self):
         check = validator(self.schemas, "failure.json#/$defs/catalogueEntry")
@@ -416,7 +420,7 @@ class VectorTests(unittest.TestCase):
         self.assertTrue(set(critic[:4]) <= set(offer["runtimeCeiling"]["enum"]))
         self.assertTrue(set(critic[4:]) <= set(offer["reservedName"]["enum"]))
         table = load(CONTRACT / "desk" / "policy.json")
-        self.assertEqual((table["criticDefault"], table["criticReasoningFloor"]), ("auto", "author"))
+        self.assertEqual((table["critic"]["default"], table["critic"]["reasoningFloor"]), ("auto", "author"))
         self.assertNotIn("adversarialReview", table)
         self.assertNotIn("request_review", critic)
         self.assertEqual(self.vectors["tool-offer/critic-tools.json"]["items"], critic)
@@ -733,7 +737,7 @@ class VectorTests(unittest.TestCase):
         targets = []
         for name, definition in RELEASE_REVIEWED_DEFS:
             targets += [(name, ["$defs", definition] + path) for path in members(schemas_[name]["$defs"][definition], [])]
-        for name in ("checkpoint.json", "delegated-task.json", "tool-call.json", "tool-result.json", "skill.json", "tool-offer.json"):
+        for name in ("checkpoint.json", "delegated-task.json", "tool-call.json", "tool-result.json", "skill.json", "tool-offer.json", "policy.json"):
             root = {key: value for key, value in schemas_[name].items() if key != "$defs"}
             targets += [(name, path) for path in members(root, [])]
         self.assertGreater(len(targets), 250)
@@ -770,11 +774,36 @@ class VectorTests(unittest.TestCase):
             ("run-event.json", ["$defs", "critic_decided", "properties", "trigger"]),
             ("checkpoint.json", ["properties", "critic", "properties", "trigger"]),
         ]
+        # ADR-0011: probe every enum in the new policy schema, including role
+        # definitions and each task-class mapping, plus the session's taskClass.
+        def enum_paths(node, path):
+            if isinstance(node, dict):
+                if "enum" in node:
+                    yield path
+                for key, value in node.items():
+                    if key not in ("enum", "default", "examples"):
+                        yield from enum_paths(value, path + [key])
+            elif isinstance(node, list):
+                for index, value in enumerate(node):
+                    yield from enum_paths(value, path + [index])
+
+        enums += [("policy.json", path) for path in enum_paths(schemas_["policy.json"], [])]
+        enums += [
+            ("tool-offer.json", ["properties", "taskClass"]),
+            ("run-event.json", ["properties", "type"]),
+            ("failure.json", ["$defs", "code"]),
+        ]
+        # Existing schemas: this ADR adds these values, not new obligations for
+        # the unrelated event and failure values from earlier releases.
+        added_values = {
+            ("run-event.json", ("properties", "type")): ["policy_resolved"],
+            ("failure.json", ("$defs", "code")): ["pace exceeded"],
+        }
         for name, path in enums:
             node = schemas_[name]
             for step in path:
                 node = node[step]
-            for value in node["enum"]:
+            for value in added_values.get((name, tuple(path)), node["enum"]):
                 changed = copy.deepcopy(schemas_)
                 held = changed[name]
                 for step in path:

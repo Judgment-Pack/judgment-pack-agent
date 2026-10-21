@@ -1,5 +1,5 @@
 /**
- * The certified scenarios (agent#13, ADR-0006, ADR-0008, ADR-0009, ADR-0010): ten scripted scenarios beside the bake-off's, each
+ * The certified scenarios (agent#13, ADR-0006, ADR-0008, ADR-0009, ADR-0010, ADR-0011): eleven scripted scenarios beside the bake-off's, each
  * written by hand as `scenario.json` is (`certification/scenarios/*.json`) and run on every adapter of its kind
  * by `npm run certify -- --adapter <id>`:
  *
@@ -21,6 +21,8 @@
  *    a reviewer assigned, the critic's tier, a resume, on the agent capability the invocation held back
  *    for the critic, and the measurement: the same proposal at two author tiers, with and without the
  *    critic, written as a table for `npm run certify` to print.
+ * 11. the policy table (ADR-0011): all three layers, every resolved member, child tier authorization,
+ *    model text isolation, pace warning and refusal, checkpoint resume, and the budget alias.
  *
  * The model engine runs each on the OpenAI-compatible wire, once with each answer shape (a stream,
  * a whole object), through a scripted endpoint. The agent engine runs each at its own seam
@@ -43,6 +45,9 @@ import { REFUTATION_MARKER, type CriticCase } from '../refutation'
 import { REQUEST_REVIEW, REVIEW_TAKEN, reviewRefusal } from '../criticSwitch'
 import criticSwitch from './scenarios/critic-switch.json'
 import { appendFileSync } from 'node:fs'
+import { policyAlias, type PolicyLayer } from '../policy'
+import policyAliasVector from '../../../contract/vectors/policy/alias.json'
+import policyScenario from './scenarios/policy-table.json'
 import type { ThinkingTier } from '../host'
 import { bindModelCall, openAssistantConnection, runAssistantSession } from '../session'
 import { scriptedRuntime } from './scriptedServer'
@@ -1584,7 +1589,7 @@ function decidedInOrder(ran: Ran) {
 function criticSwitchChecks(get: () => Switched, kind: 'model' | 'agent') {
   const [low, high] = switchTiers(kind)
   // The author's tier where the scenario sets none: the model's off; the agent's effort is unstated.
-  const unset = kind === 'model' ? { reasoning: 'off' } : {}
+  const unset = { reasoning: kind === 'model' ? 'off' : 'none' }
 
   it('10 · auto with a proposal and declared cases runs the critic: the decision says cases, before the critique, the proposal after', () => {
     const ran = get().runs.cases!
@@ -1692,13 +1697,13 @@ function criticSwitchChecks(get: () => Switched, kind: 'model' | 'agent') {
       const continued = three.runs.filter((one) => one.phase === 'author')
       expect(continued).toHaveLength(2)
       expect(continued[1]!.prompt).toContain('one kept for the critic; no task was started')
-      expect(decidedIn(three)).toEqual({ mode: 'auto', ran: true, reason: 'cases', trigger: 'cases' })
+      expect(decidedIn(three)).toEqual({ mode: 'auto', ran: true, reason: 'cases', trigger: 'cases', reasoning:'none' })
       expect(children(two)).toBe(2)
-      expect(decidedIn(two)).toEqual({ mode: 'auto', ran: true, reason: 'cases', trigger: 'cases' })
+      expect(decidedIn(two)).toEqual({ mode: 'auto', ran: true, reason: 'cases', trigger: 'cases', reasoning:'none' })
       expect(two.runs.map((one) => one.phase).filter((phase) => phase === 'critic')).toHaveLength(1)
       expect(two.runs).toHaveLength(5)
       expect(children(off)).toBe(3)
-      expect(decidedIn(off)).toEqual({ mode: 'off', ran: false, reason: 'off' })
+      expect(decidedIn(off)).toEqual({ mode: 'off', ran: false, reason: 'off', reasoning:'none' })
       expect(off.runs).toHaveLength(5)
     })
   }
@@ -2079,4 +2084,116 @@ describe.each(AGENT_ENGINES)('agent engine %s · scenarios', (engineId) => {
     })
     criticSwitchChecks(() => state, 'agent')
   })
+})
+
+
+// 11. The policy table: the same admission boundary on every engine and answer shape.
+function policyTableChecks(engineId: import('../host').AssistantEngine, agent: boolean, answerAs: AnswerAs) {
+  const play = async (session: Partial<AssistantSession> & Partial<AgentAssistantSession>, stopAt?: (event: AssistantEvent) => boolean) => {
+    const engine = await loadEngine(engineId)
+    const turns = policyScenario.turns as Turn[]
+    return agent
+      ? runOnAgentEngine(agentRunFrom(turns), {engine, session:{context:request(policyScenario.request),...session}, stopAt})
+      : runOnModelEngine(answerFrom(turns, answerAs), {engine, session:{context:request(policyScenario.request),...session}, stopAt})
+  }
+  it('11 · run beats project beats table in every section; every member has its value and layer before a request', async () => {
+    const tier = agent ? 'low' : 'off'
+    const projectTier = agent ? 'high' : 'on'
+    const project: PolicyLayer = {budget:{readBytes:768},critic:{default:'off'},models:{author:{reasoning:projectTier}},concurrency:{requests:2},pace:{requestsPerDay:20},taskClass:'material'}
+    const run: PolicyLayer = {budget:{readBytes:512},critic:{default:'auto'},models:{author:{reasoning:tier}},concurrency:{requests:3},pace:{requestsPerDay:10},taskClass:'boundary'}
+    const selected = ['budget.readBytes','critic.default','models.author.reasoning','concurrency.requests','pace.requestsPerDay','taskClass']
+    for (const layer of ['table','project','run'] as const) {
+      let durable: ExecutionCheckpoint | undefined
+      const ran = await play({prompt:policyScenario.request, policyRequests:3,
+        ...(layer !== 'table' ? {policyProject:project} : {}), ...(layer === 'run' ? {policy:run} : {}),
+        context:{...request(policyScenario.request), checkpoint:async saved => {durable=structuredClone(saved)}}})
+      expect(ofType(ran.events,'error')).toEqual([])
+      expect(ran.requests.length + ran.runs.length).toBe(1)
+      const resolved = ofType(ran.events,'policy_resolved')
+      expect(resolved).toHaveLength(1)
+      expect(ran.events[0]?.type).toBe('policy_resolved')
+      const {criticDefault, criticReasoningFloor, ...budget} = policyAliasVector.items[0]!
+      const model = agent ? 'scripted-agent' : 'scripted-model'
+      const defaults: Record<string, unknown> = {
+        ...Object.fromEntries(Object.entries(budget).map(([name,value])=>[`budget.${name}`,value])),
+        'critic.default':criticDefault, 'critic.reasoningFloor':criticReasoningFloor,
+        'models.author.model':model, 'models.author.reasoning':agent?'none':'off',
+        'models.critic.model':model, 'models.critic.reasoning':agent?'none':'off',
+        'concurrency.children':agent?1:2, 'concurrency.requests':2,
+        'pace.requestsPerDay':null, 'pace.invocationsPerDay':null, 'pace.bytesPerDay':null, 'pace.warnAt':0.8, taskClass:'routine'
+      }
+      const expected = Object.fromEntries(Object.entries(defaults).map(([name,value])=>[name,{value,layer:'table'}]))
+      if (layer !== 'table') {
+        const values = layer === 'run' ? [512,'auto',tier,3,10,'boundary'] : [768,'off',projectTier,2,20,'material']
+        selected.forEach((name,i)=>{expected[name]={value:values[i],layer}})
+        expected['models.critic.reasoning']={value:layer==='run'?tier:projectTier,layer:'table'}
+      }
+      expect(resolved[0]!.members).toEqual(expected)
+      expect(durable?.policy).toEqual(expected)
+      expect(lastCheckpoint(ran.events).policy).toEqual(expected)
+      expect(ofType(ran.events,'message')[0]?.text).toBe(policyScenario.turns[0]!.say)
+    }
+  })
+  it('11 · a resume carries checkpoint.policy through JSON without changing values or layers', async () => {
+    const session = {prompt:policyScenario.request, policy:{budget:{readBytes:512}}, context:request(policyScenario.request)}
+    const first = await play(session, event=>event.type==='execution_checkpoint' && !!event.checkpoint.policy)
+    const saved = JSON.parse(JSON.stringify(lastCheckpoint(first.events))) as ExecutionCheckpoint
+    const resumed = await play({...session,context:{...session.context,execution:saved}})
+    expect(ofType(resumed.events,'error')).toEqual([])
+    expect(resumed.requests.length + resumed.runs.length).toBe(1)
+    expect(ofType(resumed.events,'policy_resolved')).toEqual([{type:'policy_resolved',members:saved.policy}])
+    expect(lastCheckpoint(resumed.events).policy).toEqual(saved.policy)
+  })
+  it('11 · budget.json reads as policy.budget, with nested spelling winning', async () => {
+    const alias = {...policyAliasVector.items[0]!,readBytes:512}
+    const legacy = await play({policy:policyAlias(alias)})
+    const {criticDefault,criticReasoningFloor,...budget} = alias
+    const nested = await play({policy:{budget,critic:{default:criticDefault as 'auto',reasoningFloor:criticReasoningFloor as 'author'}}})
+    expect(ofType(legacy.events,'error')).toEqual([])
+    expect(ofType(nested.events,'error')).toEqual([])
+    expect(ofType(legacy.events,'policy_resolved')).toEqual(ofType(nested.events,'policy_resolved'))
+    expect(lastCheckpoint(legacy.events).policy?.['budget.readBytes']).toEqual({value:512,layer:'run'})
+    const both = await play({policy:policyAlias({...alias,budget:{readBytes:768}})})
+    expect(lastCheckpoint(both.events).policy?.['budget.readBytes']).toEqual({value:768,layer:'run'})
+  })
+  it('11 · pace warns at the threshold and refuses past it before a request', async()=>{
+    for(const used of [8,10,11]){
+      const engine=await loadEngine(engineId)
+      const session={critic:'off' as const,policyProject:{pace:{requestsPerDay:10,warnAt:0.8}},paceUsed:{requestsPerDay:used}}
+      const turns:Turn[]=[{say:'Done.'}]
+      const ran=agent?await runOnAgentEngine(agentRunFrom(turns),{engine,session}):await runOnModelEngine(answerFrom(turns,answerAs),{engine,session})
+      const guard=ofType(ran.events,'guardrail').filter(e=>e.reason===(used===8?'pace warning':'policy refused'))
+      expect(guard).toHaveLength(1)
+      expect(guard[0]!.detail).toContain('pace.requestsPerDay (project)')
+      if(used>=10){expect(ran.requests).toHaveLength(0);expect(ran.runs).toHaveLength(0);expect(ofType(ran.events,'error')[0]?.failure?.code).toBe('pace exceeded')}
+    }
+  })
+  it('11 · zero period limits and totals refuse before the first dispatch',async()=>{
+    const zero={requestsPerDay:0,invocationsPerDay:0,bytesPerDay:0}
+    for(const pace of [zero,{requestsPerDay:0},{invocationsPerDay:0},{bytesPerDay:0}]){
+      const ran=await play({policyProject:{pace},paceUsed:zero})
+      expect(ran.requests).toHaveLength(0);expect(ran.runs).toHaveLength(0)
+      expect(ofType(ran.events,'error')[0]?.failure?.code).toBe('pace exceeded')
+      expect(ofType(ran.events,'guardrail')[0]?.reason).toBe('policy refused')
+    }
+  })
+  it('11 · a project may raise a child tier and a run alone may not',async()=>{
+    for(const project of [true,false]){
+      const engine=await loadEngine(engineId)
+      const raised={models:{'child.review':{reasoning:agent?'high':'ultra'}}}
+      const session={critic:'off' as const,...(project?{policyProject:raised}:{policy:raised})}
+      const turns:Turn[]=[{say:'Done.'}]
+      const ran=agent?await runOnAgentEngine(agentRunFrom(turns),{engine,session}):await runOnModelEngine(answerFrom(turns,answerAs),{engine,session})
+      if(project){expect(ofType(ran.events,'error')).toEqual([]);expect(ofType(ran.events,'policy_resolved')[0]!.members['models.child.review.reasoning']).toEqual({value:agent?'high':'ultra',layer:'project'});expect(ran.requests.length+ran.runs.length).toBe(1)}
+      else {expect(ran.requests).toHaveLength(0);expect(ran.runs).toHaveLength(0);expect(ofType(ran.events,'guardrail')[0]?.reason).toBe('policy refused')}
+    }
+  })
+}
+for(const engineId of MODEL_ENGINES)describe(`engine ${engineId} · scenarios`,()=>{
+  afterEach(()=>vi.unstubAllGlobals())
+  for(const answerAs of ['stream','whole'] as const)describe(`policy table ${answerAs}`,()=>policyTableChecks(engineId,false,answerAs))
+})
+for(const engineId of AGENT_ENGINES)describe(`agent engine ${engineId} · scenarios`,()=>{
+  afterEach(()=>vi.unstubAllGlobals())
+  policyTableChecks(engineId,true,'stream')
 })

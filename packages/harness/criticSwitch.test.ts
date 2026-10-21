@@ -79,8 +79,8 @@ describe('the decision, held to the vectors (ADR-0010)', () => {
     expect(criticMode({ criticProject: 'off' }, { criticDefault: 'on' })).toEqual({ mode: 'off', layer: 'project' })
     expect(criticMode({}, { criticDefault: 'on' })).toEqual({ mode: 'on', layer: 'table' })
     expect(criticMode({}, CONTEXT_DEFAULTS)).toEqual({ mode: 'auto', layer: 'table' })
-    // A default the table states that is not a mode is no default: auto.
-    expect(criticMode({}, { criticDefault: 'sometimes' })).toEqual({ mode: 'auto', layer: 'table' })
+    // The closed policy table refuses an invalid default at admission.
+    expect(()=>criticMode({}, { criticDefault: 'sometimes' })).toThrow('critic.default (table)')
   })
 
   it('never reads prose: the same facts give the same decision whatever the model or the person wrote', () => {

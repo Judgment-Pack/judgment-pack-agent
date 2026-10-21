@@ -53,7 +53,7 @@ describe('the Codex adapter’s reformat run (agent#29)', () => {
     expect(reformat!.prompt).toContain(REFORMAT_INSTRUCTIONS)
     expect(reformat!.prompt).toContain('this one carried 2')
     expect(reformat!.prompt).toContain(TWO_FENCES)
-    expect(events.filter((event) => event.type !== 'execution_checkpoint').map((event) => event.type)).toEqual(['response_recovery', 'message', 'critic_decided', 'proposal', 'end'])
+    expect(events.filter((event) => event.type !== 'execution_checkpoint' && event.type !== 'policy_resolved').map((event) => event.type)).toEqual(['response_recovery', 'message', 'critic_decided', 'proposal', 'end'])
     // What the model said beside the document is the first answer's.
     expect(ofType(events, 'message')).toEqual([{ type: 'message', text: 'Here are two drafts.' }])
     expect(ofType(events, 'proposal')[0]).toEqual({ type: 'proposal', document: { id: 'second' }, unknowns: ['who signs'] })
@@ -77,7 +77,7 @@ describe('the Codex adapter’s reformat run (agent#29)', () => {
       session: { allowConversation: false }
     })
     expect(runs).toHaveLength(2)
-    expect(events.filter((event) => event.type !== 'execution_checkpoint').map((event) => event.type)).toEqual(['response_recovery', 'message', 'error', 'end'])
+    expect(events.filter((event) => event.type !== 'execution_checkpoint' && event.type !== 'policy_resolved').map((event) => event.type)).toEqual(['response_recovery', 'message', 'error', 'end'])
     expect(ofType(events, 'message')).toEqual([{ type: 'message', text: TWO_FENCES }])
     expect(ofType(events, 'error')[0]!.failure).toMatchObject({ code: 'invalid-response', source: 'desk', detail: expect.stringContaining('this one carried 2') })
   })
@@ -88,7 +88,7 @@ describe('the Codex adapter’s reformat run (agent#29)', () => {
       session: { allowConversation: false }
     })
     expect(runs).toHaveLength(2)
-    expect(events.filter((event) => event.type !== 'execution_checkpoint').map((event) => event.type)).toEqual(['response_recovery', 'message', 'error', 'end'])
+    expect(events.filter((event) => event.type !== 'execution_checkpoint' && event.type !== 'policy_resolved').map((event) => event.type)).toEqual(['response_recovery', 'message', 'error', 'end'])
     expect(ofType(events, 'message')).toEqual([{ type: 'message', text: TWO_FENCES }])
     expect(ofType(events, 'error')[0]!.failure).toMatchObject({ code: 'timeout', source: 'agent' })
   })

@@ -222,7 +222,7 @@ const offeredIn = (request: EndpointRequest) =>
  * where the gate's own does, before the result's checkpoint.
  */
 function refusalOf(events: AssistantEvent[], name: string) {
-  const work = events.filter((event) => event.type !== 'execution_checkpoint')
+  const work = events.filter((event) => event.type !== 'execution_checkpoint' && event.type !== 'policy_resolved')
   const at = work.findIndex((event) => event.type === 'tool_call' && event.name === name)
   return work.slice(at, at + 3)
 }
@@ -600,8 +600,8 @@ describe('the contract’s critic vectors are what the harness writes (agent#10)
 
 describe('one default for both engines (agent#10; ADR-0010)', () => {
   it('is the policy table’s criticDefault, auto, with the author’s tier as the floor, and the harness reads it from there', () => {
-    expect(policyTable.criticDefault).toBe('auto')
-    expect(policyTable.criticReasoningFloor).toBe('author')
+    expect(policyTable.critic.default).toBe('auto')
+    expect(policyTable.critic.reasoningFloor).toBe('author')
     expect('adversarialReview' in policyTable).toBe(false)
     expect(CONTEXT_DEFAULTS.criticDefault).toBe('auto')
   })
@@ -648,12 +648,13 @@ describe('the critic’s model, per connection (agent#10)', () => {
     expect(ofType(events, 'critique')[0]!.figures).toMatchObject({ model: 'cheaper-model' })
   })
 
-  it('vercel: a critic model the host names wrongly is the critic’s note, and the proposal stands', async () => {
+  it('vercel: an invalid host critic model is refused at policy admission', async () => {
     configureHarness({ modelsFor: () => ({ critic: 'two\nlines' }) })
     const { requests, events } = await vercelCritic([])
-    expect(requests.filter(isCritic)).toEqual([])
-    expect(ofType(events, 'error')).toEqual([])
-    expect(ofType(events, 'proposal')[0]).toMatchObject({ document: DOCUMENT, note: { kind: 'critic-unfinished' } })
+    expect(requests).toEqual([])
+    expect(ofType(events, 'error')[0]?.failure?.code).toBe('configuration')
+    expect(ofType(events, 'guardrail')[0]).toMatchObject({reason:'policy refused',tool:'models.critic.model'})
+    expect(ofType(events, 'proposal')).toEqual([])
   })
 
   it('codex: the critic run names the host’s critic model on the agent wire; the author run the bound one', async () => {
@@ -879,7 +880,7 @@ describe('a critic whose first message is retained reads it with its own readers
 })
 
 describe('the proposal and figures vectors are what the engines emit (agent#10 review row 11)', () => {
-  const work = (events: AssistantEvent[]) => events.filter((event) => event.type !== 'execution_checkpoint')
+  const work = (events: AssistantEvent[]) => events.filter((event) => event.type !== 'execution_checkpoint' && event.type !== 'policy_resolved')
 
   it.each(['vercel', 'codex'] as const)('proposal/unreadable.json: %s', async (engine) => {
     const answer = (unreadable.items[1] as { text: string }).text

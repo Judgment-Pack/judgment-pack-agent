@@ -202,6 +202,14 @@ export interface ModelRequest {
 export type ModelCall = (suffix: string, request: ModelRequest) => Promise<Response>
 
 export interface AssistantSession {
+  policy?: import('./policy').PolicyLayer
+  policyProject?: import('./policy').PolicyLayer
+  taskClass?: import('./policy').TaskClass
+  paceUsed?: import('./policy').PaceUsed
+  /** Host-connected model IDs available to this run. */
+  policyConnections?: Record<string, import('./policy').PolicyConnection>
+  policyRequests?: number
+
   /** Shared, provider-independent context policy and current scoped source copies. */
   context?: import('./context/session').ContextInput
   /** Test design proposes reviewed cases rather than a replacement pack. */
@@ -314,6 +322,7 @@ export type AssistantEvent =
   | { type: 'skill_loaded'; skill: import('./skills').LoadedSkill; bytes: number }
   /** ADR-0009: a skill dropped by the model's `unload_skill` call, by its id. */
   | { type: 'skill_unloaded'; id: string }
+  | { type: 'policy_resolved'; members: import('./policy').PolicyMembers }
   | { type: 'retry'; attempt: number }
   | { type: 'response_recovery' }
   | { type: 'delegation_requested'; request: import('./delegationContract').DelegationRequest }
@@ -345,7 +354,7 @@ export type AssistantEvent =
    * that fired — nothing was stopped — but it is the same kind of sentence: the
    * desk saying what it did rather than leaving it to be discovered.
    */
-  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string; reason?: 'approval refused' | 'approval pending' | 'approval stale' | 'skill withheld' | 'skill budget' | 'review refused' }
+  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string; reason?: 'approval refused' | 'approval pending' | 'approval stale' | 'skill withheld' | 'skill budget' | 'review refused' | 'policy refused' | 'pace warning' }
   | { type: 'thinking_unavailable'; detail: string }
   /**
    * `cases` and `incomplete` where the host declared cases (agent#10): each

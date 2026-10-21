@@ -48,6 +48,7 @@ export interface ExecutionCheckpoint {
   * ADR-0010: the critic's decision (`criticSwitch.ts`): written when the run decides, and before that,
   * under auto, when the model's request_review is taken; carried through a resume.
   */
+ policy?:import('../policy').PolicyMembers;
  critic?:CriticRecord;
 }
 /** One loaded skill as the checkpoint keeps it (ADR-0009; `provenance.json#/$defs/skillLoad`). */

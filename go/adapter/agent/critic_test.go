@@ -138,7 +138,7 @@ func TestConcurrentReviewRequestsThroughTheAgent(t *testing.T) {
 			}
 			savesMu.Lock()
 			checkSaved(saves)
-			wantSaves := 1 + tc.calls // Before dispatch and before each review call.
+			wantSaves := 2 + tc.calls // Policy admission, before dispatch, and before each review call.
 			if tc.already {
 				wantSaves++
 			}

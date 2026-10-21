@@ -15,7 +15,7 @@ import (
 	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
 )
 
-// The certified scenarios (agent#13, certification/scenarios.test.ts): ten scripted scenarios run
+// The certified scenarios (agent#13, certification/scenarios.test.ts): eleven scripted scenarios run
 // on the OpenAI-compatible wire, once with each answer shape, through the shared server's scenario
 // sessions. The host's half of each (its host tools, the chat context, Plan mode, the correction
 // loop's checks, the delegation coordinator) is this runner's, as it is the TypeScript suite's.

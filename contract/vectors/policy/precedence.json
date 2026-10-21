@@ -1,0 +1,230 @@
+{
+  "description": "Written by hand from ADR-0011; no output recorded from an implementation.",
+  "schema": "policy.json#/$defs/resolved",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/policy.ts"
+    ]
+  },
+  "cases": [
+    {
+      "name": "run",
+      "run": {
+        "budget": {
+          "readBytes": 1024
+        },
+        "critic": {
+          "default": "on"
+        },
+        "models": {
+          "author": {
+            "reasoning": "ultra"
+          }
+        },
+        "concurrency": {
+          "requests": 3
+        },
+        "pace": {
+          "requestsPerDay": 60
+        },
+        "taskClass": "boundary"
+      },
+      "project": {
+        "budget": {
+          "readBytes": 768
+        },
+        "critic": {
+          "default": "off"
+        },
+        "models": {
+          "author": {
+            "reasoning": "on"
+          }
+        },
+        "concurrency": {
+          "requests": 2
+        },
+        "pace": {
+          "requestsPerDay": 80
+        },
+        "taskClass": "material"
+      },
+      "table": {
+        "budget": {
+          "readBytes": 512
+        },
+        "critic": {
+          "default": "auto"
+        },
+        "models": {
+          "author": {
+            "model": "connected",
+            "reasoning": "off"
+          }
+        },
+        "concurrency": {
+          "requests": 1
+        },
+        "pace": {
+          "requestsPerDay": 100
+        },
+        "taskClass": "routine"
+      }
+    },
+    {
+      "name": "project",
+      "run": {},
+      "project": {
+        "budget": {
+          "readBytes": 768
+        },
+        "critic": {
+          "default": "off"
+        },
+        "models": {
+          "author": {
+            "reasoning": "on"
+          }
+        },
+        "concurrency": {
+          "requests": 2
+        },
+        "pace": {
+          "requestsPerDay": 80
+        },
+        "taskClass": "material"
+      },
+      "table": {
+        "budget": {
+          "readBytes": 512
+        },
+        "critic": {
+          "default": "auto"
+        },
+        "models": {
+          "author": {
+            "model": "connected",
+            "reasoning": "off"
+          }
+        },
+        "concurrency": {
+          "requests": 1
+        },
+        "pace": {
+          "requestsPerDay": 100
+        },
+        "taskClass": "routine"
+      }
+    },
+    {
+      "name": "table",
+      "run": {},
+      "project": {},
+      "table": {
+        "budget": {
+          "readBytes": 512
+        },
+        "critic": {
+          "default": "auto"
+        },
+        "models": {
+          "author": {
+            "model": "connected",
+            "reasoning": "off"
+          }
+        },
+        "concurrency": {
+          "requests": 1
+        },
+        "pace": {
+          "requestsPerDay": 100
+        },
+        "taskClass": "routine"
+      }
+    }
+  ],
+  "items": [
+    {
+      "budget.readBytes": {
+        "value": 1024,
+        "layer": "run"
+      },
+      "critic.default": {
+        "value": "on",
+        "layer": "run"
+      },
+      "models.author.reasoning": {
+        "value": "ultra",
+        "layer": "run"
+      },
+      "concurrency.requests": {
+        "value": 3,
+        "layer": "run"
+      },
+      "pace.requestsPerDay": {
+        "value": 60,
+        "layer": "run"
+      },
+      "taskClass": {
+        "value": "boundary",
+        "layer": "run"
+      }
+    },
+    {
+      "budget.readBytes": {
+        "value": 768,
+        "layer": "project"
+      },
+      "critic.default": {
+        "value": "off",
+        "layer": "project"
+      },
+      "models.author.reasoning": {
+        "value": "on",
+        "layer": "project"
+      },
+      "concurrency.requests": {
+        "value": 2,
+        "layer": "project"
+      },
+      "pace.requestsPerDay": {
+        "value": 80,
+        "layer": "project"
+      },
+      "taskClass": {
+        "value": "material",
+        "layer": "project"
+      }
+    },
+    {
+      "budget.readBytes": {
+        "value": 512,
+        "layer": "table"
+      },
+      "critic.default": {
+        "value": "auto",
+        "layer": "table"
+      },
+      "models.author.reasoning": {
+        "value": "off",
+        "layer": "table"
+      },
+      "concurrency.requests": {
+        "value": 1,
+        "layer": "table"
+      },
+      "pace.requestsPerDay": {
+        "value": 100,
+        "layer": "table"
+      },
+      "taskClass": {
+        "value": "routine",
+        "layer": "table"
+      }
+    }
+  ]
+}

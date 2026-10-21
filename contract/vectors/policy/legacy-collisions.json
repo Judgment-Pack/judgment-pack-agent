@@ -1,0 +1,82 @@
+{
+  "description": "Written by hand from ADR-0011 and review #116; no implementation output recorded.",
+  "schema": "tool-offer.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/context/session.ts"
+    ]
+  },
+  "items": [
+    {
+      "tools": [],
+      "hostTools": [],
+      "criticReasoning": "high",
+      "policy": {
+        "models": {
+          "author": {
+            "reasoning": "none"
+          },
+          "critic": {
+            "reasoning": "low"
+          }
+        }
+      }
+    },
+    {
+      "tools": [],
+      "hostTools": [],
+      "criticReasoning": "high",
+      "policy": {
+        "models": {
+          "author": {
+            "reasoning": "low"
+          },
+          "critic": {
+            "reasoning": "none"
+          }
+        }
+      }
+    },
+    {
+      "tools": [],
+      "hostTools": [],
+      "criticReasoning": "low",
+      "policy": {
+        "models": {
+          "author": {
+            "reasoning": "minimal"
+          }
+        }
+      }
+    }
+  ],
+  "expected": [
+    {
+      "author": "none",
+      "critic": "low"
+    },
+    {
+      "author": "low",
+      "critic": "none"
+    },
+    {
+      "author": "minimal",
+      "critic": "low"
+    }
+  ],
+  "cases": [
+    {
+      "effort": "high"
+    },
+    {
+      "effort": "high"
+    },
+    {
+      "effort": "high"
+    }
+  ]
+}
