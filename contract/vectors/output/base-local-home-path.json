@@ -1,0 +1,33 @@
+{
+  "description": "ADR-0016: base-local-home-path. Handwritten from the accepted output-boundary decision.",
+  "schema": "run-event.json#/$defs/message",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/outputGuard.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "message",
+      "text": "[redacted: local-home-path]"
+    },
+    {
+      "type": "message",
+      "text": "/project/file"
+    }
+  ],
+  "guard": {
+    "input": "\u002fhome/example/file",
+    "output": "[redacted: local-home-path]",
+    "negative": "/project/file",
+    "where": "message",
+    "mode": "redact",
+    "counts": {
+      "local-home-path": 1
+    }
+  }
+}

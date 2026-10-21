@@ -1,3 +1,4 @@
+import {OutputGuard,outputWhere} from '../outputGuard'
 import {Drafts,isEdit,editRefusal,type AcceptedDocument} from '../edits'
 import { REMEMBER, rememberTool, recordRecall } from '../memories'
 import {canonicalJSON} from './chat'
@@ -91,6 +92,7 @@ export function resolveSessionPolicy(session:EngineSession,engine?:AssistantEngi
 }
 
 export class SessionContext {
+ output!:OutputGuard
  drafts!:Drafts
 
  readonly resolvedPolicy:PolicyMembers;readonly paceWarning?:string
@@ -339,7 +341,9 @@ this.turn=session.context?.chat?.openTurn();this.objective=session.context?.obje
   */
  async approval(name:string,args:Record<string,unknown>,callId?:string):Promise<Extract<AssistantEvent,{type:'approval_requested'}>|undefined>{
   if(!this.sources?.needsApproval(name))return
-  if((await this.sources.decide(name,args,callId)).answer!=='ask')return
+  const clean=this.output.value(args,'tool argument',this.output.mode==='refuse')
+  if((await this.sources.decide(name,clean,callId)).answer!=='ask')return
+  if(this.output.mode==='redact')this.output.value(args,'tool argument')
   const asked=this.execution.state.approval!
   return {type:'approval_requested',callId:asked.callId,name:asked.name,tool:asked.tool,source:{...asked.source},args:structuredClone(asked.args)}
  }
@@ -661,7 +665,8 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  }
  context.recordProvider('author')
  context.carryMarker()
- context.drafts=new Drafts(context.ledger,context.policy,()=>context.execution.state,event=>context.memoryNotice(event),()=>!context.criticRunning&&!session.context?.objective&&!session.childDefinition&&session.context?.phase!=='plan',async(text,signal)=>{context.admit('validate','runtime');signal.throwIfAborted();if(!session.tools.some(t=>t.name==='validate'))throw new Error('Runtime validate is not offered.');return session.callTool('validate',{content:text})},()=>context.marker)
+ context.output=new OutputGuard(context.resolvedPolicy,()=>context.execution.state.outputGuard??={},event=>context.memoryNotice(event))
+ context.drafts=new Drafts(context.ledger,context.policy,()=>context.execution.state,event=>context.memoryNotice(event),()=>!context.criticRunning&&!session.context?.objective&&!session.childDefinition&&session.context?.phase!=='plan',async(text,signal)=>{context.admit('validate','runtime');signal.throwIfAborted();if(!session.tools.some(t=>t.name==='validate'))throw new Error('Runtime validate is not offered.');return session.callTool('validate',{content:text})},()=>context.marker,(value,where)=>context.output.value(value,where),session.signal,(where,pattern)=>context.output.refuse(where,pattern))
  await context.drafts.open(session.context?.objective||session.childDefinition?[]:session.context?.acceptedDocuments)
  context.execution.loadedDrafts=()=>context.drafts.section()
  if(declared.sources.length){
@@ -690,17 +695,17 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  // ADR-0006: load_tool beside the ledger's tools where the tools with a source are a catalogue; each call
  // of a tool with a source is held by the source gate before the host's execute (SourceGate.call).
  // ADR-0009: load_skill and unload_skill beside them where any skill is catalogued, in every phase but a child's (which is handed no skills).
- const hostTools=[...session.hostTools,...(session.context?.objective||session.childDefinition||session.context?.phase==='plan'||session.context?.artifactProposals===false?[]:context.drafts.tools()),...(session.context?.objective||session.childDefinition?[]:[rememberTool(()=>context.execution.state,context.policy,detail=>context.refuse(REMEMBER,detail,'memory refused'),event=>context.memoryNotice(event))]),...context.ledger.tools(),...(context.catalogue?[context.sources!.loadTool()]:[]),...(context.skills?.offered?[context.skills.loadTool(),context.skills.unloadTool()]:[]),...(context.review.offered?[context.reviewTool()]:[]),...(session.allowConversation?[context.execution.tool(),context.execution.budgetTool()]:[])].map(tool=>({...tool,execute:async(args:Record<string,unknown>,signal:AbortSignal,callId?:string)=>{context.admit(tool.name,'host',args);await session.context?.authorize?.(signal);const run=(given:Record<string,unknown>,bounded:AbortSignal)=>context.execution.wrapRead(tool.name,a=>tool.execute(a,bounded,callId),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read',own.has(tool.name)?{runtime:false}:undefined)(given);return context.sources?context.sources.call(tool,args,signal,run,callId):run(args,signal)}}))
+ const hostTools=[...session.hostTools,...(session.context?.objective||session.childDefinition||session.context?.phase==='plan'||session.context?.artifactProposals===false?[]:context.drafts.tools()),...(session.context?.objective||session.childDefinition?[]:[rememberTool(()=>context.execution.state,context.policy,detail=>context.refuse(REMEMBER,detail,'memory refused'),event=>context.memoryNotice(event))]),...context.ledger.tools(),...(context.catalogue?[context.sources!.loadTool()]:[]),...(context.skills?.offered?[context.skills.loadTool(),context.skills.unloadTool()]:[]),...(context.review.offered?[context.reviewTool()]:[]),...(session.allowConversation?[context.execution.tool(),context.execution.budgetTool()]:[])].map(tool=>({...tool,execute:async(args:Record<string,unknown>,signal:AbortSignal,callId?:string)=>{context.admit(tool.name,'host',args);if(!isEdit(tool.name))args=context.output.value(args,outputWhere(tool.name));await session.context?.authorize?.(signal);const run=(given:Record<string,unknown>,bounded:AbortSignal)=>context.execution.wrapRead(tool.name,a=>tool.execute(a,bounded,callId),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read',own.has(tool.name)?{runtime:false}:undefined)(given);return context.sources?context.sources.call(tool,args,signal,run,callId):run(args,signal)}}))
  // ADR-0008: the act call the person approved runs through the host's own execute, as every call of it would.
  const approval=context.execution.state.approval
  if(context.execution.approvalStep==='execute'&&approval){
   const declaredTool=session.hostTools.find(tool=>tool.name===approval.name) as HostTool|undefined
-  context.runApproved=signal=>context.sources?context.sources.approved(approval,signal,declaredTool===undefined?undefined:(given,bounded)=>context.execution.wrapRead(declaredTool.name,a=>declaredTool.execute(a,bounded,approval.callId),declaredTool.contextPolicy,false)(given))
+  context.runApproved=signal=>context.sources?context.sources.approved(approval,signal,declaredTool===undefined?undefined:(given,bounded)=>context.execution.wrapRead(declaredTool.name,a=>declaredTool.execute(context.output.value(a,'tool argument'),bounded,approval.callId),declaredTool.contextPolicy,false)(given))
    :Promise.resolve({result:{isError:true,content:[{type:'text',text:`${approval.name} is no longer offered; the call was not run and nothing was changed.`}]},ran:false})
  }
  // ADR-0008: while an act call waits for the person's decision, no request is sent: the run ends paused.
  const held=()=>{if(context.execution.approvalAsked)throw new ApprovalPaused()}
  const model='model'in session?{...session.model,call:async(suffix:string,request:import('../engine').ModelRequest)=>{await session.context?.authorize?.(session.signal);if(request.method!=='GET'){held();context.execution.claim();await context.execution.recordPrompt(request.body);try{await session.context?.checkpoint?.(context.execution.snapshot())}catch{throw failureError('storage','storage','not-started')}}const binding=context.criticRunning?context.connection('critic'):undefined;return (binding&&'model'in binding?binding.model:session.model).call(suffix,request)}}:undefined
  const agent='agent'in session?{...session.agent,run:async(request:import('../agent').AgentRequest,callbacks:import('../agent').AgentCallbacks)=>{await session.context?.authorize?.(callbacks.signal);held();const binding=request.phase==='critic'?context.connection('critic'):undefined;const selected=binding&&'agent'in binding?binding.agent:session.agent;const setting=selected.tiers?.[request.effort as 'low'|'medium'|'high'];if(setting)request={...request,effort:setting as import('../agent').CodexEffort};const {delegated:_delegated,...sent}=request;await context.execution.recordPrompt(JSON.stringify(sent));return selected.run(request,callbacks)}}:undefined
- return {context,session:{...session,...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{context.admit(name,'runtime',args);await session.context?.authorize?.(session.signal);context.claimTestCall(name);const call=()=>context.execution.wrapRead(name,a=>session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true,{runtime:true,offered:session.tools.some(t=>t.name===name)})(args);return context.sources?context.sources.runtime(call):call()}}}
+ return {context,session:{...session,...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{context.admit(name,'runtime',args);await session.context?.authorize?.(session.signal);args=context.output.value(args,'tool argument');context.claimTestCall(name);const call=()=>context.execution.wrapRead(name,a=>session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true,{runtime:true,offered:session.tools.some(t=>t.name===name)})(args);return context.sources?context.sources.runtime(call):call()}}}
 }

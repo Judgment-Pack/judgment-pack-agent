@@ -631,8 +631,11 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
         tools,callTool:async(name:string,args:Record<string,unknown>)=>{if(!runtime.has(name))throw toolInputFailure('This task was not offered that Runtime tool.');return session.callTool(name,args)},
         hostTools,signal:childSignal,
         ...(model.model?{model:model.model}:{})} as EngineSession
+      if(shared.context){const members=shared.context.resolvedPolicy;base.policy={...base.policy,outputGuard:members.outputGuard!.value as 'off'|'redact'|'refuse',outputPatterns:members.outputPatterns!.value as import('./outputGuard').OutputPattern[],outputAllow:members.outputAllow!.value as string[]}}
       for await(const event of engine.start(bind(base,task,planned.budget,runtime,meter))) {
-        if(event.type==='message'){run.text+=(run.text?'\n\n':'')+event.text;run.progress=''}
+        if(event.type==='output_guarded'){shared.context?.output.adopt(event.pattern);await deliver(event)}
+        else if(event.type==='guardrail'&&event.reason==='output refused')await deliver(event)
+        else if(event.type==='message'){run.text+=(run.text?'\n\n':'')+event.text;run.progress=''}
         // agent#16: the child's prose so far, under its task, through the event chat's answer uses.
         else if(event.type==='message_progress'){run.progress=event.text;run.streamed=event.text;await deliver({type:'message_progress',text:event.text,taskId:task.id})}
         else if(event.type==='error'){run.failed=event.message;task.failure=readFailure(event.failure)}

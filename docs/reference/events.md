@@ -14,7 +14,7 @@ One event of a run, from the adapter to the host, in order, discriminated by typ
 
 See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](critic.md), [skills.md](skills.md), [budget.md](budget.md), [reasons.md](reasons.md), [checkpoint.md](checkpoint.md).
 
-## The 27 kinds
+## The 28 kinds
 
 | Kind | Defined in | Required beyond type |
 | --- | --- | --- |
@@ -45,6 +45,7 @@ See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](crit
 | `memory_recalled` | `run-event.json $defs/memory_recalled` | `ids`, `digests`, `bytes` |
 | `edit_applied` | `run-event.json $defs/edit_applied` | `document`, `line`, `bytes`, `valid` |
 | `edit_refused` | `run-event.json $defs/edit_refused` | `reason` |
+| `output_guarded` | `run-event.json $defs/output_guarded` | `where`, `pattern`, `action` |
 
 ## Every kind with its members
 
@@ -252,7 +253,7 @@ Open: a member the schema does not name is accepted.
 | `tool` | yes | string |  |
 | `action` | yes | enum `rewrote`, `refused`, `narrowed` |  |
 | `detail` | yes | string |  |
-| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused`, `memory refused`, `edit refused` |  |
+| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused`, `memory refused`, `edit refused`, `output refused` |  |
 
 ### `thinking_unavailable`
 
@@ -392,3 +393,16 @@ Closed: a member the schema does not name is refused.
 | `type` | yes | const `edit_refused` |  |
 | `document` |  | string (min length 1, max length 512) | Offending document identifier, truncated to 512 Unicode characters. Omitted when missing, non-string or empty; reason names the invalid document identifier. |
 | `reason` | yes | string (min length 1) |  |
+
+### `output_guarded`
+
+ADR-0016: outbound text held by a named pattern, without the matched text.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `type` | yes | const `output_guarded` |  |
+| `where` | yes | enum `message`, `proposal`, `tool argument`, `memory proposal`, `draft edit` |  |
+| `pattern` | yes | string (min length 1, max length 64, pattern `^[a-z][a-z0-9-]{0,63}$`) |  |
+| `action` | yes | enum `redact`, `refuse` |  |

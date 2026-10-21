@@ -1,0 +1,30 @@
+{
+  "description": "ADR-0016: allowed. Handwritten from the accepted output-boundary decision.",
+  "schema": "policy.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/outputGuard.ts"
+    ]
+  },
+  "items": [
+    {
+      "outputAllow": [
+        "aws-access-key"
+      ]
+    }
+  ],
+  "guard": {
+    "input": "AKIAABCDEFGHIJKLMNOP",
+    "output": "AKIAABCDEFGHIJKLMNOP",
+    "where": "message",
+    "mode": "redact",
+    "allow": [
+      "aws-access-key"
+    ],
+    "counts": {}
+  }
+}

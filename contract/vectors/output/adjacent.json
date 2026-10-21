@@ -1,0 +1,38 @@
+{
+  "description": "ADR-0016: adjacent pattern matches. Handwritten.",
+  "schema": "policy.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/outputGuard.ts"
+    ]
+  },
+  "items": [
+    {
+      "outputPatterns": [
+        {
+          "name": "project-secret",
+          "pattern": "secret"
+        }
+      ]
+    }
+  ],
+  "guard": {
+    "input": "secretsecret",
+    "output": "[redacted: project-secret][redacted: project-secret]",
+    "mode": "redact",
+    "where": "message",
+    "patterns": [
+      {
+        "name": "project-secret",
+        "pattern": "secret"
+      }
+    ],
+    "counts": {
+      "project-secret": 2
+    }
+  }
+}

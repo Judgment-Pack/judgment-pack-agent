@@ -33,6 +33,7 @@
  */
 
 /** The longest pattern a search takes. */
+export const PATTERN_STEPS = 4_000_000
 export const PATTERN_LENGTH = 256
 /** The largest count a repetition may name, as RE2 bounds it. */
 export const PATTERN_REPEAT = 1000
@@ -584,4 +585,43 @@ export function matcher(pattern: CompiledPattern): Matcher {
 /** Where the pattern first matches in one line, with a matcher of its own: see `matcher`. */
 export function firstMatch(pattern: CompiledPattern, line: string, budget: PatternBudget): number | null {
   return matcher(pattern)(line, budget)
+}
+
+/** Union of overlapping matches, in one bounded Pike pass. Overlapping matches
+ * form one hole; no suffix is rescanned and no backtracking engine is used. */
+export function matchRanges(pattern: CompiledPattern, text: string, budget: PatternBudget): [number, number][] | null {
+  const {ops,x,y,tests,asserts,word}=pattern, size=ops.length
+  const ranges:[number,number][]=[]
+  let current=new Map<number,number>()
+  const holds=(kind:Assertion|undefined,pos:number)=>kind==='bol'?pos===0:kind==='eol'?pos===text.length||pos===text.length-1&&text.charCodeAt(pos)===13:(pos>0&&word(text.charCodeAt(pos-1)))!==(pos<text.length&&word(text.charCodeAt(pos)))===(kind==='word')
+  const add=(set:Map<number,number>,pc:number,start:number,pos:number)=>{
+    const stack=[pc]
+    while(stack.length){
+      const at=stack.pop()!
+      if((set.get(at)??Infinity)<=start)continue
+      set.set(at,start);budget.steps--
+      if(ops[at]===JMP)stack.push(x[at]!)
+      else if(ops[at]===SPLIT)stack.push(y[at]!,x[at]!)
+      else if(ops[at]===ASSERT&&holds(asserts[at],pos))stack.push(at+1)
+    }
+  }
+  budget.steps-=size
+  for(let pos=0;;){
+    if(budget.steps<=0)return null
+    add(current,0,pos,pos)
+    const code=pos<text.length?text.codePointAt(pos)!:-1,width=code>0xffff?2:1
+    const next=new Map<number,number>()
+    for(const pc of [...current.keys()].sort((a,b)=>a-b)){
+      const start=current.get(pc)!
+      budget.steps--
+      if(ops[pc]===MATCH&&start<=pos){
+        let from=start
+        while(ranges.length&&(ranges.at(-1)![1]>from||ranges.at(-1)![0]===from))from=Math.min(from,ranges.pop()![0])
+        ranges.push([from,pos])
+      }else if(ops[pc]===CHAR&&code>=0&&tests[pc]!(code))add(next,pc+1,start,pos+width)
+    }
+    if(budget.steps<=0)return null
+    if(pos===text.length)return ranges
+    current=next;pos+=width
+  }
 }

@@ -49,6 +49,7 @@ func (o *Operation) Value() *Value {
 // (ExecutionCheckpoint in execution/state.ts). Its values are ordered JSON values, so what the
 // checkpoint weighs is what the TypeScript's weighs.
 type Execution struct {
+	OutputGuard map[string]int64
 	Memories    *contract.ProvenanceMemories
 	Version     int
 	ID          string
@@ -172,6 +173,11 @@ func (e *Execution) Value() *Value {
 			}
 		}
 	}
+	if e.OutputGuard != nil {
+		raw, _ := json.Marshal(e.OutputGuard)
+		v, _ := ParseJSON(raw)
+		out.Set("outputGuard", v)
+	}
 	if e.Memories != nil {
 		raw, _ := json.Marshal(e.Memories)
 		v, _ := ParseJSON(raw)
@@ -245,7 +251,7 @@ func executionOf(saved *contract.Checkpoint) (*Execution, error) {
 		Phase: saved.Phase, Status: saved.Status, Unit: saved.Unit, Used: int(saved.Used),
 		Limit: int(saved.Limit), Grants: saved.Grants, Plan: value.Get("plan"),
 		Explanation: saved.Explanation, Completions: saved.Completions, Context: saved.Context,
-		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, Approval: saved.Approval, Skills: saved.Skills, Draft: saved.Draft, Memories: saved.Memories, Critic: saved.Critic, CrossProvider: saved.CrossProvider, Policy: saved.Policy}
+		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, Approval: saved.Approval, Skills: saved.Skills, Draft: saved.Draft, Memories: saved.Memories, OutputGuard: saved.OutputGuard, Critic: saved.Critic, CrossProvider: saved.CrossProvider, Policy: saved.Policy}
 	if saved.TestCalls != nil {
 		calls := int(*saved.TestCalls)
 		out.TestCalls = &calls
@@ -286,6 +292,7 @@ type ExecutionController struct {
 	// SkillLoads are the checkpoint's loaded set (ADR-0009), copied under the skill gate's lock.
 	SkillLoads func() []contract.ProvenanceSkillLoad
 	MemoryRows func() *contract.ProvenanceMemories
+	OutputRows func() map[string]int64
 	// SourceRows are the run report's rows by source (ADR-0006), copied under the lock a child's
 	// gate shares with this run's: a snapshot reads them through it, since a delegated child's
 	// calls count in them while this run's checkpoint is written.
@@ -903,6 +910,9 @@ func (c *ExecutionController) Snapshot(status string) (contract.Checkpoint, erro
 	}
 	if c.DraftRows != nil {
 		held.Draft = c.DraftRows()
+	}
+	if c.OutputRows != nil {
+		held.OutputGuard = c.OutputRows()
 	}
 	if c.MemoryRows != nil {
 		held.Memories = c.MemoryRows()

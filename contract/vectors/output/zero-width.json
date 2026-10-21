@@ -1,0 +1,38 @@
+{
+  "description": "ADR-0016: zero-width pattern matches. Handwritten.",
+  "schema": "policy.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/outputGuard.ts"
+    ]
+  },
+  "items": [
+    {
+      "outputPatterns": [
+        {
+          "name": "project-secret",
+          "pattern": "^"
+        }
+      ]
+    }
+  ],
+  "guard": {
+    "input": "abc",
+    "output": "[redacted: project-secret]abc",
+    "mode": "redact",
+    "where": "message",
+    "patterns": [
+      {
+        "name": "project-secret",
+        "pattern": "^"
+      }
+    ],
+    "counts": {
+      "project-secret": 1
+    }
+  }
+}

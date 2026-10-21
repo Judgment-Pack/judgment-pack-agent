@@ -89,8 +89,11 @@ func (b *Boundary) Open() []contract.RunEvent {
 // before the next event: a withheld declaration's at the start, a refused call's before its result.
 func (b *Boundary) notices() []contract.RunEvent {
 	var out []contract.RunEvent
+	if b.run.Context.Output != nil {
+		out = append(out, b.run.Context.Output.TakeNotices()...)
+	}
 	if b.run.Context.Sources != nil {
-		out = b.run.Context.Sources.TakeNotices()
+		out = append(out, b.run.Context.Sources.TakeNotices()...)
 	}
 	// ADR-0010: a refused request_review's guardrail, before its result.
 	if b.run.Context.Review != nil {
@@ -123,7 +126,27 @@ var readNames = []string{"get_schema", "get_authoring_instructions", "list_conte
 // Event is one of the adapter's events put through the boundary: the events to deliver in its
 // place, and whether the run is over.
 func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
+	if b.run.Context.Output != nil && b.run.Context.Output.Mode != "off" && (event.MessageProgress != nil || event.Reasoning != nil && !event.Reasoning.Done) {
+		return b.notices(), false
+	}
+	var err error
+	event, err = b.guardOutput(event)
 	out := append([]contract.RunEvent{}, b.notices()...)
+	if err != nil {
+		reason := "output refused"
+		reported := false
+		for _, notice := range out {
+			if notice.Guardrail != nil && notice.Guardrail.Reason != nil && *notice.Guardrail.Reason == reason {
+				reported = true
+			}
+		}
+		if !reported {
+			out = append(out, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: "output", Action: "refused", Reason: &reason, Detail: err.Error()}})
+		}
+		out = append(out, b.checkpoint(nil, "stopped")...)
+		b.ended = true
+		return append(out, contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}}), true
+	}
 	context := b.run.Context
 	// ADR-0008: an adapter asks the host's approval policy where it hands an act call to the host
 	// (SessionContext.Approval) and delivers approval_requested in place of the call where it asks.

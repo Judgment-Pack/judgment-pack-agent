@@ -1,0 +1,30 @@
+{
+  "description": "ADR-0016: refuse. Handwritten from the accepted output-boundary decision.",
+  "schema": "run-event.json#/$defs/output_guarded",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/outputGuard.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "output_guarded",
+      "where": "message",
+      "pattern": "local-home-path",
+      "action": "refuse"
+    }
+  ],
+  "guard": {
+    "input": "held \u002fhome/example/file",
+    "where": "message",
+    "mode": "refuse",
+    "refused": "local-home-path",
+    "counts": {
+      "local-home-path": 1
+    }
+  }
+}

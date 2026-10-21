@@ -1,0 +1,33 @@
+{
+  "description": "ADR-0016: base-private-key. Handwritten from the accepted output-boundary decision.",
+  "schema": "run-event.json#/$defs/message",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/outputGuard.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "message",
+      "text": "[redacted: private-key]"
+    },
+    {
+      "type": "message",
+      "text": "-----BEGIN PUBLIC KEY-----abc-----END PUBLIC KEY-----"
+    }
+  ],
+  "guard": {
+    "input": "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----",
+    "output": "[redacted: private-key]",
+    "negative": "-----BEGIN PUBLIC KEY-----abc-----END PUBLIC KEY-----",
+    "where": "message",
+    "mode": "redact",
+    "counts": {
+      "private-key": 1
+    }
+  }
+}

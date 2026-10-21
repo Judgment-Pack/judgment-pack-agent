@@ -1,3 +1,4 @@
+import {OutputRefused,outputWhere} from '../outputGuard'
 import {PolicyRefusal} from '../policy'
 import {failureError,failureEvent,toolFailureResult} from '../failures'
 import {ExecutionPaused} from '../execution/state'
@@ -72,6 +73,24 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
    ready.session.prompt=ready.session.prompt+'\n\n'+approvalContinuation(context.execution.state.approval!)
   }
   for await (let event of run(ready.session)){
+   // Output is held before host delivery; dispatch independently guards tool arguments.
+   if(context.output.mode!=='off'&&(event.type==='message_progress'||event.type==='reasoning'&&!event.done))continue
+   if(event.type==='reasoning')event={...event,text:context.output.value(event.text,'message')}
+   if(event.type==='message')event={...event,text:context.output.value(event.text,'message')}
+   if(event.type==='tool_call')event={...event,args:context.output.value(event.args,outputWhere(event.name),context.output.mode==='refuse')}
+   if(event.type==='user_question')event={...event,question:context.output.value(event.question,'tool argument')}
+   if(event.type==='delegation_requested')event={...event,request:context.output.value(event.request,'tool argument')}
+   if(event.type==='proposal'){
+    const clean=context.output.value(event,'proposal')
+    if(JSON.stringify(clean)!==JSON.stringify(event)){
+     let checked:import('../engine').McpToolResult={isError:true}
+     try{checked=await ready.session.callTool('validate',{content:JSON.stringify(clean.document)})}catch{session.signal.throwIfAborted();context.output.refuse('proposal','proposal-validation')}
+     let result=checked.structuredContent as {status?:string}|undefined
+     if(result===undefined){try{result=JSON.parse((checked.content??[]).filter(p=>p.type==='text').map(p=>p.text??'').join('\n'))}catch{}}
+     if(checked.isError||result?.status!=='valid')context.output.refuse('proposal','proposal-validation')
+    }
+    event=clean
+   }
    // agent#10: a refusal of the critic's call is the boundary's guardrail, put
    // on the stream before the result the engine reports for that call.
    for(const notice of context.takeNotices())yield notice
@@ -128,6 +147,13 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
   }
  } catch(error){
   if(ended)throw error
+  if(error instanceof OutputRefused){
+   const notices=context?.takeNotices()??[]
+   for(const notice of notices)yield notice
+   if(!notices.some(e=>e.type==='guardrail'&&e.reason==='output refused'))yield {type:'guardrail',tool:'output',action:'refused',reason:'output refused',detail:error.message}
+   if(context&&tracked)yield {type:'execution_checkpoint',checkpoint:context.execution.snapshot('stopped')}
+   yield {type:'end'};return
+  }
   if(error instanceof PolicyRefusal){
    yield error.event()
    if(error.checkpoint)yield {type:'execution_checkpoint',checkpoint:error.checkpoint}

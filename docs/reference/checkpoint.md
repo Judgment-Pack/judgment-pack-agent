@@ -52,6 +52,7 @@ Open: a member the schema does not name is accepted.
 | `crossProvider` |  | array of `provenance.json $defs/crossProvider` |  |
 | `memories` |  | `provenance.json $defs/memories` |  |
 | `draft` |  | `$defs/draft` |  |
+| `outputGuard` |  | `provenance.json $defs/outputGuard` |  |
 
 Conditions beyond the members (allOf) are in the schema file.
 

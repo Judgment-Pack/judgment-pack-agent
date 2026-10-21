@@ -2116,6 +2116,7 @@ function policyTableChecks(engineId: import('../host').AssistantEngine, agent: b
       const {criticDefault, criticReasoningFloor, ...budget} = policyAliasVector.items[0]!
       const model = agent ? 'scripted-agent' : 'scripted-model'
       const defaults: Record<string, unknown> = {
+        outputGuard:'redact',outputPatterns:[],outputAllow:[],
         'budget.memoryProposalBytes':1000,'budget.memoryProposalsPerRun':4,
         ...Object.fromEntries(Object.entries(budget).map(([name,value])=>[`budget.${name}`,value])),
         'critic.default':criticDefault, 'critic.reasoningFloor':criticReasoningFloor,

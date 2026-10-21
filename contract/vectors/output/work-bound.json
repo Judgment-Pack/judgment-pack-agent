@@ -1,0 +1,28 @@
+{
+  "description": "ADR-0016: work-bound refuses without disclosing text.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/outputGuard.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "output_guarded",
+      "where": "message",
+      "pattern": "work-bound",
+      "action": "refuse"
+    },
+    {
+      "type": "guardrail",
+      "tool": "message",
+      "action": "refused",
+      "reason": "output refused",
+      "detail": "Output refused: work-bound."
+    }
+  ]
+}

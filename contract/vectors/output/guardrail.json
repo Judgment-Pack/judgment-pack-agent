@@ -1,0 +1,22 @@
+{
+  "description": "ADR-0016: guardrail. Handwritten from the accepted output-boundary decision.",
+  "schema": "run-event.json#/$defs/guardrail",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/outputGuard.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "guardrail",
+      "tool": "message",
+      "action": "refused",
+      "reason": "output refused",
+      "detail": "Output refused: local-home-path."
+    }
+  ]
+}

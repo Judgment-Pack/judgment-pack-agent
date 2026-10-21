@@ -1,0 +1,19 @@
+{
+  "description": "ADR-0016: report. Handwritten from the accepted output-boundary decision.",
+  "schema": "provenance.json#/$defs/outputGuard",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/outputGuard.ts"
+    ]
+  },
+  "items": [
+    {
+      "aws-access-key": 3,
+      "local-home-path": 1
+    }
+  ]
+}
