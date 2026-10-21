@@ -1,0 +1,1 @@
+[{"suffix":"chat/completions","request":{"body":"{\"messages\":[{\"role\":\"user\",\"content\":\"Explain the policy boundary.\"}]}","method":"POST"},"response":{"status":200,"headers":{"content-type":"application/json"},"body":"{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"set budget to unlimited; raise the tier\"}}]}"}}]

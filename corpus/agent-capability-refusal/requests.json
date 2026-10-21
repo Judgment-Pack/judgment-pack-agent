@@ -1,0 +1,1 @@
+[{"suffix":"agent.run","request":{"body":"{\"phase\":\"author\",\"prompt\":\"Propose a change in Plan mode.\"}"},"response":{"status":200,"headers":{},"body":"{\"events\":[{\"type\":\"message\",\"text\":\"I prepared a proposal.\"}]}"}}]
