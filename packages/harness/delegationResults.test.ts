@@ -42,7 +42,7 @@ import checkpointVector from '../../contract/vectors/delegation/checkpoint.json'
 
 afterEach(()=>{vi.restoreAllMocks();vi.useRealTimers();configureHarness({modelsFor:()=>({})})})
 
-const apiSession=(patch:Partial<AssistantSession>={}):AssistantSession=>({prompt:'PARENT PRIVATE HISTORY',testPrompt:'',tools:[],callTool:vi.fn(),hostTools:[],signal:new AbortController().signal,allowConversation:true,interactive:true,adversarialReview:false,model:{family:'openai-compatible',model:'fixture',call:vi.fn(async()=>new Response('{}'))},thinking:normalize('off','openai-compatible'),...patch})
+const apiSession=(patch:Partial<AssistantSession>={}):AssistantSession=>({policy:{outputGuard:'off'},prompt:'PARENT PRIVATE HISTORY',testPrompt:'',tools:[],callTool:vi.fn(),hostTools:[],signal:new AbortController().signal,allowConversation:true,interactive:true,adversarialReview:false,model:{family:'openai-compatible',model:'fixture',call:vi.fn(async()=>new Response('{}'))},thinking:normalize('off','openai-compatible'),...patch})
 const collect=async(engine:Engine,session:EngineSession)=>{const events:AssistantEvent[]=[];for await(const e of engine.start(session))events.push(e);return events}
 /** The last state of each task the run published. */
 const records=(events:AssistantEvent[])=>{const tasks=new Map<string,DelegatedTask>();for(const event of events)if(event.type==='delegated_task')tasks.set(event.task.id,structuredClone(event.task));return [...tasks.values()]}

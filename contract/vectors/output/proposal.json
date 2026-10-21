@@ -1,0 +1,30 @@
+{
+  "description": "ADR-0017: proposal. Handwritten from the accepted output-boundary decision.",
+  "schema": "run-event.json#/$defs/output_guarded",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/outputGuard.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "output_guarded",
+      "where": "proposal",
+      "pattern": "aws-access-key",
+      "action": "redact"
+    }
+  ],
+  "guard": {
+    "input": "held AKIAABCDEFGHIJKLMNOP",
+    "output": "held [redacted: aws-access-key]",
+    "where": "proposal",
+    "mode": "redact",
+    "counts": {
+      "aws-access-key": 1
+    }
+  }
+}

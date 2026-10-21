@@ -1,3 +1,4 @@
+import {OutputRefused} from './outputGuard'
 /** ADR-0015: the package's draft, never a host file or an approval. */
 import type {AssistantEvent,HostTool,McpToolResult} from './engine'
 import type {Proposal} from './engines/contract'
@@ -36,7 +37,7 @@ export function editRefusal(document:unknown,reason:string):Extract<AssistantEve
 export class Drafts {
  private documents=new Map<string,Held>()
  private queue:Promise<unknown>=Promise.resolve()
- constructor(private ledger:ContextLedger,private policy:ContextPolicy,private state:()=>ExecutionCheckpoint,private notify:(event:AssistantEvent)=>void,private allowed:()=>boolean,private validate:(text:string,signal:AbortSignal)=>Promise<McpToolResult>,private marker:()=>string){}
+ constructor(private ledger:ContextLedger,private policy:ContextPolicy,private state:()=>ExecutionCheckpoint,private notify:(event:AssistantEvent)=>void,private allowed:()=>boolean,private validate:(text:string,signal:AbortSignal)=>Promise<McpToolResult>,private marker:()=>string,private guard:<T>(value:T,where:import('./outputGuard').OutputWhere)=>T=(v)=>v,private signal:AbortSignal=new AbortController().signal,private outputRefuse:(where:import('./outputGuard').OutputWhere,pattern:string)=>never=(_w,p)=>{throw new OutputRefused(p)}){}
  private serial<T>(work:()=>Promise<T>):Promise<T>{const next=this.queue.then(work);this.queue=next.catch(()=>{});return next}
  async open(accepted:AcceptedDocument[]=[]){
   const checkpoint=this.state().draft
@@ -61,6 +62,17 @@ export class Drafts {
   this.state().draft={documents:[...this.documents.values()].map(v=>({id:v.id,digest:v.digest,edits:structuredClone(v.edits)}))}
  }
  async seed(proposal:Proposal,id?:string):Promise<Proposal>{return this.serial(async()=>{
+  if(id===undefined){
+   const clean=this.guard(proposal,'proposal')
+   if(JSON.stringify(clean)!==JSON.stringify(proposal)){
+    let checked:McpToolResult
+    try{checked=await this.validate(JSON.stringify(clean.document),this.signal)}catch{this.signal.throwIfAborted();this.outputRefuse('proposal','proposal-validation')}
+    let result=checked.structuredContent
+    if(result===undefined){try{result=JSON.parse((checked.content??[]).filter(p=>p.type==='text').map(p=>p.text??'').join('\n'))}catch{}}
+    if(checked.isError||!object(result)||result.status!=='valid')this.outputRefuse('proposal','proposal-validation')
+   }
+   proposal=clean
+  }
   const doc=proposal.document as Record<string,unknown>
   const key='draft:'+(id??(typeof doc.id==='string'&&doc.id?doc.id:'document'))
   if([...key].length>518)throw toolInputFailure('The draft document id exceeds 512 characters.')
@@ -116,13 +128,16 @@ export class Drafts {
   let parsed:unknown
   try{parsed=JSON.parse(next.text)}catch{return refuse('Validation failed: the document is not valid JSON.')}
   if(!object(parsed))return refuse('Validation failed: the document must be a JSON object.')
+  const guarded=this.guard(parsed,'draft edit')
+  const redacted=JSON.stringify(guarded)!==JSON.stringify(parsed)
+  if(redacted)next.text=JSON.stringify(guarded,null,2)
   signal.throwIfAborted()
   let result:McpToolResult
-  try{result=await this.validate(next.text,signal)}catch(error){signal.throwIfAborted();return refuse('Validation failed: '+(error as Error).message)}
+  try{result=await this.validate(next.text,signal)}catch(error){signal.throwIfAborted();if(redacted)this.outputRefuse('draft edit','proposal-validation');return refuse('Validation failed: '+(error as Error).message)}
   signal.throwIfAborted()
   let structured=result.structuredContent
   if(structured===undefined){try{structured=JSON.parse((result.content??[]).filter(p=>p.type==='text').map(p=>p.text??'').join('\n'))}catch{}}
-  if(result.isError||!object(structured)||structured.status!=='valid')return refuse('Validation failed: '+JSON.stringify(structured??result).slice(0,1000))
+  if(result.isError||!object(structured)||structured.status!=='valid'){if(redacted)this.outputRefuse('draft edit','proposal-validation');return refuse('Validation failed: '+JSON.stringify(structured??result).slice(0,1000))}
   next.edits.push({type,document,line,bytes,valid:true})
   try{await this.save(next)}catch(error){return refuse((error as Error).message)}
   this.notify({type:'edit_applied',document,line,bytes,valid:true})

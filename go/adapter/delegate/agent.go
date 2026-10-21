@@ -256,6 +256,9 @@ func (c *coordinator) save(ctx context.Context) error {
 		// parent's rows (ADR-0006), which the last checkpoint, a copy, may not hold yet.
 		if live != nil {
 			state.Sources = live.Sources.Rows(state.Sources)
+			if live.Output != nil {
+				state.OutputGuard = live.Output.Counts()
+			}
 		}
 	default:
 		return nil

@@ -1,3 +1,4 @@
+import {readOutputPatterns,readOutputAllow,type OutputPattern} from './outputGuard'
 /** Host-only policy admission (ADR-0011). No prompt, result or model tool can supply a layer. */
 import schema from './contract/policy-schema.json'
 import { AIFailureError } from './failures'
@@ -11,6 +12,9 @@ export type TaskClass = 'routine' | 'material' | 'boundary'
 export interface PolicyRole { model?: string; reasoning?: string; provider?: string }
 export interface PolicyLayer {
   compaction?: 'index' | 'summary'
+  outputGuard?: 'off' | 'redact' | 'refuse'
+  outputPatterns?: OutputPattern[]
+  outputAllow?: string[]
   budget?: Record<string, number>
   critic?: { default?: 'off' | 'auto' | 'on'; reasoningFloor?: 'author' }
   models?: { author?: PolicyRole; critic?: PolicyRole; compactor?: PolicyRole; taskClasses?: Partial<Record<TaskClass, string>>; [role: string]: PolicyRole | Partial<Record<TaskClass, string>> | undefined }
@@ -40,6 +44,7 @@ type Shape = { $ref?: string; type?: string | string[]; properties?: Record<stri
 const object = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v)
 const deref = (s: Shape): Shape => s.$ref === '#/$defs/role' ? schema.$defs.role as Shape : s
 function read(value: unknown, shape: Shape, path: string, layer: PolicyLayerName, out: Record<string, unknown>) {
+  if(path==='outputPatterns'||path==='outputAllow'){try{out[path]=path==='outputPatterns'?readOutputPatterns(value):readOutputAllow(value);return}catch{throw new PolicyRefusal(path,layer,'invalid output guard configuration')}}
   shape = deref(shape)
   const refuse = () => { throw new PolicyRefusal(path, layer, 'invalid or unknown policy member') }
   if (shape.type === 'object') {

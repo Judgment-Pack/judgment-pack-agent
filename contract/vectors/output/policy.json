@@ -1,0 +1,45 @@
+{
+  "description": "ADR-0017: policy. Handwritten from the accepted output-boundary decision.",
+  "schema": "policy.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/outputGuard.ts"
+    ]
+  },
+  "items": [
+    {
+      "outputGuard": "redact",
+      "outputPatterns": [
+        {
+          "name": "project-secret",
+          "pattern": "secret-[0-9]+"
+        }
+      ],
+      "outputAllow": [
+        "local-temp-path"
+      ]
+    },
+    {
+      "outputGuard": "refuse"
+    }
+  ],
+  "guard": {
+    "input": "secret-123",
+    "output": "[redacted: project-secret]",
+    "where": "message",
+    "mode": "redact",
+    "patterns": [
+      {
+        "name": "project-secret",
+        "pattern": "secret-[0-9]+"
+      }
+    ],
+    "counts": {
+      "project-secret": 1
+    }
+  }
+}

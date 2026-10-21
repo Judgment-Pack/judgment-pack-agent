@@ -1,0 +1,41 @@
+{
+  "description": "ADR-0017: checkpoint. Handwritten from the accepted output-boundary decision.",
+  "schema": "checkpoint.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/outputGuard.ts"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "id": "00000000-0000-4000-8000-000000000000",
+      "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+      "phase": "work",
+      "status": "paused",
+      "unit": "model-requests",
+      "used": 1,
+      "limit": 20,
+      "grants": [],
+      "plan": [],
+      "operations": [
+        {"id": "unknown-redacted", "name": "[redacted: aws-access-key]", "args": {}, "status": "failed"},
+        {"id": "unknown-refused", "name": "Output refused: aws-access-key.", "args": {}, "status": "failed"}
+      ],
+      "completions": [],
+      "context": {
+        "scope": "execution",
+        "entries": []
+      },
+      "outputGuard": {
+        "aws-access-key": 3,
+        "local-home-path": 1
+      },
+      "explanation": ""
+    }
+  ]
+}

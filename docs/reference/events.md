@@ -14,7 +14,7 @@ One event of a run, from the adapter to the host, in order, discriminated by typ
 
 See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](critic.md), [skills.md](skills.md), [budget.md](budget.md), [reasons.md](reasons.md), [checkpoint.md](checkpoint.md).
 
-## The 29 kinds
+## The 30 kinds
 
 | Kind | Defined in | Required beyond type |
 | --- | --- | --- |
@@ -47,6 +47,7 @@ See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](crit
 | `memory_recalled` | `run-event.json $defs/memory_recalled` | `ids`, `digests`, `bytes` |
 | `edit_applied` | `run-event.json $defs/edit_applied` | `document`, `line`, `bytes`, `valid` |
 | `edit_refused` | `run-event.json $defs/edit_refused` | `reason` |
+| `output_guarded` | `run-event.json $defs/output_guarded` | `where`, `pattern`, `action` |
 
 ## Every kind with its members
 
@@ -241,7 +242,7 @@ Open: a member the schema does not name is accepted.
 | --- | --- | --- | --- |
 | `type` | yes | const `tool_call` |  |
 | `callId` |  | string | Pairs the call with its tool_result. The codex engine always sets it (the server's 48-hex call id); the vercel engine sets it on an interactive session, always on an act call of a tool with a source (ADR-0008: its approval decision is tied to the call by it), and always on its refusal of a repeated call or of a call made on the final, tool-free request; never on a call to a tool the model was not offered. |
-| `name` | yes | string | The tool's own name. The codex engine offers its tools on the agent wire under aliases (desk_runtime_N, desk_host_N) and reports the real name here. A tool with a source is reported by its wire name, its own name in source.tool (ADR-0006). |
+| `name` | yes | string | The tool's declared name, or the output-guarded display name for an undeclared model name (ADR-0017); dispatch still uses the original name. The codex engine offers its tools on the agent wire under aliases (desk_runtime_N, desk_host_N) and reports the real name here. A tool with a source is reported by its wire name, its own name in source.tool (ADR-0006). |
 | `args` | yes | any | The arguments exactly as the model wrote them. Usually an object; a call to a tool the model was not offered carries whatever the model sent, or {}. |
 | `presentation` |  | object | Host-owned presentation frozen when the tool was offered. Added by a host consumer (the research run) from the offered host tool, never by an engine and never from model arguments. |
 | `presentation.provider` | yes | string |  |
@@ -258,7 +259,7 @@ Open: a member the schema does not name is accepted.
 | --- | --- | --- | --- |
 | `type` | yes | const `tool_result` |  |
 | `callId` |  | string | The id of the tool_call this answers. The codex engine always sets it; the vercel engine sets it on an interactive session, and always on its refusal of a repeated call or of a call made on the final, tool-free request; never on the result of a call to a tool the model was not offered. |
-| `name` | yes | string | The tool's own name, never a wire alias. A tool with a source is reported by its wire name, its own name in source.tool (ADR-0006). |
+| `name` | yes | string | The tool's declared name, or the same output-guarded display name as its call for an undeclared model name (ADR-0017). The result payload remains exempt. A tool with a source is reported by its wire name, its own name in source.tool (ADR-0006). |
 | `isError` | yes | boolean |  |
 | `text` | yes | string | The text blocks of the answer, joined with newlines in the runtime's order (textOf). |
 | `structured` |  | any | The answer's structuredContent, where it had one. On a failed result the host wrote, it is bound: for ask_user, the question format failure ({"questionFailure": …}); otherwise, where it carries a failure member, {"failure": …} (failure.json#/$defs/toolFailureContent), which the Desk reads back with readFailure. A runtime tool's own failed answer passes its structuredContent through unbound. |
@@ -280,7 +281,7 @@ Open: a member the schema does not name is accepted.
 | `tool` | yes | string |  |
 | `action` | yes | enum `rewrote`, `refused`, `narrowed` |  |
 | `detail` | yes | string |  |
-| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused`, `memory refused`, `edit refused`, `compaction refused`, `record refused` |  |
+| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused`, `memory refused`, `edit refused`, `compaction refused`, `output refused`, `record refused` |  |
 
 ### `thinking_unavailable`
 
@@ -420,3 +421,16 @@ Closed: a member the schema does not name is refused.
 | `type` | yes | const `edit_refused` |  |
 | `document` |  | string (min length 1, max length 512) | Offending document identifier, truncated to 512 Unicode characters. Omitted when missing, non-string or empty; reason names the invalid document identifier. |
 | `reason` | yes | string (min length 1) |  |
+
+### `output_guarded`
+
+ADR-0017: outbound text held by a named pattern, without the matched text.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `type` | yes | const `output_guarded` |  |
+| `where` | yes | enum `message`, `proposal`, `tool argument`, `memory proposal`, `draft edit` |  |
+| `pattern` | yes | string (min length 1, max length 64, pattern `^[a-z][a-z0-9-]{0,63}$`) |  |
+| `action` | yes | enum `redact`, `refuse` |  |
