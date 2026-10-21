@@ -175,6 +175,18 @@ report row. Scenario 14 runs on both adapters.
 validated before replacement and bounded by the policy table. The proposal remains
 a whole document with its edit provenance. Drafts and undo history survive
 checkpoint resume, and ride in execution state so the stable prefix is unchanged.
+
+### Records
+
+`context/records.go` implements ADR-0018 in both Go adapters. The records policy
+defaults to 90 days, redaction on store and JSON export. New checkpoints, provenance
+rows and critiques carry `schema`, `version`, `digest` and `retainUntil`; an expired
+resume is refused before dispatch. `ExportRecords` exports only the records supplied
+by the host and returns the closed manifest plus `export_written`. The package owns no
+record store or deletion job.
+
+### Proposal edit host binding
+
 Children and the critic never edit. Hosts supply accepted documents or the first
 `propose_pack` opens the draft; no host file is written.
 
