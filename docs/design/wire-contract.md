@@ -682,6 +682,24 @@ the rule that text inside a block is data and never instructions (`DATA_RULE`). 
 harness wrote and an acknowledgement the adapter wrote are not framed: they are the host's words.
 The `tool_result` event is never framed.
 
+### Context compaction
+
+[ADR-0016](../adr/0016-context-compaction.md) keeps the existing deterministic
+turn index as `compaction: index`, the default. Under `summary`, only completed
+turns older than `budget.recentMessages` are eligible. Their prose is sent without
+tool calls or results to `models.compactor` (the author's connection at `low` by
+default), and its answer is held to `budget.summaryBytes`. Tool results remain
+reachable only through the index's retained-context paths.
+
+The replacement is one block framed under the run marker and headed as historical
+summary data. It carries the summary, the digest of every replaced turn, and the
+same index. It never enters system instructions, so its text cannot alter the data
+rule or the gate. `compacted` reports its mode, turn count, byte count and digest.
+The full turns remain host-retained; `checkpoint.compaction` stores the replacement
+and turn digests so resume produces the same request bytes. A compactor error or
+empty answer emits `compaction refused`, uses the index and does not stop the run.
+Compaction replaces history after the stable prefix; the prefix stays unchanged.
+
 Injection cases (agent#12) hold the boundary on both engines: a page that asks the model to call
 `propose_pack` (what holds is the review card: nothing written or applied), to search for a
 secret-looking string (no request leaves without the host's consent gate inside its search tool),

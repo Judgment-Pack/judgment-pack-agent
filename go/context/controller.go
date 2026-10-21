@@ -88,6 +88,7 @@ type Execution struct {
 	// resume; nil where neither was written.
 	Policy        map[string]contract.PolicyMember
 	CrossProvider []contract.ProvenanceCrossProvider
+	Compaction    *contract.ProvenanceCompactionReport
 	Critic        *contract.CheckpointCritic
 }
 
@@ -205,6 +206,11 @@ func (e *Execution) Value() *Value {
 		value, _ := ParseJSON(data)
 		out.Set("crossProvider", value)
 	}
+	if e.Compaction != nil {
+		data, _ := json.Marshal(e.Compaction)
+		value, _ := ParseJSON(data)
+		out.Set("compaction", value)
+	}
 	if e.Critic != nil {
 		held := ObjectOf("mode", String(e.Critic.Mode))
 		if e.Critic.Ran != nil {
@@ -251,7 +257,7 @@ func executionOf(saved *contract.Checkpoint) (*Execution, error) {
 		Phase: saved.Phase, Status: saved.Status, Unit: saved.Unit, Used: int(saved.Used),
 		Limit: int(saved.Limit), Grants: saved.Grants, Plan: value.Get("plan"),
 		Explanation: saved.Explanation, Completions: saved.Completions, Context: saved.Context,
-		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, Approval: saved.Approval, Skills: saved.Skills, Draft: saved.Draft, Memories: saved.Memories, OutputGuard: saved.OutputGuard, Critic: saved.Critic, CrossProvider: saved.CrossProvider, Policy: saved.Policy}
+		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, Approval: saved.Approval, Skills: saved.Skills, Draft: saved.Draft, Memories: saved.Memories, Critic: saved.Critic, CrossProvider: saved.CrossProvider, Compaction: saved.Compaction, OutputGuard: saved.OutputGuard, Policy: saved.Policy}
 	if saved.TestCalls != nil {
 		calls := int(*saved.TestCalls)
 		out.TestCalls = &calls

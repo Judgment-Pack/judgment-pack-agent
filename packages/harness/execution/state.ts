@@ -27,6 +27,8 @@ export interface CompletionRecord {request:number;phase:'work'|'synthesis'|'revi
  * the SHA-256 of its text, lower-case hex. The contract's `provenance.json#/$defs/promptDigest`.
  */
 export interface PromptDigest {request:number;sha256:string}
+export interface CompactionSummary {digest:string;turns:number;bytes:number;summary:string;digests:string[]}
+export interface CompactionReport {mode:'index'|'summary';summaries:CompactionSummary[]}
 /** The most prompt digests a checkpoint keeps, the newest: three attempts at each request of the largest allowance. */
 export const MAX_PROMPT_DIGESTS = 300
 /** A local execution record, never permissions, evidence approval or private reasoning. */
@@ -57,7 +59,12 @@ export interface ExecutionCheckpoint {
   */
  policy?:import('../policy').PolicyMembers;
  crossProvider?:import('../policy').CrossProvider[];
+ compaction?:CompactionReport;
  critic?:CriticRecord;
+}
+export function validCompaction(v:unknown):v is CompactionReport{
+ const digest=(x:unknown)=>typeof x==='string'&&/^[a-f0-9]{64}$/.test(x)
+ return object(v)&&exact(v,['mode','summaries'])&&['index','summary'].includes(String(v.mode))&&Array.isArray(v.summaries)&&v.summaries.length<=100&&v.summaries.every(row=>object(row)&&exact(row,['digest','turns','bytes','summary','digests'])&&digest(row.digest)&&count(row.turns)&&Number(row.turns)>0&&count(row.bytes)&&Number(row.bytes)>0&&typeof row.summary==='string'&&Array.isArray(row.digests)&&row.digests.length>0&&row.digests.every(digest))
 }
 /** One loaded skill as the checkpoint keeps it (ADR-0009; `provenance.json#/$defs/skillLoad`). */
 export interface SkillLoad {id:string;digest:string;bytes:number;loadedAt:string}
@@ -164,6 +171,7 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value.draft!==undefined&&!validDraft(value.draft))return fail()
  if(value.skills!==undefined&&!validSkillLoads(value.skills))return fail()
  if(value.critic!==undefined&&!validCriticRecord(value.critic))return fail()
+ if(value.compaction!==undefined&&!validCompaction(value.compaction))return fail()
  if(!Array.isArray(value.operations)||value.operations.length>400||new Set(value.operations.map(o=>o.id)).size!==value.operations.length)return fail()
  for(const op of value.operations){if(!object(op)||!text(op.id,100)||!text(op.name,150)||!['running','complete','failed','interrupted'].includes(String(op.status))||op.result!==undefined&&(!object(op.result)||(op.result.content!==undefined&&(!Array.isArray(op.result.content)||op.result.content.some(p=>!object(p)||p.type!==undefined&&typeof p.type!=='string'||p.text!==undefined&&typeof p.text!=='string')))))return fail()}
  if(!object(value.context)||!text(value.context.scope,100)||!Array.isArray(value.context.entries)||value.context.entries.length>800||new Set(value.context.entries.map(e=>e.id)).size!==value.context.entries.length)return fail()

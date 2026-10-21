@@ -38,5 +38,9 @@
      "summary": "passed", "timeout": 3000}
   ],
   "mutants": {"run": "node scripts/mutation-check.mjs {rows}", "cwd": "packages/harness", "toolchain": "node", "timeout": 3000},
-  "parity": {"run": "scripts/parity.sh \"$JPDEV_DESK\"", "toolchain": "shell", "requires_env": "JPDEV_DESK", "summary": "^parity:|every difference", "timeout": 600}
+  "parity": {"run": "scripts/parity.sh \"$JPDEV_DESK\"", "toolchain": "shell", "requires_env": "JPDEV_DESK", "summary": "^parity:|every difference", "timeout": 600},
+  "handover": {
+    "boundary_paths": ["go/gate", "packages/harness/toolGate.ts", "packages/harness/refutation.ts", "go/adapter/turn/refutation.go"],
+    "shared_paths": ["contract/schemas", "contract/vectors", "packages/harness/scripts/mutation-rows.json", "packages/harness/parity.json", "docs/reference"]
+  }
 }

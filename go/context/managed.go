@@ -88,7 +88,7 @@ func (b *Boundary) Open() []contract.RunEvent {
 // notices are the guardrail events the source gate's refusals earned (ADR-0006), put on the stream
 // before the next event: a withheld declaration's at the start, a refused call's before its result.
 func (b *Boundary) notices() []contract.RunEvent {
-	var out []contract.RunEvent
+	out := b.run.Context.TakeNotices()
 	if b.run.Context.Output != nil {
 		out = append(out, b.run.Context.Output.TakeNotices()...)
 	}

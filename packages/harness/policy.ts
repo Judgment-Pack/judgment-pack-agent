@@ -11,12 +11,13 @@ export type PolicyLayerName = 'run' | 'project' | 'table'
 export type TaskClass = 'routine' | 'material' | 'boundary'
 export interface PolicyRole { model?: string; reasoning?: string; provider?: string }
 export interface PolicyLayer {
+  compaction?: 'index' | 'summary'
   outputGuard?: 'off' | 'redact' | 'refuse'
   outputPatterns?: OutputPattern[]
   outputAllow?: string[]
   budget?: Record<string, number>
   critic?: { default?: 'off' | 'auto' | 'on'; reasoningFloor?: 'author' }
-  models?: { author?: PolicyRole; critic?: PolicyRole; taskClasses?: Partial<Record<TaskClass, string>>; [role: string]: PolicyRole | Partial<Record<TaskClass, string>> | undefined }
+  models?: { author?: PolicyRole; critic?: PolicyRole; compactor?: PolicyRole; taskClasses?: Partial<Record<TaskClass, string>>; [role: string]: PolicyRole | Partial<Record<TaskClass, string>> | undefined }
   concurrency?: { children?: number; requests?: number }
   pace?: { requestsPerDay?: number | null; invocationsPerDay?: number | null; bytesPerDay?: number | null; warnAt?: number }
   taskClass?: TaskClass
@@ -99,6 +100,7 @@ export function resolvePolicy(run: PolicyLayer, project: PolicyLayer, table: Pol
   const mapped = members[`models.taskClasses.${task}`]
   if (mapped && (!members['models.author.reasoning'] || members['models.author.reasoning'].layer === 'table')) members['models.author.reasoning'] = {...mapped}
   const author = need('models.author.reasoning')
+  if (!members['models.compactor.reasoning']) members['models.compactor.reasoning'] = {value: 'low', layer: 'table'}
   const roles = new Set(['author', 'critic', ...Object.keys(members).filter(k => k.startsWith('models.') && !k.startsWith('models.taskClasses.')).map(k => k.slice(7, k.lastIndexOf('.')))])
   const base = host.authorConnection ?? String(need('models.author.model').value)
   const family = (id: string) => host.families?.[id] ?? (host.agent ? 'codex' : 'openai')

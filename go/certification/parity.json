@@ -928,6 +928,22 @@
         ]
       },
       {
+        "check": "16 · index is byte-identical to the pre-ADR deterministic compaction",
+        "go": ["16 index"]
+      },
+      {
+        "check": "16 · summary uses models.compactor at low, frames data and digests, keeps tool results in the index, and leaves the prefix unchanged",
+        "go": ["16 summary", "16 gate"]
+      },
+      {
+        "check": "16 · absent, empty, and 4,001-byte compactor answers refuse and fall back to the index",
+        "go": ["16 fallback"]
+      },
+      {
+        "check": "16 · checkpoint resume gives the same request bytes without asking the compactor again",
+        "go": ["16 resume"]
+      },
+      {
         "check": "17 \u00b7 output boundary: answer, proposal, arguments, memory, draft, refusal, allow and resume",
         "go": [
           "17 output boundary",

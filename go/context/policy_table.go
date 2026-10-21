@@ -283,6 +283,9 @@ func ResolvePolicy(run, project, table PolicyLayer, host PolicyHost) (ResolvedPo
 		return map[string]int{"off": 0, "low": 1, "on": 2, "medium": 2, "ultra": 3, "high": 3}[value]
 	}
 	author, _ := members["models.author.reasoning"].Value.(string)
+	if _, ok := members["models.compactor.reasoning"]; !ok {
+		members["models.compactor.reasoning"] = PolicyMember{Value: "low", Layer: "table"}
+	}
 	roles := map[string]bool{"author": true, "critic": true}
 	for name := range members {
 		if strings.HasPrefix(name, "models.") && !strings.HasPrefix(name, "models.taskClasses.") {
