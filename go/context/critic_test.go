@@ -357,8 +357,8 @@ func TestTheCriticsInvocationIsHeldBackUnderAutoAndOn(t *testing.T) {
 	}
 }
 
-// Go mutation twin for #113 (the mutation table runs TypeScript only): removing
-// CriticSwitch.mu's admission/checkpoint or refusal append/drain locking must fail under -race.
+// The adapter regression also exercises durable saves; its lock-removal runs
+// and observed race reports are documented in pr.md.
 func TestConcurrentReviewRequests(t *testing.T) {
 	for _, tc := range []struct {
 		name       string

@@ -255,7 +255,10 @@ func (r *runState) save(ctx context.Context) error {
 	if r.run.Context == nil || r.run.Context.Checkpoint == nil {
 		return nil
 	}
+	// Match deliver's lock order: r.mu, then the execution snapshot's criticMu.
+	r.mu.Lock()
 	state, err := r.sc.Snapshot("")
+	r.mu.Unlock()
 	if err != nil {
 		return err
 	}
