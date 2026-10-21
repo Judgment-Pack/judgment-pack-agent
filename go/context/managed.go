@@ -33,6 +33,7 @@ package runcontext
 // text of its direct host notices; gate.Options.Emit still writes them between call and result.
 
 import (
+	"encoding/json"
 	"errors"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
@@ -165,6 +166,10 @@ func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 	if err := context.Execution.takeRecordError(); err != nil {
 		b.failed, b.ended = true, true
 		return append(out, failure.Event(err, "context"), contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}}), true
+	}
+	checkpoint := event.ToolCall != nil || event.ToolResult != nil || event.UserQuestion != nil || event.BudgetPaused != nil || event.Error != nil && (event.Error.Failure != nil && event.Error.Failure.Code == "request-limit" || event.Error.Message == ErrExecutionPaused.Error())
+	if context.Execution.ApprovalAsked() || checkpoint {
+		out = append(out, context.Execution.QueueSteers(*context.Policy)...)
 	}
 	// ADR-0008: an adapter asks the host's approval policy where it hands an act call to the host
 	// (SessionContext.Approval) and delivers approval_requested in place of the call where it asks.
@@ -329,6 +334,24 @@ func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 				Tool: "proposal", Action: "refused",
 				Detail: "Artifact proposals are unavailable in Plan mode. Use propose_plan and wait for Start work."}}), false
 		}
+		raw, err := json.Marshal(event.Proposal)
+		if err != nil {
+			return append(out, failure.Event(err, "context"), contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}}), true
+		}
+		var proposal map[string]any
+		if err := json.Unmarshal(raw, &proposal); err != nil {
+			return append(out, failure.Event(err, "context"), contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}}), true
+		}
+		delete(proposal, "digest")
+		canonicalRaw, err := json.Marshal(proposal)
+		if err != nil {
+			return append(out, failure.Event(err, "context"), contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}}), true
+		}
+		value, err := ParseJSON(canonicalRaw)
+		if err != nil {
+			return append(out, failure.Event(err, "context"), contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}}), true
+		}
+		event.Proposal.Digest = "sha256:" + ContextDigest(CanonicalJSON(value))
 	}
 	if event.End != nil {
 		b.ended = true

@@ -76,14 +76,17 @@ func (t *turnState) loopPhase(shown []wire.WireTool) *phase {
 			if t.synthesis {
 				r.currentPhase = "synthesis"
 			}
+			steers, notices := r.sc.Execution.TakeSteers(r.sc.Marker, r.sc.Execution.State.Used+1, *r.sc.Policy)
+			r.emitAll(notices)
 			state := stateText(r.sc.Execution.RequestState(), currentState, instruction)
 			// Budgeted as one request: the system text and the state together.
-			held, err := r.budgeted(input, t.system+"\n"+state, t.schemas)
+			held, err := r.budgeted(input, t.system+"\n"+state+"\n"+steers, t.schemas)
 			if err != nil {
 				return nil, err
 			}
 			t.lastMessages = held
 			system, placed := placeState(r.placement, held, t.system, state)
+			placed = placeSteer(placed, steers)
 			answer, read, err := t.sendStep(ctx, send, system, placed, shown, t.toolsClosed)
 			if err != nil {
 				return nil, err

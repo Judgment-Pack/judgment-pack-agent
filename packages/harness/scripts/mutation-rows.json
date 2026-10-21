@@ -4491,6 +4491,52 @@
    "origin": "agent#102 review #127"
   },
   {
+   "name": "delegated child steering queue clearing removed",
+   "file": "delegation.ts",
+   "find": "input:[],",
+   "replace": "",
+   "tests": ["delegation.test.ts"],
+   "status": "caught",
+   "origin": "review of #129",
+   "note": "Go mirror: give the child Input the parent's Steer channel; TestChildrenUseResolvedBindingsTiersAndConcurrency catches the child queue inheritance."
+  },
+  {
+   "name": "steer placed in system text",
+   "file": "engines/vercel/loop.ts",
+   "find": "if(!steer)return placed",
+   "replace": "if(steer)return {...placed,instructions:String(placed.instructions)+'\\n'+steer}",
+   "tests": ["certification/scenarios.test.ts"],
+   "status": "caught",
+   "origin": "agent#105"
+  },
+  {
+   "name": "steer pause refusal removed",
+   "file": "execution/controller.ts",
+   "find": "if(this.approvalAsked){refuse('A steer is refused while this run waits for the person’s approval decision.');continue}",
+   "replace": "if(false){refuse('A steer is refused while this run waits for the person’s approval decision.');continue}",
+   "tests": ["steering.test.ts"],
+   "status": "caught",
+   "origin": "agent#105"
+  },
+  {
+   "name": "steer queue order reversed",
+   "file": "execution/controller.ts",
+   "find": "const queued=report.queued.splice(0)",
+   "replace": "const queued=report.queued.splice(0).reverse()",
+   "tests": ["steering.test.ts"],
+   "status": "caught",
+   "origin": "agent#105"
+  },
+  {
+   "name": "steer byte bound removed",
+   "file": "execution/controller.ts",
+   "find": "if(bytes>bounds.steerBytes){refuse(`A steer is larger than the ${bounds.steerBytes} byte limit.`);continue}",
+   "replace": "if(false){refuse(`A steer is larger than the ${bounds.steerBytes} byte limit.`);continue}",
+   "tests": ["steering.test.ts"],
+   "status": "caught",
+   "origin": "agent#105"
+  },
+  {
    "name": "evaluation corpus comparison reads prose",
    "file": "corpus.ts",
    "find": "for(const event of events){\n  if(event.type==='guardrail'){",
@@ -4519,6 +4565,26 @@
    "status": "caught",
    "origin": "agent#103",
    "note": "Go twin: omit guard.JSON in WriteCorpusEntry; the recording redaction assertion fails."
+  },
+  {
+   "name": "evaluation corpus release engine not run",
+   "file": "corpus.ts",
+   "find": "const server=new ScriptedCorpusServer(entry),events=await run(server);server.complete()",
+   "replace": "const server=new ScriptedCorpusServer(entry),events=structuredClone(entry.events);void run;server.complete()",
+   "tests": ["certification/corpus.test.ts"],
+   "status": "caught",
+   "origin": "agent#103 review #128",
+   "note": "Go twin: project entry.Events instead of calling adapter.Run in runCorpusAdapter; the concrete-adapter corpus command fails because no recording-backed request is consumed."
+  },
+  {
+   "name": "evaluation corpus manifest validation skipped",
+   "file": "corpus.ts",
+   "find": "const validManifest=(manifest:unknown):manifest is CorpusManifest=>argumentProblem(corpusEntrySchema,manifest)===undefined&&",
+   "replace": "const validManifest=(manifest:unknown):manifest is CorpusManifest=>true||argumentProblem(corpusEntrySchema,manifest)===undefined&&",
+   "tests": ["corpus.test.ts"],
+   "status": "caught",
+   "origin": "agent#103 review #128",
+   "note": "Go twin: return nil before validateCorpusManifest checks; TestCorpusInvalidManifestWritesNothing fails."
   }
  ]
 }

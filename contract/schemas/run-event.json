@@ -40,7 +40,8 @@
         "edit_applied",
         "edit_refused",
         "output_guarded",
-        "export_written"
+        "export_written",
+        "steered"
       ]
     }
   },
@@ -53,6 +54,9 @@
     },
     {
       "$ref": "#/$defs/approval_requested"
+    },
+    {
+      "$ref": "#/$defs/steered"
     },
     {
       "$ref": "#/$defs/compacted"
@@ -140,6 +144,17 @@
     }
   ],
   "$defs": {
+    "steered": {
+      "description": "ADR-0021: one steer was placed at a request boundary. On an agent capability atRequest is the invocation number.",
+      "type": "object",
+      "required": ["type", "bytes", "atRequest"],
+      "properties": {
+        "type": {"const": "steered"},
+        "bytes": {"type": "integer", "minimum": 1},
+        "atRequest": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": false
+    },
     "recorded": {
       "description": "ADR-0022: a redacted evaluation corpus entry was written. id names its corpus directory and bytes is the sum of the UTF-8 bytes in its six JSON files.",
       "type": "object",
@@ -504,6 +519,7 @@
             "records expired",
             "identity changed",
             "approval downgraded",
+            "steer refused",
             "record refused"
           ]
         }
@@ -643,7 +659,8 @@
       "required": [
         "type",
         "document",
-        "unknowns"
+        "unknowns",
+        "digest"
       ],
       "properties": {
         "type": {
@@ -658,6 +675,11 @@
           "items": {
             "type": "string"
           }
+        },
+        "digest": {
+          "description": "ADR-0022: sha256: and the SHA-256 of the canonical JSON of this proposal with digest omitted.",
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
         },
         "critique": {
           "type": "object",

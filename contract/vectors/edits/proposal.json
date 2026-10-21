@@ -13,6 +13,7 @@
   "items": [
     {
       "type": "proposal",
+      "digest": "sha256:7167aac8734a44d2635fb48468193ae439bc297a5764cfa4681116d5ade6f443",
       "document": {
         "specVersion": "1",
         "id": "pack",

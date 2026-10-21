@@ -8,6 +8,11 @@ Capability records hold the tier map; hosts can override it per connection.
 See the generated provider matrix in `docs/reference/providers.md` at the repository
 root. Scenario 12 exercises two families, and certification prints its measurements.
 
+The optional `session.input` array is the ADR-0021 in-flight input queue. Append
+`{steer:{text}}`; an engine drains it only at its next request boundary, frames
+each accepted instruction under the run marker, emits `steered`, and records it
+in `checkpoint.steers`. The queue is refused while an approval is asked.
+
 
 Budgets are the `budget` section of the [agent's policy table](../../docs/adr/0011-the-agents-policy-table.md).
 The host's run layer wins over its project layer, then table defaults. The same
@@ -695,7 +700,9 @@ the Desk's own test ground does: a session already in hand, a relay addressed by
 Set `record: true` only for a run whose entry will be reviewed. ADR-0022 records requests, tool
 results, events and the checkpoint through the output guard; a guard refusal writes nothing and
 emits `record refused`. `node scripts/corpus-check.mjs ../../corpus` replays every entry from its
-recorded responses and compares decisions and outcomes, never prose or a live provider.
+recorded responses through the Vercel, Deep Agents and Codex release engines and compares their
+newly emitted decisions and outcomes, never prose or a live provider. Each manifest is validated
+against the closed schema before either sink; drift reports retain the expected and actual values.
 
 `npm test` runs every moved test and the suite (vitest, jsdom, as the Desk runs them), including
 `session.test.ts`, whose session store and language come from the test host. The cases that

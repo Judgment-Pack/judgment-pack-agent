@@ -32,6 +32,7 @@
     },
     {
       "type": "proposal",
+      "digest": "sha256:def20396fa6ba666683d8ab7246540419a14d9cf022f094476c40712ddb4fd5e",
       "document": {
         "id": "p"
       },

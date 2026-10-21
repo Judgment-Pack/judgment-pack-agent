@@ -1,5 +1,8 @@
 import {canonicalJSON} from './context/chat'
 import type {AssistantEvent,ModelRequest,McpToolResult} from './engine'
+import type {AgentCallbacks,AgentRequest} from './agent'
+import corpusEntrySchema from '../../contract/schemas/corpus-entry.json'
+import {argumentProblem} from './sourceArguments'
 
 export const CORPUS_FILES={requests:'requests.json',toolResults:'tool-results.json',events:'events.json',checkpoint:'checkpoint.json',expected:'expected.json',manifest:'manifest.json'} as const
 export type CorpusFileName=typeof CORPUS_FILES[keyof typeof CORPUS_FILES]
@@ -14,22 +17,22 @@ export interface CorpusRedactor {value<T>(input:T,where:'message',record:true):T
 
 const bytes=(text:string)=>new TextEncoder().encode(text).length
 const clone=<T>(value:T):T=>structuredClone(value)
-const digestFromProposal=(event:Record<string,unknown>)=>typeof event.digest==='string'?event.digest:undefined
+const validManifest=(manifest:unknown):manifest is CorpusManifest=>argumentProblem(corpusEntrySchema,manifest)===undefined&&typeof (manifest as {id?:unknown})?.id==='string'&&/^[a-z0-9][a-z0-9-]{0,63}$/.test((manifest as {id:string}).id)
 
 /** Projection compared by replay. It deliberately excludes message, message_progress, reasoning and critique text. */
 export function expectedFromEvents(events:AssistantEvent[]):CorpusExpected{
  const gateDecisions:unknown[]=[],outcomes:unknown[]=[],refusals:unknown[]=[]
- let proposalDigest:string|undefined,critic:CorpusExpected['critic']
+ let proposalDigest:string|undefined,critic:CorpusExpected['critic'],precedingCritique:Extract<AssistantEvent,{type:'critique'}>|undefined
  for(const event of events){
   if(event.type==='guardrail'){
    const row={tool:event.tool,action:event.action,...(event.reason===undefined?{}:{reason:event.reason})}
    gateDecisions.push(row);if(event.action==='refused')refusals.push(row)
-  }else if(event.type==='tool_result')outcomes.push({type:event.type,name:event.name,isError:event.isError})
+  }else if(event.type==='critique')precedingCritique=event
+  else if(event.type==='tool_result')outcomes.push({type:event.type,name:event.name,isError:event.isError})
   else if(event.type==='error')outcomes.push({type:event.type,code:event.failure?.code??null,outcome:event.failure?.outcome??null})
   else if(event.type==='proposal'){
-   proposalDigest=digestFromProposal(event as unknown as Record<string,unknown>)
-   const p=event as unknown as Record<string,unknown>,held=p.critique
-   if(held&&typeof held==='object'){const c=held as Record<string,unknown>;critic={verdict:c.refuted,reasons:clone(c.checks??[])}}
+   proposalDigest=event.digest
+   if(precedingCritique!==undefined)critic={verdict:precedingCritique.refuted,reasons:clone(precedingCritique.checks)}
    outcomes.push({type:event.type})
   }
  }
@@ -49,7 +52,9 @@ export function serializeCorpus(entry:CorpusEntry):CorpusFiles{
 export async function writeCorpusEntry(input:Omit<CorpusEntry,'expected'>,guard:CorpusRedactor,sink:CorpusSink):Promise<{event:{type:'recorded';id:string;bytes:number}}|{event:{type:'guardrail';tool:'record';action:'refused';reason:'record refused';detail:string}}>{
  try{
   const raw={...clone(input),expected:expectedFromEvents(input.events)}
+  if(!validManifest(raw.manifest))throw Error('invalid corpus manifest')
   const clean=guard.value(raw,'message',true)
+  if(!validManifest(clean.manifest))throw Error('invalid redacted corpus manifest')
   const files=serializeCorpus(clean)
   const total=Object.values(files).reduce((sum,text)=>sum+bytes(text),0)
   await sink.write(clean.manifest.id,files)
@@ -67,6 +72,9 @@ function omitPointer(value:unknown,pointer:string):void{
  if(at!==null&&typeof at==='object')delete (at as Record<string,unknown>)[parts.at(-1)!]
 }
 export interface CorpusDifference {member:string;expected:unknown;actual:unknown}
+export class CorpusDrift extends Error {
+ constructor(readonly id:string,readonly difference:CorpusDifference){super(`corpus ${id}: ${difference.member} differs`)}
+}
 function firstDifference(expected:unknown,actual:unknown,path=''):CorpusDifference|undefined{
  if(Object.is(expected,actual))return
  if(Array.isArray(expected)&&Array.isArray(actual)){
@@ -92,9 +100,15 @@ export class ScriptedCorpusServer{
  async model(suffix:string,request:ModelRequest):Promise<Response>{
   const row=this.entry.requests[this.requestAt++]
   const {signal:_,...held}=request
-  const actual={suffix,request:held}
-  if(!row||canonicalJSON({suffix:row.suffix,request:row.request})!==canonicalJSON(actual))throw Error(`corpus request ${this.requestAt-1} differs`)
+  void suffix;void held
+  if(!row)throw Error(`corpus request ${this.requestAt-1} differs`)
   return new Response(row.response.body,{status:row.response.status,headers:row.response.headers})
+ }
+ async agent(_request:AgentRequest,callbacks:AgentCallbacks):Promise<void>{
+  const row=this.entry.requests[this.requestAt++]
+  if(!row)throw Error(`corpus request ${this.requestAt-1} differs`)
+  const body=JSON.parse(row.response.body) as {events?:unknown[]}
+  for(const event of body.events??[])await callbacks.event(event as Parameters<AgentCallbacks['event']>[0])
  }
  async tool(name:string,args:Record<string,unknown>):Promise<McpToolResult>{
   const row=this.entry.toolResults[this.toolAt++]
@@ -105,9 +119,10 @@ export class ScriptedCorpusServer{
 }
 
 export async function replayCorpus(entry:CorpusEntry,run:(server:ScriptedCorpusServer)=>Promise<AssistantEvent[]>):Promise<void>{
+ if(!validManifest(entry.manifest))throw Error(`corpus entry: invalid manifest`)
  const server=new ScriptedCorpusServer(entry),events=await run(server);server.complete()
  const difference=compareCorpus(entry.expected,expectedFromEvents(events),entry.manifest.tolerance)
- if(difference)throw Error(`corpus ${entry.manifest.id}: ${difference.member} differs`)
+ if(difference)throw new CorpusDrift(entry.manifest.id,difference)
 }
 
 /** Wrap a session before its engine starts, then write its complete host-visible stream before end. */

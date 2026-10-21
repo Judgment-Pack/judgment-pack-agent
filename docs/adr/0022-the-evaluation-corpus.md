@@ -24,10 +24,15 @@ hands the entry to the maintainer, who adds the reviewed entry here. An intentio
 expectation is updated in the behaviour-changing pull request with its reason, as a parity row is.
 
 `expected.json` contains the gate's decisions, the proposal digest, the critic's verdict and
-reasons, refusals, and outcomes. Replay compares only those members, after removing allowed
+structured checks from the preceding `critique` event, refusals, and outcomes. Every proposal event
+carries `digest`, `sha256:` followed by the SHA-256 of the proposal's canonical JSON with `digest`
+omitted. Replay compares only those members, after removing allowed
 tolerances. It never compares a model's prose. `harness-check corpus` and the TypeScript twin replay
 every entry with requests and tool results answered by the recording. Neither replay path accepts a
 live-provider capability.
+
+A recording keeps a steered run's `steered` events as host facts, and replay delivers each recorded
+steer at the same request boundary so that the newly emitted stream is compared at that boundary.
 
 ## Certification
 

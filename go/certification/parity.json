@@ -985,6 +985,14 @@
         "go": ["19 service approval", "19 agent service approval"]
       },
       {
+        "check": "21 · steers arrive once, framed and ordered at the next request boundary with an unchanged prefix",
+        "go": ["21 steer boundary"]
+      },
+      {
+        "check": "21 · an in-flight steer lands on the next invocation and does not change the stable instructions",
+        "go": ["21 agent steer boundary"]
+      },
+      {
         "check": "replays both seed entries without a provider",
         "go": ["22 replay", "22 agent replay"]
       },

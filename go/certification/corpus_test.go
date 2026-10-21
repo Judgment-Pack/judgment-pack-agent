@@ -1,10 +1,15 @@
 package certification
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter"
+	agentadapter "github.com/Judgment-Pack/judgment-pack-agent/go/adapter/agent"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/eino"
 )
 
 func TestScenario22EveryGoAdapterReplaysCorpus(t *testing.T) {
@@ -12,13 +17,24 @@ func TestScenario22EveryGoAdapterReplaysCorpus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, adapter := range []string{"eino", "agent"} {
-		t.Run(adapter, func(t *testing.T) {
-			passed, err := ReplayCorpus(filepath.Join(root, "corpus"))
+	for _, row := range []struct {
+		name    string
+		adapter Adapter
+		agent   bool
+		host    AgentHost
+	}{{name: "eino", adapter: eino.New()}, {name: "agent", adapter: agentadapter.New(), agent: true, host: StandIn()}} {
+		t.Run(row.name, func(t *testing.T) {
+			ran := false
+			counted := AdapterFunc(func(ctx context.Context, run *Run) error { ran = true; return row.adapter.Run(ctx, run) })
+			var bind func(AgentScript) adapter.AgentRun
+			if row.agent {
+				bind = row.host.Bind
+			}
+			passed, err := ReplayCorpusAdapter(context.Background(), filepath.Join(root, "corpus"), counted, row.agent, bind)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(passed) != 2 {
+			if len(passed) != 1 || !ran {
 				t.Fatalf("replayed %d entries", len(passed))
 			}
 		})
@@ -58,7 +74,7 @@ func TestScenario22TamperNamesMember(t *testing.T) {
 				t.Fatal(err)
 			}
 			if entry.Name() == "model-policy-refusal" && file.Name() == "expected.json" {
-				raw = []byte(strings.Replace(string(raw), `"refused"`, `"rewrote"`, 1))
+				raw = []byte(strings.Replace(string(raw), `"outcomes":[]`, `"outcomes":[{"type":"proposal"}]`, 1))
 			}
 			if err := os.WriteFile(filepath.Join(dir, file.Name()), raw, 0o644); err != nil {
 				t.Fatal(err)
@@ -66,7 +82,7 @@ func TestScenario22TamperNamesMember(t *testing.T) {
 		}
 	}
 	_, err = ReplayCorpus(target)
-	if err == nil || !strings.Contains(err.Error(), "/gateDecisions/0/action differs") {
+	if err == nil || !strings.Contains(err.Error(), "/outcomes/length differs") {
 		t.Fatalf("tamper: %v", err)
 	}
 }

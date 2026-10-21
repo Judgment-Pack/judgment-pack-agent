@@ -2337,7 +2337,7 @@ it('emits a draft artifact when a conversational reply includes indented probe e
   const text = 'Checks:\n```text\nValid\n```\n1. Probe\n     ```json\n     {"status":"evaluated"}\n     ```\n' + PROPOSAL_TEXT
   const scripted = scriptedCall([turn({ text })])
   const events = await drain(vercel.start(session(scripted.call, { allowConversation: true, interactive: true, adversarialReview: false })))
-  expect(events.filter(event => event.type === 'proposal')).toEqual([{ type: 'proposal', document: { id: 'p' }, unknowns: ['who signs'] }])
+  expect(events.filter(event => event.type === 'proposal')).toEqual([{ type: 'proposal', digest: 'sha256:681f94562c65706b6b99916c65ad1a90bf2f8a90cd3067f3326ca514502042fa', document: { id: 'p' }, unknowns: ['who signs'] }])
   expect(events.some(event => event.type === 'error')).toBe(false)
   expect(events.find(event => event.type === 'message')?.text).toContain('"status":"evaluated"')
   expect(events.find(event => event.type === 'message')?.text).not.toContain('"proposal"')
@@ -2589,7 +2589,7 @@ describe('nothing finished is lost (agent#6)', () => {
       const events = await drain(vercel.start(session(call, { hostTools: [tool] })))
       expect(events.map((event) => event.type)).toEqual(['tool_call', 'tool_result', 'message', 'critic_decided', 'proposal', 'end'])
       expect(events[1]).toMatchObject({ name: PROPOSE_PACK_TOOL, isError: false, text: PROPOSAL_RECEIVED })
-      expect(events[4]).toEqual({ type: 'proposal', edits: [], document: { id: 'p' }, unknowns: ['who signs'] })
+      expect(events[4]).toEqual({ type: 'proposal', digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/), edits: [], document: { id: 'p' }, unknowns: ['who signs'] })
       // The engine reads the call; the host's own function is never reached.
       expect(execute).not.toHaveBeenCalled()
       expect(JSON.stringify(seen[0]!.body)).toContain(`calling ${PROPOSE_PACK_TOOL}`)
@@ -2607,7 +2607,7 @@ describe('nothing finished is lost (agent#6)', () => {
       expect(events.map((event) => event.type)).toEqual(['tool_call', 'tool_result', 'tool_call', 'tool_result', 'critic_decided', 'proposal', 'end'])
       expect(events[1]).toMatchObject({ isError: true, structured: { failure: { code: 'invalid-tool-input' } } })
       expect((events[1] as { text: string }).text).toContain('not as a JSON string')
-      expect(events[5]).toEqual({ type: 'proposal', edits: [], document: { id: 'p' }, unknowns: [] })
+      expect(events[5]).toEqual({ type: 'proposal', digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/), edits: [], document: { id: 'p' }, unknowns: [] })
       expect(seen).toHaveLength(3)
     })
 
@@ -2649,7 +2649,7 @@ describe('nothing finished is lost (agent#6)', () => {
       expect(events.map((event) => event.type)).toEqual(['tool_call', 'tool_result', 'tool_call', 'tool_result', 'critic_decided', 'proposal', 'end'])
       expect(events[1]).toMatchObject({ isError: true, structured: { failure: { code: 'invalid-tool-input' } } })
       expect((events[1] as { text: string }).text).toContain('Only a new pack can be proposed')
-      expect(events[5]).toEqual({ type: 'proposal', edits: [], document: { id: 'p' }, unknowns: [] })
+      expect(events[5]).toEqual({ type: 'proposal', digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/), edits: [], document: { id: 'p' }, unknowns: [] })
     })
 
     it('refuses a tool proposal beside a fenced one as ambiguous, as two fences are', async () => {

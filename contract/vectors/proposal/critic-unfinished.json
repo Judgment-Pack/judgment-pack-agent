@@ -27,6 +27,7 @@
     },
     {
       "type": "proposal",
+      "digest": "sha256:c0df3d04855c5223a687b5d4f856e7068ac3feea0bbc7551d92e36318a0f21c0",
       "document": {
         "id": "p"
       },

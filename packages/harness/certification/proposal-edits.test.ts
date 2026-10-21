@@ -57,7 +57,8 @@ for(const engine of [vercel,deepagents,codex])describe(`${engine.id==='codex'?'a
   expect(ran.events.find(e=>e.type==='tool_result'&&e.name==='read_window')).toMatchObject({isError:false,text:expect.stringContaining('Before')})
   expect(ran.events.filter(e=>e.type==='tool_result'&&e.name==='read_window').at(-1)).toMatchObject({isError:false,text:expect.stringContaining('After')})
   const proposal=ran.events.find(e=>e.type==='proposal')!
-  expect(proposal).toMatchObject({...expectedProposal.items[0],edits:[...expectedProposal.items[0]!.edits,...insert.items,...undo.items]})
+  const {digest:_,...expected}=expectedProposal.items[0]!
+  expect(proposal).toMatchObject({...expected,digest:expect.stringMatching(/^sha256:[a-f0-9]{64}$/),edits:[...expectedProposal.items[0]!.edits,...insert.items,...undo.items]})
   expect(ran.events.filter(e=>e.type==='edit_refused').map(e=>e.reason)).toEqual([expect.stringContaining('2 times'),expect.stringContaining('Validation failed')])
   expect(ran.seen.filter(c=>c.name==='validate')).toHaveLength(4)
   const prefixes=ran.runs.length?ran.runs.map(r=>r.instructions):ran.requests.map(r=>r.body.messages?.find(m=>m.role==='system')?.content)

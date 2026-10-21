@@ -120,6 +120,19 @@ func TestTheBoundaryRefusesAProposalWhereProposalsAreOff(t *testing.T) {
 	}
 }
 
+func TestTheBoundaryDigestsCanonicalProposalJSON(t *testing.T) {
+	session, _ := trackedSession(t)
+	run := openRun(t, session)
+	boundary := NewBoundary(run)
+	out, stop := boundary.Event(contract.RunEvent{Proposal: &contract.RunEventProposal{Type: "proposal", Document: map[string]json.RawMessage{"id": json.RawMessage(`"p"`)}, Unknowns: []string{"who signs"}}})
+	if stop || len(out) != 1 || out[0].Proposal == nil {
+		t.Fatalf("events: %v", eventTypes(out))
+	}
+	if got := out[0].Proposal.Digest; got != "sha256:681f94562c65706b6b99916c65ad1a90bf2f8a90cd3067f3326ca514502042fa" {
+		t.Fatalf("digest: %s", got)
+	}
+}
+
 func TestTheBoundaryCarriesTheFailureOfAContextThatCannotOpen(t *testing.T) {
 	// A host tool that takes a name the boundary reserves: the run cannot open.
 	session, _ := trackedSession(t)

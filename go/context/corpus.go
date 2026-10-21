@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
@@ -48,6 +50,7 @@ func corpusProjection(events []contract.RunEvent) (map[string]any, error) {
 	gate, outcomes, refusals := []any{}, []any{}, []any{}
 	var proposalDigest any
 	var critic any
+	var precedingCritique map[string]any
 	for _, event := range events {
 		raw, err := json.Marshal(event)
 		if err != nil {
@@ -58,6 +61,8 @@ func corpusProjection(events []contract.RunEvent) (map[string]any, error) {
 			return nil, err
 		}
 		switch row["type"] {
+		case "critique":
+			precedingCritique = row
 		case "guardrail":
 			decision := map[string]any{"tool": row["tool"], "action": row["action"]}
 			if reason, ok := row["reason"]; ok {
@@ -75,8 +80,8 @@ func corpusProjection(events []contract.RunEvent) (map[string]any, error) {
 		case "proposal":
 			outcomes = append(outcomes, map[string]any{"type": "proposal"})
 			proposalDigest = row["digest"]
-			if held, ok := row["critique"].(map[string]any); ok {
-				critic = map[string]any{"verdict": held["refuted"], "reasons": held["checks"]}
+			if precedingCritique != nil {
+				critic = map[string]any{"verdict": precedingCritique["refuted"], "reasons": precedingCritique["checks"]}
 			}
 		}
 	}
@@ -107,6 +112,9 @@ func canonicalBytes(value any) ([]byte, error) {
 }
 
 func WriteCorpusEntry(entry CorpusEntry, guard CorpusGuard, sink CorpusSink) (contract.RunEvent, error) {
+	if err := validateCorpusManifest(entry.Manifest); err != nil {
+		return corpusRefused(), nil
+	}
 	expected, err := corpusProjection(entry.Events)
 	if err != nil {
 		return corpusRefused(), nil
@@ -132,6 +140,23 @@ func WriteCorpusEntry(entry CorpusEntry, guard CorpusGuard, sink CorpusSink) (co
 	return recordedEvent(entry.Manifest.ID, total), nil
 }
 
+var corpusID = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
+
+func validateCorpusManifest(manifest CorpusManifest) error {
+	if !corpusID.MatchString(manifest.ID) || len(manifest.PackageVersion) < 1 || len(manifest.PackageVersion) > 64 || manifest.Policy == nil ||
+		manifest.Files.Requests != "requests.json" || manifest.Files.ToolResults != "tool-results.json" || manifest.Files.Events != "events.json" || manifest.Files.Checkpoint != "checkpoint.json" || manifest.Expected.File != "expected.json" || len(manifest.Tolerance) > 64 {
+		return errors.New("invalid corpus manifest")
+	}
+	seen := map[string]bool{}
+	for _, pointer := range manifest.Tolerance {
+		if seen[pointer] || len(pointer) > 256 || !(pointer == "/timings" || strings.HasPrefix(pointer, "/timings/") || pointer == "/drawnMarkers" || strings.HasPrefix(pointer, "/drawnMarkers/")) {
+			return errors.New("invalid corpus tolerance")
+		}
+		seen[pointer] = true
+	}
+	return nil
+}
+
 func recordedEvent(id string, bytes int) contract.RunEvent {
 	// The generated Recorded member is supplied by go generate after corpus-entry and recorded land.
 	raw := fmt.Sprintf(`{"type":"recorded","id":%q,"bytes":%d}`, id, bytes)
@@ -150,19 +175,39 @@ func deletePointer(value any, pointer string) {
 	}
 	parts := strings.Split(strings.TrimPrefix(pointer, "/"), "/")
 	var at any = value
-	for _, part := range parts[:len(parts)-1] {
-		part = strings.ReplaceAll(strings.ReplaceAll(part, "~1", "/"), "~0", "~")
-		object, ok := at.(map[string]any)
-		if !ok {
+	unescape := func(part string) string { return strings.ReplaceAll(strings.ReplaceAll(part, "~1", "/"), "~0", "~") }
+	for _, encoded := range parts[:len(parts)-1] {
+		part := unescape(encoded)
+		switch held := at.(type) {
+		case map[string]any:
+			at = held[part]
+		case []any:
+			index, err := strconv.Atoi(part)
+			if err != nil || index < 0 || index >= len(held) {
+				return
+			}
+			at = held[index]
+		default:
 			return
 		}
-		at = object[part]
 	}
+	last := unescape(parts[len(parts)-1])
 	if object, ok := at.(map[string]any); ok {
-		delete(object, parts[len(parts)-1])
+		delete(object, last)
+	} else if list, ok := at.([]any); ok {
+		index, err := strconv.Atoi(last)
+		if err == nil && index >= 0 && index < len(list) {
+			list[index] = nil
+		}
 	}
 }
-func firstCorpusDifference(left, right any, path string) string {
+
+type CorpusDifference struct {
+	Member           string
+	Expected, Actual any
+}
+
+func firstCorpusDifference(left, right any, path string) *CorpusDifference {
 	a, ok := left.(map[string]any)
 	b, bok := right.(map[string]any)
 	if ok && bok {
@@ -179,34 +224,47 @@ func firstCorpusDifference(left, right any, path string) string {
 		}
 		sort.Strings(names)
 		for _, key := range names {
-			if found := firstCorpusDifference(a[key], b[key], path+"/"+key); found != "" {
+			if found := firstCorpusDifference(a[key], b[key], path+"/"+key); found != nil {
 				return found
 			}
 		}
-		return ""
+		return nil
 	}
 	aa, ok := left.([]any)
 	bb, bok := right.([]any)
 	if ok && bok {
 		if len(aa) != len(bb) {
-			return path + "/length"
+			return &CorpusDifference{Member: path + "/length", Expected: len(aa), Actual: len(bb)}
 		}
 		for index := range aa {
-			if found := firstCorpusDifference(aa[index], bb[index], fmt.Sprintf("%s/%d", path, index)); found != "" {
+			if found := firstCorpusDifference(aa[index], bb[index], fmt.Sprintf("%s/%d", path, index)); found != nil {
 				return found
 			}
 		}
-		return ""
+		return nil
 	}
 	x, _ := json.Marshal(left)
 	y, _ := json.Marshal(right)
 	if string(x) != string(y) {
 		if path == "" {
-			return "/"
+			path = "/"
 		}
-		return path
+		return &CorpusDifference{Member: path, Expected: left, Actual: right}
 	}
-	return ""
+	return nil
+}
+
+type CorpusDrift struct {
+	ID         string
+	Difference CorpusDifference
+}
+
+func (e *CorpusDrift) Error() string {
+	prefix := ""
+	if e.ID != "" {
+		prefix = "corpus " + e.ID + ": "
+	}
+	return prefix + e.Difference.Member + " differs"
 }
 func CompareCorpus(expected, actual map[string]any, tolerance []string) error {
 	x, _ := json.Marshal(expected)
@@ -218,12 +276,15 @@ func CompareCorpus(expected, actual map[string]any, tolerance []string) error {
 		deletePointer(left, pointer)
 		deletePointer(right, pointer)
 	}
-	if member := firstCorpusDifference(left, right, ""); member != "" {
-		return fmt.Errorf("%s differs", member)
+	if difference := firstCorpusDifference(left, right, ""); difference != nil {
+		return &CorpusDrift{Difference: *difference}
 	}
 	return nil
 }
 func ReplayCorpus(entry CorpusEntry) error {
+	if err := validateCorpusManifest(entry.Manifest); err != nil {
+		return err
+	}
 	if len(entry.Requests) == 0 || len(entry.ToolResults) == 0 {
 		return errors.New("recorded request or tool-result file is missing")
 	}
@@ -232,7 +293,11 @@ func ReplayCorpus(entry CorpusEntry) error {
 		return err
 	}
 	if err := CompareCorpus(entry.Expected, actual, entry.Manifest.Tolerance); err != nil {
-		return fmt.Errorf("corpus %s: %w", entry.Manifest.ID, err)
+		if drift, ok := err.(*CorpusDrift); ok {
+			drift.ID = entry.Manifest.ID
+			return drift
+		}
+		return err
 	}
 	return nil
 }

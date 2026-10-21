@@ -347,6 +347,20 @@ export function placeState(
   return { instructions: [typeof head === 'string' ? { role: 'system', content: head } : head, { role: 'system', content: state }], messages: history }
 }
 
+/** ADR-0021: steering has the person's request rank even where execution state uses system-tail. */
+function placeSteer(placed:ReturnType<typeof placeState>,steer:string,stated:Map<ModelMessage,ModelMessage|null>):ReturnType<typeof placeState>{
+  if(!steer)return placed
+  const last=placed.messages.at(-1)
+  if(last?.role==='user'){
+    const parts=typeof last.content==='string'?[{type:'text' as const,text:last.content}]:last.content
+    const carried:ModelMessage={...last,content:[...parts,{type:'text',text:steer}]}
+    stated.set(carried,stated.has(last)?stated.get(last)!:last)
+    return {...placed,messages:[...placed.messages.slice(0,-1),carried]}
+  }
+  const trailing:ModelMessage={role:'user',content:steer};stated.set(trailing,null)
+  return {...placed,messages:[...placed.messages,trailing]}
+}
+
 /** The history as it was before `placeState` put the state in it. */
 export function withoutState(messages: ModelMessage[], stated: Map<ModelMessage, ModelMessage | null>): ModelMessage[] {
   return messages.flatMap((message) => (stated.has(message) ? (stated.get(message) === null ? [] : [stated.get(message)!]) : [message]))
@@ -1179,13 +1193,16 @@ export function runVercelLoop(
           // text path every request is a call of its own, so the run's own
           // count is the step.
           toolsClosed=synthesis||progressStep==='finish'||(nativeTools?stepNumber:steps)>=turnLimit-1||context.execution.remaining<=1
+          const steers=context.execution.takeSteers(session.input,context.marker,context.execution.state.used+1,context.policy)
+          for(const event of steers.events)await deliver(event)
           const state=stateText(context.execution.requestState(),session.context?.currentState,reformatting?REFORMAT_INSTRUCTIONS:synthesis?FINISH_RESPONSE_INSTRUCTIONS:progressStep==='recover'?RECOVER_REPEATED_WORK_INSTRUCTIONS:progressStep==='finish'?REPEATED_WORK_INSTRUCTIONS:toolsClosed?finalInstructions:'')
           // Budgeted as one request: the system text and the state together.
           // Images are not text the budget counts: out before, back after (agent#5).
-          lastMessages=await context.messages(withoutImages(withoutState(messages,stated)),system+'\n'+state,schemas)
+          lastMessages=await context.messages(withoutImages(withoutState(messages,stated)),system+'\n'+state+'\n'+steers.text,schemas)
           return {...callOptions(!toolsClosed),
             ...(toolsClosed&&nativeTools?{activeTools:[],toolChoice:'none' as const}:{}),
-            ...placeState(session.model.family,placement,cachedOpening(session.model.family,placement,withImages(lastMessages)),system,state,stated)}
+            ...(steers.text?placeSteer(placeState(session.model.family,placement,cachedOpening(session.model.family,placement,withImages(lastMessages)),system,state,stated),steers.text,stated):{
+            ...placeState(session.model.family,placement,cachedOpening(session.model.family,placement,withImages(lastMessages)),system,state,stated)})}
         },
         // **No retries, deliberately.** The SDK's default is two, with an
         // exponential backoff, and its retryable set includes 409 — which is the

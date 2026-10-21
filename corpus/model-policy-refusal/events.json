@@ -1,1 +1,1 @@
-[{"type":"guardrail","tool":"pace","action":"refused","reason":"pace warning","detail":"The project period is at its warning threshold."},{"type":"end"}]
+[{"type":"message","text":"The policy boundary remains in force."},{"type":"end"}]

@@ -80,6 +80,7 @@
     },
     {
       "type": "proposal",
+      "digest": "sha256:e0db799ad15d17ae7f89aaabfb4e270445adeefdb02591b92353896666c6e8d9",
       "document": {
         "id": "https://example.com/judgment-packs/expense-reimbursement"
       },
