@@ -265,6 +265,19 @@
           "maximum": 256,
           "default": 4
         },
+        "steerBytes": {
+          "description": "ADR-0021: most UTF-8 bytes in one in-flight steer from the person.",
+          "type": "integer",
+          "minimum": 0,
+          "default": 2000
+        },
+        "steersPerRun": {
+          "description": "ADR-0021: most steers accepted in one run, carried through resume.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 256,
+          "default": 4
+        },
         "editsPerTurn": {
           "type": "integer",
           "minimum": 0,

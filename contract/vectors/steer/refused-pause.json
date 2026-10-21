@@ -1,0 +1,6 @@
+{
+  "description": "ADR-0021: a steer during an approval pause is refused because the decision is the only input then.",
+  "schema": "run-event.json",
+  "source": {"harness":{"repository":"Judgment-Pack/judgment-pack-agent","package":"packages/harness"},"files":["packages/harness/execution/controller.ts"]},
+  "items": [{"type":"guardrail","tool":"steer","action":"refused","detail":"A steer is refused while this run waits for the person’s approval decision.","reason":"steer refused"}]
+}

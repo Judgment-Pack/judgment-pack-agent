@@ -92,7 +92,15 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
      * then a chat's index of earlier results, then `STATE_HEADER` and the state: the parts and the
      * order the model wires send in the first user message (`SessionContext.opening`).
      */
+    let invocation=0
     const run = async (prompt: string, instructions: string, phase: 'author' | 'critic' | 'reformat', recorder?: CritiqueRecorder, model?: string, state = '', effort: CodexEffort | undefined = session.effort) => {
+      invocation++
+      const steers=context.execution.takeSteers(session.input,context.marker,invocation,context.policy)
+      for(const event of steers.events)await deliver(event)
+      if(steers.text){
+        if(phase==='author')state=[state,steers.text].filter(Boolean).join('\n\n')
+        else prompt=[prompt,steers.text].filter(Boolean).join('\n\n')
+      }
       const offeredHere = offeredTo(phase)
       const offeredNames = new Set(offeredHere.map(tool => tool.name))
       // The critic's phase is its caller's (it spans the harness's own calls after

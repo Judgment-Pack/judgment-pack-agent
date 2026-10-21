@@ -14,13 +14,14 @@ One event of a run, from the adapter to the host, in order, discriminated by typ
 
 See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](critic.md), [skills.md](skills.md), [budget.md](budget.md), [reasons.md](reasons.md), [checkpoint.md](checkpoint.md).
 
-## The 32 kinds
+## The 33 kinds
 
 | Kind | Defined in | Required beyond type |
 | --- | --- | --- |
 | `execution_checkpoint` | `run-event.json $defs/execution_checkpoint` | `checkpoint` |
 | `budget_paused` | `run-event.json $defs/budget_paused` | `checkpoint` |
 | `approval_requested` | `run-event.json $defs/approval_requested` | `callId`, `name`, `tool`, `source`, `args` |
+| `steered` | `run-event.json $defs/steered` | `bytes`, `atRequest` |
 | `compacted` | `run-event.json $defs/compacted` | `turns`, `bytes`, `digest`, `mode` |
 | `skill_loaded` | `run-event.json $defs/skill_loaded` | `skill`, `bytes` |
 | `skill_unloaded` | `run-event.json $defs/skill_unloaded` | `id` |
@@ -90,6 +91,18 @@ Closed: a member the schema does not name is refused.
 | `tool` | yes | string (min length 1, max length 128) |  |
 | `source` | yes | `tool-offer.json $defs/sourceRecord` |  |
 | `args` | yes | object |  |
+
+### `steered`
+
+ADR-0021: one steer was placed at a request boundary. On an agent capability atRequest is the invocation number.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `type` | yes | const `steered` |  |
+| `bytes` | yes | integer (min 1) |  |
+| `atRequest` | yes | integer (min 1) |  |
 
 ### `compacted`
 
@@ -271,7 +284,7 @@ Open: a member the schema does not name is accepted.
 | `tool` | yes | string |  |
 | `action` | yes | enum `rewrote`, `refused`, `narrowed` |  |
 | `detail` | yes | string |  |
-| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused`, `memory refused`, `edit refused`, `compaction refused`, `output refused`, `records expired`, `identity changed`, `approval downgraded`, `failover refused` |  |
+| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused`, `memory refused`, `edit refused`, `compaction refused`, `output refused`, `records expired`, `identity changed`, `approval downgraded`, `steer refused`, `failover refused` |  |
 
 ### `thinking_unavailable`
 

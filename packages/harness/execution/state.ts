@@ -30,6 +30,10 @@ export interface CompletionRecord {schema?:typeof PROVENANCE_SCHEMA;version?:1;d
 export interface PromptDigest {request:number;sha256:string}
 export interface CompactionSummary {digest:string;turns:number;bytes:number;summary:string;digests:string[]}
 export interface CompactionReport {mode:'index'|'summary';summaries:CompactionSummary[]}
+export interface SteerReport {queued:{text:string;bytes:number}[];delivered:{bytes:number;atRequest:number}[]}
+export function validSteers(v:unknown):v is SteerReport{
+ return object(v)&&exact(v,['queued','delivered'])&&Array.isArray(v.queued)&&Array.isArray(v.delivered)&&v.queued.length<=256&&v.delivered.length<=256&&v.queued.every(row=>object(row)&&exact(row,['text','bytes'])&&typeof row.text==='string'&&row.text.length>0&&count(row.bytes)&&Number(row.bytes)>0&&utf8Bytes(row.text)===row.bytes)&&v.delivered.every(row=>object(row)&&exact(row,['bytes','atRequest'])&&count(row.bytes)&&Number(row.bytes)>0&&count(row.atRequest)&&Number(row.atRequest)>0)
+}
 export interface UsageTokens {inputTokens?:number;outputTokens?:number;reasoningTokens?:number;cacheReadTokens?:number;cacheWriteTokens?:number}
 export interface UsageRow {source:string;connection:string;role:string;requests:number;invocations:number;milliseconds:number;bytes:number;tokens?:UsageTokens}
 export interface UsageLedger {rows:UsageRow[]}
@@ -65,8 +69,9 @@ export interface ExecutionCheckpoint {
   */
  policy?:import('../policy').PolicyMembers;
  crossProvider?:import('../policy').CrossProvider[];
- usage?:UsageLedger;
  compaction?:CompactionReport;
+ steers?:SteerReport;
+ usage?:UsageLedger;
  critic?:CriticRecord;
 }
 export function validCompaction(v:unknown):v is CompactionReport{
@@ -185,7 +190,6 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value.prompts!==undefined&&(!Array.isArray(value.prompts)||value.prompts.length>MAX_PROMPT_DIGESTS||value.prompts.some((row,at,rows)=>!object(row)||!exact(row,['request','sha256'])||!Number.isSafeInteger(row.request)||Number(row.request)<1||at>0&&Number(row.request)<=Number((rows[at-1] as Record<string,unknown>).request)||typeof row.sha256!=='string'||!/^[a-f0-9]{64}$/.test(row.sha256))))return fail()
  if(value.sourceIdentities!==undefined&&!validSourceIdentities(value.sourceIdentities))return fail()
  if(value.sources!==undefined&&!validSourceFigures(value.sources))return fail()
- if(value.usage!==undefined&&!validUsage(value.usage))return fail()
  if(value.approval!==undefined&&!validApproval(value.approval))return fail()
  if(value.outputGuard!==undefined&&!validOutputCounts(value.outputGuard))return fail()
  if(value.memories!==undefined&&!validMemories(value.memories))return fail()
@@ -193,6 +197,8 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value.skills!==undefined&&!validSkillLoads(value.skills))return fail()
  if(value.critic!==undefined&&!validCriticRecord(value.critic))return fail()
  if(value.compaction!==undefined&&!validCompaction(value.compaction))return fail()
+ if(value.steers!==undefined&&!validSteers(value.steers))return fail()
+ if(value.usage!==undefined&&!validUsage(value.usage))return fail()
  if(!Array.isArray(value.operations)||value.operations.length>400||new Set(value.operations.map(o=>o.id)).size!==value.operations.length)return fail()
  for(const op of value.operations){if(!object(op)||!text(op.id,100)||!text(op.name,150)||!['running','complete','failed','interrupted'].includes(String(op.status))||op.result!==undefined&&(!object(op.result)||(op.result.content!==undefined&&(!Array.isArray(op.result.content)||op.result.content.some(p=>!object(p)||p.type!==undefined&&typeof p.type!=='string'||p.text!==undefined&&typeof p.text!=='string')))))return fail()}
  if(!object(value.context)||!text(value.context.scope,100)||!Array.isArray(value.context.entries)||value.context.entries.length>800||new Set(value.context.entries.map(e=>e.id)).size!==value.context.entries.length)return fail()

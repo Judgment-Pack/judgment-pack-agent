@@ -78,8 +78,9 @@ type runState struct {
 
 	// mu guards the delivery to the host; held guards what a tool call sets while an invocation
 	// runs.
-	mu    sync.Mutex
-	ended bool
+	mu         sync.Mutex
+	ended      bool
+	invocation int
 
 	// criticEffort is the critic's effort (ADR-0010): the decision's tier, set before the critic runs.
 	criticEffort string

@@ -8,6 +8,12 @@ Capability records hold the tier map; hosts can override it per connection.
 See the generated provider matrix in `docs/reference/providers.md` at the repository
 root. Scenario 12 exercises two families, and certification prints its measurements.
 
+ADR-0021 steering enters through `Input.Steer`. Both adapters drain the channel
+only at a request boundary (an invocation boundary on the agent capability),
+frame each accepted instruction under the run marker, emit `steered`, and carry
+pending and delivered rows in `checkpoint.steers`. A pending approval accepts
+only its decision, so a steer then is refused.
+
 ADR-0020 adds ordered, same-family `models.<role>.fallback` connections. The
 model adapter switches once on `unavailable`, `rate-limited` after its retry
 rule, or `timeout`, emits `connection_switched`, and resends the rebuilt request

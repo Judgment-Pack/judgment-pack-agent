@@ -89,6 +89,9 @@ var Registry = map[string]func() any{
 	"provenance.json#/$defs/promptDigest":           func() any { return new(ProvenancePromptDigest) },
 	"provenance.json#/$defs/compactionSummary":      func() any { return new(ProvenanceCompactionSummary) },
 	"provenance.json#/$defs/compactionReport":       func() any { return new(ProvenanceCompactionReport) },
+	"provenance.json#/$defs/queuedSteer":            func() any { return new(ProvenanceQueuedSteer) },
+	"provenance.json#/$defs/deliveredSteer":         func() any { return new(ProvenanceDeliveredSteer) },
+	"provenance.json#/$defs/steerReport":            func() any { return new(ProvenanceSteerReport) },
 	"provenance.json#/$defs/engine":                 func() any { return new(string) },
 	"provenance.json#/$defs/criticFigures":          func() any { return new(ProvenanceCriticFigures) },
 	"provenance.json#/$defs/tokenFigures":           func() any { return new(ProvenanceTokenFigures) },
@@ -118,6 +121,7 @@ var Registry = map[string]func() any{
 	"question.json#/$defs/saved":                    func() any { return new(QuestionSaved) },
 	"question.json#/$defs/formatFailure":            func() any { return new(QuestionFormatFailure) },
 	"run-event.json":                                func() any { return new(RunEvent) },
+	"run-event.json#/$defs/steered":                 func() any { return new(RunEventSteered) },
 	"run-event.json#/$defs/compacted":               func() any { return new(RunEventCompacted) },
 	"run-event.json#/$defs/execution_checkpoint":    func() any { return new(RunEventExecutionCheckpoint) },
 	"run-event.json#/$defs/budget_paused":           func() any { return new(RunEventBudgetPaused) },
@@ -400,6 +404,8 @@ type Budget struct {
 	SubagentCatalogueBytes   *int64  `json:"subagentCatalogueBytes,omitzero"`
 	MemoryProposalBytes      *int64  `json:"memoryProposalBytes,omitzero"`
 	MemoryProposalsPerRun    *int64  `json:"memoryProposalsPerRun,omitzero"`
+	SteerBytes               *int64  `json:"steerBytes,omitzero"`
+	SteersPerRun             *int64  `json:"steersPerRun,omitzero"`
 	EditsPerTurn             *int64  `json:"editsPerTurn,omitzero"`
 	EditBytes                *int64  `json:"editBytes,omitzero"`
 	ProposalBytes            *int64  `json:"proposalBytes,omitzero"`
@@ -407,7 +413,7 @@ type Budget struct {
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var budgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "summaryBytes", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "adversarialReview", "criticDefault", "criticReasoningFloor", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds", "skillBytes", "skillsPerRun", "skillsCatalogueBytes", "cataloguedSkills", "cataloguedSubagents", "subagentCatalogueBytes", "memoryProposalBytes", "memoryProposalsPerRun", "editsPerTurn", "editBytes", "proposalBytes"}
+var budgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "summaryBytes", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "adversarialReview", "criticDefault", "criticReasoningFloor", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds", "skillBytes", "skillsPerRun", "skillsCatalogueBytes", "cataloguedSkills", "cataloguedSubagents", "subagentCatalogueBytes", "memoryProposalBytes", "memoryProposalsPerRun", "steerBytes", "steersPerRun", "editsPerTurn", "editBytes", "proposalBytes"}
 
 // UnmarshalJSON decodes a Budget object and keeps the members the schema does not name.
 func (v *Budget) UnmarshalJSON(data []byte) error {
@@ -1105,18 +1111,19 @@ type Checkpoint struct {
 	Critic           *CheckpointCritic           `json:"critic,omitzero"`
 	Policy           map[string]PolicyMember     `json:"policy,omitzero"`
 	CrossProvider    []ProvenanceCrossProvider   `json:"crossProvider,omitzero"`
-	Usage            *Usage                      `json:"usage,omitzero"`
 	Compaction       *ProvenanceCompactionReport `json:"compaction,omitzero"`
 	Memories         *ProvenanceMemories         `json:"memories,omitzero"`
 	Draft            *CheckpointDraft            `json:"draft,omitzero"`
 	OutputGuard      map[string]int64            `json:"outputGuard,omitzero"`
 	Records          *ProvenanceRecordFigures    `json:"records,omitzero"`
 	SourceIdentities []CheckpointSourceIdentity  `json:"sourceIdentities,omitzero"`
+	Steers           *ProvenanceSteerReport      `json:"steers,omitzero"`
+	Usage            *Usage                      `json:"usage,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var checkpointMembers = []string{"schema", "version", "digest", "retainUntil", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "usage", "compaction", "memories", "draft", "outputGuard", "records", "sourceIdentities"}
+var checkpointMembers = []string{"schema", "version", "digest", "retainUntil", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "compaction", "memories", "draft", "outputGuard", "records", "sourceIdentities", "steers", "usage"}
 
 // UnmarshalJSON decodes a Checkpoint object and keeps the members the schema does not name.
 func (v *Checkpoint) UnmarshalJSON(data []byte) error {
@@ -2992,12 +2999,14 @@ type PolicyBudget struct {
 	SubagentCatalogueBytes   *int64 `json:"subagentCatalogueBytes,omitzero"`
 	MemoryProposalBytes      *int64 `json:"memoryProposalBytes,omitzero"`
 	MemoryProposalsPerRun    *int64 `json:"memoryProposalsPerRun,omitzero"`
+	SteerBytes               *int64 `json:"steerBytes,omitzero"`
+	SteersPerRun             *int64 `json:"steersPerRun,omitzero"`
 	EditsPerTurn             *int64 `json:"editsPerTurn,omitzero"`
 	EditBytes                *int64 `json:"editBytes,omitzero"`
 	ProposalBytes            *int64 `json:"proposalBytes,omitzero"`
 }
 
-var policyBudgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "summaryBytes", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds", "skillBytes", "skillsPerRun", "skillsCatalogueBytes", "cataloguedSkills", "cataloguedSubagents", "subagentCatalogueBytes", "memoryProposalBytes", "memoryProposalsPerRun", "editsPerTurn", "editBytes", "proposalBytes"}
+var policyBudgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "summaryBytes", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds", "skillBytes", "skillsPerRun", "skillsCatalogueBytes", "cataloguedSkills", "cataloguedSubagents", "subagentCatalogueBytes", "memoryProposalBytes", "memoryProposalsPerRun", "steerBytes", "steersPerRun", "editsPerTurn", "editBytes", "proposalBytes"}
 
 // UnmarshalJSON decodes a PolicyBudget object and refuses a member the closed schema does not name.
 func (v *PolicyBudget) UnmarshalJSON(data []byte) error {
@@ -3704,6 +3713,34 @@ func (v ProvenanceDelegationReport) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From provenance.json#/$defs/deliveredSteer. ADR-0021: one steer delivered at a model request or
+// agent invocation boundary.
+type ProvenanceDeliveredSteer struct {
+	Bytes     int64 `json:"bytes"`
+	AtRequest int64 `json:"atRequest"`
+}
+
+var provenanceDeliveredSteerMembers = []string{"bytes", "atRequest"}
+
+// UnmarshalJSON decodes a ProvenanceDeliveredSteer object and refuses a member the closed schema does not name.
+func (v *ProvenanceDeliveredSteer) UnmarshalJSON(data []byte) error {
+	type plain ProvenanceDeliveredSteer
+	var p plain
+	extra, err := decodeObject(data, &p, provenanceDeliveredSteerMembers, true)
+	if err != nil {
+		return errorf("ProvenanceDeliveredSteer: %w", err)
+	}
+	*v = ProvenanceDeliveredSteer(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ProvenanceDeliveredSteer object.
+func (v ProvenanceDeliveredSteer) MarshalJSON() ([]byte, error) {
+	type plain ProvenanceDeliveredSteer
+	return encodeObject(plain(v), nil)
+}
+
 // From provenance.json#/$defs/edit.
 type ProvenanceEdit struct {
 	Type     string `json:"type"`
@@ -3950,6 +3987,34 @@ func (v ProvenanceProvider) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From provenance.json#/$defs/queuedSteer. ADR-0021: one person's instruction waiting for the next
+// request boundary.
+type ProvenanceQueuedSteer struct {
+	Text  string `json:"text"`
+	Bytes int64  `json:"bytes"`
+}
+
+var provenanceQueuedSteerMembers = []string{"text", "bytes"}
+
+// UnmarshalJSON decodes a ProvenanceQueuedSteer object and refuses a member the closed schema does not name.
+func (v *ProvenanceQueuedSteer) UnmarshalJSON(data []byte) error {
+	type plain ProvenanceQueuedSteer
+	var p plain
+	extra, err := decodeObject(data, &p, provenanceQueuedSteerMembers, true)
+	if err != nil {
+		return errorf("ProvenanceQueuedSteer: %w", err)
+	}
+	*v = ProvenanceQueuedSteer(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ProvenanceQueuedSteer object.
+func (v ProvenanceQueuedSteer) MarshalJSON() ([]byte, error) {
+	type plain ProvenanceQueuedSteer
+	return encodeObject(plain(v), nil)
+}
+
 // From provenance.json#/$defs/recordFigures. Redactions in this record's storage pass, by stable
 // pattern label; excludes delivered-output counts.
 type ProvenanceRecordFigures struct {
@@ -4048,6 +4113,34 @@ func (v *ProvenanceSourceFigures) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a ProvenanceSourceFigures object.
 func (v ProvenanceSourceFigures) MarshalJSON() ([]byte, error) {
 	type plain ProvenanceSourceFigures
+	return encodeObject(plain(v), nil)
+}
+
+// From provenance.json#/$defs/steerReport. ADR-0021's run report: pending instructions and the
+// deliveries already made, both carried through resume.
+type ProvenanceSteerReport struct {
+	Queued    []ProvenanceQueuedSteer    `json:"queued"`
+	Delivered []ProvenanceDeliveredSteer `json:"delivered"`
+}
+
+var provenanceSteerReportMembers = []string{"queued", "delivered"}
+
+// UnmarshalJSON decodes a ProvenanceSteerReport object and refuses a member the closed schema does not name.
+func (v *ProvenanceSteerReport) UnmarshalJSON(data []byte) error {
+	type plain ProvenanceSteerReport
+	var p plain
+	extra, err := decodeObject(data, &p, provenanceSteerReportMembers, true)
+	if err != nil {
+		return errorf("ProvenanceSteerReport: %w", err)
+	}
+	*v = ProvenanceSteerReport(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ProvenanceSteerReport object.
+func (v ProvenanceSteerReport) MarshalJSON() ([]byte, error) {
+	type plain ProvenanceSteerReport
 	return encodeObject(plain(v), nil)
 }
 
@@ -4286,6 +4379,8 @@ type RunEvent struct {
 	BudgetPaused *RunEventBudgetPaused
 	// ApprovalRequested is set where type is "approval_requested".
 	ApprovalRequested *RunEventApprovalRequested
+	// Steered is set where type is "steered".
+	Steered *RunEventSteered
 	// Compacted is set where type is "compacted".
 	Compacted *RunEventCompacted
 	// SkillLoaded is set where type is "skill_loaded".
@@ -4365,6 +4460,9 @@ func (v *RunEvent) UnmarshalJSON(data []byte) error {
 		case "approval_requested":
 			v.ApprovalRequested = new(RunEventApprovalRequested)
 			return json.Unmarshal(data, v.ApprovalRequested)
+		case "steered":
+			v.Steered = new(RunEventSteered)
+			return json.Unmarshal(data, v.Steered)
 		case "compacted":
 			v.Compacted = new(RunEventCompacted)
 			return json.Unmarshal(data, v.Compacted)
@@ -4469,6 +4567,9 @@ func (v RunEvent) MarshalJSON() ([]byte, error) {
 	}
 	if v.ApprovalRequested != nil {
 		set = append(set, v.ApprovalRequested)
+	}
+	if v.Steered != nil {
+		set = append(set, v.Steered)
 	}
 	if v.Compacted != nil {
 		set = append(set, v.Compacted)
@@ -5854,6 +5955,35 @@ func (v *RunEventSkillUnloaded) UnmarshalJSON(data []byte) error {
 func (v RunEventSkillUnloaded) MarshalJSON() ([]byte, error) {
 	type plain RunEventSkillUnloaded
 	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From run-event.json#/$defs/steered. ADR-0021: one steer was placed at a request boundary. On an
+// agent capability atRequest is the invocation number.
+type RunEventSteered struct {
+	Type      string `json:"type"`
+	Bytes     int64  `json:"bytes"`
+	AtRequest int64  `json:"atRequest"`
+}
+
+var runEventSteeredMembers = []string{"type", "bytes", "atRequest"}
+
+// UnmarshalJSON decodes a RunEventSteered object and refuses a member the closed schema does not name.
+func (v *RunEventSteered) UnmarshalJSON(data []byte) error {
+	type plain RunEventSteered
+	var p plain
+	extra, err := decodeObject(data, &p, runEventSteeredMembers, true)
+	if err != nil {
+		return errorf("RunEventSteered: %w", err)
+	}
+	*v = RunEventSteered(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunEventSteered object.
+func (v RunEventSteered) MarshalJSON() ([]byte, error) {
+	type plain RunEventSteered
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/thinking_unavailable. The reasoning tier the host asked for could not

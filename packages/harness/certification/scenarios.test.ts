@@ -39,6 +39,7 @@ import { PROPOSE_PACK_TOOL } from '../engines/contract'
 import { CONTINUATION, withDelegation } from '../delegation'
 import { DELEGATE_TOOL, readReport, validDelegatedTask, type DelegatedTask, type ReportKind } from '../delegationContract'
 import { validDelegationFigures, validSourceFigures, type ExecutionCheckpoint } from '../execution/state'
+import { ExecutionController } from '../execution/controller'
 import { ChatContext, INDEX_NOTICE, INDEX_SOURCE } from '../context/chat'
 import { CLOSING, OPENING, unframeData } from '../framing'
 import { correctArtifact } from '../execution/correctArtifact'
@@ -2131,6 +2132,7 @@ function policyTableChecks(engineId: import('../host').AssistantEngine, agent: b
         'budget.memoryProposalBytes':1000,'budget.memoryProposalsPerRun':4,'budget.summaryBytes':4000,
         outputGuard:'redact',outputPatterns:[],outputAllow:[],
         'records.retainDays':90,'records.redactOnStore':true,'records.exportFormat':'json',
+        'budget.steerBytes':2000,'budget.steersPerRun':4,
         ...Object.fromEntries(Object.entries(budget).map(([name,value])=>[`budget.${name}`,value])),
         'critic.default':criticDefault, 'critic.reasoningFloor':criticReasoningFloor,
         'failover.classes':['unavailable','rate-limited','timeout'],
@@ -2351,3 +2353,60 @@ function contextCompactionChecks(){
 }
 for(const engineId of MODEL_ENGINES)describe(`engine ${engineId} · scenarios`,contextCompactionChecks)
 for(const engineId of AGENT_ENGINES)describe(`agent engine ${engineId} · scenarios`,contextCompactionChecks)
+
+// 21. ADR-0021 steering a run in flight. The model engines receive a steer between two
+// requests; the agent capability receives it on its next (reformat) invocation.
+function certifySteerPauseAndResume(){
+ const saved:ExecutionCheckpoint={version:1,id:'steer-certification',requestKey:'0'.repeat(64),phase:'work',status:'paused',unit:'model-requests',used:1,limit:20,grants:[],plan:[],explanation:'',operations:[],context:{scope:'steer',entries:[]},approval:{callId:'call',name:'tracker__act',tool:'act',source:{kind:'mcp',id:'tracker',trust:'public'},args:{},state:'asked'},steers:{queued:[{text:'accepted before pause',bytes:21}],delivered:[]}}
+ const controller=new ExecutionController({} as never,{} as never);controller.state=structuredClone(saved)
+ const refused=controller.queueSteers([{steer:{text:'not the decision'}}],{steerBytes:2000,steersPerRun:4})
+ expect(refused).toEqual([{type:'guardrail',tool:'steer',action:'refused',reason:'steer refused',detail:'A steer is refused while this run waits for the person’s approval decision.'}])
+ expect(argumentProblem(runEventSchema.$defs.guardrail,refused[0])).toBeUndefined()
+ expect(controller.state.steers?.queued).toEqual(saved.steers?.queued)
+ controller.state.approval={...controller.state.approval!,state:'refused'}
+ const resumed=controller.takeSteers([],'f'.repeat(32),2,{steerBytes:2000,steersPerRun:4})
+ expect(resumed.text).toContain('\naccepted before pause\n')
+ expect(resumed.events).toEqual([{type:'steered',bytes:21,atRequest:2}])
+}
+for(const engineId of MODEL_ENGINES)for(const answerAs of LEGS)describe(`engine ${engineId} · scenario 21 · ${answerAs}`,()=>{
+ it('21 · steers arrive once, framed and ordered at the next request boundary with an unchanged prefix',async()=>{
+  const input:import('../engine').EngineInput[]=[],turns:Turn[]=[{call:{tool:'get_schema',arguments:{}}},{say:'Done.'}]
+  const answer=answerFrom(turns,answerAs);let at=0
+  const ran=await runOnModelEngine(request=>{if(at++===0)input.push({steer:{text:'first'}},{steer:{text:'second'}});return answer(request)},{engine:await loadEngine(engineId),session:{input,context:request('Check the expense pack.')}})
+  expect(ran.requests).toHaveLength(2)
+  const first=JSON.stringify(ran.requests[0]!.body),second=JSON.stringify(ran.requests[1]!.body)
+  expect(first).not.toContain("the person's new instruction")
+  expect(second).toContain("from the person's new instruction")
+  expect(second.indexOf('first')).toBeLessThan(second.indexOf('second'))
+  expect(ofType(ran.events,'steered')).toEqual([{type:'steered',bytes:5,atRequest:2},{type:'steered',bytes:6,atRequest:2}])
+  const system=(body:unknown)=>JSON.stringify(body).match(/"role":"system","content":"([^"]*)/)?.[1]
+  expect(system(ran.requests[1]!.body)).toBe(system(ran.requests[0]!.body))
+  const rankedInput:import('../engine').EngineInput[]=[],rankedAnswer=answerFrom([{call:{tool:'get_schema',arguments:{}}},{say:'Done.'}],answerAs);let rankedAt=0
+  configureHarness({endpointCapabilities:()=>({statePlacement:'system-tail'})})
+  let ranked:Ran
+  try{ranked=await runOnModelEngine(request=>{if(rankedAt++===0)rankedInput.push({steer:{text:'request rank'}});return rankedAnswer(request)},{engine:await loadEngine(engineId),session:{input:rankedInput,context:request('Check the expense pack.')}})}
+  finally{configureHarness({endpointCapabilities:()=>({})})}
+  expect(ranked.requests,JSON.stringify(ranked.events)).toHaveLength(2)
+  const rankedMessages=ranked.requests[1]!.body.messages as {role:string;content:unknown}[]
+  expect(JSON.stringify(rankedMessages.filter(message=>message.role==='system'))).not.toContain("the person's new instruction")
+  expect(JSON.stringify(rankedMessages.filter(message=>message.role==='user'))).toContain("from the person's new instruction")
+  certifySteerPauseAndResume()
+ })
+})
+for(const engineId of AGENT_ENGINES)describe(`agent engine ${engineId} · scenario 21`,()=>{
+ it('21 · an in-flight steer lands on the next invocation and does not change the stable instructions',async()=>{
+  const input:import('../engine').EngineInput[]=[];let invocation=0
+  const run:AgentRun=async(_request,callbacks)=>{
+   invocation++
+   if(invocation===1){input.push({steer:{text:'Use the new title.'}});await callbacks.event({type:'message',id:'first',text:'not a proposal',phase:'final'});return}
+   await callbacks.event({type:'message',id:'second',text:'```json\n{"proposal":{"document":{"id":"steered"},"unknowns":[]}}\n```',phase:'final'})
+  }
+  const ran=await runOnAgentEngine(run,{engine:await loadEngine(engineId),session:{input,allowConversation:false,context:request('Draft the pack.')}})
+  expect(ran.runs).toHaveLength(2)
+  expect(ran.runs[0]!.prompt).not.toContain("the person's new instruction")
+  expect(ran.runs[1]!.prompt).toContain("from the person's new instruction")
+  expect(ran.runs[1]!.instructions).toBe(ran.runs[0]!.instructions)
+  expect(ofType(ran.events,'steered')).toEqual([{type:'steered',bytes:18,atRequest:2}])
+  certifySteerPauseAndResume()
+ })
+})

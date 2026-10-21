@@ -53,6 +53,25 @@ it('isolates child context and capabilities, then returns the findings to the pa
  expect(writeTool.execute).not.toHaveBeenCalled()
 })
 
+it('keeps a queued parent steer out of a delegated child and delivers it to the parent',async()=>{
+ const input=[{steer:{text:'Use the corrected requirement.'}}]
+ const received:{parent:string[];child:string[]}={parent:[],child:[]}
+ const engine:Engine={id:'vercel',async *start(s){
+  if(delegateIn(s)){
+   await delegateIn(s)!.execute({...request},s.signal)
+   received.parent.push(...(s.input??[]).splice(0).map(item=>item.steer.text))
+   yield {type:'message',text:'Parent continued.'}
+  }else{
+   received.child.push(...(s.input??[]).splice(0).map(item=>item.steer.text))
+   yield {type:'message',text:'Child finding.'}
+  }
+  yield {type:'end'}
+ }}
+ await collect(withDelegation(engine),apiSession({input}))
+ expect(received).toEqual({parent:['Use the corrected requirement.'],child:[]})
+ expect(input).toEqual([])
+})
+
 // agent#14: the failed sibling reaches the parent in the call's result.
 it('limits independent API children to two concurrent workers and retains a failed sibling',async()=>{
  let active=0,peak=0,started=0

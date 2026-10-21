@@ -35,6 +35,21 @@ const MaxAdmissionAttempts = 3
 // dispatch, then the host's function, sent again only after a busy refusal at admission. It answers
 // the final message, or why there is none.
 func (r *runState) invoke(ctx context.Context, prompt, instructions, phase string, recorder *turn.Recorder, model, state string) (string, error) {
+	r.invocation++
+	steers, notices := r.sc.Execution.TakeSteers(r.sc.Marker, r.invocation, *r.sc.Policy)
+	for _, notice := range notices {
+		r.deliver(notice)
+	}
+	if steers != "" {
+		if phase == "author" {
+			if state != "" {
+				state += "\n\n"
+			}
+			state += steers
+		} else {
+			prompt += "\n\n" + steers
+		}
+	}
 	tools := r.offeredTo(phase)
 	offered := map[string]bool{}
 	for _, tool := range tools {

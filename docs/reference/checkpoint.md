@@ -53,13 +53,14 @@ Open: a member the schema does not name is accepted.
 | `critic.trigger` |  | enum `cases`, `changes-existing`, `model-asked` |  |
 | `policy` |  | `policy.json $defs/resolved` |  |
 | `crossProvider` |  | array of `provenance.json $defs/crossProvider` |  |
-| `usage` |  | `usage.json` | ADR-0020. The run's counts so far, carried through interruption and resume and finalized before end. |
 | `compaction` |  | `provenance.json $defs/compactionReport` | ADR-0016: the compaction mode and the replacements already made. Summary text and the digests of the original turns make a resumed request byte-identical without another compactor request. |
 | `memories` |  | `provenance.json $defs/memories` |  |
 | `draft` |  | `$defs/draft` |  |
 | `outputGuard` |  | `provenance.json $defs/outputGuard` |  |
 | `records` |  | `provenance.json $defs/recordFigures` |  |
 | `sourceIdentities` |  | array of `$defs/sourceIdentity` (max items 64) | ADR-0019: per-source identity pins, latched identity withholding and service approval history, separate from figures and the latest approval. Restored on resume; re-approval starts a new run with fresh source declarations and state. |
+| `steers` |  | `provenance.json $defs/steerReport` |  |
+| `usage` |  | `usage.json` | ADR-0020. The run's counts so far, carried through interruption and resume and finalized before end. |
 
 Conditions beyond the members (allOf) are in the schema file.
 

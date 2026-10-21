@@ -6,6 +6,7 @@ import {answer,contextDigest,type ContextLedger} from '../context/ledger'
 import {readCacheKey} from '../context/chat'
 import {MAX_TURNS} from '../engines/contract'
 import {utf8Bytes} from '../context/policy'
+import {frameBlock} from '../framing'
 import {ExecutionPaused,MAX_CHECKPOINT_BYTES,MAX_PROMPT_DIGESTS,readApprovalDecision,readExecution,refusedResult,unknownOutcome,validTaskSteps,type ExecutionCheckpoint} from './state'
 import {CHECKPOINT_SCHEMA,CRITIQUE_SCHEMA,PROVENANCE_SCHEMA,recordsPolicy,refuseExpired,writeRecord,type RecordGuard,type RecordsPolicy} from '../records'
 
@@ -123,6 +124,36 @@ export class ExecutionController {
  }
  /** ADR-0008: whether an act call of this run waits for the person's decision; no request is sent while one does. */
  get approvalAsked(){return this.state.approval?.state==='asked'}
+ /** ADR-0021: accept host input into the checkpointed queue, without placing it in a request. */
+ queueSteers(input:import('../engine').EngineInput[]|undefined,bounds:{steerBytes:number;steersPerRun:number}){
+  const events:import('../engine').AssistantEvent[]=[]
+  this.state.steers??={queued:[],delivered:[]}
+  while(input?.length){
+   const value=input.shift() as unknown
+   const steer=typeof value==='object'&&value!==null?(value as {steer?:unknown}).steer:undefined
+   const text=typeof steer==='object'&&steer!==null?(steer as {text?:unknown}).text:undefined
+   const bytes=typeof text==='string'?utf8Bytes(text):0
+   const refuse=(detail:string)=>events.push({type:'guardrail',tool:'steer',action:'refused',reason:'steer refused',detail})
+   if(this.approvalAsked){refuse('A steer is refused while this run waits for the person’s approval decision.');continue}
+   if(typeof text!=='string'||text.length===0){refuse('A steer must carry non-empty text.');continue}
+   if(bytes>bounds.steerBytes){refuse(`A steer is larger than the ${bounds.steerBytes} byte limit.`);continue}
+   if(this.state.steers.queued.length+this.state.steers.delivered.length>=bounds.steersPerRun){refuse(`This run already accepted its ${bounds.steersPerRun} steers.`);continue}
+   this.state.steers.queued.push({text,bytes})
+  }
+  return events
+ }
+ /** ADR-0021: deliver the checkpointed queue only at this request boundary. */
+ takeSteers(input:import('../engine').EngineInput[]|undefined,marker:string,atRequest:number,bounds:{steerBytes:number;steersPerRun:number}){
+  const events=this.queueSteers(input,bounds)
+  const report=this.state.steers!
+  const queued=report.queued.splice(0)
+  const blocks=queued.map(row=>{
+   report.delivered.push({bytes:row.bytes,atRequest})
+   events.push({type:'steered',bytes:row.bytes,atRequest})
+   return frameBlock("the person's new instruction",row.text,marker)
+  })
+  return {text:blocks.join('\n\n'),events}
+ }
  claim(){if(this.remaining<=0)throw new ExecutionPaused();this.state.used++;this.usageRow('model').requests++}
  /**
   * A first allowance below MAX_TURNS, for a delegated child (agent#15): its profile's request budget,

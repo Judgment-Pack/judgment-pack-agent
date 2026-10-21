@@ -8,6 +8,11 @@ Capability records hold the tier map; hosts can override it per connection.
 See the generated provider matrix in `docs/reference/providers.md` at the repository
 root. Scenario 12 exercises two families, and certification prints its measurements.
 
+The optional `session.input` array is the ADR-0021 in-flight input queue. Append
+`{steer:{text}}`; an engine drains it only at its next request boundary, frames
+each accepted instruction under the run marker, emits `steered`, and records it
+in `checkpoint.steers`. The queue is refused while an approval is asked.
+
 Provider failover is also policy (ADR-0020): `models.<role>.fallback` is an
 ordered list of same-family connection IDs. Only `unavailable`, `rate-limited`
 after the ordinary refusal retries, and `timeout` switch, at most once per
