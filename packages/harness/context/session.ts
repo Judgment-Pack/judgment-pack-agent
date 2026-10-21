@@ -176,6 +176,7 @@ export class SessionContext {
   */
  openSources(declared:Declared,catalogue:boolean,parent?:SourceGate,phase:'plan'|'work'='work'){
   this.execution.state.sources??=[]
+  this.execution.state.sourceIdentities??=[]
   // ADR-0008: the run's approval, in the execution state; no act call is admitted in a delegated child, in Plan mode or while the critic runs.
   const book={
    current:()=>this.execution.state.approval,
@@ -184,7 +185,7 @@ export class SessionContext {
     :phase==='plan'?'Plan mode admits reads only, and no act call; this call was not run and nothing was changed'
     :this.narrowed!==null?'The critic and the reformat run admit no act call; this call was not run and nothing was changed':''
   }
-  this.sources=new SourceGate(declared.entries,declared.sources,this.policy,this.marker,(name,detail,reason)=>this.refuse(name,detail,reason),()=>this.execution.state.sources!,this.capabilities?.toolSchemas,parent,book)
+  this.sources=new SourceGate(declared.entries,declared.sources,this.policy,this.marker,(name,detail,reason)=>this.refuse(name,detail,reason),()=>this.execution.state.sources!,this.capabilities?.toolSchemas,parent,book,event=>this.notices.push(event),this.execution.state.sourceIdentities)
   this.catalogue=catalogue
   for(const held of declared.withheld)this.notices.push({type:'guardrail',tool:held.tool,action:'refused',detail:held.detail})
   this.execution.loadedSchemas=()=>this.sources?.loadedSection()??''
@@ -357,7 +358,7 @@ this.turn=session.context?.chat?.openTurn();this.objective=session.context?.obje
   * A refusal the boundary makes itself: the guardrail event, put on the stream
   * before the call's result, and the failure the model reads.
   */
- refuse(name:string,detail:string,reason?:'approval refused'|'approval pending'|'approval stale'|'skill withheld'|'skill budget'|'review refused'|'subagent refused'|'subagent withheld'|'memory refused'|'edit refused'|'failover refused'):GateViolation{
+ refuse(name:string,detail:string,reason?:'approval refused'|'approval pending'|'approval stale'|'identity changed'|'approval downgraded'|'skill withheld'|'skill budget'|'review refused'|'subagent refused'|'subagent withheld'|'memory refused'|'edit refused'|'failover refused'):GateViolation{
   this.notices.push({type:'guardrail',tool:name,action:'refused',detail,...(reason===undefined?{}:{reason})})
   return new GateViolation(name,detail)
  }

@@ -525,6 +525,31 @@
         "skills": {
           "type": "integer",
           "minimum": 0
+        },
+        "identities": {
+          "description": "Calls the host ran, grouped by the identity pinned on that source (ADR-0019). A changed identity is refused and does not add a call.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identityFigures"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "identityFigures": {
+      "description": "One identity's call count in a source's run figures (ADR-0019). Identity is reported, never a grant.",
+      "type": "object",
+      "required": [
+        "identity",
+        "calls"
+      ],
+      "properties": {
+        "identity": {
+          "$ref": "tool-offer.json#/$defs/identity"
+        },
+        "calls": {
+          "type": "integer",
+          "minimum": 0
         }
       },
       "additionalProperties": false

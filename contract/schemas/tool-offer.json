@@ -327,6 +327,29 @@
         "ask"
       ]
     },
+    "identity": {
+      "description": "The identity a source's calls run as (ADR-0019): person, service or connection, and a label the person recognises. The label is display text, never a credential or token, and grants nothing. The host declares it per source; where it says nothing the package uses connection and the source id as the label. The package shows it, records it and counts calls by it; the model never chooses it.",
+      "type": "object",
+      "required": [
+        "kind",
+        "label"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "person",
+            "service",
+            "connection"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "additionalProperties": false
+    },
     "sourceRecord": {
       "description": "Where a host tool comes from (ADR-0006). Declared by the host on each host tool a source outside the host serves; the package adds tool (the tool's own name at its source) on the offer, carries the record on the tool's tool_call and tool_result events (with receipt on a result where the host's answer gave one), and counts the source in the run report (provenance.json#/$defs/sourceFigures). gateway: a gateway connection the person configured (Databricks, Azure DevOps, Drive), which may give a receipt for each call; mcp: a public MCP server the host connected, whose tool list is pinned by digest at connection time; custom: a tool the person created; exchange (ADR-0009): a skill whose bytes the host fetched from a Judgment Exchange entry, the entry's id and version the record's id and version, which a host tool may not declare. runtime is the Runtime's own row in the run report: its tools come through tools/list behind the gate, carry no declaration, and a host tool declared with kind runtime is refused. Either version or toolListDigest is present; mcp carries toolListDigest. Closed: the package refuses another member before any request (configuration).",
       "type": "object",
@@ -367,6 +390,14 @@
             "public",
             "person"
           ]
+        },
+        "identity": {
+          "$ref": "#/$defs/identity"
+        },
+        "identityDigest": {
+          "description": "The package's pin of identity: sha256: then the SHA-256 of the canonical JSON of identity. It is set with the source's tool-list pin and compared with the identity the host reports before a call; a change withholds the source until the person re-approves it.",
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
         },
         "tool": {
           "description": "The tool's own name at its source, set by the package on the offer and the events from the declaration's name (the wire name is the offered tool's name). A declaration leaves it out.",

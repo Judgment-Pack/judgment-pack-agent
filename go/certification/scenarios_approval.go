@@ -395,6 +395,38 @@ func markerOf(approval *contract.CheckpointApproval) *string {
 	return approval.Marker
 }
 
+// legacyIdentityJSON projects the identity members out when a current event is compared with an
+// older shared vector. The vector remains a valid minimum contract example; scenario 19 carries
+// and tests the identity members themselves.
+func legacyIdentityJSON(value any) []byte {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	var projected any
+	if err := json.Unmarshal(raw, &projected); err != nil {
+		return nil
+	}
+	var strip func(any)
+	strip = func(value any) {
+		switch held := value.(type) {
+		case map[string]any:
+			delete(held, "identity")
+			delete(held, "identityDigest")
+			for _, child := range held {
+				strip(child)
+			}
+		case []any:
+			for _, child := range held {
+				strip(child)
+			}
+		}
+	}
+	strip(projected)
+	out, _ := json.Marshal(projected)
+	return out
+}
+
 // pauseAgainstVector compares the pausing run's last three events with approval/pause.json's items:
 // the same approval_requested, the checkpoint durable and paused with the same approval, then end,
 // the call id and the framing marker being the run's own; the checkpoint's other members (its id, operations, figures) are
@@ -419,11 +451,11 @@ func pauseAgainstVector(requested *contract.RunEventApprovalRequested, emitted *
 		return err.Error()
 	}
 	switch {
-	case !sameJSON([]byte(comparisonJSON(requested)), withCallID(items[0], requested.CallID)):
+	case !sameJSON(legacyIdentityJSON(requested), withCallID(items[0], requested.CallID)):
 		return "approval_requested was " + comparisonJSON(requested)
 	case emitted.Durable == nil || *emitted.Durable != checkpoint.Durable || emitted.Checkpoint.Status != checkpoint.Checkpoint.Status:
 		return "the checkpoint was " + comparisonJSON(emitted)
-	case !sameJSON([]byte(comparisonJSON(emitted.Checkpoint.Approval)), withMarker(withCallID(checkpoint.Checkpoint.Approval, requested.CallID), markerOf(emitted.Checkpoint.Approval))):
+	case !sameJSON(legacyIdentityJSON(emitted.Checkpoint.Approval), withMarker(withCallID(checkpoint.Checkpoint.Approval, requested.CallID), markerOf(emitted.Checkpoint.Approval))):
 		return "the checkpoint's approval was " + comparisonJSON(emitted.Checkpoint.Approval)
 	case !sameJSON([]byte(comparisonJSON(end)), items[2]):
 		return "the last event was " + comparisonJSON(end)
@@ -435,7 +467,7 @@ func pauseAgainstVector(requested *contract.RunEventApprovalRequested, emitted *
 // with prefix ("8 " for a model capability, "8 agent " for an agent capability).
 func approvalPauseFindings(state *paused, prefix string, agent bool) []Finding {
 	var out []Finding
-	record := `{"id":"tracker","kind":"mcp","tool":"create_issue","toolListDigest":"` + state.sources.Tracker.Pinned + `","trust":"public"}`
+	record := `{"id":"tracker","identity":{"kind":"connection","label":"tracker"},"identityDigest":"sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2","kind":"mcp","tool":"create_issue","toolListDigest":"` + state.sources.Tracker.Pinned + `","trust":"public"}`
 	asked := state.file.Asked.Arguments
 	count := func(at int) int {
 		if at < len(state.counts) {

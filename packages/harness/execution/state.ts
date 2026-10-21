@@ -51,6 +51,7 @@ export interface ExecutionCheckpoint {
  prompts?:PromptDigest[];
  /** ADR-0006: the run report's rows by source, the Runtime's first, carried as `used` is. */
  sources?:SourceFigures[];
+ sourceIdentities?:SourceIdentityState[];
  /** ADR-0008: the act call the run paused at for the person's decision, and what became of it. */
  approval?:ApprovalRecord;
  /** ADR-0009: the skills loaded, in load order, carried through a resume (`skills.ts`, SkillGate). */
@@ -92,7 +93,7 @@ const APPROVAL_STATES=['asked','approved','refused','executed','answered']
 const WIRE_NAME=/^[A-Za-z0-9_-]{1,64}$/
 /** A source record as an approval carries it, read closed (`tool-offer.json#/$defs/sourceRecord`). */
 function validRecord(v:unknown):boolean{
- return object(v)&&exact(v,['kind','id','trust','version','toolListDigest','tool','receipt'])&&['runtime','gateway','mcp','custom','exchange'].includes(String(v.kind))&&typeof v.id==='string'&&/^[A-Za-z][A-Za-z0-9-]{0,23}$/.test(v.id)&&['first-party','connected','public','person'].includes(String(v.trust))&&(v.version===undefined||typeof v.version==='string'&&v.version.length>=1&&v.version.length<=64)&&(v.toolListDigest===undefined||typeof v.toolListDigest==='string'&&/^sha256:[0-9a-f]{64}$/.test(v.toolListDigest))&&(v.tool===undefined||text(v.tool,128))&&(v.receipt===undefined||text(v.receipt,128))
+ return object(v)&&exact(v,['kind','id','trust','version','toolListDigest','tool','receipt','identity','identityDigest'])&&['runtime','gateway','mcp','custom','exchange'].includes(String(v.kind))&&typeof v.id==='string'&&/^[A-Za-z][A-Za-z0-9-]{0,23}$/.test(v.id)&&['first-party','connected','public','person'].includes(String(v.trust))&&(v.version===undefined||typeof v.version==='string'&&v.version.length>=1&&v.version.length<=64)&&(v.toolListDigest===undefined||typeof v.toolListDigest==='string'&&/^sha256:[0-9a-f]{64}$/.test(v.toolListDigest))&&(v.tool===undefined||text(v.tool,128))&&(v.receipt===undefined||text(v.receipt,128))&&(v.identity===undefined||object(v.identity)&&exact(v.identity,['kind','label'])&&['person','service','connection'].includes(String(v.identity.kind))&&text(v.identity.label,128)&&v.identity.label.length>=1)&&(v.identityDigest===undefined||typeof v.identityDigest==='string'&&/^sha256:[0-9a-f]{64}$/.test(v.identityDigest))
 }
 /** The checkpoint's approval, read closed (ADR-0008). */
 export function validApproval(v:unknown):v is ApprovalRecord{
@@ -117,10 +118,16 @@ export function unknownOutcome(name:string):McpToolResult{
  * One source's row of the run report (ADR-0006, `toolSources.ts`): the contract's
  * `provenance.json#/$defs/sourceFigures`. The Runtime's row is source `runtime`, kind `runtime`.
  */
-export interface SourceFigures {source:string;kind:'runtime'|'gateway'|'mcp'|'custom'|'exchange';calls:number;refused:number;proposed:number;bytes:number;milliseconds:number;/** ADR-0009: the source's skills the model loaded, each load counted; on a source that declares a skill. */skills?:number}
+export interface IdentityFigures {identity:import('../toolSources').SourceIdentity;calls:number}
+/** ADR-0019: per-source pin, latched withholding and service approval history, separate from figures. */
+export interface SourceIdentityState {source:string;identityDigest:string;withheld:boolean;serviceAsked:boolean}
+export function validSourceIdentities(value:unknown):value is SourceIdentityState[] {
+ return Array.isArray(value)&&value.length<=64&&new Set(value.map(row=>row?.source)).size===value.length&&value.every(row=>object(row)&&exact(row,['source','identityDigest','withheld','serviceAsked'])&&typeof row.source==='string'&&/^[A-Za-z][A-Za-z0-9-]{0,23}$/.test(row.source)&&typeof row.identityDigest==='string'&&/^sha256:[0-9a-f]{64}$/.test(row.identityDigest)&&typeof row.withheld==='boolean'&&typeof row.serviceAsked==='boolean')
+}
+export interface SourceFigures {source:string;kind:'runtime'|'gateway'|'mcp'|'custom'|'exchange';calls:number;refused:number;proposed:number;bytes:number;milliseconds:number;/** ADR-0009: the source's skills the model loaded, each load counted; on a source that declares a skill. */skills?:number;/** ADR-0019: calls the host ran, grouped by reported identity. */identities?:IdentityFigures[]}
 /** The run report's rows, read closed (`checkpoint.json`, sources). */
 export function validSourceFigures(value:unknown):value is SourceFigures[]{
- return Array.isArray(value)&&value.length<=64&&value.every(row=>object(row)&&exact(row,['source','kind','calls','refused','proposed','bytes','milliseconds','skills'])&&typeof row.source==='string'&&/^[A-Za-z][A-Za-z0-9-]{0,23}$/.test(row.source)&&['runtime','gateway','mcp','custom','exchange'].includes(String(row.kind))&&count(row.calls)&&count(row.refused)&&count(row.proposed)&&count(row.bytes)&&count(row.milliseconds)&&(row.skills===undefined||count(row.skills)))
+ return Array.isArray(value)&&value.length<=64&&value.every(row=>object(row)&&exact(row,['source','kind','calls','refused','proposed','bytes','milliseconds','skills','identities'])&&typeof row.source==='string'&&/^[A-Za-z][A-Za-z0-9-]{0,23}$/.test(row.source)&&['runtime','gateway','mcp','custom','exchange'].includes(String(row.kind))&&count(row.calls)&&count(row.refused)&&count(row.proposed)&&count(row.bytes)&&count(row.milliseconds)&&(row.skills===undefined||count(row.skills))&&(row.identities===undefined||Array.isArray(row.identities)&&row.identities.every(item=>object(item)&&exact(item,['identity','calls'])&&object(item.identity)&&exact(item.identity,['kind','label'])&&['person','service','connection'].includes(String(item.identity.kind))&&typeof item.identity.label==='string'&&item.identity.label.length>=1&&item.identity.label.length<=128&&count(item.calls))))
 }
 export function validUsage(value:unknown):value is UsageLedger{
  const row=(v:unknown)=>object(v)&&exact(v,['source','connection','role','requests','invocations','milliseconds','bytes','tokens'])&&text(v.source,128)&&v.source.length>0&&text(v.connection,128)&&v.connection.length>0&&text(v.role,128)&&v.role.length>0&&count(v.requests)&&count(v.invocations)&&count(v.milliseconds)&&count(v.bytes)&&(v.tokens===undefined||validTokens(v.tokens))
@@ -176,6 +183,7 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value.limit!==limit||!Array.isArray(value.plan)||(value.plan.length&&!validTaskSteps(value.plan))||!text(value.explanation,2000)||(value.reason!==undefined&&!text(value.reason,2000))||(value.testCalls!==undefined&&(!Number.isInteger(value.testCalls)||Number(value.testCalls)<0||Number(value.testCalls)>400))||(value.delegation!==undefined&&!validDelegationFigures(value.delegation,value.unit as 'model-requests'|'provider-managed')))return fail()
  if(value.completions!==undefined&&(!Array.isArray(value.completions)||value.completions.length>MAX_REQUEST_ALLOWANCE||value.completions.some(row=>!object(row)||!Number.isInteger(row.request)||Number(row.request)<1||Number(row.request)>Number(value.used)||!['work','synthesis','review'].includes(String(row.phase))||!readCompletion(row.result)||row.attempt!==undefined&&(!Number.isInteger(row.attempt)||Number(row.attempt)<1||Number(row.attempt)>3)||row.failure!==undefined&&!readFailure(row.failure)||row.waitMs!==undefined&&(!Number.isInteger(row.waitMs)||Number(row.waitMs)<0||Number(row.waitMs)>86400000)||row.connection!==undefined&&(!text(row.connection,128)||!row.connection)||row.role!==undefined&&(!text(row.role,128)||!row.role)||['schema','digest','retainUntil'].some(name=>Object.hasOwn(row,name))&&!validRecordHeader(row,PROVENANCE_SCHEMA))))return fail()
  if(value.prompts!==undefined&&(!Array.isArray(value.prompts)||value.prompts.length>MAX_PROMPT_DIGESTS||value.prompts.some((row,at,rows)=>!object(row)||!exact(row,['request','sha256'])||!Number.isSafeInteger(row.request)||Number(row.request)<1||at>0&&Number(row.request)<=Number((rows[at-1] as Record<string,unknown>).request)||typeof row.sha256!=='string'||!/^[a-f0-9]{64}$/.test(row.sha256))))return fail()
+ if(value.sourceIdentities!==undefined&&!validSourceIdentities(value.sourceIdentities))return fail()
  if(value.sources!==undefined&&!validSourceFigures(value.sources))return fail()
  if(value.usage!==undefined&&!validUsage(value.usage))return fail()
  if(value.approval!==undefined&&!validApproval(value.approval))return fail()

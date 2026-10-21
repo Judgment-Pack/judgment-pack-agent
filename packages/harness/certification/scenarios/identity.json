@@ -1,0 +1,41 @@
+{
+  "$comment": "Written by hand (ADR-0019), certification scenario 19. The host declares a gateway source running as a service identity. The first run reads through it while model arguments try to supply another identity; the second reports a changed identity; the third calls an act whose policy says allow and is paused for the person because it is the first service act.",
+  "id": "identity",
+  "request": "Look up expense 12, then submit it.",
+  "identity": { "kind": "service", "label": "expense-bot" },
+  "changedIdentity": { "kind": "person", "label": "A. Reviewer" },
+  "read": {
+    "name": "lookup",
+    "description": "Look up one expense.",
+    "arguments": {
+      "id": 12,
+      "identity": { "kind": "person", "label": "model choice ignored" }
+    },
+    "result": "expense 12"
+  },
+  "act": {
+    "name": "submit",
+    "description": "Submit one expense.",
+    "arguments": { "id": 12 }
+  },
+  "turns": [
+    {
+      "call": {
+        "tool": "expenses__lookup",
+        "arguments": {
+          "id": 12,
+          "identity": { "kind": "person", "label": "model choice ignored" }
+        }
+      }
+    },
+    { "say": "Expense found." }
+  ],
+  "changed": [
+    { "call": { "tool": "expenses__lookup", "arguments": { "id": 12 } } },
+    { "say": "Identity changed." }
+  ],
+  "service": [
+    { "call": { "tool": "expenses__submit", "arguments": { "id": 12 } } },
+    { "say": "unused" }
+  ]
+}
