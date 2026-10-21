@@ -174,6 +174,7 @@ export class SessionContext {
   */
  openSources(declared:Declared,catalogue:boolean,parent?:SourceGate,phase:'plan'|'work'='work'){
   this.execution.state.sources??=[]
+  this.execution.state.sourceIdentities??=[]
   // ADR-0008: the run's approval, in the execution state; no act call is admitted in a delegated child, in Plan mode or while the critic runs.
   const book={
    current:()=>this.execution.state.approval,
@@ -182,7 +183,7 @@ export class SessionContext {
     :phase==='plan'?'Plan mode admits reads only, and no act call; this call was not run and nothing was changed'
     :this.narrowed!==null?'The critic and the reformat run admit no act call; this call was not run and nothing was changed':''
   }
-  this.sources=new SourceGate(declared.entries,declared.sources,this.policy,this.marker,(name,detail,reason)=>this.refuse(name,detail,reason),()=>this.execution.state.sources!,this.capabilities?.toolSchemas,parent,book,event=>this.notices.push(event))
+  this.sources=new SourceGate(declared.entries,declared.sources,this.policy,this.marker,(name,detail,reason)=>this.refuse(name,detail,reason),()=>this.execution.state.sources!,this.capabilities?.toolSchemas,parent,book,event=>this.notices.push(event),this.execution.state.sourceIdentities)
   this.catalogue=catalogue
   for(const held of declared.withheld)this.notices.push({type:'guardrail',tool:held.tool,action:'refused',detail:held.detail})
   this.execution.loadedSchemas=()=>this.sources?.loadedSection()??''

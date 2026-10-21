@@ -328,7 +328,7 @@
       ]
     },
     "identity": {
-      "description": "The identity a source's calls run as (ADR-0017): person, service or connection, and a label the person recognises. The label is display text, never a credential or token, and grants nothing. The host declares it per source; where it says nothing the package uses connection and the source id as the label. The package shows it, records it and counts calls by it; the model never chooses it.",
+      "description": "The identity a source's calls run as (ADR-0019): person, service or connection, and a label the person recognises. The label is display text, never a credential or token, and grants nothing. The host declares it per source; where it says nothing the package uses connection and the source id as the label. The package shows it, records it and counts calls by it; the model never chooses it.",
       "type": "object",
       "required": [
         "kind",

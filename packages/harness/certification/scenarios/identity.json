@@ -1,5 +1,5 @@
 {
-  "$comment": "Written by hand (ADR-0017), certification scenario 19. The host declares a gateway source running as a service identity. The first run reads through it while model arguments try to supply another identity; the second reports a changed identity; the third calls an act whose policy says allow and is paused for the person because it is the first service act.",
+  "$comment": "Written by hand (ADR-0019), certification scenario 19. The host declares a gateway source running as a service identity. The first run reads through it while model arguments try to supply another identity; the second reports a changed identity; the third calls an act whose policy says allow and is paused for the person because it is the first service act.",
   "id": "identity",
   "request": "Look up expense 12, then submit it.",
   "identity": { "kind": "service", "label": "expense-bot" },

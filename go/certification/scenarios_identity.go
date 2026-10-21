@@ -1,6 +1,6 @@
 package certification
 
-// Scenario 19 (ADR-0017): identity on the offer, every source event and the figures; a changed
+// Scenario 19 (ADR-0019): identity on the offer, every source event and the figures; a changed
 // identity withheld; and the first service act asked even where the host policy says allow.
 
 import (

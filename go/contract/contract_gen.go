@@ -34,6 +34,7 @@ var Registry = map[string]func() any{
 	"checkpoint.json#/$defs/approvalContinuation":   func() any { return new(string) },
 	"checkpoint.json#/$defs/draftDocument":          func() any { return new(CheckpointDraftDocument) },
 	"checkpoint.json#/$defs/draft":                  func() any { return new(CheckpointDraft) },
+	"checkpoint.json#/$defs/sourceIdentity":         func() any { return new(CheckpointSourceIdentity) },
 	"delegated-task.json":                           func() any { return new(DelegatedTask) },
 	"delegated-task.json#/$defs/uuid":               func() any { return new(string) },
 	"delegated-task.json#/$defs/time":               func() any { return new(string) },
@@ -1061,39 +1062,40 @@ func (v CapabilityTiers) MarshalJSON() ([]byte, error) {
 // increase; at most one plan step is in_progress. The loaded skills (ADR-0009): skills. The
 // critic's decision (ADR-0010): critic.
 type Checkpoint struct {
-	Version       int64                       `json:"version"`
-	ID            string                      `json:"id"`
-	RequestKey    string                      `json:"requestKey"`
-	Phase         string                      `json:"phase"`
-	Status        string                      `json:"status"`
-	Unit          string                      `json:"unit"`
-	Used          int64                       `json:"used"`
-	Limit         int64                       `json:"limit"`
-	Grants        []CheckpointGrant           `json:"grants"`
-	Plan          []CheckpointTaskStep        `json:"plan"`
-	Explanation   string                      `json:"explanation"`
-	Operations    []CheckpointOperation       `json:"operations"`
-	Completions   []Provenance                `json:"completions,omitzero"`
-	Context       CheckpointContext           `json:"context"`
-	Reason        *string                     `json:"reason,omitzero"`
-	TestCalls     *int64                      `json:"testCalls,omitzero"`
-	Delegation    *ProvenanceDelegationReport `json:"delegation,omitzero"`
-	Handoff       *CheckpointHandoff          `json:"handoff,omitzero"`
-	Approval      *CheckpointApproval         `json:"approval,omitzero"`
-	Prompts       []ProvenancePromptDigest    `json:"prompts,omitzero"`
-	Sources       []ProvenanceSourceFigures   `json:"sources,omitzero"`
-	Skills        []ProvenanceSkillLoad       `json:"skills,omitzero"`
-	Critic        *CheckpointCritic           `json:"critic,omitzero"`
-	Policy        map[string]PolicyMember     `json:"policy,omitzero"`
-	CrossProvider []ProvenanceCrossProvider   `json:"crossProvider,omitzero"`
-	Compaction    *ProvenanceCompactionReport `json:"compaction,omitzero"`
-	Memories      *ProvenanceMemories         `json:"memories,omitzero"`
-	Draft         *CheckpointDraft            `json:"draft,omitzero"`
+	Version          int64                       `json:"version"`
+	ID               string                      `json:"id"`
+	RequestKey       string                      `json:"requestKey"`
+	Phase            string                      `json:"phase"`
+	Status           string                      `json:"status"`
+	Unit             string                      `json:"unit"`
+	Used             int64                       `json:"used"`
+	Limit            int64                       `json:"limit"`
+	Grants           []CheckpointGrant           `json:"grants"`
+	Plan             []CheckpointTaskStep        `json:"plan"`
+	Explanation      string                      `json:"explanation"`
+	Operations       []CheckpointOperation       `json:"operations"`
+	Completions      []Provenance                `json:"completions,omitzero"`
+	Context          CheckpointContext           `json:"context"`
+	Reason           *string                     `json:"reason,omitzero"`
+	TestCalls        *int64                      `json:"testCalls,omitzero"`
+	Delegation       *ProvenanceDelegationReport `json:"delegation,omitzero"`
+	Handoff          *CheckpointHandoff          `json:"handoff,omitzero"`
+	Approval         *CheckpointApproval         `json:"approval,omitzero"`
+	Prompts          []ProvenancePromptDigest    `json:"prompts,omitzero"`
+	Sources          []ProvenanceSourceFigures   `json:"sources,omitzero"`
+	Skills           []ProvenanceSkillLoad       `json:"skills,omitzero"`
+	Critic           *CheckpointCritic           `json:"critic,omitzero"`
+	Policy           map[string]PolicyMember     `json:"policy,omitzero"`
+	CrossProvider    []ProvenanceCrossProvider   `json:"crossProvider,omitzero"`
+	Compaction       *ProvenanceCompactionReport `json:"compaction,omitzero"`
+	Memories         *ProvenanceMemories         `json:"memories,omitzero"`
+	Draft            *CheckpointDraft            `json:"draft,omitzero"`
+	SourceIdentities []CheckpointSourceIdentity  `json:"sourceIdentities,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var checkpointMembers = []string{"version", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "compaction", "memories", "draft"}
+var checkpointMembers = []string{"version", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "compaction", "memories", "draft", "sourceIdentities"}
 
 // UnmarshalJSON decodes a Checkpoint object and keeps the members the schema does not name.
 func (v *Checkpoint) UnmarshalJSON(data []byte) error {
@@ -1458,6 +1460,35 @@ func (v *CheckpointRetainedEntry) UnmarshalJSON(data []byte) error {
 func (v CheckpointRetainedEntry) MarshalJSON() ([]byte, error) {
 	type plain CheckpointRetainedEntry
 	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From checkpoint.json#/$defs/sourceIdentity.
+type CheckpointSourceIdentity struct {
+	Source         string `json:"source"`
+	IdentityDigest string `json:"identityDigest"`
+	Withheld       bool   `json:"withheld"`
+	ServiceAsked   bool   `json:"serviceAsked"`
+}
+
+var checkpointSourceIdentityMembers = []string{"source", "identityDigest", "withheld", "serviceAsked"}
+
+// UnmarshalJSON decodes a CheckpointSourceIdentity object and refuses a member the closed schema does not name.
+func (v *CheckpointSourceIdentity) UnmarshalJSON(data []byte) error {
+	type plain CheckpointSourceIdentity
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointSourceIdentityMembers, true)
+	if err != nil {
+		return errorf("CheckpointSourceIdentity: %w", err)
+	}
+	*v = CheckpointSourceIdentity(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointSourceIdentity object.
+func (v CheckpointSourceIdentity) MarshalJSON() ([]byte, error) {
+	type plain CheckpointSourceIdentity
+	return encodeObject(plain(v), nil)
 }
 
 // From checkpoint.json#/$defs/taskStep.
@@ -3528,7 +3559,7 @@ func (v ProvenanceFiguresTotal) MarshalJSON() ([]byte, error) {
 }
 
 // From provenance.json#/$defs/identityFigures. One identity's call count in a source's run figures
-// (ADR-0017). Identity is reported, never a grant.
+// (ADR-0019). Identity is reported, never a grant.
 type ProvenanceIdentityFigures struct {
 	Identity ToolOfferIdentity `json:"identity"`
 	Calls    int64             `json:"calls"`
@@ -6322,7 +6353,7 @@ func (v ToolOfferHostToolPresentation) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), v.AdditionalMembers)
 }
 
-// From tool-offer.json#/$defs/identity. The identity a source's calls run as (ADR-0017): person,
+// From tool-offer.json#/$defs/identity. The identity a source's calls run as (ADR-0019): person,
 // service or connection, and a label the person recognises. The label is display text, never a
 // credential or token, and grants nothing. The host declares it per source; where it says nothing
 // the package uses connection and the source id as the label. The package shows it, records it and

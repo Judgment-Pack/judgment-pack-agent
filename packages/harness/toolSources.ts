@@ -41,6 +41,7 @@
  * - **the report** (`SourceGate.report`): calls, refusals, proposals, bytes and time per source in
  *   the checkpoint's `sources`, and the source record on the tool's `tool_call` and `tool_result`.
  */
+import type { SourceIdentityState } from './execution/state'
 import { REQUEST_REVIEW } from './criticSwitch'
 import { canonicalJSON } from './context/chat'
 import { answer, contextDigest } from './context/ledger'
@@ -65,7 +66,7 @@ export type EffectClass = (typeof EFFECT_CLASSES)[number]
 export type Approval = 'none' | 'required'
 export const IDENTITY_KINDS = ['person', 'service', 'connection'] as const
 export type IdentityKind = (typeof IDENTITY_KINDS)[number]
-/** The reported identity a source's calls run as (ADR-0017); its label is never a credential. */
+/** The reported identity a source's calls run as (ADR-0019); its label is never a credential. */
 export interface SourceIdentity { kind: IdentityKind; label: string }
 
 /**
@@ -194,7 +195,7 @@ export async function toolListDigest(tools: readonly ListedTool[]): Promise<stri
   return `sha256:${await contextDigest(canonicalJSON(list))}`
 }
 
-/** The pin carried beside a source identity (ADR-0017). */
+/** The pin carried beside a source identity (ADR-0019). */
 export async function identityDigest(identity: SourceIdentity): Promise<string> {
   return `sha256:${await contextDigest(canonicalJSON(identity))}`
 }
@@ -236,6 +237,21 @@ const exactIdentity = (value: Record<string, unknown>): value is Record<string, 
   Object.keys(value).every((member) => member === 'kind' || member === 'label') &&
   IDENTITY_KINDS.includes(value.kind as IdentityKind) && typeof value.label === 'string' && value.label.length >= 1 && value.label.length <= 128
 
+// Credential patterns copied by hand from ADR-0017, contract/patterns/output.json v1
+// (adr-output-boundary); the coordinator will replace this copy with the shared set.
+const CREDENTIAL_LABEL_PATTERNS = [
+  /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/,
+  /\bsk-(?:proj-|ant-api03-)?[A-Za-z0-9_-]{20,}/,
+  /\bAIza[A-Za-z0-9_-]{35}\b/,
+  /\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})/,
+  /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----[\s\S]*-----END (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/,
+  /\b[Bb][Ee][Aa][Rr][Ee][Rr][ \t]+[A-Za-z0-9._~+/=-]+/,
+  // Credential assignments also cover the review's synthetic sk_test label.
+  /\b(?:api[_-]?key|token|secret|password)\s*[:=]\s*\S+/i
+]
+const credentialLabel = (label: unknown): boolean =>
+  typeof label === 'string' && CREDENTIAL_LABEL_PATTERNS.some((pattern) => pattern.test(label))
+
 /** Why a declaration cannot be read, or `''`. */
 function declarationProblem(tool: HostTool): string {
   const source = tool.source as unknown
@@ -274,7 +290,7 @@ function declarationProblem(tool: HostTool): string {
  */
 export function asksApproval(tool: Pick<HostTool, 'source' | 'effectClass' | 'approval'>): boolean {
   const effectClass = tool.effectClass ?? 'act'
-  return tool.source !== undefined && effectClass === 'act' && (tool.approval ?? APPROVAL_DEFAULT[effectClass]) === 'required'
+  return tool.source !== undefined && effectClass === 'act' && ((tool.approval ?? APPROVAL_DEFAULT[effectClass]) === 'required' || tool.source?.identity?.kind === 'service')
 }
 
 /** The effect a tool of each class has on the offer: Plan mode and a child admit reads only. */
@@ -296,6 +312,10 @@ export async function declareSources(hostTools: readonly HostTool[], served: rea
   const declared: { tool: HostTool; wire: string }[] = []
   for (const tool of hostTools) {
     if (tool.source === undefined) continue
+    if (credentialLabel(tool.source?.identity?.label)) {
+      withheld.push({ tool: 'source', detail: 'A source identity label carries a credential; its declaration was withheld before publication.' })
+      continue
+    }
     const problem = declarationProblem(tool)
     if (problem !== '') {
       throw authoredFailure('configuration', `The host tool ${JSON.stringify(String(tool.name).slice(0, 64))} has a source declaration this package cannot read: ${problem}. Nothing was sent.`, 'context')
@@ -672,13 +692,35 @@ export class SourceGate {
     private readonly parent?: SourceGate,
     /** The run's approval (ADR-0008): where an asked one is written, and whether an act call is admitted here. */
     private readonly book?: ApprovalBook,
-    private readonly notify?: SourceNotice
+    private readonly notify?: SourceNotice,
+    private readonly identityState: SourceIdentityState[] = []
   ) {
     const held = this.tally()
     const want: SourceFigures[] = [{ source: 'runtime', kind: 'runtime', calls: 0, refused: 0, proposed: 0, bytes: 0, milliseconds: 0 }, ...sources.map((record) => ({ source: record.id, kind: record.kind, calls: 0, refused: 0, proposed: 0, bytes: 0, milliseconds: 0 }))]
     for (const row of want) if (!held.some((kept) => kept.source === row.source)) held.push(row)
+    for (const record of sources) {
+      if (!record.identityDigest) continue
+      let saved = this.identityStates.find((row) => row.source === record.id)
+      if (saved === undefined) {
+        saved = { source: record.id, identityDigest: record.identityDigest, withheld: false, serviceAsked: false }
+        this.identityStates.push(saved)
+      }
+      if (saved.identityDigest !== record.identityDigest) saved.withheld = true
+      if (saved.withheld) { this.alteredIdentities.add(record.id); this.alteredSources.add(record.id) }
+      if (saved.serviceAsked) this.serviceActs.add(`${record.id}\u0000${saved.identityDigest}`)
+    }
     const approval = book?.current()
-    if (approval?.source.identity?.kind === 'service' && approval.source.identityDigest !== undefined) this.serviceActs.add(`${approval.source.id}\u0000${approval.source.identityDigest}`)
+    if (approval?.source.identity?.kind === 'service' && approval.source.identityDigest !== undefined) this.rememberService(approval.source.id, approval.source.identityDigest)
+  }
+
+  private get identityStates(): SourceIdentityState[] {
+    return this.parent ? this.parent.identityStates : this.identityState
+  }
+
+  private rememberService(source: string, digest: string): void {
+    this.serviceActs.add(`${source}\u0000${digest}`)
+    const saved = this.identityStates.find((row) => row.source === source && row.identityDigest === digest)
+    if (saved) saved.serviceAsked = true
   }
 
   /** The rows this run reports into: its own, or its delegating run's, which is the turn's. */
@@ -723,11 +765,15 @@ export class SourceGate {
   }
 
   private async identityChanged(entry: SourceEntry): Promise<boolean> {
+    if (this.alteredIdentities.has(entry.record.id)) return true
     const check = entry.declared.source?.currentIdentity
     if (check === undefined) return this.alteredIdentities.has(entry.record.id)
     let changed = true
     try { changed = await identityDigest(await check()) !== entry.record.identityDigest } catch { /* withheld */ }
-    if (changed) { this.alteredIdentities.add(entry.record.id); this.alteredSources.add(entry.record.id) }
+    if (changed) {
+      this.alteredIdentities.add(entry.record.id); this.alteredSources.add(entry.record.id)
+      this.identityStates.find((row) => row.source === entry.record.id)!.withheld = true
+    }
     return changed
   }
 
@@ -751,7 +797,7 @@ export class SourceGate {
   /** Whether a call of `name` is an act whose approval the host's policy answers (ADR-0008). */
   needsApproval(name: string): boolean {
     const entry = this.entries.get(name)
-    return entry !== undefined && entry.effectClass === 'act' && entry.approval === 'required'
+    return entry !== undefined && entry.effectClass === 'act' && (entry.approval === 'required' || entry.record.identity.kind === 'service')
   }
 
   /**
@@ -793,7 +839,8 @@ export class SourceGate {
       this.mark(name, callId, {})
     } else {
       let given: unknown
-      if (entry.declared.approve === undefined) given = 'ask'
+      if (entry.approval === 'none') given = 'allow'
+      else if (entry.declared.approve === undefined) given = 'ask'
       else {
         try { given = entry.declared.approve({ name, tool: entry.record.tool!, source: { ...entry.record }, args: structuredClone(args) }) } catch { given = 'refuse' }
       }
@@ -805,11 +852,13 @@ export class SourceGate {
         const detail = `${name} acts as service identity ${entry.record.identity.label}; the first act call of this source in a run is asked even though the host policy allowed it.`
         this.notify?.({ type: 'guardrail', tool: name, action: 'rewrote', detail, reason: 'approval downgraded' })
       }
-      if (firstServiceAct && answer === 'ask') this.serviceActs.add(serviceKey)
       // A run with nowhere to write the pause cannot ask: its call is refused.
       if (answer === 'ask' && this.book === undefined) answer = 'refuse'
       if (answer === 'refuse') detail = `${name} acts on ${id}, and the host's approval policy refused this call; it was not run and nothing was changed`
-      if (answer === 'ask') this.book!.ask({ callId: drawn, name, tool: entry.record.tool!, source: { ...entry.record }, args: structuredClone(args), state: 'asked' })
+      if (answer === 'ask') {
+        this.book!.ask({ callId: drawn, name, tool: entry.record.tool!, source: { ...entry.record }, args: structuredClone(args), state: 'asked' })
+        if (firstServiceAct) this.rememberService(id, entry.record.identityDigest)
+      }
     }
     // An asked call is never handed to the host, so its decision is not kept for a `call`. A kept
     // decision is tied to its call's arguments too: a call that reaches the gate with others is refused.

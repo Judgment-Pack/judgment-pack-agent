@@ -353,6 +353,327 @@ func TestALaterServiceActFollowsAllowAfterAnAskedActIsRestored(t *testing.T) {
 	}
 }
 
+func TestMalformedCurrentIdentityProducesValidRefusal(t *testing.T) {
+	for _, current := range []contract.ToolOfferIdentity{{}, {Kind: "service"}, {Kind: "service", Label: strings.Repeat("x", 129)}} {
+		tool := identityServiceTool()
+		tool.EffectClass, tool.Approval = "read", "none"
+		tool.Source.CurrentIdentity = func(context.Context) (contract.ToolOfferIdentity, error) { return current, nil }
+		g, tools, _ := sourceGate(t, []HostTool{tool}, Defaults, false)
+		if _, err := callThrough(g, tools, "expenses__submit", `{}`); err == nil {
+			t.Fatal("malformed current identity ran")
+		}
+		notices := g.TakeNotices()
+		if len(notices) != 1 || notices[0].Guardrail == nil {
+			t.Fatal("missing refusal guardrail")
+		}
+		raw, err := json.Marshal(notices[0].Guardrail)
+		if err != nil {
+			t.Fatal(err)
+		}
+		value, err := ParseJSON(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if problem := ArgumentProblem(readJSON(t, "contract/schemas/run-event.json").Get("$defs").Get("guardrail"), value); problem != "" {
+			t.Fatal(problem)
+		}
+	}
+}
+
+func TestFirstServiceActWithApprovalNoneIsAsked(t *testing.T) {
+	for _, withPolicy := range []bool{false, true} {
+		tool := identityServiceTool()
+		tool.Approval = "none"
+		if !withPolicy {
+			tool.Approve = nil
+		}
+		ran := 0
+		tool.Execute = func(context.Context, json.RawMessage) (ToolResult, error) { ran++; return ToolResult{}, nil }
+		g, tools, _ := sourceGate(t, []HostTool{tool}, Defaults, false)
+		b := &book{}
+		g.SetApprovals(b)
+		if !g.NeedsApproval("expenses__submit") || !AsksApproval(tool) {
+			t.Fatal("approval none bypassed the first service act")
+		}
+		_, err := callThrough(g, tools, "expenses__submit", `{}`)
+		if !errors.Is(err, ErrApprovalHeld) || b.approval == nil || ran != 0 {
+			t.Fatalf("first act: %v, %+v, ran %d", err, b.approval, ran)
+		}
+		notices := g.TakeNotices()
+		if len(notices) != 1 || notices[0].Guardrail.Reason == nil || *notices[0].Guardrail.Reason != "approval downgraded" {
+			t.Fatalf("downgrade: %+v", notices)
+		}
+		b.approval.State = "approved"
+		_, executed, err := g.Approved(context.Background(), *b.approval, tools["expenses__submit"].Execute)
+		if err != nil || !executed || ran != 1 {
+			t.Fatal("approved call did not run")
+		}
+		b.approval = nil
+		if _, err := callThrough(g, tools, "expenses__submit", `{}`); err != nil || ran != 2 {
+			t.Fatalf("later call: %v, ran %d", err, ran)
+		}
+	}
+}
+
+func TestEveryServiceActWithoutAnApprovalBookIsRefused(t *testing.T) {
+	for _, approval := range []string{"none", "required"} {
+		tool := identityServiceTool()
+		tool.Approval = approval
+		ran := 0
+		tool.Execute = func(context.Context, json.RawMessage) (ToolResult, error) { ran++; return ToolResult{}, nil }
+		state := []contract.CheckpointSourceIdentity{}
+		g, tools, _ := sourceGate(t, []HostTool{tool}, Defaults, false, &state)
+		for _, args := range []string{`{}`, `{"amount":"` + strings.Repeat("x", 129) + `"}`} {
+			if _, err := callThrough(g, tools, "expenses__submit", args); err == nil {
+				t.Fatal("call without an approval book ran")
+			}
+			notices := g.TakeNotices()
+			raw, _ := json.Marshal(notices[len(notices)-1].Guardrail)
+			value, _ := ParseJSON(raw)
+			if problem := ArgumentProblem(readJSON(t, "contract/schemas/run-event.json").Get("$defs").Get("guardrail"), value); problem != "" {
+				t.Fatal(problem)
+			}
+		}
+		if ran != 0 || state[0].ServiceAsked {
+			t.Fatal("unrecorded approval consumed the safeguard")
+		}
+	}
+}
+
+// A run ending at another pause cannot record this approval either.
+type unavailableIdentityBook struct{ book }
+
+func (b *unavailableIdentityBook) Ask(contract.CheckpointApproval) bool { return false }
+func TestUnrecordedServiceApprovalDoesNotConsumeSafeguard(t *testing.T) {
+	g, _, _ := sourceGate(t, []HostTool{identityServiceTool()}, Defaults, false)
+	g.SetApprovals(&unavailableIdentityBook{})
+	for range 2 {
+		answer, _, _ := g.Decide(context.Background(), "expenses__submit", json.RawMessage(`{}`), "call", false)
+		if answer != "closed" {
+			t.Fatalf("unrecorded approval: %s", answer)
+		}
+	}
+}
+
+func TestCredentialLabelVectorsAreWithheldBeforePublication(t *testing.T) {
+	vector := readJSON(t, "contract/vectors/identity/credential-labels.json")
+	for _, label := range vector.Get("labels").Items() {
+		for _, name := range []string{"submit", "", strings.Repeat("x", 129)} {
+			tool := identityServiceTool()
+			tool.Name, tool.Source.Identity.Label = name, label.Str()
+			declared, err := DeclareSources([]HostTool{tool}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(declared.HostTools) != 0 || len(declared.Sources) != 0 || len(declared.Entries) != 0 {
+				t.Fatal("credential declaration published")
+			}
+			state := []contract.CheckpointSourceIdentity{}
+			g, tools, rows := sourceGate(t, []HostTool{tool}, Defaults, false, &state)
+			notices := g.TakeNotices()
+			if len(notices) != 1 {
+				t.Fatalf("notices: %+v", notices)
+			}
+			sameAsCurrent(t, "credential label refusal", notices[0].Guardrail, vector.Get("items").Items()[0])
+			raw, _ := json.Marshal(notices[0].Guardrail)
+			value, _ := ParseJSON(raw)
+			if problem := ArgumentProblem(readJSON(t, "contract/schemas/run-event.json").Get("$defs").Get("guardrail"), value); problem != "" {
+				t.Fatal(problem)
+			}
+			if len(tools) != 0 || len(state) != 0 || len(*rows) != 1 || (*rows)[0].Source != "runtime" {
+				t.Fatal("credential reached an offer, figure or checkpoint")
+			}
+			if strings.Contains(string(raw), label.Str()) {
+				t.Fatal("credential reached a notice")
+			}
+		}
+	}
+}
+
+func TestIdentityWithholdingAndPinSurviveRestore(t *testing.T) {
+	current := contract.ToolOfferIdentity{Kind: "service", Label: "different-bot"}
+	tool := identityServiceTool()
+	tool.EffectClass, tool.Approval = "read", "none"
+	tool.Source.CurrentIdentity = func(context.Context) (contract.ToolOfferIdentity, error) { return current, nil }
+	state := []contract.CheckpointSourceIdentity{}
+	g, tools, _ := sourceGate(t, []HostTool{tool}, Defaults, false, &state)
+	if _, err := callThrough(g, tools, "expenses__submit", `{}`); err == nil {
+		t.Fatal("changed identity ran")
+	}
+	checkpoint, err := ReadExecution(vectorItems(t, "identity/checkpoint.json")[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint.SourceIdentities = state
+	execution, err := executionOf(checkpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := execution.Value()
+	restored, err := ReadExecution(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !restored.SourceIdentities[0].Withheld || restored.SourceIdentities[0].IdentityDigest != IdentityDigest(*tool.Source.Identity) {
+		t.Fatal("lost pin or withholding")
+	}
+	current = *tool.Source.Identity
+	again, tools, _ := sourceGate(t, []HostTool{tool}, Defaults, false, &restored.SourceIdentities)
+	if _, err := callThrough(again, tools, "expenses__submit", `{}`); err == nil {
+		t.Fatal("restored original identity bypassed withholding")
+	}
+	notices := again.TakeNotices()
+	if *notices[len(notices)-1].Guardrail.Reason != "identity changed" {
+		t.Fatal("missing reason")
+	}
+	// Host re-approval supplies fresh declarations in a new run, with fresh checkpoint state.
+	fresh, tools, _ := sourceGate(t, []HostTool{tool}, Defaults, false)
+	if _, err := callThrough(fresh, tools, "expenses__submit", `{}`); err != nil {
+		t.Fatal(err)
+	}
+	// Changing the declaration pin in the saved run cannot clear the latch.
+	tool.Source.Identity = &contract.ToolOfferIdentity{Kind: "person", Label: "new-label"}
+	changed, tools, _ := sourceGate(t, []HostTool{tool}, Defaults, false, &restored.SourceIdentities)
+	if _, err := callThrough(changed, tools, "expenses__submit", `{}`); err == nil {
+		t.Fatal("new declaration cleared saved withholding")
+	}
+}
+
+func TestTwoSourcesServiceHistorySurvivesLatestApproval(t *testing.T) {
+	a, b := identityServiceTool(), identityServiceTool()
+	b.Source.ID = "billing"
+	state := []contract.CheckpointSourceIdentity{}
+	g, tools, _ := sourceGate(t, []HostTool{a, b}, Defaults, false, &state)
+	book := &book{}
+	g.SetApprovals(book)
+	for _, name := range []string{"expenses__submit", "billing__submit"} {
+		if _, err := callThrough(g, tools, name, `{}`); !errors.Is(err, ErrApprovalHeld) {
+			t.Fatalf("first act: %v", err)
+		}
+		book.approval.State = "answered"
+	}
+	checkpoint, err := ReadExecution(vectorItems(t, "identity/checkpoint.json")[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint.SourceIdentities, checkpoint.Approval = state, book.approval
+	execution, err := executionOf(checkpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := execution.Value()
+	restored, err := ReadExecution(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, tools, _ := sourceGate(t, []HostTool{a, b}, Defaults, false, &restored.SourceIdentities)
+	book.approval = restored.Approval
+	again.SetApprovals(book)
+	for _, name := range []string{"expenses__submit", "billing__submit"} {
+		if _, err := callThrough(again, tools, name, `{}`); err != nil {
+			t.Fatalf("repeated approval for %s: %v", name, err)
+		}
+	}
+}
+
+func TestRestoredIdentityPinRefusesRedeclarationBeforeWithholding(t *testing.T) {
+	tool := identityServiceTool()
+	tool.EffectClass = "read"
+	state := []contract.CheckpointSourceIdentity{}
+	sourceGate(t, []HostTool{tool}, Defaults, false, &state)
+	pin := state[0].IdentityDigest
+	if state[0].Withheld {
+		t.Fatal("fresh identity was withheld")
+	}
+	checkpoint, err := ReadExecution(vectorItems(t, "identity/checkpoint.json")[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint.SourceIdentities = state
+	execution, err := executionOf(checkpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored, err := ReadExecution(execution.Value())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tool.Source.Identity = &contract.ToolOfferIdentity{Kind: "person", Label: "changed-label"}
+	g, tools, _ := sourceGate(t, []HostTool{tool}, Defaults, false, &restored.SourceIdentities)
+	if _, err := callThrough(g, tools, "expenses__submit", `{}`); err == nil {
+		t.Fatal("redeclared identity bypassed saved pin")
+	}
+	if !restored.SourceIdentities[0].Withheld || restored.SourceIdentities[0].IdentityDigest != pin {
+		t.Fatal("saved pin replaced")
+	}
+}
+
+func TestIdentitySessionSnapshotRestoresPinsAndServiceHistory(t *testing.T) {
+	current := contract.ToolOfferIdentity{Kind: "service", Label: "expense-bot"}
+	a, b := identityServiceTool(), identityServiceTool()
+	a.Source.CurrentIdentity = func(context.Context) (contract.ToolOfferIdentity, error) { return current, nil }
+	b.Source.ID = "billing"
+	session, _ := trackedSession(t)
+	session.HostTools = []HostTool{a, b}
+	first := openRun(t, session)
+	defer first.Context.Close()
+	for _, name := range []string{"expenses__submit", "billing__submit"} {
+		answer, _, _ := first.Context.Sources.Decide(context.Background(), name, json.RawMessage(`{}`), "", false)
+		if answer != "ask" {
+			t.Fatalf("first service act: %s", answer)
+		}
+		first.Context.Execution.State.Approval.State = "answered"
+	}
+	current.Label = "changed-bot"
+	if _, err := hostTool(t, first, "expenses__submit").Execute(context.Background(), json.RawMessage(`{}`)); err == nil {
+		t.Fatal("changed identity ran")
+	}
+	saved, err := first.Context.Execution.Snapshot("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sameAsCurrent(t, "session identity checkpoint", saved.SourceIdentities, vectorItems(t, "identity/checkpoint.json")[0].Get("sourceIdentities"))
+	raw, err := json.Marshal(saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := ParseJSON(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.Context.Execution, err = ReadExecution(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first.Context.Close()
+	current.Label = "expense-bot"
+	restored := openRun(t, session)
+	defer restored.Context.Close()
+	if _, err := hostTool(t, restored, "expenses__submit").Execute(context.Background(), json.RawMessage(`{}`)); err == nil {
+		t.Fatal("restored identity bypassed withholding")
+	}
+	if _, err := hostTool(t, restored, "billing__submit").Execute(context.Background(), json.RawMessage(`{}`)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestIdentityCheckpointReaderRejectsMalformedState(t *testing.T) {
+	vector := vectorItems(t, "identity/checkpoint.json")[0]
+	checkpoint, err := ReadExecution(vector)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sameAsCurrent(t, "identity checkpoint vector", checkpoint, vector)
+	for _, raw := range []string{`[null]`, `[{}]`, `[{"source":"expenses","identityDigest":"","withheld":false,"serviceAsked":true}]`, `[{"source":"expenses","identityDigest":"sha256:825065f93b600dea85b905f0e53d8974bfda1f1257b1a7a0dce98457143a0a9a","withheld":"false","serviceAsked":true}]`} {
+		malformed, _ := ParseJSON([]byte(raw))
+		copy, _ := ParseJSON(vector.JSON())
+		copy.Set("sourceIdentities", malformed)
+		if _, err := ReadExecution(copy); err == nil {
+			t.Fatalf("accepted malformed saved state: %s", raw)
+		}
+	}
+}
+
 func TestIdentityFiguresSurviveCheckpointJSON(t *testing.T) {
 	want := vectorItems(t, "identity/figures.json")[0]
 	var figures contract.ProvenanceSourceFigures
@@ -401,7 +722,7 @@ func TestADescriptionIsBoundedAndFramedAForgedClosingLineIncluded(t *testing.T) 
 }
 
 // sourceGate is a gate over the declarations' offer, its rows collected.
-func sourceGate(t *testing.T, tools []HostTool, policy Policy, catalogue bool) (*SourceGate, map[string]HostTool, *[]contract.ProvenanceSourceFigures) {
+func sourceGate(t *testing.T, tools []HostTool, policy Policy, catalogue bool, identityState ...*[]contract.CheckpointSourceIdentity) (*SourceGate, map[string]HostTool, *[]contract.ProvenanceSourceFigures) {
 	t.Helper()
 	out, err := DeclareSources(tools, nil)
 	if err != nil {
@@ -414,7 +735,7 @@ func sourceGate(t *testing.T, tools []HostTool, policy Policy, catalogue bool) (
 	shown, _, _ := OfferSources(out.HostTools, out.Entries, offerPolicy, sourceMarker)
 	rows := &[]contract.ProvenanceSourceFigures{}
 	held := policy
-	gate := NewSourceGate(out, &held, sourceMarker, "json-schema", func() *[]contract.ProvenanceSourceFigures { return rows }, nil)
+	gate := NewSourceGate(out, &held, sourceMarker, "json-schema", func() *[]contract.ProvenanceSourceFigures { return rows }, nil, identityState...)
 	byName := map[string]HostTool{}
 	for _, tool := range shown {
 		byName[tool.Name] = tool

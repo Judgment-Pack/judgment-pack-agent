@@ -303,6 +303,9 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 	if handoff := value.Get("handoff"); handoff != nil && !ValidHandoff(handoff) {
 		return nil, errSavedExecution
 	}
+	if identities := value.Get("sourceIdentities"); identities != nil && !ValidSourceIdentities(identities) {
+		return nil, errSavedExecution
+	}
 	if sources := value.Get("sources"); sources != nil && !ValidSourceFigures(sources) {
 		return nil, errSavedExecution
 	}
@@ -560,6 +563,21 @@ func ValidHandoff(v *Value) bool {
 	}
 	answered := held.State == "answered" || held.State == "continued"
 	return answered == (held.Answer != nil)
+}
+
+// ValidSourceIdentities reads ADR-0019's checkpoint state closed, including unique source ids.
+func ValidSourceIdentities(value *Value) bool {
+	if !value.IsArray() || value.Len() > 64 {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, row := range value.Items() {
+		if !isObject(row) || !hasOnly(row, "source", "identityDigest", "withheld", "serviceAsked") || !row.Get("source").IsString() || !sourceID.MatchString(row.Get("source").Str()) || !row.Get("identityDigest").IsString() || !sourceDigest.MatchString(row.Get("identityDigest").Str()) || (row.Get("withheld") == nil || row.Get("withheld").Kind() != KindBool) || (row.Get("serviceAsked") == nil || row.Get("serviceAsked").Kind() != KindBool) || seen[row.Get("source").Str()] {
+			return false
+		}
+		seen[row.Get("source").Str()] = true
+	}
+	return true
 }
 
 // approvalStates are the states of an act call paused for the person's decision (ADR-0008).

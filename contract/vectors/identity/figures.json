@@ -1,5 +1,5 @@
 {
-  "description": "ADR-0017: a source's run figures count calls under the pinned identities that ran them. Written by hand.",
+  "description": "ADR-0019: a source's run figures count calls under the pinned identities that ran them. Written by hand.",
   "schema": "provenance.json#/$defs/sourceFigures",
   "source": {
     "harness": {

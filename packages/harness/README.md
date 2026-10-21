@@ -339,13 +339,18 @@ gets a view of its parent's that shows it its references and what it reads itsel
 A tool from a gateway connection, a public MCP server or the person is a host tool whose declaration
 carries `source` (`ToolSource`: `kind` `gateway`, `mcp` or `custom`, `id`, `trust`, and `version` or,
 for an MCP server, the `toolListDigest` the person approved, with `currentDigest()` to check the
-list it serves now). ADR-0017 adds `identity` (`person`, `service` or `connection`, with a
+list it serves now). ADR-0019 adds `identity` (`person`, `service` or `connection`, with a
 recognisable label that is never a credential) and `currentIdentity()`; absent identity defaults to
 the connection labelled by the source id. The offer says `runs as: <label>`, every call and result
 carries the pinned identity, and source figures count calls per identity. A changed identity is
 withheld until re-approval. The first `act` under a service identity is asked once per run even when
-the policy says `allow`, with an `approval downgraded` guardrail; model arguments never choose the
-identity. A declaration optionally carries `effectClass` (`read`, `propose`, `act`; `act` where absent),
+the policy says `allow` or the declaration says `approval: none`, with an `approval downgraded`
+guardrail. An ask counts only after the approval book records it; without a book every attempt
+is refused. Credential-bearing labels are withheld at declaration with a generic guardrail.
+The checkpoint's `sourceIdentities` retains the pin, withholding and per-source ask history
+across resume, separately from the latest approval. Re-approval supplies fresh declarations
+and identity state in a new run. Model arguments never choose the identity.
+A declaration optionally carries `effectClass` (`read`, `propose`, `act`; `act` where absent),
 `approval` (`none`, `required`; required for `act` where absent) and `approve({name, tool, source, args})`, the
 host's approval policy (ADR-0008), handed the wire name, the tool's own name, its source record and a copy of the
 arguments and answering at once `'allow'`, `'refuse'` or `'ask'` (no policy asks); on `'ask'` the run pauses
@@ -636,7 +641,7 @@ it. The suite is `certification/scenarios.test.ts`; its turns and runs are drive
 | 8 The approval pause (ADR-0008): scenario 7's server, its policy asking about `create_issue`; two `create_issue` calls in one answer; the paused checkpoint continued from its JSON text with a decision for another call, refused with a note, approved and broken off after the result was written, and once more from there | `approval_requested` in place of the call, the checkpoint paused and durable, `end`, nothing run; the second call refused with the `approval pending` guardrail; the decision for another call refused before anything runs; refused: the result and the note in one data block, `answered`; approved: written and acknowledged, run once, its result written and acknowledged; the restart runs the continuation and not the call; the continuation one line and one block after the request text; one more model request on the model engine, no invented figure on the agent engine | 8 | 8 |
 | 9 Skills (ADR-0009): 42 skills declared beside the custom read, 40 admissible past `cataloguedSkills`, one with a changed bundle and one naming `write_file`; two loads (one poisoned), the read, `write_file`, a load, an unload, a fourth load and one past `skillsPerRun`; a fresh session restored from the last checkpoint's JSON text with one skill withdrawn; a third run with the critic on, the author and the critic each loading the same skill | the catalogue of 32 with its guardrails; each load and unload between its call and its result; the block after the history on every later request with the tool list and the system text the same bytes (the agent engine: in `load_skill`'s answer); the load past the budget refused; the poisoned skill held off; the loaded set and each source's loads; the restore and the withdrawn skill's guardrail; the critic sees the loaded skill (its step note on the model engines, the block in its `load_skill` answer on the agent engine) | 8 | 8 |
 | 10 The critic's switch (ADR-0010): the runs of `critic-switch.json`, in order: `auto` with declared cases, a conversation turn, an existing pack and a new one, the model's ask (twice), an ask under `off`, `on`, a reviewer under `on`, the critic at the author's tier and lowered, a run broken off at the ask and resumed, and the measurement's four runs; on the agent engine three delegating responses | `cases` before the critique with the durable checkpoint carrying it; `no-proposal`; `changes-existing`, and `table` with no critic; `model-asked`, the second ask refused with `review refused`, the critic never offered it; the ask under `off` refused, no critic; `person`; `reviewer-assigned`; the tier in the decision and on the critic's requests or run; the resume's `model-asked` and its own ask refused; the measurement's table; on the agent engine a batch of three refused under `auto`, two proceeding with the critic as the fifth run, three proceeding under `off` | 10 | 11 |
-| 19 Identity per tool call (ADR-0017): a gateway runs as a service, changes identity, and offers an act whose policy says allow | the framed identity line; the host identity on every event despite a model argument; per-identity figures; changed identity withheld; first service act asked with the downgrade recorded | 5 | 5 |
+| 19 Identity per tool call (ADR-0019): a gateway runs as a service, changes identity, and offers an act whose policy says allow | the framed identity line; the host identity on every event despite a model argument; per-identity figures; changed identity withheld; first service act asked with the downgrade recorded | 5 | 5 |
 
 The checks the adapters make differently are recorded here, with the reason, and not skipped:
 

@@ -1,5 +1,5 @@
 {
-  "description": "ADR-0017: the first act under a service identity is asked even where the host policy said allow, with the downgrade recorded before approval_requested. Written by hand.",
+  "description": "ADR-0019: the first act under a service identity is asked even where the host policy said allow, with the downgrade recorded before approval_requested. Written by hand.",
   "schema": "run-event.json",
   "source": {
     "harness": {

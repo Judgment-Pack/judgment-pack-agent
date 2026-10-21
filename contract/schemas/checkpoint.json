@@ -221,6 +221,14 @@
     },
     "draft": {
       "$ref": "#/$defs/draft"
+    },
+    "sourceIdentities": {
+      "description": "ADR-0019: per-source identity pins, latched identity withholding and service approval history, separate from figures and the latest approval. Restored on resume; re-approval starts a new run with fresh source declarations and state.",
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/sourceIdentity"
+      }
     }
   },
   "additionalProperties": true,
@@ -567,6 +575,32 @@
       },
       "additionalProperties": false,
       "description": "ADR-0015: package-owned drafts. Exact text, unknowns and undo history are retained in context.entries under the draft id, digest and edit count. Resume verifies the digest and continues the same draft."
+    },
+    "sourceIdentity": {
+      "type": "object",
+      "required": [
+        "source",
+        "identityDigest",
+        "withheld",
+        "serviceAsked"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9-]{0,23}$"
+        },
+        "identityDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "withheld": {
+          "type": "boolean"
+        },
+        "serviceAsked": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

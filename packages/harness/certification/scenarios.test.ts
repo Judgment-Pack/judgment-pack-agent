@@ -2213,7 +2213,7 @@ for(const engineId of AGENT_ENGINES)describe(`agent engine ${engineId} · scenar
   policyTableChecks(engineId,true,'stream')
 })
 
-// 19. ADR-0017 identity per tool call.
+// 19. ADR-0019 identity per tool call.
 interface IdentityRuns { normal: Ran; changed: Ran; service: Ran; executed: { read: number; act: number } }
 async function identityRuns(engineId: import('../host').AssistantEngine, agent: boolean, answerAs: AnswerAs): Promise<IdentityRuns> {
   configureHarness(testHost())

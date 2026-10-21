@@ -82,7 +82,7 @@ func (s ToolSource) Record(tool string) contract.ToolOfferSourceRecord {
 	return out
 }
 
-// IdentityDigest is the pin of the reported identity carried beside a source record (ADR-0017).
+// IdentityDigest is the pin of the reported identity carried beside a source record (ADR-0019).
 func IdentityDigest(identity contract.ToolOfferIdentity) string {
 	return "sha256:" + ContextDigest(CanonicalJSON(ObjectOf("kind", String(identity.Kind), "label", String(identity.Label))))
 }
@@ -302,6 +302,28 @@ var approvalDefault = map[string]string{"read": "none", "propose": "none", "act"
 // effectOf is the effect a tool of each class has on the offer: Plan mode and a child admit reads only.
 var effectOf = map[string]string{"read": "read", "propose": "proposal", "act": ""}
 
+// Credential patterns copied by hand from ADR-0017, contract/patterns/output.json v1
+// (adr-output-boundary); the coordinator will replace this copy with the shared set.
+var credentialLabelPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`\b(?:AKIA|ASIA)[A-Z0-9]{16}\b`),
+	regexp.MustCompile(`\bsk-(?:proj-|ant-api03-)?[A-Za-z0-9_-]{20,}`),
+	regexp.MustCompile(`\bAIza[A-Za-z0-9_-]{35}\b`),
+	regexp.MustCompile(`\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})`),
+	regexp.MustCompile(`-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----[\s\S]*-----END (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----`),
+	regexp.MustCompile(`\b[Bb][Ee][Aa][Rr][Ee][Rr][ \t]+[A-Za-z0-9._~+/=-]+`),
+	// Credential assignments also cover the review's synthetic sk_test label.
+	regexp.MustCompile(`(?i)\b(?:api[_-]?key|token|secret|password)\s*[:=]\s*\S+`),
+}
+
+func credentialLabel(label string) bool {
+	for _, pattern := range credentialLabelPatterns {
+		if pattern.MatchString(label) {
+			return true
+		}
+	}
+	return false
+}
+
 func declarationProblem(tool HostTool) string {
 	s := tool.Source
 	switch {
@@ -360,6 +382,10 @@ func DeclareSources(tools []HostTool, served []string) (*Declared, error) {
 	var declared []held
 	for _, tool := range tools {
 		if tool.Source == nil {
+			continue
+		}
+		if tool.Source.Identity != nil && credentialLabel(tool.Source.Identity.Label) {
+			out.Withheld = append(out.Withheld, Withheld{Tool: "source", Detail: "A source identity label carries a credential; its declaration was withheld before publication."})
 			continue
 		}
 		if problem := declarationProblem(tool); problem != "" {
@@ -866,6 +892,7 @@ type SourceGate struct {
 	changed         map[string]bool
 	changedIdentity map[string]bool
 	serviceActs     map[string]bool
+	identityState   *[]contract.CheckpointSourceIdentity
 	loaded          []loadedSchema
 	loadedBytes     int
 	// marks are the marks of the calls that have a call id, by it; queued those of calls with none
@@ -893,11 +920,17 @@ type mark struct {
 // NewSourceGate holds a run's declared sources; rows are the execution state's report rows, which
 // it completes with the Runtime's row and each declared source's. A child's gate is given the gate
 // of the run that delegated it, nil otherwise, and then reports into that gate's rows.
-func NewSourceGate(declared *Declared, policy *Policy, marker, schemas string, rows func() *[]contract.ProvenanceSourceFigures, parent *SourceGate) *SourceGate {
+func NewSourceGate(declared *Declared, policy *Policy, marker, schemas string, rows func() *[]contract.ProvenanceSourceFigures, parent *SourceGate, identityState ...*[]contract.CheckpointSourceIdentity) *SourceGate {
 	g := &SourceGate{Entries: declared.Entries, sources: declared.Sources, policy: policy, marker: marker, schemas: schemas, rows: rows,
 		mu: &sync.Mutex{}, changed: map[string]bool{}, changedIdentity: map[string]bool{}, serviceActs: map[string]bool{}, marks: map[string]mark{}, queued: map[string][]mark{},
 		decisions: map[string]decision{}, queuedDecisions: map[string][]decision{}}
+	saved := []contract.CheckpointSourceIdentity{}
+	g.identityState = &saved
+	if len(identityState) > 0 {
+		g.identityState = identityState[0]
+	}
 	if parent != nil {
+		g.identityState = parent.identityState
 		g.rows, g.mu, g.changed, g.changedIdentity, g.serviceActs = parent.rows, parent.mu, parent.changed, parent.changedIdentity, parent.serviceActs
 	}
 	g.mu.Lock()
@@ -917,11 +950,52 @@ func NewSourceGate(declared *Declared, policy *Policy, marker, schemas string, r
 			*held = append(*held, row)
 		}
 	}
+	for _, source := range declared.Sources {
+		digest := IdentityDigest(*source.Record("").Identity)
+		row := g.identityRow(source.ID)
+		if row == nil {
+			*g.identityState = append(*g.identityState, contract.CheckpointSourceIdentity{Source: source.ID, IdentityDigest: digest})
+			row = g.identityRow(source.ID)
+		}
+		if row.IdentityDigest != digest {
+			row.Withheld = true
+		}
+		if row.Withheld {
+			g.changed[source.ID], g.changedIdentity[source.ID] = true, true
+		}
+		if row.ServiceAsked {
+			g.serviceActs[source.ID+"\x00"+row.IdentityDigest] = true
+		}
+	}
 	g.mu.Unlock()
 	for _, withheld := range declared.Withheld {
 		g.notices = append(g.notices, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: withheld.Tool, Action: "refused", Detail: withheld.Detail}})
 	}
 	return g
+}
+
+// IdentityRows snapshots the identity checkpoint state under the shared lock.
+func (g *SourceGate) IdentityRows() []contract.CheckpointSourceIdentity {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return append([]contract.CheckpointSourceIdentity{}, (*g.identityState)...)
+}
+
+// identityRow is checkpoint state, accessed with the gate's shared lock held.
+func (g *SourceGate) identityRow(source string) *contract.CheckpointSourceIdentity {
+	for at := range *g.identityState {
+		if (*g.identityState)[at].Source == source {
+			return &(*g.identityState)[at]
+		}
+	}
+	return nil
+}
+
+func (g *SourceGate) rememberService(source, digest string) {
+	g.serviceActs[source+"\x00"+digest] = true
+	if row := g.identityRow(source); row != nil && row.IdentityDigest == digest {
+		row.ServiceAsked = true
+	}
 }
 
 // row is the report's row of one source; the lock is held, and the row is valid until it is let go.
@@ -961,6 +1035,12 @@ func (g *SourceGate) giveBackCall(row *contract.ProvenanceSourceFigures, identit
 
 func (g *SourceGate) identityChanged(ctx context.Context, entry *SourceEntry) bool {
 	id := entry.Record.ID
+	g.mu.Lock()
+	withheld := g.changedIdentity[id]
+	g.mu.Unlock()
+	if withheld {
+		return true
+	}
 	if entry.Declared.Source.CurrentIdentity == nil {
 		g.mu.Lock()
 		defer g.mu.Unlock()
@@ -971,6 +1051,7 @@ func (g *SourceGate) identityChanged(ctx context.Context, entry *SourceEntry) bo
 	if changed {
 		g.mu.Lock()
 		g.changed[id], g.changedIdentity[id] = true, true
+		g.identityRow(id).Withheld = true
 		g.mu.Unlock()
 	}
 	return changed
@@ -1012,7 +1093,7 @@ func AsksApproval(tool HostTool) bool {
 	if approval == "" {
 		approval = approvalDefault[class]
 	}
-	return tool.Source != nil && class == "act" && approval == "required"
+	return tool.Source != nil && class == "act" && (approval == "required" || tool.Source.Identity != nil && tool.Source.Identity.Kind == "service")
 }
 
 // SetApprovals hands the gate the run's approval (ADR-0008).
@@ -1020,7 +1101,7 @@ func (g *SourceGate) SetApprovals(book ApprovalBook) {
 	g.book = book
 	if approval := book.Current(); approval != nil && approval.Source.Identity != nil && approval.Source.Identity.Kind == "service" && approval.Source.IdentityDigest != nil {
 		g.mu.Lock()
-		g.serviceActs[approval.Source.ID+"\x00"+*approval.Source.IdentityDigest] = true
+		g.rememberService(approval.Source.ID, *approval.Source.IdentityDigest)
 		g.mu.Unlock()
 	}
 }
@@ -1029,7 +1110,7 @@ func (g *SourceGate) SetApprovals(book ApprovalBook) {
 // (ADR-0008).
 func (g *SourceGate) NeedsApproval(name string) bool {
 	entry := g.Entries[name]
-	return entry != nil && entry.EffectClass == "act" && entry.Approval == "required"
+	return entry != nil && entry.EffectClass == "act" && (entry.Approval == "required" || entry.Record.Identity.Kind == "service")
 }
 
 // Decide is the decision on one act call (ADR-0008, decide), taken once: by an adapter where it
@@ -1082,7 +1163,9 @@ func (g *SourceGate) Decide(ctx context.Context, name string, args json.RawMessa
 		g.mark(name, callID, mark{})
 	default:
 		answer := "ask"
-		if policy := entry.Declared.Approve; policy != nil {
+		if entry.Approval == "none" {
+			answer = "allow"
+		} else if policy := entry.Declared.Approve; policy != nil {
 			answer = askPolicy(policy, ApprovalRequest{Name: name, Tool: *entry.Record.Tool, Source: copyRecord(entry.Record), Args: append(json.RawMessage(nil), args...)})
 		}
 		serviceKey := entry.Record.ID + "\x00" + *entry.Record.IdentityDigest
@@ -1092,9 +1175,6 @@ func (g *SourceGate) Decide(ctx context.Context, name string, args json.RawMessa
 			detail := name + " acts as service identity " + entry.Record.Identity.Label + "; the first act call of this source in a run is asked even though the host policy allowed it."
 			reason := "approval downgraded"
 			g.notices = append(g.notices, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: name, Action: "rewrote", Detail: detail, Reason: &reason}})
-		}
-		if firstServiceAct && answer == "ask" {
-			g.serviceActs[serviceKey] = true
 		}
 		// A run with nowhere to write the pause cannot ask: its call is refused.
 		if answer == "ask" && g.book == nil {
@@ -1112,6 +1192,8 @@ func (g *SourceGate) Decide(ctx context.Context, name string, args json.RawMessa
 			if !g.book.Ask(contract.CheckpointApproval{CallID: drawn, Name: name, Tool: *entry.Record.Tool, Source: copyRecord(entry.Record), Args: asked, State: "asked"}) {
 				// The run is already ending at a handoff or a question: the call is refused, never run.
 				held = decision{answer: "closed", detail: name + " acts on " + id + ", and this run is already ending; the call was not run and nothing was changed"}
+			} else if firstServiceAct {
+				g.rememberService(id, *entry.Record.IdentityDigest)
 			}
 		}
 	}

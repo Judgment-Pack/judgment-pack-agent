@@ -75,7 +75,7 @@ after the unchanged stable prefix.
 
 A tool from a gateway connection, a public MCP server or the person is a `runcontext.HostTool` with
 `Source` (`runcontext.ToolSource`, with `CurrentDigest` for an MCP server's served list, and
-ADR-0017's `Identity` plus `CurrentIdentity`),
+ADR-0019's `Identity` plus `CurrentIdentity`),
 `EffectClass`, `Approval` and `Approve`, the host's approval policy (`runcontext.ApprovalPolicy`), which
 is handed the call (`runcontext.ApprovalRequest`: the wire name, the tool's own name, the source record
 and a copy of the arguments) and answers at once `allow`, `refuse` or `ask`
@@ -96,8 +96,12 @@ Identity is `person`, `service` or `connection` with a recognisable label, never
 defaults to a connection labelled by the source id. `ContextualSession` adds its digest, places
 `runs as: <label>` inside the framed offer, carries it on every call and result, and counts calls per
 identity. A change withholds the source. The first act of a service identity is asked once per run
-even when the host policy allows it, and records `approval downgraded`; model arguments cannot
-choose the identity.
+even when the host policy allows it or `Approval` is `none`, and records `approval downgraded`.
+An ask counts only after the approval book records it; without a book every attempt is refused.
+Credential-bearing labels are withheld at declaration with a generic guardrail. The checkpoint's
+`sourceIdentities` retains the identity pin, withholding and per-source ask history across resume,
+separately from the latest approval. Host re-approval supplies fresh declarations and identity
+state in a new run. Model arguments cannot choose the identity.
 
 A host declares skills ([ADR-0009](../docs/adr/0009-skills.md)) on `adapter.Run.Skills`
 (`runcontext.Skill`: id, name, description, source, instructions, the host tools it names, resources

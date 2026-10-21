@@ -116,7 +116,7 @@ Desk's eighteen, the harness's `approval_requested` (ADR-0008), `skill_loaded` a
   refused it (ADR-0008), `approval stale` where the gate refused a call whose decision no longer
   holds for it, and `approval refused` again after the person's refusal is written; `identity changed`
   where a source no longer runs as the approved identity, and `approval downgraded` where the first
-  service-identity act is asked despite the policy saying allow (ADR-0017); with `reason`
+  service-identity act is asked despite the policy saying allow (ADR-0019); with `reason`
   `skill withheld` on a skill the package did not catalogue or restore (ADR-0009), before the first
   request, and `skill budget` on a `load_skill` call past `skillsPerRun`, between the call and its
   result; with `reason` `review refused` on a `request_review` call refused (ADR-0010: a second ask,
@@ -275,7 +275,7 @@ What the contract states, and where:
 - **The declaration** (`tool-offer.json#/$defs/sourceDeclaration`): the tool's own name (1 to 128
   characters), description and schema as the source serves them, `source`
   (`$defs/sourceRecord`, closed: `kind` `gateway`, `mcp` or `custom`; `id`; `trust`; `version` or
-  `toolListDigest`, an `mcp` source the digest), and ADR-0017's `identity` (`person`, `service` or
+  `toolListDigest`, an `mcp` source the digest), and ADR-0019's `identity` (`person`, `service` or
   `connection`, with a recognisable non-secret label) and derived `identityDigest`; absent identity
   defaults to `connection` labelled by the source id. The host may provide `currentIdentity()` to
   detect a change. The declaration optionally carries `effectClass` and `approval`. A
@@ -312,7 +312,10 @@ What the contract states, and where:
   call), or its identity changed (the host's `currentIdentity()`, where supplied); once either
   changes, every later call of the source in the run is withheld until re-approval. An `act` under
   a `service` identity is asked on the first act call of that source in the run even if the policy
-  says `allow`, with an `approval downgraded` guardrail; later acts follow the policy. Refused past
+  says `allow` or the declaration says `approval: none`, with an `approval downgraded` guardrail;
+  later acts follow the policy. The source counts as asked only after the approval book records
+  the request; absent a book, every attempt is refused. Credential-bearing declaration labels
+  are withheld before publication with a generic refused guardrail. Refused past
   `sourceCallsPerTurn` (`tool-failed`; the slot is claimed at the check, before anything is awaited,
   and given back on a later refusal, so concurrent calls cannot pass the bound, and a delegated
   child's calls take their slots from the parent's report); a `propose` held for the review card and
@@ -325,7 +328,12 @@ What the contract states, and where:
   `tool` (and `receipt` on a result where the host's answer gave one, kept by the call's id); their
   `name` is the wire name. The model cannot select identity through call arguments. The checkpoint's
   `sources` (`provenance.json#/$defs/sourceFigures`) count calls, refusals, proposals, bytes and time
-  per source and calls per identity, the Runtime's row first.
+  per source and calls per identity, the Runtime's row first. The public checkpoint member
+  `sourceIdentities` (`checkpoint.json#/$defs/sourceIdentity`) separately carries `source`,
+  `identityDigest`, `withheld` and `serviceAsked`. Resume restores the pin, latched withholding
+  and each source's ask history even when another source owns the latest approval. Returning
+  to the original identity does not clear withholding; host re-approval supplies fresh
+  declarations and identity state in a new run.
 
 TypeScript holds these in `toolSources.ts`, entered from `contextualSession`, with the events
 decorated in `context/managed.ts`; Go in `go/context/sources.go`, entered from `ContextualSession`

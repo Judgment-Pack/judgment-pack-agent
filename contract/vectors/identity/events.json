@@ -1,5 +1,5 @@
 {
-  "description": "ADR-0017: every call and result of a source carries the pinned identity; identity in model arguments remains only an argument and does not replace the record. Written by hand.",
+  "description": "ADR-0019: every call and result of a source carries the pinned identity; identity in model arguments remains only an argument and does not replace the record. Written by hand.",
   "schema": "run-event.json",
   "source": {
     "harness": {

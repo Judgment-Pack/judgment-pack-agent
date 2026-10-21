@@ -26,6 +26,9 @@ import identityOffer from '../../contract/vectors/identity/offer.json'
 import identityEvents from '../../contract/vectors/identity/events.json'
 import identityChanged from '../../contract/vectors/identity/changed.json'
 import serviceAct from '../../contract/vectors/identity/service-act.json'
+import credentialLabels from '../../contract/vectors/identity/credential-labels.json'
+import identityCheckpoint from '../../contract/vectors/identity/checkpoint.json'
+import type { SourceIdentityState } from './execution/state'
 import identityFigures from '../../contract/vectors/identity/figures.json'
 import runEventSchema from '../../contract/schemas/run-event.json'
 import toolSourcesServer from './certification/scenarios/tool-sources.json'
@@ -47,6 +50,7 @@ import {
   LOAD_TOOL,
   PROPOSED,
   SourceGate,
+  asksApproval,
   declareSources,
   offerSources,
   toolListDigest,
@@ -87,7 +91,7 @@ const legacy = <T>(value: T): T => {
   visit(copied)
   return copied as T
 }
-/** A tool as the pre-ADR-0017 vectors state it: its members that cross, without its functions. */
+/** A tool as the pre-ADR-0019 vectors state it: its members that cross, without its functions. */
 const crossing = (tool: HostTool) => legacy(JSON.parse(JSON.stringify(tool)) as unknown)
 
 describe('the declaration (ADR-0006)', () => {
@@ -280,7 +284,7 @@ describe('the declaration (ADR-0006)', () => {
   })
 })
 
-describe('identity per tool call (ADR-0017)', () => {
+describe('identity per tool call (ADR-0019)', () => {
   const serviceTool = (extra: Partial<HostTool> = {}): HostTool => ({
     name: 'submit', description: 'Submit one expense.', inputSchema: { type: 'object' }, effectClass: 'act',
     source: { kind: 'gateway', id: 'expenses', trust: 'connected', version: '4', identity: { kind: 'service', label: 'expense-bot' } },
@@ -354,6 +358,157 @@ describe('identity per tool call (ADR-0017)', () => {
     expect(await gate.decide('expenses__submit', { amount: 13 }, 'later')).toMatchObject({ answer: 'allow' })
   })
 
+  it('asks the first service act with approval none and executes only after the recorded approval', async () => {
+    for (const approve of [undefined, () => 'allow' as const]) {
+      const execute = vi.fn(async () => ({ content: [] }))
+      const held: { approval?: ApprovalRecord } = {}
+      const book: ApprovalBook = { current: () => held.approval, ask: (record) => { held.approval = record }, closed: () => '' }
+      const { gate, call, notices } = await gateFor([serviceTool({ approval: 'none', approve, execute })], {}, false, book)
+      expect(asksApproval(serviceTool({ approval: 'none', approve }))).toBe(true)
+      expect(gate.needsApproval('expenses__submit')).toBe(true)
+      await expect(call('expenses__submit')).rejects.toBeInstanceOf(ApprovalHeld)
+      expect(execute).not.toHaveBeenCalled()
+      expect(held.approval?.state).toBe('asked')
+      expect(notices.some((event) => event.reason === 'approval downgraded')).toBe(true)
+      expect((await gate.approved({ ...held.approval!, state: 'approved' }, signal(), execute)).ran).toBe(true)
+      held.approval = undefined
+      await call('expenses__submit')
+      expect(execute).toHaveBeenCalledTimes(2)
+    }
+  })
+
+  it('refuses every service act without an approval book, including the second call', async () => {
+    for (const approval of ['none', 'required'] as const) {
+      const execute = vi.fn(async () => ({ content: [] }))
+      const state: SourceIdentityState[] = []
+      const { call, notices } = await gateFor([serviceTool({ approval, execute })], {}, false, undefined, state)
+      for (const args of [{}, { amount: 'x'.repeat(129) }]) {
+        await expect(call('expenses__submit', args)).rejects.toBeInstanceOf(GateViolation)
+        expect(argumentProblem(runEventSchema.$defs.guardrail, { type: 'guardrail', action: 'refused', ...notices.at(-1)! })).toBeUndefined()
+      }
+      expect(execute).not.toHaveBeenCalled()
+      expect(state[0]?.serviceAsked).toBe(false)
+    }
+  })
+
+  it('does not consume the first service ask when recording the approval throws', async () => {
+    const state: SourceIdentityState[] = []
+    const ask = vi.fn(() => { throw Error('approval storage unavailable') })
+    const { call } = await gateFor([serviceTool()], {}, false, { current: () => undefined, ask, closed: () => '' }, state)
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await expect(call('expenses__submit')).rejects.toThrow('approval storage unavailable')
+      expect(state[0]?.serviceAsked).toBe(false)
+    }
+    expect(ask).toHaveBeenCalledTimes(2)
+  })
+
+  it('withholds every credential-label vector before offers, events, figures or checkpoint publication', async () => {
+    for (const label of credentialLabels.labels) {
+      // Malformed names and missing/oversized declaration fields must not expose the label either.
+      for (const name of ['submit', '', 'x'.repeat(129)]) {
+        const tool = serviceTool({ name, source: { ...serviceTool().source!, identity: { kind: 'service', label } } })
+        const out = await declareSources([tool], [])
+        expect(out.hostTools).toEqual([])
+        expect(out.sources).toEqual([])
+        expect(out.entries.size).toBe(0)
+        const events = out.withheld.map((notice) => ({ type: 'guardrail', action: 'refused', ...notice }))
+        expect(events).toEqual(credentialLabels.items)
+        expect(argumentProblem(runEventSchema.$defs.guardrail, events[0])).toBeUndefined()
+        const state: SourceIdentityState[] = []
+        const { gate, rows, offered } = await gateFor([tool], {}, false, undefined, state)
+        expect(state).toEqual([])
+        expect(rows.map((row) => row.source)).toEqual(['runtime'])
+        expect(offered.hostTools).toEqual([])
+        expect(JSON.stringify({ out, rows, event: gate.decorate({ type: 'tool_call', name: 'expenses__submit', args: {} }) })).not.toContain(label)
+      }
+    }
+  })
+
+  it('restores identity withholding and the pin even when the original identity returns', async () => {
+    let current = { kind: 'service' as const, label: 'different-bot' }
+    const tool = serviceTool({ effectClass: 'read', approval: 'none', source: { ...serviceTool().source!, currentIdentity: () => current } })
+    const state: SourceIdentityState[] = []
+    const first = await gateFor([tool], {}, false, undefined, state)
+    await expect(first.call('expenses__submit')).rejects.toBeInstanceOf(GateViolation)
+    expect(state[0]).toEqual({ ...identityCheckpoint.items[0]!.sourceIdentities[0], serviceAsked: false })
+    const checkpoint = readExecution(JSON.parse(JSON.stringify({ ...identityCheckpoint.items[0], sourceIdentities: state })))!
+    current = { kind: 'service', label: 'expense-bot' }
+    const restored = await gateFor([tool], {}, false, undefined, checkpoint.sourceIdentities)
+    await expect(restored.call('expenses__submit')).rejects.toBeInstanceOf(GateViolation)
+    expect(restored.notices.at(-1)?.reason).toBe('identity changed')
+    // Re-declaring a different pin on the same saved run cannot clear the latch.
+    const redeclared = await gateFor([serviceTool({ effectClass: 'read', source: { ...tool.source!, identity: { kind: 'person', label: 'new-label' } } })], {}, false, undefined, checkpoint.sourceIdentities)
+    await expect(redeclared.call('expenses__submit')).rejects.toBeInstanceOf(GateViolation)
+    // Host re-approval supplies fresh declarations in a new run, with fresh checkpoint state.
+    const reapproved = await gateFor([tool])
+    await expect(reapproved.call('expenses__submit')).resolves.toBeDefined()
+  })
+
+  it('restores two sources service history separately from the latest approval', async () => {
+    const held: { approval?: ApprovalRecord } = {}
+    const book: ApprovalBook = { current: () => held.approval, ask: (record) => { held.approval = record }, closed: () => '' }
+    const tools = [serviceTool(), serviceTool({ source: { ...serviceTool().source!, id: 'billing' } })]
+    const state: SourceIdentityState[] = []
+    const first = await gateFor(tools, {}, false, book, state)
+    for (const source of ['expenses', 'billing']) {
+      await expect(first.call(`${source}__submit`)).rejects.toBeInstanceOf(ApprovalHeld)
+      held.approval!.state = 'answered'
+    }
+    const checkpoint = readExecution(JSON.parse(JSON.stringify({ ...identityCheckpoint.items[0], sourceIdentities: state, approval: held.approval })))!
+    expect(checkpoint.sourceIdentities).toEqual(identityCheckpoint.items[0]!.sourceIdentities.map((row) => ({ ...row, withheld: false })))
+    const restored = await gateFor(tools, {}, false, { ...book, current: () => checkpoint.approval, ask: () => { throw Error('must not ask again') } }, checkpoint.sourceIdentities)
+    await expect(restored.call('expenses__submit')).resolves.toBeDefined()
+    await expect(restored.call('billing__submit')).resolves.toBeDefined()
+  })
+
+  it('refuses a redeclared identity against the saved pin even before any withholding', async () => {
+    const state: SourceIdentityState[] = []
+    await gateFor([serviceTool({ effectClass: 'read' })], {}, false, undefined, state)
+    const saved = readExecution(JSON.parse(JSON.stringify({ ...identityCheckpoint.items[0], sourceIdentities: state })))!
+    expect(saved.sourceIdentities![0]!.withheld).toBe(false)
+    const restored = await gateFor([serviceTool({ effectClass: 'read', source: { ...serviceTool().source!, identity: { kind: 'person', label: 'changed-label' } } })], {}, false, undefined, saved.sourceIdentities)
+    await expect(restored.call('expenses__submit')).rejects.toBeInstanceOf(GateViolation)
+    expect(saved.sourceIdentities![0]).toEqual({ ...state[0], withheld: true })
+  })
+
+  it('reads the identity checkpoint vector and refuses malformed saved identity state', () => {
+    const vector = identityCheckpoint.items[0]!
+    expect(readExecution(vector)?.sourceIdentities).toEqual(vector.sourceIdentities)
+    for (const row of [null, {}, { ...vector.sourceIdentities[0], withheld: 'false' }, { ...vector.sourceIdentities[0], identityDigest: '' }, { ...vector.sourceIdentities[0], serviceAsked: undefined }, { ...vector.sourceIdentities[0], extra: true }]) {
+      expect(() => readExecution({ ...vector, sourceIdentities: [row] })).toThrow()
+    }
+    expect(() => readExecution({ ...vector, sourceIdentities: [vector.sourceIdentities[0], vector.sourceIdentities[0]] })).toThrow()
+  })
+
+  it('carries identity state through the session snapshot and resumed source gate', async () => {
+    let current = { kind: 'service' as const, label: 'expense-bot' }
+    const tools = [serviceTool({ source: { ...serviceTool().source!, currentIdentity: () => current } }), serviceTool({ source: { ...serviceTool().source!, id: 'billing' } })]
+    const base: AssistantSession = {
+      prompt: 'Current request', testPrompt: '', tools: [], hostTools: tools, callTool: async () => ({ content: [] }),
+      context: { currentRequest: { message: 'Current request', input: 'Current request' } },
+      model: { family: 'openai-compatible', model: 'small', call: async () => { throw Error('no model call here') } },
+      thinking: normalize('off', 'openai-compatible'), signal: signal()
+    }
+    const first = await contextualSession(base)
+    let saved: ExecutionCheckpoint
+    try {
+      for (const source of ['expenses', 'billing']) {
+        expect((await first.context.sources!.decide(`${source}__submit`, {}, undefined, false)).answer).toBe('ask')
+        first.context.execution.state.approval!.state = 'answered'
+      }
+      current = { kind: 'service', label: 'changed-bot' }
+      await expect(first.session.hostTools.find(tool => tool.name === 'expenses__submit')!.execute({}, signal())).rejects.toBeInstanceOf(GateViolation)
+      saved = readExecution(JSON.parse(JSON.stringify(first.context.execution.snapshot())))!
+      expect(saved.sourceIdentities).toEqual(identityCheckpoint.items[0]!.sourceIdentities)
+    } finally { first.context.close() }
+    current = { kind: 'service', label: 'expense-bot' }
+    const restored = await contextualSession({ ...base, context: { ...base.context, execution: saved } })
+    try {
+      await expect(restored.session.hostTools.find(tool => tool.name === 'expenses__submit')!.execute({}, signal())).rejects.toBeInstanceOf(GateViolation)
+      await expect(restored.session.hostTools.find(tool => tool.name === 'billing__submit')!.execute({}, signal())).resolves.toBeDefined()
+    } finally { restored.context.close() }
+  })
+
   it('carries the per-identity figures through checkpoint JSON and resume', () => {
     const checkpoint = { version: 1, id: 'identity-resume', requestKey: 'a'.repeat(64), phase: 'work', status: 'running', unit: 'model-requests', used: 0, limit: 20, grants: [], plan: [], explanation: '', operations: [], context: { scope: 'identity', entries: [] }, sources: identityFigures.items }
     expect(readExecution(JSON.parse(JSON.stringify(checkpoint)))?.sources).toEqual(identityFigures.items)
@@ -361,7 +516,7 @@ describe('identity per tool call (ADR-0017)', () => {
 })
 
 /** A SourceGate over the vector's declarations, with its refusals' guardrails and its report collected. */
-async function gateFor(tools: HostTool[], bounds: Partial<SourceBounds> = {}, catalogue = false, book?: ApprovalBook) {
+async function gateFor(tools: HostTool[], bounds: Partial<SourceBounds> = {}, catalogue = false, book?: ApprovalBook, identityState: SourceIdentityState[] = []) {
   const out = await declareSources(tools, [])
   const policy = { ...CONTEXT_DEFAULTS, ...bounds }
   const offered = offerSources(out.hostTools, out.entries, catalogue ? { ...policy, offeredSchemas: 0 } : policy, MARKER)
@@ -370,7 +525,7 @@ async function gateFor(tools: HostTool[], bounds: Partial<SourceBounds> = {}, ca
   const gate = new SourceGate(out.entries, out.sources, policy, MARKER, (tool, detail, reason) => {
     notices.push({ tool, detail, ...(reason === undefined ? {} : { reason }) })
     return new GateViolation(tool, detail)
-  }, () => rows, 'json-schema', undefined, book, (event) => notices.push({ tool: event.tool, detail: event.detail, ...(event.reason === undefined ? {} : { reason: event.reason }) }))
+  }, () => rows, 'json-schema', undefined, book, (event) => notices.push({ tool: event.tool, detail: event.detail, ...(event.reason === undefined ? {} : { reason: event.reason }) }), identityState)
   const byName = new Map(offered.hostTools.map((tool) => [tool.name, tool]))
   const call = (name: string, args: Record<string, unknown> = {}, signal = new AbortController().signal, callId?: string) => gate.call(byName.get(name)!, args, signal, (given, bounded) => byName.get(name)!.execute(given, bounded), callId)
   return { gate, notices, rows, call, offered }

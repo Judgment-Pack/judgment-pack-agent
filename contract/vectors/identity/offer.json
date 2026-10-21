@@ -1,5 +1,5 @@
 {
-  "description": "ADR-0017: a source offer carries the host-declared service identity and its package-derived pin, and its framed description begins with the identity label. Written by hand.",
+  "description": "ADR-0019: a source offer carries the host-declared service identity and its package-derived pin, and its framed description begins with the identity label. Written by hand.",
   "schema": "tool-offer.json#/$defs/hostTool",
   "source": {
     "harness": {

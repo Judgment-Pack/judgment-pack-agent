@@ -1,5 +1,5 @@
 {
-  "description": "ADR-0017: a changed identity withholds the source until re-approval, reported as an identity changed guardrail. Written by hand.",
+  "description": "ADR-0019: a changed identity withholds the source until re-approval, reported as an identity changed guardrail. Written by hand.",
   "schema": "run-event.json",
   "source": {
     "harness": {
