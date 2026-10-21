@@ -36,6 +36,7 @@ import (
 	"errors"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
+	"time"
 )
 
 // Boundary is the boundary one run's events pass through.
@@ -125,7 +126,7 @@ func (b *Boundary) notices() []contract.RunEvent {
 func (b *Boundary) checkpoint(durable *bool, status string) []contract.RunEvent {
 	state, err := b.run.Context.Execution.Snapshot(status)
 	if err != nil {
-		return nil
+		return b.notices()
 	}
 	return []contract.RunEvent{{ExecutionCheckpoint: &contract.RunEventExecutionCheckpoint{
 		Type: "execution_checkpoint", Durable: durable, Checkpoint: state}}}
@@ -156,10 +157,15 @@ func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 			out = append(out, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: "output", Action: "refused", Reason: &reason, Detail: err.Error()}})
 		}
 		out = append(out, b.checkpoint(nil, "stopped")...)
+		out = append(out, b.notices()...)
 		b.ended = true
 		return append(out, contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}}), true
 	}
 	context := b.run.Context
+	if err := context.Execution.takeRecordError(); err != nil {
+		b.failed, b.ended = true, true
+		return append(out, failure.Event(err, "context"), contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}}), true
+	}
 	// ADR-0008: an adapter asks the host's approval policy where it hands an act call to the host
 	// (SessionContext.Approval) and delivers approval_requested in place of the call where it asks.
 	// A call made while another waits is refused: said here with its call, its guardrail and its
@@ -214,12 +220,25 @@ func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 		if state, err := context.Execution.Snapshot("paused"); err == nil {
 			out = append(out, contract.RunEvent{ExecutionCheckpoint: &contract.RunEventExecutionCheckpoint{Type: "execution_checkpoint", Durable: &durable, Checkpoint: state}})
 		}
+		out = append(out, b.notices()...)
 		b.ended = true
 		return append(out, contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}}), true
 	}
 	// ADR-0006: a tool with a source's call and result carry its source record.
 	if context.Sources != nil {
 		event = context.Sources.Decorate(event)
+	}
+	if event.Critique != nil {
+		written, err := WriteCritique(event.Critique, context.Execution.RecordPolicy, context.Execution.recordGuard(), time.Now())
+		if err != nil {
+			var refused *OutputRefused
+			if errors.As(err, &refused) {
+				return append(out, b.notices()...), false
+			}
+			b.failed, b.ended = true, true
+			return append(out, failure.Event(err, "context"), contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}}), true
+		}
+		event.Critique = written
 	}
 	if event.Error != nil {
 		b.failed = true
@@ -246,7 +265,7 @@ func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 			out = append(out, contract.RunEvent{BudgetPaused: &contract.RunEventBudgetPaused{
 				Type: "budget_paused", Checkpoint: state}})
 		}
-		return out, false
+		return append(out, b.notices()...), false
 	}
 	if event.ToolResult != nil && context.Execution.PauseRequested {
 		out = append(out, event)
@@ -255,6 +274,7 @@ func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 			out = append(out, contract.RunEvent{BudgetPaused: &contract.RunEventBudgetPaused{
 				Type: "budget_paused", Checkpoint: state}})
 		}
+		out = append(out, b.notices()...)
 		out = append(out, contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}})
 		b.ended = true
 		return out, true
@@ -334,6 +354,10 @@ func (b *Boundary) Failed(cause error) []contract.RunEvent {
 // end. ContextualSession's error reaches an adapter before a boundary exists, so this is a
 // function of its own.
 func FailedToOpen(cause error) []contract.RunEvent {
+	var expired *RecordsExpired
+	if errors.As(cause, &expired) {
+		return []contract.RunEvent{expired.Event(), failure.Event(cause, "context"), {End: &contract.RunEventEnd{Type: "end"}}}
+	}
 	var policy *PolicyRefusal
 	if errors.As(cause, &policy) {
 		out := []contract.RunEvent{policy.Event()}

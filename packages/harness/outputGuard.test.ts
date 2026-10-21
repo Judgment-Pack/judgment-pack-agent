@@ -143,3 +143,14 @@ it('guards oversized undeclared names before calls and checkpoints with schema-v
   for(const event of events)if(event.type==='guardrail'||event.type==='output_guarded')expect(argumentProblem(eventSchema.$defs[event.type],event)).toBeUndefined()
  }
 })
+
+it('counts record markers separately, including pattern labels inherited by plain objects',()=>{
+ const counts:Record<string,number>={},events:AssistantEvent[]=[],marker={redactions:{}}
+ const guard=new OutputGuard({outputPatterns:{value:[{name:'constructor',pattern:'SECRET'}],layer:'run'}},()=>counts,e=>events.push(e))
+ expect(guard.value('SECRET','message',false,marker)).toBe('[redacted: constructor]')
+ expect(marker.redactions).toEqual({constructor:1})
+ expect(counts).toEqual({})
+ expect(events).toEqual([])
+ guard.value('SECRET','message')
+ expect(counts).toEqual({constructor:1})
+})

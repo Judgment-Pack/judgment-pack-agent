@@ -2130,6 +2130,7 @@ function policyTableChecks(engineId: import('../host').AssistantEngine, agent: b
       const defaults: Record<string, unknown> = {
         'budget.memoryProposalBytes':1000,'budget.memoryProposalsPerRun':4,'budget.summaryBytes':4000,
         outputGuard:'redact',outputPatterns:[],outputAllow:[],
+        'records.retainDays':90,'records.redactOnStore':true,'records.exportFormat':'json',
         ...Object.fromEntries(Object.entries(budget).map(([name,value])=>[`budget.${name}`,value])),
         'critic.default':criticDefault, 'critic.reasoningFloor':criticReasoningFloor,
         compaction:'index','models.author.provider':model, 'models.critic.provider':model,'models.compactor.provider':model,

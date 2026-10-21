@@ -1,0 +1,19 @@
+{
+  "description": "The closed export.json manifest for the three host-supplied record kinds. Handwritten for ADR records (#101).",
+  "schema": "export.json",
+  "source": {"harness": {"repository": "Judgment-Pack/judgment-pack-agent", "package": "packages/harness"}, "files": ["packages/harness/records.ts"]},
+  "items": [{
+    "schema": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/export.json",
+    "version": 1,
+    "digest": "sha256:7acaf77ad9301cc6adfeea9c571e78985a3c7ae36ecb0ec384417d15c604160d",
+    "retainUntil": "2027-01-19T12:00:00.000Z",
+    "createdAt": "2026-10-21T12:00:00.000Z",
+    "packageVersion": "0.8.0",
+    "policy": {"retainDays": 90, "redactOnStore": true, "exportFormat": "json"},
+    "records": [
+      {"schema": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/checkpoint.json", "version": 1, "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "retainUntil": "2027-01-19T12:00:00.000Z", "bytes": 512},
+      {"schema": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/provenance.json", "version": 1, "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222", "retainUntil": "2027-01-19T12:00:00.000Z", "bytes": 256},
+      {"schema": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-event.json#/$defs/critique", "version": 1, "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333", "retainUntil": "2027-01-19T12:00:00.000Z", "bytes": 384}
+    ]
+  }]
+}

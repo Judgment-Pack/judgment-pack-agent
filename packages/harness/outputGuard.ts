@@ -5,6 +5,7 @@ import type {AssistantEvent} from './engine'
 import type {PolicyMembers} from './policy'
 export type OutputWhere='message'|'proposal'|'tool argument'|'memory proposal'|'draft edit'
 export type OutputCounts=Record<string,number>
+export interface RecordMarker {redactions:OutputCounts}
 export interface OutputPattern {name:string;pattern:string}
 export class OutputRefused extends Error {constructor(readonly pattern:string){super(`Output refused: ${pattern}.`)}}
 export const validOutputCounts=(v:unknown):v is OutputCounts=>!!v&&typeof v==='object'&&!Array.isArray(v)&&Object.entries(v).every(([k,n])=>/^[a-z][a-z0-9-]{0,63}$/.test(k)&&Number.isSafeInteger(n)&&Number(n)>=0)
@@ -20,7 +21,9 @@ export function readOutputAllow(value:unknown):string[]{
  if(!Array.isArray(value)||value.length>64||value.some(v=>typeof v!=='string'||!/^[a-z][a-z0-9-]{0,63}$/.test(v))||new Set(value).size!==value.length)throw Error('Invalid outputAllow names')
  return [...value]
 }
+export class RecordsRefused extends OutputRefused {}
 export class OutputGuard {
+ declaredNames:ReadonlySet<string>=new Set()
  readonly mode:'off'|'redact'|'refuse'
  private patterns:{name:string;compiled:CompiledPattern}[]
  constructor(members:PolicyMembers,private counts:()=>OutputCounts,private notify:(e:AssistantEvent)=>void){
@@ -30,24 +33,25 @@ export class OutputGuard {
  }
  private count(pattern:string){const counts=this.counts();counts[pattern]=(Object.hasOwn(counts,pattern)?counts[pattern]!:0)+1}
  adopt(pattern:string){this.count(pattern)}
- private record(where:OutputWhere,pattern:string,action:'redact'|'refuse',record:boolean){
+ private record(where:OutputWhere,pattern:string,action:'redact'|'refuse',record:boolean,marker?:RecordMarker){
+  if(marker){if(action==='redact')marker.redactions[pattern]=(Object.hasOwn(marker.redactions,pattern)?marker.redactions[pattern]!:0)+1;return}
   if(!record)return
   this.count(pattern)
   this.notify({type:'output_guarded',where,pattern,action})
  }
- refuse(where:OutputWhere,pattern:string):never{
-  this.record(where,pattern,'refuse',true)
-  this.notify({type:'guardrail',tool:where,action:'refused',reason:'output refused',detail:`Output refused: ${pattern}.`})
-  throw new OutputRefused(pattern)
+ refuse(where:OutputWhere,pattern:string,marker?:RecordMarker):never{
+  this.record(where,pattern,'refuse',true,marker)
+  this.notify({type:'guardrail',tool:marker?'records':where,action:'refused',reason:'output refused',detail:`Output refused: ${pattern}.`})
+  throw marker?new RecordsRefused(pattern):new OutputRefused(pattern)
  }
- value<T>(input:T,where:OutputWhere,record=true):T {
+ value<T>(input:T,where:OutputWhere,record=true,marker?:RecordMarker):T {
   if(this.mode==='off')return input
   const budget={steps:PATTERN_STEPS}
   const text=(s:string):string=>{
    const buckets:{start:number;end:number;name:string;order:number}[][]=[]
    for(const [order,p] of this.patterns.entries()){
     const ranges=matchRanges(p.compiled,s,budget)
-    if(ranges===null)return this.refuse(where,'work-bound')
+    if(ranges===null)return this.refuse(where,'work-bound',marker)
     buckets.push(ranges.map(([start,end])=>({start,end,name:p.name,order})))
    }
    // Fixed-size k-way merge: linear in the number of matches, without sorting text-sized lists.
@@ -58,17 +62,17 @@ export class OutputGuard {
     const m=matches[i]!;if(m.start<at)continue
     let end=m.end
     while(i+1<matches.length&&matches[i+1]!.start<end){i++;end=Math.max(end,matches[i]!.end)}
-    if(this.mode==='refuse')return this.refuse(where,m.name)
-    this.record(where,m.name,'redact',record)
+    if(this.mode==='refuse')return this.refuse(where,m.name,marker)
+    this.record(where,m.name,'redact',record,marker)
     out+=s.slice(at,m.start)+`[redacted: ${m.name}]`;at=end
    }
    return out+s.slice(at)
   }
   const walk=(v:unknown):unknown=>{
-   if(typeof v==='string')return text(v)
+   if(typeof v==='string')return marker?v.split(/(\[redacted: [a-z][a-z0-9-]{0,63}\]|Output refused: [a-z][a-z0-9-]{0,63}\.)/g).map((part,i)=>i%2?part:text(part)).join(''):text(v)
    if(where==='draft edit'&&(v===null||typeof v==='number'||typeof v==='boolean')){const raw=JSON.stringify(v),clean=text(raw);return clean===raw?v:clean}
    if(Array.isArray(v))return v.map(walk)
-   if(v&&typeof v==='object'){const out={...v} as Record<string,unknown>;for(const k of Object.keys(v).sort()){const key=text(k),clean=walk((v as Record<string,unknown>)[k]);if(key!==k)delete out[k];out[key]=clean}return out}
+   if(v&&typeof v==='object'){const out={...v} as Record<string,unknown>;for(const k of Object.keys(v).sort()){const key=walk(k) as string,clean=walk((v as Record<string,unknown>)[k]);if(key!==k)delete out[k];out[key]=clean}return out}
    return v
   }
   return walk(input) as T

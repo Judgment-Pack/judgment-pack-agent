@@ -1,0 +1,35 @@
+{
+  "description": "A self-describing critique with a guarded hole in stored text. Handwritten for ADR records (#101).",
+  "schema": "run-event.json#/$defs/critique",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/records.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "critique",
+      "schema": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-event.json#/$defs/critique",
+      "version": 1,
+      "digest": "sha256:f596dab3ae272943393f753755b2a28f9de90fce5cb068139c73b03debfcbfec",
+      "retainUntil": "2027-01-19T12:00:00.000Z",
+      "refuted": false,
+      "checks": [
+        {
+          "tool": "validate",
+          "status": "valid"
+        }
+      ],
+      "text": "The stored path is [redacted: local-home-path].",
+      "records": {
+        "redactions": {
+          "local-home-path": 1
+        }
+      }
+    }
+  ]
+}

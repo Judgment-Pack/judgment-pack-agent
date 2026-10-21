@@ -15,6 +15,7 @@ export interface PolicyLayer {
   outputGuard?: 'off' | 'redact' | 'refuse'
   outputPatterns?: OutputPattern[]
   outputAllow?: string[]
+  records?: Partial<import('./records').RecordsPolicy>
   budget?: Record<string, number>
   critic?: { default?: 'off' | 'auto' | 'on'; reasoningFloor?: 'author' }
   models?: { author?: PolicyRole; critic?: PolicyRole; compactor?: PolicyRole; taskClasses?: Partial<Record<TaskClass, string>>; [role: string]: PolicyRole | Partial<Record<TaskClass, string>> | undefined }

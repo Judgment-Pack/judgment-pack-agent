@@ -10,6 +10,18 @@
     "result"
   ],
   "properties": {
+    "schema": {
+      "const": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/provenance.json"
+    },
+    "version": {
+      "const": 1
+    },
+    "digest": {
+      "$ref": "#/$defs/recordDigest"
+    },
+    "retainUntil": {
+      "$ref": "#/$defs/retainUntil"
+    },
     "request": {
       "description": "Which model request of the execution this was, counted from 1; at most the checkpoint's used count.",
       "type": "integer",
@@ -41,10 +53,24 @@
       "type": "integer",
       "minimum": 0,
       "maximum": 86400000
+    },
+    "records": {
+      "$ref": "#/$defs/recordFigures"
     }
   },
   "additionalProperties": true,
   "$defs": {
+    "recordDigest": {
+      "description": "sha256: and the lower-case SHA-256 of canonical JSON for the complete record with digest omitted.",
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "retainUntil": {
+      "description": "The instant after which the host deletes the record and the package refuses it for resume.",
+      "type": "string",
+      "format": "date-time",
+      "maxLength": 40
+    },
     "completion": {
       "description": "Provider-neutral completion metadata (ModelCompletion). Never raw provider text or reasoning. Open: readCompletion keeps only these members and drops any other.",
       "type": "object",
@@ -95,7 +121,7 @@
       "pattern": "^[a-f0-9]{64}$"
     },
     "requestKey": {
-      "description": "The SHA-256 of the JSON text {\"request\":…,\"phase\":…,\"purpose\":…} for the person's current request (ExecutionController.initialize). It binds a checkpoint to the request it was made for; it is not a digest of the prompt sent to the model.",
+      "description": "The SHA-256 of the JSON text {\"request\":\u2026,\"phase\":\u2026,\"purpose\":\u2026} for the person's current request (ExecutionController.initialize). It binds a checkpoint to the request it was made for; it is not a digest of the prompt sent to the model.",
       "$ref": "#/$defs/sha256"
     },
     "promptDigest": {
@@ -121,16 +147,34 @@
     "compactionSummary": {
       "description": "One ADR-0016 replacement carried through a resume. digest identifies the framed replacement; digests identify the original turns it replaced.",
       "type": "object",
-      "required": ["digest", "turns", "bytes", "summary", "digests"],
+      "required": [
+        "digest",
+        "turns",
+        "bytes",
+        "summary",
+        "digests"
+      ],
       "properties": {
-        "digest": {"$ref": "#/$defs/sha256"},
-        "turns": {"type": "integer", "minimum": 1},
-        "bytes": {"type": "integer", "minimum": 1},
-        "summary": {"type": "string"},
+        "digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "turns": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "summary": {
+          "type": "string"
+        },
         "digests": {
           "type": "array",
           "minItems": 1,
-          "items": {"$ref": "#/$defs/sha256"}
+          "items": {
+            "$ref": "#/$defs/sha256"
+          }
         }
       },
       "additionalProperties": false
@@ -138,13 +182,23 @@
     "compactionReport": {
       "description": "ADR-0016's run report row, carried in the checkpoint.",
       "type": "object",
-      "required": ["mode", "summaries"],
+      "required": [
+        "mode",
+        "summaries"
+      ],
       "properties": {
-        "mode": {"enum": ["index", "summary"]},
+        "mode": {
+          "enum": [
+            "index",
+            "summary"
+          ]
+        },
         "summaries": {
           "type": "array",
           "maxItems": 100,
-          "items": {"$ref": "#/$defs/compactionSummary"}
+          "items": {
+            "$ref": "#/$defs/compactionSummary"
+          }
         }
       },
       "additionalProperties": false
@@ -636,7 +690,7 @@
           "minLength": 1,
           "maxLength": 100,
           "pattern": "^[\\s\\S]{1,100}$",
-          "description": "1–100 Unicode code points, including non-ASCII characters; not UTF-8 bytes or UTF-16 code units."
+          "description": "1\u2013100 Unicode code points, including non-ASCII characters; not UTF-8 bytes or UTF-16 code units."
         },
         "digest": {
           "type": "string",
@@ -740,6 +794,27 @@
         "type": "integer",
         "minimum": 0,
         "maximum": 9007199254740991
+      }
+    },
+    "recordFigures": {
+      "description": "Redactions in this record's storage pass, by stable pattern label; excludes delivered-output counts.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "redactions"
+      ],
+      "properties": {
+        "redactions": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9-]{0,63}$"
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
       }
     }
   }

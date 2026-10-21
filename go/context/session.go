@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -244,7 +245,18 @@ func NewSessionContext(session Session) (*SessionContext, error) {
 		store = out.turn
 	}
 	out.Ledger = NewContextLedger(out.Policy, store)
-	out.Execution = NewExecutionController(session, out.Ledger)
+	out.Execution = NewExecutionController(session, out.Ledger, out.ResolvedPolicy)
+	// ADR records follows the output-boundary branch: resolve its Output field when a record is
+	// actually written, after that guard has opened. Reflection keeps this additive branch buildable
+	// before the prerequisite is carried into it by the coordinator.
+	out.Execution.RecordGuard = func() RecordGuard {
+		field := reflect.ValueOf(out).Elem().FieldByName("Output")
+		if !field.IsValid() || (field.Kind() == reflect.Pointer || field.Kind() == reflect.Interface) && field.IsNil() || !field.CanInterface() {
+			return nil
+		}
+		guard, _ := field.Interface().(RecordGuard)
+		return guard
+	}
 	// ADR-0010: the session's critic members, read closed before any request; the forced-off facts
 	// are the session's: a delegated child (its objective), Plan mode, a graph purpose, a reviewer.
 	settings := CriticSettings{ResolvedPolicy: out.ResolvedPolicy, Critic: session.Critic, CriticProject: session.CriticProject, CriticReasoning: session.CriticReasoning, AdversarialReview: session.AdversarialReview}
@@ -1269,6 +1281,23 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		if err := held.Execution.Initialize(); err != nil {
 			return err
 		}
+		outputCounts := map[string]int64{}
+		for name, count := range held.Execution.State.OutputGuard {
+			outputCounts[name] = count
+		}
+		held.Output, err = NewOutputGuard(held.ResolvedPolicy, func() map[string]int64 { return outputCounts })
+		held.outputContext = ctx
+		held.Execution.OutputRows = held.Output.Counts
+		if err != nil {
+			return err
+		}
+		held.Output.DeclaredNames = map[string]bool{}
+		for _, tool := range session.Tools {
+			held.Output.DeclaredNames[tool.Name] = true
+		}
+		for _, tool := range session.HostTools {
+			held.Output.DeclaredNames[tool.Name] = true
+		}
 		if held.Execution.State.Compaction != nil {
 			for _, summary := range held.Execution.State.Compaction.Summaries {
 				held.summaries[summary.Summary] = true
@@ -1383,16 +1412,6 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		}
 		held.CarryMarker()
 		held.OpenMemories()
-		outputCounts := map[string]int64{}
-		for name, count := range held.Execution.State.OutputGuard {
-			outputCounts[name] = count
-		}
-		held.Output, err = NewOutputGuard(held.ResolvedPolicy, func() map[string]int64 { return outputCounts })
-		held.outputContext = ctx
-		held.Execution.OutputRows = held.Output.Counts
-		if err != nil {
-			return err
-		}
 		if err := held.OpenDrafts(); err != nil {
 			return err
 		}
@@ -1542,6 +1561,13 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 	}
 	out := session
 	out.HostTools = wrapped
+	held.Output.DeclaredNames = map[string]bool{}
+	for _, tool := range out.Tools {
+		held.Output.DeclaredNames[tool.Name] = true
+	}
+	for _, tool := range out.HostTools {
+		held.Output.DeclaredNames[tool.Name] = true
+	}
 	callTool := session.CallTool
 	offered := map[string]bool{}
 	for _, tool := range session.Tools {
@@ -1693,6 +1719,10 @@ func (c *SessionContext) ClaimRequest(ctx context.Context, body []byte) error {
 	}
 	state, err := c.Execution.Snapshot("")
 	if err != nil {
+		var refused *RecordsRefused
+		if errors.As(err, &refused) {
+			return nil
+		}
 		return err
 	}
 	if err := c.session.Context.Checkpoint(ctx, state); err != nil {
