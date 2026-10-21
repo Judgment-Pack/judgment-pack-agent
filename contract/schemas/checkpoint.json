@@ -222,6 +222,9 @@
     "draft": {
       "$ref": "#/$defs/draft"
     },
+    "outputGuard": {
+      "$ref": "provenance.json#/$defs/outputGuard"
+    },
     "steers": {
       "$ref": "provenance.json#/$defs/steerReport"
     }

@@ -14,7 +14,7 @@
  * most `limit`, and `more`, the cursor that goes on from exactly the next one.
  */
 import {toolInputFailure} from '../failures'
-import {compilePattern,matcher,PatternError,PATTERN_LENGTH,type CompiledPattern} from './pattern'
+import {compilePattern,matcher,PatternError,PATTERN_LENGTH,PATTERN_STEPS,type CompiledPattern} from './pattern'
 import {readWindowBytes,utf8Bytes,type ContextPolicy} from './policy'
 import {READ_TOOL,type Readable} from './reader'
 
@@ -33,7 +33,7 @@ export const SEARCH_LINE_CHARACTERS=240
 /** The most items a search names as images it cannot show, on its first page. */
 export const SEARCH_NOT_SHOWN=20
 /** The work one search may do, in pattern steps, before it stops and gives a cursor. */
-export const SEARCH_STEPS=4_000_000
+export const SEARCH_STEPS=PATTERN_STEPS
 
 /** What a model asks a search for. */
 export interface SearchArguments {pattern:string;id?:string;scope?:SearchScope;ignoreCase?:boolean;limit?:number;cursor?:string}

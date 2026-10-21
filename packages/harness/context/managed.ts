@@ -1,3 +1,5 @@
+import {guardConnectionNotices} from '../session'
+import {OutputRefused,outputWhere} from '../outputGuard'
 import {PolicyRefusal} from '../policy'
 import {failureError,failureEvent,toolFailureResult} from '../failures'
 import {ExecutionPaused} from '../execution/state'
@@ -18,7 +20,24 @@ export function managedContext<T extends EngineSession>(session:T,run:(session:T
  const gate=openRun(session,()=>{})
  return eventIterator({gate,open:()=>execute({...session,signal:gate.signal},run,engine)})
 }
+/** Notices carry model-derived identifiers and refusal details, independently of tool results.
+ * Guard-generated labels are trusted metadata and must not be scanned again. */
+function guardNotice(notice:AssistantEvent,context:SessionContext):AssistantEvent {
+ if(notice.type==='edit_refused'){const [document,reason]=context.output.value([notice.document,notice.reason] as const,'draft edit');if(document!==undefined&&[...document].length>512)context.output.refuse('draft edit','invalid-output');return {...notice,...(document===undefined?{}:{document}),reason}}
+ if(notice.type==='edit_applied'){const document=context.output.value(notice.document,'draft edit');if([...document].length>512)context.output.refuse('draft edit','invalid-output');return {...notice,document}}
+ if(notice.type==='guardrail'&&notice.reason!=='output refused'){const [tool,detail]=context.output.value([notice.tool,notice.detail] as const,'message');return {...notice,tool,detail}}
+ return notice
+}
+function takeNotices(context:SessionContext):AssistantEvent[]{
+ const out:AssistantEvent[]=[]
+ for(const notice of context.takeNotices()){
+  try{out.push(guardNotice(notice,context))}catch(error){if(!(error instanceof OutputRefused))throw error}
+ }
+ // These are the labels just produced by guarding notices, never tool results.
+ return [...out,...context.takeNotices()]
+}
 async function* execute<T extends EngineSession>(session:T,run:(session:T)=>AsyncIterable<AssistantEvent>,engine?:import('../host').AssistantEngine):AsyncGenerator<AssistantEvent>{
+ let releaseNotices:(()=>void)|undefined
  let context:SessionContext|undefined
  let ended=false
  const tracked=!!session.context?.currentRequest||!!session.context?.execution
@@ -40,6 +59,21 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
  try {
   session.signal.throwIfAborted()
   const ready=await contextualSession(session,engine);context=ready.context
+  releaseNotices=guardConnectionNotices(session.callTool,notice=>{
+   try{return guardNotice(notice,ready.context)}catch(error){if(!(error instanceof OutputRefused))throw error;return undefined}
+  })
+  // Only names declared by the host, Runtime or reserved harness offer are trusted.
+  // Keep dispatch on the original name: an unknown call still earns the gate's refusal.
+  const declaredNames=new Set([...ready.session.tools,...ready.session.hostTools].map(tool=>tool.name))
+  const deliveredNames=new Map<string,string>()
+  const guardName=(name:string,call=false):string=>{
+   if(declaredNames.has(name))return name
+   if(!call&&deliveredNames.has(name))return deliveredNames.get(name)!
+   let clean:string
+   try{clean=context!.output.value(name,'message');if(context!.output.mode!=='off'&&[...clean].length>150)context!.output.refuse('message','invalid-output')}
+   catch(error){if(!(error instanceof OutputRefused))throw error;clean=error.message}
+   deliveredNames.set(name,clean);return clean
+  }
   contexts.set(ready.session,context)
   yield {type:'policy_resolved',members:structuredClone(context.resolvedPolicy)}
   if(context.paceWarning)yield {type:'guardrail',tool:'pace',action:'refused',reason:'pace warning',detail:context.paceWarning}
@@ -60,7 +94,7 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
     yield await write()
     const ran=await context.runApproved!(session.signal)
     context.execution.state.approval={...context.execution.state.approval!,state:'executed',result:ran.result}
-    for(const notice of context.takeNotices())yield notice
+    for(const notice of takeNotices(context))yield notice
     yield await write()
    }else if(step==='write'){
     yield await write()
@@ -72,9 +106,29 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
    ready.session.prompt=ready.session.prompt+'\n\n'+approvalContinuation(context.execution.state.approval!)
   }
   for await (let event of run(ready.session)){
+   // Output is held before host delivery; dispatch independently guards tool arguments.
+   if(context.output.mode!=='off'&&(event.type==='message_progress'||event.type==='reasoning'&&!event.done))continue
+   if(event.type==='reasoning')event={...event,text:context.output.value(event.text,'message')}
+   if(event.type==='message')event={...event,text:context.output.value(event.text,'message')}
+   if(event.type==='tool_call')event={...event,name:guardName(event.name,true),args:context.output.value(event.args,outputWhere(event.name),context.output.mode==='refuse')}
+   if(event.type==='tool_result')event={...event,name:guardName(event.name)}
+   if(event.type==='user_question')event={...event,question:context.output.value(event.question,'tool argument')}
+   if(event.type==='delegation_requested')event={...event,request:context.output.value(event.request,'tool argument')}
+   if(event.type==='proposal'){
+    const clean=context.output.value(event,'proposal')
+    if(JSON.stringify(clean)!==JSON.stringify(event)){
+     let checked:import('../engine').McpToolResult={isError:true}
+     try{checked=await ready.session.callTool('validate',{content:JSON.stringify(clean.document)})}catch{session.signal.throwIfAborted();context.output.refuse('proposal','proposal-validation')}
+     let result=checked.structuredContent as {status?:string}|undefined
+     if(result===undefined){try{result=JSON.parse((checked.content??[]).filter(p=>p.type==='text').map(p=>p.text??'').join('\n'))}catch{}}
+     if(checked.isError||result?.status!=='valid')context.output.refuse('proposal','proposal-validation')
+    }
+    event=clean
+   }
+   event=guardNotice(event,context)
    // agent#10: a refusal of the critic's call is the boundary's guardrail, put
    // on the stream before the result the engine reports for that call.
-   for(const notice of context.takeNotices())yield notice
+   for(const notice of takeNotices(context))yield notice
    const checkpoints=event.type==='tool_call'||event.type==='tool_result'||event.type==='user_question'||event.type==='budget_paused'||event.type==='error'&&(event.failure?.code==='request-limit'||event.message===new ExecutionPaused().message)
    if(context.execution.approvalAsked||checkpoints)for(const notice of context.execution.queueSteers(ready.session.input,context.policy))yield notice
    // ADR-0008: an engine asks the host's approval policy where it hands an act call to the host
@@ -130,11 +184,18 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
   }
  } catch(error){
   if(ended)throw error
+  if(error instanceof OutputRefused){
+   const notices=context?takeNotices(context):[]
+   for(const notice of notices)yield notice
+   if(!notices.some(e=>e.type==='guardrail'&&e.reason==='output refused'))yield {type:'guardrail',tool:'output',action:'refused',reason:'output refused',detail:error.message}
+   if(context&&tracked)yield {type:'execution_checkpoint',checkpoint:context.execution.snapshot('stopped')}
+   yield {type:'end'};return
+  }
   if(error instanceof PolicyRefusal){
    yield error.event()
    if(error.checkpoint)yield {type:'execution_checkpoint',checkpoint:error.checkpoint}
   }
   if(!session.signal.aborted)yield failureEvent(error,'context')
   yield {type:'end'}
- } finally {context?.close()}
+ } finally {releaseNotices?.();context?.close()}
 }

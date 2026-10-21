@@ -278,6 +278,16 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 		mu.Lock()
 		defer mu.Unlock()
 		switch {
+		case event.OutputGuarded != nil:
+			c.shared.mu.Lock()
+			parent := c.shared.parent
+			c.shared.mu.Unlock()
+			if parent != nil && parent.Output != nil {
+				parent.Output.Adopt(event.OutputGuarded.Pattern)
+			}
+			c.deliver(event)
+		case event.Guardrail != nil && event.Guardrail.Reason != nil && *event.Guardrail.Reason == "output refused":
+			c.deliver(event)
 		case event.Message != nil:
 			if run.text != "" {
 				run.text += "\n\n"

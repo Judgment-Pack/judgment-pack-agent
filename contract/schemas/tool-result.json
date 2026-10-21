@@ -19,7 +19,7 @@
       "type": "string"
     },
     "name": {
-      "description": "The tool's own name, never a wire alias. A tool with a source is reported by its wire name, its own name in source.tool (ADR-0006).",
+      "description": "The tool's declared name, or the same output-guarded display name as its call for an undeclared model name (ADR-0017). The result payload remains exempt. A tool with a source is reported by its wire name, its own name in source.tool (ADR-0006).",
       "type": "string"
     },
     "isError": {

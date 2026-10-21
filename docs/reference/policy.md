@@ -83,6 +83,9 @@ Closed: a member the schema does not name is refused.
 | `pace.bytesPerDay` |  | integer or null (min 0) | Host project period allowance; null means no period ceiling. Default: `null`. |
 | `pace.warnAt` |  | number (min 0, max 1) | Default: `0.8`. |
 | `taskClass` |  | enum `routine`, `material`, `boundary` | Default: `"routine"`. |
+| `outputGuard` |  | enum `off`, `redact`, `refuse` | Default: `"redact"`. |
+| `outputPatterns` |  | array of `$defs/outputPattern` (max items 32) | Default: `[]`. |
+| `outputAllow` |  | array of string (min length 1, max length 64, pattern `^[a-z][a-z0-9-]{0,63}$`) (max items 64) | Default: `[]`. |
 
 ### `policy.json $defs/member`
 
@@ -92,6 +95,15 @@ Closed: a member the schema does not name is refused.
 | --- | --- | --- | --- |
 | `value` | yes | any |  |
 | `layer` | yes | enum `run`, `project`, `table` |  |
+
+### `policy.json $defs/outputPattern`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `name` | yes | string (min length 1, max length 64, pattern `^[a-z][a-z0-9-]{0,63}$`) |  |
+| `pattern` | yes | string (min length 1, max length 256) |  |
 
 ### `policy.json $defs/paceUsed`
 

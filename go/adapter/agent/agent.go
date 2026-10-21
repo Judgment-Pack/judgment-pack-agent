@@ -163,6 +163,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 	r.session = opened.Session
 	r.boundary = runcontext.NewBoundary(opened)
 	defer r.boundary.Close()
+	defer r.boundary.GuardGateNotices(run.Gate)()
 	r.sc.RecordProvider("author")
 	r.emitAll(r.boundary.Open())
 
