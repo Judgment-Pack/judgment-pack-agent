@@ -33,9 +33,10 @@ already holds, never from the person's or the model's prose: the run produced a 
 cases exist, or the proposal changes an existing pack, or the model asked through the reserved tool
 `request_review`. A human reviewer assigned, a graph-purpose run, Plan mode and a delegated child turn
 the critic off whatever the mode, each with its named reason. The critic runs at its own tier, at
-least the author's unless the host lowers it explicitly. Every run emits the decision
-(`critic_decided`) and writes it into the checkpoint (`critic`), so the person and a later reader see
-why a review ran or did not. The three rules of the refutation pass do not change.
+least the author's unless the host lowers it explicitly.
+Runs reaching the critic decision point emit `critic_decided`; tracked runs checkpoint that
+decision. Earlier failures or pauses may omit it; a checkpointed review request survives a resume.
+The three rules of the refutation pass do not change.
 
 ```
  HOST (the Desk)                                        PACKAGE (the adapter)
@@ -217,8 +218,8 @@ recorded, the tier floor removed, the table's default over the run's word.
 ## Consequences
 
 - Under the table's default every author run is offered `request_review`, so the offer of a session
-  that states nothing carries one more host tool after the context tools, and every run that reaches a
-  proposal or its last message carries one more event.
+  that states nothing carries one more host tool after the context tools, and runs reaching the critic
+  decision point carry one more event.
 - A pack with saved tests is reviewed by default, which costs the critic's requests (or one
   invocation) where before it cost nothing unless the host asked; a new pack in a conversation is not.
 - On the agent capability a response under `auto` or `on` can delegate one task fewer than under `off`.
