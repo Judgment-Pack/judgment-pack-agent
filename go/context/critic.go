@@ -39,8 +39,10 @@ var CriticReasons = []string{"person", "project", "table", "model-asked", "cases
 // ModelTiers are the model capability's thinking tiers and AgentTiers the agent capability's
 // efforts, each lowest first (tool-offer.json#/$defs/criticReasoning).
 var (
-	ModelTiers = []string{"off", "low", "on", "medium", "ultra", "high"}
-	AgentTiers = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}
+	// CriticTriggers is CRITIC_TRIGGERS: what turns auto on, in decision order.
+	CriticTriggers = []string{"model-asked", "cases", "changes-existing"}
+	ModelTiers     = []string{"off", "low", "on", "medium", "ultra", "high"}
+	AgentTiers     = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}
 )
 
 // RequestReview is the reserved name the model asks for a review with
@@ -179,14 +181,14 @@ func DecideCritic(session CriticSettings, table CriticTable, forced CriticForced
 	}
 	trigger := ""
 	if mode == "auto" {
-		switch {
-		case run.ModelAsked:
-			trigger = "model-asked"
-		case run.Cases:
-			trigger = "cases"
-		case run.ChangesExisting:
-			trigger = "changes-existing"
-		default:
+		triggered := map[string]bool{"model-asked": run.ModelAsked, "cases": run.Cases, "changes-existing": run.ChangesExisting}
+		for _, candidate := range CriticTriggers {
+			if triggered[candidate] {
+				trigger = candidate
+				break
+			}
+		}
+		if trigger == "" {
 			return CriticDecision{Mode: mode, Reason: layer}
 		}
 	}

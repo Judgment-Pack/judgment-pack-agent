@@ -568,9 +568,9 @@
         },
         "trigger": {
           "enum": [
+            "model-asked",
             "cases",
-            "changes-existing",
-            "model-asked"
+            "changes-existing"
           ]
         }
       },

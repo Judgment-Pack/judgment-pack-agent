@@ -3,6 +3,7 @@ package wire
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -114,6 +115,8 @@ var CapabilityMembers = []string{
 	"contextWindowTokens", "outputTokens", "nativeToolCalls", "parallelToolCalls", "vision",
 	"reasoning", "streamingQuirks", "toolSchemas", "statePlacement", "strictAlternation", "family", "tiers", "fallbackTiers", "cacheBreakpoints",
 }
+
+var integerTokenBudget = regexp.MustCompile(`^(?:0|[1-9][0-9]*)$`)
 
 // WireReasoning is WIRE_REASONING: the reasoning kinds each wire speaks. A record that names
 // another is refused for that wire.
@@ -229,6 +232,13 @@ func ReadCapabilities(value *Value) (ModelCapabilities, error) {
 					return record, refuseCapabilities("tiers must name every setting")
 				}
 				settings[tier] = v.Text()
+			}
+			if name == "fallbackTiers" && record.Family == "anthropic" {
+				for _, setting := range settings {
+					if !integerTokenBudget.MatchString(setting) {
+						return record, refuseCapabilities("fallbackTiers must name integer token budgets")
+					}
+				}
 			}
 			if name == "tiers" {
 				record.Tiers = settings

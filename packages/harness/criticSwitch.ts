@@ -29,6 +29,7 @@ export const CRITIC_MODES: readonly CriticMode[] = ['off', 'auto', 'on']
 export type CriticLayer = 'person' | 'project' | 'table'
 /** What turns the critic on under `auto`, in the order the decision reads them. */
 export type CriticTrigger = 'model-asked' | 'cases' | 'changes-existing'
+export const CRITIC_TRIGGERS: readonly CriticTrigger[] = ['model-asked', 'cases', 'changes-existing']
 /** What turns the critic off whatever the mode, in the order the decision reads them. */
 export type CriticForcedOff = 'child' | 'phase' | 'purpose' | 'reviewer-assigned'
 /** Why the critic ran or did not (`provenance.json#/$defs/criticReason`), one enum. */
@@ -135,7 +136,8 @@ export function criticDecision(session: CriticSettings, table: CriticTable, forc
   if (!run.proposal) return { mode, ran: false, reason: 'no-proposal' }
   let trigger: CriticTrigger | undefined
   if (mode === 'auto') {
-    trigger = run.modelAsked ? 'model-asked' : run.cases ? 'cases' : run.changesExisting ? 'changes-existing' : undefined
+    const triggered: Record<CriticTrigger, boolean> = {'model-asked':run.modelAsked,cases:run.cases,'changes-existing':run.changesExisting}
+    trigger = CRITIC_TRIGGERS.find((candidate) => triggered[candidate])
     if (trigger === undefined) return { mode, ran: false, reason: layer }
   }
   const reason: CriticReason = trigger ?? layer

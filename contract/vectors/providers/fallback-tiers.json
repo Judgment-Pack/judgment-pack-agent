@@ -34,6 +34,15 @@
       }
     }
   ],
+  "refused": {
+    "family": "anthropic",
+    "fallbackTiers": {
+      "low": "4000.0",
+      "medium": "8000",
+      "high": "16000"
+    }
+  },
+  "error": "the model's capability record is invalid: fallbackTiers must name integer token budgets; nothing was run",
   "cases": [
     {
       "record": 0,

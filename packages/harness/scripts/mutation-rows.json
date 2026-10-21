@@ -1290,6 +1290,17 @@
    "origin": "desk"
   },
   {
+   "name": "a fractional fallback token budget is accepted",
+   "file": "capabilities.ts",
+   "find": "    if(value.family==='anthropic'&&['low','medium','high'].some(tier=>!/^(?:0|[1-9][0-9]*)$/.test(String(fallbackTiers[tier]))))refuse('fallbackTiers must name integer token budgets')",
+   "replace": "",
+   "tests": [
+    "providers.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent"
+  },
+  {
    "name": "the tier member is sent when the tier is off",
    "file": "thinking.ts",
    "find": "    return null\n  }\n  const family = dialect.startsWith('gemini') ? 'gemini' : dialect.startsWith('anthropic') ? 'anthropic' : 'openai-compatible'",

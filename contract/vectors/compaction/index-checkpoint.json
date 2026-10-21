@@ -1,0 +1,23 @@
+{
+  "description": "ADR-0016 index compaction checkpoint: the mode and empty summaries are carried through resume. Written by hand.",
+  "schema": "checkpoint.json",
+  "source": {"harness": {"repository": "Judgment-Pack/judgment-pack-agent", "package": "packages/harness"}, "files": ["packages/harness/execution/state.ts"]},
+  "items": [
+    {
+      "version": 1,
+      "id": "compaction-index-example",
+      "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+      "phase": "work",
+      "status": "running",
+      "unit": "provider-managed",
+      "used": 0,
+      "limit": 1,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [],
+      "context": {"scope": "compaction-index", "entries": []},
+      "compaction": {"mode": "index", "summaries": []}
+    }
+  ]
+}
