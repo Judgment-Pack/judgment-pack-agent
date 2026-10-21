@@ -942,6 +942,22 @@
       {
         "check": "16 · checkpoint resume gives the same request bytes without asking the compactor again",
         "go": ["16 resume"]
+      },
+      {
+        "check": "20 qualifying failure switches once, rebuilds the request and emits the usage ledger",
+        "go": ["20 switch", "20 usage", "20 agent switch", "20 agent usage"]
+      },
+      {
+        "check": "20 cross-family fallback is refused before dispatch",
+        "go": ["20 cross-family", "20 agent cross-family"]
+      },
+      {
+        "check": "20 a refusal never switches",
+        "go": ["20 refusal", "20 agent refusal"]
+      },
+      {
+        "check": "20 an agent switch during delegated work is refused",
+        "go": ["20 agent delegation refusal"]
       }
     ],
     "additionalSources": [

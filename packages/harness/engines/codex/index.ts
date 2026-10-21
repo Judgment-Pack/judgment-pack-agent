@@ -108,6 +108,7 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
       let messages = 0
       await withAbort(() => session.agent.run({ prompt, instructions, tools: offeredHere, effort, phase: phase === 'critic' ? 'critic' : 'author', ...(model === undefined ? {} : { model }) }, {
         signal: executionSignal,
+        connectionSwitched: deliver,
         event: async (event: AgentEvent) => {
           if (executionSignal.aborted) return
           if (event.type === 'retry') {

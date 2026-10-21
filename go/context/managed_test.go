@@ -56,7 +56,7 @@ func TestTheBoundaryCheckpointsTheOpeningAndEachCall(t *testing.T) {
 	}
 	// The closing checkpoint says complete, and the end is delivered after it.
 	held, stop = boundary.Event(contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}})
-	if !stop || eventTypes(held)[0] != "execution_checkpoint+durable" || eventTypes(held)[1] != "end" {
+	if !stop || eventTypes(held)[0] != "execution_checkpoint+durable" || eventTypes(held)[1] != "usage" || eventTypes(held)[2] != "end" {
 		t.Errorf("the closing events are %v", eventTypes(held))
 	}
 	if run.Context.Execution.State.Status != "complete" {
@@ -89,7 +89,7 @@ func TestTheBoundaryPausesTheRunAtItsRequestLimit(t *testing.T) {
 	if !stop {
 		t.Error("the run went on after the pause")
 	}
-	if got := eventTypes(held); len(got) != 3 || got[0] != "tool_result" || got[1] != "budget_paused" || got[2] != "end" {
+	if got := eventTypes(held); len(got) != 4 || got[0] != "tool_result" || got[1] != "budget_paused" || got[2] != "usage" || got[3] != "end" {
 		t.Errorf("the pause's events are %v", got)
 	}
 }
@@ -129,14 +129,14 @@ func TestTheBoundaryCarriesTheFailureOfAContextThatCannotOpen(t *testing.T) {
 	_, err := ContextualSession(context.Background(), session)
 	refused(t, err, "reserved")
 	held := FailedToOpen(err)
-	if got := eventTypes(held); len(got) != 2 || got[0] != "error" || got[1] != "end" {
+	if got := eventTypes(held); len(got) != 3 || got[0] != "error" || got[1] != "usage" || got[2] != "end" {
 		t.Errorf("the events are %v", got)
 	}
 	if held[0].Error.Failure == nil || held[0].Error.Failure.Source != "context" {
 		t.Errorf("the failure is %+v", held[0].Error)
 	}
 	// A run its caller stopped is no error event.
-	if got := eventTypes(FailedToOpen(failure.Cancelled)); len(got) != 1 || got[0] != "end" {
+	if got := eventTypes(FailedToOpen(failure.Cancelled)); len(got) != 2 || got[0] != "usage" || got[1] != "end" {
 		t.Errorf("a cancelled run gave %v", got)
 	}
 }

@@ -212,6 +212,10 @@
         "$ref": "provenance.json#/$defs/crossProvider"
       }
     },
+    "usage": {
+      "description": "ADR-0020. The run's counts so far, carried through interruption and resume and finalized before end.",
+      "$ref": "usage.json"
+    },
     "compaction": {
       "description": "ADR-0016: the compaction mode and the replacements already made. Summary text and the digests of the original turns make a resumed request byte-identical without another compactor request.",
       "$ref": "provenance.json#/$defs/compactionReport"

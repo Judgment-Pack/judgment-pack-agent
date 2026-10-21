@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // PolicyConnection is a host-bound connection. Policy names IDs, never URLs or credentials.
@@ -114,26 +115,140 @@ func ApplyPolicy(run *Run, sc *runcontext.SessionContext, named runcontext.RunMo
 	run.Models = func() (runcontext.RunModels, error) { return named, nil }
 	tier, _ := sc.ResolvedPolicy["models.author.reasoning"].Value.(string)
 	if run.Agent != nil {
-		bound := *author.Agent
-		bound.Effort = tier
-		send := bound.Run
+		activeIDs := map[string]string{}
+		activeAgents := map[string]Agent{}
+		for role, binding := range map[string]PolicyConnection{"author": author, "critic": critic} {
+			activeIDs[role], _ = sc.ResolvedPolicy["models."+role+".provider"].Value.(string)
+			selected := *binding.Agent
+			selected.Effort, _ = sc.ResolvedPolicy["models."+role+".reasoning"].Value.(string)
+			activeAgents[role] = selected
+		}
+		var failoverMu sync.Mutex
+		bound := activeAgents["author"]
 		bound.Run = func(ctx context.Context, request AgentRequest, callbacks AgentCallbacks) error {
+			role := "author"
 			if request.Phase == "critic" {
-				return critic.Agent.Run(ctx, request, callbacks)
+				role = "critic"
 			}
-			return send(ctx, request, callbacks)
+			failoverMu.Lock()
+			selected := activeAgents[role]
+			failoverMu.Unlock()
+			return selected.Run(ctx, request, callbacks)
 		}
 		run.Agent = &bound
+		run.Connection = func(role string) string { failoverMu.Lock(); defer failoverMu.Unlock(); return activeIDs[role] }
+		run.Failover = func(role, reason string) (string, string, bool) {
+			failoverMu.Lock()
+			defer failoverMu.Unlock()
+			classes, _ := sc.ResolvedPolicy["failover.classes"].Value.([]any)
+			allowed := false
+			for _, held := range classes {
+				if held == reason {
+					allowed = true
+				}
+			}
+			if !allowed {
+				return "", "", false
+			}
+			fallbacks, _ := sc.ResolvedPolicy["models."+role+".fallback"].Value.([]any)
+			primary, _ := sc.ResolvedPolicy["models."+role+".provider"].Value.(string)
+			chain := []string{primary}
+			for _, raw := range fallbacks {
+				if id, ok := raw.(string); ok {
+					chain = append(chain, id)
+				}
+			}
+			at := -1
+			for i, id := range chain {
+				if id == activeIDs[role] {
+					at = i
+				}
+			}
+			if at < 0 || at+1 >= len(chain) {
+				return "", "", false
+			}
+			if run.Context != nil && run.Context.Objective != "" {
+				detail := "A provider switch during agent delegation is refused because the account is exclusive."
+				reasonName := "failover refused"
+				run.Emit(contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: "models." + role + ".fallback", Action: "refused", Detail: detail, Reason: &reasonName}})
+				return "", "", false
+			}
+			to := chain[at+1]
+			binding, ok := run.PolicyConnections[to]
+			if !ok || binding.Agent == nil {
+				return "", "", false
+			}
+			from := activeIDs[role]
+			activeIDs[role] = to
+			switched := *binding.Agent
+			switched.Effort, _ = sc.ResolvedPolicy["models."+role+".reasoning"].Value.(string)
+			activeAgents[role] = switched
+			sc.Execution.UseConnection(to, role)
+			return from, to, true
+		}
 	} else {
+		activeIDs := map[string]string{}
+		active := map[string]PolicyConnection{"author": author, "critic": critic}
+		for role := range active {
+			activeIDs[role], _ = sc.ResolvedPolicy["models."+role+".provider"].Value.(string)
+		}
+		var failoverMu sync.Mutex
+		run.Connection = func(role string) string { failoverMu.Lock(); defer failoverMu.Unlock(); return activeIDs[role] }
+		run.Failover = func(role, reason string) (string, string, bool) {
+			failoverMu.Lock()
+			defer failoverMu.Unlock()
+			classes, _ := sc.ResolvedPolicy["failover.classes"].Value.([]any)
+			allowed := false
+			for _, held := range classes {
+				if held == reason {
+					allowed = true
+				}
+			}
+			if !allowed {
+				return "", "", false
+			}
+			member := sc.ResolvedPolicy["models."+role+".fallback"]
+			fallbacks, _ := member.Value.([]any)
+			primary, _ := sc.ResolvedPolicy["models."+role+".provider"].Value.(string)
+			chain := []string{primary}
+			for _, raw := range fallbacks {
+				if id, ok := raw.(string); ok {
+					chain = append(chain, id)
+				}
+			}
+			at := -1
+			for i, id := range chain {
+				if id == activeIDs[role] {
+					at = i
+				}
+			}
+			if at < 0 || at+1 >= len(chain) {
+				return "", "", false
+			}
+			to := chain[at+1]
+			binding, ok := run.PolicyConnections[to]
+			if !ok || binding.Model == nil {
+				return "", "", false
+			}
+			from := activeIDs[role]
+			activeIDs[role] = to
+			active[role] = binding
+			sc.Execution.UseConnection(to, role)
+			return from, to, true
+		}
 		run.ModelName = author.ModelName
 		run.Wire = author.Wire
 		run.Capabilities = author.Capabilities
 		run.Thinking = tier
 		run.Model = func(ctx context.Context, suffix string, request relay.Request) (*http.Response, error) {
+			role := "author"
 			if sc.CriticReading {
-				return critic.Model(ctx, suffix, request)
+				role = "critic"
 			}
-			return author.Model(ctx, suffix, request)
+			failoverMu.Lock()
+			selected := active[role]
+			failoverMu.Unlock()
+			return selected.Model(ctx, suffix, request)
 		}
 	}
 	return nil

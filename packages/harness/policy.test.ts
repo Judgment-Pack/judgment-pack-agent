@@ -4,6 +4,8 @@ import precedence from '../../contract/vectors/policy/precedence.json'
 import alias from '../../contract/vectors/policy/alias.json'
 import schema from './contract/policy-schema.json'
 import canonical from '../../contract/schemas/policy.json'
+import runEventSchema from '../../contract/schemas/run-event.json'
+import {argumentProblem} from './sourceArguments'
 
 const table:PolicyLayer={models:{author:{model:'connected',reasoning:'off'}}}
 const host={connections:['connected'],agent:false,requests:16}
@@ -62,5 +64,19 @@ describe('ADR-0011 policy table',()=>{
   const resolved=resolvePolicy(layer,{},table,host)
   layer.budget!.readBytes=2048
   expect(resolved.members['budget.readBytes']).toEqual({value:512,layer:'run'})
+ })
+ it('admits only connected same-family fallbacks and keeps their order',()=>{
+  const same={connections:['connected','backup-1','backup-2'],families:{connected:'openai' as const,'backup-1':'openai' as const,'backup-2':'openai' as const},agent:false,requests:16}
+  const resolved=resolvePolicy({models:{author:{fallback:['backup-1','backup-2']}}},{},table,same)
+  expect(resolved.members['models.author.fallback']).toEqual({value:['backup-1','backup-2'],layer:'run'})
+  expect(()=>resolvePolicy({models:{author:{fallback:['other']}}},{},table,{...same,connections:[...same.connections,'other'],families:{...same.families,other:'anthropic'}})).toThrow('cross-family fallback is refused')
+  expect(()=>resolvePolicy({models:{author:{fallback:['missing']}}},{},table,same)).toThrow('fallback connection is not available')
+ })
+ it('emits schema-valid failover refusals for empty, missing, oversized and cross-family entries',()=>{
+  const same={connections:['connected','other'],families:{connected:'openai' as const,other:'anthropic' as const},agent:false,requests:16}
+  for(const fallback of ['', 'missing', 'x'.repeat(129), 'other']){
+   try{resolvePolicy({models:{author:{fallback:[fallback]}}},{},table,same);expect.fail('malformed fallback admitted')}
+   catch(error){expect(error).toBeInstanceOf(PolicyRefusal);const event=(error as PolicyRefusal).event();expect(event.reason).toBe('failover refused');expect(argumentProblem(runEventSchema.$defs.guardrail,event)).toBeUndefined()}
+  }
  })
 })

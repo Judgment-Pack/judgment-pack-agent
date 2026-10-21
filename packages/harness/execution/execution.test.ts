@@ -3,8 +3,24 @@ import {contextualSession} from '../context/session'
 import {normalize} from '../thinking'
 import type {AssistantSession} from '../engine'
 import {extendExecution,readExecution,ExecutionPaused} from './state'
+import usageCheckpoint from '../../../contract/vectors/failover/usage-checkpoint.json'
 const base=():AssistantSession=>({prompt:'Fix the missing-size exception and verify unchanged expectations',context:{currentRequest:{message:'Fix it',input:'current pack and test facts'}},allowConversation:true,interactive:true,testPrompt:'',tools:[],hostTools:[],callTool:vi.fn(async()=>({content:[]})),model:{family:'gemini',model:'fixture',call:vi.fn(async()=>new Response('{}'))},thinking:normalize('off','gemini'),signal:new AbortController().signal})
 describe('shared execution continuity',()=>{
+ it('restores every usage ledger row from an interrupted run',()=>{
+  const saved=usageCheckpoint.items[0]
+  expect(readExecution(JSON.parse(JSON.stringify(saved)))?.usage).toEqual(saved.usage)
+ })
+ it('attributes source deltas to the connection and role active when they ran',async()=>{
+  const ready=await contextualSession(base()),execution=ready.context.execution
+  execution.state.sources=[{source:'runtime',kind:'runtime',calls:1,refused:0,proposed:0,bytes:30,milliseconds:4}]
+  execution.useConnection('backup','critic')
+  execution.state.sources[0]={...execution.state.sources[0]!,calls:2,bytes:50,milliseconds:7}
+  const rows=execution.usage().rows.filter(row=>row.source==='runtime')
+  expect(rows).toEqual([
+   {source:'runtime',connection:'fixture',role:'author',requests:0,invocations:1,milliseconds:4,bytes:30},
+   {source:'runtime',connection:'backup',role:'critic',requests:0,invocations:1,milliseconds:3,bytes:20}
+  ])
+ })
  it('refuses unapproved, changed-phase and changed-request continuation',async()=>{
   const input=base(),ready=await contextualSession(input)
   const saved=ready.context.execution.snapshot('paused')

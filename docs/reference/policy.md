@@ -72,6 +72,8 @@ Closed: a member the schema does not name is refused.
 | `models.taskClasses.routine` |  | enum `off`, `on`, `ultra`, `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` |  |
 | `models.taskClasses.material` |  | enum `off`, `on`, `ultra`, `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` |  |
 | `models.taskClasses.boundary` |  | enum `off`, `on`, `ultra`, `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` |  |
+| `failover` |  | object | ADR-0020. Provider failures that may move one request to the next same-family fallback after the ordinary retry rule. The package never switches for any other class. |
+| `failover.classes` |  | array of enum `unavailable`, `rate-limited`, `timeout` | Default: `["unavailable","rate-limited","timeout"]`. |
 | `concurrency` |  | object |  |
 | `concurrency.children` |  | integer (min 1, max 16) | Fixed at one on the agent capability. Default: `1`. |
 | `concurrency.requests` |  | integer (min 1, max 16) | Cannot exceed the host connection capacity. Default: `1`. |
@@ -116,3 +118,4 @@ Closed: a member the schema does not name is refused.
 | `model` |  | string (min length 1, max length 128) |  |
 | `reasoning` |  | enum `off`, `on`, `ultra`, `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` |  |
 | `provider` |  | string (min length 1, max length 128) | same selects the author's connection; other selects a host connection of another family; otherwise a connected ID. Run > project > table. Default: `"same"`. |
+| `fallback` |  | array of string (min length 1, max length 128) (max items 16) | ADR-0020. Ordered host connection IDs tried after this role's selected connection. Every entry must be connected and in the selected connection's family. Default: `[]`. |

@@ -1,0 +1,59 @@
+{
+  "description": "ADR-0020: an interrupted run checkpoints the usage ledger so a fresh session resumes its per-connection figures. Written by hand.",
+  "schema": "checkpoint.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/execution/state.ts"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "id": "failover-run",
+      "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "phase": "work",
+      "status": "running",
+      "unit": "model-requests",
+      "used": 2,
+      "limit": 20,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [],
+      "context": {
+        "scope": "failover-scope",
+        "entries": []
+      },
+      "usage": {
+        "rows": [
+          {
+            "source": "model",
+            "connection": "primary",
+            "role": "author",
+            "requests": 1,
+            "invocations": 0,
+            "milliseconds": 12,
+            "bytes": 1024
+          },
+          {
+            "source": "model",
+            "connection": "backup",
+            "role": "author",
+            "requests": 1,
+            "invocations": 0,
+            "milliseconds": 9,
+            "bytes": 1024,
+            "tokens": {
+              "inputTokens": 240,
+              "outputTokens": 32
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

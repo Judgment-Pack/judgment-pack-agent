@@ -344,6 +344,9 @@ export interface TurnRecord {
   seen: RuntimeCall[]
 }
 
+/** Legacy scenario assertions predate ADR-0020; scenario 20 certifies the terminal ledger itself. */
+const legacyEvents = (events: AssistantEvent[]) => events.filter((event) => event.type !== 'usage')
+
 const CURRENT_REQUEST = { message: 'Check the expense pack.', input: 'The expense pack.' }
 
 /**
@@ -389,7 +392,7 @@ export async function vercelTurn(options: {
   } finally {
     await runtime.close()
   }
-  return { events, requests: endpoint.requests, seen: runtime.seen }
+  return { events: legacyEvents(events), requests: endpoint.requests, seen: runtime.seen }
 }
 
 /**
@@ -432,7 +435,7 @@ export async function codexTurn(options: {
     await runtime.close()
   }
   if (bridge.errors.length > 0) throw bridge.errors[0]
-  return { events, seen: runtime.seen, runs: bridge.runs }
+  return { events: legacyEvents(events), seen: runtime.seen, runs: bridge.runs }
 }
 
 /** The events of one kind. */

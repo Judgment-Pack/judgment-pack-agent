@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/usage.json",
+  "title": "Run usage ledger",
+  "description": "ADR-0020. Closed counts for one run. The package emits this ledger once, immediately before end, and carries it in the checkpoint. Prices and project totals belong to the host. Token members are present only where the provider reported them.",
+  "type": "object",
+  "required": ["rows"],
+  "properties": {
+    "rows": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {"$ref": "#/$defs/row"}
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "tokens": {
+      "type": "object",
+      "properties": {
+        "inputTokens": {"$ref": "provenance.json#/$defs/tokens"},
+        "outputTokens": {"$ref": "provenance.json#/$defs/tokens"},
+        "reasoningTokens": {"$ref": "provenance.json#/$defs/tokens"},
+        "cacheReadTokens": {"$ref": "provenance.json#/$defs/tokens"},
+        "cacheWriteTokens": {"$ref": "provenance.json#/$defs/tokens"}
+      },
+      "minProperties": 1,
+      "additionalProperties": false
+    },
+    "row": {
+      "description": "One source on one host connection in one policy role. requests counts model requests, including retry and failover attempts; invocations counts provider-managed agent runs. bytes and milliseconds are observed counts, never prices or estimates.",
+      "type": "object",
+      "required": ["source", "connection", "role", "requests", "invocations", "milliseconds", "bytes"],
+      "properties": {
+        "source": {"type": "string", "minLength": 1, "maxLength": 128},
+        "connection": {"type": "string", "minLength": 1, "maxLength": 128},
+        "role": {"type": "string", "minLength": 1, "maxLength": 128},
+        "requests": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+        "invocations": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+        "milliseconds": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+        "bytes": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+        "tokens": {"$ref": "#/$defs/tokens"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

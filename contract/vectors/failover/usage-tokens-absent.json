@@ -1,0 +1,8 @@
+{
+  "description": "ADR-0020: no token member is invented where an agent wire reports none. Written by hand.",
+  "schema": "run-event.json",
+  "source": {"harness": {"repository": "Judgment-Pack/judgment-pack-agent", "package": "packages/harness"}, "files": ["packages/harness/execution/state.ts"]},
+  "items": [
+    {"type": "usage", "usage": {"rows": [{"source": "agent", "connection": "subscription", "role": "author", "requests": 0, "invocations": 1, "milliseconds": 412, "bytes": 0}]}}
+  ]
+}

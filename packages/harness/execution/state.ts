@@ -19,7 +19,7 @@ export interface RetainedEntry {id:string;kind:'history'|'artifact'|'request'|'t
  * retried (engines/vercel/retry.ts): the refused attempt's row carries its failure and the wait before the next, and
  * the attempt that answered carries its number.
  */
-export interface CompletionRecord {request:number;phase:'work'|'synthesis'|'review';result:ModelCompletion;attempt?:number;failure?:AIFailure;waitMs?:number}
+export interface CompletionRecord {request:number;phase:'work'|'synthesis'|'review';result:ModelCompletion;attempt?:number;failure?:AIFailure;waitMs?:number;connection?:string;role?:string}
 /**
  * The digest of one request body the adapter sent (ADR-0005): which it was, counted from 1 in the
  * order sent (each model request, a retried attempt its own; on the agent wire each agent run), and
@@ -28,6 +28,9 @@ export interface CompletionRecord {request:number;phase:'work'|'synthesis'|'revi
 export interface PromptDigest {request:number;sha256:string}
 export interface CompactionSummary {digest:string;turns:number;bytes:number;summary:string;digests:string[]}
 export interface CompactionReport {mode:'index'|'summary';summaries:CompactionSummary[]}
+export interface UsageTokens {inputTokens?:number;outputTokens?:number;reasoningTokens?:number;cacheReadTokens?:number;cacheWriteTokens?:number}
+export interface UsageRow {source:string;connection:string;role:string;requests:number;invocations:number;milliseconds:number;bytes:number;tokens?:UsageTokens}
+export interface UsageLedger {rows:UsageRow[]}
 /** The most prompt digests a checkpoint keeps, the newest: three attempts at each request of the largest allowance. */
 export const MAX_PROMPT_DIGESTS = 300
 /** A local execution record, never permissions, evidence approval or private reasoning. */
@@ -57,6 +60,7 @@ export interface ExecutionCheckpoint {
   */
  policy?:import('../policy').PolicyMembers;
  crossProvider?:import('../policy').CrossProvider[];
+ usage?:UsageLedger;
  compaction?:CompactionReport;
  critic?:CriticRecord;
 }
@@ -114,6 +118,10 @@ export interface SourceFigures {source:string;kind:'runtime'|'gateway'|'mcp'|'cu
 export function validSourceFigures(value:unknown):value is SourceFigures[]{
  return Array.isArray(value)&&value.length<=64&&value.every(row=>object(row)&&exact(row,['source','kind','calls','refused','proposed','bytes','milliseconds','skills'])&&typeof row.source==='string'&&/^[A-Za-z][A-Za-z0-9-]{0,23}$/.test(row.source)&&['runtime','gateway','mcp','custom','exchange'].includes(String(row.kind))&&count(row.calls)&&count(row.refused)&&count(row.proposed)&&count(row.bytes)&&count(row.milliseconds)&&(row.skills===undefined||count(row.skills)))
 }
+export function validUsage(value:unknown):value is UsageLedger{
+ const row=(v:unknown)=>object(v)&&exact(v,['source','connection','role','requests','invocations','milliseconds','bytes','tokens'])&&text(v.source,128)&&v.source.length>0&&text(v.connection,128)&&v.connection.length>0&&text(v.role,128)&&v.role.length>0&&count(v.requests)&&count(v.invocations)&&count(v.milliseconds)&&count(v.bytes)&&(v.tokens===undefined||validTokens(v.tokens))
+ return object(value)&&exact(value,['rows'])&&Array.isArray(value.rows)&&value.rows.length<=256&&value.rows.every(row)
+}
 /** Token counts the provider reported, summed; a member is absent where no request reported it (agent#18). */
 export interface TokenFigures {inputTokens?:number;outputTokens?:number;reasoningTokens?:number;cacheReadTokens?:number;cacheWriteTokens?:number}
 const TOKEN_KEYS=['inputTokens','outputTokens','reasoningTokens','cacheReadTokens','cacheWriteTokens'] as const
@@ -160,9 +168,10 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  let limit=value.unit==='model-requests'?MAX_TURNS:1
  for(const grant of value.grants){if(!object(grant)||grant.from!==limit||!Number.isInteger(grant.to)||Number(grant.to)<=limit||Number(grant.to)>MAX_REQUEST_ALLOWANCE||typeof grant.at!=='string'||!Number.isFinite(Date.parse(grant.at)))return fail();limit=Number(grant.to)}
  if(value.limit!==limit||!Array.isArray(value.plan)||(value.plan.length&&!validTaskSteps(value.plan))||!text(value.explanation,2000)||(value.reason!==undefined&&!text(value.reason,2000))||(value.testCalls!==undefined&&(!Number.isInteger(value.testCalls)||Number(value.testCalls)<0||Number(value.testCalls)>400))||(value.delegation!==undefined&&!validDelegationFigures(value.delegation,value.unit as 'model-requests'|'provider-managed')))return fail()
- if(value.completions!==undefined&&(!Array.isArray(value.completions)||value.completions.length>MAX_REQUEST_ALLOWANCE||value.completions.some(row=>!object(row)||!Number.isInteger(row.request)||Number(row.request)<1||Number(row.request)>Number(value.used)||!['work','synthesis','review'].includes(String(row.phase))||!readCompletion(row.result)||row.attempt!==undefined&&(!Number.isInteger(row.attempt)||Number(row.attempt)<1||Number(row.attempt)>3)||row.failure!==undefined&&!readFailure(row.failure)||row.waitMs!==undefined&&(!Number.isInteger(row.waitMs)||Number(row.waitMs)<0||Number(row.waitMs)>86400000))))return fail()
+ if(value.completions!==undefined&&(!Array.isArray(value.completions)||value.completions.length>MAX_REQUEST_ALLOWANCE||value.completions.some(row=>!object(row)||!Number.isInteger(row.request)||Number(row.request)<1||Number(row.request)>Number(value.used)||!['work','synthesis','review'].includes(String(row.phase))||!readCompletion(row.result)||row.attempt!==undefined&&(!Number.isInteger(row.attempt)||Number(row.attempt)<1||Number(row.attempt)>3)||row.failure!==undefined&&!readFailure(row.failure)||row.waitMs!==undefined&&(!Number.isInteger(row.waitMs)||Number(row.waitMs)<0||Number(row.waitMs)>86400000)||row.connection!==undefined&&(!text(row.connection,128)||!row.connection)||row.role!==undefined&&(!text(row.role,128)||!row.role))))return fail()
  if(value.prompts!==undefined&&(!Array.isArray(value.prompts)||value.prompts.length>MAX_PROMPT_DIGESTS||value.prompts.some((row,at,rows)=>!object(row)||!exact(row,['request','sha256'])||!Number.isSafeInteger(row.request)||Number(row.request)<1||at>0&&Number(row.request)<=Number((rows[at-1] as Record<string,unknown>).request)||typeof row.sha256!=='string'||!/^[a-f0-9]{64}$/.test(row.sha256))))return fail()
  if(value.sources!==undefined&&!validSourceFigures(value.sources))return fail()
+ if(value.usage!==undefined&&!validUsage(value.usage))return fail()
  if(value.approval!==undefined&&!validApproval(value.approval))return fail()
  if(value.memories!==undefined&&!validMemories(value.memories))return fail()
  if(value.draft!==undefined&&!validDraft(value.draft))return fail()
@@ -174,7 +183,7 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(!object(value.context)||!text(value.context.scope,100)||!Array.isArray(value.context.entries)||value.context.entries.length>800||new Set(value.context.entries.map(e=>e.id)).size!==value.context.entries.length)return fail()
  for(const e of value.context.entries){if(!object(e)||!text(e.id,300)||!e.id.startsWith(value.context.scope+':')||!['history','artifact','request','tool'].includes(String(e.kind))||!text(e.label,1000)||typeof e.digest!=='string'||!/^[a-f0-9]{64}$/.test(e.digest)||e.revision!==undefined&&!text(e.revision,256)||!Number.isInteger(e.bytes)||Number(e.bytes)<0||!Object.hasOwn(e,'value'))return fail()}
  const result=structuredClone(value) as unknown as ExecutionCheckpoint
- if(result.completions)result.completions=result.completions.map(({request,phase,result,attempt,failure,waitMs})=>({request,phase,result:readCompletion(result)!,...(attempt===undefined?{}:{attempt}),...(failure===undefined?{}:{failure:readFailure(failure)!}),...(waitMs===undefined?{}:{waitMs})}))
+ if(result.completions)result.completions=result.completions.map(({request,phase,result,attempt,failure,waitMs,connection,role})=>({request,phase,result:readCompletion(result)!,...(attempt===undefined?{}:{attempt}),...(failure===undefined?{}:{failure:readFailure(failure)!}),...(waitMs===undefined?{}:{waitMs}),...(connection===undefined?{}:{connection}),...(role===undefined?{}:{role})}))
  return result
 }
 /** A stopped API request can fail exactly at the ceiling; recovery still needs an explicit grant. */

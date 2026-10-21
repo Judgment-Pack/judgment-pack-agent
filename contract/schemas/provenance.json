@@ -41,6 +41,18 @@
       "type": "integer",
       "minimum": 0,
       "maximum": 86400000
+    },
+    "connection": {
+      "description": "ADR-0020. The host connection that answered this request; on a switched request, the fallback connection.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "role": {
+      "description": "ADR-0020. The policy role this request served.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
     }
   },
   "additionalProperties": true,
@@ -596,6 +608,10 @@
         }
       },
       "additionalProperties": false
+    },
+    "usage": {
+      "description": "ADR-0020's closed run ledger row.",
+      "$ref": "usage.json#/$defs/row"
     },
     "memoryRecall": {
       "type": "object",

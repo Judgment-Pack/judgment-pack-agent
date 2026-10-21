@@ -1,0 +1,10 @@
+{
+  "description": "ADR-0020: unavailable switches one author request to its next same-family connection. Written by hand.",
+  "schema": "run-event.json",
+  "source": {"harness": {"repository": "Judgment-Pack/judgment-pack-agent", "package": "packages/harness"}, "files": ["packages/harness/engines/vercel/retry.ts"]},
+  "items": [
+    {"type": "connection_switched", "role": "author", "from": "primary", "to": "secondary", "reason": "unavailable"},
+    {"type": "connection_switched", "role": "critic", "from": "review-a", "to": "review-b", "reason": "rate-limited"},
+    {"type": "connection_switched", "role": "author", "from": "primary", "to": "secondary", "reason": "timeout"}
+  ]
+}

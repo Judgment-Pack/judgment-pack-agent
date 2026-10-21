@@ -1,0 +1,8 @@
+{
+  "description": "ADR-0020: reported token counts are retained in the run ledger. Written by hand.",
+  "schema": "run-event.json",
+  "source": {"harness": {"repository": "Judgment-Pack/judgment-pack-agent", "package": "packages/harness"}, "files": ["packages/harness/execution/state.ts"]},
+  "items": [
+    {"type": "usage", "usage": {"rows": [{"source": "model", "connection": "primary", "role": "author", "requests": 2, "invocations": 0, "milliseconds": 83, "bytes": 4096, "tokens": {"inputTokens": 900, "outputTokens": 120, "reasoningTokens": 40, "cacheReadTokens": 500, "cacheWriteTokens": 300}}]}}
+  ]
+}

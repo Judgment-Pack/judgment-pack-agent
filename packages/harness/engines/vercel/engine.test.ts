@@ -233,7 +233,8 @@ function session(
 
 async function drain(events: AsyncIterable<AssistantEvent>): Promise<AssistantEvent[]> {
   const seen: AssistantEvent[] = []
-  for await (const event of events) seen.push(event)
+  // Scenario 20 certifies ADR-0020's terminal ledger; these legacy unit cases retain their streams.
+  for await (const event of events) if(event.type!=='usage')seen.push(event)
   return seen
 }
 
@@ -1110,7 +1111,7 @@ describe('the unhandled rejection the SDK’s refusal path leaks', () => {
       for await (const event of vercel.start(session(refuses))) events.push(event)
     })
     expect(leaked).toEqual([])
-    expect(events.map((event) => event.type)).toEqual(['error', 'end'])
+    expect(events.map((event) => event.type)).toEqual(['error', 'usage', 'end'])
   })
 
   it('installs no page listener, so an unrelated rejection stays observable', async () => {
@@ -2745,6 +2746,6 @@ describe('the allowance and the retry (agent#2)', () => {
     const checkpoints = events.flatMap((event) => (event.type === 'execution_checkpoint' ? [event.checkpoint] : []))
     const completions = checkpoints.at(-1)!.completions ?? []
     expect(completions[0]).toMatchObject({ request: 1, attempt: 1, failure: { code: 'rate-limited' } })
-    expect(completions.at(-1)).toEqual({ request: 3, phase: 'work', result: expect.objectContaining({ finishReason: 'stop' }) })
+    expect(completions.at(-1)).toEqual({ request: 3, phase: 'work', result: expect.objectContaining({ finishReason: 'stop' }), connection: 'a-model', role: 'author' })
   })
 })

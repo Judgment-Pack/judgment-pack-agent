@@ -26,6 +26,7 @@
 import { RunCancelled, withAbort } from '../contract'
 import { canRetryRefusal, normalizeFailure, refusalCode, type AIFailure } from '../../failures'
 import type { ModelCall } from '../../engine'
+import type { FailoverClass } from '../../policy'
 
 /** Retries after the first attempt: three attempts in all. */
 export const MODEL_RETRIES = 2
@@ -42,6 +43,7 @@ export interface RefusedAttempt {
   /** The wait before the next attempt; absent where none follows. */
   waitMs?: number
 }
+export interface FailoverTarget {call?:ModelCall;from:string;to:string}
 
 /** A wait the run's signal ends, holding no timer once it has. */
 export function waitFor(ms: number, signal: AbortSignal): Promise<void> {
@@ -81,14 +83,32 @@ export function retryingCall(
     mayRetry?: () => boolean
     wait?: (ms: number, signal: AbortSignal) => Promise<void>
     now?: () => number
+    /** The next same-family connection, once for this logical request. */
+    fallback?: (reason: FailoverClass) => FailoverTarget | undefined
+    /** Emitted before the fallback request is sent. */
+    onSwitch?: (switched: Omit<FailoverTarget,'call'> & {reason:FailoverClass}) => void | Promise<void>
   }
 ): ModelCall {
   const wait = options.wait ?? waitFor
   const now = options.now ?? Date.now
   return async (suffix, request) => {
+    let active=call, switched=false
+    const switchTo=async(failure:AIFailure):Promise<boolean>=>{
+      if(switched||!(['unavailable','rate-limited','timeout'] as const).includes(failure.code as FailoverClass))return false
+      const next=options.fallback?.(failure.code as FailoverClass)
+      if(!next)return false
+      switched=true;active=next.call??call
+      await options.onSwitch?.({from:next.from,to:next.to,reason:failure.code as FailoverClass})
+      return true
+    }
     for (let attempt = 1; ; attempt += 1) {
       options.onAttempt?.(attempt)
-      const answered = await call(suffix, request)
+      let answered:Response
+      try{answered=await active(suffix, request)}catch(cause){
+        const failure=normalizeFailure(cause,'model',now())
+        if(await switchTo(failure)){attempt=0;continue}
+        throw cause
+      }
       if (answered.ok) return answered
       // The refusal's own envelope, read from a copy, so the SDK still reads
       // the original where it is handed on. Classified by status, headers and
@@ -102,10 +122,16 @@ export function retryingCall(
         'model',
         now()
       )
-      if (!canRetryRefusal(failure, refusalCode(body))) return answered
+      if (!canRetryRefusal(failure, refusalCode(body))) {
+        if(await switchTo(failure)){void answered.body?.cancel().catch(()=>undefined);attempt=0;continue}
+        return answered
+      }
       const waitMs = attempt <= MODEL_RETRIES && (options.mayRetry?.() ?? true) ? delayFor(failure, attempt, now()) : undefined
       await options.onRefused?.({ attempt, failure, ...(waitMs === undefined ? {} : { waitMs }) })
-      if (waitMs === undefined) return answered
+      if (waitMs === undefined) {
+        if(await switchTo(failure)){void answered.body?.cancel().catch(()=>undefined);attempt=0;continue}
+        return answered
+      }
       void answered.body?.cancel().catch(() => undefined)
       await wait(waitMs, options.signal)
     }

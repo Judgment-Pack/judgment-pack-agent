@@ -18,6 +18,7 @@
         "skill_unloaded",
         "retry",
         "response_recovery",
+        "connection_switched",
         "delegation_requested",
         "delegated_task",
         "user_question",
@@ -34,6 +35,7 @@
         "error",
         "end",
         "policy_resolved",
+        "usage",
         "memory_proposed",
         "memory_recalled",
         "edit_applied",
@@ -65,6 +67,9 @@
     },
     {
       "$ref": "#/$defs/response_recovery"
+    },
+    {
+      "$ref": "#/$defs/connection_switched"
     },
     {
       "$ref": "#/$defs/delegation_requested"
@@ -113,6 +118,9 @@
     },
     {
       "$ref": "#/$defs/policy_resolved"
+    },
+    {
+      "$ref": "#/$defs/usage"
     },
     {
       "$ref": "#/$defs/memory_proposed"
@@ -286,6 +294,19 @@
       },
       "additionalProperties": true
     },
+    "connection_switched": {
+      "description": "ADR-0020. A qualifying provider failure moved this request once to the next same-family fallback, after the ordinary retry rule. The stable prefix is rebuilt for the new connection.",
+      "type": "object",
+      "required": ["type", "role", "from", "to", "reason"],
+      "properties": {
+        "type": {"const": "connection_switched"},
+        "role": {"type": "string", "minLength": 1, "maxLength": 128},
+        "from": {"type": "string", "minLength": 1, "maxLength": 128},
+        "to": {"type": "string", "minLength": 1, "maxLength": 128},
+        "reason": {"enum": ["unavailable", "rate-limited", "timeout"]}
+      },
+      "additionalProperties": false
+    },
     "delegation_requested": {
       "description": "The model called delegate_tasks on an engine whose run cannot wait for a tool call (codex: the provider account runs one agent run at a time, and the children need it). The adapter emits this instead of a tool_call and ends its run; the host's coordinator runs the batch and starts the response's next run with the call's result (delegated-task.json#/$defs/answer). An engine that awaits the call (vercel, agent#14) emits a tool_call and a tool_result for delegate_tasks instead, in the same run. The coordinator consumes this event: a host reading the coordinator's stream does not see it.",
       "type": "object",
@@ -455,7 +476,8 @@
             "subagent refused",
             "memory refused",
             "edit refused"
-            ,"compaction refused"
+            ,"compaction refused",
+            "failover refused"
           ]
         }
       },
@@ -865,6 +887,16 @@
         "type",
         "members"
       ]
+    },
+    "usage": {
+      "description": "ADR-0020. Emitted exactly once for every run, immediately before end.",
+      "type": "object",
+      "properties": {
+        "type": {"const": "usage"},
+        "usage": {"$ref": "usage.json"}
+      },
+      "additionalProperties": false,
+      "required": ["type", "usage"]
     },
     "memory_proposed": {
       "type": "object",

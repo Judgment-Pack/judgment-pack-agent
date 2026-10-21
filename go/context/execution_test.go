@@ -356,6 +356,34 @@ func TestTheSnapshotValidatesAgainstTheCheckpointSchema(t *testing.T) {
 			t.Errorf("the delegation checkpoint item %d was refused: %v", at, err)
 		}
 	}
+	for at, item := range vectorItems(t, "failover/usage-checkpoint.json") {
+		resumed, readErr := ReadExecution(item)
+		if readErr != nil {
+			t.Errorf("the usage checkpoint item %d was refused: %v", at, readErr)
+		} else if resumed.Usage == nil || len(resumed.Usage.Rows) != 2 || resumed.Usage.Rows[1].Connection != "backup" || resumed.Usage.Rows[1].Tokens == nil {
+			t.Errorf("the resumed usage ledger is %+v", resumed.Usage)
+		}
+	}
+}
+
+func TestUsageAttributesSourceDeltasToTheActiveConnectionAndRole(t *testing.T) {
+	session, _ := trackedSession(t)
+	run := openRun(t, session)
+	run.Context.Execution.UseConnection("fixture", "author")
+	run.Context.Execution.State.Sources = []contract.ProvenanceSourceFigures{{Source: "runtime", Kind: "runtime", Calls: 1, Bytes: 30, Milliseconds: 4}}
+	run.Context.Execution.UseConnection("backup", "critic")
+	run.Context.Execution.State.Sources[0].Calls = 2
+	run.Context.Execution.State.Sources[0].Bytes = 50
+	run.Context.Execution.State.Sources[0].Milliseconds = 7
+	rows := []contract.UsageRow{}
+	for _, row := range run.Context.Execution.Usage().Rows {
+		if row.Source == "runtime" {
+			rows = append(rows, row)
+		}
+	}
+	if len(rows) != 2 || rows[0].Connection != "fixture" || rows[0].Role != "author" || rows[0].Invocations != 1 || rows[0].Bytes != 30 || rows[1].Connection != "backup" || rows[1].Role != "critic" || rows[1].Invocations != 1 || rows[1].Bytes != 20 {
+		t.Fatalf("source usage rows were %+v", rows)
+	}
 }
 
 func TestTheRequestStateStatesTheToolCallCapAsTheContractDoes(t *testing.T) {

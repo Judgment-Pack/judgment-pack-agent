@@ -9,6 +9,7 @@ import {withDelegation} from '../delegation'
 import type {Engine,EngineSession,AssistantEvent,AssistantSession} from '../engine'
 import type {ProviderFamily} from '../policy'
 import type {AgentRun} from '../agent'
+import {AIFailureError} from '../failures'
 const proposal='```json\n{"proposal":{"document":{"id":"pack"},"unknowns":[]}}\n```'
 const task={title:'Review',objective:'Check the supplied claims.',profile:'review'}
 function answer(family:ProviderFamily,text:string,delegate=false){
@@ -91,5 +92,54 @@ for(const engine of [vercel,deepagents,codex])describe(`${engine.id==='codex'?'a
   for(const event of tasks)expect(event.provider).toEqual({connection:'reviewer',family:'anthropic'})
   expect(tasks.at(-1)?.task).toMatchObject({state:'complete',result:'Untrusted child findings.'})
   }
+ })
+ it('20 qualifying failure switches once, rebuilds the request and emits the usage ledger',async()=>{
+  const events:AssistantEvent[]=[],requests:{connection:string;body:string}[]=[]
+  const common={prompt:'Draft a pack.',testPrompt:'Review the pack.',tools:[],hostTools:[],callTool:async()=>({content:[]}),signal:new AbortController().signal,allowConversation:true,interactive:false,critic:'off' as const,policy:{models:{author:{fallback:['backup']}}},context:{currentRequest:{message:'Draft a pack.',input:'Draft a pack.'},connection:{connectionId:'primary'}}}
+  let session:EngineSession
+  if(engine.id==='codex'){
+   const primary:AgentRun=async(request)=>{requests.push({connection:'primary',body:JSON.stringify(request)});throw new AIFailureError({version:1,code:'unavailable',source:'agent',outcome:'unknown'})}
+   const backup:AgentRun=async(request,callbacks)=>{requests.push({connection:'backup',body:JSON.stringify(request)});await callbacks.event({type:'message',id:'answer',text:proposal,phase:'final'})}
+   session={...common,effort:'high',agent:{family:'codex',model:'author-model',run:primary},policyConnections:{backup:{agent:{family:'codex',model:'backup-model',run:backup}}}}
+  }else{
+   session={...common,thinking:normalize('ultra','openai-compatible'),model:{family:'openai-compatible',model:'author-model',call:async(_suffix,request)=>{requests.push({connection:'primary',body:request.body??''});return new Response('{}',{status:503})}},policyConnections:{backup:{model:{family:'openai-compatible',model:'backup-model',call:async(_suffix,request)=>{requests.push({connection:'backup',body:request.body??''});return answer('openai',proposal)}}}}} as AssistantSession
+  }
+  for await(const event of engine.start(session))events.push(event)
+  expect(requests.map(r=>r.connection)).toEqual(['primary','backup'])
+  expect(requests[1]!.body).toBe(requests[0]!.body)
+  expect(events.find(e=>e.type==='connection_switched')).toEqual({type:'connection_switched',role:'author',from:'primary',to:'backup',reason:'unavailable'})
+  const usage=events.filter(e=>e.type==='usage')
+  expect(usage).toHaveLength(1)
+  expect(events.at(-2)).toEqual(usage[0])
+  const rows=usage[0]!.usage.rows
+  for(const connection of ['primary','backup'])expect(rows.find(row=>row.connection===connection)).toMatchObject({bytes:expect.any(Number),[engine.id==='codex'?'invocations':'requests']:1})
+  expect(rows.filter(row=>row.connection==='primary'||row.connection==='backup').every(row=>row.bytes>0)).toBe(true)
+  if(engine.id==='codex')expect(rows.every(row=>row.tokens===undefined)).toBe(true)
+ })
+ it('20 cross-family fallback is refused before dispatch',async()=>{
+  const events:AssistantEvent[]=[],requests:unknown[]=[]
+  const common={prompt:'Draft a pack.',testPrompt:'Review the pack.',tools:[],hostTools:[],callTool:async()=>({content:[]}),signal:new AbortController().signal,allowConversation:true,interactive:false,critic:'off' as const,policy:{models:{author:{fallback:['backup']}}},context:{currentRequest:{message:'Draft a pack.',input:'Draft a pack.'},connection:{connectionId:'primary'}}}
+  const session:EngineSession=engine.id==='codex'?{...common,effort:'high',agent:{family:'codex',model:'author',run:async r=>{requests.push(r)}},policyConnections:{backup:{agent:{family:'anthropic',model:'backup',run:async()=>{}}}}}:{...common,thinking:normalize('ultra','openai-compatible'),model:{family:'openai-compatible',model:'author',call:async(_s,r)=>{requests.push(r);return answer('openai',proposal)}},policyConnections:{backup:{model:{family:'anthropic',model:'backup',call:async()=>answer('anthropic',proposal)}}}} as AssistantSession
+  for await(const event of engine.start(session))events.push(event)
+  expect(requests).toEqual([])
+  expect(events.find(e=>e.type==='guardrail')).toMatchObject({tool:'models.author.fallback',reason:'failover refused'})
+  expect(events.filter(e=>e.type==='usage')).toHaveLength(1)
+ })
+ it('20 a refusal never switches',async()=>{
+  const events:AssistantEvent[]=[],connections:string[]=[]
+  const common={prompt:'Draft a pack.',testPrompt:'Review the pack.',tools:[],hostTools:[],callTool:async()=>({content:[]}),signal:new AbortController().signal,allowConversation:true,interactive:false,critic:'off' as const,policy:{models:{author:{fallback:['backup']}}},context:{currentRequest:{message:'Draft a pack.',input:'Draft a pack.'},connection:{connectionId:'primary'}}}
+  const session:EngineSession=engine.id==='codex'?{...common,effort:'high',agent:{family:'codex',model:'author',run:async()=>{connections.push('primary');throw new AIFailureError({version:1,code:'permission',source:'agent',outcome:'refused'})}},policyConnections:{backup:{agent:{family:'codex',model:'backup',run:async()=>{connections.push('backup')}}}}}:{...common,thinking:normalize('ultra','openai-compatible'),model:{family:'openai-compatible',model:'author',call:async()=>{connections.push('primary');return new Response('{}',{status:403})}},policyConnections:{backup:{model:{family:'openai-compatible',model:'backup',call:async()=>{connections.push('backup');return answer('openai',proposal)}}}}} as AssistantSession
+  for await(const event of engine.start(session))events.push(event)
+  expect(connections).toEqual(['primary'])
+  expect(events.filter(e=>e.type==='connection_switched')).toEqual([])
+ })
+ it('20 an agent switch during delegated work is refused',async()=>{
+  if(engine.id!=='codex')return
+  const events:AssistantEvent[]=[],connections:string[]=[]
+  const session:EngineSession={prompt:'Check the pack.',testPrompt:'',tools:[],hostTools:[],callTool:async()=>({content:[]}),signal:new AbortController().signal,allowConversation:true,interactive:false,critic:'off',effort:'high',agent:{family:'codex',model:'author',run:async()=>{connections.push('primary');throw new AIFailureError({version:1,code:'unavailable',source:'agent',outcome:'unknown'})}},policy:{models:{author:{fallback:['backup']}}},policyConnections:{backup:{agent:{family:'codex',model:'backup',run:async()=>{connections.push('backup')}}}},context:{objective:'Delegated review.',currentRequest:{message:'Check the pack.',input:'Check the pack.'},connection:{connectionId:'primary'}}}
+  for await(const event of engine.start(session))events.push(event)
+  expect(connections).toEqual(['primary'])
+  expect(events.find(e=>e.type==='guardrail')).toMatchObject({reason:'failover refused',tool:'models.author.fallback'})
+  expect(events.filter(e=>e.type==='connection_switched')).toEqual([])
  })
 })

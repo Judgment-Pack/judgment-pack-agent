@@ -8,6 +8,14 @@ Capability records hold the tier map; hosts can override it per connection.
 See the generated provider matrix in `docs/reference/providers.md` at the repository
 root. Scenario 12 exercises two families, and certification prints its measurements.
 
+Provider failover is also policy (ADR-0020): `models.<role>.fallback` is an
+ordered list of same-family connection IDs. Only `unavailable`, `rate-limited`
+after the ordinary refusal retries, and `timeout` switch, at most once per
+request. The adapter emits `connection_switched` before resending the rebuilt
+request. Cross-family entries and an agent switch during delegation are refused.
+Every run ends with one closed `usage` ledger; token members remain absent where
+the provider reports none, and the host supplies prices and project totals.
+
 
 Budgets are the `budget` section of the [agent's policy table](../../docs/adr/0011-the-agents-policy-table.md).
 The host's run layer wins over its project layer, then table defaults. The same

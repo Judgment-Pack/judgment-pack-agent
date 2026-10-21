@@ -111,9 +111,11 @@ func refusals(seen []ServerObservation) []string {
 }
 
 func eventTypes(events []contract.RunEvent) []string {
-	out := make([]string, len(events))
-	for i, event := range events {
-		out[i] = EventType(event)
+	var out []string
+	for _, event := range events {
+		if event.Usage == nil {
+			out = append(out, EventType(event))
+		}
 	}
 	return out
 }

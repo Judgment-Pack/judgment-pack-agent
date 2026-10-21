@@ -41,6 +41,11 @@ export class ExecutionController {
  private restoredResults:unknown[]=[]
  private inFlight=new Map<string,string>()
  private cache=new Map<string,McpToolResult>()
+ private usageConnection='unbound'
+ private usageRole='author'
+ private usageStarted=Date.now()
+ private usageBound=false
+ private usageSources=new Map<string,{calls:number;milliseconds:number;bytes:number}>()
  constructor(private session:EngineSession,private ledger:ContextLedger){}
  async initialize(){
   const requestKey=await contextDigest(JSON.stringify({request:this.session.context?.currentRequest??this.session.prompt,phase:this.session.context?.phase??'work',purpose:this.session.purpose??null}))
@@ -61,6 +66,7 @@ export class ExecutionController {
    await this.ledger.restore(restored.context)
    this.progress.seed(restored.operations)
    this.state={...restored,operations:restored.operations.map(op=>op.status==='running'?{...op,status:'interrupted'}:op),status:'running'}
+   for(const source of this.state.sources??[])this.usageSources.set(source.source,{calls:source.calls,milliseconds:source.milliseconds,bytes:source.bytes})
    this.restored=true
    const approval=this.state.approval
    if(approval?.state==='asked'){
@@ -81,9 +87,39 @@ export class ExecutionController {
   }
  }
  get remaining(){return this.state.limit-this.state.used}
+ useConnection(connection:string,role='author'){
+  if(this.usageBound&&(connection!==this.usageConnection||role!==this.usageRole)){this.recordUsageElapsed();this.recordSourceUsage()}
+  if(!this.usageBound)this.usageStarted=Date.now()
+  this.usageConnection=connection;this.usageRole=role;this.usageBound=true
+  this.usageRow(this.state.unit==='provider-managed'?'agent':'model',connection,role)
+ }
+ private recordUsageElapsed(){
+  const row=this.usageRow(this.state.unit==='provider-managed'?'agent':'model')
+  const now=Date.now();row.milliseconds+=Math.max(0,now-this.usageStarted);this.usageStarted=now
+ }
+ private recordSourceUsage(){
+  if(!this.usageBound)return
+  for(const source of this.state.sources??[]){
+   const before=this.usageSources.get(source.source)??{calls:0,milliseconds:0,bytes:0}
+   const calls=Math.max(0,source.calls-before.calls),milliseconds=Math.max(0,source.milliseconds-before.milliseconds),bytes=Math.max(0,source.bytes-before.bytes)
+   if(calls||milliseconds||bytes){const row=this.usageRow(source.source);row.invocations+=calls;row.milliseconds+=milliseconds;row.bytes+=bytes}
+   this.usageSources.set(source.source,{calls:source.calls,milliseconds:source.milliseconds,bytes:source.bytes})
+  }
+ }
+ private usageRow(source:string,connection=this.usageConnection,role=this.usageRole){
+  this.state.usage??={rows:[]}
+  let row=this.state.usage.rows.find(row=>row.source===source&&row.connection===connection&&row.role===role)
+  if(!row){row={source,connection,role,requests:0,invocations:0,milliseconds:0,bytes:0};this.state.usage.rows.push(row)}
+  return row
+ }
+ usage():import('./state').UsageLedger{
+  if(this.usageBound)this.recordUsageElapsed()
+  this.recordSourceUsage()
+  return structuredClone(this.state.usage??{rows:[]})
+ }
  /** ADR-0008: whether an act call of this run waits for the person's decision; no request is sent while one does. */
  get approvalAsked(){return this.state.approval?.state==='asked'}
- claim(){if(this.remaining<=0)throw new ExecutionPaused();this.state.used++}
+ claim(){if(this.remaining<=0)throw new ExecutionPaused();this.state.used++;this.usageRow('model').requests++}
  /**
   * A first allowance below MAX_TURNS, for a delegated child (agent#15): its profile's request budget,
   * held further to what the response's shared allowance can still give it, so its loop plans its
@@ -121,7 +157,10 @@ export class ExecutionController {
  }
  recordCompletion(result:import('../completion').ModelCompletion,phase:'work'|'synthesis'|'review'){
   const attempt=this.attempt;this.attempt=1
-  this.state.completions=[...(this.state.completions??[]),{request:this.state.used,phase,result,...(attempt>1?{attempt}:{})}]
+  this.state.completions=[...(this.state.completions??[]),{request:this.state.used,phase,result,connection:this.usageConnection,role:this.usageRole,...(attempt>1?{attempt}:{})}]
+  const row=this.usageRow('model')
+  const entries=Object.entries(result).filter(([key,value])=>key.endsWith('Tokens')&&typeof value==='number') as [keyof import('./state').UsageTokens,number][]
+  if(entries.length){row.tokens??={};for(const [key,value] of entries)row.tokens[key]=(row.tokens[key]??0)+value}
  }
  /**
   * ADR-0005: the digest of one request body the adapter is about to send, recorded before it is
@@ -135,12 +174,15 @@ export class ExecutionController {
   const sha256=await contextDigest(body)
   const prompts=this.state.prompts??[]
   this.state.prompts=[...prompts,{request:(prompts.at(-1)?.request??0)+1,sha256}].slice(-MAX_PROMPT_DIGESTS)
+  const source=this.state.unit==='provider-managed'?'agent':'model',row=this.usageRow(source)
+  row.bytes+=utf8Bytes(body)
+  if(source==='agent')row.invocations++
  }
  /** Which attempt at a model request is being sent, said before each one, so a new call starts again at 1. */
  beginAttempt(attempt:number){this.attempt=attempt}
  /** A refused attempt at a model request: its own row. */
  recordRefusal(phase:'work'|'synthesis'|'review',refused:{attempt:number;failure:import('../failures').AIFailure;waitMs?:number}){
-  this.state.completions=[...(this.state.completions??[]),{request:this.state.used,phase,result:{finishReason:'error'},...refused}]
+  this.state.completions=[...(this.state.completions??[]),{request:this.state.used,phase,result:{finishReason:'error'},connection:this.usageConnection,role:this.usageRole,...refused}]
  }
  clearReadCache(){this.cache.clear()}
  /**
@@ -192,6 +234,7 @@ export class ExecutionController {
   }}
  }
  snapshot(status=this.state.status){
+  this.state.usage=this.usage()
   const snapshot={...this.state,status,context:this.ledger.snapshot()}
   if(utf8Bytes(JSON.stringify(snapshot))>MAX_CHECKPOINT_BYTES)throw toolInputFailure('The execution checkpoint is full. Completed work remains visible; start a focused follow-up before further work.')
   return structuredClone(snapshot)

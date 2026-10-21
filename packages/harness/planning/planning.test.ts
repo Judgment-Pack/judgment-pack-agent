@@ -23,7 +23,7 @@ describe('shared planning boundary',()=>{
   expect(ready.session.prompt).toContain('Only the person can choose Start work')
  })
  it('refuses artifact proposal events even if an adapter emits one',async()=>{
-  const events=[];for await(const e of managedContext(session(),async function*(){yield {type:'proposal' as const,document:{},unknowns:[]};yield {type:'end' as const}}))events.push(e)
+  const events=[];for await(const e of managedContext(session(),async function*(){yield {type:'proposal' as const,document:{},unknowns:[]};yield {type:'end' as const}}))if(e.type!=='usage')events.push(e)
   expect(events.map(e=>e.type)).toEqual(['policy_resolved','guardrail','end'])
  })
 })

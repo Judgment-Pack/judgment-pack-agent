@@ -14,7 +14,7 @@ One event of a run, from the adapter to the host, in order, discriminated by typ
 
 See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](critic.md), [skills.md](skills.md), [budget.md](budget.md), [reasons.md](reasons.md), [checkpoint.md](checkpoint.md).
 
-## The 28 kinds
+## The 30 kinds
 
 | Kind | Defined in | Required beyond type |
 | --- | --- | --- |
@@ -26,6 +26,7 @@ See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](crit
 | `skill_unloaded` | `run-event.json $defs/skill_unloaded` | `id` |
 | `retry` | `run-event.json $defs/retry` | `attempt` |
 | `response_recovery` | `run-event.json $defs/response_recovery` |  |
+| `connection_switched` | `run-event.json $defs/connection_switched` | `role`, `from`, `to`, `reason` |
 | `delegation_requested` | `run-event.json $defs/delegation_requested` | `request` |
 | `delegated_task` | `run-event.json $defs/delegated_task` | `task` |
 | `user_question` | `run-event.json $defs/user_question` | `id`, `question` |
@@ -42,6 +43,7 @@ See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](crit
 | `error` | `run-event.json $defs/error` | `message` |
 | `end` | `run-event.json $defs/end` |  |
 | `policy_resolved` | `run-event.json $defs/policy_resolved` | `members` |
+| `usage` | `run-event.json $defs/usage` | `usage` |
 | `memory_proposed` | `run-event.json $defs/memory_proposed` | `memory` |
 | `memory_recalled` | `run-event.json $defs/memory_recalled` | `ids`, `digests`, `bytes` |
 | `edit_applied` | `run-event.json $defs/edit_applied` | `document`, `line`, `bytes`, `valid` |
@@ -144,6 +146,20 @@ Open: a member the schema does not name is accepted.
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
 | `type` | yes | const `response_recovery` |  |
+
+### `connection_switched`
+
+ADR-0020. A qualifying provider failure moved this request once to the next same-family fallback, after the ordinary retry rule. The stable prefix is rebuilt for the new connection.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `type` | yes | const `connection_switched` |  |
+| `role` | yes | string (min length 1, max length 128) |  |
+| `from` | yes | string (min length 1, max length 128) |  |
+| `to` | yes | string (min length 1, max length 128) |  |
+| `reason` | yes | enum `unavailable`, `rate-limited`, `timeout` |  |
 
 ### `delegation_requested`
 
@@ -267,7 +283,7 @@ Open: a member the schema does not name is accepted.
 | `tool` | yes | string |  |
 | `action` | yes | enum `rewrote`, `refused`, `narrowed` |  |
 | `detail` | yes | string |  |
-| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused`, `memory refused`, `edit refused`, `compaction refused` |  |
+| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused`, `memory refused`, `edit refused`, `compaction refused`, `failover refused` |  |
 
 ### `thinking_unavailable`
 
@@ -365,6 +381,17 @@ Closed: a member the schema does not name is refused.
 | --- | --- | --- | --- |
 | `type` | yes | const `policy_resolved` |  |
 | `members` | yes | `policy.json $defs/resolved` |  |
+
+### `usage`
+
+ADR-0020. Emitted exactly once for every run, immediately before end.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `type` | yes | const `usage` |  |
+| `usage` | yes | `usage.json` |  |
 
 ### `memory_proposed`
 

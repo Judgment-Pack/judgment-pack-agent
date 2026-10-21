@@ -462,12 +462,17 @@ func approvalPauseFindings(state *paused, prefix string, agent bool) []Finding {
 			}
 		}
 		events := state.pausing.Events
-		if n := len(events); n < 2 || events[n-1].End == nil || events[n-2].ExecutionCheckpoint == nil ||
-			events[n-2].ExecutionCheckpoint.Durable == nil || !*events[n-2].ExecutionCheckpoint.Durable ||
-			events[n-2].ExecutionCheckpoint.Checkpoint.Status != "paused" || events[n-2].ExecutionCheckpoint.Checkpoint.Approval == nil ||
-			events[n-2].ExecutionCheckpoint.Checkpoint.Approval.State != "asked" || events[n-2].ExecutionCheckpoint.Checkpoint.Approval.CallID != requested[0].CallID {
+		var saved *contract.RunEventExecutionCheckpoint
+		for _, event := range events {
+			if event.ExecutionCheckpoint != nil {
+				saved = event.ExecutionCheckpoint
+			}
+		}
+		if n := len(events); n < 3 || events[n-1].End == nil || events[n-2].Usage == nil || saved == nil ||
+			saved.Durable == nil || !*saved.Durable || saved.Checkpoint.Status != "paused" || saved.Checkpoint.Approval == nil ||
+			saved.Checkpoint.Approval.State != "asked" || saved.Checkpoint.Approval.CallID != requested[0].CallID {
 			f.fail("the run did not end with the paused checkpoint, durable, and end")
-		} else if detail := pauseAgainstVector(requested[0], events[n-2].ExecutionCheckpoint, events[n-1]); detail != "" {
+		} else if detail := pauseAgainstVector(requested[0], saved, events[n-1]); detail != "" {
 			f.fail("against approval/pause.json: %s", detail)
 		}
 	}

@@ -163,6 +163,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 	r.boundary = runcontext.NewBoundary(opened)
 	defer r.boundary.Close()
 	r.sc.RecordProvider("author")
+	r.sc.Execution.UseConnection(r.sc.Provider("author").Connection, "author")
 	r.emitAll(r.boundary.Open())
 
 	err = r.drive(ctx)

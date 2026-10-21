@@ -87,6 +87,7 @@ type Execution struct {
 	// resume; nil where neither was written.
 	Policy        map[string]contract.PolicyMember
 	CrossProvider []contract.ProvenanceCrossProvider
+	Usage         *contract.Usage
 	Compaction    *contract.ProvenanceCompactionReport
 	Critic        *contract.CheckpointCritic
 }
@@ -200,6 +201,11 @@ func (e *Execution) Value() *Value {
 		value, _ := ParseJSON(data)
 		out.Set("crossProvider", value)
 	}
+	if e.Usage != nil {
+		data, _ := json.Marshal(e.Usage)
+		value, _ := ParseJSON(data)
+		out.Set("usage", value)
+	}
 	if e.Compaction != nil {
 		data, _ := json.Marshal(e.Compaction)
 		value, _ := ParseJSON(data)
@@ -251,7 +257,7 @@ func executionOf(saved *contract.Checkpoint) (*Execution, error) {
 		Phase: saved.Phase, Status: saved.Status, Unit: saved.Unit, Used: int(saved.Used),
 		Limit: int(saved.Limit), Grants: saved.Grants, Plan: value.Get("plan"),
 		Explanation: saved.Explanation, Completions: saved.Completions, Context: saved.Context,
-		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, Approval: saved.Approval, Skills: saved.Skills, Draft: saved.Draft, Memories: saved.Memories, Critic: saved.Critic, CrossProvider: saved.CrossProvider, Compaction: saved.Compaction, Policy: saved.Policy}
+		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, Approval: saved.Approval, Skills: saved.Skills, Draft: saved.Draft, Memories: saved.Memories, Critic: saved.Critic, CrossProvider: saved.CrossProvider, Usage: saved.Usage, Compaction: saved.Compaction, Policy: saved.Policy}
 	if saved.TestCalls != nil {
 		calls := int(*saved.TestCalls)
 		out.TestCalls = &calls
@@ -313,12 +319,17 @@ type ExecutionController struct {
 	restoredResults     []*Value
 	inFlight            map[string]string
 	cache               map[string]ToolResult
+	usageConnection     string
+	usageRole           string
+	usageStarted        time.Time
+	usageBound          bool
+	usageSources        map[string]contract.ProvenanceSourceFigures
 }
 
 // NewExecutionController is a controller for one run.
 func NewExecutionController(session Session, ledger *ContextLedger) *ExecutionController {
 	return &ExecutionController{Progress: NewProgressTracker(), session: session, ledger: ledger,
-		attempt: 1, inFlight: map[string]string{}, cache: map[string]ToolResult{}}
+		attempt: 1, inFlight: map[string]string{}, cache: map[string]ToolResult{}, usageRole: "author", usageStarted: time.Now(), usageSources: map[string]contract.ProvenanceSourceFigures{}}
 }
 
 // Initialize is initialize: the state a new response starts from, or a saved one resumed, held to
@@ -405,6 +416,9 @@ func (c *ExecutionController) Initialize() error {
 		}
 		state.Status = "running"
 		c.State = state
+		for _, source := range state.Sources {
+			c.usageSources[source.Source] = source
+		}
 		c.restored = true
 		if approval := state.Approval; approval != nil {
 			held := *approval
@@ -472,12 +486,99 @@ func contractResult(result ToolResult) *contract.ToolResultMCPToolResult {
 // Remaining is how many model requests the response may still make.
 func (c *ExecutionController) Remaining() int { return c.State.Limit - c.State.Used }
 
+// UseConnection selects the ledger row for later requests. A failover calls it before resending.
+func (c *ExecutionController) UseConnection(connection, role string) {
+	if c.usageBound && (connection != c.usageConnection || role != c.usageRole) {
+		c.recordUsageElapsed()
+		c.recordSourceUsage(c.State.Sources)
+	}
+	if !c.usageBound {
+		c.usageStarted = time.Now()
+	}
+	c.usageConnection, c.usageRole = connection, role
+	c.usageBound = true
+	if c.State.Usage == nil {
+		c.State.Usage = &contract.Usage{}
+	}
+	source := "model"
+	if c.State.Unit == "provider-managed" {
+		source = "agent"
+	}
+	c.usageRow(source, connection, role)
+}
+
+func (c *ExecutionController) recordUsageElapsed() {
+	source := "model"
+	if c.State.Unit == "provider-managed" {
+		source = "agent"
+	}
+	now := time.Now()
+	c.usageRow(source, c.usageConnection, c.usageRole).Milliseconds += now.Sub(c.usageStarted).Milliseconds()
+	c.usageStarted = now
+}
+
+func (c *ExecutionController) recordSourceUsage(sources []contract.ProvenanceSourceFigures) {
+	if !c.usageBound {
+		return
+	}
+	for _, source := range sources {
+		before := c.usageSources[source.Source]
+		calls, milliseconds, bytes := source.Calls-before.Calls, source.Milliseconds-before.Milliseconds, source.Bytes-before.Bytes
+		if calls < 0 {
+			calls = 0
+		}
+		if milliseconds < 0 {
+			milliseconds = 0
+		}
+		if bytes < 0 {
+			bytes = 0
+		}
+		if calls != 0 || milliseconds != 0 || bytes != 0 {
+			row := c.usageRow(source.Source, c.usageConnection, c.usageRole)
+			row.Invocations += calls
+			row.Milliseconds += milliseconds
+			row.Bytes += bytes
+		}
+		c.usageSources[source.Source] = source
+	}
+}
+
+func (c *ExecutionController) usageRow(source, connection, role string) *contract.UsageRow {
+	if c.State.Usage == nil {
+		c.State.Usage = &contract.Usage{}
+	}
+	for i := range c.State.Usage.Rows {
+		row := &c.State.Usage.Rows[i]
+		if row.Source == source && row.Connection == connection && row.Role == role {
+			return row
+		}
+	}
+	c.State.Usage.Rows = append(c.State.Usage.Rows, contract.UsageRow{Source: source, Connection: connection, Role: role})
+	return &c.State.Usage.Rows[len(c.State.Usage.Rows)-1]
+}
+
+// Usage returns the closed run ledger, adding observed source rows and this run's elapsed time.
+func (c *ExecutionController) Usage() contract.Usage {
+	if c.usageBound {
+		c.recordUsageElapsed()
+	}
+	c.recordSourceUsage(c.State.Sources)
+	data, _ := json.Marshal(c.State.Usage)
+	var out contract.Usage
+	_ = json.Unmarshal(data, &out)
+	if out.Rows == nil {
+		out.Rows = []contract.UsageRow{}
+	}
+	return out
+}
+
 // Claim takes one model request, or answers ExecutionPaused at the ceiling.
 func (c *ExecutionController) Claim() error {
 	if c.Remaining() <= 0 {
 		return ErrExecutionPaused
 	}
 	c.State.Used++
+	c.usageRow("model", c.usageConnection, c.usageRole).Requests++
 	return nil
 }
 
@@ -663,12 +764,35 @@ func (c *ExecutionController) ObserveToolResult(result contract.ToolResult) {
 func (c *ExecutionController) RecordCompletion(result contract.ProvenanceCompletion, phase string) {
 	attempt := c.attempt
 	c.attempt = 1
-	row := contract.Provenance{Request: int64(c.State.Used), Phase: phase, Result: result}
+	connection, role := c.usageConnection, c.usageRole
+	row := contract.Provenance{Request: int64(c.State.Used), Phase: phase, Result: result, Connection: &connection, Role: &role}
 	if attempt > 1 {
 		held := int64(attempt)
 		row.Attempt = &held
 	}
 	c.State.Completions = append(c.State.Completions, row)
+	usage := c.usageRow("model", connection, role)
+	tokens := usage.Tokens
+	if tokens == nil {
+		tokens = &contract.UsageTokens{}
+	}
+	present := false
+	for _, pair := range []struct {
+		from *int64
+		to   **int64
+	}{{result.InputTokens, &tokens.InputTokens}, {result.OutputTokens, &tokens.OutputTokens}, {result.ReasoningTokens, &tokens.ReasoningTokens}, {result.CacheReadTokens, &tokens.CacheReadTokens}, {result.CacheWriteTokens, &tokens.CacheWriteTokens}} {
+		if pair.from != nil {
+			value := *pair.from
+			if *pair.to != nil {
+				value += **pair.to
+			}
+			*pair.to = &value
+			present = true
+		}
+	}
+	if present {
+		usage.Tokens = tokens
+	}
 }
 
 // RecordPrompt is recordPrompt (ADR-0005): the digest of one request body the adapter is about to
@@ -686,6 +810,15 @@ func (c *ExecutionController) RecordPrompt(body []byte) {
 		next = c.State.Prompts[held-1].Request + 1
 	}
 	c.State.Prompts = append(c.State.Prompts, contract.ProvenancePromptDigest{Request: next, Sha256: ContextDigest(string(body))})
+	source := "model"
+	if c.State.Unit == "provider-managed" {
+		source = "agent"
+	}
+	usage := c.usageRow(source, c.usageConnection, c.usageRole)
+	usage.Bytes += int64(len(body))
+	if source == "agent" {
+		usage.Invocations++
+	}
 	if extra := len(c.State.Prompts) - MaxPromptDigests; extra > 0 {
 		c.State.Prompts = append([]contract.ProvenancePromptDigest{}, c.State.Prompts[extra:]...)
 	}
@@ -697,7 +830,8 @@ func (c *ExecutionController) BeginAttempt(attempt int) { c.attempt = attempt }
 
 // RecordRefusal is recordRefusal: a refused attempt at a model request, its own row.
 func (c *ExecutionController) RecordRefusal(phase string, attempt int, f contract.Failure, waitMs *int) {
-	row := contract.Provenance{Request: int64(c.State.Used), Phase: phase,
+	connection, role := c.usageConnection, c.usageRole
+	row := contract.Provenance{Request: int64(c.State.Used), Phase: phase, Connection: &connection, Role: &role,
 		Result: contract.ProvenanceCompletion{FinishReason: "error"}}
 	held := int64(attempt)
 	row.Attempt = &held
@@ -892,6 +1026,13 @@ func (c *ExecutionController) Snapshot(status string) (contract.Checkpoint, erro
 	if status == "" {
 		status = c.State.Status
 	}
+	sourceRows := c.State.Sources
+	if c.SourceRows != nil {
+		sourceRows = c.SourceRows()
+		c.recordSourceUsage(sourceRows)
+	}
+	usage := c.Usage()
+	c.State.Usage = &usage
 	held := *c.State
 	held.Operations = make([]*Operation, len(c.State.Operations))
 	for i, operation := range c.State.Operations {
@@ -904,9 +1045,7 @@ func (c *ExecutionController) Snapshot(status string) (contract.Checkpoint, erro
 		held.Operations[i] = &copied
 	}
 	held.Status = status
-	if c.SourceRows != nil {
-		held.Sources = c.SourceRows()
-	}
+	held.Sources = sourceRows
 	if c.DraftRows != nil {
 		held.Draft = c.DraftRows()
 	}

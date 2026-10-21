@@ -1,0 +1,8 @@
+{
+  "description": "ADR-0020: a cross-family fallback is refused at admission. Written by hand.",
+  "schema": "run-event.json",
+  "source": {"harness": {"repository": "Judgment-Pack/judgment-pack-agent", "package": "packages/harness"}, "files": ["packages/harness/policy.ts"]},
+  "items": [
+    {"type": "guardrail", "tool": "models.author.fallback", "action": "refused", "reason": "failover refused", "detail": "models.author.fallback (run): cross-family fallback is refused"}
+  ]
+}

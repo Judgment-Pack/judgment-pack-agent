@@ -68,6 +68,9 @@ type RetryOptions struct {
 	// Wait and Now stand in for the clock in a test; nil is WaitFor and time.Now.
 	Wait func(ctx context.Context, wait time.Duration) error
 	Now  func() time.Time
+	// Fallback advances to the next admitted same-family connection. It is asked at most once per request.
+	Fallback func(reason string) (from, to string, ok bool)
+	OnSwitch func(from, to, reason string) error
 }
 
 // delayFor is the wait before retry `attempt`, or false where the provider asks for too long.
@@ -107,12 +110,37 @@ func RetryingCall(call ModelCall, options RetryOptions) ModelCall {
 		now = time.Now
 	}
 	return func(ctx context.Context, suffix string, request ModelRequest) (*http.Response, error) {
+		switched := false
+		switchTo := func(f contract.Failure) (bool, error) {
+			if switched || (f.Code != "unavailable" && f.Code != "rate-limited" && f.Code != "timeout") || options.Fallback == nil {
+				return false, nil
+			}
+			from, to, ok := options.Fallback(f.Code)
+			if !ok {
+				return false, nil
+			}
+			switched = true
+			if options.OnSwitch != nil {
+				if err := options.OnSwitch(from, to, f.Code); err != nil {
+					return false, err
+				}
+			}
+			return true, nil
+		}
 		for attempt := 1; ; attempt++ {
 			if options.OnAttempt != nil {
 				options.OnAttempt(attempt)
 			}
 			answered, err := call(ctx, suffix, request)
 			if err != nil {
+				changed, switchErr := switchTo(failure.Normalize(err, "model", now()))
+				if switchErr != nil {
+					return nil, switchErr
+				}
+				if changed {
+					attempt = 0
+					continue
+				}
 				return nil, err
 			}
 			if answered.StatusCode >= 200 && answered.StatusCode <= 299 {
@@ -133,6 +161,17 @@ func RetryingCall(call ModelCall, options RetryOptions) ModelCall {
 			}
 			refused := failure.Normalize(&RelayRefusal{Status: answered.StatusCode, Body: body, Headers: answered.Header}, "model", now())
 			if !failure.CanRetryRefusal(refused, failure.RefusalCode(body)) {
+				changed, switchErr := switchTo(refused)
+				if switchErr != nil {
+					return nil, switchErr
+				}
+				if changed {
+					if answered.Body != nil {
+						answered.Body.Close()
+					}
+					attempt = 0
+					continue
+				}
 				return answered, nil
 			}
 			held := RefusedAttempt{Attempt: attempt, Failure: refused}
@@ -150,6 +189,17 @@ func RetryingCall(call ModelCall, options RetryOptions) ModelCall {
 				}
 			}
 			if !within {
+				changed, switchErr := switchTo(refused)
+				if switchErr != nil {
+					return nil, switchErr
+				}
+				if changed {
+					if answered.Body != nil {
+						answered.Body.Close()
+					}
+					attempt = 0
+					continue
+				}
 				return answered, nil
 			}
 			if answered.Body != nil {

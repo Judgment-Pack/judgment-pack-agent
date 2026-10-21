@@ -162,6 +162,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 	r.boundary = runcontext.NewBoundary(opened)
 	defer r.boundary.Close()
 	r.sc.RecordProvider("author")
+	r.sc.Execution.UseConnection(r.sc.Provider("author").Connection, "author")
 	r.emitAll(r.boundary.Open())
 
 	r.slot = wire.OpenThinking(wire.ThinkingTier(orOff(local.Thinking)), r.family, &capabilities.Reasoning, capabilities.Tiers, capabilities.FallbackTiers)
@@ -256,6 +257,13 @@ func (r *runState) turnTimeFailure() error {
 // refusal earns it (retryingCall).
 func (r *runState) modelCall(phase func() string) wire.ModelCall {
 	claimed := func(ctx context.Context, suffix string, request wire.ModelRequest) (*http.Response, error) {
+		role := "author"
+		if phase() == "review" {
+			role = "critic"
+		}
+		if r.run.Connection != nil {
+			r.sc.Execution.UseConnection(r.run.Connection(role), role)
+		}
 		if request.Method != http.MethodGet {
 			if err := r.sc.ClaimRequest(ctx, request.Body); err != nil {
 				return nil, err
@@ -279,6 +287,24 @@ func (r *runState) modelCall(phase func() string) wire.ModelCall {
 		OnAttempt: func(attempt int) { r.sc.Execution.BeginAttempt(attempt) },
 		// The last request of the allowance is the turn's tool-free final answer: a retry never takes it.
 		MayRetry: func() bool { return r.sc.Execution.Remaining() > 1 },
+		Fallback: func(reason string) (string, string, bool) {
+			if r.run.Failover == nil {
+				return "", "", false
+			}
+			role := "author"
+			if phase() == "review" {
+				role = "critic"
+			}
+			return r.run.Failover(role, reason)
+		},
+		OnSwitch: func(from, to, reason string) error {
+			role := "author"
+			if phase() == "review" {
+				role = "critic"
+			}
+			r.deliver(contract.RunEvent{ConnectionSwitched: &contract.RunEventConnectionSwitched{Type: "connection_switched", Role: role, From: from, To: to, Reason: reason}})
+			return nil
+		},
 	})
 }
 

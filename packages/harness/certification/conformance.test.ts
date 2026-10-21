@@ -1457,7 +1457,9 @@ describe.each(MODEL_ENGINES)('engine %s', (engineId) => {
       expect(events.map((event) => event.type)).toEqual([
         'policy_resolved',
         ...narrowing.map(() => 'guardrail' as const),
-        ...scenarioVector.items.map((item) => item.type)
+        ...scenarioVector.items.slice(0, -1).map((item) => item.type),
+        'usage',
+        scenarioVector.items.at(-1)!.type
       ])
       expect(events.filter((event) => event.type === 'end')).toHaveLength(1)
       expect(events.some((event) => event.type === 'error')).toBe(false)
@@ -1542,7 +1544,7 @@ describe.each(MODEL_ENGINES)('engine %s · text tool calls', (engineId) => {
       expect(proposals(events)[0]!.document).toEqual(DRAFT_V2)
       expect(proposals(events)[0]!.unknowns).toEqual(scenario.unknowns)
       // The same event stream the contract's scenario vector states.
-      expect(events.map((event) => event.type)).toEqual(['policy_resolved', ...scenarioVector.items.map((item) => item.type)])
+      expect(events.map((event) => event.type)).toEqual(['policy_resolved', ...scenarioVector.items.slice(0, -1).map((item) => item.type), 'usage', scenarioVector.items.at(-1)!.type])
     })
 
     it('ADR-0005 — each host part lands in its layer, before the tools described in text, and the stable prefix holds', async () => {

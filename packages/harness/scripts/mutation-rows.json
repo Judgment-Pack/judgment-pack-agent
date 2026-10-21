@@ -4267,6 +4267,42 @@
    "tests": ["certification/scenarios.test.ts"],
    "status": "caught",
    "origin": "agent#99"
+  },
+  {
+   "name": "provider failover treats refusal as qualifying",
+   "file": "engines/vercel/retry.ts",
+   "find": "if(switched||!(['unavailable','rate-limited','timeout'] as const).includes(failure.code as FailoverClass))return false",
+   "replace": "if(switched||!(['unavailable','rate-limited','timeout','permission'] as readonly string[]).includes(failure.code))return false",
+   "tests": ["engines/vercel/retry.test.ts"],
+   "status": "caught",
+   "origin": "agent#104"
+  },
+  {
+   "name": "provider failover switch event omitted",
+   "file": "engines/vercel/loop.ts",
+   "find": "onSwitch:async({from,to,reason})=>{await channel.push({type:'connection_switched',role:recording!==null?'critic':'author',from,to,reason})}",
+   "replace": "onSwitch:async()=>{}",
+   "tests": ["certification/providers.test.ts"],
+   "status": "caught",
+   "origin": "agent#104"
+  },
+  {
+   "name": "usage ledger invents absent tokens",
+   "file": "execution/controller.ts",
+   "find": "row={source,connection,role,requests:0,invocations:0,milliseconds:0,bytes:0}",
+   "replace": "row={source,connection,role,requests:0,invocations:0,milliseconds:0,bytes:0,tokens:{inputTokens:0}}",
+   "tests": ["certification/providers.test.ts"],
+   "status": "caught",
+   "origin": "agent#104"
+  },
+  {
+   "name": "provider failover cross-family admission removed",
+   "file": "policy.ts",
+   "find": "if (family(id as string) !== family(selected!)) refuse(fallbackName, 'cross-family fallback is refused')",
+   "replace": "if (family(id as string) !== family(selected!)) void fallbackName",
+   "tests": ["policy.test.ts", "certification/providers.test.ts"],
+   "status": "caught",
+   "origin": "agent#104"
   }
  ]
 }

@@ -1,0 +1,14 @@
+{
+  "$comment": "Hand-authored. Scenario 20, ADR-0020.",
+  "id": "provider-failover",
+  "request": "Draft a pack.",
+  "proposal": "```json\n{\"proposal\":{\"document\":{\"id\":\"pack\"},\"unknowns\":[]}}\n```",
+  "checks": [
+    "qualifying failure switches once within the family",
+    "switch event precedes the rebuilt request",
+    "refusal does not switch",
+    "cross-family fallback is refused at admission",
+    "agent delegation switch is refused",
+    "one terminal usage record preserves absent tokens"
+  ]
+}
