@@ -3,11 +3,18 @@ package runcontext
 // ADR-0013: admission and catalogue for pinned, reads-only host definitions.
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
 	"slices"
 	"strings"
 )
+
+// Shared by admission and fitting; the 16-byte encoded summary and mandatory fields
+// are carried by subagents/result-minimum.json (unstated is the longest confidence).
+var SubagentResultMinBytes = UTF8Bytes(ObjectOf("summary", String("No findings..."), "findings", Array(), "citations", Array(), "openQuestions", Array(), "confidence", String("unstated"), "notDone", Array()).Text())
+
+const SubagentChanged = "subagent changed: The declared sub-agent was withdrawn or changed; it was not dispatched again."
 
 type Subagent = contract.Subagent
 
@@ -97,6 +104,10 @@ func DeclareSubagents(declared []Subagent, tools []HostTool, skills []AdmittedSk
 		}
 		if b.ModelRequests > 10 || b.AgentRuns > 5 || b.ToolCalls > 12 || b.Bytes > int64(policy.MaxInputBytes) || b.Milliseconds > int64(min(360000, policy.TurnMilliseconds)) || b.ResultBytes > int64(policy.ToolResultBytes) {
 			hold("The definition exceeds the turn or child bounds ceiling.")
+			continue
+		}
+		if b.ResultBytes < int64(SubagentResultMinBytes) {
+			hold(fmt.Sprintf("resultBytes %d is below the report minimum %d.", b.ResultBytes, SubagentResultMinBytes))
 			continue
 		}
 		if UTF8Bytes(s.Instructions) > policy.ProjectInstructionsBytes {

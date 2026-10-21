@@ -4031,6 +4031,18 @@
    ],
    "status": "caught",
    "origin": "agent#97"
+  },
+  {
+   "name": "ADR-0013 sub-agents: result minimum check removed",
+   "file": "subagents.ts",
+   "find": "if(definition.bounds.resultBytes<SUBAGENT_RESULT_MIN_BYTES)",
+   "replace": "if(false&&definition.bounds.resultBytes<SUBAGENT_RESULT_MIN_BYTES)",
+   "tests": [
+    "subagents.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#97 review round",
+   "note": "Go twin: remove the ResultBytes minimum check in go/context/subagents.go; TestSubagentAdmission must fail."
   }
  ]
 }

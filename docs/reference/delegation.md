@@ -49,7 +49,7 @@ Closed: a member the schema does not name is refused.
 | `bounds.toolCalls` | yes | integer (min 1, max 12) |  |
 | `bounds.bytes` | yes | integer (min 1) |  |
 | `bounds.milliseconds` | yes | integer (min 1, max 360000) |  |
-| `bounds.resultBytes` | yes | integer (min 1) |  |
+| `bounds.resultBytes` | yes | integer (min 1) | Admission withholds resultBytes below 113, the mandatory report fields with the longest confidence and 16 encoded summary bytes; the notice names the supplied bound and minimum. |
 | `pinnedDigest` | yes | string (pattern `^sha256:[0-9a-f]{64}$`) |  |
 | `digest` |  | string (pattern `^sha256:[0-9a-f]{64}$`) |  |
 

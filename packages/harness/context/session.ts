@@ -618,10 +618,14 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  const skills=await declareSkills(session.skills,declaredNames,context.policy,declared.sources)
  declared.sources.push(...skills.sources)
  await context.execution.initialize()
+ // Reconcile only roles belonging to saved definition records whose approved digest changed.
+ // Other policy members still compare exactly, including other sub-agent roles.
+ const changedRoles=new Set((context.execution.state.delegation?.batches??[]).flatMap(b=>b.children)
+  .flatMap(c=>c.subagent&&!admittedSubagents?.subagents.some(s=>s.id===c.subagent!.id&&s.digest===c.subagent!.digest)?[`models.subagent.${c.subagent.id}.`]:[]))
  // Saved identities belong to the saved execution, even when a host reuses its connection IDs.
  for(const row of context.execution.state.crossProvider??[]){
   if(row.role.startsWith('subagent.')&&!session.subagents?.some(s=>row.role===`subagent.${s.id}`))continue
-  const changed = failoverRefusal(row.role,row.provider,context.provider(row.role))
+  const changed = (changedRoles.has(`models.${row.role}.`)?undefined:failoverRefusal(row.role,row.provider,context.provider(row.role)))
     ?? failoverRefusal('author',row.author,context.provider('author'))
   if(changed){
    const refused=new PolicyRefusal(changed.tool,'run','cross-family continuation refused: the prefix and cache do not carry')
@@ -633,7 +637,13 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  const carried=context.execution.state.policy
  if(carried) {
   for(const [name,member] of Object.entries(carried))if(name.startsWith('models.subagent.')&&!Object.hasOwn(context.resolvedPolicy,name))context.resolvedPolicy[name]=structuredClone(member)
-  if(canonicalJSON(carried)!==canonicalJSON(context.resolvedPolicy))throw authoredFailure('stale-state','The policy differs from the saved run.','context')
+  const comparable=structuredClone(carried)
+  for(const name of new Set([...Object.keys(carried),...Object.keys(context.resolvedPolicy)]))if([...changedRoles].some(role=>name.startsWith(role))){
+   if(Object.hasOwn(context.resolvedPolicy,name))comparable[name]=structuredClone(context.resolvedPolicy[name]!)
+   else delete comparable[name]
+  }
+  if(canonicalJSON(comparable)!==canonicalJSON(context.resolvedPolicy))throw authoredFailure('stale-state','The policy differs from the saved run.','context')
+  context.execution.state.policy=structuredClone(context.resolvedPolicy)
  } else {
   context.execution.state.policy=structuredClone(context.resolvedPolicy)
   try{await session.context?.checkpoint?.(context.execution.snapshot())}catch{throw failureError('storage','storage','not-started')}

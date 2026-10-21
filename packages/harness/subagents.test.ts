@@ -1,3 +1,6 @@
+import {fitReport} from './delegation'
+import {SUBAGENT_RESULT_MIN_BYTES} from './subagents'
+import minimum from '../../contract/vectors/subagents/result-minimum.json'
 import {describe,it,expect} from 'vitest'
 import {declareSubagents,subagentDigest,subagentRecord,catalogueSubagents,subagentProfile,type SubagentDeclaration} from './subagents'
 import {CONTEXT_DEFAULTS} from './context/policy'
@@ -9,6 +12,27 @@ const tool:HostTool={name:'lookup',effect:'read',description:'Read evidence.',in
 const definition=()=>structuredClone(declaration.items[0]) as SubagentDeclaration
 async function admit(s=definition(),tools=[tool],policy=CONTEXT_DEFAULTS){return declareSubagents([s],tools,[],policy)}
 describe('declared sub-agents',()=>{
+ it('shares the vector report minimum with fitting, including escaped and whitespace summaries',()=>{
+  expect(SUBAGENT_RESULT_MIN_BYTES).toBe(minimum.resultBytes)
+  expect(new TextEncoder().encode(JSON.stringify(minimum.items[0])).length).toBe(minimum.resultBytes)
+  for(const summary of ['Child evidence.'.repeat(50),' '.repeat(100)+'tail','\n'.repeat(100)+'tail','\u0001'.repeat(100),'😀'.repeat(100)]){
+   const report={...minimum.items[0]!,summary,confidence:'unstated' as const}
+   const {shown}=fitReport(report,0)
+   expect(shown.summary.trim()).not.toBe('')
+   expect(new TextEncoder().encode(JSON.stringify(shown)).length).toBeLessThanOrEqual(SUBAGENT_RESULT_MIN_BYTES)
+  }
+ })
+ it('withholds resultBytes below the representable report minimum',async()=>{
+  for(const resultBytes of [1,112]){
+   const s=definition();s.bounds.resultBytes=resultBytes;s.pinnedDigest=await subagentDigest(s)
+   const result=await admit(s)
+   expect(result.subagents).toEqual([])
+   expect(result.withheld[0]).toMatchObject({reason:'subagent withheld',detail:expect.stringContaining(`resultBytes ${resultBytes}`)})
+   expect(result.withheld[0]?.detail).toContain('minimum 113')
+  }
+  const s=definition();s.bounds.resultBytes=113;s.pinnedDigest=await subagentDigest(s)
+  expect((await admit(s)).subagents).toHaveLength(1)
+ })
  it('matches the hand-authored digest and carries the approved source record',async()=>{
   const s=definition();expect(await subagentDigest(s)).toBe(s.pinnedDigest)
   const {subagents,withheld}=await admit(s);expect(withheld).toEqual([])

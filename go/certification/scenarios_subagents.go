@@ -26,7 +26,7 @@ func subagentFindings(ctx context.Context, server *Server, inner Adapter, agent 
 	}
 	f := findings{check: name}
 	version := "1"
-	definition := runcontext.Subagent{ID: "auditor", Name: "Auditor", Purpose: "Check supplied evidence.", Instructions: "Use only the supplied evidence and cite it.", Source: contract.SubagentSource{Kind: "custom", ID: "project", Version: &version, Trust: "person"}, Tools: []string{"lookup"}, Skills: []string{"evidence"}, Model: "fixture", Reasoning: "low", Bounds: contract.SubagentBounds{ModelRequests: 5, AgentRuns: 1, ToolCalls: 2, Bytes: 24000, Milliseconds: 30000, ResultBytes: 3000}}
+	definition := runcontext.Subagent{ID: "auditor", Name: "Auditor", Purpose: "Check supplied evidence.", Instructions: "Use only the supplied evidence and cite it.", Source: contract.SubagentSource{Kind: "custom", ID: "project", Version: &version, Trust: "person"}, Tools: []string{"lookup"}, Skills: []string{"evidence"}, Model: "fixture", Reasoning: "low", Bounds: contract.SubagentBounds{ModelRequests: 5, AgentRuns: 1, ToolCalls: 2, Bytes: 24000, Milliseconds: 30000, ResultBytes: int64(runcontext.SubagentResultMinBytes)}}
 	skill := runcontext.Skill{ID: "evidence", Name: "evidence", Description: "Check evidence.", Instructions: "SKILL EVIDENCE RULE: cite supplied sources.", Source: runcontext.SkillSource{Kind: "custom", ID: "project", Version: "1", Trust: "person"}, Tools: []string{"lookup"}}
 	skill.PinnedDigest = runcontext.SkillDigest(skill)
 	definition.PinnedDigest = runcontext.SubagentDigest(definition)
@@ -38,6 +38,7 @@ func subagentFindings(ctx context.Context, server *Server, inner Adapter, agent 
 	var mu sync.Mutex
 	var events []contract.RunEvent
 	var requests []string
+	var answers []string
 	reads, parent, child := 0, 0, 0
 	emit := func(e contract.RunEvent) { mu.Lock(); defer mu.Unlock(); events = append(events, e) }
 	task := json.RawMessage(`{"tasks":[{"title":"Evidence","objective":"Check the evidence.","profile":"auditor"}]}`)
@@ -119,7 +120,9 @@ func subagentFindings(ctx context.Context, server *Server, inner Adapter, agent 
 						break
 					}
 				}
-				_, err := c.Tool(ctx, adapter.AgentToolCall{ID: "call", Name: name, Arguments: args})
+				result, err := c.Tool(ctx, adapter.AgentToolCall{ID: "call", Name: name, Arguments: args})
+				raw, _ := json.Marshal(result)
+				answers = append(answers, string(raw))
 				return err
 			}
 			if !isChild && parent == 0 {
@@ -173,6 +176,52 @@ func subagentFindings(ctx context.Context, server *Server, inner Adapter, agent 
 	if !complete || !refused || !recorded {
 		f.fail("completion %v, child refusal %v, checkpoint record %v", complete, refused, recorded)
 	}
+	// The parent's actual answer, including any prose, holds the admitted result bound.
+	reports := 0
+	var visit func(any)
+	visit = func(value any) {
+		switch v := value.(type) {
+		case string:
+			var parsed any
+			if json.Unmarshal([]byte(v), &parsed) == nil {
+				visit(parsed)
+			} else if strings.Contains(v, "\n") {
+				for _, line := range strings.Split(v, "\n") {
+					visit(line)
+				}
+			}
+		case []any:
+			for _, item := range v {
+				visit(item)
+			}
+		case map[string]any:
+			if tasks, ok := v["tasks"].([]any); ok {
+				for _, item := range tasks {
+					if task, ok := item.(map[string]any); ok && task["report"] != nil {
+						reports++
+						raw, _ := json.Marshal(task["report"])
+						size := len(raw)
+						if text, ok := task["result"].(string); ok {
+							encoded, _ := json.Marshal(text)
+							size += len(encoded)
+						}
+						if int64(size) > definition.Bounds.ResultBytes {
+							f.fail("child report exceeds admitted resultBytes: %d > %d", size, definition.Bounds.ResultBytes)
+						}
+					}
+				}
+			}
+			for _, item := range v {
+				visit(item)
+			}
+		}
+	}
+	for _, raw := range append(append([]string{}, requests...), answers...) {
+		visit(raw)
+	}
+	if reports == 0 {
+		f.fail("no parent report checked against resultBytes")
+	}
 	// A queued or running record is restored as data, never as permission to re-run it.
 	var saved *contract.Checkpoint
 	for _, e := range events {
@@ -200,14 +249,23 @@ func subagentFindings(ctx context.Context, server *Server, inner Adapter, agent 
 	if saved == nil {
 		f.fail("no restorable declared task checkpoint")
 	} else {
-		for _, changed := range []bool{false, true} {
+		for _, mode := range []string{"withdrawn", "changed", "lower-tier", "lower-bound"} {
 			reads, parent, child = 0, 1, 0
 			events = nil
 			requests = nil
 			run.Subagents = nil
-			if changed {
+			if mode != "withdrawn" {
 				held := definition
 				held.Instructions += " Changed."
+				if mode == "lower-tier" {
+					held.Reasoning = tier
+				}
+				if mode == "lower-bound" {
+					held.Bounds.ToolCalls = 1
+				}
+				if strings.HasPrefix(mode, "lower-") {
+					held.PinnedDigest = runcontext.SubagentDigest(held)
+				}
 				run.Subagents = []runcontext.Subagent{held}
 			}
 			raw, _ := json.Marshal(saved)
@@ -229,9 +287,48 @@ func subagentFindings(ctx context.Context, server *Server, inner Adapter, agent 
 					f.fail("restore error: %s", e.Error.Message)
 				}
 			}
+			if strings.HasPrefix(mode, "lower-") {
+				record, report := false, false
+				for _, e := range events {
+					if e.ExecutionCheckpoint != nil && e.ExecutionCheckpoint.Checkpoint.Delegation != nil {
+						for _, b := range e.ExecutionCheckpoint.Checkpoint.Delegation.Batches {
+							for _, c := range b.Children {
+								if c.State == "interrupted" && c.Problem != nil && strings.Contains(*c.Problem, "subagent changed") {
+									record = true
+								}
+							}
+						}
+					}
+					if e.ExecutionCheckpoint != nil {
+						raw, _ := json.Marshal(e.ExecutionCheckpoint.Checkpoint.Delegation)
+						report = report || strings.Contains(string(raw), "subagent changed")
+					}
+				}
+				if !record || !report {
+					f.fail("%s: interrupted record %v, report %v", mode, record, report)
+				}
+			}
 			if !said {
 				f.fail("withdrawn definition not reported")
 			}
+			if strings.HasPrefix(mode, "lower-") {
+				copy.Policy["budget.toolCalls"] = contract.PolicyMember{Value: json.RawMessage(`999`), Layer: "run"}
+				run.Context.Execution = &copy
+				events = nil
+				if err := delegate.With(inner, delegate.Options{}).Run(ctx, &run); err != nil {
+					return nil, err
+				}
+				refused := false
+				for _, e := range events {
+					if e.Error != nil && strings.Contains(e.Error.Message, "policy differs") {
+						refused = true
+					}
+				}
+				if !refused {
+					f.fail("unrelated saved policy change accepted with %s", mode)
+				}
+			}
+
 		}
 	}
 	// Admission failures stay off the offer on this same engine and scripted source.

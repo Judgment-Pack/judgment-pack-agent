@@ -651,7 +651,7 @@ func (c *coordinator) agentBatch(ctx context.Context, pending *handoff) (contrac
 				if task.Subagent != nil && (p == nil || p.subagent == nil || p.subagent.Digest == nil || *p.subagent.Digest != task.Subagent.Digest || task.Profile != p.subagent.ID || string(mustJSON(task.Subagent)) != string(mustJSON(runcontext.SubagentRecord(*p.subagent)))) {
 					c.edit(func() {
 						task.State = "interrupted"
-						task.Problem = strPtr("The declared sub-agent was withdrawn or changed; it was not dispatched again.")
+						task.Problem = strPtr(runcontext.SubagentChanged)
 						task.FinishedAt = strPtr(now())
 					})
 					c.deliver(runcontext.SubagentNotice(task.Subagent.ID, *task.Problem, "subagent withheld"))

@@ -425,7 +425,7 @@ func (c *coordinator) recordTasks(plans []*planned) []*contract.DelegatedTask {
 			Subagent: p.request.Subagent, State: "queued", CreatedAt: now(), Steps: []contract.DelegatedTaskStepsItem{}, Budget: &budget, Resumes: p.request.Resume}
 		if task.Subagent != nil && p.subagent == nil {
 			task.State = "interrupted"
-			task.Problem = strPtr("The declared sub-agent was withdrawn or changed; it was not dispatched again.")
+			task.Problem = strPtr(runcontext.SubagentChanged)
 		}
 		if p.subagent != nil {
 			task.Subagent = runcontext.SubagentRecord(*p.subagent)

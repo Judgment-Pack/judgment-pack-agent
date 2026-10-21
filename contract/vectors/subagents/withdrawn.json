@@ -24,7 +24,7 @@
       "toolCalls": 0,
       "attempts": 0,
       "steps": [],
-      "problem": "The declared sub-agent was withdrawn or changed; it was not dispatched again."
+      "problem": "subagent changed: The declared sub-agent was withdrawn or changed; it was not dispatched again."
     }
   ],
   "source": {

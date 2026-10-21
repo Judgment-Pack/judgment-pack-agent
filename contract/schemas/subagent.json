@@ -182,6 +182,7 @@
           "maximum": 360000
         },
         "resultBytes": {
+          "description": "Admission withholds resultBytes below 113, the mandatory report fields with the longest confidence and 16 encoded summary bytes; the notice names the supplied bound and minimum.",
           "type": "integer",
           "minimum": 1
         }

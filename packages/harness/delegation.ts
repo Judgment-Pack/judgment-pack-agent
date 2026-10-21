@@ -1,3 +1,4 @@
+import {SUBAGENT_RESULT_MIN_BYTES,SUBAGENT_CHANGED} from './subagents'
 import {subagentProfile,subagentRecord,recordSubagents,type Subagent} from './subagents'
 import {failure,failureError,failureEvent,normalizeFailure,canRetryAdmission,canRetryRefusal,readFailure,refusalCode,failureMessage,toolInputFailure,toolFailureResult,RETRYABLE_OVERLOAD_CODES,RETRYABLE_REFUSAL_CLASSES,type AIFailure} from './failures'
 import {asksApproval,wireName} from './toolSources'
@@ -148,6 +149,7 @@ const reportBytes = (report: TaskReport) => utf8Bytes(JSON.stringify(report))
  * citations, then open questions, and the summary's start last. The whole stays on the task record.
  */
 export function fitReport(report: TaskReport, bytes: number): {shown: TaskReport; cut: boolean} {
+  bytes = Math.max(bytes, SUBAGENT_RESULT_MIN_BYTES)
   if (reportBytes(report) <= bytes) return {shown: report, cut: false}
   const shown = structuredClone(report)
   const over = () => reportBytes(shown) > bytes
@@ -155,7 +157,7 @@ export function fitReport(report: TaskReport, bytes: number): {shown: TaskReport
   while (over() && shown.findings.length) { shown.findings.pop(); const cited = new Set(shown.findings.flatMap(f => f.citations ?? [])); shown.citations = shown.citations.filter(c => cited.has(c.id)) }
   while (over() && shown.citations.length) shown.citations.pop()
   while (over() && shown.openQuestions.length) shown.openQuestions.pop()
-  if (over()) shown.summary = encodedPrefix(shown.summary, Math.max(16, bytes - (reportBytes({...shown, summary: ''}) - 2))).trim() || shown.summary.slice(0, 16)
+  if (over()) shown.summary = encodedPrefix(shown.summary, Math.max(16, bytes - (reportBytes({...shown, summary: ''}) - 2))).trim() || 'No findings...'
   return {shown, cut: true}
 }
 /** A question the child put to the person, as one open question's text. */
@@ -882,7 +884,7 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
       shared.attach(context)
       for(const batch of figures)for(const child of batch.children){
         if(child.subagent&&child.state==='interrupted'&&!context.subagents.some(s=>s.id===child.subagent!.id&&s.digest===child.subagent!.digest)){
-          child.problem='The declared sub-agent was withdrawn or changed; it was not dispatched again.'
+          child.problem=SUBAGENT_CHANGED
           context.refuse(child.subagent.id,child.problem,'subagent withheld')
         }
       }

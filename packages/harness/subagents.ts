@@ -9,6 +9,10 @@ import type {HostTool} from './engine'
 import type {SourceRecord} from './toolSources'
 import {TASK_PROFILES,type TaskProfile} from './delegationContract'
 
+// Mandatory report fields, the longest confidence, and 16 JSON bytes of summary (quotes included).
+// Shared by admission and fitting; carried by subagents/result-minimum.json.
+export const SUBAGENT_RESULT_MIN_BYTES = utf8Bytes(JSON.stringify({summary:'No findings...',findings:[],citations:[],openQuestions:[],confidence:'unstated',notDone:[]}))
+export const SUBAGENT_CHANGED = 'subagent changed: The declared sub-agent was withdrawn or changed; it was not dispatched again.'
 export const SUBAGENT_DEFAULTS = Object.freeze({cataloguedSubagents:16,subagentCatalogueBytes:4000})
 export interface SubagentBounds {modelRequests:number;agentRuns:number;toolCalls:number;bytes:number;milliseconds:number;resultBytes:number}
 export interface SubagentDeclaration {
@@ -51,6 +55,7 @@ export async function declareSubagents(declared:readonly unknown[]|undefined,too
     if(definition.tools.some(name=>!tools.some(t=>t.name===name&&!t.interaction&&(t.source?t.effectClass==='read':t.effect==='read'||!t.effect&&t.delegation==='read')))){hold('A sub-agent admits declared reads only; effects cannot be raised.');continue}
     if(definition.skills.some(name=>!skills.some(s=>s.id===name))){hold('An undeclared skill was named; the definition was withheld.');continue}
     if(Object.entries(definition.bounds).some(([key,value])=>value>ceilings[key as keyof SubagentBounds])){hold('The definition exceeds the turn or child bounds ceiling.');continue}
+    if(definition.bounds.resultBytes<SUBAGENT_RESULT_MIN_BYTES){hold(`resultBytes ${definition.bounds.resultBytes} is below the report minimum ${SUBAGENT_RESULT_MIN_BYTES}.`);continue}
     if(utf8Bytes(definition.instructions)>policy.projectInstructionsBytes){hold('The definition instructions exceed projectInstructionsBytes.');continue}
     const digest=await subagentDigest(definition)
     if(digest!==definition.pinnedDigest){hold('The definition digest changed; re-approval is required.');continue}

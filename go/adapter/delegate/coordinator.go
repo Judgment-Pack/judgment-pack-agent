@@ -374,7 +374,7 @@ func (c *coordinator) drive(ctx context.Context) error {
 						}
 					}
 					if !found {
-						child.Problem = strPtr("The declared sub-agent was withdrawn or changed; it was not dispatched again.")
+						child.Problem = strPtr(runcontext.SubagentChanged)
 						c.deliver(runcontext.SubagentNotice(child.Subagent.ID, *child.Problem, "subagent withheld"))
 					}
 				}

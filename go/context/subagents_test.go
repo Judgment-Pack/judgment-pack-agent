@@ -2,6 +2,7 @@ package runcontext
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"os"
 	"strings"
@@ -33,6 +34,19 @@ func TestSubagentAdmission(t *testing.T) {
 			t.Fatal(e)
 		}
 		return a, n
+	}
+	for _, bound := range []int64{1, 112, 113} {
+		held := s
+		held.Bounds.ResultBytes = bound
+		held.PinnedDigest = SubagentDigest(held)
+		a, n := admit(held, []HostTool{tool}, Defaults)
+		if bound == 113 {
+			if len(a) != 1 {
+				t.Fatal("minimum result bound withheld")
+			}
+		} else if len(a) != 0 || len(n) != 1 || n[0].Guardrail.Reason == nil || *n[0].Guardrail.Reason != "subagent withheld" || !strings.Contains(n[0].Guardrail.Detail, fmt.Sprintf("resultBytes %d", bound)) || !strings.Contains(n[0].Guardrail.Detail, "minimum 113") {
+			t.Fatalf("unrepresentable resultBytes %d admitted: %v", bound, n)
+		}
 	}
 	a, n := admit(s, []HostTool{tool}, Defaults)
 	if len(a) != 1 || len(n) != 0 {

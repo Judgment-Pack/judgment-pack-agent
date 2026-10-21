@@ -1133,6 +1133,36 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		if err := held.Execution.Initialize(); err != nil {
 			return err
 		}
+		// Only saved definition roles with a changed approved digest are reconciled.
+		changedRoles := map[string]bool{}
+		reconcile := func(record *contract.SubagentRecord) {
+			if record == nil {
+				return
+			}
+			for _, s := range admittedSubagents {
+				if s.ID == record.ID && s.Digest != nil && *s.Digest == record.Digest {
+					return
+				}
+			}
+			changedRoles["models.subagent."+record.ID+"."] = true
+		}
+		if session.Context != nil && session.Context.Execution != nil {
+			if saved := session.Context.Execution.Delegation; saved != nil {
+				for _, b := range saved.Batches {
+					for _, c := range b.Children {
+						reconcile(c.Subagent)
+					}
+				}
+			}
+			if saved := session.Context.Execution.Handoff; saved != nil {
+				for _, task := range saved.Tasks {
+					reconcile(task.Subagent)
+				}
+				for _, task := range saved.Request.Tasks {
+					reconcile(task.Subagent)
+				}
+			}
+		}
 		// A connection ID may be rebound; the saved execution's provider identities may not.
 		for _, row := range held.Execution.State.CrossProvider {
 			if strings.HasPrefix(row.Role, "subagent.") {
@@ -1146,7 +1176,10 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 					continue
 				}
 			}
-			changed := FailoverRefusal(row.Role, row.Provider, *held.Provider(row.Role))
+			var changed *contract.RunEvent
+			if !changedRoles["models."+row.Role+"."] {
+				changed = FailoverRefusal(row.Role, row.Provider, *held.Provider(row.Role))
+			}
 			if changed == nil {
 				changed = FailoverRefusal("author", row.Author, *held.Provider("author"))
 			}
@@ -1174,7 +1207,23 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 					}
 				}
 			}
-			a, _ := json.Marshal(saved)
+			comparable := make(map[string]contract.PolicyMember)
+			for name, member := range saved {
+				comparable[name] = member
+			}
+			for role := range changedRoles {
+				for name := range comparable {
+					if strings.HasPrefix(name, role) {
+						delete(comparable, name)
+					}
+				}
+				for name, member := range record {
+					if strings.HasPrefix(name, role) {
+						comparable[name] = member
+					}
+				}
+			}
+			a, _ := json.Marshal(comparable)
 			b, _ := json.Marshal(record)
 			if string(a) != string(b) {
 				return failure.Authored("stale-state", "The policy differs from the saved run.", "context")

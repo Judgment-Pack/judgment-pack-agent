@@ -52,7 +52,7 @@ EXPECTED_SCHEMAS = {
 # The $defs added or changed (beyond their descriptions) between v0.1.0 and the v0.2.0 release
 # review, whose members each need a vector (#43): (schema, definition).
 RELEASE_REVIEWED_DEFS = [
-    ("subagent.json", "record"), ("tool-offer.json", "subagentCatalogueEntry"),
+    ("run-event.json", "delegated_task"), ("subagent.json", "record"), ("tool-offer.json", "subagentCatalogueEntry"),
     ("provenance.json", "provider"), ("provenance.json", "crossProvider"),
     ("policy.json", "role"), ("policy.json", "member"), ("policy.json", "paceUsed"),
     ("provenance.json", "policy"), ("run-event.json", "policy_resolved"),
@@ -799,6 +799,7 @@ class VectorTests(unittest.TestCase):
                 for index, value in enumerate(node):
                     yield from enum_paths(value, path + [index])
 
+        enums += [("subagent.json", path) for path in enum_paths(schemas_["subagent.json"], [])]
         enums += [("policy.json", path) for path in enum_paths(schemas_["policy.json"], [])]
         enums += [
             ("tool-offer.json", ["properties", "taskClass"]),

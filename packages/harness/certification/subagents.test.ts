@@ -19,6 +19,9 @@ async function play(engine:Engine,restored?:import('../execution/state').Executi
  if(mode){
   if(mode==='tool')definition.tools=['missing']
   if(mode==='skill')definition.skills=['missing']
+  if(mode==='lower-tier')definition.reasoning=agent?'none':'off'
+  if(mode==='lower-bound')definition.bounds.toolCalls=1
+  if(mode==='minimum')definition.bounds.resultBytes=113
   if(mode==='bounds')definition.bounds.bytes=180001
   if(mode==='digest'||mode==='reapproved')definition.instructions+=' Changed.'
   if(mode!=='digest')definition.pinnedDigest=await subagentDigest(definition)
@@ -26,7 +29,7 @@ async function play(engine:Engine,restored?:import('../execution/state').Executi
  const requests:any[]=[],toolResults:unknown[]=[],events:AssistantEvent[]=[];let parent=restored||['tool','skill','bounds','digest'].includes(mode??'')?1:0,child=0,reads=0
  const selectedTask=mode==='taskBounds'?{...task,bounds:{bytes:999999}}:task
  const steps=[{name:'load_skill',arguments:{name:'evidence'}},{name:'lookup',arguments:{}},{name:'delegate_tasks',arguments:{tasks:[task]}}]
- const common={policy:{models:{'child.auditor':{reasoning:agent?'none':'off'}}},context:{...(restored?{execution:restored}:{}),currentRequest:{message:'Delegate the evidence check.',input:'Delegate the evidence check.'}},prompt:'Delegate the evidence check.',testPrompt:'',tools:[],hostTools:[{name:'lookup',effect:'read' as const,description:'Read evidence.',inputSchema:{type:'object',properties:{}},execute:async()=>{reads++;return {content:[{type:'text' as const,text:'EVIDENCE: supplied facts.'}]}}}],skills:[skill],subagents:restored?(changed?[{...definition,instructions:definition.instructions+' Changed.'}]:[]):[definition],callTool:async()=>({isError:true,content:[{type:'text' as const,text:'refused'}]}),signal:new AbortController().signal,allowConversation:true,interactive:true,critic:'off' as const}
+ const common={policy:{models:{'child.auditor':{reasoning:agent?'none':'off'}}},context:{...(restored?{execution:restored}:{}),currentRequest:{message:'Delegate the evidence check.',input:'Delegate the evidence check.'}},prompt:'Delegate the evidence check.',testPrompt:'',tools:[],hostTools:[{name:'lookup',effect:'read' as const,description:'Read evidence.',inputSchema:{type:'object',properties:{}},execute:async()=>{reads++;return {content:[{type:'text' as const,text:'EVIDENCE: supplied facts.'}]}}}],skills:[skill],subagents:restored?(mode?.startsWith('lower-')?[definition]:changed?[{...definition,instructions:definition.instructions+' Changed.'}]:[]):[definition],callTool:async()=>({isError:true,content:[{type:'text' as const,text:'refused'}]}),signal:new AbortController().signal,allowConversation:true,interactive:true,critic:'off' as const}
  let session:EngineSession
  if(agent)session={...common,effort:'low',agent:{model:'fixture',run:async(request,callbacks)=>{
   requests.push(request);const isChild=request.instructions.includes(definition.instructions)
@@ -71,7 +74,46 @@ for(const engine of [vercel,deepagents,codex])describe(`${engine.id==='codex'?'a
    expect(resumed.reads).toBe(0)
    expect(resumed.events.some(e=>e.type==='guardrail'&&e.reason==='subagent withheld'&&e.detail.includes('not dispatched again'))).toBe(true)
    const record=resumed.events.filter(e=>e.type==='execution_checkpoint').at(-1)?.checkpoint.delegation?.batches[0]?.children[0]
-   expect(record).toMatchObject({state:'interrupted',subagent:{id:'auditor',digest:first.definition.pinnedDigest},problem:'The declared sub-agent was withdrawn or changed; it was not dispatched again.'})
+   expect(record).toMatchObject({state:'interrupted',subagent:{id:'auditor',digest:first.definition.pinnedDigest},problem:'subagent changed: The declared sub-agent was withdrawn or changed; it was not dispatched again.'})
+  }
+ })
+
+ it('13 the report and result sent to the parent fit the minimum admitted resultBytes',async()=>{
+  const result=await play(engine,undefined,false,'minimum')
+  expect(result.events.filter(e=>e.type==='error')).toEqual([])
+  expect(result.reads).toBe(1)
+  let reports=0
+  const visit=(value:any):void=>{
+   if(typeof value==='string'){
+    let parsed:unknown
+    try{parsed=JSON.parse(value)}catch{if(value.includes('\n'))for(const line of value.split('\n'))visit(line);return}
+    visit(parsed);return
+   }
+   if(!value||typeof value!=='object')return
+   if(Array.isArray(value.tasks))for(const task of value.tasks)if(task.report){
+    reports++
+    expect(new TextEncoder().encode(JSON.stringify(task.report)).length+(task.result?new TextEncoder().encode(JSON.stringify(task.result)).length:0)).toBeLessThanOrEqual(result.definition.bounds.resultBytes)
+   }
+   for(const item of Object.values(value))visit(item)
+  }
+  visit([result.requests,result.toolResults])
+  expect(reports).toBeGreaterThan(0)
+ })
+
+ it('13 re-approved policy changes interrupt saved tasks and preserve unrelated policy checks',async()=>{
+  const first=await play(engine)
+  const checkpoint=first.events.filter(e=>e.type==='execution_checkpoint').at(-1)!.checkpoint
+  for(const mode of ['lower-tier','lower-bound']){
+   const saved=structuredClone(checkpoint);saved.status='running';saved.delegation!.batches[0]!.children[0]!.state='queued'
+   const resumed=await play(engine,saved,false,mode)
+   expect(resumed.events.filter(e=>e.type==='error')).toEqual([])
+   expect(resumed.reads).toBe(0)
+   const record=resumed.events.filter(e=>e.type==='execution_checkpoint').at(-1)?.checkpoint.delegation?.batches[0]?.children[0]
+   expect(record).toMatchObject({state:'interrupted',problem:expect.stringContaining('subagent changed')})
+   expect(JSON.stringify(resumed.events.filter(e=>e.type==='execution_checkpoint').at(-1)?.checkpoint.delegation)).toContain('subagent changed')
+   saved.policy!['budget.toolCalls']={value:999,layer:'run'}
+   const stale=await play(engine,saved,false,mode)
+   expect(stale.events.some(e=>e.type==='error'&&e.message.includes('policy differs'))).toBe(true)
   }
  })
 

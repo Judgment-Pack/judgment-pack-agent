@@ -29,6 +29,14 @@ ceiling. Task arguments carry no bounds and cannot raise them. The model and tie
 resolve through `models.subagent.<id>` under the policy table and its tier ceiling;
 provider selection follows ADR-0012.
 
+Admission withholds `resultBytes` below 113, naming the supplied bound and minimum
+in a `subagent withheld` notice. Both languages compute this shared admission and
+fitting floor from the six mandatory report fields, the longest confidence value
+(`unstated`), and 16 JSON bytes for the summary including its quotes. The
+`subagents/result-minimum.json` vector carries the shape and byte count. The fitted
+report and any result text sent to the parent stay within the admitted bound;
+the whole report remains available on the task record.
+
 `delegate_tasks` lists each admitted id and its purpose's first line beside the fixed
 built-in profiles. Purpose lines are framed as data, cut to 160 UTF-8 bytes, with
 at most `cataloguedSubagents` (16) entries and `subagentCatalogueBytes` (4,000)
@@ -59,7 +67,9 @@ The seven decided points are:
 checkpoint's task records and delegation figures. Reports distinguish built-in
 profiles from declared definitions and group definition figures by id and digest.
 A queued task restored with a withdrawn or changed definition is not dispatched
-again; its interrupted record states why. A running task retains ADR-0007's unknown
+again; its interrupted record and report state `subagent changed`. Definition digests
+are reconciled before comparing their saved model-policy roles; unrelated policy
+changes still refuse continuation. A running task retains ADR-0007's unknown
 outcome rule. Guardrail reasons are `subagent withheld` for admission and restore,
 and `subagent refused` for an unknown selection or a child's attempted delegation.
 
