@@ -1,5 +1,5 @@
 {
-  "description": "ADR-0017: guardrail. Handwritten from the accepted output-boundary decision.",
+  "description": "ADR-0017: output refusal and redacted gate notices. Handwritten from the accepted output-boundary decision.",
   "schema": "run-event.json#/$defs/guardrail",
   "source": {
     "harness": {
@@ -7,7 +7,8 @@
       "package": "packages/harness"
     },
     "files": [
-      "packages/harness/outputGuard.ts"
+      "packages/harness/outputGuard.ts",
+      "packages/harness/session.ts"
     ]
   },
   "items": [
@@ -17,6 +18,12 @@
       "action": "refused",
       "reason": "output refused",
       "detail": "Output refused: local-home-path."
+    },
+    {
+      "type": "guardrail",
+      "tool": "[redacted: aws-access-key]",
+      "action": "refused",
+      "detail": "[redacted: aws-access-key] is not one of the tools this assistant may call (none); the call did not leave the page and nothing was written"
     }
   ]
 }

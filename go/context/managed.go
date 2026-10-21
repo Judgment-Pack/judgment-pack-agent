@@ -29,8 +29,8 @@ package runcontext
 // nothing once the adapter's own end has been delivered, as the TypeScript rethrows there. Close
 // ends the run's turn on its chat, as the TypeScript's finally does.
 //
-// What the gate holds is not here (go/gate): the guardrail notices a refused call earns
-// (gate.Options.Emit writes them between the call and its result) and the critic's own narrowing.
+// Gate decisions and the critic's narrowing stay in go/gate. GuardGateNotices holds the
+// text of its direct host notices; gate.Options.Emit still writes them between call and result.
 
 import (
 	"errors"

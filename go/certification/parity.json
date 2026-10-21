@@ -944,6 +944,13 @@
         "go": ["16 resume"]
       },
       {
+        "check": "17 \u00b7 output boundary: the gate guards its own unknown-tool notice",
+        "go": [
+          "17 output boundary",
+          "17 agent output boundary"
+        ]
+      },
+      {
         "check": "17 \u00b7 output boundary: answer, proposal, arguments, memory, draft, refusal, allow and resume",
         "go": [
           "17 output boundary",

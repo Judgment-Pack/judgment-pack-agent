@@ -144,6 +144,55 @@ func outputBoundaryFindings(ctx context.Context, inner Adapter, agent bool) ([]F
 		}
 		return out, err
 	}
+	for _, mode := range []string{"redact", "refuse"} {
+		var policy runcontext.PolicyLayer
+		if mode == "refuse" {
+			policy = runcontext.PolicyLayer{"outputGuard": mode}
+		}
+		r, err := play([]memoryStep{{name: key, args: json.RawMessage(`{}`)}, {say: "Finished."}}, nil, policy)
+		if err != nil {
+			return nil, err
+		}
+		noticeAt, callAt, resultAt := -1, -1, -1
+		guarded, labelled := false, false
+		for i, event := range r.events {
+			if event.ToolCall != nil && callAt < 0 {
+				callAt = i
+			}
+			if event.ToolResult != nil && resultAt < 0 {
+				resultAt = i
+			}
+			if e := event.OutputGuarded; e != nil && e.Where == "message" && e.Pattern == "aws-access-key" && e.Action == mode {
+				labelled = true
+			}
+			if e := event.Guardrail; e != nil {
+				if noticeAt < 0 {
+					noticeAt = i
+				}
+				if strings.Contains(e.Tool, key) || strings.Contains(e.Detail, key) {
+					f.fail("%s gate notice leaked the tool name", mode)
+				}
+				if mode == "redact" {
+					guarded = e.Tool == hole && strings.Contains(e.Detail, hole) && e.Action == "refused"
+				} else {
+					guarded = e.Reason != nil && *e.Reason == "output refused"
+				}
+			}
+		}
+		count := int64(2)
+		if mode == "refuse" {
+			count = 1
+		}
+		if !guarded || !labelled || r.saved() == nil || r.saved().OutputGuard["aws-access-key"] != count {
+			f.fail("%s gate notice guard or count missing", mode)
+		}
+		if callAt < 0 || noticeAt <= callAt || resultAt <= noticeAt {
+			f.fail("%s gate notice ordering changed", mode)
+		}
+		if !strings.Contains(strings.Join(r.systems, "\n"), key) {
+			f.fail("%s gate refusal result changed", mode)
+		}
+	}
 	steps := []memoryStep{
 		{name: "validate", args: json.RawMessage(`{"content":"{\"specVersion\":\"1\"}"}`)},
 		{name: "validate", args: json.RawMessage(`{"content":"{\"specVersion\":\"1\",\"title\":\"AKIAABCDEFGHIJKLMNOP\"}"}`)},

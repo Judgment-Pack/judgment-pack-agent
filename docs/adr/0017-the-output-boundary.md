@@ -15,8 +15,9 @@ or a later tool. The package needs one outbound guard in both languages.
 Every answer (`message`), proposal, tool argument, memory proposal and draft
 edit passes the output guard before delivery or execution. Model-derived notice
 identifiers and refusal details pass it too; a refused notice is withheld and
-replaced by the guard labels. A redacted notice identifier exceeding its schema
-bound is refused under `invalid-output`. Tool results remain exempt. It does not rewrite
+replaced by the guard labels. The gate's own notices pass the same guard before
+host delivery, without changing its decisions or model-readable tool results.
+A redacted notice identifier exceeding its schema bound is refused under `invalid-output`. Tool results remain exempt. It does not rewrite
 model input, retained tool results, recalled memory or host-supplied documents.
 The guard has no authority over admission, approvals or Runtime verdicts.
 
@@ -72,10 +73,10 @@ later tool arguments, memory proposal and draft edit contain labelled holes.
 Refuse stops the outbound step, an allowed name passes, and report counts survive
 resume. Both language readers execute the shared vectors byte-identically.
 
-Six mutants and their Go twins must be caught: an outbound path skipped, a base
+Seven mutants and their Go twins must be caught: an outbound path skipped, a base
 pattern removed, the allow list ignored, a count not recorded, a notice guard
-removed, and closed-parent counts not refreshed. Schema member
-and enum probes require every addition to be carried by a handwritten vector.
+removed, a gate-notice guard removed, and closed-parent counts not refreshed.
+Schema member and enum probes require every addition to be carried by a handwritten vector.
 
 ## Consequences
 

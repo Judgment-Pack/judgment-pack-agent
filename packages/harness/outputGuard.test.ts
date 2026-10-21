@@ -110,3 +110,24 @@ it('refuses a notice whose redaction would exceed its document bound',async()=>{
  expect(events.some(e=>e.type==='edit_refused')).toBe(false)
  expect(events).toContainEqual({type:'output_guarded',where:'draft edit',pattern:'invalid-output',action:'refuse'})
 })
+
+
+import {gatedRuntime} from './testing/scripted'
+it('withholds oversized gate notices with schema-valid refusal labels in both modes',async()=>{
+ for(const mode of ['redact','refuse'] as const){
+  const events:AssistantEvent[]=[]
+  const runtime=await gatedRuntime({tools:[],allowed:['experimental_evaluate'],handle:()=>answer({}),onEvent:event=>events.push(event)})
+  try{
+   const session={prompt:'Review',testPrompt:'',tools:[],hostTools:[],callTool:runtime.callTool,signal:new AbortController().signal,allowConversation:true,interactive:true,critic:'off' as const,policy:{outputGuard:mode},agent:{model:'fixture',run:async()=>{}}}
+   for await(const event of managedContext(session,async function*(){
+    await runtime.callTool('experimental_evaluate',{rehearsal:'x'.repeat(200000)})
+    yield {type:'end' as const}
+   }))events.push(event)
+   expect(runtime.seen).toEqual([{name:'experimental_evaluate',args:{rehearsal:true}}])
+   expect(events.filter(e=>e.type==='error')).toEqual([])
+   const notices=events.filter(e=>e.type==='guardrail'||e.type==='output_guarded')
+   expect(notices).toEqual([{type:'output_guarded',where:'message',pattern:'work-bound',action:'refuse'},{type:'guardrail',tool:'message',action:'refused',reason:'output refused',detail:'Output refused: work-bound.'}])
+   for(const event of notices)expect(argumentProblem(eventSchema.$defs[event.type as 'guardrail'],event)).toBeUndefined()
+  }finally{await runtime.close()}
+ }
+})

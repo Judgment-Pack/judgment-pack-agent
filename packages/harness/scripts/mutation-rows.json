@@ -4336,6 +4336,16 @@
    "status": "caught",
    "origin": "agent#100 fix round",
    "note": "Go twin: omit live.Output.Counts in coordinator.save; TestClosedAgentParentKeepsChildOutputCounts catches the stale checkpoint."
+  },
+  {
+   "name": "output boundary gate notice guard removed",
+   "file": "session.ts",
+   "find": "const delivered = guard ? guard(event) : event",
+   "replace": "const delivered = event",
+   "tests": ["certification/output-boundary.test.ts"],
+   "status": "caught",
+   "origin": "agent#100 fix round 2",
+   "note": "Go twin: bypass noticeGuard in Gate.emitNotice; both TestOutputBoundaryOnAgent and TestOutputBoundaryOnModel catch the unguarded notice."
   }
  ]
 }

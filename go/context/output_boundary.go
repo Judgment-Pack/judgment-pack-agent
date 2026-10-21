@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
 	"unicode/utf8"
 )
 
@@ -123,4 +124,13 @@ func (b *Boundary) guardNotice(event contract.RunEvent) (contract.RunEvent, erro
 		return event, g.Refuse("draft edit", "invalid-output")
 	}
 	return event, err
+}
+
+// GuardGateNotices holds the gate's direct host notices under this run's output policy.
+// Guard labels are queued for the boundary's next event, before the tool result.
+func (b *Boundary) GuardGateNotices(calls *gate.Calls) func() {
+	return gate.GuardNotices(calls, func(event contract.RunEvent) (contract.RunEvent, bool) {
+		guarded, err := b.guardNotice(event)
+		return guarded, err == nil
+	})
 }

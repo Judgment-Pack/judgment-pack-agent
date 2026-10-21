@@ -7,6 +7,8 @@ import {runtimeAnswer} from '../testing/scripted'
 import {PROPOSE_PACK_SCHEMA} from '../engines/contract'
 import type {Engine} from '../engine'
 import type {PolicyLayer} from '../policy'
+import eventSchema from '../../../contract/schemas/run-event.json'
+import {argumentProblem} from '../sourceArguments'
 import type {ExecutionCheckpoint} from '../execution/state'
 afterEach(()=>vi.unstubAllGlobals())
 const key='AKIAABCDEFGHIJKLMNOP',hole='[redacted: aws-access-key]'
@@ -18,6 +20,29 @@ async function play(engine:Engine,turns:Turn[],policy:PolicyLayer={},execution?:
  return {...ran,answers}
 }
 for(const engine of [vercel,deepagents,codex])describe(`${engine.id==='codex'?'agent ':''}engine ${engine.id} · scenarios`,()=>{
+ it('17 · output boundary: the gate guards its own unknown-tool notice',async()=>{
+  for(const mode of ['redact','refuse'] as const){
+   const run=await play(engine,[{call:{tool:key,arguments:{}}},{say:'Finished.'}],mode==='refuse'?{outputGuard:mode}:{})
+   expect(run.events.filter(e=>e.type==='error')).toEqual([])
+   expect(run.seen.some(c=>c.name===key)).toBe(false)
+   const notices=run.events.filter(e=>e.type==='guardrail')
+   expect(notices.some(e=>JSON.stringify(e).includes(key))).toBe(false)
+   if(mode==='redact'){
+    expect(notices).toContainEqual(expect.objectContaining({tool:hole,detail:expect.stringContaining(hole),action:'refused'}))
+    expect(saved(run)?.outputGuard?.['aws-access-key']).toBe(2)
+   }else{
+    expect(notices).toContainEqual(expect.objectContaining({reason:'output refused',action:'refused'}))
+    expect(saved(run)?.outputGuard?.['aws-access-key']).toBe(1)
+   }
+   expect(run.events).toContainEqual({type:'output_guarded',where:'message',pattern:'aws-access-key',action:mode})
+   const noticeAt=run.events.findIndex(e=>e.type==='guardrail')
+   expect(noticeAt).toBeGreaterThan(run.events.findIndex(e=>e.type==='tool_call'))
+   expect(noticeAt).toBeLessThan(run.events.findIndex(e=>e.type==='tool_result'))
+   // The gate's permission refusal remains model-readable, with its original tool name.
+   expect(JSON.stringify(run.requests.map(r=>r.body))+JSON.stringify(run.answers)).toContain(key)
+   for(const event of run.events)if(event.type==='guardrail'||event.type==='output_guarded')expect(argumentProblem(eventSchema.$defs[event.type],event)).toBeUndefined()
+  }
+ })
  it('17 · output boundary: answer, proposal, arguments, memory, draft, refusal, allow and resume',async()=>{
   const noticeRun=await play(engine,[{call:{tool:'propose_edit',arguments:{document:key,old_text:'before',new_text:'after'}}},{say:'Finished.'}])
   expect(noticeRun.events.filter(e=>e.type==='error')).toEqual([])

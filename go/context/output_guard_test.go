@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -334,5 +335,50 @@ func TestOutputNoticeRedactionBound(t *testing.T) {
 	}
 	if opened.Context.Output.Counts()["invalid-output"] != 1 {
 		t.Fatal("oversized guarded notice not refused")
+	}
+}
+
+func TestOutputGateNoticeMalformedRefusal(t *testing.T) {
+	schemaRaw, err := os.ReadFile("../../contract/schemas/run-event.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema, _ := ParseJSON(schemaRaw)
+	for _, mode := range []string{"redact", "refuse"} {
+		t.Run(mode, func(t *testing.T) {
+			s := modelSession()
+			s.Policy = PolicyLayer{"outputGuard": mode}
+			opened, err := ContextualSession(context.Background(), s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			boundary := NewBoundary(opened)
+			defer boundary.Close()
+			var events []contract.RunEvent
+			g := gate.New(gate.Options{Emit: func(e contract.RunEvent) { events = append(events, e) }})
+			defer boundary.GuardGateNotices(g.Calls())()
+			result, err := g.CallTool(context.Background(), strings.Repeat("x", 200000), json.RawMessage(`{}`))
+			if err != nil || !result.IsError {
+				t.Fatalf("gate refusal changed: %v", err)
+			}
+			if len(events) != 0 {
+				t.Fatal("oversized notice delivered")
+			}
+			out, _ := boundary.Event(contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}})
+			for _, event := range out {
+				if event.Guardrail == nil && event.OutputGuarded == nil {
+					continue
+				}
+				events = append(events, event)
+				raw, _ := json.Marshal(event)
+				value, _ := ParseJSON(raw)
+				if problem := ArgumentProblem(schema.Get("$defs").Get(value.Get("type").Str()), value); problem != "" {
+					t.Fatal(problem)
+				}
+			}
+			if len(events) != 2 || events[0].OutputGuarded == nil || events[0].OutputGuarded.Pattern != "work-bound" || events[1].Guardrail == nil || events[1].Guardrail.Reason == nil || *events[1].Guardrail.Reason != "output refused" {
+				t.Fatalf("refusal labels missing: %+v", events)
+			}
+		})
 	}
 }

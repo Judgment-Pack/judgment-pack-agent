@@ -1,3 +1,4 @@
+import {guardConnectionNotices} from '../session'
 import {OutputRefused,outputWhere} from '../outputGuard'
 import {PolicyRefusal} from '../policy'
 import {failureError,failureEvent,toolFailureResult} from '../failures'
@@ -36,6 +37,7 @@ function takeNotices(context:SessionContext):AssistantEvent[]{
  return [...out,...context.takeNotices()]
 }
 async function* execute<T extends EngineSession>(session:T,run:(session:T)=>AsyncIterable<AssistantEvent>,engine?:import('../host').AssistantEngine):AsyncGenerator<AssistantEvent>{
+ let releaseNotices:(()=>void)|undefined
  let context:SessionContext|undefined
  let ended=false
  const tracked=!!session.context?.currentRequest||!!session.context?.execution
@@ -57,6 +59,9 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
  try {
   session.signal.throwIfAborted()
   const ready=await contextualSession(session,engine);context=ready.context
+  releaseNotices=guardConnectionNotices(session.callTool,notice=>{
+   try{return guardNotice(notice,ready.context)}catch(error){if(!(error instanceof OutputRefused))throw error;return undefined}
+  })
   contexts.set(ready.session,context)
   yield {type:'policy_resolved',members:structuredClone(context.resolvedPolicy)}
   if(context.paceWarning)yield {type:'guardrail',tool:'pace',action:'refused',reason:'pace warning',detail:context.paceWarning}
@@ -177,5 +182,5 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
   }
   if(!session.signal.aborted)yield failureEvent(error,'context')
   yield {type:'end'}
- } finally {context?.close()}
+ } finally {releaseNotices?.();context?.close()}
 }
