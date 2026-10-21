@@ -114,7 +114,9 @@ Desk's eighteen, the harness's `approval_requested` (ADR-0008), `skill_loaded` a
 - **Host reports:** `guardrail` (`rewrote` and `refused` from the tool gate, between the call and
   its result, with `reason` `approval refused` or `approval pending` where an act call's approval
   refused it (ADR-0008), `approval stale` where the gate refused a call whose decision no longer
-  holds for it, and `approval refused` again after the person's refusal is written; with `reason`
+  holds for it, and `approval refused` again after the person's refusal is written; `identity changed`
+  where a source no longer runs as the approved identity, and `approval downgraded` where the first
+  service-identity act is asked despite the policy saying allow (ADR-0019); with `reason`
   `skill withheld` on a skill the package did not catalogue or restore (ADR-0009), before the first
   request, and `skill budget` on a `load_skill` call past `skillsPerRun`, between the call and its
   result; with `reason` `review refused` on a `request_review` call refused (ADR-0010: a second ask,
@@ -255,7 +257,7 @@ Runtime's six-name ceiling is unchanged. The path of a tool, as the decision dra
   │  name (wire-safe, ≤64 chars, mapped ↔ source+real name) · description (bounded,  │
   │  framed as text, not instruction) · inputSchema (narrowed per family) ·          │
   │  effect: read | propose | act · approval default by effect · source record       │
-  │  {kind, version/digest, trust class, receipt id} · contextPolicy · bounds        │
+  │  {kind, version/digest, trust, identity + digest, receipt} · contextPolicy       │
   └───────────────────────────────┬─────────────────────────────────────────────────┘
                                   ▼
   ┌─────────────────────────────────────────────────────────────────────────────────┐
@@ -276,7 +278,7 @@ Runtime's six-name ceiling is unchanged. The path of a tool, as the decision dra
                      │
                      ▼
   RESULT ──▶ framed as data (per-run marker) ──▶ ledger (read_window / search; images named, never dropped)
-         ──▶ tool_call / tool_result events with the source record ──▶ run report (per source: calls, bytes, time)
+         ──▶ tool_call / tool_result with identity ──▶ run report (per source and identity)
 ```
 
 What the contract states, and where:
@@ -284,7 +286,10 @@ What the contract states, and where:
 - **The declaration** (`tool-offer.json#/$defs/sourceDeclaration`): the tool's own name (1 to 128
   characters), description and schema as the source serves them, `source`
   (`$defs/sourceRecord`, closed: `kind` `gateway`, `mcp` or `custom`; `id`; `trust`; `version` or
-  `toolListDigest`, an `mcp` source the digest), and optionally `effectClass` and `approval`. A
+  `toolListDigest`, an `mcp` source the digest), and ADR-0019's `identity` (`person`, `service` or
+  `connection`, with a recognisable non-secret label) and derived `identityDigest`; absent identity
+  defaults to `connection` labelled by the source id. The host may provide `currentIdentity()` to
+  detect a change. The declaration optionally carries `effectClass` and `approval`. A
   declaration the package cannot read ends the run before any request (`configuration`). A tool
   whose own name is a Runtime tool's, a reserved name, `load_tool` or `propose_pack`, and every tool
   bearing a wire name that still collides, is withheld with a `guardrail` `refused`; so are all of an
@@ -293,7 +298,7 @@ What the contract states, and where:
   (`$defs/wireName`, `[A-Za-z0-9_-]{1,64}`, the source's id first, a deterministic suffix where a
   character was replaced or the name cut; `$defs/nameMapping`, the vector
   `tool-offer/source-names.json`), the description cut at `toolDescriptionBytes` and framed as
-  retrieved data with the run's marker, the schema with the text its source wrote in it treated the
+  retrieved data with the run's marker and beginning `runs as: <label>`, the schema with the text its source wrote in it treated the
   same way (an allowlist: each `description` cut and framed, only the structural keywords offered,
   every other keyword not; a name or `required` entry over 64 bytes or with white space, and an
   `enum` or `const` with a string over 64 bytes or a line break, or an `enum` that is no list,
@@ -315,7 +320,13 @@ What the contract states, and where:
   `sourceArguments.ts` and `go/context/arguments.go` read; the host validates the rest).
 - **Each call**, after the phase admits the name: refused (a `guardrail` and a `permission` failure)
   where the source's served list changed (the host's `currentDigest()`, asked before each `mcp`
-  call; once changed, every later call of the source in the run); refused past
+  call), or its identity changed (the host's `currentIdentity()`, where supplied); once either
+  changes, every later call of the source in the run is withheld until re-approval. An `act` under
+  a `service` identity is asked on the first act call of that source in the run even if the policy
+  says `allow` or the declaration says `approval: none`, with an `approval downgraded` guardrail;
+  later acts follow the policy. The source counts as asked only after the approval book records
+  the request; absent a book, every attempt is refused. Credential-bearing declaration labels
+  are withheld before publication with a generic refused guardrail. Refused past
   `sourceCallsPerTurn` (`tool-failed`; the slot is claimed at the check, before anything is awaited,
   and given back on a later refusal, so concurrent calls cannot pass the bound, and a delegated
   child's calls take their slots from the parent's report); a `propose` held for the review card and
@@ -326,8 +337,14 @@ What the contract states, and where:
   acknowledgement aside), and shown whole up to `sourceResultBytes`, retained and referenced past it.
 - **The events and the report**: `tool_call` and `tool_result` carry `source`, the record with
   `tool` (and `receipt` on a result where the host's answer gave one, kept by the call's id); their
-  `name` is the wire name. The checkpoint's `sources` (`provenance.json#/$defs/sourceFigures`) count calls, refusals,
-  proposals, bytes and time per source, the Runtime's row first.
+  `name` is the wire name. The model cannot select identity through call arguments. The checkpoint's
+  `sources` (`provenance.json#/$defs/sourceFigures`) count calls, refusals, proposals, bytes and time
+  per source and calls per identity, the Runtime's row first. The public checkpoint member
+  `sourceIdentities` (`checkpoint.json#/$defs/sourceIdentity`) separately carries `source`,
+  `identityDigest`, `withheld` and `serviceAsked`. Resume restores the pin, latched withholding
+  and each source's ask history even when another source owns the latest approval. Returning
+  to the original identity does not clear withholding; host re-approval supplies fresh
+  declarations and identity state in a new run.
 
 TypeScript holds these in `toolSources.ts`, entered from `contextualSession`, with the events
 decorated in `context/managed.ts`; Go in `go/context/sources.go`, entered from `ContextualSession`

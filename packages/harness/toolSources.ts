@@ -1,3 +1,4 @@
+import outputPatterns from './contract/output-patterns.json'
 /**
  * Tool sources (ADR-0006): tools from outside the Runtime, held at the boundary.
  *
@@ -41,6 +42,7 @@
  * - **the report** (`SourceGate.report`): calls, refusals, proposals, bytes and time per source in
  *   the checkpoint's `sources`, and the source record on the tool's `tool_call` and `tool_result`.
  */
+import type { SourceIdentityState } from './execution/state'
 import { REQUEST_REVIEW } from './criticSwitch'
 import { canonicalJSON } from './context/chat'
 import { answer, contextDigest } from './context/ledger'
@@ -63,6 +65,10 @@ export type TrustClass = (typeof TRUST_CLASSES)[number]
 export const EFFECT_CLASSES = ['read', 'propose', 'act'] as const
 export type EffectClass = (typeof EFFECT_CLASSES)[number]
 export type Approval = 'none' | 'required'
+export const IDENTITY_KINDS = ['person', 'service', 'connection'] as const
+export type IdentityKind = (typeof IDENTITY_KINDS)[number]
+/** The reported identity a source's calls run as (ADR-0019); its label is never a credential. */
+export interface SourceIdentity { kind: IdentityKind; label: string }
 
 /**
  * What the host's approval policy is asked about (`HostTool.approve`, ADR-0008): the call as the
@@ -94,6 +100,8 @@ export interface SourceRecord {
   trust: TrustClass
   version?: string
   toolListDigest?: string
+  identity?: SourceIdentity
+  identityDigest?: string
   /** The tool's own name at its source: set by the package on the offer and the events. */
   tool?: string
   /** On a tool_result: the receipt id the host's answer gave. */
@@ -106,7 +114,10 @@ export interface SourceRecord {
  * before each call; a digest other than the pinned one refuses the source until the host declares
  * the new one, which only the person's re-approval gives it.
  */
-export interface ToolSource extends Omit<SourceRecord, 'tool' | 'receipt'> {
+export interface ToolSource extends Omit<SourceRecord, 'tool' | 'receipt' | 'identity' | 'identityDigest'> {
+  identity?: SourceIdentity
+  /** The identity the connection uses now, checked before each call where the host can report it. */
+  currentIdentity?: () => SourceIdentity | Promise<SourceIdentity>
   currentDigest?: () => string | Promise<string>
 }
 
@@ -185,11 +196,16 @@ export async function toolListDigest(tools: readonly ListedTool[]): Promise<stri
   return `sha256:${await contextDigest(canonicalJSON(list))}`
 }
 
+/** The pin carried beside a source identity (ADR-0019). */
+export async function identityDigest(identity: SourceIdentity): Promise<string> {
+  return `sha256:${await contextDigest(canonicalJSON(identity))}`
+}
+
 /** A tool with a source, as the boundary holds it after the declaration. */
 export interface SourceEntry {
   wire: string
   /** The record as the offer and the events carry it, `tool` set. */
-  record: SourceRecord
+  record: SourceRecord & { identity: SourceIdentity; identityDigest: string }
   effectClass: EffectClass
   approval: Approval
   /** The host's declaration, as it declared it. */
@@ -218,12 +234,24 @@ export interface Declared {
 
 const object = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
+const exactIdentity = (value: Record<string, unknown>): value is Record<string, unknown> & SourceIdentity =>
+  Object.keys(value).every((member) => member === 'kind' || member === 'label') &&
+  IDENTITY_KINDS.includes(value.kind as IdentityKind) && typeof value.label === 'string' && value.label.length >= 1 && value.label.length <= 128
+
+// Credential patterns from ADR-0017's shared version 1 set; paths are not credentials.
+const CREDENTIAL_LABEL_PATTERNS = [
+  ...outputPatterns.patterns.filter(({ name }) => !name.startsWith('local-')).map(({ pattern }) => new RegExp(pattern)),
+  // Credential assignments also cover the review's synthetic sk_test label.
+  /\b(?:api[_-]?key|token|secret|password)\s*[:=]\s*\S+/i
+]
+const credentialLabel = (label: unknown): boolean =>
+  typeof label === 'string' && CREDENTIAL_LABEL_PATTERNS.some((pattern) => pattern.test(label))
 
 /** Why a declaration cannot be read, or `''`. */
 function declarationProblem(tool: HostTool): string {
   const source = tool.source as unknown
   if (!object(source)) return 'its source is not an object'
-  const known = ['kind', 'id', 'trust', 'version', 'toolListDigest', 'currentDigest']
+  const known = ['kind', 'id', 'trust', 'version', 'toolListDigest', 'identity', 'currentIdentity', 'currentDigest']
   const extra = Object.keys(source).filter((member) => !known.includes(member))
   if (extra.length > 0) return `its source carries ${JSON.stringify(extra[0]!.slice(0, 64))}, which a source record does not name`
   if (source.kind === 'runtime') return "its source is the Runtime, whose tools come through tools/list behind the gate and are never declared"
@@ -234,6 +262,8 @@ function declarationProblem(tool: HostTool): string {
   if (source.toolListDigest !== undefined && (typeof source.toolListDigest !== 'string' || !DIGEST.test(source.toolListDigest))) return 'its tool list digest is not sha256: and 64 lower-case hex digits'
   if (source.version === undefined && source.toolListDigest === undefined) return 'its source names neither a version nor a tool list digest'
   if (source.kind === 'mcp' && source.toolListDigest === undefined) return 'its source is an MCP server whose tool list is not pinned by digest'
+  if (source.identity !== undefined && (!object(source.identity) || !exactIdentity(source.identity))) return 'its identity is not a person, service or connection with a label of 1 to 128 characters'
+  if (source.currentIdentity !== undefined && typeof source.currentIdentity !== 'function') return "its source's currentIdentity is not a function"
   if (source.currentDigest !== undefined && typeof source.currentDigest !== 'function') return "its source's currentDigest is not a function"
   if (typeof tool.name !== 'string' || tool.name.length < 1 || tool.name.length > 128) return 'its name is not 1 to 128 characters'
   if (typeof tool.description !== 'string') return 'its description is not text'
@@ -255,7 +285,7 @@ function declarationProblem(tool: HostTool): string {
  */
 export function asksApproval(tool: Pick<HostTool, 'source' | 'effectClass' | 'approval'>): boolean {
   const effectClass = tool.effectClass ?? 'act'
-  return tool.source !== undefined && effectClass === 'act' && (tool.approval ?? APPROVAL_DEFAULT[effectClass]) === 'required'
+  return tool.source !== undefined && effectClass === 'act' && ((tool.approval ?? APPROVAL_DEFAULT[effectClass]) === 'required' || tool.source?.identity?.kind === 'service')
 }
 
 /** The effect a tool of each class has on the offer: Plan mode and a child admit reads only. */
@@ -277,12 +307,17 @@ export async function declareSources(hostTools: readonly HostTool[], served: rea
   const declared: { tool: HostTool; wire: string }[] = []
   for (const tool of hostTools) {
     if (tool.source === undefined) continue
+    if (credentialLabel(tool.source?.identity?.label)) {
+      withheld.push({ tool: 'source', detail: 'A source identity label carries a credential; its declaration was withheld before publication.' })
+      continue
+    }
     const problem = declarationProblem(tool)
     if (problem !== '') {
       throw authoredFailure('configuration', `The host tool ${JSON.stringify(String(tool.name).slice(0, 64))} has a source declaration this package cannot read: ${problem}. Nothing was sent.`, 'context')
     }
     const source = tool.source
-    const record: SourceRecord = { kind: source.kind, id: source.id, trust: source.trust, ...(source.version === undefined ? {} : { version: source.version }), ...(source.toolListDigest === undefined ? {} : { toolListDigest: source.toolListDigest }) }
+    const identity = source.identity ?? { kind: 'connection', label: source.id }
+    const record: SourceRecord = { kind: source.kind, id: source.id, trust: source.trust, ...(source.version === undefined ? {} : { version: source.version }), ...(source.toolListDigest === undefined ? {} : { toolListDigest: source.toolListDigest }), identity: { ...identity }, identityDigest: await identityDigest(identity) }
     const earlier = sources.get(source.id)
     if (earlier !== undefined && canonicalJSON(earlier) !== canonicalJSON(record)) {
       throw authoredFailure('configuration', `The source ${source.id} is declared twice with different records. Nothing was sent.`, 'context')
@@ -322,7 +357,7 @@ export async function declareSources(hostTools: readonly HostTool[], served: rea
     const { effectClass: _class, approval: _approval, approve: _approve, source: _source, ...rest } = tool
     const shown: HostTool = { ...rest, name: wire, source: { ...record }, effectClass, approval: tool.approval ?? APPROVAL_DEFAULT[effectClass], ...(EFFECT_OF[effectClass] === undefined ? {} : { effect: EFFECT_OF[effectClass] }) }
     offered.set(tool, shown)
-    entries.set(wire, { wire, record, effectClass, approval: shown.approval!, declared: tool, description: tool.description, catalogued: false })
+    entries.set(wire, { wire, record: record as SourceEntry['record'], effectClass, approval: shown.approval!, declared: tool, description: tool.description, catalogued: false })
   }
   return {
     hostTools: hostTools.flatMap((tool) => (tool.source === undefined ? [tool] : offered.has(tool) ? [offered.get(tool)!] : [])),
@@ -343,6 +378,7 @@ export function boundedDescription(text: string, bytes: number): string {
 
 /** The source's text, framed: the opening line says whose it is and that it is data. */
 export function framedDescription(entry: Pick<SourceEntry, 'wire' | 'record'>, text: string, marker: string): string {
+  text = `runs as: ${entry.record.identity.label}\n${text}`
   return frameBlock(`the description of tool ${JSON.stringify(entry.wire)} from source ${JSON.stringify(entry.record.id)}`, text, marker)
 }
 
@@ -610,7 +646,9 @@ interface Mark {
  * The words of a refusal that also earns a guardrail event; `reason` (ADR-0008) names an approval's
  * refusal on the event (`run-event.json#/$defs/guardrail`).
  */
-export type Refuse = (tool: string, detail: string, reason?: 'approval refused' | 'approval pending' | 'approval stale') => Error
+export type SourceGuardrailReason = 'approval refused' | 'approval pending' | 'approval stale' | 'identity changed' | 'approval downgraded'
+export type Refuse = (tool: string, detail: string, reason?: SourceGuardrailReason) => Error
+export type SourceNotice = (event: Extract<AssistantEvent, { type: 'guardrail' }>) => void
 
 /**
  * The boundary's hold on the tools with a source for one run (ADR-0006): each call's checks in
@@ -623,6 +661,9 @@ export type Refuse = (tool: string, detail: string, reason?: 'approval refused' 
  */
 export class SourceGate {
   private readonly changed = new Set<string>()
+  private readonly changedIdentities = new Set<string>()
+  /** Service identities whose first act has already reached approval in this run. */
+  private readonly actedServices = new Set<string>()
   private readonly loaded = new Map<string, unknown>()
   private loadedBytes = 0
   /** The marks of the calls that have a call id, by it. */
@@ -645,11 +686,36 @@ export class SourceGate {
     /** The gate of the run that delegated this one, whose rows and changed sources it shares. */
     private readonly parent?: SourceGate,
     /** The run's approval (ADR-0008): where an asked one is written, and whether an act call is admitted here. */
-    private readonly book?: ApprovalBook
+    private readonly book?: ApprovalBook,
+    private readonly notify?: SourceNotice,
+    private readonly identityState: SourceIdentityState[] = []
   ) {
     const held = this.tally()
     const want: SourceFigures[] = [{ source: 'runtime', kind: 'runtime', calls: 0, refused: 0, proposed: 0, bytes: 0, milliseconds: 0 }, ...sources.map((record) => ({ source: record.id, kind: record.kind, calls: 0, refused: 0, proposed: 0, bytes: 0, milliseconds: 0 }))]
     for (const row of want) if (!held.some((kept) => kept.source === row.source)) held.push(row)
+    for (const record of sources) {
+      if (!record.identityDigest) continue
+      let saved = this.identityStates.find((row) => row.source === record.id)
+      if (saved === undefined) {
+        saved = { source: record.id, identityDigest: record.identityDigest, withheld: false, serviceAsked: false }
+        this.identityStates.push(saved)
+      }
+      if (saved.identityDigest !== record.identityDigest) saved.withheld = true
+      if (saved.withheld) { this.alteredIdentities.add(record.id); this.alteredSources.add(record.id) }
+      if (saved.serviceAsked) this.serviceActs.add(`${record.id}\u0000${saved.identityDigest}`)
+    }
+    const approval = book?.current()
+    if (approval?.source.identity?.kind === 'service' && approval.source.identityDigest !== undefined) this.rememberService(approval.source.id, approval.source.identityDigest)
+  }
+
+  private get identityStates(): SourceIdentityState[] {
+    return this.parent ? this.parent.identityStates : this.identityState
+  }
+
+  private rememberService(source: string, digest: string): void {
+    this.serviceActs.add(`${source}\u0000${digest}`)
+    const saved = this.identityStates.find((row) => row.source === source && row.identityDigest === digest)
+    if (saved) saved.serviceAsked = true
   }
 
   /** The rows this run reports into: its own, or its delegating run's, which is the turn's. */
@@ -662,6 +728,14 @@ export class SourceGate {
     return this.parent ? this.parent.alteredSources : this.changed
   }
 
+  private get alteredIdentities(): Set<string> {
+    return this.parent ? this.parent.alteredIdentities : this.changedIdentities
+  }
+
+  private get serviceActs(): Set<string> {
+    return this.parent ? this.parent.serviceActs : this.actedServices
+  }
+
   /** Whether this run declares any tool with a source. */
   get declared(): boolean {
     return this.sources.length > 0
@@ -669,6 +743,33 @@ export class SourceGate {
 
   private row(source: string): SourceFigures {
     return this.tally().find((row) => row.source === source)!
+  }
+
+  private identityRow(row: SourceFigures, identity: SourceIdentity): { identity: SourceIdentity; calls: number } {
+    row.identities ??= []
+    let held = row.identities.find((item) => canonicalJSON(item.identity) === canonicalJSON(identity))
+    if (held === undefined) { held = { identity: { ...identity }, calls: 0 }; row.identities.push(held) }
+    return held
+  }
+
+  private claimCall(row: SourceFigures, identity: SourceIdentity): () => void {
+    row.calls++
+    const figures = this.identityRow(row, identity)
+    figures.calls++
+    return () => { row.calls--; figures.calls-- }
+  }
+
+  private async identityChanged(entry: SourceEntry): Promise<boolean> {
+    if (this.alteredIdentities.has(entry.record.id)) return true
+    const check = entry.declared.source?.currentIdentity
+    if (check === undefined) return this.alteredIdentities.has(entry.record.id)
+    let changed = true
+    try { changed = await identityDigest(await check()) !== entry.record.identityDigest } catch { /* withheld */ }
+    if (changed) {
+      this.alteredIdentities.add(entry.record.id); this.alteredSources.add(entry.record.id)
+      this.identityStates.find((row) => row.source === entry.record.id)!.withheld = true
+    }
+    return changed
   }
 
   private mark(wire: string, callId: string | undefined, mark: Mark): void {
@@ -691,7 +792,7 @@ export class SourceGate {
   /** Whether a call of `name` is an act whose approval the host's policy answers (ADR-0008). */
   needsApproval(name: string): boolean {
     const entry = this.entries.get(name)
-    return entry !== undefined && entry.effectClass === 'act' && entry.approval === 'required'
+    return entry !== undefined && entry.effectClass === 'act' && (entry.approval === 'required' || entry.record.identity.kind === 'service')
   }
 
   /**
@@ -716,6 +817,7 @@ export class SourceGate {
     const closed = this.book?.closed() ?? ''
     const row = this.row(id)
     let served = true
+    const changedIdentity = closed === '' && (entry.declared.source?.currentIdentity !== undefined || this.alteredIdentities.has(id)) && await this.identityChanged(entry)
     const check = entry.declared.source?.currentDigest
     if (closed === '' && check !== undefined && entry.record.kind === 'mcp' && !this.alteredSources.has(id)) {
       try { served = (await check()) === entry.record.toolListDigest } catch { served = false }
@@ -723,7 +825,7 @@ export class SourceGate {
     if (closed !== '') {
       answer = 'closed'
       detail = closed
-    } else if (!served || this.alteredSources.has(id) || row.calls + row.proposed >= this.bounds.sourceCallsPerTurn || entry.catalogued && (!this.loaded.has(name) || argumentProblem(this.loaded.get(name), args) !== undefined)) {
+    } else if (changedIdentity || !served || this.alteredSources.has(id) || row.calls + row.proposed >= this.bounds.sourceCallsPerTurn || entry.catalogued && (!this.loaded.has(name) || argumentProblem(this.loaded.get(name), args) !== undefined)) {
       answer = 'checked'
     } else if (this.book?.current()?.state === 'asked') {
       answer = 'pending'
@@ -732,15 +834,26 @@ export class SourceGate {
       this.mark(name, callId, {})
     } else {
       let given: unknown
-      if (entry.declared.approve === undefined) given = 'ask'
+      if (entry.approval === 'none') given = 'allow'
+      else if (entry.declared.approve === undefined) given = 'ask'
       else {
         try { given = entry.declared.approve({ name, tool: entry.record.tool!, source: { ...entry.record }, args: structuredClone(args) }) } catch { given = 'refuse' }
       }
       answer = typeof given === 'string' && APPROVAL_ANSWERS.includes(given) ? given as ApprovalAnswer : 'refuse'
+      const serviceKey = `${entry.record.id}\u0000${entry.record.identityDigest}`
+      const firstServiceAct = entry.record.identity.kind === 'service' && !this.serviceActs.has(serviceKey)
+      if (firstServiceAct && answer === 'allow') {
+        answer = 'ask'
+        const detail = `${name} acts as service identity ${entry.record.identity.label}; the first act call of this source in a run is asked even though the host policy allowed it.`
+        this.notify?.({ type: 'guardrail', tool: name, action: 'rewrote', detail, reason: 'approval downgraded' })
+      }
       // A run with nowhere to write the pause cannot ask: its call is refused.
       if (answer === 'ask' && this.book === undefined) answer = 'refuse'
       if (answer === 'refuse') detail = `${name} acts on ${id}, and the host's approval policy refused this call; it was not run and nothing was changed`
-      if (answer === 'ask') this.book!.ask({ callId: drawn, name, tool: entry.record.tool!, source: { ...entry.record }, args: structuredClone(args), state: 'asked' })
+      if (answer === 'ask') {
+        this.book!.ask({ callId: drawn, name, tool: entry.record.tool!, source: { ...entry.record }, args: structuredClone(args), state: 'asked' })
+        if (firstServiceAct) this.rememberService(id, entry.record.identityDigest)
+      }
     }
     // An asked call is never handed to the host, so its decision is not kept for a `call`. A kept
     // decision is tied to its call's arguments too: a call that reaches the gate with others is refused.
@@ -789,7 +902,7 @@ export class SourceGate {
     }
     const id = entry.record.id
     const row = this.row(id)
-    if (this.alteredSources.has(id)) return refusedWith(this.refused(entry, this.refuse(record.name, this.changedDetail(entry)), record.callId))
+    if (this.alteredSources.has(id)) return refusedWith(this.refused(entry, this.refuse(record.name, this.changedDetail(entry), this.alteredIdentities.has(id) ? 'identity changed' : undefined), record.callId))
     if (entry.catalogued) {
       const problem = argumentProblem(describedSchema(entry.declared.inputSchema, this.bounds.toolDescriptionBytes), record.args)
       if (problem !== undefined) return refusedWith(this.refused(entry, toolInputFailure(`${record.name}'s arguments do not match its schema: ${problem}. This call was not run.`), record.callId))
@@ -798,7 +911,11 @@ export class SourceGate {
       const limit = this.bounds.sourceCallsPerTurn
       return refusedWith(this.refused(entry, new AIFailureError({ version: 1, code: 'tool-failed', source: 'tool', outcome: 'not-started', detail: `This turn has called ${id}'s tools ${limit} time${limit === 1 ? '' : 's'}, the most one turn may (sourceCallsPerTurn); this call was not run.` }), record.callId))
     }
-    row.calls++
+    const giveBack = this.claimCall(row, entry.record.identity)
+    if ((entry.declared.source?.currentIdentity !== undefined || this.alteredIdentities.has(id)) && await this.identityChanged(entry)) {
+      giveBack()
+      return refusedWith(this.refused(entry, this.refuse(record.name, this.changedDetail(entry), 'identity changed'), record.callId))
+    }
     const check = entry.declared.source?.currentDigest
     if (check !== undefined && entry.record.kind === 'mcp') {
       let now: unknown
@@ -806,7 +923,7 @@ export class SourceGate {
       const unchanged = now === entry.record.toolListDigest
       if (!unchanged) {
         this.alteredSources.add(id)
-        row.calls--
+        giveBack()
         return refusedWith(this.refused(entry, this.refuse(record.name, this.changedDetail(entry)), record.callId))
       }
     }
@@ -854,7 +971,7 @@ export class SourceGate {
     if (decided?.answer === 'pending') throw new GateViolation(tool.name, decided.detail)
     // The policy's refusal is approval refused; a decision that no longer holds for this call is the gate's, approval stale.
     if (decided?.answer === 'refuse' || decided?.answer === 'closed' || decided?.answer === 'stale') throw this.refused(entry, this.refuse(tool.name, decided.detail, decided.answer === 'refuse' ? 'approval refused' : decided.answer === 'stale' ? 'approval stale' : undefined), callId)
-    if (this.alteredSources.has(id)) throw this.refused(entry, this.refuse(tool.name, this.changedDetail(entry)), callId)
+    if (this.alteredSources.has(id)) throw this.refused(entry, this.refuse(tool.name, this.changedDetail(entry), this.alteredIdentities.has(id) ? 'identity changed' : undefined), callId)
     if (entry.catalogued) {
       if (!this.loaded.has(tool.name)) {
         throw this.refused(entry, toolInputFailure(`${tool.name} is catalogued: call ${LOAD_TOOL} with its name first and call it with the schema that loads. This call was not run.`), callId)
@@ -872,14 +989,20 @@ export class SourceGate {
     const proposal = entry.effectClass === 'propose'
     if (proposal) row.proposed++
     else row.calls++
-    const giveBack = () => { if (proposal) row.proposed--; else row.calls-- }
+    const identityFigures = proposal ? undefined : this.identityRow(row, entry.record.identity)
+    if (identityFigures !== undefined) identityFigures.calls++
+    const giveBackCall = proposal ? () => { row.proposed-- } : () => { row.calls--; identityFigures!.calls-- }
+    if ((entry.declared.source?.currentIdentity !== undefined || this.alteredIdentities.has(id)) && await this.identityChanged(entry)) {
+      giveBackCall()
+      throw this.refused(entry, this.refuse(tool.name, this.changedDetail(entry), 'identity changed'), callId)
+    }
     const check = entry.declared.source?.currentDigest
     if (check !== undefined && entry.record.kind === 'mcp') {
       let now: unknown
       try { now = await check() } catch { now = undefined }
       if (now !== entry.record.toolListDigest) {
         this.alteredSources.add(id)
-        giveBack()
+        giveBackCall()
         throw this.refused(entry, this.refuse(tool.name, this.changedDetail(entry)), callId)
       }
     }
@@ -889,11 +1012,11 @@ export class SourceGate {
     }
     // ADR-0008: only an allowed act call reaches here; one whose checks refused it before any approval was asked never does.
     if (decided !== undefined && decided.answer !== 'allow') {
-      giveBack()
+      giveBackCall()
       throw this.refused(entry, this.refuse(tool.name, `${tool.name} acts on ${id}, and this call's approval was not given; it was not run and nothing was changed`, 'approval stale'), callId)
     }
     if (signal.aborted) {
-      giveBack()
+      giveBackCall()
       this.mark(tool.name, callId, {})
       signal.throwIfAborted()
     }
@@ -934,6 +1057,7 @@ export class SourceGate {
   }
 
   private changedDetail(entry: SourceEntry): string {
+    if (this.alteredIdentities.has(entry.record.id)) return `the identity ${entry.record.id} runs as is no longer the one the person approved (${entry.record.identity.label}, ${entry.record.identityDigest}); its tools are refused until the person approves the new identity, and this call was not run`
     return `the tool list ${entry.record.id} serves is no longer the one the person approved (${entry.record.toolListDigest}); its tools are refused until the person approves the new list, and this call was not run`
   }
 

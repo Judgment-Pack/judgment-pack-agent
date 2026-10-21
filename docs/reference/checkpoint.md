@@ -58,6 +58,7 @@ Open: a member the schema does not name is accepted.
 | `draft` |  | `$defs/draft` |  |
 | `outputGuard` |  | `provenance.json $defs/outputGuard` |  |
 | `records` |  | `provenance.json $defs/recordFigures` |  |
+| `sourceIdentities` |  | array of `$defs/sourceIdentity` (max items 64) | ADR-0019: per-source identity pins, latched identity withholding and service approval history, separate from figures and the latest approval. Restored on resume; re-approval starts a new run with fresh source declarations and state. |
 
 Conditions beyond the members (allOf) are in the schema file.
 
@@ -182,3 +183,14 @@ Closed: a member the schema does not name is refused.
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
 | `documents` | yes | array of `$defs/draftDocument` |  |
+
+### `checkpoint.json $defs/sourceIdentity`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `source` | yes | string (pattern `^[A-Za-z][A-Za-z0-9-]{0,23}$`) |  |
+| `identityDigest` | yes | string (pattern `^sha256:[0-9a-f]{64}$`) |  |
+| `withheld` | yes | boolean |  |
+| `serviceAsked` | yes | boolean |  |
