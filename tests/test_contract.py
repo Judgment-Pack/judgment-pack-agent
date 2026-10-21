@@ -55,6 +55,7 @@ EXPECTED_SCHEMAS = {
 # The $defs added or changed (beyond their descriptions) between v0.1.0 and the v0.2.0 release
 # review, whose members each need a vector (#43): (schema, definition).
 RELEASE_REVIEWED_DEFS = [
+    ("checkpoint.json", "sourceIdentity"),
     ("run-event.json", "compacted"), ("provenance.json", "compactionSummary"), ("provenance.json", "compactionReport"),
     ("run-event.json", "output_guarded"), ("policy.json", "outputPattern"),
     ("tool-offer.json", "propose_edit"), ("tool-offer.json", "propose_delete"), ("tool-offer.json", "propose_insert"), ("tool-offer.json", "undo_edit"),
@@ -85,6 +86,8 @@ RELEASE_REVIEWED_DEFS = [
     ("tool-offer.json", "sourceRecord"), ("tool-offer.json", "nameMapping"), ("tool-offer.json", "sourceDeclaration"),
     ("tool-offer.json", "catalogueEntry"), ("tool-offer.json", "loadTool"), ("tool-offer.json", "loadedSchema"),
     ("provenance.json", "sourceFigures"),
+    # ADR-0019: the source identity and its per-identity call figures.
+    ("tool-offer.json", "identity"), ("provenance.json", "identityFigures"),
     # ADR-0005 and ADR-0007, and the checkpoint's root: the members the v0.4.0 release review found no vector carried (#76).
     ("provenance.json", "promptDigest"), ("checkpoint.json", "handoff"), ("run-event.json", "delegation_requested"),
     # ADR-0008: the approval pause.
@@ -841,6 +844,7 @@ class VectorTests(unittest.TestCase):
         enums += [("subagent.json", path) for path in enum_paths(schemas_["subagent.json"], [])]
         enums += [("policy.json", path) for path in enum_paths(schemas_["policy.json"], [])]
         enums += [
+            ("tool-offer.json", ["$defs", "identity", "properties", "kind"]),
             ("tool-offer.json", ["properties", "taskClass"]),
             ("run-event.json", ["properties", "type"]),
             ("failure.json", ["$defs", "code"]),

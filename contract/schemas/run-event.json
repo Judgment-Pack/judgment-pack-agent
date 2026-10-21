@@ -502,6 +502,8 @@
             "compaction refused",
             "output refused",
             "records expired",
+            "identity changed",
+            "approval downgraded",
             "steer refused"
           ]
         }

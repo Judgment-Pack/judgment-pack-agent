@@ -79,6 +79,8 @@ type Execution struct {
 	// Sources are the run report's rows by source (ADR-0006), the Runtime's first, carried as Used
 	// is; nil where the session declares no tool with a source.
 	Sources []contract.ProvenanceSourceFigures
+	// SourceIdentities keeps identity pins, withholding and service approval history across resume.
+	SourceIdentities []contract.CheckpointSourceIdentity
 	// Approval is the act call the run paused at for the person's decision, and what became of it
 	// (ADR-0008); nil where there is none.
 	Approval *contract.CheckpointApproval
@@ -157,6 +159,13 @@ func (e *Execution) Value() *Value {
 		}
 		out.Set("prompts", rows)
 	}
+	if e.SourceIdentities != nil {
+		rows := Array()
+		for _, row := range e.SourceIdentities {
+			rows.Append(ObjectOf("source", String(row.Source), "identityDigest", String(row.IdentityDigest), "withheld", Bool(row.Withheld), "serviceAsked", Bool(row.ServiceAsked)))
+		}
+		out.Set("sourceIdentities", rows)
+	}
 	if e.Sources != nil {
 		rows := Array()
 		for _, row := range e.Sources {
@@ -165,6 +174,13 @@ func (e *Execution) Value() *Value {
 				"bytes", Number(float64(row.Bytes)), "milliseconds", Number(float64(row.Milliseconds)))
 			if row.Skills != nil {
 				held.Set("skills", Number(float64(*row.Skills)))
+			}
+			if row.Identities != nil {
+				identities := Array()
+				for _, figures := range row.Identities {
+					identities.Append(ObjectOf("identity", ObjectOf("kind", String(figures.Identity.Kind), "label", String(figures.Identity.Label)), "calls", Number(float64(figures.Calls))))
+				}
+				held.Set("identities", identities)
 			}
 			rows.Append(held)
 		}
@@ -269,7 +285,7 @@ func executionOf(saved *contract.Checkpoint) (*Execution, error) {
 		Phase: saved.Phase, Status: saved.Status, Unit: saved.Unit, Used: int(saved.Used),
 		Limit: int(saved.Limit), Grants: saved.Grants, Plan: value.Get("plan"),
 		Explanation: saved.Explanation, Completions: saved.Completions, Context: saved.Context,
-		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, Approval: saved.Approval, Skills: saved.Skills, Draft: saved.Draft, Memories: saved.Memories, Critic: saved.Critic, CrossProvider: saved.CrossProvider, Compaction: saved.Compaction, OutputGuard: saved.OutputGuard, Policy: saved.Policy, Steers: saved.Steers}
+		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, SourceIdentities: saved.SourceIdentities, Approval: saved.Approval, Skills: saved.Skills, Draft: saved.Draft, Memories: saved.Memories, Critic: saved.Critic, CrossProvider: saved.CrossProvider, Compaction: saved.Compaction, OutputGuard: saved.OutputGuard, Policy: saved.Policy, Steers: saved.Steers}
 	if saved.TestCalls != nil {
 		calls := int(*saved.TestCalls)
 		out.TestCalls = &calls
@@ -318,7 +334,8 @@ type ExecutionController struct {
 	// SourceRows are the run report's rows by source (ADR-0006), copied under the lock a child's
 	// gate shares with this run's: a snapshot reads them through it, since a delegated child's
 	// calls count in them while this run's checkpoint is written.
-	SourceRows func() []contract.ProvenanceSourceFigures
+	SourceRows       func() []contract.ProvenanceSourceFigures
+	SourceIdentities func() []contract.CheckpointSourceIdentity
 	// ApprovalStep is what the restored approval asks of this run before its first request
 	// (ADR-0008): "execute", the person approved the call and it runs once; "continue", its result
 	// (or the refused result) is written and the continuation carries it; "write", as continue, the
@@ -1017,6 +1034,9 @@ func (c *ExecutionController) Snapshot(status string) (contract.Checkpoint, erro
 		held.Operations[i] = &copied
 	}
 	held.Status = status
+	if c.SourceIdentities != nil {
+		held.SourceIdentities = c.SourceIdentities()
+	}
 	if c.SourceRows != nil {
 		held.Sources = c.SourceRows()
 	}

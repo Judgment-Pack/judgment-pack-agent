@@ -38,7 +38,7 @@ import { AGENT_ENGINES, MODEL_ENGINES, loadEngine } from '../engines'
 import { PROPOSE_PACK_TOOL } from '../engines/contract'
 import { CONTINUATION, withDelegation } from '../delegation'
 import { DELEGATE_TOOL, readReport, validDelegatedTask, type DelegatedTask, type ReportKind } from '../delegationContract'
-import { validDelegationFigures, type ExecutionCheckpoint } from '../execution/state'
+import { validDelegationFigures, validSourceFigures, type ExecutionCheckpoint } from '../execution/state'
 import { ExecutionController } from '../execution/controller'
 import { ChatContext, INDEX_NOTICE, INDEX_SOURCE } from '../context/chat'
 import { CLOSING, OPENING, unframeData } from '../framing'
@@ -89,6 +89,7 @@ import {
   type Turn
 } from '../testing/scenarioDriver'
 import { ofType, runtimeAnswer, scriptedEndpoint, type RuntimeCall } from '../testing/scripted'
+import { testHost } from '../testing/host'
 import type { AgentAssistantSession, AssistantEvent, AssistantSession, Engine, EngineSession, HostTool } from '../engine'
 import taskSchema from '../../../contract/schemas/delegated-task.json'
 import chatHostTools from './scenarios/chat-host-tools.json'
@@ -96,7 +97,8 @@ import delegation from './scenarios/delegation.json'
 import memory from './scenarios/memory.json'
 import planMode from './scenarios/plan-mode.json'
 import toolSourcesScenario from './scenarios/tool-sources.json'
-import { APPROVAL_CONTINUATION, CATALOGUE_SCHEMA, LOAD_TOOL, toolListDigest, type ApprovalRequest } from '../toolSources'
+import identityScenario from './scenarios/identity.json'
+import { APPROVAL_CONTINUATION, CATALOGUE_SCHEMA, LOAD_TOOL, toolListDigest, type ApprovalRequest, type SourceIdentity } from '../toolSources'
 import approvalPause from './scenarios/approval-pause.json'
 import pauseVector from '../../../contract/vectors/approval/pause.json'
 import wrongCallVector from '../../../contract/vectors/approval/wrong-call-id.json'
@@ -798,6 +800,7 @@ interface Sourced {
 
 /** Run scenario 7 on one engine: `run` is one run with the given turns and host tools. */
 async function sourcesScenario(run: (turns: Turn[], hostTools: HostTool[]) => Promise<Ran>, answers: Sourced['answers']): Promise<Sourced> {
+  configureHarness(testHost())
   const { pinned, changed } = toolSourcesScenario.tracker
   const host: SourceHost = { executed: {}, approvals: [], requests: [], served: pinned }
   const first = await run(toolSourcesScenario.turns as unknown as Turn[], sourceTools(toolSourcesScenario.server, pinned, host, changed))
@@ -896,7 +899,7 @@ function toolSourcesChecks(get: () => Sourced, adapter: 'model' | 'agent') {
     // The reader is handed the call: the wire name the model called, the tool's own name, its source
     // record and the arguments the model sent, in each run with the list the person had approved.
     const { pinned, changed } = toolSourcesScenario.tracker
-    const record = (digest: string) => ({ kind: 'mcp', id: 'tracker', trust: 'public', toolListDigest: digest, tool: 'create_issue' })
+    const record = (digest: string) => ({ kind: 'mcp', id: 'tracker', trust: 'public', toolListDigest: digest, tool: 'create_issue', identity: { kind: 'connection', label: 'tracker' }, identityDigest: 'sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2' })
     expect(host.requests).toEqual([
       { name: 'tracker__create_issue', tool: 'create_issue', source: record(pinned), args: { repository: 'expense', title: 'Missing mileage rate' } },
       { name: 'tracker__create_issue', tool: 'create_issue', source: record(changed), args: { repository: 'expense', title: 'Mileage rate for the UK' } }
@@ -928,8 +931,8 @@ function toolSourcesChecks(get: () => Sourced, adapter: 'model' | 'agent') {
   it('7 · each call and result of a source’s tool carries its source record, and the run report counts each source', () => {
     const { first } = get()
     const { pinned } = toolSourcesScenario.tracker
-    const tracker = { kind: 'mcp', id: 'tracker', trust: 'public', toolListDigest: pinned, tool: 'create_issue' }
-    const rates = { ...toolSourcesScenario.custom.source, tool: 'lookup_rate' }
+    const tracker = { kind: 'mcp', id: 'tracker', trust: 'public', toolListDigest: pinned, tool: 'create_issue', identity: { kind: 'connection', label: 'tracker' }, identityDigest: 'sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2' }
+    const rates = { ...toolSourcesScenario.custom.source, tool: 'lookup_rate', identity: { kind: 'connection', label: 'rates' }, identityDigest: 'sha256:2fa2aad53539a8b97cb4bf67bb8b0986d3a9043d433c8f206ef50f0a64eab1b8' }
     const sourced = first.events.filter((event): event is Extract<AssistantEvent, { type: 'tool_call' | 'tool_result' }> => (event.type === 'tool_call' || event.type === 'tool_result') && (event.name.startsWith('tracker__') || event.name === CUSTOM))
     expect(sourced).toHaveLength(6)
     for (const event of sourced) expect((event as { source?: unknown }).source).toEqual(event.name === CUSTOM ? rates : tracker)
@@ -1018,6 +1021,7 @@ const writtenAt = (events: AssistantEvent[], state: string): ExecutionCheckpoint
 
 /** Run scenario 8 on one engine. Each continued session starts from the checkpoint's JSON text, as a fresh process reads it back. */
 async function approvalScenario(run: PauseRun): Promise<Paused> {
+  configureHarness(testHost())
   const server: PauseServer = { executed: {}, asked: [], log: [] }
   const ran = () => Object.values(server.executed).reduce((sum, n) => sum + n, 0)
   const counts: number[] = []
@@ -1070,7 +1074,7 @@ function continuationData(text: string): Record<string, unknown> {
 /** The checks every adapter makes of scenario 8. */
 function approvalPauseChecks(get: () => Paused, adapter: 'model' | 'agent') {
   const { pinned } = toolSourcesScenario.tracker
-  const record = { kind: 'mcp', id: 'tracker', trust: 'public', toolListDigest: pinned, tool: 'create_issue' }
+  const record = { kind: 'mcp', id: 'tracker', trust: 'public', toolListDigest: pinned, tool: 'create_issue', identity: { kind: 'connection', label: 'tracker' }, identityDigest: 'sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2' }
 
   it('8 · an act call the policy asks about pauses the run: approval_requested in place of its call, the checkpoint paused and durable with the call, end and no error, and nothing runs', () => {
     const { pausing, saved, counts } = get()
@@ -1087,12 +1091,13 @@ function approvalPauseChecks(get: () => Paused, adapter: 'model' | 'agent') {
     expect(JSON.parse(saved)).toEqual((checkpoint as { checkpoint: unknown }).checkpoint)
     // The contract's vector (approval/pause.json): the same event, the same approval, durable and paused, then end; only the call id and the framing marker are the run's own.
     const [vectorEvent, vectorCheckpoint, vectorEnd] = pauseVector.items as [Record<string, unknown>, { durable: boolean; checkpoint: ExecutionCheckpoint }, unknown]
-    expect(asked[0]).toEqual({ ...vectorEvent, callId: asked[0]!.callId })
+    const legacy = (value: unknown) => JSON.parse(JSON.stringify(value, (key, held) => key === 'identity' || key === 'identityDigest' ? undefined : held)) as unknown
+    expect(legacy(asked[0])).toEqual({ ...vectorEvent, callId: asked[0]!.callId })
     const emitted = (checkpoint as { durable?: boolean; checkpoint: ExecutionCheckpoint })
     expect(emitted.durable).toBe(vectorCheckpoint.durable)
     expect(emitted.checkpoint.status).toBe(vectorCheckpoint.checkpoint.status)
     expect(emitted.checkpoint.approval?.marker).toMatch(/^[0-9a-f]{32}$/)
-    expect(emitted.checkpoint.approval).toEqual({ ...vectorCheckpoint.checkpoint.approval, callId: asked[0]!.callId, marker: emitted.checkpoint.approval?.marker })
+    expect(legacy(emitted.checkpoint.approval)).toEqual({ ...vectorCheckpoint.checkpoint.approval, callId: asked[0]!.callId, marker: emitted.checkpoint.approval?.marker })
     expect(end).toEqual(vectorEnd)
     expect(counts[0]).toBe(0)
     // No request is sent once the call waits: the two of the scripted turns, and no third.
@@ -2210,6 +2215,64 @@ for(const engineId of MODEL_ENGINES)describe(`engine ${engineId} · scenarios`,(
 for(const engineId of AGENT_ENGINES)describe(`agent engine ${engineId} · scenarios`,()=>{
   afterEach(()=>vi.unstubAllGlobals())
   policyTableChecks(engineId,true,'stream')
+})
+
+// 19. ADR-0019 identity per tool call.
+interface IdentityRuns { normal: Ran; changed: Ran; service: Ran; executed: { read: number; act: number } }
+async function identityRuns(engineId: import('../host').AssistantEngine, agent: boolean, answerAs: AnswerAs): Promise<IdentityRuns> {
+  configureHarness(testHost())
+  const engine = await loadEngine(engineId)
+  const executed = { read: 0, act: 0 }
+  const source = (current: () => SourceIdentity) => ({ kind: 'gateway' as const, id: 'expenses', trust: 'connected' as const, version: '4', identity: identityScenario.identity as SourceIdentity, currentIdentity: current })
+  const tools = (current: () => SourceIdentity): HostTool[] => [
+    { name: identityScenario.read.name, description: identityScenario.read.description, inputSchema: { type: 'object' }, effectClass: 'read', source: source(current), execute: async () => { executed.read++; return { content: [{ type: 'text', text: identityScenario.read.result }] } } },
+    { name: identityScenario.act.name, description: identityScenario.act.description, inputSchema: { type: 'object' }, effectClass: 'act', source: source(current), approve: () => 'allow', execute: async () => { executed.act++; return { content: [{ type: 'text', text: 'submitted' }] } } }
+  ]
+  const play = (turns: Turn[], hostTools: HostTool[]) => agent
+    ? runOnAgentEngine(agentRunFrom(turns), { engine, hostTools, session: { prompt: identityScenario.request, interactive: true, context: request(identityScenario.request) } })
+    : runOnModelEngine(answerFrom(turns, answerAs), { engine, hostTools, session: { prompt: identityScenario.request, interactive: true, context: request(identityScenario.request) } })
+  const normal = await play([{ call: { tool: 'expenses__lookup', arguments: identityScenario.read.arguments } }, { say: 'Expense found.' }], tools(() => identityScenario.identity as SourceIdentity))
+  const changed = await play([{ call: { tool: 'expenses__lookup', arguments: { id: 12 } } }, { say: 'Identity changed.' }], tools(() => identityScenario.changedIdentity as SourceIdentity))
+  const service = await play([{ call: { tool: 'expenses__submit', arguments: identityScenario.act.arguments } }, { say: 'unused' }], tools(() => identityScenario.identity as SourceIdentity))
+  return { normal, changed, service, executed }
+}
+function identityChecks(get: () => IdentityRuns) {
+  it('19 · the offer’s framed description names the service identity', () => {
+    const tool = shownTools(get().normal).find((item) => item.name === 'expenses__lookup')!
+    expect(tool.description).toContain('\nruns as: expense-bot\n')
+    expect(onlyFramed(tool.description, 'runs as: expense-bot')).toBe(true)
+  })
+  it('19 · every source event carries the host identity and model arguments cannot choose another', () => {
+    const events = get().normal.events.filter((event): event is Extract<AssistantEvent,{type:'tool_call'|'tool_result'}> => (event.type === 'tool_call' || event.type === 'tool_result') && event.name === 'expenses__lookup')
+    expect(events).toHaveLength(2)
+    for (const event of events) expect(event.source?.identity).toEqual(identityScenario.identity)
+    expect((events[0] as Extract<AssistantEvent,{type:'tool_call'}>).args).toMatchObject({ identity: identityScenario.read.arguments.identity })
+    expect(events[0]!.source!.identity).not.toEqual(identityScenario.read.arguments.identity)
+  })
+  it('19 · the figures count the call under that identity', () => {
+    const rows = lastCheckpoint(get().normal.events).sources!
+    expect(validSourceFigures(rows)).toBe(true)
+    expect(rows.find((row) => row.source === 'expenses')).toMatchObject({ calls: 1, identities: [{ identity: identityScenario.identity, calls: 1 }] })
+  })
+  it('19 · a changed identity is withheld until re-approval', () => {
+    expect(ofType(get().changed.events, 'guardrail')).toContainEqual(expect.objectContaining({ tool: 'expenses__lookup', action: 'refused', reason: 'identity changed' }))
+    expect(ofType(get().changed.events, 'tool_result').find((event) => event.name === 'expenses__lookup')).toMatchObject({ isError: true })
+  })
+  it('19 · the first service act under allow is asked, with the downgrade recorded', () => {
+    expect(ofType(get().service.events, 'guardrail')).toContainEqual(expect.objectContaining({ tool: 'expenses__submit', action: 'rewrote', reason: 'approval downgraded' }))
+    expect(ofType(get().service.events, 'approval_requested')).toHaveLength(1)
+    expect(get().executed).toEqual({ read: 1, act: 0 })
+  })
+}
+for (const engineId of MODEL_ENGINES) for (const answerAs of LEGS) describe(`engine ${engineId} · scenario 19 identity · ${answerAs}`, () => {
+  let state: IdentityRuns
+  beforeAll(async () => { state = await identityRuns(engineId, false, answerAs) })
+  identityChecks(() => state)
+})
+for (const engineId of AGENT_ENGINES) describe(`agent engine ${engineId} · scenario 19 identity`, () => {
+  let state: IdentityRuns
+  beforeAll(async () => { state = await identityRuns(engineId, true, 'stream') })
+  identityChecks(() => state)
 })
 
 // 16. ADR-0016 context compaction. The compaction boundary is shared below every engine, so the

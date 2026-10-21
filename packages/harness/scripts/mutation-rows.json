@@ -4431,6 +4431,66 @@
    "origin": "ADR-0018 (#101)"
   },
   {
+   "name": "identity dropped from the source result",
+   "file": "toolSources.ts",
+   "find": "return { ...event, source: { ...entry.record, ...(mark.receipt === undefined ? {} : { receipt: mark.receipt }) }, ...(mark.proposed ? { proposed: true as const } : {}) }",
+   "replace": "return { ...event, source: { ...entry.record, identity: undefined, identityDigest: undefined, ...(mark.receipt === undefined ? {} : { receipt: mark.receipt }) }, ...(mark.proposed ? { proposed: true as const } : {}) }",
+   "tests": ["toolSources.test.ts", "certification/scenarios.test.ts"],
+   "status": "caught",
+   "origin": "agent#102"
+  },
+  {
+   "name": "identity change not withheld",
+   "file": "toolSources.ts",
+   "find": "    if (changed) {\n      this.alteredIdentities.add(entry.record.id); this.alteredSources.add(entry.record.id)\n      this.identityStates.find((row) => row.source === entry.record.id)!.withheld = true\n    }\n    return changed",
+   "replace": "    if (changed) {\n      this.alteredIdentities.add(entry.record.id); this.alteredSources.add(entry.record.id)\n      this.identityStates.find((row) => row.source === entry.record.id)!.withheld = true\n    }\n    return false",
+   "tests": ["toolSources.test.ts", "certification/scenarios.test.ts"],
+   "status": "caught",
+   "origin": "agent#102"
+  },
+  {
+   "name": "first service act approval downgrade removed",
+   "file": "toolSources.ts",
+   "find": "if (firstServiceAct && answer === 'allow') {",
+   "replace": "if (false) {",
+   "tests": ["toolSources.test.ts", "certification/scenarios.test.ts"],
+   "status": "caught",
+   "origin": "agent#102"
+  },
+  {
+   "name": "identity fix first service approval none bypass",
+   "file": "toolSources.ts",
+   "find": "return entry !== undefined && entry.effectClass === 'act' && (entry.approval === 'required' || entry.record.identity.kind === 'service')",
+   "replace": "return entry !== undefined && entry.effectClass === 'act' && entry.approval === 'required'",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#102 review #127"
+  },
+  {
+   "name": "identity fix unavailable book consumes first service ask",
+   "file": "toolSources.ts",
+   "find": "      // A run with nowhere to write the pause cannot ask: its call is refused.",
+   "replace": "      if (firstServiceAct && answer === 'ask') this.rememberService(id, entry.record.identityDigest)\n      // A run with nowhere to write the pause cannot ask: its call is refused.",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#102 review #127"
+  },
+  {
+   "name": "identity fix credential declaration published",
+   "file": "toolSources.ts",
+   "find": "if (credentialLabel(tool.source?.identity?.label)) {",
+   "replace": "if (false && credentialLabel(tool.source?.identity?.label)) {",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#102 review #127"
+  },
+  {
    "name": "delegated child steering queue clearing removed",
    "file": "delegation.ts",
    "find": "input:[],",

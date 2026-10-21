@@ -1,0 +1,27 @@
+{
+  "description": "ADR-0019: handwritten resumed state retains both sources' service approval history and the first source's identity pin and withholding latch.",
+  "schema": "checkpoint.json",
+  "source": {
+    "harness": { "repository": "Judgment-Pack/judgment-pack-agent", "package": "packages/harness" },
+    "files": ["packages/harness/execution/state.ts (readExecution)"]
+  },
+  "items": [{
+    "version": 1,
+    "id": "identity-resume",
+    "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "phase": "work",
+    "status": "running",
+    "unit": "model-requests",
+    "used": 0,
+    "limit": 20,
+    "grants": [],
+    "plan": [],
+    "explanation": "",
+    "operations": [],
+    "context": { "scope": "identity", "entries": [] },
+    "sourceIdentities": [
+      { "source": "expenses", "identityDigest": "sha256:825065f93b600dea85b905f0e53d8974bfda1f1257b1a7a0dce98457143a0a9a", "withheld": true, "serviceAsked": true },
+      { "source": "billing", "identityDigest": "sha256:825065f93b600dea85b905f0e53d8974bfda1f1257b1a7a0dce98457143a0a9a", "withheld": false, "serviceAsked": true }
+    ]
+  }]
+}

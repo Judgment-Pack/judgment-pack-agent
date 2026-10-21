@@ -21,13 +21,14 @@ import skills from './scenarios/skills.json'
 import criticSwitch from './scenarios/critic-switch.json'
 import policyTable from './scenarios/policy-table.json'
 import records from './scenarios/records.json'
+import identity from './scenarios/identity.json'
 import { RECORDED_TOOLS, recordedRuntime, type RecordedRuntime, type ServerObservation } from './scriptedServer'
 import { REFUTATION_MARKER } from '../refutation'
 import { TEST_CASES_TOOL, runtimeAnswer, type EndpointRequest } from '../testing/scripted'
 import { answerFrom, answerWith, resultsIn, rolesAnswer, type AnswerAs, type Known, type Roles, type Turn } from '../testing/scenarioDriver'
 
 /** The scenarios a session can play. */
-export const SCENARIOS = ['chat-host-tools', 'delegation', 'memory', 'plan-mode', 'correction-loop', 'multi-turn', 'tool-sources', 'approval-pause', 'skills', 'critic-switch', 'policy-table', 'records'] as const
+export const SCENARIOS = ['chat-host-tools', 'delegation', 'memory', 'plan-mode', 'correction-loop', 'multi-turn', 'tool-sources', 'approval-pause', 'skills', 'critic-switch', 'policy-table', 'records', 'identity'] as const
 export type ScenarioName = (typeof SCENARIOS)[number]
 
 const DRAFTS = scenario.documents as unknown as Record<string, unknown>
@@ -145,6 +146,10 @@ export function scenarioSession(name: ScenarioName, answerAs: AnswerAs, options:
       break
     case 'records':
       answer = answerFrom(records.turns as unknown as Turn[], answerAs)
+      runtime = scenarioRuntime(ok)
+      break
+    case 'identity':
+      answer = (request) => answerFrom((position === 0 ? identity.turns : position === 1 ? identity.changed : identity.service) as unknown as Turn[], answerAs)(request)
       runtime = scenarioRuntime(ok)
       break
     case 'critic-switch': {
