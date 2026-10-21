@@ -93,6 +93,9 @@ export interface McpToolResult {
   receipt?: string
 }
 
+/** ADR-0021: one host input offered while a run is in flight. */
+export interface EngineInput { steer: { text: string } }
+
 /**
  * The only way an engine reaches the runtime.
  *
@@ -202,6 +205,8 @@ export interface ModelRequest {
 export type ModelCall = (suffix: string, request: ModelRequest) => Promise<Response>
 
 export interface AssistantSession {
+  /** ADR-0021: the host-owned in-flight input queue. Hosts append; engines drain at request boundaries. */
+  input?: EngineInput[]
   policy?: import('./policy').PolicyLayer
   policyProject?: import('./policy').PolicyLayer
   taskClass?: import('./policy').TaskClass
@@ -313,6 +318,7 @@ export type AssistantEvent =
   | {type:'execution_checkpoint'; durable?:boolean; checkpoint:import('./execution/state').ExecutionCheckpoint}
   | {type:'budget_paused'; checkpoint:import('./execution/state').ExecutionCheckpoint}
   | {type:'compacted';turns:number;bytes:number;digest:string;mode:'index'|'summary'}
+  | {type:'steered';bytes:number;atRequest:number}
   /**
    * ADR-0008: an act call paused for the person's decision, in place of its `tool_call`: never run,
    * written into the checkpoint's `approval`; the run then ends paused. Carried on the host's stream.
@@ -363,7 +369,7 @@ export type AssistantEvent =
    * that fired — nothing was stopped — but it is the same kind of sentence: the
    * desk saying what it did rather than leaving it to be discovered.
    */
-  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string; reason?: 'approval refused' | 'approval pending' | 'approval stale' | 'skill withheld' | 'skill budget' | 'review refused' | 'policy refused' | 'pace warning' | 'subagent withheld' | 'memory refused' | 'edit refused' | 'subagent refused' | 'compaction refused' | 'output refused' | 'records expired' | 'identity changed' | 'approval downgraded' }
+  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string; reason?: 'approval refused' | 'approval pending' | 'approval stale' | 'skill withheld' | 'skill budget' | 'review refused' | 'policy refused' | 'pace warning' | 'subagent withheld' | 'memory refused' | 'edit refused' | 'subagent refused' | 'compaction refused' | 'output refused' | 'records expired' | 'identity changed' | 'approval downgraded' | 'steer refused' }
   | { type: 'thinking_unavailable'; detail: string }
   /**
    * `cases` and `incomplete` where the host declared cases (agent#10): each

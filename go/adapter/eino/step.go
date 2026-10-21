@@ -73,6 +73,20 @@ func placeState(placement wire.StatePlacement, history []*schema.Message, system
 	return wire.SystemText{Head: system, Tail: state, HasTail: true}, history
 }
 
+// placeSteer puts the person's new instruction at request rank, even where state uses system-tail.
+func placeSteer(history []*schema.Message, steer string) []*schema.Message {
+	if steer == "" {
+		return history
+	}
+	if len(history) > 0 && history[len(history)-1].Role == schema.User {
+		last := history[len(history)-1]
+		carried := userMessage(append(userTexts(last), steer)...)
+		carried.Extra = last.Extra
+		return append(append([]*schema.Message{}, history[:len(history)-1]...), carried)
+	}
+	return append(append([]*schema.Message{}, history...), userMessage(steer))
+}
+
 // completionOf is the completion one answer reported, in the contract's shape.
 func completionOf(answer wire.Answer) contract.ProvenanceCompletion {
 	usage := failure.Usage{InputTokens: int64Of(answer.Usage.InputTokens), OutputTokens: int64Of(answer.Usage.OutputTokens)}

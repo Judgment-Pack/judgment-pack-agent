@@ -70,6 +70,8 @@ Read alias for policy.budget for the v0.8.0 release; retired in the next release
 | `subagentCatalogueBytes` |  | integer (min 0) | `4000` |  |
 | `memoryProposalBytes` |  | integer (min 0) | `1000` | Most UTF-8 bytes of one remember proposal text (ADR-0014). |
 | `memoryProposalsPerRun` |  | integer (min 0, max 256) | `4` | Most remember proposals per run, carried through resume (ADR-0014). |
+| `steerBytes` |  | integer (min 0) | `2000` | ADR-0021: most UTF-8 bytes in one in-flight steer from the person. |
+| `steersPerRun` |  | integer (min 0, max 256) | `4` | ADR-0021: most steers accepted in one run, carried through resume. |
 | `editsPerTurn` |  | integer (min 0, max 4194304) | `24` | Successful edits and undos per response, carried across resume. |
 | `editBytes` |  | integer (min 0, max 4194304) | `8000` | UTF-8 bytes of one edit’s new text. |
 | `proposalBytes` |  | integer (min 1, max 4194304) | `65536` | UTF-8 bytes of the current draft pack, bounded as the existing test pack. |

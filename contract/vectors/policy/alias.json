@@ -52,7 +52,9 @@
       "subagentCatalogueBytes": 4000,
       "editsPerTurn": 24,
       "editBytes": 8000,
-      "proposalBytes": 65536
+      "proposalBytes": 65536,
+      "steerBytes": 2000,
+      "steersPerRun": 4
     }
   ]
 }

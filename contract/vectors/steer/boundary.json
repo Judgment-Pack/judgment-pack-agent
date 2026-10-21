@@ -1,0 +1,6 @@
+{
+  "description": "ADR-0021: a steer is delivered once at the next request boundary and records its UTF-8 bytes and request number. The engine certification checks the framed request-rank block and unchanged prefix.",
+  "schema": "run-event.json",
+  "source": {"harness":{"repository":"Judgment-Pack/judgment-pack-agent","package":"packages/harness"},"files":["packages/harness/execution/controller.ts"]},
+  "items": [{"type":"steered","bytes":18,"atRequest":2}]
+}

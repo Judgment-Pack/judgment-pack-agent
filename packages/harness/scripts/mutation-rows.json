@@ -4489,6 +4489,52 @@
    ],
    "status": "caught",
    "origin": "agent#102 review #127"
+  },
+  {
+   "name": "delegated child steering queue clearing removed",
+   "file": "delegation.ts",
+   "find": "input:[],",
+   "replace": "",
+   "tests": ["delegation.test.ts"],
+   "status": "caught",
+   "origin": "review of #129",
+   "note": "Go mirror: give the child Input the parent's Steer channel; TestChildrenUseResolvedBindingsTiersAndConcurrency catches the child queue inheritance."
+  },
+  {
+   "name": "steer placed in system text",
+   "file": "engines/vercel/loop.ts",
+   "find": "if(!steer)return placed",
+   "replace": "if(steer)return {...placed,instructions:String(placed.instructions)+'\\n'+steer}",
+   "tests": ["certification/scenarios.test.ts"],
+   "status": "caught",
+   "origin": "agent#105"
+  },
+  {
+   "name": "steer pause refusal removed",
+   "file": "execution/controller.ts",
+   "find": "if(this.approvalAsked){refuse('A steer is refused while this run waits for the person’s approval decision.');continue}",
+   "replace": "if(false){refuse('A steer is refused while this run waits for the person’s approval decision.');continue}",
+   "tests": ["steering.test.ts"],
+   "status": "caught",
+   "origin": "agent#105"
+  },
+  {
+   "name": "steer queue order reversed",
+   "file": "execution/controller.ts",
+   "find": "const queued=report.queued.splice(0)",
+   "replace": "const queued=report.queued.splice(0).reverse()",
+   "tests": ["steering.test.ts"],
+   "status": "caught",
+   "origin": "agent#105"
+  },
+  {
+   "name": "steer byte bound removed",
+   "file": "execution/controller.ts",
+   "find": "if(bytes>bounds.steerBytes){refuse(`A steer is larger than the ${bounds.steerBytes} byte limit.`);continue}",
+   "replace": "if(false){refuse(`A steer is larger than the ${bounds.steerBytes} byte limit.`);continue}",
+   "tests": ["steering.test.ts"],
+   "status": "caught",
+   "origin": "agent#105"
   }
  ]
 }

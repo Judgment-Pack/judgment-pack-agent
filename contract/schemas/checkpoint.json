@@ -244,6 +244,9 @@
       "items": {
         "$ref": "#/$defs/sourceIdentity"
       }
+    },
+    "steers": {
+      "$ref": "provenance.json#/$defs/steerReport"
     }
   },
   "additionalProperties": true,

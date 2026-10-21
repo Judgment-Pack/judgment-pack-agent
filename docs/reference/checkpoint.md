@@ -59,6 +59,7 @@ Open: a member the schema does not name is accepted.
 | `outputGuard` |  | `provenance.json $defs/outputGuard` |  |
 | `records` |  | `provenance.json $defs/recordFigures` |  |
 | `sourceIdentities` |  | array of `$defs/sourceIdentity` (max items 64) | ADR-0019: per-source identity pins, latched identity withholding and service approval history, separate from figures and the latest approval. Restored on resume; re-approval starts a new run with fresh source declarations and state. |
+| `steers` |  | `provenance.json $defs/steerReport` |  |
 
 Conditions beyond the members (allOf) are in the schema file.
 

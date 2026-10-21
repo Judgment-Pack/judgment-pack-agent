@@ -7,6 +7,7 @@ package runcontext
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -93,6 +94,7 @@ type Execution struct {
 	CrossProvider []contract.ProvenanceCrossProvider
 	Compaction    *contract.ProvenanceCompactionReport
 	Critic        *contract.CheckpointCritic
+	Steers        *contract.ProvenanceSteerReport
 }
 
 // Value is the state as the checkpoint's JSON, in the order the TypeScript writes it.
@@ -243,6 +245,11 @@ func (e *Execution) Value() *Value {
 		}
 		out.Set("critic", held)
 	}
+	if e.Steers != nil {
+		raw, _ := json.Marshal(e.Steers)
+		value, _ := ParseJSON(raw)
+		out.Set("steers", value)
+	}
 	return out
 }
 
@@ -278,7 +285,7 @@ func executionOf(saved *contract.Checkpoint) (*Execution, error) {
 		Phase: saved.Phase, Status: saved.Status, Unit: saved.Unit, Used: int(saved.Used),
 		Limit: int(saved.Limit), Grants: saved.Grants, Plan: value.Get("plan"),
 		Explanation: saved.Explanation, Completions: saved.Completions, Context: saved.Context,
-		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, SourceIdentities: saved.SourceIdentities, Approval: saved.Approval, Skills: saved.Skills, Draft: saved.Draft, Memories: saved.Memories, Critic: saved.Critic, CrossProvider: saved.CrossProvider, Compaction: saved.Compaction, OutputGuard: saved.OutputGuard, Policy: saved.Policy}
+		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, SourceIdentities: saved.SourceIdentities, Approval: saved.Approval, Skills: saved.Skills, Draft: saved.Draft, Memories: saved.Memories, Critic: saved.Critic, CrossProvider: saved.CrossProvider, Compaction: saved.Compaction, OutputGuard: saved.OutputGuard, Policy: saved.Policy, Steers: saved.Steers}
 	if saved.TestCalls != nil {
 		calls := int(*saved.TestCalls)
 		out.TestCalls = &calls
@@ -510,6 +517,59 @@ func (c *ExecutionController) Initialize() error {
 // request is sent while one does.
 func (c *ExecutionController) ApprovalAsked() bool {
 	return c.State.Approval != nil && c.State.Approval.State == "asked"
+}
+
+// QueueSteers accepts the person's input into the checkpointed queue without placing it in a request.
+func (c *ExecutionController) QueueSteers(policy Policy) []contract.RunEvent {
+	if c.State.Steers == nil {
+		c.State.Steers = &contract.ProvenanceSteerReport{Queued: []contract.ProvenanceQueuedSteer{}, Delivered: []contract.ProvenanceDeliveredSteer{}}
+	}
+	var events []contract.RunEvent
+	refuse := func(detail string) {
+		reason := "steer refused"
+		events = append(events, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: "steer", Action: "refused", Detail: detail, Reason: &reason}})
+	}
+	if c.session.Context != nil && c.session.Context.Steer != nil {
+		for {
+			select {
+			case input, ok := <-c.session.Context.Steer:
+				if !ok {
+					c.session.Context.Steer = nil
+					break
+				}
+				bytes := UTF8Bytes(input.Text)
+				switch {
+				case c.ApprovalAsked():
+					refuse("A steer is refused while this run waits for the person’s approval decision.")
+				case input.Text == "":
+					refuse("A steer must carry non-empty text.")
+				case bytes > policy.SteerBytes:
+					refuse(fmt.Sprintf("A steer is larger than the %d byte limit.", policy.SteerBytes))
+				case len(c.State.Steers.Queued)+len(c.State.Steers.Delivered) >= policy.SteersPerRun:
+					refuse(fmt.Sprintf("This run already accepted its %d steers.", policy.SteersPerRun))
+				default:
+					c.State.Steers.Queued = append(c.State.Steers.Queued, contract.ProvenanceQueuedSteer{Text: input.Text, Bytes: int64(bytes)})
+				}
+				continue
+			default:
+			}
+			break
+		}
+	}
+	return events
+}
+
+// TakeSteers accepts pending input and delivers the checkpointed queue at this request boundary.
+func (c *ExecutionController) TakeSteers(marker string, atRequest int, policy Policy) (string, []contract.RunEvent) {
+	events := c.QueueSteers(policy)
+	var blocks []string
+	for _, row := range c.State.Steers.Queued {
+		c.State.Steers.Delivered = append(c.State.Steers.Delivered, contract.ProvenanceDeliveredSteer{Bytes: row.Bytes, AtRequest: int64(atRequest)})
+		events = append(events, contract.RunEvent{Steered: &contract.RunEventSteered{Type: "steered", Bytes: row.Bytes, AtRequest: int64(atRequest)}})
+		blocks = append(blocks, FrameBlock("the person's new instruction", row.Text, marker))
+	}
+	c.State.Steers.Queued = []contract.ProvenanceQueuedSteer{}
+	return strings.Join(blocks, "\n\n"), events
 }
 
 // contractResult is a tool result as the checkpoint's approval carries it.

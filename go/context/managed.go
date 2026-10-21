@@ -166,6 +166,10 @@ func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 		b.failed, b.ended = true, true
 		return append(out, failure.Event(err, "context"), contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}}), true
 	}
+	checkpoint := event.ToolCall != nil || event.ToolResult != nil || event.UserQuestion != nil || event.BudgetPaused != nil || event.Error != nil && (event.Error.Failure != nil && event.Error.Failure.Code == "request-limit" || event.Error.Message == ErrExecutionPaused.Error())
+	if context.Execution.ApprovalAsked() || checkpoint {
+		out = append(out, context.Execution.QueueSteers(*context.Policy)...)
+	}
 	// ADR-0008: an adapter asks the host's approval policy where it hands an act call to the host
 	// (SessionContext.Approval) and delivers approval_requested in place of the call where it asks.
 	// A call made while another waits is refused: said here with its call, its guardrail and its

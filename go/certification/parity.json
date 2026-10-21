@@ -983,6 +983,14 @@
       {
         "check": "19 · the first service act under allow is asked, with the downgrade recorded",
         "go": ["19 service approval", "19 agent service approval"]
+      },
+      {
+        "check": "21 · steers arrive once, framed and ordered at the next request boundary with an unchanged prefix",
+        "go": ["21 steer boundary"]
+      },
+      {
+        "check": "21 · an in-flight steer lands on the next invocation and does not change the stable instructions",
+        "go": ["21 agent steer boundary"]
       }
     ],
     "additionalSources": [

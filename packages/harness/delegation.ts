@@ -620,6 +620,8 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
       const selected=shared.context?.connection(shared.context.delegatedRole(profile.id))
       const provider=shared.context?.provider(shared.context.delegatedRole(profile.id))
       const base = {...session,
+        // ADR-0021: a child has its own empty host-input queue; it cannot drain the parent's steer.
+        input:[],
         ...(selected&&provider?{policyProject:undefined,policyConnections:undefined,policy:{...session.policy,models:{author:{model:provider.connection,provider:provider.connection,...(role?{reasoning:String(role.value)}:{})}},critic:{default:'off'}},...( 'agent'in selected?{agent:selected.agent}:{})}:{}),
         // agent#11: the objective is the child's request text, the first text part of its first message.
         context:{configuration:session.context?.configuration,phase:session.context?.phase,authorize:session.context?.authorize,artifactProposals:session.context?.artifactProposals,memory:session.context?.memory,objective,runtime:session.context?.runtime,chat:chat.childScope(planned.visible),link,...(provider?{connection:{...session.context?.connection,connectionId:provider.connection}}:session.context?.connection?{connection:session.context.connection}:{})},
