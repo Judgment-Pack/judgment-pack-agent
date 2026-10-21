@@ -1,5 +1,5 @@
 import {normalize} from '../thinking'
-import {resolvePolicy,PolicyRefusal,type PolicyConnection,type PolicyMembers} from '../policy'
+import {resolvePolicy,PolicyRefusal,type PolicyConnection,type PolicyMembers,type ProviderRecord,type CrossProvider} from '../policy'
 import {runtimeToolContextPolicy} from './toolPolicy'
 import {failureError,AIFailureError,authoredFailure} from '../failures'
 import {criticMayCall,criticMayRead,criticRefusalDetail,readCriticCases,type CriticCase} from '../refutation'
@@ -78,10 +78,10 @@ export function resolveSessionPolicy(session:EngineSession,engine?:AssistantEngi
   {...session.policy, ...(session.taskClass?{taskClass:session.taskClass}:{}),critic:{...(session.critic!==undefined||session.adversarialReview!==undefined?{default:session.critic??(session.adversarialReview?'on':'off')}:{}),...session.policy?.critic},models:{...session.policy?.models,...(session.criticReasoning?{critic:{reasoning:session.criticReasoning,...session.policy?.models?.critic}}:{})}},
   {...session.policyProject,critic:{...(session.criticProject?{default:session.criticProject}:{}),...session.policyProject?.critic}},
   {...policy,concurrency:{children:'agent'in session?1:named.concurrentRequests??2,requests:named.concurrentRequests??2},models:{author:{model:current,reasoning:authorTier??('agent'in session?'none':'off')},critic:{model:named.critic}}},
-  {connections:Object.keys(bindings),agent:'agent'in session,requests:session.policyRequests??named.concurrentRequests??2,paceUsed:session.paceUsed})
- for(const [name,member] of Object.entries(resolved.members))if(name.startsWith('models.')&&name.endsWith('.model')){
+  {connections:Object.keys(bindings),authorConnection:current,families:Object.fromEntries(Object.entries(bindings).map(([id,b])=>[id,'model'in b?capabilitiesFor(b.model).family??(b.model.family==='openai-compatible'?'openai':b.model.family):b.agent.family??'codex'])),agent:'agent'in session,requests:session.policyRequests??named.concurrentRequests??2,paceUsed:session.paceUsed})
+ for(const [name,member] of Object.entries(resolved.members))if(name.startsWith('models.')&&name.endsWith('.provider')){
   const selected=bindings[String(member.value)]!
-  if(('model'in session)!==('model'in selected)||'model'in session&&'model'in selected&&selected.model.family!==session.model.family)throw new PolicyRefusal(name,member.layer,'connection requires a different capability or wire family')
+  if(('model'in session)!==('model'in selected))throw new PolicyRefusal(name,member.layer,'connection requires a different capability or wire family')
  }
  return {identity,capabilities,policy,bindings,named,resolved}
 }
@@ -193,6 +193,7 @@ export class SessionContext {
  /** Who the run is, as the host's `modelsFor` is asked: its connection, family and model; and the answer, once asked. */
  private readonly identity:Omit<RunIdentity,'engine'>
  private bindings:Record<string,PolicyConnection>={}
+ private suppliedConnections=new Set<string>()
  private named?:{models?:RunModels;error?:unknown}
  /**
   * The models the run's connection names for its critic and its delegated children (`modelsFor` in
@@ -205,9 +206,31 @@ export class SessionContext {
   const selected=this.connection('critic')
   return {...this.named.models,critic:selected?('model'in selected?selected.model.model:selected.agent.model):this.named.models.critic,concurrentRequests:Number(this.resolvedPolicy['concurrency.requests']!.value)}
  }
+ delegatedRole(id:string){return !this.resolvedPolicy[`models.child.${id}.provider`]&&this.resolvedPolicy[`models.subagent.${id}.provider`]?`subagent.${id}`:`child.${id}`}
  connection(role:string):PolicyConnection|undefined{
-  const id=this.resolvedPolicy[`models.${role}.model`]?.value
-  return id===undefined?undefined:this.bindings[String(id)]
+  const provider=this.resolvedPolicy[`models.${role}.provider`]?.value
+  if(provider===undefined)return undefined
+  const author=this.resolvedPolicy['models.author.provider']!.value
+  const model=this.resolvedPolicy[`models.${role}.model`]?.value
+  const selected=this.bindings[String(provider)]!
+  // A model named on the same connection keeps the host's critic/child model choice.
+  if(provider===author&&provider===(this.identity.connection?.connectionId??this.identity.model)&&model!==undefined){
+   const named=this.bindings[String(model)]
+   if(named&&!this.suppliedConnections.has(String(model)))return named
+  }
+  return selected
+ }
+ private family(binding:PolicyConnection){return 'model'in binding?capabilitiesFor(binding.model).family??(binding.model.family==='openai-compatible'?'openai':binding.model.family):binding.agent.family??'codex'}
+ provider(role:string):ProviderRecord{
+  const connection=String(this.resolvedPolicy[`models.${role}.provider`]?.value??this.resolvedPolicy['models.author.provider']!.value)
+  return {connection,family:this.family(this.bindings[connection]!)}
+ }
+ recordProvider(role:string):ProviderRecord{
+  const provider=this.provider(role),author=this.provider('author')
+  const row:CrossProvider={role,relation:provider.family===author.family?'same':'other',author,provider}
+  const rows=this.execution.state.crossProvider??=[]
+  if(!rows.some(held=>held.role===role))rows.push(row)
+  return provider
  }
  constructor(session:EngineSession,engine?:AssistantEngine){
   try{this.criticCases=readCriticCases(session.criticCases??[])}catch(cause){throw authoredFailure('configuration',(cause as Error).message,'context')}
@@ -220,6 +243,7 @@ export class SessionContext {
   this.capabilities=admission.capabilities;this.policy=admission.policy
   const {bindings,named,resolved}=admission
   this.bindings=bindings
+  this.suppliedConnections=new Set(Object.keys(session.policyConnections??{}))
   if(engine)this.named={models:named}
   this.resolvedPolicy=resolved.members;this.paceWarning=resolved.warning
 this.turn=session.context?.chat?.openTurn();this.objective=session.context?.objective;this.ledger=new ContextLedger(this.policy,this.turn);this.execution=new ExecutionController(session,this.ledger);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))
@@ -587,6 +611,7 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   context.execution.state.policy=structuredClone(context.resolvedPolicy)
   try{await session.context?.checkpoint?.(context.execution.snapshot())}catch{throw failureError('storage','storage','not-started')}
  }
+ context.recordProvider('author')
  context.carryMarker()
  if(declared.sources.length){
   const offered=offerSources(session.hostTools,declared.entries,context.policy,context.marker)
@@ -618,6 +643,6 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  // ADR-0008: while an act call waits for the person's decision, no request is sent: the run ends paused.
  const held=()=>{if(context.execution.approvalAsked)throw new ApprovalPaused()}
  const model='model'in session?{...session.model,call:async(suffix:string,request:import('../engine').ModelRequest)=>{await session.context?.authorize?.(session.signal);if(request.method!=='GET'){held();context.execution.claim();await context.execution.recordPrompt(request.body);try{await session.context?.checkpoint?.(context.execution.snapshot())}catch{throw failureError('storage','storage','not-started')}}const binding=context.criticRunning?context.connection('critic'):undefined;return (binding&&'model'in binding?binding.model:session.model).call(suffix,request)}}:undefined
- const agent='agent'in session?{...session.agent,run:async(request:import('../agent').AgentRequest,callbacks:import('../agent').AgentCallbacks)=>{await session.context?.authorize?.(callbacks.signal);held();const {delegated:_delegated,...sent}=request;await context.execution.recordPrompt(JSON.stringify(sent));const binding=request.phase==='critic'?context.connection('critic'):undefined;return (binding&&'agent'in binding?binding.agent:session.agent).run(request,callbacks)}}:undefined
+ const agent='agent'in session?{...session.agent,run:async(request:import('../agent').AgentRequest,callbacks:import('../agent').AgentCallbacks)=>{await session.context?.authorize?.(callbacks.signal);held();const binding=request.phase==='critic'?context.connection('critic'):undefined;const selected=binding&&'agent'in binding?binding.agent:session.agent;const setting=selected.tiers?.[request.effort as 'low'|'medium'|'high'];if(setting)request={...request,effort:setting as import('../agent').CodexEffort};const {delegated:_delegated,...sent}=request;await context.execution.recordPrompt(JSON.stringify(sent));return selected.run(request,callbacks)}}:undefined
  return {context,session:{...session,...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{context.admit(name,'runtime');await session.context?.authorize?.(session.signal);context.claimTestCall(name);const call=()=>context.execution.wrapRead(name,a=>session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true,{runtime:true,offered:session.tools.some(t=>t.name===name)})(args);return context.sources?context.sources.runtime(call):call()}}}
 }

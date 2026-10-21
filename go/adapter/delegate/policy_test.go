@@ -24,7 +24,7 @@ func TestChildrenUseResolvedBindingsTiersAndConcurrency(t *testing.T) {
 			if agent {
 				parentTier, childTier = "high", "low"
 			}
-			layer := runcontext.PolicyLayer{"models": map[string]any{"author": map[string]any{"reasoning": parentTier}, "child.review": map[string]any{"model": "reviewer", "reasoning": childTier}}, "concurrency": map[string]any{"children": 1, "requests": 1}}
+			layer := runcontext.PolicyLayer{"models": map[string]any{"author": map[string]any{"reasoning": parentTier}, "child.review": map[string]any{"model": "reviewer", "provider": "reviewer", "reasoning": childTier}}, "concurrency": map[string]any{"children": 1, "requests": 1}}
 			session := runcontext.Session{Policy: layer, PolicyConnections: []string{"parent", "reviewer"}, Model: &runcontext.ModelSession{Family: "openai-compatible", Model: "parent", Thinking: parentTier}}
 			if agent {
 				session.Model = nil

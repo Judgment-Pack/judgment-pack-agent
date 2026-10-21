@@ -164,6 +164,13 @@ const copy = join(scratch, 'packages', 'harness')
 cpSync(PACKAGE, copy, { recursive: true, filter: (from) => !/(^|[\\/])(node_modules|dist|\.vite|\.vite-temp)([\\/]|$)/.test(from.slice(PACKAGE.length)) })
 cpSync(join(REPOSITORY, 'contract'), join(scratch, 'contract'), { recursive: true })
 cpSync(join(REPOSITORY, 'package.json'), join(scratch, 'package.json'))
+// The provider-matrix mutant changes a generated repository page. Its reference check reads
+// the same built records and generator as the normal reference gate.
+if(chosen.some(row=>row.file==='../../docs/reference/providers.md')) {
+ cpSync(join(REPOSITORY,'docs/reference'),join(scratch,'docs/reference'),{recursive:true})
+ cpSync(join(REPOSITORY,'scripts'),join(scratch,'scripts'),{recursive:true})
+ cpSync(join(PACKAGE,'dist'),join(copy,'dist'),{recursive:true})
+}
 symlinkSync(join(REPOSITORY, 'node_modules'), join(scratch, 'node_modules'), 'dir')
 process.on('exit', () => rmSync(scratch, { recursive: true, force: true }))
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => process.exit(130))

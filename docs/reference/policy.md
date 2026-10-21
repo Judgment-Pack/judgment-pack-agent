@@ -105,3 +105,4 @@ Closed: a member the schema does not name is refused.
 | --- | --- | --- | --- |
 | `model` |  | string (min length 1, max length 128) |  |
 | `reasoning` |  | enum `off`, `on`, `ultra`, `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` |  |
+| `provider` |  | string (min length 1, max length 128) | same selects the author's connection; other selects a host connection of another family; otherwise a connected ID. Run > project > table. Default: `"same"`. |

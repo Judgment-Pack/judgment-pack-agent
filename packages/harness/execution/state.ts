@@ -49,6 +49,7 @@ export interface ExecutionCheckpoint {
   * under auto, when the model's request_review is taken; carried through a resume.
   */
  policy?:import('../policy').PolicyMembers;
+ crossProvider?:import('../policy').CrossProvider[];
  critic?:CriticRecord;
 }
 /** One loaded skill as the checkpoint keeps it (ADR-0009; `provenance.json#/$defs/skillLoad`). */

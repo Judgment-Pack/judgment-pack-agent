@@ -299,7 +299,7 @@ func (c *coordinator) runBatch(ctx context.Context, request contract.DelegatedTa
 	keys := make([]string, len(plans))
 	for i, p := range plans {
 		if p.request.Resume == nil && p.profile != nil {
-			keys[i] = reuseKey(p, *tasks[i].Model)
+			keys[i] = reuseKey(p, *tasks[i].Model, c.taskProvider(p.request.Profile))
 		}
 	}
 	firstOf := make([]int, len(keys))

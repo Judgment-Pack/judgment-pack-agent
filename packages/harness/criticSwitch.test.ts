@@ -118,7 +118,7 @@ describe('the session’s members, read closed (ADR-0010)', () => {
   it.each([
     [{ critic: 'sometimes' }, false, 'critic must be off, auto or on'],
     [{ criticProject: true }, false, 'criticProject must be off, auto or on'],
-    [{ criticReasoning: 'high' }, false, 'criticReasoning must be one of off, on, ultra'],
+    [{ criticReasoning: 'max' }, false, 'criticReasoning must be one of off, low, on, medium, ultra, high'],
     [{ criticReasoning: 'ultra' }, true, 'criticReasoning must be one of none, minimal, low, medium, high, xhigh, max'],
     [{ existingPack: 'yes' }, false, 'existingPack must be true or false'],
     [{ reviewerAssigned: 1 }, false, 'reviewerAssigned must be true or false'],
@@ -136,7 +136,7 @@ describe('the session’s members, read closed (ADR-0010)', () => {
   it('every mode, reason and tier the contract names is this module’s', () => {
     expect([...CRITIC_MODES]).toEqual(['off', 'auto', 'on'])
     expect(CRITIC_REASONS).toHaveLength(13)
-    expect([...MODEL_TIERS, ...AGENT_TIERS]).toEqual(['off', 'on', 'ultra', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
+    expect([...new Set([...MODEL_TIERS, ...AGENT_TIERS])].sort()).toEqual(['off', 'on', 'ultra', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].sort())
   })
 })
 

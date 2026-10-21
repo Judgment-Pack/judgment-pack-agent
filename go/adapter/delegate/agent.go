@@ -701,7 +701,7 @@ func (c *coordinator) agentBatch(ctx context.Context, pending *handoff) (contrac
 		}
 		key := ""
 		if plans[at].request.Resume == nil && plans[at].profile != nil && task.Model != nil {
-			key = reuseKey(plans[at], *task.Model)
+			key = reuseKey(plans[at], *task.Model, c.taskProvider(plans[at].request.Profile))
 		}
 		c.child(plans[at], task, batch, share, key)
 		if c.fatalError() != nil || ctx.Err() != nil {

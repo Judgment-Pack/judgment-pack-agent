@@ -28,7 +28,7 @@ func (c *coordinator) childBinding(profile turn.TaskProfile) (adapter.PolicyConn
 		}
 	}
 	members := c.parentPolicy()
-	role := "child." + profile.ID
+	role := delegatedRole(members, profile.ID)
 	if _, ok := members["models."+role+".model"]; !ok {
 		// Profiles retain their legacy default unless the policy names this role.
 		id := named.Child
@@ -59,6 +59,9 @@ func (c *coordinator) childBinding(profile turn.TaskProfile) (adapter.PolicyConn
 		return binding, "", nil, err
 	}
 	id, _ := members["models."+role+".model"].Value.(string)
+	if provider, ok := members["models."+role+".provider"].Value.(string); ok {
+		id = provider
+	}
 	tier, _ := members["models."+role+".reasoning"].Value.(string)
 	if binding.Agent != nil {
 		held := *binding.Agent
@@ -87,4 +90,13 @@ func (c *coordinator) childBinding(profile turn.TaskProfile) (adapter.PolicyConn
 	policy["models"] = map[string]any{"author": map[string]any{"model": id, "reasoning": tier}}
 	policy["critic"] = map[string]any{"default": "off"}
 	return binding, id, policy, nil
+}
+
+func delegatedRole(members runcontext.PolicyMembers, id string) string {
+	if _, child := members["models.child."+id+".provider"]; !child {
+		if _, declared := members["models.subagent."+id+".provider"]; declared {
+			return "subagent." + id
+		}
+	}
+	return "child." + id
 }

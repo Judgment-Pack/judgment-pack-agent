@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url'
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const script = join(repo, 'scripts/gen-reference.mjs')
 const schemasDir = join(repo, 'contract/schemas')
-const PAGES = ['budget.md', 'checkpoint.md', 'critic.md', 'delegation.md', 'events.md', 'policy.md', 'reasons.md', 'skills.md', 'tools.md']
+const PAGES = ['budget.md', 'checkpoint.md', 'critic.md', 'delegation.md', 'events.md', 'policy.md', 'providers.md', 'reasons.md', 'skills.md', 'tools.md']
 
 let scratch
 const run = (...args) => spawnSync(process.execPath, [script, ...args], { cwd: repo, encoding: 'utf8', timeout: 240_000 })
@@ -24,7 +24,7 @@ after(() => {
   rmSync(scratch, { recursive: true, force: true })
 })
 
-test('two runs write the same nine pages, byte for byte', () => {
+test('two runs write the same ten pages, byte for byte', () => {
   const a = join(scratch, 'first')
   const b = join(scratch, 'second')
   for (const out of [a, b]) {
@@ -69,4 +69,14 @@ test('--check fails when a page is missing or an unrelated page is present', () 
   assert.equal(result.status, 1, result.stdout + result.stderr)
   assert.match(result.stderr, /budget\.md is missing/)
   assert.match(result.stderr, /extra\.md is in docs\/reference/)
+})
+
+test('a hand-edited provider matrix is rejected', () => {
+ const out=join(scratch,'provider-drift')
+ assert.equal(run('--out',out).status,0)
+ const path=join(out,'providers.md')
+ writeFileSync(path,readFileSync(path,'utf8').replace('anthropic','invented-family'))
+ const checked=run('--check','--out',out)
+ assert.notEqual(checked.status,0)
+ assert.match(checked.stderr,/providers.md/)
 })

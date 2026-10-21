@@ -1,5 +1,14 @@
 # Judgment Pack Agent
 
+Provider selection is policy (ADR-0012): `models.<role>.provider` accepts `same`,
+`other`, or a host-supplied connection ID, with run > project > table precedence.
+`other` refuses when no other family is connected. Critic and child records identify
+the answering connection and family; the checkpoint report carries `crossProvider`.
+Capability records hold the tier map; hosts can override it per connection.
+See the generated provider matrix in `docs/reference/providers.md` at the repository
+root. Scenario 12 exercises two families, and certification prints its measurements.
+
+
 Budgets are the `budget` section of the [agent's policy table](docs/adr/0011-the-agents-policy-table.md).
 The host's run layer wins over its project layer, then table defaults. The same
 resolver covers critic, models, concurrency, pace, and task class, with each member's

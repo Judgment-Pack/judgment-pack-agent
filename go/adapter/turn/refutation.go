@@ -967,7 +967,7 @@ func CriticMessage(testPrompt string, document json.RawMessage, cases []CriticCa
 }
 
 // CritiqueEvent is critiqueEvent: the contract's own event, built in one place from the critique.
-func CritiqueEvent(critique Critique) contract.RunEvent {
+func CritiqueEvent(critique Critique, providers ...*contract.ProvenanceProvider) contract.RunEvent {
 	checks := make([]contract.RunEventCritiqueChecksItem, 0, len(critique.Checks))
 	for _, check := range critique.Checks {
 		checks = append(checks, contract.RunEventCritiqueChecksItem{Tool: check.Tool, Status: check.Status})
@@ -981,6 +981,9 @@ func CritiqueEvent(critique Critique) contract.RunEvent {
 		}
 	}
 	event.Figures = critique.Figures
+	if len(providers) > 0 {
+		event.Provider = providers[0]
+	}
 	return contract.RunEvent{Critique: event}
 }
 

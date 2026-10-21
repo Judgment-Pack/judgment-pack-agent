@@ -1,0 +1,16 @@
+{
+  "$comment": "Hand-authored. Scenario 12, ADR-0012.",
+  "id": "cross-provider",
+  "request": "Draft a pack.",
+  "proposal": "```json\n{\"proposal\":{\"document\":{\"id\":\"pack\"},\"unknowns\":[]}}\n```",
+  "findings": "Untrusted child findings.",
+  "checks": [
+    "other family dispatch and records",
+    "one-family refusal",
+    "explicit connected ID",
+    "encoder high tier override",
+    "child results are data",
+    "two-family measurement",
+    "generated matrix drift"
+  ]
+}

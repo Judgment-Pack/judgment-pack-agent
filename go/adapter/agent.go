@@ -98,6 +98,8 @@ func IsBusy(err error) bool {
 // host's provider-run function and its enabled-model admission. The delegation coordinator hands a
 // delegated child's run a copy with Delegated and Begin set.
 type Agent struct {
+	Family string
+	Tiers  map[string]string
 	// Model is the model the host bound the capability to: the run's own.
 	Model string
 	// Effort is the reasoning effort the host's configuration asks for, or empty.

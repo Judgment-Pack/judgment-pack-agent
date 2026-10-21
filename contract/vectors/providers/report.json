@@ -1,0 +1,39 @@
+{
+  "description": "Hand-authored from ADR-0012 and the accepted decision in issue #117.",
+  "schema": "provenance.json#/$defs/crossProvider",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/policy.ts"
+    ]
+  },
+  "items": [
+    {
+      "role": "critic",
+      "relation": "other",
+      "author": {
+        "connection": "author",
+        "family": "openai"
+      },
+      "provider": {
+        "connection": "reviewer",
+        "family": "anthropic"
+      }
+    },
+    {
+      "role": "child.review",
+      "relation": "other",
+      "author": {
+        "connection": "author",
+        "family": "openai"
+      },
+      "provider": {
+        "connection": "reviewer",
+        "family": "anthropic"
+      }
+    }
+  ]
+}

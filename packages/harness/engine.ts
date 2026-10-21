@@ -326,7 +326,7 @@ export type AssistantEvent =
   | { type: 'retry'; attempt: number }
   | { type: 'response_recovery' }
   | { type: 'delegation_requested'; request: import('./delegationContract').DelegationRequest }
-  | { type: 'delegated_task'; task: import('./delegationContract').DelegatedTask }
+  | { type: 'delegated_task'; provider?: import('./policy').ProviderRecord; task: import('./delegationContract').DelegatedTask }
   | { type: 'user_question'; id: string; question: import('./questions').UserQuestion }
   | { type: 'reasoning'; text: string; done: boolean }
   /**
@@ -361,7 +361,7 @@ export type AssistantEvent =
    * comparison of a declared outcome with the runtime's, and the cases nothing
    * compared, each of which leaves `refuted` true. `figures`: what the critic cost.
    */
-  | { type: 'critique'; refuted: boolean; checks: { tool: string; status: string }[]; text: string; cases?: import('./refutation').CaseComparison[]; incomplete?: string[]; figures?: import('./refutation').CriticFigures }
+  | { type: 'critique'; provider?: import('./policy').ProviderRecord; refuted: boolean; checks: { tool: string; status: string }[]; text: string; cases?: import('./refutation').CaseComparison[]; incomplete?: string[]; figures?: import('./refutation').CriticFigures }
   /**
    * ADR-0010: the critic's decision, once per run, where the critic would start (before its critique)
    * or where it is skipped: the mode, whether it ran, why, its tier and, under `auto`, the trigger.
@@ -389,7 +389,7 @@ export interface ProposalNote {
 }
 
 export type AgentAssistantSession = Omit<AssistantSession, 'model' | 'thinking'> & {
-  agent: { model: string; run: import('./agent').AgentRun }
+  agent: { family?: import('./policy').ProviderFamily; tiers?: Record<'low'|'medium'|'high',string>; model: string; run: import('./agent').AgentRun }
   effort?: import('./agent').CodexEffort
 }
 export type EngineSession = AssistantSession | AgentAssistantSession

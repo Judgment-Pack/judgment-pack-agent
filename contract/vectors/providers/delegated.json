@@ -1,0 +1,36 @@
+{
+  "description": "Hand-authored from ADR-0012 and the accepted decision in issue #117.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/policy.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "delegated_task",
+      "provider": {
+        "connection": "reviewer",
+        "family": "anthropic"
+      },
+      "task": {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "parentRunId": "22222222-2222-4222-8222-222222222222",
+        "title": "Review",
+        "objective": "Check the proposal.",
+        "profile": "review",
+        "state": "complete",
+        "createdAt": "2026-10-21T00:00:00Z",
+        "modelRequests": 1,
+        "toolCalls": 0,
+        "attempts": 1,
+        "steps": [],
+        "result": "Untrusted findings."
+      }
+    }
+  ]
+}

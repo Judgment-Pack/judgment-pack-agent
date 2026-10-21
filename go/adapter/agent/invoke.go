@@ -85,15 +85,32 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 	}
 	agent := r.run.Agent
 	effort := agent.Effort
+	tierMap := agent.Tiers
+	admit := agent.Admit
 	if phase == "critic" {
 		// ADR-0010: the critic's effort is the decision's tier, the author's unless the host named one.
 		effort = r.criticEffort
+		named, bindErr := r.run.Models()
+		if bindErr != nil {
+			return "", bindErr
+		}
+		binding, bindErr := adapter.PolicyBinding(r.run, r.sc.ResolvedPolicy, named, "critic")
+		if bindErr != nil {
+			return "", bindErr
+		}
+		if binding.Agent != nil {
+			tierMap = binding.Agent.Tiers
+			admit = binding.Agent.Admit
+		}
+	}
+	if setting := tierMap[effort]; setting != "" {
+		effort = setting
 	}
 	request := adapter.AgentRequest{Prompt: prompt, Instructions: instructions, Tools: tools, Effort: effort, Phase: wirePhase, Model: model}
 	if agent.Delegated != "" && agent.Delegated != agent.Model {
 		request.Model, request.Delegated = agent.Delegated, true
 	}
-	request, err = agent.Admit(ctx, request)
+	request, err = admit(ctx, request)
 	if err != nil {
 		return "", err
 	}

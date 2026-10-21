@@ -6,6 +6,7 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
+	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/turn"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/wire"
 	runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
@@ -47,7 +48,7 @@ func (t *turnState) finish(ctx context.Context, proposal *turn.Proposal, unread 
 	if decided.Ran {
 		if cannot := turn.CriticCannotRun(r.session.TestPrompt); cannot != nil {
 			critique = cannot
-			r.deliver(turn.CritiqueEvent(*cannot))
+			r.deliver(turn.CritiqueEvent(*cannot, r.sc.RecordProvider("critic")))
 		} else {
 			held, heldNote, err := t.critic(ctx, *proposal, decided.Reasoning)
 			if err != nil {
@@ -83,8 +84,30 @@ func (t *turnState) critic(ctx context.Context, proposal turn.Proposal, tier str
 	// ADR-0010: the critic's tier, at least the author's unless the host lowered it: a tier other than
 	// the author's opens a slot of its own, whose members every critic request carries. A decision with
 	// no tier sends the critic none: off.
-	if tier = orOff(tier); tier != orOff(r.run.Thinking) {
-		r.slot = wire.OpenThinking(wire.ThinkingTier(tier), r.family, &r.capabilities.Reasoning)
+	named, err := r.run.Models()
+	if err != nil {
+		return nil, nil, err
+	}
+	binding, err := adapter.PolicyBinding(r.run, r.sc.ResolvedPolicy, named, "critic")
+	if err != nil {
+		return nil, nil, err
+	}
+	authorFamily := r.family
+	r.family = wire.EndpointKind(binding.Wire)
+	var override *wire.Value
+	if binding.Capabilities != nil {
+		raw, _ := json.Marshal(binding.Capabilities)
+		override, _ = wire.Parse(raw)
+	}
+	r.capabilities, err = wire.CapabilitiesFor(r.family, binding.ModelName, nil, override)
+	if err != nil {
+		return nil, nil, err
+	}
+	r.nativeTools = r.capabilities.NativeToolCalls
+	r.placement = statePlacement(r.family, wire.ThinkingTier(orOff(tier)), r.capabilities)
+	tier = orOff(tier)
+	if tier != orOff(r.run.Thinking) || r.family != authorFamily {
+		r.slot = wire.OpenThinking(wire.ThinkingTier(tier), r.family, &r.capabilities.Reasoning, r.capabilities.Tiers)
 		r.tier = r.slot.Members()
 		if r.tier != nil {
 			if maximum := r.tier.Get("max_tokens"); maximum != nil {
@@ -331,7 +354,7 @@ func (t *turnState) critic(ctx context.Context, proposal turn.Proposal, tier str
 	if unfinished == nil {
 		critique := recorder.Critique(criticText)
 		critique.Figures = figures()
-		r.deliver(turn.CritiqueEvent(critique))
+		r.deliver(turn.CritiqueEvent(critique, r.sc.RecordProvider("critic")))
 		return &critique, nil, nil
 	}
 	cause := unfinished

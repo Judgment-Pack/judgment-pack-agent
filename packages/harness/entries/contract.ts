@@ -21,3 +21,6 @@ export { CRITIC_TOOLS, readCriticCases, criticMatrix } from '../refutation'
 export { criticDecision, criticMode, criticTier, CRITIC_MODES, CRITIC_REASONS, REQUEST_REVIEW } from '../criticSwitch'
 export type { CriticDecision, CriticMode, CriticReason, CriticTier, CriticTrigger } from '../criticSwitch'
 export type { CriticCase, CaseComparison, CaseOutcome, CriticFigures } from '../refutation'
+
+export {resolvePolicy, PolicyRefusal, failoverRefusal} from '../policy'
+export type {ProviderFamily,ProviderRecord,CrossProvider,PolicyRole,PolicyLayer,PolicyMembers,PolicyConnection} from '../policy'

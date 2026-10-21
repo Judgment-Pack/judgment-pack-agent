@@ -368,14 +368,14 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
   closeRun = gate.close
   const context = contextOf(session)
   const callTool = guardedCallTool(session, gate.signal)
-  const capabilities: ModelCapabilities = context.capabilities ?? capabilitiesFor(session.model)
-  const nativeTools = capabilities.nativeToolCalls
+  let capabilities: ModelCapabilities = capabilitiesFor(session.model)
+  let nativeTools = capabilities.nativeToolCalls
   const schemaOf = (tool: McpTool) => shownSchema(capabilities.toolSchemas, tool)
   // ADR-0010: the critic's own tier opens a slot of its own when the critic starts.
   let slot = openThinking(session, capabilities.reasoning)
   /** The tier's members, held for an attempt; a refusal of the tier starts a new attempt. */
   let tier: Record<string, unknown> | null = null
-  const placement = statePlacement(session.model.family, session.thinking.tier, capabilities)
+  let placement = statePlacement(session.model.family, session.thinking.tier, capabilities)
   const offered = new Set([...session.tools, ...session.hostTools].map((tool) => tool.name))
   const collision = session.hostTools.find((tool) => session.tools.some((served) => served.name === tool.name))
   const inputPause = new AbortController()
@@ -892,18 +892,26 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
     const cannot = review ? criticCannotRun(session.testPrompt) : null
     if (cannot !== null) {
       critique = cannot
-      await deliver(critiqueEvent(cannot))
+      await deliver(critiqueEvent(cannot, context.recordProvider('critic')))
     } else if (review) {
       const recorder = openCritique({ cases: context.criticCases, document: proposal.document })
       recording = recorder
       toolsClosed = false
       context.beginCriticPhase()
+      const authorFamily=session.model.family
+      const criticBinding = context.connection('critic')
+      if(criticBinding && 'model' in criticBinding){
+        session={...session,model:{...criticBinding.model,call:session.model.call}}
+        capabilities=capabilitiesFor(criticBinding.model)
+        nativeTools=capabilities.nativeToolCalls
+        placement=statePlacement(session.model.family,session.thinking.tier,capabilities)
+      }
       const before = { used: context.execution.state.used, rows: (context.execution.state.completions ?? []).length }
       // ADR-0010: the critic's tier, at least the author's unless the host lowered it: a tier other than
       // the author's opens a slot of its own, whose members every critic request carries.
       // A decision with no tier sends the critic none: off.
       const criticTier = (decided.reasoning ?? 'off') as ThinkingTier
-      if (criticTier !== session.thinking.tier) {
+      if (criticTier !== session.thinking.tier || authorFamily !== session.model.family) {
         slot = openThinking({ ...session, thinking: normalize(criticTier, session.model.family) }, capabilities.reasoning)
         tier = slot.members()
         context.reserveOutput(tier?.max_tokens)
@@ -928,7 +936,7 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
         criticMessages = [new HumanMessage(await context.prompt(criticMessage(session.testPrompt, proposal.document, context.criticCases), criticSystem, schemas))]
         criticHeld = criticMessages
         criticModelId = context.models(id).critic
-        const criticModel = criticModelId === session.model.model ? model : relayModel(criticModelId)
+        const criticModel = criticModelId === session.model.model && authorFamily === session.model.family ? model : relayModel(criticModelId)
         const criticDeclarations = nativeTools
           ? declared([...session.hostTools, ...session.tools].filter((tool) => criticOffered.has(tool.name)).map((tool) => ({ name: tool.name, description: tool.description, schema: schemaOf(tool) })))
           : []
@@ -1015,7 +1023,7 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
       unfinished ??= streamed
       if (unfinished === null) {
         critique = { ...recorder.critique(criticText), figures: figures() }
-        await deliver(critiqueEvent(critique))
+        await deliver(critiqueEvent(critique, context.recordProvider('critic')))
       } else {
         note = criticNote(overTime ? turnTimeFailure() : unfinished, 'model', figures())
       }

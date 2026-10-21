@@ -39,7 +39,7 @@ var CriticReasons = []string{"person", "project", "table", "model-asked", "cases
 // ModelTiers are the model capability's thinking tiers and AgentTiers the agent capability's
 // efforts, each lowest first (tool-offer.json#/$defs/criticReasoning).
 var (
-	ModelTiers = []string{"off", "on", "ultra"}
+	ModelTiers = []string{"off", "low", "on", "medium", "ultra", "high"}
 	AgentTiers = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}
 )
 

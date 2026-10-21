@@ -3,9 +3,12 @@ import schema from './contract/policy-schema.json'
 import { AIFailureError } from './failures'
 
 export type PolicyConnection = {model: import('./engine').AssistantSession['model']} | {agent: import('./engine').AgentAssistantSession['agent']}
+export type ProviderFamily = 'openai' | 'anthropic' | 'gemini' | 'codex'
+export interface ProviderRecord { connection: string; family: ProviderFamily }
+export interface CrossProvider { role: string; relation: 'same' | 'other'; author: ProviderRecord; provider: ProviderRecord }
 export type PolicyLayerName = 'run' | 'project' | 'table'
 export type TaskClass = 'routine' | 'material' | 'boundary'
-export interface PolicyRole { model?: string; reasoning?: string }
+export interface PolicyRole { model?: string; reasoning?: string; provider?: string }
 export interface PolicyLayer {
   budget?: Record<string, number>
   critic?: { default?: 'off' | 'auto' | 'on'; reasoningFloor?: 'author' }
@@ -19,6 +22,8 @@ export type PaceUsed = Partial<Record<'requestsPerDay' | 'invocationsPerDay' | '
 export interface PolicyHost {
   /** Connected IDs, not names obtained from model text. */
   connections: readonly string[]
+  families?: Readonly<Record<string, ProviderFamily>>
+  authorConnection?: string
   agent: boolean
   requests: number
   paceUsed?: PaceUsed
@@ -82,12 +87,28 @@ export function resolvePolicy(run: PolicyLayer, project: PolicyLayer, table: Pol
     return member
   }
   const refuse = (name: string, reason: string, pace = false): never => { throw new PolicyRefusal(name, need(name).layer, reason, pace) }
-  const tiers = host.agent ? ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] : ['off', 'on', 'ultra']
+  const tiers = host.agent ? ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] : ['off', 'low', 'on', 'medium', 'ultra', 'high']
+  const rank=(value:string)=>host.agent?tiers.indexOf(value):({off:0,low:1,on:2,medium:2,ultra:3,high:3}[value]??-1)
   const task = String(need('taskClass').value)
   const mapped = members[`models.taskClasses.${task}`]
   if (mapped && (!members['models.author.reasoning'] || members['models.author.reasoning'].layer === 'table')) members['models.author.reasoning'] = {...mapped}
   const author = need('models.author.reasoning')
   const roles = new Set(['author', 'critic', ...Object.keys(members).filter(k => k.startsWith('models.') && !k.startsWith('models.taskClasses.')).map(k => k.slice(7, k.lastIndexOf('.')))])
+  const base = host.authorConnection ?? String(need('models.author.model').value)
+  const family = (id: string) => host.families?.[id] ?? (host.agent ? 'codex' : 'openai')
+  let authorConnection = base
+  for (const role of ['author', ...[...roles].filter(role => role !== 'author').sort()]) {
+    const name = `models.${role}.provider`
+    const legacy = members[`models.${role}.model`]
+    if(legacy&&!host.connections.includes(String(legacy.value)))refuse(`models.${role}.model`,'model connection is not available')
+    members[name] ??= {value: 'same', layer: 'table'}
+    const choice = String(members[name]!.value)
+    const selected = choice === 'same' ? authorConnection : choice === 'other'
+      ? host.connections.find(id => family(id) !== family(authorConnection)) : choice
+    if (!selected || !host.connections.includes(selected)) refuse(name, 'no connected provider satisfies the role')
+    members[name] = {value: selected, layer: members[name]!.layer}
+    if (role === 'author') authorConnection = selected!
+  }
   for (const role of roles) {
     for (const field of ['model', 'reasoning']) {
       const name = `models.${role}.${field}`
@@ -96,9 +117,9 @@ export function resolvePolicy(run: PolicyLayer, project: PolicyLayer, table: Pol
       if (field === 'model' && !host.connections.includes(String(member.value))) refuse(name, 'model connection is not available')
       if (field === 'reasoning') {
         if (!tiers.includes(String(member.value))) refuse(name, 'tier is not supported on this capability')
-        if (/^(child|subagent)\./.test(role) && tiers.indexOf(String(member.value)) > tiers.indexOf(String(author.value))) {
+        if (/^(child|subagent)\./.test(role) && rank(String(member.value)) > rank(String(author.value))) {
           const allowance = (project.models?.[role] as PolicyRole | undefined)?.reasoning
-          if (allowance === undefined || tiers.indexOf(String(member.value)) > tiers.indexOf(allowance)) refuse(name, "tier exceeds the author's without project authorization")
+          if (allowance === undefined || rank(String(member.value)) > rank(allowance)) refuse(name, "tier exceeds the author's without project authorization")
         }
       }
     }
@@ -115,4 +136,10 @@ export function resolvePolicy(run: PolicyLayer, project: PolicyLayer, table: Pol
     if (used >= Number(limit) * Number(need('pace.warnAt').value)) warning ??= `${name} (${need(name).layer}): project period warning threshold reached`
   }
   return {members, ...(warning ? {warning} : {})}
+}
+
+/** A host must start a new run to change family: prefix and cache cannot cross this boundary. */
+export function failoverRefusal(role: string, from: ProviderRecord, to: ProviderRecord) {
+  if (from.family === to.family) return undefined
+  return new PolicyRefusal(`models.${role}.provider`, 'run', 'cross-family failover refused: the prefix and cache do not carry').event()
 }

@@ -90,6 +90,8 @@ var Registry = map[string]func() any{
 	"provenance.json#/$defs/criticReason":           func() any { return new(string) },
 	"provenance.json#/$defs/criticDecision":         func() any { return new(ProvenanceCriticDecision) },
 	"provenance.json#/$defs/policy":                 func() any { return new(map[string]PolicyMember) },
+	"provenance.json#/$defs/provider":               func() any { return new(ProvenanceProvider) },
+	"provenance.json#/$defs/crossProvider":          func() any { return new(ProvenanceCrossProvider) },
 	"question.json":                                 func() any { return new(Question) },
 	"question.json#/$defs/option":                   func() any { return new(QuestionOption) },
 	"question.json#/$defs/draft":                    func() any { return new(QuestionDraft) },
@@ -785,9 +787,12 @@ type Capability struct {
 	ToolSchemas         string                    `json:"toolSchemas"`
 	StatePlacement      *string                   `json:"statePlacement,omitzero"`
 	StrictAlternation   *bool                     `json:"strictAlternation,omitzero"`
+	Family              *string                   `json:"family,omitzero"`
+	Tiers               *CapabilityTiers          `json:"tiers,omitzero"`
+	CacheBreakpoints    *bool                     `json:"cacheBreakpoints,omitzero"`
 }
 
-var capabilityMembers = []string{"contextWindowTokens", "outputTokens", "nativeToolCalls", "parallelToolCalls", "vision", "reasoning", "streamingQuirks", "toolSchemas", "statePlacement", "strictAlternation"}
+var capabilityMembers = []string{"contextWindowTokens", "outputTokens", "nativeToolCalls", "parallelToolCalls", "vision", "reasoning", "streamingQuirks", "toolSchemas", "statePlacement", "strictAlternation", "family", "tiers", "cacheBreakpoints"}
 
 // UnmarshalJSON decodes a Capability object and refuses a member the closed schema does not name.
 func (v *Capability) UnmarshalJSON(data []byte) error {
@@ -814,19 +819,22 @@ func (v Capability) MarshalJSON() ([]byte, error) {
 // record states it. The harness completes the rest from the family's default record. An endpoint
 // the host knows nothing about answers {}. Closed, as the record is.
 type CapabilityEndpointCapabilities struct {
-	ContextWindowTokens *int64                     `json:"contextWindowTokens,omitzero"`
-	OutputTokens        *int64                     `json:"outputTokens,omitzero"`
-	NativeToolCalls     *bool                      `json:"nativeToolCalls,omitzero"`
-	ParallelToolCalls   *bool                      `json:"parallelToolCalls,omitzero"`
-	Vision              *bool                      `json:"vision,omitzero"`
-	Reasoning           *CapabilityReasoning       `json:"reasoning,omitzero"`
-	StreamingQuirks     *CapabilityStreamingQuirks `json:"streamingQuirks,omitzero"`
-	ToolSchemas         *string                    `json:"toolSchemas,omitzero"`
-	StatePlacement      *string                    `json:"statePlacement,omitzero"`
-	StrictAlternation   *bool                      `json:"strictAlternation,omitzero"`
+	ContextWindowTokens *int64                               `json:"contextWindowTokens,omitzero"`
+	OutputTokens        *int64                               `json:"outputTokens,omitzero"`
+	NativeToolCalls     *bool                                `json:"nativeToolCalls,omitzero"`
+	ParallelToolCalls   *bool                                `json:"parallelToolCalls,omitzero"`
+	Vision              *bool                                `json:"vision,omitzero"`
+	Reasoning           *CapabilityReasoning                 `json:"reasoning,omitzero"`
+	StreamingQuirks     *CapabilityStreamingQuirks           `json:"streamingQuirks,omitzero"`
+	ToolSchemas         *string                              `json:"toolSchemas,omitzero"`
+	StatePlacement      *string                              `json:"statePlacement,omitzero"`
+	StrictAlternation   *bool                                `json:"strictAlternation,omitzero"`
+	Family              *string                              `json:"family,omitzero"`
+	Tiers               *CapabilityEndpointCapabilitiesTiers `json:"tiers,omitzero"`
+	CacheBreakpoints    *bool                                `json:"cacheBreakpoints,omitzero"`
 }
 
-var capabilityEndpointCapabilitiesMembers = []string{"contextWindowTokens", "outputTokens", "nativeToolCalls", "parallelToolCalls", "vision", "reasoning", "streamingQuirks", "toolSchemas", "statePlacement", "strictAlternation"}
+var capabilityEndpointCapabilitiesMembers = []string{"contextWindowTokens", "outputTokens", "nativeToolCalls", "parallelToolCalls", "vision", "reasoning", "streamingQuirks", "toolSchemas", "statePlacement", "strictAlternation", "family", "tiers", "cacheBreakpoints"}
 
 // UnmarshalJSON decodes a CapabilityEndpointCapabilities object and refuses a member the closed schema does not name.
 func (v *CapabilityEndpointCapabilities) UnmarshalJSON(data []byte) error {
@@ -844,6 +852,34 @@ func (v *CapabilityEndpointCapabilities) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a CapabilityEndpointCapabilities object.
 func (v CapabilityEndpointCapabilities) MarshalJSON() ([]byte, error) {
 	type plain CapabilityEndpointCapabilities
+	return encodeObject(plain(v), nil)
+}
+
+// From capability.json#/$defs/endpointCapabilities/properties/tiers.
+type CapabilityEndpointCapabilitiesTiers struct {
+	Low    string `json:"low"`
+	Medium string `json:"medium"`
+	High   string `json:"high"`
+}
+
+var capabilityEndpointCapabilitiesTiersMembers = []string{"low", "medium", "high"}
+
+// UnmarshalJSON decodes a CapabilityEndpointCapabilitiesTiers object and refuses a member the closed schema does not name.
+func (v *CapabilityEndpointCapabilitiesTiers) UnmarshalJSON(data []byte) error {
+	type plain CapabilityEndpointCapabilitiesTiers
+	var p plain
+	extra, err := decodeObject(data, &p, capabilityEndpointCapabilitiesTiersMembers, true)
+	if err != nil {
+		return errorf("CapabilityEndpointCapabilitiesTiers: %w", err)
+	}
+	*v = CapabilityEndpointCapabilitiesTiers(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CapabilityEndpointCapabilitiesTiers object.
+func (v CapabilityEndpointCapabilitiesTiers) MarshalJSON() ([]byte, error) {
+	type plain CapabilityEndpointCapabilitiesTiers
 	return encodeObject(plain(v), nil)
 }
 
@@ -913,6 +949,34 @@ func (v CapabilityStreamingQuirks) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From capability.json#/properties/tiers.
+type CapabilityTiers struct {
+	Low    string `json:"low"`
+	Medium string `json:"medium"`
+	High   string `json:"high"`
+}
+
+var capabilityTiersMembers = []string{"low", "medium", "high"}
+
+// UnmarshalJSON decodes a CapabilityTiers object and refuses a member the closed schema does not name.
+func (v *CapabilityTiers) UnmarshalJSON(data []byte) error {
+	type plain CapabilityTiers
+	var p plain
+	extra, err := decodeObject(data, &p, capabilityTiersMembers, true)
+	if err != nil {
+		return errorf("CapabilityTiers: %w", err)
+	}
+	*v = CapabilityTiers(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CapabilityTiers object.
+func (v CapabilityTiers) MarshalJSON() ([]byte, error) {
+	type plain CapabilityTiers
+	return encodeObject(plain(v), nil)
+}
+
 // From checkpoint.json. A local record of one execution, carried whole on execution_checkpoint and
 // budget_paused events and handed back to resume: the request allowance and the grants that raised
 // it, the task plan, every operation with its exact arguments and result, the completions, and the
@@ -929,35 +993,36 @@ func (v CapabilityStreamingQuirks) MarshalJSON() ([]byte, error) {
 // increase; at most one plan step is in_progress. The loaded skills (ADR-0009): skills. The
 // critic's decision (ADR-0010): critic.
 type Checkpoint struct {
-	Version     int64                       `json:"version"`
-	ID          string                      `json:"id"`
-	RequestKey  string                      `json:"requestKey"`
-	Phase       string                      `json:"phase"`
-	Status      string                      `json:"status"`
-	Unit        string                      `json:"unit"`
-	Used        int64                       `json:"used"`
-	Limit       int64                       `json:"limit"`
-	Grants      []CheckpointGrant           `json:"grants"`
-	Plan        []CheckpointTaskStep        `json:"plan"`
-	Explanation string                      `json:"explanation"`
-	Operations  []CheckpointOperation       `json:"operations"`
-	Completions []Provenance                `json:"completions,omitzero"`
-	Context     CheckpointContext           `json:"context"`
-	Reason      *string                     `json:"reason,omitzero"`
-	TestCalls   *int64                      `json:"testCalls,omitzero"`
-	Delegation  *ProvenanceDelegationReport `json:"delegation,omitzero"`
-	Handoff     *CheckpointHandoff          `json:"handoff,omitzero"`
-	Approval    *CheckpointApproval         `json:"approval,omitzero"`
-	Prompts     []ProvenancePromptDigest    `json:"prompts,omitzero"`
-	Sources     []ProvenanceSourceFigures   `json:"sources,omitzero"`
-	Skills      []ProvenanceSkillLoad       `json:"skills,omitzero"`
-	Critic      *CheckpointCritic           `json:"critic,omitzero"`
-	Policy      map[string]PolicyMember     `json:"policy,omitzero"`
+	Version       int64                       `json:"version"`
+	ID            string                      `json:"id"`
+	RequestKey    string                      `json:"requestKey"`
+	Phase         string                      `json:"phase"`
+	Status        string                      `json:"status"`
+	Unit          string                      `json:"unit"`
+	Used          int64                       `json:"used"`
+	Limit         int64                       `json:"limit"`
+	Grants        []CheckpointGrant           `json:"grants"`
+	Plan          []CheckpointTaskStep        `json:"plan"`
+	Explanation   string                      `json:"explanation"`
+	Operations    []CheckpointOperation       `json:"operations"`
+	Completions   []Provenance                `json:"completions,omitzero"`
+	Context       CheckpointContext           `json:"context"`
+	Reason        *string                     `json:"reason,omitzero"`
+	TestCalls     *int64                      `json:"testCalls,omitzero"`
+	Delegation    *ProvenanceDelegationReport `json:"delegation,omitzero"`
+	Handoff       *CheckpointHandoff          `json:"handoff,omitzero"`
+	Approval      *CheckpointApproval         `json:"approval,omitzero"`
+	Prompts       []ProvenancePromptDigest    `json:"prompts,omitzero"`
+	Sources       []ProvenanceSourceFigures   `json:"sources,omitzero"`
+	Skills        []ProvenanceSkillLoad       `json:"skills,omitzero"`
+	Critic        *CheckpointCritic           `json:"critic,omitzero"`
+	Policy        map[string]PolicyMember     `json:"policy,omitzero"`
+	CrossProvider []ProvenanceCrossProvider   `json:"crossProvider,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var checkpointMembers = []string{"version", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy"}
+var checkpointMembers = []string{"version", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider"}
 
 // UnmarshalJSON decodes a Checkpoint object and keeps the members the schema does not name.
 func (v *Checkpoint) UnmarshalJSON(data []byte) error {
@@ -2731,9 +2796,10 @@ func (v PolicyPaceUsed) MarshalJSON() ([]byte, error) {
 type PolicyRole struct {
 	Model     *string `json:"model,omitzero"`
 	Reasoning *string `json:"reasoning,omitzero"`
+	Provider  *string `json:"provider,omitzero"`
 }
 
-var policyRoleMembers = []string{"model", "reasoning"}
+var policyRoleMembers = []string{"model", "reasoning", "provider"}
 
 // UnmarshalJSON decodes a PolicyRole object and refuses a member the closed schema does not name.
 func (v *PolicyRole) UnmarshalJSON(data []byte) error {
@@ -2995,6 +3061,35 @@ func (v ProvenanceCriticFigures) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From provenance.json#/$defs/crossProvider.
+type ProvenanceCrossProvider struct {
+	Role     string             `json:"role"`
+	Relation string             `json:"relation"`
+	Author   ProvenanceProvider `json:"author"`
+	Provider ProvenanceProvider `json:"provider"`
+}
+
+var provenanceCrossProviderMembers = []string{"role", "relation", "author", "provider"}
+
+// UnmarshalJSON decodes a ProvenanceCrossProvider object and refuses a member the closed schema does not name.
+func (v *ProvenanceCrossProvider) UnmarshalJSON(data []byte) error {
+	type plain ProvenanceCrossProvider
+	var p plain
+	extra, err := decodeObject(data, &p, provenanceCrossProviderMembers, true)
+	if err != nil {
+		return errorf("ProvenanceCrossProvider: %w", err)
+	}
+	*v = ProvenanceCrossProvider(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ProvenanceCrossProvider object.
+func (v ProvenanceCrossProvider) MarshalJSON() ([]byte, error) {
+	type plain ProvenanceCrossProvider
+	return encodeObject(plain(v), nil)
+}
+
 // From provenance.json#/$defs/delegationReport. What delegation cost in one execution (agent#18),
 // as the checkpoint's delegation member carries it: each batch with its children's figures and its
 // total, and the parent's own. Written by the delegation coordinator on every checkpoint of the
@@ -3127,6 +3222,33 @@ func (v *ProvenancePromptDigest) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a ProvenancePromptDigest object.
 func (v ProvenancePromptDigest) MarshalJSON() ([]byte, error) {
 	type plain ProvenancePromptDigest
+	return encodeObject(plain(v), nil)
+}
+
+// From provenance.json#/$defs/provider.
+type ProvenanceProvider struct {
+	Connection string `json:"connection"`
+	Family     string `json:"family"`
+}
+
+var provenanceProviderMembers = []string{"connection", "family"}
+
+// UnmarshalJSON decodes a ProvenanceProvider object and refuses a member the closed schema does not name.
+func (v *ProvenanceProvider) UnmarshalJSON(data []byte) error {
+	type plain ProvenanceProvider
+	var p plain
+	extra, err := decodeObject(data, &p, provenanceProviderMembers, true)
+	if err != nil {
+		return errorf("ProvenanceProvider: %w", err)
+	}
+	*v = ProvenanceProvider(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ProvenanceProvider object.
+func (v ProvenanceProvider) MarshalJSON() ([]byte, error) {
+	type plain ProvenanceProvider
 	return encodeObject(plain(v), nil)
 }
 
@@ -4045,11 +4167,12 @@ type RunEventCritique struct {
 	Cases      []RunEventCaseComparison     `json:"cases,omitzero"`
 	Incomplete []string                     `json:"incomplete,omitzero"`
 	Figures    *ProvenanceCriticFigures     `json:"figures,omitzero"`
+	Provider   *ProvenanceProvider          `json:"provider,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var runEventCritiqueMembers = []string{"type", "refuted", "checks", "text", "cases", "incomplete", "figures"}
+var runEventCritiqueMembers = []string{"type", "refuted", "checks", "text", "cases", "incomplete", "figures", "provider"}
 
 // UnmarshalJSON decodes a RunEventCritique object and keeps the members the schema does not name.
 func (v *RunEventCritique) UnmarshalJSON(data []byte) error {
@@ -4103,13 +4226,14 @@ func (v RunEventCritiqueChecksItem) MarshalJSON() ([]byte, error) {
 // Emitted by the host's delegation coordinator; on an engine that awaits the delegate call,
 // between that call's tool_call and its tool_result.
 type RunEventDelegatedTask struct {
-	Type string        `json:"type"`
-	Task DelegatedTask `json:"task"`
+	Type     string              `json:"type"`
+	Task     DelegatedTask       `json:"task"`
+	Provider *ProvenanceProvider `json:"provider,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var runEventDelegatedTaskMembers = []string{"type", "task"}
+var runEventDelegatedTaskMembers = []string{"type", "task", "provider"}
 
 // UnmarshalJSON decodes a RunEventDelegatedTask object and keeps the members the schema does not name.
 func (v *RunEventDelegatedTask) UnmarshalJSON(data []byte) error {

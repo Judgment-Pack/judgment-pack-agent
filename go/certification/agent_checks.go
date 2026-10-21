@@ -61,6 +61,7 @@ var AgentChecks = []AgentCheck{
 	{Group: "scenario 8", Names: AgentApprovalNames, Run: agentApprovalChecks},
 	{Group: "scenario 9", Names: AgentSkillsNames, Run: agentSkillsChecks},
 	{Group: "scenario 10", Names: AgentSwitchNames, Run: agentSwitchChecks},
+	{Group: "scenario 12", Names: AgentProviderNames, Run: agentProviderChecks},
 	{Group: "scenario 11", Names: AgentPolicyNames, Run: agentPolicyChecks},
 	{Group: "project", Names: []string{"agent project"}, Run: projectCheck},
 }

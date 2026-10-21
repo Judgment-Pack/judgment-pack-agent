@@ -49,7 +49,7 @@ describe('ADR-0011 policy table',()=>{
   expect(()=>resolvePolicy({},{},{},host)).toThrow('no default')
   expect(()=>resolvePolicy({models:{critic:{model:'missing'}}},{},table,host)).toThrow('models.critic.model (run)')
   expect(()=>resolvePolicy({budget:{unlimited:1}},{},table,host)).toThrow('unknown policy member')
-  expect(()=>resolvePolicy({models:{author:{reasoning:'high'}}},{},table,host)).toThrow('tier is not supported')
+  expect(()=>resolvePolicy({models:{author:{reasoning:'max'}}},{},table,host)).toThrow('tier is not supported')
   expect(()=>resolvePolicy({concurrency:{children:2}},{},{models:{author:{model:'connected',reasoning:'low'}}},{...host,agent:true})).toThrow('agent children are sequential')
  })
  it('uses task-class tiers without replacing a more specific run tier',()=>{

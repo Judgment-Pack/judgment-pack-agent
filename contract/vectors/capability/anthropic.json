@@ -28,7 +28,14 @@
         "reasoningField": null,
         "wholeJsonAnswer": false
       },
-      "toolSchemas": "json-schema"
+      "toolSchemas": "json-schema",
+      "family": "anthropic",
+      "tiers": {
+        "low": "low",
+        "medium": "high",
+        "high": "xhigh"
+      },
+      "cacheBreakpoints": true
     }
   ]
 }

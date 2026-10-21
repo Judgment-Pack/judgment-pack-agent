@@ -51,6 +51,7 @@ EXPECTED_SCHEMAS = {
 # The $defs added or changed (beyond their descriptions) between v0.1.0 and the v0.2.0 release
 # review, whose members each need a vector (#43): (schema, definition).
 RELEASE_REVIEWED_DEFS = [
+    ("provenance.json", "provider"), ("provenance.json", "crossProvider"),
     ("policy.json", "role"), ("policy.json", "member"), ("policy.json", "paceUsed"),
     ("provenance.json", "policy"), ("run-event.json", "policy_resolved"),
     ("budget.json", "toolCallAllowance"),

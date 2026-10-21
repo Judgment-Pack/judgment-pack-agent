@@ -148,6 +148,7 @@ Open: a member the schema does not name is accepted.
 | --- | --- | --- | --- |
 | `type` | yes | const `delegated_task` |  |
 | `task` | yes | `delegated-task.json` |  |
+| `provider` |  | `provenance.json $defs/provider` |  |
 
 ### `user_question`
 
@@ -290,6 +291,7 @@ Open: a member the schema does not name is accepted.
 | `cases` |  | array of `$defs/caseComparison` |  |
 | `incomplete` |  | array of string | The declared cases nothing compared, by id. Any makes refuted true and is named on the proposal's critique. |
 | `figures` |  | `provenance.json $defs/criticFigures` |  |
+| `provider` |  | `provenance.json $defs/provider` |  |
 
 ### `proposal`
 

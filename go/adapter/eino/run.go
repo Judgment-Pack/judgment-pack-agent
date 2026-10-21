@@ -118,7 +118,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		Skills:            run.Skills,
 		// ADR-0010: the critic's switch, as the host passes it.
 		Critic: run.Critic,
-		Policy: run.Policy, PolicyProject: run.PolicyProject, TaskClass: run.TaskClass, PaceUsed: run.PaceUsed, PolicyLegacyModels: &named, PolicyConnections: append(adapter.PolicyConnectionIDs(run), named.Critic, named.Child), PolicyRequests: run.PolicyRequests,
+		Policy: run.Policy, PolicyProject: run.PolicyProject, TaskClass: run.TaskClass, PaceUsed: run.PaceUsed, PolicyLegacyModels: &named, PolicyFamilies: adapter.PolicyFamilies(run, named), PolicyConnections: append(adapter.PolicyConnectionIDs(run), named.Critic, named.Child), PolicyRequests: run.PolicyRequests,
 		CriticProject:     run.CriticProject,
 		CriticReasoning:   run.CriticReasoning,
 		ExistingPack:      run.ExistingPack,
@@ -136,19 +136,35 @@ func Run(ctx context.Context, run *adapter.Run) error {
 	r.opened = opened
 	r.sc = opened.Context
 	local := *run
+	r.sc.ProviderFamilies = adapter.PolicyFamilies(run, named)
 	if err := adapter.ApplyPolicy(&local, r.sc, named); err != nil {
 		r.sc.Close()
 		r.emitAll(runcontext.FailedToOpen(err))
 		return nil
 	}
 	r.run = &local
+	r.family = wire.EndpointKind(local.Wire)
+	var override *wire.Value
+	if local.Capabilities != nil {
+		raw, _ := json.Marshal(local.Capabilities)
+		override, _ = wire.Parse(raw)
+	}
+	capabilities, err = wire.CapabilitiesFor(r.family, local.ModelName, nil, override)
+	if err != nil {
+		r.sc.Close()
+		r.emitAll(runcontext.FailedToOpen(err))
+		return nil
+	}
+	r.capabilities = capabilities
+	r.nativeTools = capabilities.NativeToolCalls
 	r.session = opened.Session
 	r.boundary = runcontext.NewBoundary(opened)
 	defer r.boundary.Close()
+	r.sc.RecordProvider("author")
 	r.emitAll(r.boundary.Open())
 
-	r.slot = wire.OpenThinking(wire.ThinkingTier(orOff(run.Thinking)), r.family, &capabilities.Reasoning)
-	r.placement = statePlacement(r.family, wire.ThinkingTier(orOff(run.Thinking)), capabilities)
+	r.slot = wire.OpenThinking(wire.ThinkingTier(orOff(local.Thinking)), r.family, &capabilities.Reasoning, capabilities.Tiers)
+	r.placement = statePlacement(r.family, wire.ThinkingTier(orOff(local.Thinking)), capabilities)
 	r.listener = &listener{r: r}
 
 	err = r.drive(ctx)

@@ -1,5 +1,14 @@
 # @judgment-pack/harness
 
+Provider selection is policy (ADR-0012): `models.<role>.provider` accepts `same`,
+`other`, or a host-supplied connection ID, with run > project > table precedence.
+`other` refuses when no other family is connected. Critic and child records identify
+the answering connection and family; the checkpoint report carries `crossProvider`.
+Capability records hold the tier map; hosts can override it per connection.
+See the generated provider matrix in `docs/reference/providers.md` at the repository
+root. Scenario 12 exercises two families, and certification prints its measurements.
+
+
 Budgets are the `budget` section of the [agent's policy table](../../docs/adr/0011-the-agents-policy-table.md).
 The host's run layer wins over its project layer, then table defaults. The same
 resolver covers critic, models, concurrency, pace, and task class, with each member's
@@ -250,8 +259,10 @@ delivered, on every engine, where the critic's switch says so ([ADR-0010](../../
   `CRITIC_PASS_MILLISECONDS`). A disagreeing case refutes the proposal, and so does a declared case
   nothing compared: the critique's `cases` and `incomplete` say which, and the proposal's `critique`
   names the incomplete ones.
-- **Its model** is the `critic` member of the host's `modelsFor` answer for the run's connection,
-  asked once per run, or the run's.
+- **Its provider and model** come from `models.critic.provider` and the selected host binding.
+  The provider defaults to `same`; `other` requires a connected different family. On the author's
+  connection, the `critic` member of `modelsFor` still names a subordinate model, asked once per
+  run, or the run's model. The critique records the answering connection and family.
 - **Its cost** is on the critique, and on a `critic-unfinished` note: `figures`, the model and the
   requests (model requests and their token counts on `vercel`, agent runs on `codex`), and the
   harness's own calls (`harnessCalls`).
@@ -421,7 +432,10 @@ agent#13, agent#14, agent#15, agent#16, agent#17, agent#18):
   parent's turn. A feature adapter may add a profile through `options.profiles`
   (`[...TASK_PROFILES, its own]`), held by `readProfiles` within `TASK_BUDGET_CEILING` and the
   gate's ceiling. Each task's record carries its `budget` and the `model` it ran on.
-- **A child model.** A host names a cheaper model for children of a connection with `modelsFor`
+- **A child provider and model.** `models.child.<profile>.provider` (or a declared
+  `models.subagent.<id>.provider`) selects the host binding, defaulting to `same`. Another family
+  is allowed; its findings return as data and every task event records its connection and family.
+  On the same connection, a host names a cheaper model for children of a connection with `modelsFor`
   (see Host injection points), asked once per run with the run's connection (`context.connection`);
   a child whose profile asks for the parent's model (`author-test`) stays on it. On `vercel` the
   host answers `endpointCapabilities` for the child model as for any other, and its relay must admit

@@ -87,6 +87,9 @@ export interface StreamingQuirks {
 
 /** One endpoint and model, as the loop reads it. The contract's `capability.json`. */
 export interface ModelCapabilities {
+  family?: import('./policy').ProviderFamily
+  tiers?: Record<'low'|'medium'|'high',string>
+  cacheBreakpoints?: boolean
   /** The model's window in tokens; with `outputTokens`, replaces the budget table's. */
   contextWindowTokens?: number
   /** The output reserve in tokens, at most half the window. */
@@ -133,6 +136,7 @@ export const WIRE_REASONING: Readonly<Record<EndpointKind, readonly ReasoningKin
  */
 export const FAMILY_CAPABILITIES: Readonly<Record<EndpointKind, Readonly<ModelCapabilities>>> = Object.freeze({
   'openai-compatible': Object.freeze({
+    family: 'openai' as const, tiers: Object.freeze({"low": "low", "medium": "high", "high": "xhigh"}), cacheBreakpoints: false,
     nativeToolCalls: true,
     parallelToolCalls: true,
     vision: false,
@@ -141,6 +145,7 @@ export const FAMILY_CAPABILITIES: Readonly<Record<EndpointKind, Readonly<ModelCa
     toolSchemas: 'json-schema' as const
   }),
   anthropic: Object.freeze({
+    family: 'anthropic' as const, tiers: Object.freeze({"low": "low", "medium": "high", "high": "xhigh"}), cacheBreakpoints: true,
     nativeToolCalls: true,
     parallelToolCalls: true,
     vision: true,
@@ -149,6 +154,7 @@ export const FAMILY_CAPABILITIES: Readonly<Record<EndpointKind, Readonly<ModelCa
     toolSchemas: 'json-schema' as const
   }),
   gemini: Object.freeze({
+    family: 'gemini' as const, tiers: Object.freeze({"low": "4096", "medium": "8192", "high": "24576"}), cacheBreakpoints: false,
     nativeToolCalls: true,
     parallelToolCalls: true,
     vision: true,
@@ -161,7 +167,7 @@ export const FAMILY_CAPABILITIES: Readonly<Record<EndpointKind, Readonly<ModelCa
 /** Every member a record may carry, and the whole of them. The contract's `capability.json` properties. */
 export const CAPABILITY_MEMBERS: readonly (keyof ModelCapabilities)[] = [
   'contextWindowTokens', 'outputTokens', 'nativeToolCalls', 'parallelToolCalls', 'vision',
-  'reasoning', 'streamingQuirks', 'toolSchemas', 'statePlacement', 'strictAlternation'
+  'reasoning', 'streamingQuirks', 'toolSchemas', 'statePlacement', 'strictAlternation', 'family', 'tiers', 'cacheBreakpoints'
 ]
 
 const object = (value: unknown): value is Record<string, unknown> =>
@@ -186,6 +192,13 @@ export function readCapabilities(value: unknown): ModelCapabilities {
   closed(value, CAPABILITY_MEMBERS, 'the record')
   for (const flag of ['nativeToolCalls', 'parallelToolCalls', 'vision'] as const) {
     if (typeof value[flag] !== 'boolean') refuse(`${flag} must be true or false`)
+  }
+  if(value.family!==undefined&&!['openai','anthropic','gemini','codex'].includes(String(value.family)))refuse('unknown family')
+  if(value.cacheBreakpoints!==undefined&&typeof value.cacheBreakpoints!=='boolean')refuse('cacheBreakpoints must be boolean')
+  if(value.tiers!==undefined){
+    if(!object(value.tiers))refuse('tiers must be an object')
+    closed(value.tiers,['low','medium','high'],'tiers')
+    for(const tier of ['low','medium','high'])if(typeof value.tiers[tier]!=='string'||!value.tiers[tier])refuse('tiers must name every setting')
   }
   const window = value.contextWindowTokens
   const output = value.outputTokens
@@ -225,3 +238,7 @@ export function capabilitiesFor(model: { family: EndpointKind; model: string; ca
   }
   return record
 }
+
+/** Provider-managed agents retain their own effort vocabulary. */
+export const PROVIDER_CAPABILITIES = Object.freeze({...FAMILY_CAPABILITIES,
+ codex:Object.freeze({family:'codex' as const,tiers:Object.freeze({low:'low',medium:'medium',high:'high'}),cacheBreakpoints:false,nativeToolCalls:true,parallelToolCalls:false,vision:false,reasoning:{kind:'openai-effort' as const},streamingQuirks:{reasoningField:null,wholeJsonAnswer:false},toolSchemas:'json-schema' as const})})

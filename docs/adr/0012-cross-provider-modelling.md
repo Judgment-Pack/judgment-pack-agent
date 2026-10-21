@@ -97,3 +97,26 @@ and the critic's provider beside its switch in the composer.
 
 Within-family failover (agent#104), cross-family cache or prefix transfer, automatic
 provider choice by a model, and the Desk's forms are outside this decision.
+
+## Implementation vocabulary
+
+The resolved provider member records the selected connection ID and its supplying
+layer. `other` selects the first host-supplied eligible binding (Go sorts connection
+IDs); no request or model text supplies candidates. Model engines accept the common
+`low`, `medium`, and `high` tiers alongside the existing `off`, `on`, and `ultra`
+spellings; `on` and `medium` share a rank, as do `ultra` and `high`. A connection's
+`tiers` overrides its three primary wire settings as a complete map. The generated
+[provider reference](../reference/providers.md) states those settings and defaults.
+
+A `models.<role>.model` setting never changes the provider default: selecting
+another connection requires provider policy. The host's `modelsFor` model names
+on the author's connection continue to select subordinate models on that
+connection.
+
+`crossProvider` is carried in the execution checkpoint alongside the existing
+report rows. Each row names the role, its `same`/`other` relation, the author's
+connection and family, and the role's connection and family. Historical events
+without a provider remain readable; newly emitted critique and task records carry
+one. Model and agent bindings remain distinct capabilities: a model engine refuses
+an agent binding, and an agent engine refuses a model binding before dispatch.
+The agent host can supply provider-managed invocations from another family.

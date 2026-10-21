@@ -24,10 +24,12 @@ type PolicyMember struct {
 }
 type PolicyMembers map[string]PolicyMember
 type PolicyHost struct {
-	Connections []string
-	Agent       bool
-	Requests    int
-	PaceUsed    map[string]int64
+	Connections      []string
+	Families         map[string]string
+	AuthorConnection string
+	Agent            bool
+	Requests         int
+	PaceUsed         map[string]int64
 }
 type ResolvedPolicy struct {
 	Members PolicyMembers
@@ -259,11 +261,66 @@ func ResolvePolicy(run, project, table PolicyLayer, host PolicyHost) (ResolvedPo
 	if host.Agent {
 		tiers = AgentTiers
 	}
+	rank := func(value string) int {
+		if host.Agent {
+			return slices.Index(tiers, value)
+		}
+		return map[string]int{"off": 0, "low": 1, "on": 2, "medium": 2, "ultra": 3, "high": 3}[value]
+	}
 	author, _ := members["models.author.reasoning"].Value.(string)
 	roles := map[string]bool{"author": true, "critic": true}
 	for name := range members {
 		if strings.HasPrefix(name, "models.") && !strings.HasPrefix(name, "models.taskClasses.") {
 			roles[name[7:strings.LastIndex(name, ".")]] = true
+		}
+	}
+	base := host.AuthorConnection
+	if base == "" {
+		base, _ = members["models.author.model"].Value.(string)
+	}
+	family := func(id string) string {
+		if f := host.Families[id]; f != "" {
+			return f
+		}
+		if host.Agent {
+			return "codex"
+		}
+		return "openai"
+	}
+	authorConnection := base
+	order := []string{"author"}
+	for _, role := range policyKeys(roles) {
+		if role != "author" {
+			order = append(order, role)
+		}
+	}
+	for _, role := range order {
+		name := "models." + role + ".provider"
+		member, ok := members[name]
+		if !ok {
+			member = PolicyMember{"same", "table"}
+		}
+		members[name] = member
+		choice, _ := member.Value.(string)
+		selected := choice
+		if choice == "same" {
+			selected = authorConnection
+		}
+		if choice == "other" {
+			selected = ""
+			for _, id := range host.Connections {
+				if family(id) != family(authorConnection) {
+					selected = id
+					break
+				}
+			}
+		}
+		if selected == "" || !slices.Contains(host.Connections, selected) {
+			return result, refuse(name, "no connected provider satisfies the role", false)
+		}
+		members[name] = PolicyMember{selected, member.Layer}
+		if role == "author" {
+			authorConnection = selected
 		}
 	}
 	for _, role := range policyKeys(roles) {
@@ -280,11 +337,11 @@ func ResolvePolicy(run, project, table PolicyLayer, host PolicyHost) (ResolvedPo
 				if !slices.Contains(tiers, value) {
 					return result, refuse(name, "tier is not supported on this capability", false)
 				}
-				if (strings.HasPrefix(role, "child.") || strings.HasPrefix(role, "subagent.")) && slices.Index(tiers, value) > slices.Index(tiers, author) {
+				if (strings.HasPrefix(role, "child.") || strings.HasPrefix(role, "subagent.")) && rank(value) > rank(author) {
 					models, _ := project["models"].(map[string]any)
 					assigned, _ := models[role].(map[string]any)
 					allowance, _ := assigned["reasoning"].(string)
-					if allowance == "" || slices.Index(tiers, value) > slices.Index(tiers, allowance) {
+					if allowance == "" || rank(value) > rank(allowance) {
 						return result, refuse(name, "tier exceeds the author's without project authorization", false)
 					}
 				}
@@ -414,5 +471,14 @@ func resolveSessionPolicy(session Session, budget Policy) (ResolvedPolicy, error
 			requests = *session.PolicyLegacyModels.ConcurrentRequests
 		}
 	}
-	return ResolvePolicy(run, project, table, PolicyHost{Connections: connections, Agent: session.Agent != nil, Requests: requests, PaceUsed: session.PaceUsed})
+	return ResolvePolicy(run, project, table, PolicyHost{Connections: connections, Families: session.PolicyFamilies, AuthorConnection: current, Agent: session.Agent != nil, Requests: requests, PaceUsed: session.PaceUsed})
+}
+
+// FailoverRefusal records the boundary; same-family failover is left to issue #104.
+func FailoverRefusal(role string, from, to contract.ProvenanceProvider) *contract.RunEvent {
+	if from.Family == to.Family {
+		return nil
+	}
+	refusal := (&PolicyRefusal{Member: "models." + role + ".provider", Layer: "run", Detail: "cross-family failover refused: the prefix and cache do not carry"}).Event()
+	return &refusal
 }

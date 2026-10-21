@@ -409,7 +409,7 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
     const publish = async (task: DelegatedTask) => {
       if(signal.aborted)return
       const snapshot=structuredClone(task)
-      await channel.push({type:'delegated_task',task:snapshot})
+      await channel.push({type:'delegated_task',task:snapshot,provider:shared.context?.recordProvider(shared.context.delegatedRole(task.profile))})
       // Stop is persisted by the owning chat. Do not queue a rejected save
       // after cancellation, when no consumer can observe this transition.
       if(signal.aborted)return
@@ -542,7 +542,7 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
     const childModel = (profile: TaskProfile): {name: string; model?: AssistantSession['model']} => {
       const own = 'model' in session ? session.model.model : session.agent.model
       // The host's answer for the parent run's connection, asked once for that run (modelsFor in host.ts).
-      const selected=shared.context?.connection(`child.${profile.id}`)
+      const selected=shared.context?.connection(shared.context.delegatedRole(profile.id))
       const named = selected?('model'in selected?selected.model.model:selected.agent.model):profile.model === 'parent' ? own : shared.context?.models(engine.id).child ?? own
       if(selected&&'model'in selected)return {name:named,model:selected.model}
       if (!('model' in session)) return {name: named}
@@ -578,7 +578,7 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
      * the text itself compares exactly, so a digest (WebCrypto's is asynchronous) would add a step and
      * no exactness. A resumed task is never reused.
      */
-    const reuseKey = (planned: Planned, model: string) => JSON.stringify({profile:planned.request.profile,model,objective:planned.request.objective,references:planned.references.map(entry=>entry.id).sort()})
+    const reuseKey = (planned: Planned, model: string) => JSON.stringify({profile:planned.request.profile,model,provider:shared.context?.provider(shared.context.delegatedRole(planned.request.profile)),objective:planned.request.objective,references:planned.references.map(entry=>entry.id).sort()})
     const brief = (planned: Planned, profile: TaskProfile) => profile.instructions+'\n\n'+CHILD_RULES
       +(planned.references.length?' '+REFERENCE_RULE:'')+(planned.thread?' '+RESUME_RULE:'')+' '+reportInstructions(profile.report ?? 'analyze')+'\n'
       +JSON.stringify({objective:planned.request.objective,
@@ -608,12 +608,13 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
       sources:()=>shared.context?.sources}
       const model = childModel(profile)
       childModels.set(task.id, model.name)
-      const role=shared.context?.resolvedPolicy[`models.child.${profile.id}.reasoning`]
-      const roleModel=shared.context?.resolvedPolicy[`models.child.${profile.id}.model`]
+      const role=shared.context?.resolvedPolicy[`models.${shared.context.delegatedRole(profile.id)}.reasoning`]
+      const selected=shared.context?.connection(shared.context.delegatedRole(profile.id))
+      const provider=shared.context?.provider(shared.context.delegatedRole(profile.id))
       const base = {...session,
-        ...(role||roleModel?{policy:{...session.policy,models:{...session.policy?.models,author:{...(role?{reasoning:String(role.value)}:{}),...(roleModel?{model:String(roleModel.value)}:{})}}}}:{}),
+        ...(selected&&provider?{policyProject:undefined,policyConnections:undefined,policy:{...session.policy,models:{author:{model:provider.connection,provider:provider.connection,...(role?{reasoning:String(role.value)}:{})}},critic:{default:'off'}},...( 'agent'in selected?{agent:selected.agent}:{})}:{}),
         // agent#11: the objective is the child's request text, the first text part of its first message.
-        context:{configuration:session.context?.configuration,phase:session.context?.phase,authorize:session.context?.authorize,artifactProposals:session.context?.artifactProposals,memory:session.context?.memory,objective,runtime:session.context?.runtime,chat:chat.childScope(planned.visible),link,...(session.context?.connection?{connection:session.context.connection}:{})},
+        context:{configuration:session.context?.configuration,phase:session.context?.phase,authorize:session.context?.authorize,artifactProposals:session.context?.artifactProposals,memory:session.context?.memory,objective,runtime:session.context?.runtime,chat:chat.childScope(planned.visible),link,...(provider?{connection:{...session.context?.connection,connectionId:provider.connection}}:session.context?.connection?{connection:session.context.connection}:{})},
         purpose:undefined,prompt,testPrompt:'',allowConversation:true,interactive:true,adversarialReview:false,
         // ADR-0009: a child is handed no skills; it inherits none of the parent's loaded set.
         skills:undefined,

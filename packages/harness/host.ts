@@ -32,7 +32,7 @@ import type { HeldImage } from './images'
 export type EndpointKind = 'openai-compatible' | 'anthropic' | 'gemini'
 
 /** The depths a run may ask a model to reason at (the Desk's `ThinkingTier`). */
-export type ThinkingTier = 'off' | 'on' | 'ultra'
+export type ThinkingTier = 'off' | 'on' | 'ultra' | 'low' | 'medium' | 'high'
 
 /**
  * The runtime tool ceiling: the six tools an assistant may ever be allowed,

@@ -140,8 +140,9 @@ func TestTheParityTableHoldsTheGoChecksInStepWithTheTypeScriptLeg(t *testing.T) 
 		Source    string      `json:"source"`
 		Checks    []parityRow `json:"checks"`
 		Scenarios struct {
-			Source string      `json:"source"`
-			Checks []parityRow `json:"checks"`
+			Source            string      `json:"source"`
+			AdditionalSources []string    `json:"additionalSources"`
+			Checks            []parityRow `json:"checks"`
 		} `json:"scenarios"`
 		Delegation struct {
 			Source string      `json:"source"`
@@ -212,6 +213,13 @@ func TestTheParityTableHoldsTheGoChecksInStepWithTheTypeScriptLeg(t *testing.T) 
 		t.Fatal(err)
 	}
 	scenarioChecks := itNames(string(scenarioSource))
+	for _, name := range table.Scenarios.AdditionalSources {
+		raw, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		scenarioChecks = append(scenarioChecks, itNames(string(raw))...)
+	}
 	if len(scenarioChecks) < 20 {
 		t.Fatalf("%d checks read from %s", len(scenarioChecks), table.Scenarios.Source)
 	}

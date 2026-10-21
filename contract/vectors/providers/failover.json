@@ -1,0 +1,22 @@
+{
+  "description": "Hand-authored from ADR-0012 and the accepted decision in issue #117.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/policy.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "guardrail",
+      "tool": "models.critic.provider",
+      "action": "refused",
+      "reason": "policy refused",
+      "detail": "models.critic.provider (run): cross-family failover refused: the prefix and cache do not carry"
+    }
+  ]
+}

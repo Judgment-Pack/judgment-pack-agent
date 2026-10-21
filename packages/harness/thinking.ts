@@ -1,3 +1,4 @@
+import { capabilitiesFor } from './capabilities'
 import { sourceMessage } from './host'
 /**
  * The thinking tier, normalized in the desk.
@@ -47,7 +48,7 @@ import type { ReasoningCapability, ReasoningKind } from './capabilities'
  * `off`, `on` and `ultra` and nothing else, deliberately, because a state the
  * desk **discovers** is not a state anybody can ask for.
  */
-export type ThinkingState = 'off' | 'on' | 'ultra' | 'always' | 'unavailable'
+export type ThinkingState = ThinkingTier | 'always' | 'unavailable'
 
 /**
  * The endpoint's vocabulary. One slot tier, three spellings.
@@ -102,7 +103,8 @@ export const RESPONSE_TOKENS = 4096
  * desk falls back to the level spelling and then degrades — which is the same
  * path a model that has no budget field at all takes. See the README.
  */
-export const GEMINI_BUDGET: Readonly<Record<'on' | 'ultra', number>> = {
+export const GEMINI_BUDGET: Readonly<Record<Exclude<ThinkingTier,'off'>, number>> = {
+  low: 4096, medium: 8192, high: 24576,
   on: 8192,
   ultra: 24576
 }
@@ -117,6 +119,7 @@ export const GEMINI_BUDGET: Readonly<Record<'on' | 'ultra', number>> = {
  * rather than inventing a fifth value.
  */
 export const GEMINI_LEVEL: Readonly<Record<ThinkingTier, string>> = {
+  low:'low', medium:'medium', high:'high',
   off: 'minimal',
   on: 'medium',
   ultra: 'high'
@@ -143,7 +146,7 @@ export const GEMINI_LEVEL: Readonly<Record<ThinkingTier, string>> = {
  * the SDK. The table says *what* the tier means; an engine says *where*, which
  * is the same division the other two families already keep.
  */
-export function wireFor(tier: ThinkingTier, dialect: ThinkingDialect): WireThinking | null {
+export function wireFor(tier: ThinkingTier, dialect: ThinkingDialect, tiers?: Record<'low'|'medium'|'high',string>): WireThinking | null {
   const geminiPath = 'generationConfig.thinkingConfig'
   if (tier === 'off') {
     // Off is omission on the two families that accept it as one, and a member
@@ -162,13 +165,14 @@ export function wireFor(tier: ThinkingTier, dialect: ThinkingDialect): WireThink
     }
     return null
   }
-  const effort = tier === 'ultra' ? 'xhigh' : 'high'
+  const setting = tiers?.[tier === 'ultra' || tier === 'high' ? 'high' : tier === 'low' ? 'low' : 'medium']
+  const effort = setting ?? (tier === 'ultra' || tier === 'high' ? 'xhigh' : tier === 'low' ? 'low' : 'high')
   switch (dialect) {
     case 'gemini-budget': {
       // `includeThoughts` is what makes the thought summaries arrive at all;
       // the budget is how deep they go. Both, or the tier asks for thinking
       // nobody can read.
-      const thinkingConfig = { includeThoughts: true, thinkingBudget: GEMINI_BUDGET[tier] }
+      const thinkingConfig = { includeThoughts: true, thinkingBudget: setting === undefined ? GEMINI_BUDGET[tier] : Number(setting) }
       return { members: { thinkingConfig }, expect: { path: geminiPath, value: thinkingConfig } }
     }
     case 'gemini-level': {
@@ -186,7 +190,7 @@ export function wireFor(tier: ThinkingTier, dialect: ThinkingDialect): WireThink
         expect: { path: 'thinking', value: { type: 'adaptive' } }
       }
     case 'anthropic-enabled': {
-      const budget = tier === 'ultra' ? 16000 : 8000
+      const budget = tier === 'ultra' || tier === 'high' ? 16000 : tier === 'low' ? 4000 : 8000
       return {
         members: {
           thinking: { type: 'enabled', budget_tokens: budget },
@@ -557,7 +561,7 @@ export function openThinking(session: Pick<AssistantSession, 'thinking' | 'model
   // `wireFor` already answers null at `off` on the two families where off is
   // omission, so there is no tier test here: what this adds is the two states
   // in which the desk has stopped asking at all.
-  const wire = () => (silent || unavailable || offRefused ? null : wireFor(tier, dialect))
+  const wire = () => (silent || unavailable || offRefused ? null : wireFor(tier, dialect, capabilitiesFor(session.model).tiers))
 
   return {
     tier,

@@ -1,0 +1,25 @@
+{
+  "description": "Hand-authored from ADR-0012 and the accepted decision in issue #117.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/policy.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "critique",
+      "refuted": false,
+      "checks": [],
+      "text": "No runtime checks.",
+      "provider": {
+        "connection": "reviewer",
+        "family": "anthropic"
+      }
+    }
+  ]
+}
