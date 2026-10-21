@@ -68,6 +68,10 @@ for(const c of fallback.cases)it(`fallback map ${c.record} ${c.tier}`,()=>{
  expect(slot.members()).toEqual(c.members)
 })
 
+it('refuses a non-integer fallback token budget with the shared message',()=>{
+ expect(()=>capabilitiesFor({family:'anthropic',model:'test',capabilities:fallback.refused as any})).toThrow(fallback.error)
+})
+
 import {contextualSession} from './context/session'
 import {managedContext} from './context/managed'
 import type {AssistantSession,AssistantEvent} from './engine'

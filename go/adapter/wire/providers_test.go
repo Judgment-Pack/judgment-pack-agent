@@ -46,8 +46,10 @@ func TestFallbackTierMaps(t *testing.T) {
 		t.Fatal(err)
 	}
 	var v struct {
-		Items []json.RawMessage
-		Cases []struct {
+		Items   []json.RawMessage
+		Refused json.RawMessage
+		Error   string
+		Cases   []struct {
 			Record  int
 			Tier    ThinkingTier
 			Members json.RawMessage
@@ -81,5 +83,12 @@ func TestFallbackTierMaps(t *testing.T) {
 			}
 			equalJSON(t, "fallback tier setting", slot.Members(), expected)
 		})
+	}
+	refused, err := Parse(v.Refused)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = CapabilitiesFor(Anthropic, "test", nil, refused); err == nil || err.Error() != v.Error {
+		t.Fatalf("non-integer fallback tier: %v, want %q", err, v.Error)
 	}
 }

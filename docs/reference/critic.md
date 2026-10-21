@@ -14,7 +14,7 @@ Package files (`packages/harness`), with the symbols read:
 - `refutation.ts`: `CRITIC_TOOLS`, `CRITIC_READERS`, `MAX_CRITIC_TURNS`, `CRITIC_REHEARSALS`, `SETTLED_STATUS`, `REFUTATION_MARKER`
 - `engines/codex/index.ts`: `CRITIC_PASS_MILLISECONDS`
 - `context/policy.ts`: `TEST_DEFAULTS`, `CONTEXT_DEFAULTS`
-- `criticSwitch.ts`: `CRITIC_MODES`, `CRITIC_REASONS`, `MODEL_TIERS`, `AGENT_TIERS`, `REQUEST_REVIEW`
+- `criticSwitch.ts`: `CRITIC_MODES`, `CRITIC_REASONS`, `CRITIC_TRIGGERS`, `MODEL_TIERS`, `AGENT_TIERS`, `REQUEST_REVIEW`
 
 > generated; edit the sources, then run `node scripts/gen-reference.mjs`. `--check` fails where this page differs from them.
 
@@ -176,7 +176,7 @@ The critic's request is marked by the constant `REFUTATION_MARKER` in `refutatio
 
 ## Triggers
 
-Under `auto`, in the order read: `cases`, `changes-existing`, `model-asked`.
+Under `auto`, in the order read: `model-asked`, `cases`, `changes-existing`.
 
 ## The decision
 
@@ -192,7 +192,7 @@ Closed: a member the schema does not name is refused.
 | `ran` | yes | boolean |  |
 | `reason` | yes | `$defs/criticReason` |  |
 | `reasoning` |  | `tool-offer.json $defs/criticReasoning` |  |
-| `trigger` |  | enum `cases`, `changes-existing`, `model-asked` |  |
+| `trigger` |  | enum `model-asked`, `cases`, `changes-existing` |  |
 
 ### The reasons
 
@@ -213,7 +213,7 @@ Open: a member the schema does not name is accepted.
 | `ran` | yes | boolean |  |
 | `reason` | yes | `provenance.json $defs/criticReason` |  |
 | `reasoning` |  | `tool-offer.json $defs/criticReasoning` |  |
-| `trigger` |  | enum `cases`, `changes-existing`, `model-asked` |  |
+| `trigger` |  | enum `model-asked`, `cases`, `changes-existing` |  |
 
 ### The tool `request_review`
 

@@ -545,6 +545,7 @@ async function criticPage(page) {
   // ADR-0010: the switch, from the schemas and the package's constants (criticSwitch.ts).
   const CRITIC_MODES = await page.use('criticSwitch', 'CRITIC_MODES')
   const CRITIC_REASONS = await page.use('criticSwitch', 'CRITIC_REASONS')
+  const CRITIC_TRIGGERS = await page.use('criticSwitch', 'CRITIC_TRIGGERS')
   const MODEL_TIERS = await page.use('criticSwitch', 'MODEL_TIERS')
   const AGENT_TIERS = await page.use('criticSwitch', 'AGENT_TIERS')
   const REQUEST_REVIEW = await page.use('criticSwitch', 'REQUEST_REVIEW')
@@ -556,6 +557,7 @@ async function criticPage(page) {
   agree(page, 'the modes', modes.enum, CRITIC_MODES)
   agree(page, 'the tiers', tiers.enum, [...new Set([...MODEL_TIERS, ...AGENT_TIERS])])
   agree(page, 'the reasons', reasons.enum, CRITIC_REASONS)
+  agree(page, 'the triggers', decision.properties.trigger.enum, CRITIC_TRIGGERS)
   agree(page, 'the request_review name', [requestReview.allOf[1].properties.name.const], [REQUEST_REVIEW])
   contained(page, 'the reserved names', [REQUEST_REVIEW], new Set(page.def('tool-offer.json', 'reservedName').enum))
   const sessionMembers = ['critic', 'criticProject', 'criticReasoning', 'existingPack', 'reviewerAssigned', 'adversarialReview']
@@ -607,7 +609,7 @@ async function criticPage(page) {
     `The critic's request is marked by the constant ${code(marker.name)} in \`refutation.ts\` (named here, not its text).`,
     '## Triggers',
     '',
-    `Under ${code('auto')}, in the order read: ${list(decision.properties.trigger.enum)}.`,
+    `Under ${code('auto')}, in the order read: ${list(CRITIC_TRIGGERS)}.`,
     '## The decision',
     '',
     page.nodeOf('provenance.json', 'criticDecision', '### The decision, the report\'s row'),

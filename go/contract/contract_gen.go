@@ -946,8 +946,8 @@ func (v CapabilityEndpointCapabilitiesTiers) MarshalJSON() ([]byte, error) {
 }
 
 // From capability.json#/properties/fallbackTiers. Settings for the family's fallback dialect:
-// Anthropic enabled token budgets or Gemini thinking levels. The encoder reads the normalized
-// tier's string.
+// integer strings for Anthropic enabled token budgets or Gemini thinking levels. Numeric spellings
+// are integers only. The encoder reads the normalized tier's string.
 type CapabilityFallbackTiers struct {
 	Low    string `json:"low"`
 	Medium string `json:"medium"`

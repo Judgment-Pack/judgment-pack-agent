@@ -38,7 +38,7 @@ import { AGENT_ENGINES, MODEL_ENGINES, loadEngine } from '../engines'
 import { PROPOSE_PACK_TOOL } from '../engines/contract'
 import { CONTINUATION, withDelegation } from '../delegation'
 import { DELEGATE_TOOL, readReport, validDelegatedTask, type DelegatedTask, type ReportKind } from '../delegationContract'
-import { validDelegationFigures, validSourceFigures, type ExecutionCheckpoint } from '../execution/state'
+import { readExecution, validDelegationFigures, validSourceFigures, type ExecutionCheckpoint } from '../execution/state'
 import { ExecutionController } from '../execution/controller'
 import { ChatContext, INDEX_NOTICE, INDEX_SOURCE } from '../context/chat'
 import { CLOSING, OPENING, unframeData } from '../framing'
@@ -108,6 +108,7 @@ import { ALREADY_LOADED_CRITIC_NOTE, LOAD_SKILL, SKILLS_HEADER, SKILL_CLOSING, S
 import compactionSummaryVector from '../../../contract/vectors/compaction/summary.json'
 import compactionIndexVector from '../../../contract/vectors/compaction/index.json'
 import compactionCheckpointVector from '../../../contract/vectors/compaction/checkpoint.json'
+import compactionIndexCheckpointVector from '../../../contract/vectors/compaction/index-checkpoint.json'
 import compactionRefusedVector from '../../../contract/vectors/compaction/refused.json'
 import runEventSchema from '../../../contract/schemas/run-event.json'
 import { argumentProblem } from '../sourceArguments'
@@ -2297,6 +2298,7 @@ const compactionSession=(compaction:'index'|'summary',compactor?:ContextInput['c
 })
 function contextCompactionChecks(){
  it('16 · index is byte-identical to the pre-ADR deterministic compaction',async()=>{
+  expect(readExecution(compactionIndexCheckpointVector.items[0])?.compaction).toEqual({mode:'index',summaries:[]})
   const held=new SessionContext(compactionSession('index'))
   held.marker='0123456789abcdef0123456789abcdef'
   const projected=await held.messages(compactionIndexHistory(),'host',[])

@@ -104,19 +104,19 @@
       "properties": {
         "low": {
           "type": "string",
-          "minLength": 1
+          "pattern": "^(?:0|[1-9][0-9]*|minimal|low|medium|high)$"
         },
         "medium": {
           "type": "string",
-          "minLength": 1
+          "pattern": "^(?:0|[1-9][0-9]*|minimal|low|medium|high)$"
         },
         "high": {
           "type": "string",
-          "minLength": 1
+          "pattern": "^(?:0|[1-9][0-9]*|minimal|low|medium|high)$"
         }
       },
       "additionalProperties": false,
-      "description": "Settings for the family's fallback dialect: Anthropic enabled token budgets or Gemini thinking levels. The encoder reads the normalized tier's string."
+      "description": "Settings for the family's fallback dialect: integer strings for Anthropic enabled token budgets or Gemini thinking levels. Numeric spellings are integers only. The encoder reads the normalized tier's string."
     }
   },
   "dependentRequired": {

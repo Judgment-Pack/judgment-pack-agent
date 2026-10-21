@@ -311,7 +311,7 @@ Open: a member the schema does not name is accepted.
 | `ran` | yes | boolean |  |
 | `reason` | yes | `provenance.json $defs/criticReason` |  |
 | `reasoning` |  | `tool-offer.json $defs/criticReasoning` |  |
-| `trigger` |  | enum `cases`, `changes-existing`, `model-asked` |  |
+| `trigger` |  | enum `model-asked`, `cases`, `changes-existing` |  |
 
 ### `critique`
 

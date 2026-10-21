@@ -98,6 +98,10 @@ func compactionChecks(ctx context.Context) ([]Finding, error) {
 	if err != nil {
 		return nil, err
 	}
+	indexCheckpointVector, err := readCompactionVector("index-checkpoint")
+	if err != nil {
+		return nil, err
+	}
 	refusedVector, err := readCompactionVector("refused")
 	if err != nil {
 		return nil, err
@@ -120,6 +124,14 @@ func compactionChecks(ctx context.Context) ([]Finding, error) {
 	}
 	var checkpointExpected contract.Checkpoint
 	if err := json.Unmarshal(checkpointVector.Items[0], &checkpointExpected); err != nil {
+		return nil, err
+	}
+	indexCheckpointValue, err := runcontext.ParseJSON(indexCheckpointVector.Items[0])
+	if err != nil {
+		return nil, err
+	}
+	indexCheckpoint, err := runcontext.ReadExecution(indexCheckpointValue)
+	if err != nil {
 		return nil, err
 	}
 	root, err := RepositoryRoot()
@@ -177,6 +189,9 @@ func compactionChecks(ctx context.Context) ([]Finding, error) {
 	}
 	out = append(out, f.list...)
 	f = &findings{check: "16 index"}
+	if indexCheckpoint.Compaction == nil || indexCheckpoint.Compaction.Mode != "index" || len(indexCheckpoint.Compaction.Summaries) != 0 {
+		f.fail("index checkpoint vector was not read with its compaction report")
+	}
 	indexSession := compactionSession(nil)
 	indexSession.Policy["compaction"] = "index"
 	indexed, indexErr := runcontext.ContextualSession(ctx, indexSession)

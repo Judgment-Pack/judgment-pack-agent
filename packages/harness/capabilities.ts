@@ -206,8 +206,10 @@ export function readCapabilities(value: unknown): ModelCapabilities {
   }
   if(value.fallbackTiers!==undefined){
     if(!object(value.fallbackTiers))refuse('fallbackTiers must be an object')
-    closed(value.fallbackTiers,['low','medium','high'],'fallbackTiers')
-    for(const tier of ['low','medium','high'])if(typeof value.fallbackTiers[tier]!=='string'||!value.fallbackTiers[tier])refuse('fallbackTiers must name every setting')
+    const fallbackTiers=value.fallbackTiers as Record<string,unknown>
+    closed(fallbackTiers,['low','medium','high'],'fallbackTiers')
+    for(const tier of ['low','medium','high'])if(typeof fallbackTiers[tier]!=='string'||!fallbackTiers[tier])refuse('fallbackTiers must name every setting')
+    if(value.family==='anthropic'&&['low','medium','high'].some(tier=>!/^(?:0|[1-9][0-9]*)$/.test(String(fallbackTiers[tier]))))refuse('fallbackTiers must name integer token budgets')
   }
   const window = value.contextWindowTokens
   const output = value.outputTokens

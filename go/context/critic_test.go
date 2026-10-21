@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -91,6 +92,18 @@ func TestTheDecisionIsTheVectors(t *testing.T) {
 				t.Errorf("%s, %s: %v", name, held.Name, err)
 			}
 		}
+	}
+}
+
+func TestTheTriggerOrderIsTheContract(t *testing.T) {
+	schema := readJSON(t, "contract/schemas/provenance.json")
+	values := schema.Get("$defs").Get("criticDecision").Get("properties").Get("trigger").Get("enum").Items()
+	want := make([]string, len(values))
+	for at, value := range values {
+		want[at] = value.Str()
+	}
+	if !slices.Equal(CriticTriggers, want) {
+		t.Fatalf("critic trigger order is %v; contract order is %v", CriticTriggers, want)
 	}
 }
 

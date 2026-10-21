@@ -435,6 +435,11 @@ class VectorTests(unittest.TestCase):
             set(self.schemas["capability.json"]["properties"]),
         )
 
+    def test_fallback_numeric_settings_are_integer_strings(self):
+        vector = self.vectors["providers/fallback-tiers.json"]
+        check = validator(self.schemas, vector["schema"])
+        self.assertNotEqual(problems(check, [vector["refused"]]), [])
+
     def test_the_critic_reads_within_the_ceiling_and_runs_only_where_asked(self):
         # agent#10: the critic's allow-list is four of the ceiling's reads and two of the harness's
         # reserved context readers (review row 6). ADR-0010: the table's default is auto, the
@@ -875,6 +880,7 @@ class VectorTests(unittest.TestCase):
             ("tool-offer.json", ["properties", "taskClass"]),
             ("run-event.json", ["properties", "type"]),
             ("failure.json", ["$defs", "code"]),
+            ("provenance.json", ["$defs", "compactionReport", "properties", "mode"]),
         ]
         # ADR-0012: each provider family and relation must be carried, including endpoint overrides.
         enums += [
