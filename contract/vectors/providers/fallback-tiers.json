@@ -1,0 +1,165 @@
+{
+  "description": "Hand-authored review-round-two cases for ADR-0012 (#117).",
+  "schema": "capability.json#/$defs/endpointCapabilities",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/providers.test.ts"
+    ]
+  },
+  "items": [
+    {
+      "family": "anthropic"
+    },
+    {
+      "family": "gemini"
+    },
+    {
+      "family": "anthropic",
+      "fallbackTiers": {
+        "low": "2000",
+        "medium": "6000",
+        "high": "12000"
+      }
+    },
+    {
+      "family": "gemini",
+      "fallbackTiers": {
+        "low": "minimal",
+        "medium": "low",
+        "high": "medium"
+      }
+    }
+  ],
+  "cases": [
+    {
+      "record": 0,
+      "tier": "low",
+      "members": {
+        "thinking": {
+          "type": "enabled",
+          "budget_tokens": 4000
+        },
+        "max_tokens": 8096
+      }
+    },
+    {
+      "record": 0,
+      "tier": "medium",
+      "members": {
+        "thinking": {
+          "type": "enabled",
+          "budget_tokens": 8000
+        },
+        "max_tokens": 12096
+      }
+    },
+    {
+      "record": 0,
+      "tier": "high",
+      "members": {
+        "thinking": {
+          "type": "enabled",
+          "budget_tokens": 16000
+        },
+        "max_tokens": 20096
+      }
+    },
+    {
+      "record": 1,
+      "tier": "low",
+      "members": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "low"
+        }
+      }
+    },
+    {
+      "record": 1,
+      "tier": "medium",
+      "members": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "medium"
+        }
+      }
+    },
+    {
+      "record": 1,
+      "tier": "high",
+      "members": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "high"
+        }
+      }
+    },
+    {
+      "record": 2,
+      "tier": "low",
+      "members": {
+        "thinking": {
+          "type": "enabled",
+          "budget_tokens": 2000
+        },
+        "max_tokens": 6096
+      }
+    },
+    {
+      "record": 2,
+      "tier": "medium",
+      "members": {
+        "thinking": {
+          "type": "enabled",
+          "budget_tokens": 6000
+        },
+        "max_tokens": 10096
+      }
+    },
+    {
+      "record": 2,
+      "tier": "high",
+      "members": {
+        "thinking": {
+          "type": "enabled",
+          "budget_tokens": 12000
+        },
+        "max_tokens": 16096
+      }
+    },
+    {
+      "record": 3,
+      "tier": "low",
+      "members": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "minimal"
+        }
+      }
+    },
+    {
+      "record": 3,
+      "tier": "medium",
+      "members": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "low"
+        }
+      }
+    },
+    {
+      "record": 3,
+      "tier": "high",
+      "members": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "medium"
+        }
+      }
+    }
+  ]
+}

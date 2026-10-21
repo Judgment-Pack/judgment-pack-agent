@@ -35,7 +35,12 @@
         "medium": "high",
         "high": "xhigh"
       },
-      "cacheBreakpoints": true
+      "cacheBreakpoints": true,
+      "fallbackTiers": {
+        "low": "4000",
+        "medium": "8000",
+        "high": "16000"
+      }
     }
   ]
 }

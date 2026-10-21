@@ -5,7 +5,7 @@ import { AIFailureError } from './failures'
 export type PolicyConnection = {model: import('./engine').AssistantSession['model']} | {agent: import('./engine').AgentAssistantSession['agent']}
 export type ProviderFamily = 'openai' | 'anthropic' | 'gemini' | 'codex'
 export interface ProviderRecord { connection: string; family: ProviderFamily }
-export interface CrossProvider { role: string; relation: 'same' | 'other'; author: ProviderRecord; provider: ProviderRecord }
+export interface CrossProvider { continued?: boolean; role: string; relation: 'same' | 'other'; author: ProviderRecord; provider: ProviderRecord }
 export type PolicyLayerName = 'run' | 'project' | 'table'
 export type TaskClass = 'routine' | 'material' | 'boundary'
 export interface PolicyRole { model?: string; reasoning?: string; provider?: string }
@@ -29,6 +29,7 @@ export interface PolicyHost {
   paceUsed?: PaceUsed
 }
 export class PolicyRefusal extends AIFailureError {
+  checkpoint?: import('./execution/state').ExecutionCheckpoint
   constructor(readonly member: string, readonly layer: PolicyLayerName, detail: string, pace = false) {
     super({version: 1, code: pace ? 'pace exceeded' : 'configuration', source: 'context', outcome: 'not-started', detail: `${member} (${layer}): ${detail}`})
   }

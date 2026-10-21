@@ -72,12 +72,15 @@ func providerFindings(ctx context.Context, server *Server, inner Adapter, agent 
 		authorFamily = "codex"
 	}
 	var out []Finding
-	families := []string{"anthropic", "gemini"}
+	families := []string{"anthropic", "gemini", "openai"}
 	if agent {
 		families = []string{"anthropic"}
 	}
 	for _, family := range families {
 		for _, mode := range []string{"other", "reviewer", "refused", "child", "subagent"} {
+			if family == "openai" && mode != "reviewer" {
+				continue
+			}
 			child := mode == "child" || mode == "subagent"
 			name := "provider"
 			if mode == "refused" || child {
@@ -126,7 +129,11 @@ func providerFindings(ctx context.Context, server *Server, inner Adapter, agent 
 			if family == "gemini" {
 				tiers = &contract.CapabilityEndpointCapabilitiesTiers{Low: "1024", Medium: "2048", High: "4096"}
 			}
-			binding := adapter.PolicyConnection{ModelName: "review-model", Wire: family, Capabilities: &contract.CapabilityEndpointCapabilities{Tiers: tiers}, Model: func(_ context.Context, _ string, r relay.Request) (*http.Response, error) {
+			wireFamily := family
+			if family == "openai" {
+				wireFamily = "openai-compatible"
+			}
+			binding := adapter.PolicyConnection{ModelName: "review-model", Wire: wireFamily, Capabilities: &contract.CapabilityEndpointCapabilities{Tiers: tiers}, Model: func(_ context.Context, _ string, r relay.Request) (*http.Response, error) {
 				record("reviewer", []byte(r.Body))
 				return providerAnswer(family, file.Findings, false), nil
 			}}
@@ -223,7 +230,7 @@ func providerFindings(ctx context.Context, server *Server, inner Adapter, agent 
 				recorded := false
 				if checkpoint != nil {
 					for _, row := range checkpoint.CrossProvider {
-						if row.Role == "critic" && row.Relation == "other" && row.Provider.Family == family {
+						if row.Role == "critic" && row.Relation == map[bool]string{true: "same", false: "other"}[family == authorFamily] && row.Provider.Family == family {
 							recorded = true
 						}
 					}
@@ -235,6 +242,10 @@ func providerFindings(ctx context.Context, server *Server, inner Adapter, agent 
 					if agent {
 						if bodies[1]["effort"] != "medium" {
 							f.fail("agent effort map ignored")
+						}
+					} else if family == "openai" {
+						if bodies[0]["reasoning_effort"] != "xhigh" || bodies[1]["reasoning_effort"] != "high" {
+							f.fail("same-family critic ignored its connection tier override")
 						}
 					} else if family == "gemini" {
 						config, _ := bodies[1]["generationConfig"].(map[string]any)

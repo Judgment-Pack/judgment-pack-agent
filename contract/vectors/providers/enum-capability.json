@@ -1,0 +1,30 @@
+{
+  "description": "Hand-authored review-round-two cases for ADR-0012 (#117).",
+  "schema": "capability.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/providers.test.ts"
+    ]
+  },
+  "items": [
+    {
+      "family": "codex",
+      "nativeToolCalls": true,
+      "parallelToolCalls": false,
+      "vision": false,
+      "reasoning": {
+        "kind": "openai-effort"
+      },
+      "streamingQuirks": {
+        "reasoningField": null,
+        "wholeJsonAnswer": false
+      },
+      "toolSchemas": "json-schema"
+    }
+  ],
+  "family": "openai-compatible"
+}

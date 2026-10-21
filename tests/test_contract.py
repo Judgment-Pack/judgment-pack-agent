@@ -84,6 +84,8 @@ RELEASE_REVIEWED_DEFS = [
     ("tool-offer.json", "skillDeclaration"), ("tool-offer.json", "skillCatalogueEntry"), ("tool-offer.json", "loadSkill"),
     ("tool-offer.json", "unloadSkill"), ("tool-offer.json", "loadedSkill"), ("run-event.json", "skill_loaded"),
     ("run-event.json", "skill_unloaded"), ("provenance.json", "skillLoad"), ("skill.json", "resource"),
+    # ADR-0012: provider records and connection capability overrides.
+    ("provenance.json", "provider"), ("provenance.json", "crossProvider"),
     # ADR-0010: the critic's switch.
     ("tool-offer.json", "criticMode"), ("tool-offer.json", "criticReasoning"), ("tool-offer.json", "requestReview"),
     ("provenance.json", "criticReason"), ("provenance.json", "criticDecision"), ("run-event.json", "critic_decided"),
@@ -741,6 +743,13 @@ class VectorTests(unittest.TestCase):
         for name in ("checkpoint.json", "delegated-task.json", "tool-call.json", "tool-result.json", "skill.json", "tool-offer.json", "policy.json"):
             root = {key: value for key, value in schemas_[name].items() if key != "$defs"}
             targets += [(name, path) for path in members(root, [])]
+        # Scope capability records and overrides to members introduced by ADR-0012.
+        for prefix in ([], ["$defs", "endpointCapabilities"]):
+            for member in ("family", "tiers", "fallbackTiers", "cacheBreakpoints"):
+                targets.append(("capability.json", prefix + ["properties", member]))
+        for member in ("tiers", "fallbackTiers"):
+            for tier in ("low", "medium", "high"):
+                targets.append(("capability.json", ["properties", member, "properties", tier]))
         self.assertGreater(len(targets), 250)
         missing = [f"{name} {'/'.join(str(step) for step in path)}" for name, path in targets if not carried(name, path)]
         self.assertEqual(missing, [], "members no vector carries")
@@ -793,6 +802,13 @@ class VectorTests(unittest.TestCase):
             ("tool-offer.json", ["properties", "taskClass"]),
             ("run-event.json", ["properties", "type"]),
             ("failure.json", ["$defs", "code"]),
+        ]
+        # ADR-0012: each provider family and relation must be carried, including endpoint overrides.
+        enums += [
+            ("capability.json", ["properties", "family"]),
+            ("capability.json", ["$defs", "endpointCapabilities", "properties", "family"]),
+            ("provenance.json", ["$defs", "provider", "properties", "family"]),
+            ("provenance.json", ["$defs", "crossProvider", "properties", "relation"]),
         ]
         # Existing schemas: this ADR adds these values, not new obligations for
         # the unrelated event and failure values from earlier releases.

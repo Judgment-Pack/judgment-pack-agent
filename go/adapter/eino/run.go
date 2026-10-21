@@ -163,7 +163,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 	r.sc.RecordProvider("author")
 	r.emitAll(r.boundary.Open())
 
-	r.slot = wire.OpenThinking(wire.ThinkingTier(orOff(local.Thinking)), r.family, &capabilities.Reasoning, capabilities.Tiers)
+	r.slot = wire.OpenThinking(wire.ThinkingTier(orOff(local.Thinking)), r.family, &capabilities.Reasoning, capabilities.Tiers, capabilities.FallbackTiers)
 	r.placement = statePlacement(r.family, wire.ThinkingTier(orOff(local.Thinking)), capabilities)
 	r.listener = &listener{r: r}
 

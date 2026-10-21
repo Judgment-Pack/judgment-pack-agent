@@ -295,7 +295,11 @@ func (b *Boundary) Failed(cause error) []contract.RunEvent {
 func FailedToOpen(cause error) []contract.RunEvent {
 	var policy *PolicyRefusal
 	if errors.As(cause, &policy) {
-		return []contract.RunEvent{policy.Event(), failure.Event(cause, "context"), {End: &contract.RunEventEnd{Type: "end"}}}
+		out := []contract.RunEvent{policy.Event()}
+		if policy.Checkpoint != nil {
+			out = append(out, contract.RunEvent{ExecutionCheckpoint: &contract.RunEventExecutionCheckpoint{Type: "execution_checkpoint", Checkpoint: *policy.Checkpoint}})
+		}
+		return append(out, failure.Event(cause, "context"), contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}})
 	}
 
 	if failure.IsCancelled(cause) {

@@ -58,6 +58,14 @@ for(const engine of [vercel,deepagents,codex])describe(`${engine.id==='codex'?'a
    if(process.env.CERTIFY_PROVIDERS)appendFileSync(process.env.CERTIFY_PROVIDERS,JSON.stringify({engine:engine.id,author:engine.id==='codex'?'codex':'openai',critic:family,policy:choice,requests:requests.length,checks:events.find(e=>e.type==='critique')?.checks.length??0})+'\n')
   }
  })
+ it('same-family critic reopens its slot with the connection override at the same tier',async()=>{
+  if(engine.id==='codex')return
+  const {events,requests}=await play(engine,'reviewer',true,false,'openai')
+  expect(events.filter(e=>e.type==='error')).toEqual([])
+  expect(requests.map(r=>r.connection)).toEqual(['author','reviewer'])
+  expect(requests[0]!.body.reasoning_effort).toBe('xhigh')
+  expect(requests[1]!.body.reasoning_effort).toBe('high')
+ })
  it('12 other with one family is refused before dispatch',async()=>{
   const {events,requests}=await play(engine,'other',false)
   expect(requests).toEqual([])

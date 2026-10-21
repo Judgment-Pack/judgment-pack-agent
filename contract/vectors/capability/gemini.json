@@ -36,7 +36,12 @@
         "medium": "8192",
         "high": "24576"
       },
-      "cacheBreakpoints": false
+      "cacheBreakpoints": false,
+      "fallbackTiers": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high"
+      }
     }
   ]
 }

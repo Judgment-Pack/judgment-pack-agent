@@ -790,9 +790,10 @@ type Capability struct {
 	Family              *string                   `json:"family,omitzero"`
 	Tiers               *CapabilityTiers          `json:"tiers,omitzero"`
 	CacheBreakpoints    *bool                     `json:"cacheBreakpoints,omitzero"`
+	FallbackTiers       *CapabilityFallbackTiers  `json:"fallbackTiers,omitzero"`
 }
 
-var capabilityMembers = []string{"contextWindowTokens", "outputTokens", "nativeToolCalls", "parallelToolCalls", "vision", "reasoning", "streamingQuirks", "toolSchemas", "statePlacement", "strictAlternation", "family", "tiers", "cacheBreakpoints"}
+var capabilityMembers = []string{"contextWindowTokens", "outputTokens", "nativeToolCalls", "parallelToolCalls", "vision", "reasoning", "streamingQuirks", "toolSchemas", "statePlacement", "strictAlternation", "family", "tiers", "cacheBreakpoints", "fallbackTiers"}
 
 // UnmarshalJSON decodes a Capability object and refuses a member the closed schema does not name.
 func (v *Capability) UnmarshalJSON(data []byte) error {
@@ -832,9 +833,10 @@ type CapabilityEndpointCapabilities struct {
 	Family              *string                              `json:"family,omitzero"`
 	Tiers               *CapabilityEndpointCapabilitiesTiers `json:"tiers,omitzero"`
 	CacheBreakpoints    *bool                                `json:"cacheBreakpoints,omitzero"`
+	FallbackTiers       *CapabilityFallbackTiers             `json:"fallbackTiers,omitzero"`
 }
 
-var capabilityEndpointCapabilitiesMembers = []string{"contextWindowTokens", "outputTokens", "nativeToolCalls", "parallelToolCalls", "vision", "reasoning", "streamingQuirks", "toolSchemas", "statePlacement", "strictAlternation", "family", "tiers", "cacheBreakpoints"}
+var capabilityEndpointCapabilitiesMembers = []string{"contextWindowTokens", "outputTokens", "nativeToolCalls", "parallelToolCalls", "vision", "reasoning", "streamingQuirks", "toolSchemas", "statePlacement", "strictAlternation", "family", "tiers", "cacheBreakpoints", "fallbackTiers"}
 
 // UnmarshalJSON decodes a CapabilityEndpointCapabilities object and refuses a member the closed schema does not name.
 func (v *CapabilityEndpointCapabilities) UnmarshalJSON(data []byte) error {
@@ -880,6 +882,36 @@ func (v *CapabilityEndpointCapabilitiesTiers) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a CapabilityEndpointCapabilitiesTiers object.
 func (v CapabilityEndpointCapabilitiesTiers) MarshalJSON() ([]byte, error) {
 	type plain CapabilityEndpointCapabilitiesTiers
+	return encodeObject(plain(v), nil)
+}
+
+// From capability.json#/properties/fallbackTiers. Settings for the family's fallback dialect:
+// Anthropic enabled token budgets or Gemini thinking levels. The encoder reads the normalized
+// tier's string.
+type CapabilityFallbackTiers struct {
+	Low    string `json:"low"`
+	Medium string `json:"medium"`
+	High   string `json:"high"`
+}
+
+var capabilityFallbackTiersMembers = []string{"low", "medium", "high"}
+
+// UnmarshalJSON decodes a CapabilityFallbackTiers object and refuses a member the closed schema does not name.
+func (v *CapabilityFallbackTiers) UnmarshalJSON(data []byte) error {
+	type plain CapabilityFallbackTiers
+	var p plain
+	extra, err := decodeObject(data, &p, capabilityFallbackTiersMembers, true)
+	if err != nil {
+		return errorf("CapabilityFallbackTiers: %w", err)
+	}
+	*v = CapabilityFallbackTiers(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CapabilityFallbackTiers object.
+func (v CapabilityFallbackTiers) MarshalJSON() ([]byte, error) {
+	type plain CapabilityFallbackTiers
 	return encodeObject(plain(v), nil)
 }
 
@@ -3063,13 +3095,14 @@ func (v ProvenanceCriticFigures) MarshalJSON() ([]byte, error) {
 
 // From provenance.json#/$defs/crossProvider.
 type ProvenanceCrossProvider struct {
-	Role     string             `json:"role"`
-	Relation string             `json:"relation"`
-	Author   ProvenanceProvider `json:"author"`
-	Provider ProvenanceProvider `json:"provider"`
+	Role      string             `json:"role"`
+	Relation  string             `json:"relation"`
+	Author    ProvenanceProvider `json:"author"`
+	Provider  ProvenanceProvider `json:"provider"`
+	Continued *bool              `json:"continued,omitzero"`
 }
 
-var provenanceCrossProviderMembers = []string{"role", "relation", "author", "provider"}
+var provenanceCrossProviderMembers = []string{"role", "relation", "author", "provider", "continued"}
 
 // UnmarshalJSON decodes a ProvenanceCrossProvider object and refuses a member the closed schema does not name.
 func (v *ProvenanceCrossProvider) UnmarshalJSON(data []byte) error {

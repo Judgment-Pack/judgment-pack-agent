@@ -120,3 +120,22 @@ without a provider remain readable; newly emitted critique and task records carr
 one. Model and agent bindings remain distinct capabilities: a model engine refuses
 an agent binding, and an agent engine refuses a model binding before dispatch.
 The agent host can supply provider-managed invocations from another family.
+
+### Review round two: continuation and fallback dialects
+
+Resume admission compares the saved provider families with the current bindings,
+even when connection IDs are unchanged. A cross-family continuation emits `policy
+refused` before dispatch. Its stopped checkpoint retains the saved identities and
+marks all saved `crossProvider` rows `continued: false`.
+
+A selected critic binding opens its thinking slot from that connection's capabilities,
+including when its family and tier equal the author's. The identical binding and tier
+retain learned refusals.
+
+The optional capability member `fallbackTiers` maps `low`, `medium`, and `high`
+to the fallback dialect's settings. Anthropic enabled defaults to token budgets
+`4000`, `8000`, `16000`; Gemini level defaults to `low`, `medium`, `high`.
+Connection overrides replace this map just as they replace `tiers`. Both fallback
+encoders read it; there is no fallback exception. Off retains its existing omission
+or minimum-setting behavior. Shared vectors specify all three default and overridden
+settings for both dialects in both implementations.

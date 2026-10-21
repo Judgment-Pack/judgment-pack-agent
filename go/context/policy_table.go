@@ -38,6 +38,7 @@ type ResolvedPolicy struct {
 type PolicyRefusal struct {
 	Member, Layer, Detail string
 	Pace                  bool
+	Checkpoint            *contract.Checkpoint
 }
 
 func (e *PolicyRefusal) Error() string {

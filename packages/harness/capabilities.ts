@@ -89,6 +89,8 @@ export interface StreamingQuirks {
 export interface ModelCapabilities {
   family?: import('./policy').ProviderFamily
   tiers?: Record<'low'|'medium'|'high',string>
+  /** Settings for the family's fallback thinking dialect, with the same normalized tiers. */
+  fallbackTiers?: Record<'low'|'medium'|'high',string>
   cacheBreakpoints?: boolean
   /** The model's window in tokens; with `outputTokens`, replaces the budget table's. */
   contextWindowTokens?: number
@@ -146,6 +148,7 @@ export const FAMILY_CAPABILITIES: Readonly<Record<EndpointKind, Readonly<ModelCa
   }),
   anthropic: Object.freeze({
     family: 'anthropic' as const, tiers: Object.freeze({"low": "low", "medium": "high", "high": "xhigh"}), cacheBreakpoints: true,
+    fallbackTiers: Object.freeze({low:'4000',medium:'8000',high:'16000'}),
     nativeToolCalls: true,
     parallelToolCalls: true,
     vision: true,
@@ -154,6 +157,7 @@ export const FAMILY_CAPABILITIES: Readonly<Record<EndpointKind, Readonly<ModelCa
     toolSchemas: 'json-schema' as const
   }),
   gemini: Object.freeze({
+    fallbackTiers: Object.freeze({low:'low',medium:'medium',high:'high'}),
     family: 'gemini' as const, tiers: Object.freeze({"low": "4096", "medium": "8192", "high": "24576"}), cacheBreakpoints: false,
     nativeToolCalls: true,
     parallelToolCalls: true,
@@ -167,7 +171,7 @@ export const FAMILY_CAPABILITIES: Readonly<Record<EndpointKind, Readonly<ModelCa
 /** Every member a record may carry, and the whole of them. The contract's `capability.json` properties. */
 export const CAPABILITY_MEMBERS: readonly (keyof ModelCapabilities)[] = [
   'contextWindowTokens', 'outputTokens', 'nativeToolCalls', 'parallelToolCalls', 'vision',
-  'reasoning', 'streamingQuirks', 'toolSchemas', 'statePlacement', 'strictAlternation', 'family', 'tiers', 'cacheBreakpoints'
+  'reasoning', 'streamingQuirks', 'toolSchemas', 'statePlacement', 'strictAlternation', 'family', 'tiers', 'fallbackTiers', 'cacheBreakpoints'
 ]
 
 const object = (value: unknown): value is Record<string, unknown> =>
@@ -199,6 +203,11 @@ export function readCapabilities(value: unknown): ModelCapabilities {
     if(!object(value.tiers))refuse('tiers must be an object')
     closed(value.tiers,['low','medium','high'],'tiers')
     for(const tier of ['low','medium','high'])if(typeof value.tiers[tier]!=='string'||!value.tiers[tier])refuse('tiers must name every setting')
+  }
+  if(value.fallbackTiers!==undefined){
+    if(!object(value.fallbackTiers))refuse('fallbackTiers must be an object')
+    closed(value.fallbackTiers,['low','medium','high'],'fallbackTiers')
+    for(const tier of ['low','medium','high'])if(typeof value.fallbackTiers[tier]!=='string'||!value.fallbackTiers[tier])refuse('fallbackTiers must name every setting')
   }
   const window = value.contextWindowTokens
   const output = value.outputTokens

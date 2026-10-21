@@ -857,6 +857,12 @@
       {
         "check": "12 reuse never relabels another family result",
         "reason": "TypeScript chat-cache regression; Go reuseKey includes the same connection and family fields, with the delegated provider tests covering dispatch and records."
+      },
+      {
+        "check": "same-family critic reopens its slot with the connection override at the same tier",
+        "go": [
+          "12 provider"
+        ]
       }
     ],
     "additionalSources": [

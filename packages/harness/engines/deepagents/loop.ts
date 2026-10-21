@@ -898,7 +898,6 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
       recording = recorder
       toolsClosed = false
       context.beginCriticPhase()
-      const authorFamily=session.model.family
       const criticBinding = context.connection('critic')
       if(criticBinding && 'model' in criticBinding){
         session={...session,model:{...criticBinding.model,call:session.model.call}}
@@ -907,11 +906,10 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
         placement=statePlacement(session.model.family,session.thinking.tier,capabilities)
       }
       const before = { used: context.execution.state.used, rows: (context.execution.state.completions ?? []).length }
-      // ADR-0010: the critic's tier, at least the author's unless the host lowered it: a tier other than
-      // the author's opens a slot of its own, whose members every critic request carries.
-      // A decision with no tier sends the critic none: off.
+      // A different critic binding owns its slot, even at the author's family and tier.
+      // The identical binding retains learned refusals; no decision tier means off.
       const criticTier = (decided.reasoning ?? 'off') as ThinkingTier
-      if (criticTier !== session.thinking.tier || authorFamily !== session.model.family) {
+      if (criticTier !== session.thinking.tier || criticBinding !== context.connection('author')) {
         slot = openThinking({ ...session, thinking: normalize(criticTier, session.model.family) }, capabilities.reasoning)
         tier = slot.members()
         context.reserveOutput(tier?.max_tokens)
@@ -936,7 +934,7 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
         criticMessages = [new HumanMessage(await context.prompt(criticMessage(session.testPrompt, proposal.document, context.criticCases), criticSystem, schemas))]
         criticHeld = criticMessages
         criticModelId = context.models(id).critic
-        const criticModel = criticModelId === session.model.model && authorFamily === session.model.family ? model : relayModel(criticModelId)
+        const criticModel = criticModelId === session.model.model && !criticBinding ? model : relayModel(criticModelId)
         const criticDeclarations = nativeTools
           ? declared([...session.hostTools, ...session.tools].filter((tool) => criticOffered.has(tool.name)).map((tool) => ({ name: tool.name, description: tool.description, schema: schemaOf(tool) })))
           : []

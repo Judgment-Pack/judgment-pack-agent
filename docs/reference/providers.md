@@ -23,6 +23,15 @@ Every role selects a host connection through models.<role>.provider: same, other
 | gemini | `4096` | `8192` | `24576` |
 | codex | `low` | `medium` | `high` |
 
+## Fallback tier map
+
+| Family | low | medium | high |
+| --- | --- | --- | --- |
+| anthropic | `4000` | `8000` | `16000` |
+| gemini | `low` | `medium` | `high` |
+
+The optional fallbackTiers capability member supplies Anthropic enabled budgets and Gemini levels. Connection overrides apply to this map on every fallback request. A different critic binding opens its slot using the selected connection, even at the author’s family and tier; the identical binding and tier retain learned refusals. Resume refuses a changed family before dispatch and retains saved crossProvider rows with continued: false in a stopped checkpoint.
+
 ## Wire compatibility
 
 | Family | Cache breakpoints | Thinking | Tool schemas narrowed | Images |

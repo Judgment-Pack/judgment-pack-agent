@@ -774,6 +774,8 @@ async function providersPage(page) {
  page.schema('capability.json')
  page.add('Every role selects a host connection through models.<role>.provider: same, other, or a connected ID. The package refuses an unavailable provider before any request. Cross-family failover is refused because prefix and cache do not carry.',
  '## Tier map', table(['Family','low','medium','high'], Object.values(records).map(r=>[r.family,...['low','medium','high'].map(t=>code(r.tiers[t]))])),
+ '## Fallback tier map', table(['Family','low','medium','high'],Object.values(records).filter(r=>r.fallbackTiers).map(r=>[r.family,...['low','medium','high'].map(t=>code(r.fallbackTiers[t]))])),
+ 'The optional fallbackTiers capability member supplies Anthropic enabled budgets and Gemini levels. Connection overrides apply to this map on every fallback request. A different critic binding opens its slot using the selected connection, even at the author’s family and tier; the identical binding and tier retain learned refusals. Resume refuses a changed family before dispatch and retains saved crossProvider rows with continued: false in a stopped checkpoint.',
  '## Wire compatibility',table(['Family','Cache breakpoints','Thinking','Tool schemas narrowed','Images'],Object.values(records).map(r=>[r.family,r.cacheBreakpoints,r.reasoning.kind,r.toolSchemas==='gemini-subset',r.vision])),
  'The host may override a connection’s tiers and endpoint capabilities. Model loops retain off/on/ultra as their existing vocabulary; on uses medium and ultra uses high. Agent capability tiers are passed by their host binding. The matrix describes the default model wires, not the properties of every model served behind them.')
 }

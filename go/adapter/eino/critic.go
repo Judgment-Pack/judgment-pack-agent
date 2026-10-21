@@ -81,9 +81,8 @@ func planUnfinished(plan *runcontext.Value) bool {
 // did not finish leaves on the proposal.
 func (t *turnState) critic(ctx context.Context, proposal turn.Proposal, tier string) (*turn.Critique, *contract.RunEventProposalNote, error) {
 	r := t.r
-	// ADR-0010: the critic's tier, at least the author's unless the host lowered it: a tier other than
-	// the author's opens a slot of its own, whose members every critic request carries. A decision with
-	// no tier sends the critic none: off.
+	// The selected critic's capabilities own its slot, including at the author's family and tier.
+	// A decision with no tier sends the critic none: off.
 	named, err := r.run.Models()
 	if err != nil {
 		return nil, nil, err
@@ -92,7 +91,6 @@ func (t *turnState) critic(ctx context.Context, proposal turn.Proposal, tier str
 	if err != nil {
 		return nil, nil, err
 	}
-	authorFamily := r.family
 	r.family = wire.EndpointKind(binding.Wire)
 	var override *wire.Value
 	if binding.Capabilities != nil {
@@ -106,8 +104,10 @@ func (t *turnState) critic(ctx context.Context, proposal turn.Proposal, tier str
 	r.nativeTools = r.capabilities.NativeToolCalls
 	r.placement = statePlacement(r.family, wire.ThinkingTier(orOff(tier)), r.capabilities)
 	tier = orOff(tier)
-	if tier != orOff(r.run.Thinking) || r.family != authorFamily {
-		r.slot = wire.OpenThinking(wire.ThinkingTier(tier), r.family, &r.capabilities.Reasoning, r.capabilities.Tiers)
+	// Preserve learned refusals only for the identical binding and tier.
+	bindingChanged := r.sc.Provider("critic").Connection != r.sc.Provider("author").Connection || binding.ModelName != r.run.ModelName
+	if tier != orOff(r.run.Thinking) || bindingChanged {
+		r.slot = wire.OpenThinking(wire.ThinkingTier(tier), r.family, &r.capabilities.Reasoning, r.capabilities.Tiers, r.capabilities.FallbackTiers)
 		r.tier = r.slot.Members()
 		if r.tier != nil {
 			if maximum := r.tier.Get("max_tokens"); maximum != nil {

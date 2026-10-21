@@ -90,6 +90,7 @@ type StreamingQuirks struct {
 type ModelCapabilities struct {
 	Family           string
 	Tiers            map[string]string
+	FallbackTiers    map[string]string
 	CacheBreakpoints bool
 	// ContextWindowTokens and OutputTokens come together, and replace the budget table's.
 	ContextWindowTokens *int
@@ -111,7 +112,7 @@ type ModelCapabilities struct {
 // in the order the contract's capability.json states them.
 var CapabilityMembers = []string{
 	"contextWindowTokens", "outputTokens", "nativeToolCalls", "parallelToolCalls", "vision",
-	"reasoning", "streamingQuirks", "toolSchemas", "statePlacement", "strictAlternation", "family", "tiers", "cacheBreakpoints",
+	"reasoning", "streamingQuirks", "toolSchemas", "statePlacement", "strictAlternation", "family", "tiers", "fallbackTiers", "cacheBreakpoints",
 }
 
 // WireReasoning is WIRE_REASONING: the reasoning kinds each wire speaks. A record that names
@@ -140,7 +141,7 @@ func FamilyCapabilities(family EndpointKind) *Value {
 		if family == Gemini {
 			low, medium, high = "4096", "8192", "24576"
 		}
-		return Obj(
+		result := Obj(
 			F("nativeToolCalls", Bool(true)),
 			F("parallelToolCalls", Bool(true)),
 			F("vision", Bool(vision)),
@@ -149,6 +150,12 @@ func FamilyCapabilities(family EndpointKind) *Value {
 			F("toolSchemas", Str(string(schemas))),
 			F("family", Str(f)), F("tiers", Obj(F("low", Str(low)), F("medium", Str(medium)), F("high", Str(high)))), F("cacheBreakpoints", Bool(family == Anthropic)),
 		)
+		if family == Anthropic {
+			result.Set("fallbackTiers", Obj(F("low", Str("4000")), F("medium", Str("8000")), F("high", Str("16000"))))
+		} else if family == Gemini {
+			result.Set("fallbackTiers", Obj(F("low", Str("low")), F("medium", Str("medium")), F("high", Str("high"))))
+		}
+		return result
 	}
 	switch family {
 	case Anthropic:
@@ -207,20 +214,27 @@ func ReadCapabilities(value *Value) (ModelCapabilities, error) {
 			return record, refuseCapabilities("unknown family")
 		}
 	}
-	if tiers := value.Get("tiers"); tiers != nil {
-		if !tiers.IsObject() {
-			return record, refuseCapabilities("tiers must be an object")
-		}
-		if err := closedMembers(tiers, []string{"low", "medium", "high"}, "tiers"); err != nil {
-			return record, err
-		}
-		record.Tiers = map[string]string{}
-		for _, tier := range []string{"low", "medium", "high"} {
-			v := tiers.Get(tier)
-			if !v.IsString() || v.Text() == "" {
-				return record, refuseCapabilities("tiers must name every setting")
+	for _, name := range []string{"tiers", "fallbackTiers"} {
+		if tiers := value.Get(name); tiers != nil {
+			if !tiers.IsObject() {
+				return record, refuseCapabilities("tiers must be an object")
 			}
-			record.Tiers[tier] = v.Text()
+			if err := closedMembers(tiers, []string{"low", "medium", "high"}, "tiers"); err != nil {
+				return record, err
+			}
+			settings := map[string]string{}
+			for _, tier := range []string{"low", "medium", "high"} {
+				v := tiers.Get(tier)
+				if !v.IsString() || v.Text() == "" {
+					return record, refuseCapabilities("tiers must name every setting")
+				}
+				settings[tier] = v.Text()
+			}
+			if name == "tiers" {
+				record.Tiers = settings
+			} else {
+				record.FallbackTiers = settings
+			}
 		}
 	}
 	if v := value.Get("cacheBreakpoints"); v != nil {
@@ -385,6 +399,9 @@ func (c ModelCapabilities) Value() *Value {
 	}
 	if c.Family != "" {
 		record.Set("cacheBreakpoints", Bool(c.CacheBreakpoints))
+	}
+	if c.FallbackTiers != nil {
+		record.Set("fallbackTiers", Obj(F("low", Str(c.FallbackTiers["low"])), F("medium", Str(c.FallbackTiers["medium"])), F("high", Str(c.FallbackTiers["high"]))))
 	}
 	if c.StatePlacement != "" {
 		record.Set("statePlacement", Str(string(c.StatePlacement)))

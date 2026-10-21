@@ -10,6 +10,8 @@ import v6 from '../../contract/vectors/providers/unavailable.json'
 import v7 from '../../contract/vectors/providers/critique.json'
 import v8 from '../../contract/vectors/providers/failover.json'
 import v9 from '../../contract/vectors/providers/tier-override.json'
+import fallback from '../../contract/vectors/providers/fallback-tiers.json'
+import type {ThinkingTier} from './host'
 import {openThinking,normalize} from './thinking'
 import {capabilitiesFor} from './capabilities'
 import {critiqueEvent} from './refutation'
@@ -55,4 +57,40 @@ describe('ADR-0012 provider boundary',()=>{
    expect(slot.members()?.[path]).toMatchObject(family==='anthropic'?{effort:want}:{thinkingBudget:want})
   }
  })
+})
+
+for(const c of fallback.cases)it(`fallback map ${c.record} ${c.tier}`,()=>{
+ const record=fallback.items[c.record]!
+ const family=record.family as 'anthropic'|'gemini'
+ const model={family,model:'test',call:async()=>new Response(),capabilities:{...record,family}}
+ const slot=openThinking({model,thinking:normalize(c.tier as ThinkingTier,family)},capabilitiesFor(model).reasoning)
+ expect(slot.refused(400,family==='anthropic'?'thinking':'thinkingBudget').kind).toBe('retry')
+ expect(slot.members()).toEqual(c.members)
+})
+
+import {contextualSession} from './context/session'
+import {managedContext} from './context/managed'
+import type {AssistantSession,AssistantEvent} from './engine'
+for(const role of ['author','critic','child.review'])it(`resume refuses a rebound ${role} before dispatch and preserves the report`,async()=>{
+ const model={family:'openai-compatible' as const,model:'connected',call:async()=>new Response()}
+ const session:AssistantSession={prompt:'Continue.',testPrompt:'Review.',tools:[],hostTools:[],callTool:async()=>({content:[]}),signal:new AbortController().signal,
+  model,thinking:normalize('high','openai-compatible'),policy:{models:{[role]:{provider:'saved'}}},policyConnections:{saved:{model}},
+  context:{currentRequest:{message:'Continue.',input:'Continue.'}}}
+ const ready=await contextualSession(session)
+ ready.context.recordProvider(role)
+ const saved=ready.context.execution.snapshot('stopped')
+ ready.context.close()
+ const resumed={...session,context:{...session.context,execution:saved},policyConnections:{saved:{model:{...model,family:'anthropic' as const}}}}
+ let dispatched=false
+ const events:AssistantEvent[]=[]
+ for await(const event of managedContext(resumed,async function*(){dispatched=true;yield {type:'end'} as const}))events.push(event)
+ expect(dispatched).toBe(false)
+ expect(events.find(e=>e.type==='guardrail')).toMatchObject({reason:'policy refused',tool:`models.${role}.provider`,detail:expect.stringContaining('cross-family continuation')})
+ const stopped=events.find(e=>e.type==='execution_checkpoint')?.checkpoint
+ expect(stopped?.status).toBe('stopped')
+ expect(stopped?.crossProvider).toEqual(saved.crossProvider!.map(row=>({...row,continued:false})))
+ expect(saved.crossProvider!.every(row=>row.continued===undefined)).toBe(true)
+ // Same-family continuation still opens.
+ const same=await contextualSession({...session,context:{...session.context,execution:saved}})
+ same.context.close()
 })

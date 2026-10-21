@@ -1,4 +1,4 @@
-import { capabilitiesFor } from './capabilities'
+import { capabilitiesFor, FAMILY_CAPABILITIES } from './capabilities'
 import { sourceMessage } from './host'
 /**
  * The thinking tier, normalized in the desk.
@@ -146,7 +146,7 @@ export const GEMINI_LEVEL: Readonly<Record<ThinkingTier, string>> = {
  * the SDK. The table says *what* the tier means; an engine says *where*, which
  * is the same division the other two families already keep.
  */
-export function wireFor(tier: ThinkingTier, dialect: ThinkingDialect, tiers?: Record<'low'|'medium'|'high',string>): WireThinking | null {
+export function wireFor(tier: ThinkingTier, dialect: ThinkingDialect, tiers?: Record<'low'|'medium'|'high',string>, fallbackTiers?: Record<'low'|'medium'|'high',string>): WireThinking | null {
   const geminiPath = 'generationConfig.thinkingConfig'
   if (tier === 'off') {
     // Off is omission on the two families that accept it as one, and a member
@@ -165,18 +165,22 @@ export function wireFor(tier: ThinkingTier, dialect: ThinkingDialect, tiers?: Re
     }
     return null
   }
-  const setting = tiers?.[tier === 'ultra' || tier === 'high' ? 'high' : tier === 'low' ? 'low' : 'medium']
-  const effort = setting ?? (tier === 'ultra' || tier === 'high' ? 'xhigh' : tier === 'low' ? 'low' : 'high')
+  const family = dialect.startsWith('gemini') ? 'gemini' : dialect.startsWith('anthropic') ? 'anthropic' : 'openai-compatible'
+  const defaults = FAMILY_CAPABILITIES[family]
+  const fallback = dialect === 'gemini-level' || dialect === 'anthropic-enabled'
+  const map = fallback ? fallbackTiers ?? defaults.fallbackTiers! : tiers ?? defaults.tiers!
+  const setting = map[tier === 'ultra' || tier === 'high' ? 'high' : tier === 'low' ? 'low' : 'medium']
+  const effort = setting
   switch (dialect) {
     case 'gemini-budget': {
       // `includeThoughts` is what makes the thought summaries arrive at all;
       // the budget is how deep they go. Both, or the tier asks for thinking
       // nobody can read.
-      const thinkingConfig = { includeThoughts: true, thinkingBudget: setting === undefined ? GEMINI_BUDGET[tier] : Number(setting) }
+      const thinkingConfig = { includeThoughts: true, thinkingBudget: Number(setting) }
       return { members: { thinkingConfig }, expect: { path: geminiPath, value: thinkingConfig } }
     }
     case 'gemini-level': {
-      const thinkingConfig = { includeThoughts: true, thinkingLevel: GEMINI_LEVEL[tier] }
+      const thinkingConfig = { includeThoughts: true, thinkingLevel: setting }
       return { members: { thinkingConfig }, expect: { path: geminiPath, value: thinkingConfig } }
     }
     case 'openai':
@@ -190,7 +194,7 @@ export function wireFor(tier: ThinkingTier, dialect: ThinkingDialect, tiers?: Re
         expect: { path: 'thinking', value: { type: 'adaptive' } }
       }
     case 'anthropic-enabled': {
-      const budget = tier === 'ultra' || tier === 'high' ? 16000 : tier === 'low' ? 4000 : 8000
+      const budget = Number(setting)
       return {
         members: {
           thinking: { type: 'enabled', budget_tokens: budget },
@@ -561,7 +565,7 @@ export function openThinking(session: Pick<AssistantSession, 'thinking' | 'model
   // `wireFor` already answers null at `off` on the two families where off is
   // omission, so there is no tier test here: what this adds is the two states
   // in which the desk has stopped asking at all.
-  const wire = () => (silent || unavailable || offRefused ? null : wireFor(tier, dialect, capabilitiesFor(session.model).tiers))
+  const wire = () => (silent || unavailable || offRefused ? null : wireFor(tier, dialect, capabilitiesFor(session.model).tiers, capabilitiesFor(session.model).fallbackTiers))
 
   return {
     tier,

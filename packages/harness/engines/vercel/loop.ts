@@ -1462,7 +1462,6 @@ export function runVercelLoop(
       ledger.conversation()
       // agent#10: from here every call is held to the critic's allow-list, below this engine.
       context.beginCriticPhase()
-      const authorFamily=session.model.family
       const criticBinding = context.connection('critic')
       if(criticBinding && 'model' in criticBinding){
         session={...session,model:{...criticBinding.model,call:session.model.call}}
@@ -1472,11 +1471,10 @@ export function runVercelLoop(
       }
       // What the critic costs is counted from here (agent#10).
       const before = { used: context.execution.state.used, rows: (context.execution.state.completions ?? []).length }
-      // ADR-0010: the critic's tier, at least the author's unless the host lowered it: a tier other than
-      // the author's opens a slot of its own, read for every critic request.
-      // A decision with no tier sends the critic none: off.
+      // A different critic binding owns its slot, even at the author's family and tier.
+      // The identical binding retains learned refusals; no decision tier means off.
       const criticTier = (decided.reasoning ?? 'off') as ThinkingTier
-      const retiered = criticTier !== session.thinking.tier || authorFamily !== session.model.family
+      const retiered = criticTier !== session.thinking.tier || criticBinding !== context.connection('author')
       if(retiered){
         slot = openThinking({ ...session, thinking: normalize(criticTier, session.model.family) }, capabilities.reasoning)
         tier = sdkThinking(session.model.family, slot.members())

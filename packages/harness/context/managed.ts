@@ -128,7 +128,10 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
   }
  } catch(error){
   if(ended)throw error
-  if(error instanceof PolicyRefusal)yield error.event()
+  if(error instanceof PolicyRefusal){
+   yield error.event()
+   if(error.checkpoint)yield {type:'execution_checkpoint',checkpoint:error.checkpoint}
+  }
   if(!session.signal.aborted)yield failureEvent(error,'context')
   yield {type:'end'}
  } finally {context?.close()}

@@ -93,6 +93,30 @@
     },
     "cacheBreakpoints": {
       "type": "boolean"
+    },
+    "fallbackTiers": {
+      "type": "object",
+      "required": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "properties": {
+        "low": {
+          "type": "string",
+          "minLength": 1
+        },
+        "medium": {
+          "type": "string",
+          "minLength": 1
+        },
+        "high": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false,
+      "description": "Settings for the family's fallback dialect: Anthropic enabled token budgets or Gemini thinking levels. The encoder reads the normalized tier's string."
     }
   },
   "dependentRequired": {
@@ -214,6 +238,9 @@
         },
         "cacheBreakpoints": {
           "type": "boolean"
+        },
+        "fallbackTiers": {
+          "$ref": "#/properties/fallbackTiers"
         }
       },
       "dependentRequired": {

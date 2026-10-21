@@ -1,5 +1,5 @@
 import {normalize} from '../thinking'
-import {resolvePolicy,PolicyRefusal,type PolicyConnection,type PolicyMembers,type ProviderRecord,type CrossProvider} from '../policy'
+import {resolvePolicy,PolicyRefusal,failoverRefusal,type PolicyConnection,type PolicyMembers,type ProviderRecord,type CrossProvider} from '../policy'
 import {runtimeToolContextPolicy} from './toolPolicy'
 import {failureError,AIFailureError,authoredFailure} from '../failures'
 import {criticMayCall,criticMayRead,criticRefusalDetail,readCriticCases,type CriticCase} from '../refutation'
@@ -604,6 +604,17 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  const skills=await declareSkills(session.skills,declaredNames,context.policy,declared.sources)
  declared.sources.push(...skills.sources)
  await context.execution.initialize()
+ // Saved identities belong to the saved execution, even when a host reuses its connection IDs.
+ for(const row of context.execution.state.crossProvider??[]){
+  const changed = failoverRefusal(row.role,row.provider,context.provider(row.role))
+    ?? failoverRefusal('author',row.author,context.provider('author'))
+  if(changed){
+   const refused=new PolicyRefusal(changed.tool,'run','cross-family continuation refused: the prefix and cache do not carry')
+   for(const saved of context.execution.state.crossProvider!)saved.continued=false
+   refused.checkpoint=context.execution.snapshot('stopped')
+   throw refused
+  }
+ }
  const carried=context.execution.state.policy
  if(carried) {
   if(JSON.stringify(carried)!==JSON.stringify(context.resolvedPolicy))throw authoredFailure('stale-state','The policy differs from the saved run.','context')
