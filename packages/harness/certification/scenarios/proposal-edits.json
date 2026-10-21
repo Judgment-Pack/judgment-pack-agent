@@ -1,0 +1,7 @@
+{
+  "$comment": "Written by hand for ADR-0015, scenario 15. Search and read the current draft, edit and validate, refuse an ambiguous anchor with its count, refuse a schema-breaking edit unchanged, insert and undo, resume and continue, refuse child and critic edits, and preserve the stable prefix.",
+  "id": "proposal-edits",
+  "request": "Revise the draft.",
+  "document": {"specVersion": "1", "id": "pack", "title": "Before", "notes": "same same"},
+  "edit": {"document": "pack", "old_text": "Before", "new_text": "After"}
+}

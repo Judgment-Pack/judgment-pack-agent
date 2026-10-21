@@ -48,7 +48,10 @@
       "skillsCatalogueBytes": 8000,
       "cataloguedSkills": 32,
       "cataloguedSubagents": 16,
-      "subagentCatalogueBytes": 4000
+      "subagentCatalogueBytes": 4000,
+      "editsPerTurn": 24,
+      "editBytes": 8000,
+      "proposalBytes": 65536
     }
   ]
 }

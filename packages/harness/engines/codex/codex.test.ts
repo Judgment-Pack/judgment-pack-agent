@@ -538,7 +538,7 @@ describe('nothing finished is lost, on the agent wire (agent#6)', () => {
     expect(execute).not.toHaveBeenCalled()
     expect(answered).toBe(PROPOSAL_RECEIVED)
     expect(instructions).toContain(`calling ${PROPOSE_PACK_TOOL}`)
-    expect(events.find(event => event.type === 'proposal')).toEqual({ type: 'proposal', document: { id: 'p' }, unknowns: ['u'] })
+    expect(events.find(event => event.type === 'proposal')).toEqual({ type: 'proposal', edits: [], document: { id: 'p' }, unknowns: ['u'] })
     expect(events.filter(event => event.type === 'error')).toEqual([])
   })
 

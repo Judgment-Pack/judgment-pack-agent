@@ -59,6 +59,7 @@ const UNAVAILABLE='This context reference is unavailable in the current executio
 /** A retained value's image, where the value is an image part with its bytes. */
 const heldImage=(value:unknown):HeldImage|null=>{const read=readImagePart(value);return read&&'image' in read&&read.image.bytes!==undefined?read.image as HeldImage:null}
 export class ContextLedger {
+ drafts?:()=>{id:string;label:string;value:string}[]
  private store:LedgerStore
  /** The entries the host retained as the run's attachments (agent#5): the scope search calls attachments. */
  private attached=new Set<string>()
@@ -69,6 +70,8 @@ export class ContextLedger {
  /** The chat's turn this ledger reads and writes, or undefined for a ledger of the run's own. */
  get chat():ChatTurn|undefined{return this.store.chat}
  private entry(id:unknown):Entry{
+  const draft=this.drafts?.().find(d=>d.id===id)
+  if(draft)return {...draft,kind:'artifact',bytes:utf8Bytes(draft.value),digest:''} as Entry
   const e=typeof id==='string'?this.store.use(id):undefined
   if(!e)throw toolInputFailure((typeof id==='string'?this.store.missing(id):undefined)??UNAVAILABLE)
   return e
@@ -191,6 +194,7 @@ export class ContextLedger {
    scoped=[this.entry(request.id)]
   }else scoped=[...this.store.entries.values()].filter(e=>request.scope==='all'||this.attached.has(e.id))
   // An image is not searched as text; one that cannot be shown is reported with its line, never passed in silence.
+  if(request.id===undefined&&request.scope==='all')scoped.push(...(this.drafts?.()??[]).map(d=>({...d,kind:'artifact' as const,bytes:utf8Bytes(d.value),digest:''})))
   const images=new Map(scoped.map(e=>[e.id,resolveImage(e.value,reference=>this.image(reference))]))
   const notShown=scoped.flatMap(e=>{const held=images.get(e.id);return held&&'line' in held?[{id:e.id,label:e.label,text:held.line}]:[]})
   return search(scoped.filter(e=>images.get(e.id)===null).map(e=>({id:e.id,label:e.label,item:readable(e.value)})),request,this.policy,notShown)

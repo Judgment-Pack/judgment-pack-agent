@@ -1,0 +1,34 @@
+{
+  "description": "ADR-0015: search. Written by hand from the accepted decision.",
+  "schema": "tool-result.json#/$defs/searchResult",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/edits.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "search",
+      "pattern": "Before",
+      "ignoreCase": false,
+      "scope": {
+        "id": "draft:pack"
+      },
+      "matches": [
+        {
+          "id": "draft:pack",
+          "label": "draft:pack",
+          "line": 4,
+          "offset": 3,
+          "column": 12,
+          "text": "2\t  \"specVersion\": \"1\",\n3\t  \"id\": \"pack\",\n4\t  \"title\": \"Before\",\n5\t  \"notes\": \"same same\"\n6\t}"
+        }
+      ],
+      "more": null
+    }
+  ]
+}

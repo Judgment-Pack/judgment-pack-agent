@@ -118,6 +118,7 @@ func (m *orderedValues) clear()          { m.order = nil; m.held = map[string]*V
 // SessionContext is the run's context (SessionContext).
 type SessionContext struct {
 	Memories         *MemoryGate
+	Drafts           *Drafts
 	Subagents        []Subagent
 	ProviderFamilies map[string]string
 	ResolvedPolicy   PolicyMembers
@@ -959,7 +960,7 @@ func (c *SessionContext) Turn() *ChatTurn { return c.turn }
 var errReserved = &authoredError{"Context tool names are reserved by Desk."}
 
 // reservedNames are the names this package's own tools take, load_tool among them (ADR-0006).
-var reservedNames = []string{Remember, "read_context", "list_context", ReadTool, SearchTool, "update_plan", "request_budget_increase", LoadTool, LoadSkill, UnloadSkill, RequestReview}
+var reservedNames = []string{"propose_edit", "propose_delete", "propose_insert", "undo_edit", Remember, "read_context", "list_context", ReadTool, SearchTool, "update_plan", "request_budget_increase", LoadTool, LoadSkill, UnloadSkill, RequestReview}
 
 // OpenSources holds the run's tools with a source (ADR-0006, sources.go): the report's rows in the
 // execution state, a guardrail for each declaration the package withheld, and the loaded schemas
@@ -1243,6 +1244,9 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		}
 		held.CarryMarker()
 		held.OpenMemories()
+		if err := held.OpenDrafts(); err != nil {
+			return err
+		}
 		if len(declared.Sources) > 0 || hasSubagents {
 			// How a loaded schema is shown: by the capability record's toolSchemas where the adapter carries
 			// it, else by the family's default record.
@@ -1333,6 +1337,9 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		}
 	}
 	tools := append([]HostTool{}, session.HostTools...)
+	if held.MemoryAdmitted() && held.ContextPhase() != "plan" {
+		tools = append(tools, held.Drafts.Tools()...)
+	}
 	if held.MemoryAdmitted() {
 		tools = append(tools, held.Memories.Tool())
 	}

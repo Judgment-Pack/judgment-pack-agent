@@ -38,29 +38,40 @@ func (t *turnState) finish(ctx context.Context, proposal *turn.Proposal, unread 
 	if prose != "" {
 		r.deliver(messageEvent(prose))
 	}
-	var critique *turn.Critique
-	var note *contract.RunEventProposalNote
-	// ADR-0010: one decision on every adapter, from the session's words, the table and the run's
-	// facts (Plan mode, a child, a graph purpose and a reviewer force it off), emitted before anything
-	// the critic does.
+
 	decided := r.sc.DecideCritic(true, len(r.run.Cases) > 0)
 	r.deliver(runcontext.CriticDecidedEvent(decided))
-	if decided.Ran {
-		if cannot := turn.CriticCannotRun(r.session.TestPrompt); cannot != nil {
-			critique = cannot
-			r.deliver(turn.CritiqueEvent(*cannot, r.sc.RecordProvider("critic")))
-		} else {
-			held, heldNote, err := t.critic(ctx, *proposal, decided.Reasoning)
-			if err != nil {
-				return err
-			}
-			critique, note = held, heldNote
-		}
+	var candidates []runcontext.DraftProposal
+	if t.toolProposal != nil {
+		candidates = r.sc.Drafts.Proposals()
 	}
-	event := proposalEvent(*proposal)
-	event.Proposal.Critique = turn.CritiqueOnProposal(critique)
-	event.Proposal.Note = note
-	r.deliver(event)
+	if len(candidates) == 0 {
+		candidates = []runcontext.DraftProposal{{Document: proposal.Document, Unknowns: proposal.Unknowns, Edits: proposal.Edits}}
+	}
+	for _, candidate := range candidates {
+		proposal = &turn.Proposal{Document: candidate.Document, Unknowns: candidate.Unknowns, Edits: candidate.Edits}
+		var critique *turn.Critique
+		var note *contract.RunEventProposalNote
+		// ADR-0010: one decision on every adapter, from the session's words, the table and the run's
+		// facts (Plan mode, a child, a graph purpose and a reviewer force it off), emitted before anything
+		// the critic does.
+		if decided.Ran {
+			if cannot := turn.CriticCannotRun(r.session.TestPrompt); cannot != nil {
+				critique = cannot
+				r.deliver(turn.CritiqueEvent(*cannot, r.sc.RecordProvider("critic")))
+			} else {
+				held, heldNote, err := t.critic(ctx, *proposal, decided.Reasoning)
+				if err != nil {
+					return err
+				}
+				critique, note = held, heldNote
+			}
+		}
+		event := proposalEvent(*proposal)
+		event.Proposal.Critique = turn.CritiqueOnProposal(critique)
+		event.Proposal.Note = note
+		r.deliver(event)
+	}
 	return nil
 }
 

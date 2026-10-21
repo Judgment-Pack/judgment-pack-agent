@@ -1,0 +1,22 @@
+{
+  "description": "ADR-0015: edit-applied. Written by hand from the accepted decision.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/edits.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "edit_applied",
+      "document": "pack",
+      "line": 4,
+      "bytes": 5,
+      "valid": true
+    }
+  ]
+}

@@ -5,6 +5,7 @@ package turn
 
 import (
 	"encoding/json"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"regexp"
 	"strings"
 
@@ -141,6 +142,7 @@ func explicitProposal(body string) bool { return explicitRoot(body, "proposal") 
 // Document is the document's JSON text as JSON.stringify writes it, so its member order is the
 // model's own.
 type Proposal struct {
+	Edits    []contract.ProvenanceEdit
 	Document json.RawMessage
 	Unknowns []string
 }

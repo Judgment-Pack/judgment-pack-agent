@@ -240,6 +240,27 @@
       "minimum": 0,
       "maximum": 256,
       "default": 4
+    },
+    "editsPerTurn": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4194304,
+      "default": 24,
+      "description": "Successful edits and undos per response, carried across resume."
+    },
+    "editBytes": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4194304,
+      "default": 8000,
+      "description": "UTF-8 bytes of one edit’s new text."
+    },
+    "proposalBytes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4194304,
+      "default": 65536,
+      "description": "UTF-8 bytes of the current draft pack, bounded as the existing test pack."
     }
   },
   "additionalProperties": true,

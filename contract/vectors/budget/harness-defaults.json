@@ -51,7 +51,10 @@
       "cataloguedSubagents": 16,
       "subagentCatalogueBytes": 4000,
       "memoryProposalBytes": 1000,
-      "memoryProposalsPerRun": 4
+      "memoryProposalsPerRun": 4,
+      "editsPerTurn": 24,
+      "editBytes": 8000,
+      "proposalBytes": 65536
     }
   ]
 }

@@ -375,7 +375,7 @@ function explicitRoot(body: string, member: string): boolean {
     return false
   }
 }
-export interface Proposal { document: unknown; unknowns: string[] }
+export interface Proposal { edits?:import('../edits').Edit[]; document: unknown; unknowns: string[] }
 /** Trim surrounding blank lines without changing Markdown indentation. */
 const trimProse = (text: string) => text.replace(/^(?:[ \t]*\r?\n)+/, '').trimEnd()
 

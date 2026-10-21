@@ -82,6 +82,7 @@ type Execution struct {
 	// Skills are the skills loaded (ADR-0009), in load order, carried through a resume; nil where
 	// none is loaded.
 	Skills []contract.ProvenanceSkillLoad
+	Draft  *contract.CheckpointDraft
 	// Critic is the critic's decision (ADR-0010), or before it the model's ask; carried through a
 	// resume; nil where neither was written.
 	Policy        map[string]contract.PolicyMember
@@ -176,6 +177,11 @@ func (e *Execution) Value() *Value {
 		v, _ := ParseJSON(raw)
 		out.Set("memories", v)
 	}
+	if e.Draft != nil {
+		raw, _ := json.Marshal(e.Draft)
+		value, _ := ParseJSON(raw)
+		out.Set("draft", value)
+	}
 	if len(e.Skills) > 0 {
 		rows := Array()
 		for _, load := range e.Skills {
@@ -239,7 +245,7 @@ func executionOf(saved *contract.Checkpoint) (*Execution, error) {
 		Phase: saved.Phase, Status: saved.Status, Unit: saved.Unit, Used: int(saved.Used),
 		Limit: int(saved.Limit), Grants: saved.Grants, Plan: value.Get("plan"),
 		Explanation: saved.Explanation, Completions: saved.Completions, Context: saved.Context,
-		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, Approval: saved.Approval, Skills: saved.Skills, Memories: saved.Memories, Critic: saved.Critic, CrossProvider: saved.CrossProvider, Policy: saved.Policy}
+		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, Approval: saved.Approval, Skills: saved.Skills, Draft: saved.Draft, Memories: saved.Memories, Critic: saved.Critic, CrossProvider: saved.CrossProvider, Policy: saved.Policy}
 	if saved.TestCalls != nil {
 		calls := int(*saved.TestCalls)
 		out.TestCalls = &calls
@@ -275,6 +281,8 @@ type ExecutionController struct {
 	// LoadedSkills are the skills loaded (ADR-0009), as one block headed at the project
 	// instructions' rank, or ""; stated last, after the loaded schemas.
 	LoadedSkills func() string
+	LoadedDrafts func() string
+	DraftRows    func() *contract.CheckpointDraft
 	// SkillLoads are the checkpoint's loaded set (ADR-0009), copied under the skill gate's lock.
 	SkillLoads func() []contract.ProvenanceSkillLoad
 	MemoryRows func() *contract.ProvenanceMemories
@@ -543,6 +551,11 @@ func (c *ExecutionController) RequestState() string {
 			loaded += "\n" + section
 		}
 	}
+	if c.LoadedDrafts != nil {
+		if section := c.LoadedDrafts(); section != "" {
+			loaded += "\n" + section
+		}
+	}
 	return c.Progress.Guidance() + "\n" + state.Text() + loaded
 }
 
@@ -724,6 +737,9 @@ func (c *ExecutionController) WrapRead(name string, execute func(ctx context.Con
 				args = held
 			}
 		}
+		if (name == ReadTool || name == "read_context") && strings.HasPrefix(editString(args.Get("id")), "draft:") {
+			return execute(ctx, raw)
+		}
 		var chat *ChatTurn
 		if kept != nil {
 			chat = c.ledger.Chat()
@@ -884,6 +900,9 @@ func (c *ExecutionController) Snapshot(status string) (contract.Checkpoint, erro
 	held.Status = status
 	if c.SourceRows != nil {
 		held.Sources = c.SourceRows()
+	}
+	if c.DraftRows != nil {
+		held.Draft = c.DraftRows()
 	}
 	if c.MemoryRows != nil {
 		held.Memories = c.MemoryRows()

@@ -632,6 +632,50 @@
       },
       "additionalProperties": false,
       "description": "Run report: proposals this run, and recalled ids and digests with kinds. Both lists survive resume; a recalled id supplied as revoked is reported revoked and withheld from the prompt."
+    },
+    "edit": {
+      "type": "object",
+      "required": [
+        "type",
+        "document",
+        "line",
+        "bytes",
+        "valid"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "propose_edit",
+            "propose_delete",
+            "propose_insert",
+            "undo_edit"
+          ]
+        },
+        "document": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "valid": {
+          "const": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "edits": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/edit"
+      },
+      "description": "Ordered provenance of successful draft changes, including undo; the person and critic review the whole proposal."
     }
   }
 }

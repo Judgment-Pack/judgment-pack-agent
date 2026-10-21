@@ -1,3 +1,4 @@
+import {validDraft,type DraftCheckpoint} from '../edits'
 import { validMemories, type Memories } from '../memories'
 import {validSubagentRecord} from '../subagents'
 import {readCompletion,type ModelCompletion} from '../completion'
@@ -47,6 +48,7 @@ export interface ExecutionCheckpoint {
  /** ADR-0009: the skills loaded, in load order, carried through a resume (`skills.ts`, SkillGate). */
  skills?:SkillLoad[];
  memories?:Memories;
+ draft?:DraftCheckpoint;
  /**
   * ADR-0010: the critic's decision (`criticSwitch.ts`): written when the run decides, and before that,
   * under auto, when the model's request_review is taken; carried through a resume.
@@ -156,6 +158,7 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value.sources!==undefined&&!validSourceFigures(value.sources))return fail()
  if(value.approval!==undefined&&!validApproval(value.approval))return fail()
  if(value.memories!==undefined&&!validMemories(value.memories))return fail()
+ if(value.draft!==undefined&&!validDraft(value.draft))return fail()
  if(value.skills!==undefined&&!validSkillLoads(value.skills))return fail()
  if(value.critic!==undefined&&!validCriticRecord(value.critic))return fail()
  if(!Array.isArray(value.operations)||value.operations.length>400||new Set(value.operations.map(o=>o.id)).size!==value.operations.length)return fail()

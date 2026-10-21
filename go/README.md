@@ -154,3 +154,14 @@ Plan-mode author proposals are allowed. `memory_proposed` and `checkpoint.memori
 record the proposal; the package stores nothing. Recall records ids/digests with kinds and states,
 preserves both lists through resume, and withholds a revoked record while updating its restored
 report row. Scenario 14 runs on both adapters.
+
+### Proposal edits
+
+[ADR-0015](../docs/adr/0015-proposal-edits.md) (#110): the package owns drafts addressed as
+`draft:<document>` by `search` and `read_window`. The author uses `propose_edit`,
+`propose_delete`, `propose_insert` and `undo_edit`; each unique-anchor change is
+validated before replacement and bounded by the policy table. The proposal remains
+a whole document with its edit provenance. Drafts and undo history survive
+checkpoint resume, and ride in execution state so the stable prefix is unchanged.
+Children and the critic never edit. Hosts supply accepted documents or the first
+`propose_pack` opens the draft; no host file is written.

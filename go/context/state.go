@@ -306,6 +306,9 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 	if sources := value.Get("sources"); sources != nil && !ValidSourceFigures(sources) {
 		return nil, errSavedExecution
 	}
+	if draft := value.Get("draft"); draft != nil && !ValidDraft(draft) {
+		return nil, errSavedExecution
+	}
 	if memories := value.Get("memories"); memories != nil && !ValidMemories(memories) {
 		return nil, errSavedExecution
 	}

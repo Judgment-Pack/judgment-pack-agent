@@ -27,6 +27,8 @@ export class ExecutionController {
  loadedSchemas?:()=>string
  /** ADR-0009: the skills loaded, as one block headed at the project instructions' rank, or ''; stated last, after the loaded schemas. */
  loadedSkills?:()=>string
+ /** ADR-0015: mutable proposal drafts follow the loaded schemas and skills. */
+ loadedDrafts?:()=>string
  private restored=false
  /**
   * ADR-0008: what the restored approval asks of this run before its first request: `execute`, the
@@ -93,7 +95,7 @@ export class ExecutionController {
  /** The part of the guidance that changes between requests: the repetition note, the request
   * counters, the plan, the operations index. A model loop sends it after the history, at the end
   * of every request, and EXECUTION_INSTRUCTIONS once in its stable system text. */
- requestState(){const tools=this.toolAllowance?.();return this.progress.guidance+'\n'+JSON.stringify({requests:this.state.unit==='model-requests'?{unit:this.state.unit,used:this.state.used,limit:this.state.limit,remaining:this.remaining}:{unit:this.state.unit,note:'The subscription provider manages its internal model loop; tool calls are not model-request counts.'},...(tools?{toolCalls:{unit:'tool-calls',used:tools.used,limit:tools.limit,remaining:Math.max(0,tools.limit-tools.used),scope:tools.scope,note:tools.scope==='response'?'Tool calls this response may make, yours and your delegated children’s together; the context tools are not counted.':'Tool calls this task may make; the context tools are not counted.'}}:{}),tasks:this.state.plan,explanation:this.state.explanation,retainedOperations:this.operationsReference,...(this.restoredResults.length?{resumeFromCompletedResults:this.restoredResults}:{}),completedOperationCount:this.state.operations.length})+((loaded)=>loaded?'\n'+loaded:'')(this.loadedSchemas?.())+((skills)=>skills?'\n'+skills:'')(this.loadedSkills?.())}
+ requestState(){const tools=this.toolAllowance?.();return this.progress.guidance+'\n'+JSON.stringify({requests:this.state.unit==='model-requests'?{unit:this.state.unit,used:this.state.used,limit:this.state.limit,remaining:this.remaining}:{unit:this.state.unit,note:'The subscription provider manages its internal model loop; tool calls are not model-request counts.'},...(tools?{toolCalls:{unit:'tool-calls',used:tools.used,limit:tools.limit,remaining:Math.max(0,tools.limit-tools.used),scope:tools.scope,note:tools.scope==='response'?'Tool calls this response may make, yours and your delegated children’s together; the context tools are not counted.':'Tool calls this task may make; the context tools are not counted.'}}:{}),tasks:this.state.plan,explanation:this.state.explanation,retainedOperations:this.operationsReference,...(this.restoredResults.length?{resumeFromCompletedResults:this.restoredResults}:{}),completedOperationCount:this.state.operations.length})+((loaded)=>loaded?'\n'+loaded:'')(this.loadedSchemas?.())+((skills)=>skills?'\n'+skills:'')(this.loadedSkills?.())+((draft)=>draft?'\n'+draft:'')(this.loadedDrafts?.())}
  async retainProgress(includeIndex=true){
   if(!this.state.operations.length)return
   const rows=[]
@@ -158,6 +160,7 @@ export class ExecutionController {
   // A mistaken hint on a write can never suppress or replay that operation.
   const immutable=policy.immutable===true&&readOnly
   return async(args:Record<string,unknown>)=>{
+   if((name==='read_window'||name==='read_context')&&typeof args.id==='string'&&args.id.startsWith('draft:'))return execute(args)
    const chat=kept?this.ledger.chat:undefined
    const chatKey=chat&&immutable?await readCacheKey(name,args,kept!.runtime||policy.runtime===true,this.session.context?.runtime):undefined
    // The cache serves only a name the run's session offers: an unoffered name goes on to the inner offer check and the gate, and a served entry never joins a child's visible set.

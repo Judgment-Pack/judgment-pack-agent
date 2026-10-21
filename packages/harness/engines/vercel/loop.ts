@@ -840,7 +840,7 @@ export function runVercelLoop(
     // A fresh attempt takes nothing from the one before it.
     asked.length = 0
     /** A proposal delivered through `propose_pack`; the fence is the fallback. */
-    let toolProposal: Proposal | null = null
+    let toolProposal: Proposal | null = context.drafts.proposal()
     /**
      * What each reading tool's answer is shown to the model as, by the SDK's
      * call id: one data block closed by this run's marker (agent#12). Written
@@ -944,7 +944,7 @@ export function runVercelLoop(
       let answer: McpToolResult
       try {
         // agent#10: no host tool is the critic's; refused before anything of the host's runs.
-        context.admit(tool.name, 'host')
+        context.admit(tool.name, 'host', args)
         if (tool.interaction === 'delegation') {
           // **An awaited call inside this step** (agent#14): the coordinator runs the batch while
           // the call is open and its children's findings are the call's result, in this run, so
@@ -964,7 +964,7 @@ export function runVercelLoop(
           // **The proposal, delivered as a tool call.** Read here, by the
           // contract's reader; the host's own `execute` is never reached. The
           // latest call's document is the one proposed.
-          toolProposal = readProposedPack(args)
+          toolProposal = await context.drafts.seed(readProposedPack(args))
           answer = { content: [{ type: 'text', text: PROPOSAL_RECEIVED }] }
         } else {
           const limit = context.policy.toolCallMilliseconds
@@ -1372,7 +1372,7 @@ export function runVercelLoop(
             toolProposal = null
             throw twoProposals()
           }
-          proposal = toolProposal ?? extractProposal(finalText)
+          proposal = toolProposal === null ? extractProposal(finalText) : context.drafts.proposal() ?? toolProposal
         } catch (cause) {
           // **One reformat request, within the allowance**: tool-free, shown
           // its own answer and asked for the same proposal in the shape the
@@ -1397,14 +1397,14 @@ export function runVercelLoop(
       // it: it is delivered, with a note naming the failure, as the critic's
       // failure is, and the run ends. A person's Stop still stops; a question
       // to the person leaves the proposal delivered and the turn waiting.
-      const made = toolProposal as Proposal | null
+      const made = toolProposal === null ? null : context.drafts.proposal() ?? toolProposal
       if (made !== null && !gate.signal.aborted && !gate.isClosed()) {
         toolProposal = null
         if (awaitingInput) {
-          await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns })
+          await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns, ...(made.edits?{edits:made.edits}:{}) })
           throw cause
         }
-        await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns,
+        await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns, ...(made.edits?{edits:made.edits}:{}),
           note: proposalNote('turn-unfinished', overTime ? turnTimeFailure() : cause, 'model') })
         return
       }
@@ -1433,6 +1433,11 @@ export function runVercelLoop(
     const prose = (unread === null ? '' : proseOf((unread as { text: string }).text)) || proseOf(finalText)
     if (prose !== '') await deliver({ type: 'message', text: prose })
 
+    const decided = context.decideCritic(true)
+    await deliver(criticDecidedEvent(decided))
+    const drafts=toolProposal === null ? [] : context.drafts.proposals()
+    for(const candidate of drafts.length?drafts:[proposal]){
+    proposal=candidate
     /**
      * The refutation pass: a second `streamText`, which is this SDK's own
      * subagent shape, on the same model, the same tool set and the same
@@ -1447,8 +1452,6 @@ export function runVercelLoop(
     // desk adds one sentence and has none of its own to fall back on.
     // ADR-0010: one decision on every engine, from the session's words, the table and the run's facts,
     // emitted before anything the critic does.
-    const decided = context.decideCritic(true)
-    await deliver(criticDecidedEvent(decided))
     const review = decided.ran
     const cannot = review ? criticCannotRun(session.testPrompt) : null
     if (cannot !== null) {
@@ -1669,9 +1672,11 @@ export function runVercelLoop(
       type: 'proposal',
       document: proposal.document,
       unknowns: proposal.unknowns,
+      ...(proposal.edits?{edits:proposal.edits}:{}),
       ...critiqueOnProposal(critique),
       ...(note === null ? {} : { note })
     })
+    }
   }
 
   /** What the turn's wall clock passing is, as a failure the catalogue can say. */

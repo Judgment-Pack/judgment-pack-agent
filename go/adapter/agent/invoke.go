@@ -343,6 +343,21 @@ func (r *runState) tool(invCtx context.Context, offered map[string]bool, recorde
 		// ADR-0010: request_review reaches the switch's own tool only in the author's invocation of a
 		// run it is offered to; anywhere else it is refused here, with the guardrail review refused,
 		// before anything runs and before the gate, and nothing is recorded.
+		editName := call.Name
+		if known {
+			editName = held.name
+		}
+		if runcontext.IsEdit(editName) && (!known || !offered[call.Name] || !r.sc.MemoryAdmitted()) {
+			r.deliver(callEvent(call.ID, editName, args, ""))
+			var input struct {
+				Document string `json:"document"`
+			}
+			_ = json.Unmarshal(args, &input)
+			err := r.sc.Drafts.Refuse(editName, input.Document)
+			text := err.Error()
+			r.deliver(resultEvent(call.ID, editName, textResult(text, true), ""))
+			return adapter.AgentToolAnswer{Text: text, IsError: true}, nil
+		}
 		if (known && held.name == runcontext.Remember || !known && call.Name == runcontext.Remember) && (!known || !offered[call.Name] || !r.sc.MemoryAdmitted()) {
 			r.deliver(callEvent(call.ID, runcontext.Remember, args, ""))
 			text := gate.UnofferedRefusal(r.sc.RefuseMemory())
@@ -507,6 +522,9 @@ func (r *runState) answer(ctx context.Context, call adapter.AgentToolCall, held 
 	case host.Name == turn.ProposePackTool:
 		proposal, err := turn.ReadProposedPack(args)
 		if err != nil {
+			return runcontext.ToolResult{}, false, err
+		}
+		if err := r.sc.Drafts.Seed(proposal.Document, proposal.Unknowns); err != nil {
 			return runcontext.ToolResult{}, false, err
 		}
 		r.held.Lock()

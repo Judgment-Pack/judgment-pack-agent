@@ -303,6 +303,9 @@ func (t *turnState) hostAnswer(ctx context.Context, tool runcontext.HostTool, ar
 		if err != nil {
 			return runcontext.ToolResult{}, err
 		}
+		if err := t.r.sc.Drafts.Seed(proposal.Document, proposal.Unknowns); err != nil {
+			return runcontext.ToolResult{}, err
+		}
 		t.toolProposal = &proposal
 		return textResult(turn.ProposalReceived, false), nil
 	}
@@ -368,6 +371,17 @@ func (t *turnState) dispatch(ctx context.Context, name string, args json.RawMess
 	// ADR-0010: request_review reaches the switch's own tool only in the author's phase of a run it is
 	// offered to; anywhere else it is refused here, with the guardrail review refused, before anything
 	// runs and before the gate, and nothing is recorded.
+	if runcontext.IsEdit(name) && (!offered[name] || !t.r.sc.MemoryAdmitted()) {
+		t.r.deliver(t.callEvent("", name, nonEmpty(args), ""))
+		var input struct {
+			Document string `json:"document"`
+		}
+		_ = json.Unmarshal(nonEmpty(args), &input)
+		err := t.r.sc.Drafts.Refuse(name, input.Document)
+		result := textResult(err.Error(), true)
+		t.r.deliver(t.resultEvent("", name, result, ""))
+		return bare(result), nil
+	}
 	if name == runcontext.Remember && (!offered[name] || !t.r.sc.MemoryAdmitted()) {
 		t.r.deliver(t.callEvent("", name, nonEmpty(args), ""))
 		result := textResult(gate.UnofferedRefusal(t.r.sc.RefuseMemory()), true)

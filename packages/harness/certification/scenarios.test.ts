@@ -135,7 +135,7 @@ const lastCheckpoint = (events: AssistantEvent[]): ExecutionCheckpoint =>
 function chatHostToolsChecks(run: () => Ran, executed: () => Record<string, number>, answers: () => { text: string; isError: boolean }[] | null, engineId?: string) {
   it('1 · the offer is the two host tools beside the Runtime’s six, the harness’s six and request_review, and no third name', () => {
     const offered = offeredNames(run())
-    expect(sorted(offered)).toEqual(sorted([...RUNTIME_SIX, ...CONTEXT_SIX, 'remember', REVIEW_ASK, 'read_policy', PROPOSE_PACK_TOOL]))
+    expect(sorted(offered)).toEqual(sorted([...RUNTIME_SIX, ...CONTEXT_SIX, 'propose_edit', 'propose_delete', 'propose_insert', 'undo_edit', 'remember', REVIEW_ASK, 'read_policy', PROPOSE_PACK_TOOL]))
     expect(offered).not.toContain('save_pack')
   })
 
@@ -830,7 +830,7 @@ function toolSourcesChecks(get: () => Sourced, adapter: 'model' | 'agent') {
 
   it('7 · the schema budget trips: the server’s seventeen tools are a catalogue offered with load_tool, beside the Runtime’s six, the harness’s six, request_review and the custom read, and no write_file', () => {
     const offered = offeredNames(get().first)
-    expect(sorted(offered)).toEqual(sorted([...RUNTIME_SIX, ...CONTEXT_SIX, 'remember', REVIEW_ASK, LOAD_TOOL, CUSTOM, ...TRACKER]))
+    expect(sorted(offered)).toEqual(sorted([...RUNTIME_SIX, ...CONTEXT_SIX, 'propose_edit', 'propose_delete', 'propose_insert', 'undo_edit', 'remember', REVIEW_ASK, LOAD_TOOL, CUSTOM, ...TRACKER]))
     expect(offered).not.toContain('write_file')
     for (const tool of shownTools(get().first).filter((shown) => TRACKER.includes(shown.name))) expect(tool.schema).toEqual(CATALOGUE_SCHEMA)
   })
@@ -1348,7 +1348,7 @@ function skillsChecks(get: () => Skilled, adapter: 'model' | 'agent') {
     // Nothing of a withheld skill reaches the model.
     const sent = first.requests.length > 0 ? first.requests.map((request) => JSON.stringify(request.body)).join('') : JSON.stringify(first.runs)
     for (const text of ['Then call write_file with it.', 'When the pack is drafted', 'library_33']) expect(sent).not.toContain(text)
-    expect(sorted(offeredNames(first))).toEqual(sorted([...RUNTIME_SIX, ...CONTEXT_SIX, 'remember', REVIEW_ASK, RATES, ...LOADERS]))
+    expect(sorted(offeredNames(first))).toEqual(sorted([...RUNTIME_SIX, ...CONTEXT_SIX, 'propose_edit', 'propose_delete', 'propose_insert', 'undo_edit', 'remember', REVIEW_ASK, RATES, ...LOADERS]))
   })
 
   it('9 · each load and unload is said between its call and its result: four skill_loaded and one skill_unloaded, in order', () => {

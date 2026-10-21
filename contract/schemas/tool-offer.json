@@ -293,7 +293,11 @@
         "load_skill",
         "unload_skill",
         "request_review",
-        "remember"
+        "remember",
+        "propose_edit",
+        "propose_delete",
+        "propose_insert",
+        "undo_edit"
       ]
     },
     "criticTools": {
@@ -792,6 +796,94 @@
       },
       "additionalProperties": false,
       "description": "Propose memory for the person to review, never store or accept. Author only, including Plan mode; child and critic calls refused. UTF-8 text bounded by memoryProposalBytes, count by memoryProposalsPerRun across resume."
+    },
+    "propose_edit": {
+      "type": "object",
+      "required": [
+        "document",
+        "old_text",
+        "new_text"
+      ],
+      "properties": {
+        "document": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "old_text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "new_text": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "description": "ADR-0015: change only the package draft. Author only. Anchors must occur exactly once; every candidate, including undo, is validated before replacement."
+    },
+    "propose_delete": {
+      "type": "object",
+      "required": [
+        "document",
+        "old_text"
+      ],
+      "properties": {
+        "document": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "old_text": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false,
+      "description": "ADR-0015: change only the package draft. Author only. Anchors must occur exactly once; every candidate, including undo, is validated before replacement."
+    },
+    "propose_insert": {
+      "type": "object",
+      "required": [
+        "document",
+        "after_anchor",
+        "text"
+      ],
+      "properties": {
+        "document": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "after_anchor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "description": "ADR-0015: change only the package draft. Author only. Anchors must occur exactly once; every candidate, including undo, is validated before replacement."
+    },
+    "undo_edit": {
+      "type": "object",
+      "required": [
+        "document"
+      ],
+      "properties": {
+        "document": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      },
+      "additionalProperties": false,
+      "description": "ADR-0015: change only the package draft. Author only. Anchors must occur exactly once; every candidate, including undo, is validated before replacement."
+    },
+    "draftId": {
+      "type": "string",
+      "pattern": "^draft:.+$",
+      "description": "The current package-owned document in the search/read_window id space; the suffix is its document id, never a file path."
     }
   }
 }

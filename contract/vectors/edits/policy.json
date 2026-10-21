@@ -1,0 +1,22 @@
+{
+  "description": "ADR-0015: policy. Written by hand from the accepted decision.",
+  "schema": "policy.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/edits.ts"
+    ]
+  },
+  "items": [
+    {
+      "budget": {
+        "editsPerTurn": 24,
+        "editBytes": 8000,
+        "proposalBytes": 65536
+      }
+    }
+  ]
+}

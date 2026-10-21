@@ -1,0 +1,20 @@
+{
+  "description": "ADR-0015: propose_edit. Written by hand from the accepted decision.",
+  "schema": "tool-offer.json#/$defs/propose_edit",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/edits.ts"
+    ]
+  },
+  "items": [
+    {
+      "document": "pack",
+      "old_text": "Before",
+      "new_text": "After"
+    }
+  ]
+}

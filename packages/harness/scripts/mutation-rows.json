@@ -3049,7 +3049,7 @@
   {
    "name": "the runtime tools skip the critic's allow-list",
    "file": "context/session.ts",
-   "find": "callTool:async(name:string,args:Record<string,unknown>)=>{context.admit(name,'runtime');await session.context?.authorize",
+   "find": "callTool:async(name:string,args:Record<string,unknown>)=>{context.admit(name,'runtime',args);await session.context?.authorize",
    "replace": "callTool:async(name:string,args:Record<string,unknown>)=>{await session.context?.authorize",
    "tests": [
     "certification/scenarios.test.ts"
@@ -4080,8 +4080,8 @@
   {
    "name": "memory child proposal admitted",
    "file": "context/session.ts",
-   "find": "this.memoryChild||this.narrowed!==null",
-   "replace": "this.narrowed!==null",
+   "find": "if(name===REMEMBER&&(this.memoryChild||this.narrowed!==null",
+   "replace": "if(name===REMEMBER&&(this.narrowed!==null",
    "tests": [
     "memories.test.ts"
    ],
@@ -4123,6 +4123,61 @@
    "status": "caught",
    "origin": "agent#98 review round",
    "note": "Go twin: ignore time.Parse errors after the grammar check; TestMemoryValidationBoundaries fails."
+  },
+  {
+   "name": "proposal edits uniqueness removed",
+   "file": "edits.ts",
+   "find": "if(count!==1)return refuse(",
+   "replace": "if(count===0)return refuse(",
+   "tests": [
+    "edits.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#110"
+  },
+  {
+   "name": "proposal edits validation skipped",
+   "file": "edits.ts",
+   "find": "if(result.isError||!object(structured)||structured.status!=='valid')",
+   "replace": "if(false)",
+   "tests": [
+    "edits.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#110"
+  },
+  {
+   "name": "proposal edits edit list dropped",
+   "file": "edits.ts",
+   "find": "edits:structuredClone(d.edits)}:null",
+   "replace": "edits:[]}:null",
+   "tests": [
+    "edits.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#110"
+  },
+  {
+   "name": "proposal edits draft in system text",
+   "file": "context/session.ts",
+   "find": "return systemText(guidance,this.hostParts,tools)+this.skillCatalogue",
+   "replace": "return systemText(guidance,this.hostParts,tools)+this.skillCatalogue+(this.drafts?.section()??'')",
+   "tests": [
+    "certification/proposal-edits.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#110"
+  },
+  {
+   "name": "proposal edits undo applied twice",
+   "file": "edits.ts",
+   "find": "const last=next.undo.pop()",
+   "replace": "const last=next.undo.at(-1)",
+   "tests": [
+    "edits.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#110"
   }
  ]
 }

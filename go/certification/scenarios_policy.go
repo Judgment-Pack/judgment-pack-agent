@@ -56,7 +56,7 @@ func policyFindings(ctx context.Context, agent bool, play switchPlay) ([]Finding
 		}
 		// Hand-authored table values, not captured from the resolver.
 		budget := map[string]any{
-			"memoryProposalBytes": 1000, "memoryProposalsPerRun": 4,
+			"memoryProposalBytes": 1000, "memoryProposalsPerRun": 4, "editsPerTurn": 24, "editBytes": 8000, "proposalBytes": 65536,
 			"version": 1, "maxInputBytes": 180000, "contextWindowTokens": 65536, "outputTokens": 8192,
 			"toolResultBytes": 12000, "readBytes": 6000, "retainedBytes": 8388608, "recentMessages": 8,
 			"historyBytes": 32000, "briefBytes": 8000, "memoryBytes": 4000, "turnMilliseconds": 900000,
