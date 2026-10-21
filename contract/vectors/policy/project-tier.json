@@ -1,0 +1,52 @@
+{
+  "description": "Written by hand from ADR-0011; no output recorded from an implementation.",
+  "schema": "policy.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/policy.ts"
+    ]
+  },
+  "items": [
+    {
+      "models": {
+        "author": {
+          "model": "connected",
+          "reasoning": "off"
+        },
+        "critic": {
+          "model": "connected",
+          "reasoning": "on"
+        },
+        "child.review": {
+          "model": "connected",
+          "reasoning": "ultra"
+        },
+        "subagent.audit": {
+          "model": "connected",
+          "reasoning": "on"
+        },
+        "taskClasses": {
+          "routine": "off",
+          "material": "on",
+          "boundary": "ultra"
+        }
+      },
+      "concurrency": {
+        "children": 1
+      },
+      "critic": {
+        "reasoningFloor": "author"
+      },
+      "pace": {
+        "requestsPerDay": 10,
+        "invocationsPerDay": 10,
+        "bytesPerDay": 1000,
+        "warnAt": 0.8
+      }
+    }
+  ]
+}

@@ -1,4 +1,5 @@
-import defaults from '../contract/policy.json'
+import table from '../contract/policy.json'
+const defaults = {...table.budget,criticDefault:table.critic.default,criticReasoningFloor:table.critic.reasoningFloor}
 /**
  * The time bounds the harness adds to the Desk's table (budget.json): one turn's wall clock, after which the run
  * pauses as budget_paused does, and one tool call's, after which the model reads a failed result. The Desk's table

@@ -95,7 +95,7 @@
       "pattern": "^[a-f0-9]{64}$"
     },
     "requestKey": {
-      "description": "The SHA-256 of the JSON text {\"request\":…,\"phase\":…,\"purpose\":…} for the person's current request (ExecutionController.initialize). It binds a checkpoint to the request it was made for; it is not a digest of the prompt sent to the model.",
+      "description": "The SHA-256 of the JSON text {\"request\":\u2026,\"phase\":\u2026,\"purpose\":\u2026} for the person's current request (ExecutionController.initialize). It binds a checkpoint to the request it was made for; it is not a digest of the prompt sent to the model.",
       "$ref": "#/$defs/sha256"
     },
     "promptDigest": {
@@ -500,6 +500,10 @@
         }
       },
       "additionalProperties": false
+    },
+    "policy": {
+      "description": "The report row: every resolved member with the host layer that supplied it. Carried through checkpoint resume.",
+      "$ref": "policy.json#/$defs/resolved"
     }
   }
 }

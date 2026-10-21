@@ -18,6 +18,7 @@
  * layer it sits in: on the session of the run's word, in the table of `criticDefault`; `true` is
  * `on`, `false` is `off`, and the new member wins where both are set.
  */
+import {resolvePolicy,type PolicyMembers,type PolicyLayer} from './policy'
 import type { ThinkingTier } from './host'
 import type { CodexEffort } from './agent'
 
@@ -57,6 +58,9 @@ export const REQUEST_REVIEW = 'request_review'
 
 /** What the session says about the critic: the run's and the project's words, the tier, the alias. */
 export interface CriticSettings {
+  policy?: PolicyLayer
+  policyProject?: PolicyLayer
+  resolvedPolicy?: PolicyMembers
   critic?: CriticMode
   criticProject?: CriticMode
   criticReasoning?: CriticTier
@@ -99,11 +103,13 @@ const isMode = (value: unknown): value is CriticMode => typeof value === 'string
  * table's alias), else `auto`. Answers the mode and the layer that set it.
  */
 export function criticMode(session: CriticSettings, table: CriticTable): { mode: CriticMode; layer: CriticLayer } {
-  const run = session.critic ?? alias(session.adversarialReview)
-  if (run !== undefined) return { mode: run, layer: 'person' }
-  if (session.criticProject !== undefined) return { mode: session.criticProject, layer: 'project' }
-  const stated = isMode(table.criticDefault) ? table.criticDefault : alias(table.adversarialReview)
-  return { mode: stated ?? 'auto', layer: 'table' }
+  const members = session.resolvedPolicy ?? resolvePolicy(
+    {...session.policy,critic:{...(session.critic !== undefined || session.adversarialReview !== undefined ? {default:session.critic ?? alias(session.adversarialReview)} : {}),...session.policy?.critic}},
+    {...session.policyProject,critic:{...(session.criticProject !== undefined ? {default:session.criticProject} : {}),...session.policyProject?.critic}},
+    {...table,models:{author:{model:'current',reasoning:'off'}}},
+    {connections:['current'],agent:false,requests:16}).members
+  const held = members['critic.default']!
+  return {mode:held.value as CriticMode,layer:held.layer === 'run' ? 'person' : held.layer}
 }
 
 /** The forced-off reason that holds, in the order child, phase, purpose, reviewer-assigned; or none. */

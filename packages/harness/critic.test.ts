@@ -600,8 +600,8 @@ describe('the contract’s critic vectors are what the harness writes (agent#10)
 
 describe('one default for both engines (agent#10; ADR-0010)', () => {
   it('is the policy table’s criticDefault, auto, with the author’s tier as the floor, and the harness reads it from there', () => {
-    expect(policyTable.criticDefault).toBe('auto')
-    expect(policyTable.criticReasoningFloor).toBe('author')
+    expect(policyTable.critic.default).toBe('auto')
+    expect(policyTable.critic.reasoningFloor).toBe('author')
     expect('adversarialReview' in policyTable).toBe(false)
     expect(CONTEXT_DEFAULTS.criticDefault).toBe('auto')
   })

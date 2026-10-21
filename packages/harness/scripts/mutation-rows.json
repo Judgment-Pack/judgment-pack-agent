@@ -3778,12 +3778,11 @@
   },
   {
    "name": "the table's default wins over the run's word",
-   "file": "criticSwitch.ts",
-   "find": "  if (run !== undefined) return { mode: run, layer: 'person' }",
-   "replace": "  if (run !== undefined && !isMode(table.criticDefault)) return { mode: run, layer: 'person' }",
+   "file": "policy.ts",
+   "find": "[['table', policyAlias(table)], ['project', project], ['run', run]]",
+   "replace": "[['run', run], ['project', project], ['table', policyAlias(table)]]",
    "tests": [
-    "criticSwitch.test.ts",
-    "certification/scenarios.test.ts"
+    "policy.test.ts"
    ],
    "status": "caught",
    "origin": "ADR-0010, the critic's switch (#96)",
@@ -3800,6 +3799,61 @@
    "status": "caught",
    "origin": "v0.7.0 pre-release review (#109)",
    "note": "ResponseAllowance.criticRoom; delegation.test.ts takes all five agent runs and expects the shared context to report no room and record the critic decision as budget; the Go twin is agentLink.Attach in go/adapter/delegate/agent_test.go"
+  },
+  {
+   "name": "ADR policy table: precedence inverted",
+   "file": "policy.ts",
+   "find": "[['table', policyAlias(table)], ['project', project], ['run', run]]",
+   "replace": "[['run', run], ['project', project], ['table', policyAlias(table)]]",
+   "tests": [
+    "policy.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0011 (#116)"
+  },
+  {
+   "name": "ADR policy table: pace refusal removed",
+   "file": "policy.ts",
+   "find": "if (used > Number(limit)) refuse(name, 'project period budget exceeded', true)",
+   "replace": "if (false) refuse(name, 'project period budget exceeded', true)",
+   "tests": [
+    "policy.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0011 (#116)"
+  },
+  {
+   "name": "ADR policy table: layer not recorded",
+   "file": "policy.ts",
+   "find": "members[name] = {value, layer}",
+   "replace": "members[name] = {value, layer: undefined as never}",
+   "tests": [
+    "policy.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0011 (#116)"
+  },
+  {
+   "name": "ADR policy table: tier ceiling removed",
+   "file": "policy.ts",
+   "find": "if (allowance === undefined || tiers.indexOf(String(member.value)) > tiers.indexOf(allowance)) refuse(name, \"tier exceeds the author's without project authorization\")",
+   "replace": "if (false) refuse(name, \"tier exceeds the author's without project authorization\")",
+   "tests": [
+    "policy.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0011 (#116)"
+  },
+  {
+   "name": "ADR policy table: alias ignored",
+   "file": "policy.ts",
+   "find": "if (Object.hasOwn(rest, key)) { budget[key] = rest[key]; delete rest[key] }",
+   "replace": "if (Object.hasOwn(rest, key)) { delete rest[key] }",
+   "tests": [
+    "policy.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0011 (#116)"
   }
  ]
 }

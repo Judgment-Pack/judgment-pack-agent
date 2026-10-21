@@ -47,7 +47,7 @@ export function reformatPrompt(answer: string, cause: unknown): string {
  */
 export const CRITIC_PASS_MILLISECONDS = 10 * 60_000
 
-export function runCodex(session:CodexSession):AsyncIterable<AssistantEvent>{return managedContext(session,runCodexLoop)}
+export function runCodex(session:CodexSession):AsyncIterable<AssistantEvent>{return managedContext(session,runCodexLoop,'codex')}
 function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
   const context=contextOf(session)
   let closeRun = () => {}

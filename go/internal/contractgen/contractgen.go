@@ -512,7 +512,13 @@ func (g *generator) describe(l loc) string {
 
 func (g *generator) emitStruct(l loc, name string) {
 	fields, _ := g.structFields(l, map[string]bool{})
-	closed := g.node(l)["additionalProperties"] == false
+	patterns, _ := g.node(l)["patternProperties"].(map[string]any)
+	closed := g.node(l)["additionalProperties"] == false && len(patterns) == 0
+	var allowed []string
+	for pattern := range patterns {
+		allowed = append(allowed, strconv.Quote(pattern))
+	}
+	sort.Strings(allowed)
 	var b strings.Builder
 	b.WriteString(g.describe(l))
 	fmt.Fprintf(&b, "type %s struct {\n", name)
@@ -551,6 +557,9 @@ func (g *generator) emitStruct(l loc, name string) {
 	fmt.Fprintf(&b, "func (v *%s) UnmarshalJSON(data []byte) error {\n\ttype plain %s\n\tvar p plain\n", name, name)
 	fmt.Fprintf(&b, "\textra, err := decodeObject(data, &p, %s, %t)\n", known, closed)
 	fmt.Fprintf(&b, "\tif err != nil {\n\t\treturn fmt.Errorf(\"%s: %%w\", err)\n\t}\n\t*v = %s(p)\n", name, name)
+	if len(allowed) > 0 {
+		fmt.Fprintf(&b, "\tif err := checkPatternMembers(extra, []string{%s}); err != nil { return err }\n", strings.Join(allowed, ", "))
+	}
 	if !closed {
 		b.WriteString("\tv.AdditionalMembers = extra\n")
 	} else {

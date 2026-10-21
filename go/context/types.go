@@ -344,6 +344,14 @@ type AgentSession struct {
 // Session is one run as the harness is handed it (EngineSession in engine.ts), in the members
 // this package reads. Model and Agent are exclusive: a run is on one capability or the other.
 type Session struct {
+	Policy             PolicyLayer
+	PolicyProject      PolicyLayer
+	TaskClass          string
+	PaceUsed           map[string]int64
+	PolicyConnections  []string
+	PolicyLegacyModels *RunModels
+	PolicyRequests     int
+
 	Prompt            string
 	TestPrompt        string
 	Tools             []RuntimeTool

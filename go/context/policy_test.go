@@ -26,7 +26,10 @@ func policyValue(t *testing.T, policy Policy) *Value {
 func TestTheDeskTableIsTheFileItWasWrittenFrom(t *testing.T) {
 	// Go cannot embed a file outside its module, so the table is written in policy.go; this holds
 	// it equal to contract/desk/policy.json, member for member.
-	file := readJSON(t, "contract/desk/policy.json")
+	nested := readJSON(t, "contract/desk/policy.json")
+	file := nested.Get("budget")
+	file.Set("criticDefault", nested.Get("critic").Get("default"))
+	file.Set("criticReasoningFloor", nested.Get("critic").Get("reasoningFloor"))
 	table := policyValue(t, DeskPolicy)
 	for _, name := range file.Keys() {
 		if !equalJSON(file.Get(name), table.Get(name)) {

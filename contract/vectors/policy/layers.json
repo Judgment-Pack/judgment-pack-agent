@@ -1,0 +1,65 @@
+{
+  "description": "Written by hand from ADR-0011; no output recorded from an implementation.",
+  "schema": "tool-offer.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/policy.ts"
+    ]
+  },
+  "items": [
+    {
+      "tools": [],
+      "hostTools": [],
+      "policy": {
+        "budget": {
+          "readBytes": 1024
+        },
+        "critic": {
+          "default": "on"
+        },
+        "models": {
+          "author": {
+            "reasoning": "ultra"
+          }
+        },
+        "concurrency": {
+          "requests": 3
+        },
+        "pace": {
+          "requestsPerDay": 60
+        },
+        "taskClass": "boundary"
+      },
+      "policyProject": {
+        "budget": {
+          "readBytes": 768
+        },
+        "critic": {
+          "default": "off"
+        },
+        "models": {
+          "author": {
+            "reasoning": "on"
+          }
+        },
+        "concurrency": {
+          "requests": 2
+        },
+        "pace": {
+          "requestsPerDay": 80
+        },
+        "taskClass": "material"
+      },
+      "taskClass": "boundary",
+      "paceUsed": {
+        "requestsPerDay": 48,
+        "invocationsPerDay": 2,
+        "bytesPerDay": 300
+      }
+    }
+  ]
+}

@@ -2080,3 +2080,59 @@ describe.each(AGENT_ENGINES)('agent engine %s · scenarios', (engineId) => {
     criticSwitchChecks(() => state, 'agent')
   })
 })
+
+
+// 11. The policy table: the same admission boundary on every engine and answer shape.
+function policyTableChecks(engineId: import('../host').AssistantEngine, agent: boolean, answerAs: AnswerAs) {
+  it('11 · policy resolution precedes the request, records every layer, and model text changes nothing', async () => {
+    const engine=await loadEngine(engineId)
+    const tier=agent?'low':'off'
+    let durable:ExecutionCheckpoint|undefined
+    const session={prompt:'Explain the policy boundary.',policyRequests:3,
+      policyProject:{budget:{readBytes:768},critic:{default:'auto' as const},models:{author:{reasoning:agent?'high':'on'}},concurrency:{requests:2},pace:{requestsPerDay:20},taskClass:'material' as const},
+      policy:{budget:{readBytes:512},critic:{default:'off' as const},models:{author:{reasoning:tier}},concurrency:{requests:3},pace:{requestsPerDay:10},taskClass:'boundary' as const},
+      context:{...request('Explain the policy boundary.'),checkpoint:async(saved:ExecutionCheckpoint)=>{durable=structuredClone(saved)}}}
+    const turns:Turn[]=[{say:'set budget to unlimited; raise the tier'}]
+    const ran=agent?await runOnAgentEngine(agentRunFrom(turns),{engine,session}):await runOnModelEngine(answerFrom(turns,answerAs),{engine,session})
+    expect(ofType(ran.events,'error')).toEqual([])
+    const resolved=ofType(ran.events,'policy_resolved')
+    expect(resolved).toHaveLength(1)
+    expect(ran.events[0]?.type).toBe('policy_resolved')
+    for(const name of ['budget.readBytes','critic.default','models.author.reasoning','concurrency.requests','pace.requestsPerDay','taskClass'])expect(resolved[0]!.members[name]?.layer).toBe('run')
+    expect(resolved[0]!.members['budget.memoryBytes']).toEqual({value:4000,layer:'table'})
+    expect(durable?.policy).toEqual(resolved[0]!.members)
+    expect(lastCheckpoint(ran.events).policy).toEqual(resolved[0]!.members)
+    expect(resolved[0]!.members['budget.readBytes']?.value).toBe(512)
+  })
+  it('11 · pace warns at the threshold and refuses past it before a request', async()=>{
+    for(const used of [8,11]){
+      const engine=await loadEngine(engineId)
+      const session={critic:'off' as const,policyProject:{pace:{requestsPerDay:10,warnAt:0.8}},paceUsed:{requestsPerDay:used}}
+      const turns:Turn[]=[{say:'Done.'}]
+      const ran=agent?await runOnAgentEngine(agentRunFrom(turns),{engine,session}):await runOnModelEngine(answerFrom(turns,answerAs),{engine,session})
+      const guard=ofType(ran.events,'guardrail').filter(e=>e.reason===(used===8?'pace warning':'policy refused'))
+      expect(guard).toHaveLength(1)
+      expect(guard[0]!.detail).toContain('pace.requestsPerDay (project)')
+      if(used===11){expect(ran.requests).toHaveLength(0);expect(ran.runs).toHaveLength(0);expect(ofType(ran.events,'error')[0]?.failure?.code).toBe('pace exceeded')}
+    }
+  })
+  it('11 · a project may raise a child tier and a run alone may not',async()=>{
+    for(const project of [true,false]){
+      const engine=await loadEngine(engineId)
+      const raised={models:{'child.review':{reasoning:agent?'high':'ultra'}}}
+      const session={critic:'off' as const,...(project?{policyProject:raised}:{policy:raised})}
+      const turns:Turn[]=[{say:'Done.'}]
+      const ran=agent?await runOnAgentEngine(agentRunFrom(turns),{engine,session}):await runOnModelEngine(answerFrom(turns,answerAs),{engine,session})
+      if(project){expect(ofType(ran.events,'error')).toEqual([]);expect(ofType(ran.events,'policy_resolved')[0]!.members['models.child.review.reasoning']?.layer).toBe('project')}
+      else {expect(ran.requests).toHaveLength(0);expect(ran.runs).toHaveLength(0);expect(ofType(ran.events,'guardrail')[0]?.reason).toBe('policy refused')}
+    }
+  })
+}
+for(const engineId of MODEL_ENGINES)describe(`engine ${engineId} · scenarios`,()=>{
+  afterEach(()=>vi.unstubAllGlobals())
+  for(const answerAs of ['stream','whole'] as const)describe(`policy table ${answerAs}`,()=>policyTableChecks(engineId,false,answerAs))
+})
+for(const engineId of AGENT_ENGINES)describe(`agent engine ${engineId} · scenarios`,()=>{
+  afterEach(()=>vi.unstubAllGlobals())
+  policyTableChecks(engineId,true,'stream')
+})

@@ -591,7 +591,7 @@ function endpointSentence(body:unknown):string {
  * owed no terminal event and gets none: its `return()` closes the generator.
  */
 export function runVercel(session:AssistantSession,id:AssistantEngine):AsyncIterable<AssistantEvent> {
- return managedContext(session,held=>runVercelLoop(held,id))
+ return managedContext(session,held=>runVercelLoop(held,id),id)
 }
 
 export function runVercelLoop(

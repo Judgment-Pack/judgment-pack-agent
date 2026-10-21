@@ -1,3 +1,4 @@
+import {PolicyRefusal} from '../policy'
 import {failureError,failureEvent,toolFailureResult} from '../failures'
 import {ExecutionPaused} from '../execution/state'
 import type {AssistantEvent,EngineSession} from '../engine'
@@ -13,11 +14,11 @@ export function contextOf(session:EngineSession):SessionContext {
  * Derived context lives only as long as the execution, or, where the host hands
  * the run a chat-scoped context, as long as the chat (agent#8). Originals remain in
  * the owning chat/research journal. Rebuilding cannot resurrect deleted snapshots. */
-export function managedContext<T extends EngineSession>(session:T,run:(session:T)=>AsyncIterable<AssistantEvent>):AsyncIterable<AssistantEvent>{
+export function managedContext<T extends EngineSession>(session:T,run:(session:T)=>AsyncIterable<AssistantEvent>,engine?:import('../host').AssistantEngine):AsyncIterable<AssistantEvent>{
  const gate=openRun(session,()=>{})
- return eventIterator({gate,open:()=>execute({...session,signal:gate.signal},run)})
+ return eventIterator({gate,open:()=>execute({...session,signal:gate.signal},run,engine)})
 }
-async function* execute<T extends EngineSession>(session:T,run:(session:T)=>AsyncIterable<AssistantEvent>):AsyncGenerator<AssistantEvent>{
+async function* execute<T extends EngineSession>(session:T,run:(session:T)=>AsyncIterable<AssistantEvent>,engine?:import('../host').AssistantEngine):AsyncGenerator<AssistantEvent>{
  let context:SessionContext|undefined
  let ended=false
  const tracked=!!session.context?.currentRequest||!!session.context?.execution
@@ -38,8 +39,10 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
  let requested:string|undefined
  try {
   session.signal.throwIfAborted()
-  const ready=await contextualSession(session);context=ready.context
+  const ready=await contextualSession(session,engine);context=ready.context
   contexts.set(ready.session,context)
+  yield {type:'policy_resolved',members:structuredClone(context.resolvedPolicy)}
+  if(context.paceWarning)yield {type:'guardrail',tool:'pace',action:'refused',reason:'pace warning',detail:context.paceWarning}
   session.signal.throwIfAborted()
   if(tracked)yield {type:'execution_checkpoint',checkpoint:context.execution.snapshot()}
   // ADR-0008: a paused act call the person decided on. Approved: the decision is written and
@@ -125,6 +128,7 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
   }
  } catch(error){
   if(ended)throw error
+  if(error instanceof PolicyRefusal)yield error.event()
   if(!session.signal.aborted)yield failureEvent(error,'context')
   yield {type:'end'}
  } finally {context?.close()}

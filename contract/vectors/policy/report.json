@@ -1,0 +1,93 @@
+{
+  "description": "Written by hand from ADR-0011; no output recorded from an implementation.",
+  "schema": "provenance.json#/$defs/policy",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/policy.ts"
+    ]
+  },
+  "items": [
+    {
+      "budget.readBytes": {
+        "value": 1024,
+        "layer": "run"
+      },
+      "critic.default": {
+        "value": "on",
+        "layer": "run"
+      },
+      "models.author.reasoning": {
+        "value": "ultra",
+        "layer": "run"
+      },
+      "concurrency.requests": {
+        "value": 3,
+        "layer": "run"
+      },
+      "pace.requestsPerDay": {
+        "value": 60,
+        "layer": "run"
+      },
+      "taskClass": {
+        "value": "boundary",
+        "layer": "run"
+      }
+    },
+    {
+      "budget.readBytes": {
+        "value": 768,
+        "layer": "project"
+      },
+      "critic.default": {
+        "value": "off",
+        "layer": "project"
+      },
+      "models.author.reasoning": {
+        "value": "on",
+        "layer": "project"
+      },
+      "concurrency.requests": {
+        "value": 2,
+        "layer": "project"
+      },
+      "pace.requestsPerDay": {
+        "value": 80,
+        "layer": "project"
+      },
+      "taskClass": {
+        "value": "material",
+        "layer": "project"
+      }
+    },
+    {
+      "budget.readBytes": {
+        "value": 512,
+        "layer": "table"
+      },
+      "critic.default": {
+        "value": "auto",
+        "layer": "table"
+      },
+      "models.author.reasoning": {
+        "value": "off",
+        "layer": "table"
+      },
+      "concurrency.requests": {
+        "value": 1,
+        "layer": "table"
+      },
+      "pace.requestsPerDay": {
+        "value": 100,
+        "layer": "table"
+      },
+      "taskClass": {
+        "value": "routine",
+        "layer": "table"
+      }
+    }
+  ]
+}

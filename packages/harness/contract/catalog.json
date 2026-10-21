@@ -92,6 +92,10 @@
     "repeated-work": {
       "message": "The assistant kept repeating completed work. Desk stopped this response and retained the results.",
       "recovery": "review"
+    },
+    "pace exceeded": {
+      "message": "The project period budget is exhausted. Wait for the next period or change the project policy.",
+      "recovery": "wait"
     }
   },
   "aliases": {

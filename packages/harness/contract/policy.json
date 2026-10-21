@@ -1,15 +1,31 @@
 {
-  "version": 1,
-  "maxInputBytes": 180000,
-  "contextWindowTokens": 65536,
-  "outputTokens": 8192,
-  "toolResultBytes": 12000,
-  "readBytes": 6000,
-  "retainedBytes": 8388608,
-  "recentMessages": 8,
-  "historyBytes": 32000,
-  "briefBytes": 8000,
-  "memoryBytes": 4000,
-  "criticDefault": "auto",
-  "criticReasoningFloor": "author"
+  "budget": {
+    "version": 1,
+    "maxInputBytes": 180000,
+    "contextWindowTokens": 65536,
+    "outputTokens": 8192,
+    "toolResultBytes": 12000,
+    "readBytes": 6000,
+    "retainedBytes": 8388608,
+    "recentMessages": 8,
+    "historyBytes": 32000,
+    "briefBytes": 8000,
+    "memoryBytes": 4000
+  },
+  "critic": {
+    "default": "auto",
+    "reasoningFloor": "author"
+  },
+  "models": {},
+  "concurrency": {
+    "children": 1,
+    "requests": 1
+  },
+  "pace": {
+    "requestsPerDay": null,
+    "invocationsPerDay": null,
+    "bytesPerDay": null,
+    "warnAt": 0.8
+  },
+  "taskClass": "routine"
 }

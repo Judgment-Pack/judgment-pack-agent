@@ -790,6 +790,27 @@
         "go": [
           "10 agent reserve"
         ]
+      },
+      {
+        "check": "11 \u00b7 policy resolution precedes the request, records every layer, and model text changes nothing",
+        "go": [
+          "11 resolved",
+          "11 agent resolved"
+        ]
+      },
+      {
+        "check": "11 \u00b7 pace warns at the threshold and refuses past it before a request",
+        "go": [
+          "11 pace",
+          "11 agent pace"
+        ]
+      },
+      {
+        "check": "11 \u00b7 a project may raise a child tier and a run alone may not",
+        "go": [
+          "11 ceiling",
+          "11 agent ceiling"
+        ]
       }
     ]
   },

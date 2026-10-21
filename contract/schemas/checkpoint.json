@@ -202,6 +202,9 @@
         ]
       },
       "additionalProperties": false
+    },
+    "policy": {
+      "$ref": "policy.json#/$defs/resolved"
     }
   },
   "additionalProperties": true,

@@ -53,6 +53,22 @@
     "adversarialReview": {
       "description": "The switch before ADR-0010, kept for one release as a read alias of the run's word: true reads as on, false as off. Where critic is also set, critic wins. Retired in the release after.",
       "type": "boolean"
+    },
+    "policy": {
+      "$ref": "policy.json"
+    },
+    "policyProject": {
+      "$ref": "policy.json"
+    },
+    "taskClass": {
+      "enum": [
+        "routine",
+        "material",
+        "boundary"
+      ]
+    },
+    "paceUsed": {
+      "$ref": "policy.json#/$defs/paceUsed"
     }
   },
   "additionalProperties": true,
@@ -709,7 +725,7 @@
                 "properties": {
                   "reason": {
                     "type": "string",
-                    "description": "Why a review of this run’s proposal is wanted, in one sentence."
+                    "description": "Why a review of this run\u2019s proposal is wanted, in one sentence."
                   }
                 }
               }

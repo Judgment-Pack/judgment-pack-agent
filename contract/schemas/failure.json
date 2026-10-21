@@ -75,7 +75,8 @@
         "invalid-tool-input",
         "output-limit",
         "content-filter",
-        "repeated-work"
+        "repeated-work",
+        "pace exceeded"
       ]
     },
     "source": {

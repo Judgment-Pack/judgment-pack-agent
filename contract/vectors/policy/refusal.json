@@ -1,0 +1,22 @@
+{
+  "description": "Written by hand from ADR-0011; no output recorded from an implementation.",
+  "schema": "failure.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/policy.ts"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "code": "pace exceeded",
+      "source": "context",
+      "outcome": "not-started",
+      "detail": "pace.requestsPerDay (project): project period budget exceeded"
+    }
+  ]
+}

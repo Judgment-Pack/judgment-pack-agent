@@ -1,5 +1,11 @@
 # The Go module
 
+Budgets are the `budget` section of the [agent's policy table](../docs/adr/0011-the-agents-policy-table.md).
+The host's run layer wins over its project layer, then table defaults. The same
+resolver covers critic, models, concurrency, pace, and task class, with each member's
+value and layer in `policy_resolved` and `checkpoint.policy`. `budget.json` is a
+read alias for one release. Model-visible text cannot set policy.
+
 `github.com/Judgment-Pack/judgment-pack-agent/go` holds the Go side of the agent harness
 (ADR-0004): the contract's generated types, the tool gate, the Eino adapter on the model capability,
 the agent adapter on the agent capability (ADR-0007), the delegation coordinator for both, and the

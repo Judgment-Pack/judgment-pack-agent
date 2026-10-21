@@ -1,5 +1,11 @@
 # @judgment-pack/harness
 
+Budgets are the `budget` section of the [agent's policy table](../../docs/adr/0011-the-agents-policy-table.md).
+The host's run layer wins over its project layer, then table defaults. The same
+resolver covers critic, models, concurrency, pace, and task class, with each member's
+value and layer in `policy_resolved` and `checkpoint.policy`. `budget.json` is a
+read alias for one release. Model-visible text cannot set policy.
+
 The assistant harness of [Judgment Pack Desk](https://github.com/Judgment-Pack/judgment-pack-desk),
 extracted from the Desk's `web/src/assistant` as it is at `integration/v0.13`, `d9251ec`, with no
 behaviour change, behind the wire contract in [`contract/`](../../contract/README.md). Research

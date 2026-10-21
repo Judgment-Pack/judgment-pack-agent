@@ -99,6 +99,19 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		r.emitAll(runcontext.FailedToOpen(failure.Authored("configuration", "The run is not on an agent capability alone; nothing was sent.", "desk")))
 		return nil
 	}
+	named := runcontext.RunModels{Critic: run.ModelName, Child: run.ModelName}
+	if run.Agent != nil {
+		named.Critic = run.Agent.Model
+		named.Child = run.Agent.Model
+	}
+	if run.Models != nil {
+		var err error
+		named, err = run.Models()
+		if err != nil {
+			r.emitAll(runcontext.FailedToOpen(err))
+			return nil
+		}
+	}
 	session := runcontext.Session{
 		Prompt:            run.Prompt,
 		TestPrompt:        run.TestPrompt,
@@ -112,7 +125,8 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		Host:              run.Host,
 		Skills:            run.Skills,
 		// ADR-0010: the critic's switch, as the host passes it.
-		Critic:            run.Critic,
+		Critic: run.Critic,
+		Policy: run.Policy, PolicyProject: run.PolicyProject, TaskClass: run.TaskClass, PaceUsed: run.PaceUsed, PolicyLegacyModels: &named, PolicyConnections: append(adapter.PolicyConnectionIDs(run), named.Critic, named.Child), PolicyRequests: run.PolicyRequests,
 		CriticProject:     run.CriticProject,
 		CriticReasoning:   run.CriticReasoning,
 		ExistingPack:      run.ExistingPack,
@@ -128,6 +142,13 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		return nil
 	}
 	r.sc = opened.Context
+	local := *run
+	if err := adapter.ApplyPolicy(&local, r.sc, named); err != nil {
+		r.sc.Close()
+		r.emitAll(runcontext.FailedToOpen(err))
+		return nil
+	}
+	r.run = &local
 	// ADR-0008: an act call's approval is written asked only once this run has claimed its pause.
 	r.sc.PauseClaim = func() bool { return r.claimPause(false) }
 	r.session = opened.Session

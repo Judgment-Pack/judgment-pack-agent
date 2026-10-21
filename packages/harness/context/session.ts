@@ -1,3 +1,5 @@
+import {normalize} from '../thinking'
+import {resolvePolicy,PolicyRefusal,type PolicyConnection,type PolicyMembers} from '../policy'
 import {runtimeToolContextPolicy} from './toolPolicy'
 import {failureError,AIFailureError,authoredFailure} from '../failures'
 import {criticMayCall,criticMayRead,criticRefusalDetail,readCriticCases,type CriticCase} from '../refutation'
@@ -57,6 +59,7 @@ export interface ExecutionLink {attach(context:SessionContext):void;/** ADR-0006
 export interface ContextUsage {inputBytes:number;estimatedInputTokens:number;inputBudgetBytes:number;outputReserveTokens:number;compactions:number;retainedItems:number}
 const encoded=(value:unknown)=>JSON.stringify(value)
 export class SessionContext {
+ readonly resolvedPolicy:PolicyMembers;readonly paceWarning?:string
  readonly policy;readonly ledger;readonly execution:ExecutionController;private compactions=0
  /** The model's capability record (agent#4), resolved once for the run; none for an agent session. */
  readonly capabilities?:ModelCapabilities
@@ -161,6 +164,7 @@ export class SessionContext {
  system(guidance:string,tools=''){return systemText(guidance,this.hostParts,tools)+this.skillCatalogue}
  /** Who the run is, as the host's `modelsFor` is asked: its connection, family and model; and the answer, once asked. */
  private readonly identity:Omit<RunIdentity,'engine'>
+ private bindings:Record<string,PolicyConnection>={}
  private named?:{models?:RunModels;error?:unknown}
  /**
   * The models the run's connection names for its critic and its delegated children (`modelsFor` in
@@ -170,19 +174,46 @@ export class SessionContext {
  models(engine:AssistantEngine):RunModels{
   this.named??=(()=>{try{return {models:runModels({...this.identity,engine})}}catch(error){return {error}}})()
   if(this.named.models===undefined)throw this.named.error
-  return this.named.models
+  const selected=this.connection('critic')
+  return {...this.named.models,critic:selected?('model'in selected?selected.model.model:selected.agent.model):this.named.models.critic,concurrentRequests:Number(this.resolvedPolicy['concurrency.requests']!.value)}
  }
- constructor(session:EngineSession){
+ connection(role:string):PolicyConnection|undefined{
+  const id=this.resolvedPolicy[`models.${role}.model`]?.value
+  return id===undefined?undefined:this.bindings[String(id)]
+ }
+ constructor(session:EngineSession,engine?:AssistantEngine){
   this.identity={...(session.context?.connection?{connection:session.context.connection}:{}),...('model'in session?{family:session.model.family}:{}),model:'model'in session?session.model.model:session.agent.model}
   try{this.criticCases=readCriticCases(session.criticCases??[])}catch(cause){throw authoredFailure('configuration',(cause as Error).message,'context')}
   // ADR-0010: the session's critic members, read closed before any request.
   try{readCriticSettings(session,'agent'in session)}catch(cause){throw authoredFailure('configuration',(cause as Error).message,'context')}
   this.existingPack=session.existingPack===true
   this.authorTier='model'in session?session.thinking?.tier:session.effort
-  this.capabilities='model'in session?capabilitiesFor(session.model):undefined;this.policy=contextPolicy(session.context?.configuration,'model'in session?session.model.model:session.agent.model,this.capabilities);this.turn=session.context?.chat?.openTurn();this.objective=session.context?.objective;this.ledger=new ContextLedger(this.policy,this.turn);this.execution=new ExecutionController(session,this.ledger);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))
+  this.capabilities='model'in session?capabilitiesFor(session.model):undefined;this.policy=contextPolicy(session.context?.configuration,'model'in session?session.model.model:session.agent.model,this.capabilities)
+  const current=this.identity.connection?.connectionId??this.identity.model
+  const named=engine?runModels({...this.identity,engine}):{critic:this.identity.model,child:this.identity.model}
+  if(engine)this.named={models:named}
+  const binding:PolicyConnection='model'in session?{model:session.model}:{agent:session.agent}
+  const withName=(name:string):PolicyConnection=>'model'in binding?{model:{...binding.model,model:name}}:{agent:{...binding.agent,model:name}}
+  this.bindings={[current]:binding,[named.critic]:withName(named.critic),[named.child]:withName(named.child),...session.policyConnections}
+
+  const resolved=resolvePolicy(
+   {...session.policy, ...(session.taskClass?{taskClass:session.taskClass}:{}),critic:{...(session.critic!==undefined||session.adversarialReview!==undefined?{default:session.critic??(session.adversarialReview?'on':'off')}:{}),...session.policy?.critic},models:{...session.policy?.models,...(session.criticReasoning?{critic:{...session.policy?.models?.critic,reasoning:session.criticReasoning}}:{})}},
+   {...session.policyProject,critic:{...(session.criticProject?{default:session.criticProject}:{}),...session.policyProject?.critic}},
+   {...this.policy,concurrency:{requests:named.concurrentRequests??1},models:{author:{model:current,reasoning:this.authorTier??('agent'in session?'none':'off')},critic:{model:named.critic}}},
+   {connections:Object.keys(this.bindings),agent:'agent'in session,requests:session.policyRequests??named.concurrentRequests??1,paceUsed:session.paceUsed})
+  this.resolvedPolicy=resolved.members;this.paceWarning=resolved.warning
+  for(const [name,member] of Object.entries(resolved.members))if(name.startsWith('models.')&&name.endsWith('.model')){
+   const selected=this.bindings[String(member.value)]!
+   if(('model'in session)!==('model'in selected)||'model'in session&&'model'in selected&&selected.model.family!==session.model.family)throw new PolicyRefusal(name,member.layer,'connection requires a different capability or wire family')
+  }
+this.turn=session.context?.chat?.openTurn();this.objective=session.context?.objective;this.ledger=new ContextLedger(this.policy,this.turn);this.execution=new ExecutionController(session,this.ledger);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))
+  for(const [name,member] of Object.entries(resolved.members))if(name.startsWith('budget.'))Object.assign(this.policy,{[name.slice(7)]:member.value})
+  this.policy.criticDefault=String(resolved.members['critic.default']!.value)
+  this.authorTier=resolved.members['models.author.reasoning']!.value as CriticTier
+  const reviewSettings={...session,resolvedPolicy:resolved.members,criticReasoning:resolved.members['models.critic.reasoning']!.value as CriticTier}
   // ADR-0010: the forced-off facts are the session's: a delegated child (its objective), Plan mode, a
   // graph-purpose run, a reviewer assigned.
-  this.review=new CriticSwitch(session,this.policy,{child:!!session.context?.objective,phase:session.context?.phase,purpose:session.purpose,reviewerAssigned:session.reviewerAssigned===true},{get:()=>this.execution.state.critic,set:value=>{this.execution.state.critic=value}})
+  this.review=new CriticSwitch(reviewSettings,this.policy,{child:!!session.context?.objective,phase:session.context?.phase,purpose:session.purpose,reviewerAssigned:session.reviewerAssigned===true},{get:()=>this.execution.state.critic,set:value=>{this.execution.state.critic=value}})
  }
  /**
   * ADR-0010: **the critic's decision**, at the point the critic would start (a proposal) or where the
@@ -515,7 +546,7 @@ export class ApprovalPaused extends Error {
 export function testCallCapFailure(limit:number):AIFailureError{
  return new AIFailureError({version:1,code:'tool-failed',source:'tool',outcome:'not-started',detail:`This turn has called ${TEST_TOOL} ${limit} time${limit===1?'':'s'}, the most one turn may (testCallsPerTurn); this call was not run. Use the reports already obtained: fix what they show and propose, or say what remains. The person can test again in a new turn.`})
 }
-export async function contextualSession<T extends EngineSession>(session:T):Promise<{session:T;context:SessionContext}>{
+export async function contextualSession<T extends EngineSession>(session:T,engine?:AssistantEngine):Promise<{session:T;context:SessionContext}>{
  // ADR-0006: the tools with a source, read and named for the wire before anything else sees them.
  const declared=await declareSources(session.hostTools,session.tools.map(t=>t.name))
  // ADR-0009: a skill may name only the host's declared tools, whatever this phase offers of them.
@@ -523,13 +554,21 @@ export async function contextualSession<T extends EngineSession>(session:T):Prom
  session={...session,hostTools:declared.hostTools}
  session=planningSession(session)
  await session.context?.authorize?.(session.signal)
- const context=new SessionContext(session)
+ const context=new SessionContext(session,engine)
+ const author=context.connection('author')!
+ const tier=String(context.resolvedPolicy['models.author.reasoning']!.value)
+ session={...session,...author,...('model'in author?{thinking:normalize(tier as import('../host').ThinkingTier,author.model.family)}:tier==='none'?{}:{effort:tier})} as T
  // A chat's turn is open from here: a run that cannot start closes it again.
  try{
  // ADR-0009: the skills, read and admitted before any request; their sources report beside the tools'.
  const skills=await declareSkills(session.skills,declaredNames,context.policy,declared.sources)
  declared.sources.push(...skills.sources)
  await context.execution.initialize()
+ const carried=context.execution.state.policy
+ if(carried) {
+  if(JSON.stringify(carried)!==JSON.stringify(context.resolvedPolicy))throw authoredFailure('stale-state','The policy differs from the saved run.','context')
+ } else context.execution.state.policy=structuredClone(context.resolvedPolicy)
+ try{await session.context?.checkpoint?.(context.execution.snapshot())}catch{throw failureError('storage','storage','not-started')}
  context.carryMarker()
  if(declared.sources.length){
   const offered=offerSources(session.hostTools,declared.entries,context.policy,context.marker)
@@ -560,7 +599,7 @@ export async function contextualSession<T extends EngineSession>(session:T):Prom
  }
  // ADR-0008: while an act call waits for the person's decision, no request is sent: the run ends paused.
  const held=()=>{if(context.execution.approvalAsked)throw new ApprovalPaused()}
- const model='model'in session?{...session.model,call:async(suffix:string,request:import('../engine').ModelRequest)=>{await session.context?.authorize?.(session.signal);if(request.method!=='GET'){held();context.execution.claim();await context.execution.recordPrompt(request.body);try{await session.context?.checkpoint?.(context.execution.snapshot())}catch{throw failureError('storage','storage','not-started')}}return session.model.call(suffix,request)}}:undefined
- const agent='agent'in session?{...session.agent,run:async(request:import('../agent').AgentRequest,callbacks:import('../agent').AgentCallbacks)=>{await session.context?.authorize?.(callbacks.signal);held();const {delegated:_delegated,...sent}=request;await context.execution.recordPrompt(JSON.stringify(sent));return session.agent.run(request,callbacks)}}:undefined
+ const model='model'in session?{...session.model,call:async(suffix:string,request:import('../engine').ModelRequest)=>{await session.context?.authorize?.(session.signal);if(request.method!=='GET'){held();context.execution.claim();await context.execution.recordPrompt(request.body);try{await session.context?.checkpoint?.(context.execution.snapshot())}catch{throw failureError('storage','storage','not-started')}}const binding=context.criticRunning?context.connection('critic'):undefined;return (binding&&'model'in binding?binding.model:session.model).call(suffix,request)}}:undefined
+ const agent='agent'in session?{...session.agent,run:async(request:import('../agent').AgentRequest,callbacks:import('../agent').AgentCallbacks)=>{await session.context?.authorize?.(callbacks.signal);held();const {delegated:_delegated,...sent}=request;await context.execution.recordPrompt(JSON.stringify(sent));const binding=request.phase==='critic'?context.connection('critic'):undefined;return (binding&&'agent'in binding?binding.agent:session.agent).run(request,callbacks)}}:undefined
  return {context,session:{...session,...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{context.admit(name,'runtime');await session.context?.authorize?.(session.signal);context.claimTestCall(name);const call=()=>context.execution.wrapRead(name,a=>session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true,{runtime:true,offered:session.tools.some(t=>t.name===name)})(args);return context.sources?context.sources.runtime(call):call()}}}
 }

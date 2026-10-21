@@ -14,7 +14,7 @@ One event of a run, from the adapter to the host, in order, discriminated by typ
 
 See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](critic.md), [skills.md](skills.md), [budget.md](budget.md), [reasons.md](reasons.md), [checkpoint.md](checkpoint.md).
 
-## The 22 kinds
+## The 23 kinds
 
 | Kind | Defined in | Required beyond type |
 | --- | --- | --- |
@@ -40,6 +40,7 @@ See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](crit
 | `proposal` | `run-event.json $defs/proposal` | `document`, `unknowns` |
 | `error` | `run-event.json $defs/error` | `message` |
 | `end` | `run-event.json $defs/end` |  |
+| `policy_resolved` | `run-event.json $defs/policy_resolved` | `members` |
 
 ## Every kind with its members
 
@@ -244,7 +245,7 @@ Open: a member the schema does not name is accepted.
 | `tool` | yes | string |  |
 | `action` | yes | enum `rewrote`, `refused`, `narrowed` |  |
 | `detail` | yes | string |  |
-| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused` |  |
+| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning` |  |
 
 ### `thinking_unavailable`
 
@@ -331,3 +332,12 @@ Open: a member the schema does not name is accepted.
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
 | `type` | yes | const `end` |  |
+
+### `policy_resolved`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `type` | yes | const `policy_resolved` |  |
+| `members` | yes | `policy.json $defs/resolved` |  |
