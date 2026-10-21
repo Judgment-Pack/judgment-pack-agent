@@ -53,13 +53,13 @@ session and returns an ordered stream of events (`Engine.start(session)`,
 that drives a model over the relay, and `codex`, which drives a ChatGPT subscription agent that the
 Desk server runs. This package adds a third, `deepagents` (ADR-0003):
 
-| Adapter | Kind | Loop | Reach to a model | Tool calls | The prompt (ADR-0005) |
-| --- | --- | --- | --- | --- | --- |
-| `vercel` | model | the Vercel AI SDK's `streamText` | `model.call`, as the SDK's providers' `fetch` (`relayFetch`) | the SDK's tools, each executed through the gate's dispatch; an act call the host's policy asks about held, its step's other calls answered and the next request refused (ADR-0008) | the system text (`systemText`) as the SDK's `instructions`, with the Anthropic cache breakpoint; the host's parts from `configureHarness`; the critic's tier in its requests' thinking members (ADR-0010) |
-| `codex` | agent | the Codex bridge the Desk server runs | `agent.run` | the agent wire, under aliases, through the gate's dispatch; an act call the host's policy asks about ends the run as a delegation handoff does (ADR-0008) | the system text as the agent request's `instructions`; the request text, the index and the state in its `prompt`; the host's parts from `configureHarness`; a loaded skill's block in `load_skill`'s answer, and in a later run's state (ADR-0009); the critic's tier as its run's `effort`, one run held back for it under `auto` and `on` (ADR-0010) |
-| `deepagents` | model | Deep Agents' agent graph (`createDeepAgent`, `deepagents/browser`), its own tools, subagents and summarization off | `model.call`, from its own LangChain chat model, the three wires written by the adapter; a run whose environment turns LangChain's tracing on is refused | every call answered by the adapter's boundary middleware through the gate's dispatch; an act call the host's policy asks about held, as on `vercel` (ADR-0008) | the system text as the system message its `wrapModelCall` places; the host's parts from `configureHarness`; the critic's tier in its requests' thinking members (ADR-0010) |
-| `agent` (Go) | agent | the host's provider-run function (`adapter.Agent.Run`, ADR-0007), one invocation per call, the provider's own model loop | the host's function, which holds its account, process and credentials; the adapter holds no transport | the agent wire, under aliases, through the Go gate's narrow handle (`gate.Calls`); `delegate_tasks` a handoff, and an act call the host's policy asks about ends the invocation as one (ADR-0008) | the system text (`runcontext.SystemText`) as each invocation's `instructions`; the request text, the index and the state in its `prompt`; the host's parts from `adapter.Run`'s `Host`; a loaded skill's block in `load_skill`'s answer, and in a later invocation's state (ADR-0009); the critic's tier as its invocation's `effort`, one invocation held back for it under `auto` and `on` (ADR-0010) |
-| `eino` (Go) | model | Eino's `adk.ChatModelAgent` under an `adk.Runner` (ADR-0004), its interrupt, checkpoint, retries and subagents not configured | the in-process relay client (`go/relay`), which runs each request through the relay handler's path; the three wires written by the adapter (`go/adapter/wire`) | every call answered by the adapter's boundary middleware or Eino's unknown-tools handler, one dispatch, through the Go gate's narrow handle (`gate.Calls`); a turn's calls one at a time, an act call the host's policy asks about held as on `vercel` (ADR-0008) | the system text (`runcontext.SystemText`) as the system message the adapter writes on each wire; the host's parts from `adapter.Run`'s `Host`; the critic's tier in its requests' thinking members (ADR-0010) |
+| Adapter | Kind | Loop | Reach to a model | Tool calls | The prompt (ADR-0005) | Provider selection (ADR-0012) |
+| --- | --- | --- | --- | --- | --- | --- |
+| `vercel` | model | the Vercel AI SDK's `streamText` | `model.call`, as the SDK's providers' `fetch` (`relayFetch`) | the SDK's tools, each executed through the gate's dispatch; an act call the host's policy asks about held, its step's other calls answered and the next request refused (ADR-0008) | the system text (`systemText`) as the SDK's `instructions`, with the Anthropic cache breakpoint; the host's parts from `configureHarness`; the critic's tier in its requests' thinking members (ADR-0010) | per-role host connection; provider recorded; tier map applied |
+| `codex` | agent | the Codex bridge the Desk server runs | `agent.run` | the agent wire, under aliases, through the gate's dispatch; an act call the host's policy asks about ends the run as a delegation handoff does (ADR-0008) | the system text as the agent request's `instructions`; the request text, the index and the state in its `prompt`; the host's parts from `configureHarness`; a loaded skill's block in `load_skill`'s answer, and in a later run's state (ADR-0009); the critic's tier as its run's `effort`, one run held back for it under `auto` and `on` (ADR-0010) | per-role host connection; provider recorded; tier map applied |
+| `deepagents` | model | Deep Agents' agent graph (`createDeepAgent`, `deepagents/browser`), its own tools, subagents and summarization off | `model.call`, from its own LangChain chat model, the three wires written by the adapter; a run whose environment turns LangChain's tracing on is refused | every call answered by the adapter's boundary middleware through the gate's dispatch; an act call the host's policy asks about held, as on `vercel` (ADR-0008) | the system text as the system message its `wrapModelCall` places; the host's parts from `configureHarness`; the critic's tier in its requests' thinking members (ADR-0010) | per-role host connection; provider recorded; tier map applied |
+| `agent` (Go) | agent | the host's provider-run function (`adapter.Agent.Run`, ADR-0007), one invocation per call, the provider's own model loop | the host's function, which holds its account, process and credentials; the adapter holds no transport | the agent wire, under aliases, through the Go gate's narrow handle (`gate.Calls`); `delegate_tasks` a handoff, and an act call the host's policy asks about ends the invocation as one (ADR-0008) | the system text (`runcontext.SystemText`) as each invocation's `instructions`; the request text, the index and the state in its `prompt`; the host's parts from `adapter.Run`'s `Host`; a loaded skill's block in `load_skill`'s answer, and in a later invocation's state (ADR-0009); the critic's tier as its invocation's `effort`, one invocation held back for it under `auto` and `on` (ADR-0010) | per-role host connection; provider recorded; tier map applied |
+| `eino` (Go) | model | Eino's `adk.ChatModelAgent` under an `adk.Runner` (ADR-0004), its interrupt, checkpoint, retries and subagents not configured | the in-process relay client (`go/relay`), which runs each request through the relay handler's path; the three wires written by the adapter (`go/adapter/wire`) | every call answered by the adapter's boundary middleware or Eino's unknown-tools handler, one dispatch, through the Go gate's narrow handle (`gate.Calls`); a turn's calls one at a time, an act call the host's policy asks about held as on `vercel` (ADR-0008) | the system text (`runcontext.SystemText`) as the system message the adapter writes on each wire; the host's parts from `adapter.Run`'s `Host`; the critic's tier in its requests' thinking members (ADR-0010) | per-role host connection; provider recorded; tier map applied |
 
 Everything an engine needs is decided by the host before the session starts and handed to it:
 
@@ -1075,6 +1075,27 @@ The skills budget (ADR-0009; see [Skills](#skills)) adds four: `skillBytes` (8,0
 instructions and resources), `skillsPerRun` (4 loads a response, carried through a resume),
 `skillsCatalogueBytes` (8,000) and `cataloguedSkills` (32).
 
+## Providers
+
+[ADR-0012](../adr/0012-cross-provider-modelling.md) adds provider policy for the
+author, critic, each child profile and declared sub-agent. The host passes named
+connections; `models.<role>.provider` is `same` (default), `other`, or a connected
+ID. Run > project > table applies to this member independently. `other` requires
+a different provider family; unmet policy emits `policy refused`, naming the role,
+before the author dispatches. The model cannot supply a connection or a policy layer.
+
+Every critique and delegated task identifies `{connection, family}`. The checkpoint's
+`crossProvider` report compares each recorded role with the author's family. A child
+on another family returns findings as data through the same gate and framing rules.
+The critic starts a new conversation on its selected connection and encoder.
+
+Capabilities state `family`, the `low`/`medium`/`high` tier map, and the facts used by
+the [generated compatibility matrix](../reference/providers.md). The host can override
+the tier map per connection. `on` uses `medium`; `ultra` uses `high`. Provider-managed
+agent bindings can supply their own effort map. The default model-wire settings retain
+the existing dialect fallback behavior. Cross-family failover has an explicit
+`policy refused` record: prefix and cache do not carry. Within-family failover is #104.
+
 ## The capability record
 
 `capability.json`; the vectors `capability/`. Since agent#4 the `vercel` adapter reads one record per
@@ -1406,6 +1427,11 @@ Agents' subagents are off and delegation is the package's, an awaited `delegate_
 `vercel` (ADR-0003, decision 3).
 
 ### Where the engines disagree
+
+- **Provider dispatch (ADR-0012).** Model engines select the role’s physical wire and
+  capability record before encoding; agent engines dispatch through the host’s selected
+  invocation function. Both enforce the same provider policy and record its family.
+  Neither transfers prefix or cache state across families.
 
 - **The critic's model and figures.** Both read the critic's member of the host's `modelsFor` answer,
   asked once per run (agent#10; review of agent#35).

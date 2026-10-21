@@ -382,6 +382,13 @@
             "xhigh",
             "max"
           ]
+        },
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "default": "same",
+          "description": "same selects the author's connection; other selects a host connection of another family; otherwise a connected ID. Run > project > table."
         }
       },
       "additionalProperties": false

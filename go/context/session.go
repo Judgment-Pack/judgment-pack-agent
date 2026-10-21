@@ -117,8 +117,9 @@ func (m *orderedValues) clear()          { m.order = nil; m.held = map[string]*V
 
 // SessionContext is the run's context (SessionContext).
 type SessionContext struct {
-	ResolvedPolicy PolicyMembers
-	PaceWarning    string
+	ProviderFamilies map[string]string
+	ResolvedPolicy   PolicyMembers
+	PaceWarning      string
 	// Policy is the budget this run works under; ReserveOutput and a host may change it.
 	Policy *Policy
 	// Ledger is what the run retains and reads.
@@ -218,7 +219,7 @@ func NewSessionContext(session Session) (*SessionContext, error) {
 	if err := json.Unmarshal(encoded, &policy); err != nil {
 		return nil, err
 	}
-	out := &SessionContext{ResolvedPolicy: resolved.Members, PaceWarning: resolved.Warning, Policy: &policy, Marker: DataMarker(), session: session,
+	out := &SessionContext{ProviderFamilies: session.PolicyFamilies, ResolvedPolicy: resolved.Members, PaceWarning: resolved.Warning, Policy: &policy, Marker: DataMarker(), session: session,
 		compactedSteps: newOrderedValues(), summaries: map[string]bool{}, contracts: newOrderedValues(),
 		referenceTools: map[string]bool{}, identity: identity}
 	if session.Context != nil && session.Context.Chat != nil {
@@ -1109,6 +1110,24 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		if err := held.Execution.Initialize(); err != nil {
 			return err
 		}
+		// A connection ID may be rebound; the saved execution's provider identities may not.
+		for _, row := range held.Execution.State.CrossProvider {
+			changed := FailoverRefusal(row.Role, row.Provider, *held.Provider(row.Role))
+			if changed == nil {
+				changed = FailoverRefusal("author", row.Author, *held.Provider("author"))
+			}
+			if changed != nil {
+				continued := false
+				for i := range held.Execution.State.CrossProvider {
+					held.Execution.State.CrossProvider[i].Continued = &continued
+				}
+				saved, err := held.Snapshot("stopped")
+				if err != nil {
+					return err
+				}
+				return &PolicyRefusal{Member: changed.Guardrail.Tool, Layer: "run", Detail: "cross-family continuation refused: the prefix and cache do not carry", Checkpoint: &saved}
+			}
+		}
 		record := held.ResolvedPolicy.Record()
 		if saved := held.Execution.State.Policy; saved != nil {
 			a, _ := json.Marshal(saved)
@@ -1397,4 +1416,37 @@ func (c *SessionContext) ClaimRequest(ctx context.Context, body []byte) error {
 // Snapshot is the run's checkpoint, as contract.Checkpoint.
 func (c *SessionContext) Snapshot(status string) (contract.Checkpoint, error) {
 	return c.Execution.Snapshot(status)
+}
+
+// Provider is the host binding selected at admission. Absent child rows use the author's connection.
+func (c *SessionContext) Provider(role string) *contract.ProvenanceProvider {
+	name := "models." + role + ".provider"
+	id, _ := c.ResolvedPolicy[name].Value.(string)
+	if id == "" {
+		id, _ = c.ResolvedPolicy["models.author.provider"].Value.(string)
+	}
+	family := c.ProviderFamilies[id]
+	if family == "" {
+		family = "openai"
+	}
+	return &contract.ProvenanceProvider{Connection: id, Family: family}
+}
+
+func (c *SessionContext) RecordProvider(role string) *contract.ProvenanceProvider {
+	if c.Execution.criticMu != nil {
+		c.Execution.criticMu.Lock()
+		defer c.Execution.criticMu.Unlock()
+	}
+	provider, author := c.Provider(role), c.Provider("author")
+	for _, row := range c.Execution.State.CrossProvider {
+		if row.Role == role {
+			return provider
+		}
+	}
+	relation := "same"
+	if provider.Family != author.Family {
+		relation = "other"
+	}
+	c.Execution.State.CrossProvider = append(c.Execution.State.CrossProvider, contract.ProvenanceCrossProvider{Role: role, Relation: relation, Author: *author, Provider: *provider})
+	return provider
 }

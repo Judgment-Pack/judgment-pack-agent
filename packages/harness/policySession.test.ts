@@ -36,7 +36,7 @@ describe('ADR policy table review',()=>{
    await callbacks.event({type:'message',id:'done',text:'Done.',phase:'final'})
   })
   const session:AgentAssistantSession={...base(),interactive:true,agent:{model:'connected',run:original},
-   policy:{models:{author:{model:'reviewer',reasoning:'low'}}},policyConnections:{reviewer:{agent:{model:'review-model',run:selected}}}}
+   policy:{models:{author:{model:'reviewer',provider:'reviewer',reasoning:'low'}}},policyConnections:{reviewer:{agent:{model:'review-model',run:selected}}}}
   const events:AssistantEvent[]=[]
   for await(const event of withDelegation(codex).start(session))events.push(event)
   expect(events.filter(e=>e.type==='error')).toEqual([])

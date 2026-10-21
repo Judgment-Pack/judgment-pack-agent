@@ -88,6 +88,10 @@ type StreamingQuirks struct {
 // ModelCapabilities is one endpoint and model as a loop reads it (ModelCapabilities in
 // capabilities.ts, the contract's capability.json).
 type ModelCapabilities struct {
+	Family           string
+	Tiers            map[string]string
+	FallbackTiers    map[string]string
+	CacheBreakpoints bool
 	// ContextWindowTokens and OutputTokens come together, and replace the budget table's.
 	ContextWindowTokens *int
 	OutputTokens        *int
@@ -108,7 +112,7 @@ type ModelCapabilities struct {
 // in the order the contract's capability.json states them.
 var CapabilityMembers = []string{
 	"contextWindowTokens", "outputTokens", "nativeToolCalls", "parallelToolCalls", "vision",
-	"reasoning", "streamingQuirks", "toolSchemas", "statePlacement", "strictAlternation",
+	"reasoning", "streamingQuirks", "toolSchemas", "statePlacement", "strictAlternation", "family", "tiers", "fallbackTiers", "cacheBreakpoints",
 }
 
 // WireReasoning is WIRE_REASONING: the reasoning kinds each wire speaks. A record that names
@@ -129,14 +133,29 @@ func WireReasoning(family EndpointKind) []ReasoningKind {
 // nothing. The answer is a fresh value each time, as the TypeScript's is frozen.
 func FamilyCapabilities(family EndpointKind) *Value {
 	record := func(vision bool, kind ReasoningKind, schemas ToolSchemas) *Value {
-		return Obj(
+		f := string(family)
+		if family == OpenAICompatible {
+			f = "openai"
+		}
+		low, medium, high := "low", "high", "xhigh"
+		if family == Gemini {
+			low, medium, high = "4096", "8192", "24576"
+		}
+		result := Obj(
 			F("nativeToolCalls", Bool(true)),
 			F("parallelToolCalls", Bool(true)),
 			F("vision", Bool(vision)),
 			F("reasoning", Obj(F("kind", Str(string(kind))))),
 			F("streamingQuirks", Obj(F("reasoningField", Null()), F("wholeJsonAnswer", Bool(false)))),
 			F("toolSchemas", Str(string(schemas))),
+			F("family", Str(f)), F("tiers", Obj(F("low", Str(low)), F("medium", Str(medium)), F("high", Str(high)))), F("cacheBreakpoints", Bool(family == Anthropic)),
 		)
+		if family == Anthropic {
+			result.Set("fallbackTiers", Obj(F("low", Str("4000")), F("medium", Str("8000")), F("high", Str("16000"))))
+		} else if family == Gemini {
+			result.Set("fallbackTiers", Obj(F("low", Str("low")), F("medium", Str("medium")), F("high", Str("high"))))
+		}
+		return result
 	}
 	switch family {
 	case Anthropic:
@@ -188,6 +207,42 @@ func ReadCapabilities(value *Value) (ModelCapabilities, error) {
 		case "vision":
 			record.Vision = held
 		}
+	}
+	if f := value.Get("family"); f != nil {
+		record.Family = f.Text()
+		if !f.IsString() || !slices.Contains([]string{"openai", "anthropic", "gemini", "codex"}, record.Family) {
+			return record, refuseCapabilities("unknown family")
+		}
+	}
+	for _, name := range []string{"tiers", "fallbackTiers"} {
+		if tiers := value.Get(name); tiers != nil {
+			if !tiers.IsObject() {
+				return record, refuseCapabilities("tiers must be an object")
+			}
+			if err := closedMembers(tiers, []string{"low", "medium", "high"}, "tiers"); err != nil {
+				return record, err
+			}
+			settings := map[string]string{}
+			for _, tier := range []string{"low", "medium", "high"} {
+				v := tiers.Get(tier)
+				if !v.IsString() || v.Text() == "" {
+					return record, refuseCapabilities("tiers must name every setting")
+				}
+				settings[tier] = v.Text()
+			}
+			if name == "tiers" {
+				record.Tiers = settings
+			} else {
+				record.FallbackTiers = settings
+			}
+		}
+	}
+	if v := value.Get("cacheBreakpoints"); v != nil {
+		b, ok := v.Boolean()
+		if !ok {
+			return record, refuseCapabilities("cacheBreakpoints must be boolean")
+		}
+		record.CacheBreakpoints = b
 	}
 	window, output := value.Get("contextWindowTokens"), value.Get("outputTokens")
 	if (window == nil) != (output == nil) {
@@ -336,6 +391,18 @@ func (c ModelCapabilities) Value() *Value {
 	record.Set("reasoning", reasoning)
 	record.Set("streamingQuirks", Obj(F("reasoningField", field), F("wholeJsonAnswer", Bool(c.StreamingQuirks.WholeJSONAnswer))))
 	record.Set("toolSchemas", Str(string(c.ToolSchemas)))
+	if c.Family != "" {
+		record.Set("family", Str(c.Family))
+	}
+	if c.Tiers != nil {
+		record.Set("tiers", Obj(F("low", Str(c.Tiers["low"])), F("medium", Str(c.Tiers["medium"])), F("high", Str(c.Tiers["high"]))))
+	}
+	if c.Family != "" {
+		record.Set("cacheBreakpoints", Bool(c.CacheBreakpoints))
+	}
+	if c.FallbackTiers != nil {
+		record.Set("fallbackTiers", Obj(F("low", Str(c.FallbackTiers["low"])), F("medium", Str(c.FallbackTiers["medium"])), F("high", Str(c.FallbackTiers["high"]))))
+	}
 	if c.StatePlacement != "" {
 		record.Set("statePlacement", Str(string(c.StatePlacement)))
 	}

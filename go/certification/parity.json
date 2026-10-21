@@ -832,7 +832,41 @@
           "11 pace",
           "11 agent pace"
         ]
+      },
+      {
+        "check": "12 other family, explicit ID, tier map and measurement",
+        "go": [
+          "12 provider",
+          "12 agent provider"
+        ]
+      },
+      {
+        "check": "12 other with one family is refused before dispatch",
+        "go": [
+          "12 refused",
+          "12 agent refused"
+        ]
+      },
+      {
+        "check": "12 a child on another family returns data and records its family",
+        "go": [
+          "12 child",
+          "12 agent child"
+        ]
+      },
+      {
+        "check": "12 reuse never relabels another family result",
+        "reason": "TypeScript chat-cache regression; Go reuseKey includes the same connection and family fields, with the delegated provider tests covering dispatch and records."
+      },
+      {
+        "check": "same-family critic reopens its slot with the connection override at the same tier",
+        "go": [
+          "12 provider"
+        ]
       }
+    ],
+    "additionalSources": [
+      "packages/harness/certification/providers.test.ts"
     ]
   },
   "delegation": {

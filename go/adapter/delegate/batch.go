@@ -130,7 +130,7 @@ func (c *coordinator) childModelName(profile turn.TaskProfile) string {
 }
 
 // reuseKey is the key an identical task is found by in this chat (agent#17).
-func reuseKey(p *planned, model string) string {
+func reuseKey(p *planned, model string, providers ...*contract.ProvenanceProvider) string {
 	var ids []string
 	for _, entry := range p.references {
 		ids = append(ids, entry.ID)
@@ -146,6 +146,9 @@ func reuseKey(p *planned, model string) string {
 		held.Append(runcontext.String(id))
 	}
 	value.Set("references", held)
+	if len(providers) > 0 && providers[0] != nil {
+		value.Set("provider", runcontext.ObjectOf("connection", runcontext.String(providers[0].Connection), "family", runcontext.String(providers[0].Family)))
+	}
 	return string(value.JSON())
 }
 
@@ -271,6 +274,7 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 	// The child is admitted as its resolved role, not the parent's author. Its own
 	// binding keeps the coordinator's accounting wrappers through adapter admission.
 	child.Wire = binding.Wire
+	child.Capabilities = binding.Capabilities
 	if policy != nil {
 		child.Policy, child.PolicyProject = policy, nil
 		child.Thinking = policy["models"].(map[string]any)["author"].(map[string]any)["reasoning"].(string)

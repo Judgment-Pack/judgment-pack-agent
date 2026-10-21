@@ -24,7 +24,7 @@ See also: [tools.md](tools.md), [events.md](events.md), [budget.md](budget.md), 
 
 ## The switch
 
-The modes: `off`, `auto`, `on`. The tiers: `off`, `on`, `ultra` on the model capability, `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` on the agent capability. The run's word, then the project's, then the context budget's default decides the mode (ADR-0010).
+The modes: `off`, `auto`, `on`. The tiers: `off`, `low`, `on`, `medium`, `ultra`, `high` on the model capability, `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` on the agent capability. The run's word, then the project's, then the context budget's default decides the mode (ADR-0010).
 
 | Where | Member | Type | Default | Description |
 | --- | --- | --- | --- | --- |
@@ -98,6 +98,7 @@ Open: a member the schema does not name is accepted.
 | `cases` |  | array of `$defs/caseComparison` |  |
 | `incomplete` |  | array of string | The declared cases nothing compared, by id. Any makes refuted true and is named on the proposal's critique. |
 | `figures` |  | `provenance.json $defs/criticFigures` |  |
+| `provider` |  | `provenance.json $defs/provider` |  |
 
 ### A declared case
 

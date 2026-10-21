@@ -2,6 +2,7 @@ package wire
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
@@ -65,7 +66,10 @@ const ResponseTokens = 4096
 // GeminiBudget is GEMINI_BUDGET: the two thinking budgets the Gemini dialect asks for, in tokens —
 // the desk's choice inside a documented field, an ordinary working depth and a deep one.
 func GeminiBudget(tier ThinkingTier) int {
-	if tier == TierUltra {
+	if tier == "low" {
+		return 4096
+	}
+	if tier == TierUltra || tier == "high" {
 		return 24576
 	}
 	return 8192
@@ -77,6 +81,10 @@ func GeminiLevel(tier ThinkingTier) string {
 	switch tier {
 	case TierOff:
 		return "minimal"
+	case "low":
+		return "low"
+	case "high":
+		return "high"
 	case TierUltra:
 		return "high"
 	default:
@@ -87,7 +95,7 @@ func GeminiLevel(tier ThinkingTier) string {
 // WireFor is wireFor: the table, one place, every family. nil for off on the two families where
 // off is omission; a real member on gemini, where omission means thinking and the only way to ask
 // for none is to ask.
-func WireFor(tier ThinkingTier, dialect ThinkingDialect) *WireThinking {
+func WireFor(tier ThinkingTier, dialect ThinkingDialect, maps ...map[string]string) *WireThinking {
 	const geminiPath = "generationConfig.thinkingConfig"
 	if tier == TierOff {
 		switch dialect {
@@ -100,18 +108,38 @@ func WireFor(tier ThinkingTier, dialect ThinkingDialect) *WireThinking {
 		}
 		return nil
 	}
-	effort := "high"
-	if tier == TierUltra {
-		effort = "xhigh"
+	family := OpenAICompatible
+	if dialect == DialectGeminiBudget || dialect == DialectGeminiLevel {
+		family = Gemini
 	}
+	if dialect == DialectAnthropicAdaptive || dialect == DialectAnthropicEnabled {
+		family = Anthropic
+	}
+	defaults, _ := ReadCapabilities(FamilyCapabilities(family))
+	settings, index := defaults.Tiers, 0
+	if dialect == DialectGeminiLevel || dialect == DialectAnthropicEnabled {
+		settings, index = defaults.FallbackTiers, 1
+	}
+	if len(maps) > index && maps[index] != nil {
+		settings = maps[index]
+	}
+	key := "medium"
+	if tier == "low" {
+		key = "low"
+	}
+	if tier == TierUltra || tier == "high" {
+		key = "high"
+	}
+	setting := settings[key]
+	effort := setting
 	switch dialect {
 	case DialectGeminiBudget:
 		// includeThoughts is what makes the thought summaries arrive at all; the budget is how deep
 		// they go. Both, or the tier asks for thinking nobody can read.
-		config := Obj(F("includeThoughts", Bool(true)), F("thinkingBudget", Int(GeminiBudget(tier))))
+		config := Obj(F("includeThoughts", Bool(true)), F("thinkingBudget", Int(func() int { v, _ := strconv.Atoi(setting); return v }())))
 		return &WireThinking{Members: Obj(F("thinkingConfig", config)), Expect: Expectation{geminiPath, config}}
 	case DialectGeminiLevel:
-		config := Obj(F("includeThoughts", Bool(true)), F("thinkingLevel", Str(GeminiLevel(tier))))
+		config := Obj(F("includeThoughts", Bool(true)), F("thinkingLevel", Str(setting)))
 		return &WireThinking{Members: Obj(F("thinkingConfig", config)), Expect: Expectation{geminiPath, config}}
 	case DialectOpenAI:
 		return &WireThinking{
@@ -124,10 +152,7 @@ func WireFor(tier ThinkingTier, dialect ThinkingDialect) *WireThinking {
 			Expect:  Expectation{"thinking", Obj(F("type", Str("adaptive")))},
 		}
 	case DialectAnthropicEnabled:
-		budget := 8000
-		if tier == TierUltra {
-			budget = 16000
-		}
+		budget, _ := strconv.Atoi(setting)
 		return &WireThinking{
 			Members: Obj(
 				F("thinking", Obj(F("type", Str("enabled")), F("budget_tokens", Int(budget)))),
@@ -354,9 +379,11 @@ var (
 // and each of them once (ThinkingSlot in thinking.ts). Held by whichever adapter runs; every
 // transition answers the event to emit, or nil where the desk has already said it.
 type ThinkingSlot struct {
-	tier    ThinkingTier
-	silent  bool
-	dialect ThinkingDialect
+	tiers         map[string]string
+	fallbackTiers map[string]string
+	tier          ThinkingTier
+	silent        bool
+	dialect       ThinkingDialect
 	// reasoningCapability is the record's reasoning, where the session was opened with one.
 	reasoningCapability *ReasoningCapability
 
@@ -376,13 +403,23 @@ type ThinkingSlot struct {
 // the endpoint ignores, sends no member at any tier; nil is the family's first dialect, as before
 // there was a record. The TypeScript takes the session and reads its tier and family off it; this
 // takes the two.
-func OpenThinking(tier ThinkingTier, family EndpointKind, reasoning *ReasoningCapability) *ThinkingSlot {
+func OpenThinking(tier ThinkingTier, family EndpointKind, reasoning *ReasoningCapability, maps ...map[string]string) *ThinkingSlot {
 	silent := reasoning != nil && (reasoning.Kind == NoReasoning || (reasoning.Ignored != nil && *reasoning.Ignored))
 	dialect := FirstDialect(family)
 	if reasoning != nil && reasoning.Kind != NoReasoning {
 		dialect = DialectFor(reasoning.Kind)
 	}
+	var tiers map[string]string
+	if len(maps) > 0 {
+		tiers = maps[0]
+	}
+	var fallbackTiers map[string]string
+	if len(maps) > 1 {
+		fallbackTiers = maps[1]
+	}
 	return &ThinkingSlot{
+		fallbackTiers:       fallbackTiers,
+		tiers:               tiers,
 		tier:                tier,
 		silent:              silent,
 		dialect:             dialect,
@@ -411,7 +448,7 @@ func (s *ThinkingSlot) wire() *WireThinking {
 	if s.silent || s.unavailable || s.offRefused {
 		return nil
 	}
-	return WireFor(s.tier, s.dialect)
+	return WireFor(s.tier, s.dialect, s.tiers, s.fallbackTiers)
 }
 
 // Members are the members this request carries, or nil.

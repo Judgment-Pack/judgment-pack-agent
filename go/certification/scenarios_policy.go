@@ -71,6 +71,7 @@ func policyFindings(ctx context.Context, agent bool, play switchPlay) ([]Finding
 			model = parentModel
 		}
 		values := map[string]any{"critic.default": "auto", "critic.reasoningFloor": "author",
+			"models.author.provider": model, "models.critic.provider": model,
 			"models.author.model": model, "models.author.reasoning": low,
 			"models.critic.model": model, "models.critic.reasoning": low,
 			"concurrency.children": 2, "concurrency.requests": 2,

@@ -29,7 +29,19 @@
         "reasoningField": null,
         "wholeJsonAnswer": false
       },
-      "toolSchemas": "gemini-subset"
+      "toolSchemas": "gemini-subset",
+      "family": "gemini",
+      "tiers": {
+        "low": "4096",
+        "medium": "8192",
+        "high": "24576"
+      },
+      "cacheBreakpoints": false,
+      "fallbackTiers": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high"
+      }
     }
   ]
 }

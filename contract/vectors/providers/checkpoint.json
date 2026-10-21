@@ -1,0 +1,86 @@
+{
+  "description": "Hand-authored checkpoint with the author and critic family comparison from ADR-0012.",
+  "schema": "checkpoint.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/policy.ts"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "id": "3c9d1e7a-5b2f-4a8c-9e6d-1f0a2b3c4d5e",
+      "requestKey": "4c6e8a0b2d4f6a8c0e2b4d6f8a0c2e4b6d8f0a2c4e6b8d0f2a4c6e8b0d2f4a6c",
+      "phase": "work",
+      "status": "running",
+      "unit": "model-requests",
+      "used": 2,
+      "limit": 20,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [
+        {
+          "id": "1f2e3d4c-5b6a-4978-8a9b-0c1d2e3f4a5b",
+          "name": "request_review",
+          "args": {
+            "reason": "The pack changes the approval threshold."
+          },
+          "status": "complete"
+        }
+      ],
+      "context": {
+        "scope": "run-10",
+        "entries": []
+      },
+      "critic": {
+        "mode": "auto",
+        "trigger": "model-asked"
+      },
+      "policy": {
+        "budget.readBytes": {
+          "value": 1024,
+          "layer": "run"
+        },
+        "critic.default": {
+          "value": "on",
+          "layer": "run"
+        },
+        "models.author.reasoning": {
+          "value": "ultra",
+          "layer": "run"
+        },
+        "concurrency.requests": {
+          "value": 3,
+          "layer": "run"
+        },
+        "pace.requestsPerDay": {
+          "value": 60,
+          "layer": "run"
+        },
+        "taskClass": {
+          "value": "boundary",
+          "layer": "run"
+        }
+      },
+      "crossProvider": [
+        {
+          "role": "critic",
+          "relation": "other",
+          "author": {
+            "connection": "author",
+            "family": "openai"
+          },
+          "provider": {
+            "connection": "reviewer",
+            "family": "anthropic"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -349,6 +349,7 @@ type Session struct {
 	TaskClass          string
 	PaceUsed           map[string]int64
 	PolicyConnections  []string
+	PolicyFamilies     map[string]string
 	PolicyLegacyModels *RunModels
 	PolicyRequests     int
 

@@ -35,7 +35,7 @@ export type CriticForcedOff = 'child' | 'phase' | 'purpose' | 'reviewer-assigned
 export type CriticReason = CriticLayer | CriticTrigger | CriticForcedOff | 'no-proposal' | 'budget' | 'off'
 export const CRITIC_REASONS: readonly CriticReason[] = ['person', 'project', 'table', 'model-asked', 'cases', 'changes-existing', 'no-proposal', 'reviewer-assigned', 'purpose', 'phase', 'child', 'budget', 'off']
 /** The model capability's tiers and the agent capability's efforts, each lowest first. */
-export const MODEL_TIERS: readonly ThinkingTier[] = ['off', 'on', 'ultra']
+export const MODEL_TIERS: readonly ThinkingTier[] = ['off', 'low', 'on', 'medium', 'ultra', 'high']
 export const AGENT_TIERS: readonly CodexEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
 /** A tier in the enum of a run's capability (`tool-offer.json#/$defs/criticReasoning`). */
 export type CriticTier = ThinkingTier | CodexEffort

@@ -28,3 +28,9 @@ __pycache__/
 dist/
 /bin/
 /.review-scratch/
+
+# Local development caches and check scratch.
+/.jpdev/
+/.gocache/
+/.npm-cache/
+/.xdg-cache/

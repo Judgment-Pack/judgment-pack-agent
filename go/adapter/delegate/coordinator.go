@@ -281,7 +281,7 @@ func (c *coordinator) publish(task *contract.DelegatedTask) {
 	snapshot := *task
 	snapshot.Steps = append([]contract.DelegatedTaskStepsItem{}, task.Steps...)
 	c.taskMu.Unlock()
-	c.deliver(contract.RunEvent{DelegatedTask: &contract.RunEventDelegatedTask{Type: "delegated_task", Task: snapshot}})
+	c.deliver(contract.RunEvent{DelegatedTask: &contract.RunEventDelegatedTask{Type: "delegated_task", Task: snapshot, Provider: c.taskProvider(task.Profile)}})
 }
 
 // claimTool counts one tool call against the response and, for a child, its task.
@@ -490,4 +490,18 @@ func (c *coordinator) toolCalls(task *contract.DelegatedTask) int64 {
 	c.taskMu.Lock()
 	defer c.taskMu.Unlock()
 	return task.ToolCalls
+}
+
+func (c *coordinator) taskProvider(profile string) *contract.ProvenanceProvider {
+	c.shared.mu.Lock()
+	defer c.shared.mu.Unlock()
+	if c.shared.parent != nil {
+		return c.shared.parent.RecordProvider(delegatedRole(c.shared.parent.ResolvedPolicy, profile))
+	}
+	id := c.run.ModelName
+	if c.run.Agent != nil {
+		id = c.run.Agent.Model
+	}
+	families := adapter.PolicyFamilies(c.run, runcontext.RunModels{})
+	return &contract.ProvenanceProvider{Connection: id, Family: families[id]}
 }

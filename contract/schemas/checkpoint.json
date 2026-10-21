@@ -205,6 +205,12 @@
     },
     "policy": {
       "$ref": "policy.json#/$defs/resolved"
+    },
+    "crossProvider": {
+      "type": "array",
+      "items": {
+        "$ref": "provenance.json#/$defs/crossProvider"
+      }
     }
   },
   "additionalProperties": true,

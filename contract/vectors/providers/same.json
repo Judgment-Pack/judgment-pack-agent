@@ -1,0 +1,24 @@
+{
+  "description": "Hand-authored from ADR-0012 and the accepted decision in issue #117.",
+  "schema": "policy.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/policy.ts"
+    ]
+  },
+  "items": [
+    {
+      "models": {
+        "critic": {
+          "provider": "same"
+        }
+      }
+    }
+  ],
+  "role": "critic",
+  "expected": "author"
+}

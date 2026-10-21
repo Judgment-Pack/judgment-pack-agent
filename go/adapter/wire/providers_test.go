@@ -1,0 +1,85 @@
+package wire
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"testing"
+)
+
+func TestProviderTierOverride(t *testing.T) {
+	raw, err := os.ReadFile("../../../contract/vectors/providers/tier-override.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v struct{ Items []json.RawMessage }
+	if err = json.Unmarshal(raw, &v); err != nil {
+		t.Fatal(err)
+	}
+	for i, family := range []EndpointKind{Anthropic, Gemini} {
+		override, err := Parse(v.Items[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+		caps, err := CapabilitiesFor(family, "review", nil, override)
+		if err != nil {
+			t.Fatal(err)
+		}
+		slot := OpenThinking("high", family, &caps.Reasoning, caps.Tiers, caps.FallbackTiers)
+		members := slot.Members()
+		if family == Anthropic {
+			if members.Get("output_config").Get("effort").Text() != "high" {
+				t.Fatal("tier map ignored")
+			}
+		} else {
+			n, _ := members.Get("thinkingConfig").Get("thinkingBudget").Number()
+			if n != 4096 {
+				t.Fatal("tier map ignored")
+			}
+		}
+	}
+}
+
+func TestFallbackTierMaps(t *testing.T) {
+	raw, err := os.ReadFile("../../../contract/vectors/providers/fallback-tiers.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v struct {
+		Items []json.RawMessage
+		Cases []struct {
+			Record  int
+			Tier    ThinkingTier
+			Members json.RawMessage
+		}
+	}
+	if err = json.Unmarshal(raw, &v); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range v.Cases {
+		t.Run(fmt.Sprintf("%d/%s", c.Record, c.Tier), func(t *testing.T) {
+			override, err := Parse(v.Items[c.Record])
+			if err != nil {
+				t.Fatal(err)
+			}
+			family := EndpointKind(override.Get("family").Text())
+			caps, err := CapabilitiesFor(family, "test", nil, override)
+			if err != nil {
+				t.Fatal(err)
+			}
+			slot := OpenThinking(c.Tier, family, &caps.Reasoning, caps.Tiers, caps.FallbackTiers)
+			member := "thinking"
+			if family == Gemini {
+				member = "thinkingBudget"
+			}
+			if slot.Refused(400, member).Kind != RefusalRetry {
+				t.Fatal("no fallback")
+			}
+			expected, err := Parse(c.Members)
+			if err != nil {
+				t.Fatal(err)
+			}
+			equalJSON(t, "fallback tier setting", slot.Members(), expected)
+		})
+	}
+}

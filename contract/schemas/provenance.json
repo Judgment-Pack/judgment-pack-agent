@@ -504,6 +504,60 @@
     "policy": {
       "description": "The report row: every resolved member with the host layer that supplied it. Carried through checkpoint resume.",
       "$ref": "policy.json#/$defs/resolved"
+    },
+    "provider": {
+      "type": "object",
+      "required": [
+        "connection",
+        "family"
+      ],
+      "properties": {
+        "connection": {
+          "type": "string",
+          "minLength": 1
+        },
+        "family": {
+          "enum": [
+            "openai",
+            "anthropic",
+            "gemini",
+            "codex"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "crossProvider": {
+      "type": "object",
+      "required": [
+        "role",
+        "relation",
+        "author",
+        "provider"
+      ],
+      "properties": {
+        "role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "relation": {
+          "enum": [
+            "same",
+            "other"
+          ]
+        },
+        "author": {
+          "$ref": "#/$defs/provider"
+        },
+        "provider": {
+          "$ref": "#/$defs/provider"
+        },
+        "continued": {
+          "type": "boolean",
+          "description": "False on saved provider rows when a cross-family continuation is refused; their saved identities are retained."
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

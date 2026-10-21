@@ -723,9 +723,10 @@ export const CRITIC_REHEARSE_SENTENCE =
   'The cases below state part of the outcome they must have. Rehearse each one against the document above with experimental_evaluate (pack: the document as JSON text; facts and evidence: the case’s facts and evidenceAvailability as JSON text); experimental_test_cases does not take them. The host compares each outcome with the declared one.'
 
 /** The contract's own event, built in one place from the critique. */
-export function critiqueEvent(critique: Critique): AssistantEvent {
+export function critiqueEvent(critique: Critique, provider?: import('./policy').ProviderRecord): AssistantEvent {
   return {
     type: 'critique',
+    ...(provider ? {provider} : {}),
     refuted: critique.refuted,
     checks: critique.checks.map((check) => ({ tool: check.tool, status: check.status })),
     text: critique.text,

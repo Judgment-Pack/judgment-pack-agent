@@ -25,7 +25,7 @@
       "minimum": 1024
     },
     "nativeToolCalls": {
-      "description": "The endpoint takes the wire's own tool calls. False: no tool is sent; the tools are described at the end of the system text (name, description, the schema the model is shown), and the model calls one per answer as one fenced JSON block shaped {\"tool\": name, \"arguments\": {…}} (tool-call.json#/$defs/textToolCall), read with the proposal fence's closed reader (extractToolCall), run through the same dispatch and gate as a native call (a name the phase did not offer is refused, never looked up) and answered in the next user message, headed TOOL RESULT from <name> or TOOL ERROR from <name> (tool-result.json#/$defs/textToolResultMessage).",
+      "description": "The endpoint takes the wire's own tool calls. False: no tool is sent; the tools are described at the end of the system text (name, description, the schema the model is shown), and the model calls one per answer as one fenced JSON block shaped {\"tool\": name, \"arguments\": {\u2026}} (tool-call.json#/$defs/textToolCall), read with the proposal fence's closed reader (extractToolCall), run through the same dispatch and gate as a native call (a name the phase did not offer is refused, never looked up) and answered in the next user message, headed TOOL RESULT from <name> or TOOL ERROR from <name> (tool-result.json#/$defs/textToolResultMessage).",
       "type": "boolean"
     },
     "parallelToolCalls": {
@@ -59,6 +59,64 @@
     "strictAlternation": {
       "description": "The endpoint refuses two user turns in a row and a user text after a tool result (agent#9): it gets system-tail whatever statePlacement says.",
       "type": "boolean"
+    },
+    "family": {
+      "enum": [
+        "openai",
+        "anthropic",
+        "gemini",
+        "codex"
+      ]
+    },
+    "tiers": {
+      "type": "object",
+      "required": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "properties": {
+        "low": {
+          "type": "string",
+          "minLength": 1
+        },
+        "medium": {
+          "type": "string",
+          "minLength": 1
+        },
+        "high": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "cacheBreakpoints": {
+      "type": "boolean"
+    },
+    "fallbackTiers": {
+      "type": "object",
+      "required": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "properties": {
+        "low": {
+          "type": "string",
+          "minLength": 1
+        },
+        "medium": {
+          "type": "string",
+          "minLength": 1
+        },
+        "high": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false,
+      "description": "Settings for the family's fallback dialect: Anthropic enabled token budgets or Gemini thinking levels. The encoder reads the normalized tier's string."
     }
   },
   "dependentRequired": {
@@ -146,6 +204,43 @@
         },
         "strictAlternation": {
           "$ref": "#/properties/strictAlternation"
+        },
+        "family": {
+          "enum": [
+            "openai",
+            "anthropic",
+            "gemini",
+            "codex"
+          ]
+        },
+        "tiers": {
+          "type": "object",
+          "required": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "properties": {
+            "low": {
+              "type": "string",
+              "minLength": 1
+            },
+            "medium": {
+              "type": "string",
+              "minLength": 1
+            },
+            "high": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "cacheBreakpoints": {
+          "type": "boolean"
+        },
+        "fallbackTiers": {
+          "$ref": "#/properties/fallbackTiers"
         }
       },
       "dependentRequired": {

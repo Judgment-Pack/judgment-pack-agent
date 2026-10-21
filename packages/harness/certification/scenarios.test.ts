@@ -2117,6 +2117,7 @@ function policyTableChecks(engineId: import('../host').AssistantEngine, agent: b
       const defaults: Record<string, unknown> = {
         ...Object.fromEntries(Object.entries(budget).map(([name,value])=>[`budget.${name}`,value])),
         'critic.default':criticDefault, 'critic.reasoningFloor':criticReasoningFloor,
+        'models.author.provider':model, 'models.critic.provider':model,
         'models.author.model':model, 'models.author.reasoning':agent?'none':'off',
         'models.critic.model':model, 'models.critic.reasoning':agent?'none':'off',
         'concurrency.children':agent?1:2, 'concurrency.requests':2,

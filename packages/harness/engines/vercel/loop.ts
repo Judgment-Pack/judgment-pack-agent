@@ -636,9 +636,9 @@ export function runVercelLoop(
    * shared boundary: read wherever this loop decides, in place of the family.
    * The family stays the wire: the provider, the signatures, the breakpoints.
    */
-  const capabilities: ModelCapabilities = context.capabilities ?? capabilitiesFor(session.model)
+  let capabilities: ModelCapabilities = capabilitiesFor(session.model)
   /** Whether the endpoint takes native tool calls; if not, the tools are described and called in text. */
-  const nativeTools = capabilities.nativeToolCalls
+  let nativeTools = capabilities.nativeToolCalls
   /** The schema the model is shown for one tool, as the record says the endpoint takes them. */
   const schemaOf = (tool: McpTool) => shownSchema(capabilities.toolSchemas, tool)
   // The tier, held by the desk. This adapter asks it for members and pushes
@@ -656,7 +656,7 @@ export function runVercelLoop(
    */
   let tier: ReturnType<typeof sdkThinking> = {}
   // Where the state goes after the first request, once per run.
-  const placement = statePlacement(session.model.family, session.thinking.tier, capabilities)
+  let placement = statePlacement(session.model.family, session.thinking.tier, capabilities)
   const ledger = signatureLedger()
   /**
    * The truncation notice, **delivered at the transition rather than owed**.
@@ -1453,7 +1453,7 @@ export function runVercelLoop(
     const cannot = review ? criticCannotRun(session.testPrompt) : null
     if (cannot !== null) {
       critique = cannot
-      await deliver(critiqueEvent(cannot))
+      await deliver(critiqueEvent(cannot, context.recordProvider('critic')))
     } else if (review) {
       const recorder = openCritique({ cases: context.criticCases, document: proposal.document })
       recording = recorder
@@ -1462,14 +1462,20 @@ export function runVercelLoop(
       ledger.conversation()
       // agent#10: from here every call is held to the critic's allow-list, below this engine.
       context.beginCriticPhase()
+      const criticBinding = context.connection('critic')
+      if(criticBinding && 'model' in criticBinding){
+        session={...session,model:{...criticBinding.model,call:session.model.call}}
+        capabilities=capabilitiesFor(criticBinding.model)
+        nativeTools=capabilities.nativeToolCalls
+        placement=statePlacement(session.model.family,session.thinking.tier,capabilities)
+      }
       // What the critic costs is counted from here (agent#10).
       const before = { used: context.execution.state.used, rows: (context.execution.state.completions ?? []).length }
-      // ADR-0010: the critic's tier, at least the author's unless the host lowered it: a tier other than
-      // the author's opens a slot of its own, read for every critic request.
-      // A decision with no tier sends the critic none: off.
+      // A different critic binding owns its slot, even at the author's family and tier.
+      // The identical binding retains learned refusals; no decision tier means off.
       const criticTier = (decided.reasoning ?? 'off') as ThinkingTier
-      const retiered = criticTier !== session.thinking.tier
-      if (retiered) {
+      const retiered = criticTier !== session.thinking.tier || criticBinding !== context.connection('author')
+      if(retiered){
         slot = openThinking({ ...session, thinking: normalize(criticTier, session.model.family) }, capabilities.reasoning)
         tier = sdkThinking(session.model.family, slot.members())
         context.reserveOutput(tier.maxOutputTokens)
@@ -1507,7 +1513,7 @@ export function runVercelLoop(
        criticHeld = criticMessages
        // The host's modelsFor answer for the run's connection, asked once per run (review of agent#35, row 5).
        criticModelId = context.models(id).critic
-       if (criticModelId !== session.model.model || retiered) {
+       if (criticModelId !== session.model.model || retiered || criticBinding) {
          // The same connection, relay and capability record: only the model id differs.
          criticModel = modelFor({ ...session, model: { ...session.model, model: criticModelId } }, call, executionSignal, ledger, onTruncated, slot, capabilities.streamingQuirks)
        }
@@ -1653,7 +1659,7 @@ export function runVercelLoop(
       unfinished ??= streamed
       if (unfinished === null) {
         critique = { ...recorder.critique(criticText), figures: figures() }
-        await deliver(critiqueEvent(critique))
+        await deliver(critiqueEvent(critique, context.recordProvider('critic')))
       } else {
         note = criticNote(overTime ? turnTimeFailure() : unfinished, 'model', figures())
       }

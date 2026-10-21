@@ -367,7 +367,7 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
           context.endCriticPhase()
         }
       }
-      if (critique) await deliver(critiqueEvent(critique))
+      if (critique) await deliver(critiqueEvent(critique, context.recordProvider('critic')))
     }
     await deliver({ type: 'proposal', document: proposal.document, unknowns: proposal.unknowns, ...critiqueOnProposal(critique), ...(note === null ? {} : { note }) })
   }

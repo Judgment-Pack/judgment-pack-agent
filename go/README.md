@@ -1,5 +1,14 @@
 # The Go module
 
+Provider selection is policy (ADR-0012): `models.<role>.provider` accepts `same`,
+`other`, or a host-supplied connection ID, with run > project > table precedence.
+`other` refuses when no other family is connected. Critic and child records identify
+the answering connection and family; the checkpoint report carries `crossProvider`.
+Capability records hold the tier map; hosts can override it per connection.
+See the generated provider matrix in `docs/reference/providers.md` at the repository
+root. Scenario 12 exercises two families, and certification prints its measurements.
+
+
 Budgets are the `budget` section of the [agent's policy table](../docs/adr/0011-the-agents-policy-table.md).
 The host's run layer wins over its project layer, then table defaults. The same
 resolver covers critic, models, concurrency, pace, and task class, with each member's
@@ -76,6 +85,15 @@ the loaders by name, so a host adds `runcontext.OfferedSkillTools(...)` to the n
 with. A delegated child's run is handed no skills.
 
 ## The critic's switch
+
+`Run.Policy` and `Run.PolicyProject` select `models.critic.provider` from
+`Run.PolicyConnections`. The default is the author's connection; `other` requires
+a different connected family. The selected binding supplies the critic's model or
+agent, capabilities and tier override. Critique events record its connection and
+family. Children use the same rule through `models.child.<profile>.provider` or
+`models.subagent.<id>.provider`, and return their findings as data with a provider
+on every task event. The host's subordinate model names remain available on the
+author's connection.
 
 A host passes the critic's switch ([ADR-0010](../docs/adr/0010-the-critics-switch.md)) on `adapter.Run`:
 `Critic` (the run's word, `off`, `auto` or `on`), `CriticProject` (the project's), `CriticReasoning`

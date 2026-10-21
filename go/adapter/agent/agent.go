@@ -132,7 +132,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		Skills:            run.Skills,
 		// ADR-0010: the critic's switch, as the host passes it.
 		Critic: run.Critic,
-		Policy: run.Policy, PolicyProject: run.PolicyProject, TaskClass: run.TaskClass, PaceUsed: run.PaceUsed, PolicyLegacyModels: &named, PolicyConnections: append(adapter.PolicyConnectionIDs(run), named.Critic, named.Child), PolicyRequests: run.PolicyRequests,
+		Policy: run.Policy, PolicyProject: run.PolicyProject, TaskClass: run.TaskClass, PaceUsed: run.PaceUsed, PolicyLegacyModels: &named, PolicyFamilies: adapter.PolicyFamilies(run, named), PolicyConnections: append(adapter.PolicyConnectionIDs(run), named.Critic, named.Child), PolicyRequests: run.PolicyRequests,
 		CriticProject:     run.CriticProject,
 		CriticReasoning:   run.CriticReasoning,
 		ExistingPack:      run.ExistingPack,
@@ -149,6 +149,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 	}
 	r.sc = opened.Context
 	local := *run
+	r.sc.ProviderFamilies = adapter.PolicyFamilies(run, named)
 	if err := adapter.ApplyPolicy(&local, r.sc, named); err != nil {
 		r.sc.Close()
 		r.emitAll(runcontext.FailedToOpen(err))
@@ -160,6 +161,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 	r.session = opened.Session
 	r.boundary = runcontext.NewBoundary(opened)
 	defer r.boundary.Close()
+	r.sc.RecordProvider("author")
 	r.emitAll(r.boundary.Open())
 
 	err = r.drive(ctx)
@@ -427,7 +429,7 @@ func (r *runState) drive(ctx context.Context) error {
 	if decided.Ran {
 		if cannot := turn.CriticCannotRun(r.session.TestPrompt); cannot != nil {
 			critique = cannot
-			r.deliver(turn.CritiqueEvent(*cannot))
+			r.deliver(turn.CritiqueEvent(*cannot, r.sc.RecordProvider("critic")))
 		} else {
 			held, heldNote, err := r.critic(execution, proposal)
 			if err != nil {
@@ -530,7 +532,7 @@ func (r *runState) critic(ctx context.Context, proposal turn.Proposal) (*turn.Cr
 	}
 	critique := recorder.Critique(text)
 	critique.Figures = counted()
-	r.deliver(turn.CritiqueEvent(critique))
+	r.deliver(turn.CritiqueEvent(critique, r.sc.RecordProvider("critic")))
 	return &critique, nil, nil
 }
 

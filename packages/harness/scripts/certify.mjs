@@ -55,12 +55,13 @@ const kind = ENGINE_CAPABILITIES[adapter]
 const bin = [resolve(root, 'node_modules/.bin/vitest'), resolve(root, '../../node_modules/.bin/vitest')]
 const reports = mkdtempSync(join(tmpdir(), 'certify-'))
 const measurement = join(reports, 'measurement.jsonl')
+const providerMeasurement=join(reports,'providers.jsonl')
 
 /** One vitest run; its JSON report is written beside the others. */
 function run(args, report) {
   const reporting = ['--reporter=default', '--reporter=json', `--outputFile.json=${report}`]
   for (const candidate of bin) {
-    const result = spawnSync(candidate, ['run', ...args, ...reporting], { cwd: root, stdio: 'inherit', env: { ...process.env, CERTIFY_MEASUREMENT: measurement } })
+    const result = spawnSync(candidate, ['run', ...args, ...reporting], { cwd: root, stdio: 'inherit', env: { ...process.env, CERTIFY_MEASUREMENT: measurement, CERTIFY_PROVIDERS:providerMeasurement } })
     if (result.error && result.error.code === 'ENOENT') continue
     if (result.error) throw result.error
     return result.status ?? 1
@@ -117,6 +118,7 @@ let status = 0
 let checks = 0
 /** Scenario 10's measurement rows, read before the reports' directory is removed. */
 let measured = []
+let providers=[]
 try {
   for (const [index, args] of runs.entries()) {
     console.log(`certify ${adapter}: vitest run ${args.join(' ')}`)
@@ -126,6 +128,7 @@ try {
     checks += ownChecks(report)
   }
   if (existsSync(measurement)) measured = readFileSync(measurement, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line))
+  if(existsSync(providerMeasurement))providers=readFileSync(providerMeasurement,'utf8').trim().split('\n').filter(Boolean).map(line=>JSON.parse(line))
 } finally {
   rmSync(reports, { recursive: true, force: true })
 }
@@ -147,6 +150,8 @@ if (measured.length > 0) {
   console.log(`certify ${adapter}: scenario 10, the measurement (the same proposal at two author tiers, with and without the critic; no verdict)`)
   for (const row of [columns, ...rows]) console.log(`  ${line(row)}`)
 }
+console.log(`certify ${adapter}: scenario 12, two-family measurement (author critic policy requests checks)`)
+for(const row of providers.filter(row=>row.engine===adapter))console.log(`  ${row.author} ${row.critic} ${row.policy} ${row.requests} ${row.checks}`)
 console.log(
   status === 0
     ? `certify ${adapter}: passed, ${checks} of the ${kind} engine's own checks among them`

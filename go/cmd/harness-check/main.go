@@ -66,6 +66,10 @@ func run(address, only string, agentOnly bool) int {
 		code = agentCode
 	}
 	printMeasurement(certification.TakeMeasurement())
+	fmt.Println("scenario 12, two-family measurement: adapter author critic policy requests checks")
+	for _, row := range certification.TakeProviderMeasurement() {
+		fmt.Printf("  %s %s %s %s %d %d\n", row.Adapter, row.Author, row.Critic, row.Policy, row.Requests, row.Checks)
+	}
 	return code
 }
 

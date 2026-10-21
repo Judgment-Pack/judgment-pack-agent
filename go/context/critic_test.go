@@ -120,7 +120,7 @@ func TestTheSessionMembersAreReadClosed(t *testing.T) {
 	}{
 		{CriticSettings{Critic: "sometimes"}, false, "critic must be off, auto or on"},
 		{CriticSettings{CriticProject: "always"}, false, "criticProject must be off, auto or on"},
-		{CriticSettings{CriticReasoning: "high"}, false, "criticReasoning must be one of off, on, ultra"},
+		{CriticSettings{CriticReasoning: "max"}, false, "criticReasoning must be one of off, low, on, medium, ultra, high"},
 		{CriticSettings{CriticReasoning: "ultra"}, true, "criticReasoning must be one of none, minimal, low, medium, high, xhigh, max"},
 	} {
 		if err := ReadCriticSettings(refused.settings, refused.agent); err == nil || !strings.Contains(err.Error(), refused.says) {

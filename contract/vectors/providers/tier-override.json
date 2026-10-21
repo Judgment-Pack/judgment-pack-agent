@@ -1,0 +1,33 @@
+{
+  "description": "Hand-authored from ADR-0012 and the accepted decision in issue #117.",
+  "schema": "capability.json#/$defs/endpointCapabilities",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/policy.ts"
+    ]
+  },
+  "items": [
+    {
+      "family": "anthropic",
+      "tiers": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high"
+      },
+      "cacheBreakpoints": true
+    },
+    {
+      "family": "gemini",
+      "tiers": {
+        "low": "1024",
+        "medium": "2048",
+        "high": "4096"
+      },
+      "cacheBreakpoints": false
+    }
+  ]
+}

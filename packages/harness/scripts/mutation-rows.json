@@ -1292,8 +1292,8 @@
   {
    "name": "the tier member is sent when the tier is off",
    "file": "thinking.ts",
-   "find": "    return null\n  }\n  const effort = tier === 'ultra' ? 'xhigh' : 'high'",
-   "replace": "    return wireFor('on', dialect)\n  }\n  const effort = tier === 'ultra' ? 'xhigh' : 'high'",
+   "find": "    return null\n  }\n  const family = dialect.startsWith('gemini') ? 'gemini' : dialect.startsWith('anthropic') ? 'anthropic' : 'openai-compatible'",
+   "replace": "    return wireFor('on', dialect, tiers, fallbackTiers)\n  }\n  const family = dialect.startsWith('gemini') ? 'gemini' : dialect.startsWith('anthropic') ? 'anthropic' : 'openai-compatible'",
    "tests": [
     "capabilities.test.ts",
     "certification/conformance.test.ts",
@@ -2349,8 +2349,8 @@
   {
    "name": "the refused tier member is sent again after the endpoint refused it",
    "file": "thinking.ts",
-   "find": "  const wire = () => (silent || unavailable || offRefused ? null : wireFor(tier, dialect))",
-   "replace": "  const wire = () => wireFor(tier, dialect)",
+   "find": "  const wire = () => (silent || unavailable || offRefused ? null : wireFor(tier, dialect, capabilitiesFor(session.model).tiers, capabilitiesFor(session.model).fallbackTiers))",
+   "replace": "  const wire = () => wireFor(tier, dialect, capabilitiesFor(session.model).tiers, capabilitiesFor(session.model).fallbackTiers)",
    "tests": [
     "capabilities.test.ts",
     "certification/conformance.test.ts",
@@ -3836,7 +3836,7 @@
   {
    "name": "ADR policy table: tier ceiling removed",
    "file": "policy.ts",
-   "find": "if (allowance === undefined || tiers.indexOf(String(member.value)) > tiers.indexOf(allowance)) refuse(name, \"tier exceeds the author's without project authorization\")",
+   "find": "if (allowance === undefined || rank(String(member.value)) > rank(allowance)) refuse(name, \"tier exceeds the author's without project authorization\")",
    "replace": "if (false) refuse(name, \"tier exceeds the author's without project authorization\")",
    "tests": [
     "policy.test.ts"
@@ -3879,6 +3879,98 @@
    "status": "caught",
    "origin": "ADR policy table review round (#116)",
    "note": "Shared policy/legacy-collisions.json holds the nested tier on the record and agent wire. Go twin: overwrite role[\"reasoning\"] unconditionally in resolveSessionPolicy; TestPolicyLegacyCollisionsRecordAndWireAgree catches it."
+  },
+  {
+   "name": "ADR cross-provider: other falls back to same",
+   "file": "policy.ts",
+   "find": "host.connections.find(id => family(id) !== family(authorConnection)) : choice",
+   "replace": "(host.connections.find(id => family(id) !== family(authorConnection)) ?? authorConnection) : choice",
+   "tests": [
+    "providers.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#117"
+  },
+  {
+   "name": "ADR cross-provider: answering family omitted",
+   "file": "refutation.ts",
+   "find": "    ...(provider ? {provider} : {}),",
+   "replace": "    ...(provider ? {} : {}),",
+   "tests": [
+    "providers.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#117"
+  },
+  {
+   "name": "ADR cross-provider: encoder ignores tier map",
+   "file": "thinking.ts",
+   "find": "wireFor(tier, dialect, capabilitiesFor(session.model).tiers, capabilitiesFor(session.model).fallbackTiers)",
+   "replace": "wireFor(tier, dialect)",
+   "tests": [
+    "providers.test.ts",
+    "certification/providers.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#117"
+  },
+  {
+   "name": "ADR cross-provider: compatibility matrix hand-edited",
+   "file": "../../docs/reference/providers.md",
+   "find": "| anthropic | true | anthropic-thinking | false | true |",
+   "replace": "| anthropic | false | anthropic-thinking | false | true |",
+   "tests": [
+    "providers-reference.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#117"
+  },
+  {
+   "name": "ADR cross-provider round two: resume family comparison removed",
+   "file": "policy.ts",
+   "find": "if (from.family === to.family) return undefined",
+   "replace": "if (true) return undefined",
+   "tests": [
+    "providers.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#117 review round two",
+   "note": "Resume tests exercise the runtime caller for author, critic and child roles. Go twin: FailoverRefusal always returns nil; TestResumeRefusesReboundFamily must fail."
+  },
+  {
+   "name": "ADR cross-provider round two: fallback encoder ignores map",
+   "file": "thinking.ts",
+   "find": "fallbackTiers ?? defaults.fallbackTiers!",
+   "replace": "defaults.fallbackTiers!",
+   "tests": [
+    "providers.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#117 review round two",
+   "note": "Shared fallback vectors exercise all tiers and both dialects. Go twin: ignore maps[1]; TestFallbackTierMaps must fail."
+  },
+  {
+   "name": "ADR cross-provider round two: Vercel same-family critic retains author slot",
+   "file": "engines/vercel/loop.ts",
+   "find": "criticTier !== session.thinking.tier || criticBinding !== context.connection('author')",
+   "replace": "criticTier !== session.thinking.tier",
+   "tests": [
+    "certification/providers.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#117 review round two",
+   "note": "Go twin: remove bindingChanged from the eino critic slot condition; TestTheScenarios/cross-provider catches the same-family connection override."
+  },
+  {
+   "name": "ADR cross-provider round two: DeepAgents same-family critic retains author slot",
+   "file": "engines/deepagents/loop.ts",
+   "find": "criticTier !== session.thinking.tier || criticBinding !== context.connection('author')",
+   "replace": "criticTier !== session.thinking.tier",
+   "tests": [
+    "certification/providers.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#117 review round two"
   }
  ]
 }

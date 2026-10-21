@@ -1,0 +1,40 @@
+{
+  "description": "Hand-authored review-round-two cases for ADR-0012 (#117).",
+  "schema": "provenance.json#/$defs/crossProvider",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/providers.test.ts"
+    ]
+  },
+  "items": [
+    {
+      "role": "author",
+      "relation": "same",
+      "author": {
+        "connection": "google",
+        "family": "gemini"
+      },
+      "provider": {
+        "connection": "google",
+        "family": "gemini"
+      }
+    },
+    {
+      "role": "critic",
+      "relation": "other",
+      "author": {
+        "connection": "google",
+        "family": "gemini"
+      },
+      "provider": {
+        "connection": "agent",
+        "family": "codex"
+      },
+      "continued": false
+    }
+  ]
+}
