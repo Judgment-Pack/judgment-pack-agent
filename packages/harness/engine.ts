@@ -333,6 +333,7 @@ export type AssistantEvent =
   | { type: 'skill_unloaded'; id: string }
   | { type:'edit_applied';document:string;line:number;bytes:number;valid:true }
   | { type:'edit_refused';document?:string;reason:string }
+  | import('./records').ExportWritten
   | { type: 'memory_proposed'; memory: import('./memories').Memory }
   | { type: 'memory_recalled'; ids: string[]; digests: string[]; bytes: number }
   | { type: 'policy_resolved'; members: import('./policy').PolicyMembers }
@@ -368,14 +369,14 @@ export type AssistantEvent =
    * that fired — nothing was stopped — but it is the same kind of sentence: the
    * desk saying what it did rather than leaving it to be discovered.
    */
-  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string; reason?: 'approval refused' | 'approval pending' | 'approval stale' | 'skill withheld' | 'skill budget' | 'review refused' | 'policy refused' | 'pace warning' | 'subagent withheld' | 'memory refused' | 'edit refused' | 'subagent refused' | 'compaction refused' | 'output refused' | 'steer refused' }
+  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string; reason?: 'approval refused' | 'approval pending' | 'approval stale' | 'skill withheld' | 'skill budget' | 'review refused' | 'policy refused' | 'pace warning' | 'subagent withheld' | 'memory refused' | 'edit refused' | 'subagent refused' | 'compaction refused' | 'output refused' | 'records expired' | 'steer refused' }
   | { type: 'thinking_unavailable'; detail: string }
   /**
    * `cases` and `incomplete` where the host declared cases (agent#10): each
    * comparison of a declared outcome with the runtime's, and the cases nothing
    * compared, each of which leaves `refuted` true. `figures`: what the critic cost.
    */
-  | { type: 'critique'; provider?: import('./policy').ProviderRecord; refuted: boolean; checks: { tool: string; status: string }[]; text: string; cases?: import('./refutation').CaseComparison[]; incomplete?: string[]; figures?: import('./refutation').CriticFigures }
+  | ({ type: 'critique'; provider?: import('./policy').ProviderRecord; refuted: boolean; checks: { tool: string; status: string }[]; text: string; cases?: import('./refutation').CaseComparison[]; incomplete?: string[]; figures?: import('./refutation').CriticFigures } & Partial<import('./records').RecordMembers>)
   /**
    * ADR-0010: the critic's decision, once per run, where the critic would start (before its critique)
    * or where it is skipped: the mode, whether it ran, why, its tier and, under `auto`, the trigger.

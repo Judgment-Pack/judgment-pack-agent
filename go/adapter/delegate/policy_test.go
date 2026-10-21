@@ -20,6 +20,8 @@ import (
 func TestChildrenUseResolvedBindingsTiersAndConcurrency(t *testing.T) {
 	for _, agent := range []bool{false, true} {
 		t.Run(map[bool]string{false: "model", true: "agent"}[agent], func(t *testing.T) {
+			steers := make(chan runcontext.SteerInput, 1)
+			steers <- runcontext.SteerInput{Text: "Use the corrected requirement."}
 			parentTier, childTier := "on", "off"
 			if agent {
 				parentTier, childTier = "high", "low"
@@ -46,7 +48,7 @@ func TestChildrenUseResolvedBindingsTiersAndConcurrency(t *testing.T) {
 			run := &adapter.Run{Policy: layer, Thinking: parentTier, ModelName: "parent", Wire: "openai-compatible", Model: func(context.Context, string, relay.Request) (*http.Response, error) {
 				t.Error("parent transport used by child")
 				return nil, nil
-			}, Emit: func(contract.RunEvent) {}, Context: &runcontext.Input{Connection: "parent"}}
+			}, Emit: func(contract.RunEvent) {}, Context: &runcontext.Input{Connection: "parent", Steer: steers}}
 			if agent {
 				run.Model = nil
 				run.Agent = &adapter.Agent{Model: "parent", Effort: parentTier, Run: func(context.Context, adapter.AgentRequest, adapter.AgentCallbacks) error {
@@ -86,6 +88,9 @@ func TestChildrenUseResolvedBindingsTiersAndConcurrency(t *testing.T) {
 				t.Fatalf("child record model %q", got)
 			}
 			c.inner = adapter.Func(func(ctx context.Context, child *adapter.Run) error {
+				if child.Context.Steer != nil {
+					t.Fatal("delegated child inherited the parent's steering queue")
+				}
 				named, err := child.Models()
 				if err != nil {
 					return err
@@ -135,6 +140,14 @@ func TestChildrenUseResolvedBindingsTiersAndConcurrency(t *testing.T) {
 			}
 			if !agent && task.ModelRequests != 1 {
 				t.Fatal("selected binding bypassed shared accounting")
+			}
+			select {
+			case steer := <-steers:
+				if steer.Text != "Use the corrected requirement." {
+					t.Fatalf("parent steer changed to %q", steer.Text)
+				}
+			default:
+				t.Fatal("delegated child drained the parent's steer")
 			}
 		})
 	}

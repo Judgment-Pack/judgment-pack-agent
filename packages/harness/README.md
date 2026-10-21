@@ -729,6 +729,18 @@ checkpoint resume, and ride in execution state so the stable prefix is unchanged
 Children and the critic never edit. Hosts supply accepted documents or the first
 `propose_pack` opens the draft; no host file is written.
 
+### Records
+
+`records.ts` implements ADR-0018. Resolved policy members
+`records.retainDays`, `records.redactOnStore` and `records.exportFormat` default to
+90, true and `json`. Each newly emitted checkpoint, completion provenance row and
+critique is guarded on store and carries `schema`, `version`, `digest` and
+`retainUntil`. Resume refuses a checkpoint at or past that instant. `exportRecords`
+accepts the host's records and returns their exact values beside the closed
+`export.json` manifest and an `export_written` event; it reads no package store.
+
+### Proposal edit refusal details
+
 Proposal edit refusals omit `document` when the identifier is missing, non-string
 or empty; nonempty identifiers are truncated to 512 Unicode characters. The
 `reason` names an invalid identifier. This makes malformed calls schema-valid

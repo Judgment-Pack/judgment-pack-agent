@@ -18,7 +18,10 @@ Open: a member the schema does not name is accepted.
 
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
+| `schema` |  | const (see schema) |  |
 | `version` | yes | const `1` |  |
+| `digest` |  | `provenance.json $defs/recordDigest` |  |
+| `retainUntil` |  | `provenance.json $defs/retainUntil` |  |
 | `id` | yes | string (min length 1, max length 100) |  |
 | `requestKey` | yes | `provenance.json $defs/requestKey` |  |
 | `phase` | yes | enum `plan`, `work` | plan: Plan mode, no artifact proposals. work: everything else. |
@@ -54,6 +57,7 @@ Open: a member the schema does not name is accepted.
 | `memories` |  | `provenance.json $defs/memories` |  |
 | `draft` |  | `$defs/draft` |  |
 | `outputGuard` |  | `provenance.json $defs/outputGuard` |  |
+| `records` |  | `provenance.json $defs/recordFigures` |  |
 | `steers` |  | `provenance.json $defs/steerReport` |  |
 
 Conditions beyond the members (allOf) are in the schema file.

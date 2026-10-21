@@ -30,7 +30,7 @@ HARNESS_ENGINE_ADDITIONS = ["deepagents", "eino"]
 # Event kinds the harness emits beyond the Desk's (contract/desk/inventory.json): the approval pause
 # (docs/adr/0008-the-approval-pause.md) and a skill's load and unload (docs/adr/0009-skills.md), on
 # the host's stream; and the critic's decision (docs/adr/0010-the-critics-switch.md).
-HARNESS_EVENT_ADDITIONS = ["approval_requested", "skill_loaded", "skill_unloaded", "critic_decided", "policy_resolved", "memory_proposed", "memory_recalled", "edit_applied", "edit_refused", "compacted", "output_guarded", "steered"]
+HARNESS_EVENT_ADDITIONS = ["approval_requested", "skill_loaded", "skill_unloaded", "critic_decided", "policy_resolved", "memory_proposed", "memory_recalled", "edit_applied", "edit_refused", "compacted", "output_guarded", "export_written", "steered"]
 
 EXPECTED_SCHEMAS = {
     "run-event.json",
@@ -49,6 +49,7 @@ EXPECTED_SCHEMAS = {
     "skill.json",
     "subagent.json",
     "memory.json",
+    "export.json",
 }
 
 # The $defs added or changed (beyond their descriptions) between v0.1.0 and the v0.2.0 release
@@ -98,6 +99,9 @@ RELEASE_REVIEWED_DEFS = [
     # ADR-0010: the critic's switch.
     ("tool-offer.json", "criticMode"), ("tool-offer.json", "criticReasoning"), ("tool-offer.json", "requestReview"),
     ("provenance.json", "criticReason"), ("provenance.json", "criticDecision"), ("run-event.json", "critic_decided"),
+    # ADR records (#101).
+    ("provenance.json", "recordDigest"), ("provenance.json", "retainUntil"), ("provenance.json", "recordFigures"),
+    ("export.json", "record"), ("run-event.json", "export_written"),
     # ADR-0021: steering at a request boundary.
     ("provenance.json", "queuedSteer"), ("provenance.json", "deliveredSteer"), ("provenance.json", "steerReport"),
     ("run-event.json", "steered"),
@@ -775,9 +779,11 @@ class VectorTests(unittest.TestCase):
         targets = []
         for name, definition in RELEASE_REVIEWED_DEFS:
             targets += [(name, ["$defs", definition] + path) for path in members(schemas_[name]["$defs"][definition], [])]
-        for name in ("checkpoint.json", "delegated-task.json", "tool-call.json", "tool-result.json", "skill.json", "tool-offer.json", "policy.json", "subagent.json", "memory.json"):
+        for name in ("checkpoint.json", "delegated-task.json", "tool-call.json", "tool-result.json", "skill.json", "tool-offer.json", "policy.json", "subagent.json", "memory.json", "export.json"):
             root = {key: value for key, value in schemas_[name].items() if key != "$defs"}
             targets += [(name, path) for path in members(root, [])]
+        for member in ("schema", "version", "digest", "retainUntil", "records"):
+            targets.append(("provenance.json", ["properties", member]))
         # Scope capability records and overrides to members introduced by ADR-0012.
         for prefix in ([], ["$defs", "endpointCapabilities"]):
             for member in ("family", "tiers", "fallbackTiers", "cacheBreakpoints"):

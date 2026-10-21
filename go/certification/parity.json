@@ -958,6 +958,13 @@
         ]
       },
       {
+        "check": "18 · records carry identity, lifetime and redaction; export binds their digests; expired resume is refused",
+        "go": [
+          "18 records",
+          "18 agent records"
+        ]
+      },
+      {
         "check": "21 · steers arrive once, framed and ordered at the next request boundary with an unchanged prefix",
         "go": ["21 steer boundary"]
       },
@@ -971,7 +978,8 @@
       "packages/harness/certification/subagents.test.ts",
       "packages/harness/certification/memory-write.test.ts",
       "packages/harness/certification/proposal-edits.test.ts",
-      "packages/harness/certification/output-boundary.test.ts"
+      "packages/harness/certification/output-boundary.test.ts",
+      "packages/harness/certification/records.test.ts"
     ]
   },
   "delegation": {

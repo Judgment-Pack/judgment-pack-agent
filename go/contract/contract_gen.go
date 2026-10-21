@@ -61,6 +61,8 @@ var Registry = map[string]func() any{
 	"delegated-task.json#/$defs/authorTestReport":   func() any { return new(DelegatedTaskAuthorTestReport) },
 	"delegated-task.json#/$defs/report":             func() any { return new(DelegatedTaskReport) },
 	"delegated-task.json#/$defs/hostRequest":        func() any { return new(DelegatedTaskHostRequest) },
+	"export.json":                                   func() any { return new(Export) },
+	"export.json#/$defs/record":                     func() any { return new(ExportRecord) },
 	"failure.json":                                  func() any { return new(Failure) },
 	"failure.json#/$defs/code":                      func() any { return new(string) },
 	"failure.json#/$defs/source":                    func() any { return new(string) },
@@ -77,6 +79,8 @@ var Registry = map[string]func() any{
 	"policy.json#/$defs/paceUsed":                   func() any { return new(PolicyPaceUsed) },
 	"policy.json#/$defs/outputPattern":              func() any { return new(PolicyOutputPattern) },
 	"provenance.json":                               func() any { return new(Provenance) },
+	"provenance.json#/$defs/recordDigest":           func() any { return new(string) },
+	"provenance.json#/$defs/retainUntil":            func() any { return new(string) },
 	"provenance.json#/$defs/completion":             func() any { return new(ProvenanceCompletion) },
 	"provenance.json#/$defs/tokens":                 func() any { return new(int64) },
 	"provenance.json#/$defs/sha256":                 func() any { return new(string) },
@@ -107,6 +111,7 @@ var Registry = map[string]func() any{
 	"provenance.json#/$defs/edit":                   func() any { return new(ProvenanceEdit) },
 	"provenance.json#/$defs/edits":                  func() any { return new([]ProvenanceEdit) },
 	"provenance.json#/$defs/outputGuard":            func() any { return new(map[string]int64) },
+	"provenance.json#/$defs/recordFigures":          func() any { return new(ProvenanceRecordFigures) },
 	"question.json":                                 func() any { return new(Question) },
 	"question.json#/$defs/option":                   func() any { return new(QuestionOption) },
 	"question.json#/$defs/draft":                    func() any { return new(QuestionDraft) },
@@ -144,6 +149,7 @@ var Registry = map[string]func() any{
 	"run-event.json#/$defs/edit_applied":            func() any { return new(RunEventEditApplied) },
 	"run-event.json#/$defs/edit_refused":            func() any { return new(RunEventEditRefused) },
 	"run-event.json#/$defs/output_guarded":          func() any { return new(RunEventOutputGuarded) },
+	"run-event.json#/$defs/export_written":          func() any { return new(RunEventExportWritten) },
 	"skill.json":                                    func() any { return new(Skill) },
 	"skill.json#/$defs/name":                        func() any { return new(string) },
 	"skill.json#/$defs/resource":                    func() any { return new(SkillResource) },
@@ -1068,7 +1074,10 @@ func (v CapabilityTiers) MarshalJSON() ([]byte, error) {
 // increase; at most one plan step is in_progress. The loaded skills (ADR-0009): skills. The
 // critic's decision (ADR-0010): critic.
 type Checkpoint struct {
+	Schema        *string                     `json:"schema,omitzero"`
 	Version       int64                       `json:"version"`
+	Digest        *string                     `json:"digest,omitzero"`
+	RetainUntil   *string                     `json:"retainUntil,omitzero"`
 	ID            string                      `json:"id"`
 	RequestKey    string                      `json:"requestKey"`
 	Phase         string                      `json:"phase"`
@@ -1097,12 +1106,13 @@ type Checkpoint struct {
 	Memories      *ProvenanceMemories         `json:"memories,omitzero"`
 	Draft         *CheckpointDraft            `json:"draft,omitzero"`
 	OutputGuard   map[string]int64            `json:"outputGuard,omitzero"`
+	Records       *ProvenanceRecordFigures    `json:"records,omitzero"`
 	Steers        *ProvenanceSteerReport      `json:"steers,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var checkpointMembers = []string{"version", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "compaction", "memories", "draft", "outputGuard", "steers"}
+var checkpointMembers = []string{"schema", "version", "digest", "retainUntil", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "compaction", "memories", "draft", "outputGuard", "records", "steers"}
 
 // UnmarshalJSON decodes a Checkpoint object and keeps the members the schema does not name.
 func (v *Checkpoint) UnmarshalJSON(data []byte) error {
@@ -2540,6 +2550,98 @@ func (v DelegatedTaskTaskRequest) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From export.json. ADR records (#101). The closed export.json manifest beside the host-supplied
+// records. The package has no record store.
+type Export struct {
+	Schema         string         `json:"schema"`
+	Version        int64          `json:"version"`
+	Digest         string         `json:"digest"`
+	RetainUntil    string         `json:"retainUntil"`
+	CreatedAt      string         `json:"createdAt"`
+	PackageVersion string         `json:"packageVersion"`
+	Policy         ExportPolicy   `json:"policy"`
+	Records        []ExportRecord `json:"records"`
+}
+
+var exportMembers = []string{"schema", "version", "digest", "retainUntil", "createdAt", "packageVersion", "policy", "records"}
+
+// UnmarshalJSON decodes a Export object and refuses a member the closed schema does not name.
+func (v *Export) UnmarshalJSON(data []byte) error {
+	type plain Export
+	var p plain
+	extra, err := decodeObject(data, &p, exportMembers, true)
+	if err != nil {
+		return errorf("Export: %w", err)
+	}
+	*v = Export(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a Export object.
+func (v Export) MarshalJSON() ([]byte, error) {
+	type plain Export
+	return encodeObject(plain(v), nil)
+}
+
+// From export.json#/properties/policy.
+type ExportPolicy struct {
+	RetainDays    int64  `json:"retainDays"`
+	RedactOnStore bool   `json:"redactOnStore"`
+	ExportFormat  string `json:"exportFormat"`
+}
+
+var exportPolicyMembers = []string{"retainDays", "redactOnStore", "exportFormat"}
+
+// UnmarshalJSON decodes a ExportPolicy object and refuses a member the closed schema does not name.
+func (v *ExportPolicy) UnmarshalJSON(data []byte) error {
+	type plain ExportPolicy
+	var p plain
+	extra, err := decodeObject(data, &p, exportPolicyMembers, true)
+	if err != nil {
+		return errorf("ExportPolicy: %w", err)
+	}
+	*v = ExportPolicy(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ExportPolicy object.
+func (v ExportPolicy) MarshalJSON() ([]byte, error) {
+	type plain ExportPolicy
+	return encodeObject(plain(v), nil)
+}
+
+// From export.json#/$defs/record.
+type ExportRecord struct {
+	Schema      string `json:"schema"`
+	Version     int64  `json:"version"`
+	Digest      string `json:"digest"`
+	RetainUntil string `json:"retainUntil"`
+	Bytes       int64  `json:"bytes"`
+}
+
+var exportRecordMembers = []string{"schema", "version", "digest", "retainUntil", "bytes"}
+
+// UnmarshalJSON decodes a ExportRecord object and refuses a member the closed schema does not name.
+func (v *ExportRecord) UnmarshalJSON(data []byte) error {
+	type plain ExportRecord
+	var p plain
+	extra, err := decodeObject(data, &p, exportRecordMembers, true)
+	if err != nil {
+		return errorf("ExportRecord: %w", err)
+	}
+	*v = ExportRecord(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ExportRecord object.
+func (v ExportRecord) MarshalJSON() ([]byte, error) {
+	type plain ExportRecord
+	return encodeObject(plain(v), nil)
+}
+
 // From failure.json. One failure, provider-independent: the catalogue class, which side it came
 // from, and whether the request was refused before anything was delivered. Read from the Desk's
 // AIFailure (web/src/assistant/failures.ts, readFailure) and aifailure.Failure
@@ -2783,6 +2885,7 @@ func (v MemorySource) MarshalJSON() ([]byte, error) {
 // host-derived default are refused at admission. Model-visible text never supplies a layer.
 type Policy struct {
 	Compaction     *string               `json:"compaction,omitzero"`
+	Records        *PolicyRecords        `json:"records,omitzero"`
 	Budget         *PolicyBudget         `json:"budget,omitzero"`
 	Critic         *PolicyCritic         `json:"critic,omitzero"`
 	Models         *PolicyModels         `json:"models,omitzero"`
@@ -2794,7 +2897,7 @@ type Policy struct {
 	OutputAllow    []string              `json:"outputAllow,omitzero"`
 }
 
-var policyMembers = []string{"compaction", "budget", "critic", "models", "concurrency", "pace", "taskClass", "outputGuard", "outputPatterns", "outputAllow"}
+var policyMembers = []string{"compaction", "records", "budget", "critic", "models", "concurrency", "pace", "taskClass", "outputGuard", "outputPatterns", "outputAllow"}
 
 // UnmarshalJSON decodes a Policy object and refuses a member the closed schema does not name.
 func (v *Policy) UnmarshalJSON(data []byte) error {
@@ -3110,6 +3213,35 @@ func (v PolicyPaceUsed) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From policy.json#/properties/records. ADR records (#101). The host stores and deletes; the
+// package stamps, optionally redacts, exports, and refuses an expired resume.
+type PolicyRecords struct {
+	RetainDays    *int64  `json:"retainDays,omitzero"`
+	RedactOnStore *bool   `json:"redactOnStore,omitzero"`
+	ExportFormat  *string `json:"exportFormat,omitzero"`
+}
+
+var policyRecordsMembers = []string{"retainDays", "redactOnStore", "exportFormat"}
+
+// UnmarshalJSON decodes a PolicyRecords object and refuses a member the closed schema does not name.
+func (v *PolicyRecords) UnmarshalJSON(data []byte) error {
+	type plain PolicyRecords
+	var p plain
+	extra, err := decodeObject(data, &p, policyRecordsMembers, true)
+	if err != nil {
+		return errorf("PolicyRecords: %w", err)
+	}
+	*v = PolicyRecords(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a PolicyRecords object.
+func (v PolicyRecords) MarshalJSON() ([]byte, error) {
+	type plain PolicyRecords
+	return encodeObject(plain(v), nil)
+}
+
 // From policy.json#/$defs/role.
 type PolicyRole struct {
 	Model     *string `json:"model,omitzero"`
@@ -3158,17 +3290,22 @@ func (v PolicyRole) MarshalJSON() ([]byte, error) {
 // critic's switch (ADR-0010): whether the critic ran on the run, why, at which tier and on which
 // trigger, in the checkpoint's critic and the critic_decided event ($defs/criticDecision).
 type Provenance struct {
-	Request int64                `json:"request"`
-	Phase   string               `json:"phase"`
-	Result  ProvenanceCompletion `json:"result"`
-	Attempt *int64               `json:"attempt,omitzero"`
-	Failure *Failure             `json:"failure,omitzero"`
-	WaitMs  *int64               `json:"waitMs,omitzero"`
+	Schema      *string                  `json:"schema,omitzero"`
+	Version     *int64                   `json:"version,omitzero"`
+	Digest      *string                  `json:"digest,omitzero"`
+	RetainUntil *string                  `json:"retainUntil,omitzero"`
+	Request     int64                    `json:"request"`
+	Phase       string                   `json:"phase"`
+	Result      ProvenanceCompletion     `json:"result"`
+	Attempt     *int64                   `json:"attempt,omitzero"`
+	Failure     *Failure                 `json:"failure,omitzero"`
+	WaitMs      *int64                   `json:"waitMs,omitzero"`
+	Records     *ProvenanceRecordFigures `json:"records,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var provenanceMembers = []string{"request", "phase", "result", "attempt", "failure", "waitMs"}
+var provenanceMembers = []string{"schema", "version", "digest", "retainUntil", "request", "phase", "result", "attempt", "failure", "waitMs", "records"}
 
 // UnmarshalJSON decodes a Provenance object and keeps the members the schema does not name.
 func (v *Provenance) UnmarshalJSON(data []byte) error {
@@ -3778,6 +3915,33 @@ func (v ProvenanceQueuedSteer) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From provenance.json#/$defs/recordFigures. Redactions in this record's storage pass, by stable
+// pattern label; excludes delivered-output counts.
+type ProvenanceRecordFigures struct {
+	Redactions map[string]int64 `json:"redactions"`
+}
+
+var provenanceRecordFiguresMembers = []string{"redactions"}
+
+// UnmarshalJSON decodes a ProvenanceRecordFigures object and refuses a member the closed schema does not name.
+func (v *ProvenanceRecordFigures) UnmarshalJSON(data []byte) error {
+	type plain ProvenanceRecordFigures
+	var p plain
+	extra, err := decodeObject(data, &p, provenanceRecordFiguresMembers, true)
+	if err != nil {
+		return errorf("ProvenanceRecordFigures: %w", err)
+	}
+	*v = ProvenanceRecordFigures(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ProvenanceRecordFigures object.
+func (v ProvenanceRecordFigures) MarshalJSON() ([]byte, error) {
+	type plain ProvenanceRecordFigures
+	return encodeObject(plain(v), nil)
+}
+
 // From provenance.json#/$defs/skillLoad. One loaded skill as the checkpoint keeps it (ADR-0009;
 // checkpoint.json skills): its id, the digest it was loaded at, its bytes
 // (skill.json#/$defs/bytes) and when it was loaded. A continued run restores it only where the
@@ -4168,6 +4332,8 @@ type RunEvent struct {
 	EditRefused *RunEventEditRefused
 	// OutputGuarded is set where type is "output_guarded".
 	OutputGuarded *RunEventOutputGuarded
+	// ExportWritten is set where type is "export_written".
+	ExportWritten *RunEventExportWritten
 }
 
 // UnmarshalJSON sets the one member the value decodes as.
@@ -4270,6 +4436,9 @@ func (v *RunEvent) UnmarshalJSON(data []byte) error {
 		case "output_guarded":
 			v.OutputGuarded = new(RunEventOutputGuarded)
 			return json.Unmarshal(data, v.OutputGuarded)
+		case "export_written":
+			v.ExportWritten = new(RunEventExportWritten)
+			return json.Unmarshal(data, v.ExportWritten)
 		}
 		return errorf("RunEvent: no member has type %q", tag)
 	}
@@ -4368,6 +4537,9 @@ func (v RunEvent) MarshalJSON() ([]byte, error) {
 	}
 	if v.OutputGuarded != nil {
 		set = append(set, v.OutputGuarded)
+	}
+	if v.ExportWritten != nil {
+		set = append(set, v.ExportWritten)
 	}
 	if len(set) != 1 {
 		return nil, errorf("RunEvent: %d members are set; a union holds exactly one", len(set))
@@ -4802,19 +4974,24 @@ func (v RunEventCriticDecided) MarshalJSON() ([]byte, error) {
 // calls for the uncompared included. figures: what the critic cost (provenance.json
 // $defs/criticFigures).
 type RunEventCritique struct {
-	Type       string                       `json:"type"`
-	Refuted    bool                         `json:"refuted"`
-	Checks     []RunEventCritiqueChecksItem `json:"checks"`
-	Text       string                       `json:"text"`
-	Cases      []RunEventCaseComparison     `json:"cases,omitzero"`
-	Incomplete []string                     `json:"incomplete,omitzero"`
-	Figures    *ProvenanceCriticFigures     `json:"figures,omitzero"`
-	Provider   *ProvenanceProvider          `json:"provider,omitzero"`
+	Type        string                       `json:"type"`
+	Schema      *string                      `json:"schema,omitzero"`
+	Version     *int64                       `json:"version,omitzero"`
+	Digest      *string                      `json:"digest,omitzero"`
+	RetainUntil *string                      `json:"retainUntil,omitzero"`
+	Refuted     bool                         `json:"refuted"`
+	Checks      []RunEventCritiqueChecksItem `json:"checks"`
+	Text        string                       `json:"text"`
+	Cases       []RunEventCaseComparison     `json:"cases,omitzero"`
+	Incomplete  []string                     `json:"incomplete,omitzero"`
+	Figures     *ProvenanceCriticFigures     `json:"figures,omitzero"`
+	Provider    *ProvenanceProvider          `json:"provider,omitzero"`
+	Records     *ProvenanceRecordFigures     `json:"records,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var runEventCritiqueMembers = []string{"type", "refuted", "checks", "text", "cases", "incomplete", "figures", "provider"}
+var runEventCritiqueMembers = []string{"type", "schema", "version", "digest", "retainUntil", "refuted", "checks", "text", "cases", "incomplete", "figures", "provider", "records"}
 
 // UnmarshalJSON decodes a RunEventCritique object and keeps the members the schema does not name.
 func (v *RunEventCritique) UnmarshalJSON(data []byte) error {
@@ -5085,6 +5262,36 @@ func (v *RunEventExecutionCheckpoint) UnmarshalJSON(data []byte) error {
 func (v RunEventExecutionCheckpoint) MarshalJSON() ([]byte, error) {
 	type plain RunEventExecutionCheckpoint
 	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From run-event.json#/$defs/export_written. The host asked the package to produce a JSON export
+// from records it supplied. No package store was read.
+type RunEventExportWritten struct {
+	Type    string `json:"type"`
+	Records int64  `json:"records"`
+	Bytes   int64  `json:"bytes"`
+	Digest  string `json:"digest"`
+}
+
+var runEventExportWrittenMembers = []string{"type", "records", "bytes", "digest"}
+
+// UnmarshalJSON decodes a RunEventExportWritten object and refuses a member the closed schema does not name.
+func (v *RunEventExportWritten) UnmarshalJSON(data []byte) error {
+	type plain RunEventExportWritten
+	var p plain
+	extra, err := decodeObject(data, &p, runEventExportWrittenMembers, true)
+	if err != nil {
+		return errorf("RunEventExportWritten: %w", err)
+	}
+	*v = RunEventExportWritten(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunEventExportWritten object.
+func (v RunEventExportWritten) MarshalJSON() ([]byte, error) {
+	type plain RunEventExportWritten
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/guardrail. The host saying what it did. rewrote and refused are the
