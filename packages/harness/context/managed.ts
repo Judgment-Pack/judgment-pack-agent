@@ -1,3 +1,5 @@
+import {guardConnectionNotices} from '../session'
+import {OutputRefused,RecordsRefused,outputWhere} from '../outputGuard'
 import {PolicyRefusal} from '../policy'
 import {RecordsExpired} from '../records'
 import {failureError,failureEvent,toolFailureResult} from '../failures'
@@ -19,7 +21,24 @@ export function managedContext<T extends EngineSession>(session:T,run:(session:T
  const gate=openRun(session,()=>{})
  return eventIterator({gate,open:()=>execute({...session,signal:gate.signal},run,engine)})
 }
+/** Notices carry model-derived identifiers and refusal details, independently of tool results.
+ * Guard-generated labels are trusted metadata and must not be scanned again. */
+function guardNotice(notice:AssistantEvent,context:SessionContext):AssistantEvent {
+ if(notice.type==='edit_refused'){const [document,reason]=context.output.value([notice.document,notice.reason] as const,'draft edit');if(document!==undefined&&[...document].length>512)context.output.refuse('draft edit','invalid-output');return {...notice,...(document===undefined?{}:{document}),reason}}
+ if(notice.type==='edit_applied'){const document=context.output.value(notice.document,'draft edit');if([...document].length>512)context.output.refuse('draft edit','invalid-output');return {...notice,document}}
+ if(notice.type==='guardrail'&&notice.reason!=='output refused'){const [tool,detail]=context.output.value([notice.tool,notice.detail] as const,'message');return {...notice,tool,detail}}
+ return notice
+}
+function takeNotices(context:SessionContext):AssistantEvent[]{
+ const out:AssistantEvent[]=[]
+ for(const notice of context.takeNotices()){
+  try{out.push(guardNotice(notice,context))}catch(error){if(!(error instanceof OutputRefused))throw error}
+ }
+ // These are the labels just produced by guarding notices, never tool results.
+ return [...out,...context.takeNotices()]
+}
 async function* execute<T extends EngineSession>(session:T,run:(session:T)=>AsyncIterable<AssistantEvent>,engine?:import('../host').AssistantEngine):AsyncGenerator<AssistantEvent>{
+ let releaseNotices:(()=>void)|undefined
  let context:SessionContext|undefined
  let ended=false
  const tracked=!!session.context?.currentRequest||!!session.context?.execution
@@ -41,11 +60,30 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
  try {
   session.signal.throwIfAborted()
   const ready=await contextualSession(session,engine);context=ready.context
+  releaseNotices=guardConnectionNotices(session.callTool,notice=>{
+   try{return guardNotice(notice,ready.context)}catch(error){if(!(error instanceof OutputRefused))throw error;return undefined}
+  })
+  // Only names declared by the host, Runtime or reserved harness offer are trusted.
+  // Keep dispatch on the original name: an unknown call still earns the gate's refusal.
+  const declaredNames=new Set([...ready.session.tools,...ready.session.hostTools].map(tool=>tool.name))
+  const deliveredNames=new Map<string,string>()
+  const guardName=(name:string,call=false):string=>{
+   if(declaredNames.has(name))return name
+   if(!call&&deliveredNames.has(name))return deliveredNames.get(name)!
+   let clean:string
+   try{clean=context!.output.value(name,'message');if(context!.output.mode!=='off'&&[...clean].length>150)context!.output.refuse('message','invalid-output')}
+   catch(error){if(!(error instanceof OutputRefused))throw error;clean=error.message}
+   deliveredNames.set(name,clean);return clean
+  }
   contexts.set(ready.session,context)
   yield {type:'policy_resolved',members:structuredClone(context.resolvedPolicy)}
+  function* checkpoint(status=context!.execution.state.status,durable?:boolean,paused=false):Generator<AssistantEvent>{
+   try{const saved=context!.execution.snapshot(status);yield paused?{type:'budget_paused',checkpoint:saved}:{type:'execution_checkpoint',...(durable===undefined?{}:{durable}),checkpoint:saved}}
+   catch(error){if(!(error instanceof RecordsRefused))throw error;for(const notice of takeNotices(context!))yield notice}
+  }
   if(context.paceWarning)yield {type:'guardrail',tool:'pace',action:'refused',reason:'pace warning',detail:context.paceWarning}
   session.signal.throwIfAborted()
-  if(tracked)yield {type:'execution_checkpoint',checkpoint:context.execution.snapshot()}
+  if(tracked)yield* checkpoint()
   // ADR-0008: a paused act call the person decided on. Approved: the decision is written and
   // acknowledged, the call runs once under its bounds, and its result is written and acknowledged
   // before anything else; refused, or restored with its result: written. Then the run's first request
@@ -61,7 +99,7 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
     yield await write()
     const ran=await context.runApproved!(session.signal)
     context.execution.state.approval={...context.execution.state.approval!,state:'executed',result:ran.result}
-    for(const notice of context.takeNotices())yield notice
+    for(const notice of takeNotices(context))yield notice
     yield await write()
    }else if(step==='write'){
     yield await write()
@@ -73,9 +111,29 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
    ready.session.prompt=ready.session.prompt+'\n\n'+approvalContinuation(context.execution.state.approval!)
   }
   for await (let event of run(ready.session)){
+   // Output is held before host delivery; dispatch independently guards tool arguments.
+   if(context.output.mode!=='off'&&(event.type==='message_progress'||event.type==='reasoning'&&!event.done))continue
+   if(event.type==='reasoning')event={...event,text:context.output.value(event.text,'message')}
+   if(event.type==='message')event={...event,text:context.output.value(event.text,'message')}
+   if(event.type==='tool_call')event={...event,name:guardName(event.name,true),args:context.output.value(event.args,outputWhere(event.name),context.output.mode==='refuse')}
+   if(event.type==='tool_result')event={...event,name:guardName(event.name)}
+   if(event.type==='user_question')event={...event,question:context.output.value(event.question,'tool argument')}
+   if(event.type==='delegation_requested')event={...event,request:context.output.value(event.request,'tool argument')}
+   if(event.type==='proposal'){
+    const clean=context.output.value(event,'proposal')
+    if(JSON.stringify(clean)!==JSON.stringify(event)){
+     let checked:import('../engine').McpToolResult={isError:true}
+     try{checked=await ready.session.callTool('validate',{content:JSON.stringify(clean.document)})}catch{session.signal.throwIfAborted();context.output.refuse('proposal','proposal-validation')}
+     let result=checked.structuredContent as {status?:string}|undefined
+     if(result===undefined){try{result=JSON.parse((checked.content??[]).filter(p=>p.type==='text').map(p=>p.text??'').join('\n'))}catch{}}
+     if(checked.isError||result?.status!=='valid')context.output.refuse('proposal','proposal-validation')
+    }
+    event=clean
+   }
+   event=guardNotice(event,context)
    // agent#10: a refusal of the critic's call is the boundary's guardrail, put
    // on the stream before the result the engine reports for that call.
-   for(const notice of context.takeNotices())yield notice
+   for(const notice of takeNotices(context))yield notice
    // ADR-0008: an engine asks the host's approval policy where it hands an act call to the host
    // (SessionContext.approval) and delivers approval_requested in place of the call where it asks.
    // A call made while another waits is refused: said here with its call, its guardrail and its
@@ -103,33 +161,40 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
     const asked=context.execution.state.approval!
     if(requested!==asked.callId)yield {type:'approval_requested',callId:asked.callId,name:asked.name,tool:asked.tool,source:{...asked.source},args:structuredClone(asked.args)}
     paused=true;context.execution.state.status='paused'
-    yield {type:'execution_checkpoint',durable:true,checkpoint:context.execution.snapshot('paused')}
+    yield* checkpoint('paused',true)
     ended=true;yield {type:'end'};return
    }
    // ADR-0006: a tool with a source's call and result carry its source record.
    if(context.sources)event=context.sources.decorate(event)
-   if(event.type==='critique')event=context.execution.recordCritique(event)
+   if(event.type==='critique'){try{event=context.execution.recordCritique(event)}catch(error){if(!(error instanceof RecordsRefused))throw error;for(const notice of takeNotices(context))yield notice;continue}}
    if(event.type==='error')failed=true
    context.execution.observe(event)
    if(event.type==='budget_paused'||event.type==='error'&&(event.failure?.code==='request-limit'||event.message===new ExecutionPaused().message)){
     paused=true;context.execution.state.status='paused'
-    yield {type:'budget_paused',checkpoint:context.execution.snapshot('paused')};continue
+    yield* checkpoint('paused',undefined,true);continue
    }
-   if(event.type==='tool_result'&&context.execution.pauseRequested){yield event;context.execution.state.status='paused';yield {type:'budget_paused',checkpoint:context.execution.snapshot('paused')};yield {type:'end'};return}
+   if(event.type==='tool_result'&&context.execution.pauseRequested){yield event;context.execution.state.status='paused';yield* checkpoint('paused',undefined,true);yield {type:'end'};return}
    if(tracked&&(event.type==='tool_call'||event.type==='tool_result'||event.type==='user_question')){
     const tool=event.type==='user_question'?undefined:ready.session.hostTools.find(tool=>tool.name===event.name)
     const read=tool?.effect==='read'||tool?.delegation==='read'||tool?.delegation==='research'||event.type!=='user_question'&&['get_schema','get_authoring_instructions','list_context','read_context','list_examples','get_example'].includes(event.name)
-    yield {type:'execution_checkpoint',durable:!read,checkpoint:context.execution.snapshot()}
+    yield* checkpoint(context.execution.state.status,!read)
    }
    // ADR-0010: the critic's decision is written durably: the checkpoint carrying it follows the event.
-   if(event.type==='critic_decided'){yield event;if(tracked)yield {type:'execution_checkpoint',durable:true,checkpoint:context.execution.snapshot()};continue}
-   if(event.type==='end'&&tracked&&!paused){context.execution.state.status=session.signal.aborted||failed?'stopped':'complete';yield {type:'execution_checkpoint',durable:true,checkpoint:context.execution.snapshot()}}
+   if(event.type==='critic_decided'){yield event;if(tracked)yield* checkpoint(context.execution.state.status,true);continue}
+   if(event.type==='end'&&tracked&&!paused){context.execution.state.status=session.signal.aborted||failed?'stopped':'complete';yield* checkpoint(context.execution.state.status,true)}
    if(session.context?.artifactProposals===false&&event.type==='proposal'){yield {type:'guardrail',tool:'proposal',action:'refused',detail:'Artifact proposals are unavailable in this conversation. Use its host tools or start a new artifact conversation.'};continue}
    if(session.context?.phase==='plan'&&event.type==='proposal'){yield {type:'guardrail',tool:'proposal',action:'refused',detail:'Artifact proposals are unavailable in Plan mode. Use propose_plan and wait for Start work.'};continue}
    if(event.type==='end')ended=true;yield event
   }
  } catch(error){
   if(ended)throw error
+  if(error instanceof OutputRefused){
+   const notices=context?takeNotices(context):[]
+   for(const notice of notices)yield notice
+   if(!notices.some(e=>e.type==='guardrail'&&e.reason==='output refused'))yield {type:'guardrail',tool:'output',action:'refused',reason:'output refused',detail:error.message}
+   if(context&&tracked){try{yield {type:'execution_checkpoint',checkpoint:context.execution.snapshot('stopped')}}catch(held){if(!(held instanceof RecordsRefused))throw held;for(const notice of takeNotices(context))yield notice}}
+   yield {type:'end'};return
+  }
   if(error instanceof PolicyRefusal){
    yield error.event()
    if(error.checkpoint)yield {type:'execution_checkpoint',checkpoint:error.checkpoint}
@@ -137,5 +202,5 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
   if(error instanceof RecordsExpired)yield error.event()
   if(!session.signal.aborted)yield failureEvent(error,'context')
   yield {type:'end'}
- } finally {context?.close()}
+ } finally {releaseNotices?.();context?.close()}
 }

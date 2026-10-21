@@ -303,7 +303,7 @@ func (t *turnState) hostAnswer(ctx context.Context, tool runcontext.HostTool, ar
 		if err != nil {
 			return runcontext.ToolResult{}, err
 		}
-		if err := t.r.sc.Drafts.Seed(proposal.Document, proposal.Unknowns); err != nil {
+		if err := t.r.sc.Drafts.SeedContext(ctx, proposal.Document, proposal.Unknowns); err != nil {
 			return runcontext.ToolResult{}, err
 		}
 		t.toolProposal = &proposal

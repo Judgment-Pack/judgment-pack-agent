@@ -30,7 +30,7 @@ HARNESS_ENGINE_ADDITIONS = ["deepagents", "eino"]
 # Event kinds the harness emits beyond the Desk's (contract/desk/inventory.json): the approval pause
 # (docs/adr/0008-the-approval-pause.md) and a skill's load and unload (docs/adr/0009-skills.md), on
 # the host's stream; and the critic's decision (docs/adr/0010-the-critics-switch.md).
-HARNESS_EVENT_ADDITIONS = ["approval_requested", "skill_loaded", "skill_unloaded", "critic_decided", "policy_resolved", "memory_proposed", "memory_recalled", "edit_applied", "edit_refused", "compacted", "export_written"]
+HARNESS_EVENT_ADDITIONS = ["approval_requested", "skill_loaded", "skill_unloaded", "critic_decided", "policy_resolved", "memory_proposed", "memory_recalled", "edit_applied", "edit_refused", "compacted", "output_guarded", "export_written"]
 
 EXPECTED_SCHEMAS = {
     "run-event.json",
@@ -56,6 +56,7 @@ EXPECTED_SCHEMAS = {
 # review, whose members each need a vector (#43): (schema, definition).
 RELEASE_REVIEWED_DEFS = [
     ("run-event.json", "compacted"), ("provenance.json", "compactionSummary"), ("provenance.json", "compactionReport"),
+    ("run-event.json", "output_guarded"), ("policy.json", "outputPattern"),
     ("tool-offer.json", "propose_edit"), ("tool-offer.json", "propose_delete"), ("tool-offer.json", "propose_insert"), ("tool-offer.json", "undo_edit"),
     ("checkpoint.json", "draft"), ("checkpoint.json", "draftDocument"), ("provenance.json", "edit"), ("run-event.json", "edit_applied"), ("run-event.json", "edit_refused"),
     ("memory.json", "answer"), ("tool-offer.json", "remember"), ("provenance.json", "memories"), ("provenance.json", "memoryRecall"), ("run-event.json", "memory_proposed"), ("run-event.json", "memory_recalled"),
@@ -99,7 +100,7 @@ RELEASE_REVIEWED_DEFS = [
     ("tool-offer.json", "criticMode"), ("tool-offer.json", "criticReasoning"), ("tool-offer.json", "requestReview"),
     ("provenance.json", "criticReason"), ("provenance.json", "criticDecision"), ("run-event.json", "critic_decided"),
     # ADR records (#101).
-    ("provenance.json", "recordDigest"), ("provenance.json", "retainUntil"),
+    ("provenance.json", "recordDigest"), ("provenance.json", "retainUntil"), ("provenance.json", "recordFigures"),
     ("export.json", "record"), ("run-event.json", "export_written"),
 ]
 
@@ -778,7 +779,7 @@ class VectorTests(unittest.TestCase):
         for name in ("checkpoint.json", "delegated-task.json", "tool-call.json", "tool-result.json", "skill.json", "tool-offer.json", "policy.json", "subagent.json", "memory.json", "export.json"):
             root = {key: value for key, value in schemas_[name].items() if key != "$defs"}
             targets += [(name, path) for path in members(root, [])]
-        for member in ("schema", "version", "digest", "retainUntil"):
+        for member in ("schema", "version", "digest", "retainUntil", "records"):
             targets.append(("provenance.json", ["properties", member]))
         # Scope capability records and overrides to members introduced by ADR-0012.
         for prefix in ([], ["$defs", "endpointCapabilities"]):
@@ -858,7 +859,7 @@ class VectorTests(unittest.TestCase):
         # the unrelated event and failure values from earlier releases.
         added_values = {
             ("tool-offer.json", ("$defs", "reservedName")): ["remember", "propose_edit", "propose_delete", "propose_insert", "undo_edit"],
-            ("run-event.json", ("properties", "type")): ["policy_resolved", "memory_proposed", "memory_recalled", "edit_applied", "edit_refused", "compacted"],
+            ("run-event.json", ("properties", "type")): ["policy_resolved", "memory_proposed", "memory_recalled", "edit_applied", "edit_refused", "compacted", "output_guarded"],
             ("failure.json", ("$defs", "code")): ["pace exceeded"],
         }
         for name, path in enums:

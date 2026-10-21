@@ -1,7 +1,9 @@
 package runcontext
 
 import (
+	"context"
 	"encoding/json"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"os"
 	"strings"
 	"testing"
@@ -13,7 +15,7 @@ type recordTestGuard struct{}
 // Assemble this at run time because the repository's local-paths check forbids the literal.
 const recordTestHomePath = "/" + "home" + "/person/secret.txt"
 
-func (recordTestGuard) JSON(raw json.RawMessage, where string, record bool) (json.RawMessage, error) {
+func (recordTestGuard) JSON(raw json.RawMessage, where string, record bool, markers ...*RecordMarker) (json.RawMessage, error) {
 	return json.RawMessage(strings.ReplaceAll(string(raw), recordTestHomePath, `[redacted: local-home-path]`)), nil
 }
 
@@ -116,5 +118,48 @@ func TestInterruptedResumeCarriesEveryRecordMember(t *testing.T) {
 	raw, _ := json.Marshal(extended)
 	if value := MustParseJSON(string(raw)); extended.RetainUntil == nil || *extended.RetainUntil != *resumed.RetainUntil || !ValidRecord(value) {
 		t.Fatalf("extended checkpoint lost or invalidated record metadata: %s", raw)
+	}
+}
+
+func TestRecordsRefusalContinuesBoundary(t *testing.T) {
+	opened, err := ContextualSession(context.Background(), modelSession())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opened.Context.Close()
+	b := NewBoundary(opened)
+	opened.Context.Execution.State.Explanation = strings.Repeat("x", 200000)
+	events := b.checkpoint(nil, "")
+	for _, event := range events {
+		if event.ExecutionCheckpoint != nil {
+			t.Fatal("partial checkpoint written")
+		}
+	}
+	if len(events) != 1 || events[0].Guardrail == nil || events[0].Guardrail.Tool != "records" {
+		t.Fatal("missing records refusal")
+	}
+	events, ended := b.Event(contract.RunEvent{Critique: &contract.RunEventCritique{Type: "critique", Text: strings.Repeat("x", 200000)}})
+	if ended || len(events) != 1 || events[0].Guardrail == nil || events[0].Guardrail.Tool != "records" {
+		t.Fatal("critique refusal stopped run or was silent")
+	}
+	events, ended = b.Event(contract.RunEvent{Message: &contract.RunEventMessage{Type: "message", Text: "Continued."}})
+	if ended || len(events) != 1 || events[0].Message == nil {
+		t.Fatal("run did not continue")
+	}
+}
+
+func TestRecordsPreserveGuardLabelsInKeysAndText(t *testing.T) {
+	counts := map[string]int64{}
+	guard, err := NewOutputGuard(PolicyMembers{"outputPatterns": {Value: []OutputPattern{{Name: "label-word", Pattern: "redacted"}}}}, func() map[string]int64 { return counts })
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := ObjectOf("[redacted: aws-access-key]", String("Before [redacted: aws-access-key] after"))
+	record, err := WriteRecord(CheckpointSchema, ObjectOf("operations", Array(ObjectOf("name", String("fixture"), "args", args))), RecordDefaults, guard, time.Now(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if CanonicalJSON(record.Get("operations").Items()[0].Get("args")) != CanonicalJSON(args) || record.Get("records").Get("redactions").Len() != 0 || len(counts) != 0 {
+		t.Fatal("guard labels rescanned")
 	}
 }

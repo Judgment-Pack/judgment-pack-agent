@@ -1,3 +1,4 @@
+import type {RecordMarker} from './outputGuard'
 import {canonicalJSON} from './context/chat'
 
 export const CHECKPOINT_SCHEMA='https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/checkpoint.json'
@@ -7,8 +8,8 @@ export const EXPORT_SCHEMA='https://github.com/Judgment-Pack/judgment-pack-agent
 export const RECORD_SCHEMAS=[CHECKPOINT_SCHEMA,PROVENANCE_SCHEMA,CRITIQUE_SCHEMA] as const
 export type RecordSchema=typeof RECORD_SCHEMAS[number]
 export interface RecordsPolicy {retainDays:number;redactOnStore:boolean;exportFormat:'json'}
-export interface RecordMembers<S extends RecordSchema=RecordSchema> {schema:S;version:1;digest:string;retainUntil:string}
-export interface RecordGuard {value<T>(input:T,where:'message',record?:boolean):T}
+export interface RecordMembers<S extends RecordSchema=RecordSchema> {schema:S;version:1;digest:string;retainUntil:string;records?:RecordMarker}
+export interface RecordGuard {declaredNames?:ReadonlySet<string>;value<T>(input:T,where:'message',record?:boolean,marker?:RecordMarker):T}
 export interface ExportEntry extends RecordMembers {bytes:number}
 export interface ExportManifest {
  schema:typeof EXPORT_SCHEMA;version:1;digest:string;retainUntil:string;createdAt:string;packageVersion:string
@@ -43,9 +44,42 @@ export function recordsPolicy(members:Record<string,{value:unknown}>):RecordsPol
  return {retainDays:Number(retainDays),redactOnStore,exportFormat}
 }
 
+// Only model-derived members enter the store guard. Each selected member has its own budget.
+const RECORD_TEXT_PATHS=[
+ 'text','explanation','reason','plan.*.step','plan.*.detail',
+ 'operations.*.name','operations.*.args','approval.name','approval.tool','approval.args',
+ 'memories.proposed.*.text','compaction.summaries.*.summary',
+ 'context.entries.*.value.@assistant.content.@text.text',
+ 'context.entries.*.value.@assistant.content.@call.toolName','context.entries.*.value.@assistant.content.@call.input',
+ 'context.entries.*.value.@assistant.@answer','context.entries.@draft.value.text','context.entries.@draft.value.unknowns',
+] as const
+function guardRecord(record:Record<string,unknown>,guard:RecordGuard,figures:RecordMarker):void{
+ const scan=(node:unknown,path:readonly string[])=>{
+  if(!node||typeof node!=='object')return
+  const [key,...rest]=path
+  if(key==='*'){if(Array.isArray(node))for(const item of node)scan(item,rest);return}
+  if(key?.startsWith('@')&&key!=='@answer'){
+   if(Array.isArray(node))for(const item of node){
+    const matches=key==='@draft'?typeof item?.label==='string'&&item.label.startsWith('draft:'):key==='@assistant'?item?.role==='assistant':key==='@text'?item?.type==='text':item?.type==='tool-call'
+    if(matches)scan(item,rest)
+   }
+   return
+  }
+  const object=node as Record<string,unknown>
+  if(key==='@answer'){if(typeof object.content==='string')object.content=guard.value(object.content,'message',true,figures);return}
+  if(key===undefined||!Object.hasOwn(object,key))return
+  if(rest.length){scan(object[key],rest);return}
+  if((key==='name'||key==='tool'||key==='toolName')&&typeof object[key]==='string'&&guard.declaredNames?.has(object[key] as string))return
+  object[key]=guard.value(object[key],'message',true,figures)
+ }
+ for(const path of RECORD_TEXT_PATHS)scan(record,path.split('.'))
+}
+
 export function writeRecord<S extends RecordSchema,T extends Record<string,unknown>>(schema:S,value:T,policy:RecordsPolicy,guard?:RecordGuard,now=new Date(),keepRetainUntil?:string):T&RecordMembers<S>{
  let record={...structuredClone(value),schema,version:1 as const,retainUntil:keepRetainUntil??retainUntil(policy,now)} as T&Omit<RecordMembers<S>,'digest'>
- if(policy.redactOnStore&&guard)record=guard.value(record,'message')
+ const figures:RecordMarker={redactions:{}}
+ if(policy.redactOnStore&&guard)guardRecord(record,guard,figures)
+ Object.assign(record,{records:figures})
  return {...record,digest:recordDigest(record)}
 }
 export function validRecord(value:unknown):value is Record<string,unknown>&RecordMembers{

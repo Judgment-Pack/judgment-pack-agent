@@ -19,11 +19,26 @@ and critique carries `schema`, `version`, `digest` and `retainUntil`. The digest
 Readers continue to admit old records without the four members for the v0.8.0
 transition; every record this package writes carries them.
 
-When `redactOnStore` is true, the complete record passes the output guard before its
-digest is calculated. A match therefore becomes the same labelled hole the outbound
+When `redactOnStore` is true, the records writer scans only model-derived members
+before calculating the complete record's digest. One list in each language owns the
+scanned paths: critique text, plan steps and explanations, notice/pause
+reasons, operation and approval arguments and undeclared names, proposed memory text,
+compaction summary text, retained draft proposal text and unknowns, and retained
+assistant answers and tool-call arguments.
+Declared tool names use the same run offer as delivery, including host, harness and
+server tools. Tool-result payloads, host input, metadata, identifiers, digests,
+counts, timestamps and the guard's own labels are exempt. A large exempt payload is
+stored whole without spending the guard's scan budget. Each selected member has
+its own work budget; if one exceeds it, nothing from that record is written. A
+schema-valid guardrail with tool `records`, reason `output refused` and detail
+`Output refused: work-bound.` reports the refusal, and ordinary execution continues.
+A required approval checkpoint still has to succeed before an approved action runs. A match therefore becomes the same labelled hole the outbound
 boundary writes, and the digest binds the redacted value. No unredacted copy is
 returned as the written record. `redactOnStore: false` changes only this storage pass;
 the ordinary output boundary still applies.
+The guard call site marks storage passes so their per-pattern redactions enter the closed
+`records.redactions` figures on each record, while unmarked calls count delivered output
+under ADR-0017 without mixing the two channels.
 
 `retainUntil` is calculated when the record is first written. A resumed checkpoint
 keeps its original lifetime rather than extending it. A resume at or after that instant
@@ -47,7 +62,8 @@ repository process, not to a run's records lifecycle.
 
 - `policy.json` adds the closed `records` section and its three defaults.
 - `checkpoint.json`, `provenance.json` and `run-event.json#/$defs/critique` name the
-  four record members. `provenance.json` defines the digest and lifetime shapes.
+  four record members and closed `records.redactions` figures. `provenance.json` defines
+  the digest, lifetime and record-figures shapes.
 - closed `export.json` defines the manifest and its record entries.
 - `run-event.json` adds `export_written` and guardrail reason `records expired`.
 - handwritten vectors in `contract/vectors/records/` carry all three record kinds,
@@ -56,10 +72,13 @@ repository process, not to a run's records lifecycle.
 ## Certification
 
 Scenario 18 runs on every TypeScript engine and both Go adapters. It checks the four
-members on every written record, a labelled hole when storage redaction matches, exact
-manifest-to-record digests, and refusal of an expired checkpoint. Four mutants must be
-caught: lifetime omitted, storage redaction skipped, a manifest digest changed, and an
-expired resume admitted. Their Go twins run separately on a disposable copy.
+members on every written record, a labelled hole and separate per-pattern figures when
+storage redaction matches, preservation of declared names and large exempt payloads,
+atomic refusal of an oversized model-derived member with a schema-valid event, exact
+manifest-to-record digests, and refusal of an expired checkpoint. Five mutants must be
+caught: lifetime omitted, storage redaction skipped, a manifest digest changed, an
+expired resume admitted, and the record-marker channel ignored. Their Go twins run
+separately on a disposable copy.
 
 ## Consequences
 

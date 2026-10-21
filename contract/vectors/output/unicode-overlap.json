@@ -1,0 +1,34 @@
+{
+  "description": "ADR-0017: unicode-overlap. Handwritten from the accepted output-boundary decision.",
+  "schema": "run-event.json#/$defs/message",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/outputGuard.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "message",
+      "text": "😀 [redacted: project-secret] end"
+    }
+  ],
+  "guard": {
+    "input": "😀 secret-123 end",
+    "output": "😀 [redacted: project-secret] end",
+    "where": "message",
+    "mode": "redact",
+    "patterns": [
+      {
+        "name": "project-secret",
+        "pattern": "secret-[0-9]+"
+      }
+    ],
+    "counts": {
+      "project-secret": 1
+    }
+  }
+}

@@ -230,6 +230,12 @@
     },
     "draft": {
       "$ref": "#/$defs/draft"
+    },
+    "outputGuard": {
+      "$ref": "provenance.json#/$defs/outputGuard"
+    },
+    "records": {
+      "$ref": "provenance.json#/$defs/recordFigures"
     }
   },
   "additionalProperties": true,

@@ -233,6 +233,7 @@ func scenarioLeg(ctx context.Context, server *Server, endpoint Endpoint, adapter
 	// The boundary adds its own context tools to the run (the offer vector's host tools); the
 	// session hands it none of its own.
 	run := &Run{
+		Policy:     runcontext.PolicyLayer{"outputGuard": "off"}, // Legacy wire streaming; scenario 17 covers guarded delivery.
 		Wire:       endpoint.API,
 		ModelName:  "scripted-model",
 		Model:      session.ModelCall(),

@@ -25,7 +25,7 @@ func withDelegation(inner adapter.Adapter) adapter.Adapter {
 // runtime, on the stand-in.
 func TestScenariosThreeSevenEightNineAndTenHoldOnTheAgentCapability(t *testing.T) {
 	for _, check := range certification.AgentChecks {
-		if !slices.Contains([]string{"scenario 3", "scenario 7", "scenario 8", "scenario 9", "scenario 10", "scenario 11", "scenario 12"}, check.Group) {
+		if !slices.Contains([]string{"scenario 3", "scenario 7", "scenario 8", "scenario 9", "scenario 10", "scenario 11", "scenario 12", "scenario 18"}, check.Group) {
 			continue
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)

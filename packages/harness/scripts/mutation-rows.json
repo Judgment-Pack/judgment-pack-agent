@@ -4228,7 +4228,9 @@
    "file": "context/session.ts",
    "find": "if(typeof raw!=='string'||utf8Bytes(raw)>this.policy.summaryBytes)throw Error('The compactor returned no bounded summary.')",
    "replace": "if(typeof raw!=='string')throw Error('The compactor returned no bounded summary.')",
-   "tests": ["certification/scenarios.test.ts"],
+   "tests": [
+    "certification/scenarios.test.ts"
+   ],
    "status": "caught",
    "origin": "agent#99 fix round"
   },
@@ -4237,7 +4239,9 @@
    "file": "context/session.ts",
    "find": "frameBlock('context compaction summary',encoded({summary:answer,digests,index:indexed===undefined?replacement:JSON.parse(indexed)}),this.marker)",
    "replace": "encoded({summary:answer,digests,index:indexed===undefined?replacement:JSON.parse(indexed)})",
-   "tests": ["certification/scenarios.test.ts"],
+   "tests": [
+    "certification/scenarios.test.ts"
+   ],
    "status": "caught",
    "origin": "agent#99"
   },
@@ -4246,7 +4250,9 @@
    "file": "context/session.ts",
    "find": "encoded({summary:answer,digests,index:indexed===undefined?replacement:JSON.parse(indexed)})",
    "replace": "encoded({summary:answer,index:indexed===undefined?replacement:JSON.parse(indexed)})",
-   "tests": ["certification/scenarios.test.ts"],
+   "tests": [
+    "certification/scenarios.test.ts"
+   ],
    "status": "caught",
    "origin": "agent#99"
   },
@@ -4255,7 +4261,9 @@
    "file": "context/session.ts",
    "find": "}catch(cause){this.notices.push({type:'guardrail'",
    "replace": "}catch(cause){throw cause;this.notices.push({type:'guardrail'",
-   "tests": ["certification/scenarios.test.ts"],
+   "tests": [
+    "certification/scenarios.test.ts"
+   ],
    "status": "caught",
    "origin": "agent#99"
   },
@@ -4264,9 +4272,104 @@
    "file": "context/session.ts",
    "find": "return [messages[0]!,{role:'user',content:replacement},...messages.slice(choice.end)]",
    "replace": "return [{role:'user',content:replacement},messages[0]!,...messages.slice(choice.end)]",
-   "tests": ["certification/scenarios.test.ts"],
+   "tests": [
+    "certification/scenarios.test.ts"
+   ],
    "status": "caught",
    "origin": "agent#99"
+  },
+  {
+   "name": "output boundary message skipped",
+   "file": "context/managed.ts",
+   "find": "if(event.type==='message')event={...event,text:context.output.value(event.text,'message')}",
+   "replace": "if(event.type==='message')event={...event,text:event.text}",
+   "tests": [
+    "certification/output-boundary.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#100"
+  },
+  {
+   "name": "output boundary base pattern removed",
+   "file": "outputGuard.ts",
+   "find": "[...base.patterns,...extra].filter(p=>!allow.includes(p.name))",
+   "replace": "[...base.patterns,...extra].filter(p=>p.name!=='aws-access-key'&&!allow.includes(p.name))",
+   "tests": [
+    "outputGuard.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#100"
+  },
+  {
+   "name": "output boundary allow ignored",
+   "file": "outputGuard.ts",
+   "find": "!allow.includes(p.name)",
+   "replace": "true",
+   "tests": [
+    "outputGuard.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#100"
+  },
+  {
+   "name": "output boundary count omitted",
+   "file": "outputGuard.ts",
+   "find": "counts[pattern]=(Object.hasOwn(counts,pattern)?counts[pattern]!:0)+1",
+   "replace": "counts[pattern]=counts[pattern]??0",
+   "tests": [
+    "outputGuard.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#100"
+  },
+  {
+   "name": "output boundary notice guard removed",
+   "file": "context/managed.ts",
+   "find": "if(notice.type==='edit_refused')",
+   "replace": "if(false&&notice.type==='edit_refused')",
+   "tests": [
+    "certification/output-boundary.test.ts",
+    "outputGuard.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#100 fix round",
+   "note": "Go twin: bypass guardNotice in Boundary.notices; TestOutputNoticeGuard catches the unchanged identifier."
+  },
+  {
+   "name": "output boundary closed parent counts omitted",
+   "file": "delegation.ts",
+   "find": "const outputGuard = this.parent?.execution.state.outputGuard",
+   "replace": "const outputGuard = undefined",
+   "tests": [
+    "delegation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#100 fix round",
+   "note": "Go twin: omit live.Output.Counts in coordinator.save; TestClosedAgentParentKeepsChildOutputCounts catches the stale checkpoint."
+  },
+  {
+   "name": "output boundary gate notice guard removed",
+   "file": "session.ts",
+   "find": "const delivered = guard ? guard(event) : event",
+   "replace": "const delivered = event",
+   "tests": [
+    "certification/output-boundary.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#100 fix round 2",
+   "note": "Go twin: bypass noticeGuard in Gate.emitNotice; both TestOutputBoundaryOnAgent and TestOutputBoundaryOnModel catch the unguarded notice."
+  },
+  {
+   "name": "output boundary undeclared-name guard removed",
+   "file": "context/managed.ts",
+   "find": "if(declaredNames.has(name))return name",
+   "replace": "if(true)return name",
+   "tests": [
+    "certification/output-boundary.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#100 fix round 3",
+   "note": "Go twin: return the unchanged name from Boundary.guardName; both scenario 17 adapter tests catch call and checkpoint leaks."
   },
   {
    "name": "records lifetime not carried",
@@ -4283,8 +4386,8 @@
   {
    "name": "records redaction skipped on store",
    "file": "records.ts",
-   "find": "if(policy.redactOnStore&&guard)record=guard.value(record,'message')",
-   "replace": "if(false&&guard)record=guard.value(record,'message')",
+   "find": "if(policy.redactOnStore&&guard)guardRecord(record,guard,figures)",
+   "replace": "if(false&&guard)guardRecord(record,guard,figures)",
    "tests": [
     "records.test.ts",
     "certification/records.test.ts"
@@ -4315,6 +4418,17 @@
    ],
    "status": "caught",
    "origin": "ADR records (#101)"
+  },
+  {
+   "name": "records marker channel ignored",
+   "file": "outputGuard.ts",
+   "find": "if(marker){",
+   "replace": "if(false&&marker){",
+   "tests": [
+    "certification/records.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0018 (#101)"
   }
  ]
 }

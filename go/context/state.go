@@ -310,6 +310,17 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 	if sources := value.Get("sources"); sources != nil && !ValidSourceFigures(sources) {
 		return nil, errSavedExecution
 	}
+	if counts := value.Get("outputGuard"); counts != nil {
+		if !counts.IsObject() {
+			return nil, errSavedExecution
+		}
+		for _, key := range counts.Keys() {
+			v := counts.Get(key)
+			if !outputName.MatchString(key) || v.kind != KindNumber || v.Num() < 0 || v.Num() > 9007199254740991 || v.Num() != float64(int64(v.Num())) {
+				return nil, errSavedExecution
+			}
+		}
+	}
 	if draft := value.Get("draft"); draft != nil && !ValidDraft(draft) {
 		return nil, errSavedExecution
 	}
@@ -444,7 +455,7 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 	for at, row := range out.Completions {
 		completion, _ := failure.ReadCompletion(row.Result)
 		rebuilt := contract.Provenance{Request: row.Request, Phase: row.Phase, Result: completion,
-			Schema: row.Schema, Version: row.Version, Digest: row.Digest, RetainUntil: row.RetainUntil,
+			Schema: row.Schema, Version: row.Version, Digest: row.Digest, RetainUntil: row.RetainUntil, Records: row.Records,
 			Attempt: row.Attempt, WaitMs: row.WaitMs}
 		if row.Failure != nil {
 			checked, _ := failure.Read(*row.Failure)

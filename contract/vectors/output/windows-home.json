@@ -1,0 +1,28 @@
+{
+  "description": "ADR-0017: windows-home. Handwritten path spelling.",
+  "schema": "run-event.json#/$defs/message",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/outputGuard.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "message",
+      "text": "[redacted: local-home-path]"
+    }
+  ],
+  "guard": {
+    "input": "C:\\Users\\example\\file",
+    "output": "[redacted: local-home-path]",
+    "where": "message",
+    "mode": "redact",
+    "counts": {
+      "local-home-path": 1
+    }
+  }
+}

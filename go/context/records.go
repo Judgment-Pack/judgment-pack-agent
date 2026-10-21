@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
@@ -28,8 +29,12 @@ type RecordsPolicy struct {
 var RecordDefaults = RecordsPolicy{RetainDays: 90, RedactOnStore: true, ExportFormat: "json"}
 var recordDigestPattern = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 
+type RecordMarker struct {
+	Redactions map[string]int64 `json:"redactions"`
+}
+
 type RecordGuard interface {
-	JSON(raw json.RawMessage, where string, record bool) (json.RawMessage, error)
+	JSON(raw json.RawMessage, where string, record bool, markers ...*RecordMarker) (json.RawMessage, error)
 }
 
 func ReadRecordsPolicy(members PolicyMembers) (RecordsPolicy, error) {
@@ -69,6 +74,77 @@ func RecordRetainUntil(policy RecordsPolicy, now time.Time) string {
 	return now.UTC().Add(time.Duration(policy.RetainDays) * 24 * time.Hour).Format("2006-01-02T15:04:05.000Z")
 }
 
+// recordTextPaths names only model-derived members. Each member gets its own work budget.
+var recordTextPaths = []string{
+	"text", "explanation", "reason", "plan.*.step", "plan.*.detail",
+	"operations.*.name", "operations.*.args", "approval.name", "approval.tool", "approval.args",
+	"memories.proposed.*.text", "compaction.summaries.*.summary",
+	"context.entries.*.value.@assistant.content.@text.text",
+	"context.entries.*.value.@assistant.content.@call.toolName", "context.entries.*.value.@assistant.content.@call.input",
+	"context.entries.*.value.@assistant.@answer", "context.entries.@draft.value.text", "context.entries.@draft.value.unknowns",
+}
+
+func guardRecord(out *Value, guard RecordGuard, figures *RecordMarker) error {
+	var scan func(*Value, []string) error
+	scan = func(node *Value, path []string) error {
+		if node == nil || len(path) == 0 {
+			return nil
+		}
+		key := path[0]
+		if key == "*" {
+			for _, item := range node.Items() {
+				if err := scan(item, path[1:]); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		if strings.HasPrefix(key, "@") && key != "@answer" {
+			for _, item := range node.Items() {
+				matches := key == "@draft" && strings.HasPrefix(editString(item.Get("label")), "draft:") || key == "@assistant" && editString(item.Get("role")) == "assistant" || key == "@text" && editString(item.Get("type")) == "text" || key == "@call" && editString(item.Get("type")) == "tool-call"
+				if matches {
+					if err := scan(item, path[1:]); err != nil {
+						return err
+					}
+				}
+			}
+			return nil
+		}
+		if key == "@answer" {
+			key = "content"
+			if !node.Get(key).IsString() {
+				return nil
+			}
+		}
+		value := node.Get(key)
+		if value == nil {
+			return nil
+		}
+		if len(path) > 1 {
+			return scan(value, path[1:])
+		}
+		if names, ok := guard.(interface{ DeclaredName(string) bool }); ok && (key == "name" || key == "tool" || key == "toolName") && names.DeclaredName(value.Str()) {
+			return nil
+		}
+		clean, err := guard.JSON(value.JSON(), "message", true, figures)
+		if err != nil {
+			return err
+		}
+		parsed, err := ParseJSON(clean)
+		if err != nil {
+			return err
+		}
+		node.Set(key, parsed)
+		return nil
+	}
+	for _, path := range recordTextPaths {
+		if err := scan(out, strings.Split(path, ".")); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func WriteRecord(schema string, value *Value, policy RecordsPolicy, guard RecordGuard, now time.Time, keep string) (*Value, error) {
 	out := value.Clone()
 	out.Set("schema", String(schema)).Set("version", Number(1))
@@ -76,16 +152,15 @@ func WriteRecord(schema string, value *Value, policy RecordsPolicy, guard Record
 		keep = RecordRetainUntil(policy, now)
 	}
 	out.Set("retainUntil", String(keep))
+	figures := &RecordMarker{Redactions: map[string]int64{}}
 	if policy.RedactOnStore && guard != nil {
-		clean, err := guard.JSON(out.JSON(), "message", true)
-		if err != nil {
-			return nil, err
-		}
-		out, err = ParseJSON(clean)
-		if err != nil {
+		if err := guardRecord(out, guard, figures); err != nil {
 			return nil, err
 		}
 	}
+	figuresRaw, _ := json.Marshal(figures)
+	figuresValue, _ := ParseJSON(figuresRaw)
+	out.Set("records", figuresValue)
 	out.Set("digest", String(RecordDigest(out)))
 	return out, nil
 }

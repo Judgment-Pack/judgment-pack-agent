@@ -1,0 +1,33 @@
+{
+  "description": "ADR-0017: base-google-api-key. Handwritten from the accepted output-boundary decision.",
+  "schema": "run-event.json#/$defs/message",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/outputGuard.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "message",
+      "text": "[redacted: google-api-key]"
+    },
+    {
+      "type": "message",
+      "text": "AIza-short"
+    }
+  ],
+  "guard": {
+    "input": "AIzaabcdefghijklmnopqrstuvwxyzABCDEFGHI",
+    "output": "[redacted: google-api-key]",
+    "negative": "AIza-short",
+    "where": "message",
+    "mode": "redact",
+    "counts": {
+      "google-api-key": 1
+    }
+  }
+}

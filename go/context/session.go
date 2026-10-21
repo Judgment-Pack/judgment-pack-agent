@@ -121,6 +121,8 @@ func (m *orderedValues) clear()          { m.order = nil; m.held = map[string]*V
 type SessionContext struct {
 	Memories         *MemoryGate
 	Drafts           *Drafts
+	Output           *OutputGuard
+	outputContext    context.Context
 	Subagents        []Subagent
 	ProviderFamilies map[string]string
 	ResolvedPolicy   PolicyMembers
@@ -1168,8 +1170,19 @@ func (c *SessionContext) Approval(ctx context.Context, name string, args json.Ra
 	if c.Sources == nil || !c.Sources.NeedsApproval(name) {
 		return nil
 	}
-	if answer, _, _ := c.Sources.Decide(ctx, name, args, callID, true); answer != "ask" {
+	clean := args
+	if c.Output != nil {
+		var err error
+		clean, err = c.Output.JSON(args, "tool argument", c.Output.Mode == "refuse")
+		if err != nil {
+			return nil
+		}
+	}
+	if answer, _, _ := c.Sources.Decide(ctx, name, clean, callID, true); answer != "ask" {
 		return nil
+	}
+	if c.Output != nil && c.Output.Mode == "redact" {
+		_, _ = c.Output.JSON(args, "tool argument", true)
 	}
 	return ApprovalRequested(*c.Execution.State.Approval)
 }
@@ -1266,6 +1279,23 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		}
 		if err := held.Execution.Initialize(); err != nil {
 			return err
+		}
+		outputCounts := map[string]int64{}
+		for name, count := range held.Execution.State.OutputGuard {
+			outputCounts[name] = count
+		}
+		held.Output, err = NewOutputGuard(held.ResolvedPolicy, func() map[string]int64 { return outputCounts })
+		held.outputContext = ctx
+		held.Execution.OutputRows = held.Output.Counts
+		if err != nil {
+			return err
+		}
+		held.Output.DeclaredNames = map[string]bool{}
+		for _, tool := range session.Tools {
+			held.Output.DeclaredNames[tool.Name] = true
+		}
+		for _, tool := range session.HostTools {
+			held.Output.DeclaredNames[tool.Name] = true
 		}
 		if held.Execution.State.Compaction != nil {
 			for _, summary := range held.Execution.State.Compaction.Summaries {
@@ -1510,6 +1540,13 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		run := held.Execution.WrapRead(declared.Name, inner, declared.ContextPolicy, readOnly, kept)
 		name := declared.Name
 		declared.Execute = func(ctx context.Context, args json.RawMessage) (ToolResult, error) {
+			if OutputWhere(name) != "draft edit" {
+				var err error
+				args, err = held.Output.JSON(args, OutputWhere(name), true)
+				if err != nil {
+					return ToolResult{}, err
+				}
+			}
 			if err := authorize(ctx); err != nil {
 				return ToolResult{}, err
 			}
@@ -1523,12 +1560,24 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 	}
 	out := session
 	out.HostTools = wrapped
+	held.Output.DeclaredNames = map[string]bool{}
+	for _, tool := range out.Tools {
+		held.Output.DeclaredNames[tool.Name] = true
+	}
+	for _, tool := range out.HostTools {
+		held.Output.DeclaredNames[tool.Name] = true
+	}
 	callTool := session.CallTool
 	offered := map[string]bool{}
 	for _, tool := range session.Tools {
 		offered[tool.Name] = true
 	}
 	out.CallTool = func(ctx context.Context, name string, args json.RawMessage) (ToolResult, error) {
+		var err error
+		args, err = held.Output.JSON(args, "tool argument", true)
+		if err != nil {
+			return ToolResult{}, err
+		}
 		if err := authorize(ctx); err != nil {
 			return ToolResult{}, err
 		}
@@ -1597,7 +1646,11 @@ func (c *SessionContext) continueApproval(ctx context.Context, step string, tool
 			if tool.Name == approval.Name && tool.Execute != nil {
 				execute := tool.Execute
 				run = func(ctx context.Context, args json.RawMessage) (ToolResult, error) {
-					return execute(WithCallID(ctx, approval.CallID), args)
+					clean, err := c.Output.JSON(args, "tool argument", true)
+					if err != nil {
+						return ToolResult{}, err
+					}
+					return execute(WithCallID(ctx, approval.CallID), clean)
 				}
 			}
 		}
@@ -1665,6 +1718,10 @@ func (c *SessionContext) ClaimRequest(ctx context.Context, body []byte) error {
 	}
 	state, err := c.Execution.Snapshot("")
 	if err != nil {
+		var refused *RecordsRefused
+		if errors.As(err, &refused) {
+			return nil
+		}
 		return err
 	}
 	if err := c.session.Context.Checkpoint(ctx, state); err != nil {

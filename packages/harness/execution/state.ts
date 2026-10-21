@@ -1,3 +1,4 @@
+import {validOutputCounts,type OutputCounts} from '../outputGuard'
 import {validDraft,type DraftCheckpoint} from '../edits'
 import { validMemories, type Memories } from '../memories'
 import {validSubagentRecord} from '../subagents'
@@ -20,7 +21,7 @@ export interface RetainedEntry {id:string;kind:'history'|'artifact'|'request'|'t
  * retried (engines/vercel/retry.ts): the refused attempt's row carries its failure and the wait before the next, and
  * the attempt that answered carries its number.
  */
-export interface CompletionRecord {schema?:typeof PROVENANCE_SCHEMA;version?:1;digest?:string;retainUntil?:string;request:number;phase:'work'|'synthesis'|'review';result:ModelCompletion;attempt?:number;failure?:AIFailure;waitMs?:number}
+export interface CompletionRecord {schema?:typeof PROVENANCE_SCHEMA;version?:1;digest?:string;retainUntil?:string;records?:import("../outputGuard").RecordMarker;request:number;phase:'work'|'synthesis'|'review';result:ModelCompletion;attempt?:number;failure?:AIFailure;waitMs?:number}
 /**
  * The digest of one request body the adapter sent (ADR-0005): which it was, counted from 1 in the
  * order sent (each model request, a retried attempt its own; on the agent wire each agent run), and
@@ -33,7 +34,7 @@ export interface CompactionReport {mode:'index'|'summary';summaries:CompactionSu
 export const MAX_PROMPT_DIGESTS = 300
 /** A local execution record, never permissions, evidence approval or private reasoning. */
 export interface ExecutionCheckpoint {
- schema?:typeof CHECKPOINT_SCHEMA;digest?:string;retainUntil?:string;
+ schema?:typeof CHECKPOINT_SCHEMA;digest?:string;retainUntil?:string;records?:import("../outputGuard").RecordMarker;
  version:1;id:string;requestKey:string;phase:'plan'|'work';status:'running'|'paused'|'complete'|'stopped';
  unit:'model-requests'|'provider-managed';used:number;limit:number;grants:{from:number;to:number;at:string}[];
  plan:TaskStep[];explanation:string;operations:Operation[];
@@ -51,6 +52,7 @@ export interface ExecutionCheckpoint {
  approval?:ApprovalRecord;
  /** ADR-0009: the skills loaded, in load order, carried through a resume (`skills.ts`, SkillGate). */
  skills?:SkillLoad[];
+ outputGuard?:OutputCounts;
  memories?:Memories;
  draft?:DraftCheckpoint;
  /**
@@ -168,6 +170,7 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value.prompts!==undefined&&(!Array.isArray(value.prompts)||value.prompts.length>MAX_PROMPT_DIGESTS||value.prompts.some((row,at,rows)=>!object(row)||!exact(row,['request','sha256'])||!Number.isSafeInteger(row.request)||Number(row.request)<1||at>0&&Number(row.request)<=Number((rows[at-1] as Record<string,unknown>).request)||typeof row.sha256!=='string'||!/^[a-f0-9]{64}$/.test(row.sha256))))return fail()
  if(value.sources!==undefined&&!validSourceFigures(value.sources))return fail()
  if(value.approval!==undefined&&!validApproval(value.approval))return fail()
+ if(value.outputGuard!==undefined&&!validOutputCounts(value.outputGuard))return fail()
  if(value.memories!==undefined&&!validMemories(value.memories))return fail()
  if(value.draft!==undefined&&!validDraft(value.draft))return fail()
  if(value.skills!==undefined&&!validSkillLoads(value.skills))return fail()
@@ -178,7 +181,7 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(!object(value.context)||!text(value.context.scope,100)||!Array.isArray(value.context.entries)||value.context.entries.length>800||new Set(value.context.entries.map(e=>e.id)).size!==value.context.entries.length)return fail()
  for(const e of value.context.entries){if(!object(e)||!text(e.id,300)||!e.id.startsWith(value.context.scope+':')||!['history','artifact','request','tool'].includes(String(e.kind))||!text(e.label,1000)||typeof e.digest!=='string'||!/^[a-f0-9]{64}$/.test(e.digest)||e.revision!==undefined&&!text(e.revision,256)||!Number.isInteger(e.bytes)||Number(e.bytes)<0||!Object.hasOwn(e,'value'))return fail()}
  const result=structuredClone(value) as unknown as ExecutionCheckpoint
- if(result.completions)result.completions=result.completions.map(({schema,version,digest,retainUntil,request,phase,result,attempt,failure,waitMs})=>({...(schema===undefined?{}:{schema,version,digest,retainUntil} as RecordMembers<typeof PROVENANCE_SCHEMA>),request,phase,result:readCompletion(result)!,...(attempt===undefined?{}:{attempt}),...(failure===undefined?{}:{failure:readFailure(failure)!}),...(waitMs===undefined?{}:{waitMs})}))
+ if(result.completions)result.completions=result.completions.map(({schema,version,digest,retainUntil,records,request,phase,result,attempt,failure,waitMs})=>({...(schema===undefined?{}:{schema,version,digest,retainUntil,records} as RecordMembers<typeof PROVENANCE_SCHEMA>),request,phase,result:readCompletion(result)!,...(attempt===undefined?{}:{attempt}),...(failure===undefined?{}:{failure:readFailure(failure)!}),...(waitMs===undefined?{}:{waitMs})}))
  return result
 }
 /** A stopped API request can fail exactly at the ceiling; recovery still needs an explicit grant. */

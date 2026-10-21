@@ -944,9 +944,24 @@
         "go": ["16 resume"]
       },
       {
+        "check": "17 \u00b7 output boundary: undeclared names and gate notices are guarded before delivery and save",
+        "go": [
+          "17 output boundary",
+          "17 agent output boundary"
+        ]
+      },
+      {
+        "check": "17 \u00b7 output boundary: answer, proposal, arguments, memory, draft, refusal, allow and resume",
+        "go": [
+          "17 output boundary",
+          "17 agent output boundary"
+        ]
+      },
+      {
         "check": "18 · records carry identity, lifetime and redaction; export binds their digests; expired resume is refused",
         "go": [
-          "18 records"
+          "18 records",
+          "18 agent records"
         ]
       }
     ],
@@ -955,6 +970,7 @@
       "packages/harness/certification/subagents.test.ts",
       "packages/harness/certification/memory-write.test.ts",
       "packages/harness/certification/proposal-edits.test.ts",
+      "packages/harness/certification/output-boundary.test.ts",
       "packages/harness/certification/records.test.ts"
     ]
   },

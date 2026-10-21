@@ -67,3 +67,37 @@ describe('records (ADR #101)',()=>{
   expect([CHECKPOINT_SCHEMA,PROVENANCE_SCHEMA,CRITIQUE_SCHEMA]).toEqual([checkpointVector.items[0].schema,provenanceVector.items[0].schema,critiqueVector.items[0].schema])
  })
 })
+
+import {managedContext,contextOf} from './context/managed'
+import {answer} from './context/ledger'
+import type {AssistantEvent} from './engine'
+import eventSchema from '../../contract/schemas/run-event.json'
+import {argumentProblem} from './sourceArguments'
+it('continues after refusing a whole checkpoint and critique at the store boundary',async()=>{
+ const events:AssistantEvent[]=[]
+ const session={prompt:'Review',testPrompt:'',tools:[],hostTools:[],callTool:async()=>answer({}),signal:new AbortController().signal,allowConversation:true,interactive:true,critic:'off' as const,context:{currentRequest:{message:'Review',input:'Review'}},agent:{model:'fixture',run:async()=>{}}}
+ for await(const event of managedContext(session,async function*(ready){
+  contextOf(ready).execution.state.explanation='x'.repeat(200000)
+  yield {type:'tool_result' as const,name:'fixture',text:'Exempt.',isError:false}
+  yield {type:'critique' as const,refuted:false,checks:[],text:'x'.repeat(200000)}
+  yield {type:'message' as const,text:'Continued.'}
+  yield {type:'end' as const}
+ }))events.push(event)
+ expect(events.filter(e=>e.type==='error'||e.type==='critique'||e.type==='output_guarded')).toEqual([])
+ expect(events).toContainEqual({type:'message',text:'Continued.'})
+ expect(events.filter(e=>e.type==='execution_checkpoint').every(e=>e.checkpoint.explanation==='')).toBe(true)
+ const notices=events.filter(e=>e.type==='guardrail'&&e.tool==='records')
+ expect(notices.length).toBeGreaterThanOrEqual(2)
+ for(const notice of notices)expect(argumentProblem(eventSchema.$defs.guardrail,notice)).toBeUndefined()
+})
+
+import {OutputGuard} from './outputGuard'
+it('exempts guard labels in stored argument keys and embedded text',()=>{
+ const delivered:Record<string,number>={}
+ const output=new OutputGuard({outputPatterns:{value:[{name:'label-word',pattern:'redacted'}],layer:'run'}},()=>delivered,()=>{})
+ const args={'[redacted: aws-access-key]':'Before [redacted: aws-access-key] after'}
+ const record=writeRecord(CHECKPOINT_SCHEMA,{operations:[{name:'fixture',args}]},policy,output,now)
+ expect(record.operations[0]!.args).toEqual(args)
+ expect(record.records).toEqual({redactions:{}})
+ expect(delivered).toEqual({})
+})

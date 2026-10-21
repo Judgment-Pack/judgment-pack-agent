@@ -1,12 +1,31 @@
 {
   "description": "A self-describing run-report row. Handwritten for ADR records (#101).",
   "schema": "provenance.json",
-  "source": {"harness": {"repository": "Judgment-Pack/judgment-pack-agent", "package": "packages/harness"}, "files": ["packages/harness/records.ts"]},
-  "items": [{
-    "schema": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/provenance.json",
-    "version": 1,
-    "digest": "sha256:4c65bbd67b3efc9fa9434b02707fd618428b1cba5981f3463632f4cc0a0e4342",
-    "retainUntil": "2027-01-19T12:00:00.000Z",
-    "request": 1, "phase": "work", "result": {"finishReason": "stop", "inputTokens": 20, "outputTokens": 4}
-  }]
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/records.ts"
+    ]
+  },
+  "items": [
+    {
+      "schema": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/provenance.json",
+      "version": 1,
+      "digest": "sha256:e5f7b84180c7a0cd4107ca39156e6d05b01d68b5e53d686a7923ac2c499ef19d",
+      "retainUntil": "2027-01-19T12:00:00.000Z",
+      "request": 1,
+      "phase": "work",
+      "result": {
+        "finishReason": "stop",
+        "inputTokens": 20,
+        "outputTokens": 4
+      },
+      "records": {
+        "redactions": {}
+      }
+    }
+  ]
 }

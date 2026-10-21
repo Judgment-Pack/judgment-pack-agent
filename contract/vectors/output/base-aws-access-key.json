@@ -1,0 +1,33 @@
+{
+  "description": "ADR-0017: base-aws-access-key. Handwritten from the accepted output-boundary decision.",
+  "schema": "run-event.json#/$defs/message",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/outputGuard.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "message",
+      "text": "[redacted: aws-access-key]"
+    },
+    {
+      "type": "message",
+      "text": "AKIAshort"
+    }
+  ],
+  "guard": {
+    "input": "AKIAABCDEFGHIJKLMNOP",
+    "output": "[redacted: aws-access-key]",
+    "negative": "AKIAshort",
+    "where": "message",
+    "mode": "redact",
+    "counts": {
+      "aws-access-key": 1
+    }
+  }
+}

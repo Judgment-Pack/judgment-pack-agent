@@ -343,6 +343,7 @@ export type AssistantEvent =
    * where the model wrote nothing but the fence.
    */
   | { type: 'message'; text: string }
+  | { type: 'output_guarded'; where: import('./outputGuard').OutputWhere; pattern: string; action: 'redact'|'refuse' }
   /**
    * The prose so far, whole each time. `taskId` (agent#16): a delegated child's prose so far, under its
    * task; absent, the run's own answer.
@@ -362,7 +363,7 @@ export type AssistantEvent =
    * that fired — nothing was stopped — but it is the same kind of sentence: the
    * desk saying what it did rather than leaving it to be discovered.
    */
-  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string; reason?: 'approval refused' | 'approval pending' | 'approval stale' | 'skill withheld' | 'skill budget' | 'review refused' | 'policy refused' | 'pace warning' | 'subagent withheld' | 'memory refused' | 'edit refused' | 'subagent refused' | 'compaction refused' | 'records expired' }
+  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string; reason?: 'approval refused' | 'approval pending' | 'approval stale' | 'skill withheld' | 'skill budget' | 'review refused' | 'policy refused' | 'pace warning' | 'subagent withheld' | 'memory refused' | 'edit refused' | 'subagent refused' | 'compaction refused' | 'output refused' | 'records expired' }
   | { type: 'thinking_unavailable'; detail: string }
   /**
    * `cases` and `incomplete` where the host declared cases (agent#10): each

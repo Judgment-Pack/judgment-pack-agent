@@ -103,6 +103,7 @@ Open: a member the schema does not name is accepted.
 | `incomplete` |  | array of string | The declared cases nothing compared, by id. Any makes refuted true and is named on the proposal's critique. |
 | `figures` |  | `provenance.json $defs/criticFigures` |  |
 | `provider` |  | `provenance.json $defs/provider` |  |
+| `records` |  | `provenance.json $defs/recordFigures` |  |
 
 ### A declared case
 

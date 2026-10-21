@@ -215,6 +215,28 @@ func (g *Drafts) save(d *heldDraft) error {
 	g.publishEntries()
 	return nil
 }
+func (g *Drafts) SeedContext(ctx context.Context, document json.RawMessage, unknowns []string) error {
+	if g.session.Output != nil {
+		clean, err := g.session.Output.JSON(document, "proposal", true)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(clean, document) {
+			if err = g.session.ValidateOutputProposal(ctx, clean); err != nil {
+				return err
+			}
+		}
+		document = clean
+		for i, text := range unknowns {
+			clean, err := g.session.Output.Text(text, "proposal", true)
+			if err != nil {
+				return err
+			}
+			unknowns[i] = clean
+		}
+	}
+	return g.Seed(document, unknowns)
+}
 func (g *Drafts) Seed(document json.RawMessage, unknowns []string) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -404,9 +426,19 @@ func (g *Drafts) Edit(ctx context.Context, name string, raw json.RawMessage) (To
 	if total > g.session.Policy.ProposalBytes {
 		return refuse(fmt.Sprintf("The draft exceeds proposalBytes (%d).", g.session.Policy.ProposalBytes))
 	}
+
 	v, err := ParseJSON([]byte(next.Text))
 	if err != nil || !v.IsObject() {
 		return refuse("Validation failed: the document is not a JSON object.")
+	}
+	redacted := false
+	if g.session.Output != nil {
+		clean, err := g.session.Output.JSON([]byte(next.Text), "draft edit", true)
+		if err != nil {
+			return ToolResult{}, err
+		}
+		redacted = string(clean) != next.Text
+		next.Text = string(clean)
 	}
 	if ctx.Err() != nil {
 		return ToolResult{}, ctx.Err()
@@ -425,6 +457,9 @@ func (g *Drafts) Edit(ctx context.Context, name string, raw json.RawMessage) (To
 		return ToolResult{}, ctx.Err()
 	}
 	if err != nil {
+		if redacted {
+			return ToolResult{}, g.session.Output.Refuse("draft edit", "proposal-validation")
+		}
 		return refuse("Validation failed: " + err.Error())
 	}
 	structured := result.StructuredContent
@@ -438,6 +473,9 @@ func (g *Drafts) Edit(ctx context.Context, name string, raw json.RawMessage) (To
 		structured, _ = ParseJSON([]byte(strings.Join(parts, "\n")))
 	}
 	if result.Err() || editString(structured.Get("status")) != "valid" {
+		if redacted {
+			return ToolResult{}, g.session.Output.Refuse("draft edit", "proposal-validation")
+		}
 		return refuse("Validation failed: the Runtime did not report valid.")
 	}
 	next.Edits = append(next.Edits, contract.ProvenanceEdit{Type: name, Document: document, Line: int64(line), Bytes: int64(bytes), Valid: true})
