@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url'
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const script = join(repo, 'scripts/gen-reference.mjs')
 const schemasDir = join(repo, 'contract/schemas')
-const PAGES = ['budget.md', 'checkpoint.md', 'corpus.md', 'critic.md', 'delegation.md', 'events.md', 'memory.md', 'policy.md', 'providers.md', 'reasons.md', 'skills.md', 'tools.md']
+const PAGES = ['budget.md', 'checkpoint.md', 'corpus.md', 'critic.md', 'delegation.md', 'events.md', 'memory.md', 'policy.md', 'providers.md', 'reasons.md', 'records.md', 'skills.md', 'tools.md']
 
 let scratch
 const run = (...args) => spawnSync(process.execPath, [script, ...args], { cwd: repo, encoding: 'utf8', timeout: 240_000 })

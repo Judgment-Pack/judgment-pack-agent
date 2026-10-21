@@ -1,6 +1,7 @@
 import {guardConnectionNotices} from '../session'
-import {OutputRefused,outputWhere} from '../outputGuard'
+import {OutputRefused,RecordsRefused,outputWhere} from '../outputGuard'
 import {PolicyRefusal} from '../policy'
+import {RecordsExpired} from '../records'
 import {failureError,failureEvent,toolFailureResult} from '../failures'
 import {ExecutionPaused} from '../execution/state'
 import type {AssistantEvent,EngineSession} from '../engine'
@@ -78,9 +79,13 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
   }
   contexts.set(ready.session,context)
   yield {type:'policy_resolved',members:structuredClone(context.resolvedPolicy)}
+  function* checkpoint(status=context!.execution.state.status,durable?:boolean,paused=false):Generator<AssistantEvent>{
+   try{const saved=context!.execution.snapshot(status);yield paused?{type:'budget_paused',checkpoint:saved}:{type:'execution_checkpoint',...(durable===undefined?{}:{durable}),checkpoint:saved}}
+   catch(error){if(!(error instanceof RecordsRefused))throw error;for(const notice of takeNotices(context!))yield notice}
+  }
   if(context.paceWarning)yield {type:'guardrail',tool:'pace',action:'refused',reason:'pace warning',detail:context.paceWarning}
   session.signal.throwIfAborted()
-  if(tracked)yield {type:'execution_checkpoint',checkpoint:context.execution.snapshot()}
+  if(tracked)yield* checkpoint()
   // ADR-0008: a paused act call the person decided on. Approved: the decision is written and
   // acknowledged, the call runs once under its bounds, and its result is written and acknowledged
   // before anything else; refused, or restored with its result: written. Then the run's first request
@@ -158,26 +163,27 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
     const asked=context.execution.state.approval!
     if(requested!==asked.callId)yield {type:'approval_requested',callId:asked.callId,name:asked.name,tool:asked.tool,source:{...asked.source},args:structuredClone(asked.args)}
     paused=true;context.execution.state.status='paused'
-    yield {type:'execution_checkpoint',durable:true,checkpoint:context.execution.snapshot('paused')}
+    yield* checkpoint('paused',true)
     ended=true;yield {type:'end'};return
    }
    // ADR-0006: a tool with a source's call and result carry its source record.
    if(context.sources)event=context.sources.decorate(event)
+   if(event.type==='critique'){try{event=context.execution.recordCritique(event)}catch(error){if(!(error instanceof RecordsRefused))throw error;for(const notice of takeNotices(context))yield notice;continue}}
    if(event.type==='error')failed=true
    context.execution.observe(event)
    if(event.type==='budget_paused'||event.type==='error'&&(event.failure?.code==='request-limit'||event.message===new ExecutionPaused().message)){
     paused=true;context.execution.state.status='paused'
-    yield {type:'budget_paused',checkpoint:context.execution.snapshot('paused')};continue
+    yield* checkpoint('paused',undefined,true);continue
    }
-   if(event.type==='tool_result'&&context.execution.pauseRequested){yield event;context.execution.state.status='paused';yield {type:'budget_paused',checkpoint:context.execution.snapshot('paused')};yield {type:'end'};return}
+   if(event.type==='tool_result'&&context.execution.pauseRequested){yield event;context.execution.state.status='paused';yield* checkpoint('paused',undefined,true);yield {type:'end'};return}
    if(tracked&&(event.type==='tool_call'||event.type==='tool_result'||event.type==='user_question')){
     const tool=event.type==='user_question'?undefined:ready.session.hostTools.find(tool=>tool.name===event.name)
     const read=tool?.effect==='read'||tool?.delegation==='read'||tool?.delegation==='research'||event.type!=='user_question'&&['get_schema','get_authoring_instructions','list_context','read_context','list_examples','get_example'].includes(event.name)
-    yield {type:'execution_checkpoint',durable:!read,checkpoint:context.execution.snapshot()}
+    yield* checkpoint(context.execution.state.status,!read)
    }
    // ADR-0010: the critic's decision is written durably: the checkpoint carrying it follows the event.
-   if(event.type==='critic_decided'){yield event;if(tracked)yield {type:'execution_checkpoint',durable:true,checkpoint:context.execution.snapshot()};continue}
-   if(event.type==='end'&&tracked&&!paused){context.execution.state.status=session.signal.aborted||failed?'stopped':'complete';yield {type:'execution_checkpoint',durable:true,checkpoint:context.execution.snapshot()}}
+   if(event.type==='critic_decided'){yield event;if(tracked)yield* checkpoint(context.execution.state.status,true);continue}
+   if(event.type==='end'&&tracked&&!paused){context.execution.state.status=session.signal.aborted||failed?'stopped':'complete';yield* checkpoint(context.execution.state.status,true)}
    if(session.context?.artifactProposals===false&&event.type==='proposal'){yield {type:'guardrail',tool:'proposal',action:'refused',detail:'Artifact proposals are unavailable in this conversation. Use its host tools or start a new artifact conversation.'};continue}
    if(session.context?.phase==='plan'&&event.type==='proposal'){yield {type:'guardrail',tool:'proposal',action:'refused',detail:'Artifact proposals are unavailable in Plan mode. Use propose_plan and wait for Start work.'};continue}
    if(event.type==='end')ended=true;yield event
@@ -188,13 +194,14 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
    const notices=context?takeNotices(context):[]
    for(const notice of notices)yield notice
    if(!notices.some(e=>e.type==='guardrail'&&e.reason==='output refused'))yield {type:'guardrail',tool:'output',action:'refused',reason:'output refused',detail:error.message}
-   if(context&&tracked)yield {type:'execution_checkpoint',checkpoint:context.execution.snapshot('stopped')}
+   if(context&&tracked){try{yield {type:'execution_checkpoint',checkpoint:context.execution.snapshot('stopped')}}catch(held){if(!(held instanceof RecordsRefused))throw held;for(const notice of takeNotices(context))yield notice}}
    yield {type:'end'};return
   }
   if(error instanceof PolicyRefusal){
    yield error.event()
    if(error.checkpoint)yield {type:'execution_checkpoint',checkpoint:error.checkpoint}
   }
+  if(error instanceof RecordsExpired)yield error.event()
   if(!session.signal.aborted)yield failureEvent(error,'context')
   yield {type:'end'}
  } finally {releaseNotices?.();context?.close()}

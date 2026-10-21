@@ -277,6 +277,10 @@ func (r *runState) save(ctx context.Context) error {
 	state, err := r.sc.Snapshot("")
 	r.mu.Unlock()
 	if err != nil {
+		var refused *runcontext.RecordsRefused
+		if errors.As(err, &refused) {
+			return nil
+		}
 		return err
 	}
 	if err := r.run.Context.Checkpoint(ctx, state); err != nil {

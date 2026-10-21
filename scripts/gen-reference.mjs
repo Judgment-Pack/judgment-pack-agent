@@ -774,6 +774,18 @@ async function policyPage(page) {
   for (const name of Object.keys(page.schema('policy.json').$defs).sort()) page.add(page.nodeOf('policy.json', name))
 }
 
+async function recordsPage(page) {
+  page.add(
+    seeAlso('policy.md', 'checkpoint.md', 'events.md', 'reasons.md'),
+    'The host owns storage and deletion. The package writes self-describing records, refuses expired checkpoints and exports only records the host supplies; it has no store.',
+    page.rootOf('export.json', '## The export manifest'),
+    page.nodeOf('export.json', 'record'),
+    page.nodeOf('provenance.json', 'recordDigest'),
+    page.nodeOf('provenance.json', 'retainUntil'),
+    page.nodeOf('run-event.json', 'export_written')
+  )
+}
+
 async function providersPage(page) {
  const records = await page.use('capabilities','PROVIDER_CAPABILITIES')
  page.schema('capability.json')
@@ -791,6 +803,7 @@ async function corpusPage(page) {
  page.add('ADR-0022 records a run only after the output guard redacts the complete entry. Replay answers from the recording and compares decisions and outcomes, never model prose or a live provider.',page.rootOf('corpus-entry.json','## Entry manifest'),page.nodeOf('run-event.json','recorded'),page.nodeOf('run-event.json','guardrail'))
 }
 const PAGES = [
+ ['records.md','Records',recordsPage],
  ['corpus.md','The evaluation corpus',corpusPage],
  ['memory.md','Memory',memoryPage],
  ['providers.md','Providers',providersPage],

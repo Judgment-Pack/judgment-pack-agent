@@ -958,6 +958,13 @@
         ]
       },
       {
+        "check": "18 · records carry identity, lifetime and redaction; export binds their digests; expired resume is refused",
+        "go": [
+          "18 records",
+          "18 agent records"
+        ]
+      },
+      {
         "check": "replays both seed entries without a provider",
         "go": ["22 replay", "22 agent replay"]
       },
@@ -976,6 +983,7 @@
       "packages/harness/certification/memory-write.test.ts",
       "packages/harness/certification/proposal-edits.test.ts",
       "packages/harness/certification/output-boundary.test.ts",
+      "packages/harness/certification/records.test.ts",
       "packages/harness/certification/corpus.test.ts"
     ]
   },

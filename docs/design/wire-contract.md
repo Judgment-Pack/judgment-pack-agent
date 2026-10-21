@@ -1127,6 +1127,22 @@ agent bindings can supply their own effort map. The default model-wire settings 
 the existing dialect fallback behavior. Cross-family failover has an explicit
 `policy refused` record: prefix and cache do not carry. Within-family failover is #104.
 
+## Records
+
+ADR-0018 gives the records crossing the slot one lifecycle. The policy table's
+`records` section sets a 90-day default lifetime, redaction on store and JSON export.
+New checkpoints, provenance rows and critiques carry their schema id, version,
+content digest and `retainUntil`; a resumed checkpoint keeps the lifetime it was first
+written with and one past it is refused with `records expired` before dispatch.
+Each written record also carries closed `records.redactions` figures keyed by pattern
+label; the storage marker directs these matches away from delivered `outputGuard` counts.
+
+The host owns persistence and deletion. On request the package accepts records from
+the host, verifies their digests and produces their exact JSON values beside a closed
+`export.json` manifest. The manifest repeats the record digests and policy and names
+the package version. The package reads no store because it has none. Pull-request
+review records and export attestation are outside the wire contract.
+
 ## The capability record
 
 `capability.json`; the vectors `capability/`. Since agent#4 the `vercel` adapter reads one record per
