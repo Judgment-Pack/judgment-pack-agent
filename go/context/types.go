@@ -278,6 +278,11 @@ type CompactorRequest struct {
 	Reasoning  string
 }
 
+// SteerInput is one ADR-0021 instruction the person sends while a run is in flight.
+type SteerInput struct {
+	Text string `json:"text"`
+}
+
 // Input is the context a host gives one run (ContextInput in session.ts).
 //
 // CurrentState is host-authored text that changes between requests or responses (the chat's draft
@@ -318,6 +323,8 @@ type Input struct {
 	// checkpoint.json#/$defs/approvalDecision), the continuation input beside a request grant. A
 	// decision for any other call is refused before anything runs (stale-state).
 	Approval *contract.CheckpointApprovalDecision
+	// Steer is the host-owned in-flight input queue. Adapters drain it only at request boundaries.
+	Steer <-chan SteerInput
 }
 
 // ExecutionLink is how the delegation coordinator reaches a run it starts (agent#14): told the

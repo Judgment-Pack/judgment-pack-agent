@@ -322,6 +322,25 @@ TypeScript holds these in `toolSources.ts`, entered from `contextualSession`, wi
 decorated in `context/managed.ts`; Go in `go/context/sources.go`, entered from `ContextualSession`
 and `Boundary`.
 
+### Steering at a request boundary
+
+[ADR-0021](../adr/0021-steering-a-run-in-flight.md) lets the host append
+`steer {text}` to the session's in-flight input queue. The shared boundary takes
+pending entries only before a model request is assembled (or before the next
+agent invocation), never while one is running. It frames each instruction under
+the run marker as data from “the person's new instruction” and places the blocks
+beside the current request state, at the request text's rank. This leaves the
+system text and stable prefix byte-for-byte unchanged. Several steers at one
+boundary retain their input order.
+
+`budget.steerBytes` (2,000) bounds one UTF-8 text and
+`budget.steersPerRun` (4) bounds accepted inputs across resume. A delivery emits
+`steered {type, bytes, atRequest}`; `atRequest` is the request number, or the
+invocation number on the agent capability. `checkpoint.steers` carries pending
+text and delivered rows. Empty, missing, oversized, over-count, and approval-
+paused steers emit a `guardrail` with reason `steer refused`. During an approval
+pause only `context.approval` / Go `Input.Approval` may decide the call.
+
 ### The approval pause
 
 [ADR-0008](../adr/0008-the-approval-pause.md) (agent#74). The policy is a function,

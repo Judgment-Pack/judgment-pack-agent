@@ -8,6 +8,12 @@ Capability records hold the tier map; hosts can override it per connection.
 See the generated provider matrix in `docs/reference/providers.md` at the repository
 root. Scenario 12 exercises two families, and certification prints its measurements.
 
+ADR-0021 adds in-flight steering: the host queues `steer {text}`, and every
+engine delivers accepted text only at the next request boundary, framed under
+the run marker at the person's request rank. Agent invocations are not
+interrupted. `checkpoint.steers` preserves pending and delivered entries across
+resume; steering is refused while an approval decision is pending.
+
 
 Budgets are the `budget` section of the [agent's policy table](docs/adr/0011-the-agents-policy-table.md).
 The host's run layer wins over its project layer, then table defaults. The same

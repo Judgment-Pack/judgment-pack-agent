@@ -1,0 +1,9 @@
+{
+  "description": "ADR-0021: pending instructions and delivered rows survive interruption and resume in checkpoint.steers.",
+  "schema": "checkpoint.json",
+  "source": {"harness":{"repository":"Judgment-Pack/judgment-pack-agent","package":"packages/harness"},"files":["packages/harness/execution/state.ts"]},
+  "items": [{
+    "version":1,"id":"steer-example","requestKey":"0000000000000000000000000000000000000000000000000000000000000000","phase":"work","status":"running","unit":"provider-managed","used":0,"limit":1,"grants":[],"plan":[],"explanation":"","operations":[],"context":{"scope":"steer","entries":[]},
+    "steers":{"queued":[{"text":"Use the new title.","bytes":18}],"delivered":[{"bytes":17,"atRequest":1}]}
+  }]
+}

@@ -30,7 +30,7 @@ HARNESS_ENGINE_ADDITIONS = ["deepagents", "eino"]
 # Event kinds the harness emits beyond the Desk's (contract/desk/inventory.json): the approval pause
 # (docs/adr/0008-the-approval-pause.md) and a skill's load and unload (docs/adr/0009-skills.md), on
 # the host's stream; and the critic's decision (docs/adr/0010-the-critics-switch.md).
-HARNESS_EVENT_ADDITIONS = ["approval_requested", "skill_loaded", "skill_unloaded", "critic_decided", "policy_resolved", "memory_proposed", "memory_recalled", "edit_applied", "edit_refused", "compacted"]
+HARNESS_EVENT_ADDITIONS = ["approval_requested", "skill_loaded", "skill_unloaded", "critic_decided", "policy_resolved", "memory_proposed", "memory_recalled", "edit_applied", "edit_refused", "compacted", "steered"]
 
 EXPECTED_SCHEMAS = {
     "run-event.json",
@@ -97,6 +97,9 @@ RELEASE_REVIEWED_DEFS = [
     # ADR-0010: the critic's switch.
     ("tool-offer.json", "criticMode"), ("tool-offer.json", "criticReasoning"), ("tool-offer.json", "requestReview"),
     ("provenance.json", "criticReason"), ("provenance.json", "criticDecision"), ("run-event.json", "critic_decided"),
+    # ADR-0021: steering at a request boundary.
+    ("provenance.json", "queuedSteer"), ("provenance.json", "deliveredSteer"), ("provenance.json", "steerReport"),
+    ("run-event.json", "steered"),
 ]
 
 # The reasoning kinds each wire speaks (WIRE_REASONING in packages/harness/capabilities.ts): a
@@ -852,7 +855,7 @@ class VectorTests(unittest.TestCase):
         # the unrelated event and failure values from earlier releases.
         added_values = {
             ("tool-offer.json", ("$defs", "reservedName")): ["remember", "propose_edit", "propose_delete", "propose_insert", "undo_edit"],
-            ("run-event.json", ("properties", "type")): ["policy_resolved", "memory_proposed", "memory_recalled", "edit_applied", "edit_refused", "compacted"],
+            ("run-event.json", ("properties", "type")): ["policy_resolved", "memory_proposed", "memory_recalled", "edit_applied", "edit_refused", "compacted", "steered"],
             ("failure.json", ("$defs", "code")): ["pace exceeded"],
         }
         for name, path in enums:

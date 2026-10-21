@@ -221,6 +221,9 @@
     },
     "draft": {
       "$ref": "#/$defs/draft"
+    },
+    "steers": {
+      "$ref": "provenance.json#/$defs/steerReport"
     }
   },
   "additionalProperties": true,

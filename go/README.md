@@ -8,6 +8,12 @@ Capability records hold the tier map; hosts can override it per connection.
 See the generated provider matrix in `docs/reference/providers.md` at the repository
 root. Scenario 12 exercises two families, and certification prints its measurements.
 
+ADR-0021 steering enters through `Input.Steer`. Both adapters drain the channel
+only at a request boundary (an invocation boundary on the agent capability),
+frame each accepted instruction under the run marker, emit `steered`, and carry
+pending and delivered rows in `checkpoint.steers`. A pending approval accepts
+only its decision, so a steer then is refused.
+
 
 Budgets are the `budget` section of the [agent's policy table](../docs/adr/0011-the-agents-policy-table.md).
 The host's run layer wins over its project layer, then table defaults. The same

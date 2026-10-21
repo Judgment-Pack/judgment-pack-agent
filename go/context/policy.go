@@ -63,6 +63,8 @@ type Policy struct {
 	SubagentCatalogueBytes int `json:"subagentCatalogueBytes"`
 	MemoryProposalBytes    int `json:"memoryProposalBytes"`
 	MemoryProposalsPerRun  int `json:"memoryProposalsPerRun"`
+	SteerBytes             int `json:"steerBytes"`
+	SteersPerRun           int `json:"steersPerRun"`
 	EditsPerTurn           int `json:"editsPerTurn"`
 	EditBytes              int `json:"editBytes"`
 	ProposalBytes          int `json:"proposalBytes"`
@@ -115,6 +117,7 @@ var SkillDefaults = struct{ SkillBytes, SkillsPerRun, SkillsCatalogueBytes, Cata
 // DeskPolicy is the Desk's table itself (contract/desk/policy.json, packages/harness/contract/policy.json).
 var DeskPolicy = Policy{
 	CataloguedSubagents: 16, SubagentCatalogueBytes: 4000,
+	SteerBytes: 2000, SteersPerRun: 4,
 	Version:             1,
 	MaxInputBytes:       180000,
 	ContextWindowTokens: 65536,
@@ -141,6 +144,8 @@ var Defaults = func() Policy {
 	p.ProposalBytes = 65536
 	p.MemoryProposalBytes = 1000
 	p.MemoryProposalsPerRun = 4
+	p.SteerBytes = 2000
+	p.SteersPerRun = 4
 	p.TurnMilliseconds = TimeDefaults.TurnMilliseconds
 	p.ToolCallMilliseconds = TimeDefaults.ToolCallMilliseconds
 	p.ImagesPerRequest = ImageDefaults.ImagesPerRequest

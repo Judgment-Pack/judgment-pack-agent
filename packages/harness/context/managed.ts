@@ -75,6 +75,8 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
    // agent#10: a refusal of the critic's call is the boundary's guardrail, put
    // on the stream before the result the engine reports for that call.
    for(const notice of context.takeNotices())yield notice
+   const checkpoints=event.type==='tool_call'||event.type==='tool_result'||event.type==='user_question'||event.type==='budget_paused'||event.type==='error'&&(event.failure?.code==='request-limit'||event.message===new ExecutionPaused().message)
+   if(context.execution.approvalAsked||checkpoints)for(const notice of context.execution.queueSteers(ready.session.input,context.policy))yield notice
    // ADR-0008: an engine asks the host's approval policy where it hands an act call to the host
    // (SessionContext.approval) and delivers approval_requested in place of the call where it asks.
    // A call made while another waits is refused: said here with its call, its guardrail and its

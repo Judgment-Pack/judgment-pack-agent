@@ -1,0 +1,9 @@
+{
+  "description": "ADR-0021: several queued steers are delivered in their input order at one boundary, each as its own framed block.",
+  "schema": "run-event.json",
+  "source": {"harness":{"repository":"Judgment-Pack/judgment-pack-agent","package":"packages/harness"},"files":["packages/harness/execution/controller.ts"]},
+  "items": [
+    {"type":"steered","bytes":5,"atRequest":3},
+    {"type":"steered","bytes":6,"atRequest":3}
+  ]
+}

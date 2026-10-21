@@ -291,6 +291,17 @@ function placeState(placement: StatePlacement, history: BaseMessage[], system: s
   return { system: systemMessage(system, state), messages: history }
 }
 
+/** ADR-0021: steering is a human/request part even where execution state uses system-tail. */
+function placeSteer(placed:ReturnType<typeof placeState>,steer:string):ReturnType<typeof placeState>{
+  if(!steer)return placed
+  const last=placed.messages.at(-1)
+  if(last?.getType()==='human'){
+    const parts=typeof last.content==='string'?[{type:'text',text:last.content}]:[...(last.content as Record<string,unknown>[])]
+    return {...placed,messages:[...placed.messages.slice(0,-1),new HumanMessage({content:[...parts,{type:'text',text:steer}] as never})]}
+  }
+  return {...placed,messages:[...placed.messages,new HumanMessage(steer)]}
+}
+
 // Provider text is inspected only for the existing bounded capability-negotiation rules. It is never
 // used as a user-facing failure or persisted diagnostic.
 function endpointSentence(body: unknown): string {
@@ -697,14 +708,16 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
         progressStep = synthesis ? 'finish' : context.execution.progress.nextStep(context.execution.remaining)
         if (progressStep === 'finish' && context.execution.progress.stalled && !synthesis) await deliver({ type: 'response_recovery' })
         toolsClosed = synthesis || progressStep === 'finish' || index >= turnLimit - 1 || context.execution.remaining <= 1
+        const steers=context.execution.takeSteers(session.input,context.marker,context.execution.state.used+1,context.policy)
+        for(const event of steers.events)await deliver(event)
         const state = stateText(
           context.execution.requestState(),
           session.context?.currentState,
           reformatting ? REFORMAT_INSTRUCTIONS : synthesis ? FINISH_RESPONSE_INSTRUCTIONS : progressStep === 'recover' ? RECOVER_REPEATED_WORK_INSTRUCTIONS : progressStep === 'finish' ? REPEATED_WORK_INSTRUCTIONS : toolsClosed ? finalInstructions : ''
         )
         // Budgeted as one request: the system text and the state together.
-        lastMessages = await budgeted(request.messages, system + '\n' + state)
-        const placed = placeState(placement, lastMessages, system, state)
+        lastMessages = await budgeted(request.messages, system + '\n' + state + '\n' + steers.text)
+        const placed = placeSteer(placeState(placement, lastMessages, system, state),steers.text)
         const answer = await sendStep(request, send, placed, toolsClosed, offered)
         completion = completionOf(answer)
         context.execution.recordCompletion(completion, synthesis ? 'synthesis' : 'work')

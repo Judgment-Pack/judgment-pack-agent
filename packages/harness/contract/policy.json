@@ -14,7 +14,9 @@
     "briefBytes": 8000,
     "memoryBytes": 4000,
     "cataloguedSubagents": 16,
-    "subagentCatalogueBytes": 4000
+    "subagentCatalogueBytes": 4000,
+    "steerBytes": 2000,
+    "steersPerRun": 4
   },
   "critic": {
     "default": "auto",

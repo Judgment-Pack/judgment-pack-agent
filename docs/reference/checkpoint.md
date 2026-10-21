@@ -53,6 +53,7 @@ Open: a member the schema does not name is accepted.
 | `compaction` |  | `provenance.json $defs/compactionReport` | ADR-0016: the compaction mode and the replacements already made. Summary text and the digests of the original turns make a resumed request byte-identical without another compactor request. |
 | `memories` |  | `provenance.json $defs/memories` |  |
 | `draft` |  | `$defs/draft` |  |
+| `steers` |  | `provenance.json $defs/steerReport` |  |
 
 Conditions beyond the members (allOf) are in the schema file.
 

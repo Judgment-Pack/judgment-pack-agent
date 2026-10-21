@@ -58,6 +58,8 @@ Closed: a member the schema does not name is refused.
 | `budget.subagentCatalogueBytes` |  | integer (min 0) | Default: `4000`. |
 | `budget.memoryProposalBytes` |  | integer (min 0) | Most UTF-8 bytes of one remember proposal text (ADR-0014). Default: `1000`. |
 | `budget.memoryProposalsPerRun` |  | integer (min 0, max 256) | Most remember proposals per run, carried through resume (ADR-0014). Default: `4`. |
+| `budget.steerBytes` |  | integer (min 0) | ADR-0021: most UTF-8 bytes in one in-flight steer from the person. Default: `2000`. |
+| `budget.steersPerRun` |  | integer (min 0, max 256) | ADR-0021: most steers accepted in one run, carried through resume. Default: `4`. |
 | `budget.editsPerTurn` |  | integer (min 0, max 4194304) | Successful edits and undos per response, carried across resume. Default: `24`. |
 | `budget.editBytes` |  | integer (min 0, max 4194304) | UTF-8 bytes of one edit’s new text. Default: `8000`. |
 | `budget.proposalBytes` |  | integer (min 1, max 4194304) | UTF-8 bytes of the current draft pack, bounded as the existing test pack. Default: `65536`. |

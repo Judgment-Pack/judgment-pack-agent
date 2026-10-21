@@ -37,7 +37,8 @@
         "memory_proposed",
         "memory_recalled",
         "edit_applied",
-        "edit_refused"
+        "edit_refused",
+        "steered"
       ]
     }
   },
@@ -50,6 +51,9 @@
     },
     {
       "$ref": "#/$defs/approval_requested"
+    },
+    {
+      "$ref": "#/$defs/steered"
     },
     {
       "$ref": "#/$defs/compacted"
@@ -128,6 +132,17 @@
     }
   ],
   "$defs": {
+    "steered": {
+      "description": "ADR-0021: one steer was placed at a request boundary. On an agent capability atRequest is the invocation number.",
+      "type": "object",
+      "required": ["type", "bytes", "atRequest"],
+      "properties": {
+        "type": {"const": "steered"},
+        "bytes": {"type": "integer", "minimum": 1},
+        "atRequest": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": false
+    },
     "compacted": {
       "description": "ADR-0016: the visible marker that one context compaction replaced complete turns. digest is the digest of the framed replacement; mode says whether the deterministic index or a model-authored summary was used.",
       "type": "object",
@@ -455,7 +470,8 @@
             "subagent refused",
             "memory refused",
             "edit refused"
-            ,"compaction refused"
+            ,"compaction refused",
+            "steer refused"
           ]
         }
       },
