@@ -488,6 +488,11 @@ func (c *coordinator) batchAnswer(tasks []*contract.DelegatedTask) runcontext.To
 // serves requests at once, the concurrentRequests of the host's answer for it, and
 // DefaultChildConcurrency where the answer names none.
 func (c *coordinator) concurrency() int {
+	if members := c.parentPolicy(); members != nil {
+		children, _ := members["concurrency.children"].Value.(float64)
+		requests, _ := members["concurrency.requests"].Value.(float64)
+		return max(1, min(int(children), int(requests)))
+	}
 	if c.run.Agent != nil {
 		// The provider account of an agent capability is exclusive: one child at a time.
 		return 1

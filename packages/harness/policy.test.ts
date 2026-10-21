@@ -26,6 +26,12 @@ describe('ADR-0011 policy table',()=>{
   expect(()=>resolvePolicy({},project,table,{...host,paceUsed:{requestsPerDay:11}})).toThrow('pace.requestsPerDay (project)')
   try{resolvePolicy({},project,table,{...host,paceUsed:{requestsPerDay:11}})}catch(e){expect(e).toBeInstanceOf(PolicyRefusal);expect((e as PolicyRefusal).failure.code).toBe('pace exceeded')}
  })
+ it('refuses exhausted period allowances, including zero, before starting work',()=>{
+  for(const key of ['requestsPerDay','invocationsPerDay','bytesPerDay'] as const)for(const limit of [0,10]){
+   try { resolvePolicy({}, {pace:{[key]:limit}}, table, {...host,paceUsed:{[key]:limit}}); expect.fail('exhausted pace admitted') }
+   catch(error){ expect(error).toBeInstanceOf(PolicyRefusal); expect((error as PolicyRefusal).failure.code).toBe('pace exceeded'); expect((error as PolicyRefusal).member).toBe(`pace.${key}`) }
+  }
+ })
  it('holds the child and subagent ceiling unless the project authorizes it',()=>{
   for(const role of ['child.review','subagent.audit']){
    const raised:PolicyLayer={models:{[role]:{reasoning:'ultra'}}}

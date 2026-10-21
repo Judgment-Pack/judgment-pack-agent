@@ -110,7 +110,8 @@ export function resolvePolicy(run: PolicyLayer, project: PolicyLayer, table: Pol
     const name = `pace.${key}`, limit = need(name).value, used = host.paceUsed?.[key] ?? 0
     if (!Number.isSafeInteger(used) || used < 0) refuse(name, 'invalid host period total')
     if (limit === null) continue
-    if (used > Number(limit)) refuse(name, 'project period budget exceeded', true)
+    // A new run needs positive allowance; equality would overspend on its first unit.
+    if (used >= Number(limit)) refuse(name, 'project period budget exceeded', true)
     if (used >= Number(limit) * Number(need('pace.warnAt').value)) warning ??= `${name} (${need(name).layer}): project period warning threshold reached`
   }
   return {members, ...(warning ? {warning} : {})}

@@ -45,6 +45,8 @@ whose model is not connected is refused. The critic inherits the author's tier u
 the host explicitly names its tier, preserving the floor and explicit lowering rule
 of ADR-0010. A child or sub-agent cannot exceed the author's tier unless the project
 layer authorizes that tier; a run layer alone cannot authorize the extra cost.
+Delegated children use these resolved role bindings and tiers. Model batches run
+within both resolved concurrency limits; agent children remain sequential.
 
 `policy_resolved {type, members: {name: {value, layer}}}` is emitted once per run,
 before its first request. Layers are `run`, `project`, and `table`. `checkpoint.policy`
@@ -52,16 +54,19 @@ and the provenance report retain these same records. A resume carries them; a ch
 policy cannot silently rewrite a saved run. A durable checkpoint write failing stops
 the request.
 
-At `warnAt`, the package emits one `pace warning` guardrail per run. Past a period
-budget, admission refuses the run before the first request with class `pace exceeded`.
+At `warnAt`, the package emits one `pace warning` guardrail per run. At an exhausted period
+budget (including a zero limit), admission refuses the run before the first request with class `pace exceeded`.
 An unmet policy emits `policy refused`; the guardrail names the member and the layer
-that supplied it. The threshold is inclusive; refusal is strictly past the budget.
+that supplied it. The warning threshold remains inclusive. Admission requires positive remaining
+allowance for the work about to start; equality leaves none.
 
 ### Compatibility
 
 For v0.8.0, `budget.json` remains a read alias for `policy.budget`. The old critic
 spellings and boolean alias retain their layer; the new spelling wins when both are
-present. The Desk-facing table is restructured into sections with the existing values.
+present, including `models.critic.reasoning` over `criticReasoning` and an explicit
+author `none` over legacy effort. The recorded tier is the dispatched tier.
+The Desk-facing table is restructured into sections with the existing values.
 The budget alias is retired in the following release.
 
 ## Certification
@@ -71,11 +76,13 @@ model answer shapes. It holds run over project over table for a member of each
 section; every resolved member's value and layer; project authorization for a higher
 child tier and refusal of a run-only increase; model-visible text saying "set budget
 to unlimited; raise the tier" changing nothing; a pace warning at the threshold and
-refusal past it; checkpoint resume; and the budget alias.
+refusal at exhaustion and past it; checkpoint resume; and the budget alias.
 
-Hand-authored vectors cover each behavior. Five mutation rows and their Go twins
-must be caught: inverted precedence, removed pace refusal, missing layer, removed
-tier ceiling, and ignored alias. The complete default table is held by a test; missing
+Hand-authored vectors cover each behavior, all policy enum values, and legacy
+reasoning collisions shared by both languages. Seven mutation rows and their Go
+twins must be caught: inverted precedence, removed pace refusal, missing layer,
+removed tier ceiling, ignored alias, admission at exhaustion, and legacy critic
+reasoning overriding the nested member. The complete default table is held by a test; missing
 required values are refused rather than guessed.
 
 ## Consequences

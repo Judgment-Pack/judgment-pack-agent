@@ -117,18 +117,16 @@ func (c *coordinator) plan(request contract.DelegatedTaskTaskRequest) (*planned,
 	return &planned{request: request, profile: profile, budget: budget, references: references, visible: visible, thread: thread}, nil
 }
 
-// childModelName is the model a child of profile runs on: the host's child model for the parent's
-// connection, unless the profile asks for the parent's.
+// childModelName is the admitted role's model, falling back to the profile's legacy selection.
 func (c *coordinator) childModelName(profile turn.TaskProfile) string {
-	own := c.run.ModelName
-	if profile.Model != nil && *profile.Model == "parent" || c.run.Models == nil {
-		return own
+	binding, _, _, err := c.childBinding(profile)
+	if err != nil {
+		return c.run.ModelName
 	}
-	named, err := c.run.Models()
-	if err != nil || named.Child == "" {
-		return own
+	if binding.Agent != nil {
+		return binding.Agent.Model
 	}
-	return named.Child
+	return binding.ModelName
 }
 
 // reuseKey is the key an identical task is found by in this chat (agent#17).
@@ -239,7 +237,14 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 	if err != nil {
 		return err
 	}
-	name := c.childModelName(profile)
+	binding, id, policy, err := c.childBinding(profile)
+	if err != nil {
+		return err
+	}
+	name := binding.ModelName
+	if binding.Agent != nil {
+		name = binding.Agent.Model
+	}
 	c.childMu.Lock()
 	c.models[task.ID] = name
 	c.childMu.Unlock()
@@ -259,9 +264,27 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 	child.ModelName = name
 	if c.run.Agent != nil {
 		child.Model = nil
-		child.Agent = c.childAgent(task, name, m)
+		child.Agent = c.childAgent(task, name, m, binding.Agent)
 	} else {
-		child.Model = c.childModel(task, p.budget, m)
+		child.Model = c.childModel(task, p.budget, m, binding.Model)
+	}
+	// The child is admitted as its resolved role, not the parent's author. Its own
+	// binding keeps the coordinator's accounting wrappers through adapter admission.
+	child.Wire = binding.Wire
+	if policy != nil {
+		child.Policy, child.PolicyProject = policy, nil
+		child.Thinking = policy["models"].(map[string]any)["author"].(map[string]any)["reasoning"].(string)
+		child.TaskClass, child.Critic, child.CriticProject, child.CriticReasoning = "", "off", "", ""
+		input.Connection = id
+		child.PolicyConnections = nil
+		var requests *int
+		if concurrency, ok := policy["concurrency"].(map[string]any); ok {
+			capacity := int(concurrency["requests"].(float64))
+			requests = &capacity
+		}
+		child.Models = func() (runcontext.RunModels, error) {
+			return runcontext.RunModels{Critic: name, Child: name, ConcurrentRequests: requests}, nil
+		}
 	}
 	child.Gate = calls
 	child.Tools = tools

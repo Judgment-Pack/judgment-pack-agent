@@ -156,7 +156,7 @@ func (e *statusError) ResponseHeader() http.Header { return e.header }
 
 // childModel is a child's relay capability: each request charged to its task and the response,
 // one retry of a transient refusal before its first byte, and its first byte noted.
-func (c *coordinator) childModel(task *contract.DelegatedTask, budget turn.TaskBudget, m *meter) relay.Call {
+func (c *coordinator) childModel(task *contract.DelegatedTask, budget turn.TaskBudget, m *meter, call relay.Call) relay.Call {
 	return func(ctx context.Context, suffix string, request relay.Request) (*http.Response, error) {
 		posted := request.Method != http.MethodGet
 		if posted {
@@ -164,7 +164,7 @@ func (c *coordinator) childModel(task *contract.DelegatedTask, budget turn.TaskB
 				return nil, err
 			}
 		}
-		answered, err := c.run.Model(ctx, suffix, request)
+		answered, err := call(ctx, suffix, request)
 		if err != nil {
 			return nil, err
 		}
@@ -191,7 +191,7 @@ func (c *coordinator) childModel(task *contract.DelegatedTask, budget turn.TaskB
 				if err := c.chargeChild(task, budget); err != nil {
 					return nil, err
 				}
-				answered, err = c.run.Model(ctx, suffix, request)
+				answered, err = call(ctx, suffix, request)
 				if err != nil {
 					return nil, err
 				}

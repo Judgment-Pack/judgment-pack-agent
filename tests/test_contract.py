@@ -774,11 +774,36 @@ class VectorTests(unittest.TestCase):
             ("run-event.json", ["$defs", "critic_decided", "properties", "trigger"]),
             ("checkpoint.json", ["properties", "critic", "properties", "trigger"]),
         ]
+        # ADR-0011: probe every enum in the new policy schema, including role
+        # definitions and each task-class mapping, plus the session's taskClass.
+        def enum_paths(node, path):
+            if isinstance(node, dict):
+                if "enum" in node:
+                    yield path
+                for key, value in node.items():
+                    if key not in ("enum", "default", "examples"):
+                        yield from enum_paths(value, path + [key])
+            elif isinstance(node, list):
+                for index, value in enumerate(node):
+                    yield from enum_paths(value, path + [index])
+
+        enums += [("policy.json", path) for path in enum_paths(schemas_["policy.json"], [])]
+        enums += [
+            ("tool-offer.json", ["properties", "taskClass"]),
+            ("run-event.json", ["properties", "type"]),
+            ("failure.json", ["$defs", "code"]),
+        ]
+        # Existing schemas: this ADR adds these values, not new obligations for
+        # the unrelated event and failure values from earlier releases.
+        added_values = {
+            ("run-event.json", ("properties", "type")): ["policy_resolved"],
+            ("failure.json", ("$defs", "code")): ["pace exceeded"],
+        }
         for name, path in enums:
             node = schemas_[name]
             for step in path:
                 node = node[step]
-            for value in node["enum"]:
+            for value in added_values.get((name, tuple(path)), node["enum"]):
                 changed = copy.deepcopy(schemas_)
                 held = changed[name]
                 for step in path:

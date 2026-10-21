@@ -15,7 +15,7 @@ import { ContextBudgetError } from './context/policy'
 import { ContextLedger, answer, type Entry } from './context/ledger'
 import { dataMarker, frameData } from './framing'
 import { runModels, type RunModels } from './host'
-import { testCallCapFailure, type ExecutionLink, type SessionContext } from './context/session'
+import { testCallCapFailure, resolveSessionPolicy, type ExecutionLink, type SessionContext } from './context/session'
 
 /** Shared execution policy. Feature adapters supply capabilities, never larger child allowances. */
 export interface DelegationOptions {
@@ -335,7 +335,7 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
     const policy = contextPolicy(session.context?.configuration,modelName)
     // ADR-0010: on an agent capability one run is held back for the critic where the switch may run it.
     const forced = criticForcedOff({child:!!session.context?.objective,phase:session.context?.phase,purpose:session.purpose,reviewerAssigned:session.reviewerAssigned===true})
-    const reserve = 'agent' in session && forced === undefined && criticMode(session, policy).mode !== 'off' ? 1 : 0
+    const reserve = 'agent' in session && forced === undefined && criticMode({...session,resolvedPolicy:resolveSessionPolicy(session,engine.id).resolved.members}, policy).mode !== 'off' ? 1 : 0
     const shared = new ResponseAllowance(session.context?.execution, reserve)
     // The chat the parent's context lives in (agent#8): the host's, or one for this response alone.
     const hostChat = session.context?.chat instanceof ChatContext ? session.context.chat : undefined

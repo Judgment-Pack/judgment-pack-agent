@@ -58,6 +58,34 @@ export interface ContextInput {currentState?:string;artifactProposals?:boolean;a
 export interface ExecutionLink {attach(context:SessionContext):void;/** ADR-0006: the delegating run's source gate, which a child's gate shares the report's rows and the changed sources of. */sources?():SourceGate|undefined}
 export interface ContextUsage {inputBytes:number;estimatedInputTokens:number;inputBudgetBytes:number;outputReserveTokens:number;compactions:number;retainedItems:number}
 const encoded=(value:unknown)=>JSON.stringify(value)
+/** Resolve admission against the host's actual connections, also for delegation's critic reserve. */
+export function resolveSessionPolicy(session:EngineSession,engine?:AssistantEngine){
+ const identity={...(session.context?.connection?{connection:session.context.connection}:{}),...('model'in session?{family:session.model.family}:{}),model:'model'in session?session.model.model:session.agent.model}
+ const authorTier='model'in session?session.thinking?.tier:session.effort
+ const capabilities='model'in session?capabilitiesFor(session.model):undefined
+ const policy=contextPolicy(session.context?.configuration,identity.model,capabilities)
+ const current=identity.connection?.connectionId??identity.model
+ const named=(()=>{try{return engine&&!session.context?.objective?runModels({...identity,engine}):{critic:identity.model,child:identity.model}}catch(cause){
+  const detail=(cause as Error).message
+  const member=detail.includes('concurrentRequests')?'concurrency.requests':detail.includes('child model')?'models.child.default.model':'models.critic.model'
+  throw new PolicyRefusal(member,'table',detail)
+ }})()
+ const binding:PolicyConnection='model'in session?{model:session.model}:{agent:session.agent}
+ const withName=(name:string):PolicyConnection=>'model'in binding?{model:{...binding.model,model:name}}:{agent:{...binding.agent,model:name}}
+ const bindings:Record<string,PolicyConnection>={[current]:binding,[named.critic]:withName(named.critic),[named.child]:withName(named.child),...session.policyConnections}
+
+ const resolved=resolvePolicy(
+  {...session.policy, ...(session.taskClass?{taskClass:session.taskClass}:{}),critic:{...(session.critic!==undefined||session.adversarialReview!==undefined?{default:session.critic??(session.adversarialReview?'on':'off')}:{}),...session.policy?.critic},models:{...session.policy?.models,...(session.criticReasoning?{critic:{reasoning:session.criticReasoning,...session.policy?.models?.critic}}:{})}},
+  {...session.policyProject,critic:{...(session.criticProject?{default:session.criticProject}:{}),...session.policyProject?.critic}},
+  {...policy,concurrency:{children:'agent'in session?1:named.concurrentRequests??2,requests:named.concurrentRequests??2},models:{author:{model:current,reasoning:authorTier??('agent'in session?'none':'off')},critic:{model:named.critic}}},
+  {connections:Object.keys(bindings),agent:'agent'in session,requests:session.policyRequests??named.concurrentRequests??2,paceUsed:session.paceUsed})
+ for(const [name,member] of Object.entries(resolved.members))if(name.startsWith('models.')&&name.endsWith('.model')){
+  const selected=bindings[String(member.value)]!
+  if(('model'in session)!==('model'in selected)||'model'in session&&'model'in selected&&selected.model.family!==session.model.family)throw new PolicyRefusal(name,member.layer,'connection requires a different capability or wire family')
+ }
+ return {identity,capabilities,policy,bindings,named,resolved}
+}
+
 export class SessionContext {
  readonly resolvedPolicy:PolicyMembers;readonly paceWarning?:string
  readonly policy;readonly ledger;readonly execution:ExecutionController;private compactions=0
@@ -182,34 +210,18 @@ export class SessionContext {
   return id===undefined?undefined:this.bindings[String(id)]
  }
  constructor(session:EngineSession,engine?:AssistantEngine){
-  this.identity={...(session.context?.connection?{connection:session.context.connection}:{}),...('model'in session?{family:session.model.family}:{}),model:'model'in session?session.model.model:session.agent.model}
   try{this.criticCases=readCriticCases(session.criticCases??[])}catch(cause){throw authoredFailure('configuration',(cause as Error).message,'context')}
   // ADR-0010: the session's critic members, read closed before any request.
   try{readCriticSettings(session,'agent'in session)}catch(cause){throw authoredFailure('configuration',(cause as Error).message,'context')}
+  const admission=resolveSessionPolicy(session,engine)
+  this.identity=admission.identity
   this.existingPack=session.existingPack===true
   this.authorTier='model'in session?session.thinking?.tier:session.effort
-  this.capabilities='model'in session?capabilitiesFor(session.model):undefined;this.policy=contextPolicy(session.context?.configuration,'model'in session?session.model.model:session.agent.model,this.capabilities)
-  const current=this.identity.connection?.connectionId??this.identity.model
-  const named=(()=>{try{return engine&&!session.context?.objective?runModels({...this.identity,engine}):{critic:this.identity.model,child:this.identity.model}}catch(cause){
-   const detail=(cause as Error).message
-   const member=detail.includes('concurrentRequests')?'concurrency.requests':detail.includes('child model')?'models.child.default.model':'models.critic.model'
-   throw new PolicyRefusal(member,'table',detail)
-  }})()
+  this.capabilities=admission.capabilities;this.policy=admission.policy
+  const {bindings,named,resolved}=admission
+  this.bindings=bindings
   if(engine)this.named={models:named}
-  const binding:PolicyConnection='model'in session?{model:session.model}:{agent:session.agent}
-  const withName=(name:string):PolicyConnection=>'model'in binding?{model:{...binding.model,model:name}}:{agent:{...binding.agent,model:name}}
-  this.bindings={[current]:binding,[named.critic]:withName(named.critic),[named.child]:withName(named.child),...session.policyConnections}
-
-  const resolved=resolvePolicy(
-   {...session.policy, ...(session.taskClass?{taskClass:session.taskClass}:{}),critic:{...(session.critic!==undefined||session.adversarialReview!==undefined?{default:session.critic??(session.adversarialReview?'on':'off')}:{}),...session.policy?.critic},models:{...session.policy?.models,...(session.criticReasoning?{critic:{...session.policy?.models?.critic,reasoning:session.criticReasoning}}:{})}},
-   {...session.policyProject,critic:{...(session.criticProject?{default:session.criticProject}:{}),...session.policyProject?.critic}},
-   {...this.policy,concurrency:{children:'agent'in session?1:named.concurrentRequests??2,requests:named.concurrentRequests??2},models:{author:{model:current,reasoning:this.authorTier??('agent'in session?'none':'off')},critic:{model:named.critic}}},
-   {connections:Object.keys(this.bindings),agent:'agent'in session,requests:session.policyRequests??named.concurrentRequests??2,paceUsed:session.paceUsed})
   this.resolvedPolicy=resolved.members;this.paceWarning=resolved.warning
-  for(const [name,member] of Object.entries(resolved.members))if(name.startsWith('models.')&&name.endsWith('.model')){
-   const selected=this.bindings[String(member.value)]!
-   if(('model'in session)!==('model'in selected)||'model'in session&&'model'in selected&&selected.model.family!==session.model.family)throw new PolicyRefusal(name,member.layer,'connection requires a different capability or wire family')
-  }
 this.turn=session.context?.chat?.openTurn();this.objective=session.context?.objective;this.ledger=new ContextLedger(this.policy,this.turn);this.execution=new ExecutionController(session,this.ledger);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))
   for(const [name,member] of Object.entries(resolved.members))if(name.startsWith('budget.'))Object.assign(this.policy,{[name.slice(7)]:member.value})
   this.policy.criticDefault=String(resolved.members['critic.default']!.value)
@@ -561,7 +573,7 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  const context=new SessionContext(session,engine)
  const author=context.connection('author')!
  const tier=String(context.resolvedPolicy['models.author.reasoning']!.value)
- session={...session,...author,...('model'in author?{thinking:normalize(tier as import('../host').ThinkingTier,author.model.family)}:tier==='none'?{}:{effort:tier})} as T
+ session={...session,...author,...('model'in author?{thinking:normalize(tier as import('../host').ThinkingTier,author.model.family)}:{effort:tier})} as T
  // A chat's turn is open from here: a run that cannot start closes it again.
  try{
  // ADR-0009: the skills, read and admitted before any request; their sources report beside the tools'.

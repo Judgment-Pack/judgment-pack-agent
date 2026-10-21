@@ -2,6 +2,7 @@ package runcontext
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"reflect"
 	"strings"
@@ -57,6 +58,19 @@ func TestPolicyTable(t *testing.T) {
 				}
 			} else if err != nil || (got.Warning != "") != (used == 8) {
 				t.Fatalf("pace %d: %+v %v", used, got, err)
+			}
+		}
+	})
+	t.Run("exhausted allowance", func(t *testing.T) {
+		for _, key := range []string{"requestsPerDay", "invocationsPerDay", "bytesPerDay"} {
+			for _, limit := range []int64{0, 10} {
+				h := host
+				h.PaceUsed = map[string]int64{key: limit}
+				_, err := ResolvePolicy(nil, PolicyLayer{"pace": map[string]any{key: limit}}, table, h)
+				var refused *PolicyRefusal
+				if !errors.As(err, &refused) || refused.FailureCode() != "pace exceeded" || refused.Member != "pace."+key {
+					t.Fatalf("exhausted %s %d: %v", key, limit, err)
+				}
 			}
 		}
 	})

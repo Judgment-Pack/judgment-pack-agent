@@ -28,40 +28,42 @@ func PolicyConnectionIDs(run *Run) []string {
 	return ids
 }
 
+// PolicyBinding selects a resolved role using the host's actual capability bindings.
+func PolicyBinding(run *Run, members runcontext.PolicyMembers, named runcontext.RunModels, role string) (PolicyConnection, error) {
+	name := "models." + role + ".model"
+	member := members[name]
+	id, _ := member.Value.(string)
+	own := PolicyConnection{ModelName: run.ModelName, Wire: run.Wire, Model: run.Model, Agent: run.Agent}
+	if id == run.ModelName || run.Agent != nil && id == run.Agent.Model || run.Context != nil && id == run.Context.Connection {
+		return own, nil
+	}
+	binding, ok := run.PolicyConnections[id]
+	if !ok && (id == named.Critic || id == named.Child) {
+		own.ModelName = id
+		if own.Agent != nil {
+			agent := *own.Agent
+			agent.Model = id
+			own.Agent = &agent
+		}
+		return own, nil
+	}
+	if !ok {
+		return PolicyConnection{}, &runcontext.PolicyRefusal{Member: name, Layer: member.Layer, Detail: "model connection is not available"}
+	}
+	if (binding.Agent != nil) != (run.Agent != nil) || run.Agent == nil && (binding.Model == nil || binding.Wire != run.Wire) {
+		return PolicyConnection{}, &runcontext.PolicyRefusal{Member: name, Layer: member.Layer, Detail: "connection requires a different capability or wire family"}
+	}
+	return binding, nil
+}
+
 // ApplyPolicy selects the admitted author's binding and routes the critic through its binding.
 // A wire-family or capability change this adapter cannot serve is refused before any request.
 func ApplyPolicy(run *Run, sc *runcontext.SessionContext, named runcontext.RunModels) error {
-	pick := func(role string) (PolicyConnection, error) {
-		name := "models." + role + ".model"
-		member := sc.ResolvedPolicy[name]
-		id, _ := member.Value.(string)
-		own := PolicyConnection{ModelName: run.ModelName, Wire: run.Wire, Model: run.Model, Agent: run.Agent}
-		if id == run.ModelName || run.Agent != nil && id == run.Agent.Model || run.Context != nil && id == run.Context.Connection {
-			return own, nil
-		}
-		binding, ok := run.PolicyConnections[id]
-		if !ok && (id == named.Critic || id == named.Child) {
-			own.ModelName = id
-			if own.Agent != nil {
-				agent := *own.Agent
-				agent.Model = id
-				own.Agent = &agent
-			}
-			return own, nil
-		}
-		if !ok {
-			return PolicyConnection{}, &runcontext.PolicyRefusal{Member: name, Layer: member.Layer, Detail: "model connection is not available"}
-		}
-		if (binding.Agent != nil) != (run.Agent != nil) || run.Agent == nil && (binding.Model == nil || binding.Wire != run.Wire) {
-			return PolicyConnection{}, &runcontext.PolicyRefusal{Member: name, Layer: member.Layer, Detail: "connection requires a different capability or wire family"}
-		}
-		return binding, nil
-	}
-	author, err := pick("author")
+	author, err := PolicyBinding(run, sc.ResolvedPolicy, named, "author")
 	if err != nil {
 		return err
 	}
-	critic, err := pick("critic")
+	critic, err := PolicyBinding(run, sc.ResolvedPolicy, named, "critic")
 	if err != nil {
 		return err
 	}

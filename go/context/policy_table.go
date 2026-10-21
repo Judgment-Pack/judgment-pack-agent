@@ -307,7 +307,8 @@ func ResolvePolicy(run, project, table PolicyLayer, host PolicyHost) (ResolvedPo
 		if members[name].Value == nil {
 			continue
 		}
-		if float64(used) > number(name) {
+		// A new run needs positive allowance for its first unit.
+		if float64(used) >= number(name) {
 			return result, refuse(name, "project period budget exceeded", true)
 		}
 		if float64(used) >= number(name)*number("pace.warnAt") && result.Warning == "" {

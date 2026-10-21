@@ -825,6 +825,13 @@
           "11 alias",
           "11 agent alias"
         ]
+      },
+      {
+        "check": "11 \u00b7 zero period limits and totals refuse before the first dispatch",
+        "go": [
+          "11 pace",
+          "11 agent pace"
+        ]
       }
     ]
   },

@@ -198,8 +198,7 @@ func (c *coordinator) parentAgent() *adapter.Agent {
 // childAgent is a child's capability: the model the host named for children, the host's function
 // tracked on the account, and its invocation dispatched only after every earlier one has returned,
 // counted under its task and made durable first.
-func (c *coordinator) childAgent(task *contract.DelegatedTask, model string, m *meter) *adapter.Agent {
-	base := c.run.Agent
+func (c *coordinator) childAgent(task *contract.DelegatedTask, model string, m *meter, base *adapter.Agent) *adapter.Agent {
 	return &adapter.Agent{Model: base.Model, Effort: base.Effort, Enabled: base.Enabled, Delegated: model, Run: c.tracked(base.Run, m),
 		Begin: func(ctx context.Context, _ adapter.AgentRequest) error {
 			if err := c.account.released(ctx); err != nil {

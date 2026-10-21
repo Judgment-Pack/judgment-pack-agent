@@ -1,0 +1,30 @@
+{
+  "description": "Written by hand from ADR-0011 and review #116; no implementation output recorded.",
+  "schema": "tool-offer.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/context/session.ts"
+    ]
+  },
+  "items": [
+    {
+      "tools": [],
+      "hostTools": [],
+      "taskClass": "routine"
+    },
+    {
+      "tools": [],
+      "hostTools": [],
+      "taskClass": "material"
+    },
+    {
+      "tools": [],
+      "hostTools": [],
+      "taskClass": "boundary"
+    }
+  ]
+}

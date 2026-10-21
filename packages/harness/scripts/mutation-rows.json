@@ -3741,7 +3741,7 @@
   {
    "name": "the critic's invocation is not held back before a delegation batch",
    "file": "delegation.ts",
-   "find": "    const reserve = 'agent' in session && forced === undefined && criticMode(session, policy).mode !== 'off' ? 1 : 0",
+   "find": "    const reserve = 'agent' in session && forced === undefined && criticMode({...session,resolvedPolicy:resolveSessionPolicy(session,engine.id).resolved.members}, policy).mode !== 'off' ? 1 : 0",
    "replace": "    const reserve = 0",
    "tests": [
     "certification/scenarios.test.ts"
@@ -3814,7 +3814,7 @@
   {
    "name": "ADR policy table: pace refusal removed",
    "file": "policy.ts",
-   "find": "if (used > Number(limit)) refuse(name, 'project period budget exceeded', true)",
+   "find": "if (used >= Number(limit)) refuse(name, 'project period budget exceeded', true)",
    "replace": "if (false) refuse(name, 'project period budget exceeded', true)",
    "tests": [
     "policy.test.ts"
@@ -3854,6 +3854,31 @@
    ],
    "status": "caught",
    "origin": "ADR-0011 (#116)"
+  },
+  {
+   "name": "ADR policy table review: exhausted pace admitted",
+   "file": "policy.ts",
+   "find": "if (used >= Number(limit)) refuse(name, 'project period budget exceeded', true)",
+   "replace": "if (used > Number(limit)) refuse(name, 'project period budget exceeded', true)",
+   "tests": [
+    "policy.test.ts",
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR policy table review round (#116)",
+   "note": "Zero and equal period totals must refuse before dispatch. Go twin: change >= to > in ResolvePolicy; TestPolicyTable/exhausted_allowance catches it."
+  },
+  {
+   "name": "ADR policy table review: legacy critic reasoning overrides nested spelling",
+   "file": "context/session.ts",
+   "find": "critic:{reasoning:session.criticReasoning,...session.policy?.models?.critic}",
+   "replace": "critic:{...session.policy?.models?.critic,reasoning:session.criticReasoning}",
+   "tests": [
+    "policySession.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR policy table review round (#116)",
+   "note": "Shared policy/legacy-collisions.json holds the nested tier on the record and agent wire. Go twin: overwrite role[\"reasoning\"] unconditionally in resolveSessionPolicy; TestPolicyLegacyCollisionsRecordAndWireAgree catches it."
   }
  ]
 }

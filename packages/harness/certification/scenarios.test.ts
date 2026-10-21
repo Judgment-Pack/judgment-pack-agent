@@ -2157,7 +2157,7 @@ function policyTableChecks(engineId: import('../host').AssistantEngine, agent: b
     expect(lastCheckpoint(both.events).policy?.['budget.readBytes']).toEqual({value:768,layer:'run'})
   })
   it('11 · pace warns at the threshold and refuses past it before a request', async()=>{
-    for(const used of [8,11]){
+    for(const used of [8,10,11]){
       const engine=await loadEngine(engineId)
       const session={critic:'off' as const,policyProject:{pace:{requestsPerDay:10,warnAt:0.8}},paceUsed:{requestsPerDay:used}}
       const turns:Turn[]=[{say:'Done.'}]
@@ -2165,7 +2165,16 @@ function policyTableChecks(engineId: import('../host').AssistantEngine, agent: b
       const guard=ofType(ran.events,'guardrail').filter(e=>e.reason===(used===8?'pace warning':'policy refused'))
       expect(guard).toHaveLength(1)
       expect(guard[0]!.detail).toContain('pace.requestsPerDay (project)')
-      if(used===11){expect(ran.requests).toHaveLength(0);expect(ran.runs).toHaveLength(0);expect(ofType(ran.events,'error')[0]?.failure?.code).toBe('pace exceeded')}
+      if(used>=10){expect(ran.requests).toHaveLength(0);expect(ran.runs).toHaveLength(0);expect(ofType(ran.events,'error')[0]?.failure?.code).toBe('pace exceeded')}
+    }
+  })
+  it('11 · zero period limits and totals refuse before the first dispatch',async()=>{
+    const zero={requestsPerDay:0,invocationsPerDay:0,bytesPerDay:0}
+    for(const pace of [zero,{requestsPerDay:0},{invocationsPerDay:0},{bytesPerDay:0}]){
+      const ran=await play({policyProject:{pace},paceUsed:zero})
+      expect(ran.requests).toHaveLength(0);expect(ran.runs).toHaveLength(0)
+      expect(ofType(ran.events,'error')[0]?.failure?.code).toBe('pace exceeded')
+      expect(ofType(ran.events,'guardrail')[0]?.reason).toBe('policy refused')
     }
   })
   it('11 · a project may raise a child tier and a run alone may not',async()=>{

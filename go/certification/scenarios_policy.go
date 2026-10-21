@@ -178,7 +178,7 @@ func policyFindings(ctx context.Context, agent bool, play switchPlay) ([]Finding
 	}
 	out = append(out, f.list...)
 	f = findings{check: prefix + "pace"}
-	for _, used := range []int64{8, 11} {
+	for _, used := range []int64{8, 10, 11} {
 		run = base()
 		run.PolicyProject = runcontext.PolicyLayer{"pace": map[string]any{"requestsPerDay": 10, "warnAt": 0.8}}
 		run.PaceUsed = map[string]int64{"requestsPerDay": used}
@@ -199,15 +199,32 @@ func policyFindings(ctx context.Context, agent bool, play switchPlay) ([]Finding
 			f.fail("pace %d guardrail count %d", used, count)
 		}
 		failures := ofType(ran.Events, func(e contract.RunEvent) *contract.RunEventError { return e.Error })
-		if used == 11 {
+		if used >= 10 {
 			if len(failures) != 1 || failures[0].Failure == nil || failures[0].Failure.Code != "pace exceeded" {
 				f.fail("pace refusal has no pace exceeded class")
 			}
 		} else if len(failures) != 0 || len(ran.Requests)+len(ran.Invocations) != 1 {
 			f.fail("pace warning did not admit one request")
 		}
-		if used == 11 && (len(ran.Requests) > 0 || len(ran.Invocations) > 0) {
+		if used >= 10 && (len(ran.Requests) > 0 || len(ran.Invocations) > 0) {
 			f.fail("pace exceeded sent a request")
+		}
+	}
+	for _, keys := range [][]string{{"requestsPerDay", "invocationsPerDay", "bytesPerDay"}, {"requestsPerDay"}, {"invocationsPerDay"}, {"bytesPerDay"}} {
+		run = base()
+		pace := map[string]any{}
+		for _, key := range keys {
+			pace[key] = 0
+		}
+		run.PolicyProject = runcontext.PolicyLayer{"pace": pace}
+		run.PaceUsed = map[string]int64{"requestsPerDay": 0, "invocationsPerDay": 0, "bytesPerDay": 0}
+		ran, err = play(ctx, turns, run, low, nil)
+		if err != nil {
+			return nil, err
+		}
+		failures := ofType(ran.Events, func(e contract.RunEvent) *contract.RunEventError { return e.Error })
+		if len(failures) != 1 || failures[0].Failure == nil || failures[0].Failure.Code != "pace exceeded" || len(ran.Requests)+len(ran.Invocations) != 0 {
+			f.fail("zero pace %v did not refuse before dispatch", keys)
 		}
 	}
 	out = append(out, f.list...)
