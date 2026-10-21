@@ -30,9 +30,13 @@ var baseOutputPatterns = func() []OutputPattern {
 	}
 	return v.Patterns
 }()
+var recordGuardLabel = regexp.MustCompile(`\[redacted: [a-z][a-z0-9-]{0,63}\]|Output refused: [a-z][a-z0-9-]{0,63}\.`)
 var outputName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
 
 type OutputRefused struct{ Pattern string }
+type RecordsRefused struct{ *OutputRefused }
+
+func (e *RecordsRefused) Unwrap() error { return e.OutputRefused }
 
 func (e *OutputRefused) Error() string { return fmt.Sprintf("Output refused: %s.", e.Pattern) }
 func ReadOutputPatterns(value any) ([]OutputPattern, error) {
@@ -87,12 +91,15 @@ type outputCompiled struct {
 	pattern *CompiledPattern
 }
 type OutputGuard struct {
-	mu       sync.Mutex
-	Mode     string
-	patterns []outputCompiled
-	counts   func() map[string]int64
-	notices  []contract.RunEvent
+	DeclaredNames map[string]bool
+	mu            sync.Mutex
+	Mode          string
+	patterns      []outputCompiled
+	counts        func() map[string]int64
+	notices       []contract.RunEvent
 }
+
+func (g *OutputGuard) DeclaredName(name string) bool { return g.DeclaredNames[name] }
 
 func NewOutputGuard(members PolicyMembers, counts func() map[string]int64) (*OutputGuard, error) {
 	mode, _ := members["outputGuard"].Value.(string)
@@ -141,19 +148,31 @@ func (g *OutputGuard) TakeNotices() []contract.RunEvent {
 	g.notices = nil
 	return out
 }
-func (g *OutputGuard) record(where, name, action string, record bool) {
+func (g *OutputGuard) record(where, name, action string, record bool, markers ...*RecordMarker) {
+	if len(markers) > 0 && markers[0] != nil {
+		if action == "redact" {
+			markers[0].Redactions[name]++
+		}
+		return
+	}
 	if !record {
 		return
 	}
 	g.counts()[name]++
 	g.notices = append(g.notices, contract.RunEvent{OutputGuarded: &contract.RunEventOutputGuarded{Type: "output_guarded", Where: where, Pattern: name, Action: action}})
 }
-func (g *OutputGuard) refuse(where, name string, _ bool) error {
+func (g *OutputGuard) refuse(where, name string, _ bool, markers ...*RecordMarker) error {
 	record := true
-	g.record(where, name, "refuse", record)
+	g.record(where, name, "refuse", record, markers...)
 	if record {
 		reason := "output refused"
+		if len(markers) > 0 && markers[0] != nil {
+			where = "records"
+		}
 		g.notices = append(g.notices, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: where, Action: "refused", Reason: &reason, Detail: (&OutputRefused{name}).Error()}})
+	}
+	if len(markers) > 0 && markers[0] != nil {
+		return &RecordsRefused{&OutputRefused{name}}
 	}
 	return &OutputRefused{name}
 }
@@ -168,12 +187,12 @@ type outputMatch struct {
 	name              string
 }
 
-func (g *OutputGuard) text(s, where string, record bool, budget *PatternBudget) (string, error) {
+func (g *OutputGuard) text(s, where string, record bool, budget *PatternBudget, markers ...*RecordMarker) (string, error) {
 	buckets := [][]outputMatch{}
 	for order, p := range g.patterns {
 		ranges, ok := MatchRanges(p.pattern, s, budget)
 		if !ok {
-			return "", g.refuse(where, "work-bound", record)
+			return "", g.refuse(where, "work-bound", record, markers...)
 		}
 		bucket := []outputMatch{}
 		for _, r := range ranges {
@@ -216,9 +235,9 @@ func (g *OutputGuard) text(s, where string, record bool, budget *PatternBudget) 
 			}
 		}
 		if g.Mode == "refuse" {
-			return "", g.refuse(where, m.name, record)
+			return "", g.refuse(where, m.name, record, markers...)
 		}
-		g.record(where, m.name, "redact", record)
+		g.record(where, m.name, "redact", record, markers...)
 		out.WriteString(string(utf16.Decode(units[at:m.start])))
 		out.WriteString("[redacted: " + m.name + "]")
 		at = end
@@ -226,15 +245,15 @@ func (g *OutputGuard) text(s, where string, record bool, budget *PatternBudget) 
 	out.WriteString(string(utf16.Decode(units[at:])))
 	return out.String(), nil
 }
-func (g *OutputGuard) Text(s, where string, record bool) (string, error) {
+func (g *OutputGuard) Text(s, where string, record bool, markers ...*RecordMarker) (string, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.Mode == "off" {
 		return s, nil
 	}
-	return g.text(s, where, record, &PatternBudget{Steps: SearchSteps})
+	return g.text(s, where, record, &PatternBudget{Steps: SearchSteps}, markers...)
 }
-func (g *OutputGuard) JSON(raw json.RawMessage, where string, record bool) (json.RawMessage, error) {
+func (g *OutputGuard) JSON(raw json.RawMessage, where string, record bool, markers ...*RecordMarker) (json.RawMessage, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.Mode == "off" {
@@ -244,18 +263,37 @@ func (g *OutputGuard) JSON(raw json.RawMessage, where string, record bool) (json
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
 	if err := decoder.Decode(&value); err != nil || !json.Valid(raw) {
-		return nil, g.refuse(where, "invalid-output", record)
+		return nil, g.refuse(where, "invalid-output", record, markers...)
 	}
 	budget := &PatternBudget{Steps: SearchSteps}
 	var walk func(any) (any, error)
 	walk = func(v any) (any, error) {
 		switch x := v.(type) {
 		case string:
-			return g.text(x, where, record, budget)
+			if len(markers) > 0 && markers[0] != nil {
+				var out strings.Builder
+				at := 0
+				for _, span := range recordGuardLabel.FindAllStringIndex(x, -1) {
+					clean, err := g.text(x[at:span[0]], where, record, budget, markers...)
+					if err != nil {
+						return nil, err
+					}
+					out.WriteString(clean)
+					out.WriteString(x[span[0]:span[1]])
+					at = span[1]
+				}
+				clean, err := g.text(x[at:], where, record, budget, markers...)
+				if err != nil {
+					return nil, err
+				}
+				out.WriteString(clean)
+				return out.String(), nil
+			}
+			return g.text(x, where, record, budget, markers...)
 		case json.Number, bool, nil:
 			if where == "draft edit" {
 				raw, _ := json.Marshal(v)
-				clean, err := g.text(string(raw), where, record, budget)
+				clean, err := g.text(string(raw), where, record, budget, markers...)
 				if err != nil || clean != string(raw) {
 					return clean, err
 				}
@@ -273,7 +311,7 @@ func (g *OutputGuard) JSON(raw json.RawMessage, where string, record bool) (json
 		case map[string]any:
 			out := map[string]any{}
 			for _, k := range policyKeys(x) {
-				key, err := g.text(k, where, record, budget)
+				heldKey, err := walk(k)
 				if err != nil {
 					return nil, err
 				}
@@ -281,7 +319,7 @@ func (g *OutputGuard) JSON(raw json.RawMessage, where string, record bool) (json
 				if err != nil {
 					return nil, err
 				}
-				out[key] = clean
+				out[heldKey.(string)] = clean
 			}
 			return out, nil
 		default:

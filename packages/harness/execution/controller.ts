@@ -7,6 +7,7 @@ import {readCacheKey} from '../context/chat'
 import {MAX_TURNS} from '../engines/contract'
 import {utf8Bytes} from '../context/policy'
 import {ExecutionPaused,MAX_CHECKPOINT_BYTES,MAX_PROMPT_DIGESTS,readApprovalDecision,readExecution,refusedResult,unknownOutcome,validTaskSteps,type ExecutionCheckpoint} from './state'
+import {CHECKPOINT_SCHEMA,CRITIQUE_SCHEMA,PROVENANCE_SCHEMA,recordsPolicy,refuseExpired,writeRecord,type RecordGuard,type RecordsPolicy} from '../records'
 
 export const EXECUTION_INSTRUCTIONS = `TASK EXECUTION: For work requiring several stages, use update_plan to track concrete pending, in_progress and completed steps. Skip planning overhead for simple replies. Use the current accepted plan when present; do not repeatedly re-plan or ask the user to repeat an already authorized request. Update progress at meaningful boundaries, and preserve completed work across continuation. A task list is working state, not approval or proof: mark a step complete only when its required result exists, and distinguish a proposed change from a saved change. Keep a multi-stage task plan current; it estimates work but cannot grant more requests. An unsaved working object remains in the exact arguments of its completed operations. Continue from those retained arguments after validation or evaluation; rereading the saved workspace does not retrieve an unsaved proposal. Recheck the saved revision before applying changes. Use tool results already obtained; do not reread unchanged instructions or schemas or scan the entire conversation. On continuation, inspect the latest completed result and its exact arguments before doing more work. A newer saved workspace object takes precedence over an older chat draft when editing that object; preserve its identity. For a focused change, inspect the relevant contract once, make the smallest proposal, verify the affected behavior and return it. Do not restart discovery after context compaction. Before repeating a failed read, correct its arguments using the current context index. If blocked, state the exact missing information. When requests run low, finish the concrete result or call request_budget_increase with the reason and next concrete step. Desk owns budget extensions; this tool requests but never grants one. Never modify expected tests merely to match actual results. Current user instructions and host permissions remain authoritative.`
 
@@ -46,11 +47,14 @@ export class ExecutionController {
  private usageStarted=Date.now()
  private usageBound=false
  private usageSources=new Map<string,{calls:number;milliseconds:number;bytes:number}>()
- constructor(private session:EngineSession,private ledger:ContextLedger){}
+ private readonly recordPolicy:RecordsPolicy
+ recordGuard?:()=>RecordGuard|undefined
+ constructor(private session:EngineSession,private ledger:ContextLedger,members?:import('../policy').PolicyMembers){this.recordPolicy=recordsPolicy(members??{})}
  async initialize(){
   const requestKey=await contextDigest(JSON.stringify({request:this.session.context?.currentRequest??this.session.prompt,phase:this.session.context?.phase??'work',purpose:this.session.purpose??null}))
   const restored=readExecution(this.session.context?.execution)
   if(restored){
+   if(restored.retainUntil)refuseExpired(restored as {retainUntil:string})
    if(restored.requestKey!==requestKey||restored.phase!==(this.session.context?.phase??'work'))throw toolInputFailure('The request or execution phase changed. Start a new response with the current context.')
    // ADR-0008: a paused act call continues only with the person's decision for that call.
    const given=this.session.context?.approval
@@ -157,7 +161,8 @@ export class ExecutionController {
  }
  recordCompletion(result:import('../completion').ModelCompletion,phase:'work'|'synthesis'|'review'){
   const attempt=this.attempt;this.attempt=1
-  this.state.completions=[...(this.state.completions??[]),{request:this.state.used,phase,result,connection:this.usageConnection,role:this.usageRole,...(attempt>1?{attempt}:{})}]
+  const completion=writeRecord(PROVENANCE_SCHEMA,{request:this.state.used,phase,result,connection:this.usageConnection,role:this.usageRole,...(attempt>1?{attempt}:{})},this.recordPolicy,this.recordGuard?.())
+  this.state.completions=[...(this.state.completions??[]),completion]
   const row=this.usageRow('model')
   const entries=Object.entries(result).filter(([key,value])=>key.endsWith('Tokens')&&typeof value==='number') as [keyof import('./state').UsageTokens,number][]
   if(entries.length){row.tokens??={};for(const [key,value] of entries)row.tokens[key]=(row.tokens[key]??0)+value}
@@ -182,7 +187,12 @@ export class ExecutionController {
  beginAttempt(attempt:number){this.attempt=attempt}
  /** A refused attempt at a model request: its own row. */
  recordRefusal(phase:'work'|'synthesis'|'review',refused:{attempt:number;failure:import('../failures').AIFailure;waitMs?:number}){
-  this.state.completions=[...(this.state.completions??[]),{request:this.state.used,phase,result:{finishReason:'error'},connection:this.usageConnection,role:this.usageRole,...refused}]
+  const row=writeRecord(PROVENANCE_SCHEMA,{request:this.state.used,phase,result:{finishReason:'error' as const},connection:this.usageConnection,role:this.usageRole,...refused},this.recordPolicy,this.recordGuard?.())
+  this.state.completions=[...(this.state.completions??[]),row]
+ }
+ recordCritique(event:Extract<AssistantEvent,{type:'critique'}>):Extract<AssistantEvent,{type:'critique'}>{
+  const {schema:_,version:__,digest:___,retainUntil:____,...payload}=event
+  return writeRecord(CRITIQUE_SCHEMA,payload,this.recordPolicy,this.recordGuard?.())
  }
  clearReadCache(){this.cache.clear()}
  /**
@@ -235,7 +245,10 @@ export class ExecutionController {
  }
  snapshot(status=this.state.status){
   this.state.usage=this.usage()
-  const snapshot={...this.state,status,context:this.ledger.snapshot()}
+  const retain=this.state.retainUntil
+  const payload={...this.state,status,context:this.ledger.snapshot()}
+  delete payload.schema;delete payload.digest;delete payload.retainUntil
+  const snapshot=writeRecord(CHECKPOINT_SCHEMA,payload,this.recordPolicy,this.recordGuard?.(),new Date(),retain)
   if(utf8Bytes(JSON.stringify(snapshot))>MAX_CHECKPOINT_BYTES)throw toolInputFailure('The execution checkpoint is full. Completed work remains visible; start a focused follow-up before further work.')
   return structuredClone(snapshot)
  }

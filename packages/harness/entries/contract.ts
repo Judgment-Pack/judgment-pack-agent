@@ -24,6 +24,8 @@ export type { CriticCase, CaseComparison, CaseOutcome, CriticFigures } from '../
 
 export {resolvePolicy, PolicyRefusal, failoverRefusal} from '../policy'
 export type {ProviderFamily,ProviderRecord,CrossProvider,PolicyRole,PolicyLayer,PolicyMembers,PolicyConnection} from '../policy'
+export {exportRecords,recordDigest,recordsPolicy,refuseExpired,writeRecord,RecordsExpired,RECORD_DEFAULTS,CHECKPOINT_SCHEMA,PROVENANCE_SCHEMA,CRITIQUE_SCHEMA,EXPORT_SCHEMA} from '../records'
+export type {RecordsPolicy,RecordMembers,RecordGuard,ExportEntry,ExportManifest,RecordsExport,ExportWritten} from '../records'
 
 export type { Memory, MemoryAnswer, MemoryRecall, Memories } from '../memories'
 export { MEMORY_KINDS, REMEMBER, REMEMBER_SCHEMA } from '../memories'

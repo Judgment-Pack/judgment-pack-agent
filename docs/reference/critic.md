@@ -90,6 +90,10 @@ Open: a member the schema does not name is accepted.
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
 | `type` | yes | const `critique` |  |
+| `schema` |  | const (see schema) |  |
+| `version` |  | const `1` |  |
+| `digest` |  | `provenance.json $defs/recordDigest` |  |
+| `retainUntil` |  | `provenance.json $defs/retainUntil` |  |
 | `refuted` | yes | boolean |  |
 | `checks` | yes | array of object |  |
 | `checks[].tool` | yes | string |  |
@@ -99,6 +103,7 @@ Open: a member the schema does not name is accepted.
 | `incomplete` |  | array of string | The declared cases nothing compared, by id. Any makes refuted true and is named on the proposal's critique. |
 | `figures` |  | `provenance.json $defs/criticFigures` |  |
 | `provider` |  | `provenance.json $defs/provider` |  |
+| `records` |  | `provenance.json $defs/recordFigures` |  |
 
 ### A declared case
 

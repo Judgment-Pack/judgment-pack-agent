@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/export.json",
+  "title": "Records export manifest",
+  "description": "ADR records (#101). The closed export.json manifest beside the host-supplied records. The package has no record store.",
+  "type": "object",
+  "required": [
+    "schema",
+    "version",
+    "digest",
+    "retainUntil",
+    "createdAt",
+    "packageVersion",
+    "policy",
+    "records"
+  ],
+  "properties": {
+    "schema": {
+      "const": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/export.json"
+    },
+    "version": {
+      "const": 1
+    },
+    "digest": {
+      "$ref": "provenance.json#/$defs/recordDigest"
+    },
+    "retainUntil": {
+      "$ref": "provenance.json#/$defs/retainUntil"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "maxLength": 40
+    },
+    "packageVersion": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "policy": {
+      "type": "object",
+      "required": [
+        "retainDays",
+        "redactOnStore",
+        "exportFormat"
+      ],
+      "properties": {
+        "retainDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 36500
+        },
+        "redactOnStore": {
+          "type": "boolean"
+        },
+        "exportFormat": {
+          "const": "json"
+        }
+      },
+      "additionalProperties": false
+    },
+    "records": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": {
+        "$ref": "#/$defs/record"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "record": {
+      "type": "object",
+      "required": [
+        "schema",
+        "version",
+        "digest",
+        "retainUntil",
+        "bytes"
+      ],
+      "properties": {
+        "schema": {
+          "enum": [
+            "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/checkpoint.json",
+            "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/provenance.json",
+            "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-event.json#/$defs/critique"
+          ]
+        },
+        "version": {
+          "const": 1
+        },
+        "digest": {
+          "$ref": "provenance.json#/$defs/recordDigest"
+        },
+        "retainUntil": {
+          "$ref": "provenance.json#/$defs/retainUntil"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

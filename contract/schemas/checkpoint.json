@@ -20,8 +20,17 @@
     "context"
   ],
   "properties": {
+    "schema": {
+      "const": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/checkpoint.json"
+    },
     "version": {
       "const": 1
+    },
+    "digest": {
+      "$ref": "provenance.json#/$defs/recordDigest"
+    },
+    "retainUntil": {
+      "$ref": "provenance.json#/$defs/retainUntil"
     },
     "id": {
       "type": "string",
@@ -228,6 +237,9 @@
     },
     "outputGuard": {
       "$ref": "provenance.json#/$defs/outputGuard"
+    },
+    "records": {
+      "$ref": "provenance.json#/$defs/recordFigures"
     }
   },
   "additionalProperties": true,

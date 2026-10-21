@@ -14,7 +14,7 @@ One event of a run, from the adapter to the host, in order, discriminated by typ
 
 See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](critic.md), [skills.md](skills.md), [budget.md](budget.md), [reasons.md](reasons.md), [checkpoint.md](checkpoint.md).
 
-## The 31 kinds
+## The 32 kinds
 
 | Kind | Defined in | Required beyond type |
 | --- | --- | --- |
@@ -47,6 +47,7 @@ See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](crit
 | `edit_applied` | `run-event.json $defs/edit_applied` | `document`, `line`, `bytes`, `valid` |
 | `edit_refused` | `run-event.json $defs/edit_refused` | `reason` |
 | `output_guarded` | `run-event.json $defs/output_guarded` | `where`, `pattern`, `action` |
+| `export_written` | `run-event.json $defs/export_written` | `records`, `bytes`, `digest` |
 | `connection_switched` | `run-event.json $defs/connection_switched` | `role`, `from`, `to`, `reason` |
 | `usage` | `run-event.json $defs/usage` | `usage` |
 
@@ -270,7 +271,7 @@ Open: a member the schema does not name is accepted.
 | `tool` | yes | string |  |
 | `action` | yes | enum `rewrote`, `refused`, `narrowed` |  |
 | `detail` | yes | string |  |
-| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused`, `memory refused`, `edit refused`, `compaction refused`, `output refused`, `failover refused` |  |
+| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused`, `memory refused`, `edit refused`, `compaction refused`, `output refused`, `records expired`, `failover refused` |  |
 
 ### `thinking_unavailable`
 
@@ -307,6 +308,10 @@ Open: a member the schema does not name is accepted.
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
 | `type` | yes | const `critique` |  |
+| `schema` |  | const (see schema) |  |
+| `version` |  | const `1` |  |
+| `digest` |  | `provenance.json $defs/recordDigest` |  |
+| `retainUntil` |  | `provenance.json $defs/retainUntil` |  |
 | `refuted` | yes | boolean |  |
 | `checks` | yes | array of object |  |
 | `checks[].tool` | yes | string |  |
@@ -316,6 +321,7 @@ Open: a member the schema does not name is accepted.
 | `incomplete` |  | array of string | The declared cases nothing compared, by id. Any makes refuted true and is named on the proposal's critique. |
 | `figures` |  | `provenance.json $defs/criticFigures` |  |
 | `provider` |  | `provenance.json $defs/provider` |  |
+| `records` |  | `provenance.json $defs/recordFigures` |  |
 
 ### `proposal`
 
@@ -423,6 +429,19 @@ Closed: a member the schema does not name is refused.
 | `where` | yes | enum `message`, `proposal`, `tool argument`, `memory proposal`, `draft edit` |  |
 | `pattern` | yes | string (min length 1, max length 64, pattern `^[a-z][a-z0-9-]{0,63}$`) |  |
 | `action` | yes | enum `redact`, `refuse` |  |
+
+### `export_written`
+
+The host asked the package to produce a JSON export from records it supplied. No package store was read.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `type` | yes | const `export_written` |  |
+| `records` | yes | integer (min 0) |  |
+| `bytes` | yes | integer (min 1) |  |
+| `digest` | yes | `provenance.json $defs/recordDigest` |  |
 
 ### `connection_switched`
 

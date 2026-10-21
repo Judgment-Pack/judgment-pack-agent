@@ -1,4 +1,4 @@
-import {OutputGuard,outputWhere} from '../outputGuard'
+import {OutputGuard,RecordsRefused,outputWhere} from '../outputGuard'
 import {Drafts,isEdit,editRefusal,type AcceptedDocument} from '../edits'
 import { REMEMBER, rememberTool, recordRecall } from '../memories'
 import {canonicalJSON} from './chat'
@@ -286,7 +286,7 @@ export class SessionContext {
   this.suppliedConnections=new Set(Object.keys(session.policyConnections??{}))
   if(engine)this.named={models:named}
   this.resolvedPolicy=resolved.members;this.paceWarning=resolved.warning
-this.turn=session.context?.chat?.openTurn();this.objective=session.context?.objective;this.ledger=new ContextLedger(this.policy,this.turn);this.execution=new ExecutionController(session,this.ledger);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))
+this.turn=session.context?.chat?.openTurn();this.objective=session.context?.objective;this.ledger=new ContextLedger(this.policy,this.turn);this.execution=new ExecutionController(session,this.ledger,this.resolvedPolicy);this.execution.recordGuard=()=>((this as unknown as {output?:import('../records').RecordGuard}).output);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))
   for(const [name,member] of Object.entries(resolved.members))if(name.startsWith('budget.'))Object.assign(this.policy,{[name.slice(7)]:member.value})
   this.policy.criticDefault=String(resolved.members['critic.default']!.value)
   this.authorTier=resolved.members['models.author.reasoning']!.value as CriticTier
@@ -690,6 +690,8 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  const skills=await declareSkills(session.skills,declaredNames,context.policy,declared.sources)
  declared.sources.push(...skills.sources)
  await context.execution.initialize()
+ context.output=new OutputGuard(context.resolvedPolicy,()=>context.execution.state.outputGuard??={},event=>context.memoryNotice(event))
+ context.output.declaredNames=new Set([...session.tools,...session.hostTools].map(tool=>tool.name))
  context.restoreCompaction()
  // Reconcile only roles belonging to saved definition records whose approved digest changed.
  // Other policy members still compare exactly, including other sub-agent roles.
@@ -719,12 +721,11 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   context.execution.state.policy=structuredClone(context.resolvedPolicy)
  } else {
   context.execution.state.policy=structuredClone(context.resolvedPolicy)
-  try{await session.context?.checkpoint?.(context.execution.snapshot())}catch{throw failureError('storage','storage','not-started')}
+  try{await session.context?.checkpoint?.(context.execution.snapshot())}catch(error){if(!(error instanceof RecordsRefused))throw failureError('storage','storage','not-started')}
  }
  context.recordProvider('author')
  context.execution.useConnection(context.provider('author').connection,'author')
  context.carryMarker()
- context.output=new OutputGuard(context.resolvedPolicy,()=>context.execution.state.outputGuard??={},event=>context.memoryNotice(event))
  context.drafts=new Drafts(context.ledger,context.policy,()=>context.execution.state,event=>context.memoryNotice(event),()=>!context.criticRunning&&!session.context?.objective&&!session.childDefinition&&session.context?.phase!=='plan',async(text,signal)=>{context.admit('validate','runtime');signal.throwIfAborted();if(!session.tools.some(t=>t.name==='validate'))throw new Error('Runtime validate is not offered.');return session.callTool('validate',{content:text})},()=>context.marker,(value,where)=>context.output.value(value,where),session.signal,(where,pattern)=>context.output.refuse(where,pattern))
  await context.drafts.open(session.context?.objective||session.childDefinition?[]:session.context?.acceptedDocuments)
  context.execution.loadedDrafts=()=>context.drafts.section()
@@ -764,7 +765,8 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  }
  // ADR-0008: while an act call waits for the person's decision, no request is sent: the run ends paused.
  const held=()=>{if(context.execution.approvalAsked)throw new ApprovalPaused()}
- const model='model'in session?{...session.model,call:async(suffix:string,request:import('../engine').ModelRequest)=>{await session.context?.authorize?.(session.signal);const role=context.criticRunning?'critic':'author',binding=context.connection(role);context.execution.useConnection(context.provider(role).connection,role);if(request.method!=='GET'){held();context.execution.claim();await context.execution.recordPrompt(request.body);try{await session.context?.checkpoint?.(context.execution.snapshot())}catch{throw failureError('storage','storage','not-started')}}return (binding&&'model'in binding?binding.model:session.model).call(suffix,request)}}:undefined
+ const model='model'in session?{...session.model,call:async(suffix:string,request:import('../engine').ModelRequest)=>{await session.context?.authorize?.(session.signal);const role=context.criticRunning?'critic':'author',binding=context.connection(role);context.execution.useConnection(context.provider(role).connection,role);if(request.method!=='GET'){held();context.execution.claim();await context.execution.recordPrompt(request.body);try{await session.context?.checkpoint?.(context.execution.snapshot())}catch(error){if(!(error instanceof RecordsRefused))throw failureError('storage','storage','not-started')}}return (binding&&'model'in binding?binding.model:session.model).call(suffix,request)}}:undefined
  const agent='agent'in session?{...session.agent,run:async(request:import('../agent').AgentRequest,callbacks:import('../agent').AgentCallbacks)=>{await session.context?.authorize?.(callbacks.signal);held();const role=request.phase==='critic'?'critic':'author';context.execution.useConnection(context.provider(role).connection,role);let binding=context.connection(role);let selected=binding&&'agent'in binding?binding.agent:session.agent;const setting=selected.tiers?.[request.effort as 'low'|'medium'|'high'];if(setting)request={...request,effort:setting as import('../agent').CodexEffort};const {delegated:_delegated,...sent}=request;await context.execution.recordPrompt(JSON.stringify(sent));let reached=false;const watched={...callbacks,event:async(event:import('../agent').AgentEvent)=>{reached=true;return callbacks.event(event)},tool:async(call:import('../agent').AgentToolCall,signal:AbortSignal)=>{reached=true;return callbacks.tool(call,signal)}};try{return await selected.run(request,watched)}catch(cause){const failure=normalizeFailure(cause,'agent');if(reached||!(['unavailable','rate-limited','timeout'] as const).includes(failure.code as FailoverClass))throw cause;const switched=context.fallback(role,failure.code as FailoverClass,callbacks.connectionSwitched===undefined);if(!switched)throw cause;if(callbacks.connectionSwitched)await callbacks.connectionSwitched({type:'connection_switched',role,...switched,reason:failure.code as FailoverClass});binding=context.connection(role);selected=binding&&'agent'in binding?binding.agent:session.agent;await context.execution.recordPrompt(JSON.stringify(sent));return selected.run(request,callbacks)}}}:undefined
+ context.output.declaredNames=new Set([...session.tools,...hostTools].map(tool=>tool.name))
  return {context,session:{...session,...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{context.admit(name,'runtime',args);await session.context?.authorize?.(session.signal);args=context.output.value(args,'tool argument');context.claimTestCall(name);const call=()=>context.execution.wrapRead(name,a=>session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true,{runtime:true,offered:session.tools.some(t=>t.name===name)})(args);return context.sources?context.sources.runtime(call):call()}}}
 }

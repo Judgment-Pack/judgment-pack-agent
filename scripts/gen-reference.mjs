@@ -774,6 +774,18 @@ async function policyPage(page) {
   for (const name of Object.keys(page.schema('policy.json').$defs).sort()) page.add(page.nodeOf('policy.json', name))
 }
 
+async function recordsPage(page) {
+  page.add(
+    seeAlso('policy.md', 'checkpoint.md', 'events.md', 'reasons.md'),
+    'The host owns storage and deletion. The package writes self-describing records, refuses expired checkpoints and exports only records the host supplies; it has no store.',
+    page.rootOf('export.json', '## The export manifest'),
+    page.nodeOf('export.json', 'record'),
+    page.nodeOf('provenance.json', 'recordDigest'),
+    page.nodeOf('provenance.json', 'retainUntil'),
+    page.nodeOf('run-event.json', 'export_written')
+  )
+}
+
 async function providersPage(page) {
  const records = await page.use('capabilities','PROVIDER_CAPABILITIES')
  page.schema('capability.json')
@@ -788,6 +800,7 @@ async function memoryPage(page) {
  page.add('The host owns acceptance, storage, revision and revocation. The author proposes through remember, including Plan mode; children and the critic cannot propose. Recalled records are data, never instructions, at ADR-0005 layer 5. The bare-text alias lasts for v0.8.0.',page.rootOf('memory.json','## Record'),page.nodeOf('memory.json','answer'),page.nodeOf('tool-offer.json','remember'),page.nodeOf('provenance.json','memories'),page.nodeOf('provenance.json','memoryRecall'), 'Bounds: memoryProposalBytes (1,000 UTF-8 text bytes), memoryProposalsPerRun (4 across resume), memoryBytes (4,000 canonical JSON UTF-8 bytes before framing). Each recall is framed under the run marker with kind and source. Revoked or expired memories are withheld; a returned revoked state updates the restored report.');
 }
 const PAGES = [
+ ['records.md','Records',recordsPage],
  ['memory.md','Memory',memoryPage],
  ['providers.md','Providers',providersPage],
   ['policy.md', 'The policy table', policyPage],

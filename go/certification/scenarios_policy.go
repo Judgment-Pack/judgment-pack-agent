@@ -72,6 +72,7 @@ func policyFindings(ctx context.Context, agent bool, play switchPlay) ([]Finding
 			model = parentModel
 		}
 		values := map[string]any{"compaction": "index", "critic.default": "auto", "critic.reasoningFloor": "author",
+			"records.retainDays": 90, "records.redactOnStore": true, "records.exportFormat": "json",
 			"failover.classes":       []any{"unavailable", "rate-limited", "timeout"},
 			"models.author.provider": model, "models.critic.provider": model,
 			"models.compactor.provider": model,

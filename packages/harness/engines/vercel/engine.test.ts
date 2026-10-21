@@ -42,6 +42,7 @@ import toolOffer from '../../../../contract/schemas/tool-offer.json'
 import type { streamText } from 'ai'
 import type { AssistantEvent, AssistantSession, McpTool, ModelCall, McpToolResult } from '../../engine'
 import type { ExecutionCheckpoint } from '../../execution/state'
+import { PROVENANCE_SCHEMA } from '../../records'
 
 const TOOLS: McpTool[] = [
   { name: 'validate', description: 'check a document', inputSchema: { type: 'object' } },
@@ -2746,6 +2747,6 @@ describe('the allowance and the retry (agent#2)', () => {
     const checkpoints = events.flatMap((event) => (event.type === 'execution_checkpoint' ? [event.checkpoint] : []))
     const completions = checkpoints.at(-1)!.completions ?? []
     expect(completions[0]).toMatchObject({ request: 1, attempt: 1, failure: { code: 'rate-limited' } })
-    expect(completions.at(-1)).toEqual({ request: 3, phase: 'work', result: expect.objectContaining({ finishReason: 'stop' }), connection: 'a-model', role: 'author' })
+    expect(completions.at(-1)).toMatchObject({ request: 3, phase: 'work', result: { finishReason: 'stop' }, schema: PROVENANCE_SCHEMA, version: 1, digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/), retainUntil: expect.any(String), connection: 'a-model', role: 'author' })
   })
 })

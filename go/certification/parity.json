@@ -958,6 +958,13 @@
         ]
       },
       {
+        "check": "18 · records carry identity, lifetime and redaction; export binds their digests; expired resume is refused",
+        "go": [
+          "18 records",
+          "18 agent records"
+        ]
+      },
+      {
         "check": "20 qualifying failure switches once, rebuilds the request and emits the usage ledger",
         "go": ["20 switch", "20 usage", "20 agent switch", "20 agent usage"]
       },
@@ -979,7 +986,8 @@
       "packages/harness/certification/subagents.test.ts",
       "packages/harness/certification/memory-write.test.ts",
       "packages/harness/certification/proposal-edits.test.ts",
-      "packages/harness/certification/output-boundary.test.ts"
+      "packages/harness/certification/output-boundary.test.ts",
+      "packages/harness/certification/records.test.ts"
     ]
   },
   "delegation": {

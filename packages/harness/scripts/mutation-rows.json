@@ -4228,7 +4228,9 @@
    "file": "context/session.ts",
    "find": "if(typeof raw!=='string'||utf8Bytes(raw)>this.policy.summaryBytes)throw Error('The compactor returned no bounded summary.')",
    "replace": "if(typeof raw!=='string')throw Error('The compactor returned no bounded summary.')",
-   "tests": ["certification/scenarios.test.ts"],
+   "tests": [
+    "certification/scenarios.test.ts"
+   ],
    "status": "caught",
    "origin": "agent#99 fix round"
   },
@@ -4237,7 +4239,9 @@
    "file": "context/session.ts",
    "find": "frameBlock('context compaction summary',encoded({summary:answer,digests,index:indexed===undefined?replacement:JSON.parse(indexed)}),this.marker)",
    "replace": "encoded({summary:answer,digests,index:indexed===undefined?replacement:JSON.parse(indexed)})",
-   "tests": ["certification/scenarios.test.ts"],
+   "tests": [
+    "certification/scenarios.test.ts"
+   ],
    "status": "caught",
    "origin": "agent#99"
   },
@@ -4246,7 +4250,9 @@
    "file": "context/session.ts",
    "find": "encoded({summary:answer,digests,index:indexed===undefined?replacement:JSON.parse(indexed)})",
    "replace": "encoded({summary:answer,index:indexed===undefined?replacement:JSON.parse(indexed)})",
-   "tests": ["certification/scenarios.test.ts"],
+   "tests": [
+    "certification/scenarios.test.ts"
+   ],
    "status": "caught",
    "origin": "agent#99"
   },
@@ -4255,7 +4261,9 @@
    "file": "context/session.ts",
    "find": "}catch(cause){this.notices.push({type:'guardrail'",
    "replace": "}catch(cause){throw cause;this.notices.push({type:'guardrail'",
-   "tests": ["certification/scenarios.test.ts"],
+   "tests": [
+    "certification/scenarios.test.ts"
+   ],
    "status": "caught",
    "origin": "agent#99"
   },
@@ -4264,7 +4272,9 @@
    "file": "context/session.ts",
    "find": "return [messages[0]!,{role:'user',content:replacement},...messages.slice(choice.end)]",
    "replace": "return [{role:'user',content:replacement},messages[0]!,...messages.slice(choice.end)]",
-   "tests": ["certification/scenarios.test.ts"],
+   "tests": [
+    "certification/scenarios.test.ts"
+   ],
    "status": "caught",
    "origin": "agent#99"
   },
@@ -4342,7 +4352,9 @@
    "file": "session.ts",
    "find": "const delivered = guard ? guard(event) : event",
    "replace": "const delivered = event",
-   "tests": ["certification/output-boundary.test.ts"],
+   "tests": [
+    "certification/output-boundary.test.ts"
+   ],
    "status": "caught",
    "origin": "agent#100 fix round 2",
    "note": "Go twin: bypass noticeGuard in Gate.emitNotice; both TestOutputBoundaryOnAgent and TestOutputBoundaryOnModel catch the unguarded notice."
@@ -4352,10 +4364,71 @@
    "file": "context/managed.ts",
    "find": "if(declaredNames.has(name))return name",
    "replace": "if(true)return name",
-   "tests": ["certification/output-boundary.test.ts"],
+   "tests": [
+    "certification/output-boundary.test.ts"
+   ],
    "status": "caught",
    "origin": "agent#100 fix round 3",
    "note": "Go twin: return the unchanged name from Boundary.guardName; both scenario 17 adapter tests catch call and checkpoint leaks."
+  },
+  {
+   "name": "records lifetime not carried",
+   "file": "records.ts",
+   "find": ",retainUntil:keepRetainUntil??retainUntil(policy,now)",
+   "replace": "",
+   "tests": [
+    "records.test.ts",
+    "certification/records.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR records (#101)"
+  },
+  {
+   "name": "records redaction skipped on store",
+   "file": "records.ts",
+   "find": "if(policy.redactOnStore&&guard)guardRecord(record,guard,figures)",
+   "replace": "if(false&&guard)guardRecord(record,guard,figures)",
+   "tests": [
+    "records.test.ts",
+    "certification/records.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR records (#101)"
+  },
+  {
+   "name": "records manifest digest wrong",
+   "file": "records.ts",
+   "find": "digest:recordDigest(body)",
+   "replace": "digest:'sha256:'+('0'.repeat(64))",
+   "tests": [
+    "records.test.ts",
+    "certification/records.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR records (#101)"
+  },
+  {
+   "name": "records expired resume admitted",
+   "file": "records.ts",
+   "find": "if(Date.parse(record.retainUntil)<=now.getTime())throw new RecordsExpired()",
+   "replace": "if(false)throw new RecordsExpired()",
+   "tests": [
+    "records.test.ts",
+    "certification/records.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR records (#101)"
+  },
+  {
+   "name": "records marker channel ignored",
+   "file": "outputGuard.ts",
+   "find": "if(marker){",
+   "replace": "if(false&&marker){",
+   "tests": [
+    "certification/records.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR-0018 (#101)"
   },
   {
    "name": "provider failover treats refusal as qualifying",
