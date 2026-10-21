@@ -62,6 +62,7 @@ var AgentChecks = []AgentCheck{
 	{Group: "scenario 9", Names: AgentSkillsNames, Run: agentSkillsChecks},
 	{Group: "scenario 10", Names: AgentSwitchNames, Run: agentSwitchChecks},
 	{Group: "scenario 15", Names: AgentProposalEditNames, Run: agentProposalEditChecks},
+	{Group: "scenario 16", Names: compactionNames, Run: agentCompactionChecks},
 	{Group: "scenario 14", Names: AgentMemoryWriteNames, Run: agentMemoryWriteChecks},
 	{Group: "scenario 13", Names: AgentSubagentNames, Run: agentSubagentChecks},
 	{Group: "scenario 12", Names: AgentProviderNames, Run: agentProviderChecks},

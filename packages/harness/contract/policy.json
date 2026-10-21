@@ -1,4 +1,5 @@
 {
+  "compaction": "index",
   "budget": {
     "version": 1,
     "maxInputBytes": 180000,
@@ -8,6 +9,7 @@
     "readBytes": 6000,
     "retainedBytes": 8388608,
     "recentMessages": 8,
+    "summaryBytes": 4000,
     "historyBytes": 32000,
     "briefBytes": 8000,
     "memoryBytes": 4000,
@@ -18,7 +20,12 @@
     "default": "auto",
     "reasoningFloor": "author"
   },
-  "models": {},
+  "models": {
+    "compactor": {
+      "reasoning": "low",
+      "provider": "same"
+    }
+  },
   "concurrency": {
     "children": 1,
     "requests": 1

@@ -1,0 +1,21 @@
+{
+  "description": "ADR-0016 failed compactor request: the run records compaction refused and continues with the index. Written by hand.",
+  "schema": "run-event.json",
+  "source": {"harness": {"repository": "Judgment-Pack/judgment-pack-agent", "package": "packages/harness"}, "files": ["packages/harness/context/session.ts"]},
+  "items": [
+    {
+      "type": "guardrail",
+      "tool": "models.compactor",
+      "action": "refused",
+      "detail": "The compactor request failed; the deterministic index was used and the run continued.",
+      "reason": "compaction refused"
+    },
+    {
+      "type": "compacted",
+      "turns": 4,
+      "bytes": 612,
+      "digest": "1111111111111111111111111111111111111111111111111111111111111111",
+      "mode": "index"
+    }
+  ]
+}

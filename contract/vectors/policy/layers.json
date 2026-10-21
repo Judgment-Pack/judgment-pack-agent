@@ -15,8 +15,10 @@
       "tools": [],
       "hostTools": [],
       "policy": {
+        "compaction": "summary",
         "budget": {
-          "readBytes": 1024
+          "readBytes": 1024,
+          "summaryBytes": 4000
         },
         "critic": {
           "default": "on"
@@ -24,6 +26,10 @@
         "models": {
           "author": {
             "reasoning": "ultra"
+          },
+          "compactor": {
+            "reasoning": "low",
+            "provider": "same"
           }
         },
         "concurrency": {
@@ -59,6 +65,13 @@
         "requestsPerDay": 48,
         "invocationsPerDay": 2,
         "bytesPerDay": 300
+      }
+    },
+    {
+      "tools": [],
+      "hostTools": [],
+      "policy": {
+        "compaction": "index"
       }
     }
   ]

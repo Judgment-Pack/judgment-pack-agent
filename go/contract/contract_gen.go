@@ -81,6 +81,8 @@ var Registry = map[string]func() any{
 	"provenance.json#/$defs/sha256":                 func() any { return new(string) },
 	"provenance.json#/$defs/requestKey":             func() any { return new(string) },
 	"provenance.json#/$defs/promptDigest":           func() any { return new(ProvenancePromptDigest) },
+	"provenance.json#/$defs/compactionSummary":      func() any { return new(ProvenanceCompactionSummary) },
+	"provenance.json#/$defs/compactionReport":       func() any { return new(ProvenanceCompactionReport) },
 	"provenance.json#/$defs/engine":                 func() any { return new(string) },
 	"provenance.json#/$defs/criticFigures":          func() any { return new(ProvenanceCriticFigures) },
 	"provenance.json#/$defs/tokenFigures":           func() any { return new(ProvenanceTokenFigures) },
@@ -106,6 +108,7 @@ var Registry = map[string]func() any{
 	"question.json#/$defs/saved":                    func() any { return new(QuestionSaved) },
 	"question.json#/$defs/formatFailure":            func() any { return new(QuestionFormatFailure) },
 	"run-event.json":                                func() any { return new(RunEvent) },
+	"run-event.json#/$defs/compacted":               func() any { return new(RunEventCompacted) },
 	"run-event.json#/$defs/execution_checkpoint":    func() any { return new(RunEventExecutionCheckpoint) },
 	"run-event.json#/$defs/budget_paused":           func() any { return new(RunEventBudgetPaused) },
 	"run-event.json#/$defs/approval_requested":      func() any { return new(RunEventApprovalRequested) },
@@ -346,6 +349,7 @@ type Budget struct {
 	ReadBytes                int64   `json:"readBytes"`
 	RetainedBytes            int64   `json:"retainedBytes"`
 	RecentMessages           int64   `json:"recentMessages"`
+	SummaryBytes             int64   `json:"summaryBytes"`
 	HistoryBytes             int64   `json:"historyBytes"`
 	BriefBytes               int64   `json:"briefBytes"`
 	MemoryBytes              int64   `json:"memoryBytes"`
@@ -385,7 +389,7 @@ type Budget struct {
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var budgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "adversarialReview", "criticDefault", "criticReasoningFloor", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds", "skillBytes", "skillsPerRun", "skillsCatalogueBytes", "cataloguedSkills", "cataloguedSubagents", "subagentCatalogueBytes", "memoryProposalBytes", "memoryProposalsPerRun", "editsPerTurn", "editBytes", "proposalBytes"}
+var budgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "summaryBytes", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "adversarialReview", "criticDefault", "criticReasoningFloor", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds", "skillBytes", "skillsPerRun", "skillsCatalogueBytes", "cataloguedSkills", "cataloguedSubagents", "subagentCatalogueBytes", "memoryProposalBytes", "memoryProposalsPerRun", "editsPerTurn", "editBytes", "proposalBytes"}
 
 // UnmarshalJSON decodes a Budget object and keeps the members the schema does not name.
 func (v *Budget) UnmarshalJSON(data []byte) error {
@@ -1080,13 +1084,14 @@ type Checkpoint struct {
 	Critic        *CheckpointCritic           `json:"critic,omitzero"`
 	Policy        map[string]PolicyMember     `json:"policy,omitzero"`
 	CrossProvider []ProvenanceCrossProvider   `json:"crossProvider,omitzero"`
+	Compaction    *ProvenanceCompactionReport `json:"compaction,omitzero"`
 	Memories      *ProvenanceMemories         `json:"memories,omitzero"`
 	Draft         *CheckpointDraft            `json:"draft,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var checkpointMembers = []string{"version", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "memories", "draft"}
+var checkpointMembers = []string{"version", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "compaction", "memories", "draft"}
 
 // UnmarshalJSON decodes a Checkpoint object and keeps the members the schema does not name.
 func (v *Checkpoint) UnmarshalJSON(data []byte) error {
@@ -2766,6 +2771,7 @@ func (v MemorySource) MarshalJSON() ([]byte, error) {
 // Dynamic roles inherit the author unless explicitly set. Unset members without a table or
 // host-derived default are refused at admission. Model-visible text never supplies a layer.
 type Policy struct {
+	Compaction  *string            `json:"compaction,omitzero"`
 	Budget      *PolicyBudget      `json:"budget,omitzero"`
 	Critic      *PolicyCritic      `json:"critic,omitzero"`
 	Models      *PolicyModels      `json:"models,omitzero"`
@@ -2774,7 +2780,7 @@ type Policy struct {
 	TaskClass   *string            `json:"taskClass,omitzero"`
 }
 
-var policyMembers = []string{"budget", "critic", "models", "concurrency", "pace", "taskClass"}
+var policyMembers = []string{"compaction", "budget", "critic", "models", "concurrency", "pace", "taskClass"}
 
 // UnmarshalJSON decodes a Policy object and refuses a member the closed schema does not name.
 func (v *Policy) UnmarshalJSON(data []byte) error {
@@ -2805,6 +2811,7 @@ type PolicyBudget struct {
 	ReadBytes                *int64 `json:"readBytes,omitzero"`
 	RetainedBytes            *int64 `json:"retainedBytes,omitzero"`
 	RecentMessages           *int64 `json:"recentMessages,omitzero"`
+	SummaryBytes             *int64 `json:"summaryBytes,omitzero"`
 	HistoryBytes             *int64 `json:"historyBytes,omitzero"`
 	BriefBytes               *int64 `json:"briefBytes,omitzero"`
 	MemoryBytes              *int64 `json:"memoryBytes,omitzero"`
@@ -2839,7 +2846,7 @@ type PolicyBudget struct {
 	ProposalBytes            *int64 `json:"proposalBytes,omitzero"`
 }
 
-var policyBudgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds", "skillBytes", "skillsPerRun", "skillsCatalogueBytes", "cataloguedSkills", "cataloguedSubagents", "subagentCatalogueBytes", "memoryProposalBytes", "memoryProposalsPerRun", "editsPerTurn", "editBytes", "proposalBytes"}
+var policyBudgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "summaryBytes", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds", "skillBytes", "skillsPerRun", "skillsCatalogueBytes", "cataloguedSkills", "cataloguedSubagents", "subagentCatalogueBytes", "memoryProposalBytes", "memoryProposalsPerRun", "editsPerTurn", "editBytes", "proposalBytes"}
 
 // UnmarshalJSON decodes a PolicyBudget object and refuses a member the closed schema does not name.
 func (v *PolicyBudget) UnmarshalJSON(data []byte) error {
@@ -2945,12 +2952,13 @@ func (v PolicyMember) MarshalJSON() ([]byte, error) {
 type PolicyModels struct {
 	Author      *PolicyRole              `json:"author,omitzero"`
 	Critic      *PolicyRole              `json:"critic,omitzero"`
+	Compactor   *PolicyRole              `json:"compactor,omitzero"`
 	TaskClasses *PolicyModelsTaskClasses `json:"taskClasses,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var policyModelsMembers = []string{"author", "critic", "taskClasses"}
+var policyModelsMembers = []string{"author", "critic", "compactor", "taskClasses"}
 
 // UnmarshalJSON decodes a PolicyModels object and keeps the members the schema does not name.
 func (v *PolicyModels) UnmarshalJSON(data []byte) error {
@@ -3211,6 +3219,66 @@ func (v *ProvenanceChildFigures) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a ProvenanceChildFigures object.
 func (v ProvenanceChildFigures) MarshalJSON() ([]byte, error) {
 	type plain ProvenanceChildFigures
+	return encodeObject(plain(v), nil)
+}
+
+// From provenance.json#/$defs/compactionReport. ADR-0016's run report row, carried in the
+// checkpoint.
+type ProvenanceCompactionReport struct {
+	Mode      string                        `json:"mode"`
+	Summaries []ProvenanceCompactionSummary `json:"summaries"`
+}
+
+var provenanceCompactionReportMembers = []string{"mode", "summaries"}
+
+// UnmarshalJSON decodes a ProvenanceCompactionReport object and refuses a member the closed schema does not name.
+func (v *ProvenanceCompactionReport) UnmarshalJSON(data []byte) error {
+	type plain ProvenanceCompactionReport
+	var p plain
+	extra, err := decodeObject(data, &p, provenanceCompactionReportMembers, true)
+	if err != nil {
+		return errorf("ProvenanceCompactionReport: %w", err)
+	}
+	*v = ProvenanceCompactionReport(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ProvenanceCompactionReport object.
+func (v ProvenanceCompactionReport) MarshalJSON() ([]byte, error) {
+	type plain ProvenanceCompactionReport
+	return encodeObject(plain(v), nil)
+}
+
+// From provenance.json#/$defs/compactionSummary. One ADR-0016 replacement carried through a
+// resume. digest identifies the framed replacement; digests identify the original turns it
+// replaced.
+type ProvenanceCompactionSummary struct {
+	Digest  string   `json:"digest"`
+	Turns   int64    `json:"turns"`
+	Bytes   int64    `json:"bytes"`
+	Summary string   `json:"summary"`
+	Digests []string `json:"digests"`
+}
+
+var provenanceCompactionSummaryMembers = []string{"digest", "turns", "bytes", "summary", "digests"}
+
+// UnmarshalJSON decodes a ProvenanceCompactionSummary object and refuses a member the closed schema does not name.
+func (v *ProvenanceCompactionSummary) UnmarshalJSON(data []byte) error {
+	type plain ProvenanceCompactionSummary
+	var p plain
+	extra, err := decodeObject(data, &p, provenanceCompactionSummaryMembers, true)
+	if err != nil {
+		return errorf("ProvenanceCompactionSummary: %w", err)
+	}
+	*v = ProvenanceCompactionSummary(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ProvenanceCompactionSummary object.
+func (v ProvenanceCompactionSummary) MarshalJSON() ([]byte, error) {
+	type plain ProvenanceCompactionSummary
 	return encodeObject(plain(v), nil)
 }
 
@@ -3919,6 +3987,8 @@ type RunEvent struct {
 	BudgetPaused *RunEventBudgetPaused
 	// ApprovalRequested is set where type is "approval_requested".
 	ApprovalRequested *RunEventApprovalRequested
+	// Compacted is set where type is "compacted".
+	Compacted *RunEventCompacted
 	// SkillLoaded is set where type is "skill_loaded".
 	SkillLoaded *RunEventSkillLoaded
 	// SkillUnloaded is set where type is "skill_unloaded".
@@ -3988,6 +4058,9 @@ func (v *RunEvent) UnmarshalJSON(data []byte) error {
 		case "approval_requested":
 			v.ApprovalRequested = new(RunEventApprovalRequested)
 			return json.Unmarshal(data, v.ApprovalRequested)
+		case "compacted":
+			v.Compacted = new(RunEventCompacted)
+			return json.Unmarshal(data, v.Compacted)
 		case "skill_loaded":
 			v.SkillLoaded = new(RunEventSkillLoaded)
 			return json.Unmarshal(data, v.SkillLoaded)
@@ -4077,6 +4150,9 @@ func (v RunEvent) MarshalJSON() ([]byte, error) {
 	}
 	if v.ApprovalRequested != nil {
 		set = append(set, v.ApprovalRequested)
+	}
+	if v.Compacted != nil {
+		set = append(set, v.Compacted)
 	}
 	if v.SkillLoaded != nil {
 		set = append(set, v.SkillLoaded)
@@ -4415,6 +4491,38 @@ func (v *RunEventCaseOutcomeOption2) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a RunEventCaseOutcomeOption2 object.
 func (v RunEventCaseOutcomeOption2) MarshalJSON() ([]byte, error) {
 	type plain RunEventCaseOutcomeOption2
+	return encodeObject(plain(v), nil)
+}
+
+// From run-event.json#/$defs/compacted. ADR-0016: the visible marker that one context compaction
+// replaced complete turns. digest is the digest of the framed replacement; mode says whether the
+// deterministic index or a model-authored summary was used.
+type RunEventCompacted struct {
+	Type   string `json:"type"`
+	Turns  int64  `json:"turns"`
+	Bytes  int64  `json:"bytes"`
+	Digest string `json:"digest"`
+	Mode   string `json:"mode"`
+}
+
+var runEventCompactedMembers = []string{"type", "turns", "bytes", "digest", "mode"}
+
+// UnmarshalJSON decodes a RunEventCompacted object and refuses a member the closed schema does not name.
+func (v *RunEventCompacted) UnmarshalJSON(data []byte) error {
+	type plain RunEventCompacted
+	var p plain
+	extra, err := decodeObject(data, &p, runEventCompactedMembers, true)
+	if err != nil {
+		return errorf("RunEventCompacted: %w", err)
+	}
+	*v = RunEventCompacted(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunEventCompacted object.
+func (v RunEventCompacted) MarshalJSON() ([]byte, error) {
+	type plain RunEventCompacted
 	return encodeObject(plain(v), nil)
 }
 
