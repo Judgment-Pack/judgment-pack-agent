@@ -37,7 +37,8 @@
             "requests": 1,
             "invocations": 0,
             "milliseconds": 12,
-            "bytes": 1024
+            "bytes": 1024,
+            "model": "primary-model"
           },
           {
             "source": "model",
@@ -50,10 +51,86 @@
             "tokens": {
               "inputTokens": 240,
               "outputTokens": 32
+            },
+            "model": "backup-model"
+          },
+          {
+            "source": "model",
+            "connection": "child-backup",
+            "model": "analysis-model",
+            "role": "child.analyze",
+            "requests": 1,
+            "invocations": 0,
+            "milliseconds": 3,
+            "bytes": 50,
+            "tokens": {
+              "inputTokens": 10,
+              "outputTokens": 5
             }
           }
         ]
-      }
+      },
+      "failover": [
+        {
+          "role": "author",
+          "connection": "backup",
+          "history": [
+            {
+              "from": "primary",
+              "to": "backup",
+              "reason": "unavailable"
+            }
+          ],
+          "consumed": 1
+        },
+        {
+          "role": "critic",
+          "connection": "review-backup",
+          "history": [
+            {
+              "from": "review-primary",
+              "to": "review-backup",
+              "reason": "timeout"
+            }
+          ],
+          "consumed": 1
+        },
+        {
+          "role": "child.analyze",
+          "connection": "child-backup",
+          "history": [
+            {
+              "from": "child-primary",
+              "to": "child-backup",
+              "reason": "rate-limited"
+            }
+          ],
+          "consumed": 1
+        }
+      ],
+      "childUsage": [
+        {
+          "id": "child-run",
+          "usage": {
+            "rows": [
+              {
+                "source": "model",
+                "connection": "child-backup",
+                "model": "analysis-model",
+                "role": "child.analyze",
+                "requests": 1,
+                "invocations": 0,
+                "milliseconds": 3,
+                "bytes": 50,
+                "tokens": {
+                  "inputTokens": 10,
+                  "outputTokens": 5
+                }
+              }
+            ]
+          }
+        }
+      ]
     }
   ]
 }

@@ -4539,8 +4539,8 @@
   {
    "name": "provider failover treats refusal as qualifying",
    "file": "engines/vercel/retry.ts",
-   "find": "if(switched||!(['unavailable','rate-limited','timeout'] as const).includes(failure.code as FailoverClass))return false",
-   "replace": "if(switched||!(['unavailable','rate-limited','timeout','permission'] as readonly string[]).includes(failure.code))return false",
+   "find": "if(!(['unavailable','rate-limited','timeout'] as const).includes(failure.code as FailoverClass))return false",
+   "replace": "if(!(['unavailable','rate-limited','timeout','permission'] as readonly string[]).includes(failure.code))return false",
    "tests": ["engines/vercel/retry.test.ts"],
    "status": "caught",
    "origin": "agent#104"
@@ -4569,6 +4569,40 @@
    "find": "if (family(id as string) !== family(selected!)) refuse(fallbackName, 'cross-family fallback is refused')",
    "replace": "if (family(id as string) !== family(selected!)) void fallbackName",
    "tests": ["policy.test.ts", "certification/providers.test.ts"],
+   "status": "caught",
+   "origin": "agent#104"
+  },
+  {
+   "name": "failover restore removed",
+   "file": "context/session.ts",
+   "find": " context.restoreFailover()",
+   "replace": " void context",
+   "tests": [
+    "certification/providers.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#104"
+  },
+  {
+   "name": "child usage dropped",
+   "file": "execution/controller.ts",
+   "find": "  this.state.childUsage??=[]",
+   "replace": "  return",
+   "tests": [
+    "execution/execution.test.ts",
+    "certification/providers.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#104"
+  },
+  {
+   "name": "failover exhaustion refusal removed",
+   "file": "engines/vercel/retry.ts",
+   "find": "if(switched){options.onExhausted?.(failure.code as FailoverClass);return false}",
+   "replace": "if(switched){return false}",
+   "tests": [
+    "certification/providers.test.ts"
+   ],
    "status": "caught",
    "origin": "agent#104"
   }

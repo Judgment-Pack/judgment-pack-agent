@@ -211,7 +211,7 @@ func (c *coordinator) childAgent(task *contract.DelegatedTask, model string, m *
 				return err
 			}
 			c.edit(func() { task.Attempts++ })
-			return c.durable(ctx)
+			return c.accountChild(ctx, task, m)
 		}}
 }
 
@@ -235,6 +235,8 @@ func (c *coordinator) durable(ctx context.Context) error {
 // host's durable callback (its acknowledgement awaited) and delivered as a durable
 // execution_checkpoint. A run the host does not track has nothing to save.
 func (c *coordinator) save(ctx context.Context) error {
+	c.usageMu.Lock()
+	defer c.usageMu.Unlock()
 	var state contract.Checkpoint
 	c.shared.mu.Lock()
 	live := c.shared.parent
@@ -245,7 +247,9 @@ func (c *coordinator) save(ctx context.Context) error {
 	c.emitMu.Unlock()
 	switch {
 	case open && live != nil && c.isTracked():
+		c.shared.mu.Lock()
 		held, err := live.Snapshot("")
+		c.shared.mu.Unlock()
 		if err != nil {
 			return err
 		}
@@ -255,10 +259,16 @@ func (c *coordinator) save(ctx context.Context) error {
 		// The parent's invocation has returned and its children run: their source calls are in the
 		// parent's rows (ADR-0006), which the last checkpoint, a copy, may not hold yet.
 		if live != nil {
+			c.shared.mu.Lock()
 			state.Sources = live.Sources.Rows(state.Sources)
+			usage := live.Execution.Usage()
+			state.Usage = &usage
+			data, _ := json.Marshal(live.Execution.State.ChildUsage)
+			_ = json.Unmarshal(data, &state.ChildUsage)
 			if live.Output != nil {
 				state.OutputGuard = live.Output.Counts()
 			}
+			c.shared.mu.Unlock()
 		}
 	default:
 		return nil

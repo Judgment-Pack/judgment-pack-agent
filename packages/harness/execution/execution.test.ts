@@ -10,6 +10,26 @@ describe('shared execution continuity',()=>{
   const saved=usageCheckpoint.items[0]
   expect(readExecution(JSON.parse(JSON.stringify(saved)))?.usage).toEqual(saved.usage)
  })
+ it('refuses malformed switch and child usage checkpoint members',()=>{
+  for(const change of [
+   (s:any)=>{s.failover[0].consumed=2},
+   (s:any)=>{s.failover[0].history[0].reason='permission'},
+   (s:any)=>{delete s.failover[0].connection},
+   (s:any)=>{s.childUsage[0].id=''},
+   (s:any)=>{s.usage.rows[0].model='x'.repeat(201)}
+  ]){const saved=structuredClone(usageCheckpoint.items[0]);change(saved);expect(()=>readExecution(saved)).toThrow(/invalid/)}
+ })
+ it('child usage survives resume and repeated snapshots without double counting',async()=>{
+  const input=base(),ready=await contextualSession(input)
+  const usage=usageCheckpoint.items[0]!.childUsage[0]!.usage
+  ready.context.execution.mergeChildUsage('child-run',usage,'child.analyze')
+  ready.context.execution.mergeChildUsage('child-run',usage,'child.analyze')
+  const saved=ready.context.execution.snapshot('stopped')
+  const resumed=await contextualSession({...input,context:{...input.context,execution:saved}})
+  resumed.context.execution.mergeChildUsage('child-run',usage,'child.analyze')
+  expect(resumed.context.execution.usage().rows.filter(r=>r.role==='child.analyze')).toEqual(usage.rows)
+  expect(resumed.context.execution.snapshot().childUsage).toEqual(saved.childUsage)
+ })
  it('attributes source deltas to the connection and role active when they ran',async()=>{
   const ready=await contextualSession(base()),execution=ready.context.execution
   execution.state.sources=[{source:'runtime',kind:'runtime',calls:1,refused:0,proposed:0,bytes:30,milliseconds:4}]

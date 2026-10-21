@@ -84,6 +84,7 @@ export function retryingCall(
     wait?: (ms: number, signal: AbortSignal) => Promise<void>
     now?: () => number
     /** The next same-family connection, once for this logical request. */
+    onExhausted?: (reason:FailoverClass)=>void
     fallback?: (reason: FailoverClass) => FailoverTarget | undefined
     /** Emitted before the fallback request is sent. */
     onSwitch?: (switched: Omit<FailoverTarget,'call'> & {reason:FailoverClass}) => void | Promise<void>
@@ -94,7 +95,8 @@ export function retryingCall(
   return async (suffix, request) => {
     let active=call, switched=false
     const switchTo=async(failure:AIFailure):Promise<boolean>=>{
-      if(switched||!(['unavailable','rate-limited','timeout'] as const).includes(failure.code as FailoverClass))return false
+      if(!(['unavailable','rate-limited','timeout'] as const).includes(failure.code as FailoverClass))return false
+      if(switched){options.onExhausted?.(failure.code as FailoverClass);return false}
       const next=options.fallback?.(failure.code as FailoverClass)
       if(!next)return false
       switched=true;active=next.call??call

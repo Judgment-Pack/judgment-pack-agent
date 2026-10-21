@@ -23,8 +23,17 @@ For one logical request, the ordinary refusal retry rule runs first. If the fina
 failure has a qualifying class, the adapter sends the complete request to the
 next fallback, emits `connection_switched {role, from, to, reason}` before that
 dispatch, and rebuilds the stable prefix through that connection. The fallback's
-retry count starts at one. A request switches at most once. A refusal, content
-filter, invalid request, or any class outside the policy never switches.
+retry count starts at one. A request switches at most once. When that bound or
+the configured fallback chain is exhausted, a qualifying failure emits a
+`failover refused` guardrail and follows the ordinary terminal failure path.
+A refusal, content filter, invalid request, or any class outside the policy never
+switches.
+
+The checkpoint carries each active role connection and its ordered switch
+history, including each reason. Its consumed-switch count equals the history
+length; resume validates the history against the admitted chain and restores
+the active connection before dispatch. Model children inherit the admitted
+role’s fallback chain, failure classes and bound connections.
 
 A provider-managed agent account is exclusive during delegation. A qualifying
 failure there does not move a child or continuation to another connection: the
@@ -32,11 +41,18 @@ switch is refused and its `failover refused` guardrail records the reason.
 
 Every run emits one `usage {type, usage}` event immediately before `end` and
 stores the same closed `usage.json` ledger in its checkpoint. Each row identifies
-a source, connection and role and counts model requests, provider-managed
-invocations, observed milliseconds and bytes. Token members are present only
+a source, connection and role; model and agent rows also name the model. Rows
+count model requests, provider-managed invocations, observed milliseconds and
+bytes. Token members are present only
 where the provider reported them; the package never estimates them. Completion
 rows identify the connection and role that answered. Prices and project totals
 remain the host's.
+
+Child model and agent rows are merged under the delegated role, with their last
+accounted snapshots keyed by child execution ID in the checkpoint. Repeated
+snapshots replace that contribution without double counting; shared tool
+sources are already counted by the parent. Child request counts are checkpointed
+before dispatch, and reported tokens are carried before the parent continues.
 
 ## Certification
 
@@ -49,7 +65,9 @@ members absent where the wire reported none. Handwritten vectors under
 
 Four mutants must be caught in both implementations: treating a refusal as a
 qualifying failure, omitting the switch event, inventing token counts, and
-removing the cross-family admission check.
+removing the cross-family admission check. Three additional mutants remove
+switch restoration, drop child usage and suppress exhaustion refusal; each must
+be caught in both implementations.
 
 ## Consequences
 

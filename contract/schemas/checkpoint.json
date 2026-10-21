@@ -251,6 +251,94 @@
     "usage": {
       "description": "ADR-0020. The run's counts so far, carried through interruption and resume and finalized before end.",
       "$ref": "usage.json"
+    },
+    "failover": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "required": [
+          "role",
+          "connection",
+          "history",
+          "consumed"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "connection": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "history": {
+            "type": "array",
+            "maxItems": 256,
+            "items": {
+              "type": "object",
+              "required": [
+                "from",
+                "to",
+                "reason"
+              ],
+              "properties": {
+                "from": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "to": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "reason": {
+                  "enum": [
+                    "unavailable",
+                    "rate-limited",
+                    "timeout"
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "consumed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 256,
+            "description": "Consumed switches in this role’s admitted chain; equals the history length."
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "ADR-0020. Active connections, switch reasons and consumed chain bounds, restored before dispatch."
+    },
+    "childUsage": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "usage"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "usage": {
+            "$ref": "usage.json"
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "ADR-0020. Last accounted child ledgers by execution ID, used to replace contributions without double counting."
     }
   },
   "additionalProperties": true,

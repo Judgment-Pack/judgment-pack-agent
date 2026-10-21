@@ -1,8 +1,36 @@
 {
   "description": "ADR-0020: the exclusive agent capability refuses a switch while delegation is in progress. Written by hand.",
   "schema": "run-event.json",
-  "source": {"harness": {"repository": "Judgment-Pack/judgment-pack-agent", "package": "packages/harness"}, "files": ["packages/harness/delegation.ts"]},
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/delegation.ts"
+    ]
+  },
   "items": [
-    {"type": "guardrail", "tool": "models.author.fallback", "action": "refused", "reason": "failover refused", "detail": "A provider switch during agent delegation is refused because the account is exclusive."}
+    {
+      "type": "guardrail",
+      "tool": "models.author.fallback",
+      "action": "refused",
+      "reason": "failover refused",
+      "detail": "A provider switch during agent delegation is refused because the account is exclusive."
+    },
+    {
+      "type": "guardrail",
+      "tool": "models.author.fallback",
+      "action": "refused",
+      "reason": "failover refused",
+      "detail": "The admitted fallback chain is exhausted."
+    },
+    {
+      "type": "guardrail",
+      "tool": "models.author.fallback",
+      "action": "refused",
+      "reason": "failover refused",
+      "detail": "The one-switch limit for this request is exhausted."
+    }
   ]
 }

@@ -1,0 +1,33 @@
+{
+  "description": "ADR-0020: a wire reports only input and output tokens. No reasoning or cache counts are invented. Written by hand.",
+  "schema": "usage.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/completion.ts"
+    ]
+  },
+  "items": [
+    {
+      "rows": [
+        {
+          "source": "model",
+          "connection": "primary",
+          "model": "author-model",
+          "role": "author",
+          "requests": 1,
+          "invocations": 0,
+          "milliseconds": 0,
+          "bytes": 0,
+          "tokens": {
+            "inputTokens": 10,
+            "outputTokens": 5
+          }
+        }
+      ]
+    }
+  ]
+}

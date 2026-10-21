@@ -104,6 +104,9 @@ func (c *coordinator) childBinding(profile turn.TaskProfile) (adapter.PolicyConn
 		object[leaf] = member.Value
 	}
 	policy["models"] = map[string]any{"author": map[string]any{"model": id, "reasoning": tier}}
+	if fallback, ok := members["models."+role+".fallback"]; ok {
+		policy["models"].(map[string]any)["author"].(map[string]any)["fallback"] = fallback.Value
+	}
 	policy["critic"] = map[string]any{"default": "off"}
 	return binding, id, policy, nil
 }

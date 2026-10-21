@@ -45,6 +45,7 @@ export class ExecutionController {
  private cache=new Map<string,McpToolResult>()
  private usageConnection='unbound'
  private usageRole='author'
+ private usageModel?:string
  private usageStarted=Date.now()
  private usageBound=false
  private usageSources=new Map<string,{calls:number;milliseconds:number;bytes:number}>()
@@ -92,10 +93,12 @@ export class ExecutionController {
   }
  }
  get remaining(){return this.state.limit-this.state.used}
- useConnection(connection:string,role='author'){
-  if(this.usageBound&&(connection!==this.usageConnection||role!==this.usageRole)){this.recordUsageElapsed();this.recordSourceUsage()}
+ useConnection(connection:string,role='author',selectedModel?:string){
+  const binding=this.session.policyConnections?.[connection]??this.session
+  const model=selectedModel??('model'in binding?binding.model.model:binding.agent.model)
+  if(this.usageBound&&(connection!==this.usageConnection||role!==this.usageRole||model!==this.usageModel)){this.recordUsageElapsed();this.recordSourceUsage()}
   if(!this.usageBound)this.usageStarted=Date.now()
-  this.usageConnection=connection;this.usageRole=role;this.usageBound=true
+  this.usageConnection=connection;this.usageRole=role;this.usageModel=model;this.usageBound=true
   this.usageRow(this.state.unit==='provider-managed'?'agent':'model',connection,role)
  }
  private recordUsageElapsed(){
@@ -113,9 +116,23 @@ export class ExecutionController {
  }
  private usageRow(source:string,connection=this.usageConnection,role=this.usageRole){
   this.state.usage??={rows:[]}
-  let row=this.state.usage.rows.find(row=>row.source===source&&row.connection===connection&&row.role===role)
-  if(!row){row={source,connection,role,requests:0,invocations:0,milliseconds:0,bytes:0};this.state.usage.rows.push(row)}
+  const model=source==='model'||source==='agent'?this.usageModel:undefined
+  let row=this.state.usage.rows.find(row=>row.source===source&&row.connection===connection&&row.role===role&&row.model===model)
+  if(!row){row={source,connection,role,requests:0,invocations:0,milliseconds:0,bytes:0};if(model)row.model=model;this.state.usage.rows.push(row)}
   return row
+ }
+ mergeChildUsage(id:string,usage:import('./state').UsageLedger,role:string){
+  this.state.childUsage??=[]
+  const previous=this.state.childUsage.find(row=>row.id===id)
+  const next={rows:usage.rows.filter(row=>row.source==='model'||row.source==='agent').map(row=>({...structuredClone(row),role}))}
+  this.state.usage??={rows:[]}
+  for(const [ledger,sign] of [[previous?.usage,-1],[next,1]] as const)for(const incoming of ledger?.rows??[]){
+   let row=this.state.usage.rows.find(row=>row.source===incoming.source&&row.connection===incoming.connection&&row.role===incoming.role&&row.model===incoming.model)
+   if(!row){row={...incoming,requests:0,invocations:0,milliseconds:0,bytes:0};delete row.tokens;this.state.usage.rows.push(row)}
+   for(const key of ['requests','invocations','milliseconds','bytes'] as const)row[key]+=sign*incoming[key]
+   for(const key of Object.keys(incoming.tokens??{}) as (keyof import('./state').UsageTokens)[]){row.tokens??={};row.tokens[key]=(row.tokens[key]??0)+sign*incoming.tokens![key]!}
+  }
+  if(previous)previous.usage=next;else this.state.childUsage.push({id,usage:next})
  }
  usage():import('./state').UsageLedger{
   if(this.usageBound)this.recordUsageElapsed()

@@ -96,6 +96,8 @@ type Execution struct {
 	Critic        *contract.CheckpointCritic
 	Steers        *contract.ProvenanceSteerReport
 	Usage         *contract.Usage
+	Failover      []contract.CheckpointFailoverItem
+	ChildUsage    []contract.CheckpointChildUsageItem
 }
 
 // Value is the state as the checkpoint's JSON, in the order the TypeScript writes it.
@@ -251,6 +253,13 @@ func (e *Execution) Value() *Value {
 		value, _ := ParseJSON(raw)
 		out.Set("steers", value)
 	}
+	for key, rows := range map[string]any{"failover": e.Failover, "childUsage": e.ChildUsage} {
+		data, _ := json.Marshal(rows)
+		if string(data) != "null" {
+			value, _ := ParseJSON(data)
+			out.Set(key, value)
+		}
+	}
 	if e.Usage != nil {
 		data, _ := json.Marshal(e.Usage)
 		value, _ := ParseJSON(data)
@@ -291,7 +300,7 @@ func executionOf(saved *contract.Checkpoint) (*Execution, error) {
 		Phase: saved.Phase, Status: saved.Status, Unit: saved.Unit, Used: int(saved.Used),
 		Limit: int(saved.Limit), Grants: saved.Grants, Plan: value.Get("plan"),
 		Explanation: saved.Explanation, Completions: saved.Completions, Context: saved.Context,
-		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, SourceIdentities: saved.SourceIdentities, Approval: saved.Approval, Skills: saved.Skills, Draft: saved.Draft, Memories: saved.Memories, Critic: saved.Critic, CrossProvider: saved.CrossProvider, Compaction: saved.Compaction, OutputGuard: saved.OutputGuard, Policy: saved.Policy, Steers: saved.Steers, Usage: saved.Usage}
+		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, SourceIdentities: saved.SourceIdentities, Approval: saved.Approval, Skills: saved.Skills, Draft: saved.Draft, Memories: saved.Memories, Critic: saved.Critic, CrossProvider: saved.CrossProvider, Compaction: saved.Compaction, OutputGuard: saved.OutputGuard, Policy: saved.Policy, Steers: saved.Steers, Usage: saved.Usage, Failover: saved.Failover, ChildUsage: saved.ChildUsage}
 	if saved.TestCalls != nil {
 		calls := int(*saved.TestCalls)
 		out.TestCalls = &calls
@@ -359,6 +368,7 @@ type ExecutionController struct {
 	restoredResults     []*Value
 	inFlight            map[string]string
 	cache               map[string]ToolResult
+	UsageModels         map[string]string
 	usageConnection     string
 	usageRole           string
 	usageStarted        time.Time
@@ -656,17 +666,99 @@ func (c *ExecutionController) recordSourceUsage(sources []contract.ProvenanceSou
 }
 
 func (c *ExecutionController) usageRow(source, connection, role string) *contract.UsageRow {
+	if connection == "" {
+		connection = "unbound"
+	}
 	if c.State.Usage == nil {
 		c.State.Usage = &contract.Usage{}
 	}
+	model := c.UsageModels[connection]
+	if named := c.UsageModels[role+"@"+connection]; named != "" {
+		model = named
+	}
+	if source != "model" && source != "agent" {
+		model = ""
+	}
 	for i := range c.State.Usage.Rows {
 		row := &c.State.Usage.Rows[i]
-		if row.Source == source && row.Connection == connection && row.Role == role {
+		if row.Source == source && row.Connection == connection && row.Role == role && (row.Model == nil && model == "" || row.Model != nil && *row.Model == model) {
 			return row
 		}
 	}
-	c.State.Usage.Rows = append(c.State.Usage.Rows, contract.UsageRow{Source: source, Connection: connection, Role: role})
+	row := contract.UsageRow{Source: source, Connection: connection, Role: role}
+	if model != "" {
+		row.Model = &model
+	}
+	c.State.Usage.Rows = append(c.State.Usage.Rows, row)
 	return &c.State.Usage.Rows[len(c.State.Usage.Rows)-1]
+}
+
+// MergeChildUsage replaces a child's accounted snapshot, so repeated delivery and resume do not double count.
+func (c *ExecutionController) MergeChildUsage(id string, usage contract.Usage, role string) {
+	next := contract.Usage{Rows: []contract.UsageRow{}}
+	for _, row := range usage.Rows {
+		if row.Source == "model" || row.Source == "agent" {
+			row.Role = role
+			next.Rows = append(next.Rows, row)
+		}
+	}
+	previous := contract.Usage{}
+	at := -1
+	for i, saved := range c.State.ChildUsage {
+		if saved.ID == id {
+			previous = saved.Usage
+			at = i
+			break
+		}
+	}
+	if c.State.Usage == nil {
+		c.State.Usage = &contract.Usage{}
+	}
+	for n, ledger := range []contract.Usage{previous, next} {
+		sign := int64(1)
+		if n == 0 {
+			sign = -1
+		}
+		for _, incoming := range ledger.Rows {
+			index := -1
+			for i, row := range c.State.Usage.Rows {
+				if row.Source == incoming.Source && row.Connection == incoming.Connection && row.Role == incoming.Role && (row.Model == nil && incoming.Model == nil || row.Model != nil && incoming.Model != nil && *row.Model == *incoming.Model) {
+					index = i
+					break
+				}
+			}
+			if index < 0 {
+				c.State.Usage.Rows = append(c.State.Usage.Rows, contract.UsageRow{Source: incoming.Source, Connection: incoming.Connection, Role: incoming.Role, Model: incoming.Model})
+				index = len(c.State.Usage.Rows) - 1
+			}
+			row := &c.State.Usage.Rows[index]
+			row.Requests += sign * incoming.Requests
+			row.Invocations += sign * incoming.Invocations
+			row.Bytes += sign * incoming.Bytes
+			row.Milliseconds += sign * incoming.Milliseconds
+			if incoming.Tokens != nil {
+				data, _ := json.Marshal(incoming.Tokens)
+				counts := map[string]int64{}
+				_ = json.Unmarshal(data, &counts)
+				old := map[string]int64{}
+				if row.Tokens != nil {
+					data, _ = json.Marshal(row.Tokens)
+					_ = json.Unmarshal(data, &old)
+				}
+				for k, v := range counts {
+					old[k] += sign * v
+				}
+				data, _ = json.Marshal(old)
+				_ = json.Unmarshal(data, &row.Tokens)
+			}
+		}
+	}
+	saved := contract.CheckpointChildUsageItem{ID: id, Usage: next}
+	if at < 0 {
+		c.State.ChildUsage = append(c.State.ChildUsage, saved)
+	} else {
+		c.State.ChildUsage[at] = saved
+	}
 }
 
 // Usage returns the closed run ledger, adding observed source rows and this run's elapsed time.

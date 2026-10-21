@@ -597,6 +597,7 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
       onAttempt: (attempt) => context.execution.beginAttempt(attempt),
       // The last request of the allowance is the turn's tool-free final answer: a retry never takes it.
       mayRetry: () => context.execution.remaining > 1,
+      onExhausted:reason=>context.refuseExhausted(recording!==null?'critic':'author',reason),
       fallback:(reason)=>context.fallback(recording!==null?'critic':'author',reason),
       onSwitch:async({from,to,reason})=>{await channel.push({type:'connection_switched',role:recording!==null?'critic':'author',from,to,reason})}
     })

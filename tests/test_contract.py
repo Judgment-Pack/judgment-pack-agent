@@ -845,6 +845,7 @@ class VectorTests(unittest.TestCase):
         # capabilities, the thirteen reasons, the three triggers wherever they are stated, the reserved
         # name, and the guardrail's reason review refused (above).
         enums = [
+            ("checkpoint.json", ["properties", "failover", "items", "properties", "history", "items", "properties", "reason"]),
             ("tool-offer.json", ["$defs", "criticMode"]),
             ("tool-offer.json", ["$defs", "criticReasoning"]),
             ("provenance.json", ["$defs", "criticReason"]),

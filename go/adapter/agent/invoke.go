@@ -187,6 +187,19 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 				continue
 			}
 		}
+		if runErr != nil && !watched.reached() && switched && (classified.Code == "unavailable" || classified.Code == "rate-limited" || classified.Code == "timeout") {
+			allowed := false
+			classes, _ := r.sc.ResolvedPolicy["failover.classes"].Value.([]any)
+			for _, held := range classes {
+				if held == classified.Code {
+					allowed = true
+				}
+			}
+			reason := "failover refused"
+			if allowed {
+				r.deliver(contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: "models." + role + ".fallback", Action: "refused", Detail: "The one-switch limit for this request is exhausted.", Reason: &reason}})
+			}
+		}
 		// An attempt that reached any callback was admitted: whatever its error says, it is an
 		// outcome and is never sent again.
 		if runErr == nil || watched.reached() || r.stopping() || invCtx.Err() != nil ||

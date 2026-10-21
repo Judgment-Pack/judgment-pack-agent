@@ -1005,6 +1005,18 @@
         "go": ["20 refusal", "20 agent refusal"]
       },
       {
+        "check": "20 exhausted switch bound emits a refusal",
+        "go": ["20 switch", "20 agent switch"]
+      },
+      {
+        "check": "20 partial usage preserves wire presence on every model family",
+        "go": ["20 partial usage"]
+      },
+      {
+        "check": "20 child.analyze carries fallback and the parent retains its usage once",
+        "go": ["20 child fallback", "20 agent child refusal"]
+      },
+      {
         "check": "20 an agent switch during delegated work is refused",
         "go": ["20 agent delegation refusal"]
       }

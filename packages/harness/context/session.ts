@@ -223,6 +223,7 @@ export class SessionContext {
   const selected=this.connection('critic')
   return {...this.named.models,critic:selected?('model'in selected?selected.model.model:selected.agent.model):this.named.models.critic,concurrentRequests:Number(this.resolvedPolicy['concurrency.requests']!.value)}
  }
+ connectionBindings(){return {...this.bindings}}
  delegatedRole(id:string){if(this.subagents.some(s=>s.id===id))return `subagent.${id}`;return !this.resolvedPolicy[`models.child.${id}.provider`]&&this.resolvedPolicy[`models.subagent.${id}.provider`]?`subagent.${id}`:`child.${id}`}
  connection(role:string):PolicyConnection|undefined{
   const provider=this.activeConnections.get(role)??this.resolvedPolicy[`models.${role}.provider`]?.value
@@ -244,20 +245,39 @@ export class SessionContext {
   const primary=String(this.resolvedPolicy[`models.${role}.provider`]?.value??this.resolvedPolicy['models.author.provider']!.value)
   const from=this.activeConnections.get(role)??primary
   const fallbacks=this.resolvedPolicy[`models.${role}.fallback`]?.value
-  if(!Array.isArray(fallbacks))return
+  if(!Array.isArray(fallbacks)||fallbacks.length===0)return
   const chain=[primary,...fallbacks.map(String)]
   const to=chain[chain.indexOf(from)+1]
-  if(!to)return
+  if(!to){this.refuse(`models.${role}.fallback`,'The admitted fallback chain is exhausted.','failover refused');return}
   const binding=this.bindings[to]
   if(!binding)return
   if('agent'in binding&&this.memoryChild){
    this.refuse(`models.${role}.fallback`,'A provider switch during agent delegation is refused because the account is exclusive.','failover refused')
    return
   }
+  this.execution.state.failover??=[]
+  let saved=this.execution.state.failover.find(row=>row.role===role)
+  if(!saved){saved={role,connection:from,consumed:0,history:[]};this.execution.state.failover.push(saved)}
+  saved.connection=to;saved.consumed++;saved.history.push({from,to,reason})
   this.activeConnections.set(role,to)
-  this.execution.useConnection(to,role)
+  this.execution.useConnection(to,role,'model'in binding?binding.model.model:binding.agent.model)
   if(notify)this.notices.push({type:'connection_switched',role,from,to,reason})
   return {from,to}
+ }
+ refuseExhausted(role:string,reason:FailoverClass){
+  const classes=this.resolvedPolicy['failover.classes']?.value
+  if(Array.isArray(classes)&&classes.includes(reason))this.refuse(`models.${role}.fallback`,'The one-switch limit for this request is exhausted.','failover refused')
+ }
+ restoreFailover(){
+  const roles=new Set<string>()
+  for(const row of this.execution.state.failover??[]){
+   if(roles.has(row.role))throw authoredFailure('stale-state','The saved failover roles repeat.','context')
+   roles.add(row.role)
+   const primary=String(this.resolvedPolicy[`models.${row.role}.provider`]?.value)
+   const chain=[primary,...(this.resolvedPolicy[`models.${row.role}.fallback`]?.value as string[]??[])]
+   if(row.history.some((h,i)=>h.from!==chain[i]||h.to!==chain[i+1])||row.consumed!==row.history.length||row.connection!==chain[row.consumed]||!this.bindings[row.connection])throw authoredFailure('stale-state','The saved failover chain differs from the admitted policy.','context')
+   this.activeConnections.set(row.role,row.connection)
+  }
  }
  private family(binding:PolicyConnection){return 'model'in binding?capabilitiesFor(binding.model).family??(binding.model.family==='openai-compatible'?'openai':binding.model.family):binding.agent.family??'codex'}
  provider(role:string):ProviderRecord{
@@ -694,6 +714,7 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  context.output=new OutputGuard(context.resolvedPolicy,()=>context.execution.state.outputGuard??={},event=>context.memoryNotice(event))
  context.output.declaredNames=new Set([...session.tools,...session.hostTools].map(tool=>tool.name))
  context.restoreCompaction()
+ context.restoreFailover()
  // Reconcile only roles belonging to saved definition records whose approved digest changed.
  // Other policy members still compare exactly, including other sub-agent roles.
  const changedRoles=new Set((context.execution.state.delegation?.batches??[]).flatMap(b=>b.children)
@@ -725,7 +746,7 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   try{await session.context?.checkpoint?.(context.execution.snapshot())}catch(error){if(!(error instanceof RecordsRefused))throw failureError('storage','storage','not-started')}
  }
  context.recordProvider('author')
- context.execution.useConnection(context.provider('author').connection,'author')
+ context.execution.useConnection(context.provider('author').connection,'author',(()=>{const b=context.connection('author')!;return 'model'in b?b.model.model:b.agent.model})())
  context.carryMarker()
  context.drafts=new Drafts(context.ledger,context.policy,()=>context.execution.state,event=>context.memoryNotice(event),()=>!context.criticRunning&&!session.context?.objective&&!session.childDefinition&&session.context?.phase!=='plan',async(text,signal)=>{context.admit('validate','runtime');signal.throwIfAborted();if(!session.tools.some(t=>t.name==='validate'))throw new Error('Runtime validate is not offered.');return session.callTool('validate',{content:text})},()=>context.marker,(value,where)=>context.output.value(value,where),session.signal,(where,pattern)=>context.output.refuse(where,pattern))
  await context.drafts.open(session.context?.objective||session.childDefinition?[]:session.context?.acceptedDocuments)
@@ -766,8 +787,8 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  }
  // ADR-0008: while an act call waits for the person's decision, no request is sent: the run ends paused.
  const held=()=>{if(context.execution.approvalAsked)throw new ApprovalPaused()}
- const model='model'in session?{...session.model,call:async(suffix:string,request:import('../engine').ModelRequest)=>{await session.context?.authorize?.(session.signal);const role=context.criticRunning?'critic':'author',binding=context.connection(role);context.execution.useConnection(context.provider(role).connection,role);if(request.method!=='GET'){held();context.execution.claim();await context.execution.recordPrompt(request.body);try{await session.context?.checkpoint?.(context.execution.snapshot())}catch(error){if(!(error instanceof RecordsRefused))throw failureError('storage','storage','not-started')}}return (binding&&'model'in binding?binding.model:session.model).call(suffix,request)}}:undefined
- const agent='agent'in session?{...session.agent,run:async(request:import('../agent').AgentRequest,callbacks:import('../agent').AgentCallbacks)=>{await session.context?.authorize?.(callbacks.signal);held();const role=request.phase==='critic'?'critic':'author';context.execution.useConnection(context.provider(role).connection,role);let binding=context.connection(role);let selected=binding&&'agent'in binding?binding.agent:session.agent;const setting=selected.tiers?.[request.effort as 'low'|'medium'|'high'];if(setting)request={...request,effort:setting as import('../agent').CodexEffort};const {delegated:_delegated,...sent}=request;await context.execution.recordPrompt(JSON.stringify(sent));let reached=false;const watched={...callbacks,event:async(event:import('../agent').AgentEvent)=>{reached=true;return callbacks.event(event)},tool:async(call:import('../agent').AgentToolCall,signal:AbortSignal)=>{reached=true;return callbacks.tool(call,signal)}};try{return await selected.run(request,watched)}catch(cause){const failure=normalizeFailure(cause,'agent');if(reached||!(['unavailable','rate-limited','timeout'] as const).includes(failure.code as FailoverClass))throw cause;const switched=context.fallback(role,failure.code as FailoverClass,callbacks.connectionSwitched===undefined);if(!switched)throw cause;if(callbacks.connectionSwitched)await callbacks.connectionSwitched({type:'connection_switched',role,...switched,reason:failure.code as FailoverClass});binding=context.connection(role);selected=binding&&'agent'in binding?binding.agent:session.agent;await context.execution.recordPrompt(JSON.stringify(sent));return selected.run(request,callbacks)}}}:undefined
+ const model='model'in session?{...session.model,call:async(suffix:string,request:import('../engine').ModelRequest)=>{await session.context?.authorize?.(session.signal);const role=context.criticRunning?'critic':'author',binding=context.connection(role);context.execution.useConnection(context.provider(role).connection,role,(()=>{const b=context.connection(role)!;return 'model'in b?b.model.model:b.agent.model})());if(request.method!=='GET'){held();context.execution.claim();await context.execution.recordPrompt(request.body);try{await session.context?.checkpoint?.(context.execution.snapshot())}catch(error){if(!(error instanceof RecordsRefused))throw failureError('storage','storage','not-started')}}return (binding&&'model'in binding?binding.model:session.model).call(suffix,request)}}:undefined
+ const agent='agent'in session?{...session.agent,run:async(request:import('../agent').AgentRequest,callbacks:import('../agent').AgentCallbacks)=>{await session.context?.authorize?.(callbacks.signal);held();const role=request.phase==='critic'?'critic':'author';context.execution.useConnection(context.provider(role).connection,role,(()=>{const b=context.connection(role)!;return 'model'in b?b.model.model:b.agent.model})());let binding=context.connection(role);let selected=binding&&'agent'in binding?binding.agent:session.agent;const setting=selected.tiers?.[request.effort as 'low'|'medium'|'high'];if(setting)request={...request,effort:setting as import('../agent').CodexEffort};const {delegated:_delegated,...sent}=request;await context.execution.recordPrompt(JSON.stringify(sent));let reached=false;const watched={...callbacks,event:async(event:import('../agent').AgentEvent)=>{reached=true;return callbacks.event(event)},tool:async(call:import('../agent').AgentToolCall,signal:AbortSignal)=>{reached=true;return callbacks.tool(call,signal)}};try{return await selected.run(request,watched)}catch(cause){const failure=normalizeFailure(cause,'agent');if(reached||!(['unavailable','rate-limited','timeout'] as const).includes(failure.code as FailoverClass))throw cause;const switched=context.fallback(role,failure.code as FailoverClass,callbacks.connectionSwitched===undefined);if(!switched)throw cause;if(callbacks.connectionSwitched)await callbacks.connectionSwitched({type:'connection_switched',role,...switched,reason:failure.code as FailoverClass});binding=context.connection(role);selected=binding&&'agent'in binding?binding.agent:session.agent;await context.execution.recordPrompt(JSON.stringify(sent));try{return await selected.run(request,watched)}catch(error){const last=normalizeFailure(error,'agent');if(!reached&&(['unavailable','rate-limited','timeout'] as string[]).includes(last.code))context.refuseExhausted(role,last.code as FailoverClass);throw error}}}}:undefined
  context.output.declaredNames=new Set([...session.tools,...hostTools].map(tool=>tool.name))
  return {context,session:{...session,...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{context.admit(name,'runtime',args);await session.context?.authorize?.(session.signal);args=context.output.value(args,'tool argument');context.claimTestCall(name);const call=()=>context.execution.wrapRead(name,a=>session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true,{runtime:true,offered:session.tools.some(t=>t.name===name)})(args);return context.sources?context.sources.runtime(call):call()}}}
 }

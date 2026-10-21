@@ -215,6 +215,7 @@ type coordinator struct {
 	ledger   *runcontext.ContextLedger
 	chatTurn *runcontext.ChatTurn
 
+	usageMu          sync.Mutex
 	emitMu           sync.Mutex
 	ended            bool
 	parentCheckpoint *contract.Checkpoint

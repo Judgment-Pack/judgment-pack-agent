@@ -1119,11 +1119,13 @@ type Checkpoint struct {
 	SourceIdentities []CheckpointSourceIdentity  `json:"sourceIdentities,omitzero"`
 	Steers           *ProvenanceSteerReport      `json:"steers,omitzero"`
 	Usage            *Usage                      `json:"usage,omitzero"`
+	Failover         []CheckpointFailoverItem    `json:"failover,omitzero"`
+	ChildUsage       []CheckpointChildUsageItem  `json:"childUsage,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var checkpointMembers = []string{"schema", "version", "digest", "retainUntil", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "compaction", "memories", "draft", "outputGuard", "records", "sourceIdentities", "steers", "usage"}
+var checkpointMembers = []string{"schema", "version", "digest", "retainUntil", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "compaction", "memories", "draft", "outputGuard", "records", "sourceIdentities", "steers", "usage", "failover", "childUsage"}
 
 // UnmarshalJSON decodes a Checkpoint object and keeps the members the schema does not name.
 func (v *Checkpoint) UnmarshalJSON(data []byte) error {
@@ -1220,6 +1222,33 @@ func (v *CheckpointApprovalDecision) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a CheckpointApprovalDecision object.
 func (v CheckpointApprovalDecision) MarshalJSON() ([]byte, error) {
 	type plain CheckpointApprovalDecision
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/properties/childUsage/items.
+type CheckpointChildUsageItem struct {
+	ID    string `json:"id"`
+	Usage Usage  `json:"usage"`
+}
+
+var checkpointChildUsageItemMembers = []string{"id", "usage"}
+
+// UnmarshalJSON decodes a CheckpointChildUsageItem object and refuses a member the closed schema does not name.
+func (v *CheckpointChildUsageItem) UnmarshalJSON(data []byte) error {
+	type plain CheckpointChildUsageItem
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointChildUsageItemMembers, true)
+	if err != nil {
+		return errorf("CheckpointChildUsageItem: %w", err)
+	}
+	*v = CheckpointChildUsageItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointChildUsageItem object.
+func (v CheckpointChildUsageItem) MarshalJSON() ([]byte, error) {
+	type plain CheckpointChildUsageItem
 	return encodeObject(plain(v), nil)
 }
 
@@ -1346,6 +1375,63 @@ func (v *CheckpointDraftDocument) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a CheckpointDraftDocument object.
 func (v CheckpointDraftDocument) MarshalJSON() ([]byte, error) {
 	type plain CheckpointDraftDocument
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/properties/failover/items.
+type CheckpointFailoverItem struct {
+	Role       string                              `json:"role"`
+	Connection string                              `json:"connection"`
+	History    []CheckpointFailoverItemHistoryItem `json:"history"`
+	Consumed   int64                               `json:"consumed"`
+}
+
+var checkpointFailoverItemMembers = []string{"role", "connection", "history", "consumed"}
+
+// UnmarshalJSON decodes a CheckpointFailoverItem object and refuses a member the closed schema does not name.
+func (v *CheckpointFailoverItem) UnmarshalJSON(data []byte) error {
+	type plain CheckpointFailoverItem
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointFailoverItemMembers, true)
+	if err != nil {
+		return errorf("CheckpointFailoverItem: %w", err)
+	}
+	*v = CheckpointFailoverItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointFailoverItem object.
+func (v CheckpointFailoverItem) MarshalJSON() ([]byte, error) {
+	type plain CheckpointFailoverItem
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/properties/failover/items/properties/history/items.
+type CheckpointFailoverItemHistoryItem struct {
+	From   string `json:"from"`
+	To     string `json:"to"`
+	Reason string `json:"reason"`
+}
+
+var checkpointFailoverItemHistoryItemMembers = []string{"from", "to", "reason"}
+
+// UnmarshalJSON decodes a CheckpointFailoverItemHistoryItem object and refuses a member the closed schema does not name.
+func (v *CheckpointFailoverItemHistoryItem) UnmarshalJSON(data []byte) error {
+	type plain CheckpointFailoverItemHistoryItem
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointFailoverItemHistoryItemMembers, true)
+	if err != nil {
+		return errorf("CheckpointFailoverItemHistoryItem: %w", err)
+	}
+	*v = CheckpointFailoverItemHistoryItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointFailoverItemHistoryItem object.
+func (v CheckpointFailoverItemHistoryItem) MarshalJSON() ([]byte, error) {
+	type plain CheckpointFailoverItemHistoryItem
 	return encodeObject(plain(v), nil)
 }
 
@@ -8860,6 +8946,7 @@ type UsageRow struct {
 	Source       string       `json:"source"`
 	Connection   string       `json:"connection"`
 	Role         string       `json:"role"`
+	Model        *string      `json:"model,omitzero"`
 	Requests     int64        `json:"requests"`
 	Invocations  int64        `json:"invocations"`
 	Milliseconds int64        `json:"milliseconds"`
@@ -8867,7 +8954,7 @@ type UsageRow struct {
 	Tokens       *UsageTokens `json:"tokens,omitzero"`
 }
 
-var usageRowMembers = []string{"source", "connection", "role", "requests", "invocations", "milliseconds", "bytes", "tokens"}
+var usageRowMembers = []string{"source", "connection", "role", "model", "requests", "invocations", "milliseconds", "bytes", "tokens"}
 
 // UnmarshalJSON decodes a UsageRow object and refuses a member the closed schema does not name.
 func (v *UsageRow) UnmarshalJSON(data []byte) error {

@@ -163,7 +163,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 	defer r.boundary.Close()
 	defer r.boundary.GuardGateNotices(run.Gate)()
 	r.sc.RecordProvider("author")
-	r.sc.Execution.UseConnection(r.sc.Provider("author").Connection, "author")
+	r.sc.Execution.UseConnection(r.run.Connection("author"), "author")
 	r.emitAll(r.boundary.Open())
 
 	r.slot = wire.OpenThinking(wire.ThinkingTier(orOff(local.Thinking)), r.family, &capabilities.Reasoning, capabilities.Tiers, capabilities.FallbackTiers)
@@ -288,6 +288,24 @@ func (r *runState) modelCall(phase func() string) wire.ModelCall {
 		OnAttempt: func(attempt int) { r.sc.Execution.BeginAttempt(attempt) },
 		// The last request of the allowance is the turn's tool-free final answer: a retry never takes it.
 		MayRetry: func() bool { return r.sc.Execution.Remaining() > 1 },
+		OnExhausted: func(code string) {
+			allowed := false
+			classes, _ := r.sc.ResolvedPolicy["failover.classes"].Value.([]any)
+			for _, held := range classes {
+				if held == code {
+					allowed = true
+				}
+			}
+			if !allowed {
+				return
+			}
+			role := "author"
+			if phase() == "review" {
+				role = "critic"
+			}
+			reason := "failover refused"
+			r.deliver(contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: "models." + role + ".fallback", Action: "refused", Detail: "The one-switch limit for this request is exhausted.", Reason: &reason}})
+		},
 		Fallback: func(reason string) (string, string, bool) {
 			if r.run.Failover == nil {
 				return "", "", false

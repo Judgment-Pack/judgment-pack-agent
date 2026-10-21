@@ -69,8 +69,9 @@ type RetryOptions struct {
 	Wait func(ctx context.Context, wait time.Duration) error
 	Now  func() time.Time
 	// Fallback advances to the next admitted same-family connection. It is asked at most once per request.
-	Fallback func(reason string) (from, to string, ok bool)
-	OnSwitch func(from, to, reason string) error
+	Fallback    func(reason string) (from, to string, ok bool)
+	OnSwitch    func(from, to, reason string) error
+	OnExhausted func(reason string)
 }
 
 // delayFor is the wait before retry `attempt`, or false where the provider asks for too long.
@@ -112,7 +113,13 @@ func RetryingCall(call ModelCall, options RetryOptions) ModelCall {
 	return func(ctx context.Context, suffix string, request ModelRequest) (*http.Response, error) {
 		switched := false
 		switchTo := func(f contract.Failure) (bool, error) {
-			if switched || (f.Code != "unavailable" && f.Code != "rate-limited" && f.Code != "timeout") || options.Fallback == nil {
+			if (f.Code != "unavailable" && f.Code != "rate-limited" && f.Code != "timeout") || options.Fallback == nil {
+				return false, nil
+			}
+			if switched {
+				if options.OnExhausted != nil {
+					options.OnExhausted(f.Code)
+				}
 				return false, nil
 			}
 			from, to, ok := options.Fallback(f.Code)

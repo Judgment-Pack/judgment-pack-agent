@@ -35,7 +35,7 @@ export function validSteers(v:unknown):v is SteerReport{
  return object(v)&&exact(v,['queued','delivered'])&&Array.isArray(v.queued)&&Array.isArray(v.delivered)&&v.queued.length<=256&&v.delivered.length<=256&&v.queued.every(row=>object(row)&&exact(row,['text','bytes'])&&typeof row.text==='string'&&row.text.length>0&&count(row.bytes)&&Number(row.bytes)>0&&utf8Bytes(row.text)===row.bytes)&&v.delivered.every(row=>object(row)&&exact(row,['bytes','atRequest'])&&count(row.bytes)&&Number(row.bytes)>0&&count(row.atRequest)&&Number(row.atRequest)>0)
 }
 export interface UsageTokens {inputTokens?:number;outputTokens?:number;reasoningTokens?:number;cacheReadTokens?:number;cacheWriteTokens?:number}
-export interface UsageRow {source:string;connection:string;role:string;requests:number;invocations:number;milliseconds:number;bytes:number;tokens?:UsageTokens}
+export interface UsageRow {source:string;connection:string;role:string;model?:string;requests:number;invocations:number;milliseconds:number;bytes:number;tokens?:UsageTokens}
 export interface UsageLedger {rows:UsageRow[]}
 /** The most prompt digests a checkpoint keeps, the newest: three attempts at each request of the largest allowance. */
 export const MAX_PROMPT_DIGESTS = 300
@@ -72,6 +72,8 @@ export interface ExecutionCheckpoint {
  compaction?:CompactionReport;
  steers?:SteerReport;
  usage?:UsageLedger;
+ childUsage?:{id:string;usage:UsageLedger}[];
+ failover?:{role:string;connection:string;consumed:number;history:{from:string;to:string;reason:import('../policy').FailoverClass}[]}[];
  critic?:CriticRecord;
 }
 export function validCompaction(v:unknown):v is CompactionReport{
@@ -135,7 +137,7 @@ export function validSourceFigures(value:unknown):value is SourceFigures[]{
  return Array.isArray(value)&&value.length<=64&&value.every(row=>object(row)&&exact(row,['source','kind','calls','refused','proposed','bytes','milliseconds','skills','identities'])&&typeof row.source==='string'&&/^[A-Za-z][A-Za-z0-9-]{0,23}$/.test(row.source)&&['runtime','gateway','mcp','custom','exchange'].includes(String(row.kind))&&count(row.calls)&&count(row.refused)&&count(row.proposed)&&count(row.bytes)&&count(row.milliseconds)&&(row.skills===undefined||count(row.skills))&&(row.identities===undefined||Array.isArray(row.identities)&&row.identities.every(item=>object(item)&&exact(item,['identity','calls'])&&object(item.identity)&&exact(item.identity,['kind','label'])&&['person','service','connection'].includes(String(item.identity.kind))&&typeof item.identity.label==='string'&&item.identity.label.length>=1&&item.identity.label.length<=128&&count(item.calls))))
 }
 export function validUsage(value:unknown):value is UsageLedger{
- const row=(v:unknown)=>object(v)&&exact(v,['source','connection','role','requests','invocations','milliseconds','bytes','tokens'])&&text(v.source,128)&&v.source.length>0&&text(v.connection,128)&&v.connection.length>0&&text(v.role,128)&&v.role.length>0&&count(v.requests)&&count(v.invocations)&&count(v.milliseconds)&&count(v.bytes)&&(v.tokens===undefined||validTokens(v.tokens))
+ const row=(v:unknown)=>object(v)&&exact(v,['source','connection','role','requests','invocations','milliseconds','bytes','tokens','model'])&&(v.model===undefined||text(v.model,200)&&v.model.length>0)&&text(v.source,128)&&v.source.length>0&&text(v.connection,128)&&v.connection.length>0&&text(v.role,128)&&v.role.length>0&&count(v.requests)&&count(v.invocations)&&count(v.milliseconds)&&count(v.bytes)&&(v.tokens===undefined||validTokens(v.tokens)&&Object.keys(v.tokens as object).length>0)
  return object(value)&&exact(value,['rows'])&&Array.isArray(value.rows)&&value.rows.length<=256&&value.rows.every(row)
 }
 /** Token counts the provider reported, summed; a member is absent where no request reported it (agent#18). */
@@ -198,6 +200,8 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value.critic!==undefined&&!validCriticRecord(value.critic))return fail()
  if(value.compaction!==undefined&&!validCompaction(value.compaction))return fail()
  if(value.steers!==undefined&&!validSteers(value.steers))return fail()
+ if(value.failover!==undefined&&(!Array.isArray(value.failover)||value.failover.length>64||new Set(value.failover.map(r=>object(r)?r.role:undefined)).size!==value.failover.length||value.failover.some(r=>!object(r)||!exact(r,['role','connection','history','consumed'])||!count(r.consumed,256)||!text(r.role,128)||!r.role||!text(r.connection,128)||!r.connection||!Array.isArray(r.history)||r.history.length>256||r.consumed!==r.history.length||r.history.some(h=>!object(h)||!exact(h,['from','to','reason'])||!text(h.from,128)||!h.from||!text(h.to,128)||!h.to||!['unavailable','rate-limited','timeout'].includes(String(h.reason))))))return fail()
+ if(value.childUsage!==undefined&&(!Array.isArray(value.childUsage)||value.childUsage.length>256||new Set(value.childUsage.map(r=>object(r)?r.id:undefined)).size!==value.childUsage.length||value.childUsage.some(r=>!object(r)||!exact(r,['id','usage'])||!text(r.id,128)||!r.id||!validUsage(r.usage))))return fail()
  if(value.usage!==undefined&&!validUsage(value.usage))return fail()
  if(!Array.isArray(value.operations)||value.operations.length>400||new Set(value.operations.map(o=>o.id)).size!==value.operations.length)return fail()
  for(const op of value.operations){if(!object(op)||!text(op.id,100)||!text(op.name,150)||!['running','complete','failed','interrupted'].includes(String(op.status))||op.result!==undefined&&(!object(op.result)||(op.result.content!==undefined&&(!Array.isArray(op.result.content)||op.result.content.some(p=>!object(p)||p.type!==undefined&&typeof p.type!=='string'||p.text!==undefined&&typeof p.text!=='string')))))return fail()}

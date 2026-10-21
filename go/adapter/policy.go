@@ -90,6 +90,62 @@ func PolicyBinding(run *Run, members runcontext.PolicyMembers, named runcontext.
 // ApplyPolicy selects the admitted author's binding and routes the critic through its binding.
 // A wire-family or capability change this adapter cannot serve is refused before any request.
 func ApplyPolicy(run *Run, sc *runcontext.SessionContext, named runcontext.RunModels) error {
+	sc.Execution.UsageModels = map[string]string{}
+	for id, binding := range run.PolicyConnections {
+		name := binding.ModelName
+		if binding.Agent != nil {
+			name = binding.Agent.Model
+		}
+		sc.Execution.UsageModels[id] = name
+	}
+	own := run.ModelName
+	if run.Agent != nil {
+		own = run.Agent.Model
+	}
+	id := own
+	if run.Context != nil && run.Context.Connection != "" {
+		id = run.Context.Connection
+	}
+	sc.Execution.UsageModels[id] = own
+	restored := map[string]string{}
+	for _, row := range sc.Execution.State.Failover {
+		if _, seen := restored[row.Role]; seen {
+			return &runcontext.PolicyRefusal{Member: "models." + row.Role + ".fallback", Layer: "run", Detail: "saved failover roles repeat"}
+		}
+		primary, _ := sc.ResolvedPolicy["models."+row.Role+".provider"].Value.(string)
+		chain := []string{primary}
+		fallbacks, _ := sc.ResolvedPolicy["models."+row.Role+".fallback"].Value.([]any)
+		for _, raw := range fallbacks {
+			chain = append(chain, raw.(string))
+		}
+		valid := len(row.History) < len(chain) && row.Consumed == int64(len(row.History))
+		for i, h := range row.History {
+			if i+1 >= len(chain) || h.From != chain[i] || h.To != chain[i+1] {
+				valid = false
+				break
+			}
+		}
+		if !valid || row.Connection != chain[row.Consumed] {
+			return &runcontext.PolicyRefusal{Member: "models." + row.Role + ".fallback", Layer: "run", Detail: "saved failover chain differs from admitted policy"}
+		}
+		restored[row.Role] = row.Connection
+	}
+	remember := func(role, from, to, reason string) {
+		rows := &sc.Execution.State.Failover
+		for i := range *rows {
+			if (*rows)[i].Role == role {
+				(*rows)[i].Connection = to
+				(*rows)[i].Consumed++
+				(*rows)[i].History = append((*rows)[i].History, contract.CheckpointFailoverItemHistoryItem{From: from, To: to, Reason: reason})
+				return
+			}
+		}
+		*rows = append(*rows, contract.CheckpointFailoverItem{Role: role, Connection: to, Consumed: 1, History: []contract.CheckpointFailoverItemHistoryItem{{From: from, To: to, Reason: reason}}})
+	}
+	refuse := func(role string) {
+		reason := "failover refused"
+		run.Emit(contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: "models." + role + ".fallback", Action: "refused", Detail: "The admitted fallback chain is exhausted.", Reason: &reason}})
+	}
 	for name := range sc.ResolvedPolicy {
 		if strings.HasPrefix(name, "models.") && strings.HasSuffix(name, ".provider") {
 			role := strings.TrimSuffix(strings.TrimPrefix(name, "models."), ".provider")
@@ -106,6 +162,14 @@ func ApplyPolicy(run *Run, sc *runcontext.SessionContext, named runcontext.RunMo
 	if err != nil {
 		return err
 	}
+	for role, binding := range map[string]PolicyConnection{"author": author, "critic": critic} {
+		id, _ := sc.ResolvedPolicy["models."+role+".provider"].Value.(string)
+		model := binding.ModelName
+		if binding.Agent != nil {
+			model = binding.Agent.Model
+		}
+		sc.Execution.UsageModels[role+"@"+id] = model
+	}
 	named.Critic = critic.ModelName
 	if critic.Agent != nil {
 		named.Critic = critic.Agent.Model
@@ -119,6 +183,10 @@ func ApplyPolicy(run *Run, sc *runcontext.SessionContext, named runcontext.RunMo
 		activeAgents := map[string]Agent{}
 		for role, binding := range map[string]PolicyConnection{"author": author, "critic": critic} {
 			activeIDs[role], _ = sc.ResolvedPolicy["models."+role+".provider"].Value.(string)
+			if id := restored[role]; id != "" {
+				activeIDs[role] = id
+				binding = run.PolicyConnections[id]
+			}
 			selected := *binding.Agent
 			selected.Effort, _ = sc.ResolvedPolicy["models."+role+".reasoning"].Value.(string)
 			activeAgents[role] = selected
@@ -158,6 +226,9 @@ func ApplyPolicy(run *Run, sc *runcontext.SessionContext, named runcontext.RunMo
 					chain = append(chain, id)
 				}
 			}
+			if len(chain) == 1 {
+				return "", "", false
+			}
 			at := -1
 			for i, id := range chain {
 				if id == activeIDs[role] {
@@ -165,6 +236,7 @@ func ApplyPolicy(run *Run, sc *runcontext.SessionContext, named runcontext.RunMo
 				}
 			}
 			if at < 0 || at+1 >= len(chain) {
+				refuse(role)
 				return "", "", false
 			}
 			if run.Context != nil && run.Context.Objective != "" {
@@ -180,6 +252,7 @@ func ApplyPolicy(run *Run, sc *runcontext.SessionContext, named runcontext.RunMo
 			}
 			from := activeIDs[role]
 			activeIDs[role] = to
+			remember(role, from, to, reason)
 			switched := *binding.Agent
 			switched.Effort, _ = sc.ResolvedPolicy["models."+role+".reasoning"].Value.(string)
 			activeAgents[role] = switched
@@ -191,6 +264,10 @@ func ApplyPolicy(run *Run, sc *runcontext.SessionContext, named runcontext.RunMo
 		active := map[string]PolicyConnection{"author": author, "critic": critic}
 		for role := range active {
 			activeIDs[role], _ = sc.ResolvedPolicy["models."+role+".provider"].Value.(string)
+			if id := restored[role]; id != "" {
+				activeIDs[role] = id
+				active[role] = run.PolicyConnections[id]
+			}
 		}
 		var failoverMu sync.Mutex
 		run.Connection = func(role string) string { failoverMu.Lock(); defer failoverMu.Unlock(); return activeIDs[role] }
@@ -216,6 +293,9 @@ func ApplyPolicy(run *Run, sc *runcontext.SessionContext, named runcontext.RunMo
 					chain = append(chain, id)
 				}
 			}
+			if len(chain) == 1 {
+				return "", "", false
+			}
 			at := -1
 			for i, id := range chain {
 				if id == activeIDs[role] {
@@ -223,6 +303,7 @@ func ApplyPolicy(run *Run, sc *runcontext.SessionContext, named runcontext.RunMo
 				}
 			}
 			if at < 0 || at+1 >= len(chain) {
+				refuse(role)
 				return "", "", false
 			}
 			to := chain[at+1]
@@ -232,6 +313,7 @@ func ApplyPolicy(run *Run, sc *runcontext.SessionContext, named runcontext.RunMo
 			}
 			from := activeIDs[role]
 			activeIDs[role] = to
+			remember(role, from, to, reason)
 			active[role] = binding
 			sc.Execution.UseConnection(to, role)
 			return from, to, true
