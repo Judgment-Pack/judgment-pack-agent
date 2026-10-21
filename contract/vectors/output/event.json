@@ -1,5 +1,5 @@
 {
-  "description": "ADR-0016: message. Handwritten from the accepted output-boundary decision.",
+  "description": "ADR-0017: guarded messages, notice fields and draft scalar matches. Handwritten.",
   "schema": "run-event.json",
   "source": {
     "harness": {
@@ -15,6 +15,24 @@
       "type": "output_guarded",
       "where": "message",
       "pattern": "aws-access-key",
+      "action": "redact"
+    },
+    {
+      "type": "edit_refused",
+      "document": "[redacted: aws-access-key]",
+      "reason": "No draft exists for this document; propose_pack must open it first."
+    },
+    {
+      "type": "edit_applied",
+      "document": "[redacted: aws-access-key]",
+      "line": 1,
+      "bytes": 6,
+      "valid": true
+    },
+    {
+      "type": "output_guarded",
+      "where": "draft edit",
+      "pattern": "host-scalar",
       "action": "redact"
     }
   ]

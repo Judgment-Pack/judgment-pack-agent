@@ -1,4 +1,4 @@
-# ADR-0016: The output boundary
+# ADR-0017: The output boundary
 
 Status: accepted, 2026-10-21. Issue agent#100, milestone v0.8.0. The maintainer's
 accepted decision builds on [ADR-0011](0011-the-agents-policy-table.md),
@@ -13,7 +13,10 @@ or a later tool. The package needs one outbound guard in both languages.
 ## Decision
 
 Every answer (`message`), proposal, tool argument, memory proposal and draft
-edit passes the output guard before delivery or execution. It does not rewrite
+edit passes the output guard before delivery or execution. Model-derived notice
+identifiers and refusal details pass it too; a refused notice is withheld and
+replaced by the guard labels. A redacted notice identifier exceeding its schema
+bound is refused under `invalid-output`. Tool results remain exempt. It does not rewrite
 model input, retained tool results, recalled memory or host-supplied documents.
 The guard has no authority over admission, approvals or Runtime verdicts.
 
@@ -35,7 +38,8 @@ outbound step and emits a guardrail with reason `output refused` naming the
 pattern. `output_guarded {type, where, pattern, action}` records what was held
 without recording the match. `where` identifies one of the five outbound paths;
 `action` is `redact` or `refuse`. Counts by pattern name live in the report's
-`outputGuard` map and `checkpoint.outputGuard`, and carry through resume.
+`outputGuard` map and `checkpoint.outputGuard`, and carry through resume. A closed
+parent copies live child counts into its continuation and saved checkpoints.
 
 The guard reuses search's RE2-subset compiler and Pike-machine instructions.
 It scans each string once per active pattern, sharing search's 4,000,000-step
@@ -44,6 +48,9 @@ the earliest match supplies the label, with base order then host declaration
 order breaking ties. Replacement holes are never rescanned. Exceeding the work
 bound refuses the entire value, with pattern `work-bound`, without releasing a
 partially checked answer. Object string values and keys are covered recursively.
+Draft candidates also scan the JSON text of numbers, booleans and null. A matched
+non-string scalar becomes a string containing the labelled hole for validation;
+unmatched scalars keep their types.
 
 A proposal redaction is presented to Runtime validation as the hole. If the
 redacted proposal or draft fails validation, it is refused and recorded under
@@ -65,8 +72,9 @@ later tool arguments, memory proposal and draft edit contain labelled holes.
 Refuse stops the outbound step, an allowed name passes, and report counts survive
 resume. Both language readers execute the shared vectors byte-identically.
 
-Four mutants and their Go twins must be caught: an outbound path skipped, a base
-pattern removed, the allow list ignored, and a count not recorded. Schema member
+Six mutants and their Go twins must be caught: an outbound path skipped, a base
+pattern removed, the allow list ignored, a count not recorded, a notice guard
+removed, and closed-parent counts not refreshed. Schema member
 and enum probes require every addition to be carried by a handwritten vector.
 
 ## Consequences

@@ -1,5 +1,5 @@
 {
-  "description": "ADR-0016: base-provider-key. Handwritten from the accepted output-boundary decision.",
+  "description": "ADR-0017: base-provider-key. Handwritten from the accepted output-boundary decision.",
   "schema": "run-event.json#/$defs/message",
   "source": {
     "harness": {

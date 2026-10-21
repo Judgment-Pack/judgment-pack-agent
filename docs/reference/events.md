@@ -396,7 +396,7 @@ Closed: a member the schema does not name is refused.
 
 ### `output_guarded`
 
-ADR-0016: outbound text held by a named pattern, without the matched text.
+ADR-0017: outbound text held by a named pattern, without the matched text.
 
 Closed: a member the schema does not name is refused.
 

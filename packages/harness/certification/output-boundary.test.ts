@@ -19,6 +19,12 @@ async function play(engine:Engine,turns:Turn[],policy:PolicyLayer={},execution?:
 }
 for(const engine of [vercel,deepagents,codex])describe(`${engine.id==='codex'?'agent ':''}engine ${engine.id} · scenarios`,()=>{
  it('17 · output boundary: answer, proposal, arguments, memory, draft, refusal, allow and resume',async()=>{
+  const noticeRun=await play(engine,[{call:{tool:'propose_edit',arguments:{document:key,old_text:'before',new_text:'after'}}},{say:'Finished.'}])
+  expect(noticeRun.events.filter(e=>e.type==='error')).toEqual([])
+  expect(noticeRun.events.find(e=>e.type==='edit_refused')).toMatchObject({document:hole})
+  expect(noticeRun.events.filter(e=>e.type==='edit_refused'||e.type==='guardrail'||e.type==='edit_applied').some(e=>JSON.stringify(e).includes(key))).toBe(false)
+  expect(noticeRun.events).toContainEqual({type:'output_guarded',where:'draft edit',pattern:'aws-access-key',action:'redact'})
+  expect(saved(noticeRun)?.outputGuard?.['aws-access-key']).toBe(1)
   const run=await play(engine,[{call:{tool:'get_schema',arguments:{}}},{call:{tool:'validate',arguments:{content:JSON.stringify({title:key})}}},{call:{tool:'remember',arguments:{kind:'fact',text:key}}},{call:{tool:'propose_pack',arguments:{document:{title:key}}}},{say:'Held '+key}])
   expect(run.events.filter(e=>e.type==='error')).toEqual([])
   expect(run.events.filter(e=>e.type==='message_progress'||e.type==='reasoning')).toEqual([])

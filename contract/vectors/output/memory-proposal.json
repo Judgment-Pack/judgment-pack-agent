@@ -1,5 +1,5 @@
 {
-  "description": "ADR-0016: memory-proposal. Handwritten from the accepted output-boundary decision.",
+  "description": "ADR-0017: memory-proposal. Handwritten from the accepted output-boundary decision.",
   "schema": "run-event.json#/$defs/output_guarded",
   "source": {
     "harness": {

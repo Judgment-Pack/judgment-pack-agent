@@ -5055,7 +5055,7 @@ func (v RunEventMessageProgress) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), v.AdditionalMembers)
 }
 
-// From run-event.json#/$defs/output_guarded. ADR-0016: outbound text held by a named pattern,
+// From run-event.json#/$defs/output_guarded. ADR-0017: outbound text held by a named pattern,
 // without the matched text.
 type RunEventOutputGuarded struct {
 	Type    string `json:"type"`

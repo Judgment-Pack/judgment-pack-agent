@@ -4266,6 +4266,31 @@
    ],
    "status": "caught",
    "origin": "agent#100"
+  },
+  {
+   "name": "output boundary notice guard removed",
+   "file": "context/managed.ts",
+   "find": "if(notice.type==='edit_refused')",
+   "replace": "if(false&&notice.type==='edit_refused')",
+   "tests": [
+    "certification/output-boundary.test.ts",
+    "outputGuard.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#100 fix round",
+   "note": "Go twin: bypass guardNotice in Boundary.notices; TestOutputNoticeGuard catches the unchanged identifier."
+  },
+  {
+   "name": "output boundary closed parent counts omitted",
+   "file": "delegation.ts",
+   "find": "const outputGuard = this.parent?.execution.state.outputGuard",
+   "replace": "const outputGuard = undefined",
+   "tests": [
+    "delegation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#100 fix round",
+   "note": "Go twin: omit live.Output.Counts in coordinator.save; TestClosedAgentParentKeepsChildOutputCounts catches the stale checkpoint."
   }
  ]
 }

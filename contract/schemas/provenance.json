@@ -678,7 +678,7 @@
       "description": "Ordered provenance of successful draft changes, including undo; the person and critic review the whole proposal."
     },
     "outputGuard": {
-      "description": "ADR-0016: cumulative guarded match counts by stable pattern name; carried through resume.",
+      "description": "ADR-0017: cumulative guarded match counts by stable pattern name; carried through resume.",
       "type": "object",
       "additionalProperties": {
         "type": "integer",

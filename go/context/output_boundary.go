@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
+	"unicode/utf8"
 )
 
 func (c *SessionContext) ValidateOutputProposal(ctx context.Context, document json.RawMessage) error {
@@ -79,6 +80,47 @@ func (b *Boundary) guardOutput(event contract.RunEvent) (contract.RunEvent, erro
 				err = b.run.Context.ValidateOutputProposal(b.run.Context.outputContext, document)
 			}
 		}
+	}
+	if err != nil {
+		return event, err
+	}
+	return b.guardNotice(event)
+}
+
+// guardNotice checks model-derived notice fields without changing event tags or tool results.
+func (b *Boundary) guardNotice(event contract.RunEvent) (contract.RunEvent, error) {
+	g := b.run.Context.Output
+	if g == nil {
+		return event, nil
+	}
+	var err error
+	if e := event.EditRefused; e != nil {
+		copy := *e
+		if copy.Document != nil {
+			clean, e := g.Text(*copy.Document, "draft edit", true)
+			if e != nil {
+				return event, e
+			}
+			copy.Document = &clean
+		}
+		copy.Reason, err = g.Text(copy.Reason, "draft edit", true)
+		event.EditRefused = &copy
+	}
+	if e := event.EditApplied; e != nil {
+		copy := *e
+		copy.Document, err = g.Text(copy.Document, "draft edit", true)
+		event.EditApplied = &copy
+	}
+	if e := event.Guardrail; e != nil && (e.Reason == nil || *e.Reason != "output refused") {
+		copy := *e
+		copy.Tool, err = g.Text(copy.Tool, "message", true)
+		if err == nil {
+			copy.Detail, err = g.Text(copy.Detail, "message", true)
+		}
+		event.Guardrail = &copy
+	}
+	if err == nil && (event.EditRefused != nil && event.EditRefused.Document != nil && utf8.RuneCountInString(*event.EditRefused.Document) > 512 || event.EditApplied != nil && utf8.RuneCountInString(event.EditApplied.Document) > 512) {
+		return event, g.Refuse("draft edit", "invalid-output")
 	}
 	return event, err
 }

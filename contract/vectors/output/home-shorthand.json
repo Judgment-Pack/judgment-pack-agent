@@ -1,5 +1,5 @@
 {
-  "description": "ADR-0016: home-shorthand. Handwritten path spelling.",
+  "description": "ADR-0017: home-shorthand. Handwritten path spelling.",
   "schema": "run-event.json#/$defs/message",
   "source": {
     "harness": {

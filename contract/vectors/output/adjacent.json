@@ -1,5 +1,5 @@
 {
-  "description": "ADR-0016: adjacent pattern matches. Handwritten.",
+  "description": "ADR-0017: adjacent pattern matches. Handwritten.",
   "schema": "policy.json",
   "source": {
     "harness": {

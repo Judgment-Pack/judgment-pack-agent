@@ -252,6 +252,15 @@ func (g *OutputGuard) JSON(raw json.RawMessage, where string, record bool) (json
 		switch x := v.(type) {
 		case string:
 			return g.text(x, where, record, budget)
+		case json.Number, bool, nil:
+			if where == "draft edit" {
+				raw, _ := json.Marshal(v)
+				clean, err := g.text(string(raw), where, record, budget)
+				if err != nil || clean != string(raw) {
+					return clean, err
+				}
+			}
+			return v, nil
 		case []any:
 			for i, v := range x {
 				clean, err := walk(v)

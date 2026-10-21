@@ -1,5 +1,5 @@
 {
-  "description": "ADR-0016: zero-width pattern matches. Handwritten.",
+  "description": "ADR-0017: zero-width pattern matches. Handwritten.",
   "schema": "policy.json",
   "source": {
     "harness": {

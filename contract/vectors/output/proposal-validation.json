@@ -1,5 +1,5 @@
 {
-  "description": "ADR-0016: proposal-validation refuses without disclosing text.",
+  "description": "ADR-0017: proposal-validation refuses without disclosing text.",
   "schema": "run-event.json",
   "source": {
     "harness": {

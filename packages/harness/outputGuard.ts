@@ -1,4 +1,4 @@
-/** ADR-0016. Host-owned patterns operate only on the outbound boundary. */
+/** ADR-0017. Host-owned patterns operate only on the outbound boundary. */
 import base from './contract/output-patterns.json'
 import {compilePattern,matchRanges,PATTERN_STEPS,type CompiledPattern} from './context/pattern'
 import type {AssistantEvent} from './engine'
@@ -66,6 +66,7 @@ export class OutputGuard {
   }
   const walk=(v:unknown):unknown=>{
    if(typeof v==='string')return text(v)
+   if(where==='draft edit'&&(v===null||typeof v==='number'||typeof v==='boolean')){const raw=JSON.stringify(v),clean=text(raw);return clean===raw?v:clean}
    if(Array.isArray(v))return v.map(walk)
    if(v&&typeof v==='object'){const out={...v} as Record<string,unknown>;for(const k of Object.keys(v).sort()){const key=text(k),clean=walk((v as Record<string,unknown>)[k]);if(key!==k)delete out[k];out[key]=clean}return out}
    return v

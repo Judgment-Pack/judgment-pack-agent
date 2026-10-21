@@ -3,6 +3,8 @@ package runcontext
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -139,5 +141,198 @@ func TestOutputMalformedRefusals(t *testing.T) {
 				t.Fatal(problem)
 			}
 		}
+	}
+}
+
+func TestOutputNoticeGuard(t *testing.T) {
+	const key = "AKIAABCDEFGHIJKLMNOP"
+	for _, mode := range []string{"redact", "refuse", "off"} {
+		t.Run(mode, func(t *testing.T) {
+			s := modelSession()
+			s.Policy = PolicyLayer{"outputGuard": mode}
+			opened, err := ContextualSession(context.Background(), s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer opened.Context.Close()
+			_, err = opened.Context.Drafts.Edit(context.Background(), "propose_edit", json.RawMessage(`{"document":"AKIAABCDEFGHIJKLMNOP","old_text":"before","new_text":"after"}`))
+			if err == nil {
+				t.Fatal("missing document was accepted")
+			}
+			boundary := NewBoundary(opened)
+			events, _ := boundary.Event(contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}})
+			found, guarded := false, false
+			for _, event := range events {
+				if event.OutputGuarded != nil && event.OutputGuarded.Pattern == "aws-access-key" {
+					guarded = true
+				}
+				if event.EditRefused != nil {
+					found = true
+					want := "[redacted: aws-access-key]"
+					if mode == "off" {
+						want = key
+					}
+					if mode == "refuse" || event.EditRefused.Document == nil || *event.EditRefused.Document != want {
+						t.Fatalf("notice: %+v", event.EditRefused)
+					}
+				}
+				raw, _ := json.Marshal(event)
+				if mode != "off" && strings.Contains(string(raw), key) {
+					t.Fatalf("notice leaked: %s", raw)
+				}
+			}
+			if found != (mode != "refuse") || guarded != (mode != "off") {
+				t.Fatalf("found=%v guarded=%v", found, guarded)
+			}
+		})
+	}
+}
+
+func TestOutputDraftScalars(t *testing.T) {
+	for _, scalar := range []struct{ before, after, pattern string }{{"42", "123456", "123456"}, {"false", "true", "true"}, {`"before"`, "null", "null"}} {
+		for _, mode := range []string{"redact", "refuse", "off"} {
+			for _, valid := range []bool{true, false} {
+				t.Run(fmt.Sprintf("%s/%s/%v", scalar.pattern, mode, valid), func(t *testing.T) {
+					s := modelSession()
+					s.Policy = PolicyLayer{"outputGuard": mode, "outputPatterns": []OutputPattern{{Name: "host-scalar", Pattern: scalar.pattern}}}
+					prior := `{"value":` + scalar.before + `,"untouched":7}`
+					s.Context = &Input{AcceptedDocuments: []AcceptedDocument{{ID: "pack", Document: json.RawMessage(prior)}}}
+					s.Tools = []RuntimeTool{{Name: "validate"}}
+					calls := 0
+					s.CallTool = func(_ context.Context, _ string, args json.RawMessage) (ToolResult, error) {
+						calls++
+						v, _ := ParseJSON(args)
+						var candidate map[string]any
+						if err := json.Unmarshal([]byte(v.Get("content").Str()), &candidate); err != nil {
+							t.Fatal(err)
+						}
+						if mode == "redact" && candidate["value"] != "[redacted: host-scalar]" {
+							t.Fatalf("missing scalar hole: %v", candidate)
+						}
+						status := "invalid"
+						if valid {
+							status = "valid"
+						}
+						return Answer(ObjectOf("status", String(status))), nil
+					}
+					opened, err := ContextualSession(context.Background(), s)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer opened.Context.Close()
+					before, _ := json.Marshal(opened.Context.Execution.State.Draft)
+					args, _ := json.Marshal(map[string]string{"document": "pack", "old_text": scalar.before, "new_text": scalar.after})
+					_, err = opened.Context.Drafts.Edit(context.Background(), "propose_edit", args)
+					if (err != nil) != (mode == "refuse" || !valid) {
+						t.Fatalf("unexpected edit error: %v", err)
+					}
+					wantCalls := 1
+					if mode == "refuse" {
+						wantCalls = 0
+					}
+					if calls != wantCalls {
+						t.Fatalf("validation calls=%d", calls)
+					}
+					if mode == "refuse" || !valid {
+						after, _ := json.Marshal(opened.Context.Execution.State.Draft)
+						if string(before) != string(after) {
+							t.Fatal("refusal changed prior draft checkpoint")
+						}
+						var want, got any
+						json.Unmarshal([]byte(prior), &want)
+						json.Unmarshal(opened.Context.Drafts.Proposal().Document, &got)
+						if !reflect.DeepEqual(want, got) {
+							t.Fatalf("prior draft changed: %v", got)
+						}
+					}
+					if mode != "off" && opened.Context.Output.Counts()["host-scalar"] != 1 {
+						t.Fatalf("scalar was not guarded: %v", opened.Context.Output.Counts())
+					}
+					if mode == "redact" && !valid && opened.Context.Output.Counts()["proposal-validation"] != 1 {
+						t.Fatal("invalid hole was not refused")
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestOutputNoticeFields(t *testing.T) {
+	key := "AKIAABCDEFGHIJKLMNOP"
+	reason := "edit refused"
+	for _, mode := range []string{"redact", "refuse", "off"} {
+		for _, queued := range []bool{true, false} {
+			s := modelSession()
+			s.Policy = PolicyLayer{"outputGuard": mode}
+			opened, err := ContextualSession(context.Background(), s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			notices := []contract.RunEvent{
+				{EditRefused: &contract.RunEventEditRefused{Type: "edit_refused", Document: &key, Reason: key}},
+				{EditApplied: &contract.RunEventEditApplied{Type: "edit_applied", Document: key, Line: 1, Bytes: 1, Valid: true}},
+				{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: key, Detail: key, Action: "refused", Reason: &reason}},
+			}
+			b := NewBoundary(opened)
+			var out []contract.RunEvent
+			if queued {
+				opened.Context.Drafts.notices = notices
+				out = b.notices()
+			} else {
+				for _, n := range notices {
+					events, stop := b.Event(n)
+					out = append(out, events...)
+					if stop {
+						break
+					}
+				}
+			}
+			found := 0
+			for _, e := range out {
+				if e.EditRefused == nil && e.EditApplied == nil && (e.Guardrail == nil || e.Guardrail.Reason != nil && *e.Guardrail.Reason == "output refused") {
+					continue
+				}
+				found++
+				raw, _ := json.Marshal(e)
+				if mode == "refuse" || mode == "redact" && strings.Contains(string(raw), key) {
+					t.Fatalf("%s notice leaked: %s", mode, raw)
+				}
+				want := key
+				if mode == "redact" {
+					want = "[redacted: aws-access-key]"
+				}
+				if e.EditRefused != nil && (*e.EditRefused.Document != want || e.EditRefused.Reason != want) || e.EditApplied != nil && e.EditApplied.Document != want || e.Guardrail != nil && (e.Guardrail.Tool != want || e.Guardrail.Detail != want) {
+					t.Fatalf("fields not guarded: %s", raw)
+				}
+			}
+			if mode != "refuse" && found != 3 {
+				t.Fatalf("missing notices: %d", found)
+			}
+			if queued || mode != "refuse" {
+				events, _ := b.Event(contract.RunEvent{ToolResult: &contract.ToolResult{Type: "tool_result", Name: "fixture", Text: key}})
+				if len(events) == 0 || events[len(events)-1].ToolResult == nil || events[len(events)-1].ToolResult.Text != key {
+					t.Fatal("tool result changed")
+				}
+			}
+			opened.Context.Close()
+		}
+	}
+}
+
+func TestOutputNoticeRedactionBound(t *testing.T) {
+	opened, err := ContextualSession(context.Background(), modelSession())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opened.Context.Close()
+	document := strings.Repeat("AKIAABCDEFGHIJKLMNOP ", 24) + strings.Repeat("x", 8)
+	opened.Context.Drafts.notices = []contract.RunEvent{{EditRefused: &contract.RunEventEditRefused{Type: "edit_refused", Document: &document, Reason: "No draft."}}}
+	for _, e := range NewBoundary(opened).notices() {
+		if e.EditRefused != nil {
+			t.Fatal("oversized guarded notice delivered")
+		}
+	}
+	if opened.Context.Output.Counts()["invalid-output"] != 1 {
+		t.Fatal("oversized guarded notice not refused")
 	}
 }

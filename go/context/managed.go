@@ -105,6 +105,17 @@ func (b *Boundary) notices() []contract.RunEvent {
 	if b.run.Context.Memories != nil {
 		out = append(out, b.run.Context.Memories.TakeNotices()...)
 	}
+	if g := b.run.Context.Output; g != nil {
+		clean := make([]contract.RunEvent, 0, len(out))
+		for _, notice := range out {
+			guarded, err := b.guardNotice(notice)
+			if err == nil {
+				clean = append(clean, guarded)
+			}
+		}
+		// Only guard-generated labels remain; do not scan replacement holes again.
+		out = append(clean, g.TakeNotices()...)
+	}
 	return out
 }
 

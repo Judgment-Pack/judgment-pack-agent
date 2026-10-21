@@ -62,3 +62,51 @@ it('redacted proposals and edits validate the hole; malformed validation replies
   expect(events.filter(e=>e.type==='output_guarded'&&e.pattern==='proposal-validation')).toHaveLength(2)
  }
 })
+
+it('guards every draft scalar and validates holes atomically',async()=>{
+ for(const [before,after,pattern] of [[42,123456,'123456'],[false,true,'true'],['before',null,'null']] as const){
+  for(const mode of ['redact','refuse','off'] as const)for(const valid of [true,false]){
+   const events:AssistantEvent[]=[],counts={},ledger=new ContextLedger({...CONTEXT_DEFAULTS}),state={} as ExecutionCheckpoint
+   const guard=new OutputGuard({outputGuard:{value:mode,layer:'run'},outputPatterns:{value:[{name:'host-scalar',pattern}],layer:'project'}},()=>counts,e=>events.push(e)),signal=new AbortController().signal
+   const seen:unknown[]=[]
+   const drafts=new Drafts(ledger,{...CONTEXT_DEFAULTS},()=>state,e=>events.push(e),()=>true,async text=>{seen.push(JSON.parse(text));return answer({status:valid?'valid':'invalid'})},()=> '0'.repeat(32),(v,w)=>guard.value(v,w),signal,(w,p)=>guard.refuse(w,p))
+   await drafts.open([{id:'pack',document:{value:before,untouched:7}}])
+   const prior=structuredClone(state.draft)
+   const edit=drafts.edit('propose_edit',{document:'pack',old_text:JSON.stringify(before),new_text:JSON.stringify(after)},signal)
+   if(mode==='refuse'||!valid){await expect(edit).rejects.toThrow();expect(drafts.proposal()?.document).toEqual({value:before,untouched:7});expect(state.draft).toEqual(prior)}
+   else{await edit;expect(drafts.proposal()?.document).toEqual({value:mode==='off'?after:'[redacted: host-scalar]',untouched:7})}
+   expect(seen).toEqual(mode==='refuse'?[]:[{value:mode==='off'?after:'[redacted: host-scalar]',untouched:7}])
+   if(mode!=='off')expect(events).toContainEqual({type:'output_guarded',where:'draft edit',pattern:'host-scalar',action:mode})
+   if(mode==='redact'&&!valid)expect(events).toContainEqual({type:'output_guarded',where:'draft edit',pattern:'proposal-validation',action:'refuse'})
+  }
+ }
+})
+
+
+import {managedContext,contextOf} from './context/managed'
+it('guards each model-text notice field under the run mode and exempts tool results',async()=>{
+ const key='AKIAABCDEFGHIJKLMNOP',hole='[redacted: aws-access-key]'
+ const notices:AssistantEvent[]=[{type:'edit_refused',document:key,reason:key},{type:'edit_applied',document:key,line:1,bytes:1,valid:true},{type:'guardrail',tool:key,detail:key,action:'refused',reason:'edit refused'}]
+ for(const mode of ['redact','refuse','off'] as const)for(const queued of [true,false]){
+  const events:AssistantEvent[]=[]
+  const session={prompt:'Review',testPrompt:'',tools:[],hostTools:[],callTool:async()=>answer({}),signal:new AbortController().signal,allowConversation:true,interactive:true,critic:'off' as const,policy:{outputGuard:mode},agent:{model:'fixture',run:async()=>{}}}
+  for await(const event of managedContext(session,async function*(ready){
+   if(queued)for(const notice of notices)contextOf(ready).memoryNotice(notice)
+   else for(const notice of notices)yield notice
+   yield {type:'tool_result' as const,name:'fixture',text:key,isError:false}
+   yield {type:'end' as const}
+  }))events.push(event)
+  const delivered=events.filter(e=>e.type==='edit_refused'||e.type==='edit_applied'||e.type==='guardrail'&&e.reason!=='output refused')
+  if(mode==='refuse')expect(delivered).toEqual([])
+  else expect(delivered).toEqual(mode==='off'?notices:[{type:'edit_refused',document:hole,reason:hole},{type:'edit_applied',document:hole,line:1,bytes:1,valid:true},{type:'guardrail',tool:hole,detail:hole,action:'refused',reason:'edit refused'}])
+  if(mode!=='refuse'||queued)expect(events.find(e=>e.type==='tool_result')).toMatchObject({text:key})
+  for(const event of delivered)expect(argumentProblem(eventSchema.$defs[event.type as 'edit_refused'],event)).toBeUndefined()
+ }
+})
+
+it('refuses a notice whose redaction would exceed its document bound',async()=>{
+ const events:AssistantEvent[]=[],session={prompt:'Review',testPrompt:'',tools:[],hostTools:[],callTool:async()=>answer({}),signal:new AbortController().signal,allowConversation:true,interactive:true,critic:'off' as const,agent:{model:'fixture',run:async()=>{}}}
+ for await(const event of managedContext(session,async function*(ready){contextOf(ready).memoryNotice({type:'edit_refused',document:'AKIAABCDEFGHIJKLMNOP '.repeat(24)+'x'.repeat(8),reason:'No draft.'});yield {type:'end' as const}}))events.push(event)
+ expect(events.some(e=>e.type==='edit_refused')).toBe(false)
+ expect(events).toContainEqual({type:'output_guarded',where:'draft edit',pattern:'invalid-output',action:'refuse'})
+})

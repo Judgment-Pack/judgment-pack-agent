@@ -1,5 +1,5 @@
 {
-  "description": "ADR-0016: checkpoint. Handwritten from the accepted output-boundary decision.",
+  "description": "ADR-0017: checkpoint. Handwritten from the accepted output-boundary decision.",
   "schema": "checkpoint.json",
   "source": {
     "harness": {

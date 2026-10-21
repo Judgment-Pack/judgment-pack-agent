@@ -19,6 +19,22 @@ export function managedContext<T extends EngineSession>(session:T,run:(session:T
  const gate=openRun(session,()=>{})
  return eventIterator({gate,open:()=>execute({...session,signal:gate.signal},run,engine)})
 }
+/** Notices carry model-derived identifiers and refusal details, independently of tool results.
+ * Guard-generated labels are trusted metadata and must not be scanned again. */
+function guardNotice(notice:AssistantEvent,context:SessionContext):AssistantEvent {
+ if(notice.type==='edit_refused'){const [document,reason]=context.output.value([notice.document,notice.reason] as const,'draft edit');if(document!==undefined&&[...document].length>512)context.output.refuse('draft edit','invalid-output');return {...notice,...(document===undefined?{}:{document}),reason}}
+ if(notice.type==='edit_applied'){const document=context.output.value(notice.document,'draft edit');if([...document].length>512)context.output.refuse('draft edit','invalid-output');return {...notice,document}}
+ if(notice.type==='guardrail'&&notice.reason!=='output refused'){const [tool,detail]=context.output.value([notice.tool,notice.detail] as const,'message');return {...notice,tool,detail}}
+ return notice
+}
+function takeNotices(context:SessionContext):AssistantEvent[]{
+ const out:AssistantEvent[]=[]
+ for(const notice of context.takeNotices()){
+  try{out.push(guardNotice(notice,context))}catch(error){if(!(error instanceof OutputRefused))throw error}
+ }
+ // These are the labels just produced by guarding notices, never tool results.
+ return [...out,...context.takeNotices()]
+}
 async function* execute<T extends EngineSession>(session:T,run:(session:T)=>AsyncIterable<AssistantEvent>,engine?:import('../host').AssistantEngine):AsyncGenerator<AssistantEvent>{
  let context:SessionContext|undefined
  let ended=false
@@ -61,7 +77,7 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
     yield await write()
     const ran=await context.runApproved!(session.signal)
     context.execution.state.approval={...context.execution.state.approval!,state:'executed',result:ran.result}
-    for(const notice of context.takeNotices())yield notice
+    for(const notice of takeNotices(context))yield notice
     yield await write()
    }else if(step==='write'){
     yield await write()
@@ -91,9 +107,10 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
     }
     event=clean
    }
+   event=guardNotice(event,context)
    // agent#10: a refusal of the critic's call is the boundary's guardrail, put
    // on the stream before the result the engine reports for that call.
-   for(const notice of context.takeNotices())yield notice
+   for(const notice of takeNotices(context))yield notice
    // ADR-0008: an engine asks the host's approval policy where it hands an act call to the host
    // (SessionContext.approval) and delivers approval_requested in place of the call where it asks.
    // A call made while another waits is refused: said here with its call, its guardrail and its
@@ -148,7 +165,7 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
  } catch(error){
   if(ended)throw error
   if(error instanceof OutputRefused){
-   const notices=context?.takeNotices()??[]
+   const notices=context?takeNotices(context):[]
    for(const notice of notices)yield notice
    if(!notices.some(e=>e.type==='guardrail'&&e.reason==='output refused'))yield {type:'guardrail',tool:'output',action:'refused',reason:'output refused',detail:error.message}
    if(context&&tracked)yield {type:'execution_checkpoint',checkpoint:context.execution.snapshot('stopped')}

@@ -957,7 +957,7 @@
       "additionalProperties": false
     },
     "output_guarded": {
-      "description": "ADR-0016: outbound text held by a named pattern, without the matched text.",
+      "description": "ADR-0017: outbound text held by a named pattern, without the matched text.",
       "type": "object",
       "properties": {
         "type": {

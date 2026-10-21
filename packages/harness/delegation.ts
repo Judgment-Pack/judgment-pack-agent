@@ -272,7 +272,8 @@ class ResponseAllowance {
     if (this.parent && this.open) return this.parent.execution.snapshot('running')
     // The children's source calls are in the parent's rows (ADR-0006), which `last`, a copy, may not hold yet.
     const sources = this.parent?.execution.state.sources
-    return {...last, status: 'running', used: this.used, testCalls: Math.max(last.testCalls ?? 0, this.testCalls), ...(sources === undefined ? {} : {sources: structuredClone(sources)})}
+    const outputGuard = this.parent?.execution.state.outputGuard
+    return {...last, ...(outputGuard === undefined ? {} : {outputGuard: structuredClone(outputGuard)}), status: 'running', used: this.used, testCalls: Math.max(last.testCalls ?? 0, this.testCalls), ...(sources === undefined ? {} : {sources: structuredClone(sources)})}
   }
 }
 

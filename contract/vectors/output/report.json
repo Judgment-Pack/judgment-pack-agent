@@ -1,5 +1,5 @@
 {
-  "description": "ADR-0016: report. Handwritten from the accepted output-boundary decision.",
+  "description": "ADR-0017: report. Handwritten from the accepted output-boundary decision.",
   "schema": "provenance.json#/$defs/outputGuard",
   "source": {
     "harness": {

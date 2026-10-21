@@ -1,5 +1,5 @@
 {
-  "description": "ADR-0016: tool-argument. Handwritten from the accepted output-boundary decision.",
+  "description": "ADR-0017: tool-argument. Handwritten from the accepted output-boundary decision.",
   "schema": "run-event.json#/$defs/output_guarded",
   "source": {
     "harness": {

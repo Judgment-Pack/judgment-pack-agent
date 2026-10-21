@@ -358,7 +358,7 @@ refusal events. Interrupted and waiting turns deliver every draft with its edits
 Both languages execute the shared calls under `contract/vectors/edits/`, including
 successful deletion/insertion and malformed-identifier cases.
 
-The output boundary (ADR-0016, agent#100) defaults to `outputGuard: redact`.
+The output boundary (ADR-0017, agent#100) defaults to `outputGuard: redact`.
 Answers, proposals, tool arguments, memory proposals and draft edits receive
 labelled holes for the versioned base patterns and host `outputPatterns`.
 `outputAllow` disables stable names; `refuse` stops the outbound step with an

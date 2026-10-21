@@ -1,5 +1,5 @@
 {
-  "description": "ADR-0016: off. Handwritten from the accepted output-boundary decision.",
+  "description": "ADR-0017: off. Handwritten from the accepted output-boundary decision.",
   "schema": "policy.json",
   "source": {
     "harness": {
