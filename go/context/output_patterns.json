@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "patterns": [
+    {
+      "name": "aws-access-key",
+      "pattern": "\\b(?:AKIA|ASIA)[A-Z0-9]{16}\\b"
+    },
+    {
+      "name": "provider-key",
+      "pattern": "\\bsk-(?:proj-|ant-api03-)?[A-Za-z0-9_-]{20,}"
+    },
+    {
+      "name": "google-api-key",
+      "pattern": "\\bAIza[A-Za-z0-9_-]{35}\\b"
+    },
+    {
+      "name": "github-token",
+      "pattern": "\\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})"
+    },
+    {
+      "name": "private-key",
+      "pattern": "-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----[\\s\\S]*-----END (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----"
+    },
+    {
+      "name": "bearer-token",
+      "pattern": "\\b[Bb][Ee][Aa][Rr][Ee][Rr][ \\t]+[A-Za-z0-9._~+/=-]+"
+    },
+    {
+      "name": "local-home-path",
+      "pattern": "(?:/(?:home|Users|root)/|~/|[A-Za-z]:\\\\+Users\\\\+)[^\\s\"\\x27<>]+"
+    },
+    {
+      "name": "local-temp-path",
+      "pattern": "(?:/(?:tmp|var/tmp|private/tmp|private/var/folders)/|[A-Za-z]:\\\\+(?:Temp|Windows\\\\+Temp)\\\\+)[^\\s\"\\x27<>]+"
+    }
+  ]
+}

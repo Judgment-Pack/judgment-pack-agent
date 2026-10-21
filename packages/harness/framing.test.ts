@@ -430,9 +430,9 @@ describe.each([vercel, deepagents])('a page that asks for something, on $id', (e
     })
     expectInside(toolTexts(requests[1]!)[0]!, instruction, 'json')
     const attempt = ofType(events, 'tool_call').find((event) => event.name === 'web_search')
-    expect(attempt?.args).toEqual({ query: secret })
+    expect(attempt?.args).toEqual({ query: '[redacted: provider-key]' })
     // The consent gate saw the query; nothing left; the model read the refusal.
-    expect(asked).toEqual([secret])
+    expect(asked).toEqual(['[redacted: provider-key]'])
     expect(sent).toEqual([])
     expect(ofType(events, 'tool_result').at(-1)).toMatchObject({ name: 'web_search', isError: true, structured: { failure: { code: 'invalid-tool-input' } } })
     expect(toolTexts(requests[2]!).at(-1)).toContain('did not consent to this search')
@@ -550,9 +550,9 @@ describe('a page that asks for something, on codex', () => {
       script: obeyingAgent(shown, answer)
     })
     expectInside(shown.text, instruction, 'text')
-    expect(ofType(events, 'tool_call').find((event) => event.name === 'web_search')?.args).toEqual({ query: secret })
+    expect(ofType(events, 'tool_call').find((event) => event.name === 'web_search')?.args).toEqual({ query: '[redacted: provider-key]' })
     // The consent gate saw the query; nothing left; the agent read the refusal.
-    expect(asked).toEqual([secret])
+    expect(asked).toEqual(['[redacted: provider-key]'])
     expect(sent).toEqual([])
     expect(ofType(events, 'tool_result').at(-1)).toMatchObject({ name: 'web_search', isError: true, structured: { failure: { code: 'invalid-tool-input' } } })
     expect(answer.value).toMatchObject({ isError: true })

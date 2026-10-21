@@ -404,6 +404,14 @@ export function assistantTransport(id: string): Transport {
   return new DeskWebSocketTransport(socketURL(), socketProtocols(id))
 }
 
+type NoticeGuard = (event: AssistantEvent) => AssistantEvent | undefined
+const noticeGuards = new WeakMap<CallTool, NoticeGuard>()
+/** Bind delivery to this run's output policy without changing the gate's verdict. */
+export function guardConnectionNotices(call: CallTool, guard: NoticeGuard): () => void {
+  noticeGuards.set(call, guard)
+  return () => { if (noticeGuards.get(call) === guard) noticeGuards.delete(call) }
+}
+
 /** What a connection is once it has finished setting itself up. */
 export interface AssistantConnectionReady {
   /** The allow-listed tools, exactly as `tools/list` served them. */
@@ -453,13 +461,18 @@ export function openAssistantConnection(options: {
 }): AssistantConnection {
   const allowed = allowedTools(options.allowed)
   const raw = options.transport ?? assistantTransport(options.sessionId ?? '')
-  const notify = (notice: GuardrailNotice) =>
-    options.onEvent({
+  let callTool: CallTool
+  const notify = (notice: GuardrailNotice) => {
+    const event: AssistantEvent = {
       type: 'guardrail',
       tool: notice.tool,
       action: notice.action,
       detail: notice.detail
-    })
+    }
+    const guard = noticeGuards.get(callTool)
+    const delivered = guard ? guard(event) : event
+    if (delivered) options.onEvent(delivered)
+  }
   const gated = gateTransport(raw, { allowed, onGuardrail: notify })
   const client = new Client({ name: 'judgment-pack-desk-assistant', version: '0.1.0' }, { capabilities: {} })
 
@@ -552,7 +565,7 @@ export function openAssistantConnection(options: {
         // socket is not on its own enough: a call already queued would reach a
         // closed transport and fail with whatever the SDK says about that,
         // which tells an engine nothing about why. This is the gate saying so.
-        callTool: async (name, args) => {
+        callTool: callTool = async (name, args) => {
           // **Checked twice, and the second one is the point.** A call that
           // was already in flight when the session ended resolves afterwards,
           // and delivering that result would be this desk handing an engine

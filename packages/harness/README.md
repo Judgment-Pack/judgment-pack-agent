@@ -730,3 +730,12 @@ or empty; nonempty identifiers are truncated to 512 Unicode characters. The
 refusal events. Interrupted and waiting turns deliver every draft with its edits.
 Both languages execute the shared calls under `contract/vectors/edits/`, including
 successful deletion/insertion and malformed-identifier cases.
+
+The output boundary (ADR-0017, agent#100) defaults to `outputGuard: redact`.
+Answers, proposals, tool arguments, memory proposals and draft edits receive
+labelled holes for the versioned base patterns and host `outputPatterns`.
+`outputAllow` disables stable names; `refuse` stops the outbound step with an
+`output refused` guardrail. `output_guarded` events and `outputGuard` counts make
+the decision visible and carry it through checkpoint resume. Redacted proposals
+are validated with their holes. Model input remains unchanged, and incomplete
+fragments wait for the complete guarded answer.

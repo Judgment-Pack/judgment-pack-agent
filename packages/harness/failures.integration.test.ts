@@ -33,7 +33,7 @@ it('retains a partial Gemini answer and reports its later stream error without r
  const frame=(value:unknown)=>'data: '+JSON.stringify(value)+'\n\n'
  const wire=frame({candidates:[{content:{role:'model',parts:[{text:'Partial findings retained.'}]}}]})+frame({error:{code:503,status:'UNAVAILABLE',message:'PRIVATE_STREAM_SENTINEL'}})
  let calls=0
- const session:AssistantSession={prompt:'Explain this',testPrompt:'',tools:[],hostTools:[],callTool:async()=>({}),allowConversation:true,interactive:true,model:{family:'gemini',model:'fixture',call:async()=>{calls++;return new Response(wire,{headers:{'Content-Type':'text/event-stream'}})}},thinking:normalize('off','gemini'),signal:new AbortController().signal}
+ const session:AssistantSession={policy:{outputGuard:'off'},prompt:'Explain this',testPrompt:'',tools:[],hostTools:[],callTool:async()=>({}),allowConversation:true,interactive:true,model:{family:'gemini',model:'fixture',call:async()=>{calls++;return new Response(wire,{headers:{'Content-Type':'text/event-stream'}})}},thinking:normalize('off','gemini'),signal:new AbortController().signal}
  const events:AssistantEvent[]=[];for await(const e of vercel.start(session))events.push(e)
  expect(events.some(e=>e.type==='message_progress'&&e.text.includes('Partial findings retained.'))).toBe(true)
  expect(events.filter(e=>e.type==='error')).toHaveLength(1)

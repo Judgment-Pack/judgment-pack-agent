@@ -942,13 +942,28 @@
       {
         "check": "16 · checkpoint resume gives the same request bytes without asking the compactor again",
         "go": ["16 resume"]
+      },
+      {
+        "check": "17 \u00b7 output boundary: undeclared names and gate notices are guarded before delivery and save",
+        "go": [
+          "17 output boundary",
+          "17 agent output boundary"
+        ]
+      },
+      {
+        "check": "17 \u00b7 output boundary: answer, proposal, arguments, memory, draft, refusal, allow and resume",
+        "go": [
+          "17 output boundary",
+          "17 agent output boundary"
+        ]
       }
     ],
     "additionalSources": [
       "packages/harness/certification/providers.test.ts",
       "packages/harness/certification/subagents.test.ts",
       "packages/harness/certification/memory-write.test.ts",
-      "packages/harness/certification/proposal-edits.test.ts"
+      "packages/harness/certification/proposal-edits.test.ts",
+      "packages/harness/certification/output-boundary.test.ts"
     ]
   },
   "delegation": {
