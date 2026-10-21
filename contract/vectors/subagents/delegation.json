@@ -1,0 +1,30 @@
+{
+  "description": "The recorded request; the package attaches the identity, never the parent model.",
+  "schema": "delegated-task.json#/$defs/taskRequest",
+  "items": [
+    {
+      "title": "Evidence",
+      "objective": "Check the evidence.",
+      "profile": "auditor",
+      "subagent": {
+        "id": "auditor",
+        "digest": "sha256:995fe5f09c48582de11b7109d3def5927eda8003a884f7fd2c63925edd4393d6",
+        "source": {
+          "kind": "custom",
+          "id": "project",
+          "version": "1",
+          "trust": "person"
+        }
+      }
+    }
+  ],
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/subagents.ts"
+    ]
+  }
+}

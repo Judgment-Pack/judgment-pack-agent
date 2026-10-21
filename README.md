@@ -127,3 +127,15 @@ verifying a release by hand. Until the first release, `main` is the only line.
 ## Licence
 
 Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+### Declared sub-agents
+
+Hosts may declare pinned `subagents[]` beside tools and skills (ADR-0013). The
+`delegate_tasks` catalogue lists their ids and framed purpose lines beside the
+unchanged `analyze`, `review`, `research` and `author-test` profiles. A definition
+admits only declared read tools and skills, narrowing bounds and an approved digest.
+The child uses `models.subagent.<id>`, its own skill-load budget and the common
+prompt assembler; it has no actions, delegation, critic or review request.
+Events, checkpoint tasks and report figures identify the definition's id, digest
+and source. Withdrawn or changed definitions in restored batches are reported
+without dispatch. The host owns storage and re-approval.

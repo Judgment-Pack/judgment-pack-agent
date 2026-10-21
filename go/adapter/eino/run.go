@@ -116,6 +116,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		Model:             &runcontext.ModelSession{Family: run.Wire, Model: run.ModelName, Budget: budgetOf(capabilities), ToolSchemas: string(capabilities.ToolSchemas), Thinking: orOff(run.Thinking)},
 		Host:              run.Host,
 		Skills:            run.Skills,
+		Subagents:         run.Subagents, ChildDefinition: run.ChildDefinition,
 		// ADR-0010: the critic's switch, as the host passes it.
 		Critic: run.Critic,
 		Policy: run.Policy, PolicyProject: run.PolicyProject, TaskClass: run.TaskClass, PaceUsed: run.PaceUsed, PolicyLegacyModels: &named, PolicyFamilies: adapter.PolicyFamilies(run, named), PolicyConnections: append(adapter.PolicyConnectionIDs(run), named.Critic, named.Child), PolicyRequests: run.PolicyRequests,

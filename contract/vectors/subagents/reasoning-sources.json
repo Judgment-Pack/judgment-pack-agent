@@ -1,0 +1,258 @@
+{
+  "description": "Hand-authored definitions carrying every additional reasoning value and the gateway and exchange source kinds and trust classes.",
+  "schema": "subagent.json",
+  "items": [
+    {
+      "id": "auditor",
+      "name": "Auditor",
+      "purpose": "Check supplied evidence.",
+      "instructions": "Use only the supplied evidence and cite it.",
+      "source": {
+        "kind": "gateway",
+        "id": "evidence",
+        "version": "1",
+        "trust": "first-party"
+      },
+      "tools": [
+        "lookup"
+      ],
+      "skills": [],
+      "model": "fixture",
+      "reasoning": "off",
+      "bounds": {
+        "modelRequests": 3,
+        "agentRuns": 1,
+        "toolCalls": 2,
+        "bytes": 12000,
+        "milliseconds": 30000,
+        "resultBytes": 3000
+      },
+      "pinnedDigest": "sha256:c73fd7710bd31aa680233bd57474753180a02c314d504884b3e1c94e1e67b151"
+    },
+    {
+      "id": "auditor",
+      "name": "Auditor",
+      "purpose": "Check supplied evidence.",
+      "instructions": "Use only the supplied evidence and cite it.",
+      "source": {
+        "kind": "exchange",
+        "id": "evidence",
+        "version": "1",
+        "trust": "public"
+      },
+      "tools": [
+        "lookup"
+      ],
+      "skills": [],
+      "model": "fixture",
+      "reasoning": "on",
+      "bounds": {
+        "modelRequests": 3,
+        "agentRuns": 1,
+        "toolCalls": 2,
+        "bytes": 12000,
+        "milliseconds": 30000,
+        "resultBytes": 3000
+      },
+      "pinnedDigest": "sha256:192471a3f76764586025e3eaab2cf3f84bed7fb62df2ca63535daf0a6f1ff6b9"
+    },
+    {
+      "id": "auditor",
+      "name": "Auditor",
+      "purpose": "Check supplied evidence.",
+      "instructions": "Use only the supplied evidence and cite it.",
+      "source": {
+        "kind": "custom",
+        "id": "evidence",
+        "version": "1",
+        "trust": "person"
+      },
+      "tools": [
+        "lookup"
+      ],
+      "skills": [],
+      "model": "fixture",
+      "reasoning": "ultra",
+      "bounds": {
+        "modelRequests": 3,
+        "agentRuns": 1,
+        "toolCalls": 2,
+        "bytes": 12000,
+        "milliseconds": 30000,
+        "resultBytes": 3000
+      },
+      "pinnedDigest": "sha256:17628646d14bb476df7de98d1fe4e2fc78d95cd4842adf0981042d6df777c0d6"
+    },
+    {
+      "id": "auditor",
+      "name": "Auditor",
+      "purpose": "Check supplied evidence.",
+      "instructions": "Use only the supplied evidence and cite it.",
+      "source": {
+        "kind": "custom",
+        "id": "evidence",
+        "version": "1",
+        "trust": "person"
+      },
+      "tools": [
+        "lookup"
+      ],
+      "skills": [],
+      "model": "fixture",
+      "reasoning": "none",
+      "bounds": {
+        "modelRequests": 3,
+        "agentRuns": 1,
+        "toolCalls": 2,
+        "bytes": 12000,
+        "milliseconds": 30000,
+        "resultBytes": 3000
+      },
+      "pinnedDigest": "sha256:25e727ee36df1047373dde709d84c82a5274488a3bf66d0304ee38904d96898b"
+    },
+    {
+      "id": "auditor",
+      "name": "Auditor",
+      "purpose": "Check supplied evidence.",
+      "instructions": "Use only the supplied evidence and cite it.",
+      "source": {
+        "kind": "custom",
+        "id": "evidence",
+        "version": "1",
+        "trust": "person"
+      },
+      "tools": [
+        "lookup"
+      ],
+      "skills": [],
+      "model": "fixture",
+      "reasoning": "minimal",
+      "bounds": {
+        "modelRequests": 3,
+        "agentRuns": 1,
+        "toolCalls": 2,
+        "bytes": 12000,
+        "milliseconds": 30000,
+        "resultBytes": 3000
+      },
+      "pinnedDigest": "sha256:46f2eb68b3bc041a3586b50c84ae18c9c54b892188b37000fdd19c2bb3ef8e12"
+    },
+    {
+      "id": "auditor",
+      "name": "Auditor",
+      "purpose": "Check supplied evidence.",
+      "instructions": "Use only the supplied evidence and cite it.",
+      "source": {
+        "kind": "custom",
+        "id": "evidence",
+        "version": "1",
+        "trust": "person"
+      },
+      "tools": [
+        "lookup"
+      ],
+      "skills": [],
+      "model": "fixture",
+      "reasoning": "medium",
+      "bounds": {
+        "modelRequests": 3,
+        "agentRuns": 1,
+        "toolCalls": 2,
+        "bytes": 12000,
+        "milliseconds": 30000,
+        "resultBytes": 3000
+      },
+      "pinnedDigest": "sha256:c19fe5f96faf116f9c998d8fb16d5e569e01b453f2208e9bdfe3fe62d9480fad"
+    },
+    {
+      "id": "auditor",
+      "name": "Auditor",
+      "purpose": "Check supplied evidence.",
+      "instructions": "Use only the supplied evidence and cite it.",
+      "source": {
+        "kind": "custom",
+        "id": "evidence",
+        "version": "1",
+        "trust": "person"
+      },
+      "tools": [
+        "lookup"
+      ],
+      "skills": [],
+      "model": "fixture",
+      "reasoning": "high",
+      "bounds": {
+        "modelRequests": 3,
+        "agentRuns": 1,
+        "toolCalls": 2,
+        "bytes": 12000,
+        "milliseconds": 30000,
+        "resultBytes": 3000
+      },
+      "pinnedDigest": "sha256:101aed696a943495f570f782ee567847f70b72cdca7ede68e7f9f4804971094d"
+    },
+    {
+      "id": "auditor",
+      "name": "Auditor",
+      "purpose": "Check supplied evidence.",
+      "instructions": "Use only the supplied evidence and cite it.",
+      "source": {
+        "kind": "custom",
+        "id": "evidence",
+        "version": "1",
+        "trust": "person"
+      },
+      "tools": [
+        "lookup"
+      ],
+      "skills": [],
+      "model": "fixture",
+      "reasoning": "xhigh",
+      "bounds": {
+        "modelRequests": 3,
+        "agentRuns": 1,
+        "toolCalls": 2,
+        "bytes": 12000,
+        "milliseconds": 30000,
+        "resultBytes": 3000
+      },
+      "pinnedDigest": "sha256:4ed6807be9cd509a021a74be4ee54095d20c6553bf49fb63f2d58d8c7bbc66a1"
+    },
+    {
+      "id": "auditor",
+      "name": "Auditor",
+      "purpose": "Check supplied evidence.",
+      "instructions": "Use only the supplied evidence and cite it.",
+      "source": {
+        "kind": "custom",
+        "id": "evidence",
+        "version": "1",
+        "trust": "person"
+      },
+      "tools": [
+        "lookup"
+      ],
+      "skills": [],
+      "model": "fixture",
+      "reasoning": "max",
+      "bounds": {
+        "modelRequests": 3,
+        "agentRuns": 1,
+        "toolCalls": 2,
+        "bytes": 12000,
+        "milliseconds": 30000,
+        "resultBytes": 3000
+      },
+      "pinnedDigest": "sha256:21f541469f4ca31b76cf2254fa260b20878fe79a860f567636b11a0178664bca"
+    }
+  ],
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/subagents.ts"
+    ]
+  }
+}

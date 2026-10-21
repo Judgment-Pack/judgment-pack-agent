@@ -1,3 +1,4 @@
+import {canonicalJSON} from './chat'
 import {normalize} from '../thinking'
 import {resolvePolicy,PolicyRefusal,failoverRefusal,type PolicyConnection,type PolicyMembers,type ProviderRecord,type CrossProvider} from '../policy'
 import {runtimeToolContextPolicy} from './toolPolicy'
@@ -21,6 +22,7 @@ import {INDEX_SHARE,partBytes,type ChatScope,type ChatTurn,type RuntimeIdentity}
 import {readHostParts,systemText,type HostParts} from '../prompt'
 import {runModels,type AITarget,type AssistantEngine,type RunIdentity,type RunModels} from '../host'
 import {declareSources,offerSources,SourceGate,LOAD_TOOL,type Declared} from '../toolSources'
+import {declareSubagents,catalogueSubagents,subagentOffer,type Subagent} from '../subagents'
 import {catalogueSkills,declareSkills,SkillGate,LOAD_SKILL,UNLOAD_SKILL,type DeclaredSkills,type SkillNotice} from '../skills'
 import type {HostTool} from '../engine'
 export interface CurrentRequest {message:string;input:string}
@@ -77,7 +79,7 @@ export function resolveSessionPolicy(session:EngineSession,engine?:AssistantEngi
  const resolved=resolvePolicy(
   {...session.policy, ...(session.taskClass?{taskClass:session.taskClass}:{}),critic:{...(session.critic!==undefined||session.adversarialReview!==undefined?{default:session.critic??(session.adversarialReview?'on':'off')}:{}),...session.policy?.critic},models:{...session.policy?.models,...(session.criticReasoning?{critic:{reasoning:session.criticReasoning,...session.policy?.models?.critic}}:{})}},
   {...session.policyProject,critic:{...(session.criticProject?{default:session.criticProject}:{}),...session.policyProject?.critic}},
-  {...policy,concurrency:{children:'agent'in session?1:named.concurrentRequests??2,requests:named.concurrentRequests??2},models:{author:{model:current,reasoning:authorTier??('agent'in session?'none':'off')},critic:{model:named.critic}}},
+  {...policy,concurrency:{children:'agent'in session?1:named.concurrentRequests??2,requests:named.concurrentRequests??2},models:{author:{model:current,reasoning:authorTier??('agent'in session?'none':'off')},critic:{model:named.critic},...Object.fromEntries((session.subagents??[]).filter(s=>s&&typeof s.id==='string').map(s=>[`subagent.${s.id}`,{model:s.model,reasoning:s.reasoning}]))}},
   {connections:Object.keys(bindings),authorConnection:current,families:Object.fromEntries(Object.entries(bindings).map(([id,b])=>[id,'model'in b?capabilitiesFor(b.model).family??(b.model.family==='openai-compatible'?'openai':b.model.family):b.agent.family??'codex'])),agent:'agent'in session,requests:session.policyRequests??named.concurrentRequests??2,paceUsed:session.paceUsed})
  for(const [name,member] of Object.entries(resolved.members))if(name.startsWith('models.')&&name.endsWith('.provider')){
   const selected=bindings[String(member.value)]!
@@ -138,6 +140,7 @@ export class SessionContext {
  /** ADR-0006: the tools with a source passed the schema budget and are offered as a catalogue, with load_tool. */
  catalogue=false
  /** ADR-0009: the boundary's hold on the run's skills, where it declares any. */
+ subagents:Subagent[]=[]
  skills?:SkillGate
  /** ADR-0009: the skills catalogue the system text carries after the tools described in text, or ''. */
  skillCatalogue=''
@@ -184,6 +187,7 @@ export class SessionContext {
   // An empty objective is no objective, as in Go (AskHost).
   const query=this.objective?this.objective:session.context?.currentRequest?.message??session.prompt
   this.hostParts=await readHostParts(query,this.policy,session.context?.memory!==false)
+  if(session.childDefinition)this.hostParts.projectInstructions=session.childDefinition.instructions
  }
  /**
   * The system text of every request of the run: `guidance`, the host's parts, then `tools` described in
@@ -206,7 +210,7 @@ export class SessionContext {
   const selected=this.connection('critic')
   return {...this.named.models,critic:selected?('model'in selected?selected.model.model:selected.agent.model):this.named.models.critic,concurrentRequests:Number(this.resolvedPolicy['concurrency.requests']!.value)}
  }
- delegatedRole(id:string){return !this.resolvedPolicy[`models.child.${id}.provider`]&&this.resolvedPolicy[`models.subagent.${id}.provider`]?`subagent.${id}`:`child.${id}`}
+ delegatedRole(id:string){if(this.subagents.some(s=>s.id===id))return `subagent.${id}`;return !this.resolvedPolicy[`models.child.${id}.provider`]&&this.resolvedPolicy[`models.subagent.${id}.provider`]?`subagent.${id}`:`child.${id}`}
  connection(role:string):PolicyConnection|undefined{
   const provider=this.resolvedPolicy[`models.${role}.provider`]?.value
   if(provider===undefined)return undefined
@@ -316,7 +320,7 @@ this.turn=session.context?.chat?.openTurn();this.objective=session.context?.obje
   * A refusal the boundary makes itself: the guardrail event, put on the stream
   * before the call's result, and the failure the model reads.
   */
- refuse(name:string,detail:string,reason?:'approval refused'|'approval pending'|'approval stale'|'skill withheld'|'skill budget'|'review refused'):GateViolation{
+ refuse(name:string,detail:string,reason?:'approval refused'|'approval pending'|'approval stale'|'skill withheld'|'skill budget'|'review refused'|'subagent refused'|'subagent withheld'):GateViolation{
   this.notices.push({type:'guardrail',tool:name,action:'refused',detail,...(reason===undefined?{}:{reason})})
   return new GateViolation(name,detail)
  }
@@ -344,6 +348,7 @@ this.turn=session.context?.chat?.openTurn();this.objective=session.context?.obje
   */
  refuseUnoffered(name:string):GateViolation{
   // ADR-0010: request_review where it is not offered is refused with the switch's own guardrail.
+  if(name==='delegate_tasks'&&this.objective)return this.refuse(name,'A child cannot delegate.','subagent refused')
   if(name===REQUEST_REVIEW)return this.refuse(name,this.review.ask(false)!,'review refused')
   return this.refuse(name,`${name} is served to this session but was not offered to this run; the call did not leave the page and nothing was written`)
  }
@@ -359,6 +364,7 @@ this.turn=session.context?.chat?.openTurn();this.objective=session.context?.obje
   */
  admit(name:string,kind:'runtime'|'host'){
   // ADR-0010: request_review reaches the author's run only, where the switch offers it; a call
+  if(name==='delegate_tasks'&&this.objective)throw this.refuse(name,'A child cannot delegate.','subagent refused')
   // anywhere else (the critic, the reformat run, a run it is not offered to) is refused here with the
   // guardrail review refused, and nothing is recorded.
   // ask(false) never records: it answers why the ask is refused here.
@@ -594,6 +600,14 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  session={...session,hostTools:declared.hostTools}
  session=planningSession(session)
  await session.context?.authorize?.(session.signal)
+ let admittedSubagents:Awaited<ReturnType<typeof declareSubagents>>|undefined
+ if(session.subagents?.length){
+  const base=resolveSessionPolicy({...session,subagents:undefined},engine)
+  const bounds={...base.policy,...Object.fromEntries(Object.entries(base.resolved.members).filter(([k])=>k.startsWith('budget.')).map(([k,v])=>[k.slice(7),v.value]))}
+  const admittedSkills=await declareSkills(session.skills,declaredNames,bounds,declared.sources)
+  admittedSubagents=await declareSubagents(session.subagents,declared.hostTools,admittedSkills.skills,bounds)
+  session={...session,subagents:admittedSubagents.subagents.map(({digest:_,...s})=>s)}
+ }
  const context=new SessionContext(session,engine)
  const author=context.connection('author')!
  const tier=String(context.resolvedPolicy['models.author.reasoning']!.value)
@@ -604,9 +618,14 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  const skills=await declareSkills(session.skills,declaredNames,context.policy,declared.sources)
  declared.sources.push(...skills.sources)
  await context.execution.initialize()
+ // Reconcile only roles belonging to saved definition records whose approved digest changed.
+ // Other policy members still compare exactly, including other sub-agent roles.
+ const changedRoles=new Set((context.execution.state.delegation?.batches??[]).flatMap(b=>b.children)
+  .flatMap(c=>c.subagent&&!admittedSubagents?.subagents.some(s=>s.id===c.subagent!.id&&s.digest===c.subagent!.digest)?[`models.subagent.${c.subagent.id}.`]:[]))
  // Saved identities belong to the saved execution, even when a host reuses its connection IDs.
  for(const row of context.execution.state.crossProvider??[]){
-  const changed = failoverRefusal(row.role,row.provider,context.provider(row.role))
+  if(row.role.startsWith('subagent.')&&!session.subagents?.some(s=>row.role===`subagent.${s.id}`))continue
+  const changed = (changedRoles.has(`models.${row.role}.`)?undefined:failoverRefusal(row.role,row.provider,context.provider(row.role)))
     ?? failoverRefusal('author',row.author,context.provider('author'))
   if(changed){
    const refused=new PolicyRefusal(changed.tool,'run','cross-family continuation refused: the prefix and cache do not carry')
@@ -617,7 +636,14 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  }
  const carried=context.execution.state.policy
  if(carried) {
-  if(JSON.stringify(carried)!==JSON.stringify(context.resolvedPolicy))throw authoredFailure('stale-state','The policy differs from the saved run.','context')
+  for(const [name,member] of Object.entries(carried))if(name.startsWith('models.subagent.')&&!Object.hasOwn(context.resolvedPolicy,name))context.resolvedPolicy[name]=structuredClone(member)
+  const comparable=structuredClone(carried)
+  for(const name of new Set([...Object.keys(carried),...Object.keys(context.resolvedPolicy)]))if([...changedRoles].some(role=>name.startsWith(role))){
+   if(Object.hasOwn(context.resolvedPolicy,name))comparable[name]=structuredClone(context.resolvedPolicy[name]!)
+   else delete comparable[name]
+  }
+  if(canonicalJSON(comparable)!==canonicalJSON(context.resolvedPolicy))throw authoredFailure('stale-state','The policy differs from the saved run.','context')
+  context.execution.state.policy=structuredClone(context.resolvedPolicy)
  } else {
   context.execution.state.policy=structuredClone(context.resolvedPolicy)
   try{await session.context?.checkpoint?.(context.execution.snapshot())}catch{throw failureError('storage','storage','not-started')}
@@ -631,6 +657,13 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   context.openSources(declared,offered.catalogue,session.context?.link?.sources?.(),session.context?.phase??'work')
  }
  if(session.skills?.length)context.openSkills(skills,'agent'in session)
+ if(admittedSubagents){
+  const admitted=admittedSubagents
+  const catalogue=catalogueSubagents(admitted.subagents,context.policy,context.marker)
+  context.subagents=catalogue.subagents
+  for(const held of [...admitted.withheld,...catalogue.withheld])context.refuse(held.tool,held.detail,held.reason)
+  session={...session,hostTools:session.hostTools.map(tool=>tool.name==='delegate_tasks'?{...tool,description:tool.description+catalogue.section,inputSchema:subagentOffer(tool.inputSchema,catalogue.subagents)}:tool)}
+ }
  await context.askHost(session)
  await context.initialize(session.context?.documents,true)
  await context.execution.retainProgress()

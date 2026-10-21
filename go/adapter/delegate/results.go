@@ -179,6 +179,7 @@ func reportBytes(report *runcontext.Value) int { return runcontext.UTF8Bytes(str
 // cut by whole items — what was not done, then findings from the last (with the citations only they
 // cited), then citations, then open questions, and the summary's start last.
 func FitReport(report *runcontext.Value, bytes int) (*runcontext.Value, bool) {
+	bytes = max(bytes, runcontext.SubagentResultMinBytes)
 	if reportBytes(report) <= bytes {
 		return report, false
 	}
@@ -222,7 +223,7 @@ func FitReport(report *runcontext.Value, bytes int) (*runcontext.Value, bool) {
 		}
 		summary := strings.TrimSpace(runcontext.EncodedPrefix(shown.Get("summary").Str(), room))
 		if summary == "" {
-			summary = runcontext.U16Slice(shown.Get("summary").Str(), 0, 16)
+			summary = "No findings..."
 		}
 		shown.Set("summary", runcontext.String(summary))
 	}

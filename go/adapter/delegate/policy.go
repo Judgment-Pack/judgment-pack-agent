@@ -1,6 +1,7 @@
 package delegate
 
 import (
+	"encoding/json"
 	"strings"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter"
@@ -12,6 +13,15 @@ func (c *coordinator) parentPolicy() runcontext.PolicyMembers {
 	c.shared.mu.Lock()
 	defer c.shared.mu.Unlock()
 	if c.shared.parent == nil {
+		if c.hasRestoredDefinitions() {
+			members := runcontext.PolicyMembers{}
+			for k, v := range c.run.Context.Execution.Policy {
+				var value any
+				_ = json.Unmarshal(v.Value, &value)
+				members[k] = runcontext.PolicyMember{Value: value, Layer: v.Layer}
+			}
+			return members
+		}
 		return nil
 	}
 	return c.shared.parent.ResolvedPolicy
@@ -28,7 +38,13 @@ func (c *coordinator) childBinding(profile turn.TaskProfile) (adapter.PolicyConn
 		}
 	}
 	members := c.parentPolicy()
-	role := delegatedRole(members, profile.ID)
+	definitions := c.run.Subagents
+	c.shared.mu.Lock()
+	if c.shared.parent != nil {
+		definitions = c.shared.parent.Subagents
+	}
+	c.shared.mu.Unlock()
+	role := delegatedRole(members, profile.ID, definitions)
 	if _, ok := members["models."+role+".model"]; !ok {
 		// Profiles retain their legacy default unless the policy names this role.
 		id := named.Child
@@ -92,11 +108,42 @@ func (c *coordinator) childBinding(profile turn.TaskProfile) (adapter.PolicyConn
 	return binding, id, policy, nil
 }
 
-func delegatedRole(members runcontext.PolicyMembers, id string) string {
+func delegatedRole(members runcontext.PolicyMembers, id string, definitions ...[]runcontext.Subagent) string {
+	for _, list := range definitions {
+		for _, s := range list {
+			if s.ID == id {
+				return "subagent." + id
+			}
+		}
+	}
 	if _, child := members["models.child."+id+".provider"]; !child {
 		if _, declared := members["models.subagent."+id+".provider"]; declared {
 			return "subagent." + id
 		}
 	}
 	return "child." + id
+}
+
+func (c *coordinator) hasRestoredDefinitions() bool {
+	if c.run.Context == nil || c.run.Context.Execution == nil {
+		return false
+	}
+	saved := c.run.Context.Execution
+	if saved.Handoff != nil {
+		for _, task := range saved.Handoff.Request.Tasks {
+			if task.Subagent != nil {
+				return true
+			}
+		}
+	}
+	if saved.Delegation != nil {
+		for _, batch := range saved.Delegation.Batches {
+			for _, child := range batch.Children {
+				if child.Subagent != nil {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

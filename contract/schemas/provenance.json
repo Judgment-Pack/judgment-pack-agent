@@ -95,7 +95,7 @@
       "pattern": "^[a-f0-9]{64}$"
     },
     "requestKey": {
-      "description": "The SHA-256 of the JSON text {\"request\":\u2026,\"phase\":\u2026,\"purpose\":\u2026} for the person's current request (ExecutionController.initialize). It binds a checkpoint to the request it was made for; it is not a digest of the prompt sent to the model.",
+      "description": "The SHA-256 of the JSON text {\"request\":…,\"phase\":…,\"purpose\":…} for the person's current request (ExecutionController.initialize). It binds a checkpoint to the request it was made for; it is not a digest of the prompt sent to the model.",
       "$ref": "#/$defs/sha256"
     },
     "promptDigest": {
@@ -197,7 +197,7 @@
       "additionalProperties": false
     },
     "childFigures": {
-      "description": "One delegated child's figures (agent#18), as its task record carries them. modelRequests: on a model capability, its requests, a retried attempt counted; absent on an agent capability (agent#71), the provider running its own loop and reporting no request count, and agentRuns its runs. The checkpoint requires it where its unit is model-requests and leaves it optional where the unit is provider-managed (checkpoint.json, delegation). firstByteMs: from its start to the first byte of its first answer (an agent's first event), absent where none came. durationMs: from its start to its end. partial and reused as the record's.",
+      "description": "One delegated child's figures (agent#18), as its task record carries them. modelRequests: on a model capability, its requests, a retried attempt counted; absent on an agent capability (agent#71), the provider running its own loop and reporting no request count, and agentRuns its runs. The checkpoint requires it where its unit is model-requests and leaves it optional where the unit is provider-managed (checkpoint.json, delegation). firstByteMs: from its start to the first byte of its first answer (an agent's first event), absent where none came. durationMs: from its start to its end. partial and reused as the record's. Declared children carry subagent; group these figures by id and digest for per-definition totals. Built-ins carry profile alone.",
       "type": "object",
       "required": [
         "task",
@@ -263,6 +263,13 @@
         },
         "reused": {
           "const": true
+        },
+        "subagent": {
+          "$ref": "subagent.json#/$defs/record"
+        },
+        "problem": {
+          "type": "string",
+          "maxLength": 1000
         }
       },
       "additionalProperties": false

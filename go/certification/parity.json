@@ -863,10 +863,46 @@
         "go": [
           "12 provider"
         ]
+      },
+      {
+        "check": "13 declared sub-agent offer, scope, skills, tier, bounds and records",
+        "go": [
+          "13 declared sub-agents",
+          "13 agent declared sub-agents"
+        ]
+      },
+      {
+        "check": "13 restored withdrawn or changed definition is reported without dispatch",
+        "go": [
+          "13 declared sub-agents",
+          "13 agent declared sub-agents"
+        ]
+      },
+      {
+        "check": "13 invalid declared tools, skills, digest and bounds are withheld before dispatch",
+        "go": [
+          "13 declared sub-agents",
+          "13 agent declared sub-agents"
+        ]
+      },
+      {
+        "check": "13 the report and result sent to the parent fit the minimum admitted resultBytes",
+        "go": [
+          "13 declared sub-agents",
+          "13 agent declared sub-agents"
+        ]
+      },
+      {
+        "check": "13 re-approved policy changes interrupt saved tasks and preserve unrelated policy checks",
+        "go": [
+          "13 declared sub-agents",
+          "13 agent declared sub-agents"
+        ]
       }
     ],
     "additionalSources": [
-      "packages/harness/certification/providers.test.ts"
+      "packages/harness/certification/providers.test.ts",
+      "packages/harness/certification/subagents.test.ts"
     ]
   },
   "delegation": {

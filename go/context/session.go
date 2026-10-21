@@ -117,6 +117,7 @@ func (m *orderedValues) clear()          { m.order = nil; m.held = map[string]*V
 
 // SessionContext is the run's context (SessionContext).
 type SessionContext struct {
+	Subagents        []Subagent
 	ProviderFamilies map[string]string
 	ResolvedPolicy   PolicyMembers
 	PaceWarning      string
@@ -1093,6 +1094,28 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 	if err := authorize(ctx); err != nil {
 		return nil, err
 	}
+	var admittedSubagents []Subagent
+	var subagentNotices []contract.RunEvent
+	hasSubagents := len(session.Subagents) > 0
+	if hasSubagents {
+		policy, err := SubagentAdmissionBudget(session)
+		if err != nil {
+			return nil, err
+		}
+		skills, err := DeclareSkills(session.Skills, declaredNames, policy, declared.Sources)
+		if err != nil {
+			return nil, err
+		}
+		admittedSubagents, subagentNotices, err = DeclareSubagents(session.Subagents, declared.HostTools, skills.Skills, policy)
+		if err != nil {
+			return nil, err
+		}
+		session.Subagents = nil
+		for _, s := range admittedSubagents {
+			s.Digest = nil
+			session.Subagents = append(session.Subagents, s)
+		}
+	}
 	held, err := NewSessionContext(session)
 	if err != nil {
 		return nil, err
@@ -1110,9 +1133,53 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		if err := held.Execution.Initialize(); err != nil {
 			return err
 		}
+		// Only saved definition roles with a changed approved digest are reconciled.
+		changedRoles := map[string]bool{}
+		reconcile := func(record *contract.SubagentRecord) {
+			if record == nil {
+				return
+			}
+			for _, s := range admittedSubagents {
+				if s.ID == record.ID && s.Digest != nil && *s.Digest == record.Digest {
+					return
+				}
+			}
+			changedRoles["models.subagent."+record.ID+"."] = true
+		}
+		if session.Context != nil && session.Context.Execution != nil {
+			if saved := session.Context.Execution.Delegation; saved != nil {
+				for _, b := range saved.Batches {
+					for _, c := range b.Children {
+						reconcile(c.Subagent)
+					}
+				}
+			}
+			if saved := session.Context.Execution.Handoff; saved != nil {
+				for _, task := range saved.Tasks {
+					reconcile(task.Subagent)
+				}
+				for _, task := range saved.Request.Tasks {
+					reconcile(task.Subagent)
+				}
+			}
+		}
 		// A connection ID may be rebound; the saved execution's provider identities may not.
 		for _, row := range held.Execution.State.CrossProvider {
-			changed := FailoverRefusal(row.Role, row.Provider, *held.Provider(row.Role))
+			if strings.HasPrefix(row.Role, "subagent.") {
+				found := false
+				for _, s := range session.Subagents {
+					if row.Role == "subagent."+s.ID {
+						found = true
+					}
+				}
+				if !found {
+					continue
+				}
+			}
+			var changed *contract.RunEvent
+			if !changedRoles["models."+row.Role+"."] {
+				changed = FailoverRefusal(row.Role, row.Provider, *held.Provider(row.Role))
+			}
 			if changed == nil {
 				changed = FailoverRefusal("author", row.Author, *held.Provider("author"))
 			}
@@ -1130,7 +1197,33 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		}
 		record := held.ResolvedPolicy.Record()
 		if saved := held.Execution.State.Policy; saved != nil {
-			a, _ := json.Marshal(saved)
+			for name, member := range saved {
+				if strings.HasPrefix(name, "models.subagent.") {
+					if _, exists := record[name]; !exists {
+						record[name] = member
+						var value any
+						_ = json.Unmarshal(member.Value, &value)
+						held.ResolvedPolicy[name] = PolicyMember{Value: value, Layer: member.Layer}
+					}
+				}
+			}
+			comparable := make(map[string]contract.PolicyMember)
+			for name, member := range saved {
+				comparable[name] = member
+			}
+			for role := range changedRoles {
+				for name := range comparable {
+					if strings.HasPrefix(name, role) {
+						delete(comparable, name)
+					}
+				}
+				for name, member := range record {
+					if strings.HasPrefix(name, role) {
+						comparable[name] = member
+					}
+				}
+			}
+			a, _ := json.Marshal(comparable)
 			b, _ := json.Marshal(record)
 			if string(a) != string(b) {
 				return failure.Authored("stale-state", "The policy differs from the saved run.", "context")
@@ -1148,7 +1241,7 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 			}
 		}
 		held.CarryMarker()
-		if len(declared.Sources) > 0 {
+		if len(declared.Sources) > 0 || hasSubagents {
 			// How a loaded schema is shown: by the capability record's toolSchemas where the adapter carries
 			// it, else by the family's default record.
 			toolSchemas := ""
@@ -1171,6 +1264,24 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		}
 		if len(session.Skills) > 0 {
 			held.OpenSkills(skills, session.Agent != nil)
+		}
+		if hasSubagents {
+			notices := subagentNotices
+			section, kept, cut := CatalogueSubagents(admittedSubagents, *held.Policy, held.Marker)
+			held.Subagents = kept
+			for _, event := range append(notices, cut...) {
+				held.Sources.Notify(event)
+			}
+			for i := range session.HostTools {
+				if session.HostTools[i].Name == "delegate_tasks" {
+					session.HostTools[i].Description += section
+					schema := MustParseJSON(string(session.HostTools[i].InputSchema))
+					for _, s := range kept {
+						schema.Get("properties").Get("tasks").Get("items").Get("properties").Get("profile").Get("enum").Append(String(s.ID))
+					}
+					session.HostTools[i].InputSchema = json.RawMessage(schema.Text())
+				}
+			}
 		}
 		if err := held.AskHost(ctx); err != nil {
 			return err

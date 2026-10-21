@@ -10,7 +10,9 @@
     "recentMessages": 8,
     "historyBytes": 32000,
     "briefBytes": 8000,
-    "memoryBytes": 4000
+    "memoryBytes": 4000,
+    "cataloguedSubagents": 16,
+    "subagentCatalogueBytes": 4000
   },
   "critic": {
     "default": "auto",

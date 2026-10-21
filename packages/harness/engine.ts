@@ -277,6 +277,8 @@ export interface AssistantSession {
    * is handed none.
    */
   skills?: import('./skills').SkillDeclaration[]
+  subagents?: import('./subagents').SubagentDeclaration[]
+  childDefinition?: import('./subagents').Subagent
   /**
    * A capability and a name. No address, and no credential. `capabilities`:
    * members of the endpoint's own capability record where the host has them on
@@ -325,8 +327,8 @@ export type AssistantEvent =
   | { type: 'policy_resolved'; members: import('./policy').PolicyMembers }
   | { type: 'retry'; attempt: number }
   | { type: 'response_recovery' }
-  | { type: 'delegation_requested'; request: import('./delegationContract').DelegationRequest }
-  | { type: 'delegated_task'; provider?: import('./policy').ProviderRecord; task: import('./delegationContract').DelegatedTask }
+  | { type: 'delegation_requested'; subagent?: import('./subagents').SubagentRecord; request: import('./delegationContract').DelegationRequest }
+  | { type: 'delegated_task'; subagent?: import('./subagents').SubagentRecord; provider?: import('./policy').ProviderRecord; task: import('./delegationContract').DelegatedTask }
   | { type: 'user_question'; id: string; question: import('./questions').UserQuestion }
   | { type: 'reasoning'; text: string; done: boolean }
   /**
@@ -354,7 +356,7 @@ export type AssistantEvent =
    * that fired — nothing was stopped — but it is the same kind of sentence: the
    * desk saying what it did rather than leaving it to be discovered.
    */
-  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string; reason?: 'approval refused' | 'approval pending' | 'approval stale' | 'skill withheld' | 'skill budget' | 'review refused' | 'policy refused' | 'pace warning' }
+  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string; reason?: 'approval refused' | 'approval pending' | 'approval stale' | 'skill withheld' | 'skill budget' | 'review refused' | 'policy refused' | 'pace warning' | 'subagent withheld' | 'subagent refused' }
   | { type: 'thinking_unavailable'; detail: string }
   /**
    * `cases` and `incomplete` where the host declared cases (agent#10): each

@@ -1,0 +1,22 @@
+{
+  "description": "A child can never delegate.",
+  "schema": "run-event.json",
+  "items": [
+    {
+      "type": "guardrail",
+      "tool": "delegate_tasks",
+      "action": "refused",
+      "reason": "subagent refused",
+      "detail": "A child cannot delegate."
+    }
+  ],
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/subagents.ts"
+    ]
+  }
+}

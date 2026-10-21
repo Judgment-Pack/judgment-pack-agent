@@ -65,6 +65,8 @@ Read alias for policy.budget for the v0.8.0 release; retired in the next release
 | `skillsPerRun` |  | integer (min 0) | `4` | The most skill loads one response may make (ADR-0009): each load_skill that loads counts, a load after an unload counts again, and the count is carried through a resume in the run report's rows. A load past it is refused (tool-failed, not-started) with a guardrail (skill budget). Not in the Desk's table; the harness's default is 4. |
 | `skillsCatalogueBytes` |  | integer (min 0) | `8000` | The most UTF-8 bytes the skills catalogue's entries take in all (ADR-0009), each counted as the JSON text of its name and its line (the frame's constant lines not counted); the skills past it, or past cataloguedSkills, are withheld, one guardrail for each source. Not in the Desk's table; the harness's default is 8000. |
 | `cataloguedSkills` |  | integer (min 0) | `32` | The most skills the catalogue lists (ADR-0009), in the order declared; the rest are withheld, out of the catalogue and out of load_skill, one guardrail for each source saying how many. Not in the Desk's table; the harness's default is 32. |
+| `cataloguedSubagents` |  | integer (min 0) | `16` |  |
+| `subagentCatalogueBytes` |  | integer (min 0) | `4000` |  |
 
 Open: a member the schema does not name is accepted. Defaults are the package's `CONTEXT_DEFAULTS`.
 

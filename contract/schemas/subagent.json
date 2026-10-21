@@ -1,0 +1,294 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/subagent.json",
+  "title": "Sub-agent",
+  "description": "ADR-0013: a host-declared reads-only child. The host pins pinnedDigest at approval; the package computes digest over canonical JSON of all definition members except pinnedDigest and digest. Tools are declared host wire names; skills are declared ids. Bounds only narrow the turn. Built-in profile ids cannot be declared. No nesting or child critic.",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "purpose",
+    "instructions",
+    "source",
+    "tools",
+    "skills",
+    "model",
+    "reasoning",
+    "bounds",
+    "pinnedDigest"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9-]{0,23}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "purpose": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "instructions": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "source": {
+      "description": "Where a host tool comes from (ADR-0006). Declared by the host on each host tool a source outside the host serves; the package adds tool (the tool's own name at its source) on the offer, carries the record on the tool's tool_call and tool_result events (with receipt on a result where the host's answer gave one), and counts the source in the run report (provenance.json#/$defs/sourceFigures). gateway: a gateway connection the person configured (Databricks, Azure DevOps, Drive), which may give a receipt for each call; mcp: a public MCP server the host connected, whose tool list is pinned by digest at connection time; custom: a tool the person created; exchange (ADR-0009): a skill whose bytes the host fetched from a Judgment Exchange entry, the entry's id and version the record's id and version, which a host tool may not declare. runtime is the Runtime's own row in the run report: its tools come through tools/list behind the gate, carry no declaration, and a host tool declared with kind runtime is refused. Either version or toolListDigest is present; mcp carries toolListDigest. Closed: the package refuses another member before any request (configuration).",
+      "type": "object",
+      "required": [
+        "kind",
+        "id",
+        "trust"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "custom",
+            "gateway",
+            "mcp",
+            "exchange"
+          ]
+        },
+        "id": {
+          "description": "The source's name as the host names it (a connection, a server, the person's own tools): a letter, then letters, digits and hyphens, at most 24 characters. Every wire name of the source's tools begins with it.",
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9-]{0,23}$"
+        },
+        "version": {
+          "description": "The source's version as the host knows it: a connection's revision, a server's version, a custom tool's revision.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "toolListDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "trust": {
+          "description": "The trust class the host gives the source: first-party (the Runtime, and a source the host itself runs), connected (a connection the person configured with their own grants), public (a public server), person (a tool the person wrote). Reported, never a grant: whatever the class, the source's descriptions are untrusted text and its results data, and its tools are held to their effect class.",
+          "enum": [
+            "first-party",
+            "connected",
+            "public",
+            "person"
+          ]
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "version"
+          ]
+        },
+        {
+          "required": [
+            "toolListDigest"
+          ]
+        }
+      ],
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "mcp"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "toolListDigest"
+        ]
+      },
+      "additionalProperties": false
+    },
+    "tools": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
+    },
+    "skills": {
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z][A-Za-z0-9-]{0,23}$"
+      }
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "reasoning": {
+      "enum": [
+        "off",
+        "on",
+        "ultra",
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    },
+    "bounds": {
+      "type": "object",
+      "required": [
+        "modelRequests",
+        "agentRuns",
+        "toolCalls",
+        "bytes",
+        "milliseconds",
+        "resultBytes"
+      ],
+      "properties": {
+        "modelRequests": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "agentRuns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "toolCalls": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "milliseconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 360000
+        },
+        "resultBytes": {
+          "description": "Admission withholds resultBytes below 113, the mandatory report fields with the longest confidence and 16 encoded summary bytes; the notice names the supplied bound and minimum.",
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "pinnedDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "record": {
+      "type": "object",
+      "required": [
+        "id",
+        "digest",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9-]{0,23}$"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "source": {
+          "description": "Where a host tool comes from (ADR-0006). Declared by the host on each host tool a source outside the host serves; the package adds tool (the tool's own name at its source) on the offer, carries the record on the tool's tool_call and tool_result events (with receipt on a result where the host's answer gave one), and counts the source in the run report (provenance.json#/$defs/sourceFigures). gateway: a gateway connection the person configured (Databricks, Azure DevOps, Drive), which may give a receipt for each call; mcp: a public MCP server the host connected, whose tool list is pinned by digest at connection time; custom: a tool the person created; exchange (ADR-0009): a skill whose bytes the host fetched from a Judgment Exchange entry, the entry's id and version the record's id and version, which a host tool may not declare. runtime is the Runtime's own row in the run report: its tools come through tools/list behind the gate, carry no declaration, and a host tool declared with kind runtime is refused. Either version or toolListDigest is present; mcp carries toolListDigest. Closed: the package refuses another member before any request (configuration).",
+          "type": "object",
+          "required": [
+            "kind",
+            "id",
+            "trust"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "custom",
+                "gateway",
+                "mcp",
+                "exchange"
+              ]
+            },
+            "id": {
+              "description": "The source's name as the host names it (a connection, a server, the person's own tools): a letter, then letters, digits and hyphens, at most 24 characters. Every wire name of the source's tools begins with it.",
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9-]{0,23}$"
+            },
+            "version": {
+              "description": "The source's version as the host knows it: a connection's revision, a server's version, a custom tool's revision.",
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "toolListDigest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "trust": {
+              "description": "The trust class the host gives the source: first-party (the Runtime, and a source the host itself runs), connected (a connection the person configured with their own grants), public (a public server), person (a tool the person wrote). Reported, never a grant: whatever the class, the source's descriptions are untrusted text and its results data, and its tools are held to their effect class.",
+              "enum": [
+                "first-party",
+                "connected",
+                "public",
+                "person"
+              ]
+            }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "version"
+              ]
+            },
+            {
+              "required": [
+                "toolListDigest"
+              ]
+            }
+          ],
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "mcp"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "toolListDigest"
+            ]
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

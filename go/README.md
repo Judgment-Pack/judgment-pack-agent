@@ -82,7 +82,7 @@ and `PinnedDigest`, the digest the person approved, `runcontext.SkillDigest`). `
 admits them (`go/context/skills.go`), lists the admitted ones at the end of the system text, offers
 `load_skill` and `unload_skill`, and carries a loaded skill's block after the history; the gate holds
 the loaders by name, so a host adds `runcontext.OfferedSkillTools(...)` to the names it opens the gate
-with. A delegated child's run is handed no skills.
+with. Built-in children receive no skills. A declared sub-agent receives only its definition's skills, under its own load budget (ADR-0013).
 
 ## The critic's switch
 
@@ -132,3 +132,15 @@ The release workflow creates `go/vX.Y.Z` on the release commit after the release
 fails the run if it cannot. A person does not tag the module for a normal release. `go/v0.3.0` was
 pushed by hand; [`docs/releasing.md`](../docs/releasing.md) says how to do that again if the
 workflow's step fails.
+
+### Declared sub-agents
+
+Hosts may declare pinned `subagents[]` beside tools and skills (ADR-0013). The
+`delegate_tasks` catalogue lists their ids and framed purpose lines beside the
+unchanged `analyze`, `review`, `research` and `author-test` profiles. A definition
+admits only declared read tools and skills, narrowing bounds and an approved digest.
+The child uses `models.subagent.<id>`, its own skill-load budget and the common
+prompt assembler; it has no actions, delegation, critic or review request.
+Events, checkpoint tasks and report figures identify the definition's id, digest
+and source. Withdrawn or changed definitions in restored batches are reported
+without dispatch. The host owns storage and re-approval.

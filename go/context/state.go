@@ -127,7 +127,10 @@ func ValidDelegationFigures(v *Value, unit string) bool {
 	tokens := func(x *Value) bool { return x.Get("tokens") == nil || validTokens(x.Get("tokens")) }
 	child := func(c *Value) bool {
 		if !isObject(c) || !hasOnly(c, "task", "batch", "profile", "model", "state", "modelRequests", "toolCalls",
-			"agentRuns", "tokens", "firstByteMs", "durationMs", "partial", "reused") {
+			"agentRuns", "tokens", "firstByteMs", "durationMs", "partial", "reused", "subagent", "problem") {
+			return false
+		}
+		if record := c.Get("subagent"); record != nil && !ValidSubagentRecord(record) {
 			return false
 		}
 		task := c.Get("task")

@@ -52,6 +52,8 @@ Closed: a member the schema does not name is refused.
 | `budget.skillsPerRun` |  | integer (min 0) | The most skill loads one response may make (ADR-0009): each load_skill that loads counts, a load after an unload counts again, and the count is carried through a resume in the run report's rows. A load past it is refused (tool-failed, not-started) with a guardrail (skill budget). Not in the Desk's table; the harness's default is 4. Default: `4`. |
 | `budget.skillsCatalogueBytes` |  | integer (min 0) | The most UTF-8 bytes the skills catalogue's entries take in all (ADR-0009), each counted as the JSON text of its name and its line (the frame's constant lines not counted); the skills past it, or past cataloguedSkills, are withheld, one guardrail for each source. Not in the Desk's table; the harness's default is 8000. Default: `8000`. |
 | `budget.cataloguedSkills` |  | integer (min 0) | The most skills the catalogue lists (ADR-0009), in the order declared; the rest are withheld, out of the catalogue and out of load_skill, one guardrail for each source saying how many. Not in the Desk's table; the harness's default is 32. Default: `32`. |
+| `budget.cataloguedSubagents` |  | integer (min 0) | Default: `16`. |
+| `budget.subagentCatalogueBytes` |  | integer (min 0) | Default: `4000`. |
 | `critic` |  | object |  |
 | `critic.default` |  | enum `off`, `auto`, `on` | Default: `"auto"`. |
 | `critic.reasoningFloor` |  | const `author` | Default: `"author"`. |

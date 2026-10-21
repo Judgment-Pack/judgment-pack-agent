@@ -131,7 +131,7 @@
       "maximum": 400
     },
     "delegation": {
-      "description": "Each delegated child's figures, each batch's total and the parent's own (agent#18): written by the delegation coordinator once a batch has finished, and on an agent capability by the Go coordinator from the parent's first invocation (ADR-0007), so the response's agent runs survive a restart; kept through a resume, and refused by the harness's reader where it does not read closed.",
+      "description": "Each delegated child's figures, each batch's total and the parent's own (agent#18): written by the delegation coordinator once a batch has finished, and on an agent capability by the Go coordinator from the parent's first invocation (ADR-0007), so the response's agent runs survive a restart; kept through a resume, and refused by the harness's reader where it does not read closed. Each declared child carries its subagent id, digest and source in its figures; handoff tasks carry the same record. A withdrawn or changed queued definition is interrupted, never dispatched.",
       "$ref": "provenance.json#/$defs/delegationReport"
     },
     "handoff": {

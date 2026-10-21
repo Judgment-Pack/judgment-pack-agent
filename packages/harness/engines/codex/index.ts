@@ -1,3 +1,4 @@
+import {recordSubagents} from '../../subagents'
 import {failureEvent,failureError,toolFailureResult} from '../../failures'
 import {managedContext,contextOf} from '../../context/managed'
 import { readDelegationRequest } from '../../delegationContract'
@@ -164,8 +165,9 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
             context.admit(route.name, route.host ? 'host' : 'runtime')
             if (route.host?.interaction === 'delegation') {
               const request = readDelegationRequest(call.arguments)
+              recordSubagents(request,context.subagents)
               awaitingInput = true
-              await deliver({type:'delegation_requested',request})
+              await deliver({type:'delegation_requested',request,...(request.tasks.length===1&&request.tasks[0]?.subagent?{subagent:request.tasks[0].subagent}:{})})
               inputPause.abort()
               throw new DOMException('Delegation handoff', 'AbortError')
             }

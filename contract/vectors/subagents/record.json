@@ -1,0 +1,46 @@
+{
+  "description": "Hand-authored ADR-0013 record coverage.",
+  "schema": "subagent.json#/$defs/record",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/subagents.ts"
+    ]
+  },
+  "items": [
+    {
+      "id": "mcp-auditor",
+      "digest": "sha256:23fe2df6c6b0692fd0989aa9efa967bcc06b570011e00deb98f15dbd13a118c1",
+      "source": {
+        "kind": "mcp",
+        "id": "server",
+        "version": "1",
+        "trust": "connected",
+        "toolListDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    {
+      "id": "auditor",
+      "digest": "sha256:c73fd7710bd31aa680233bd57474753180a02c314d504884b3e1c94e1e67b151",
+      "source": {
+        "kind": "gateway",
+        "id": "evidence",
+        "version": "1",
+        "trust": "first-party"
+      }
+    },
+    {
+      "id": "auditor",
+      "digest": "sha256:192471a3f76764586025e3eaab2cf3f84bed7fb62df2ca63535daf0a6f1ff6b9",
+      "source": {
+        "kind": "exchange",
+        "id": "evidence",
+        "version": "1",
+        "trust": "public"
+      }
+    }
+  ]
+}

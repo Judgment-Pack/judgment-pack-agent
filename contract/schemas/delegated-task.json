@@ -180,6 +180,9 @@
       "type": "integer",
       "minimum": 0,
       "maximum": 86400000
+    },
+    "subagent": {
+      "$ref": "subagent.json#/$defs/record"
     }
   },
   "additionalProperties": true,
@@ -241,7 +244,7 @@
           "pattern": "\\S"
         },
         "profile": {
-          "description": "An offered profile's id; this harness offers analyze, review, research and author-test (vectors/delegation/profiles.json). A resumed task gives its own profile again.",
+          "description": "A built-in profile id, or a catalogued declared sub-agent id. The package attaches subagent, never accepting a model-supplied record or bounds.",
           "type": "string",
           "maxLength": 48,
           "pattern": "\\S"
@@ -263,6 +266,9 @@
         "summarize": {
           "description": "Where the findings run past the task's share of the answer, the child is asked once, in one request of its budget, to summarize them within it (agent#13).",
           "type": "boolean"
+        },
+        "subagent": {
+          "$ref": "subagent.json#/$defs/record"
         }
       },
       "additionalProperties": false
@@ -499,6 +505,9 @@
         },
         "budget": {
           "$ref": "#/$defs/budget"
+        },
+        "subagent": {
+          "$ref": "subagent.json#/$defs/record"
         }
       },
       "additionalProperties": false
