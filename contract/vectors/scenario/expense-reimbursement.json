@@ -387,6 +387,7 @@
     },
     {
       "type": "proposal",
+      "digest": "sha256:4121ae02039d93ddd205347210c5bd99ace5316acedaec069cd0042c9df732a9",
       "document": {
         "specVersion": "0.2.0-draft",
         "id": "https://example.com/judgment-packs/expense-reimbursement",

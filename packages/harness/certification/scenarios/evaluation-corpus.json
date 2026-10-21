@@ -1,0 +1,5 @@
+{
+  "$comment": "Written by hand. Scenario 22, ADR-0022: redacted record, offline replay, compared decisions and outcomes, tolerance, and tamper failure.",
+  "id": "evaluation-corpus",
+  "checks": ["model seed", "agent seed", "tampered expectation names member", "record true round-trip", "no live provider", "prose excluded"]
+}

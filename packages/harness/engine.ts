@@ -207,6 +207,10 @@ export type ModelCall = (suffix: string, request: ModelRequest) => Promise<Respo
 export interface AssistantSession {
   /** ADR-0021: the host-owned in-flight input queue. Hosts append; engines drain at request boundaries. */
   input?: EngineInput[]
+  /** ADR-0022: opt this run into a redacted evaluation-corpus recording. */
+  record?: true
+  /** Host-owned destination and the opened output guard for an opted-in recording. */
+  corpus?: {manifest:import('./corpus').CorpusManifest;guard:import('./corpus').CorpusRedactor;sink:import('./corpus').CorpusSink}
   policy?: import('./policy').PolicyLayer
   policyProject?: import('./policy').PolicyLayer
   taskClass?: import('./policy').TaskClass
@@ -339,6 +343,7 @@ export type AssistantEvent =
   | { type: 'policy_resolved'; members: import('./policy').PolicyMembers }
   | { type: 'connection_switched'; role:string; from:string; to:string; reason:import('./policy').FailoverClass }
   | { type: 'usage'; usage:import('./execution/state').UsageLedger }
+  | {type:'recorded';id:string;bytes:number}
   | { type: 'retry'; attempt: number }
   | { type: 'response_recovery' }
   | { type: 'delegation_requested'; subagent?: import('./subagents').SubagentRecord; request: import('./delegationContract').DelegationRequest }
@@ -371,7 +376,7 @@ export type AssistantEvent =
    * that fired — nothing was stopped — but it is the same kind of sentence: the
    * desk saying what it did rather than leaving it to be discovered.
    */
-  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string; reason?: 'approval refused' | 'approval pending' | 'approval stale' | 'skill withheld' | 'skill budget' | 'review refused' | 'policy refused' | 'pace warning' | 'subagent withheld' | 'memory refused' | 'edit refused' | 'subagent refused' | 'compaction refused' | 'output refused' | 'records expired' | 'identity changed' | 'approval downgraded' | 'steer refused' | 'failover refused' }
+  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string; reason?: 'approval refused' | 'approval pending' | 'approval stale' | 'skill withheld' | 'skill budget' | 'review refused' | 'policy refused' | 'pace warning' | 'subagent withheld' | 'memory refused' | 'edit refused' | 'subagent refused' | 'compaction refused' | 'output refused' | 'records expired' | 'identity changed' | 'approval downgraded' | 'steer refused' | 'failover refused' | 'record refused' }
   | { type: 'thinking_unavailable'; detail: string }
   /**
    * `cases` and `incomplete` where the host declared cases (agent#10): each
@@ -385,7 +390,7 @@ export type AssistantEvent =
    */
   | ({ type: 'critic_decided' } & import('./criticSwitch').CriticDecision)
   /** `note` where something that ran after the proposal existed did not finish. */
-  | { type: 'proposal'; edits?:import('./edits').Edit[]; document: unknown; unknowns: string[]; critique?: { refuted: boolean; incomplete?: string[] }; note?: ProposalNote }
+  | { type: 'proposal'; edits?:import('./edits').Edit[]; document: unknown; unknowns: string[]; digest?:string; critique?: { refuted: boolean; incomplete?: string[] }; note?: ProposalNote }
   | { type: 'error'; message: string; failure?: import('./failures').AIFailure }
   | { type: 'end' }
 

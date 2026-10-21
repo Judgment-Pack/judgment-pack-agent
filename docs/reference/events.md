@@ -14,7 +14,7 @@ One event of a run, from the adapter to the host, in order, discriminated by typ
 
 See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](critic.md), [skills.md](skills.md), [budget.md](budget.md), [reasons.md](reasons.md), [checkpoint.md](checkpoint.md).
 
-## The 33 kinds
+## The 34 kinds
 
 | Kind | Defined in | Required beyond type |
 | --- | --- | --- |
@@ -39,7 +39,7 @@ See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](crit
 | `thinking_unavailable` | `run-event.json $defs/thinking_unavailable` | `detail` |
 | `critic_decided` | `run-event.json $defs/critic_decided` | `mode`, `ran`, `reason` |
 | `critique` | `run-event.json $defs/critique` | `refuted`, `checks`, `text` |
-| `proposal` | `run-event.json $defs/proposal` | `document`, `unknowns` |
+| `proposal` | `run-event.json $defs/proposal` | `document`, `unknowns`, `digest` |
 | `error` | `run-event.json $defs/error` | `message` |
 | `end` | `run-event.json $defs/end` |  |
 | `policy_resolved` | `run-event.json $defs/policy_resolved` | `members` |
@@ -51,6 +51,7 @@ See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](crit
 | `export_written` | `run-event.json $defs/export_written` | `records`, `bytes`, `digest` |
 | `connection_switched` | `run-event.json $defs/connection_switched` | `role`, `from`, `to`, `reason` |
 | `usage` | `run-event.json $defs/usage` | `usage` |
+| `recorded` | `run-event.json $defs/recorded` | `id`, `bytes` |
 
 ## Every kind with its members
 
@@ -284,7 +285,7 @@ Open: a member the schema does not name is accepted.
 | `tool` | yes | string |  |
 | `action` | yes | enum `rewrote`, `refused`, `narrowed` |  |
 | `detail` | yes | string |  |
-| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused`, `memory refused`, `edit refused`, `compaction refused`, `output refused`, `records expired`, `identity changed`, `approval downgraded`, `steer refused`, `failover refused` |  |
+| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused`, `memory refused`, `edit refused`, `compaction refused`, `output refused`, `records expired`, `identity changed`, `approval downgraded`, `steer refused`, `failover refused`, `record refused` |  |
 
 ### `thinking_unavailable`
 
@@ -347,6 +348,7 @@ Open: a member the schema does not name is accepted.
 | `type` | yes | const `proposal` |  |
 | `document` | yes | object | A JSON object. |
 | `unknowns` | yes | array of string |  |
+| `digest` | yes | string (pattern `^sha256:[0-9a-f]{64}$`) | ADR-0022: sha256: and the SHA-256 of the canonical JSON of this proposal with digest omitted. |
 | `critique` |  | object |  |
 | `critique.refuted` | yes | boolean |  |
 | `critique.incomplete` |  | array of string (min items 1) | The declared cases the critic's pass did not compare, by id (review row 1): present where any is, with refuted true, so the proposal's critique is never a plain not-refuted while a declared case is uncompared. |
@@ -480,3 +482,15 @@ Closed: a member the schema does not name is refused.
 | --- | --- | --- | --- |
 | `type` | yes | const `usage` |  |
 | `usage` | yes | `usage.json` |  |
+
+### `recorded`
+
+ADR-0022: a redacted evaluation corpus entry was written. id names its corpus directory and bytes is the sum of the UTF-8 bytes in its six JSON files.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `type` | yes | const `recorded` |  |
+| `id` | yes | string (pattern `^[a-z0-9][a-z0-9-]{0,63}$`) |  |
+| `bytes` | yes | integer (min 1) |  |

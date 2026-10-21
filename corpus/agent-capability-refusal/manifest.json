@@ -1,0 +1,1 @@
+{"id":"agent-capability-refusal","packageVersion":"0.8.0","policy":{"engine":"agent","taskClass":"boundary"},"files":{"requests":"requests.json","toolResults":"tool-results.json","events":"events.json","checkpoint":"checkpoint.json"},"expected":{"file":"expected.json"},"tolerance":["/drawnMarkers"]}

@@ -56,7 +56,7 @@ describe('the Codex adapter’s reformat run (agent#29)', () => {
     expect(events.filter((event) => event.type !== 'execution_checkpoint' && event.type !== 'policy_resolved').map((event) => event.type)).toEqual(['response_recovery', 'message', 'critic_decided', 'proposal', 'end'])
     // What the model said beside the document is the first answer's.
     expect(ofType(events, 'message')).toEqual([{ type: 'message', text: 'Here are two drafts.' }])
-    expect(ofType(events, 'proposal')[0]).toEqual({ type: 'proposal', document: { id: 'second' }, unknowns: ['who signs'] })
+    expect(ofType(events, 'proposal')[0]).toEqual({ type: 'proposal', digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/), document: { id: 'second' }, unknowns: ['who signs'] })
   })
 
   it('recovers a proposal whose fence is not valid JSON', async () => {

@@ -33,6 +33,7 @@ package runcontext
 // text of its direct host notices; gate.Options.Emit still writes them between call and result.
 
 import (
+	"encoding/json"
 	"errors"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
@@ -354,6 +355,24 @@ func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 				Tool: "proposal", Action: "refused",
 				Detail: "Artifact proposals are unavailable in Plan mode. Use propose_plan and wait for Start work."}}), false
 		}
+		raw, err := json.Marshal(event.Proposal)
+		if err != nil {
+			return append(out, failure.Event(err, "context"), contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}}), true
+		}
+		var proposal map[string]any
+		if err := json.Unmarshal(raw, &proposal); err != nil {
+			return append(out, failure.Event(err, "context"), contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}}), true
+		}
+		delete(proposal, "digest")
+		canonicalRaw, err := json.Marshal(proposal)
+		if err != nil {
+			return append(out, failure.Event(err, "context"), contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}}), true
+		}
+		value, err := ParseJSON(canonicalRaw)
+		if err != nil {
+			return append(out, failure.Event(err, "context"), contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}}), true
+		}
+		event.Proposal.Digest = "sha256:" + ContextDigest(CanonicalJSON(value))
 	}
 	if event.End != nil {
 		b.ended = true

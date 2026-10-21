@@ -9,6 +9,9 @@ import {eventIterator,openRun} from '../engines/contract'
 import {GateViolation} from '../toolGate'
 import {approvalContinuation} from '../toolSources'
 import {contextualSession,type SessionContext} from './session'
+import {recordSession} from '../corpus'
+import {canonicalJSON} from './chat'
+import {contextDigest} from './ledger'
 const contexts=new WeakMap<object,SessionContext>()
 export function contextOf(session:EngineSession):SessionContext {
  const context=contexts.get(session);if(!context)throw Error('AI execution requires the shared Desk context boundary.');return context
@@ -18,8 +21,9 @@ export function contextOf(session:EngineSession):SessionContext {
  * the run a chat-scoped context, as long as the chat (agent#8). Originals remain in
  * the owning chat/research journal. Rebuilding cannot resurrect deleted snapshots. */
 export function managedContext<T extends EngineSession>(session:T,run:(session:T)=>AsyncIterable<AssistantEvent>,engine?:import('../host').AssistantEngine):AsyncIterable<AssistantEvent>{
- const gate=openRun(session,()=>{})
- return eventIterator({gate,open:()=>execute({...session,signal:gate.signal},run,engine)})
+ const recording=recordSession(session)
+ const gate=openRun(recording.session,()=>{})
+ return recording.stream(eventIterator({gate,open:()=>execute({...recording.session,signal:gate.signal},run,engine)}))
 }
 /** Notices carry model-derived identifiers and refusal details, independently of tool results.
  * Guard-generated labels are trusted metadata and must not be scanned again. */
@@ -128,7 +132,8 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
      if(result===undefined){try{result=JSON.parse((checked.content??[]).filter(p=>p.type==='text').map(p=>p.text??'').join('\n'))}catch{}}
      if(checked.isError||result?.status!=='valid')context.output.refuse('proposal','proposal-validation')
     }
-    event=clean
+    const {digest:_,...proposal}=clean
+    event={...clean,digest:`sha256:${await contextDigest(canonicalJSON(proposal))}`}
    }
    event=guardNotice(event,context)
    // agent#10: a refusal of the critic's call is the boundary's guardrail, put

@@ -42,7 +42,8 @@
         "export_written",
         "steered",
         "connection_switched",
-        "usage"
+        "usage",
+        "recorded"
       ]
     }
   },
@@ -145,6 +146,9 @@
     },
     {
       "$ref": "#/$defs/usage"
+    },
+    {
+      "$ref": "#/$defs/recorded"
     }
   ],
   "$defs": {
@@ -513,7 +517,8 @@
             "identity changed",
             "approval downgraded",
             "steer refused",
-            "failover refused"
+            "failover refused",
+            "record refused"
           ]
         }
       },
@@ -652,7 +657,8 @@
       "required": [
         "type",
         "document",
-        "unknowns"
+        "unknowns",
+        "digest"
       ],
       "properties": {
         "type": {
@@ -667,6 +673,11 @@
           "items": {
             "type": "string"
           }
+        },
+        "digest": {
+          "description": "ADR-0022: sha256: and the SHA-256 of the canonical JSON of this proposal with digest omitted.",
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
         },
         "critique": {
           "type": "object",
@@ -1128,6 +1139,17 @@
       },
       "additionalProperties": false,
       "required": ["type", "usage"]
+    },
+    "recorded": {
+      "description": "ADR-0022: a redacted evaluation corpus entry was written. id names its corpus directory and bytes is the sum of the UTF-8 bytes in its six JSON files.",
+      "type": "object",
+      "required": ["type", "id", "bytes"],
+      "properties": {
+        "type": {"const": "recorded"},
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"},
+        "bytes": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": false
     }
   }
 }

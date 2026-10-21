@@ -1,0 +1,1 @@
+[{"suffix":"agent.run","request":{"body":"{}"},"response":{"status":200,"headers":{},"body":"{\"events\":[{\"type\":\"message\",\"id\":\"corpus\",\"text\":\"The capability remains unavailable.\",\"phase\":\"final\"}]}"}}]

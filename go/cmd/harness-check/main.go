@@ -33,6 +33,32 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "corpus" {
+		root := "../corpus"
+		if len(os.Args) > 2 {
+			root = os.Args[2]
+		}
+		modelPassed, err := certification.ReplayCorpusAdapter(context.Background(), root, eino.New(), false, nil)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "harness-check corpus:", err)
+			os.Exit(1)
+		}
+		host := certification.StandIn()
+		agentPassed, err := certification.ReplayCorpusAdapter(context.Background(), root, agent.New(), true, host.Bind)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "harness-check corpus:", err)
+			os.Exit(1)
+		}
+		passed := append(modelPassed, agentPassed...)
+		for _, name := range modelPassed {
+			fmt.Println("PASS corpus", name, "on eino")
+		}
+		for _, name := range agentPassed {
+			fmt.Println("PASS corpus", name, "on agent")
+		}
+		fmt.Printf("corpus: %d passed, 0 failed\n", len(passed))
+		return
+	}
 	address := flag.String("server", "", "a shared scripted server already running (its listening address); empty starts the repository's")
 	only := flag.String("run", "", "run only the legs whose name holds this text")
 	agentOnly := flag.Bool("agent", false, "run only the agent capability's checks, on the package's stand-in")

@@ -35,6 +35,7 @@ var Registry = map[string]func() any{
 	"checkpoint.json#/$defs/draftDocument":          func() any { return new(CheckpointDraftDocument) },
 	"checkpoint.json#/$defs/draft":                  func() any { return new(CheckpointDraft) },
 	"checkpoint.json#/$defs/sourceIdentity":         func() any { return new(CheckpointSourceIdentity) },
+	"corpus-entry.json":                             func() any { return new(CorpusEntry) },
 	"delegated-task.json":                           func() any { return new(DelegatedTask) },
 	"delegated-task.json#/$defs/uuid":               func() any { return new(string) },
 	"delegated-task.json#/$defs/time":               func() any { return new(string) },
@@ -155,6 +156,7 @@ var Registry = map[string]func() any{
 	"run-event.json#/$defs/export_written":          func() any { return new(RunEventExportWritten) },
 	"run-event.json#/$defs/connection_switched":     func() any { return new(RunEventConnectionSwitched) },
 	"run-event.json#/$defs/usage":                   func() any { return new(RunEventUsage) },
+	"run-event.json#/$defs/recorded":                func() any { return new(RunEventRecorded) },
 	"skill.json":                                    func() any { return new(Skill) },
 	"skill.json#/$defs/name":                        func() any { return new(string) },
 	"skill.json#/$defs/resource":                    func() any { return new(SkillResource) },
@@ -1633,6 +1635,94 @@ func (v *CheckpointTaskStep) UnmarshalJSON(data []byte) error {
 func (v CheckpointTaskStep) MarshalJSON() ([]byte, error) {
 	type plain CheckpointTaskStep
 	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From corpus-entry.json. ADR-0022. The closed manifest for one redacted recorded run. The named
+// files are the complete portable entry; replay compares expected decisions and outcomes, never
+// model prose.
+type CorpusEntry struct {
+	ID             string                     `json:"id"`
+	PackageVersion string                     `json:"packageVersion"`
+	Policy         map[string]json.RawMessage `json:"policy"`
+	Files          CorpusEntryFiles           `json:"files"`
+	Expected       CorpusEntryExpected        `json:"expected"`
+	Tolerance      []string                   `json:"tolerance"`
+}
+
+var corpusEntryMembers = []string{"id", "packageVersion", "policy", "files", "expected", "tolerance"}
+
+// UnmarshalJSON decodes a CorpusEntry object and refuses a member the closed schema does not name.
+func (v *CorpusEntry) UnmarshalJSON(data []byte) error {
+	type plain CorpusEntry
+	var p plain
+	extra, err := decodeObject(data, &p, corpusEntryMembers, true)
+	if err != nil {
+		return errorf("CorpusEntry: %w", err)
+	}
+	*v = CorpusEntry(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusEntry object.
+func (v CorpusEntry) MarshalJSON() ([]byte, error) {
+	type plain CorpusEntry
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-entry.json#/properties/expected.
+type CorpusEntryExpected struct {
+	File string `json:"file"`
+}
+
+var corpusEntryExpectedMembers = []string{"file"}
+
+// UnmarshalJSON decodes a CorpusEntryExpected object and refuses a member the closed schema does not name.
+func (v *CorpusEntryExpected) UnmarshalJSON(data []byte) error {
+	type plain CorpusEntryExpected
+	var p plain
+	extra, err := decodeObject(data, &p, corpusEntryExpectedMembers, true)
+	if err != nil {
+		return errorf("CorpusEntryExpected: %w", err)
+	}
+	*v = CorpusEntryExpected(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusEntryExpected object.
+func (v CorpusEntryExpected) MarshalJSON() ([]byte, error) {
+	type plain CorpusEntryExpected
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-entry.json#/properties/files.
+type CorpusEntryFiles struct {
+	Requests    string `json:"requests"`
+	ToolResults string `json:"toolResults"`
+	Events      string `json:"events"`
+	Checkpoint  string `json:"checkpoint"`
+}
+
+var corpusEntryFilesMembers = []string{"requests", "toolResults", "events", "checkpoint"}
+
+// UnmarshalJSON decodes a CorpusEntryFiles object and refuses a member the closed schema does not name.
+func (v *CorpusEntryFiles) UnmarshalJSON(data []byte) error {
+	type plain CorpusEntryFiles
+	var p plain
+	extra, err := decodeObject(data, &p, corpusEntryFilesMembers, true)
+	if err != nil {
+		return errorf("CorpusEntryFiles: %w", err)
+	}
+	*v = CorpusEntryFiles(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusEntryFiles object.
+func (v CorpusEntryFiles) MarshalJSON() ([]byte, error) {
+	type plain CorpusEntryFiles
+	return encodeObject(plain(v), nil)
 }
 
 // From delegated-task.json. The state of one child task of a delegation batch, carried whole on
@@ -4525,6 +4615,8 @@ type RunEvent struct {
 	ConnectionSwitched *RunEventConnectionSwitched
 	// Usage is set where type is "usage".
 	Usage *RunEventUsage
+	// Recorded is set where type is "recorded".
+	Recorded *RunEventRecorded
 }
 
 // UnmarshalJSON sets the one member the value decodes as.
@@ -4636,6 +4728,9 @@ func (v *RunEvent) UnmarshalJSON(data []byte) error {
 		case "usage":
 			v.Usage = new(RunEventUsage)
 			return json.Unmarshal(data, v.Usage)
+		case "recorded":
+			v.Recorded = new(RunEventRecorded)
+			return json.Unmarshal(data, v.Recorded)
 		}
 		return errorf("RunEvent: no member has type %q", tag)
 	}
@@ -4743,6 +4838,9 @@ func (v RunEvent) MarshalJSON() ([]byte, error) {
 	}
 	if v.Usage != nil {
 		set = append(set, v.Usage)
+	}
+	if v.Recorded != nil {
+		set = append(set, v.Recorded)
 	}
 	if len(set) != 1 {
 		return nil, errorf("RunEvent: %d members are set; a union holds exactly one", len(set))
@@ -5776,6 +5874,7 @@ type RunEventProposal struct {
 	Type     string                     `json:"type"`
 	Document map[string]json.RawMessage `json:"document"`
 	Unknowns []string                   `json:"unknowns"`
+	Digest   string                     `json:"digest"`
 	Critique *RunEventProposalCritique  `json:"critique,omitzero"`
 	Note     *RunEventProposalNote      `json:"note,omitzero"`
 	Edits    []ProvenanceEdit           `json:"edits,omitzero"`
@@ -5783,7 +5882,7 @@ type RunEventProposal struct {
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var runEventProposalMembers = []string{"type", "document", "unknowns", "critique", "note", "edits"}
+var runEventProposalMembers = []string{"type", "document", "unknowns", "digest", "critique", "note", "edits"}
 
 // UnmarshalJSON decodes a RunEventProposal object and keeps the members the schema does not name.
 func (v *RunEventProposal) UnmarshalJSON(data []byte) error {
@@ -5905,6 +6004,35 @@ func (v *RunEventReasoning) UnmarshalJSON(data []byte) error {
 func (v RunEventReasoning) MarshalJSON() ([]byte, error) {
 	type plain RunEventReasoning
 	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From run-event.json#/$defs/recorded. ADR-0022: a redacted evaluation corpus entry was written.
+// id names its corpus directory and bytes is the sum of the UTF-8 bytes in its six JSON files.
+type RunEventRecorded struct {
+	Type  string `json:"type"`
+	ID    string `json:"id"`
+	Bytes int64  `json:"bytes"`
+}
+
+var runEventRecordedMembers = []string{"type", "id", "bytes"}
+
+// UnmarshalJSON decodes a RunEventRecorded object and refuses a member the closed schema does not name.
+func (v *RunEventRecorded) UnmarshalJSON(data []byte) error {
+	type plain RunEventRecorded
+	var p plain
+	extra, err := decodeObject(data, &p, runEventRecordedMembers, true)
+	if err != nil {
+		return errorf("RunEventRecorded: %w", err)
+	}
+	*v = RunEventRecorded(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunEventRecorded object.
+func (v RunEventRecorded) MarshalJSON() ([]byte, error) {
+	type plain RunEventRecorded
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/response_recovery. The adapter is spending one tool-free request to

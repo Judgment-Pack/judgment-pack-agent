@@ -150,6 +150,15 @@ the agent capability `delegate.With` holds one invocation back for the critic un
 
 ## The agent capability
 
+## Evaluation corpus
+
+`go run ./cmd/harness-check corpus` replays every ADR-0022 entry under `corpus/` through the Eino
+and agent release adapters using only its recorded requests and tool results. It compares gate
+decisions, proposal digest, structured critic checks, refusals and outcomes after
+timing/drawn-marker tolerances; it never compares prose and the corpus command accepts no live
+provider capability. Each manifest is validated before a sink, and drift retains expected and
+actual values.
+
 A run is on one of two capabilities: the model capability (`adapter.Run.Model`, the relay) or the
 agent capability (`adapter.Run.Agent`, [ADR-0007](../docs/adr/0007-provider-managed-delegation-in-go.md)),
 a host-owned provider-run function for a provider that runs its own model loop. The host's

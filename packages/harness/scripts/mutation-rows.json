@@ -4605,6 +4605,68 @@
    ],
    "status": "caught",
    "origin": "agent#104"
+  },
+  {
+   "name": "evaluation corpus comparison reads prose",
+   "file": "corpus.ts",
+   "find": "for(const event of events){\n  if(event.type==='guardrail'){",
+   "replace": "for(const event of events){\n  if(event.type==='message')outcomes.push({type:event.type,text:event.text})\n  if(event.type==='guardrail'){",
+   "tests": ["corpus.test.ts"],
+   "status": "caught",
+   "origin": "agent#103",
+   "note": "Go twin: append message text to corpusProjection outcomes; TestScenario22EveryGoAdapterReplaysCorpus fails on a seed with changed prose."
+  },
+  {
+   "name": "evaluation corpus tolerance ignored",
+   "file": "corpus.ts",
+   "find": "for(const pointer of tolerance){omitPointer(left,pointer);omitPointer(right,pointer)}",
+   "replace": "for(const pointer of tolerance.slice(0,0)){omitPointer(left,pointer);omitPointer(right,pointer)}",
+   "tests": ["corpus.test.ts"],
+   "status": "caught",
+   "origin": "agent#103",
+   "note": "Go twin: skip deletePointer in CompareCorpus; TestCorpusToleranceAndTamper fails."
+  },
+  {
+   "name": "evaluation corpus record redaction skipped",
+   "file": "corpus.ts",
+   "find": "const clean=guard.value(raw,'message',true)",
+   "replace": "void guard;const clean=raw",
+   "tests": ["corpus.test.ts"],
+   "status": "caught",
+   "origin": "agent#103",
+   "note": "Go twin: omit guard.JSON in WriteCorpusEntry; the recording redaction assertion fails."
+  },
+  {
+   "name": "evaluation corpus release engine not run",
+   "file": "corpus.ts",
+   "find": "const server=new ScriptedCorpusServer(entry),events=await run(server);server.complete()",
+   "replace": "const server=new ScriptedCorpusServer(entry),events=structuredClone(entry.events);void run;server.complete()",
+   "tests": ["certification/corpus.test.ts"],
+   "status": "caught",
+   "origin": "agent#103 review #128",
+   "note": "Go twin: project entry.Events instead of calling adapter.Run in runCorpusAdapter; the concrete-adapter corpus command fails because no recording-backed request is consumed."
+  },
+  {
+   "name": "evaluation corpus recorded tool results not served",
+   "file": "certification/corpus.test.ts",
+   "find": " const transport={engine,handle:(call:{name:string;args:Record<string,unknown>})=>server.tool(call.name,call.args),session:{critic:'off' as const}}",
+   "replace": " const transport={engine,session:{critic:'off' as const}}",
+   "tests": [
+    "certification/corpus.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#103 review #128",
+   "note": "Go twin: omit the corpus-backed gate from runCorpusAdapter; TestScenario22EveryGoAdapterReplaysCorpus fails because the tool seed cannot complete its two recorded requests."
+  },
+  {
+   "name": "evaluation corpus manifest validation skipped",
+   "file": "corpus.ts",
+   "find": "const validManifest=(manifest:unknown):manifest is CorpusManifest=>argumentProblem(corpusEntrySchema,manifest)===undefined&&",
+   "replace": "const validManifest=(manifest:unknown):manifest is CorpusManifest=>true||argumentProblem(corpusEntrySchema,manifest)===undefined&&",
+   "tests": ["corpus.test.ts"],
+   "status": "caught",
+   "origin": "agent#103 review #128",
+   "note": "Go twin: return nil before validateCorpusManifest checks; TestCorpusInvalidManifestWritesNothing fails."
   }
  ]
 }

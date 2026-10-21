@@ -703,6 +703,15 @@ the Desk's own test ground does: a session already in hand, a relay addressed by
 
 ## Tests
 
+### Evaluation corpus
+
+Set `record: true` only for a run whose entry will be reviewed. ADR-0022 records requests, tool
+results, events and the checkpoint through the output guard; a guard refusal writes nothing and
+emits `record refused`. `node scripts/corpus-check.mjs ../../corpus` replays every entry from its
+recorded responses through the Vercel, Deep Agents and Codex release engines and compares their
+newly emitted decisions and outcomes, never prose or a live provider. Each manifest is validated
+against the closed schema before either sink; drift reports retain the expected and actual values.
+
 `npm test` runs every moved test and the suite (vitest, jsdom, as the Desk runs them), including
 `session.test.ts`, whose session store and language come from the test host. The cases that
 exercise a Desk feature stay in the Desk and run there against this package after its swap: the
