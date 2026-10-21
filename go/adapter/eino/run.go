@@ -98,6 +98,12 @@ func Run(ctx context.Context, run *adapter.Run) error {
 			return nil
 		}
 	}
+	if named.Critic == "" {
+		named.Critic = run.ModelName
+	}
+	if named.Child == "" {
+		named.Child = run.ModelName
+	}
 	session := runcontext.Session{
 		Prompt:            run.Prompt,
 		TestPrompt:        run.TestPrompt,

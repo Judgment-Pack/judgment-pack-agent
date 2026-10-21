@@ -826,7 +826,7 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
       // agent#17: as many children at once as the connection serves requests (its concurrentRequests,
       // modelsFor's answer for the run's connection; two where it names none); the provider account of
       // an agent capability is exclusive.
-      const concurrency='agent' in session?1:Math.max(1,Math.min(Number(shared.context?.resolvedPolicy['concurrency.children']?.value??DEFAULT_CHILD_CONCURRENCY),connectionAnswer().concurrentRequests??DEFAULT_CHILD_CONCURRENCY))
+      const concurrency='agent' in session?1:Math.max(1,Math.min(Number(shared.context?.resolvedPolicy['concurrency.children']?.value??connectionAnswer().concurrentRequests??DEFAULT_CHILD_CONCURRENCY),connectionAnswer().concurrentRequests??DEFAULT_CHILD_CONCURRENCY))
       let next=0,finished=0
       const slots=()=>Math.min(concurrency,tasks.length-finished)
       try {

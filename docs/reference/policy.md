@@ -72,15 +72,6 @@ Closed: a member the schema does not name is refused.
 | `pace.warnAt` |  | number (min 0, max 1) | Default: `0.8`. |
 | `taskClass` |  | enum `routine`, `material`, `boundary` | Default: `"routine"`. |
 
-### `policy.json $defs/role`
-
-Closed: a member the schema does not name is refused.
-
-| Member | Required | Type | Description |
-| --- | --- | --- | --- |
-| `model` |  | string (min length 1, max length 128) |  |
-| `reasoning` |  | enum `off`, `on`, `ultra`, `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` |  |
-
 ### `policy.json $defs/member`
 
 Closed: a member the schema does not name is refused.
@@ -89,12 +80,6 @@ Closed: a member the schema does not name is refused.
 | --- | --- | --- | --- |
 | `value` | yes | any |  |
 | `layer` | yes | enum `run`, `project`, `table` |  |
-
-### `policy.json $defs/resolved`
-
-Open: a member the schema does not name is accepted.
-
-Type: object of `$defs/member`
 
 ### `policy.json $defs/paceUsed`
 
@@ -105,3 +90,18 @@ Closed: a member the schema does not name is refused.
 | `requestsPerDay` |  | integer (min 0) |  |
 | `invocationsPerDay` |  | integer (min 0) |  |
 | `bytesPerDay` |  | integer (min 0) |  |
+
+### `policy.json $defs/resolved`
+
+Open: a member the schema does not name is accepted.
+
+Type: object of `$defs/member`
+
+### `policy.json $defs/role`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `model` |  | string (min length 1, max length 128) |  |
+| `reasoning` |  | enum `off`, `on`, `ultra`, `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` |  |

@@ -192,7 +192,7 @@ func scenarioLeg(ctx context.Context, server *Server, endpoint Endpoint, adapter
 	if err != nil {
 		return nil, err
 	}
-	result := &LegResult{Endpoint: endpoint, scenario: scenario, traced: traced}
+	result := &LegResult{Endpoint: endpoint, scenario: scenario, traced: traced, sequence: []string{"policy_resolved"}}
 	if err := json.Unmarshal(offers[0], &result.offer); err != nil {
 		return nil, fmt.Errorf("the scenario's offer vector: %w", err)
 	}

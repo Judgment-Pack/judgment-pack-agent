@@ -16,7 +16,7 @@ import type { AgentRun } from './agent'
 import type { AssistantEvent } from './engine'
 
 vi.mock('./contract/policy.json', async (original) => {
-  const { criticDefault: _default, ...table } = ((await original()) as { default: Record<string, unknown> }).default
+  const { critic: _critic, ...table } = ((await original()) as { default: Record<string, unknown> }).default
   return { default: { ...table, adversarialReview: true } }
 })
 
@@ -24,7 +24,7 @@ const PROPOSAL = 'Ready.\n\n```json\n' + JSON.stringify({ proposal: { document: 
 
 describe('a policy table that says adversarialReview: true and no criticDefault (agent#10; ADR-0010 alias)', () => {
   it('is the harness’s default, read as on at the table’s layer', () => {
-    expect((CONTEXT_DEFAULTS as { adversarialReview?: boolean }).adversarialReview).toBe(true)
+    expect(CONTEXT_DEFAULTS.criticDefault).toBe('on')
     expect(criticMode({}, CONTEXT_DEFAULTS)).toEqual({ mode: 'on', layer: 'table' })
     // The table's criticDefault wins over its alias where both are set.
     expect(criticMode({}, { ...CONTEXT_DEFAULTS, criticDefault: 'off' })).toEqual({ mode: 'off', layer: 'table' })

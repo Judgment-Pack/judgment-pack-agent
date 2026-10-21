@@ -219,6 +219,8 @@ type openAIToolCall struct {
 }
 
 func referenceLoop(ctx context.Context, run *certification.Run) error {
+	// This minimal loop supplies the admission event; scenario 11 checks every member.
+	run.Emit(contract.RunEvent{PolicyResolved: &contract.RunEventPolicyResolved{Type: "policy_resolved", Members: map[string]contract.PolicyMember{"taskClass": {Value: json.RawMessage(`"routine"`), Layer: "table"}}}})
 	var declared []map[string]any
 	hosts := map[string]bool{}
 	boundaryTools, err := certification.BoundaryHostTools()

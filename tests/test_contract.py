@@ -280,7 +280,8 @@ class DeskInventoryTests(unittest.TestCase):
     def test_the_budget_vector_is_the_desks_table(self):
         policy = load(CONTRACT / "desk" / "policy.json")
         self.assertEqual(load(VECTORS / "budget" / "desk-defaults.json")["items"], [{**policy["budget"], "criticDefault":policy["critic"]["default"], "criticReasoningFloor":policy["critic"]["reasoningFloor"]}])
-        self.assertEqual(problems(validator(self.schemas, "budget.json"), [policy]), [])
+        self.assertEqual(problems(validator(self.schemas, "budget.json"), [policy["budget"]]), [])
+        self.assertEqual(problems(validator(self.schemas, "policy.json"), [policy]), [])
 
     def test_every_catalogue_entry_is_well_formed(self):
         check = validator(self.schemas, "failure.json#/$defs/catalogueEntry")

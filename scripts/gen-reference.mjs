@@ -766,7 +766,7 @@ async function checkpointPage(page) {
 async function policyPage(page) {
   page.add(seeAlso('budget.md', 'critic.md', 'events.md', 'checkpoint.md'),
     page.rootOf('policy.json', '## The policy table'))
-  for (const name of Object.keys(page.schema('policy.json').$defs)) page.add(page.nodeOf('policy.json', name))
+  for (const name of Object.keys(page.schema('policy.json').$defs).sort()) page.add(page.nodeOf('policy.json', name))
 }
 
 const PAGES = [

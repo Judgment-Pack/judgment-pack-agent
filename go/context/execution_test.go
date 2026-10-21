@@ -253,7 +253,7 @@ func TestTheRequestIsClaimedAndCheckpointedBeforeItIsSent(t *testing.T) {
 		t.Fatal(err)
 	}
 	order = append(order, "sent")
-	if len(order) != 2 || order[0] != "saved-1" || order[1] != "sent" {
+	if len(order) != 3 || order[0] != "saved-0" || order[1] != "saved-1" || order[2] != "sent" {
 		t.Errorf("the order is %v", order)
 	}
 	// ADR-0005: the checkpoint saved before the request carries the digest of its body.
@@ -267,12 +267,11 @@ func TestTheRequestIsClaimedAndCheckpointedBeforeItIsSent(t *testing.T) {
 		return &authoredError{"Storage unavailable"}
 	}
 	unavailable.Context = &other
-	run = openRun(t, unavailable)
-	err := run.Context.ClaimRequest(context.Background(), []byte(`{}`))
+	_, err := ContextualSession(context.Background(), unavailable)
 	if err == nil {
 		t.Fatal("the request was sent")
 	}
-	if !strings.Contains(err.Error(), "Progress could not be saved") {
+	if !strings.Contains(err.Error(), "Policy checkpoint could not be saved") {
 		t.Errorf("the failure is %q", err.Error())
 	}
 }

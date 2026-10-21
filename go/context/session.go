@@ -1117,8 +1117,9 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 				return failure.Authored("stale-state", "The policy differs from the saved run.", "context")
 			}
 		}
+		freshPolicy := held.Execution.State.Policy == nil
 		held.Execution.State.Policy = record
-		if session.Context != nil && session.Context.Checkpoint != nil {
+		if freshPolicy && session.Context != nil && session.Context.Checkpoint != nil {
 			state, err := held.Snapshot("")
 			if err != nil {
 				return err

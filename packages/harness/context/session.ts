@@ -190,7 +190,11 @@ export class SessionContext {
   this.authorTier='model'in session?session.thinking?.tier:session.effort
   this.capabilities='model'in session?capabilitiesFor(session.model):undefined;this.policy=contextPolicy(session.context?.configuration,'model'in session?session.model.model:session.agent.model,this.capabilities)
   const current=this.identity.connection?.connectionId??this.identity.model
-  const named=engine?runModels({...this.identity,engine}):{critic:this.identity.model,child:this.identity.model}
+  const named=(()=>{try{return engine&&!session.context?.objective?runModels({...this.identity,engine}):{critic:this.identity.model,child:this.identity.model}}catch(cause){
+   const detail=(cause as Error).message
+   const member=detail.includes('concurrentRequests')?'concurrency.requests':detail.includes('child model')?'models.child.default.model':'models.critic.model'
+   throw new PolicyRefusal(member,'table',detail)
+  }})()
   if(engine)this.named={models:named}
   const binding:PolicyConnection='model'in session?{model:session.model}:{agent:session.agent}
   const withName=(name:string):PolicyConnection=>'model'in binding?{model:{...binding.model,model:name}}:{agent:{...binding.agent,model:name}}
@@ -199,8 +203,8 @@ export class SessionContext {
   const resolved=resolvePolicy(
    {...session.policy, ...(session.taskClass?{taskClass:session.taskClass}:{}),critic:{...(session.critic!==undefined||session.adversarialReview!==undefined?{default:session.critic??(session.adversarialReview?'on':'off')}:{}),...session.policy?.critic},models:{...session.policy?.models,...(session.criticReasoning?{critic:{...session.policy?.models?.critic,reasoning:session.criticReasoning}}:{})}},
    {...session.policyProject,critic:{...(session.criticProject?{default:session.criticProject}:{}),...session.policyProject?.critic}},
-   {...this.policy,concurrency:{requests:named.concurrentRequests??1},models:{author:{model:current,reasoning:this.authorTier??('agent'in session?'none':'off')},critic:{model:named.critic}}},
-   {connections:Object.keys(this.bindings),agent:'agent'in session,requests:session.policyRequests??named.concurrentRequests??1,paceUsed:session.paceUsed})
+   {...this.policy,concurrency:{children:'agent'in session?1:named.concurrentRequests??2,requests:named.concurrentRequests??2},models:{author:{model:current,reasoning:this.authorTier??('agent'in session?'none':'off')},critic:{model:named.critic}}},
+   {connections:Object.keys(this.bindings),agent:'agent'in session,requests:session.policyRequests??named.concurrentRequests??2,paceUsed:session.paceUsed})
   this.resolvedPolicy=resolved.members;this.paceWarning=resolved.warning
   for(const [name,member] of Object.entries(resolved.members))if(name.startsWith('models.')&&name.endsWith('.model')){
    const selected=this.bindings[String(member.value)]!
@@ -567,8 +571,10 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  const carried=context.execution.state.policy
  if(carried) {
   if(JSON.stringify(carried)!==JSON.stringify(context.resolvedPolicy))throw authoredFailure('stale-state','The policy differs from the saved run.','context')
- } else context.execution.state.policy=structuredClone(context.resolvedPolicy)
- try{await session.context?.checkpoint?.(context.execution.snapshot())}catch{throw failureError('storage','storage','not-started')}
+ } else {
+  context.execution.state.policy=structuredClone(context.resolvedPolicy)
+  try{await session.context?.checkpoint?.(context.execution.snapshot())}catch{throw failureError('storage','storage','not-started')}
+ }
  context.carryMarker()
  if(declared.sources.length){
   const offered=offerSources(session.hostTools,declared.entries,context.policy,context.marker)

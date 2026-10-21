@@ -112,6 +112,12 @@ func Run(ctx context.Context, run *adapter.Run) error {
 			return nil
 		}
 	}
+	if named.Critic == "" {
+		named.Critic = run.Agent.Model
+	}
+	if named.Child == "" {
+		named.Child = run.Agent.Model
+	}
 	session := runcontext.Session{
 		Prompt:            run.Prompt,
 		TestPrompt:        run.TestPrompt,

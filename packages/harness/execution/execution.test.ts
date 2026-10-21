@@ -60,10 +60,9 @@ it('persists request usage before dispatch and sends nothing when that checkpoin
  input.model.call=vi.fn(async()=>{order.push('sent');return new Response('{}')})
  const ready=await contextualSession(input)
  await ready.session.model.call('generate',{body:'{}'})
- expect(order).toEqual(['saved-1','sent'])
+ expect(order).toEqual(['saved-0','saved-1','sent'])
  const unavailable=base();unavailable.context={...unavailable.context,checkpoint:async()=>{throw Error('Storage unavailable')}}
- const other=await contextualSession(unavailable)
- await expect(other.session.model.call('generate',{body:'{}'})).rejects.toMatchObject({failure:{code:'storage',outcome:'not-started'}})
+ await expect(contextualSession(unavailable)).rejects.toMatchObject({failure:{code:'storage',outcome:'not-started'}})
  expect(unavailable.model.call).not.toHaveBeenCalled()
 })
 

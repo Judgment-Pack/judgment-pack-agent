@@ -344,10 +344,19 @@ func resolveSessionPolicy(session Session, budget Policy) (ResolvedPolicy, error
 		}
 	}
 	table["models"] = map[string]any{"author": map[string]any{"model": current, "reasoning": tier}}
+	capacity := 2
+	if session.PolicyLegacyModels != nil && session.PolicyLegacyModels.ConcurrentRequests != nil {
+		capacity = *session.PolicyLegacyModels.ConcurrentRequests
+	}
+	children := capacity
+	if session.Agent != nil {
+		children = 1
+	}
+	table["concurrency"] = map[string]any{"children": children, "requests": capacity}
 	if session.PolicyLegacyModels != nil {
 		table["models"].(map[string]any)["critic"] = map[string]any{"model": session.PolicyLegacyModels.Critic}
 		if session.PolicyLegacyModels.ConcurrentRequests != nil {
-			table["concurrency"] = map[string]any{"requests": *session.PolicyLegacyModels.ConcurrentRequests}
+			table["concurrency"].(map[string]any)["requests"] = *session.PolicyLegacyModels.ConcurrentRequests
 		}
 	}
 	clone := func(layer PolicyLayer) PolicyLayer {
@@ -399,7 +408,7 @@ func resolveSessionPolicy(session Session, budget Policy) (ResolvedPolicy, error
 	}
 	requests := session.PolicyRequests
 	if requests == 0 {
-		requests = 1
+		requests = 2
 		if session.PolicyLegacyModels != nil && session.PolicyLegacyModels.ConcurrentRequests != nil {
 			requests = *session.PolicyLegacyModels.ConcurrentRequests
 		}

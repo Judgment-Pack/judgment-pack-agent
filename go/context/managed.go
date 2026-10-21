@@ -68,7 +68,7 @@ func NewBoundary(run *Run) *Boundary {
 // checkpoint then says stopped rather than complete.
 func (b *Boundary) Stopped() { b.stopped = true }
 
-// Open is the opening checkpoint of a tracked run, and nothing for a run that is not tracked.
+// Open reports policy admission, then the opening checkpoint of a tracked run.
 func (b *Boundary) Open() []contract.RunEvent {
 	// ADR-0008: the checkpoints the continuation of an approval wrote, acknowledged, before the
 	// run's first request.
@@ -82,7 +82,7 @@ func (b *Boundary) Open() []contract.RunEvent {
 	if !b.tracked {
 		return append(b.notices(), continued...)
 	}
-	return append(append(b.checkpoint(nil, ""), continued...), b.notices()...)
+	return append(append(continued, b.checkpoint(nil, "")...), b.notices()...)
 }
 
 // notices are the guardrail events the source gate's refusals earned (ADR-0006), put on the stream
