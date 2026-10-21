@@ -1,0 +1,6 @@
+{
+  "description": "ADR-0022: if the output guard cannot redact a recording, no entry is written and the refusal is visible. Written by hand.",
+  "schema": "run-event.json#/$defs/guardrail",
+  "source": {"harness": {"repository": "Judgment-Pack/judgment-pack-agent", "package": "packages/harness"}, "files": ["packages/harness/corpus.ts"]},
+  "items": [{"type": "guardrail", "tool": "record", "action": "refused", "reason": "record refused", "detail": "The output guard could not redact the corpus entry; no recording was written."}]
+}

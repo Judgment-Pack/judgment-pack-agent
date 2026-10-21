@@ -4267,6 +4267,36 @@
    "tests": ["certification/scenarios.test.ts"],
    "status": "caught",
    "origin": "agent#99"
+  },
+  {
+   "name": "evaluation corpus comparison reads prose",
+   "file": "corpus.ts",
+   "find": "for(const event of events){\n  if(event.type==='guardrail'){",
+   "replace": "for(const event of events){\n  if(event.type==='message')outcomes.push({type:event.type,text:event.text})\n  if(event.type==='guardrail'){",
+   "tests": ["corpus.test.ts"],
+   "status": "caught",
+   "origin": "agent#103",
+   "note": "Go twin: append message text to corpusProjection outcomes; TestScenario22EveryGoAdapterReplaysCorpus fails on a seed with changed prose."
+  },
+  {
+   "name": "evaluation corpus tolerance ignored",
+   "file": "corpus.ts",
+   "find": "for(const pointer of tolerance){omitPointer(left,pointer);omitPointer(right,pointer)}",
+   "replace": "for(const pointer of tolerance.slice(0,0)){omitPointer(left,pointer);omitPointer(right,pointer)}",
+   "tests": ["corpus.test.ts"],
+   "status": "caught",
+   "origin": "agent#103",
+   "note": "Go twin: skip deletePointer in CompareCorpus; TestCorpusToleranceAndTamper fails."
+  },
+  {
+   "name": "evaluation corpus record redaction skipped",
+   "file": "corpus.ts",
+   "find": "const clean=guard.value(raw,'message',true)",
+   "replace": "void guard;const clean=raw",
+   "tests": ["corpus.test.ts"],
+   "status": "caught",
+   "origin": "agent#103",
+   "note": "Go twin: omit guard.JSON in WriteCorpusEntry; the recording redaction assertion fails."
   }
  ]
 }

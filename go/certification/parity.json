@@ -942,13 +942,26 @@
       {
         "check": "16 · checkpoint resume gives the same request bytes without asking the compactor again",
         "go": ["16 resume"]
+      },
+      {
+        "check": "replays both seed entries without a provider",
+        "go": ["22 replay", "22 agent replay"]
+      },
+      {
+        "check": "names a tampered expectation member",
+        "go": ["22 tamper", "22 agent tamper"]
+      },
+      {
+        "check": "record true round-trips through the output guard",
+        "go": ["22 round-trip", "22 agent round-trip"]
       }
     ],
     "additionalSources": [
       "packages/harness/certification/providers.test.ts",
       "packages/harness/certification/subagents.test.ts",
       "packages/harness/certification/memory-write.test.ts",
-      "packages/harness/certification/proposal-edits.test.ts"
+      "packages/harness/certification/proposal-edits.test.ts",
+      "packages/harness/certification/corpus.test.ts"
     ]
   },
   "delegation": {

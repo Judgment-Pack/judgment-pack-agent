@@ -14,7 +14,7 @@ One event of a run, from the adapter to the host, in order, discriminated by typ
 
 See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](critic.md), [skills.md](skills.md), [budget.md](budget.md), [reasons.md](reasons.md), [checkpoint.md](checkpoint.md).
 
-## The 28 kinds
+## The 29 kinds
 
 | Kind | Defined in | Required beyond type |
 | --- | --- | --- |
@@ -22,6 +22,7 @@ See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](crit
 | `budget_paused` | `run-event.json $defs/budget_paused` | `checkpoint` |
 | `approval_requested` | `run-event.json $defs/approval_requested` | `callId`, `name`, `tool`, `source`, `args` |
 | `compacted` | `run-event.json $defs/compacted` | `turns`, `bytes`, `digest`, `mode` |
+| `recorded` | `run-event.json $defs/recorded` | `id`, `bytes` |
 | `skill_loaded` | `run-event.json $defs/skill_loaded` | `skill`, `bytes` |
 | `skill_unloaded` | `run-event.json $defs/skill_unloaded` | `id` |
 | `retry` | `run-event.json $defs/retry` | `attempt` |
@@ -100,6 +101,18 @@ Closed: a member the schema does not name is refused.
 | `bytes` | yes | integer (min 1) |  |
 | `digest` | yes | `provenance.json $defs/sha256` |  |
 | `mode` | yes | enum `index`, `summary` |  |
+
+### `recorded`
+
+ADR-0022: a redacted evaluation corpus entry was written. id names its corpus directory and bytes is the sum of the UTF-8 bytes in its six JSON files.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `type` | yes | const `recorded` |  |
+| `id` | yes | string (pattern `^[a-z0-9][a-z0-9-]{0,63}$`) |  |
+| `bytes` | yes | integer (min 1) |  |
 
 ### `skill_loaded`
 
@@ -267,7 +280,7 @@ Open: a member the schema does not name is accepted.
 | `tool` | yes | string |  |
 | `action` | yes | enum `rewrote`, `refused`, `narrowed` |  |
 | `detail` | yes | string |  |
-| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused`, `memory refused`, `edit refused`, `compaction refused` |  |
+| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused`, `memory refused`, `edit refused`, `compaction refused`, `record refused` |  |
 
 ### `thinking_unavailable`
 

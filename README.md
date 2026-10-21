@@ -85,6 +85,8 @@ decision. Earlier failures or pauses may omit it; a checkpointed review request 
   Go runner of the certification suite, which drives a Go adapter against the TypeScript suite's
   own scripted server (`packages/harness/scripts/scripted-server.mjs`). `go/spike/` holds the spikes
   ADR-0004 measured, a separate module, not shipped.
+- `corpus/`: ADR-0022's reviewed, output-guarded recordings. The TypeScript and Go replay commands
+  compare package-owned decisions and outcomes without reaching a live provider or comparing prose.
 - `scripts/parity.sh`: diffs the package against a Desk checkout and names every difference.
 - `tests/`: the contract's checks, and the package's copies of the Desk's JSON held to them.
 - `docs/adr/`: decisions. `docs/design/`: designs, starting with the

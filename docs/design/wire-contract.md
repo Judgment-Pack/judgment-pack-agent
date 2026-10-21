@@ -93,7 +93,7 @@ rehearsal rule stay the host's (ADR-0001). Nothing below moves them.
 
 Generated reference: [`docs/reference/events.md`](../reference/events.md) lists these from the schemas and the package's constants.
 
-`run-event.json`. Twenty-two kinds, discriminated by `type`, from the adapter to the host, in order: the
+`run-event.json`. The kinds are discriminated by `type`, from the adapter to the host, in order: the
 Desk's eighteen, the harness's `approval_requested` (ADR-0008), `skill_loaded` and
 `skill_unloaded` (ADR-0009), and `critic_decided` (ADR-0010):
 
@@ -122,7 +122,9 @@ Desk's eighteen, the harness's `approval_requested` (ADR-0008), `skill_loaded` a
   served schema keyword; `refused` with tool `proposal` where Plan mode or a conversation withholds
   proposals), `execution_checkpoint` (state to save, `durable` where it must be saved before the
   next operation), `delegated_task` (a child's state, whole, at each transition; on `vercel`
-  between the delegate call and its result).
+  between the delegate call and its result), and `recorded` (ADR-0022: the output-guarded corpus
+  entry's id and bytes after a successful write). A recording the output guard cannot redact emits
+  a refused guardrail with reason `record refused` and writes nothing.
 - **Provider recovery:** `retry` (attempt one or two: on `codex` relayed from the subscription
   agent, on `vercel` before a refused model request is sent again), `response_recovery` (on
   `vercel` one tool-free request to finish a response cut short; on both engines the one tool-free
@@ -140,6 +142,15 @@ Desk's eighteen, the harness's `approval_requested` (ADR-0008), `skill_loaded` a
 A consumer that leaves gets no `end`; nothing is delivered after the run closes. A cancelled run
 emits no `error`. A failed tool is a `tool_result` with `isError`, not an `error`. The proposal is
 the adapter's last word on the document, and accepting or rejecting it is the host's action.
+
+## The evaluation corpus
+
+ADR-0022 puts reviewed entries under `corpus/<id>/`. `record: true` opts a session in. The closed
+`corpus-entry.json` manifest names the recorded requests, scripted tool results, events, checkpoint
+and `expected.json`, with the resolved policy and a tolerance limited to timings and drawn markers.
+Replay answers solely from those files and never receives a live-provider capability. It compares
+the gate's decisions, proposal digest, critic verdict and reasons, refusals and outcomes; message,
+progress and reasoning prose are deliberately outside the comparison.
 
 Nothing the model finished is lost. A proposal that cannot be read (two marked blocks; none,
 outside a conversation; a block not marked `json`, one not closed, or one that is not valid JSON,

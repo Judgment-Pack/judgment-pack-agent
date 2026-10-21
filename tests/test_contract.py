@@ -30,7 +30,7 @@ HARNESS_ENGINE_ADDITIONS = ["deepagents", "eino"]
 # Event kinds the harness emits beyond the Desk's (contract/desk/inventory.json): the approval pause
 # (docs/adr/0008-the-approval-pause.md) and a skill's load and unload (docs/adr/0009-skills.md), on
 # the host's stream; and the critic's decision (docs/adr/0010-the-critics-switch.md).
-HARNESS_EVENT_ADDITIONS = ["approval_requested", "skill_loaded", "skill_unloaded", "critic_decided", "policy_resolved", "memory_proposed", "memory_recalled", "edit_applied", "edit_refused", "compacted"]
+HARNESS_EVENT_ADDITIONS = ["approval_requested", "skill_loaded", "skill_unloaded", "critic_decided", "policy_resolved", "memory_proposed", "memory_recalled", "edit_applied", "edit_refused", "compacted", "recorded"]
 
 EXPECTED_SCHEMAS = {
     "run-event.json",
@@ -49,11 +49,13 @@ EXPECTED_SCHEMAS = {
     "skill.json",
     "subagent.json",
     "memory.json",
+    "corpus-entry.json",
 }
 
 # The $defs added or changed (beyond their descriptions) between v0.1.0 and the v0.2.0 release
 # review, whose members each need a vector (#43): (schema, definition).
 RELEASE_REVIEWED_DEFS = [
+    ("run-event.json", "recorded"),
     ("run-event.json", "compacted"), ("provenance.json", "compactionSummary"), ("provenance.json", "compactionReport"),
     ("tool-offer.json", "propose_edit"), ("tool-offer.json", "propose_delete"), ("tool-offer.json", "propose_insert"), ("tool-offer.json", "undo_edit"),
     ("checkpoint.json", "draft"), ("checkpoint.json", "draftDocument"), ("provenance.json", "edit"), ("run-event.json", "edit_applied"), ("run-event.json", "edit_refused"),

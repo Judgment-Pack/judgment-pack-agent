@@ -14,6 +14,7 @@
         "budget_paused",
         "approval_requested",
         "compacted",
+        "recorded",
         "skill_loaded",
         "skill_unloaded",
         "retry",
@@ -53,6 +54,9 @@
     },
     {
       "$ref": "#/$defs/compacted"
+    },
+    {
+      "$ref": "#/$defs/recorded"
     },
     {
       "$ref": "#/$defs/skill_loaded"
@@ -128,6 +132,17 @@
     }
   ],
   "$defs": {
+    "recorded": {
+      "description": "ADR-0022: a redacted evaluation corpus entry was written. id names its corpus directory and bytes is the sum of the UTF-8 bytes in its six JSON files.",
+      "type": "object",
+      "required": ["type", "id", "bytes"],
+      "properties": {
+        "type": {"const": "recorded"},
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"},
+        "bytes": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": false
+    },
     "compacted": {
       "description": "ADR-0016: the visible marker that one context compaction replaced complete turns. digest is the digest of the framed replacement; mode says whether the deterministic index or a model-authored summary was used.",
       "type": "object",
@@ -455,7 +470,8 @@
             "subagent refused",
             "memory refused",
             "edit refused"
-            ,"compaction refused"
+            ,"compaction refused",
+            "record refused"
           ]
         }
       },

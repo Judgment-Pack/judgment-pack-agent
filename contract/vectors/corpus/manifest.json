@@ -1,0 +1,13 @@
+{
+  "description": "ADR-0022 closed manifest: every recording file is named and tolerance can name only timing and drawn-marker members. Written by hand.",
+  "schema": "corpus-entry.json",
+  "source": {"harness": {"repository": "Judgment-Pack/judgment-pack-agent", "package": "packages/harness"}, "files": ["packages/harness/corpus.ts"]},
+  "items": [{
+    "id": "model-policy-refusal",
+    "packageVersion": "0.8.0",
+    "policy": {"taskClass": "boundary"},
+    "files": {"requests": "requests.json", "toolResults": "tool-results.json", "events": "events.json", "checkpoint": "checkpoint.json"},
+    "expected": {"file": "expected.json"},
+    "tolerance": ["/timings", "/drawnMarkers/0"]
+  }]
+}

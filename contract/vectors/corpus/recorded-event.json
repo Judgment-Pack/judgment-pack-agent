@@ -1,0 +1,6 @@
+{
+  "description": "ADR-0022: a successfully redacted corpus entry announces its id and exact UTF-8 byte count. Written by hand.",
+  "schema": "run-event.json",
+  "source": {"harness": {"repository": "Judgment-Pack/judgment-pack-agent", "package": "packages/harness"}, "files": ["packages/harness/corpus.ts"]},
+  "items": [{"type": "recorded", "id": "model-policy-refusal", "bytes": 2048}]
+}

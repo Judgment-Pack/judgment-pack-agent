@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/corpus-entry.json",
+  "title": "Evaluation corpus entry",
+  "description": "ADR-0022. The closed manifest for one redacted recorded run. The named files are the complete portable entry; replay compares expected decisions and outcomes, never model prose.",
+  "type": "object",
+  "required": ["id", "packageVersion", "policy", "files", "expected", "tolerance"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"},
+    "packageVersion": {"type": "string", "minLength": 1, "maxLength": 64},
+    "policy": {"type": "object", "description": "The resolved policy under which the recording ran."},
+    "files": {
+      "type": "object",
+      "required": ["requests", "toolResults", "events", "checkpoint"],
+      "properties": {
+        "requests": {"const": "requests.json"},
+        "toolResults": {"const": "tool-results.json"},
+        "events": {"const": "events.json"},
+        "checkpoint": {"const": "checkpoint.json"}
+      },
+      "additionalProperties": false
+    },
+    "expected": {
+      "type": "object",
+      "required": ["file"],
+      "properties": {"file": {"const": "expected.json"}},
+      "additionalProperties": false
+    },
+    "tolerance": {
+      "type": "array",
+      "description": "JSON pointers whose values may differ on replay. Only timing values and randomly drawn markers may be named.",
+      "uniqueItems": true,
+      "maxItems": 64,
+      "items": {"type": "string", "pattern": "^/(timings|drawnMarkers)(/.*)?$", "maxLength": 256}
+    }
+  },
+  "additionalProperties": false
+}

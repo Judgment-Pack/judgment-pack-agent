@@ -787,7 +787,11 @@ async function providersPage(page) {
 async function memoryPage(page) {
  page.add('The host owns acceptance, storage, revision and revocation. The author proposes through remember, including Plan mode; children and the critic cannot propose. Recalled records are data, never instructions, at ADR-0005 layer 5. The bare-text alias lasts for v0.8.0.',page.rootOf('memory.json','## Record'),page.nodeOf('memory.json','answer'),page.nodeOf('tool-offer.json','remember'),page.nodeOf('provenance.json','memories'),page.nodeOf('provenance.json','memoryRecall'), 'Bounds: memoryProposalBytes (1,000 UTF-8 text bytes), memoryProposalsPerRun (4 across resume), memoryBytes (4,000 canonical JSON UTF-8 bytes before framing). Each recall is framed under the run marker with kind and source. Revoked or expired memories are withheld; a returned revoked state updates the restored report.');
 }
+async function corpusPage(page) {
+ page.add('ADR-0022 records a run only after the output guard redacts the complete entry. Replay answers from the recording and compares decisions and outcomes, never model prose or a live provider.',page.rootOf('corpus-entry.json','## Entry manifest'),page.nodeOf('run-event.json','recorded'),page.nodeOf('run-event.json','guardrail'))
+}
 const PAGES = [
+ ['corpus.md','The evaluation corpus',corpusPage],
  ['memory.md','Memory',memoryPage],
  ['providers.md','Providers',providersPage],
   ['policy.md', 'The policy table', policyPage],

@@ -27,7 +27,7 @@ func AllScenarios(with func(Adapter) Adapter) []ScenarioCheck {
 		}
 		out = append(out, scenario)
 	}
-	return append(out, Delegation(with), Capacity(with))
+	return append(out, Delegation(with), Capacity(with), CorpusScenario)
 }
 
 // AllCheckNames are every check the Go runner makes, by name.
@@ -41,6 +41,7 @@ func AllCheckNames() []string {
 	}
 	out = append(out, DelegationNames...)
 	out = append(out, CapacityNames...)
+	out = append(out, CorpusScenarioNames...)
 	// The agent capability's checks that have a TypeScript counterpart (ADR-0007); the rest are the
 	// package's own (AgentOwnNames, parity.json's agentCapability).
 	out = append(out, AgentScenarioNames...)
@@ -53,5 +54,6 @@ func AllCheckNames() []string {
 	out = append(out, AgentSubagentNames...)
 	out = append(out, AgentMemoryWriteNames...)
 	out = append(out, AgentProposalEditNames...)
+	out = append(out, AgentCorpusNames...)
 	return append(out, AgentDelegationNames...)
 }
