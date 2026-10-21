@@ -39,7 +39,7 @@ function session(run: AgentRun, changes: Partial<CodexSession> = {}): CodexSessi
 async function collect(s: CodexSession) {
   const events: AssistantEvent[] = []
   for await (const event of codex.start(s)) events.push(event)
-  return events
+  return events.filter((event) => event.type !== 'usage')
 }
 const reply = (text: string): AgentRun => async (_request, callbacks) => {
   await callbacks.event({ type: 'text', id: 'message', text })

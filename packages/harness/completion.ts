@@ -21,6 +21,19 @@ export function readCompletion(value:unknown):ModelCompletion|undefined {
 /** SDK adapters translate into this contract; future providers use the same policy. */
 export function modelCompletion(finishReason:unknown,usage:unknown):ModelCompletion {
  const data=object(usage)?usage:{},output=object(data.outputTokenDetails)?data.outputTokenDetails:{},input=object(data.inputTokenDetails)?data.inputTokenDetails:{}
+ const raw=object(data.raw)?data.raw:undefined
+ if(raw&&('input_tokens'in raw||'output_tokens'in raw)){
+  const details=object(raw.output_tokens_details)?raw.output_tokens_details:{}
+  return readCompletion({finishReason:COMPLETION_REASONS.includes(finishReason as ModelCompletion['finishReason'])?finishReason:'other',...Object.fromEntries(Object.entries({inputTokens:tokens(raw.input_tokens)?data.inputTokens:undefined,outputTokens:tokens(raw.output_tokens)?data.outputTokens:undefined,reasoningTokens:details.thinking_tokens,cacheReadTokens:raw.cache_read_input_tokens,cacheWriteTokens:raw.cache_creation_input_tokens}).filter(([,value])=>tokens(value)))})!
+ }
+ if(raw&&('promptTokenCount'in raw||'candidatesTokenCount'in raw||'thoughtsTokenCount'in raw)){
+  return readCompletion({finishReason:COMPLETION_REASONS.includes(finishReason as ModelCompletion['finishReason'])?finishReason:'other',...Object.fromEntries(Object.entries({inputTokens:tokens(raw.promptTokenCount)?data.inputTokens:undefined,outputTokens:tokens(raw.candidatesTokenCount)?data.outputTokens:undefined,reasoningTokens:raw.thoughtsTokenCount,cacheReadTokens:raw.cachedContentTokenCount}).filter(([,value])=>tokens(value)))})!
+ }
+ if(raw&&('prompt_tokens'in raw||'completion_tokens'in raw)){
+  const prompt=object(raw.prompt_tokens_details)?raw.prompt_tokens_details:{},completion=object(raw.completion_tokens_details)?raw.completion_tokens_details:{}
+  return readCompletion({finishReason:COMPLETION_REASONS.includes(finishReason as ModelCompletion['finishReason'])?finishReason:'other',...Object.fromEntries(Object.entries({inputTokens:raw.prompt_tokens,outputTokens:raw.completion_tokens,reasoningTokens:completion.reasoning_tokens,cacheReadTokens:prompt.cached_tokens}).filter(([,value])=>tokens(value)))})!
+ }
+ if(raw)return {finishReason:COMPLETION_REASONS.includes(finishReason as ModelCompletion['finishReason'])?finishReason as ModelCompletion['finishReason']:'other'}
  return readCompletion({finishReason:COMPLETION_REASONS.includes(finishReason as ModelCompletion['finishReason'])?finishReason:'other',...Object.fromEntries(Object.entries({inputTokens:data.inputTokens,outputTokens:data.outputTokens,reasoningTokens:output.reasoningTokens,cacheReadTokens:input.cacheReadTokens,cacheWriteTokens:input.cacheWriteTokens}).filter(([,value])=>tokens(value)))})!
 }
 /** A new, tool-free synthesis request, never a retry of tools or uncertain transport. */

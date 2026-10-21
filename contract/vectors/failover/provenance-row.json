@@ -1,0 +1,24 @@
+{
+  "description": "ADR-0020: the report's request row names the connection and role that answered. Written by hand.",
+  "schema": "provenance.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/execution/controller.ts"
+    ]
+  },
+  "items": [
+    {
+      "request": 2,
+      "phase": "work",
+      "result": {
+        "finishReason": "stop"
+      },
+      "connection": "secondary",
+      "role": "author"
+    }
+  ]
+}

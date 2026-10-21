@@ -74,11 +74,13 @@ func policyFindings(ctx context.Context, agent bool, play switchPlay) ([]Finding
 		}
 		values := map[string]any{"compaction": "index", "critic.default": "auto", "critic.reasoningFloor": "author",
 			"records.retainDays": 90, "records.redactOnStore": true, "records.exportFormat": "json",
+			"failover.classes":       []any{"unavailable", "rate-limited", "timeout"},
 			"models.author.provider": model, "models.critic.provider": model,
 			"models.compactor.provider": model,
 			"models.author.model":       model, "models.author.reasoning": low,
 			"models.critic.model": model, "models.critic.reasoning": low,
 			"models.compactor.model": model, "models.compactor.reasoning": "low",
+			"models.author.fallback": []any{}, "models.critic.fallback": []any{}, "models.compactor.fallback": []any{},
 			"concurrency.children": 2, "concurrency.requests": 2,
 			"outputGuard": "redact", "outputPatterns": []any{}, "outputAllow": []any{},
 			"pace.requestsPerDay": nil, "pace.invocationsPerDay": nil, "pace.bytesPerDay": nil, "pace.warnAt": 0.8, "taskClass": "routine"}

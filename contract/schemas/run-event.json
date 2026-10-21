@@ -14,7 +14,6 @@
         "budget_paused",
         "approval_requested",
         "compacted",
-        "recorded",
         "skill_loaded",
         "skill_unloaded",
         "retry",
@@ -41,7 +40,10 @@
         "edit_refused",
         "output_guarded",
         "export_written",
-        "steered"
+        "steered",
+        "connection_switched",
+        "usage",
+        "recorded"
       ]
     }
   },
@@ -60,9 +62,6 @@
     },
     {
       "$ref": "#/$defs/compacted"
-    },
-    {
-      "$ref": "#/$defs/recorded"
     },
     {
       "$ref": "#/$defs/skill_loaded"
@@ -141,6 +140,15 @@
     },
     {
       "$ref": "#/$defs/export_written"
+    },
+    {
+      "$ref": "#/$defs/connection_switched"
+    },
+    {
+      "$ref": "#/$defs/usage"
+    },
+    {
+      "$ref": "#/$defs/recorded"
     }
   ],
   "$defs": {
@@ -152,17 +160,6 @@
         "type": {"const": "steered"},
         "bytes": {"type": "integer", "minimum": 1},
         "atRequest": {"type": "integer", "minimum": 1}
-      },
-      "additionalProperties": false
-    },
-    "recorded": {
-      "description": "ADR-0022: a redacted evaluation corpus entry was written. id names its corpus directory and bytes is the sum of the UTF-8 bytes in its six JSON files.",
-      "type": "object",
-      "required": ["type", "id", "bytes"],
-      "properties": {
-        "type": {"const": "recorded"},
-        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"},
-        "bytes": {"type": "integer", "minimum": 1}
       },
       "additionalProperties": false
     },
@@ -520,6 +517,7 @@
             "identity changed",
             "approval downgraded",
             "steer refused",
+            "failover refused",
             "record refused"
           ]
         }
@@ -1116,6 +1114,40 @@
         "digest": {
           "$ref": "provenance.json#/$defs/recordDigest"
         }
+      },
+      "additionalProperties": false
+    },
+    "connection_switched": {
+      "description": "ADR-0020. A qualifying provider failure moved this request once to the next same-family fallback, after the ordinary retry rule. The stable prefix is rebuilt for the new connection.",
+      "type": "object",
+      "required": ["type", "role", "from", "to", "reason"],
+      "properties": {
+        "type": {"const": "connection_switched"},
+        "role": {"type": "string", "minLength": 1, "maxLength": 128},
+        "from": {"type": "string", "minLength": 1, "maxLength": 128},
+        "to": {"type": "string", "minLength": 1, "maxLength": 128},
+        "reason": {"enum": ["unavailable", "rate-limited", "timeout"]}
+      },
+      "additionalProperties": false
+    },
+    "usage": {
+      "description": "ADR-0020. Emitted exactly once for every run, immediately before end.",
+      "type": "object",
+      "properties": {
+        "type": {"const": "usage"},
+        "usage": {"$ref": "usage.json"}
+      },
+      "additionalProperties": false,
+      "required": ["type", "usage"]
+    },
+    "recorded": {
+      "description": "ADR-0022: a redacted evaluation corpus entry was written. id names its corpus directory and bytes is the sum of the UTF-8 bytes in its six JSON files.",
+      "type": "object",
+      "required": ["type", "id", "bytes"],
+      "properties": {
+        "type": {"const": "recorded"},
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"},
+        "bytes": {"type": "integer", "minimum": 1}
       },
       "additionalProperties": false
     }

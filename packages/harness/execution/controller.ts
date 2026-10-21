@@ -43,6 +43,12 @@ export class ExecutionController {
  private restoredResults:unknown[]=[]
  private inFlight=new Map<string,string>()
  private cache=new Map<string,McpToolResult>()
+ private usageConnection='unbound'
+ private usageRole='author'
+ private usageModel?:string
+ private usageStarted=Date.now()
+ private usageBound=false
+ private usageSources=new Map<string,{calls:number;milliseconds:number;bytes:number}>()
  private readonly recordPolicy:RecordsPolicy
  recordGuard?:()=>RecordGuard|undefined
  constructor(private session:EngineSession,private ledger:ContextLedger,members?:import('../policy').PolicyMembers){this.recordPolicy=recordsPolicy(members??{})}
@@ -66,6 +72,7 @@ export class ExecutionController {
    await this.ledger.restore(restored.context)
    this.progress.seed(restored.operations)
    this.state={...restored,operations:restored.operations.map(op=>op.status==='running'?{...op,status:'interrupted'}:op),status:'running'}
+   for(const source of this.state.sources??[])this.usageSources.set(source.source,{calls:source.calls,milliseconds:source.milliseconds,bytes:source.bytes})
    this.restored=true
    const approval=this.state.approval
    if(approval?.state==='asked'){
@@ -86,6 +93,52 @@ export class ExecutionController {
   }
  }
  get remaining(){return this.state.limit-this.state.used}
+ useConnection(connection:string,role='author',selectedModel?:string){
+  const binding=this.session.policyConnections?.[connection]??this.session
+  const model=selectedModel??('model'in binding?binding.model.model:binding.agent.model)
+  if(this.usageBound&&(connection!==this.usageConnection||role!==this.usageRole||model!==this.usageModel)){this.recordUsageElapsed();this.recordSourceUsage()}
+  if(!this.usageBound)this.usageStarted=Date.now()
+  this.usageConnection=connection;this.usageRole=role;this.usageModel=model;this.usageBound=true
+  this.usageRow(this.state.unit==='provider-managed'?'agent':'model',connection,role)
+ }
+ private recordUsageElapsed(){
+  const row=this.usageRow(this.state.unit==='provider-managed'?'agent':'model')
+  const now=Date.now();row.milliseconds+=Math.max(0,now-this.usageStarted);this.usageStarted=now
+ }
+ private recordSourceUsage(){
+  if(!this.usageBound)return
+  for(const source of this.state.sources??[]){
+   const before=this.usageSources.get(source.source)??{calls:0,milliseconds:0,bytes:0}
+   const calls=Math.max(0,source.calls-before.calls),milliseconds=Math.max(0,source.milliseconds-before.milliseconds),bytes=Math.max(0,source.bytes-before.bytes)
+   if(calls||milliseconds||bytes){const row=this.usageRow(source.source);row.invocations+=calls;row.milliseconds+=milliseconds;row.bytes+=bytes}
+   this.usageSources.set(source.source,{calls:source.calls,milliseconds:source.milliseconds,bytes:source.bytes})
+  }
+ }
+ private usageRow(source:string,connection=this.usageConnection,role=this.usageRole){
+  this.state.usage??={rows:[]}
+  const model=source==='model'||source==='agent'?this.usageModel:undefined
+  let row=this.state.usage.rows.find(row=>row.source===source&&row.connection===connection&&row.role===role&&row.model===model)
+  if(!row){row={source,connection,role,requests:0,invocations:0,milliseconds:0,bytes:0};if(model)row.model=model;this.state.usage.rows.push(row)}
+  return row
+ }
+ mergeChildUsage(id:string,usage:import('./state').UsageLedger,role:string){
+  this.state.childUsage??=[]
+  const previous=this.state.childUsage.find(row=>row.id===id)
+  const next={rows:usage.rows.filter(row=>row.source==='model'||row.source==='agent').map(row=>({...structuredClone(row),role}))}
+  this.state.usage??={rows:[]}
+  for(const [ledger,sign] of [[previous?.usage,-1],[next,1]] as const)for(const incoming of ledger?.rows??[]){
+   let row=this.state.usage.rows.find(row=>row.source===incoming.source&&row.connection===incoming.connection&&row.role===incoming.role&&row.model===incoming.model)
+   if(!row){row={...incoming,requests:0,invocations:0,milliseconds:0,bytes:0};delete row.tokens;this.state.usage.rows.push(row)}
+   for(const key of ['requests','invocations','milliseconds','bytes'] as const)row[key]+=sign*incoming[key]
+   for(const key of Object.keys(incoming.tokens??{}) as (keyof import('./state').UsageTokens)[]){row.tokens??={};row.tokens[key]=(row.tokens[key]??0)+sign*incoming.tokens![key]!}
+  }
+  if(previous)previous.usage=next;else this.state.childUsage.push({id,usage:next})
+ }
+ usage():import('./state').UsageLedger{
+  if(this.usageBound)this.recordUsageElapsed()
+  this.recordSourceUsage()
+  return structuredClone(this.state.usage??{rows:[]})
+ }
  /** ADR-0008: whether an act call of this run waits for the person's decision; no request is sent while one does. */
  get approvalAsked(){return this.state.approval?.state==='asked'}
  /** ADR-0021: accept host input into the checkpointed queue, without placing it in a request. */
@@ -118,7 +171,7 @@ export class ExecutionController {
   })
   return {text:blocks.join('\n\n'),events}
  }
- claim(){if(this.remaining<=0)throw new ExecutionPaused();this.state.used++}
+ claim(){if(this.remaining<=0)throw new ExecutionPaused();this.state.used++;this.usageRow('model').requests++}
  /**
   * A first allowance below MAX_TURNS, for a delegated child (agent#15): its profile's request budget,
   * held further to what the response's shared allowance can still give it, so its loop plans its
@@ -156,8 +209,11 @@ export class ExecutionController {
  }
  recordCompletion(result:import('../completion').ModelCompletion,phase:'work'|'synthesis'|'review'){
   const attempt=this.attempt;this.attempt=1
-  const row=writeRecord(PROVENANCE_SCHEMA,{request:this.state.used,phase,result,...(attempt>1?{attempt}:{})},this.recordPolicy,this.recordGuard?.())
-  this.state.completions=[...(this.state.completions??[]),row]
+  const completion=writeRecord(PROVENANCE_SCHEMA,{request:this.state.used,phase,result,connection:this.usageConnection,role:this.usageRole,...(attempt>1?{attempt}:{})},this.recordPolicy,this.recordGuard?.())
+  this.state.completions=[...(this.state.completions??[]),completion]
+  const row=this.usageRow('model')
+  const entries=Object.entries(result).filter(([key,value])=>key.endsWith('Tokens')&&typeof value==='number') as [keyof import('./state').UsageTokens,number][]
+  if(entries.length){row.tokens??={};for(const [key,value] of entries)row.tokens[key]=(row.tokens[key]??0)+value}
  }
  /**
   * ADR-0005: the digest of one request body the adapter is about to send, recorded before it is
@@ -171,12 +227,15 @@ export class ExecutionController {
   const sha256=await contextDigest(body)
   const prompts=this.state.prompts??[]
   this.state.prompts=[...prompts,{request:(prompts.at(-1)?.request??0)+1,sha256}].slice(-MAX_PROMPT_DIGESTS)
+  const source=this.state.unit==='provider-managed'?'agent':'model',row=this.usageRow(source)
+  row.bytes+=utf8Bytes(body)
+  if(source==='agent')row.invocations++
  }
  /** Which attempt at a model request is being sent, said before each one, so a new call starts again at 1. */
  beginAttempt(attempt:number){this.attempt=attempt}
  /** A refused attempt at a model request: its own row. */
  recordRefusal(phase:'work'|'synthesis'|'review',refused:{attempt:number;failure:import('../failures').AIFailure;waitMs?:number}){
-  const row=writeRecord(PROVENANCE_SCHEMA,{request:this.state.used,phase,result:{finishReason:'error' as const},...refused},this.recordPolicy,this.recordGuard?.())
+  const row=writeRecord(PROVENANCE_SCHEMA,{request:this.state.used,phase,result:{finishReason:'error' as const},connection:this.usageConnection,role:this.usageRole,...refused},this.recordPolicy,this.recordGuard?.())
   this.state.completions=[...(this.state.completions??[]),row]
  }
  recordCritique(event:Extract<AssistantEvent,{type:'critique'}>):Extract<AssistantEvent,{type:'critique'}>{
@@ -233,6 +292,7 @@ export class ExecutionController {
   }}
  }
  snapshot(status=this.state.status){
+  this.state.usage=this.usage()
   const retain=this.state.retainUntil
   const payload={...this.state,status,context:this.ledger.snapshot()}
   delete payload.schema;delete payload.digest;delete payload.retainUntil

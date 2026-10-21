@@ -289,6 +289,9 @@ export interface Ran {
   runs: Parameters<AgentRun>[0][]
 }
 
+/** Legacy scenarios retain their handwritten pre-ADR-0020 streams; scenario 20 owns usage checks. */
+const legacyEvents = (events: AssistantEvent[]) => events.filter((event) => event.type !== 'usage')
+
 interface Options {
   engine?: Engine
   hostTools?: HostTool[]
@@ -342,7 +345,7 @@ export async function runOnModelEngine(answer: (request: EndpointRequest) => Res
   } finally {
     await runtime.close()
   }
-  return { events, seen: runtime.seen, requests: endpoint.requests, runs: [] }
+  return { events: legacyEvents(events), seen: runtime.seen, requests: endpoint.requests, runs: [] }
 }
 
 /** One run on the agent engine, the agent's runs scripted at the engine's own seam, the runtime behind the real gate. */
@@ -380,7 +383,7 @@ export async function runOnAgentEngine(run: AgentRun, options: Options = {}): Pr
   } finally {
     await runtime.close()
   }
-  return { events, seen: runtime.seen, requests: [], runs }
+  return { events: legacyEvents(events), seen: runtime.seen, requests: [], runs }
 }
 
 /** The real names of the tools a model request or an agent run was offered, in the order given. */

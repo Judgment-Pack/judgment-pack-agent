@@ -356,6 +356,34 @@ func TestTheSnapshotValidatesAgainstTheCheckpointSchema(t *testing.T) {
 			t.Errorf("the delegation checkpoint item %d was refused: %v", at, err)
 		}
 	}
+	for at, item := range vectorItems(t, "failover/usage-checkpoint.json") {
+		resumed, readErr := ReadExecution(item)
+		if readErr != nil {
+			t.Errorf("the usage checkpoint item %d was refused: %v", at, readErr)
+		} else if resumed.Usage == nil || len(resumed.Usage.Rows) != 3 || resumed.Usage.Rows[1].Connection != "backup" || resumed.Usage.Rows[1].Tokens == nil {
+			t.Errorf("the resumed usage ledger is %+v", resumed.Usage)
+		}
+	}
+}
+
+func TestUsageAttributesSourceDeltasToTheActiveConnectionAndRole(t *testing.T) {
+	session, _ := trackedSession(t)
+	run := openRun(t, session)
+	run.Context.Execution.UseConnection("fixture", "author")
+	run.Context.Execution.State.Sources = []contract.ProvenanceSourceFigures{{Source: "runtime", Kind: "runtime", Calls: 1, Bytes: 30, Milliseconds: 4}}
+	run.Context.Execution.UseConnection("backup", "critic")
+	run.Context.Execution.State.Sources[0].Calls = 2
+	run.Context.Execution.State.Sources[0].Bytes = 50
+	run.Context.Execution.State.Sources[0].Milliseconds = 7
+	rows := []contract.UsageRow{}
+	for _, row := range run.Context.Execution.Usage().Rows {
+		if row.Source == "runtime" {
+			rows = append(rows, row)
+		}
+	}
+	if len(rows) != 2 || rows[0].Connection != "fixture" || rows[0].Role != "author" || rows[0].Invocations != 1 || rows[0].Bytes != 30 || rows[1].Connection != "backup" || rows[1].Role != "critic" || rows[1].Invocations != 1 || rows[1].Bytes != 20 {
+		t.Fatalf("source usage rows were %+v", rows)
+	}
 }
 
 func TestTheRequestStateStatesTheToolCallCapAsTheContractDoes(t *testing.T) {
@@ -449,6 +477,55 @@ func TestDelegationFiguresReadModelRequestsByUnit(t *testing.T) {
 		}
 		if ValidDelegationFigures(held, "model-requests") {
 			t.Fatalf("a model-requests execution's figures without modelRequests were read: %s", encoded)
+		}
+	}
+}
+
+func TestChildUsageSurvivesResumeWithoutDoubleCounting(t *testing.T) {
+	session, _ := trackedSession(t)
+	run := openRun(t, session)
+	data := vectorItems(t, "failover/usage-partial.json")[0].JSON()
+	var usage contract.Usage
+	if err := json.Unmarshal(data, &usage); err != nil {
+		t.Fatal(err)
+	}
+	run.Context.Execution.MergeChildUsage("child-run", usage, "child.analyze")
+	run.Context.Execution.MergeChildUsage("child-run", usage, "child.analyze")
+	saved, err := run.Context.Execution.Snapshot("stopped")
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.Context.Execution = &saved
+	resumed := openRun(t, session)
+	resumed.Context.Execution.MergeChildUsage("child-run", usage, "child.analyze")
+	rows := resumed.Context.Execution.Usage().Rows
+	count := 0
+	for _, row := range rows {
+		if row.Role == "child.analyze" {
+			count++
+			if row.Requests != 1 || row.Tokens == nil || row.Model == nil {
+				t.Fatalf("child usage: %+v", row)
+			}
+		}
+	}
+	if count != 1 || len(resumed.Context.Execution.State.ChildUsage) != 1 {
+		t.Fatalf("child counted %d times", count)
+	}
+}
+
+func TestMalformedFailoverAndChildUsageCheckpoint(t *testing.T) {
+	for _, change := range []func(*Value){
+		func(v *Value) { v.Get("failover").Items()[0].Set("consumed", Number(2)) },
+		func(v *Value) {
+			v.Get("failover").Items()[0].Get("history").Items()[0].Set("reason", String("permission"))
+		},
+		func(v *Value) { v.Get("childUsage").Items()[0].Set("id", String("")) },
+		func(v *Value) { v.Get("usage").Get("rows").Items()[0].Set("model", String(strings.Repeat("x", 201))) },
+	} {
+		v := vectorItems(t, "failover/usage-checkpoint.json")[0].Clone()
+		change(v)
+		if _, err := ReadExecution(v); err == nil {
+			t.Fatal("malformed checkpoint admitted")
 		}
 	}
 }

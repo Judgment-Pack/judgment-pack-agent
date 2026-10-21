@@ -203,6 +203,33 @@ func TestEachCallStartsAtAttemptOne(t *testing.T) {
 	}
 }
 
+func TestUnavailableSwitchesOnceAndResetsTheRetryCount(t *testing.T) {
+	var switched []string
+	answer, _, attempts, _ := retried(t, RetryOptions{
+		Fallback: func(reason string) (string, string, bool) {
+			if reason != "unavailable" {
+				t.Errorf("reason is %s", reason)
+			}
+			return "primary", "secondary", true
+		},
+		OnSwitch: func(from, to, reason string) error { switched = append(switched, from+">"+to+":"+reason); return nil },
+	}, refusal(503, `{}`, nil), &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("ok"))})
+	if answer.StatusCode != 200 || len(switched) != 1 || switched[0] != "primary>secondary:unavailable" {
+		t.Fatalf("answer %d, switches %v", answer.StatusCode, switched)
+	}
+	if len(attempts) != 2 || attempts[0] != 1 || attempts[1] != 1 {
+		t.Errorf("attempts are %v", attempts)
+	}
+}
+
+func TestRefusalNeverSwitches(t *testing.T) {
+	called := false
+	answer, _, _, _ := retried(t, RetryOptions{Fallback: func(string) (string, string, bool) { called = true; return "primary", "secondary", true }}, refusal(403, `{}`, nil))
+	if answer.StatusCode != 403 || called {
+		t.Errorf("refusal answer %d, fallback called %v", answer.StatusCode, called)
+	}
+}
+
 // TestAWaitTheRunEnds is waitFor: a wait the run's context ends, reported as the cancellation it
 // is.
 func TestAWaitTheRunEnds(t *testing.T) {

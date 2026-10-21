@@ -14,6 +14,14 @@ frame each accepted instruction under the run marker, emit `steered`, and carry
 pending and delivered rows in `checkpoint.steers`. A pending approval accepts
 only its decision, so a steer then is refused.
 
+ADR-0020 adds ordered, same-family `models.<role>.fallback` connections. The
+model adapter switches once on `unavailable`, `rate-limited` after its retry
+rule, or `timeout`, emits `connection_switched`, and resends the rebuilt request
+with its retry count reset. The agent adapter refuses a switch during delegated
+work because its provider account is exclusive. Every adapter emits one terminal
+`usage` ledger and checkpoints it; tokens are absent when the wire supplied none.
+The host owns prices and project totals.
+
 
 Budgets are the `budget` section of the [agent's policy table](../docs/adr/0011-the-agents-policy-table.md).
 The host's run layer wins over its project layer, then table defaults. The same

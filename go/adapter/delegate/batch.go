@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/turn"
 	runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
@@ -278,6 +279,23 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 		mu.Lock()
 		defer mu.Unlock()
 		switch {
+		case event.Usage != nil:
+			c.usageMu.Lock()
+			defer c.usageMu.Unlock()
+			c.shared.mu.Lock()
+			if parent := c.shared.parent; parent != nil && len(m.contexts) > 0 {
+				child := m.contexts[len(m.contexts)-1]
+				parent.Execution.MergeChildUsage(child.Execution.State.ID, event.Usage.Usage, delegatedRole(parent.ResolvedPolicy, profile.ID, parent.Subagents))
+			}
+			c.shared.mu.Unlock()
+		case event.ExecutionCheckpoint != nil:
+			c.usageMu.Lock()
+			defer c.usageMu.Unlock()
+			c.shared.mu.Lock()
+			if parent := c.shared.parent; parent != nil && event.ExecutionCheckpoint.Checkpoint.Usage != nil {
+				parent.Execution.MergeChildUsage(event.ExecutionCheckpoint.Checkpoint.ID, *event.ExecutionCheckpoint.Checkpoint.Usage, delegatedRole(parent.ResolvedPolicy, profile.ID, parent.Subagents))
+			}
+			c.shared.mu.Unlock()
 		case event.OutputGuarded != nil:
 			c.shared.mu.Lock()
 			parent := c.shared.parent
@@ -299,7 +317,7 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 			run.streamed = event.MessageProgress.Text
 			id := task.ID
 			c.deliver(contract.RunEvent{MessageProgress: &contract.RunEventMessageProgress{Type: "message_progress", Text: event.MessageProgress.Text, TaskID: &id}})
-		case event.Guardrail != nil && event.Guardrail.Reason != nil && *event.Guardrail.Reason == "subagent refused":
+		case event.Guardrail != nil && event.Guardrail.Reason != nil && (*event.Guardrail.Reason == "subagent refused" || *event.Guardrail.Reason == "failover refused"):
 			c.deliver(event)
 		case event.Error != nil:
 			run.failed = event.Error.Message
@@ -375,7 +393,27 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 		child.Thinking = policy["models"].(map[string]any)["author"].(map[string]any)["reasoning"].(string)
 		child.TaskClass, child.Critic, child.CriticProject, child.CriticReasoning = "", "off", "", ""
 		input.Connection = id
-		child.PolicyConnections = nil
+		child.PolicyConnections = map[string]adapter.PolicyConnection{}
+		bindings := map[string]adapter.PolicyConnection{}
+		parentID := c.run.ModelName
+		if c.run.Agent != nil {
+			parentID = c.run.Agent.Model
+		}
+		if c.run.Context != nil && c.run.Context.Connection != "" {
+			parentID = c.run.Context.Connection
+		}
+		bindings[parentID] = adapter.PolicyConnection{ModelName: c.run.ModelName, Wire: c.run.Wire, Model: c.run.Model, Agent: c.run.Agent, Capabilities: c.run.Capabilities}
+		for id, bound := range c.run.PolicyConnections {
+			bindings[id] = bound
+		}
+		for id, bound := range bindings {
+			if bound.Agent != nil {
+				bound.Agent = c.childAgent(task, bound.Agent.Model, m, bound.Agent, p.subagent)
+			} else {
+				bound.Model = c.childModel(task, p.budget, m, bound.Model)
+			}
+			child.PolicyConnections[id] = bound
+		}
 		var requests *int
 		if concurrency, ok := policy["concurrency"].(map[string]any); ok {
 			capacity := int(concurrency["requests"].(float64))

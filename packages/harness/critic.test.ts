@@ -713,7 +713,7 @@ describe('what the critic cost, in the run’s figures (agent#10)', () => {
       }
     })
     expect(critic).toBe(2)
-    expect(ofType(events, 'critique')[0]!.figures).toEqual({ model: 'scripted-model', unit: 'model-requests', requests: 2, inputTokens: 2, outputTokens: 2, reasoningTokens: 0, cacheReadTokens: 0 })
+    expect(ofType(events, 'critique')[0]!.figures).toEqual({ model: 'scripted-model', unit: 'model-requests', requests: 2, inputTokens: 2, outputTokens: 2 })
     // The loop's request is not the critic's.
     const checkpoint = ofType(events, 'execution_checkpoint').at(-1)!.checkpoint
     expect(checkpoint.used).toBe(3)
@@ -903,7 +903,7 @@ describe('the proposal and figures vectors are what the engines emit (agent#10 r
   it('critic/figures.json: what each engine’s critique carries', async () => {
     // vercel: two critic requests on the host's cheaper model, each reporting its tokens.
     configureHarness({ modelsFor: () => ({ critic: 'cheaper-model' }) })
-    const usage = { prompt_tokens: 1205, completion_tokens: 48, total_tokens: 1253, prompt_tokens_details: { cached_tokens: 900 } }
+    const usage = { prompt_tokens: 1205, completion_tokens: 48, total_tokens: 1253, prompt_tokens_details: { cached_tokens: 900 }, completion_tokens_details: { reasoning_tokens: 0 } }
     const withUsage = (text: string) => whole(JSON.stringify({ ...JSON.parse(wholeTurn({ text })), usage }))
     let turn = 0
     const vercelRun = await vercelCritic([], {

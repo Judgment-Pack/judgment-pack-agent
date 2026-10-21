@@ -133,6 +133,12 @@ func (b *Boundary) checkpoint(durable *bool, status string) []contract.RunEvent 
 		Type: "execution_checkpoint", Durable: durable, Checkpoint: state}}}
 }
 
+func (b *Boundary) usage() contract.RunEvent {
+	usage := b.run.Context.Execution.Usage()
+	b.run.Context.Execution.State.Usage = &usage
+	return contract.RunEvent{Usage: &contract.RunEventUsage{Type: "usage", Usage: usage}}
+}
+
 // readNames are the tool names a checkpoint after them need not be durable: a read changes
 // nothing a resume would have to replay.
 var readNames = []string{"get_schema", "get_authoring_instructions", "list_context", "read_context", "list_examples", "get_example"}
@@ -221,13 +227,15 @@ func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 		}
 		b.paused = true
 		context.Execution.State.Status = "paused"
+		b.usage()
 		durable := true
 		if state, err := context.Execution.Snapshot("paused"); err == nil {
 			out = append(out, contract.RunEvent{ExecutionCheckpoint: &contract.RunEventExecutionCheckpoint{Type: "execution_checkpoint", Durable: &durable, Checkpoint: state}})
 		}
+		usage := contract.RunEvent{Usage: &contract.RunEventUsage{Type: "usage", Usage: *context.Execution.State.Usage}}
 		out = append(out, b.notices()...)
 		b.ended = true
-		return append(out, contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}}), true
+		return append(out, usage, contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}}), true
 	}
 	// ADR-0006: a tool with a source's call and result carry its source record.
 	if context.Sources != nil {
@@ -266,6 +274,7 @@ func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 	if paused {
 		b.paused = true
 		context.Execution.State.Status = "paused"
+		b.usage()
 		if state, err := context.Execution.Snapshot("paused"); err == nil {
 			out = append(out, contract.RunEvent{BudgetPaused: &contract.RunEventBudgetPaused{
 				Type: "budget_paused", Checkpoint: state}})
@@ -275,12 +284,14 @@ func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 	if event.ToolResult != nil && context.Execution.PauseRequested {
 		out = append(out, event)
 		context.Execution.State.Status = "paused"
+		b.usage()
 		if state, err := context.Execution.Snapshot("paused"); err == nil {
 			out = append(out, contract.RunEvent{BudgetPaused: &contract.RunEventBudgetPaused{
 				Type: "budget_paused", Checkpoint: state}})
 		}
+		usage := contract.RunEvent{Usage: &contract.RunEventUsage{Type: "usage", Usage: *context.Execution.State.Usage}}
 		out = append(out, b.notices()...)
-		out = append(out, contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}})
+		out = append(out, usage, contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}})
 		b.ended = true
 		return out, true
 	}
@@ -322,6 +333,16 @@ func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 		durable := true
 		out = append(out, b.checkpoint(&durable, "")...)
 	}
+	var usage *contract.RunEvent
+	if event.End != nil {
+		var held contract.RunEvent
+		if b.tracked && context.Execution.State.Usage != nil {
+			held = contract.RunEvent{Usage: &contract.RunEventUsage{Type: "usage", Usage: *context.Execution.State.Usage}}
+		} else {
+			held = b.usage()
+		}
+		usage = &held
+	}
 	if event.Proposal != nil {
 		off := b.run.Session.Context != nil && b.run.Session.Context.ArtifactProposals != nil && !*b.run.Session.Context.ArtifactProposals
 		if off {
@@ -355,6 +376,7 @@ func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 	}
 	if event.End != nil {
 		b.ended = true
+		out = append(out, *usage)
 	}
 	return append(out, event), event.End != nil
 }
@@ -368,18 +390,19 @@ func (b *Boundary) Failed(cause error) []contract.RunEvent {
 		return nil
 	}
 	if failure.IsCancelled(cause) || b.stopped {
-		return []contract.RunEvent{{End: &contract.RunEventEnd{Type: "end"}}}
+		return []contract.RunEvent{b.usage(), {End: &contract.RunEventEnd{Type: "end"}}}
 	}
-	return []contract.RunEvent{failure.Event(cause, "context"), {End: &contract.RunEventEnd{Type: "end"}}}
+	return []contract.RunEvent{failure.Event(cause, "context"), b.usage(), {End: &contract.RunEventEnd{Type: "end"}}}
 }
 
 // FailedToOpen is the events a run whose context could not open carries: the failure, then the
 // end. ContextualSession's error reaches an adapter before a boundary exists, so this is a
 // function of its own.
 func FailedToOpen(cause error) []contract.RunEvent {
+	empty := contract.RunEvent{Usage: &contract.RunEventUsage{Type: "usage", Usage: contract.Usage{Rows: []contract.UsageRow{}}}}
 	var expired *RecordsExpired
 	if errors.As(cause, &expired) {
-		return []contract.RunEvent{expired.Event(), failure.Event(cause, "context"), {End: &contract.RunEventEnd{Type: "end"}}}
+		return []contract.RunEvent{expired.Event(), failure.Event(cause, "context"), empty, {End: &contract.RunEventEnd{Type: "end"}}}
 	}
 	var policy *PolicyRefusal
 	if errors.As(cause, &policy) {
@@ -387,13 +410,13 @@ func FailedToOpen(cause error) []contract.RunEvent {
 		if policy.Checkpoint != nil {
 			out = append(out, contract.RunEvent{ExecutionCheckpoint: &contract.RunEventExecutionCheckpoint{Type: "execution_checkpoint", Checkpoint: *policy.Checkpoint}})
 		}
-		return append(out, failure.Event(cause, "context"), contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}})
+		return append(out, failure.Event(cause, "context"), empty, contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}})
 	}
 
 	if failure.IsCancelled(cause) {
-		return []contract.RunEvent{{End: &contract.RunEventEnd{Type: "end"}}}
+		return []contract.RunEvent{empty, {End: &contract.RunEventEnd{Type: "end"}}}
 	}
-	return []contract.RunEvent{failure.Event(cause, "context"), {End: &contract.RunEventEnd{Type: "end"}}}
+	return []contract.RunEvent{failure.Event(cause, "context"), empty, {End: &contract.RunEventEnd{Type: "end"}}}
 }
 
 // Close ends the run's turn on its chat, whatever happened.

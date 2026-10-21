@@ -165,6 +165,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 	defer r.boundary.Close()
 	defer r.boundary.GuardGateNotices(run.Gate)()
 	r.sc.RecordProvider("author")
+	r.sc.Execution.UseConnection(r.run.Connection("author"), "author")
 	r.emitAll(r.boundary.Open())
 
 	err = r.drive(ctx)

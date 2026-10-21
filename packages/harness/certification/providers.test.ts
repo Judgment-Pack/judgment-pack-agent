@@ -1,4 +1,7 @@
 import {describe,it,expect} from 'vitest'
+import refusals from '../../../contract/vectors/failover/refused-mid-delegation.json'
+import {contextualSession} from '../context/session'
+import partialUsage from '../../../contract/vectors/failover/usage-partial.json'
 import {appendFileSync} from 'node:fs'
 import {vercel} from '../engines/vercel'
 import {deepagents} from '../engines/deepagents'
@@ -9,6 +12,7 @@ import {withDelegation} from '../delegation'
 import type {Engine,EngineSession,AssistantEvent,AssistantSession} from '../engine'
 import type {ProviderFamily} from '../policy'
 import type {AgentRun} from '../agent'
+import {AIFailureError} from '../failures'
 const proposal='```json\n{"proposal":{"document":{"id":"pack"},"unknowns":[]}}\n```'
 const task={title:'Review',objective:'Check the supplied claims.',profile:'review'}
 function answer(family:ProviderFamily,text:string,delegate=false){
@@ -91,5 +95,117 @@ for(const engine of [vercel,deepagents,codex])describe(`${engine.id==='codex'?'a
   for(const event of tasks)expect(event.provider).toEqual({connection:'reviewer',family:'anthropic'})
   expect(tasks.at(-1)?.task).toMatchObject({state:'complete',result:'Untrusted child findings.'})
   }
+ })
+ it('20 qualifying failure switches once, rebuilds the request and emits the usage ledger',async()=>{
+  const events:AssistantEvent[]=[],requests:{connection:string;body:string}[]=[]
+  const common={prompt:'Draft a pack.',testPrompt:'Review the pack.',tools:[],hostTools:[],callTool:async()=>({content:[]}),signal:new AbortController().signal,allowConversation:true,interactive:false,critic:'off' as const,policy:{models:{author:{fallback:['backup']}}},context:{currentRequest:{message:'Draft a pack.',input:'Draft a pack.'},connection:{connectionId:'primary'}}}
+  let session:EngineSession
+  if(engine.id==='codex'){
+   const primary:AgentRun=async(request)=>{requests.push({connection:'primary',body:JSON.stringify(request)});throw new AIFailureError({version:1,code:'unavailable',source:'agent',outcome:'unknown'})}
+   const backup:AgentRun=async(request,callbacks)=>{requests.push({connection:'backup',body:JSON.stringify(request)});await callbacks.event({type:'message',id:'answer',text:proposal,phase:'final'})}
+   session={...common,effort:'high',agent:{family:'codex',model:'author-model',run:primary},policyConnections:{backup:{agent:{family:'codex',model:'backup-model',run:backup}}}}
+  }else{
+   session={...common,thinking:normalize('ultra','openai-compatible'),model:{family:'openai-compatible',model:'author-model',call:async(_suffix,request)=>{requests.push({connection:'primary',body:request.body??''});return new Response('{}',{status:503})}},policyConnections:{backup:{model:{family:'openai-compatible',model:'backup-model',call:async(_suffix,request)=>{requests.push({connection:'backup',body:request.body??''});return answer('openai',proposal)}}}}} as AssistantSession
+  }
+  for await(const event of engine.start(session))events.push(event)
+  expect(requests.map(r=>r.connection)).toEqual(['primary','backup'])
+  expect(requests[1]!.body).toBe(requests[0]!.body)
+  expect(events.find(e=>e.type==='connection_switched')).toEqual({type:'connection_switched',role:'author',from:'primary',to:'backup',reason:'unavailable'})
+  const usage=events.filter(e=>e.type==='usage')
+  expect(usage).toHaveLength(1)
+  expect(events.at(-2)).toEqual(usage[0])
+  const rows=usage[0]!.usage.rows
+  for(const connection of ['primary','backup'])expect(rows.find(row=>row.connection===connection)).toMatchObject({bytes:expect.any(Number),[engine.id==='codex'?'invocations':'requests']:1})
+  expect(rows.filter(row=>row.connection==='primary'||row.connection==='backup').every(row=>row.bytes>0)).toBe(true)
+  if(engine.id==='codex')expect(rows.every(row=>row.tokens===undefined)).toBe(true)
+  const saved=events.filter(e=>e.type==='execution_checkpoint').at(-1)!.checkpoint
+  expect(saved.failover).toEqual([{role:'author',connection:'backup',consumed:1,history:[{from:'primary',to:'backup',reason:'unavailable'}]}])
+  const resumed:AssistantEvent[]=[]
+  for await(const event of engine.start({...session,context:{...session.context,execution:saved}}))resumed.push(event)
+  expect(resumed.filter(e=>e.type==='error')).toEqual([])
+  expect(requests.map(r=>r.connection)).toEqual(['primary','backup','backup'])
+  expect(resumed.filter(e=>e.type==='execution_checkpoint').at(-1)!.checkpoint.failover).toEqual(saved.failover)
+  const restored=await contextualSession({...session,context:{...session.context,execution:saved}},engine.id)
+  expect(restored.context.fallback('author','timeout')).toBeUndefined()
+  expect(restored.context.takeNotices()).toContainEqual(refusals.items[1])
+  restored.context.close()
+
+ })
+ it('20 exhausted switch bound emits a refusal',async()=>{
+  const events:AssistantEvent[]=[],calls:string[]=[]
+  const model=(id:string)=>({family:'openai-compatible' as const,model:id,call:async()=>{calls.push(id);return new Response('{}',{status:503})}})
+  const agent=(id:string)=>({family:'codex' as const,model:id,run:async()=>{calls.push(id);throw new AIFailureError({version:1,code:'unavailable',source:'agent',outcome:'unknown'})}})
+  const common={prompt:'',testPrompt:'',tools:[],hostTools:[],callTool:async()=>({content:[]}),signal:new AbortController().signal,critic:'off' as const,policy:{models:{author:{fallback:['backup']}}},context:{connection:{connectionId:'primary'}}}
+  const session:EngineSession=engine.id==='codex'?{...common,effort:'high',agent:agent('primary'),policyConnections:{backup:{agent:agent('backup')}}}:{...common,thinking:normalize('off','openai-compatible'),model:model('primary'),policyConnections:{backup:{model:model('backup')}}}
+  for await(const event of engine.start(session))events.push(event)
+  expect(calls).toEqual(['primary','backup'])
+  expect(events.filter(e=>e.type==='guardrail'&&e.reason==='failover refused')).toEqual([refusals.items[2]])
+ })
+ it('20 partial usage preserves wire presence on every model family',async()=>{
+  if(engine.id==='codex')return
+  for(const family of ['openai','anthropic','gemini'] as const){
+   const events:AssistantEvent[]=[]
+   const session:AssistantSession={prompt:'Answer.',testPrompt:'',tools:[],hostTools:[],callTool:async()=>({content:[]}),signal:new AbortController().signal,allowConversation:true,interactive:true,critic:'off',thinking:normalize('off',family==='openai'?'openai-compatible':family),model:{family:family==='openai'?'openai-compatible':family,model:'author-model',call:async()=>answer(family,'Answer.')},context:{connection:{connectionId:'primary'}}}
+   for await(const event of engine.start(session))events.push(event)
+   expect(events.filter(e=>e.type==='error')).toEqual([])
+   expect(events.find(e=>e.type==='usage')!.usage.rows.find(r=>r.source==='model')!.tokens).toEqual(partialUsage.items[0]!.rows[0]!.tokens)
+  }
+ })
+ it('20 child.analyze carries fallback and the parent retains its usage once',async()=>{
+  const events:AssistantEvent[]=[],calls:string[]=[]
+  let parentCalls=0
+  const durable:import('../execution/state').ExecutionCheckpoint[]=[]
+  const delegate={tasks:[{title:'Analyze',objective:'Check the supplied claims.',profile:'analyze'}]}
+  const model=(id:string)=>({family:'openai-compatible' as const,model:id,call:async()=>{
+   calls.push(id)
+   if(id.startsWith('child-')){const saved=durable.at(-1)!;expect(saved.usage!.rows.reduce((sum,row)=>sum+row.requests,0)).toBe(saved.used);expect(saved.childUsage?.length).toBe(1)}
+   if(id==='child-primary')return new Response('{}',{status:504})
+   if(id==='parent'&&parentCalls++===0)return new Response(JSON.stringify({id:'response',object:'chat.completion',model:id,choices:[{index:0,message:{role:'assistant',content:null,tool_calls:[{id:'task-call',type:'function',function:{name:'delegate_tasks',arguments:JSON.stringify(delegate)}}]},finish_reason:'tool_calls'}],usage:{prompt_tokens:10,completion_tokens:5}}),{headers:{'content-type':'application/json'}})
+   return answer('openai','Findings received.')
+  }})
+  const agent=(id:string)=>({family:'codex' as const,model:id,run:async(request:any,callbacks:any)=>{
+   calls.push(id)
+   if(id==='child-primary')throw new AIFailureError({version:1,code:'timeout',source:'agent',outcome:'unknown'})
+   if(id==='parent'&&parentCalls++===0){const tool=request.tools.find((t:any)=>t.name==='delegate_tasks'||t.description.startsWith('delegate_tasks:'));await callbacks.tool({id:'task-call',name:tool.name,arguments:delegate},callbacks.signal)}
+   await callbacks.event({type:'message',id:'reply',text:'Findings received.',phase:'final'})
+  }})
+  const common={prompt:'Analyze the claims.',testPrompt:'',tools:[],hostTools:[],callTool:async()=>({content:[]}),signal:new AbortController().signal,allowConversation:true,interactive:true,critic:'off' as const,policy:{models:{'child.analyze':{provider:'child-primary',fallback:['child-backup']}}},context:{chat:new ChatContext(),currentRequest:{message:'Analyze the claims.',input:''},checkpoint:async(state:import('../execution/state').ExecutionCheckpoint)=>{durable.push(state)},connection:{connectionId:'parent'}}}
+  const session:EngineSession=engine.id==='codex'?{...common,effort:'high',agent:agent('parent'),policyConnections:{'child-primary':{agent:agent('child-primary')},'child-backup':{agent:agent('child-backup')}}}:{...common,thinking:normalize('off','openai-compatible'),model:model('parent'),policyConnections:{'child-primary':{model:model('child-primary')},'child-backup':{model:model('child-backup')}}}
+  for await(const event of withDelegation(engine).start(session))events.push(event)
+  if(engine.id==='codex'){
+   expect(calls).not.toContain('child-backup')
+   expect(events.find(e=>e.type==='guardrail'&&e.reason==='failover refused')).toBeDefined()
+  }else{
+   expect(calls).toContain('child-backup')
+   const usage=events.filter(e=>e.type==='usage').at(-1)!.usage
+   expect(usage.rows.filter(r=>r.source==='model').reduce((sum,r)=>sum+r.requests,0)).toBe(calls.length)
+   expect(usage.rows.find(r=>r.connection==='child-backup')).toMatchObject({role:'child.analyze',model:'child-backup',tokens:partialUsage.items[0]!.rows[0]!.tokens})
+  }
+ })
+ it('20 cross-family fallback is refused before dispatch',async()=>{
+  const events:AssistantEvent[]=[],requests:unknown[]=[]
+  const common={prompt:'Draft a pack.',testPrompt:'Review the pack.',tools:[],hostTools:[],callTool:async()=>({content:[]}),signal:new AbortController().signal,allowConversation:true,interactive:false,critic:'off' as const,policy:{models:{author:{fallback:['backup']}}},context:{currentRequest:{message:'Draft a pack.',input:'Draft a pack.'},connection:{connectionId:'primary'}}}
+  const session:EngineSession=engine.id==='codex'?{...common,effort:'high',agent:{family:'codex',model:'author',run:async r=>{requests.push(r)}},policyConnections:{backup:{agent:{family:'anthropic',model:'backup',run:async()=>{}}}}}:{...common,thinking:normalize('ultra','openai-compatible'),model:{family:'openai-compatible',model:'author',call:async(_s,r)=>{requests.push(r);return answer('openai',proposal)}},policyConnections:{backup:{model:{family:'anthropic',model:'backup',call:async()=>answer('anthropic',proposal)}}}} as AssistantSession
+  for await(const event of engine.start(session))events.push(event)
+  expect(requests).toEqual([])
+  expect(events.find(e=>e.type==='guardrail')).toMatchObject({tool:'models.author.fallback',reason:'failover refused'})
+  expect(events.filter(e=>e.type==='usage')).toHaveLength(1)
+ })
+ it('20 a refusal never switches',async()=>{
+  const events:AssistantEvent[]=[],connections:string[]=[]
+  const common={prompt:'Draft a pack.',testPrompt:'Review the pack.',tools:[],hostTools:[],callTool:async()=>({content:[]}),signal:new AbortController().signal,allowConversation:true,interactive:false,critic:'off' as const,policy:{models:{author:{fallback:['backup']}}},context:{currentRequest:{message:'Draft a pack.',input:'Draft a pack.'},connection:{connectionId:'primary'}}}
+  const session:EngineSession=engine.id==='codex'?{...common,effort:'high',agent:{family:'codex',model:'author',run:async()=>{connections.push('primary');throw new AIFailureError({version:1,code:'permission',source:'agent',outcome:'refused'})}},policyConnections:{backup:{agent:{family:'codex',model:'backup',run:async()=>{connections.push('backup')}}}}}:{...common,thinking:normalize('ultra','openai-compatible'),model:{family:'openai-compatible',model:'author',call:async()=>{connections.push('primary');return new Response('{}',{status:403})}},policyConnections:{backup:{model:{family:'openai-compatible',model:'backup',call:async()=>{connections.push('backup');return answer('openai',proposal)}}}}} as AssistantSession
+  for await(const event of engine.start(session))events.push(event)
+  expect(connections).toEqual(['primary'])
+  expect(events.filter(e=>e.type==='connection_switched')).toEqual([])
+ })
+ it('20 an agent switch during delegated work is refused',async()=>{
+  if(engine.id!=='codex')return
+  const events:AssistantEvent[]=[],connections:string[]=[]
+  const session:EngineSession={prompt:'Check the pack.',testPrompt:'',tools:[],hostTools:[],callTool:async()=>({content:[]}),signal:new AbortController().signal,allowConversation:true,interactive:false,critic:'off',effort:'high',agent:{family:'codex',model:'author',run:async()=>{connections.push('primary');throw new AIFailureError({version:1,code:'unavailable',source:'agent',outcome:'unknown'})}},policy:{models:{author:{fallback:['backup']}}},policyConnections:{backup:{agent:{family:'codex',model:'backup',run:async()=>{connections.push('backup')}}}},context:{objective:'Delegated review.',currentRequest:{message:'Check the pack.',input:'Check the pack.'},connection:{connectionId:'primary'}}}
+  for await(const event of engine.start(session))events.push(event)
+  expect(connections).toEqual(['primary'])
+  expect(events.find(e=>e.type==='guardrail')).toMatchObject({reason:'failover refused',tool:'models.author.fallback'})
+  expect(events.filter(e=>e.type==='connection_switched')).toEqual([])
  })
 })

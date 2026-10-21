@@ -1,0 +1,28 @@
+{
+  "description": "ADR-0020: the provenance report carries each closed usage ledger row. Written by hand.",
+  "schema": "provenance.json#/$defs/usage",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/execution/controller.ts"
+    ]
+  },
+  "items": [
+    {
+      "source": "model",
+      "connection": "secondary",
+      "role": "author",
+      "requests": 1,
+      "invocations": 0,
+      "milliseconds": 9,
+      "bytes": 1024,
+      "tokens": {
+        "inputTokens": 240,
+        "outputTokens": 32
+      }
+    }
+  ]
+}

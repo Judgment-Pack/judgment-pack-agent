@@ -103,6 +103,27 @@ func (c *coordinator) chargeChild(task *contract.DelegatedTask, budget turn.Task
 	return nil
 }
 
+// accountChild persists the ledger after both the child and shared request counts advance.
+func (c *coordinator) accountChild(ctx context.Context, task *contract.DelegatedTask, m *meter) error {
+	m.mu.Lock()
+	var child *runcontext.SessionContext
+	if len(m.contexts) > 0 {
+		child = m.contexts[len(m.contexts)-1]
+	}
+	m.mu.Unlock()
+	if child == nil {
+		return c.durable(ctx)
+	}
+	c.usageMu.Lock()
+	c.shared.mu.Lock()
+	if parent := c.shared.parent; parent != nil {
+		parent.Execution.MergeChildUsage(child.Execution.State.ID, child.Execution.Usage(), delegatedRole(parent.ResolvedPolicy, task.Profile, parent.Subagents))
+	}
+	c.shared.mu.Unlock()
+	c.usageMu.Unlock()
+	return c.durable(ctx)
+}
+
 // childRetry is whether a child's refused request is sent once more, and after how long
 // (childRetry, agent#17): a 5xx other than 504 of the retryable class or the overload code, which
 // the engine's own rule would not retry, within the wait a turn allows.
@@ -163,6 +184,9 @@ func (c *coordinator) childModel(task *contract.DelegatedTask, budget turn.TaskB
 			if err := c.chargeChild(task, budget); err != nil {
 				return nil, err
 			}
+			if err := c.accountChild(ctx, task, m); err != nil {
+				return nil, err
+			}
 		}
 		answered, err := call(ctx, suffix, request)
 		if err != nil {
@@ -189,6 +213,9 @@ func (c *coordinator) childModel(task *contract.DelegatedTask, budget turn.TaskB
 					_ = m.contexts[len(m.contexts)-1].Execution.Claim()
 				}
 				if err := c.chargeChild(task, budget); err != nil {
+					return nil, err
+				}
+				if err := c.accountChild(ctx, task, m); err != nil {
 					return nil, err
 				}
 				answered, err = call(ctx, suffix, request)
