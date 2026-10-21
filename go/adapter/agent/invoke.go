@@ -343,6 +343,12 @@ func (r *runState) tool(invCtx context.Context, offered map[string]bool, recorde
 		// ADR-0010: request_review reaches the switch's own tool only in the author's invocation of a
 		// run it is offered to; anywhere else it is refused here, with the guardrail review refused,
 		// before anything runs and before the gate, and nothing is recorded.
+		if (known && held.name == runcontext.Remember || !known && call.Name == runcontext.Remember) && (!known || !offered[call.Name] || !r.sc.MemoryAdmitted()) {
+			r.deliver(callEvent(call.ID, runcontext.Remember, args, ""))
+			text := gate.UnofferedRefusal(r.sc.RefuseMemory())
+			r.deliver(resultEvent(call.ID, runcontext.Remember, textResult(text, true), ""))
+			return adapter.AgentToolAnswer{Text: text, IsError: true}, nil
+		}
 		if (known && held.name == runcontext.RequestReview || !known && call.Name == runcontext.RequestReview) && (!known || !offered[call.Name] || !r.sc.ReviewAdmitted()) {
 			return r.refuseReview(call, args)
 		}

@@ -61,6 +61,7 @@ var AgentChecks = []AgentCheck{
 	{Group: "scenario 8", Names: AgentApprovalNames, Run: agentApprovalChecks},
 	{Group: "scenario 9", Names: AgentSkillsNames, Run: agentSkillsChecks},
 	{Group: "scenario 10", Names: AgentSwitchNames, Run: agentSwitchChecks},
+	{Group: "scenario 14", Names: AgentMemoryWriteNames, Run: agentMemoryWriteChecks},
 	{Group: "scenario 13", Names: AgentSubagentNames, Run: agentSubagentChecks},
 	{Group: "scenario 12", Names: AgentProviderNames, Run: agentProviderChecks},
 	{Group: "scenario 11", Names: AgentPolicyNames, Run: agentPolicyChecks},
@@ -539,7 +540,7 @@ func restrictionsCheck(ctx context.Context, _ *Server, host AgentHost, with func
 		f.fail("the invocations were %v", got)
 		return f.list, nil
 	}
-	planned := append(append([]string{readTool, researchTool, turn.DelegateTool}, gate.PlanRuntimeReads...), gate.ContextTools...)
+	planned := append(append([]string{readTool, researchTool, turn.DelegateTool, runcontext.Remember}, gate.PlanRuntimeReads...), gate.ContextTools...)
 	for _, name := range OfferedTools(calls[0].Request) {
 		if !slices.Contains(planned, name) {
 			f.fail("the parent in Plan mode was offered %s", name)
@@ -1125,7 +1126,11 @@ func agentMemoryChecks(ctx context.Context, server *Server, host AgentHost, _ fu
 	}
 	out = append(out, f.list...)
 	f = &findings{check: "3 agent memory"}
-	block := runcontext.MemoryHeader + "\n" + file.Memory + "\n" + runcontext.HostPartsTable[2].End
+	system := ""
+	if len(calls) > 0 {
+		system = calls[0].Request.Instructions
+	}
+	block := runcontext.MemoryHeader + "\n" + legacyMemoryBlock(file.Memory, system) + "\n" + runcontext.HostPartsTable[2].End
 	switch {
 	case !slices.Equal(asked, []string{file.Request}):
 		f.fail("memoryFor was asked %q", asked)

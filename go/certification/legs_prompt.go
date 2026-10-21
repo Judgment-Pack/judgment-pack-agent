@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -239,11 +240,17 @@ func placementMisses(api string, r *LegResult, parts runcontext.HostParts, textT
 			misses = append(misses, cacheMisses(raw, at, placement)...)
 		}
 		system, rest := systemSplit(api, raw)
+		expected := append([]placed{}, supplied...)
+		for i := range expected {
+			if expected[i].name == "memory" {
+				expected[i].text = legacyMemoryBlock(expected[i].text, system)
+			}
+		}
 		// Each part's block by its header and the end line after it; the text between them is the part's.
 		places := []int{strings.Index(system, runcontext.DataRule)}
 		ends := []int{}
 		texts := []string{}
-		for _, part := range supplied {
+		for _, part := range expected {
 			head := strings.Index(system, part.header+"\n")
 			end, text := -1, ""
 			if head >= 0 {
@@ -264,7 +271,7 @@ func placementMisses(api string, r *LegResult, parts runcontext.HostParts, textT
 			misses = append(misses, fmt.Sprintf("request %d: the guidance and the parts are not each in the system text in layer order (%v)", at, places))
 			continue
 		}
-		for i, part := range supplied {
+		for i, part := range expected {
 			if texts[i] != part.text {
 				misses = append(misses, fmt.Sprintf("request %d: %s is %q, not the text the host answered once", at, part.name, texts[i]))
 			}
@@ -272,7 +279,7 @@ func placementMisses(api string, r *LegResult, parts runcontext.HostParts, textT
 		// The rank: the system text is exactly the package's guidance, anchored on its last line (the
 		// execution instructions), then the host's section and nothing between, then the tools described
 		// in text or the state or nothing.
-		section := runcontext.HostSection(placedParts(supplied))
+		section := runcontext.HostSection(placedParts(expected))
 		guidanceEnd := strings.Index(system, guidance) + len(guidance)
 		exact := guidanceEnd >= len(guidance) && places[0] < guidanceEnd &&
 			strings.HasPrefix(system[guidanceEnd:], section)
@@ -293,7 +300,7 @@ func placementMisses(api string, r *LegResult, parts runcontext.HostParts, textT
 		if textTools && strings.Index(system, textToolsOpening) <= end {
 			misses = append(misses, fmt.Sprintf("request %d: the tools described in text are not after the host's parts", at))
 		}
-		for _, part := range supplied {
+		for _, part := range expected {
 			if strings.Contains(rest, strings.SplitN(part.text, " (recall", 2)[0]) {
 				misses = append(misses, fmt.Sprintf("request %d: %s is outside the system text", at, part.name))
 			}
@@ -433,3 +440,13 @@ var PromptChecks = []Check{
 }
 
 func init() { WireChecks = append(WireChecks, PromptChecks...) }
+
+// legacyMemoryBlock constructs the expected alias frame from this request's run marker.
+func legacyMemoryBlock(text, system string) string {
+	m := regexp.MustCompile(`BEGIN RETRIEVED DATA ([0-9a-f]{32}) from memory`).FindStringSubmatch(system)
+	marker := ""
+	if len(m) == 2 {
+		marker = m[1]
+	}
+	return runcontext.FrameBlock("memory", "kind: fact\nsource: {\"proposedBy\":\"host\",\"run\":\"host\"}\nid: \"legacy-memory\"\n"+text, marker)
+}

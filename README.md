@@ -41,7 +41,10 @@ it. The host supplies the parts only it holds through three injection points, `b
 `memoryFor(query)` and `projectInstructions()` (`configureHarness` in TypeScript, `adapter.Run`'s
 `Host` in Go), each asked once per run and placed by the adapter in its layer; the project's own
 instructions rank below the package's rules and cannot grant a tool. Every request body an adapter
-sends is digested in the run's checkpoint.
+sends is digested in the run's checkpoint. `memoryFor` returns closed memory records; accepted
+records are framed as data, with kind and source, never instructions. The text answer remains an
+alias for v0.8.0. `remember {kind, text}` records a bounded proposal for host review and stores
+nothing ([ADR-0014](docs/adr/0014-memory-the-write-side.md)).
 
 Tools from outside the Runtime ([ADR-0006](docs/adr/0006-tool-sources.md)) are host tools: a
 gateway connection's, a public MCP server's or one the person created is declared by the host with

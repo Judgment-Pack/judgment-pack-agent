@@ -23,6 +23,7 @@
  * of the host once per run, before the first request (`readHostParts`). Each part is held to its
  * bound in the policy table and refused, never cut, past it: the run fails before any request.
  */
+import { recallMemory } from './memories'
 import { authoredFailure } from './failures'
 import { brief, memoryFor, projectInstructions } from './host'
 import { utf8Bytes, type ContextPolicy } from './context/policy'
@@ -75,10 +76,11 @@ export function systemText(guidance: string, parts: HostParts, tools = ''): stri
  * The host's parts for one run, asked once, before its first request: the brief, the project's own
  * instructions and, unless the host said memory is off (`memory` false), the memory recalled for
  * `query`, the person's message. An answer of nothing (`undefined`, `null`, the empty string) leaves
- * the part out. An answer that is not text, or is over its bound, is refused: the run fails before
- * any request (`configuration`), and nothing is sent.
+ * the part out. An invalid answer, or one over its bound, is refused: the run fails before
+ * any request (`configuration`), and nothing is sent. ADR-0014: memory answers records (or the
+ * v0.8.0 text alias); accepted records are individually framed under marker before placement.
  */
-export async function readHostParts(query: string, policy: Pick<ContextPolicy, 'briefBytes' | 'memoryBytes' | 'projectInstructionsBytes'>, memory = true): Promise<HostParts> {
+export async function readHostParts(query: string, policy: Pick<ContextPolicy, 'briefBytes' | 'memoryBytes' | 'projectInstructionsBytes'>, memory = true, marker = '', record?: (recall: Awaited<ReturnType<typeof recallMemory>>) => void): Promise<HostParts> {
   const answers: Record<keyof HostParts, unknown> = {
     brief: await brief(),
     projectInstructions: await projectInstructions(),
@@ -86,7 +88,8 @@ export async function readHostParts(query: string, policy: Pick<ContextPolicy, '
   }
   const parts: HostParts = {}
   for (const part of HOST_PARTS) {
-    const value = answers[part.name]
+    let value = answers[part.name]
+    if (part.name === 'memory') { const recalled = await recallMemory(value, policy.memoryBytes, marker); record?.(recalled); if (recalled.text) parts.memory = recalled.text; continue }
     if (value === undefined || value === null || value === '') continue
     if (typeof value !== 'string') throw authoredFailure('configuration', `The host answered ${part.injection} with something other than text; nothing was sent.`, 'context')
     const bytes = utf8Bytes(value)

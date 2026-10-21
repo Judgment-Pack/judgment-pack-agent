@@ -66,6 +66,8 @@ var Registry = map[string]func() any{
 	"failure.json#/$defs/recovery":                  func() any { return new(string) },
 	"failure.json#/$defs/catalogueEntry":            func() any { return new(FailureCatalogueEntry) },
 	"failure.json#/$defs/toolFailureContent":        func() any { return new(FailureToolFailureContent) },
+	"memory.json":                                   func() any { return new(Memory) },
+	"memory.json#/$defs/answer":                     func() any { return new(MemoryAnswer) },
 	"policy.json":                                   func() any { return new(Policy) },
 	"policy.json#/$defs/role":                       func() any { return new(PolicyRole) },
 	"policy.json#/$defs/member":                     func() any { return new(PolicyMember) },
@@ -92,6 +94,8 @@ var Registry = map[string]func() any{
 	"provenance.json#/$defs/policy":                 func() any { return new(map[string]PolicyMember) },
 	"provenance.json#/$defs/provider":               func() any { return new(ProvenanceProvider) },
 	"provenance.json#/$defs/crossProvider":          func() any { return new(ProvenanceCrossProvider) },
+	"provenance.json#/$defs/memoryRecall":           func() any { return new(ProvenanceMemoryRecall) },
+	"provenance.json#/$defs/memories":               func() any { return new(ProvenanceMemories) },
 	"question.json":                                 func() any { return new(Question) },
 	"question.json#/$defs/option":                   func() any { return new(QuestionOption) },
 	"question.json#/$defs/draft":                    func() any { return new(QuestionDraft) },
@@ -122,6 +126,8 @@ var Registry = map[string]func() any{
 	"run-event.json#/$defs/caseComparison":          func() any { return new(RunEventCaseComparison) },
 	"run-event.json#/$defs/criticCase":              func() any { return new(RunEventCriticCase) },
 	"run-event.json#/$defs/policy_resolved":         func() any { return new(RunEventPolicyResolved) },
+	"run-event.json#/$defs/memory_proposed":         func() any { return new(RunEventMemoryProposed) },
+	"run-event.json#/$defs/memory_recalled":         func() any { return new(RunEventMemoryRecalled) },
 	"skill.json":                                    func() any { return new(Skill) },
 	"skill.json#/$defs/name":                        func() any { return new(string) },
 	"skill.json#/$defs/resource":                    func() any { return new(SkillResource) },
@@ -161,6 +167,7 @@ var Registry = map[string]func() any{
 	"tool-offer.json#/$defs/criticReasoning":        func() any { return new(string) },
 	"tool-offer.json#/$defs/requestReview":          func() any { return new(ToolOfferRequestReview) },
 	"tool-offer.json#/$defs/subagentCatalogueEntry": func() any { return new(ToolOfferSubagentCatalogueEntry) },
+	"tool-offer.json#/$defs/remember":               func() any { return new(ToolOfferRemember) },
 	"tool-result.json":                              func() any { return new(ToolResult) },
 	"tool-result.json#/$defs/mcpToolResult":         func() any { return new(ToolResultMCPToolResult) },
 	"tool-result.json#/$defs/reference":             func() any { return new(ToolResultReference) },
@@ -358,11 +365,13 @@ type Budget struct {
 	CataloguedSkills         *int64  `json:"cataloguedSkills,omitzero"`
 	CataloguedSubagents      *int64  `json:"cataloguedSubagents,omitzero"`
 	SubagentCatalogueBytes   *int64  `json:"subagentCatalogueBytes,omitzero"`
+	MemoryProposalBytes      *int64  `json:"memoryProposalBytes,omitzero"`
+	MemoryProposalsPerRun    *int64  `json:"memoryProposalsPerRun,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var budgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "adversarialReview", "criticDefault", "criticReasoningFloor", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds", "skillBytes", "skillsPerRun", "skillsCatalogueBytes", "cataloguedSkills", "cataloguedSubagents", "subagentCatalogueBytes"}
+var budgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "adversarialReview", "criticDefault", "criticReasoningFloor", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds", "skillBytes", "skillsPerRun", "skillsCatalogueBytes", "cataloguedSkills", "cataloguedSubagents", "subagentCatalogueBytes", "memoryProposalBytes", "memoryProposalsPerRun"}
 
 // UnmarshalJSON decodes a Budget object and keeps the members the schema does not name.
 func (v *Budget) UnmarshalJSON(data []byte) error {
@@ -515,7 +524,9 @@ func (v BudgetDeskLimits) MarshalJSON() ([]byte, error) {
 // The project's instructions are instructions at the lowest rank: they follow the package's
 // guidance, and they cannot grant a tool or change an effect, because the offer and the gate are
 // code. The system text through the last part is the request's stable prefix: the same bytes on
-// every request of the run.
+// every request of the run. ADR-0014: memoryFor answers memory.json#/$defs/answer: accepted
+// records are individually framed as data under the run marker with kind and source inside; the
+// bare-text alias lasts for v0.8.0.
 type BudgetHostPart struct {
 	Name      string `json:"name"`
 	Layer     int64  `json:"layer"`
@@ -1055,11 +1066,12 @@ type Checkpoint struct {
 	Critic        *CheckpointCritic           `json:"critic,omitzero"`
 	Policy        map[string]PolicyMember     `json:"policy,omitzero"`
 	CrossProvider []ProvenanceCrossProvider   `json:"crossProvider,omitzero"`
+	Memories      *ProvenanceMemories         `json:"memories,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var checkpointMembers = []string{"version", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider"}
+var checkpointMembers = []string{"version", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "memories"}
 
 // UnmarshalJSON decodes a Checkpoint object and keeps the members the schema does not name.
 func (v *Checkpoint) UnmarshalJSON(data []byte) error {
@@ -2541,6 +2553,143 @@ func (v FailureToolFailureContent) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), v.AdditionalMembers)
 }
 
+// From memory.json. ADR-0014: host-owned memory. The package proposes, records and recalls; it
+// never accepts or stores. digest is sha256: followed by SHA-256 of UTF-8 text. Proposals use
+// project scope, the execution id as source.run, and model as proposedBy.
+type Memory struct {
+	ID        string       `json:"id"`
+	Kind      string       `json:"kind"`
+	Text      string       `json:"text"`
+	Source    MemorySource `json:"source"`
+	Scope     string       `json:"scope"`
+	Digest    string       `json:"digest"`
+	CreatedAt string       `json:"createdAt"`
+	State     string       `json:"state"`
+	ExpiresAt *string      `json:"expiresAt,omitzero"`
+}
+
+var memoryMembers = []string{"id", "kind", "text", "source", "scope", "digest", "createdAt", "state", "expiresAt"}
+
+// UnmarshalJSON decodes a Memory object and refuses a member the closed schema does not name.
+func (v *Memory) UnmarshalJSON(data []byte) error {
+	type plain Memory
+	var p plain
+	extra, err := decodeObject(data, &p, memoryMembers, true)
+	if err != nil {
+		return errorf("Memory: %w", err)
+	}
+	*v = Memory(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a Memory object.
+func (v Memory) MarshalJSON() ([]byte, error) {
+	type plain Memory
+	return encodeObject(plain(v), nil)
+}
+
+// From memory.json#/$defs/answer. memoryFor answers records. For v0.8.0, nonempty bare text
+// normalizes to one accepted project fact record: id legacy-memory, source {run: host, proposedBy:
+// host}, createdAt 1970-01-01T00:00:00Z, digest sha256: plus the SHA-256 of its UTF-8 text, no
+// expiresAt. This compatibility record is not persisted. The alias and that record use identical
+// framing, recall rows and memoryBytes accounting: the sum of accepted records’ canonical JSON
+// UTF-8 bytes before framing. Empty text, null or an absent binding supplies nothing. Only
+// accepted, unexpired records reach the prompt; revoked records can update a restored report.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type MemoryAnswer struct {
+	Option1 *[]Memory
+	String  *string
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *MemoryAnswer) UnmarshalJSON(data []byte) error {
+	*v = MemoryAnswer{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "array" {
+		var candidate []Memory
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option1 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	if kind == "string" {
+		var candidate string
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.String = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("MemoryAnswer: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = MemoryAnswer{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v MemoryAnswer) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.Option1 != nil {
+		set = append(set, v.Option1)
+	}
+	if v.String != nil {
+		set = append(set, v.String)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("MemoryAnswer: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From memory.json#/properties/source.
+type MemorySource struct {
+	Run        string `json:"run"`
+	ProposedBy string `json:"proposedBy"`
+}
+
+var memorySourceMembers = []string{"run", "proposedBy"}
+
+// UnmarshalJSON decodes a MemorySource object and refuses a member the closed schema does not name.
+func (v *MemorySource) UnmarshalJSON(data []byte) error {
+	type plain MemorySource
+	var p plain
+	extra, err := decodeObject(data, &p, memorySourceMembers, true)
+	if err != nil {
+		return errorf("MemorySource: %w", err)
+	}
+	*v = MemorySource(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a MemorySource object.
+func (v MemorySource) MarshalJSON() ([]byte, error) {
+	type plain MemorySource
+	return encodeObject(plain(v), nil)
+}
+
 // From policy.json. ADR-0011. Closed partial host layers: run > project > table, resolved per
 // member. Models default to the connected author and its tier; critic keeps the author floor.
 // Dynamic roles inherit the author unless explicitly set. Unset members without a table or
@@ -2612,9 +2761,11 @@ type PolicyBudget struct {
 	CataloguedSkills         *int64 `json:"cataloguedSkills,omitzero"`
 	CataloguedSubagents      *int64 `json:"cataloguedSubagents,omitzero"`
 	SubagentCatalogueBytes   *int64 `json:"subagentCatalogueBytes,omitzero"`
+	MemoryProposalBytes      *int64 `json:"memoryProposalBytes,omitzero"`
+	MemoryProposalsPerRun    *int64 `json:"memoryProposalsPerRun,omitzero"`
 }
 
-var policyBudgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds", "skillBytes", "skillsPerRun", "skillsCatalogueBytes", "cataloguedSkills", "cataloguedSubagents", "subagentCatalogueBytes"}
+var policyBudgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds", "skillBytes", "skillsPerRun", "skillsCatalogueBytes", "cataloguedSkills", "cataloguedSubagents", "subagentCatalogueBytes", "memoryProposalBytes", "memoryProposalsPerRun"}
 
 // UnmarshalJSON decodes a PolicyBudget object and refuses a member the closed schema does not name.
 func (v *PolicyBudget) UnmarshalJSON(data []byte) error {
@@ -3202,6 +3353,64 @@ func (v ProvenanceFiguresTotal) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From provenance.json#/$defs/memories. Run report: proposals this run, and recalled ids and
+// digests with kinds. Both lists survive resume; a recalled id supplied as revoked is reported
+// revoked and withheld from the prompt.
+type ProvenanceMemories struct {
+	Proposed []Memory                 `json:"proposed"`
+	Recalled []ProvenanceMemoryRecall `json:"recalled"`
+}
+
+var provenanceMemoriesMembers = []string{"proposed", "recalled"}
+
+// UnmarshalJSON decodes a ProvenanceMemories object and refuses a member the closed schema does not name.
+func (v *ProvenanceMemories) UnmarshalJSON(data []byte) error {
+	type plain ProvenanceMemories
+	var p plain
+	extra, err := decodeObject(data, &p, provenanceMemoriesMembers, true)
+	if err != nil {
+		return errorf("ProvenanceMemories: %w", err)
+	}
+	*v = ProvenanceMemories(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ProvenanceMemories object.
+func (v ProvenanceMemories) MarshalJSON() ([]byte, error) {
+	type plain ProvenanceMemories
+	return encodeObject(plain(v), nil)
+}
+
+// From provenance.json#/$defs/memoryRecall.
+type ProvenanceMemoryRecall struct {
+	ID     string `json:"id"`
+	Digest string `json:"digest"`
+	Kind   string `json:"kind"`
+	State  string `json:"state"`
+}
+
+var provenanceMemoryRecallMembers = []string{"id", "digest", "kind", "state"}
+
+// UnmarshalJSON decodes a ProvenanceMemoryRecall object and refuses a member the closed schema does not name.
+func (v *ProvenanceMemoryRecall) UnmarshalJSON(data []byte) error {
+	type plain ProvenanceMemoryRecall
+	var p plain
+	extra, err := decodeObject(data, &p, provenanceMemoryRecallMembers, true)
+	if err != nil {
+		return errorf("ProvenanceMemoryRecall: %w", err)
+	}
+	*v = ProvenanceMemoryRecall(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ProvenanceMemoryRecall object.
+func (v ProvenanceMemoryRecall) MarshalJSON() ([]byte, error) {
+	type plain ProvenanceMemoryRecall
+	return encodeObject(plain(v), nil)
+}
+
 // From provenance.json#/$defs/parentFigures. The parent's own figures beside its batches
 // (agent#18): its model; its own model requests, the execution's used less its children's, absent
 // on an agent capability, where the provider runs its own loop and reports no count (agent#71;
@@ -3646,6 +3855,10 @@ type RunEvent struct {
 	End *RunEventEnd
 	// PolicyResolved is set where type is "policy_resolved".
 	PolicyResolved *RunEventPolicyResolved
+	// MemoryProposed is set where type is "memory_proposed".
+	MemoryProposed *RunEventMemoryProposed
+	// MemoryRecalled is set where type is "memory_recalled".
+	MemoryRecalled *RunEventMemoryRecalled
 }
 
 // UnmarshalJSON sets the one member the value decodes as.
@@ -3727,6 +3940,12 @@ func (v *RunEvent) UnmarshalJSON(data []byte) error {
 		case "policy_resolved":
 			v.PolicyResolved = new(RunEventPolicyResolved)
 			return json.Unmarshal(data, v.PolicyResolved)
+		case "memory_proposed":
+			v.MemoryProposed = new(RunEventMemoryProposed)
+			return json.Unmarshal(data, v.MemoryProposed)
+		case "memory_recalled":
+			v.MemoryRecalled = new(RunEventMemoryRecalled)
+			return json.Unmarshal(data, v.MemoryRecalled)
 		}
 		return errorf("RunEvent: no member has type %q", tag)
 	}
@@ -3804,6 +4023,12 @@ func (v RunEvent) MarshalJSON() ([]byte, error) {
 	}
 	if v.PolicyResolved != nil {
 		set = append(set, v.PolicyResolved)
+	}
+	if v.MemoryProposed != nil {
+		set = append(set, v.MemoryProposed)
+	}
+	if v.MemoryRecalled != nil {
+		set = append(set, v.MemoryRecalled)
 	}
 	if len(set) != 1 {
 		return nil, errorf("RunEvent: %d members are set; a union holds exactly one", len(set))
@@ -4481,6 +4706,62 @@ func (v *RunEventGuardrail) UnmarshalJSON(data []byte) error {
 func (v RunEventGuardrail) MarshalJSON() ([]byte, error) {
 	type plain RunEventGuardrail
 	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From run-event.json#/$defs/memory_proposed.
+type RunEventMemoryProposed struct {
+	Type   string `json:"type"`
+	Memory Memory `json:"memory"`
+}
+
+var runEventMemoryProposedMembers = []string{"type", "memory"}
+
+// UnmarshalJSON decodes a RunEventMemoryProposed object and refuses a member the closed schema does not name.
+func (v *RunEventMemoryProposed) UnmarshalJSON(data []byte) error {
+	type plain RunEventMemoryProposed
+	var p plain
+	extra, err := decodeObject(data, &p, runEventMemoryProposedMembers, true)
+	if err != nil {
+		return errorf("RunEventMemoryProposed: %w", err)
+	}
+	*v = RunEventMemoryProposed(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunEventMemoryProposed object.
+func (v RunEventMemoryProposed) MarshalJSON() ([]byte, error) {
+	type plain RunEventMemoryProposed
+	return encodeObject(plain(v), nil)
+}
+
+// From run-event.json#/$defs/memory_recalled.
+type RunEventMemoryRecalled struct {
+	Type    string   `json:"type"`
+	Ids     []string `json:"ids"`
+	Digests []string `json:"digests"`
+	Bytes   int64    `json:"bytes"`
+}
+
+var runEventMemoryRecalledMembers = []string{"type", "ids", "digests", "bytes"}
+
+// UnmarshalJSON decodes a RunEventMemoryRecalled object and refuses a member the closed schema does not name.
+func (v *RunEventMemoryRecalled) UnmarshalJSON(data []byte) error {
+	type plain RunEventMemoryRecalled
+	var p plain
+	extra, err := decodeObject(data, &p, runEventMemoryRecalledMembers, true)
+	if err != nil {
+		return errorf("RunEventMemoryRecalled: %w", err)
+	}
+	*v = RunEventMemoryRecalled(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunEventMemoryRecalled object.
+func (v RunEventMemoryRecalled) MarshalJSON() ([]byte, error) {
+	type plain RunEventMemoryRecalled
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/message. The model's own prose to the person, outside the proposal
@@ -5954,6 +6235,35 @@ func (v *ToolOfferProposePack) UnmarshalJSON(data []byte) error {
 func (v ToolOfferProposePack) MarshalJSON() ([]byte, error) {
 	type plain ToolOfferProposePack
 	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From tool-offer.json#/$defs/remember. Propose memory for the person to review, never store or
+// accept. Author only, including Plan mode; child and critic calls refused. UTF-8 text bounded by
+// memoryProposalBytes, count by memoryProposalsPerRun across resume.
+type ToolOfferRemember struct {
+	Kind string `json:"kind"`
+	Text string `json:"text"`
+}
+
+var toolOfferRememberMembers = []string{"kind", "text"}
+
+// UnmarshalJSON decodes a ToolOfferRemember object and refuses a member the closed schema does not name.
+func (v *ToolOfferRemember) UnmarshalJSON(data []byte) error {
+	type plain ToolOfferRemember
+	var p plain
+	extra, err := decodeObject(data, &p, toolOfferRememberMembers, true)
+	if err != nil {
+		return errorf("ToolOfferRemember: %w", err)
+	}
+	*v = ToolOfferRemember(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ToolOfferRemember object.
+func (v ToolOfferRemember) MarshalJSON() ([]byte, error) {
+	type plain ToolOfferRemember
+	return encodeObject(plain(v), nil)
 }
 
 // From tool-offer.json#/$defs/requestReview. The harness tool by which the model asks for a review

@@ -13,6 +13,7 @@
  * - **The prompt's digest.** Every request body the adapter sent is digested in the checkpoint's
  *   `prompts`, in order, on a model engine and on the agent wire (`provenance/prompt-digest.json`).
  */
+import {frameBlock} from './framing'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import hostPartsVector from '../../contract/vectors/budget/host-parts.json'
 import digestVector from '../../contract/vectors/provenance/prompt-digest.json'
@@ -86,9 +87,11 @@ describe('the host’s parts of the prompt', () => {
   it('takes each part at its bound and refuses it one byte past, and refuses an answer that is not text', async () => {
     for (const part of HOST_PARTS) {
       const bound = CONTEXT_DEFAULTS[part.bound]
-      const answer = (bytes: number) => 'é'.repeat(Math.floor(bytes / 2)) + 'x'.repeat(bytes % 2)
+      // The compatibility record contributes 245 bytes beyond unescaped text.
+      const overhead = part.name === 'memory' ? 245 : 0
+      const answer = (bytes: number) => 'é'.repeat(Math.floor((bytes - overhead) / 2)) + 'x'.repeat((bytes - overhead) % 2)
       configureHarness({ [part.injection]: () => answer(bound) })
-      expect((await readHostParts('q', CONTEXT_DEFAULTS))[part.name]).toBe(answer(bound))
+      expect((await readHostParts('q', CONTEXT_DEFAULTS))[part.name]).toBe(part.name==='memory'?frameBlock('memory','kind: fact\nsource: {"proposedBy":"host","run":"host"}\nid: "legacy-memory"\n'+answer(bound),''):answer(bound))
       configureHarness({ [part.injection]: () => answer(bound + 1) })
       await expect(readHostParts('q', CONTEXT_DEFAULTS)).rejects.toMatchObject({ failure: { code: 'configuration' } })
       configureHarness({ [part.injection]: () => ({ text: 'not text' }) as unknown as string })
@@ -113,7 +116,7 @@ describe('the host’s parts of the prompt', () => {
     expect(turn.events.filter((event) => event.type === 'error')).toEqual([])
     expect(turn.requests).toHaveLength(2)
     expect(asked).toEqual(['Check the expense pack.'])
-    const section = hostSection({ brief: 'The brief.', projectInstructions: 'Be brief.', memory: 'Recalled 1.' })
+    const section = hostSection({ brief: 'The brief.', projectInstructions: 'Be brief.', memory: frameBlock('memory','kind: fact\nsource: {"proposedBy":"host","run":"host"}\nid: "legacy-memory"\n'+'Recalled 1.',/BEGIN RETRIEVED DATA ([0-9a-f]{32}) from memory/.exec(String(turn.requests[0]!.body.messages![0]!.content))![1]!) })
     for (const request of turn.requests) {
       const system = request.body.messages![0]!
       expect(system.role).toBe('system')

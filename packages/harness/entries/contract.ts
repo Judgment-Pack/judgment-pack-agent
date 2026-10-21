@@ -24,3 +24,6 @@ export type { CriticCase, CaseComparison, CaseOutcome, CriticFigures } from '../
 
 export {resolvePolicy, PolicyRefusal, failoverRefusal} from '../policy'
 export type {ProviderFamily,ProviderRecord,CrossProvider,PolicyRole,PolicyLayer,PolicyMembers,PolicyConnection} from '../policy'
+
+export type { Memory, MemoryAnswer, MemoryRecall, Memories } from '../memories'
+export { MEMORY_KINDS, REMEMBER, REMEMBER_SCHEMA } from '../memories'

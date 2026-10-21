@@ -60,6 +60,8 @@ type Policy struct {
 	CataloguedSkills       int `json:"cataloguedSkills"`
 	CataloguedSubagents    int `json:"cataloguedSubagents"`
 	SubagentCatalogueBytes int `json:"subagentCatalogueBytes"`
+	MemoryProposalBytes    int `json:"memoryProposalBytes"`
+	MemoryProposalsPerRun  int `json:"memoryProposalsPerRun"`
 }
 
 // TimeDefaults are the time bounds the harness adds to the Desk's table (TIME_DEFAULTS): one
@@ -129,6 +131,8 @@ var DeskPolicy = Policy{
 // harness's own bounds. The table wins over the harness's defaults, as the spread order does.
 var Defaults = func() Policy {
 	p := DeskPolicy
+	p.MemoryProposalBytes = 1000
+	p.MemoryProposalsPerRun = 4
 	p.TurnMilliseconds = TimeDefaults.TurnMilliseconds
 	p.ToolCallMilliseconds = TimeDefaults.ToolCallMilliseconds
 	p.ImagesPerRequest = ImageDefaults.ImagesPerRequest

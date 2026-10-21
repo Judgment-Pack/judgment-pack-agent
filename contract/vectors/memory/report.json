@@ -1,0 +1,70 @@
+{
+  "description": "ADR-0014: report. Written by hand; memory proposals never imply acceptance or storage.",
+  "schema": "provenance.json#/$defs/memories",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/memories.ts"
+    ]
+  },
+  "items": [
+    {
+      "proposed": [
+        {
+          "id": "proposal-1",
+          "kind": "preference",
+          "text": "Use metric units.",
+          "source": {
+            "run": "earlier-run",
+            "proposedBy": "model"
+          },
+          "scope": "project",
+          "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+          "createdAt": "2026-10-20T12:00:00Z",
+          "state": "proposed"
+        }
+      ],
+      "recalled": [
+        {
+          "id": "metric",
+          "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+          "kind": "preference",
+          "state": "accepted"
+        },
+        {
+          "id": "poison",
+          "digest": "sha256:6858e28cc07cb8f1f6d5a1de41291f02fe6c78559fc5fbd96f41cf9152117a03",
+          "kind": "decision",
+          "state": "accepted"
+        },
+        {
+          "id": "old",
+          "digest": "sha256:07e798826084d7e16e0f4465e250a5877e9fd7e41968ee89ca74bd0048c5ee53",
+          "kind": "reference",
+          "state": "revoked"
+        },
+        {
+          "id": "fact-proposed",
+          "digest": "sha256:a45988cceaaf7cfcdad757b77f739869f9adc3e577d5c6a31e7c58723dfdebc9",
+          "kind": "fact",
+          "state": "proposed"
+        },
+        {
+          "id": "fact-declined",
+          "digest": "sha256:a45988cceaaf7cfcdad757b77f739869f9adc3e577d5c6a31e7c58723dfdebc9",
+          "kind": "fact",
+          "state": "declined"
+        },
+        {
+          "id": "fact-expired",
+          "digest": "sha256:a45988cceaaf7cfcdad757b77f739869f9adc3e577d5c6a31e7c58723dfdebc9",
+          "kind": "fact",
+          "state": "expired"
+        }
+      ]
+    }
+  ]
+}

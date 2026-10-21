@@ -368,6 +368,12 @@ func (t *turnState) dispatch(ctx context.Context, name string, args json.RawMess
 	// ADR-0010: request_review reaches the switch's own tool only in the author's phase of a run it is
 	// offered to; anywhere else it is refused here, with the guardrail review refused, before anything
 	// runs and before the gate, and nothing is recorded.
+	if name == runcontext.Remember && (!offered[name] || !t.r.sc.MemoryAdmitted()) {
+		t.r.deliver(t.callEvent("", name, nonEmpty(args), ""))
+		result := textResult(gate.UnofferedRefusal(t.r.sc.RefuseMemory()), true)
+		t.r.deliver(t.resultEvent("", name, result, ""))
+		return bare(result), nil
+	}
 	if name == runcontext.RequestReview && (!offered[name] || !t.r.sc.ReviewAdmitted()) {
 		return bare(t.refuseReview(name, args)), nil
 	}

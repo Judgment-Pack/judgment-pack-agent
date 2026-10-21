@@ -4043,6 +4043,86 @@
    "status": "caught",
    "origin": "agent#97 review round",
    "note": "Go twin: remove the ResultBytes minimum check in go/context/subagents.go; TestSubagentAdmission must fail."
+  },
+  {
+   "name": "memory proposal not recorded",
+   "file": "memories.ts",
+   "find": "      book.proposed.push(memory)",
+   "replace": "      void memory",
+   "tests": [
+    "memories.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#98"
+  },
+  {
+   "name": "memory recall unframed",
+   "file": "memories.ts",
+   "find": "  const text = accepted.map(m => frameBlock('memory', `kind: ${m.kind}\\nsource: ${canonicalJSON(m.source)}\\nid: ${JSON.stringify(m.id)}\\n${m.text}`, marker)).join('\\n\\n')",
+   "replace": "  const text = accepted.map(m=>m.text).join('\\n\\n')",
+   "tests": [
+    "memories.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#98"
+  },
+  {
+   "name": "memory proposal bound removed",
+   "file": "memories.ts",
+   "find": "if (book.proposed.length >= policy.memoryProposalsPerRun)",
+   "replace": "if (false)",
+   "tests": [
+    "memories.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#98"
+  },
+  {
+   "name": "memory child proposal admitted",
+   "file": "context/session.ts",
+   "find": "this.memoryChild||this.narrowed!==null",
+   "replace": "this.narrowed!==null",
+   "tests": [
+    "memories.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#98"
+  },
+  {
+   "name": "memory alias framed differently",
+   "file": "memories.ts",
+   "find": "    value = [{ id: 'legacy-memory', kind: 'fact', text: value, source: { run: 'host', proposedBy: 'host' }, scope: 'project', digest: `sha256:${await contextDigest(value)}`, createdAt: '1970-01-01T00:00:00Z', state: 'accepted' }]",
+   "replace": "    value = [{ id: 'legacy-memory', kind: 'fact', text: value, source: { run: 'host', proposedBy: 'host' }, scope: 'project', digest: `sha256:${await contextDigest(value)}`, createdAt: '1970-01-01T00:00:00Z', state: 'accepted' }]\n    const recalled = await recallMemory(value, bound, marker)\n    return { ...recalled, text: frameBlock('legacy memory', (value as Memory[])[0]!.text, marker) }",
+   "tests": [
+    "memories.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#98 review round",
+   "note": "Go twin: normalize and account through RecallMemory, then replace only the alias frame; TestMemoryAliasEquivalence fails."
+  },
+  {
+   "name": "memory identifier counts UTF-16 units",
+   "file": "memories.ts",
+   "find": "[...v].length <= 100",
+   "replace": "v.length <= 100",
+   "tests": [
+    "memories.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#98 review round",
+   "note": "Go twin: use len(s) instead of utf8.RuneCountInString(s); TestMemoryValidationBoundaries fails."
+  },
+  {
+   "name": "memory invalid calendar date admitted",
+   "file": "memories.ts",
+   "find": "return year > 0 && day <=",
+   "replace": "return true || year > 0 && day <=",
+   "tests": [
+    "memories.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#98 review round",
+   "note": "Go twin: ignore time.Parse errors after the grammar check; TestMemoryValidationBoundaries fails."
   }
  ]
 }

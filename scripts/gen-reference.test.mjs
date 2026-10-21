@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url'
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const script = join(repo, 'scripts/gen-reference.mjs')
 const schemasDir = join(repo, 'contract/schemas')
-const PAGES = ['budget.md', 'checkpoint.md', 'critic.md', 'delegation.md', 'events.md', 'policy.md', 'providers.md', 'reasons.md', 'skills.md', 'tools.md']
+const PAGES = ['budget.md', 'checkpoint.md', 'critic.md', 'delegation.md', 'events.md', 'memory.md', 'policy.md', 'providers.md', 'reasons.md', 'skills.md', 'tools.md']
 
 let scratch
 const run = (...args) => spawnSync(process.execPath, [script, ...args], { cwd: repo, encoding: 'utf8', timeout: 240_000 })
@@ -24,7 +24,7 @@ after(() => {
   rmSync(scratch, { recursive: true, force: true })
 })
 
-test('two runs write the same ten pages, byte for byte', () => {
+test('two runs write the same eleven pages, byte for byte', () => {
   const a = join(scratch, 'first')
   const b = join(scratch, 'second')
   for (const out of [a, b]) {

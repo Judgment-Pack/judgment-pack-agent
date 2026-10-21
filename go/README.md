@@ -43,7 +43,10 @@ by digest, in its component lock).
 
 A Go host hands an adapter its parts of the prompt on `adapter.Run`'s `Host`, a `runcontext.Host`
 (`Brief`, `ProjectInstructions` and `MemoryFor(query)`; `runcontext.HostFuncs` makes one of
-functions). The adapter asks each once per run, before its first request, holds each to its bound
+functions). `MemoryRecordsForFunc` answers `[]contract.Memory`; a host may also implement a
+record-returning `MemoryFor`. `MemoryForFunc` and legacy string-returning hosts remain supported
+for v0.8.0. Accepted records are framed as data under the run marker, with kind and source.
+The adapter asks each once per run, before its first request, holds each to its bound
 in the policy table, and places it in its layer of every request
 ([ADR-0005](../docs/adr/0005-the-prompt-is-the-adapters.md)); the relay adds nothing. The digest of
 every request body is in the run's checkpoint (`prompts`).
@@ -144,3 +147,10 @@ prompt assembler; it has no actions, delegation, critic or review request.
 Events, checkpoint tasks and report figures identify the definition's id, digest
 and source. Withdrawn or changed definitions in restored batches are reported
 without dispatch. The host owns storage and re-approval.
+
+The reserved `remember {kind, text}` tool proposes memory for host review (ADR-0014). Its
+1,000-byte and four-proposal defaults are policy members. Child and critic proposals are refused;
+Plan-mode author proposals are allowed. `memory_proposed` and `checkpoint.memories.proposed`
+record the proposal; the package stores nothing. Recall records ids/digests with kinds and states,
+preserves both lists through resume, and withholds a revoked record while updating its restored
+report row. Scenario 14 runs on both adapters.

@@ -220,14 +220,15 @@ export interface HarnessHost {
    */
   brief(): HostPart
   /**
-   * Recalled project memory for `query` (ADR-0005): the text, or nothing. Asked once per run, before
+   * Recalled project memory for `query` (ADR-0014): closed Memory records, or nothing.
+   * The bare-text answer is an alias for v0.8.0. Accepted records are framed as data, never instructions. Asked once per run, before
    * its first request, with the person's message (`context.currentRequest.message`; a delegated
    * child's objective; the host's prompt where neither is given), and not asked where the host said
    * memory is off (`context.memory: false`). Placed in the fifth layer, the last of the stable
    * prefix, so it is the same on every request of the run. At most `memoryBytes`; a longer answer is
    * refused as the brief's is. Unsupplied, nothing.
    */
-  memoryFor(query: string): HostPart
+  memoryFor(query: string): import('./memories').MemoryAnswer | Promise<import('./memories').MemoryAnswer>
   /**
    * The project's own instructions (ADR-0005): the per-project block the person wrote, or nothing.
    * Instructions at the lowest rank, not data: placed in the fourth layer, after the package's

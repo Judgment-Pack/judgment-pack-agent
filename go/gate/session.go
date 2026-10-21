@@ -474,6 +474,11 @@ func notShownPart(kind string, number int, mediaType string) string {
 // reformat and loop) or with the phase's own words (Plan mode, a child).
 func (g *Gate) AdmitHost(name string) *Result {
 	phase := g.current()
+	// ADR-0014: the reserved package proposal tool is always available to the author, including Plan mode.
+	// The session boundary refuses host declarations using this name; children and the critic cannot enter it.
+	if name == "remember" && (phase.Kind == PhaseLoop || phase.Kind == PhasePlan) {
+		return nil
+	}
 	if contains(phase.Host, name) {
 		return nil
 	}

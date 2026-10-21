@@ -1,0 +1,384 @@
+{
+  "description": "ADR-0014 review: handwritten validation boundaries.",
+  "schema": "memory.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/memories.ts"
+    ]
+  },
+  "items": [
+    {
+      "id": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+      "kind": "fact",
+      "text": "Use metric units.",
+      "source": {
+        "run": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+        "proposedBy": "host"
+      },
+      "scope": "project",
+      "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+      "createdAt": "1970-01-01T00:00:00Z",
+      "state": "accepted"
+    },
+    {
+      "id": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+      "kind": "fact",
+      "text": "Use metric units.",
+      "source": {
+        "run": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+        "proposedBy": "host"
+      },
+      "scope": "project",
+      "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+      "createdAt": "1970-01-01T00:00:00Z",
+      "state": "accepted"
+    },
+    {
+      "id": "legacy-memory",
+      "kind": "fact",
+      "text": "Use metric units.",
+      "source": {
+        "run": "host",
+        "proposedBy": "host"
+      },
+      "scope": "project",
+      "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+      "createdAt": "2024-02-29T12:00:00Z",
+      "state": "accepted"
+    },
+    {
+      "id": "legacy-memory",
+      "kind": "fact",
+      "text": "Use metric units.",
+      "source": {
+        "run": "host",
+        "proposedBy": "host"
+      },
+      "scope": "project",
+      "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+      "createdAt": "2026-01-31t23:59:59.123456789z",
+      "state": "accepted"
+    },
+    {
+      "id": "legacy-memory",
+      "kind": "fact",
+      "text": "Use metric units.",
+      "source": {
+        "run": "host",
+        "proposedBy": "host"
+      },
+      "scope": "project",
+      "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+      "createdAt": "2026-01-01T00:00:00+23:59",
+      "state": "accepted"
+    },
+    {
+      "id": "legacy-memory",
+      "kind": "fact",
+      "text": "Use metric units.",
+      "source": {
+        "run": "host",
+        "proposedBy": "host"
+      },
+      "scope": "project",
+      "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+      "createdAt": "2000-02-29T12:00:00Z",
+      "state": "accepted"
+    }
+  ],
+  "refused": [
+    {
+      "problem": "id over 100 code points",
+      "record": {
+        "id": "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+        "kind": "fact",
+        "text": "Use metric units.",
+        "source": {
+          "run": "host",
+          "proposedBy": "host"
+        },
+        "scope": "project",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "createdAt": "1970-01-01T00:00:00Z",
+        "state": "accepted"
+      }
+    },
+    {
+      "problem": "astral id over 100 code points",
+      "record": {
+        "id": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+        "kind": "fact",
+        "text": "Use metric units.",
+        "source": {
+          "run": "host",
+          "proposedBy": "host"
+        },
+        "scope": "project",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "createdAt": "1970-01-01T00:00:00Z",
+        "state": "accepted"
+      }
+    },
+    {
+      "problem": "source.run over 100 code points",
+      "record": {
+        "id": "legacy-memory",
+        "kind": "fact",
+        "text": "Use metric units.",
+        "source": {
+          "run": "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+          "proposedBy": "host"
+        },
+        "scope": "project",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "createdAt": "1970-01-01T00:00:00Z",
+        "state": "accepted"
+      }
+    },
+    {
+      "problem": "empty id",
+      "record": {
+        "id": "",
+        "kind": "fact",
+        "text": "Use metric units.",
+        "source": {
+          "run": "host",
+          "proposedBy": "host"
+        },
+        "scope": "project",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "createdAt": "1970-01-01T00:00:00Z",
+        "state": "accepted"
+      }
+    },
+    {
+      "problem": "empty source.run",
+      "record": {
+        "id": "legacy-memory",
+        "kind": "fact",
+        "text": "Use metric units.",
+        "source": {
+          "run": "",
+          "proposedBy": "host"
+        },
+        "scope": "project",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "createdAt": "1970-01-01T00:00:00Z",
+        "state": "accepted"
+      }
+    },
+    {
+      "problem": "2026-02-30T12:00:00Z",
+      "record": {
+        "id": "legacy-memory",
+        "kind": "fact",
+        "text": "Use metric units.",
+        "source": {
+          "run": "host",
+          "proposedBy": "host"
+        },
+        "scope": "project",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "createdAt": "2026-02-30T12:00:00Z",
+        "state": "accepted"
+      }
+    },
+    {
+      "problem": "2026-02-29T12:00:00Z",
+      "record": {
+        "id": "legacy-memory",
+        "kind": "fact",
+        "text": "Use metric units.",
+        "source": {
+          "run": "host",
+          "proposedBy": "host"
+        },
+        "scope": "project",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "createdAt": "2026-02-29T12:00:00Z",
+        "state": "accepted"
+      }
+    },
+    {
+      "problem": "2026-04-31T12:00:00Z",
+      "record": {
+        "id": "legacy-memory",
+        "kind": "fact",
+        "text": "Use metric units.",
+        "source": {
+          "run": "host",
+          "proposedBy": "host"
+        },
+        "scope": "project",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "createdAt": "2026-04-31T12:00:00Z",
+        "state": "accepted"
+      }
+    },
+    {
+      "problem": "2026-01-01T24:00:00Z",
+      "record": {
+        "id": "legacy-memory",
+        "kind": "fact",
+        "text": "Use metric units.",
+        "source": {
+          "run": "host",
+          "proposedBy": "host"
+        },
+        "scope": "project",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "createdAt": "2026-01-01T24:00:00Z",
+        "state": "accepted"
+      }
+    },
+    {
+      "problem": "2026-01-01T12:00:00+24:00",
+      "record": {
+        "id": "legacy-memory",
+        "kind": "fact",
+        "text": "Use metric units.",
+        "source": {
+          "run": "host",
+          "proposedBy": "host"
+        },
+        "scope": "project",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "createdAt": "2026-01-01T12:00:00+24:00",
+        "state": "accepted"
+      }
+    },
+    {
+      "problem": "2026-01-01T12:00:00+00:60",
+      "record": {
+        "id": "legacy-memory",
+        "kind": "fact",
+        "text": "Use metric units.",
+        "source": {
+          "run": "host",
+          "proposedBy": "host"
+        },
+        "scope": "project",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "createdAt": "2026-01-01T12:00:00+00:60",
+        "state": "accepted"
+      }
+    },
+    {
+      "problem": "2026-01-01T1:00:00Z",
+      "record": {
+        "id": "legacy-memory",
+        "kind": "fact",
+        "text": "Use metric units.",
+        "source": {
+          "run": "host",
+          "proposedBy": "host"
+        },
+        "scope": "project",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "createdAt": "2026-01-01T1:00:00Z",
+        "state": "accepted"
+      }
+    },
+    {
+      "problem": "2026-01-01T12:00:00,5Z",
+      "record": {
+        "id": "legacy-memory",
+        "kind": "fact",
+        "text": "Use metric units.",
+        "source": {
+          "run": "host",
+          "proposedBy": "host"
+        },
+        "scope": "project",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "createdAt": "2026-01-01T12:00:00,5Z",
+        "state": "accepted"
+      }
+    },
+    {
+      "problem": "2026-01-01T12:00:00",
+      "record": {
+        "id": "legacy-memory",
+        "kind": "fact",
+        "text": "Use metric units.",
+        "source": {
+          "run": "host",
+          "proposedBy": "host"
+        },
+        "scope": "project",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "createdAt": "2026-01-01T12:00:00",
+        "state": "accepted"
+      }
+    },
+    {
+      "problem": "0000-01-01T00:00:00Z",
+      "record": {
+        "id": "legacy-memory",
+        "kind": "fact",
+        "text": "Use metric units.",
+        "source": {
+          "run": "host",
+          "proposedBy": "host"
+        },
+        "scope": "project",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "createdAt": "0000-01-01T00:00:00Z",
+        "state": "accepted"
+      }
+    },
+    {
+      "problem": "invalid expiry",
+      "record": {
+        "id": "legacy-memory",
+        "kind": "fact",
+        "text": "Use metric units.",
+        "source": {
+          "run": "host",
+          "proposedBy": "host"
+        },
+        "scope": "project",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "createdAt": "1970-01-01T00:00:00Z",
+        "state": "accepted",
+        "expiresAt": "2026-02-30T12:00:00Z"
+      }
+    },
+    {
+      "problem": "non-leap century",
+      "record": {
+        "id": "legacy-memory",
+        "kind": "fact",
+        "text": "Use metric units.",
+        "source": {
+          "run": "host",
+          "proposedBy": "host"
+        },
+        "scope": "project",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "createdAt": "1900-02-29T12:00:00Z",
+        "state": "accepted"
+      }
+    },
+    {
+      "problem": "trailing newline",
+      "record": {
+        "id": "legacy-memory",
+        "kind": "fact",
+        "text": "Use metric units.",
+        "source": {
+          "run": "host",
+          "proposedBy": "host"
+        },
+        "scope": "project",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "createdAt": "2026-01-01T12:00:00Z\n",
+        "state": "accepted"
+      }
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "description": "ADR-0014: recalled. Written by hand; memory proposals never imply acceptance or storage.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/memories.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "memory_recalled",
+      "ids": [
+        "metric",
+        "poison"
+      ],
+      "digests": [
+        "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "sha256:6858e28cc07cb8f1f6d5a1de41291f02fe6c78559fc5fbd96f41cf9152117a03"
+      ],
+      "bytes": 558
+    }
+  ]
+}

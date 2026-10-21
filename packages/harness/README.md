@@ -107,7 +107,7 @@ prompt, `brief`, `memoryFor` and `projectInstructions`, nothing.)
 | `endpointCapabilities({ family, model })` | What the host knows about an endpoint and model: any members of its capability record (see The capability record), its probe result. Answers `{}`, nothing known, until supplied | none (new, agent#9, agent#4: the Desk decides by its three families) | `capabilities.ts`, read once per run by `context/session.ts` |
 | `renderImageToText(image, signal)` | An image as text, for a model whose record says no vision: the host's render adapter | none (new, agent#5) | `images.ts`, from `engines/vercel/loop.ts`, `engines/codex/index.ts` and `engines/deepagents/loop.ts` |
 | `brief()` | The project brief: the text of the project file the host's profile names, or nothing; at most `briefBytes`. Asked once per run, before its first request, and placed in the third layer of every request (see The prompt) | the Desk server's addition behind the relay (`internal/desk/ai_context.go`, `aiContext`) | `prompt.ts`, `readHostParts`, read by `context/session.ts`, `SessionContext.askHost` |
-| `memoryFor(query)` | Recalled project memory for `query`, the person's message (a delegated child's objective; the host's prompt where neither is given), or nothing; at most `memoryBytes`. Asked once per run, not where `context.memory` is `false`, and placed in the fifth layer, the end of the stable prefix | the Desk server's recall behind the relay (`ai_context.go`, `memoryBackground`) | as `brief` |
+| `memoryFor(query)` | Closed memory records for `query` (bare text is an alias for v0.8.0), the person's message (a delegated child's objective; the host's prompt where neither is given), or nothing; at most `memoryBytes`. Asked once per run, not where `context.memory` is `false`, and placed in the fifth layer, the end of the stable prefix | the Desk server's recall behind the relay (`ai_context.go`, `memoryBackground`) | as `brief` |
 | `projectInstructions()` | The project's own instructions, the per-project block the person wrote, or nothing; at most `projectInstructionsBytes`. Instructions at the lowest rank, placed in the fourth layer after the package's guidance and the brief; they cannot grant a tool or change an effect | none (new, ADR-0005) | as `brief` |
 | `modelsFor({ connection, engine, family, model })` | The models a run's connection names for its subordinate work: `child`, delegated children's, and `critic`, the critic's; each absent or null for the run's own model. Asked once per run with the run's connection (`context.connection`), engine, family and model. Answers none until supplied. It replaces agent#10's `criticModel` (see The critic) | none (new, agent#10; one seam since the review of agent#35) | `host.ts`, `runModels`, read by `context/session.ts`, `SessionContext.models`, for `engines/vercel/loop.ts`, `engines/codex/index.ts`, `engines/deepagents/loop.ts` and `delegation.ts` |
 
@@ -377,7 +377,7 @@ The adapter assembles the whole prompt, and the host's relay adds nothing to it
 layered request with one assembler (`prompt.ts`, `systemText`): the system text (the agent wire's
 `instructions`) is the package's guidance, then the project brief, the project's own instructions
 and the memory, each asked of the host once per run before its first request (`brief()`,
-`projectInstructions()`, `memoryFor(query)`), each as a header, its text and an end line
+`projectInstructions()`, `memoryFor(query)`), the brief and project instructions as a header, text and end line; accepted memory records each framed as data with kind and source under the run marker
 (`budget/host-parts.json`); on an endpoint without native tool calls the tools described in text
 follow. That text is the stable prefix: the same bytes on every request of the run. Then the
 messages: the first user turn carries the request text (the host's prompt, which carries the
@@ -389,8 +389,7 @@ string carries the same parts in the same order: the request text, the index, th
 (`currentRequest.message`) leads the preview with its reference; a delegated child's objective
 (`context.objective`) leads its first message and is its memory query.
 
-A part over its bound (`briefBytes`, `projectInstructionsBytes`, `memoryBytes`), or one that is not
-text, is refused and the run fails before any request (`configuration`). The project's instructions
+A part over its bound (`briefBytes`, `projectInstructionsBytes`, `memoryBytes`), or an invalid answer, is refused and the run fails before any request (`configuration`). The project's instructions
 are instructions at the lowest rank: they follow the package's guidance, under a header that says
 to follow them where they do not contradict the rules above, and they cannot grant a tool or change
 an effect, because the offer and the gate are code; a certification leg holds that a block saying
@@ -694,3 +693,12 @@ prompt assembler; it has no actions, delegation, critic or review request.
 Events, checkpoint tasks and report figures identify the definition's id, digest
 and source. Withdrawn or changed definitions in restored batches are reported
 without dispatch. The host owns storage and re-approval.
+
+Memory proposals ([ADR-0014](../../docs/adr/0014-memory-the-write-side.md)) use the reserved
+`remember {kind, text}` tool. Only the author may propose, including Plan mode. The defaults are
+1,000 UTF-8 text bytes and four proposals per run; prior proposals count after resume. The package
+emits `memory_proposed`, records `checkpoint.memories.proposed`, and stores nothing. The host
+accepts, declines, revises, revokes and stores. `memoryFor` returns `Memory[]`; the text alias lasts
+for v0.8.0. Only accepted, unexpired records are framed. `memory_recalled` and the checkpoint's
+recalled rows record ids/digests and kinds; a revoked record returned after resume updates the
+report but never enters the prompt. Scenario 14 certifies the write side on every engine.
