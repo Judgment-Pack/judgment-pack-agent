@@ -47,8 +47,9 @@ run's word over the project's over the policy table's default, `auto`. Under `au
 run proposes a pack and the host declared cases (saved tests), or the proposal changes an existing
 pack, or the model asked through `request_review`; a reviewer assigned, a graph-purpose run, Plan mode
 and a delegated child turn it off. It runs at least at the author's reasoning tier unless the host
-lowers it, on the agent capability one invocation is held back for it, and every run records whether
-it ran and why (`critic_decided`, the checkpoint's `critic`).
+lowers it; on the agent capability one invocation is held back for it.
+Runs reaching the critic decision point emit `critic_decided`; tracked runs checkpoint that
+decision. Earlier failures or pauses may omit it; a checkpointed review request survives a resume.
 
 ## Layout
 

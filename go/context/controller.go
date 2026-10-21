@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
@@ -272,6 +273,8 @@ type ExecutionController struct {
 	ledger   *ContextLedger
 	restored bool
 	attempt  int
+	// criticMu is the switch's lock: a snapshot copies its checkpoint member under it.
+	criticMu *sync.Mutex
 
 	operationsReference *Value
 	restoredResults     []*Value
@@ -834,7 +837,13 @@ func (c *ExecutionController) Snapshot(status string) (contract.Checkpoint, erro
 	if status == "" {
 		status = c.State.Status
 	}
+	if c.criticMu != nil {
+		c.criticMu.Lock()
+	}
 	held := *c.State
+	if c.criticMu != nil {
+		c.criticMu.Unlock()
+	}
 	held.Status = status
 	if c.SourceRows != nil {
 		held.Sources = c.SourceRows()
