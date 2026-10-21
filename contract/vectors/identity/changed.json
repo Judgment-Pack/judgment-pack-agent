@@ -1,0 +1,22 @@
+{
+  "description": "ADR-0017: a changed identity withholds the source until re-approval, reported as an identity changed guardrail. Written by hand.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/toolSources.ts (SourceGate.identityChanged)"
+    ]
+  },
+  "items": [
+    {
+      "type": "guardrail",
+      "tool": "expenses__submit",
+      "action": "refused",
+      "reason": "identity changed",
+      "detail": "the identity expenses runs as is no longer the one the person approved (expense-bot, sha256:825065f93b600dea85b905f0e53d8974bfda1f1257b1a7a0dce98457143a0a9a); its tools are refused until the person approves the new identity, and this call was not run"
+    }
+  ]
+}

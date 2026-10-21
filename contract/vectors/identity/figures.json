@@ -1,0 +1,61 @@
+{
+  "description": "ADR-0017: a source's run figures count calls under the pinned identities that ran them. Written by hand.",
+  "schema": "provenance.json#/$defs/sourceFigures",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/execution/state.ts (SourceFigures)",
+      "packages/harness/toolSources.ts (SourceGate.claimCall)"
+    ]
+  },
+  "items": [
+    {
+      "source": "expenses",
+      "kind": "gateway",
+      "calls": 2,
+      "refused": 1,
+      "proposed": 0,
+      "bytes": 40,
+      "milliseconds": 3,
+      "identities": [
+        {
+          "identity": { "kind": "service", "label": "expense-bot" },
+          "calls": 2
+        }
+      ]
+    },
+    {
+      "source": "audits",
+      "kind": "custom",
+      "calls": 1,
+      "refused": 0,
+      "proposed": 0,
+      "bytes": 12,
+      "milliseconds": 1,
+      "identities": [
+        {
+          "identity": { "kind": "person", "label": "A. Reviewer" },
+          "calls": 1
+        }
+      ]
+    },
+    {
+      "source": "ledger",
+      "kind": "gateway",
+      "calls": 1,
+      "refused": 0,
+      "proposed": 0,
+      "bytes": 8,
+      "milliseconds": 1,
+      "identities": [
+        {
+          "identity": { "kind": "connection", "label": "ledger" },
+          "calls": 1
+        }
+      ]
+    }
+  ]
+}

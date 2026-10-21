@@ -403,7 +403,7 @@ func sourcesApproval(f *findings, host *sourcesHost, file sourcesFile, custom st
 		return
 	}
 	for at, want := range wantRequests {
-		wantRecord := `{"id":"tracker","kind":"mcp","tool":"create_issue","toolListDigest":"` + want.digest + `","trust":"public"}`
+		wantRecord := `{"id":"tracker","identity":{"kind":"connection","label":"tracker"},"identityDigest":"sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2","kind":"mcp","tool":"create_issue","toolListDigest":"` + want.digest + `","trust":"public"}`
 		wantArgs := `{"repository":"expense","title":"` + want.title + `"}`
 		got := requests[at]
 		if got.Name != "tracker__create_issue" || got.Tool != "create_issue" || !sameJSON([]byte(comparisonJSON(got.Source)), []byte(wantRecord)) || !sameJSON(got.Args, []byte(wantArgs)) {
@@ -476,9 +476,9 @@ func sourcesRecords(f *findings, events []contract.RunEvent, file sourcesFile, c
 			continue
 		}
 		sourced++
-		wantRecord := `{"id":"tracker","kind":"mcp","tool":"create_issue","toolListDigest":"` + file.Tracker.Pinned + `","trust":"public"}`
+		wantRecord := `{"id":"tracker","identity":{"kind":"connection","label":"tracker"},"identityDigest":"sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2","kind":"mcp","tool":"create_issue","toolListDigest":"` + file.Tracker.Pinned + `","trust":"public"}`
 		if name == custom {
-			wantRecord = `{"id":"rates","kind":"custom","tool":"lookup_rate","trust":"person","version":"3"}`
+			wantRecord = `{"id":"rates","identity":{"kind":"connection","label":"rates"},"identityDigest":"sha256:2fa2aad53539a8b97cb4bf67bb8b0986d3a9043d433c8f206ef50f0a64eab1b8","kind":"custom","tool":"lookup_rate","trust":"person","version":"3"}`
 		}
 		if source == nil || !sameJSON([]byte(comparisonJSON(source)), []byte(wantRecord)) {
 			f.fail("%s carries %s", name, comparisonJSON(source))

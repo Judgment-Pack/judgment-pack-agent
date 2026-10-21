@@ -1,0 +1,49 @@
+{
+  "description": "ADR-0017: every call and result of a source carries the pinned identity; identity in model arguments remains only an argument and does not replace the record. Written by hand.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/toolSources.ts (SourceGate.decorate)"
+    ]
+  },
+  "items": [
+    {
+      "type": "tool_call",
+      "callId": "identity-1",
+      "name": "expenses__submit",
+      "args": {
+        "amount": 12,
+        "identity": { "kind": "person", "label": "model choice ignored" }
+      },
+      "source": {
+        "kind": "gateway",
+        "id": "expenses",
+        "trust": "connected",
+        "version": "4",
+        "identity": { "kind": "service", "label": "expense-bot" },
+        "identityDigest": "sha256:825065f93b600dea85b905f0e53d8974bfda1f1257b1a7a0dce98457143a0a9a",
+        "tool": "submit"
+      }
+    },
+    {
+      "type": "tool_result",
+      "callId": "identity-1",
+      "name": "expenses__submit",
+      "isError": false,
+      "text": "submitted",
+      "source": {
+        "kind": "gateway",
+        "id": "expenses",
+        "trust": "connected",
+        "version": "4",
+        "identity": { "kind": "service", "label": "expense-bot" },
+        "identityDigest": "sha256:825065f93b600dea85b905f0e53d8974bfda1f1257b1a7a0dce98457143a0a9a",
+        "tool": "submit"
+      }
+    }
+  ]
+}

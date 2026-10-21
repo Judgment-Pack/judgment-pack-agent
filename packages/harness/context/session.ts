@@ -182,7 +182,7 @@ export class SessionContext {
     :phase==='plan'?'Plan mode admits reads only, and no act call; this call was not run and nothing was changed'
     :this.narrowed!==null?'The critic and the reformat run admit no act call; this call was not run and nothing was changed':''
   }
-  this.sources=new SourceGate(declared.entries,declared.sources,this.policy,this.marker,(name,detail,reason)=>this.refuse(name,detail,reason),()=>this.execution.state.sources!,this.capabilities?.toolSchemas,parent,book)
+  this.sources=new SourceGate(declared.entries,declared.sources,this.policy,this.marker,(name,detail,reason)=>this.refuse(name,detail,reason),()=>this.execution.state.sources!,this.capabilities?.toolSchemas,parent,book,event=>this.notices.push(event))
   this.catalogue=catalogue
   for(const held of declared.withheld)this.notices.push({type:'guardrail',tool:held.tool,action:'refused',detail:held.detail})
   this.execution.loadedSchemas=()=>this.sources?.loadedSection()??''
@@ -332,7 +332,7 @@ this.turn=session.context?.chat?.openTurn();this.objective=session.context?.obje
   * A refusal the boundary makes itself: the guardrail event, put on the stream
   * before the call's result, and the failure the model reads.
   */
- refuse(name:string,detail:string,reason?:'approval refused'|'approval pending'|'approval stale'|'skill withheld'|'skill budget'|'review refused'|'subagent refused'|'subagent withheld'|'memory refused'|'edit refused'):GateViolation{
+ refuse(name:string,detail:string,reason?:'approval refused'|'approval pending'|'approval stale'|'identity changed'|'approval downgraded'|'skill withheld'|'skill budget'|'review refused'|'subagent refused'|'subagent withheld'|'memory refused'|'edit refused'):GateViolation{
   this.notices.push({type:'guardrail',tool:name,action:'refused',detail,...(reason===undefined?{}:{reason})})
   return new GateViolation(name,detail)
  }

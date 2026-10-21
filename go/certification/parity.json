@@ -942,6 +942,26 @@
       {
         "check": "16 · checkpoint resume gives the same request bytes without asking the compactor again",
         "go": ["16 resume"]
+      },
+      {
+        "check": "19 · the offer’s framed description names the service identity",
+        "go": ["19 offer", "19 agent offer"]
+      },
+      {
+        "check": "19 · every source event carries the host identity and model arguments cannot choose another",
+        "go": ["19 events", "19 agent events"]
+      },
+      {
+        "check": "19 · the figures count the call under that identity",
+        "go": ["19 figures", "19 agent figures"]
+      },
+      {
+        "check": "19 · a changed identity is withheld until re-approval",
+        "go": ["19 changed", "19 agent changed"]
+      },
+      {
+        "check": "19 · the first service act under allow is asked, with the downgrade recorded",
+        "go": ["19 service approval", "19 agent service approval"]
       }
     ],
     "additionalSources": [

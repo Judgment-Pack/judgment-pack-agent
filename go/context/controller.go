@@ -162,6 +162,13 @@ func (e *Execution) Value() *Value {
 			if row.Skills != nil {
 				held.Set("skills", Number(float64(*row.Skills)))
 			}
+			if row.Identities != nil {
+				identities := Array()
+				for _, figures := range row.Identities {
+					identities.Append(ObjectOf("identity", ObjectOf("kind", String(figures.Identity.Kind), "label", String(figures.Identity.Label)), "calls", Number(float64(figures.Calls))))
+				}
+				held.Set("identities", identities)
+			}
 			rows.Append(held)
 		}
 		out.Set("sources", rows)

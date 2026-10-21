@@ -83,6 +83,8 @@ RELEASE_REVIEWED_DEFS = [
     ("tool-offer.json", "sourceRecord"), ("tool-offer.json", "nameMapping"), ("tool-offer.json", "sourceDeclaration"),
     ("tool-offer.json", "catalogueEntry"), ("tool-offer.json", "loadTool"), ("tool-offer.json", "loadedSchema"),
     ("provenance.json", "sourceFigures"),
+    # ADR-0017: the source identity and its per-identity call figures.
+    ("tool-offer.json", "identity"), ("provenance.json", "identityFigures"),
     # ADR-0005 and ADR-0007, and the checkpoint's root: the members the v0.4.0 release review found no vector carried (#76).
     ("provenance.json", "promptDigest"), ("checkpoint.json", "handoff"), ("run-event.json", "delegation_requested"),
     # ADR-0008: the approval pause.
@@ -831,6 +833,7 @@ class VectorTests(unittest.TestCase):
         enums += [("subagent.json", path) for path in enum_paths(schemas_["subagent.json"], [])]
         enums += [("policy.json", path) for path in enum_paths(schemas_["policy.json"], [])]
         enums += [
+            ("tool-offer.json", ["$defs", "identity", "properties", "kind"]),
             ("tool-offer.json", ["properties", "taskClass"]),
             ("run-event.json", ["properties", "type"]),
             ("failure.json", ["$defs", "code"]),

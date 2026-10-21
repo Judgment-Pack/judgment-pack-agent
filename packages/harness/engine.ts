@@ -361,7 +361,7 @@ export type AssistantEvent =
    * that fired — nothing was stopped — but it is the same kind of sentence: the
    * desk saying what it did rather than leaving it to be discovered.
    */
-  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string; reason?: 'approval refused' | 'approval pending' | 'approval stale' | 'skill withheld' | 'skill budget' | 'review refused' | 'policy refused' | 'pace warning' | 'subagent withheld' | 'memory refused' | 'edit refused' | 'subagent refused' | 'compaction refused' }
+  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string; reason?: 'approval refused' | 'approval pending' | 'approval stale' | 'identity changed' | 'approval downgraded' | 'skill withheld' | 'skill budget' | 'review refused' | 'policy refused' | 'pace warning' | 'subagent withheld' | 'memory refused' | 'edit refused' | 'subagent refused' | 'compaction refused' }
   | { type: 'thinking_unavailable'; detail: string }
   /**
    * `cases` and `incomplete` where the host declared cases (agent#10): each

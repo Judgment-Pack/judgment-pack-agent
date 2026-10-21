@@ -446,6 +446,8 @@
             "approval refused",
             "approval pending",
             "approval stale",
+            "identity changed",
+            "approval downgraded",
             "skill withheld",
             "skill budget",
             "review refused",

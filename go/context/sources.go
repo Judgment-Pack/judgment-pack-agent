@@ -47,12 +47,14 @@ import (
 // before each call. A digest other than the pinned one refuses the source until the host declares
 // the new one, which only the person's re-approval gives it.
 type ToolSource struct {
-	Kind           string
-	ID             string
-	Trust          string
-	Version        string
-	ToolListDigest string
-	CurrentDigest  func(ctx context.Context) (string, error)
+	Kind            string
+	ID              string
+	Trust           string
+	Version         string
+	ToolListDigest  string
+	Identity        *contract.ToolOfferIdentity
+	CurrentIdentity func(ctx context.Context) (contract.ToolOfferIdentity, error)
+	CurrentDigest   func(ctx context.Context) (string, error)
 }
 
 // Record is the source as the contract's sourceRecord carries it, with the tool's own name.
@@ -66,11 +68,23 @@ func (s ToolSource) Record(tool string) contract.ToolOfferSourceRecord {
 		digest := s.ToolListDigest
 		out.ToolListDigest = &digest
 	}
+	identity := contract.ToolOfferIdentity{Kind: "connection", Label: s.ID}
+	if s.Identity != nil {
+		identity = *s.Identity
+	}
+	out.Identity = &identity
+	digest := IdentityDigest(identity)
+	out.IdentityDigest = &digest
 	if tool != "" {
 		own := tool
 		out.Tool = &own
 	}
 	return out
+}
+
+// IdentityDigest is the pin of the reported identity carried beside a source record (ADR-0017).
+func IdentityDigest(identity contract.ToolOfferIdentity) string {
+	return "sha256:" + ContextDigest(CanonicalJSON(ObjectOf("kind", String(identity.Kind), "label", String(identity.Label))))
 }
 
 // ApprovalRequest is what the host's approval reader is asked about (ApprovalRequest in
@@ -307,6 +321,8 @@ func declarationProblem(tool HostTool) string {
 		return "its source names neither a version nor a tool list digest"
 	case s.Kind == "mcp" && s.ToolListDigest == "":
 		return "its source is an MCP server whose tool list is not pinned by digest"
+	case s.Identity != nil && (s.Identity.Kind != "person" && s.Identity.Kind != "service" && s.Identity.Kind != "connection" || s.Identity.Label == "" || U16Length(s.Identity.Label) > 128):
+		return "its identity is not a person, service or connection with a label of 1 to 128 characters"
 	case tool.Name == "" || U16Length(tool.Name) > 128:
 		return "its name is not 1 to 128 characters"
 	}
@@ -355,7 +371,7 @@ func DeclareSources(tools []HostTool, served []string) (*Declared, error) {
 		}
 		record := *tool.Source
 		if earlier, ok := sources[record.ID]; ok {
-			if earlier.Kind != record.Kind || earlier.Trust != record.Trust || earlier.Version != record.Version || earlier.ToolListDigest != record.ToolListDigest {
+			if earlier.Kind != record.Kind || earlier.Trust != record.Trust || earlier.Version != record.Version || earlier.ToolListDigest != record.ToolListDigest || IdentityDigest(*earlier.Record("").Identity) != IdentityDigest(*record.Record("").Identity) {
 				return nil, failure.Authored("configuration", "The source "+record.ID+" is declared twice with different records. Nothing was sent.", "context")
 			}
 		} else {
@@ -686,7 +702,7 @@ func OfferSources(tools []HostTool, entries map[string]*SourceEntry, policy Poli
 			continue
 		}
 		entry.Description = BoundedDescription(entry.Declared.Description, policy.ToolDescriptionBytes)
-		text := FramedDescription(entry.Wire, entry.Record.ID, entry.Description, marker)
+		text := FramedDescription(entry.Wire, entry.Record.ID, "runs as: "+entry.Record.Identity.Label+"\n"+entry.Description, marker)
 		framed[tool.Name] = text
 		held := sizes[entry.Record.ID]
 		if held == nil {
@@ -749,7 +765,7 @@ func OfferSources(tools []HostTool, entries map[string]*SourceEntry, policy Poli
 			continue
 		}
 		line := Prefix(strings.TrimSpace(strings.SplitN(entry.Description, "\n", 2)[0]), CatalogueLineBytes)
-		tool.Description = Catalogued + "\n" + FramedDescription(entry.Wire, entry.Record.ID, line, marker)
+		tool.Description = Catalogued + "\n" + FramedDescription(entry.Wire, entry.Record.ID, "runs as: "+entry.Record.Identity.Label+"\n"+line, marker)
 		tool.InputSchema = json.RawMessage(CatalogueSchema)
 		shown := UTF8Bytes(ObjectOf("name", String(tool.Name), "description", String(tool.Description), "inputSchema", MustParseJSON(CatalogueSchema)).Text())
 		if kept+1 > policy.CataloguedTools || keptBytes+shown > policy.CatalogueBytes {
@@ -846,10 +862,12 @@ type SourceGate struct {
 	rows    func() *[]contract.ProvenanceSourceFigures
 
 	// mu is the lock every member below is held under: the gate's own, or its parent's.
-	mu          *sync.Mutex
-	changed     map[string]bool
-	loaded      []loadedSchema
-	loadedBytes int
+	mu              *sync.Mutex
+	changed         map[string]bool
+	changedIdentity map[string]bool
+	serviceActs     map[string]bool
+	loaded          []loadedSchema
+	loadedBytes     int
 	// marks are the marks of the calls that have a call id, by it; queued those of calls with none
 	// (a run whose events carry no call id), by wire name, in the order they completed.
 	marks   map[string]mark
@@ -877,10 +895,10 @@ type mark struct {
 // of the run that delegated it, nil otherwise, and then reports into that gate's rows.
 func NewSourceGate(declared *Declared, policy *Policy, marker, schemas string, rows func() *[]contract.ProvenanceSourceFigures, parent *SourceGate) *SourceGate {
 	g := &SourceGate{Entries: declared.Entries, sources: declared.Sources, policy: policy, marker: marker, schemas: schemas, rows: rows,
-		mu: &sync.Mutex{}, changed: map[string]bool{}, marks: map[string]mark{}, queued: map[string][]mark{},
+		mu: &sync.Mutex{}, changed: map[string]bool{}, changedIdentity: map[string]bool{}, serviceActs: map[string]bool{}, marks: map[string]mark{}, queued: map[string][]mark{},
 		decisions: map[string]decision{}, queuedDecisions: map[string][]decision{}}
 	if parent != nil {
-		g.rows, g.mu, g.changed = parent.rows, parent.mu, parent.changed
+		g.rows, g.mu, g.changed, g.changedIdentity, g.serviceActs = parent.rows, parent.mu, parent.changed, parent.changedIdentity, parent.serviceActs
 	}
 	g.mu.Lock()
 	held := g.rows()
@@ -916,6 +934,46 @@ func (g *SourceGate) row(source string) *contract.ProvenanceSourceFigures {
 	}
 	*held = append(*held, contract.ProvenanceSourceFigures{Source: source})
 	return &(*held)[len(*held)-1]
+}
+
+// claimCall counts one executed call both for its source and its pinned identity. The lock is held.
+func (g *SourceGate) claimCall(row *contract.ProvenanceSourceFigures, identity contract.ToolOfferIdentity) {
+	row.Calls++
+	for at := range row.Identities {
+		if row.Identities[at].Identity == identity {
+			row.Identities[at].Calls++
+			return
+		}
+	}
+	row.Identities = append(row.Identities, contract.ProvenanceIdentityFigures{Identity: identity, Calls: 1})
+}
+
+// giveBackCall reverses claimCall after a refusal. The lock is held.
+func (g *SourceGate) giveBackCall(row *contract.ProvenanceSourceFigures, identity contract.ToolOfferIdentity) {
+	row.Calls--
+	for at := range row.Identities {
+		if row.Identities[at].Identity == identity {
+			row.Identities[at].Calls--
+			return
+		}
+	}
+}
+
+func (g *SourceGate) identityChanged(ctx context.Context, entry *SourceEntry) bool {
+	id := entry.Record.ID
+	if entry.Declared.Source.CurrentIdentity == nil {
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		return g.changedIdentity[id]
+	}
+	now, err := entry.Declared.Source.CurrentIdentity(ctx)
+	changed := err != nil || entry.Record.IdentityDigest == nil || IdentityDigest(now) != *entry.Record.IdentityDigest
+	if changed {
+		g.mu.Lock()
+		g.changed[id], g.changedIdentity[id] = true, true
+		g.mu.Unlock()
+	}
+	return changed
 }
 
 // mark keeps the mark of one call's result: by its call id, or queued by the tool's wire name where
@@ -958,7 +1016,14 @@ func AsksApproval(tool HostTool) bool {
 }
 
 // SetApprovals hands the gate the run's approval (ADR-0008).
-func (g *SourceGate) SetApprovals(book ApprovalBook) { g.book = book }
+func (g *SourceGate) SetApprovals(book ApprovalBook) {
+	g.book = book
+	if approval := book.Current(); approval != nil && approval.Source.Identity != nil && approval.Source.Identity.Kind == "service" && approval.Source.IdentityDigest != nil {
+		g.mu.Lock()
+		g.serviceActs[approval.Source.ID+"\x00"+*approval.Source.IdentityDigest] = true
+		g.mu.Unlock()
+	}
+}
 
 // NeedsApproval reports a call of name that is an act whose approval the host's policy answers
 // (ADR-0008).
@@ -996,6 +1061,10 @@ func (g *SourceGate) Decide(ctx context.Context, name string, args json.RawMessa
 		now, err := check(WithCallID(ctx, callID))
 		served = err == nil && entry.Record.ToolListDigest != nil && now == *entry.Record.ToolListDigest
 	}
+	identityChanged := false
+	if closed == "" {
+		identityChanged = g.identityChanged(WithCallID(ctx, callID), entry)
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	held := decision{}
@@ -1004,7 +1073,7 @@ func (g *SourceGate) Decide(ctx context.Context, name string, args json.RawMessa
 	switch {
 	case closed != "":
 		held = decision{answer: "closed", detail: closed}
-	case !served || g.changed[id] || int(row.Calls+row.Proposed) >= g.policy.SourceCallsPerTurn ||
+	case identityChanged || !served || g.changed[id] || int(row.Calls+row.Proposed) >= g.policy.SourceCallsPerTurn ||
 		entry.Catalogued && (!g.isLoaded(name) || ArgumentProblem(g.loadedSchema(name), orNullValue(given)) != ""):
 		held = decision{answer: "checked"}
 	case g.book != nil && g.book.Current() != nil && g.book.Current().State == "asked":
@@ -1015,6 +1084,17 @@ func (g *SourceGate) Decide(ctx context.Context, name string, args json.RawMessa
 		answer := "ask"
 		if policy := entry.Declared.Approve; policy != nil {
 			answer = askPolicy(policy, ApprovalRequest{Name: name, Tool: *entry.Record.Tool, Source: copyRecord(entry.Record), Args: append(json.RawMessage(nil), args...)})
+		}
+		serviceKey := entry.Record.ID + "\x00" + *entry.Record.IdentityDigest
+		firstServiceAct := entry.Record.Identity != nil && entry.Record.Identity.Kind == "service" && !g.serviceActs[serviceKey]
+		if firstServiceAct && answer == "allow" {
+			answer = "ask"
+			detail := name + " acts as service identity " + entry.Record.Identity.Label + "; the first act call of this source in a run is asked even though the host policy allowed it."
+			reason := "approval downgraded"
+			g.notices = append(g.notices, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: name, Action: "rewrote", Detail: detail, Reason: &reason}})
+		}
+		if firstServiceAct && answer == "ask" {
+			g.serviceActs[serviceKey] = true
 		}
 		// A run with nowhere to write the pause cannot ask: its call is refused.
 		if answer == "ask" && g.book == nil {
@@ -1142,7 +1222,11 @@ func (g *SourceGate) Approved(ctx context.Context, record contract.CheckpointApp
 	}
 	g.mu.Lock()
 	if g.changed[id] {
-		err := g.refused(entry, record.CallID, g.refuse(record.Name, g.changedDetail(entry)))
+		reason := ""
+		if g.changedIdentity[id] {
+			reason = "identity changed"
+		}
+		err := g.refused(entry, record.CallID, g.refuse(record.Name, g.changedDetail(entry), reason))
 		g.mu.Unlock()
 		return refusedWith(err)
 	}
@@ -1166,14 +1250,21 @@ func (g *SourceGate) Approved(ctx context.Context, record contract.CheckpointApp
 		g.mu.Unlock()
 		return refusedWith(err)
 	}
-	g.row(id).Calls++
+	g.claimCall(g.row(id), *entry.Record.Identity)
 	g.mu.Unlock()
+	if g.identityChanged(ctx, entry) {
+		g.mu.Lock()
+		g.giveBackCall(g.row(id), *entry.Record.Identity)
+		err := g.refused(entry, record.CallID, g.refuse(record.Name, g.changedDetail(entry), "identity changed"))
+		g.mu.Unlock()
+		return refusedWith(err)
+	}
 	if check := entry.Declared.Source.CurrentDigest; check != nil && entry.Record.Kind == "mcp" {
 		now, err := check(ctx)
 		if unchanged := err == nil && entry.Record.ToolListDigest != nil && now == *entry.Record.ToolListDigest; !unchanged {
 			g.mu.Lock()
 			g.changed[id] = true
-			g.row(id).Calls--
+			g.giveBackCall(g.row(id), *entry.Record.Identity)
 			err := g.refused(entry, record.CallID, g.refuse(record.Name, g.changedDetail(entry)))
 			g.mu.Unlock()
 			return refusedWith(err)
@@ -1254,6 +1345,10 @@ func (g *SourceGate) ResultLimit(name string) int {
 }
 
 func (g *SourceGate) changedDetail(entry *SourceEntry) string {
+	if g.changedIdentity[entry.Record.ID] {
+		return "the identity " + entry.Record.ID + " runs as is no longer the one the person approved (" + entry.Record.Identity.Label + ", " + *entry.Record.IdentityDigest +
+			"); its tools are refused until the person approves the new identity, and this call was not run"
+	}
 	digest := ""
 	if entry.Record.ToolListDigest != nil {
 		digest = *entry.Record.ToolListDigest
@@ -1324,7 +1419,11 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 	}
 	switch {
 	case g.changed[id]:
-		err := g.refused(entry, callID, g.refuse(name, g.changedDetail(entry)))
+		reason := ""
+		if g.changedIdentity[id] {
+			reason = "identity changed"
+		}
+		err := g.refused(entry, callID, g.refuse(name, g.changedDetail(entry), reason))
 		g.mu.Unlock()
 		return ToolResult{}, err
 	case entry.Catalogued && !g.isLoaded(name):
@@ -1359,15 +1458,22 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 	if proposal {
 		g.row(id).Proposed++
 	} else {
-		g.row(id).Calls++
+		g.claimCall(g.row(id), *entry.Record.Identity)
 	}
 	g.mu.Unlock()
 	giveBack := func() {
 		if proposal {
 			g.row(id).Proposed--
 		} else {
-			g.row(id).Calls--
+			g.giveBackCall(g.row(id), *entry.Record.Identity)
 		}
+	}
+	if g.identityChanged(ctx, entry) {
+		g.mu.Lock()
+		giveBack()
+		err := g.refused(entry, callID, g.refuse(name, g.changedDetail(entry), "identity changed"))
+		g.mu.Unlock()
+		return ToolResult{}, err
 	}
 	if check := entry.Declared.Source.CurrentDigest; check != nil && entry.Record.Kind == "mcp" {
 		now, err := check(ctx)
@@ -1654,13 +1760,26 @@ func ValidSourceFigures(rows *Value) bool {
 		return false
 	}
 	for _, row := range rows.Items() {
-		if !isObject(row) || !hasOnly(row, "source", "kind", "calls", "refused", "proposed", "bytes", "milliseconds", "skills") ||
+		if !isObject(row) || !hasOnly(row, "source", "kind", "calls", "refused", "proposed", "bytes", "milliseconds", "skills", "identities") ||
 			!row.Get("source").IsString() || !sourceID.MatchString(row.Get("source").Str()) ||
 			!oneOf(row.Get("kind"), "runtime", "gateway", "mcp", "custom", "exchange") {
 			return false
 		}
 		if held := row.Get("skills"); held != nil && (!isInteger(held) || held.Num() < 0) {
 			return false
+		}
+		if identities := row.Get("identities"); identities != nil {
+			if !identities.IsArray() {
+				return false
+			}
+			for _, figures := range identities.Items() {
+				identity := figures.Get("identity")
+				if !isObject(figures) || !hasOnly(figures, "identity", "calls") || !isInteger(figures.Get("calls")) || figures.Get("calls").Num() < 0 ||
+					!isObject(identity) || !hasOnly(identity, "kind", "label") || !oneOf(identity.Get("kind"), "person", "service", "connection") ||
+					!identity.Get("label").IsString() || identity.Get("label").Str() == "" || U16Length(identity.Get("label").Str()) > 128 {
+					return false
+				}
+			}
 		}
 		for _, member := range []string{"calls", "refused", "proposed", "bytes", "milliseconds"} {
 			if held := row.Get(member); !isInteger(held) || held.Num() < 0 {

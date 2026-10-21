@@ -4267,6 +4267,33 @@
    "tests": ["certification/scenarios.test.ts"],
    "status": "caught",
    "origin": "agent#99"
+  },
+  {
+   "name": "identity dropped from the source result",
+   "file": "toolSources.ts",
+   "find": "return { ...event, source: { ...entry.record, ...(mark.receipt === undefined ? {} : { receipt: mark.receipt }) }, ...(mark.proposed ? { proposed: true as const } : {}) }",
+   "replace": "return { ...event, source: { ...entry.record, identity: undefined, identityDigest: undefined, ...(mark.receipt === undefined ? {} : { receipt: mark.receipt }) }, ...(mark.proposed ? { proposed: true as const } : {}) }",
+   "tests": ["toolSources.test.ts", "certification/scenarios.test.ts"],
+   "status": "caught",
+   "origin": "agent#102"
+  },
+  {
+   "name": "identity change not withheld",
+   "file": "toolSources.ts",
+   "find": "if (changed) { this.alteredIdentities.add(entry.record.id); this.alteredSources.add(entry.record.id) }\n    return changed",
+   "replace": "if (changed) { this.alteredIdentities.add(entry.record.id); this.alteredSources.add(entry.record.id) }\n    return false",
+   "tests": ["toolSources.test.ts", "certification/scenarios.test.ts"],
+   "status": "caught",
+   "origin": "agent#102"
+  },
+  {
+   "name": "first service act approval downgrade removed",
+   "file": "toolSources.ts",
+   "find": "if (firstServiceAct && answer === 'allow') {",
+   "replace": "if (false) {",
+   "tests": ["toolSources.test.ts", "certification/scenarios.test.ts"],
+   "status": "caught",
+   "origin": "agent#102"
   }
  ]
 }
