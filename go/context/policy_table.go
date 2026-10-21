@@ -52,22 +52,29 @@ func (e *PolicyRefusal) FailureCode() string {
 }
 func (e *PolicyRefusal) Event() contract.RunEvent {
 	reason := "policy refused"
+	if strings.Contains(e.Member, ".fallback") {
+		reason = "failover refused"
+	}
 	return contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: e.Member, Action: "refused", Reason: &reason, Detail: e.Error()}}
 }
 
 type policyShape struct {
-	Ref        string                 `json:"$ref"`
-	Type       json.RawMessage        `json:"type"`
-	Properties map[string]policyShape `json:"properties"`
-	Patterns   map[string]policyShape `json:"patternProperties"`
-	Defs       map[string]policyShape `json:"$defs"`
-	Enum       []any                  `json:"enum"`
-	Const      any                    `json:"const"`
-	Minimum    *float64               `json:"minimum"`
-	Maximum    *float64               `json:"maximum"`
-	MinLength  *int                   `json:"minLength"`
-	MaxLength  *int                   `json:"maxLength"`
-	Default    json.RawMessage        `json:"default"`
+	Ref         string                 `json:"$ref"`
+	Type        json.RawMessage        `json:"type"`
+	Properties  map[string]policyShape `json:"properties"`
+	Patterns    map[string]policyShape `json:"patternProperties"`
+	Items       *policyShape           `json:"items"`
+	Defs        map[string]policyShape `json:"$defs"`
+	Enum        []any                  `json:"enum"`
+	Const       any                    `json:"const"`
+	Minimum     *float64               `json:"minimum"`
+	Maximum     *float64               `json:"maximum"`
+	MinLength   *int                   `json:"minLength"`
+	MaxLength   *int                   `json:"maxLength"`
+	MinItems    *int                   `json:"minItems"`
+	MaxItems    *int                   `json:"maxItems"`
+	UniqueItems bool                   `json:"uniqueItems"`
+	Default     json.RawMessage        `json:"default"`
 }
 
 var policySchema = func() policyShape {
@@ -134,6 +141,27 @@ func policyRead(value any, s policyShape, path, layer string, out map[string]any
 				return err
 			}
 		}
+		return nil
+	}
+	if string(s.Type) == `"array"` {
+		items, ok := value.([]any)
+		if !ok || s.MinItems != nil && len(items) < *s.MinItems || s.MaxItems != nil && len(items) > *s.MaxItems {
+			return refuse()
+		}
+		seen := map[string]bool{}
+		for at, item := range items {
+			encoded, _ := json.Marshal(item)
+			if s.UniqueItems && seen[string(encoded)] {
+				return refuse()
+			}
+			seen[string(encoded)] = true
+			if s.Items != nil {
+				if err := policyRead(item, *s.Items, fmt.Sprintf("%s[%d]", path, at), layer, map[string]any{}); err != nil {
+					return err
+				}
+			}
+		}
+		out[path] = value
 		return nil
 	}
 	if s.Enum != nil && !slices.Contains(s.Enum, value) {
@@ -337,6 +365,28 @@ func ResolvePolicy(run, project, table PolicyLayer, host PolicyHost) (ResolvedPo
 			return result, refuse(name, "no connected provider satisfies the role", false)
 		}
 		members[name] = PolicyMember{selected, member.Layer}
+		fallbackName := "models." + role + ".fallback"
+		fallbackMember, ok := members[fallbackName]
+		if !ok {
+			fallbackMember = PolicyMember{[]any{}, "table"}
+			members[fallbackName] = fallbackMember
+		}
+		fallbacks, ok := fallbackMember.Value.([]any)
+		if !ok {
+			return result, refuse(fallbackName, "fallback must be an array", false)
+		}
+		for _, raw := range fallbacks {
+			id, ok := raw.(string)
+			if !ok || !slices.Contains(host.Connections, id) {
+				return result, refuse(fallbackName, "fallback connection is not available", false)
+			}
+			if family(id) != family(selected) {
+				return result, refuse(fallbackName, "cross-family fallback is refused", false)
+			}
+			if id == selected {
+				return result, refuse(fallbackName, "fallback repeats the selected connection", false)
+			}
+		}
 		if role == "author" {
 			authorConnection = selected
 		}

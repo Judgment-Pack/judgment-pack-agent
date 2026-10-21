@@ -108,6 +108,7 @@ var Registry = map[string]func() any{
 	"provenance.json#/$defs/policy":                 func() any { return new(map[string]PolicyMember) },
 	"provenance.json#/$defs/provider":               func() any { return new(ProvenanceProvider) },
 	"provenance.json#/$defs/crossProvider":          func() any { return new(ProvenanceCrossProvider) },
+	"provenance.json#/$defs/usage":                  func() any { return new(UsageRow) },
 	"provenance.json#/$defs/memoryRecall":           func() any { return new(ProvenanceMemoryRecall) },
 	"provenance.json#/$defs/memories":               func() any { return new(ProvenanceMemories) },
 	"provenance.json#/$defs/edit":                   func() any { return new(ProvenanceEdit) },
@@ -152,6 +153,8 @@ var Registry = map[string]func() any{
 	"run-event.json#/$defs/edit_refused":            func() any { return new(RunEventEditRefused) },
 	"run-event.json#/$defs/output_guarded":          func() any { return new(RunEventOutputGuarded) },
 	"run-event.json#/$defs/export_written":          func() any { return new(RunEventExportWritten) },
+	"run-event.json#/$defs/connection_switched":     func() any { return new(RunEventConnectionSwitched) },
+	"run-event.json#/$defs/usage":                   func() any { return new(RunEventUsage) },
 	"skill.json":                                    func() any { return new(Skill) },
 	"skill.json#/$defs/name":                        func() any { return new(string) },
 	"skill.json#/$defs/resource":                    func() any { return new(SkillResource) },
@@ -216,6 +219,9 @@ var Registry = map[string]func() any{
 	"tool-result.json#/$defs/textToolResultMessage": func() any { return new(ToolResultTextToolResultMessage) },
 	"tool-result.json#/$defs/turnIndex":             func() any { return new(ToolResultTurnIndex) },
 	"tool-result.json#/$defs/readCacheKey":          func() any { return new(ToolResultReadCacheKey) },
+	"usage.json":                                    func() any { return new(Usage) },
+	"usage.json#/$defs/tokens":                      func() any { return new(UsageTokens) },
+	"usage.json#/$defs/row":                         func() any { return new(UsageRow) },
 }
 
 // From approval.json. The approval state the host holds for one chat: Ask me (manual) or Auto
@@ -1112,11 +1118,14 @@ type Checkpoint struct {
 	Records          *ProvenanceRecordFigures    `json:"records,omitzero"`
 	SourceIdentities []CheckpointSourceIdentity  `json:"sourceIdentities,omitzero"`
 	Steers           *ProvenanceSteerReport      `json:"steers,omitzero"`
+	Usage            *Usage                      `json:"usage,omitzero"`
+	Failover         []CheckpointFailoverItem    `json:"failover,omitzero"`
+	ChildUsage       []CheckpointChildUsageItem  `json:"childUsage,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var checkpointMembers = []string{"schema", "version", "digest", "retainUntil", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "compaction", "memories", "draft", "outputGuard", "records", "sourceIdentities", "steers"}
+var checkpointMembers = []string{"schema", "version", "digest", "retainUntil", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "compaction", "memories", "draft", "outputGuard", "records", "sourceIdentities", "steers", "usage", "failover", "childUsage"}
 
 // UnmarshalJSON decodes a Checkpoint object and keeps the members the schema does not name.
 func (v *Checkpoint) UnmarshalJSON(data []byte) error {
@@ -1213,6 +1222,33 @@ func (v *CheckpointApprovalDecision) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a CheckpointApprovalDecision object.
 func (v CheckpointApprovalDecision) MarshalJSON() ([]byte, error) {
 	type plain CheckpointApprovalDecision
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/properties/childUsage/items.
+type CheckpointChildUsageItem struct {
+	ID    string `json:"id"`
+	Usage Usage  `json:"usage"`
+}
+
+var checkpointChildUsageItemMembers = []string{"id", "usage"}
+
+// UnmarshalJSON decodes a CheckpointChildUsageItem object and refuses a member the closed schema does not name.
+func (v *CheckpointChildUsageItem) UnmarshalJSON(data []byte) error {
+	type plain CheckpointChildUsageItem
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointChildUsageItemMembers, true)
+	if err != nil {
+		return errorf("CheckpointChildUsageItem: %w", err)
+	}
+	*v = CheckpointChildUsageItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointChildUsageItem object.
+func (v CheckpointChildUsageItem) MarshalJSON() ([]byte, error) {
+	type plain CheckpointChildUsageItem
 	return encodeObject(plain(v), nil)
 }
 
@@ -1339,6 +1375,63 @@ func (v *CheckpointDraftDocument) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a CheckpointDraftDocument object.
 func (v CheckpointDraftDocument) MarshalJSON() ([]byte, error) {
 	type plain CheckpointDraftDocument
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/properties/failover/items.
+type CheckpointFailoverItem struct {
+	Role       string                              `json:"role"`
+	Connection string                              `json:"connection"`
+	History    []CheckpointFailoverItemHistoryItem `json:"history"`
+	Consumed   int64                               `json:"consumed"`
+}
+
+var checkpointFailoverItemMembers = []string{"role", "connection", "history", "consumed"}
+
+// UnmarshalJSON decodes a CheckpointFailoverItem object and refuses a member the closed schema does not name.
+func (v *CheckpointFailoverItem) UnmarshalJSON(data []byte) error {
+	type plain CheckpointFailoverItem
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointFailoverItemMembers, true)
+	if err != nil {
+		return errorf("CheckpointFailoverItem: %w", err)
+	}
+	*v = CheckpointFailoverItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointFailoverItem object.
+func (v CheckpointFailoverItem) MarshalJSON() ([]byte, error) {
+	type plain CheckpointFailoverItem
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/properties/failover/items/properties/history/items.
+type CheckpointFailoverItemHistoryItem struct {
+	From   string `json:"from"`
+	To     string `json:"to"`
+	Reason string `json:"reason"`
+}
+
+var checkpointFailoverItemHistoryItemMembers = []string{"from", "to", "reason"}
+
+// UnmarshalJSON decodes a CheckpointFailoverItemHistoryItem object and refuses a member the closed schema does not name.
+func (v *CheckpointFailoverItemHistoryItem) UnmarshalJSON(data []byte) error {
+	type plain CheckpointFailoverItemHistoryItem
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointFailoverItemHistoryItemMembers, true)
+	if err != nil {
+		return errorf("CheckpointFailoverItemHistoryItem: %w", err)
+	}
+	*v = CheckpointFailoverItemHistoryItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointFailoverItemHistoryItem object.
+func (v CheckpointFailoverItemHistoryItem) MarshalJSON() ([]byte, error) {
+	type plain CheckpointFailoverItemHistoryItem
 	return encodeObject(plain(v), nil)
 }
 
@@ -2928,9 +3021,10 @@ type Policy struct {
 	OutputGuard    *string               `json:"outputGuard,omitzero"`
 	OutputPatterns []PolicyOutputPattern `json:"outputPatterns,omitzero"`
 	OutputAllow    []string              `json:"outputAllow,omitzero"`
+	Failover       *PolicyFailover       `json:"failover,omitzero"`
 }
 
-var policyMembers = []string{"compaction", "records", "budget", "critic", "models", "concurrency", "pace", "taskClass", "outputGuard", "outputPatterns", "outputAllow"}
+var policyMembers = []string{"compaction", "records", "budget", "critic", "models", "concurrency", "pace", "taskClass", "outputGuard", "outputPatterns", "outputAllow", "failover"}
 
 // UnmarshalJSON decodes a Policy object and refuses a member the closed schema does not name.
 func (v *Policy) UnmarshalJSON(data []byte) error {
@@ -3070,6 +3164,34 @@ func (v *PolicyCritic) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a PolicyCritic object.
 func (v PolicyCritic) MarshalJSON() ([]byte, error) {
 	type plain PolicyCritic
+	return encodeObject(plain(v), nil)
+}
+
+// From policy.json#/properties/failover. ADR-0020. Provider failures that may move one request to
+// the next same-family fallback after the ordinary retry rule. The package never switches for any
+// other class.
+type PolicyFailover struct {
+	Classes []string `json:"classes,omitzero"`
+}
+
+var policyFailoverMembers = []string{"classes"}
+
+// UnmarshalJSON decodes a PolicyFailover object and refuses a member the closed schema does not name.
+func (v *PolicyFailover) UnmarshalJSON(data []byte) error {
+	type plain PolicyFailover
+	var p plain
+	extra, err := decodeObject(data, &p, policyFailoverMembers, true)
+	if err != nil {
+		return errorf("PolicyFailover: %w", err)
+	}
+	*v = PolicyFailover(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a PolicyFailover object.
+func (v PolicyFailover) MarshalJSON() ([]byte, error) {
+	type plain PolicyFailover
 	return encodeObject(plain(v), nil)
 }
 
@@ -3277,12 +3399,13 @@ func (v PolicyRecords) MarshalJSON() ([]byte, error) {
 
 // From policy.json#/$defs/role.
 type PolicyRole struct {
-	Model     *string `json:"model,omitzero"`
-	Reasoning *string `json:"reasoning,omitzero"`
-	Provider  *string `json:"provider,omitzero"`
+	Model     *string  `json:"model,omitzero"`
+	Reasoning *string  `json:"reasoning,omitzero"`
+	Provider  *string  `json:"provider,omitzero"`
+	Fallback  []string `json:"fallback,omitzero"`
 }
 
-var policyRoleMembers = []string{"model", "reasoning", "provider"}
+var policyRoleMembers = []string{"model", "reasoning", "provider", "fallback"}
 
 // UnmarshalJSON decodes a PolicyRole object and refuses a member the closed schema does not name.
 func (v *PolicyRole) UnmarshalJSON(data []byte) error {
@@ -3334,11 +3457,13 @@ type Provenance struct {
 	Failure     *Failure                 `json:"failure,omitzero"`
 	WaitMs      *int64                   `json:"waitMs,omitzero"`
 	Records     *ProvenanceRecordFigures `json:"records,omitzero"`
+	Connection  *string                  `json:"connection,omitzero"`
+	Role        *string                  `json:"role,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var provenanceMembers = []string{"schema", "version", "digest", "retainUntil", "request", "phase", "result", "attempt", "failure", "waitMs", "records"}
+var provenanceMembers = []string{"schema", "version", "digest", "retainUntil", "request", "phase", "result", "attempt", "failure", "waitMs", "records", "connection", "role"}
 
 // UnmarshalJSON decodes a Provenance object and keeps the members the schema does not name.
 func (v *Provenance) UnmarshalJSON(data []byte) error {
@@ -4396,6 +4521,10 @@ type RunEvent struct {
 	OutputGuarded *RunEventOutputGuarded
 	// ExportWritten is set where type is "export_written".
 	ExportWritten *RunEventExportWritten
+	// ConnectionSwitched is set where type is "connection_switched".
+	ConnectionSwitched *RunEventConnectionSwitched
+	// Usage is set where type is "usage".
+	Usage *RunEventUsage
 }
 
 // UnmarshalJSON sets the one member the value decodes as.
@@ -4501,6 +4630,12 @@ func (v *RunEvent) UnmarshalJSON(data []byte) error {
 		case "export_written":
 			v.ExportWritten = new(RunEventExportWritten)
 			return json.Unmarshal(data, v.ExportWritten)
+		case "connection_switched":
+			v.ConnectionSwitched = new(RunEventConnectionSwitched)
+			return json.Unmarshal(data, v.ConnectionSwitched)
+		case "usage":
+			v.Usage = new(RunEventUsage)
+			return json.Unmarshal(data, v.Usage)
 		}
 		return errorf("RunEvent: no member has type %q", tag)
 	}
@@ -4602,6 +4737,12 @@ func (v RunEvent) MarshalJSON() ([]byte, error) {
 	}
 	if v.ExportWritten != nil {
 		set = append(set, v.ExportWritten)
+	}
+	if v.ConnectionSwitched != nil {
+		set = append(set, v.ConnectionSwitched)
+	}
+	if v.Usage != nil {
+		set = append(set, v.Usage)
 	}
 	if len(set) != 1 {
 		return nil, errorf("RunEvent: %d members are set; a union holds exactly one", len(set))
@@ -4900,6 +5041,38 @@ func (v *RunEventCompacted) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a RunEventCompacted object.
 func (v RunEventCompacted) MarshalJSON() ([]byte, error) {
 	type plain RunEventCompacted
+	return encodeObject(plain(v), nil)
+}
+
+// From run-event.json#/$defs/connection_switched. ADR-0020. A qualifying provider failure moved
+// this request once to the next same-family fallback, after the ordinary retry rule. The stable
+// prefix is rebuilt for the new connection.
+type RunEventConnectionSwitched struct {
+	Type   string `json:"type"`
+	Role   string `json:"role"`
+	From   string `json:"from"`
+	To     string `json:"to"`
+	Reason string `json:"reason"`
+}
+
+var runEventConnectionSwitchedMembers = []string{"type", "role", "from", "to", "reason"}
+
+// UnmarshalJSON decodes a RunEventConnectionSwitched object and refuses a member the closed schema does not name.
+func (v *RunEventConnectionSwitched) UnmarshalJSON(data []byte) error {
+	type plain RunEventConnectionSwitched
+	var p plain
+	extra, err := decodeObject(data, &p, runEventConnectionSwitchedMembers, true)
+	if err != nil {
+		return errorf("RunEventConnectionSwitched: %w", err)
+	}
+	*v = RunEventConnectionSwitched(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunEventConnectionSwitched object.
+func (v RunEventConnectionSwitched) MarshalJSON() ([]byte, error) {
+	type plain RunEventConnectionSwitched
 	return encodeObject(plain(v), nil)
 }
 
@@ -5928,6 +6101,34 @@ func (v *RunEventThinkingUnavailable) UnmarshalJSON(data []byte) error {
 func (v RunEventThinkingUnavailable) MarshalJSON() ([]byte, error) {
 	type plain RunEventThinkingUnavailable
 	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From run-event.json#/$defs/usage. ADR-0020. Emitted exactly once for every run, immediately
+// before end.
+type RunEventUsage struct {
+	Type  string `json:"type"`
+	Usage Usage  `json:"usage"`
+}
+
+var runEventUsageMembers = []string{"type", "usage"}
+
+// UnmarshalJSON decodes a RunEventUsage object and refuses a member the closed schema does not name.
+func (v *RunEventUsage) UnmarshalJSON(data []byte) error {
+	type plain RunEventUsage
+	var p plain
+	extra, err := decodeObject(data, &p, runEventUsageMembers, true)
+	if err != nil {
+		return errorf("RunEventUsage: %w", err)
+	}
+	*v = RunEventUsage(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunEventUsage object.
+func (v RunEventUsage) MarshalJSON() ([]byte, error) {
+	type plain RunEventUsage
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/user_question. The model called ask_user. The adapter emits this
@@ -8707,6 +8908,101 @@ func (v *ToolResultUnavailableEnvelope) UnmarshalJSON(data []byte) error {
 func (v ToolResultUnavailableEnvelope) MarshalJSON() ([]byte, error) {
 	type plain ToolResultUnavailableEnvelope
 	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From usage.json. ADR-0020. Closed counts for one run. The package emits this ledger once,
+// immediately before end, and carries it in the checkpoint. Prices and project totals belong to
+// the host. Token members are present only where the provider reported them.
+type Usage struct {
+	Rows []UsageRow `json:"rows"`
+}
+
+var usageMembers = []string{"rows"}
+
+// UnmarshalJSON decodes a Usage object and refuses a member the closed schema does not name.
+func (v *Usage) UnmarshalJSON(data []byte) error {
+	type plain Usage
+	var p plain
+	extra, err := decodeObject(data, &p, usageMembers, true)
+	if err != nil {
+		return errorf("Usage: %w", err)
+	}
+	*v = Usage(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a Usage object.
+func (v Usage) MarshalJSON() ([]byte, error) {
+	type plain Usage
+	return encodeObject(plain(v), nil)
+}
+
+// From usage.json#/$defs/row. One source on one host connection in one policy role. requests
+// counts model requests, including retry and failover attempts; invocations counts
+// provider-managed agent runs. bytes and milliseconds are observed counts, never prices or
+// estimates.
+type UsageRow struct {
+	Source       string       `json:"source"`
+	Connection   string       `json:"connection"`
+	Role         string       `json:"role"`
+	Model        *string      `json:"model,omitzero"`
+	Requests     int64        `json:"requests"`
+	Invocations  int64        `json:"invocations"`
+	Milliseconds int64        `json:"milliseconds"`
+	Bytes        int64        `json:"bytes"`
+	Tokens       *UsageTokens `json:"tokens,omitzero"`
+}
+
+var usageRowMembers = []string{"source", "connection", "role", "model", "requests", "invocations", "milliseconds", "bytes", "tokens"}
+
+// UnmarshalJSON decodes a UsageRow object and refuses a member the closed schema does not name.
+func (v *UsageRow) UnmarshalJSON(data []byte) error {
+	type plain UsageRow
+	var p plain
+	extra, err := decodeObject(data, &p, usageRowMembers, true)
+	if err != nil {
+		return errorf("UsageRow: %w", err)
+	}
+	*v = UsageRow(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a UsageRow object.
+func (v UsageRow) MarshalJSON() ([]byte, error) {
+	type plain UsageRow
+	return encodeObject(plain(v), nil)
+}
+
+// From usage.json#/$defs/tokens.
+type UsageTokens struct {
+	InputTokens      *int64 `json:"inputTokens,omitzero"`
+	OutputTokens     *int64 `json:"outputTokens,omitzero"`
+	ReasoningTokens  *int64 `json:"reasoningTokens,omitzero"`
+	CacheReadTokens  *int64 `json:"cacheReadTokens,omitzero"`
+	CacheWriteTokens *int64 `json:"cacheWriteTokens,omitzero"`
+}
+
+var usageTokensMembers = []string{"inputTokens", "outputTokens", "reasoningTokens", "cacheReadTokens", "cacheWriteTokens"}
+
+// UnmarshalJSON decodes a UsageTokens object and refuses a member the closed schema does not name.
+func (v *UsageTokens) UnmarshalJSON(data []byte) error {
+	type plain UsageTokens
+	var p plain
+	extra, err := decodeObject(data, &p, usageTokensMembers, true)
+	if err != nil {
+		return errorf("UsageTokens: %w", err)
+	}
+	*v = UsageTokens(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a UsageTokens object.
+func (v UsageTokens) MarshalJSON() ([]byte, error) {
+	type plain UsageTokens
+	return encodeObject(plain(v), nil)
 }
 
 var _ json.RawMessage

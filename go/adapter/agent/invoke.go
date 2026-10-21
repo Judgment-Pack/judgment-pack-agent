@@ -125,11 +125,19 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 	if agent.Delegated != "" && agent.Delegated != agent.Model {
 		request.Model, request.Delegated = agent.Delegated, true
 	}
+	role := "author"
+	if request.Phase == "critic" {
+		role = "critic"
+	}
+	if r.run.Connection != nil {
+		r.sc.Execution.UseConnection(r.run.Connection(role), role)
+	}
 	request, err = admit(ctx, request)
 	if err != nil {
 		return "", err
 	}
-	if body, err := json.Marshal(request); err == nil {
+	body, marshalErr := json.Marshal(request)
+	if marshalErr == nil {
 		r.sc.Execution.RecordPrompt(body)
 	}
 	// Durable before dispatch: the coordinator counts the invocation and writes the checkpoint; a run
@@ -152,9 +160,46 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 	defer watched.closeAndWait()
 	callbacks := watched.wrap(adapter.AgentCallbacks{Event: r.event(invCtx, phase, held), Tool: r.tool(invCtx, offered, recorder)})
 	var runErr error
+	switched := false
 	for attempt := 1; ; attempt++ {
 		runErr = agent.Run(invCtx, request, callbacks)
 		watched.wait()
+		classified := failure.Normalize(runErr, "agent", time.Now())
+		if runErr != nil && !watched.reached() && !switched && r.run.Failover != nil && (classified.Code == "unavailable" || classified.Code == "rate-limited" || classified.Code == "timeout") {
+			if from, to, ok := r.run.Failover(role, classified.Code); ok {
+				switched = true
+				agent = r.run.Agent
+				attempt = 0
+				r.deliver(contract.RunEvent{ConnectionSwitched: &contract.RunEventConnectionSwitched{Type: "connection_switched", Role: role, From: from, To: to, Reason: classified.Code}})
+				// The replacement is a separate provider invocation and its request body belongs to
+				// the replacement connection's ledger row before dispatch.
+				if marshalErr == nil {
+					r.sc.Execution.RecordPrompt(body)
+				}
+				if agent.Begin != nil {
+					runErr = agent.Begin(ctx, request)
+				} else {
+					runErr = r.save(ctx)
+				}
+				if runErr != nil {
+					break
+				}
+				continue
+			}
+		}
+		if runErr != nil && !watched.reached() && switched && (classified.Code == "unavailable" || classified.Code == "rate-limited" || classified.Code == "timeout") {
+			allowed := false
+			classes, _ := r.sc.ResolvedPolicy["failover.classes"].Value.([]any)
+			for _, held := range classes {
+				if held == classified.Code {
+					allowed = true
+				}
+			}
+			reason := "failover refused"
+			if allowed {
+				r.deliver(contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: "models." + role + ".fallback", Action: "refused", Detail: "The one-switch limit for this request is exhausted.", Reason: &reason}})
+			}
+		}
 		// An attempt that reached any callback was admitted: whatever its error says, it is an
 		// outcome and is never sent again.
 		if runErr == nil || watched.reached() || r.stopping() || invCtx.Err() != nil ||

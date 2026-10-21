@@ -163,7 +163,9 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
     const asked=context.execution.state.approval!
     if(requested!==asked.callId)yield {type:'approval_requested',callId:asked.callId,name:asked.name,tool:asked.tool,source:{...asked.source},args:structuredClone(asked.args)}
     paused=true;context.execution.state.status='paused'
+    context.execution.state.usage=context.execution.usage()
     yield* checkpoint('paused',true)
+    yield {type:'usage',usage:structuredClone(context.execution.state.usage)}
     ended=true;yield {type:'end'};return
    }
    // ADR-0006: a tool with a source's call and result carry its source record.
@@ -173,9 +175,10 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
    context.execution.observe(event)
    if(event.type==='budget_paused'||event.type==='error'&&(event.failure?.code==='request-limit'||event.message===new ExecutionPaused().message)){
     paused=true;context.execution.state.status='paused'
+    context.execution.state.usage=context.execution.usage()
     yield* checkpoint('paused',undefined,true);continue
    }
-   if(event.type==='tool_result'&&context.execution.pauseRequested){yield event;context.execution.state.status='paused';yield* checkpoint('paused',undefined,true);yield {type:'end'};return}
+   if(event.type==='tool_result'&&context.execution.pauseRequested){yield event;context.execution.state.status='paused';context.execution.state.usage=context.execution.usage();yield* checkpoint('paused',undefined,true);yield {type:'usage',usage:structuredClone(context.execution.state.usage)};yield {type:'end'};return}
    if(tracked&&(event.type==='tool_call'||event.type==='tool_result'||event.type==='user_question')){
     const tool=event.type==='user_question'?undefined:ready.session.hostTools.find(tool=>tool.name===event.name)
     const read=tool?.effect==='read'||tool?.delegation==='read'||tool?.delegation==='research'||event.type!=='user_question'&&['get_schema','get_authoring_instructions','list_context','read_context','list_examples','get_example'].includes(event.name)
@@ -183,10 +186,11 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
    }
    // ADR-0010: the critic's decision is written durably: the checkpoint carrying it follows the event.
    if(event.type==='critic_decided'){yield event;if(tracked)yield* checkpoint(context.execution.state.status,true);continue}
+   if(event.type==='end'&&!paused)context.execution.state.usage=context.execution.usage()
    if(event.type==='end'&&tracked&&!paused){context.execution.state.status=session.signal.aborted||failed?'stopped':'complete';yield* checkpoint(context.execution.state.status,true)}
    if(session.context?.artifactProposals===false&&event.type==='proposal'){yield {type:'guardrail',tool:'proposal',action:'refused',detail:'Artifact proposals are unavailable in this conversation. Use its host tools or start a new artifact conversation.'};continue}
    if(session.context?.phase==='plan'&&event.type==='proposal'){yield {type:'guardrail',tool:'proposal',action:'refused',detail:'Artifact proposals are unavailable in Plan mode. Use propose_plan and wait for Start work.'};continue}
-   if(event.type==='end')ended=true;yield event
+   if(event.type==='end'){yield {type:'usage',usage:structuredClone(context.execution.state.usage!)};ended=true}yield event
   }
  } catch(error){
   if(ended)throw error
@@ -203,6 +207,9 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
   }
   if(error instanceof RecordsExpired)yield error.event()
   if(!session.signal.aborted)yield failureEvent(error,'context')
+  const usage=context?.execution.state?context.execution.usage():{rows:[]}
+  if(context?.execution.state)context.execution.state.usage=usage
+  yield {type:'usage',usage}
   yield {type:'end'}
  } finally {releaseNotices?.();context?.close()}
 }

@@ -233,11 +233,13 @@ func sortedCopy(list []string) []string {
 	return out
 }
 
-// withoutCheckpoints is a run's events less its execution checkpoints.
+// withoutCheckpoints is a run's behavioural events less its execution checkpoints and the
+// terminal accounting record. Scenario 20 certifies that record itself; older scenario vectors
+// remain comparisons of the behaviour they name.
 func withoutCheckpoints(events []contract.RunEvent) []contract.RunEvent {
 	var out []contract.RunEvent
 	for _, event := range events {
-		if event.ExecutionCheckpoint == nil {
+		if event.ExecutionCheckpoint == nil && event.Usage == nil {
 			out = append(out, event)
 		}
 	}

@@ -93,9 +93,18 @@ rehearsal rule stay the host's (ADR-0001). Nothing below moves them.
 
 Generated reference: [`docs/reference/events.md`](../reference/events.md) lists these from the schemas and the package's constants.
 
-`run-event.json`. Twenty-two kinds, discriminated by `type`, from the adapter to the host, in order: the
-Desk's eighteen, the harness's `approval_requested` (ADR-0008), `skill_loaded` and
-`skill_unloaded` (ADR-0009), and `critic_decided` (ADR-0010):
+ADR-0020 adds `connection_switched` and the terminal `usage` record. A qualifying
+`unavailable`, `rate-limited` (after the refusal retry rule), or `timeout` may
+move a request once to the next `models.<role>.fallback` connection of the same
+family. The full request is rebuilt for that connection and the event precedes
+its dispatch. Refusals, content filters and invalid requests never switch. An
+agent-capability switch during delegation is refused because its account is
+exclusive. `usage.json` is emitted once immediately before `end`, carried in the
+checkpoint, and groups observed counts by source, connection and role; token
+members are absent when the wire reports none. The host owns prices and project
+totals.
+
+`run-event.json` has thirty kinds, discriminated by `type`, from the adapter to the host, in order:
 
 - **Work:** `tool_call` and `tool_result` (each call before its result, paired by `callId` where
   one is set); `reasoning` (deltas, then the whole passage with `done`); `message_progress` (the
@@ -124,11 +133,13 @@ Desk's eighteen, the harness's `approval_requested` (ADR-0008), `skill_loaded` a
   served schema keyword; `refused` with tool `proposal` where Plan mode or a conversation withholds
   proposals), `execution_checkpoint` (state to save, `durable` where it must be saved before the
   next operation), `delegated_task` (a child's state, whole, at each transition; on `vercel`
-  between the delegate call and its result).
+  between the delegate call and its result), `policy_resolved`, `skill_loaded`, `skill_unloaded`,
+  `memory_proposed`, `memory_recalled`, `edit_applied`, `edit_refused`, and `compacted`.
 - **Provider recovery:** `retry` (attempt one or two: on `codex` relayed from the subscription
   agent, on `vercel` before a refused model request is sent again), `response_recovery` (on
   `vercel` one tool-free request to finish a response cut short; on both engines the one tool-free
   request, or on `codex` agent run, that asks for a proposal that could not be read),
+  `connection_switched` (one qualifying failure moved the request to its next same-family fallback),
   `thinking_unavailable` (the tier could not be expressed here, said once).
 - **Outcome:** `critic_decided` (ADR-0010: whether the critic runs and why, its mode, reason, tier
   and `auto` trigger, once per run, before anything the critic does or before the last message of a
@@ -137,7 +148,8 @@ Desk's eighteen, the harness's `approval_requested` (ADR-0008), `skill_loaded` a
   critic](#the-critic)), `proposal` (one document out of exactly one fenced JSON envelope or the
   model's `propose_pack` call, with its unknowns, the critique's verdict where the critic reached a
   check or compared a case, and a `note` where the critic started and did not finish), `error` (the
-  catalogue's sentence and the classified failure), `end` (exactly once, last).
+  catalogue's sentence and the classified failure), `usage` (exactly once, immediately before the
+  end), `end` (exactly once, last).
 
 A consumer that leaves gets no `end`; nothing is delivered after the run closes. A cancelled run
 emits no `error`. A failed tool is a `tool_result` with `isError`, not an `error`. The proposal is

@@ -40,7 +40,9 @@
         "edit_refused",
         "output_guarded",
         "export_written",
-        "steered"
+        "steered",
+        "connection_switched",
+        "usage"
       ]
     }
   },
@@ -137,6 +139,12 @@
     },
     {
       "$ref": "#/$defs/export_written"
+    },
+    {
+      "$ref": "#/$defs/connection_switched"
+    },
+    {
+      "$ref": "#/$defs/usage"
     }
   ],
   "$defs": {
@@ -504,7 +512,8 @@
             "records expired",
             "identity changed",
             "approval downgraded",
-            "steer refused"
+            "steer refused",
+            "failover refused"
           ]
         }
       },
@@ -1096,6 +1105,29 @@
         }
       },
       "additionalProperties": false
+    },
+    "connection_switched": {
+      "description": "ADR-0020. A qualifying provider failure moved this request once to the next same-family fallback, after the ordinary retry rule. The stable prefix is rebuilt for the new connection.",
+      "type": "object",
+      "required": ["type", "role", "from", "to", "reason"],
+      "properties": {
+        "type": {"const": "connection_switched"},
+        "role": {"type": "string", "minLength": 1, "maxLength": 128},
+        "from": {"type": "string", "minLength": 1, "maxLength": 128},
+        "to": {"type": "string", "minLength": 1, "maxLength": 128},
+        "reason": {"enum": ["unavailable", "rate-limited", "timeout"]}
+      },
+      "additionalProperties": false
+    },
+    "usage": {
+      "description": "ADR-0020. Emitted exactly once for every run, immediately before end.",
+      "type": "object",
+      "properties": {
+        "type": {"const": "usage"},
+        "usage": {"$ref": "usage.json"}
+      },
+      "additionalProperties": false,
+      "required": ["type", "usage"]
     }
   }
 }

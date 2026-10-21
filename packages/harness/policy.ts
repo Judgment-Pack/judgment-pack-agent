@@ -9,7 +9,8 @@ export interface ProviderRecord { connection: string; family: ProviderFamily }
 export interface CrossProvider { continued?: boolean; role: string; relation: 'same' | 'other'; author: ProviderRecord; provider: ProviderRecord }
 export type PolicyLayerName = 'run' | 'project' | 'table'
 export type TaskClass = 'routine' | 'material' | 'boundary'
-export interface PolicyRole { model?: string; reasoning?: string; provider?: string }
+export type FailoverClass = 'unavailable' | 'rate-limited' | 'timeout'
+export interface PolicyRole { model?: string; reasoning?: string; provider?: string; fallback?: string[] }
 export interface PolicyLayer {
   compaction?: 'index' | 'summary'
   outputGuard?: 'off' | 'redact' | 'refuse'
@@ -19,6 +20,7 @@ export interface PolicyLayer {
   budget?: Record<string, number>
   critic?: { default?: 'off' | 'auto' | 'on'; reasoningFloor?: 'author' }
   models?: { author?: PolicyRole; critic?: PolicyRole; compactor?: PolicyRole; taskClasses?: Partial<Record<TaskClass, string>>; [role: string]: PolicyRole | Partial<Record<TaskClass, string>> | undefined }
+  failover?: { classes?: FailoverClass[] }
   concurrency?: { children?: number; requests?: number }
   pace?: { requestsPerDay?: number | null; invocationsPerDay?: number | null; bytesPerDay?: number | null; warnAt?: number }
   taskClass?: TaskClass
@@ -39,9 +41,9 @@ export class PolicyRefusal extends AIFailureError {
   constructor(readonly member: string, readonly layer: PolicyLayerName, detail: string, pace = false) {
     super({version: 1, code: pace ? 'pace exceeded' : 'configuration', source: 'context', outcome: 'not-started', detail: `${member} (${layer}): ${detail}`})
   }
-  event() { return {type: 'guardrail' as const, tool: this.member, action: 'refused' as const, reason: 'policy refused' as const, detail: this.message} }
+  event() { return {type: 'guardrail' as const, tool: this.member, action: 'refused' as const, reason: this.member.includes('.fallback') ? 'failover refused' as const : 'policy refused' as const, detail: this.message} }
 }
-type Shape = { $ref?: string; type?: string | string[]; properties?: Record<string, Shape>; patternProperties?: Record<string, Shape>; enum?: unknown[]; const?: unknown; minimum?: number; maximum?: number; minLength?: number; maxLength?: number; default?: unknown }
+type Shape = { $ref?: string; type?: string | string[]; properties?: Record<string, Shape>; patternProperties?: Record<string, Shape>; items?: Shape; enum?: unknown[]; const?: unknown; minimum?: number; maximum?: number; minLength?: number; maxLength?: number; minItems?: number; maxItems?: number; uniqueItems?: boolean; default?: unknown }
 const object = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v)
 const deref = (s: Shape): Shape => s.$ref === '#/$defs/role' ? schema.$defs.role as Shape : s
 function read(value: unknown, shape: Shape, path: string, layer: PolicyLayerName, out: Record<string, unknown>) {
@@ -55,6 +57,12 @@ function read(value: unknown, shape: Shape, path: string, layer: PolicyLayerName
       if (!next) throw new PolicyRefusal(path ? `${path}.${key}` : key, layer, 'unknown policy member')
       read(v, next, path ? `${path}.${key}` : key, layer, out)
     }
+    return
+  }
+  if (shape.type === 'array') {
+    if (!Array.isArray(value) || value.length < (shape.minItems ?? 0) || value.length > (shape.maxItems ?? Infinity) || shape.uniqueItems && new Set(value.map(item => JSON.stringify(item))).size !== value.length) return refuse()
+    for (let at = 0; at < value.length; at++) read(value[at], shape.items ?? {}, `${path}[${at}]`, layer, {})
+    out[path] = structuredClone(value)
     return
   }
   if (shape.enum && !shape.enum.includes(value) || shape.const !== undefined && shape.const !== value) return refuse()
@@ -116,6 +124,15 @@ export function resolvePolicy(run: PolicyLayer, project: PolicyLayer, table: Pol
       ? host.connections.find(id => family(id) !== family(authorConnection)) : choice
     if (!selected || !host.connections.includes(selected)) refuse(name, 'no connected provider satisfies the role')
     members[name] = {value: selected, layer: members[name]!.layer}
+    const fallbackName = `models.${role}.fallback`
+    members[fallbackName] ??= {value: [], layer: 'table'}
+    const fallbacks = members[fallbackName]!.value
+    if (!Array.isArray(fallbacks)) refuse(fallbackName, 'fallback must be an array')
+    for (const id of fallbacks as unknown[]) {
+      if (typeof id !== 'string' || !host.connections.includes(id)) refuse(fallbackName, 'fallback connection is not available')
+      if (family(id as string) !== family(selected!)) refuse(fallbackName, 'cross-family fallback is refused')
+      if (id === selected) refuse(fallbackName, 'fallback repeats the selected connection')
+    }
     if (role === 'author') authorConnection = selected!
   }
   for (const role of roles) {

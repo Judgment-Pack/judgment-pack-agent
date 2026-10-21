@@ -110,6 +110,35 @@ func validTokens(v *Value) bool {
 	return true
 }
 
+// validUsage reads the closed ledger, including the model identity and provider-reported counts.
+func validUsage(v *Value) bool {
+	if !isObject(v) || !hasOnly(v, "rows") || !v.Get("rows").IsArray() || v.Get("rows").Len() > 256 {
+		return false
+	}
+	for _, row := range v.Get("rows").Items() {
+		if !isObject(row) || !hasOnly(row, "source", "connection", "role", "model", "requests", "invocations", "milliseconds", "bytes", "tokens") {
+			return false
+		}
+		for _, key := range []string{"source", "connection", "role"} {
+			if !isText(row.Get(key), 128) || row.Get(key).Str() == "" {
+				return false
+			}
+		}
+		if model := row.Get("model"); model != nil && (!isText(model, 200) || model.Str() == "") {
+			return false
+		}
+		for _, key := range []string{"requests", "invocations", "milliseconds", "bytes"} {
+			if !isCount(row.Get(key), 9007199254740991) {
+				return false
+			}
+		}
+		if tokens := row.Get("tokens"); tokens != nil && (!validTokens(tokens) || tokens.Len() == 0) {
+			return false
+		}
+	}
+	return true
+}
+
 // ValidDelegationFigures is validDelegationFigures: the checkpoint's delegation figures, read
 // closed (agent#18). unit is the checkpoint's: where it is model-requests each figure carries
 // modelRequests; where it is provider-managed the member is optional, absent on an agent
@@ -400,6 +429,34 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 				return nil, errSavedExecution
 			}
 		}
+	}
+	if rows := value.Get("failover"); rows != nil {
+		if !rows.IsArray() || rows.Len() > 64 || !uniqueIDs(rows, "role") {
+			return nil, errSavedExecution
+		}
+		for _, row := range rows.Items() {
+			if !isObject(row) || !hasOnly(row, "role", "connection", "history", "consumed") || !isText(row.Get("role"), 128) || row.Get("role").Str() == "" || !isText(row.Get("connection"), 128) || row.Get("connection").Str() == "" || !isCount(row.Get("consumed"), 256) || !row.Get("history").IsArray() || row.Get("consumed").Num() != float64(row.Get("history").Len()) {
+				return nil, errSavedExecution
+			}
+			for _, h := range row.Get("history").Items() {
+				if !isObject(h) || !hasOnly(h, "from", "to", "reason") || !isText(h.Get("from"), 128) || h.Get("from").Str() == "" || !isText(h.Get("to"), 128) || h.Get("to").Str() == "" || !oneOf(h.Get("reason"), "unavailable", "rate-limited", "timeout") {
+					return nil, errSavedExecution
+				}
+			}
+		}
+	}
+	if rows := value.Get("childUsage"); rows != nil {
+		if !rows.IsArray() || rows.Len() > 256 || !uniqueIDs(rows, "id") {
+			return nil, errSavedExecution
+		}
+		for _, row := range rows.Items() {
+			if !isObject(row) || !hasOnly(row, "id", "usage") || !isText(row.Get("id"), 128) || row.Get("id").Str() == "" || !validUsage(row.Get("usage")) {
+				return nil, errSavedExecution
+			}
+		}
+	}
+	if usage := value.Get("usage"); usage != nil && !validUsage(usage) {
+		return nil, errSavedExecution
 	}
 	operations := value.Get("operations")
 	if !operations.IsArray() || operations.Len() > 400 || !uniqueIDs(operations, "id") {

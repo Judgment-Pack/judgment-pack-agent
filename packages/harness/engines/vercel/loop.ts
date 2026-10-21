@@ -1086,7 +1086,10 @@ export function runVercelLoop(
       onAttempt: (attempt) => context.execution.beginAttempt(attempt),
       // The last request of the allowance is the turn's tool-free final
       // answer: a retry never takes it, and the refusal is reported instead.
-      mayRetry: () => context.execution.remaining > 1
+      mayRetry: () => context.execution.remaining > 1,
+      onExhausted:reason=>context.refuseExhausted(recording!==null?'critic':'author',reason),
+      fallback:(reason)=>context.fallback(recording!==null?'critic':'author',reason),
+      onSwitch:async({from,to,reason})=>{await channel.push({type:'connection_switched',role:recording!==null?'critic':'author',from,to,reason})}
     })
     const model = modelFor(session, call, executionSignal, ledger, onTruncated, slot, capabilities.streamingQuirks)
     // See REHEARSAL_HOOK. The key is the constant, never a literal.

@@ -273,7 +273,7 @@ class ResponseAllowance {
     // The children's source calls are in the parent's rows (ADR-0006), which `last`, a copy, may not hold yet.
     const sources = this.parent?.execution.state.sources
     const outputGuard = this.parent?.execution.state.outputGuard
-    return {...last, ...(outputGuard === undefined ? {} : {outputGuard: structuredClone(outputGuard)}), status: 'running', used: this.used, testCalls: Math.max(last.testCalls ?? 0, this.testCalls), ...(sources === undefined ? {} : {sources: structuredClone(sources)})}
+    return {...last, ...(this.parent?{usage:this.parent.execution.usage(),childUsage:structuredClone(this.parent.execution.state.childUsage)}:{}), ...(outputGuard === undefined ? {} : {outputGuard: structuredClone(outputGuard)}), status: 'running', used: this.used, testCalls: Math.max(last.testCalls ?? 0, this.testCalls), ...(sources === undefined ? {} : {sources: structuredClone(sources)})}
   }
 }
 
@@ -429,6 +429,15 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
       if (task && budget && task.toolCalls>=budget.toolCalls) throw toolInputFailure(`This task has made its ${budget.toolCalls} tool calls, its profile’s budget; this call was not made. Return the findings you have to the parent.`)
       shared.toolCalls++; if (task) task.toolCalls++
     }
+    const accountChild=async(task:DelegatedTask,meter:ChildMeter)=>{
+      const child=meter.contexts.at(-1),parent=shared.context
+      if(!child||!parent)return
+      parent.execution.mergeChildUsage(child.execution.state.id,child.execution.usage(),parent.delegatedRole(task.profile))
+      if(session.context?.checkpoint){
+        checkpointTail=checkpointTail.then(()=>session.context!.checkpoint!(withFigures(parent.execution.snapshot('running')))).catch(()=>{const error=failureError('storage','storage','not-started');stopParent(error);throw error})
+        await checkpointTail
+      }
+    }
     /** One model request of a child's: within its budget and the response's, checkpointed before it leaves. */
     const chargeChild = async (task: DelegatedTask, budget: TaskBudget) => {
       if(task.modelRequests>=budget.modelRequests){refusedBy.set(task.id,'budget');throw new ExecutionPaused()}
@@ -488,7 +497,7 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
           base.signal.throwIfAborted()
           const posted=request.method!=='GET'
           if (posted) {
-            if(task)await chargeChild(task,budget!)
+            if(task){await chargeChild(task,budget!);if(meter)await accountChild(task,meter)}
             else {shared.parentRequest();parentRequests++}
           }
           base.signal.throwIfAborted()
@@ -503,6 +512,7 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
               await waitFor(again.waitMs,base.signal)
               meter.contexts.at(-1)?.execution.claim()
               await chargeChild(task,budget!)
+              await accountChild(task,meter)
               base.signal.throwIfAborted()
               answered=await send()
             }
@@ -511,17 +521,20 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
           }
           return answered
         }
-        return {...common,model:{...base.model,call}} as EngineSession
+        const bindings=base.policyConnections?Object.fromEntries(Object.entries(base.policyConnections).map(([id,binding])=>[id,'model'in binding?{model:(bind({...base,model:binding.model,policyConnections:undefined},task,budget,offer,meter) as import('./engine').AssistantSession).model}:binding])):undefined
+        return {...common,policyConnections:bindings,model:{...base.model,call}} as EngineSession
       }
       // agent#15: a child's run carries the child model the host named, as a critic run carries the critic's.
       const named=task?childModels.get(task.id):undefined
-      return {...common,agent:{...base.agent,run:async(given,callbacks)=>{
+      const bindings=base.policyConnections?Object.fromEntries(Object.entries(base.policyConnections).map(([id,binding])=>[id,'agent'in binding?{agent:(bind({...base,agent:binding.agent,policyConnections:undefined},task,budget,offer,meter) as import('./engine').AgentAssistantSession).agent}:binding])):undefined
+      return {...common,policyConnections:bindings,agent:{...base.agent,run:async(given,callbacks)=>{
         const request=named!==undefined&&named!==base.agent.model?{...given,model:named,delegated:true as const}:given
         if(task&&base.childDefinition&&(childRuns.get(task.id)??0)>=base.childDefinition.bounds.agentRuns)throw toolInputFailure('The declared sub-agent invocation bound was reached.')
         shared.agentRun(task!==undefined)
         // agent#18: each admitted run counted, a child's under its task, the parent's as its own.
         if(task)childRuns.set(task.id,(childRuns.get(task.id)??0)+1)
         else parentRuns++
+        if(task&&meter)await accountChild(task,meter)
         // agent#18: an agent's first event or tool call is its child's first byte.
         const watched=task&&meter?{...callbacks,event:async(event:Parameters<typeof callbacks.event>[0])=>{mark();return callbacks.event(event)},tool:async(call:Parameters<typeof callbacks.tool>[0],toolSignal:AbortSignal)=>{mark();return callbacks.tool(call,toolSignal)}}:callbacks
         // Subscription providers own their internal model loop. Count admitted
@@ -619,24 +632,27 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
       const role=shared.context?.resolvedPolicy[`models.${shared.context.delegatedRole(profile.id)}.reasoning`]
       const selected=shared.context?.connection(shared.context.delegatedRole(profile.id))
       const provider=shared.context?.provider(shared.context.delegatedRole(profile.id))
+      const fallback=shared.context?.resolvedPolicy[`models.${shared.context.delegatedRole(profile.id)}.fallback`]?.value as string[]|undefined
       const base = {...session,
         // ADR-0021: a child has its own empty host-input queue; it cannot drain the parent's steer.
         input:[],
-        ...(selected&&provider?{policyProject:undefined,policyConnections:undefined,policy:{...session.policy,models:{author:{model:provider.connection,provider:provider.connection,...(role?{reasoning:String(role.value)}:{})}},critic:{default:'off'}},...( 'agent'in selected?{agent:selected.agent}:{})}:{}),
+        ...(selected&&provider?{policyProject:undefined,policyConnections:shared.context?.connectionBindings()??session.policyConnections,policy:{...session.policy,models:{author:{model:provider.connection,provider:provider.connection,...(fallback?{fallback}:{}),...(role?{reasoning:String(role.value)}:{})}},critic:{default:'off'}},...( 'agent'in selected?{agent:selected.agent}:{})}:{}),
         // agent#11: the objective is the child's request text, the first text part of its first message.
         context:{configuration:session.context?.configuration,phase:session.context?.phase,authorize:session.context?.authorize,artifactProposals:session.context?.artifactProposals,memory:session.context?.memory,objective,runtime:session.context?.runtime,chat:chat.childScope(planned.visible),link,...(provider?{connection:{...session.context?.connection,connectionId:provider.connection}}:session.context?.connection?{connection:session.context.connection}:{})},
         purpose:undefined,prompt,testPrompt:'',allowConversation:true,interactive:true,adversarialReview:false,
         // ADR-0009: a child is handed no skills; it inherits none of the parent's loaded set.
         skills:planned.subagent?session.skills?.filter(s=>planned.subagent!.skills.includes(s.id)):undefined,
         subagents:undefined,childDefinition:planned.subagent,
-        ...(planned.subagent?{policy:{budget:{...Object.fromEntries(Object.entries(shared.context?.resolvedPolicy??{}).filter(([k])=>k.startsWith('budget.')).map(([k,v])=>[k.slice(7),v.value])),maxInputBytes:planned.subagent.bounds.bytes,toolResultBytes:planned.subagent.bounds.resultBytes,turnMilliseconds:planned.subagent.bounds.milliseconds},models:{author:{model:provider?.connection??model.name,...(role?{reasoning:String(role.value)}:{})}},critic:{default:'off'}}}:{}),
+        ...(planned.subagent?{policy:{budget:{...Object.fromEntries(Object.entries(shared.context?.resolvedPolicy??{}).filter(([k])=>k.startsWith('budget.')).map(([k,v])=>[k.slice(7),v.value])),maxInputBytes:planned.subagent.bounds.bytes,toolResultBytes:planned.subagent.bounds.resultBytes,turnMilliseconds:planned.subagent.bounds.milliseconds},models:{author:{model:provider?.connection??model.name,...(fallback?{fallback}:{}),...(role?{reasoning:String(role.value)}:{})}},critic:{default:'off'}}}:{}),
         // agent#15: the gate's Runtime tools the profile names, and nothing beside them.
         tools,callTool:async(name:string,args:Record<string,unknown>)=>{if(!runtime.has(name))throw toolInputFailure('This task was not offered that Runtime tool.');return session.callTool(name,args)},
         hostTools,signal:childSignal,
         ...(model.model?{model:model.model}:{})} as EngineSession
-      if(shared.context){const members=shared.context.resolvedPolicy;base.policy={...base.policy,outputGuard:members.outputGuard!.value as 'off'|'redact'|'refuse',outputPatterns:members.outputPatterns!.value as import('./outputGuard').OutputPattern[],outputAllow:members.outputAllow!.value as string[]}}
+      if(shared.context){const members=shared.context.resolvedPolicy;base.policy={...base.policy,failover:{classes:members['failover.classes']!.value as import('./policy').FailoverClass[]},outputGuard:members.outputGuard!.value as 'off'|'redact'|'refuse',outputPatterns:members.outputPatterns!.value as import('./outputGuard').OutputPattern[],outputAllow:members.outputAllow!.value as string[]}}
       for await(const event of engine.start(bind(base,task,planned.budget,runtime,meter))) {
-        if(event.type==='output_guarded'){shared.context?.output.adopt(event.pattern);await deliver(event)}
+        if(event.type==='usage'){const child=meter.contexts.at(-1);if(child)shared.context?.execution.mergeChildUsage(child.execution.state.id,event.usage,shared.context.delegatedRole(profile.id))}
+        else if(event.type==='execution_checkpoint')shared.context?.execution.mergeChildUsage(event.checkpoint.id,event.checkpoint.usage??{rows:[]},shared.context.delegatedRole(profile.id))
+        else if(event.type==='output_guarded'){shared.context?.output.adopt(event.pattern);await deliver(event)}
         else if(event.type==='guardrail'&&event.reason==='output refused')await deliver(event)
         else if(event.type==='message'){run.text+=(run.text?'\n\n':'')+event.text;run.progress=''}
         // agent#16: the child's prose so far, under its task, through the event chat's answer uses.
@@ -647,7 +663,7 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
         else if(event.type==='proposal')run.questions.push(await proposalQuestion(planned,task,event))
         else if(event.type==='guardrail'&&event.tool==='proposal')run.questions.push({kind:'proposal',text:'The child wrote a proposal, which this conversation does not take; it was not kept.'})
         else if(event.type==='user_question')run.questions.push({kind:'question',text:questionText(event.question)})
-        else if(event.type==='guardrail'&&event.reason==='subagent refused')await deliver(event)
+        else if(event.type==='guardrail'&&(event.reason==='subagent refused'||event.reason==='failover refused'))await deliver(event)
         else if(event.type==='delegation_requested')run.questions.push({kind:'delegation',text:`The child asked to delegate: ${event.request.tasks.map(t=>t.title).join('; ')}. No task was started.`.slice(0,REPORT_BOUNDS.questionText)})
       }
     }

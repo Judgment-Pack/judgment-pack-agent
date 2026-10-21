@@ -25,5 +25,7 @@ export interface AgentCallbacks {
   signal: AbortSignal
   event: (event: AgentEvent) => Promise<void>
   tool: (call: AgentToolCall, signal: AbortSignal) => Promise<AgentToolAnswer>
+  /** Harness-internal delivery seam: a failover event is written before the replacement dispatch. */
+  connectionSwitched?: (event: {type:'connection_switched';role:string;from:string;to:string;reason:'unavailable'|'rate-limited'|'timeout'}) => Promise<void>
 }
 export type AgentRun = (request: AgentRequest, callbacks: AgentCallbacks) => Promise<void>

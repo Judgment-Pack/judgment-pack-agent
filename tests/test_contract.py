@@ -30,7 +30,7 @@ HARNESS_ENGINE_ADDITIONS = ["deepagents", "eino"]
 # Event kinds the harness emits beyond the Desk's (contract/desk/inventory.json): the approval pause
 # (docs/adr/0008-the-approval-pause.md) and a skill's load and unload (docs/adr/0009-skills.md), on
 # the host's stream; and the critic's decision (docs/adr/0010-the-critics-switch.md).
-HARNESS_EVENT_ADDITIONS = ["approval_requested", "skill_loaded", "skill_unloaded", "critic_decided", "policy_resolved", "memory_proposed", "memory_recalled", "edit_applied", "edit_refused", "compacted", "output_guarded", "export_written", "steered"]
+HARNESS_EVENT_ADDITIONS = ["approval_requested", "skill_loaded", "skill_unloaded", "critic_decided", "policy_resolved", "memory_proposed", "memory_recalled", "edit_applied", "edit_refused", "compacted", "output_guarded", "export_written", "steered", "connection_switched", "usage"]
 
 EXPECTED_SCHEMAS = {
     "run-event.json",
@@ -50,6 +50,7 @@ EXPECTED_SCHEMAS = {
     "subagent.json",
     "memory.json",
     "export.json",
+    "usage.json",
 }
 
 # The $defs added or changed (beyond their descriptions) between v0.1.0 and the v0.2.0 release
@@ -787,6 +788,14 @@ class VectorTests(unittest.TestCase):
             targets += [(name, path) for path in members(root, [])]
         for member in ("schema", "version", "digest", "retainUntil", "records"):
             targets.append(("provenance.json", ["properties", member]))
+        # ADR-0020: the new closed usage record, the policy role's fallback, the report row,
+        # and both new run-event records are each carried by a hand-written failover vector.
+        targets += [("policy.json", ["$defs", "role", "properties", "fallback"])]
+        targets += [("usage.json", path) for path in members(schemas_["usage.json"], [])]
+        targets += [("provenance.json", ["properties", member]) for member in ("connection", "role")]
+        targets += [("provenance.json", ["$defs", "usage"])]
+        for definition in ("connection_switched", "usage"):
+            targets += [("run-event.json", ["$defs", definition] + path) for path in members(schemas_["run-event.json"]["$defs"][definition], [])]
         # Scope capability records and overrides to members introduced by ADR-0012.
         for prefix in ([], ["$defs", "endpointCapabilities"]):
             for member in ("family", "tiers", "fallbackTiers", "cacheBreakpoints"):
@@ -817,10 +826,26 @@ class VectorTests(unittest.TestCase):
                     unused.append(f"{name} {'/'.join(path)} {value}")
         self.assertEqual(unused, [], "enum values no vector carries")
 
+        for name, path in (
+            ("policy.json", ["properties", "failover", "properties", "classes", "items"]),
+            ("run-event.json", ["$defs", "connection_switched", "properties", "reason"]),
+        ):
+            node = schemas_[name]
+            for step in path:
+                node = node[step]
+            for value in node["enum"]:
+                changed = copy.deepcopy(schemas_)
+                held = changed[name]
+                for step in path:
+                    held = held[step]
+                held["enum"] = [other for other in held["enum"] if other != value]
+                self.assertTrue(any(problems(validator(changed, vector["schema"]), vector["items"]) for vector in vectors_.values()), f"{name} {'/'.join(path)} {value} no vector carries")
+
         # ADR-0010: every value of the switch's enums is carried by a vector: the modes, the tiers of both
         # capabilities, the thirteen reasons, the three triggers wherever they are stated, the reserved
         # name, and the guardrail's reason review refused (above).
         enums = [
+            ("checkpoint.json", ["properties", "failover", "items", "properties", "history", "items", "properties", "reason"]),
             ("tool-offer.json", ["$defs", "criticMode"]),
             ("tool-offer.json", ["$defs", "criticReasoning"]),
             ("provenance.json", ["$defs", "criticReason"]),

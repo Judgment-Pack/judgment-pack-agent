@@ -106,4 +106,30 @@ func TestPolicyTable(t *testing.T) {
 			t.Fatal("embedded schema drift")
 		}
 	})
+	t.Run("fallback refusals are schema-valid", func(t *testing.T) {
+		h := PolicyHost{Connections: []string{"connected", "other"}, Families: map[string]string{"connected": "openai", "other": "anthropic"}, Requests: 16}
+		schema := readJSON(t, "contract/schemas/run-event.json").Get("$defs").Get("guardrail")
+		for _, fallback := range []string{"", "missing", strings.Repeat("x", 129), "other"} {
+			_, err := ResolvePolicy(PolicyLayer{"models": map[string]any{"author": map[string]any{"fallback": []any{fallback}}}}, nil, table, h)
+			var refused *PolicyRefusal
+			if !errors.As(err, &refused) {
+				t.Fatalf("%q admitted: %v", fallback, err)
+			}
+			event := refused.Event()
+			raw, marshalErr := json.Marshal(event)
+			if marshalErr != nil {
+				t.Fatal(marshalErr)
+			}
+			actual, parseErr := ParseJSON(raw)
+			if parseErr != nil {
+				t.Fatal(parseErr)
+			}
+			if got := ArgumentProblem(schema, actual); got != "" {
+				t.Fatalf("%q emitted an invalid event: %s", fallback, got)
+			}
+			if event.Guardrail == nil || event.Guardrail.Reason == nil || *event.Guardrail.Reason != "failover refused" {
+				t.Fatalf("%q emitted %+v", fallback, event)
+			}
+		}
+	})
 }

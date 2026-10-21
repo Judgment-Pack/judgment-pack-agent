@@ -991,6 +991,34 @@
       {
         "check": "21 · an in-flight steer lands on the next invocation and does not change the stable instructions",
         "go": ["21 agent steer boundary"]
+      },
+      {
+        "check": "20 qualifying failure switches once, rebuilds the request and emits the usage ledger",
+        "go": ["20 switch", "20 usage", "20 agent switch", "20 agent usage"]
+      },
+      {
+        "check": "20 cross-family fallback is refused before dispatch",
+        "go": ["20 cross-family", "20 agent cross-family"]
+      },
+      {
+        "check": "20 a refusal never switches",
+        "go": ["20 refusal", "20 agent refusal"]
+      },
+      {
+        "check": "20 exhausted switch bound emits a refusal",
+        "go": ["20 switch", "20 agent switch"]
+      },
+      {
+        "check": "20 partial usage preserves wire presence on every model family",
+        "go": ["20 partial usage"]
+      },
+      {
+        "check": "20 child.analyze carries fallback and the parent retains its usage once",
+        "go": ["20 child fallback", "20 agent child refusal"]
+      },
+      {
+        "check": "20 an agent switch during delegated work is refused",
+        "go": ["20 agent delegation refusal"]
       }
     ],
     "additionalSources": [

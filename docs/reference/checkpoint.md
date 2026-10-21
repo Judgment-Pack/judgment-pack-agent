@@ -60,6 +60,18 @@ Open: a member the schema does not name is accepted.
 | `records` |  | `provenance.json $defs/recordFigures` |  |
 | `sourceIdentities` |  | array of `$defs/sourceIdentity` (max items 64) | ADR-0019: per-source identity pins, latched identity withholding and service approval history, separate from figures and the latest approval. Restored on resume; re-approval starts a new run with fresh source declarations and state. |
 | `steers` |  | `provenance.json $defs/steerReport` |  |
+| `usage` |  | `usage.json` | ADR-0020. The run's counts so far, carried through interruption and resume and finalized before end. |
+| `failover` |  | array of object (max items 64) | ADR-0020. Active connections, switch reasons and consumed chain bounds, restored before dispatch. |
+| `failover[].role` | yes | string (min length 1, max length 128) |  |
+| `failover[].connection` | yes | string (min length 1, max length 128) |  |
+| `failover[].history` | yes | array of object (max items 256) |  |
+| `failover[].history[].from` | yes | string (min length 1, max length 128) |  |
+| `failover[].history[].to` | yes | string (min length 1, max length 128) |  |
+| `failover[].history[].reason` | yes | enum `unavailable`, `rate-limited`, `timeout` |  |
+| `failover[].consumed` | yes | integer (min 0, max 256) | Consumed switches in this role’s admitted chain; equals the history length. |
+| `childUsage` |  | array of object (max items 256) | ADR-0020. Last accounted child ledgers by execution ID, used to replace contributions without double counting. |
+| `childUsage[].id` | yes | string (min length 1, max length 128) |  |
+| `childUsage[].usage` | yes | `usage.json` |  |
 
 Conditions beyond the members (allOf) are in the schema file.
 

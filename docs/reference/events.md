@@ -14,7 +14,7 @@ One event of a run, from the adapter to the host, in order, discriminated by typ
 
 See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](critic.md), [skills.md](skills.md), [budget.md](budget.md), [reasons.md](reasons.md), [checkpoint.md](checkpoint.md).
 
-## The 31 kinds
+## The 33 kinds
 
 | Kind | Defined in | Required beyond type |
 | --- | --- | --- |
@@ -49,6 +49,8 @@ See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](crit
 | `edit_refused` | `run-event.json $defs/edit_refused` | `reason` |
 | `output_guarded` | `run-event.json $defs/output_guarded` | `where`, `pattern`, `action` |
 | `export_written` | `run-event.json $defs/export_written` | `records`, `bytes`, `digest` |
+| `connection_switched` | `run-event.json $defs/connection_switched` | `role`, `from`, `to`, `reason` |
+| `usage` | `run-event.json $defs/usage` | `usage` |
 
 ## Every kind with its members
 
@@ -282,7 +284,7 @@ Open: a member the schema does not name is accepted.
 | `tool` | yes | string |  |
 | `action` | yes | enum `rewrote`, `refused`, `narrowed` |  |
 | `detail` | yes | string |  |
-| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused`, `memory refused`, `edit refused`, `compaction refused`, `output refused`, `records expired`, `identity changed`, `approval downgraded`, `steer refused` |  |
+| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused`, `memory refused`, `edit refused`, `compaction refused`, `output refused`, `records expired`, `identity changed`, `approval downgraded`, `steer refused`, `failover refused` |  |
 
 ### `thinking_unavailable`
 
@@ -453,3 +455,28 @@ Closed: a member the schema does not name is refused.
 | `records` | yes | integer (min 0) |  |
 | `bytes` | yes | integer (min 1) |  |
 | `digest` | yes | `provenance.json $defs/recordDigest` |  |
+
+### `connection_switched`
+
+ADR-0020. A qualifying provider failure moved this request once to the next same-family fallback, after the ordinary retry rule. The stable prefix is rebuilt for the new connection.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `type` | yes | const `connection_switched` |  |
+| `role` | yes | string (min length 1, max length 128) |  |
+| `from` | yes | string (min length 1, max length 128) |  |
+| `to` | yes | string (min length 1, max length 128) |  |
+| `reason` | yes | enum `unavailable`, `rate-limited`, `timeout` |  |
+
+### `usage`
+
+ADR-0020. Emitted exactly once for every run, immediately before end.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `type` | yes | const `usage` |  |
+| `usage` | yes | `usage.json` |  |

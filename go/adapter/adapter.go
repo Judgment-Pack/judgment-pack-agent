@@ -36,6 +36,10 @@ type Run struct {
 	PaceUsed          map[string]int64
 	PolicyConnections map[string]PolicyConnection
 	PolicyRequests    int
+	// Failover advances a policy role to its next admitted same-family connection.
+	Failover func(role, reason string) (from, to string, ok bool)
+	// Connection is the active admitted connection for a role, including a fallback already taken.
+	Connection func(role string) string
 
 	// Wire is the endpoint's family: openai-compatible, anthropic or gemini.
 	Wire string

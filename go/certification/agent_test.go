@@ -21,11 +21,11 @@ func withDelegation(inner adapter.Adapter) adapter.Adapter {
 	return delegate.With(inner, delegate.Options{})
 }
 
-// Scenarios 3, 7, 8, 9 and 10 on the agent capability, against the shared server's recorded
+// The server-backed scenarios on the agent capability, against the shared server's recorded
 // runtime, on the stand-in.
 func TestScenariosThreeSevenEightNineAndTenHoldOnTheAgentCapability(t *testing.T) {
 	for _, check := range certification.AgentChecks {
-		if !slices.Contains([]string{"scenario 3", "scenario 7", "scenario 8", "scenario 9", "scenario 10", "scenario 11", "scenario 12", "scenario 18"}, check.Group) {
+		if !slices.Contains([]string{"scenario 3", "scenario 7", "scenario 8", "scenario 9", "scenario 10", "scenario 11", "scenario 12", "scenario 18", "scenario 20"}, check.Group) {
 			continue
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)

@@ -557,8 +557,12 @@ func (r *LegResult) Checks() []Finding {
 
 	// The sequence the scenario vector states, ending once, with no error event, nothing
 	// narrowed and nothing degraded (the tier is off).
-	if !reflect.DeepEqual(types, r.sequence) {
-		fail("sequence", "the events were %v, not %v", types, r.sequence)
+	// ADR-0020's scenario checks the terminal usage event directly on both production adapters.
+	// This older scenario vector and its reference adapter predate that event, so compare their
+	// original stream after removing only the independently certified ledger event.
+	legacyTypes := slices.DeleteFunc(slices.Clone(types), func(kind string) bool { return kind == "usage" })
+	if !reflect.DeepEqual(legacyTypes, r.sequence) {
+		fail("sequence", "the events were %v, not %v", legacyTypes, r.sequence)
 	}
 	ends := 0
 	for i, kind := range types {

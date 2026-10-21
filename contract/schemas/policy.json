@@ -482,6 +482,29 @@
       "uniqueItems": true,
       "maxItems": 64,
       "default": []
+    },
+    "failover": {
+      "description": "ADR-0020. Provider failures that may move one request to the next same-family fallback after the ordinary retry rule. The package never switches for any other class.",
+      "type": "object",
+      "properties": {
+        "classes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "unavailable",
+              "rate-limited",
+              "timeout"
+            ]
+          },
+          "default": [
+            "unavailable",
+            "rate-limited",
+            "timeout"
+          ]
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,
@@ -514,6 +537,18 @@
           "maxLength": 128,
           "default": "same",
           "description": "same selects the author's connection; other selects a host connection of another family; otherwise a connected ID. Run > project > table."
+        },
+        "fallback": {
+          "description": "ADR-0020. Ordered host connection IDs tried after this role's selected connection. Every entry must be connected and in the selected connection's family.",
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "default": []
         }
       },
       "additionalProperties": false
