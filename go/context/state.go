@@ -325,6 +325,21 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 	if approval := value.Get("approval"); approval != nil && !ValidApproval(approval) {
 		return nil, errSavedExecution
 	}
+	if compaction := value.Get("compaction"); compaction != nil {
+		if !isObject(compaction) || !hasOnly(compaction, "mode", "summaries") || !oneOf(compaction.Get("mode"), "index", "summary") || !compaction.Get("summaries").IsArray() || compaction.Get("summaries").Len() > 100 {
+			return nil, errSavedExecution
+		}
+		for _, row := range compaction.Get("summaries").Items() {
+			if !isObject(row) || !hasOnly(row, "digest", "turns", "bytes", "summary", "digests") || !row.Get("digest").IsString() || !digest64.MatchString(row.Get("digest").Str()) || !isInteger(row.Get("turns")) || row.Get("turns").Num() < 1 || !isInteger(row.Get("bytes")) || row.Get("bytes").Num() < 1 || !row.Get("summary").IsString() || !row.Get("digests").IsArray() || row.Get("digests").Len() < 1 {
+				return nil, errSavedExecution
+			}
+			for _, digest := range row.Get("digests").Items() {
+				if !digest.IsString() || !digest64.MatchString(digest.Str()) {
+					return nil, errSavedExecution
+				}
+			}
+		}
+	}
 	if prompts := value.Get("prompts"); prompts != nil {
 		if !prompts.IsArray() || prompts.Len() > MaxPromptDigests {
 			return nil, errSavedExecution

@@ -4222,6 +4222,42 @@
    ],
    "status": "caught",
    "origin": "agent#110 review round"
+  },
+  {
+   "name": "context compaction summary unframed",
+   "file": "context/session.ts",
+   "find": "frameBlock('context compaction summary',encoded({summary:answer,digests,index:indexed===undefined?replacement:JSON.parse(indexed)}),this.marker)",
+   "replace": "encoded({summary:answer,digests,index:indexed===undefined?replacement:JSON.parse(indexed)})",
+   "tests": ["certification/scenarios.test.ts"],
+   "status": "caught",
+   "origin": "agent#99"
+  },
+  {
+   "name": "context compaction digests not carried",
+   "file": "context/session.ts",
+   "find": "encoded({summary:answer,digests,index:indexed===undefined?replacement:JSON.parse(indexed)})",
+   "replace": "encoded({summary:answer,index:indexed===undefined?replacement:JSON.parse(indexed)})",
+   "tests": ["certification/scenarios.test.ts"],
+   "status": "caught",
+   "origin": "agent#99"
+  },
+  {
+   "name": "context compaction fallback removed",
+   "file": "context/session.ts",
+   "find": "}catch(cause){this.notices.push({type:'guardrail'",
+   "replace": "}catch(cause){throw cause;this.notices.push({type:'guardrail'",
+   "tests": ["certification/scenarios.test.ts"],
+   "status": "caught",
+   "origin": "agent#99"
+  },
+  {
+   "name": "context compaction prefix moved",
+   "file": "context/session.ts",
+   "find": "return [messages[0]!,{role:'user',content:replacement},...messages.slice(choice.end)]",
+   "replace": "return [{role:'user',content:replacement},messages[0]!,...messages.slice(choice.end)]",
+   "tests": ["certification/scenarios.test.ts"],
+   "status": "caught",
+   "origin": "agent#99"
   }
  ]
 }

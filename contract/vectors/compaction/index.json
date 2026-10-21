@@ -1,0 +1,14 @@
+{
+  "description": "ADR-0016 index compaction: the default mode is the completed-step index that preceded the ADR, and its visible marker records what it replaced. Written by hand.",
+  "schema": "run-event.json",
+  "source": {"harness": {"repository": "Judgment-Pack/judgment-pack-agent", "package": "packages/harness"}, "files": ["packages/harness/context/session.ts"]},
+  "items": [
+    {
+      "type": "compacted",
+      "turns": 4,
+      "bytes": 612,
+      "digest": "1111111111111111111111111111111111111111111111111111111111111111",
+      "mode": "index"
+    }
+  ]
+}

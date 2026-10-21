@@ -58,7 +58,7 @@ func policyFindings(ctx context.Context, agent bool, play switchPlay) ([]Finding
 		budget := map[string]any{
 			"memoryProposalBytes": 1000, "memoryProposalsPerRun": 4, "editsPerTurn": 24, "editBytes": 8000, "proposalBytes": 65536,
 			"version": 1, "maxInputBytes": 180000, "contextWindowTokens": 65536, "outputTokens": 8192,
-			"toolResultBytes": 12000, "readBytes": 6000, "retainedBytes": 8388608, "recentMessages": 8,
+			"toolResultBytes": 12000, "readBytes": 6000, "retainedBytes": 8388608, "recentMessages": 8, "summaryBytes": 4000,
 			"historyBytes": 32000, "briefBytes": 8000, "memoryBytes": 4000, "turnMilliseconds": 900000,
 			"toolCallMilliseconds": 120000, "imagesPerRequest": 8, "imageBytesPerRequest": 16777216,
 			"testCallsPerTurn": 3, "testPackBytes": 65536, "testMatrixBytes": 65536, "turnIndexEntries": 20,
@@ -71,10 +71,12 @@ func policyFindings(ctx context.Context, agent bool, play switchPlay) ([]Finding
 		if agent {
 			model = parentModel
 		}
-		values := map[string]any{"critic.default": "auto", "critic.reasoningFloor": "author",
+		values := map[string]any{"compaction": "index", "critic.default": "auto", "critic.reasoningFloor": "author",
 			"models.author.provider": model, "models.critic.provider": model,
-			"models.author.model": model, "models.author.reasoning": low,
+			"models.compactor.provider": model,
+			"models.author.model":       model, "models.author.reasoning": low,
 			"models.critic.model": model, "models.critic.reasoning": low,
+			"models.compactor.model": model, "models.compactor.reasoning": "low",
 			"concurrency.children": 2, "concurrency.requests": 2,
 			"pace.requestsPerDay": nil, "pace.invocationsPerDay": nil, "pace.bytesPerDay": nil, "pace.warnAt": 0.8, "taskClass": "routine"}
 		if agent {

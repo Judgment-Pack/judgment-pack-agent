@@ -36,7 +36,8 @@ Read alias for policy.budget for the v0.8.0 release; retired in the next release
 | `toolResultBytes` | yes | integer (min 1) | `12000` | The largest tool result, as JSON text, the model is shown whole (tool-result.json). |
 | `readBytes` | yes | integer (min 128) | `6000` | The largest read_context window. |
 | `retainedBytes` | yes | integer (min 1) | `8388608` | What one execution's context ledger may retain in all. |
-| `recentMessages` | yes | integer (min 0) | `8` | Declared in the table; read by no assistant code today. |
+| `recentMessages` | yes | integer (min 0) | `8` | ADR-0016: the newest messages retained verbatim when summary compaction replaces older complete turns. |
+| `summaryBytes` | yes | integer (min 1) | `4000` | ADR-0016: the most UTF-8 bytes of model-authored summary text retained by one context compaction. |
 | `historyBytes` | yes | integer (min 0) | `32000` | Declared in the table; read by the server's research worker, not by the assistant loop. |
 | `briefBytes` | yes | integer (min 0) | `8000` | The most UTF-8 bytes of the project brief the host's brief() may answer (ADR-0005; before it, the most the server added behind the adapter). A longer answer is refused before the run's first request (configuration) and nothing is sent. |
 | `memoryBytes` | yes | integer (min 0) | `4000` | ADR-0014: most UTF-8 bytes of accepted, unexpired records recalled by memoryFor: sum of canonical JSON bytes before framing. The v0.8.0 bare-text alias uses text bytes. A larger answer fails configuration before any request. No reserve is taken; memory is counted where it sits. context.memory false disables recall. |

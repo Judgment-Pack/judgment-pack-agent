@@ -20,6 +20,7 @@ type Policy struct {
 	ReadBytes           int `json:"readBytes"`
 	RetainedBytes       int `json:"retainedBytes"`
 	RecentMessages      int `json:"recentMessages"`
+	SummaryBytes        int `json:"summaryBytes"`
 	HistoryBytes        int `json:"historyBytes"`
 	BriefBytes          int `json:"briefBytes"`
 	MemoryBytes         int `json:"memoryBytes"`
@@ -122,6 +123,7 @@ var DeskPolicy = Policy{
 	ReadBytes:           6000,
 	RetainedBytes:       8388608,
 	RecentMessages:      8,
+	SummaryBytes:        4000,
 	HistoryBytes:        32000,
 	BriefBytes:          8000,
 	MemoryBytes:         4000,

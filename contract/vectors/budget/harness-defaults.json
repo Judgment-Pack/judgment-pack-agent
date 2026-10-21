@@ -21,6 +21,7 @@
       "readBytes": 6000,
       "retainedBytes": 8388608,
       "recentMessages": 8,
+      "summaryBytes": 4000,
       "historyBytes": 32000,
       "briefBytes": 8000,
       "memoryBytes": 4000,

@@ -13,6 +13,7 @@
     "readBytes",
     "retainedBytes",
     "recentMessages",
+    "summaryBytes",
     "historyBytes",
     "briefBytes",
     "memoryBytes"
@@ -53,9 +54,14 @@
       "minimum": 1
     },
     "recentMessages": {
-      "description": "Declared in the table; read by no assistant code today.",
+      "description": "ADR-0016: the newest messages retained verbatim when summary compaction replaces older complete turns.",
       "type": "integer",
       "minimum": 0
+    },
+    "summaryBytes": {
+      "description": "ADR-0016: the most UTF-8 bytes of model-authored summary text retained by one context compaction.",
+      "type": "integer",
+      "minimum": 1
     },
     "historyBytes": {
       "description": "Declared in the table; read by the server's research worker, not by the assistant loop.",

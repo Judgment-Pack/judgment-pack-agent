@@ -1,0 +1,37 @@
+{
+  "description": "ADR-0016 checkpoint member: the framed summary and original-turn digests are carried so resume makes the same request bytes. Written by hand.",
+  "schema": "checkpoint.json",
+  "source": {"harness": {"repository": "Judgment-Pack/judgment-pack-agent", "package": "packages/harness"}, "files": ["packages/harness/execution/state.ts"]},
+  "items": [
+    {
+      "version": 1,
+      "id": "compaction-example",
+      "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+      "phase": "work",
+      "status": "running",
+      "unit": "provider-managed",
+      "used": 0,
+      "limit": 1,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [],
+      "context": {"scope": "compaction", "entries": []},
+      "compaction": {
+        "mode": "summary",
+        "summaries": [
+          {
+            "digest": "2222222222222222222222222222222222222222222222222222222222222222",
+            "turns": 2,
+            "bytes": 411,
+            "summary": "The person asked for a bounded change.",
+            "digests": [
+              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

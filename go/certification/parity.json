@@ -926,6 +926,22 @@
           "15 proposal edits",
           "15 agent proposal edits"
         ]
+      },
+      {
+        "check": "16 · index is byte-identical to the pre-ADR deterministic compaction",
+        "go": ["16 index"]
+      },
+      {
+        "check": "16 · summary uses models.compactor at low, frames data and digests, keeps tool results in the index, and leaves the prefix unchanged",
+        "go": ["16 summary", "16 gate"]
+      },
+      {
+        "check": "16 · a failed compactor records the refusal and falls back to the index without stopping",
+        "go": ["16 fallback"]
+      },
+      {
+        "check": "16 · checkpoint resume gives the same request bytes without asking the compactor again",
+        "go": ["16 resume"]
       }
     ],
     "additionalSources": [
