@@ -936,7 +936,7 @@
         "go": ["16 summary", "16 gate"]
       },
       {
-        "check": "16 · a failed compactor records the refusal and falls back to the index without stopping",
+        "check": "16 · absent, empty, and 4,001-byte compactor answers refuse and fall back to the index",
         "go": ["16 fallback"]
       },
       {

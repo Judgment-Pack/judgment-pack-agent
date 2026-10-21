@@ -317,6 +317,49 @@ func TestTheCompactionDoesNotCompactAnUnresolvedCall(t *testing.T) {
 	}
 }
 
+func TestSummaryCompactionRefusesMalformedAnswersAndUsesTheIndex(t *testing.T) {
+	answers := []struct {
+		name      string
+		compactor func(context.Context, CompactorRequest) (string, error)
+	}{
+		{name: "missing"},
+		{name: "empty", compactor: func(context.Context, CompactorRequest) (string, error) { return "", nil }},
+		{name: "4001 bytes", compactor: func(context.Context, CompactorRequest) (string, error) {
+			return strings.Repeat("x", 4001), nil
+		}},
+	}
+	for _, answer := range answers {
+		t.Run(answer.name, func(t *testing.T) {
+			session := smallWindowSession()
+			session.Policy = PolicyLayer{"compaction": "summary"}
+			session.Context.Configuration.Models["small"] = ModelBudget{ContextWindowTokens: 8192, OutputTokens: 1024}
+			session.Context.Compactor = answer.compactor
+			run, err := ContextualSession(context.Background(), session)
+			if err != nil {
+				t.Fatal(err)
+			}
+			history := []Message{TextMessage("user", "Keep this stable prefix.")}
+			for i := 0; i < 25; i++ {
+				history = append(history, TextMessage("assistant", strings.Repeat("earlier discussion ", 50)), TextMessage("user", "continue"))
+			}
+			projected, err := run.Context.Messages(history, "host", noTools())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(MessagesValue(projected).Text(), "Completed tool calls must not be repeated") {
+				t.Error("the deterministic index fallback is absent")
+			}
+			notices := run.Context.TakeNotices()
+			if len(notices) != 2 || notices[0].Guardrail == nil || notices[0].Guardrail.Reason == nil || *notices[0].Guardrail.Reason != "compaction refused" {
+				t.Fatalf("the refusal notice is absent: %+v", notices)
+			}
+			if notices[1].Compacted == nil || notices[1].Compacted.Mode != "index" {
+				t.Fatalf("the index compaction notice is absent: %+v", notices)
+			}
+		})
+	}
+}
+
 func TestAnIsolatedPhaseStartsWithNoAuthorMaterial(t *testing.T) {
 	session := smallWindowSession()
 	session.HostTools = []HostTool{{Name: "future_reference", Effect: "read",

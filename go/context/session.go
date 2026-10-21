@@ -962,12 +962,19 @@ func (c *SessionContext) MessagesContext(ctx context.Context, messages []Message
 				model, _ := c.ResolvedPolicy["models.compactor.model"].Value.(string)
 				reasoning, _ := c.ResolvedPolicy["models.compactor.reasoning"].Value.(string)
 				answer, err := c.session.Context.Compactor(ctx, CompactorRequest{Messages: prose, Digests: digests, MaxBytes: c.Policy.SummaryBytes, Connection: provider.Connection, Family: provider.Family, Model: model, Reasoning: reasoning})
-				answer = strings.TrimSpace(Prefix(answer, c.Policy.SummaryBytes))
 				if err != nil {
 					failed = err.Error()
+				} else if UTF8Bytes(answer) > c.Policy.SummaryBytes {
+					failed = "The compactor returned no bounded summary."
 				} else if answer == "" {
 					failed = "The compactor returned no summary."
 				} else {
+					answer = strings.TrimSpace(answer)
+					if answer == "" {
+						failed = "The compactor returned no summary."
+					}
+				}
+				if failed == "" {
 					index := summary
 					if at := strings.Index(index, "\n"); at >= 0 {
 						if data, ok := UnframeData(index[at+1:], c.Marker); ok {
