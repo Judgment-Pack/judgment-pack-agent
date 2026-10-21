@@ -5,6 +5,8 @@
 Schemas:
 
 - `contract/schemas/delegated-task.json`
+- `contract/schemas/subagent.json`
+- `contract/schemas/tool-offer.json`
 - `contract/schemas/checkpoint.json`
 - `contract/schemas/provenance.json`
 
@@ -18,6 +20,49 @@ Package files (`packages/harness`), with the symbols read:
 The built-in task profiles and their offers, the limits on `delegate_tasks`, the task and report records and the accounting of an agent capability.
 
 See also: [tools.md](tools.md), [budget.md](budget.md), [events.md](events.md), [reasons.md](reasons.md), [checkpoint.md](checkpoint.md).
+
+## Declared sub-agents
+
+ADR-0013: a host-declared reads-only child. The host pins pinnedDigest at approval; the package computes digest over canonical JSON of all definition members except pinnedDigest and digest. Tools are declared host wire names; skills are declared ids. Bounds only narrow the turn. Built-in profile ids cannot be declared. No nesting or child critic.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `id` | yes | string (pattern `^[A-Za-z][A-Za-z0-9-]{0,23}$`) |  |
+| `name` | yes | string (min length 1, max length 64) |  |
+| `purpose` | yes | string (min length 1, max length 1024) |  |
+| `instructions` | yes | string (min length 1, max length 4000) |  |
+| `source` | yes | any of: any / any | Where a host tool comes from (ADR-0006). Declared by the host on each host tool a source outside the host serves; the package adds tool (the tool's own name at its source) on the offer, carries the record on the tool's tool_call and tool_result events (with receipt on a result where the host's answer gave one), and counts the source in the run report (provenance.json#/$defs/sourceFigures). gateway: a gateway connection the person configured (Databricks, Azure DevOps, Drive), which may give a receipt for each call; mcp: a public MCP server the host connected, whose tool list is pinned by digest at connection time; custom: a tool the person created; exchange (ADR-0009): a skill whose bytes the host fetched from a Judgment Exchange entry, the entry's id and version the record's id and version, which a host tool may not declare. runtime is the Runtime's own row in the run report: its tools come through tools/list behind the gate, carry no declaration, and a host tool declared with kind runtime is refused. Either version or toolListDigest is present; mcp carries toolListDigest. Closed: the package refuses another member before any request (configuration). |
+| `source.kind` | yes | enum `custom`, `gateway`, `mcp`, `exchange` |  |
+| `source.id` | yes | string (pattern `^[A-Za-z][A-Za-z0-9-]{0,23}$`) | The source's name as the host names it (a connection, a server, the person's own tools): a letter, then letters, digits and hyphens, at most 24 characters. Every wire name of the source's tools begins with it. |
+| `source.version` |  | string (min length 1, max length 64) | The source's version as the host knows it: a connection's revision, a server's version, a custom tool's revision. |
+| `source.toolListDigest` |  | string (pattern `^sha256:[0-9a-f]{64}$`) |  |
+| `source.trust` | yes | enum `first-party`, `connected`, `public`, `person` | The trust class the host gives the source: first-party (the Runtime, and a source the host itself runs), connected (a connection the person configured with their own grants), public (a public server), person (a tool the person wrote). Reported, never a grant: whatever the class, the source's descriptions are untrusted text and its results data, and its tools are held to their effect class. |
+| `tools` | yes | array of string (min length 1, max length 128) (max items 64) |  |
+| `skills` | yes | array of string (pattern `^[A-Za-z][A-Za-z0-9-]{0,23}$`) (max items 32) |  |
+| `model` | yes | string (min length 1, max length 200) |  |
+| `reasoning` | yes | enum `off`, `on`, `ultra`, `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` |  |
+| `bounds` | yes | object |  |
+| `bounds.modelRequests` | yes | integer (min 1, max 10) |  |
+| `bounds.agentRuns` | yes | integer (min 1, max 5) |  |
+| `bounds.toolCalls` | yes | integer (min 1, max 12) |  |
+| `bounds.bytes` | yes | integer (min 1) |  |
+| `bounds.milliseconds` | yes | integer (min 1, max 360000) |  |
+| `bounds.resultBytes` | yes | integer (min 1) |  |
+| `pinnedDigest` | yes | string (pattern `^sha256:[0-9a-f]{64}$`) |  |
+| `digest` |  | string (pattern `^sha256:[0-9a-f]{64}$`) |  |
+
+### `tool-offer.json $defs/subagentCatalogueEntry`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `id` | yes | string (pattern `^[A-Za-z][A-Za-z0-9-]{0,23}$`) |  |
+| `purpose` | yes | string |  |
+
+Declared definitions use models.subagent.<id>, reads only, narrowing bounds and a pinned canonical digest. The catalogue is bounded by cataloguedSubagents (16) and subagentCatalogueBytes (4000). Built-ins remain fixed and are never declarations.
 
 ## Built-in profiles
 
@@ -101,10 +146,11 @@ Closed: a member the schema does not name is refused.
 | --- | --- | --- | --- |
 | `title` | yes | string (max length 80, pattern `\S`) |  |
 | `objective` | yes | string (max length 2000, pattern `\S`) | The child's request text (agent#11): the first text part of its first message. |
-| `profile` | yes | string (max length 48, pattern `\S`) | An offered profile's id; this harness offers analyze, review, research and author-test (vectors/delegation/profiles.json). A resumed task gives its own profile again. |
+| `profile` | yes | string (max length 48, pattern `\S`) | A built-in profile id, or a catalogued declared sub-agent id. The package attaches subagent, never accepting a model-supplied record or bounds. |
 | `references` |  | array of string (max length 300, pattern `\S`) (max items 20) | Entries of the parent's context the child reads by reference (agent#15): a contextId from list_context or a result reference, or the id the host gave one of its documents. Resolved in the parent's chat alone; one the parent's context does not hold fails the call before any task starts. |
 | `resume` |  | `$defs/uuid` | The id of a finished task of this chat to continue with its earlier context (agent#14). An id the chat holds no finished task for fails the call before any task starts. |
 | `summarize` |  | boolean | Where the findings run past the task's share of the answer, the child is asked once, in one request of its budget, to summarize them within it (agent#13). |
+| `subagent` |  | `subagent.json $defs/record` |  |
 
 ### `delegated-task.json $defs/profile`
 
@@ -186,6 +232,7 @@ Closed: a member the schema does not name is refused.
 | `used.modelRequests` | yes | integer (min 0) |  |
 | `used.toolCalls` | yes | integer (min 0) |  |
 | `budget` |  | `$defs/budget` |  |
+| `subagent` |  | `subagent.json $defs/record` |  |
 
 ### `delegated-task.json $defs/brief`
 
@@ -393,7 +440,7 @@ Closed: a member the schema does not name is refused.
 
 ### `provenance.json $defs/childFigures`
 
-One delegated child's figures (agent#18), as its task record carries them. modelRequests: on a model capability, its requests, a retried attempt counted; absent on an agent capability (agent#71), the provider running its own loop and reporting no request count, and agentRuns its runs. The checkpoint requires it where its unit is model-requests and leaves it optional where the unit is provider-managed (checkpoint.json, delegation). firstByteMs: from its start to the first byte of its first answer (an agent's first event), absent where none came. durationMs: from its start to its end. partial and reused as the record's.
+One delegated child's figures (agent#18), as its task record carries them. modelRequests: on a model capability, its requests, a retried attempt counted; absent on an agent capability (agent#71), the provider running its own loop and reporting no request count, and agentRuns its runs. The checkpoint requires it where its unit is model-requests and leaves it optional where the unit is provider-managed (checkpoint.json, delegation). firstByteMs: from its start to the first byte of its first answer (an agent's first event), absent where none came. durationMs: from its start to its end. partial and reused as the record's. Declared children carry subagent; group these figures by id and digest for per-definition totals. Built-ins carry profile alone.
 
 Closed: a member the schema does not name is refused.
 
@@ -412,6 +459,8 @@ Closed: a member the schema does not name is refused.
 | `durationMs` | yes | integer (min 0, max 86400000) |  |
 | `partial` |  | const `true` |  |
 | `reused` |  | const `true` |  |
+| `subagent` |  | `subagent.json $defs/record` |  |
+| `problem` |  | string (max length 1000) |  |
 
 ### `provenance.json $defs/figuresTotal`
 

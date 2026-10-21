@@ -54,10 +54,12 @@ type Policy struct {
 	SourceCallsPerTurn     int `json:"sourceCallsPerTurn"`
 	SourceCallMilliseconds int `json:"sourceCallMilliseconds"`
 	// The skills budget (SKILL_DEFAULTS, ADR-0009).
-	SkillBytes           int `json:"skillBytes"`
-	SkillsPerRun         int `json:"skillsPerRun"`
-	SkillsCatalogueBytes int `json:"skillsCatalogueBytes"`
-	CataloguedSkills     int `json:"cataloguedSkills"`
+	SkillBytes             int `json:"skillBytes"`
+	SkillsPerRun           int `json:"skillsPerRun"`
+	SkillsCatalogueBytes   int `json:"skillsCatalogueBytes"`
+	CataloguedSkills       int `json:"cataloguedSkills"`
+	CataloguedSubagents    int `json:"cataloguedSubagents"`
+	SubagentCatalogueBytes int `json:"subagentCatalogueBytes"`
 }
 
 // TimeDefaults are the time bounds the harness adds to the Desk's table (TIME_DEFAULTS): one
@@ -106,6 +108,7 @@ var SkillDefaults = struct{ SkillBytes, SkillsPerRun, SkillsCatalogueBytes, Cata
 
 // DeskPolicy is the Desk's table itself (contract/desk/policy.json, packages/harness/contract/policy.json).
 var DeskPolicy = Policy{
+	CataloguedSubagents: 16, SubagentCatalogueBytes: 4000,
 	Version:             1,
 	MaxInputBytes:       180000,
 	ContextWindowTokens: 65536,

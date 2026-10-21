@@ -58,7 +58,9 @@ type Run struct {
 	HostTools []runcontext.HostTool
 	// Skills are the skills the host declares for the run (ADR-0009), each with the digest the person
 	// approved; the boundary admits, catalogues and loads them. A delegated child's run is handed none.
-	Skills []runcontext.Skill
+	Subagents       []runcontext.Subagent
+	ChildDefinition *runcontext.Subagent
+	Skills          []runcontext.Skill
 	// Prompt is the runtime's prompt (prompts/get), TestPrompt its testing prompt for the critic, or
 	// empty.
 	Prompt     string

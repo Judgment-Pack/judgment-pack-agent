@@ -29,7 +29,7 @@ The host saying what it did. rewrote and refused are the tool gate's, emitted by
 | Member | Values |
 | --- | --- |
 | `action` | `rewrote`, `refused`, `narrowed` |
-| `reason` | `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning` |
+| `reason` | `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused` |
 
 ## Failure classes
 

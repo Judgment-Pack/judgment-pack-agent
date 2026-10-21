@@ -137,6 +137,7 @@ Open: a member the schema does not name is accepted.
 | `type` | yes | const `delegation_requested` |  |
 | `request` | yes | `delegated-task.json $defs/request` |  |
 | `callId` |  | string (min length 1, max length 256) | The agent wire's id of the delegate_tasks call (ADR-0007), where the engine has one: the Go agent engine sends it, and the coordinator keeps it in the checkpoint's handoff. The TypeScript codex engine sends none. |
+| `subagent` |  | `subagent.json $defs/record` |  |
 
 ### `delegated_task`
 
@@ -149,6 +150,7 @@ Open: a member the schema does not name is accepted.
 | `type` | yes | const `delegated_task` |  |
 | `task` | yes | `delegated-task.json` |  |
 | `provider` |  | `provenance.json $defs/provider` |  |
+| `subagent` |  | `subagent.json $defs/record` |  |
 
 ### `user_question`
 
@@ -246,7 +248,7 @@ Open: a member the schema does not name is accepted.
 | `tool` | yes | string |  |
 | `action` | yes | enum `rewrote`, `refused`, `narrowed` |  |
 | `detail` | yes | string |  |
-| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning` |  |
+| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused` |  |
 
 ### `thinking_unavailable`
 

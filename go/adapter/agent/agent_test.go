@@ -20,7 +20,7 @@ func withDelegation(inner adapter.Adapter) adapter.Adapter {
 // go/certification.
 func TestTheAgentChecksHoldOnTheStandIn(t *testing.T) {
 	for _, check := range certification.AgentChecks {
-		if check.Group == "scenario 3" || check.Group == "scenario 7" || check.Group == "scenario 8" || check.Group == "scenario 9" || check.Group == "scenario 10" || check.Group == "scenario 11" || check.Group == "scenario 12" {
+		if check.Group == "scenario 3" || check.Group == "scenario 7" || check.Group == "scenario 8" || check.Group == "scenario 9" || check.Group == "scenario 10" || check.Group == "scenario 11" || check.Group == "scenario 12" || check.Group == "scenario 13" {
 			continue
 		}
 		t.Run(check.Group, func(t *testing.T) {

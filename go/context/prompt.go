@@ -195,6 +195,9 @@ func (c *SessionContext) AskHost(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if c.session.ChildDefinition != nil {
+		parts.ProjectInstructions = c.session.ChildDefinition.Instructions
+	}
 	c.HostParts = parts
 	return nil
 }

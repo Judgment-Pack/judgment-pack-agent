@@ -170,7 +170,7 @@ export async function skillDigest(skill: Pick<SkillDeclaration, 'name' | 'descri
 }
 
 /** Why a skill's source cannot be read, or `''`. */
-function sourceProblem(source: unknown): string {
+export function sourceProblem(source: unknown): string {
   if (!object(source)) return 'its source is not an object'
   const known = ['kind', 'id', 'trust', 'version', 'toolListDigest']
   const extra = Object.keys(source).filter((member) => !known.includes(member))

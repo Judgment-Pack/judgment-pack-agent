@@ -281,7 +281,7 @@ func (c *coordinator) publish(task *contract.DelegatedTask) {
 	snapshot := *task
 	snapshot.Steps = append([]contract.DelegatedTaskStepsItem{}, task.Steps...)
 	c.taskMu.Unlock()
-	c.deliver(contract.RunEvent{DelegatedTask: &contract.RunEventDelegatedTask{Type: "delegated_task", Task: snapshot, Provider: c.taskProvider(task.Profile)}})
+	c.deliver(contract.RunEvent{DelegatedTask: &contract.RunEventDelegatedTask{Type: "delegated_task", Task: snapshot, Subagent: task.Subagent, Provider: c.taskProvider(task.Profile)}})
 }
 
 // claimTool counts one tool call against the response and, for a child, its task.
@@ -360,6 +360,27 @@ func (c *coordinator) drive(ctx context.Context) error {
 		return nil
 	}
 
+	if c.hasRestoredDefinitions() && run.Context.Execution.Delegation != nil {
+		c.figures = append(c.figures, run.Context.Execution.Delegation.Batches...)
+		for i := range c.figures {
+			for j := range c.figures[i].Children {
+				child := &c.figures[i].Children[j]
+				if child.Subagent != nil && (child.State == "queued" || child.State == "running") {
+					child.State = "interrupted"
+					found := false
+					for _, s := range run.Subagents {
+						if s.ID == child.Subagent.ID && s.PinnedDigest == child.Subagent.Digest && runcontext.SubagentDigest(s) == s.PinnedDigest {
+							found = true
+						}
+					}
+					if !found {
+						child.Problem = strPtr("The declared sub-agent was withdrawn or changed; it was not dispatched again.")
+						c.deliver(runcontext.SubagentNotice(child.Subagent.ID, *child.Problem, "subagent withheld"))
+					}
+				}
+			}
+		}
+	}
 	parent := *run
 	offered := c.batchesLeft()
 	if offered {
@@ -496,7 +517,7 @@ func (c *coordinator) taskProvider(profile string) *contract.ProvenanceProvider 
 	c.shared.mu.Lock()
 	defer c.shared.mu.Unlock()
 	if c.shared.parent != nil {
-		return c.shared.parent.RecordProvider(delegatedRole(c.shared.parent.ResolvedPolicy, profile))
+		return c.shared.parent.RecordProvider(delegatedRole(c.shared.parent.ResolvedPolicy, profile, c.shared.parent.Subagents))
 	}
 	id := c.run.ModelName
 	if c.run.Agent != nil {

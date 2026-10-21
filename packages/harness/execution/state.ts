@@ -1,3 +1,4 @@
+import {validSubagentRecord} from '../subagents'
 import {readCompletion,type ModelCompletion} from '../completion'
 import {failure,readFailure,type AIFailure} from '../failures'
 import type {McpToolResult} from '../engine'
@@ -110,7 +111,7 @@ const TOKEN_KEYS=['inputTokens','outputTokens','reasoningTokens','cacheReadToken
  * where the provider runs its own loop; agentRuns counts its runs there), its tool calls, the provider's
  * token counts where reported, the time to its first answer byte and its whole duration.
  */
-export interface ChildFigures {task:string;batch:number;profile:string;model?:string;state:'queued'|'running'|'complete'|'failed'|'interrupted';modelRequests?:number;toolCalls:number;agentRuns?:number;tokens?:TokenFigures;firstByteMs?:number;durationMs:number;partial?:true;reused?:true}
+export interface ChildFigures {problem?:string;subagent?:import('../subagents').SubagentRecord;task:string;batch:number;profile:string;model?:string;state:'queued'|'running'|'complete'|'failed'|'interrupted';modelRequests?:number;toolCalls:number;agentRuns?:number;tokens?:TokenFigures;firstByteMs?:number;durationMs:number;partial?:true;reused?:true}
 /** A batch's sums, and its wall time from its first child's start to its last child's end. modelRequests counts model requests only: absent on an agent capability (agent#71). */
 export interface FiguresTotal {modelRequests?:number;toolCalls:number;agentRuns?:number;tokens?:TokenFigures;durationMs:number}
 export interface BatchFigures {batch:number;children:ChildFigures[];total:FiguresTotal}
@@ -129,7 +130,7 @@ export function validDelegationFigures(v:unknown,unit:'model-requests'|'provider
  const DAY=86400000
  const requests=(x:Record<string,unknown>,max=Number.MAX_SAFE_INTEGER)=>x.modelRequests===undefined?unit==='provider-managed':count(x.modelRequests,max)
  const tokens=(x:Record<string,unknown>)=>x.tokens===undefined||validTokens(x.tokens)
- const child=(c:unknown)=>object(c)&&exact(c,['task','batch','profile','model','state','modelRequests','toolCalls','agentRuns','tokens','firstByteMs','durationMs','partial','reused'])&&text(c.task,36)&&/^[a-f0-9-]{36}$/.test(c.task)&&count(c.batch,100)&&Number(c.batch)>=1&&text(c.profile,48)&&(c.model===undefined||text(c.model,200))&&['queued','running','complete','failed','interrupted'].includes(String(c.state))&&requests(c,100)&&count(c.toolCalls,100)&&(c.agentRuns===undefined||count(c.agentRuns,100))&&tokens(c)&&(c.firstByteMs===undefined||count(c.firstByteMs,DAY))&&count(c.durationMs,DAY)&&(c.partial===undefined||c.partial===true)&&(c.reused===undefined||c.reused===true)
+ const child=(c:unknown)=>object(c)&&exact(c,['task','batch','profile','model','state','modelRequests','toolCalls','agentRuns','tokens','firstByteMs','durationMs','partial','reused','subagent','problem'])&&(c.subagent===undefined||validSubagentRecord(c.subagent))&&text(c.task,36)&&/^[a-f0-9-]{36}$/.test(c.task)&&count(c.batch,100)&&Number(c.batch)>=1&&text(c.profile,48)&&(c.model===undefined||text(c.model,200))&&['queued','running','complete','failed','interrupted'].includes(String(c.state))&&requests(c,100)&&count(c.toolCalls,100)&&(c.agentRuns===undefined||count(c.agentRuns,100))&&tokens(c)&&(c.firstByteMs===undefined||count(c.firstByteMs,DAY))&&count(c.durationMs,DAY)&&(c.partial===undefined||c.partial===true)&&(c.reused===undefined||c.reused===true)
  const total=(t:unknown)=>object(t)&&exact(t,['modelRequests','toolCalls','agentRuns','tokens','durationMs'])&&requests(t)&&count(t.toolCalls)&&(t.agentRuns===undefined||count(t.agentRuns))&&tokens(t)&&count(t.durationMs,DAY)
  const batch=(b:unknown)=>object(b)&&exact(b,['batch','children','total'])&&count(b.batch,100)&&Number(b.batch)>=1&&Array.isArray(b.children)&&b.children.length>=1&&b.children.length<=3&&b.children.every(child)&&total(b.total)
  const parent=(p:unknown)=>object(p)&&exact(p,['model','modelRequests','agentRuns','tokens'])&&text(p.model,200)&&requests(p)&&(p.agentRuns===undefined||count(p.agentRuns))&&tokens(p)

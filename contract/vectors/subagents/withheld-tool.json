@@ -1,0 +1,22 @@
+{
+  "description": "A definition withheld at admission.",
+  "schema": "run-event.json",
+  "items": [
+    {
+      "type": "guardrail",
+      "tool": "auditor",
+      "action": "refused",
+      "reason": "subagent withheld",
+      "detail": "Undeclared tool missing; the definition was withheld."
+    }
+  ],
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/subagents.ts"
+    ]
+  }
+}

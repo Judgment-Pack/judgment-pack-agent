@@ -219,6 +219,14 @@
       "type": "integer",
       "minimum": 0,
       "default": 32
+    },
+    "cataloguedSubagents": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "subagentCatalogueBytes": {
+      "type": "integer",
+      "minimum": 0
     }
   },
   "additionalProperties": true,

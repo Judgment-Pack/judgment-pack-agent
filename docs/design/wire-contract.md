@@ -407,7 +407,7 @@ and where:
   (8,000) bytes, each entry counted as the JSON of its name and its line; the rest withheld, one
   guardrail for each source. It is part of the stable prefix and never changes during the run.
 - **The loaders** (`$defs/loadSkill`, `$defs/unloadSkill`, reserved names, effect `plan`): offered
-  where any skill is catalogued, in every phase but a delegated child's, which is handed no skills.
+  where any skill is catalogued. Built-in children receive none; declared children receive only their definition's skills (see [Sub-agents](#sub-agents)).
   `load_skill` loads a catalogued skill, each load counted against `skillsPerRun` (4) in its source's
   row of the run report (`sourceFigures.skills`, carried through a resume); a load past it is refused
   (`tool-failed`, `not-started`; reason `skill budget`). Its answer is the skill as a load names it
@@ -725,6 +725,8 @@ the field to correct (`shape`, `title`, `question`, `selection`, `options`, `rec
 the model asks again in the same turn. The reader is closed: no member it does not name.
 
 ## Delegated tasks
+
+Declared children follow [Sub-agents](#sub-agents); built-in profiles keep their existing contract.
 
 Generated reference: [`docs/reference/delegation.md`](../reference/delegation.md) lists these from the schemas and the package's constants.
 
@@ -1700,3 +1702,22 @@ Agents' subagents are off and delegation is the package's, an awaited `delegate_
   `ContextUsage` estimate is computed and emitted nowhere. Cache reads and writes are recorded by
   this harness since agent#9; the Desk's Go reader of a completion drops them until its swap.
 - **Declared, unread.** `recentMessages` is in the budget table and read by no code.
+
+## Sub-agents
+
+[ADR-0013](../adr/0013-sub-agents.md) defines host-declared reads-only children.
+`subagent.json` is closed. Hosts pin the canonical bundle digest at approval and
+supply definitions beside their tools and skills as `subagents[]`. Admission checks
+every named tool and skill, reads-only effects, the digest and narrowing bounds.
+`delegate_tasks` catalogues framed id/purpose lines beside the unchanged built-ins,
+within 16 definitions and 4,000 bytes by default. Tasks select the declared id in
+`profile`; the package attaches `{id, digest, source}` as `subagent`.
+
+A child's instructions use the project block's rank in the common prompt assembler.
+Only its declared tools and skills are reachable, under its own skill-load budget.
+It cannot act, delegate, run a critic or request review. The policy role is
+`models.subagent.<id>`, including provider choice and the existing tier ceiling.
+Events, checkpoint tasks and per-definition report figures carry the approved
+record. A restored withdrawn or changed definition is interrupted and reported,
+never dispatched again. Admission and invocation refusals use `subagent withheld`
+and `subagent refused`.

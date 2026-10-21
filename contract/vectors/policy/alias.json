@@ -46,7 +46,9 @@
       "skillBytes": 8000,
       "skillsPerRun": 4,
       "skillsCatalogueBytes": 8000,
-      "cataloguedSkills": 32
+      "cataloguedSkills": 32,
+      "cataloguedSubagents": 16,
+      "subagentCatalogueBytes": 4000
     }
   ]
 }

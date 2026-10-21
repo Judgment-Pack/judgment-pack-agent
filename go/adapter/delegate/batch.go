@@ -3,6 +3,7 @@ package delegate
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -15,6 +16,7 @@ import (
 
 // planned is one task of a batch, ready to run.
 type planned struct {
+	subagent   *runcontext.Subagent
 	request    contract.DelegatedTaskTaskRequest
 	profile    *turn.TaskProfile
 	budget     turn.TaskBudget
@@ -80,6 +82,71 @@ func (c *coordinator) plan(request contract.DelegatedTaskTaskRequest) (*planned,
 			profile = &c.profiles[at]
 		}
 	}
+	var definition *runcontext.Subagent
+	if c.run.Context != nil && c.run.Context.Execution != nil && (len(c.run.Subagents) > 0 || request.Subagent != nil) {
+		tools, err := runcontext.DeclareSources(c.run.HostTools, nil)
+		if err != nil {
+			return nil, err
+		}
+		policy := c.policy
+		values := map[string]any{}
+		for name, member := range c.parentPolicy() {
+			if strings.HasPrefix(name, "budget.") {
+				values[strings.TrimPrefix(name, "budget.")] = member.Value
+			}
+		}
+		raw, _ := json.Marshal(values)
+		if err := json.Unmarshal(raw, &policy); err != nil {
+			return nil, err
+		}
+		names := []string{}
+		for _, tool := range tools.HostTools {
+			names = append(names, tool.Name)
+		}
+		skills, err := runcontext.DeclareSkills(c.run.Skills, names, policy, tools.Sources)
+		if err != nil {
+			return nil, err
+		}
+		admitted, notices, err := runcontext.DeclareSubagents(c.run.Subagents, tools.HostTools, skills.Skills, policy)
+		if err != nil {
+			return nil, err
+		}
+		_, kept, cut := runcontext.CatalogueSubagents(admitted, policy, "")
+		for _, event := range append(notices, cut...) {
+			c.deliver(event)
+		}
+		for _, s := range kept {
+			if s.ID == request.Profile {
+				held := s
+				definition = &held
+			}
+		}
+	}
+
+	c.shared.mu.Lock()
+	if c.shared.parent != nil {
+		for _, s := range c.shared.parent.Subagents {
+			if s.ID == request.Profile {
+				held := s
+				definition = &held
+			}
+		}
+	}
+	c.shared.mu.Unlock()
+	if request.Subagent != nil && (definition == nil || definition.Digest == nil || *definition.Digest != request.Subagent.Digest) {
+		definition = nil
+		profile = nil
+	}
+	if profile == nil && definition != nil {
+		held := runcontext.SubagentProfile(*definition)
+		profile = &held
+	}
+	if profile == nil {
+		c.deliver(runcontext.SubagentNotice(request.Profile, "The requested sub-agent or profile is not available.", "subagent refused"))
+	}
+	if definition != nil {
+		request.Subagent = runcontext.SubagentRecord(*definition)
+	}
 	var thread *runcontext.TaskThread
 	if request.Resume != nil {
 		thread = c.chat.Task(*request.Resume)
@@ -114,7 +181,7 @@ func (c *coordinator) plan(request contract.DelegatedTaskTaskRequest) (*planned,
 	if profile != nil {
 		budget = turn.ProfileBudget(*profile)
 	}
-	return &planned{request: request, profile: profile, budget: budget, references: references, visible: visible, thread: thread}, nil
+	return &planned{subagent: definition, request: request, profile: profile, budget: budget, references: references, visible: visible, thread: thread}, nil
 }
 
 // childModelName is the admitted role's model, falling back to the profile's legacy selection.
@@ -148,6 +215,9 @@ func reuseKey(p *planned, model string, providers ...*contract.ProvenanceProvide
 	value.Set("references", held)
 	if len(providers) > 0 && providers[0] != nil {
 		value.Set("provider", runcontext.ObjectOf("connection", runcontext.String(providers[0].Connection), "family", runcontext.String(providers[0].Family)))
+	}
+	if p.subagent != nil {
+		value.Set("subagentDigest", runcontext.String(*p.subagent.Digest))
 	}
 	return string(value.JSON())
 }
@@ -219,6 +289,8 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 			run.streamed = event.MessageProgress.Text
 			id := task.ID
 			c.deliver(contract.RunEvent{MessageProgress: &contract.RunEventMessageProgress{Type: "message_progress", Text: event.MessageProgress.Text, TaskID: &id}})
+		case event.Guardrail != nil && event.Guardrail.Reason != nil && *event.Guardrail.Reason == "subagent refused":
+			c.deliver(event)
 		case event.Error != nil:
 			run.failed = event.Error.Message
 			if event.Error.Failure != nil {
@@ -254,6 +326,19 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 	var hosts []runcontext.HostTool
 	if offered {
 		hosts = c.childHostTools(profile)
+		if p.subagent != nil {
+			hosts = nil
+			tools = nil
+			for _, tool := range c.run.HostTools {
+				name := tool.Name
+				if tool.Source != nil {
+					name = runcontext.WireName(tool.Source.ID, tool.Name)
+				}
+				if slices.Contains(p.subagent.Tools, name) {
+					hosts = append(hosts, tool)
+				}
+			}
+		}
 	} else {
 		tools = nil
 	}
@@ -267,7 +352,7 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 	child.ModelName = name
 	if c.run.Agent != nil {
 		child.Model = nil
-		child.Agent = c.childAgent(task, name, m, binding.Agent)
+		child.Agent = c.childAgent(task, name, m, binding.Agent, p.subagent)
 	} else {
 		child.Model = c.childModel(task, p.budget, m, binding.Model)
 	}
@@ -302,6 +387,23 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 	child.Cases = nil
 	// ADR-0009: a child is handed no skills; it inherits none of the parent's loaded set.
 	child.Skills = nil
+	child.Subagents = nil
+	child.ChildDefinition = p.subagent
+	if p.subagent != nil {
+		for _, skill := range c.run.Skills {
+			if slices.Contains(p.subagent.Skills, skill.ID) {
+				child.Skills = append(child.Skills, skill)
+			}
+		}
+		budget, _ := child.Policy["budget"].(map[string]any)
+		if budget == nil {
+			budget = map[string]any{}
+		}
+		budget["maxInputBytes"] = float64(p.subagent.Bounds.Bytes)
+		budget["toolResultBytes"] = float64(p.subagent.Bounds.ResultBytes)
+		budget["turnMilliseconds"] = float64(p.subagent.Bounds.Milliseconds)
+		child.Policy["budget"] = budget
+	}
 	child.Context = input
 	child.Children = nil
 	child.BeforeRuntimeCall = func(context.Context, string) error { return c.claimTool(task, &p.budget) }

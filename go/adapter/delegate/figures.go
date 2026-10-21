@@ -32,7 +32,7 @@ func ms(d time.Duration) int64 {
 // childFigures is a task's figures as the checkpoint carries them (agent#18). The caller holds
 // taskMu.
 func (c *coordinator) childFigures(task *contract.DelegatedTask, number int) contract.ProvenanceChildFigures {
-	out := contract.ProvenanceChildFigures{Task: task.ID, Batch: int64(number), Profile: task.Profile, Model: task.Model, State: task.State,
+	out := contract.ProvenanceChildFigures{Subagent: task.Subagent, Task: task.ID, Batch: int64(number), Profile: task.Profile, Model: task.Model, State: task.State,
 		ToolCalls: task.ToolCalls, Tokens: task.Tokens, FirstByteMs: task.FirstByteMs}
 	switch {
 	case task.DurationMs != nil:
@@ -51,6 +51,9 @@ func (c *coordinator) childFigures(task *contract.DelegatedTask, number int) con
 	if task.Reused != nil {
 		yes := true
 		out.Reused = &yes
+	}
+	if task.Subagent != nil {
+		out.Problem = task.Problem
 	}
 	if c.run.Agent != nil {
 		// On an agent capability the child's invocations, counted where each was admitted; no model

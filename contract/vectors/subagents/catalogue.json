@@ -1,0 +1,19 @@
+{
+  "description": "The framed catalogue payload, before framing.",
+  "schema": "tool-offer.json#/$defs/subagentCatalogueEntry",
+  "items": [
+    {
+      "id": "auditor",
+      "purpose": "Check supplied evidence."
+    }
+  ],
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/subagents.ts"
+    ]
+  }
+}

@@ -403,6 +403,9 @@ func resolveSessionPolicy(session Session, budget Policy) (ResolvedPolicy, error
 		}
 	}
 	table["models"] = map[string]any{"author": map[string]any{"model": current, "reasoning": tier}}
+	for _, s := range session.Subagents {
+		table["models"].(map[string]any)["subagent."+s.ID] = map[string]any{"model": s.Model, "reasoning": s.Reasoning}
+	}
 	capacity := 2
 	if session.PolicyLegacyModels != nil && session.PolicyLegacyModels.ConcurrentRequests != nil {
 		capacity = *session.PolicyLegacyModels.ConcurrentRequests

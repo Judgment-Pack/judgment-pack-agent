@@ -2,6 +2,7 @@ package delegate
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -45,6 +46,9 @@ func (c *coordinator) outOfRequests(task *contract.DelegatedTask, budget turn.Ta
 
 // child runs one child of a batch.
 func (c *coordinator) child(p *planned, task *contract.DelegatedTask, batch *batchState, share int, key string) {
+	if p.subagent != nil {
+		share = min(share, int(p.subagent.Bounds.ResultBytes))
+	}
 	if p.profile == nil {
 		c.edit(func() {
 			task.State = "failed"
@@ -418,7 +422,14 @@ func (c *coordinator) recordTasks(plans []*planned) []*contract.DelegatedTask {
 	for i, p := range plans {
 		budget := p.budget
 		task := &contract.DelegatedTask{ID: uuid(), ParentRunID: c.parentRunID, Title: p.request.Title, Objective: p.request.Objective, Profile: p.request.Profile,
-			State: "queued", CreatedAt: now(), Steps: []contract.DelegatedTaskStepsItem{}, Budget: &budget, Resumes: p.request.Resume}
+			Subagent: p.request.Subagent, State: "queued", CreatedAt: now(), Steps: []contract.DelegatedTaskStepsItem{}, Budget: &budget, Resumes: p.request.Resume}
+		if task.Subagent != nil && p.subagent == nil {
+			task.State = "interrupted"
+			task.Problem = strPtr("The declared sub-agent was withdrawn or changed; it was not dispatched again.")
+		}
+		if p.subagent != nil {
+			task.Subagent = runcontext.SubagentRecord(*p.subagent)
+		}
 		if p.profile != nil {
 			task.Model = strPtr(c.childModelName(*p.profile))
 		}
@@ -445,6 +456,10 @@ func (c *coordinator) batchAnswer(tasks []*contract.DelegatedTask) runcontext.To
 			item.Set("references", references)
 		}
 		item.Set("state", runcontext.String(task.State))
+		if task.Subagent != nil {
+			raw, _ := json.Marshal(task.Subagent)
+			item.Set("subagent", runcontext.MustParseJSON(string(raw)))
+		}
 		if task.Resumes != nil {
 			item.Set("resumes", runcontext.String(*task.Resumes))
 		}

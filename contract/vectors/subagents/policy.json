@@ -1,0 +1,28 @@
+{
+  "description": "Hand-authored ADR-0013 record coverage.",
+  "schema": "policy.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/subagents.ts"
+    ]
+  },
+  "items": [
+    {
+      "budget": {
+        "cataloguedSubagents": 16,
+        "subagentCatalogueBytes": 4000
+      },
+      "models": {
+        "subagent.auditor": {
+          "model": "fixture",
+          "reasoning": "low",
+          "provider": "same"
+        }
+      }
+    }
+  ]
+}

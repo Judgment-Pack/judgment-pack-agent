@@ -426,6 +426,9 @@ func (r *runState) refuseUnoffered(ctx context.Context, call adapter.AgentToolCa
 		name = held.name
 	}
 	r.deliver(callEvent(call.ID, name, args, ""))
+	if name == "delegate_tasks" && r.run.ChildDefinition != nil {
+		r.deliver(runcontext.SubagentNotice(name, "A child cannot delegate.", "subagent refused"))
+	}
 	// ADR-0006: the Runtime's row of the run report counts the refusal, as the TypeScript boundary's
 	// wrapped callTool and the eino adapter's own refusal do.
 	if r.sc.Sources != nil {
@@ -475,8 +478,13 @@ func (r *runState) answer(ctx context.Context, call adapter.AgentToolCall, held 
 		if !r.claimPause(true) {
 			return runcontext.ToolResult{}, false, errWaiting
 		}
+		runcontext.RecordSubagents(&request, r.sc.Subagents)
+		var record *contract.SubagentRecord
+		if len(request.Tasks) == 1 {
+			record = request.Tasks[0].Subagent
+		}
 		id := call.ID
-		r.deliver(contract.RunEvent{DelegationRequested: &contract.RunEventDelegationRequested{Type: "delegation_requested", Request: request, CallID: &id}})
+		r.deliver(contract.RunEvent{DelegationRequested: &contract.RunEventDelegationRequested{Type: "delegation_requested", Request: request, Subagent: record, CallID: &id}})
 		r.pause()
 		return runcontext.ToolResult{}, false, errHandoff
 	case host.Interaction == "question":

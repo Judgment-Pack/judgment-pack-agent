@@ -387,7 +387,9 @@ type Session struct {
 	Host Host
 	// Skills are the skills the host declares for the run (ADR-0009, skills.go), beside its host
 	// tools, each with the digest the person approved. A delegated child is handed none.
-	Skills []Skill
+	Subagents       []Subagent
+	ChildDefinition *Subagent
+	Skills          []Skill
 }
 
 // ModelName is the model the run is on, whichever capability it is.

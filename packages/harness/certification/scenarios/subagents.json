@@ -1,0 +1,6 @@
+{
+  "$comment": "Hand-authored scenario 13, ADR-0013.",
+  "id": "subagents",
+  "request": "Delegate the evidence check.",
+  "checks": ["catalogue beside built-ins", "scoped reads and skills", "tier and narrowing bounds", "approved source record", "undeclared tool or skill withheld", "digest change and reapproval", "task widening refused", "child delegation refused", "restored withdrawal reported", "built-ins unchanged"]
+}

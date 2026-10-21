@@ -127,6 +127,8 @@ var Registry = map[string]func() any{
 	"skill.json#/$defs/resource":                    func() any { return new(SkillResource) },
 	"skill.json#/$defs/digest":                      func() any { return new(string) },
 	"skill.json#/$defs/bytes":                       func() any { return new(int64) },
+	"subagent.json":                                 func() any { return new(Subagent) },
+	"subagent.json#/$defs/record":                   func() any { return new(SubagentRecord) },
 	"tool-call.json":                                func() any { return new(ToolCall) },
 	"tool-call.json#/$defs/mcpCall":                 func() any { return new(ToolCallMCPCall) },
 	"tool-call.json#/$defs/agentWireCall":           func() any { return new(ToolCallAgentWireCall) },
@@ -158,6 +160,7 @@ var Registry = map[string]func() any{
 	"tool-offer.json#/$defs/criticMode":             func() any { return new(string) },
 	"tool-offer.json#/$defs/criticReasoning":        func() any { return new(string) },
 	"tool-offer.json#/$defs/requestReview":          func() any { return new(ToolOfferRequestReview) },
+	"tool-offer.json#/$defs/subagentCatalogueEntry": func() any { return new(ToolOfferSubagentCatalogueEntry) },
 	"tool-result.json":                              func() any { return new(ToolResult) },
 	"tool-result.json#/$defs/mcpToolResult":         func() any { return new(ToolResultMCPToolResult) },
 	"tool-result.json#/$defs/reference":             func() any { return new(ToolResultReference) },
@@ -353,11 +356,13 @@ type Budget struct {
 	SkillsPerRun             *int64  `json:"skillsPerRun,omitzero"`
 	SkillsCatalogueBytes     *int64  `json:"skillsCatalogueBytes,omitzero"`
 	CataloguedSkills         *int64  `json:"cataloguedSkills,omitzero"`
+	CataloguedSubagents      *int64  `json:"cataloguedSubagents,omitzero"`
+	SubagentCatalogueBytes   *int64  `json:"subagentCatalogueBytes,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var budgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "adversarialReview", "criticDefault", "criticReasoningFloor", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds", "skillBytes", "skillsPerRun", "skillsCatalogueBytes", "cataloguedSkills"}
+var budgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "adversarialReview", "criticDefault", "criticReasoningFloor", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds", "skillBytes", "skillsPerRun", "skillsCatalogueBytes", "cataloguedSkills", "cataloguedSubagents", "subagentCatalogueBytes"}
 
 // UnmarshalJSON decodes a Budget object and keeps the members the schema does not name.
 func (v *Budget) UnmarshalJSON(data []byte) error {
@@ -1449,11 +1454,12 @@ type DelegatedTask struct {
 	Tokens        *ProvenanceTokenFigures    `json:"tokens,omitzero"`
 	FirstByteMs   *int64                     `json:"firstByteMs,omitzero"`
 	DurationMs    *int64                     `json:"durationMs,omitzero"`
+	Subagent      *SubagentRecord            `json:"subagent,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var delegatedTaskMembers = []string{"id", "parentRunId", "title", "objective", "profile", "state", "createdAt", "finishedAt", "modelRequests", "toolCalls", "attempts", "steps", "result", "problem", "failure", "budget", "model", "references", "resumes", "more", "summarized", "report", "partial", "reused", "retried", "tokens", "firstByteMs", "durationMs"}
+var delegatedTaskMembers = []string{"id", "parentRunId", "title", "objective", "profile", "state", "createdAt", "finishedAt", "modelRequests", "toolCalls", "attempts", "steps", "result", "problem", "failure", "budget", "model", "references", "resumes", "more", "summarized", "report", "partial", "reused", "retried", "tokens", "firstByteMs", "durationMs", "subagent"}
 
 // UnmarshalJSON decodes a DelegatedTask object and keeps the members the schema does not name.
 func (v *DelegatedTask) UnmarshalJSON(data []byte) error {
@@ -1609,9 +1615,10 @@ type DelegatedTaskAnswerTask struct {
 	Problem    *string                     `json:"problem,omitzero"`
 	Used       DelegatedTaskAnswerTaskUsed `json:"used"`
 	Budget     *DelegatedTaskBudget        `json:"budget,omitzero"`
+	Subagent   *SubagentRecord             `json:"subagent,omitzero"`
 }
 
-var delegatedTaskAnswerTaskMembers = []string{"id", "title", "objective", "profile", "references", "state", "resumes", "report", "reportCut", "result", "more", "summarized", "partial", "reused", "problem", "used", "budget"}
+var delegatedTaskAnswerTaskMembers = []string{"id", "title", "objective", "profile", "references", "state", "resumes", "report", "reportCut", "result", "more", "summarized", "partial", "reused", "problem", "used", "budget", "subagent"}
 
 // UnmarshalJSON decodes a DelegatedTaskAnswerTask object and refuses a member the closed schema does not name.
 func (v *DelegatedTaskAnswerTask) UnmarshalJSON(data []byte) error {
@@ -2404,15 +2411,16 @@ func (v DelegatedTaskStepsItem) MarshalJSON() ([]byte, error) {
 // From delegated-task.json#/$defs/taskRequest. One task, as the model asks for it. Closed. Since
 // agent#15 the task carries no copied context: material is passed by reference.
 type DelegatedTaskTaskRequest struct {
-	Title      string   `json:"title"`
-	Objective  string   `json:"objective"`
-	Profile    string   `json:"profile"`
-	References []string `json:"references,omitzero"`
-	Resume     *string  `json:"resume,omitzero"`
-	Summarize  *bool    `json:"summarize,omitzero"`
+	Title      string          `json:"title"`
+	Objective  string          `json:"objective"`
+	Profile    string          `json:"profile"`
+	References []string        `json:"references,omitzero"`
+	Resume     *string         `json:"resume,omitzero"`
+	Summarize  *bool           `json:"summarize,omitzero"`
+	Subagent   *SubagentRecord `json:"subagent,omitzero"`
 }
 
-var delegatedTaskTaskRequestMembers = []string{"title", "objective", "profile", "references", "resume", "summarize"}
+var delegatedTaskTaskRequestMembers = []string{"title", "objective", "profile", "references", "resume", "summarize", "subagent"}
 
 // UnmarshalJSON decodes a DelegatedTaskTaskRequest object and refuses a member the closed schema does not name.
 func (v *DelegatedTaskTaskRequest) UnmarshalJSON(data []byte) error {
@@ -2602,9 +2610,11 @@ type PolicyBudget struct {
 	SkillsPerRun             *int64 `json:"skillsPerRun,omitzero"`
 	SkillsCatalogueBytes     *int64 `json:"skillsCatalogueBytes,omitzero"`
 	CataloguedSkills         *int64 `json:"cataloguedSkills,omitzero"`
+	CataloguedSubagents      *int64 `json:"cataloguedSubagents,omitzero"`
+	SubagentCatalogueBytes   *int64 `json:"subagentCatalogueBytes,omitzero"`
 }
 
-var policyBudgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds", "skillBytes", "skillsPerRun", "skillsCatalogueBytes", "cataloguedSkills"}
+var policyBudgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds", "skillBytes", "skillsPerRun", "skillsCatalogueBytes", "cataloguedSkills", "cataloguedSubagents", "subagentCatalogueBytes"}
 
 // UnmarshalJSON decodes a PolicyBudget object and refuses a member the closed schema does not name.
 func (v *PolicyBudget) UnmarshalJSON(data []byte) error {
@@ -2938,7 +2948,8 @@ func (v ProvenanceBatchFigures) MarshalJSON() ([]byte, error) {
 // model-requests and leaves it optional where the unit is provider-managed (checkpoint.json,
 // delegation). firstByteMs: from its start to the first byte of its first answer (an agent's first
 // event), absent where none came. durationMs: from its start to its end. partial and reused as the
-// record's.
+// record's. Declared children carry subagent; group these figures by id and digest for
+// per-definition totals. Built-ins carry profile alone.
 type ProvenanceChildFigures struct {
 	Task          string                  `json:"task"`
 	Batch         int64                   `json:"batch"`
@@ -2953,9 +2964,11 @@ type ProvenanceChildFigures struct {
 	DurationMs    int64                   `json:"durationMs"`
 	Partial       *bool                   `json:"partial,omitzero"`
 	Reused        *bool                   `json:"reused,omitzero"`
+	Subagent      *SubagentRecord         `json:"subagent,omitzero"`
+	Problem       *string                 `json:"problem,omitzero"`
 }
 
-var provenanceChildFiguresMembers = []string{"task", "batch", "profile", "model", "state", "modelRequests", "toolCalls", "agentRuns", "tokens", "firstByteMs", "durationMs", "partial", "reused"}
+var provenanceChildFiguresMembers = []string{"task", "batch", "profile", "model", "state", "modelRequests", "toolCalls", "agentRuns", "tokens", "firstByteMs", "durationMs", "partial", "reused", "subagent", "problem"}
 
 // UnmarshalJSON decodes a ProvenanceChildFigures object and refuses a member the closed schema does not name.
 func (v *ProvenanceChildFigures) UnmarshalJSON(data []byte) error {
@@ -4262,11 +4275,12 @@ type RunEventDelegatedTask struct {
 	Type     string              `json:"type"`
 	Task     DelegatedTask       `json:"task"`
 	Provider *ProvenanceProvider `json:"provider,omitzero"`
+	Subagent *SubagentRecord     `json:"subagent,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var runEventDelegatedTaskMembers = []string{"type", "task", "provider"}
+var runEventDelegatedTaskMembers = []string{"type", "task", "provider", "subagent"}
 
 // UnmarshalJSON decodes a RunEventDelegatedTask object and keeps the members the schema does not name.
 func (v *RunEventDelegatedTask) UnmarshalJSON(data []byte) error {
@@ -4295,14 +4309,15 @@ func (v RunEventDelegatedTask) MarshalJSON() ([]byte, error) {
 // tool_call and a tool_result for delegate_tasks instead, in the same run. The coordinator
 // consumes this event: a host reading the coordinator's stream does not see it.
 type RunEventDelegationRequested struct {
-	Type    string               `json:"type"`
-	Request DelegatedTaskRequest `json:"request"`
-	CallID  *string              `json:"callId,omitzero"`
+	Type     string               `json:"type"`
+	Request  DelegatedTaskRequest `json:"request"`
+	CallID   *string              `json:"callId,omitzero"`
+	Subagent *SubagentRecord      `json:"subagent,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var runEventDelegationRequestedMembers = []string{"type", "request", "callId"}
+var runEventDelegationRequestedMembers = []string{"type", "request", "callId", "subagent"}
 
 // UnmarshalJSON decodes a RunEventDelegationRequested object and keeps the members the schema does not name.
 func (v *RunEventDelegationRequested) UnmarshalJSON(data []byte) error {
@@ -5021,6 +5036,189 @@ func (v SkillSource) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), v.AdditionalMembers)
 }
 
+// From subagent.json. ADR-0013: a host-declared reads-only child. The host pins pinnedDigest at
+// approval; the package computes digest over canonical JSON of all definition members except
+// pinnedDigest and digest. Tools are declared host wire names; skills are declared ids. Bounds
+// only narrow the turn. Built-in profile ids cannot be declared. No nesting or child critic.
+type Subagent struct {
+	ID           string         `json:"id"`
+	Name         string         `json:"name"`
+	Purpose      string         `json:"purpose"`
+	Instructions string         `json:"instructions"`
+	Source       SubagentSource `json:"source"`
+	Tools        []string       `json:"tools"`
+	Skills       []string       `json:"skills"`
+	Model        string         `json:"model"`
+	Reasoning    string         `json:"reasoning"`
+	Bounds       SubagentBounds `json:"bounds"`
+	PinnedDigest string         `json:"pinnedDigest"`
+	Digest       *string        `json:"digest,omitzero"`
+}
+
+var subagentMembers = []string{"id", "name", "purpose", "instructions", "source", "tools", "skills", "model", "reasoning", "bounds", "pinnedDigest", "digest"}
+
+// UnmarshalJSON decodes a Subagent object and refuses a member the closed schema does not name.
+func (v *Subagent) UnmarshalJSON(data []byte) error {
+	type plain Subagent
+	var p plain
+	extra, err := decodeObject(data, &p, subagentMembers, true)
+	if err != nil {
+		return errorf("Subagent: %w", err)
+	}
+	*v = Subagent(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a Subagent object.
+func (v Subagent) MarshalJSON() ([]byte, error) {
+	type plain Subagent
+	return encodeObject(plain(v), nil)
+}
+
+// From subagent.json#/properties/bounds.
+type SubagentBounds struct {
+	ModelRequests int64 `json:"modelRequests"`
+	AgentRuns     int64 `json:"agentRuns"`
+	ToolCalls     int64 `json:"toolCalls"`
+	Bytes         int64 `json:"bytes"`
+	Milliseconds  int64 `json:"milliseconds"`
+	ResultBytes   int64 `json:"resultBytes"`
+}
+
+var subagentBoundsMembers = []string{"modelRequests", "agentRuns", "toolCalls", "bytes", "milliseconds", "resultBytes"}
+
+// UnmarshalJSON decodes a SubagentBounds object and refuses a member the closed schema does not name.
+func (v *SubagentBounds) UnmarshalJSON(data []byte) error {
+	type plain SubagentBounds
+	var p plain
+	extra, err := decodeObject(data, &p, subagentBoundsMembers, true)
+	if err != nil {
+		return errorf("SubagentBounds: %w", err)
+	}
+	*v = SubagentBounds(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a SubagentBounds object.
+func (v SubagentBounds) MarshalJSON() ([]byte, error) {
+	type plain SubagentBounds
+	return encodeObject(plain(v), nil)
+}
+
+// From subagent.json#/$defs/record.
+type SubagentRecord struct {
+	ID     string               `json:"id"`
+	Digest string               `json:"digest"`
+	Source SubagentRecordSource `json:"source"`
+}
+
+var subagentRecordMembers = []string{"id", "digest", "source"}
+
+// UnmarshalJSON decodes a SubagentRecord object and refuses a member the closed schema does not name.
+func (v *SubagentRecord) UnmarshalJSON(data []byte) error {
+	type plain SubagentRecord
+	var p plain
+	extra, err := decodeObject(data, &p, subagentRecordMembers, true)
+	if err != nil {
+		return errorf("SubagentRecord: %w", err)
+	}
+	*v = SubagentRecord(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a SubagentRecord object.
+func (v SubagentRecord) MarshalJSON() ([]byte, error) {
+	type plain SubagentRecord
+	return encodeObject(plain(v), nil)
+}
+
+// From subagent.json#/$defs/record/properties/source. Where a host tool comes from (ADR-0006).
+// Declared by the host on each host tool a source outside the host serves; the package adds tool
+// (the tool's own name at its source) on the offer, carries the record on the tool's tool_call and
+// tool_result events (with receipt on a result where the host's answer gave one), and counts the
+// source in the run report (provenance.json#/$defs/sourceFigures). gateway: a gateway connection
+// the person configured (Databricks, Azure DevOps, Drive), which may give a receipt for each call;
+// mcp: a public MCP server the host connected, whose tool list is pinned by digest at connection
+// time; custom: a tool the person created; exchange (ADR-0009): a skill whose bytes the host
+// fetched from a Judgment Exchange entry, the entry's id and version the record's id and version,
+// which a host tool may not declare. runtime is the Runtime's own row in the run report: its tools
+// come through tools/list behind the gate, carry no declaration, and a host tool declared with
+// kind runtime is refused. Either version or toolListDigest is present; mcp carries
+// toolListDigest. Closed: the package refuses another member before any request (configuration).
+type SubagentRecordSource struct {
+	Kind           string  `json:"kind"`
+	ID             string  `json:"id"`
+	Version        *string `json:"version,omitzero"`
+	ToolListDigest *string `json:"toolListDigest,omitzero"`
+	Trust          string  `json:"trust"`
+}
+
+var subagentRecordSourceMembers = []string{"kind", "id", "version", "toolListDigest", "trust"}
+
+// UnmarshalJSON decodes a SubagentRecordSource object and refuses a member the closed schema does not name.
+func (v *SubagentRecordSource) UnmarshalJSON(data []byte) error {
+	type plain SubagentRecordSource
+	var p plain
+	extra, err := decodeObject(data, &p, subagentRecordSourceMembers, true)
+	if err != nil {
+		return errorf("SubagentRecordSource: %w", err)
+	}
+	*v = SubagentRecordSource(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a SubagentRecordSource object.
+func (v SubagentRecordSource) MarshalJSON() ([]byte, error) {
+	type plain SubagentRecordSource
+	return encodeObject(plain(v), nil)
+}
+
+// From subagent.json#/properties/source. Where a host tool comes from (ADR-0006). Declared by the
+// host on each host tool a source outside the host serves; the package adds tool (the tool's own
+// name at its source) on the offer, carries the record on the tool's tool_call and tool_result
+// events (with receipt on a result where the host's answer gave one), and counts the source in the
+// run report (provenance.json#/$defs/sourceFigures). gateway: a gateway connection the person
+// configured (Databricks, Azure DevOps, Drive), which may give a receipt for each call; mcp: a
+// public MCP server the host connected, whose tool list is pinned by digest at connection time;
+// custom: a tool the person created; exchange (ADR-0009): a skill whose bytes the host fetched
+// from a Judgment Exchange entry, the entry's id and version the record's id and version, which a
+// host tool may not declare. runtime is the Runtime's own row in the run report: its tools come
+// through tools/list behind the gate, carry no declaration, and a host tool declared with kind
+// runtime is refused. Either version or toolListDigest is present; mcp carries toolListDigest.
+// Closed: the package refuses another member before any request (configuration).
+type SubagentSource struct {
+	Kind           string  `json:"kind"`
+	ID             string  `json:"id"`
+	Version        *string `json:"version,omitzero"`
+	ToolListDigest *string `json:"toolListDigest,omitzero"`
+	Trust          string  `json:"trust"`
+}
+
+var subagentSourceMembers = []string{"kind", "id", "version", "toolListDigest", "trust"}
+
+// UnmarshalJSON decodes a SubagentSource object and refuses a member the closed schema does not name.
+func (v *SubagentSource) UnmarshalJSON(data []byte) error {
+	type plain SubagentSource
+	var p plain
+	extra, err := decodeObject(data, &p, subagentSourceMembers, true)
+	if err != nil {
+		return errorf("SubagentSource: %w", err)
+	}
+	*v = SubagentSource(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a SubagentSource object.
+func (v SubagentSource) MarshalJSON() ([]byte, error) {
+	type plain SubagentSource
+	return encodeObject(plain(v), nil)
+}
+
 // From tool-call.json. The tool_call event: the model asked for one tool, with these arguments,
 // and the adapter is about to hand the call to the host (callTool for a runtime tool, execute for
 // a host tool). Emitted before the call is made, so the host can journal it; its arguments are the
@@ -5282,11 +5480,12 @@ type ToolOffer struct {
 	PolicyProject     *Policy                `json:"policyProject,omitzero"`
 	TaskClass         *string                `json:"taskClass,omitzero"`
 	PaceUsed          *PolicyPaceUsed        `json:"paceUsed,omitzero"`
+	Subagents         []json.RawMessage      `json:"subagents,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var toolOfferMembers = []string{"tools", "hostTools", "skills", "critic", "criticProject", "criticReasoning", "existingPack", "reviewerAssigned", "adversarialReview", "policy", "policyProject", "taskClass", "paceUsed"}
+var toolOfferMembers = []string{"tools", "hostTools", "skills", "critic", "criticProject", "criticReasoning", "existingPack", "reviewerAssigned", "adversarialReview", "policy", "policyProject", "taskClass", "paceUsed", "subagents"}
 
 // UnmarshalJSON decodes a ToolOffer object and keeps the members the schema does not name.
 func (v *ToolOffer) UnmarshalJSON(data []byte) error {
@@ -5524,17 +5723,18 @@ func (v ToolOfferHostToolPresentation) MarshalJSON() ([]byte, error) {
 
 // From tool-offer.json#/$defs/loadSkill. The harness tool that loads one catalogued skill
 // (ADR-0009): a reserved name, offered beside load_tool where the run catalogues any skill, in
-// Plan mode and to the critic too (a skill grants no tool), never to a delegated child. Its effect
-// is plan, so its answer is not framed as data. It loads only a catalogued, admitted skill (any
-// other name is invalid-tool-input); each load counts against skillsPerRun, the response's loads
-// carried through a resume in the run report's rows (provenance.json#/$defs/sourceFigures,
-// skills), and a load past it is refused (tool-failed, not-started) with a guardrail whose reason
-// is skill budget. Loading a skill already loaded loads nothing and counts nothing. A load emits
-// skill_loaded, writes the checkpoint's skills, and the skill's instructions and resources ride
-// after the history on every later request as one block, under the heading that ranks them with
-// the project's own instructions; on the agent wire, which sends the execution state once per run,
-// the answer carries the block itself. Its answer: the loaded skill ($defs/loadedSkill), its
-// bytes, and a note.
+// Plan mode and to the critic too (a skill grants no tool), never to a built-in child; declared
+// children receive only the skills their definition names. Its effect is plan, so its answer is
+// not framed as data. It loads only a catalogued, admitted skill (any other name is
+// invalid-tool-input); each load counts against skillsPerRun, the response's loads carried through
+// a resume in the run report's rows (provenance.json#/$defs/sourceFigures, skills), and a load
+// past it is refused (tool-failed, not-started) with a guardrail whose reason is skill budget.
+// Loading a skill already loaded loads nothing and counts nothing. A load emits skill_loaded,
+// writes the checkpoint's skills, and the skill's instructions and resources ride after the
+// history on every later request as one block, under the heading that ranks them with the
+// project's own instructions; on the agent wire, which sends the execution state once per run, the
+// answer carries the block itself. Its answer: the loaded skill ($defs/loadedSkill), its bytes,
+// and a note.
 type ToolOfferLoadSkill struct {
 	Name          string                          `json:"name"`
 	Description   string                          `json:"description"`
@@ -5956,6 +6156,33 @@ func (v *ToolOfferSourceRecord) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a ToolOfferSourceRecord object.
 func (v ToolOfferSourceRecord) MarshalJSON() ([]byte, error) {
 	type plain ToolOfferSourceRecord
+	return encodeObject(plain(v), nil)
+}
+
+// From tool-offer.json#/$defs/subagentCatalogueEntry.
+type ToolOfferSubagentCatalogueEntry struct {
+	ID      string `json:"id"`
+	Purpose string `json:"purpose"`
+}
+
+var toolOfferSubagentCatalogueEntryMembers = []string{"id", "purpose"}
+
+// UnmarshalJSON decodes a ToolOfferSubagentCatalogueEntry object and refuses a member the closed schema does not name.
+func (v *ToolOfferSubagentCatalogueEntry) UnmarshalJSON(data []byte) error {
+	type plain ToolOfferSubagentCatalogueEntry
+	var p plain
+	extra, err := decodeObject(data, &p, toolOfferSubagentCatalogueEntryMembers, true)
+	if err != nil {
+		return errorf("ToolOfferSubagentCatalogueEntry: %w", err)
+	}
+	*v = ToolOfferSubagentCatalogueEntry(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ToolOfferSubagentCatalogueEntry object.
+func (v ToolOfferSubagentCatalogueEntry) MarshalJSON() ([]byte, error) {
+	type plain ToolOfferSubagentCatalogueEntry
 	return encodeObject(plain(v), nil)
 }
 

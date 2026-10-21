@@ -46,11 +46,13 @@ EXPECTED_SCHEMAS = {
     "provenance.json",
     "capability.json",
     "skill.json",
+    "subagent.json",
 }
 
 # The $defs added or changed (beyond their descriptions) between v0.1.0 and the v0.2.0 release
 # review, whose members each need a vector (#43): (schema, definition).
 RELEASE_REVIEWED_DEFS = [
+    ("subagent.json", "record"), ("tool-offer.json", "subagentCatalogueEntry"),
     ("provenance.json", "provider"), ("provenance.json", "crossProvider"),
     ("policy.json", "role"), ("policy.json", "member"), ("policy.json", "paceUsed"),
     ("provenance.json", "policy"), ("run-event.json", "policy_resolved"),
@@ -740,7 +742,7 @@ class VectorTests(unittest.TestCase):
         targets = []
         for name, definition in RELEASE_REVIEWED_DEFS:
             targets += [(name, ["$defs", definition] + path) for path in members(schemas_[name]["$defs"][definition], [])]
-        for name in ("checkpoint.json", "delegated-task.json", "tool-call.json", "tool-result.json", "skill.json", "tool-offer.json", "policy.json"):
+        for name in ("checkpoint.json", "delegated-task.json", "tool-call.json", "tool-result.json", "skill.json", "tool-offer.json", "policy.json", "subagent.json"):
             root = {key: value for key, value in schemas_[name].items() if key != "$defs"}
             targets += [(name, path) for path in members(root, [])]
         # Scope capability records and overrides to members introduced by ADR-0012.

@@ -198,11 +198,14 @@ func (c *coordinator) parentAgent() *adapter.Agent {
 // childAgent is a child's capability: the model the host named for children, the host's function
 // tracked on the account, and its invocation dispatched only after every earlier one has returned,
 // counted under its task and made durable first.
-func (c *coordinator) childAgent(task *contract.DelegatedTask, model string, m *meter, base *adapter.Agent) *adapter.Agent {
+func (c *coordinator) childAgent(task *contract.DelegatedTask, model string, m *meter, base *adapter.Agent, definition *runcontext.Subagent) *adapter.Agent {
 	return &adapter.Agent{Model: base.Model, Effort: base.Effort, Enabled: base.Enabled, Delegated: model, Run: c.tracked(base.Run, m),
 		Begin: func(ctx context.Context, _ adapter.AgentRequest) error {
 			if err := c.account.released(ctx); err != nil {
 				return err
+			}
+			if definition != nil && c.childRuns(task.ID) >= int(definition.Bounds.AgentRuns) {
+				return failure.ToolInput("The declared sub-agent invocation bound was reached.")
 			}
 			if err := c.admitRun(task); err != nil {
 				return err
@@ -645,6 +648,14 @@ func (c *coordinator) agentBatch(ctx context.Context, pending *handoff) (contrac
 					})
 				}
 				p = held
+				if task.Subagent != nil && (p == nil || p.subagent == nil || p.subagent.Digest == nil || *p.subagent.Digest != task.Subagent.Digest || task.Profile != p.subagent.ID || string(mustJSON(task.Subagent)) != string(mustJSON(runcontext.SubagentRecord(*p.subagent)))) {
+					c.edit(func() {
+						task.State = "interrupted"
+						task.Problem = strPtr("The declared sub-agent was withdrawn or changed; it was not dispatched again.")
+						task.FinishedAt = strPtr(now())
+					})
+					c.deliver(runcontext.SubagentNotice(task.Subagent.ID, *task.Problem, "subagent withheld"))
+				}
 			}
 			if task.State == "running" {
 				c.edit(func() {

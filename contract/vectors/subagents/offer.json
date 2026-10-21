@@ -1,0 +1,48 @@
+{
+  "description": "Hand-authored ADR-0013 record coverage.",
+  "schema": "tool-offer.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/subagents.ts"
+    ]
+  },
+  "items": [
+    {
+      "tools": [],
+      "hostTools": [],
+      "subagents": [
+        {
+          "id": "auditor",
+          "name": "Auditor",
+          "purpose": "Check supplied evidence.",
+          "instructions": "Use only the supplied evidence and cite it.",
+          "source": {
+            "kind": "custom",
+            "id": "project",
+            "version": "1",
+            "trust": "person"
+          },
+          "tools": [
+            "lookup"
+          ],
+          "skills": [],
+          "model": "fixture",
+          "reasoning": "low",
+          "bounds": {
+            "modelRequests": 3,
+            "agentRuns": 1,
+            "toolCalls": 2,
+            "bytes": 12000,
+            "milliseconds": 30000,
+            "resultBytes": 3000
+          },
+          "pinnedDigest": "sha256:995fe5f09c48582de11b7109d3def5927eda8003a884f7fd2c63925edd4393d6"
+        }
+      ]
+    }
+  ]
+}

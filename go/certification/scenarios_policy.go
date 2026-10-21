@@ -64,7 +64,7 @@ func policyFindings(ctx context.Context, agent bool, play switchPlay) ([]Finding
 			"turnIndexBytes": 8000, "projectInstructionsBytes": 4000, "toolDescriptionBytes": 1024,
 			"offeredSchemas": 16, "offeredSchemaBytes": 24000, "cataloguedTools": 64, "catalogueBytes": 24000,
 			"sourceResultBytes": 8000, "sourceCallsPerTurn": 8, "sourceCallMilliseconds": 30000,
-			"skillBytes": 8000, "skillsPerRun": 4, "skillsCatalogueBytes": 8000, "cataloguedSkills": 32,
+			"skillBytes": 8000, "skillsPerRun": 4, "skillsCatalogueBytes": 8000, "cataloguedSkills": 32, "cataloguedSubagents": 16, "subagentCatalogueBytes": 4000,
 		}
 		model := "scripted-model"
 		if agent {

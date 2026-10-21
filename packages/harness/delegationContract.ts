@@ -1,3 +1,4 @@
+import {validSubagentRecord} from './subagents'
 import {readFailure,toolInputFailure,type AIFailure} from './failures'
 import type { HostTool } from './engine'
 import { ASSISTANT_TOOLS } from './host'
@@ -32,7 +33,7 @@ export interface TaskBudget { modelRequests: number; toolCalls: number; millisec
  * its earlier context. `summarize` (agent#13): findings over the result limit are summarized once,
  * one request of the child's budget.
  */
-export interface DelegatedTaskRequest { title: string; objective: string; profile: string; references?: string[]; resume?: string; summarize?: boolean }
+export interface DelegatedTaskRequest { subagent?: import('./subagents').SubagentRecord; title: string; objective: string; profile: string; references?: string[]; resume?: string; summarize?: boolean }
 export interface DelegationRequest { tasks: DelegatedTaskRequest[] }
 /** Where a child's whole findings are retained when its record carries their head (agent#13): read on with read_window. */
 export interface ResultCursor { readWith: 'read_window'; id: string; cursor: string; totalCharacters: number }
@@ -71,6 +72,7 @@ export interface TaskReport {
 export type TokenFigures = import('./execution/state').TokenFigures
 export const TOKEN_MEMBERS: readonly (keyof TokenFigures)[] = ['inputTokens', 'outputTokens', 'reasoningTokens', 'cacheReadTokens', 'cacheWriteTokens']
 export interface DelegatedTask {
+  subagent?: import('./subagents').SubagentRecord
   id: string; parentRunId: string; title: string; objective: string; profile: string
   state: TaskState; createdAt: string; finishedAt?: string
   modelRequests: number; toolCalls: number; attempts: number
@@ -181,6 +183,7 @@ export function validDelegatedTask(v: unknown): v is DelegatedTask {
     && (v.failure===undefined || !!readFailure(v.failure))
     && v.steps.every(s=>object(s) && text(s.name,128) && state(s.state)) && (v.result===undefined || text(v.result,12000)) && (v.problem===undefined || text(v.problem,1000))
     && (v.budget===undefined || budget(v.budget)) && (v.model===undefined || text(v.model,200)) && (v.resumes===undefined || uuid(v.resumes))
+    && (v.subagent===undefined || validSubagentRecord(v.subagent)&&v.subagent.id===v.profile)
     && (v.references===undefined || Array.isArray(v.references) && v.references.length<=MAX_REFERENCES && v.references.every(r=>text(r,REFERENCE_CHARACTERS)))
     && (v.more===undefined || cursor(v.more)) && (v.summarized===undefined || typeof v.summarized==='boolean')
     && (v.report===undefined || 'report' in readReport('any', v.report)) && (v.partial===undefined || v.partial===true) && (v.reused===undefined || uuid(v.reused))

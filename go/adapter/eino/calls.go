@@ -318,6 +318,9 @@ func (t *turnState) hostAnswer(ctx context.Context, tool runcontext.HostTool, ar
 // alike.
 func (t *turnState) refuseUnoffered(ctx context.Context, name string, args json.RawMessage) (runcontext.ToolResult, error) {
 	t.r.deliver(t.callEvent("", name, nonEmpty(args), ""))
+	if name == "delegate_tasks" && t.r.run.ChildDefinition != nil {
+		t.r.deliver(runcontext.SubagentNotice(name, "A child cannot delegate.", "subagent refused"))
+	}
 	refusal := "the call did not leave the page and nothing was written"
 	// ADR-0006: the Runtime's row of the run report counts the refusal, as the TypeScript boundary's
 	// wrapped callTool does.

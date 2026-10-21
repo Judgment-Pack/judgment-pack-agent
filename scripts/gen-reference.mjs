@@ -478,6 +478,9 @@ async function delegationPage(page) {
   page.add(
     `The built-in task profiles and their offers, the limits on ${code(DELEGATE_TOOL)}, the task and report records and the accounting of an agent capability.`,
     seeAlso('tools.md', 'budget.md', 'events.md', 'reasons.md', 'checkpoint.md'),
+    page.rootOf('subagent.json', '## Declared sub-agents'),
+    page.nodeOf('tool-offer.json', 'subagentCatalogueEntry'),
+    'Declared definitions use models.subagent.<id>, reads only, narrowing bounds and a pinned canonical digest. The catalogue is bounded by cataloguedSubagents (16) and subagentCatalogueBytes (4000). Built-ins remain fixed and are never declarations.',
     '## Built-in profiles',
     '',
     table(['Profile', 'Capabilities', 'Runtime tools', 'Model', 'Model requests', 'Tool calls', 'Milliseconds', 'Report', 'Description'], TASK_PROFILES.map((p) => [
