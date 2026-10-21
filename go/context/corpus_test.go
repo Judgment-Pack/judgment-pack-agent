@@ -53,6 +53,26 @@ func TestCorpusProjectionExcludesProse(t *testing.T) {
 	}
 }
 
+func TestCorpusUnrecordedToolCallIsStructuredDrift(t *testing.T) {
+	server, err := NewScriptedCorpusTools(CorpusEntry{Manifest: CorpusManifest{ID: "model-tool"}, ToolResults: json.RawMessage(`[]`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := server.Call("get_schema", json.RawMessage(`{}`))
+	if !strings.Contains(string(result), `"isError":true`) {
+		t.Fatalf("result: %s", result)
+	}
+	err = server.Complete()
+	var drift *CorpusDrift
+	if !errors.As(err, &drift) || drift.Difference.Member != "/toolResults/0" || drift.Difference.Expected != nil {
+		t.Fatalf("drift: %#v", err)
+	}
+	actual, ok := drift.Difference.Actual.(map[string]any)
+	if !ok || actual["name"] != "get_schema" {
+		t.Fatalf("actual: %#v", drift.Difference.Actual)
+	}
+}
+
 type corpusTestGuard struct{ refuse bool }
 
 func (g corpusTestGuard) JSON(raw json.RawMessage, _ string, _ bool) (json.RawMessage, error) {

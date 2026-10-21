@@ -38,6 +38,77 @@ type CorpusEntry struct {
 	Expected    map[string]any
 }
 
+type recordedCorpusToolResult struct {
+	Name   string          `json:"name"`
+	Args   json.RawMessage `json:"args"`
+	Result json.RawMessage `json:"result"`
+}
+
+// ScriptedCorpusTools serves only the recording's ordered tool results. A missing or mismatched
+// call is remembered as structured corpus drift while the adapter receives an error result and can
+// finish its loop; no fallback transport exists.
+type ScriptedCorpusTools struct {
+	id         string
+	rows       []recordedCorpusToolResult
+	at         int
+	difference *CorpusDifference
+}
+
+func NewScriptedCorpusTools(entry CorpusEntry) (*ScriptedCorpusTools, error) {
+	var rows []recordedCorpusToolResult
+	if err := json.Unmarshal(entry.ToolResults, &rows); err != nil {
+		return nil, err
+	}
+	return &ScriptedCorpusTools{id: entry.Manifest.ID, rows: rows}, nil
+}
+
+func corpusCall(name string, args json.RawMessage) map[string]any {
+	var value any
+	if err := json.Unmarshal(args, &value); err != nil {
+		value = nil
+	}
+	return map[string]any{"name": name, "args": value}
+}
+
+func sameCorpusCall(row recordedCorpusToolResult, name string, args json.RawMessage) bool {
+	want, err := canonicalBytes(corpusCall(row.Name, row.Args))
+	if err != nil {
+		return false
+	}
+	got, err := canonicalBytes(corpusCall(name, args))
+	return err == nil && string(want) == string(got)
+}
+
+// Call returns the recorded MCP result for this call and records drift rather than failing the
+// adapter when the recording has no matching result.
+func (s *ScriptedCorpusTools) Call(name string, args json.RawMessage) json.RawMessage {
+	at := s.at
+	s.at++
+	actual := corpusCall(name, args)
+	if at >= len(s.rows) || !sameCorpusCall(s.rows[at], name, args) {
+		var expected any
+		if at < len(s.rows) {
+			expected = corpusCall(s.rows[at].Name, s.rows[at].Args)
+		}
+		if s.difference == nil {
+			s.difference = &CorpusDifference{Member: fmt.Sprintf("/toolResults/%d", at), Expected: expected, Actual: actual}
+		}
+		return json.RawMessage(`{"content":[{"type":"text","text":"The recording has no result for this tool call."}],"isError":true}`)
+	}
+	return append(json.RawMessage(nil), s.rows[at].Result...)
+}
+
+func (s *ScriptedCorpusTools) Complete() error {
+	if s.difference != nil {
+		return &CorpusDrift{ID: s.id, Difference: *s.difference}
+	}
+	if s.at != len(s.rows) {
+		row := s.rows[s.at]
+		return &CorpusDrift{ID: s.id, Difference: CorpusDifference{Member: fmt.Sprintf("/toolResults/%d", s.at), Expected: corpusCall(row.Name, row.Args), Actual: nil}}
+	}
+	return nil
+}
+
 type CorpusGuard interface {
 	JSON(raw json.RawMessage, where string, record bool) (json.RawMessage, error)
 }

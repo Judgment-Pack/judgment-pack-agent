@@ -16,12 +16,13 @@ const entries=()=>readdirSync(root,{withFileTypes:true}).filter(row=>row.isDirec
 })
 const releaseRun=async(engineId:string,server:import('../corpus').ScriptedCorpusServer)=>{
  const engine=await loadEngine(engineId)
- if(engineId==='codex')return (await runOnAgentEngine((request,callbacks)=>server.agent(request,callbacks),{engine,session:{critic:'off'}})).events
- return (await runOnModelEngine(request=>server.model('chat/completions',{body:JSON.stringify(request.body)}),{engine,session:{critic:'off',thinking:normalize('off','openai-compatible')}})).events
+ const transport={engine,handle:(call:{name:string;args:Record<string,unknown>})=>server.tool(call.name,call.args),session:{critic:'off' as const}}
+ if(engineId==='codex')return (await runOnAgentEngine((request,callbacks)=>server.agent(request,callbacks),transport)).events
+ return (await runOnModelEngine(request=>server.model('chat/completions',{body:JSON.stringify(request.body)}),{...transport,session:{...transport.session,thinking:normalize('off','openai-compatible')}})).events
 }
 
 describe.each([...MODEL_ENGINES,...AGENT_ENGINES])('scenario 22 · %s',engine=>{
- it('replays both seed entries without a provider',async()=>{const entry=entries().find(row=>engine==='codex'?row.manifest.id.startsWith('agent-'):row.manifest.id.startsWith('model-'))!;await replayCorpus(entry,server=>releaseRun(engine,server))})
+ it('replays both seed entries without a provider',async()=>{for(const entry of entries().filter(row=>engine==='codex'?row.manifest.id.startsWith('agent-'):row.manifest.id.startsWith('model-')))await replayCorpus(entry,server=>releaseRun(engine,server))})
  it('names a tampered expectation member',async()=>{const entry=structuredClone(entries().find(row=>engine==='codex'?row.manifest.id.startsWith('agent-'):row.manifest.id.startsWith('model-'))!);entry.expected.outcomes=[{type:'proposal'}];await expect(replayCorpus(entry,server=>releaseRun(engine,server))).rejects.toThrow('/outcomes/length differs')})
  it('record true round-trips through the output guard',async()=>{const seed=entries()[0]!,files:Record<string,string>={},session={record:true,corpus:{manifest:seed.manifest,guard:{value:<T>(value:T)=>value},sink:{write(_id:string,written:Record<string,string>){Object.assign(files,written)}}},model:{family:'openai-compatible',model:'scripted',call:async()=>new Response('{"ok":true}',{status:200})}} as unknown as EngineSession
   const recording=recordSession(session);if(!('model'in recording.session))throw Error('model session required');await recording.session.model.call('chat/completions',{body:'{}'})

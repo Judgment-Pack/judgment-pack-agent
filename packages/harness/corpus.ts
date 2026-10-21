@@ -95,7 +95,7 @@ export function compareCorpus(expected:CorpusExpected,actual:CorpusExpected,tole
 
 /** A replay transport backed only by the entry. Exhaustion or a request mismatch is a named failure; it never calls a live provider. */
 export class ScriptedCorpusServer{
- private requestAt=0;private toolAt=0
+ private requestAt=0;private toolAt=0;private toolDifference:CorpusDifference|undefined
  constructor(private readonly entry:CorpusEntry){}
  async model(suffix:string,request:ModelRequest):Promise<Response>{
   const row=this.entry.requests[this.requestAt++]
@@ -111,11 +111,18 @@ export class ScriptedCorpusServer{
   for(const event of body.events??[])await callbacks.event(event as Parameters<AgentCallbacks['event']>[0])
  }
  async tool(name:string,args:Record<string,unknown>):Promise<McpToolResult>{
-  const row=this.entry.toolResults[this.toolAt++]
-  if(!row||canonicalJSON({name:row.name,args:row.args})!==canonicalJSON({name,args}))throw Error(`corpus tool result ${this.toolAt-1} differs`)
+  const at=this.toolAt++,row=this.entry.toolResults[at],actual={name,args}
+  if(!row||canonicalJSON({name:row.name,args:row.args})!==canonicalJSON(actual)){
+   this.toolDifference??={member:`/toolResults/${at}`,expected:row===undefined?null:{name:row.name,args:row.args},actual}
+   return {content:[{type:'text',text:'The recording has no result for this tool call.'}],isError:true}
+  }
   return clone(row.result)
  }
- complete(){if(this.requestAt!==this.entry.requests.length)throw Error(`corpus requests: used ${this.requestAt}, recorded ${this.entry.requests.length}`);if(this.toolAt!==this.entry.toolResults.length)throw Error(`corpus tool results: used ${this.toolAt}, recorded ${this.entry.toolResults.length}`)}
+ complete(){
+  if(this.requestAt!==this.entry.requests.length)throw Error(`corpus requests: used ${this.requestAt}, recorded ${this.entry.requests.length}`)
+  if(this.toolDifference)throw new CorpusDrift(this.entry.manifest.id,this.toolDifference)
+  if(this.toolAt!==this.entry.toolResults.length){const at=this.toolAt,row=this.entry.toolResults[at]!;throw new CorpusDrift(this.entry.manifest.id,{member:`/toolResults/${at}`,expected:{name:row.name,args:row.args},actual:null})}
+ }
 }
 
 export async function replayCorpus(entry:CorpusEntry,run:(server:ScriptedCorpusServer)=>Promise<AssistantEvent[]>):Promise<void>{

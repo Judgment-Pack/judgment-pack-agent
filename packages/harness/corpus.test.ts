@@ -39,4 +39,8 @@ describe('evaluation corpus',()=>{
   const entry:CorpusEntry={manifest,requests:[],toolResults:[],events:[event,{type:'message',text:'old prose'}],checkpoint:{},expected:{gateDecisions:[{tool:'pace',action:'refused',reason:'pace warning'}],outcomes:[],refusals:[{tool:'pace',action:'refused',reason:'pace warning'}]}}
   await replayCorpus(entry,async()=>[event,{type:'message',text:'different prose'}])
  })
+ it('reports an unrecorded tool call as structured drift',async()=>{
+  const entry:CorpusEntry={manifest,requests:[],toolResults:[],events:[],checkpoint:{},expected:{gateDecisions:[],outcomes:[],refusals:[]}}
+  await expect(replayCorpus(entry,async server=>{await server.tool('get_schema',{});return []})).rejects.toMatchObject({id:manifest.id,difference:{member:'/toolResults/0',expected:null,actual:{name:'get_schema',args:{}}}})
+ })
 })

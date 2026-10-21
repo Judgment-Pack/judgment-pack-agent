@@ -1,0 +1,1 @@
+{"id":"model-recorded-tool-result","packageVersion":"0.8.0","policy":{"engine":"vercel","taskClass":"authoring"},"files":{"requests":"requests.json","toolResults":"tool-results.json","events":"events.json","checkpoint":"checkpoint.json"},"expected":{"file":"expected.json"},"tolerance":[]}

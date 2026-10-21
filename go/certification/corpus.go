@@ -18,6 +18,7 @@ import (
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter"
 	runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/relay"
 )
 
@@ -34,8 +35,8 @@ var CorpusScenario = ScenarioCheck{Scenario: "evaluation-corpus", Names: CorpusS
 		return nil, err
 	}
 	var out []Finding
-	if len(passed) != 1 {
-		out = append(out, Finding{Check: "22 replay", Detail: "expected the model seed entry"})
+	if len(passed) != 2 {
+		out = append(out, Finding{Check: "22 replay", Detail: "expected both model seed entries"})
 	}
 	expected := map[string]any{"gateDecisions": []any{map[string]any{"action": "refused"}}, "outcomes": []any{}, "refusals": []any{}}
 	actual := map[string]any{"gateDecisions": []any{map[string]any{"action": "rewrote"}}, "outcomes": []any{}, "refusals": []any{}}
@@ -78,6 +79,35 @@ func runCorpusAdapter(ctx context.Context, entry runcontext.CorpusEntry, a Adapt
 	at := 0
 	events := []contract.RunEvent{}
 	run := &Run{Prompt: "Replay this recorded run.", TestPrompt: "", AllowConversation: true, Critic: "off", ModelName: "scripted-model", Thinking: "off", Emit: func(event contract.RunEvent) { events = append(events, event) }}
+	tools, err := runcontext.NewScriptedCorpusTools(entry)
+	if err != nil {
+		return err
+	}
+	var offer contract.ToolOffer
+	_, vectors, err := ReadVector("tool-offer/scenario-offer.json")
+	if err != nil {
+		return err
+	}
+	if len(vectors) != 1 || json.Unmarshal(vectors[0], &offer) != nil {
+		return fmt.Errorf("corpus replay: invalid recorded tool offer")
+	}
+	gated := gate.New(gate.Options{Runtime: func(_ context.Context, message json.RawMessage) (json.RawMessage, error) {
+		var frame struct {
+			ID     any    `json:"id"`
+			Method string `json:"method"`
+			Params struct {
+				Name string          `json:"name"`
+				Args json.RawMessage `json:"arguments"`
+			} `json:"params"`
+		}
+		if err := json.Unmarshal(message, &frame); err != nil {
+			return nil, err
+		}
+		result := tools.Call(frame.Params.Name, frame.Params.Args)
+		return json.Marshal(map[string]any{"jsonrpc": "2.0", "id": frame.ID, "result": json.RawMessage(result)})
+	}, Granted: gate.Ceiling, Emit: run.Emit})
+	gated.SetOffer(offer)
+	run.Gate, run.Tools = gated.Calls(), offer.Tools
 	run.Wire = "openai-compatible"
 	if agentCapability {
 		if bind == nil {
@@ -125,6 +155,9 @@ func runCorpusAdapter(ctx context.Context, entry runcontext.CorpusEntry, a Adapt
 	}
 	if at != len(requests) {
 		return fmt.Errorf("corpus requests: used %d, recorded %d", at, len(requests))
+	}
+	if err := tools.Complete(); err != nil {
+		return err
 	}
 	actual, err := runcontext.CorpusExpected(events)
 	if err != nil {

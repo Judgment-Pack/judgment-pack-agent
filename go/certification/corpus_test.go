@@ -34,7 +34,11 @@ func TestScenario22EveryGoAdapterReplaysCorpus(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(passed) != 1 || !ran {
+			want := 1
+			if !row.agent {
+				want = 2
+			}
+			if len(passed) != want || !ran {
 				t.Fatalf("replayed %d entries", len(passed))
 			}
 		})
