@@ -1103,12 +1103,13 @@ func (c *SessionContext) OpenSources(declared *Declared, catalogue bool, toolSch
 	if c.Execution.State.Sources == nil {
 		c.Execution.State.Sources = []contract.ProvenanceSourceFigures{}
 	}
-	c.Sources = NewSourceGate(declared, c.Policy, c.Marker, toolSchemas, func() *[]contract.ProvenanceSourceFigures { return &c.Execution.State.Sources }, parent)
+	c.Sources = NewSourceGate(declared, c.Policy, c.Marker, toolSchemas, func() *[]contract.ProvenanceSourceFigures { return &c.Execution.State.Sources }, parent, &c.Execution.State.SourceIdentities)
 	// ADR-0008: the run's approval, in the execution state; no act call is admitted in a delegated
 	// child, in Plan mode, while the critic reads or in the reformat run.
 	c.Sources.SetApprovals(approvalBook{c: c, child: parent != nil})
 	c.Catalogue = catalogue
 	c.Execution.LoadedSchemas = c.Sources.LoadedSection
+	c.Execution.SourceIdentities = c.Sources.IdentityRows
 	c.Execution.SourceRows = func() []contract.ProvenanceSourceFigures { return c.Sources.Rows(nil) }
 }
 

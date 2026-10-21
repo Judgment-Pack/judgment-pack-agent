@@ -4,7 +4,7 @@
  * the changed list, the catalogue, the cap, the effect classes and approvals, the deadline, the
  * receipt and the report. The certified scenario 7 runs the same on every engine.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import sourceNames from '../../contract/vectors/tool-offer/source-names.json'
 import listDigests from '../../contract/vectors/tool-offer/tool-list-digest.json'
 import declarations from '../../contract/vectors/tool-offer/source-declarations.json'
@@ -22,6 +22,15 @@ import continueApproved from '../../contract/vectors/approval/continue-approved.
 import secondAct from '../../contract/vectors/approval/second-act-while-pending.json'
 import policyVector from '../../contract/vectors/approval/policy.json'
 import staleVector from '../../contract/vectors/approval/stale-decision.json'
+import identityOffer from '../../contract/vectors/identity/offer.json'
+import identityEvents from '../../contract/vectors/identity/events.json'
+import identityChanged from '../../contract/vectors/identity/changed.json'
+import serviceAct from '../../contract/vectors/identity/service-act.json'
+import credentialLabels from '../../contract/vectors/identity/credential-labels.json'
+import identityCheckpoint from '../../contract/vectors/identity/checkpoint.json'
+import type { SourceIdentityState } from './execution/state'
+import identityFigures from '../../contract/vectors/identity/figures.json'
+import runEventSchema from '../../contract/schemas/run-event.json'
 import toolSourcesServer from './certification/scenarios/tool-sources.json'
 import { CONTEXT_DEFAULTS, SOURCE_DEFAULTS } from './context/policy'
 import { readingTool } from './framing'
@@ -41,6 +50,7 @@ import {
   LOAD_TOOL,
   PROPOSED,
   SourceGate,
+  asksApproval,
   declareSources,
   offerSources,
   toolListDigest,
@@ -57,13 +67,32 @@ import { DELEGATE_TOOL } from './delegationContract'
 import { normalize } from './thinking'
 import { answerFrom, offeredNames, runOnModelEngine, type Turn } from './testing/scenarioDriver'
 import { ofType } from './testing/scripted'
+import { testHost } from './testing/host'
+import { configureHarness } from './host'
 import type { AssistantEvent, AssistantSession, Engine, EngineSession, HostTool, McpToolResult } from './engine'
+import { argumentProblem } from './sourceArguments'
 
 const MARKER = sourceOffer.marker
+beforeEach(() => configureHarness(testHost()))
 const declared = (tools: unknown[]): HostTool[] =>
   tools.map((tool) => ({ ...(tool as HostTool), execute: async () => ({ content: [{ type: 'text', text: 'ran' }] }) }))
 /** A tool as the contract states it: its members that cross, without its functions. */
-const crossing = (tool: HostTool) => JSON.parse(JSON.stringify(tool)) as unknown
+const legacy = <T>(value: T): T => {
+  const copied = JSON.parse(JSON.stringify(value)) as unknown
+  const visit = (item: unknown): void => {
+    if (Array.isArray(item)) { item.forEach(visit); return }
+    if (typeof item !== 'object' || item === null) return
+    const record = item as Record<string, unknown>
+    delete record.identity
+    delete record.identityDigest
+    if (typeof record.description === 'string') record.description = record.description.replace(/\nruns as: [^\n]+(?=\n)/, '')
+    Object.values(record).forEach(visit)
+  }
+  visit(copied)
+  return copied as T
+}
+/** A tool as the pre-ADR-0019 vectors state it: its members that cross, without its functions. */
+const crossing = (tool: HostTool) => legacy(JSON.parse(JSON.stringify(tool)) as unknown)
 
 describe('the declaration (ADR-0006)', () => {
   it('names every tool by the wire-name rule, the contract’s vector', async () => {
@@ -255,8 +284,239 @@ describe('the declaration (ADR-0006)', () => {
   })
 })
 
+describe('identity per tool call (ADR-0019)', () => {
+  const serviceTool = (extra: Partial<HostTool> = {}): HostTool => ({
+    name: 'submit', description: 'Submit one expense.', inputSchema: { type: 'object' }, effectClass: 'act',
+    source: { kind: 'gateway', id: 'expenses', trust: 'connected', version: '4', identity: { kind: 'service', label: 'expense-bot' } },
+    approve: () => 'allow', execute: async () => ({ content: [{ type: 'text', text: 'submitted' }] }), ...extra
+  })
+
+  it('shows and pins the declared identity on the offer, the hand-written vector', async () => {
+    const declared = await declareSources([serviceTool()], [])
+    const offered = offerSources(declared.hostTools, declared.entries, CONTEXT_DEFAULTS, MARKER)
+    expect(JSON.parse(JSON.stringify(offered.hostTools[0]))).toEqual(identityOffer.items[0])
+  })
+
+  it('carries the host identity on every event and ignores an identity in model arguments', async () => {
+    const { gate, call } = await gateFor([serviceTool({ effectClass: 'read', approval: 'none' })])
+    const args = identityEvents.items[0]!.args
+    await call('expenses__submit', args, signal(), 'identity-1')
+    expect(gate.decorate({ type: 'tool_call', callId: 'identity-1', name: 'expenses__submit', args })).toEqual(identityEvents.items[0])
+    expect(gate.decorate({ type: 'tool_result', callId: 'identity-1', name: 'expenses__submit', isError: false, text: 'submitted' })).toEqual(identityEvents.items[1])
+  })
+
+  it('withholds a source whose identity changes and reports the decided reason', async () => {
+    const changed = { kind: 'person' as const, label: 'A. Reviewer' }
+    const { call, notices, rows } = await gateFor([serviceTool({ effectClass: 'read', approval: 'none', source: { ...serviceTool().source!, currentIdentity: () => changed } })])
+    await expect(call('expenses__submit')).rejects.toBeInstanceOf(GateViolation)
+    expect(notices.at(-1)).toEqual({ tool: identityChanged.items[0]!.tool, detail: identityChanged.items[0]!.detail, reason: identityChanged.items[0]!.reason })
+    await expect(call('expenses__submit')).rejects.toBeInstanceOf(GateViolation)
+    expect(rows.find((row) => row.source === 'expenses')).toMatchObject({ calls: 0, refused: 2, identities: [{ identity: { kind: 'service', label: 'expense-bot' }, calls: 0 }] })
+  })
+
+  it('emits a schema-valid refusal when the current identity is empty, missing or oversized', async () => {
+    const malformed = [{ kind: 'person', label: '' }, { kind: 'person' }, { kind: 'person', label: 'x'.repeat(129) }]
+    for (const identity of malformed) {
+      const source = { ...serviceTool().source!, currentIdentity: () => identity as never }
+      const { call, notices } = await gateFor([serviceTool({ effectClass: 'read', approval: 'none', source })])
+      await expect(call('expenses__submit')).rejects.toBeInstanceOf(GateViolation)
+      const notice = notices.at(-1)!
+      expect(argumentProblem(runEventSchema.$defs.guardrail, { type: 'guardrail', action: 'refused', ...notice })).toBeUndefined()
+    }
+  })
+
+  it('downgrades the first service act from allow to ask, records it, then counts the approved call by identity', async () => {
+    const { book, held } = (() => {
+      const held: { approval?: ApprovalRecord } = {}
+      return { held, book: { current: () => held.approval, ask: (record: ApprovalRecord) => { held.approval = record }, closed: () => '' } }
+    })()
+    const { gate, call, notices, rows } = await gateFor([serviceTool()], {}, false, book)
+    expect(await gate.decide('expenses__submit', { amount: 12 }, 'identity-1')).toMatchObject({ answer: 'ask' })
+    expect(notices[0]).toEqual({ tool: serviceAct.items[0]!.tool, detail: serviceAct.items[0]!.detail, reason: serviceAct.items[0]!.reason })
+    expect({ type: 'approval_requested', callId: held.approval!.callId, name: held.approval!.name, tool: held.approval!.tool, source: held.approval!.source, args: held.approval!.args }).toEqual(serviceAct.items[1])
+    const approved = { ...held.approval!, state: 'approved' as const }
+    expect((await gate.approved(approved, signal(), async () => ({ content: [{ type: 'text', text: 'submitted' }] }))).ran).toBe(true)
+    held.approval = undefined
+    await expect(call('expenses__submit', { amount: 13 }, signal(), 'identity-2')).resolves.toBeDefined()
+    expect(rows.find((row) => row.source === 'expenses')?.identities).toEqual(identityFigures.items[0]!.identities)
+    expect(validSourceFigures(identityFigures.items)).toBe(true)
+  })
+
+  it('still asks the first service act after reads under the same identity', async () => {
+    const held: { approval?: ApprovalRecord } = {}
+    const book: ApprovalBook = { current: () => held.approval, ask: (record) => { held.approval = record }, closed: () => '' }
+    const { gate, rows } = await gateFor([serviceTool()], {}, false, book)
+    rows.push({ source: 'expenses', kind: 'gateway', calls: 1, refused: 0, proposed: 0, bytes: 1, milliseconds: 1, identities: [{ identity: { kind: 'service', label: 'expense-bot' }, calls: 1 }] })
+    expect(await gate.decide('expenses__submit', { amount: 12 }, 'after-read')).toMatchObject({ answer: 'ask' })
+  })
+
+  it('lets a later service act follow allow after an earlier asked act is restored', async () => {
+    const asked = serviceAct.items[1]!
+    const approval: ApprovalRecord = { callId: asked.callId!, name: asked.name!, tool: asked.tool!, source: asked.source as ApprovalRecord['source'], args: asked.args!, state: 'answered' }
+    const book: ApprovalBook = { current: () => approval, ask: () => { throw Error('the later act must not ask') }, closed: () => '' }
+    const { gate } = await gateFor([serviceTool()], {}, false, book)
+    expect(await gate.decide('expenses__submit', { amount: 13 }, 'later')).toMatchObject({ answer: 'allow' })
+  })
+
+  it('asks the first service act with approval none and executes only after the recorded approval', async () => {
+    for (const approve of [undefined, () => 'allow' as const]) {
+      const execute = vi.fn(async () => ({ content: [] }))
+      const held: { approval?: ApprovalRecord } = {}
+      const book: ApprovalBook = { current: () => held.approval, ask: (record) => { held.approval = record }, closed: () => '' }
+      const { gate, call, notices } = await gateFor([serviceTool({ approval: 'none', approve, execute })], {}, false, book)
+      expect(asksApproval(serviceTool({ approval: 'none', approve }))).toBe(true)
+      expect(gate.needsApproval('expenses__submit')).toBe(true)
+      await expect(call('expenses__submit')).rejects.toBeInstanceOf(ApprovalHeld)
+      expect(execute).not.toHaveBeenCalled()
+      expect(held.approval?.state).toBe('asked')
+      expect(notices.some((event) => event.reason === 'approval downgraded')).toBe(true)
+      expect((await gate.approved({ ...held.approval!, state: 'approved' }, signal(), execute)).ran).toBe(true)
+      held.approval = undefined
+      await call('expenses__submit')
+      expect(execute).toHaveBeenCalledTimes(2)
+    }
+  })
+
+  it('refuses every service act without an approval book, including the second call', async () => {
+    for (const approval of ['none', 'required'] as const) {
+      const execute = vi.fn(async () => ({ content: [] }))
+      const state: SourceIdentityState[] = []
+      const { call, notices } = await gateFor([serviceTool({ approval, execute })], {}, false, undefined, state)
+      for (const args of [{}, { amount: 'x'.repeat(129) }]) {
+        await expect(call('expenses__submit', args)).rejects.toBeInstanceOf(GateViolation)
+        expect(argumentProblem(runEventSchema.$defs.guardrail, { type: 'guardrail', action: 'refused', ...notices.at(-1)! })).toBeUndefined()
+      }
+      expect(execute).not.toHaveBeenCalled()
+      expect(state[0]?.serviceAsked).toBe(false)
+    }
+  })
+
+  it('does not consume the first service ask when recording the approval throws', async () => {
+    const state: SourceIdentityState[] = []
+    const ask = vi.fn(() => { throw Error('approval storage unavailable') })
+    const { call } = await gateFor([serviceTool()], {}, false, { current: () => undefined, ask, closed: () => '' }, state)
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await expect(call('expenses__submit')).rejects.toThrow('approval storage unavailable')
+      expect(state[0]?.serviceAsked).toBe(false)
+    }
+    expect(ask).toHaveBeenCalledTimes(2)
+  })
+
+  it('withholds every credential-label vector before offers, events, figures or checkpoint publication', async () => {
+    for (const label of credentialLabels.labels) {
+      // Malformed names and missing/oversized declaration fields must not expose the label either.
+      for (const name of ['submit', '', 'x'.repeat(129)]) {
+        const tool = serviceTool({ name, source: { ...serviceTool().source!, identity: { kind: 'service', label } } })
+        const out = await declareSources([tool], [])
+        expect(out.hostTools).toEqual([])
+        expect(out.sources).toEqual([])
+        expect(out.entries.size).toBe(0)
+        const events = out.withheld.map((notice) => ({ type: 'guardrail', action: 'refused', ...notice }))
+        expect(events).toEqual(credentialLabels.items)
+        expect(argumentProblem(runEventSchema.$defs.guardrail, events[0])).toBeUndefined()
+        const state: SourceIdentityState[] = []
+        const { gate, rows, offered } = await gateFor([tool], {}, false, undefined, state)
+        expect(state).toEqual([])
+        expect(rows.map((row) => row.source)).toEqual(['runtime'])
+        expect(offered.hostTools).toEqual([])
+        expect(JSON.stringify({ out, rows, event: gate.decorate({ type: 'tool_call', name: 'expenses__submit', args: {} }) })).not.toContain(label)
+      }
+    }
+  })
+
+  it('restores identity withholding and the pin even when the original identity returns', async () => {
+    let current = { kind: 'service' as const, label: 'different-bot' }
+    const tool = serviceTool({ effectClass: 'read', approval: 'none', source: { ...serviceTool().source!, currentIdentity: () => current } })
+    const state: SourceIdentityState[] = []
+    const first = await gateFor([tool], {}, false, undefined, state)
+    await expect(first.call('expenses__submit')).rejects.toBeInstanceOf(GateViolation)
+    expect(state[0]).toEqual({ ...identityCheckpoint.items[0]!.sourceIdentities[0], serviceAsked: false })
+    const checkpoint = readExecution(JSON.parse(JSON.stringify({ ...identityCheckpoint.items[0], sourceIdentities: state })))!
+    current = { kind: 'service', label: 'expense-bot' }
+    const restored = await gateFor([tool], {}, false, undefined, checkpoint.sourceIdentities)
+    await expect(restored.call('expenses__submit')).rejects.toBeInstanceOf(GateViolation)
+    expect(restored.notices.at(-1)?.reason).toBe('identity changed')
+    // Re-declaring a different pin on the same saved run cannot clear the latch.
+    const redeclared = await gateFor([serviceTool({ effectClass: 'read', source: { ...tool.source!, identity: { kind: 'person', label: 'new-label' } } })], {}, false, undefined, checkpoint.sourceIdentities)
+    await expect(redeclared.call('expenses__submit')).rejects.toBeInstanceOf(GateViolation)
+    // Host re-approval supplies fresh declarations in a new run, with fresh checkpoint state.
+    const reapproved = await gateFor([tool])
+    await expect(reapproved.call('expenses__submit')).resolves.toBeDefined()
+  })
+
+  it('restores two sources service history separately from the latest approval', async () => {
+    const held: { approval?: ApprovalRecord } = {}
+    const book: ApprovalBook = { current: () => held.approval, ask: (record) => { held.approval = record }, closed: () => '' }
+    const tools = [serviceTool(), serviceTool({ source: { ...serviceTool().source!, id: 'billing' } })]
+    const state: SourceIdentityState[] = []
+    const first = await gateFor(tools, {}, false, book, state)
+    for (const source of ['expenses', 'billing']) {
+      await expect(first.call(`${source}__submit`)).rejects.toBeInstanceOf(ApprovalHeld)
+      held.approval!.state = 'answered'
+    }
+    const checkpoint = readExecution(JSON.parse(JSON.stringify({ ...identityCheckpoint.items[0], sourceIdentities: state, approval: held.approval })))!
+    expect(checkpoint.sourceIdentities).toEqual(identityCheckpoint.items[0]!.sourceIdentities.map((row) => ({ ...row, withheld: false })))
+    const restored = await gateFor(tools, {}, false, { ...book, current: () => checkpoint.approval, ask: () => { throw Error('must not ask again') } }, checkpoint.sourceIdentities)
+    await expect(restored.call('expenses__submit')).resolves.toBeDefined()
+    await expect(restored.call('billing__submit')).resolves.toBeDefined()
+  })
+
+  it('refuses a redeclared identity against the saved pin even before any withholding', async () => {
+    const state: SourceIdentityState[] = []
+    await gateFor([serviceTool({ effectClass: 'read' })], {}, false, undefined, state)
+    const saved = readExecution(JSON.parse(JSON.stringify({ ...identityCheckpoint.items[0], sourceIdentities: state })))!
+    expect(saved.sourceIdentities![0]!.withheld).toBe(false)
+    const restored = await gateFor([serviceTool({ effectClass: 'read', source: { ...serviceTool().source!, identity: { kind: 'person', label: 'changed-label' } } })], {}, false, undefined, saved.sourceIdentities)
+    await expect(restored.call('expenses__submit')).rejects.toBeInstanceOf(GateViolation)
+    expect(saved.sourceIdentities![0]).toEqual({ ...state[0], withheld: true })
+  })
+
+  it('reads the identity checkpoint vector and refuses malformed saved identity state', () => {
+    const vector = identityCheckpoint.items[0]!
+    expect(readExecution(vector)?.sourceIdentities).toEqual(vector.sourceIdentities)
+    for (const row of [null, {}, { ...vector.sourceIdentities[0], withheld: 'false' }, { ...vector.sourceIdentities[0], identityDigest: '' }, { ...vector.sourceIdentities[0], serviceAsked: undefined }, { ...vector.sourceIdentities[0], extra: true }]) {
+      expect(() => readExecution({ ...vector, sourceIdentities: [row] })).toThrow()
+    }
+    expect(() => readExecution({ ...vector, sourceIdentities: [vector.sourceIdentities[0], vector.sourceIdentities[0]] })).toThrow()
+  })
+
+  it('carries identity state through the session snapshot and resumed source gate', async () => {
+    let current = { kind: 'service' as const, label: 'expense-bot' }
+    const tools = [serviceTool({ source: { ...serviceTool().source!, currentIdentity: () => current } }), serviceTool({ source: { ...serviceTool().source!, id: 'billing' } })]
+    const base: AssistantSession = {
+      prompt: 'Current request', testPrompt: '', tools: [], hostTools: tools, callTool: async () => ({ content: [] }),
+      context: { currentRequest: { message: 'Current request', input: 'Current request' } },
+      model: { family: 'openai-compatible', model: 'small', call: async () => { throw Error('no model call here') } },
+      thinking: normalize('off', 'openai-compatible'), signal: signal()
+    }
+    const first = await contextualSession(base)
+    let saved: ExecutionCheckpoint
+    try {
+      for (const source of ['expenses', 'billing']) {
+        expect((await first.context.sources!.decide(`${source}__submit`, {}, undefined, false)).answer).toBe('ask')
+        first.context.execution.state.approval!.state = 'answered'
+      }
+      current = { kind: 'service', label: 'changed-bot' }
+      await expect(first.session.hostTools.find(tool => tool.name === 'expenses__submit')!.execute({}, signal())).rejects.toBeInstanceOf(GateViolation)
+      saved = readExecution(JSON.parse(JSON.stringify(first.context.execution.snapshot())))!
+      expect(saved.sourceIdentities).toEqual(identityCheckpoint.items[0]!.sourceIdentities)
+    } finally { first.context.close() }
+    current = { kind: 'service', label: 'expense-bot' }
+    const restored = await contextualSession({ ...base, context: { ...base.context, execution: saved } })
+    try {
+      await expect(restored.session.hostTools.find(tool => tool.name === 'expenses__submit')!.execute({}, signal())).rejects.toBeInstanceOf(GateViolation)
+      await expect(restored.session.hostTools.find(tool => tool.name === 'billing__submit')!.execute({}, signal())).resolves.toBeDefined()
+    } finally { restored.context.close() }
+  })
+
+  it('carries the per-identity figures through checkpoint JSON and resume', () => {
+    const checkpoint = { version: 1, id: 'identity-resume', requestKey: 'a'.repeat(64), phase: 'work', status: 'running', unit: 'model-requests', used: 0, limit: 20, grants: [], plan: [], explanation: '', operations: [], context: { scope: 'identity', entries: [] }, sources: identityFigures.items }
+    expect(readExecution(JSON.parse(JSON.stringify(checkpoint)))?.sources).toEqual(identityFigures.items)
+  })
+})
+
 /** A SourceGate over the vector's declarations, with its refusals' guardrails and its report collected. */
-async function gateFor(tools: HostTool[], bounds: Partial<SourceBounds> = {}, catalogue = false, book?: ApprovalBook) {
+async function gateFor(tools: HostTool[], bounds: Partial<SourceBounds> = {}, catalogue = false, book?: ApprovalBook, identityState: SourceIdentityState[] = []) {
   const out = await declareSources(tools, [])
   const policy = { ...CONTEXT_DEFAULTS, ...bounds }
   const offered = offerSources(out.hostTools, out.entries, catalogue ? { ...policy, offeredSchemas: 0 } : policy, MARKER)
@@ -265,7 +525,7 @@ async function gateFor(tools: HostTool[], bounds: Partial<SourceBounds> = {}, ca
   const gate = new SourceGate(out.entries, out.sources, policy, MARKER, (tool, detail, reason) => {
     notices.push({ tool, detail, ...(reason === undefined ? {} : { reason }) })
     return new GateViolation(tool, detail)
-  }, () => rows, 'json-schema', undefined, book)
+  }, () => rows, 'json-schema', undefined, book, (event) => notices.push({ tool: event.tool, detail: event.detail, ...(event.reason === undefined ? {} : { reason: event.reason }) }), identityState)
   const byName = new Map(offered.hostTools.map((tool) => [tool.name, tool]))
   const call = (name: string, args: Record<string, unknown> = {}, signal = new AbortController().signal, callId?: string) => gate.call(byName.get(name)!, args, signal, (given, bounded) => byName.get(name)!.execute(given, bounded), callId)
   return { gate, notices, rows, call, offered }
@@ -281,7 +541,7 @@ describe('each call of a tool with a source (ADR-0006)', () => {
     expect(crossing(tool)).toEqual(loadToolVector.items[0])
     await expect(call('tracker__create_issue', { repository: 'expense', title: 't' })).rejects.toMatchObject({ failure: { code: 'invalid-tool-input' } })
     const answer = await tool.execute({ name: 'tracker__create_issue' }, signal())
-    expect(answer.structuredContent).toEqual(loadedSchema.items[0])
+    expect(legacy(answer.structuredContent)).toEqual(loadedSchema.items[0])
     await expect(tool.execute({ name: 'write_file' }, signal())).rejects.toMatchObject({ failure: { code: 'invalid-tool-input' } })
     expect(gate.loadedSection()).toContain('"name":"tracker__create_issue"')
     expect(gate.loadedSection().startsWith(`BEGIN RETRIEVED DATA ${MARKER}`)).toBe(true)
@@ -309,7 +569,7 @@ describe('each call of a tool with a source (ADR-0006)', () => {
     await call('ado__update_work_item', { id: 7, state: 'Done' })
     expect(ran).toEqual([{ id: 7, state: 'Done' }])
     const source = declarations.items.find((tool) => tool.name === 'update_work_item')!.source
-    expect(seen).toEqual([0, 1, 2].map(() => ({ name: 'ado__update_work_item', tool: 'update_work_item', source: { ...source, tool: 'update_work_item' }, args: { id: 7, state: 'Done' } })))
+    expect(legacy(seen)).toEqual([0, 1, 2].map(() => ({ name: 'ado__update_work_item', tool: 'update_work_item', source: { ...source, tool: 'update_work_item' }, args: { id: 7, state: 'Done' } })))
     // A policy that throws refuses.
     const throwing = await gateFor(declared(declarations.items).map((tool) => ({ ...tool, approve: () => { throw Error('policy failed') } })))
     await expect(throwing.call('ado__update_work_item', { id: 7, state: 'Done' })).rejects.toBeInstanceOf(GateViolation)
@@ -325,7 +585,7 @@ describe('each call of a tool with a source (ADR-0006)', () => {
     expect(result).toEqual({ content: [{ type: 'text', text: PROPOSED }] })
     expect(ran).toBe(0)
     const event = gate.decorate({ type: 'tool_result', name: 'rates__submit_expense', isError: false, text: PROPOSED })
-    expect(event).toEqual(sourceResults.items[1])
+    expect(legacy(event)).toEqual(sourceResults.items[1])
     expect(rows.find((row) => row.source === 'rates')).toMatchObject({ calls: 0, proposed: 1 })
   })
 
@@ -334,8 +594,8 @@ describe('each call of a tool with a source (ADR-0006)', () => {
     const { gate, call } = await gateFor(tools)
     const shown = await call('databricks__query_table', { table: 'expenses', limit: 20 })
     expect('receipt' in shown).toBe(false)
-    expect(gate.decorate({ type: 'tool_call', name: 'databricks__query_table', args: { table: 'expenses', limit: 20 } })).toEqual(sourceCalls.items[0])
-    expect(gate.decorate({ type: 'tool_result', name: 'databricks__query_table', isError: false, text: sourceResults.items[0]!.text })).toEqual(sourceResults.items[0])
+    expect(legacy(gate.decorate({ type: 'tool_call', name: 'databricks__query_table', args: { table: 'expenses', limit: 20 } }))).toEqual(sourceCalls.items[0])
+    expect(legacy(gate.decorate({ type: 'tool_result', name: 'databricks__query_table', isError: false, text: sourceResults.items[0]!.text }))).toEqual(sourceResults.items[0])
   })
 
   it('refuses every call of a source once its served list is not the pinned one, before the host, and goes on refusing', async () => {
@@ -350,13 +610,13 @@ describe('each call of a tool with a source (ADR-0006)', () => {
     const refused = await call('tracker__create_issue', {}).catch((error: unknown) => error)
     expect(refused).toBeInstanceOf(GateViolation)
     const result = toolFailureResult(refused)
-    expect(gate.decorate({ type: 'tool_result', callId: 'c-2', name: 'tracker__create_issue', isError: true, text: result.content[0].text, structured: result.structuredContent })).toEqual(sourceResults.items[2])
+    expect(legacy(gate.decorate({ type: 'tool_result', callId: 'c-2', name: 'tracker__create_issue', isError: true, text: result.content[0].text, structured: result.structuredContent }))).toEqual(sourceResults.items[2])
     served = declarations.items[1]!.source.toolListDigest!
     await expect(call('tracker__create_issue', {})).rejects.toBeInstanceOf(GateViolation)
     expect(ran).toBe(1)
     expect(notices.map((notice) => notice.tool)).toEqual(['tracker__create_issue', 'tracker__create_issue'])
     expect(rows.find((row) => row.source === 'tracker')).toMatchObject({ calls: 1, refused: 2 })
-    expect(gate.decorate({ type: 'tool_call', callId: 'c-2', name: 'tracker__create_issue', args: { repository: 'expense', title: 'Missing mileage rate' } })).toEqual(sourceCalls.items[1])
+    expect(legacy(gate.decorate({ type: 'tool_call', callId: 'c-2', name: 'tracker__create_issue', args: { repository: 'expense', title: 'Missing mileage rate' } }))).toEqual(sourceCalls.items[1])
   })
 
   it('refuses a source’s call past sourceCallsPerTurn, not run', async () => {
@@ -612,7 +872,7 @@ describe('the approval pause (ADR-0008)', () => {
     expect(gate.needsApproval('databricks__query_table')).toBe(false)
     const first = await gate.decide('tracker__create_issue', { repository: 'expense', title: 'a' }, 'call-a')
     expect(first).toMatchObject({ answer: 'ask', callId: 'call-a' })
-    expect(held.approval).toEqual({ callId: 'call-a', name: 'tracker__create_issue', tool: 'create_issue', source: { ...declarations.items[1]!.source, tool: 'create_issue' }, args: { repository: 'expense', title: 'a' }, state: 'asked' })
+    expect(legacy(held.approval)).toEqual({ callId: 'call-a', name: 'tracker__create_issue', tool: 'create_issue', source: { ...declarations.items[1]!.source, tool: 'create_issue' }, args: { repository: 'expense', title: 'a' }, state: 'asked' })
     await expect(call('tracker__create_issue', { repository: 'expense', title: 'a' }, signal(), 'call-a')).rejects.toBeInstanceOf(ApprovalHeld)
     const second = await gate.decide('ado__update_work_item', { id: 1, state: 'Done' }, 'call-b')
     expect(second).toMatchObject({ answer: 'pending', detail: expect.stringContaining('waits for the person') })

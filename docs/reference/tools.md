@@ -241,6 +241,8 @@ Closed: a member the schema does not name is refused.
 | `version` |  | string (min length 1, max length 64) | The source's version as the host knows it: a connection's revision, a server's version, a custom tool's revision. |
 | `toolListDigest` |  | `$defs/toolListDigest` |  |
 | `trust` | yes | enum `first-party`, `connected`, `public`, `person` | The trust class the host gives the source: first-party (the Runtime, and a source the host itself runs), connected (a connection the person configured with their own grants), public (a public server), person (a tool the person wrote). Reported, never a grant: whatever the class, the source's descriptions are untrusted text and its results data, and its tools are held to their effect class. |
+| `identity` |  | `$defs/identity` |  |
+| `identityDigest` |  | string (pattern `^sha256:[0-9a-f]{64}$`) | The package's pin of identity: sha256: then the SHA-256 of the canonical JSON of identity. It is set with the source's tool-list pin and compared with the identity the host reports before a call; a change withholds the source until the person re-approves it. |
 | `tool` |  | string (min length 1, max length 128) | The tool's own name at its source, set by the package on the offer and the events from the declaration's name (the wire name is the offered tool's name). A declaration leaves it out. |
 | `receipt` |  | string (min length 1, max length 128) | On a tool_result only: the receipt id the host's answer gave for this call (HostToolResult.receipt; a gateway connection's), at most 128 characters. |
 

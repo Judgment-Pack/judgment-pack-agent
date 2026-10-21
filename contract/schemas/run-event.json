@@ -486,7 +486,9 @@
             "edit refused",
             "compaction refused",
             "output refused",
-            "records expired"
+            "records expired",
+            "identity changed",
+            "approval downgraded"
           ]
         }
       },

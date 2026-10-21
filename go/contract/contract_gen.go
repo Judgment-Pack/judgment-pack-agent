@@ -34,6 +34,7 @@ var Registry = map[string]func() any{
 	"checkpoint.json#/$defs/approvalContinuation":   func() any { return new(string) },
 	"checkpoint.json#/$defs/draftDocument":          func() any { return new(CheckpointDraftDocument) },
 	"checkpoint.json#/$defs/draft":                  func() any { return new(CheckpointDraft) },
+	"checkpoint.json#/$defs/sourceIdentity":         func() any { return new(CheckpointSourceIdentity) },
 	"delegated-task.json":                           func() any { return new(DelegatedTask) },
 	"delegated-task.json#/$defs/uuid":               func() any { return new(string) },
 	"delegated-task.json#/$defs/time":               func() any { return new(string) },
@@ -97,6 +98,7 @@ var Registry = map[string]func() any{
 	"provenance.json#/$defs/parentFigures":          func() any { return new(ProvenanceParentFigures) },
 	"provenance.json#/$defs/delegationReport":       func() any { return new(ProvenanceDelegationReport) },
 	"provenance.json#/$defs/sourceFigures":          func() any { return new(ProvenanceSourceFigures) },
+	"provenance.json#/$defs/identityFigures":        func() any { return new(ProvenanceIdentityFigures) },
 	"provenance.json#/$defs/skillLoad":              func() any { return new(ProvenanceSkillLoad) },
 	"provenance.json#/$defs/criticReason":           func() any { return new(string) },
 	"provenance.json#/$defs/criticDecision":         func() any { return new(ProvenanceCriticDecision) },
@@ -168,6 +170,7 @@ var Registry = map[string]func() any{
 	"tool-offer.json#/$defs/criticTools":            func() any { return new(string) },
 	"tool-offer.json#/$defs/effectClass":            func() any { return new(string) },
 	"tool-offer.json#/$defs/approvalPolicy":         func() any { return new(string) },
+	"tool-offer.json#/$defs/identity":               func() any { return new(ToolOfferIdentity) },
 	"tool-offer.json#/$defs/sourceRecord":           func() any { return new(ToolOfferSourceRecord) },
 	"tool-offer.json#/$defs/toolListDigest":         func() any { return new(string) },
 	"tool-offer.json#/$defs/wireName":               func() any { return new(string) },
@@ -1068,44 +1071,45 @@ func (v CapabilityTiers) MarshalJSON() ([]byte, error) {
 // increase; at most one plan step is in_progress. The loaded skills (ADR-0009): skills. The
 // critic's decision (ADR-0010): critic.
 type Checkpoint struct {
-	Schema        *string                     `json:"schema,omitzero"`
-	Version       int64                       `json:"version"`
-	Digest        *string                     `json:"digest,omitzero"`
-	RetainUntil   *string                     `json:"retainUntil,omitzero"`
-	ID            string                      `json:"id"`
-	RequestKey    string                      `json:"requestKey"`
-	Phase         string                      `json:"phase"`
-	Status        string                      `json:"status"`
-	Unit          string                      `json:"unit"`
-	Used          int64                       `json:"used"`
-	Limit         int64                       `json:"limit"`
-	Grants        []CheckpointGrant           `json:"grants"`
-	Plan          []CheckpointTaskStep        `json:"plan"`
-	Explanation   string                      `json:"explanation"`
-	Operations    []CheckpointOperation       `json:"operations"`
-	Completions   []Provenance                `json:"completions,omitzero"`
-	Context       CheckpointContext           `json:"context"`
-	Reason        *string                     `json:"reason,omitzero"`
-	TestCalls     *int64                      `json:"testCalls,omitzero"`
-	Delegation    *ProvenanceDelegationReport `json:"delegation,omitzero"`
-	Handoff       *CheckpointHandoff          `json:"handoff,omitzero"`
-	Approval      *CheckpointApproval         `json:"approval,omitzero"`
-	Prompts       []ProvenancePromptDigest    `json:"prompts,omitzero"`
-	Sources       []ProvenanceSourceFigures   `json:"sources,omitzero"`
-	Skills        []ProvenanceSkillLoad       `json:"skills,omitzero"`
-	Critic        *CheckpointCritic           `json:"critic,omitzero"`
-	Policy        map[string]PolicyMember     `json:"policy,omitzero"`
-	CrossProvider []ProvenanceCrossProvider   `json:"crossProvider,omitzero"`
-	Compaction    *ProvenanceCompactionReport `json:"compaction,omitzero"`
-	Memories      *ProvenanceMemories         `json:"memories,omitzero"`
-	Draft         *CheckpointDraft            `json:"draft,omitzero"`
-	OutputGuard   map[string]int64            `json:"outputGuard,omitzero"`
-	Records       *ProvenanceRecordFigures    `json:"records,omitzero"`
+	Schema           *string                     `json:"schema,omitzero"`
+	Version          int64                       `json:"version"`
+	Digest           *string                     `json:"digest,omitzero"`
+	RetainUntil      *string                     `json:"retainUntil,omitzero"`
+	ID               string                      `json:"id"`
+	RequestKey       string                      `json:"requestKey"`
+	Phase            string                      `json:"phase"`
+	Status           string                      `json:"status"`
+	Unit             string                      `json:"unit"`
+	Used             int64                       `json:"used"`
+	Limit            int64                       `json:"limit"`
+	Grants           []CheckpointGrant           `json:"grants"`
+	Plan             []CheckpointTaskStep        `json:"plan"`
+	Explanation      string                      `json:"explanation"`
+	Operations       []CheckpointOperation       `json:"operations"`
+	Completions      []Provenance                `json:"completions,omitzero"`
+	Context          CheckpointContext           `json:"context"`
+	Reason           *string                     `json:"reason,omitzero"`
+	TestCalls        *int64                      `json:"testCalls,omitzero"`
+	Delegation       *ProvenanceDelegationReport `json:"delegation,omitzero"`
+	Handoff          *CheckpointHandoff          `json:"handoff,omitzero"`
+	Approval         *CheckpointApproval         `json:"approval,omitzero"`
+	Prompts          []ProvenancePromptDigest    `json:"prompts,omitzero"`
+	Sources          []ProvenanceSourceFigures   `json:"sources,omitzero"`
+	Skills           []ProvenanceSkillLoad       `json:"skills,omitzero"`
+	Critic           *CheckpointCritic           `json:"critic,omitzero"`
+	Policy           map[string]PolicyMember     `json:"policy,omitzero"`
+	CrossProvider    []ProvenanceCrossProvider   `json:"crossProvider,omitzero"`
+	Compaction       *ProvenanceCompactionReport `json:"compaction,omitzero"`
+	Memories         *ProvenanceMemories         `json:"memories,omitzero"`
+	Draft            *CheckpointDraft            `json:"draft,omitzero"`
+	OutputGuard      map[string]int64            `json:"outputGuard,omitzero"`
+	Records          *ProvenanceRecordFigures    `json:"records,omitzero"`
+	SourceIdentities []CheckpointSourceIdentity  `json:"sourceIdentities,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var checkpointMembers = []string{"schema", "version", "digest", "retainUntil", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "compaction", "memories", "draft", "outputGuard", "records"}
+var checkpointMembers = []string{"schema", "version", "digest", "retainUntil", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "compaction", "memories", "draft", "outputGuard", "records", "sourceIdentities"}
 
 // UnmarshalJSON decodes a Checkpoint object and keeps the members the schema does not name.
 func (v *Checkpoint) UnmarshalJSON(data []byte) error {
@@ -1470,6 +1474,35 @@ func (v *CheckpointRetainedEntry) UnmarshalJSON(data []byte) error {
 func (v CheckpointRetainedEntry) MarshalJSON() ([]byte, error) {
 	type plain CheckpointRetainedEntry
 	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From checkpoint.json#/$defs/sourceIdentity.
+type CheckpointSourceIdentity struct {
+	Source         string `json:"source"`
+	IdentityDigest string `json:"identityDigest"`
+	Withheld       bool   `json:"withheld"`
+	ServiceAsked   bool   `json:"serviceAsked"`
+}
+
+var checkpointSourceIdentityMembers = []string{"source", "identityDigest", "withheld", "serviceAsked"}
+
+// UnmarshalJSON decodes a CheckpointSourceIdentity object and refuses a member the closed schema does not name.
+func (v *CheckpointSourceIdentity) UnmarshalJSON(data []byte) error {
+	type plain CheckpointSourceIdentity
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointSourceIdentityMembers, true)
+	if err != nil {
+		return errorf("CheckpointSourceIdentity: %w", err)
+	}
+	*v = CheckpointSourceIdentity(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointSourceIdentity object.
+func (v CheckpointSourceIdentity) MarshalJSON() ([]byte, error) {
+	type plain CheckpointSourceIdentity
+	return encodeObject(plain(v), nil)
 }
 
 // From checkpoint.json#/$defs/taskStep.
@@ -3696,6 +3729,34 @@ func (v ProvenanceFiguresTotal) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From provenance.json#/$defs/identityFigures. One identity's call count in a source's run figures
+// (ADR-0019). Identity is reported, never a grant.
+type ProvenanceIdentityFigures struct {
+	Identity ToolOfferIdentity `json:"identity"`
+	Calls    int64             `json:"calls"`
+}
+
+var provenanceIdentityFiguresMembers = []string{"identity", "calls"}
+
+// UnmarshalJSON decodes a ProvenanceIdentityFigures object and refuses a member the closed schema does not name.
+func (v *ProvenanceIdentityFigures) UnmarshalJSON(data []byte) error {
+	type plain ProvenanceIdentityFigures
+	var p plain
+	extra, err := decodeObject(data, &p, provenanceIdentityFiguresMembers, true)
+	if err != nil {
+		return errorf("ProvenanceIdentityFigures: %w", err)
+	}
+	*v = ProvenanceIdentityFigures(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ProvenanceIdentityFigures object.
+func (v ProvenanceIdentityFigures) MarshalJSON() ([]byte, error) {
+	type plain ProvenanceIdentityFigures
+	return encodeObject(plain(v), nil)
+}
+
 // From provenance.json#/$defs/memories. Run report: proposals this run, and recalled ids and
 // digests with kinds. Both lists survive resume; a recalled id supplied as revoked is reported
 // revoked and withheld from the prompt.
@@ -3919,17 +3980,18 @@ func (v ProvenanceSkillLoad) MarshalJSON() ([]byte, error) {
 // reload again; present on a source that declares a skill. A source that declares only skills
 // reports its loads and no calls; exchange is a skill's kind only.
 type ProvenanceSourceFigures struct {
-	Source       string `json:"source"`
-	Kind         string `json:"kind"`
-	Calls        int64  `json:"calls"`
-	Refused      int64  `json:"refused"`
-	Proposed     int64  `json:"proposed"`
-	Bytes        int64  `json:"bytes"`
-	Milliseconds int64  `json:"milliseconds"`
-	Skills       *int64 `json:"skills,omitzero"`
+	Source       string                      `json:"source"`
+	Kind         string                      `json:"kind"`
+	Calls        int64                       `json:"calls"`
+	Refused      int64                       `json:"refused"`
+	Proposed     int64                       `json:"proposed"`
+	Bytes        int64                       `json:"bytes"`
+	Milliseconds int64                       `json:"milliseconds"`
+	Skills       *int64                      `json:"skills,omitzero"`
+	Identities   []ProvenanceIdentityFigures `json:"identities,omitzero"`
 }
 
-var provenanceSourceFiguresMembers = []string{"source", "kind", "calls", "refused", "proposed", "bytes", "milliseconds", "skills"}
+var provenanceSourceFiguresMembers = []string{"source", "kind", "calls", "refused", "proposed", "bytes", "milliseconds", "skills", "identities"}
 
 // UnmarshalJSON decodes a ProvenanceSourceFigures object and refuses a member the closed schema does not name.
 func (v *ProvenanceSourceFigures) UnmarshalJSON(data []byte) error {
@@ -5851,18 +5913,20 @@ func (v SkillResource) MarshalJSON() ([]byte, error) {
 // bytes the host fetched from a Judgment Exchange entry, the entry's id and version the record's
 // id and version. Reported, never a grant.
 type SkillSource struct {
-	Kind           string  `json:"kind"`
-	ID             string  `json:"id"`
-	Version        *string `json:"version,omitzero"`
-	ToolListDigest *string `json:"toolListDigest,omitzero"`
-	Trust          string  `json:"trust"`
-	Tool           *string `json:"tool,omitzero"`
-	Receipt        *string `json:"receipt,omitzero"`
+	Kind           string             `json:"kind"`
+	ID             string             `json:"id"`
+	Version        *string            `json:"version,omitzero"`
+	ToolListDigest *string            `json:"toolListDigest,omitzero"`
+	Trust          string             `json:"trust"`
+	Identity       *ToolOfferIdentity `json:"identity,omitzero"`
+	IdentityDigest *string            `json:"identityDigest,omitzero"`
+	Tool           *string            `json:"tool,omitzero"`
+	Receipt        *string            `json:"receipt,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var skillSourceMembers = []string{"kind", "id", "version", "toolListDigest", "trust", "tool", "receipt"}
+var skillSourceMembers = []string{"kind", "id", "version", "toolListDigest", "trust", "identity", "identityDigest", "tool", "receipt"}
 
 // UnmarshalJSON decodes a SkillSource object and keeps the members the schema does not name.
 func (v *SkillSource) UnmarshalJSON(data []byte) error {
@@ -6568,6 +6632,37 @@ func (v ToolOfferHostToolPresentation) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), v.AdditionalMembers)
 }
 
+// From tool-offer.json#/$defs/identity. The identity a source's calls run as (ADR-0019): person,
+// service or connection, and a label the person recognises. The label is display text, never a
+// credential or token, and grants nothing. The host declares it per source; where it says nothing
+// the package uses connection and the source id as the label. The package shows it, records it and
+// counts calls by it; the model never chooses it.
+type ToolOfferIdentity struct {
+	Kind  string `json:"kind"`
+	Label string `json:"label"`
+}
+
+var toolOfferIdentityMembers = []string{"kind", "label"}
+
+// UnmarshalJSON decodes a ToolOfferIdentity object and refuses a member the closed schema does not name.
+func (v *ToolOfferIdentity) UnmarshalJSON(data []byte) error {
+	type plain ToolOfferIdentity
+	var p plain
+	extra, err := decodeObject(data, &p, toolOfferIdentityMembers, true)
+	if err != nil {
+		return errorf("ToolOfferIdentity: %w", err)
+	}
+	*v = ToolOfferIdentity(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ToolOfferIdentity object.
+func (v ToolOfferIdentity) MarshalJSON() ([]byte, error) {
+	type plain ToolOfferIdentity
+	return encodeObject(plain(v), nil)
+}
+
 // From tool-offer.json#/$defs/loadSkill. The harness tool that loads one catalogued skill
 // (ADR-0009): a reserved name, offered beside load_tool where the run catalogues any skill, in
 // Plan mode and to the critic too (a skill grants no tool), never to a built-in child; declared
@@ -7094,16 +7189,18 @@ func (v ToolOfferSourceDeclaration) MarshalJSON() ([]byte, error) {
 // runtime is refused. Either version or toolListDigest is present; mcp carries toolListDigest.
 // Closed: the package refuses another member before any request (configuration).
 type ToolOfferSourceRecord struct {
-	Kind           string  `json:"kind"`
-	ID             string  `json:"id"`
-	Version        *string `json:"version,omitzero"`
-	ToolListDigest *string `json:"toolListDigest,omitzero"`
-	Trust          string  `json:"trust"`
-	Tool           *string `json:"tool,omitzero"`
-	Receipt        *string `json:"receipt,omitzero"`
+	Kind           string             `json:"kind"`
+	ID             string             `json:"id"`
+	Version        *string            `json:"version,omitzero"`
+	ToolListDigest *string            `json:"toolListDigest,omitzero"`
+	Trust          string             `json:"trust"`
+	Identity       *ToolOfferIdentity `json:"identity,omitzero"`
+	IdentityDigest *string            `json:"identityDigest,omitzero"`
+	Tool           *string            `json:"tool,omitzero"`
+	Receipt        *string            `json:"receipt,omitzero"`
 }
 
-var toolOfferSourceRecordMembers = []string{"kind", "id", "version", "toolListDigest", "trust", "tool", "receipt"}
+var toolOfferSourceRecordMembers = []string{"kind", "id", "version", "toolListDigest", "trust", "identity", "identityDigest", "tool", "receipt"}
 
 // UnmarshalJSON decodes a ToolOfferSourceRecord object and refuses a member the closed schema does not name.
 func (v *ToolOfferSourceRecord) UnmarshalJSON(data []byte) error {
