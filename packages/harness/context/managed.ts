@@ -62,6 +62,18 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
   releaseNotices=guardConnectionNotices(session.callTool,notice=>{
    try{return guardNotice(notice,ready.context)}catch(error){if(!(error instanceof OutputRefused))throw error;return undefined}
   })
+  // Only names declared by the host, Runtime or reserved harness offer are trusted.
+  // Keep dispatch on the original name: an unknown call still earns the gate's refusal.
+  const declaredNames=new Set([...ready.session.tools,...ready.session.hostTools].map(tool=>tool.name))
+  const deliveredNames=new Map<string,string>()
+  const guardName=(name:string,call=false):string=>{
+   if(declaredNames.has(name))return name
+   if(!call&&deliveredNames.has(name))return deliveredNames.get(name)!
+   let clean:string
+   try{clean=context!.output.value(name,'message');if(context!.output.mode!=='off'&&[...clean].length>150)context!.output.refuse('message','invalid-output')}
+   catch(error){if(!(error instanceof OutputRefused))throw error;clean=error.message}
+   deliveredNames.set(name,clean);return clean
+  }
   contexts.set(ready.session,context)
   yield {type:'policy_resolved',members:structuredClone(context.resolvedPolicy)}
   if(context.paceWarning)yield {type:'guardrail',tool:'pace',action:'refused',reason:'pace warning',detail:context.paceWarning}
@@ -98,7 +110,8 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
    if(context.output.mode!=='off'&&(event.type==='message_progress'||event.type==='reasoning'&&!event.done))continue
    if(event.type==='reasoning')event={...event,text:context.output.value(event.text,'message')}
    if(event.type==='message')event={...event,text:context.output.value(event.text,'message')}
-   if(event.type==='tool_call')event={...event,args:context.output.value(event.args,outputWhere(event.name),context.output.mode==='refuse')}
+   if(event.type==='tool_call')event={...event,name:guardName(event.name,true),args:context.output.value(event.args,outputWhere(event.name),context.output.mode==='refuse')}
+   if(event.type==='tool_result')event={...event,name:guardName(event.name)}
    if(event.type==='user_question')event={...event,question:context.output.value(event.question,'tool argument')}
    if(event.type==='delegation_requested')event={...event,request:context.output.value(event.request,'tool argument')}
    if(event.type==='proposal'){

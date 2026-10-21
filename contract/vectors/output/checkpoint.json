@@ -22,7 +22,10 @@
       "limit": 20,
       "grants": [],
       "plan": [],
-      "operations": [],
+      "operations": [
+        {"id": "unknown-redacted", "name": "[redacted: aws-access-key]", "args": {}, "status": "failed"},
+        {"id": "unknown-refused", "name": "Output refused: aws-access-key.", "args": {}, "status": "failed"}
+      ],
       "completions": [],
       "context": {
         "scope": "execution",

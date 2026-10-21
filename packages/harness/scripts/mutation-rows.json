@@ -4346,6 +4346,16 @@
    "status": "caught",
    "origin": "agent#100 fix round 2",
    "note": "Go twin: bypass noticeGuard in Gate.emitNotice; both TestOutputBoundaryOnAgent and TestOutputBoundaryOnModel catch the unguarded notice."
+  },
+  {
+   "name": "output boundary undeclared-name guard removed",
+   "file": "context/managed.ts",
+   "find": "if(declaredNames.has(name))return name",
+   "replace": "if(true)return name",
+   "tests": ["certification/output-boundary.test.ts"],
+   "status": "caught",
+   "origin": "agent#100 fix round 3",
+   "note": "Go twin: return the unchanged name from Boundary.guardName; both scenario 17 adapter tests catch call and checkpoint leaks."
   }
  ]
 }

@@ -34,6 +34,10 @@
       "where": "draft edit",
       "pattern": "host-scalar",
       "action": "redact"
-    }
+    },
+    {"type": "tool_call", "name": "[redacted: aws-access-key]", "args": {}},
+    {"type": "tool_call", "name": "Output refused: aws-access-key.", "args": {}},
+    {"type": "tool_result", "name": "[redacted: aws-access-key]", "text": "refused", "isError": true},
+    {"type": "tool_result", "name": "Output refused: aws-access-key.", "text": "refused", "isError": true}
   ]
 }

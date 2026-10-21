@@ -131,3 +131,15 @@ it('withholds oversized gate notices with schema-valid refusal labels in both mo
   }finally{await runtime.close()}
  }
 })
+
+it('guards oversized undeclared names before calls and checkpoints with schema-valid refusal labels',async()=>{
+ for(const mode of ['redact','refuse'] as const){
+  const events:AssistantEvent[]=[],name='x'.repeat(151)
+  const session={prompt:'Review',testPrompt:'',tools:[],hostTools:[],callTool:async()=>answer({}),signal:new AbortController().signal,allowConversation:true,interactive:true,critic:'off' as const,policy:{outputGuard:mode},context:{currentRequest:{message:'Review',input:'Review'}},agent:{model:'fixture',run:async()=>{}}}
+  for await(const event of managedContext(session,async function*(){yield {type:'tool_call' as const,name,args:{}};yield {type:'end' as const}}))events.push(event)
+  expect(events.find(e=>e.type==='tool_call')).toMatchObject({name:'Output refused: invalid-output.'})
+  expect(events).toContainEqual({type:'output_guarded',where:'message',pattern:'invalid-output',action:'refuse'})
+  expect(JSON.stringify(events)).not.toContain(name)
+  for(const event of events)if(event.type==='guardrail'||event.type==='output_guarded')expect(argumentProblem(eventSchema.$defs[event.type],event)).toBeUndefined()
+ }
+})

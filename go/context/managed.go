@@ -49,9 +49,10 @@ type Boundary struct {
 	// held are the adapter's results the boundary answered itself (ADR-0008: a call refused while
 	// another waits for the person), by call id, or by name where the events carry none; requested
 	// is the call id of the approval_requested event the run emitted.
-	held       map[string]bool
-	heldByName map[string]int
-	requested  string
+	held           map[string]bool
+	heldByName     map[string]int
+	requested      string
+	deliveredNames map[string]string
 }
 
 // NewBoundary is the boundary for one opened run. A run is tracked where the host gave it a
@@ -61,7 +62,7 @@ func NewBoundary(run *Run) *Boundary {
 	if run.Session.Context != nil {
 		tracked = run.Session.Context.CurrentRequest != nil || run.Session.Context.Execution != nil
 	}
-	return &Boundary{run: run, tracked: tracked, held: map[string]bool{}, heldByName: map[string]int{}}
+	return &Boundary{run: run, tracked: tracked, held: map[string]bool{}, heldByName: map[string]int{}, deliveredNames: map[string]string{}}
 }
 
 // Stopped says the run was stopped by its caller, as session.signal.aborted does: the closing

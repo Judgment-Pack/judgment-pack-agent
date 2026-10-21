@@ -944,7 +944,7 @@
         "go": ["16 resume"]
       },
       {
-        "check": "17 \u00b7 output boundary: the gate guards its own unknown-tool notice",
+        "check": "17 \u00b7 output boundary: undeclared names and gate notices are guarded before delivery and save",
         "go": [
           "17 output boundary",
           "17 agent output boundary"

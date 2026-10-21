@@ -382,3 +382,47 @@ func TestOutputGateNoticeMalformedRefusal(t *testing.T) {
 		})
 	}
 }
+
+func TestOutputUndeclaredNameMalformedRefusal(t *testing.T) {
+	schemaRaw, err := os.ReadFile("../../contract/schemas/run-event.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema, _ := ParseJSON(schemaRaw)
+	for _, mode := range []string{"redact", "refuse"} {
+		t.Run(mode, func(t *testing.T) {
+			s := modelSession()
+			s.Policy = PolicyLayer{"outputGuard": mode}
+			opened, err := ContextualSession(context.Background(), s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			boundary := NewBoundary(opened)
+			defer boundary.Close()
+			original := &contract.ToolCall{Type: "tool_call", Name: strings.Repeat("x", 151), Args: json.RawMessage(`{}`)}
+			events, stop := boundary.Event(contract.RunEvent{ToolCall: original})
+			if stop || len(original.Name) != 151 {
+				t.Fatal("dispatch changed")
+			}
+			labelled, called := false, false
+			for _, event := range events {
+				if event.ToolCall != nil {
+					called = event.ToolCall.Name == "Output refused: invalid-output."
+				}
+				if event.OutputGuarded != nil {
+					labelled = event.OutputGuarded.Pattern == "invalid-output"
+				}
+				if event.Guardrail != nil || event.OutputGuarded != nil {
+					raw, _ := json.Marshal(event)
+					value, _ := ParseJSON(raw)
+					if problem := ArgumentProblem(schema.Get("$defs").Get(value.Get("type").Str()), value); problem != "" {
+						t.Fatal(problem)
+					}
+				}
+			}
+			if !labelled || !called {
+				t.Fatal("missing guarded name or refusal labels")
+			}
+		})
+	}
+}

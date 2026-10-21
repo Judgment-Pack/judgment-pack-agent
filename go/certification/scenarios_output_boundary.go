@@ -28,7 +28,7 @@ func outputBoundaryFindings(ctx context.Context, inner Adapter, agent bool) ([]F
 	f := findings{check: name}
 	const key = "AKIAABCDEFGHIJKLMNOP"
 	const hole = "[redacted: aws-access-key]"
-	play := func(steps []memoryStep, input *runcontext.Input, policy runcontext.PolicyLayer, interrupt ...bool) (memoryRun, error) {
+	play := func(steps []memoryStep, input *runcontext.Input, policy runcontext.PolicyLayer, options ...bool) (memoryRun, error) {
 		out := memoryRun{}
 		runCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -36,12 +36,23 @@ func outputBoundaryFindings(ctx context.Context, inner Adapter, agent bool) ([]F
 		if input == nil {
 			input = &runcontext.Input{}
 		}
+		input.Checkpoint = func(_ context.Context, checkpoint contract.Checkpoint) error {
+			for _, operation := range checkpoint.Operations {
+				if strings.Contains(operation.Name, key) {
+					f.fail("saved checkpoint leaked undeclared name")
+				}
+			}
+			return nil
+		}
+		if len(options) > 1 && options[1] {
+			input.Checkpoint = nil
+		}
 		input.CurrentRequest = &runcontext.CurrentRequest{Message: "Revise the draft.", Input: "Revise the draft."}
 		emit := func(e contract.RunEvent) {
 			mu.Lock()
 			defer mu.Unlock()
 			out.events = append(out.events, e)
-			if len(interrupt) > 0 && interrupt[0] && e.ExecutionCheckpoint != nil && e.ExecutionCheckpoint.Checkpoint.OutputGuard["aws-access-key"] > 0 {
+			if len(options) > 0 && options[0] && e.ExecutionCheckpoint != nil && e.ExecutionCheckpoint.Checkpoint.OutputGuard["aws-access-key"] > 0 {
 				cancel()
 			}
 		}
@@ -84,12 +95,21 @@ func outputBoundaryFindings(ctx context.Context, inner Adapter, agent bool) ([]F
 			return runcontext.ToolResult{}, fmt.Errorf("host proposal executed")
 		}}
 		g := gate.New(gate.Options{Runtime: runtime, Granted: gate.Ceiling, Emit: emit})
-		offer, err := g.Open(ctx, append([]contract.ToolOfferHostTool{{Name: "propose_pack", Description: "Propose a pack.", InputSchema: turn.ProposePackSchema}, {Name: "ask_user", InputSchema: json.RawMessage(`{"type":"object"}`)}}, append(boundaryTools(true), runcontext.OfferedEditTools(runcontext.Session{Context: input})...)...))
+		hostOffer := []contract.ToolOfferHostTool{{Name: "propose_pack", Description: "Propose a pack.", InputSchema: turn.ProposePackSchema}, {Name: "ask_user", InputSchema: json.RawMessage(`{"type":"object"}`)}}
+		if len(options) > 1 && options[1] {
+			hostOffer = append(hostOffer, contract.ToolOfferHostTool{Name: key, InputSchema: json.RawMessage(`{"type":"object"}`)})
+		}
+		offer, err := g.Open(ctx, append(hostOffer, append(boundaryTools(true), runcontext.OfferedEditTools(runcontext.Session{Context: input})...)...))
 		if err != nil {
 			return memoryRun{}, err
 		}
 		run := Run{ModelName: "fixture", Wire: "openai-compatible", Thinking: "off", Prompt: "Revise the draft.", TestPrompt: "Review the entire proposal.", AllowConversation: true, Interactive: true, Critic: "off", Gate: g.Calls(), Tools: offer.Tools, HostTools: []runcontext.HostTool{propose, {Name: "ask_user", Description: "Ask the person.", Interaction: "question", InputSchema: json.RawMessage(`{"type":"object"}`)}}, Context: input, Emit: emit}
 
+		if len(options) > 1 && options[1] {
+			run.HostTools = append(run.HostTools, runcontext.HostTool{Name: key, Description: "Declared host tool.", InputSchema: json.RawMessage(`{"type":"object"}`), Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
+				return runcontext.ToolResult{}, nil
+			}})
+		}
 		run.Policy = policy
 		parent := 0
 		run.Model = func(_ context.Context, _ string, request relay.Request) (*http.Response, error) {
@@ -139,7 +159,7 @@ func outputBoundaryFindings(ctx context.Context, inner Adapter, agent bool) ([]F
 			}}
 		}
 		err = inner.Run(runCtx, &run)
-		if len(interrupt) > 0 && interrupt[0] && runCtx.Err() != nil {
+		if len(options) > 0 && options[0] && runCtx.Err() != nil {
 			err = nil
 		}
 		return out, err
@@ -156,6 +176,40 @@ func outputBoundaryFindings(ctx context.Context, inner Adapter, agent bool) ([]F
 		noticeAt, callAt, resultAt := -1, -1, -1
 		guarded, labelled := false, false
 		for i, event := range r.events {
+			clean := event
+			if event.ToolResult != nil {
+				if strings.Contains(event.ToolResult.Name, key) {
+					f.fail("%s result identifier leaked", mode)
+				}
+				clean.ToolResult = nil // Tool-result payloads are exempt.
+			}
+			if event.ExecutionCheckpoint != nil {
+				checkpoint := event.ExecutionCheckpoint.Checkpoint
+				for _, operation := range checkpoint.Operations {
+					if strings.Contains(operation.Name, key) {
+						f.fail("%s checkpoint operation leaked", mode)
+					}
+				}
+				checkpoint.Operations = nil // Check the remaining report fields independently.
+				raw, _ := json.Marshal(checkpoint)
+				value, _ := runcontext.ParseJSON(raw)
+				// Retained operation results remain exempt, as the live result does.
+				for _, entry := range value.Get("context").Get("entries").Items() {
+					operation := entry.Get("value")
+					if operation != nil && operation.Get("name") != nil && operation.Get("status") != nil {
+						operation.Set("result", runcontext.Null())
+					}
+				}
+				if strings.Contains(value.Text(), key) {
+					f.fail("%s checkpoint report leaked", mode)
+				}
+				clean.ExecutionCheckpoint = nil
+			}
+			raw, _ := json.Marshal(clean)
+			if strings.Contains(string(raw), key) {
+				f.fail("%s delivered event leaked", mode)
+			}
+
 			if event.ToolCall != nil && callAt < 0 {
 				callAt = i
 			}
@@ -166,9 +220,7 @@ func outputBoundaryFindings(ctx context.Context, inner Adapter, agent bool) ([]F
 				labelled = true
 			}
 			if e := event.Guardrail; e != nil {
-				if noticeAt < 0 {
-					noticeAt = i
-				}
+				noticeAt = i
 				if strings.Contains(e.Tool, key) || strings.Contains(e.Detail, key) {
 					f.fail("%s gate notice leaked the tool name", mode)
 				}
@@ -179,15 +231,34 @@ func outputBoundaryFindings(ctx context.Context, inner Adapter, agent bool) ([]F
 				}
 			}
 		}
-		count := int64(2)
+		count := int64(3)
 		if mode == "refuse" {
-			count = 1
+			count = 2
 		}
 		if !guarded || !labelled || r.saved() == nil || r.saved().OutputGuard["aws-access-key"] != count {
 			f.fail("%s gate notice guard or count missing", mode)
 		}
+		if r.saved() == nil || len(r.saved().Operations) == 0 || r.saved().Operations[0].Status != "failed" {
+			f.fail("%s unknown call was not refused", mode)
+		}
 		if callAt < 0 || noticeAt <= callAt || resultAt <= noticeAt {
 			f.fail("%s gate notice ordering changed", mode)
+		}
+		declared, e := play([]memoryStep{{name: key, args: json.RawMessage(`{}`)}, {say: "Finished."}}, nil, policy, false, true)
+		if e != nil {
+			return nil, e
+		}
+		found := false
+		for _, event := range declared.events {
+			if event.ToolCall != nil && event.ToolCall.Name == key {
+				found = true
+			}
+			if event.OutputGuarded != nil {
+				f.fail("%s declared tool name was guarded", mode)
+			}
+		}
+		if !found || declared.saved() == nil || len(declared.saved().Operations) == 0 || declared.saved().Operations[0].Name != key {
+			f.fail("%s declared name changed", mode)
 		}
 		if !strings.Contains(strings.Join(r.systems, "\n"), key) {
 			f.fail("%s gate refusal result changed", mode)

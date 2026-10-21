@@ -12,15 +12,18 @@ import {argumentProblem} from '../sourceArguments'
 import type {ExecutionCheckpoint} from '../execution/state'
 afterEach(()=>vi.unstubAllGlobals())
 const key='AKIAABCDEFGHIJKLMNOP',hole='[redacted: aws-access-key]'
+// Saved operation results, including retained copies, are exempt tool-result payloads.
+const outputJSON=(value:unknown)=>JSON.stringify(value,(field,value)=>field==='result'?undefined:value)
 const saved=(r:Ran)=>r.events.filter(e=>e.type==='execution_checkpoint').at(-1)?.checkpoint
-async function play(engine:Engine,turns:Turn[],policy:PolicyLayer={},execution?:ExecutionCheckpoint,interrupt=false){
- const options={engine,...(interrupt?{stopAt:(event:import('../engine').AssistantEvent)=>event.type==='execution_checkpoint'&&Number(event.checkpoint.outputGuard?.['aws-access-key'])>0}:{}),session:{prompt:'Inspect and report.',interactive:true,critic:'off' as const,policy,context:{currentRequest:{message:'Inspect and report.',input:'Inspect and report.'},...(execution?{execution}:{})}},hostTools:[{name:'ask_user',description:'Ask.',interaction:'question' as const,inputSchema:{type:'object'},execute:async()=>runtimeAnswer({})},{name:'propose_pack',description:'Propose.',inputSchema:PROPOSE_PACK_SCHEMA,effect:'proposal' as const,execute:async()=>runtimeAnswer({})}],handle:(call:{name:string;args:Record<string,unknown>})=>runtimeAnswer(call.name==='validate'?{status:'valid'}:{key})}
+async function play(engine:Engine,turns:Turn[],policy:PolicyLayer={},execution?:ExecutionCheckpoint,interrupt=false,declared=false){
+ const written:ExecutionCheckpoint[]=[]
+ const options={engine,...(interrupt?{stopAt:(event:import('../engine').AssistantEvent)=>event.type==='execution_checkpoint'&&Number(event.checkpoint.outputGuard?.['aws-access-key'])>0}:{}),session:{prompt:'Inspect and report.',interactive:true,critic:'off' as const,policy,context:{checkpoint:async(checkpoint:ExecutionCheckpoint)=>{written.push(structuredClone(checkpoint))},currentRequest:{message:'Inspect and report.',input:'Inspect and report.'},...(execution?{execution}:{})}},hostTools:[...(declared?[{name:key,description:'Declared host tool.',inputSchema:{type:'object'},execute:async()=>runtimeAnswer({status:'ok'})}]:[]),{name:'ask_user',description:'Ask.',interaction:'question' as const,inputSchema:{type:'object'},execute:async()=>runtimeAnswer({})},{name:'propose_pack',description:'Propose.',inputSchema:PROPOSE_PACK_SCHEMA,effect:'proposal' as const,execute:async()=>runtimeAnswer({})}],handle:(call:{name:string;args:Record<string,unknown>})=>runtimeAnswer(call.name==='validate'?{status:'valid'}:{key})}
  const answers:{text:string;isError:boolean}[]=[]
  const ran=engine.id==='codex'?await runOnAgentEngine(agentRunFrom(turns,answers),options):await runOnModelEngine(answerFrom(turns,'whole'),options)
- return {...ran,answers}
+ return {...ran,answers,written}
 }
 for(const engine of [vercel,deepagents,codex])describe(`${engine.id==='codex'?'agent ':''}engine ${engine.id} · scenarios`,()=>{
- it('17 · output boundary: the gate guards its own unknown-tool notice',async()=>{
+ it('17 · output boundary: undeclared names and gate notices are guarded before delivery and save',async()=>{
   for(const mode of ['redact','refuse'] as const){
    const run=await play(engine,[{call:{tool:key,arguments:{}}},{say:'Finished.'}],mode==='refuse'?{outputGuard:mode}:{})
    expect(run.events.filter(e=>e.type==='error')).toEqual([])
@@ -29,15 +32,31 @@ for(const engine of [vercel,deepagents,codex])describe(`${engine.id==='codex'?'a
    expect(notices.some(e=>JSON.stringify(e).includes(key))).toBe(false)
    if(mode==='redact'){
     expect(notices).toContainEqual(expect.objectContaining({tool:hole,detail:expect.stringContaining(hole),action:'refused'}))
-    expect(saved(run)?.outputGuard?.['aws-access-key']).toBe(2)
+    expect(saved(run)?.outputGuard?.['aws-access-key']).toBe(3)
    }else{
     expect(notices).toContainEqual(expect.objectContaining({reason:'output refused',action:'refused'}))
-    expect(saved(run)?.outputGuard?.['aws-access-key']).toBe(1)
+    expect(saved(run)?.outputGuard?.['aws-access-key']).toBe(2)
    }
    expect(run.events).toContainEqual({type:'output_guarded',where:'message',pattern:'aws-access-key',action:mode})
-   const noticeAt=run.events.findIndex(e=>e.type==='guardrail')
+   const noticeAt=run.events.length-1-[...run.events].reverse().findIndex(e=>e.type==='guardrail')
    expect(noticeAt).toBeGreaterThan(run.events.findIndex(e=>e.type==='tool_call'))
    expect(noticeAt).toBeLessThan(run.events.findIndex(e=>e.type==='tool_result'))
+   // Result payloads remain exempt, including the gate's model-readable refusal.
+   for(const event of run.events){
+    if(event.type==='tool_result'){expect(event.name).not.toContain(key);continue}
+    if(event.type==='execution_checkpoint'){
+     for(const operation of event.checkpoint.operations)expect(JSON.stringify({...operation,result:undefined})).not.toContain(key)
+     expect(outputJSON(event.checkpoint)).not.toContain(key)
+    }else expect(JSON.stringify(event)).not.toContain(key)
+   }
+   expect(saved(run)?.operations[0]).toMatchObject({status:'failed'})
+   expect(run.written.length).toBeGreaterThan(0)
+   for(const checkpoint of run.written)expect(outputJSON(checkpoint)).not.toContain(key)
+   expect(run.events.find(e=>e.type==='tool_call')).toMatchObject({name:mode==='redact'?hole:'Output refused: aws-access-key.'})
+   const declaredRun=await play(engine,[{call:{tool:key,arguments:{}}},{say:'Finished.'}],mode==='refuse'?{outputGuard:mode}:{},undefined,false,true)
+   expect(declaredRun.events.find(e=>e.type==='tool_call')).toMatchObject({name:key})
+   expect(declaredRun.events.filter(e=>e.type==='output_guarded')).toEqual([])
+   expect(saved(declaredRun)?.operations[0]).toMatchObject({name:key,status:'complete'})
    // The gate's permission refusal remains model-readable, with its original tool name.
    expect(JSON.stringify(run.requests.map(r=>r.body))+JSON.stringify(run.answers)).toContain(key)
    for(const event of run.events)if(event.type==='guardrail'||event.type==='output_guarded')expect(argumentProblem(eventSchema.$defs[event.type],event)).toBeUndefined()

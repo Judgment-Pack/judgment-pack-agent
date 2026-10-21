@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
 	"unicode/utf8"
@@ -52,7 +53,16 @@ func (b *Boundary) guardOutput(event contract.RunEvent) (contract.RunEvent, erro
 		event.Message.Text, err = g.Text(event.Message.Text, "message", true)
 	}
 	if event.ToolCall != nil {
-		event.ToolCall.Args, err = g.JSON(event.ToolCall.Args, OutputWhere(event.ToolCall.Name), g.Mode == "refuse")
+		// Guard a display copy; the adapter dispatches the original name to the gate.
+		copy := *event.ToolCall
+		copy.Name = b.guardName(copy.Name, true)
+		copy.Args, err = g.JSON(copy.Args, OutputWhere(event.ToolCall.Name), g.Mode == "refuse")
+		event.ToolCall = &copy
+	}
+	if event.ToolResult != nil {
+		copy := *event.ToolResult
+		copy.Name = b.guardName(copy.Name, false)
+		event.ToolResult = &copy
 	}
 	if event.UserQuestion != nil {
 		raw, _ := json.Marshal(event.UserQuestion.Question)
@@ -133,4 +143,32 @@ func (b *Boundary) GuardGateNotices(calls *gate.Calls) func() {
 		guarded, err := b.guardNotice(event)
 		return guarded, err == nil
 	})
+}
+
+// guardName holds undeclared model text before observation or persistence. Results reuse
+// the call's display name; their payload remains exempt. The gate still sees the raw name.
+func (b *Boundary) guardName(name string, call bool) string {
+	for _, tool := range b.run.Session.Tools {
+		if tool.Name == name {
+			return name
+		}
+	}
+	for _, tool := range b.run.Session.HostTools {
+		if tool.Name == name {
+			return name
+		}
+	}
+	if clean, ok := b.deliveredNames[name]; ok && !call {
+		return clean
+	}
+	clean, err := b.run.Context.Output.Text(name, "message", true)
+	if err == nil && b.run.Context.Output.Mode != "off" && utf8.RuneCountInString(clean) > 150 {
+		err = b.run.Context.Output.Refuse("message", "invalid-output")
+	}
+	var refused *OutputRefused
+	if errors.As(err, &refused) {
+		clean = refused.Error()
+	}
+	b.deliveredNames[name] = clean
+	return clean
 }
