@@ -302,18 +302,17 @@ var approvalDefault = map[string]string{"read": "none", "propose": "none", "act"
 // effectOf is the effect a tool of each class has on the offer: Plan mode and a child admit reads only.
 var effectOf = map[string]string{"read": "read", "propose": "proposal", "act": ""}
 
-// Credential patterns copied by hand from ADR-0017, contract/patterns/output.json v1
-// (adr-output-boundary); the coordinator will replace this copy with the shared set.
-var credentialLabelPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`\b(?:AKIA|ASIA)[A-Z0-9]{16}\b`),
-	regexp.MustCompile(`\bsk-(?:proj-|ant-api03-)?[A-Za-z0-9_-]{20,}`),
-	regexp.MustCompile(`\bAIza[A-Za-z0-9_-]{35}\b`),
-	regexp.MustCompile(`\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})`),
-	regexp.MustCompile(`-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----[\s\S]*-----END (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----`),
-	regexp.MustCompile(`\b[Bb][Ee][Aa][Rr][Ee][Rr][ \t]+[A-Za-z0-9._~+/=-]+`),
+// Credential patterns from ADR-0017's shared version 1 set; paths are not credentials.
+var credentialLabelPatterns = func() []*regexp.Regexp {
+	patterns := []*regexp.Regexp{}
+	for _, pattern := range baseOutputPatterns {
+		if !strings.HasPrefix(pattern.Name, "local-") {
+			patterns = append(patterns, regexp.MustCompile(pattern.Pattern))
+		}
+	}
 	// Credential assignments also cover the review's synthetic sk_test label.
-	regexp.MustCompile(`(?i)\b(?:api[_-]?key|token|secret|password)\s*[:=]\s*\S+`),
-}
+	return append(patterns, regexp.MustCompile(`(?i)\b(?:api[_-]?key|token|secret|password)\s*[:=]\s*\S+`))
+}()
 
 func credentialLabel(label string) bool {
 	for _, pattern := range credentialLabelPatterns {

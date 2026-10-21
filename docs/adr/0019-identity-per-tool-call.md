@@ -22,9 +22,8 @@ carries `identityDigest` as the identity pin beside a tool-list digest.
 
 A declaration whose label matches a recognisable credential is withheld before
 any offer, event, figure or checkpoint can carry the label. Its refused guardrail
-uses generic text. The credential patterns are ADR-0017's version 1 set, copied
-in the identity code until the shared set is carried into this branch, plus
-credential assignments such as `api_key=...`.
+uses generic text. The credential patterns use ADR-0017's shared version 1 set from
+`contract/patterns/output.json`, plus credential assignments such as `api_key=...`.
 
 The offer's framed description begins with `runs as: <label>`. Every
 `tool_call` and `tool_result` of the source carries the source record with the

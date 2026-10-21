@@ -303,7 +303,7 @@ describe('whether to offer tools reads the record', () => {
 describe('reasoning deltas read the record', () => {
   it('reads the member the record pins: an empty reasoning_content no longer hides the real reasoning', async () => {
     const { call } = scripted([streamed([{ reasoning_content: '', reasoning: 'the real reasoning' }, { content: PROPOSAL }])])
-    const events = await drain(vercel.start(session('openai-compatible', call, { streamingQuirks: { reasoningField: 'reasoning', wholeJsonAnswer: false } }, { tier: 'on' })))
+    const events = await drain(vercel.start({...session('openai-compatible', call, { streamingQuirks: { reasoningField: 'reasoning', wholeJsonAnswer: false } }, { tier: 'on' }),policy:{outputGuard:'off'}}))
     expect(of(events, 'reasoning').filter((event) => event.done).map((event) => event.text)).toEqual(['the real reasoning'])
     expect(of(events, 'proposal')).toHaveLength(1)
   })

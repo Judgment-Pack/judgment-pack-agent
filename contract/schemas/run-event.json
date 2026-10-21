@@ -37,7 +37,8 @@
         "memory_proposed",
         "memory_recalled",
         "edit_applied",
-        "edit_refused"
+        "edit_refused",
+        "output_guarded"
       ]
     }
   },
@@ -125,6 +126,9 @@
     },
     {
       "$ref": "#/$defs/edit_refused"
+    },
+    {
+      "$ref": "#/$defs/output_guarded"
     }
   ],
   "$defs": {
@@ -446,8 +450,6 @@
             "approval refused",
             "approval pending",
             "approval stale",
-            "identity changed",
-            "approval downgraded",
             "skill withheld",
             "skill budget",
             "review refused",
@@ -456,8 +458,11 @@
             "subagent withheld",
             "subagent refused",
             "memory refused",
-            "edit refused"
-            ,"compaction refused"
+            "edit refused",
+            "compaction refused",
+            "output refused",
+            "identity changed",
+            "approval downgraded"
           ]
         }
       },
@@ -969,6 +974,43 @@
           "minLength": 1
         }
       },
+      "additionalProperties": false
+    },
+    "output_guarded": {
+      "description": "ADR-0017: outbound text held by a named pattern, without the matched text.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "output_guarded"
+        },
+        "where": {
+          "enum": [
+            "message",
+            "proposal",
+            "tool argument",
+            "memory proposal",
+            "draft edit"
+          ]
+        },
+        "pattern": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,63}$",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "action": {
+          "enum": [
+            "redact",
+            "refuse"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "where",
+        "pattern",
+        "action"
+      ],
       "additionalProperties": false
     }
   }

@@ -29,8 +29,8 @@ package runcontext
 // nothing once the adapter's own end has been delivered, as the TypeScript rethrows there. Close
 // ends the run's turn on its chat, as the TypeScript's finally does.
 //
-// What the gate holds is not here (go/gate): the guardrail notices a refused call earns
-// (gate.Options.Emit writes them between the call and its result) and the critic's own narrowing.
+// Gate decisions and the critic's narrowing stay in go/gate. GuardGateNotices holds the
+// text of its direct host notices; gate.Options.Emit still writes them between call and result.
 
 import (
 	"errors"
@@ -49,9 +49,10 @@ type Boundary struct {
 	// held are the adapter's results the boundary answered itself (ADR-0008: a call refused while
 	// another waits for the person), by call id, or by name where the events carry none; requested
 	// is the call id of the approval_requested event the run emitted.
-	held       map[string]bool
-	heldByName map[string]int
-	requested  string
+	held           map[string]bool
+	heldByName     map[string]int
+	requested      string
+	deliveredNames map[string]string
 }
 
 // NewBoundary is the boundary for one opened run. A run is tracked where the host gave it a
@@ -61,7 +62,7 @@ func NewBoundary(run *Run) *Boundary {
 	if run.Session.Context != nil {
 		tracked = run.Session.Context.CurrentRequest != nil || run.Session.Context.Execution != nil
 	}
-	return &Boundary{run: run, tracked: tracked, held: map[string]bool{}, heldByName: map[string]int{}}
+	return &Boundary{run: run, tracked: tracked, held: map[string]bool{}, heldByName: map[string]int{}, deliveredNames: map[string]string{}}
 }
 
 // Stopped says the run was stopped by its caller, as session.signal.aborted does: the closing
@@ -89,8 +90,11 @@ func (b *Boundary) Open() []contract.RunEvent {
 // before the next event: a withheld declaration's at the start, a refused call's before its result.
 func (b *Boundary) notices() []contract.RunEvent {
 	out := b.run.Context.TakeNotices()
+	if b.run.Context.Output != nil {
+		out = append(out, b.run.Context.Output.TakeNotices()...)
+	}
 	if b.run.Context.Sources != nil {
-		out = b.run.Context.Sources.TakeNotices()
+		out = append(out, b.run.Context.Sources.TakeNotices()...)
 	}
 	// ADR-0010: a refused request_review's guardrail, before its result.
 	if b.run.Context.Review != nil {
@@ -101,6 +105,17 @@ func (b *Boundary) notices() []contract.RunEvent {
 	}
 	if b.run.Context.Memories != nil {
 		out = append(out, b.run.Context.Memories.TakeNotices()...)
+	}
+	if g := b.run.Context.Output; g != nil {
+		clean := make([]contract.RunEvent, 0, len(out))
+		for _, notice := range out {
+			guarded, err := b.guardNotice(notice)
+			if err == nil {
+				clean = append(clean, guarded)
+			}
+		}
+		// Only guard-generated labels remain; do not scan replacement holes again.
+		out = append(clean, g.TakeNotices()...)
 	}
 	return out
 }
@@ -123,7 +138,27 @@ var readNames = []string{"get_schema", "get_authoring_instructions", "list_conte
 // Event is one of the adapter's events put through the boundary: the events to deliver in its
 // place, and whether the run is over.
 func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
+	if b.run.Context.Output != nil && b.run.Context.Output.Mode != "off" && (event.MessageProgress != nil || event.Reasoning != nil && !event.Reasoning.Done) {
+		return b.notices(), false
+	}
+	var err error
+	event, err = b.guardOutput(event)
 	out := append([]contract.RunEvent{}, b.notices()...)
+	if err != nil {
+		reason := "output refused"
+		reported := false
+		for _, notice := range out {
+			if notice.Guardrail != nil && notice.Guardrail.Reason != nil && *notice.Guardrail.Reason == reason {
+				reported = true
+			}
+		}
+		if !reported {
+			out = append(out, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: "output", Action: "refused", Reason: &reason, Detail: err.Error()}})
+		}
+		out = append(out, b.checkpoint(nil, "stopped")...)
+		b.ended = true
+		return append(out, contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}}), true
+	}
 	context := b.run.Context
 	// ADR-0008: an adapter asks the host's approval policy where it hands an act call to the host
 	// (SessionContext.Approval) and delivers approval_requested in place of the call where it asks.

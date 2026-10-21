@@ -1,0 +1,25 @@
+{
+  "description": "ADR-0017: off. Handwritten from the accepted output-boundary decision.",
+  "schema": "policy.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/outputGuard.ts"
+    ]
+  },
+  "items": [
+    {
+      "outputGuard": "off"
+    }
+  ],
+  "guard": {
+    "input": "AKIAABCDEFGHIJKLMNOP",
+    "output": "AKIAABCDEFGHIJKLMNOP",
+    "where": "message",
+    "mode": "off",
+    "counts": {}
+  }
+}

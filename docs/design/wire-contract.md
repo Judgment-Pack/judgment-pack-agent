@@ -1798,3 +1798,22 @@ stable prefix. `checkpoint.draft.documents` retains each id, digest and edit lis
 the retained context carries exact text and undo history through resume. Hosts
 may supply `context.acceptedDocuments`; otherwise `propose_pack` opens a draft.
 See [ADR-0015](../adr/0015-proposal-edits.md) for the events and refusal rules.
+
+## The output boundary (ADR-0017)
+
+`policy.outputGuard` is `off`, `redact` (default), or `refuse`.
+`outputPatterns` adds host-owned named RE2-subset patterns; `outputAllow` disables
+stable pattern names per project. These settings never enter the model's prompt.
+The versioned base set is `contract/patterns/output.json`.
+
+Answers, proposals, tool arguments, memory proposals and draft edits pass the
+output guard before leaving. Model-derived notice identifiers and refusal details
+are guarded too; tool results remain exempt. Draft scalar text includes numbers,
+booleans and null; a redacted scalar hole is validated before saving. A redaction is `[redacted: <pattern name>]`;
+`output_guarded {type, where, pattern, action}` records its location and name.
+Refusal emits the guardrail reason `output refused`. Redacted proposals and draft
+candidates are validated with the hole present; a failed check refuses delivery.
+The report's `outputGuard` counts by name are carried as `checkpoint.outputGuard`
+through resume and closed-parent delegation continuations. Inputs and retained results remain model-readable under the data
+rule. Incomplete fragments are withheld; the complete answer is guarded once.
+See [the ADR](../adr/0017-the-output-boundary.md) for overlap and work-bound rules.

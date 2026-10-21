@@ -338,4 +338,4 @@ var PlanMode = ScenarioCheck{
 }
 
 // Scenarios are the certified scenarios, each run once on each answer shape.
-var Scenarios = []ScenarioCheck{ChatHostTools, Memory, PlanMode, CorrectionLoop, Transcript, ToolSources, ApprovalPause, Skills, CriticSwitch, PolicyTable, Providers, Subagents, MemoryWrite, ProposalEdits, Compaction, Identity}
+var Scenarios = []ScenarioCheck{ChatHostTools, Memory, PlanMode, CorrectionLoop, Transcript, ToolSources, ApprovalPause, Skills, CriticSwitch, PolicyTable, Providers, Subagents, MemoryWrite, ProposalEdits, Compaction, OutputBoundary, Identity}

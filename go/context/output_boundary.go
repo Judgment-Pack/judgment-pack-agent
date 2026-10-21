@@ -1,0 +1,174 @@
+package runcontext
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
+	"unicode/utf8"
+)
+
+func (c *SessionContext) ValidateOutputProposal(ctx context.Context, document json.RawMessage) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	offered := false
+	for _, t := range c.session.Tools {
+		if t.Name == "validate" {
+			offered = true
+		}
+	}
+	if offered && c.session.CallTool != nil {
+		result, err := c.session.CallTool(ctx, "validate", ObjectOf("content", String(string(document))).JSON())
+		if err == nil && (result.IsError == nil || !*result.IsError) {
+			v := result.StructuredContent
+			if v == nil {
+				var text string
+				for _, part := range result.Content {
+					if part.Type() == "text" {
+						text += part.Text()
+					}
+				}
+				v, _ = ParseJSON([]byte(text))
+			}
+			if editString(v.Get("status")) == "valid" {
+				return nil
+			}
+		}
+	}
+	return c.Output.Refuse("proposal", "proposal-validation")
+}
+func (b *Boundary) guardOutput(event contract.RunEvent) (contract.RunEvent, error) {
+	g := b.run.Context.Output
+	if g == nil {
+		return event, nil
+	}
+	var err error
+	if event.Reasoning != nil {
+		event.Reasoning.Text, err = g.Text(event.Reasoning.Text, "message", true)
+	}
+	if event.Message != nil {
+		event.Message.Text, err = g.Text(event.Message.Text, "message", true)
+	}
+	if event.ToolCall != nil {
+		// Guard a display copy; the adapter dispatches the original name to the gate.
+		copy := *event.ToolCall
+		copy.Name = b.guardName(copy.Name, true)
+		copy.Args, err = g.JSON(copy.Args, OutputWhere(event.ToolCall.Name), g.Mode == "refuse")
+		event.ToolCall = &copy
+	}
+	if event.ToolResult != nil {
+		copy := *event.ToolResult
+		copy.Name = b.guardName(copy.Name, false)
+		event.ToolResult = &copy
+	}
+	if event.UserQuestion != nil {
+		raw, _ := json.Marshal(event.UserQuestion.Question)
+		clean, e := g.JSON(raw, "tool argument", true)
+		err = e
+		if err == nil {
+			err = json.Unmarshal(clean, &event.UserQuestion.Question)
+		}
+	}
+	if event.DelegationRequested != nil {
+		raw, _ := json.Marshal(event.DelegationRequested.Request)
+		clean, e := g.JSON(raw, "tool argument", true)
+		err = e
+		if err == nil {
+			err = json.Unmarshal(clean, &event.DelegationRequested.Request)
+		}
+	}
+	if event.Proposal != nil {
+		raw, _ := json.Marshal(event.Proposal)
+		clean, e := g.JSON(raw, "proposal", true)
+		err = e
+		if err == nil && !bytes.Equal(raw, clean) {
+			err = json.Unmarshal(clean, event.Proposal)
+			if err == nil {
+				document, _ := json.Marshal(event.Proposal.Document)
+				err = b.run.Context.ValidateOutputProposal(b.run.Context.outputContext, document)
+			}
+		}
+	}
+	if err != nil {
+		return event, err
+	}
+	return b.guardNotice(event)
+}
+
+// guardNotice checks model-derived notice fields without changing event tags or tool results.
+func (b *Boundary) guardNotice(event contract.RunEvent) (contract.RunEvent, error) {
+	g := b.run.Context.Output
+	if g == nil {
+		return event, nil
+	}
+	var err error
+	if e := event.EditRefused; e != nil {
+		copy := *e
+		if copy.Document != nil {
+			clean, e := g.Text(*copy.Document, "draft edit", true)
+			if e != nil {
+				return event, e
+			}
+			copy.Document = &clean
+		}
+		copy.Reason, err = g.Text(copy.Reason, "draft edit", true)
+		event.EditRefused = &copy
+	}
+	if e := event.EditApplied; e != nil {
+		copy := *e
+		copy.Document, err = g.Text(copy.Document, "draft edit", true)
+		event.EditApplied = &copy
+	}
+	if e := event.Guardrail; e != nil && (e.Reason == nil || *e.Reason != "output refused") {
+		copy := *e
+		copy.Tool, err = g.Text(copy.Tool, "message", true)
+		if err == nil {
+			copy.Detail, err = g.Text(copy.Detail, "message", true)
+		}
+		event.Guardrail = &copy
+	}
+	if err == nil && (event.EditRefused != nil && event.EditRefused.Document != nil && utf8.RuneCountInString(*event.EditRefused.Document) > 512 || event.EditApplied != nil && utf8.RuneCountInString(event.EditApplied.Document) > 512) {
+		return event, g.Refuse("draft edit", "invalid-output")
+	}
+	return event, err
+}
+
+// GuardGateNotices holds the gate's direct host notices under this run's output policy.
+// Guard labels are queued for the boundary's next event, before the tool result.
+func (b *Boundary) GuardGateNotices(calls *gate.Calls) func() {
+	return gate.GuardNotices(calls, func(event contract.RunEvent) (contract.RunEvent, bool) {
+		guarded, err := b.guardNotice(event)
+		return guarded, err == nil
+	})
+}
+
+// guardName holds undeclared model text before observation or persistence. Results reuse
+// the call's display name; their payload remains exempt. The gate still sees the raw name.
+func (b *Boundary) guardName(name string, call bool) string {
+	for _, tool := range b.run.Session.Tools {
+		if tool.Name == name {
+			return name
+		}
+	}
+	for _, tool := range b.run.Session.HostTools {
+		if tool.Name == name {
+			return name
+		}
+	}
+	if clean, ok := b.deliveredNames[name]; ok && !call {
+		return clean
+	}
+	clean, err := b.run.Context.Output.Text(name, "message", true)
+	if err == nil && b.run.Context.Output.Mode != "off" && utf8.RuneCountInString(clean) > 150 {
+		err = b.run.Context.Output.Refuse("message", "invalid-output")
+	}
+	var refused *OutputRefused
+	if errors.As(err, &refused) {
+		clean = refused.Error()
+	}
+	b.deliveredNames[name] = clean
+	return clean
+}

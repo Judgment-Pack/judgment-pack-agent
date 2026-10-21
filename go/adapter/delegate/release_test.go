@@ -2,7 +2,9 @@ package delegate_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/agent"
 	"strings"
 	"sync"
 	"testing"
@@ -108,5 +110,63 @@ func TestAChildWaitsForTheParentsRelease(t *testing.T) {
 	}
 	if children != 1 {
 		t.Fatalf("%d children completed", children)
+	}
+}
+
+func TestClosedAgentParentKeepsChildOutputCounts(t *testing.T) {
+	ctx := context.Background()
+	calls := 0
+	g := gate.New(gate.Options{})
+	g.SetOffer(contract.ToolOffer{Tools: []contract.ToolOfferRuntimeTool{}, HostTools: []contract.ToolOfferHostTool{turn.DelegationTool(turn.TaskProfiles)}})
+	var saved []contract.Checkpoint
+	var events []contract.RunEvent
+	run := &adapter.Run{Gate: g.Calls(), ModelName: "fixture", Prompt: "Review", Critic: "off", AllowConversation: true, Interactive: true,
+		Context: &runcontext.Input{CurrentRequest: &runcontext.CurrentRequest{Message: "Review", Input: "Review"}, Checkpoint: func(_ context.Context, state contract.Checkpoint) error { saved = append(saved, state); return nil }},
+		Emit:    func(event contract.RunEvent) { events = append(events, event) },
+		Children: func(context.Context, contract.DelegatedTaskProfile, func(contract.RunEvent)) (*gate.Calls, []contract.ToolOfferRuntimeTool, error) {
+			return nil, nil, nil
+		},
+		Agent: &adapter.Agent{Model: "fixture", Run: func(ctx context.Context, request adapter.AgentRequest, cb adapter.AgentCallbacks) error {
+			calls++
+			if calls == 1 {
+				for _, tool := range request.Tools {
+					if strings.HasPrefix(tool.Description, "delegate_tasks:") {
+						_, err := cb.Tool(ctx, adapter.AgentToolCall{ID: "call", Name: tool.Name, Arguments: json.RawMessage(`{"tasks":[{"title":"Review","profile":"review","objective":"Check the supplied claims."}]}`)})
+						return err
+					}
+				}
+				t.Fatal("no delegation tool")
+			}
+			text := "AKIAABCDEFGHIJKLMNOP"
+			if calls == 3 {
+				text = "Parent finished."
+			}
+			return cb.Event(ctx, adapter.AgentEvent{Type: "message", ID: "reply", Text: text, Phase: "final"})
+		}},
+	}
+	if err := delegate.With(agent.New(), delegate.Options{}).Run(ctx, run); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 3 {
+		t.Fatalf("invocations=%d", calls)
+	}
+	var last *contract.Checkpoint
+	child := false
+	for _, e := range events {
+		if e.Error != nil {
+			t.Fatalf("error: %s", e.Error.Message)
+		}
+		if e.ExecutionCheckpoint != nil {
+			last = &e.ExecutionCheckpoint.Checkpoint
+		}
+		if e.DelegatedTask != nil && e.DelegatedTask.Task.State == "complete" {
+			child = true
+		}
+	}
+	if !child || last == nil || last.OutputGuard["aws-access-key"] != 1 {
+		t.Fatalf("child=%v final checkpoint=%+v", child, last)
+	}
+	if len(saved) == 0 || saved[len(saved)-1].OutputGuard["aws-access-key"] != 1 {
+		t.Fatal("saved checkpoint lost the child count")
 	}
 }

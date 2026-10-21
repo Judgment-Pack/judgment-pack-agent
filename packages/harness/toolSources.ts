@@ -1,3 +1,4 @@
+import outputPatterns from './contract/output-patterns.json'
 /**
  * Tool sources (ADR-0006): tools from outside the Runtime, held at the boundary.
  *
@@ -237,15 +238,9 @@ const exactIdentity = (value: Record<string, unknown>): value is Record<string, 
   Object.keys(value).every((member) => member === 'kind' || member === 'label') &&
   IDENTITY_KINDS.includes(value.kind as IdentityKind) && typeof value.label === 'string' && value.label.length >= 1 && value.label.length <= 128
 
-// Credential patterns copied by hand from ADR-0017, contract/patterns/output.json v1
-// (adr-output-boundary); the coordinator will replace this copy with the shared set.
+// Credential patterns from ADR-0017's shared version 1 set; paths are not credentials.
 const CREDENTIAL_LABEL_PATTERNS = [
-  /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/,
-  /\bsk-(?:proj-|ant-api03-)?[A-Za-z0-9_-]{20,}/,
-  /\bAIza[A-Za-z0-9_-]{35}\b/,
-  /\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})/,
-  /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----[\s\S]*-----END (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/,
-  /\b[Bb][Ee][Aa][Rr][Ee][Rr][ \t]+[A-Za-z0-9._~+/=-]+/,
+  ...outputPatterns.patterns.filter(({ name }) => !name.startsWith('local-')).map(({ pattern }) => new RegExp(pattern)),
   // Credential assignments also cover the review's synthetic sk_test label.
   /\b(?:api[_-]?key|token|secret|password)\s*[:=]\s*\S+/i
 ]
