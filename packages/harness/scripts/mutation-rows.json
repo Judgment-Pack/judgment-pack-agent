@@ -4222,6 +4222,54 @@
    ],
    "status": "caught",
    "origin": "agent#110 review round"
+  },
+  {
+   "name": "records lifetime not carried",
+   "file": "records.ts",
+   "find": ",retainUntil:keepRetainUntil??retainUntil(policy,now)",
+   "replace": "",
+   "tests": [
+    "records.test.ts",
+    "certification/records.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR records (#101)"
+  },
+  {
+   "name": "records redaction skipped on store",
+   "file": "records.ts",
+   "find": "if(policy.redactOnStore&&guard)record=guard.value(record,'message')",
+   "replace": "if(false&&guard)record=guard.value(record,'message')",
+   "tests": [
+    "records.test.ts",
+    "certification/records.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR records (#101)"
+  },
+  {
+   "name": "records manifest digest wrong",
+   "file": "records.ts",
+   "find": "digest:recordDigest(body)",
+   "replace": "digest:'sha256:'+('0'.repeat(64))",
+   "tests": [
+    "records.test.ts",
+    "certification/records.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR records (#101)"
+  },
+  {
+   "name": "records expired resume admitted",
+   "file": "records.ts",
+   "find": "if(Date.parse(record.retainUntil)<=now.getTime())throw new RecordsExpired()",
+   "replace": "if(false)throw new RecordsExpired()",
+   "tests": [
+    "records.test.ts",
+    "certification/records.test.ts"
+   ],
+   "status": "caught",
+   "origin": "ADR records (#101)"
   }
  ]
 }

@@ -10,6 +10,7 @@ export type PolicyLayerName = 'run' | 'project' | 'table'
 export type TaskClass = 'routine' | 'material' | 'boundary'
 export interface PolicyRole { model?: string; reasoning?: string; provider?: string }
 export interface PolicyLayer {
+  records?: Partial<import('./records').RecordsPolicy>
   budget?: Record<string, number>
   critic?: { default?: 'off' | 'auto' | 'on'; reasoningFloor?: 'author' }
   models?: { author?: PolicyRole; critic?: PolicyRole; taskClasses?: Partial<Record<TaskClass, string>>; [role: string]: PolicyRole | Partial<Record<TaskClass, string>> | undefined }

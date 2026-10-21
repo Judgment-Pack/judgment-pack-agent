@@ -1,4 +1,5 @@
 import {PolicyRefusal} from '../policy'
+import {RecordsExpired} from '../records'
 import {failureError,failureEvent,toolFailureResult} from '../failures'
 import {ExecutionPaused} from '../execution/state'
 import type {AssistantEvent,EngineSession} from '../engine'
@@ -107,6 +108,7 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
    }
    // ADR-0006: a tool with a source's call and result carry its source record.
    if(context.sources)event=context.sources.decorate(event)
+   if(event.type==='critique')event=context.execution.recordCritique(event)
    if(event.type==='error')failed=true
    context.execution.observe(event)
    if(event.type==='budget_paused'||event.type==='error'&&(event.failure?.code==='request-limit'||event.message===new ExecutionPaused().message)){
@@ -132,6 +134,7 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
    yield error.event()
    if(error.checkpoint)yield {type:'execution_checkpoint',checkpoint:error.checkpoint}
   }
+  if(error instanceof RecordsExpired)yield error.event()
   if(!session.signal.aborted)yield failureEvent(error,'context')
   yield {type:'end'}
  } finally {context?.close()}

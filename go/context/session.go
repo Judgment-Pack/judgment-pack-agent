@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"reflect"
 	"regexp"
 	"strings"
 
@@ -240,7 +241,18 @@ func NewSessionContext(session Session) (*SessionContext, error) {
 		store = out.turn
 	}
 	out.Ledger = NewContextLedger(out.Policy, store)
-	out.Execution = NewExecutionController(session, out.Ledger)
+	out.Execution = NewExecutionController(session, out.Ledger, out.ResolvedPolicy)
+	// ADR records follows the output-boundary branch: resolve its Output field when a record is
+	// actually written, after that guard has opened. Reflection keeps this additive branch buildable
+	// before the prerequisite is carried into it by the coordinator.
+	out.Execution.RecordGuard = func() RecordGuard {
+		field := reflect.ValueOf(out).Elem().FieldByName("Output")
+		if !field.IsValid() || (field.Kind() == reflect.Pointer || field.Kind() == reflect.Interface) && field.IsNil() || !field.CanInterface() {
+			return nil
+		}
+		guard, _ := field.Interface().(RecordGuard)
+		return guard
+	}
 	// ADR-0010: the session's critic members, read closed before any request; the forced-off facts
 	// are the session's: a delegated child (its objective), Plan mode, a graph purpose, a reviewer.
 	settings := CriticSettings{ResolvedPolicy: out.ResolvedPolicy, Critic: session.Critic, CriticProject: session.CriticProject, CriticReasoning: session.CriticReasoning, AdversarialReview: session.AdversarialReview}

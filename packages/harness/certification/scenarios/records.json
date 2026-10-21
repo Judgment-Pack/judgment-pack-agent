@@ -1,0 +1,9 @@
+{
+  "request": "Check records.",
+  "turns": [{"say": "Records checked."}],
+  "policy": {"retainDays": 90, "redactOnStore": true, "exportFormat": "json"},
+  "now": "2026-10-21T12:00:00.000Z",
+  "secret": "/home/person/secret.txt",
+  "hole": "[redacted: local-home-path]",
+  "expired": "2026-10-21T11:59:59.999Z"
+}

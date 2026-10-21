@@ -7,6 +7,7 @@ import type {McpToolResult} from '../engine'
 import {MAX_TURNS} from '../engines/contract'
 import {utf8Bytes} from '../context/policy'
 import {validCriticRecord,type CriticRecord} from '../criticSwitch'
+import {CHECKPOINT_SCHEMA,PROVENANCE_SCHEMA,recordDigest,validRecordHeader,type RecordMembers} from '../records'
 
 export const REQUEST_INCREMENT = 10
 export const MAX_REQUEST_ALLOWANCE = 100
@@ -19,7 +20,7 @@ export interface RetainedEntry {id:string;kind:'history'|'artifact'|'request'|'t
  * retried (engines/vercel/retry.ts): the refused attempt's row carries its failure and the wait before the next, and
  * the attempt that answered carries its number.
  */
-export interface CompletionRecord {request:number;phase:'work'|'synthesis'|'review';result:ModelCompletion;attempt?:number;failure?:AIFailure;waitMs?:number}
+export interface CompletionRecord {schema?:typeof PROVENANCE_SCHEMA;version?:1;digest?:string;retainUntil?:string;request:number;phase:'work'|'synthesis'|'review';result:ModelCompletion;attempt?:number;failure?:AIFailure;waitMs?:number}
 /**
  * The digest of one request body the adapter sent (ADR-0005): which it was, counted from 1 in the
  * order sent (each model request, a retried attempt its own; on the agent wire each agent run), and
@@ -30,6 +31,7 @@ export interface PromptDigest {request:number;sha256:string}
 export const MAX_PROMPT_DIGESTS = 300
 /** A local execution record, never permissions, evidence approval or private reasoning. */
 export interface ExecutionCheckpoint {
+ schema?:typeof CHECKPOINT_SCHEMA;digest?:string;retainUntil?:string;
  version:1;id:string;requestKey:string;phase:'plan'|'work';status:'running'|'paused'|'complete'|'stopped';
  unit:'model-requests'|'provider-managed';used:number;limit:number;grants:{from:number;to:number;at:string}[];
  plan:TaskStep[];explanation:string;operations:Operation[];
@@ -149,11 +151,13 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value===undefined)return
  const fail=():never=>{throw Error('Saved execution progress is invalid. History was left untouched.')}
  if(!object(value)||utf8Bytes(JSON.stringify(value))>MAX_CHECKPOINT_BYTES||value.version!==1||!text(value.id,100)||!value.id||!text(value.requestKey,64)||!/^[a-f0-9]{64}$/.test(value.requestKey)||!['plan','work'].includes(String(value.phase))||!['running','paused','complete','stopped'].includes(String(value.status))||!['model-requests','provider-managed'].includes(String(value.unit)))return fail()
+ const metadata=['schema','digest','retainUntil'].some(name=>Object.hasOwn(value,name))
+ if(metadata&&!validRecordHeader(value,CHECKPOINT_SCHEMA))return fail()
  if(!Number.isInteger(value.used)||Number(value.used)<0||!Number.isInteger(value.limit)||Number(value.limit)<1||Number(value.limit)>MAX_REQUEST_ALLOWANCE||Number(value.used)>Number(value.limit)||!Array.isArray(value.grants)||value.grants.length>8)return fail()
  let limit=value.unit==='model-requests'?MAX_TURNS:1
  for(const grant of value.grants){if(!object(grant)||grant.from!==limit||!Number.isInteger(grant.to)||Number(grant.to)<=limit||Number(grant.to)>MAX_REQUEST_ALLOWANCE||typeof grant.at!=='string'||!Number.isFinite(Date.parse(grant.at)))return fail();limit=Number(grant.to)}
  if(value.limit!==limit||!Array.isArray(value.plan)||(value.plan.length&&!validTaskSteps(value.plan))||!text(value.explanation,2000)||(value.reason!==undefined&&!text(value.reason,2000))||(value.testCalls!==undefined&&(!Number.isInteger(value.testCalls)||Number(value.testCalls)<0||Number(value.testCalls)>400))||(value.delegation!==undefined&&!validDelegationFigures(value.delegation,value.unit as 'model-requests'|'provider-managed')))return fail()
- if(value.completions!==undefined&&(!Array.isArray(value.completions)||value.completions.length>MAX_REQUEST_ALLOWANCE||value.completions.some(row=>!object(row)||!Number.isInteger(row.request)||Number(row.request)<1||Number(row.request)>Number(value.used)||!['work','synthesis','review'].includes(String(row.phase))||!readCompletion(row.result)||row.attempt!==undefined&&(!Number.isInteger(row.attempt)||Number(row.attempt)<1||Number(row.attempt)>3)||row.failure!==undefined&&!readFailure(row.failure)||row.waitMs!==undefined&&(!Number.isInteger(row.waitMs)||Number(row.waitMs)<0||Number(row.waitMs)>86400000))))return fail()
+ if(value.completions!==undefined&&(!Array.isArray(value.completions)||value.completions.length>MAX_REQUEST_ALLOWANCE||value.completions.some(row=>!object(row)||!Number.isInteger(row.request)||Number(row.request)<1||Number(row.request)>Number(value.used)||!['work','synthesis','review'].includes(String(row.phase))||!readCompletion(row.result)||row.attempt!==undefined&&(!Number.isInteger(row.attempt)||Number(row.attempt)<1||Number(row.attempt)>3)||row.failure!==undefined&&!readFailure(row.failure)||row.waitMs!==undefined&&(!Number.isInteger(row.waitMs)||Number(row.waitMs)<0||Number(row.waitMs)>86400000)||['schema','digest','retainUntil'].some(name=>Object.hasOwn(row,name))&&!validRecordHeader(row,PROVENANCE_SCHEMA))))return fail()
  if(value.prompts!==undefined&&(!Array.isArray(value.prompts)||value.prompts.length>MAX_PROMPT_DIGESTS||value.prompts.some((row,at,rows)=>!object(row)||!exact(row,['request','sha256'])||!Number.isSafeInteger(row.request)||Number(row.request)<1||at>0&&Number(row.request)<=Number((rows[at-1] as Record<string,unknown>).request)||typeof row.sha256!=='string'||!/^[a-f0-9]{64}$/.test(row.sha256))))return fail()
  if(value.sources!==undefined&&!validSourceFigures(value.sources))return fail()
  if(value.approval!==undefined&&!validApproval(value.approval))return fail()
@@ -166,7 +170,7 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(!object(value.context)||!text(value.context.scope,100)||!Array.isArray(value.context.entries)||value.context.entries.length>800||new Set(value.context.entries.map(e=>e.id)).size!==value.context.entries.length)return fail()
  for(const e of value.context.entries){if(!object(e)||!text(e.id,300)||!e.id.startsWith(value.context.scope+':')||!['history','artifact','request','tool'].includes(String(e.kind))||!text(e.label,1000)||typeof e.digest!=='string'||!/^[a-f0-9]{64}$/.test(e.digest)||e.revision!==undefined&&!text(e.revision,256)||!Number.isInteger(e.bytes)||Number(e.bytes)<0||!Object.hasOwn(e,'value'))return fail()}
  const result=structuredClone(value) as unknown as ExecutionCheckpoint
- if(result.completions)result.completions=result.completions.map(({request,phase,result,attempt,failure,waitMs})=>({request,phase,result:readCompletion(result)!,...(attempt===undefined?{}:{attempt}),...(failure===undefined?{}:{failure:readFailure(failure)!}),...(waitMs===undefined?{}:{waitMs})}))
+ if(result.completions)result.completions=result.completions.map(({schema,version,digest,retainUntil,request,phase,result,attempt,failure,waitMs})=>({...(schema===undefined?{}:{schema,version,digest,retainUntil} as RecordMembers<typeof PROVENANCE_SCHEMA>),request,phase,result:readCompletion(result)!,...(attempt===undefined?{}:{attempt}),...(failure===undefined?{}:{failure:readFailure(failure)!}),...(waitMs===undefined?{}:{waitMs})}))
  return result
 }
 /** A stopped API request can fail exactly at the ceiling; recovery still needs an explicit grant. */
@@ -178,6 +182,8 @@ export function extendExecution(checkpoint:ExecutionCheckpoint,interrupted=false
  const saved=readExecution(checkpoint)!
  if((saved.status!=='paused'&&!(interrupted&&canExtendInterruptedExecution(saved)))||saved.unit!=='model-requests'||saved.limit>=MAX_REQUEST_ALLOWANCE)throw Error('This execution cannot receive another request allowance.')
  const limit=Math.min(MAX_REQUEST_ALLOWANCE,saved.limit+REQUEST_INCREMENT)
- return {...saved,limit,status:'running',reason:undefined,grants:[...saved.grants,{from:saved.limit,to:limit,at:new Date().toISOString()}]}
+ const extended={...saved,limit,status:'running' as const,reason:undefined,grants:[...saved.grants,{from:saved.limit,to:limit,at:new Date().toISOString()}]}
+ if(extended.schema)extended.digest=recordDigest(extended)
+ return extended
 }
 export class ExecutionPaused extends Error {readonly failureCode='request-limit';constructor(){super('Work paused at the approved request limit. Continue with an additional allowance, or keep the completed work.')}}

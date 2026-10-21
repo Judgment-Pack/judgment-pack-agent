@@ -50,6 +50,7 @@ func (o *Operation) Value() *Value {
 // checkpoint weighs is what the TypeScript's weighs.
 type Execution struct {
 	Memories    *contract.ProvenanceMemories
+	RetainUntil string
 	Version     int
 	ID          string
 	RequestKey  string
@@ -241,7 +242,11 @@ func executionOf(saved *contract.Checkpoint) (*Execution, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := &Execution{Version: int(saved.Version), ID: saved.ID, RequestKey: saved.RequestKey,
+	retainUntil := ""
+	if saved.RetainUntil != nil {
+		retainUntil = *saved.RetainUntil
+	}
+	out := &Execution{RetainUntil: retainUntil, Version: int(saved.Version), ID: saved.ID, RequestKey: saved.RequestKey,
 		Phase: saved.Phase, Status: saved.Status, Unit: saved.Unit, Used: int(saved.Used),
 		Limit: int(saved.Limit), Grants: saved.Grants, Plan: value.Get("plan"),
 		Explanation: saved.Explanation, Completions: saved.Completions, Context: saved.Context,
@@ -268,7 +273,11 @@ type ExecutionController struct {
 	// Progress is the repeated-work tracker.
 	Progress *ProgressTracker
 	// State is the execution state this response carries.
-	State *Execution
+	State        *Execution
+	RecordPolicy RecordsPolicy
+	// RecordGuard resolves late because the output guard opens after the execution journal.
+	RecordGuard func() RecordGuard
+	recordError error
 	// PauseRequested is set by request_budget_increase: the adapter pauses after the call's result.
 	PauseRequested bool
 	// ToolAllowance is the tool-call cap this run works under, where a delegation coordinator holds
@@ -309,9 +318,23 @@ type ExecutionController struct {
 	cache               map[string]ToolResult
 }
 
+func (c *ExecutionController) recordGuard() RecordGuard {
+	if c.RecordGuard == nil {
+		return nil
+	}
+	return c.RecordGuard()
+}
+
+func (c *ExecutionController) takeRecordError() error {
+	err := c.recordError
+	c.recordError = nil
+	return err
+}
+
 // NewExecutionController is a controller for one run.
-func NewExecutionController(session Session, ledger *ContextLedger) *ExecutionController {
-	return &ExecutionController{Progress: NewProgressTracker(), session: session, ledger: ledger,
+func NewExecutionController(session Session, ledger *ContextLedger, members PolicyMembers) *ExecutionController {
+	policy, _ := ReadRecordsPolicy(members)
+	return &ExecutionController{Progress: NewProgressTracker(), session: session, ledger: ledger, RecordPolicy: policy,
 		attempt: 1, inFlight: map[string]string{}, cache: map[string]ToolResult{}}
 }
 
@@ -355,6 +378,11 @@ func (c *ExecutionController) Initialize() error {
 		limit = MaxTurns
 	}
 	if saved != nil {
+		if saved.RetainUntil != nil {
+			if err := RefuseExpired(*saved.RetainUntil, time.Now()); err != nil {
+				return err
+			}
+		}
 		if saved.RequestKey != requestKey || saved.Phase != phase {
 			return failure.ToolInput("The request or execution phase changed. Start a new response with the current context.")
 		}
@@ -662,7 +690,22 @@ func (c *ExecutionController) RecordCompletion(result contract.ProvenanceComplet
 		held := int64(attempt)
 		row.Attempt = &held
 	}
-	c.State.Completions = append(c.State.Completions, row)
+	c.State.Completions = append(c.State.Completions, c.writeProvenance(row))
+}
+
+func (c *ExecutionController) writeProvenance(row contract.Provenance) contract.Provenance {
+	raw, _ := json.Marshal(row)
+	value, _ := ParseJSON(raw)
+	written, err := WriteRecord(ProvenanceSchema, value, c.RecordPolicy, c.recordGuard(), time.Now(), "")
+	if err != nil {
+		c.recordError = err
+		return row
+	}
+	var out contract.Provenance
+	if json.Unmarshal(written.JSON(), &out) != nil {
+		return row
+	}
+	return out
 }
 
 // RecordPrompt is recordPrompt (ADR-0005): the digest of one request body the adapter is about to
@@ -701,7 +744,7 @@ func (c *ExecutionController) RecordRefusal(phase string, attempt int, f contrac
 		wait := int64(*waitMs)
 		row.WaitMs = &wait
 	}
-	c.State.Completions = append(c.State.Completions, row)
+	c.State.Completions = append(c.State.Completions, c.writeProvenance(row))
 }
 
 // ClearReadCache empties the run's own read cache (the critic's isolation).
@@ -877,6 +920,9 @@ const budgetRefused = "Explain why more requests are needed and the next concret
 // Snapshot is snapshot: the state and the ledger's entries as one checkpoint, under the status
 // given (the state's own where it is empty).
 func (c *ExecutionController) Snapshot(status string) (contract.Checkpoint, error) {
+	if c.recordError != nil {
+		return contract.Checkpoint{}, c.recordError
+	}
 	if c.criticMu != nil {
 		// Lock order: adapter delivery lock, criticMu, then source/skill/ledger locks.
 		// Keep the state protected through copying and serialisation.
@@ -911,7 +957,10 @@ func (c *ExecutionController) Snapshot(status string) (contract.Checkpoint, erro
 		held.Skills = c.SkillLoads()
 	}
 	held.Context = c.ledger.Snapshot()
-	value := held.Value()
+	value, err := WriteRecord(CheckpointSchema, held.Value(), c.RecordPolicy, c.recordGuard(), time.Now(), held.RetainUntil)
+	if err != nil {
+		return contract.Checkpoint{}, err
+	}
 	if UTF8Bytes(value.Text()) > MaxCheckpointBytes {
 		return contract.Checkpoint{}, failure.ToolInput("The execution checkpoint is full. Completed work remains visible; start a focused follow-up before further work.")
 	}

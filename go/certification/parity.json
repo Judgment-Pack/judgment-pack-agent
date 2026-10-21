@@ -926,13 +926,20 @@
           "15 proposal edits",
           "15 agent proposal edits"
         ]
+      },
+      {
+        "check": "18 · records carry identity, lifetime and redaction; export binds their digests; expired resume is refused",
+        "go": [
+          "18 records"
+        ]
       }
     ],
     "additionalSources": [
       "packages/harness/certification/providers.test.ts",
       "packages/harness/certification/subagents.test.ts",
       "packages/harness/certification/memory-write.test.ts",
-      "packages/harness/certification/proposal-edits.test.ts"
+      "packages/harness/certification/proposal-edits.test.ts",
+      "packages/harness/certification/records.test.ts"
     ]
   },
   "delegation": {

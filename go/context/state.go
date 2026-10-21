@@ -267,6 +267,10 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 		!oneOf(value.Get("unit"), "model-requests", "provider-managed") {
 		return nil, errSavedExecution
 	}
+	metadata := value.Has("schema") || value.Has("digest") || value.Has("retainUntil")
+	if metadata && !ValidRecordHeader(value, CheckpointSchema) {
+		return nil, errSavedExecution
+	}
 	used, limit := value.Get("used"), value.Get("limit")
 	grants := value.Get("grants")
 	if !isInteger(used) || used.Num() < 0 || !isInteger(limit) || limit.Num() < 1 || limit.Num() > MaxRequestAllowance ||
@@ -362,6 +366,10 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 			if wait := row.Get("waitMs"); wait != nil && (!isInteger(wait) || wait.Num() < 0 || wait.Num() > 86400000) {
 				return nil, errSavedExecution
 			}
+			rowMetadata := row.Has("schema") || row.Has("digest") || row.Has("retainUntil")
+			if rowMetadata && !ValidRecordHeader(row, ProvenanceSchema) {
+				return nil, errSavedExecution
+			}
 		}
 	}
 	operations := value.Get("operations")
@@ -421,6 +429,7 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 	for at, row := range out.Completions {
 		completion, _ := failure.ReadCompletion(row.Result)
 		rebuilt := contract.Provenance{Request: row.Request, Phase: row.Phase, Result: completion,
+			Schema: row.Schema, Version: row.Version, Digest: row.Digest, RetainUntil: row.RetainUntil,
 			Attempt: row.Attempt, WaitMs: row.WaitMs}
 		if row.Failure != nil {
 			checked, _ := failure.Read(*row.Failure)
@@ -515,6 +524,12 @@ func ExtendExecution(checkpoint contract.Checkpoint, interrupted bool, now time.
 	out.Reason = nil
 	out.Grants = append(append([]contract.CheckpointGrant{}, saved.Grants...),
 		contract.CheckpointGrant{From: saved.Limit, To: limit, At: now.UTC().Format("2006-01-02T15:04:05.000Z")})
+	if out.Schema != nil {
+		raw, _ := json.Marshal(out)
+		value, _ := ParseJSON(raw)
+		digest := RecordDigest(value)
+		out.Digest = &digest
+	}
 	return &out, nil
 }
 

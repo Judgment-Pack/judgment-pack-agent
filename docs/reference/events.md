@@ -14,7 +14,7 @@ One event of a run, from the adapter to the host, in order, discriminated by typ
 
 See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](critic.md), [skills.md](skills.md), [budget.md](budget.md), [reasons.md](reasons.md), [checkpoint.md](checkpoint.md).
 
-## The 27 kinds
+## The 28 kinds
 
 | Kind | Defined in | Required beyond type |
 | --- | --- | --- |
@@ -45,6 +45,7 @@ See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](crit
 | `memory_recalled` | `run-event.json $defs/memory_recalled` | `ids`, `digests`, `bytes` |
 | `edit_applied` | `run-event.json $defs/edit_applied` | `document`, `line`, `bytes`, `valid` |
 | `edit_refused` | `run-event.json $defs/edit_refused` | `reason` |
+| `export_written` | `run-event.json $defs/export_written` | `records`, `bytes`, `digest` |
 
 ## Every kind with its members
 
@@ -252,7 +253,7 @@ Open: a member the schema does not name is accepted.
 | `tool` | yes | string |  |
 | `action` | yes | enum `rewrote`, `refused`, `narrowed` |  |
 | `detail` | yes | string |  |
-| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused`, `memory refused`, `edit refused` |  |
+| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused`, `memory refused`, `edit refused`, `records expired` |  |
 
 ### `thinking_unavailable`
 
@@ -289,6 +290,10 @@ Open: a member the schema does not name is accepted.
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
 | `type` | yes | const `critique` |  |
+| `schema` |  | const (see schema) |  |
+| `version` |  | const `1` |  |
+| `digest` |  | `provenance.json $defs/recordDigest` |  |
+| `retainUntil` |  | `provenance.json $defs/retainUntil` |  |
 | `refuted` | yes | boolean |  |
 | `checks` | yes | array of object |  |
 | `checks[].tool` | yes | string |  |
@@ -392,3 +397,16 @@ Closed: a member the schema does not name is refused.
 | `type` | yes | const `edit_refused` |  |
 | `document` |  | string (min length 1, max length 512) | Offending document identifier, truncated to 512 Unicode characters. Omitted when missing, non-string or empty; reason names the invalid document identifier. |
 | `reason` | yes | string (min length 1) |  |
+
+### `export_written`
+
+The host asked the package to produce a JSON export from records it supplied. No package store was read.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `type` | yes | const `export_written` |  |
+| `records` | yes | integer (min 0) |  |
+| `bytes` | yes | integer (min 1) |  |
+| `digest` | yes | `provenance.json $defs/recordDigest` |  |

@@ -1,4 +1,9 @@
 {
+  "records": {
+    "retainDays": 90,
+    "redactOnStore": true,
+    "exportFormat": "json"
+  },
   "budget": {
     "version": 1,
     "maxInputBytes": 180000,

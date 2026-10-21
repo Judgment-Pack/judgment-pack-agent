@@ -1,0 +1,21 @@
+{
+  "description": "A completed host-requested export reports its record count, canonical bytes and digest. Handwritten for ADR records (#101).",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/records.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "export_written",
+      "records": 3,
+      "bytes": 2048,
+      "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+    }
+  ]
+}

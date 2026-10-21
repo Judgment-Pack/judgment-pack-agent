@@ -36,7 +36,8 @@
         "memory_proposed",
         "memory_recalled",
         "edit_applied",
-        "edit_refused"
+        "edit_refused",
+        "export_written"
       ]
     }
   },
@@ -121,6 +122,9 @@
     },
     {
       "$ref": "#/$defs/edit_refused"
+    },
+    {
+      "$ref": "#/$defs/export_written"
     }
   ],
   "$defs": {
@@ -437,7 +441,8 @@
             "subagent withheld",
             "subagent refused",
             "memory refused",
-            "edit refused"
+            "edit refused",
+            "records expired"
           ]
         }
       },
@@ -507,6 +512,18 @@
       "properties": {
         "type": {
           "const": "critique"
+        },
+        "schema": {
+          "const": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-event.json#/$defs/critique"
+        },
+        "version": {
+          "const": 1
+        },
+        "digest": {
+          "$ref": "provenance.json#/$defs/recordDigest"
+        },
+        "retainUntil": {
+          "$ref": "provenance.json#/$defs/retainUntil"
         },
         "refuted": {
           "type": "boolean"
@@ -663,6 +680,33 @@
         }
       },
       "additionalProperties": true
+    },
+    "export_written": {
+      "description": "The host asked the package to produce a JSON export from records it supplied. No package store was read.",
+      "type": "object",
+      "required": [
+        "type",
+        "records",
+        "bytes",
+        "digest"
+      ],
+      "properties": {
+        "type": {
+          "const": "export_written"
+        },
+        "records": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "digest": {
+          "$ref": "provenance.json#/$defs/recordDigest"
+        }
+      },
+      "additionalProperties": false
     },
     "caseOutcome": {
       "description": "An outcome, as a comparison reports it: a §8.3 disposition as the runtime gave it, or a §8.4 evaluation error by its class and, where known, its phase.",

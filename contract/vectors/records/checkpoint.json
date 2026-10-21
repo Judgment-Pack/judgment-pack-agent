@@ -1,0 +1,16 @@
+{
+  "description": "A checkpoint written under the 90-day records policy. Handwritten for ADR records (#101).",
+  "schema": "checkpoint.json",
+  "source": {"harness": {"repository": "Judgment-Pack/judgment-pack-agent", "package": "packages/harness"}, "files": ["packages/harness/records.ts"]},
+  "items": [{
+    "schema": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/checkpoint.json",
+    "version": 1,
+    "digest": "sha256:8a1292cc5f79b707d126f021e925c793db81d7b063aa149b4462ddadb1d25cb9",
+    "retainUntil": "2027-01-19T12:00:00.000Z",
+    "id": "11111111-1111-4111-8111-111111111111",
+    "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "phase": "work", "status": "paused", "unit": "model-requests", "used": 1, "limit": 20,
+    "grants": [], "plan": [], "explanation": "", "operations": [],
+    "context": {"scope": "records-18", "entries": []}, "reason": "interrupted"
+  }]
+}

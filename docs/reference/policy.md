@@ -18,6 +18,10 @@ Closed: a member the schema does not name is refused.
 
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
+| `records` |  | object | ADR records (#101). The host stores and deletes; the package stamps, optionally redacts, exports, and refuses an expired resume. |
+| `records.retainDays` |  | integer (min 1, max 36500) | Default: `90`. |
+| `records.redactOnStore` |  | boolean | Default: `true`. |
+| `records.exportFormat` |  | enum `json` | Default: `"json"`. |
 | `budget` |  | object |  |
 | `budget.version` |  | const `1` | Default: `1`. |
 | `budget.maxInputBytes` |  | integer (min 1) | Fixed transport ceiling on one request's input, whatever the window. Default: `180000`. |

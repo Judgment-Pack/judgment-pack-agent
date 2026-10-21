@@ -256,7 +256,7 @@ export class SessionContext {
   this.suppliedConnections=new Set(Object.keys(session.policyConnections??{}))
   if(engine)this.named={models:named}
   this.resolvedPolicy=resolved.members;this.paceWarning=resolved.warning
-this.turn=session.context?.chat?.openTurn();this.objective=session.context?.objective;this.ledger=new ContextLedger(this.policy,this.turn);this.execution=new ExecutionController(session,this.ledger);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))
+this.turn=session.context?.chat?.openTurn();this.objective=session.context?.objective;this.ledger=new ContextLedger(this.policy,this.turn);this.execution=new ExecutionController(session,this.ledger,this.resolvedPolicy);this.execution.recordGuard=()=>((this as unknown as {output?:import('../records').RecordGuard}).output);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))
   for(const [name,member] of Object.entries(resolved.members))if(name.startsWith('budget.'))Object.assign(this.policy,{[name.slice(7)]:member.value})
   this.policy.criticDefault=String(resolved.members['critic.default']!.value)
   this.authorTier=resolved.members['models.author.reasoning']!.value as CriticTier

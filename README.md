@@ -153,3 +153,11 @@ a whole document with its edit provenance. Drafts and undo history survive
 checkpoint resume, and ride in execution state so the stable prefix is unchanged.
 Children and the critic never edit. Hosts supply accepted documents or the first
 `propose_pack` opens the draft; no host file is written.
+
+### Records
+
+[ADR-0017](docs/adr/0017-records.md) (#101): the policy table declares record
+retention, redaction on store and JSON export. New checkpoints, provenance rows and
+critiques carry their schema, version, digest and `retainUntil`; an expired checkpoint
+is refused on resume with `records expired`. The package builds `export.json` only
+from records the host supplies. The host stores and deletes; the package has no store.

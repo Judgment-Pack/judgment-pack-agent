@@ -5,6 +5,29 @@
   "description": "ADR-0011. Closed partial host layers: run > project > table, resolved per member. Models default to the connected author and its tier; critic keeps the author floor. Dynamic roles inherit the author unless explicitly set. Unset members without a table or host-derived default are refused at admission. Model-visible text never supplies a layer.",
   "type": "object",
   "properties": {
+    "records": {
+      "description": "ADR records (#101). The host stores and deletes; the package stamps, optionally redacts, exports, and refuses an expired resume.",
+      "type": "object",
+      "properties": {
+        "retainDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 36500,
+          "default": 90
+        },
+        "redactOnStore": {
+          "type": "boolean",
+          "default": true
+        },
+        "exportFormat": {
+          "enum": [
+            "json"
+          ],
+          "default": "json"
+        }
+      },
+      "additionalProperties": false
+    },
     "budget": {
       "type": "object",
       "properties": {

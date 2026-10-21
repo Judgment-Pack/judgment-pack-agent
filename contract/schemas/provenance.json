@@ -10,6 +10,18 @@
     "result"
   ],
   "properties": {
+    "schema": {
+      "const": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/provenance.json"
+    },
+    "version": {
+      "const": 1
+    },
+    "digest": {
+      "$ref": "#/$defs/recordDigest"
+    },
+    "retainUntil": {
+      "$ref": "#/$defs/retainUntil"
+    },
     "request": {
       "description": "Which model request of the execution this was, counted from 1; at most the checkpoint's used count.",
       "type": "integer",
@@ -45,6 +57,17 @@
   },
   "additionalProperties": true,
   "$defs": {
+    "recordDigest": {
+      "description": "sha256: and the lower-case SHA-256 of canonical JSON for the complete record with digest omitted.",
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "retainUntil": {
+      "description": "The instant after which the host deletes the record and the package refuses it for resume.",
+      "type": "string",
+      "format": "date-time",
+      "maxLength": 40
+    },
     "completion": {
       "description": "Provider-neutral completion metadata (ModelCompletion). Never raw provider text or reasoning. Open: readCompletion keeps only these members and drops any other.",
       "type": "object",
