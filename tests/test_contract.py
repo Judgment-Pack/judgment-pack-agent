@@ -30,7 +30,7 @@ HARNESS_ENGINE_ADDITIONS = ["deepagents", "eino"]
 # Event kinds the harness emits beyond the Desk's (contract/desk/inventory.json): the approval pause
 # (docs/adr/0008-the-approval-pause.md) and a skill's load and unload (docs/adr/0009-skills.md), on
 # the host's stream; and the critic's decision (docs/adr/0010-the-critics-switch.md).
-HARNESS_EVENT_ADDITIONS = ["approval_requested", "skill_loaded", "skill_unloaded", "critic_decided", "policy_resolved", "memory_proposed", "memory_recalled"]
+HARNESS_EVENT_ADDITIONS = ["approval_requested", "skill_loaded", "skill_unloaded", "critic_decided", "policy_resolved", "memory_proposed", "memory_recalled", "edit_applied", "edit_refused"]
 
 EXPECTED_SCHEMAS = {
     "run-event.json",
@@ -54,6 +54,8 @@ EXPECTED_SCHEMAS = {
 # The $defs added or changed (beyond their descriptions) between v0.1.0 and the v0.2.0 release
 # review, whose members each need a vector (#43): (schema, definition).
 RELEASE_REVIEWED_DEFS = [
+    ("tool-offer.json", "propose_edit"), ("tool-offer.json", "propose_delete"), ("tool-offer.json", "propose_insert"), ("tool-offer.json", "undo_edit"),
+    ("checkpoint.json", "draft"), ("checkpoint.json", "draftDocument"), ("provenance.json", "edit"), ("run-event.json", "edit_applied"), ("run-event.json", "edit_refused"),
     ("memory.json", "answer"), ("tool-offer.json", "remember"), ("provenance.json", "memories"), ("provenance.json", "memoryRecall"), ("run-event.json", "memory_proposed"), ("run-event.json", "memory_recalled"),
     ("run-event.json", "delegated_task"), ("subagent.json", "record"), ("tool-offer.json", "subagentCatalogueEntry"),
     ("provenance.json", "provider"), ("provenance.json", "crossProvider"),
@@ -844,11 +846,12 @@ class VectorTests(unittest.TestCase):
         enums += [("provenance.json", path) for path in enum_paths(schemas_["provenance.json"]["$defs"]["memoryRecall"], ["$defs", "memoryRecall"])]
         enums += [("tool-offer.json", path) for path in enum_paths(schemas_["tool-offer.json"]["$defs"]["remember"], ["$defs", "remember"])]
         enums += [("tool-offer.json", ["$defs", "reservedName"])]
+        enums += [("provenance.json", ["$defs", "edit", "properties", "type"])]
         # Existing schemas: this ADR adds these values, not new obligations for
         # the unrelated event and failure values from earlier releases.
         added_values = {
-            ("tool-offer.json", ("$defs", "reservedName")): ["remember"],
-            ("run-event.json", ("properties", "type")): ["policy_resolved", "memory_proposed", "memory_recalled"],
+            ("tool-offer.json", ("$defs", "reservedName")): ["remember", "propose_edit", "propose_delete", "propose_insert", "undo_edit"],
+            ("run-event.json", ("properties", "type")): ["policy_resolved", "memory_proposed", "memory_recalled", "edit_applied", "edit_refused"],
             ("failure.json", ("$defs", "code")): ["pace exceeded"],
         }
         for name, path in enums:

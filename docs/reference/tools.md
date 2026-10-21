@@ -5,6 +5,7 @@
 Schemas:
 
 - `contract/schemas/tool-offer.json`
+- `contract/schemas/provenance.json`
 
 Package files (`packages/harness`), with the symbols read:
 
@@ -62,6 +63,75 @@ The Runtime tools that stay off the ceiling, with the reason the gate’s source
 | delegated child: research | the profile’s runtimeTools | none |
 | delegated child: author-test | the profile’s runtimeTools | `get_schema`, `list_examples`, `get_example`, `validate`, `experimental_evaluate`, `experimental_test_cases` |
 
+### `tool-offer.json $defs/propose_edit`
+
+ADR-0015: change only the package draft. Author only. Anchors must occur exactly once; every candidate, including undo, is validated before replacement.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `document` | yes | string (min length 1, max length 512) |  |
+| `old_text` | yes | string (min length 1) |  |
+| `new_text` | yes | string |  |
+
+### `tool-offer.json $defs/propose_delete`
+
+ADR-0015: change only the package draft. Author only. Anchors must occur exactly once; every candidate, including undo, is validated before replacement.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `document` | yes | string (min length 1, max length 512) |  |
+| `old_text` | yes | string (min length 1) |  |
+
+### `tool-offer.json $defs/propose_insert`
+
+ADR-0015: change only the package draft. Author only. Anchors must occur exactly once; every candidate, including undo, is validated before replacement.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `document` | yes | string (min length 1, max length 512) |  |
+| `after_anchor` | yes | string (min length 1) |  |
+| `text` | yes | string |  |
+
+### `tool-offer.json $defs/undo_edit`
+
+ADR-0015: change only the package draft. Author only. Anchors must occur exactly once; every candidate, including undo, is validated before replacement.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `document` | yes | string (min length 1, max length 512) |  |
+
+### `tool-offer.json $defs/draftId`
+
+The current package-owned document in the search/read_window id space; the suffix is its document id, never a file path.
+
+Type: string (pattern `^draft:.+$`)
+
+### `provenance.json $defs/edit`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `type` | yes | enum `propose_edit`, `propose_delete`, `propose_insert`, `undo_edit` |  |
+| `document` | yes | string (min length 1, max length 512) |  |
+| `line` | yes | integer (min 1) |  |
+| `bytes` | yes | integer (min 0) |  |
+| `valid` | yes | const `true` |  |
+
+### `provenance.json $defs/edits`
+
+Ordered provenance of successful draft changes, including undo; the person and critic review the whole proposal.
+
+Type: array of `$defs/edit`
+
 ## Reserved names and harness tools
 
 ### Context tool names
@@ -91,6 +161,10 @@ The package also holds a wider set, `HELD_NAMES`, that a tool with a source may 
 | `request_budget_increase` | context tool name |
 | `load_tool` | context tool name |
 | `remember` | context tool name |
+| `propose_edit` | context tool name |
+| `propose_delete` | context tool name |
+| `propose_insert` | context tool name |
+| `undo_edit` | context tool name |
 | `load_skill` | context tool name |
 | `unload_skill` | context tool name |
 | `request_review` | context tool name |

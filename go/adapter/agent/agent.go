@@ -350,17 +350,25 @@ func (r *runState) drive(ctx context.Context) error {
 		if made == nil || ctx.Err() != nil {
 			return err
 		}
-		if errors.Is(err, errWaiting) || errors.Is(err, errHandoff) {
-			r.deliver(proposalEvent(*made))
+		drafts := r.sc.Drafts.Proposals()
+		if len(drafts) == 0 {
+			drafts = []runcontext.DraftProposal{{Document: made.Document, Unknowns: made.Unknowns, Edits: made.Edits}}
+		}
+		waiting := errors.Is(err, errWaiting) || errors.Is(err, errHandoff)
+		if !waiting && failure.IsCancelled(err) {
 			return err
 		}
-		if failure.IsCancelled(err) {
+		for _, draft := range drafts {
+			event := proposalEvent(turn.Proposal{Document: draft.Document, Unknowns: draft.Unknowns, Edits: draft.Edits})
+			if !waiting {
+				note := turn.ProposalNote("turn-unfinished", err, "agent")
+				event.Proposal.Note = &note
+			}
+			r.deliver(event)
+		}
+		if waiting {
 			return err
 		}
-		event := proposalEvent(*made)
-		note := turn.ProposalNote("turn-unfinished", err, "agent")
-		event.Proposal.Note = &note
-		r.deliver(event)
 		return nil
 	}
 	made := r.takeProposal()
@@ -420,29 +428,40 @@ func (r *runState) drive(ctx context.Context) error {
 	if prose != "" {
 		r.deliver(messageEvent(prose))
 	}
-	var critique *turn.Critique
-	var note *contract.RunEventProposalNote
-	// ADR-0010: one decision on every adapter, emitted before anything the critic does; on this
-	// capability the critic has room where the response's invocations leave it one.
+
 	decided := r.sc.DecideCritic(true, len(r.run.Cases) > 0)
 	r.deliver(runcontext.CriticDecidedEvent(decided))
-	r.criticEffort = decided.Reasoning
-	if decided.Ran {
-		if cannot := turn.CriticCannotRun(r.session.TestPrompt); cannot != nil {
-			critique = cannot
-			r.deliver(turn.CritiqueEvent(*cannot, r.sc.RecordProvider("critic")))
-		} else {
-			held, heldNote, err := r.critic(execution, proposal)
-			if err != nil {
-				return err
-			}
-			critique, note = held, heldNote
-		}
+	var candidates []runcontext.DraftProposal
+	if unread == nil {
+		candidates = r.sc.Drafts.Proposals()
 	}
-	event := proposalEvent(proposal)
-	event.Proposal.Critique = turn.CritiqueOnProposal(critique)
-	event.Proposal.Note = note
-	r.deliver(event)
+	if len(candidates) == 0 {
+		candidates = []runcontext.DraftProposal{{Document: proposal.Document, Unknowns: proposal.Unknowns, Edits: proposal.Edits}}
+	}
+	for _, candidate := range candidates {
+		proposal = turn.Proposal{Document: candidate.Document, Unknowns: candidate.Unknowns, Edits: candidate.Edits}
+		var critique *turn.Critique
+		var note *contract.RunEventProposalNote
+		// ADR-0010: one decision on every adapter, emitted before anything the critic does; on this
+		// capability the critic has room where the response's invocations leave it one.
+		r.criticEffort = decided.Reasoning
+		if decided.Ran {
+			if cannot := turn.CriticCannotRun(r.session.TestPrompt); cannot != nil {
+				critique = cannot
+				r.deliver(turn.CritiqueEvent(*cannot, r.sc.RecordProvider("critic")))
+			} else {
+				held, heldNote, err := r.critic(execution, proposal)
+				if err != nil {
+					return err
+				}
+				critique, note = held, heldNote
+			}
+		}
+		event := proposalEvent(proposal)
+		event.Proposal.Critique = turn.CritiqueOnProposal(critique)
+		event.Proposal.Note = note
+		r.deliver(event)
+	}
 	return nil
 }
 
@@ -456,6 +475,9 @@ func (r *runState) takeProposal() *turn.Proposal {
 	r.held.Lock()
 	defer r.held.Unlock()
 	made := r.toolProposal
+	if d := r.sc.Drafts.Proposal(); d != nil {
+		made = &turn.Proposal{Document: d.Document, Unknowns: d.Unknowns, Edits: d.Edits}
+	}
 	r.toolProposal = nil
 	return made
 }
@@ -590,7 +612,7 @@ func proposalEvent(proposal turn.Proposal) contract.RunEvent {
 	if unknowns == nil {
 		unknowns = []string{}
 	}
-	return contract.RunEvent{Proposal: &contract.RunEventProposal{Type: "proposal", Document: document, Unknowns: unknowns}}
+	return contract.RunEvent{Proposal: &contract.RunEventProposal{Type: "proposal", Document: document, Unknowns: unknowns, Edits: proposal.Edits}}
 }
 
 func messageEvent(text string) contract.RunEvent {

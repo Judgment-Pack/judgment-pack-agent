@@ -1,0 +1,22 @@
+{
+  "description": "ADR-0015: undo. Written by hand from the accepted decision.",
+  "schema": "provenance.json#/$defs/edit",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/edits.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "undo_edit",
+      "document": "pack",
+      "line": 4,
+      "bytes": 0,
+      "valid": true
+    }
+  ]
+}

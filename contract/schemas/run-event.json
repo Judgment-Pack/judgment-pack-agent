@@ -34,7 +34,9 @@
         "end",
         "policy_resolved",
         "memory_proposed",
-        "memory_recalled"
+        "memory_recalled",
+        "edit_applied",
+        "edit_refused"
       ]
     }
   },
@@ -113,6 +115,12 @@
     },
     {
       "$ref": "#/$defs/memory_recalled"
+    },
+    {
+      "$ref": "#/$defs/edit_applied"
+    },
+    {
+      "$ref": "#/$defs/edit_refused"
     }
   ],
   "$defs": {
@@ -428,7 +436,8 @@
             "pace warning",
             "subagent withheld",
             "subagent refused",
-            "memory refused"
+            "memory refused",
+            "edit refused"
           ]
         }
       },
@@ -547,7 +556,7 @@
       "additionalProperties": true
     },
     "proposal": {
-      "description": "The one document the run proposes: from exactly one fenced JSON block shaped {\"proposal\": {\"kind\": \"create\", \"document\": \u2026, \"unknowns\": [\u2026]}} and never from the prose around it, or from the model's call of the host tool propose_pack (tool-offer.json, $defs/proposePack), which the adapter reads itself under the same rules, the fence then being the fallback. A tool proposal beside a fenced one in the same answer is ambiguous and refused, as two fenced proposals are. critique is present only where a critic ran and reached at least one check or compared at least one declared case; note where something that ran after the proposal existed did not finish. Accept and Reject are the host's actions, not the adapter's.",
+      "description": "The one document the run proposes: from exactly one fenced JSON block shaped {\"proposal\": {\"kind\": \"create\", \"document\": …, \"unknowns\": […]}} and never from the prose around it, or from the model's call of the host tool propose_pack (tool-offer.json, $defs/proposePack), which the adapter reads itself under the same rules, the fence then being the fallback. A tool proposal beside a fenced one in the same answer is ambiguous and refused, as two fenced proposals are. critique is present only where a critic ran and reached at least one check or compared at least one declared case; note where something that ran after the proposal existed did not finish. Accept and Reject are the host's actions, not the adapter's.",
       "type": "object",
       "required": [
         "type",
@@ -615,6 +624,9 @@
             }
           },
           "additionalProperties": true
+        },
+        "edits": {
+          "$ref": "provenance.json#/$defs/edits"
         }
       },
       "additionalProperties": true
@@ -653,7 +665,7 @@
       "additionalProperties": true
     },
     "caseOutcome": {
-      "description": "An outcome, as a comparison reports it: a \u00a78.3 disposition as the runtime gave it, or a \u00a78.4 evaluation error by its class and, where known, its phase.",
+      "description": "An outcome, as a comparison reports it: a §8.3 disposition as the runtime gave it, or a §8.4 evaluation error by its class and, where known, its phase.",
       "oneOf": [
         {
           "type": "object",
@@ -686,7 +698,7 @@
       ]
     },
     "caseComparison": {
-      "description": "One comparison of a declared case's outcome with the runtime's, the critic's structured note (agent#10; packages/harness/refutation.ts, CaseComparison). tool experimental_evaluate: a rehearsal the critic ran over the proposed document (its pack argument, read as JSON, is the proposal's document; a pack_id never is) with the case's facts, evidence (an omitted document and an empty one both leave every requirement unknown) and supported extensions; agrees where each member the declared disposition states equals the rehearsal's, the \u00a78.3 sets reasons and handoff.triggeredBy compared in any order (review row 3), or the error class (and phase, where stated) is the declared one. tool experimental_test_cases: a row of a test run over the proposed document whose matrix carried the case exactly as declared, for a case stating the whole \u00a78.3 disposition (kind, reasons and handoff) or an error class (review row 2: the runtime compares a disposition byte for byte, so a case stating part of one is compared by rehearsal only); the runtime compared the row, and agrees is its status passed. The call may be the critic's own or one the harness makes after the critic's turns for a declared case nothing compared yet (refutation.ts, compareTheRest: one experimental_test_cases call over those stating a whole disposition or an error class where the critic is offered it, then one rehearsal each of the rest, at most CRITIC_REHEARSALS, 8, where it is offered experimental_evaluate); both go through the same gate and appear as tool_call and tool_result events, the harness's marked origin harness. expected is the declared outcome; actual what the runtime gave, absent where it reported none.",
+      "description": "One comparison of a declared case's outcome with the runtime's, the critic's structured note (agent#10; packages/harness/refutation.ts, CaseComparison). tool experimental_evaluate: a rehearsal the critic ran over the proposed document (its pack argument, read as JSON, is the proposal's document; a pack_id never is) with the case's facts, evidence (an omitted document and an empty one both leave every requirement unknown) and supported extensions; agrees where each member the declared disposition states equals the rehearsal's, the §8.3 sets reasons and handoff.triggeredBy compared in any order (review row 3), or the error class (and phase, where stated) is the declared one. tool experimental_test_cases: a row of a test run over the proposed document whose matrix carried the case exactly as declared, for a case stating the whole §8.3 disposition (kind, reasons and handoff) or an error class (review row 2: the runtime compares a disposition byte for byte, so a case stating part of one is compared by rehearsal only); the runtime compared the row, and agrees is its status passed. The call may be the critic's own or one the harness makes after the critic's turns for a declared case nothing compared yet (refutation.ts, compareTheRest: one experimental_test_cases call over those stating a whole disposition or an error class where the critic is offered it, then one rehearsal each of the rest, at most CRITIC_REHEARSALS, 8, where it is offered experimental_evaluate); both go through the same gate and appear as tool_call and tool_result events, the harness's marked origin harness. expected is the declared outcome; actual what the runtime gave, absent where it reported none.",
       "type": "object",
       "required": [
         "case",
@@ -725,7 +737,7 @@
       "additionalProperties": true
     },
     "criticCase": {
-      "description": "One case whose outcome the host declares for the critic (agent#10; the session's criticCases; packages/harness/refutation.ts, CriticCase, readCriticCases): one of the pack's saved tests (source test) or a case the request declares (source declared), as a row of the runtime's matrix (matrixVersion 3) with its source. The critic is shown the cases stating a whole \u00a78.3 disposition (kind, reasons and handoff) or an error class as that matrix, without source, so experimental_test_cases can run them as they are, and the cases stating part of a disposition apart, for rehearsal only (review row 2). Closed: the reader refuses another member, a repeated id, a case with no facts object, and a case that does not expect exactly one of a disposition (an object with a kind) and an error class; a session carries at most 200, and one the reader refuses ends the run before any request (configuration).",
+      "description": "One case whose outcome the host declares for the critic (agent#10; the session's criticCases; packages/harness/refutation.ts, CriticCase, readCriticCases): one of the pack's saved tests (source test) or a case the request declares (source declared), as a row of the runtime's matrix (matrixVersion 3) with its source. The critic is shown the cases stating a whole §8.3 disposition (kind, reasons and handoff) or an error class as that matrix, without source, so experimental_test_cases can run them as they are, and the cases stating part of a disposition apart, for rehearsal only (review row 2). Closed: the reader refuses another member, a repeated id, a case with no facts object, and a case that does not expect exactly one of a disposition (an object with a kind) and an error class; a session carries at most 200, and one the reader refuses ends the run before any request (configuration).",
       "type": "object",
       "required": [
         "source",
@@ -757,7 +769,7 @@
           }
         },
         "expectedDisposition": {
-          "description": "The \u00a78.3 disposition the case expects. Each member it states must equal the outcome's: a matrix row states the whole disposition, a case a request declares may state kind and outcomeId alone.",
+          "description": "The §8.3 disposition the case expects. Each member it states must equal the outcome's: a matrix row states the whole disposition, a case a request declares may state kind and outcomeId alone.",
           "type": "object",
           "required": [
             "kind"
@@ -880,6 +892,61 @@
         "bytes": {
           "type": "integer",
           "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "edit_applied": {
+      "type": "object",
+      "required": [
+        "type",
+        "document",
+        "line",
+        "bytes",
+        "valid"
+      ],
+      "properties": {
+        "type": {
+          "const": "edit_applied"
+        },
+        "document": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "valid": {
+          "const": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "edit_refused": {
+      "type": "object",
+      "required": [
+        "type",
+        "reason"
+      ],
+      "properties": {
+        "type": {
+          "const": "edit_refused"
+        },
+        "document": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "description": "Offending document identifier, truncated to 512 Unicode characters. Omitted when missing, non-string or empty; reason names the invalid document identifier."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "additionalProperties": false

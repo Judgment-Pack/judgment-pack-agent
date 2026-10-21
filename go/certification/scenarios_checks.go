@@ -78,7 +78,7 @@ var ChatHostTools = ScenarioCheck{
 			f.fail("no request")
 		} else {
 			offered := offeredNames(ran.Requests[0])
-			want := sortedCopy(append(append(append([]string{}, runtimeSix...), contextSix...), runcontext.Remember, reviewAsk, "read_policy", "propose_pack"))
+			want := sortedCopy(append(append(append([]string{}, runtimeSix...), contextSix...), "propose_edit", "propose_delete", "propose_insert", "undo_edit", runcontext.Remember, reviewAsk, "read_policy", "propose_pack"))
 			if !slices.Equal(sortedCopy(offered), want) || slices.Contains(offered, "save_pack") {
 				f.fail("offered %v", offered)
 			}
@@ -338,4 +338,4 @@ var PlanMode = ScenarioCheck{
 }
 
 // Scenarios are the certified scenarios, each run once on each answer shape.
-var Scenarios = []ScenarioCheck{ChatHostTools, Memory, PlanMode, CorrectionLoop, Transcript, ToolSources, ApprovalPause, Skills, CriticSwitch, PolicyTable, Providers, Subagents, MemoryWrite}
+var Scenarios = []ScenarioCheck{ChatHostTools, Memory, PlanMode, CorrectionLoop, Transcript, ToolSources, ApprovalPause, Skills, CriticSwitch, PolicyTable, Providers, Subagents, MemoryWrite, ProposalEdits}

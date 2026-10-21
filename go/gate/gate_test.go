@@ -425,3 +425,28 @@ func TestARuntimeResultsImageIsNamedNotDropped(t *testing.T) {
 		t.Fatalf("answered %q", result.Text)
 	}
 }
+
+func TestReview122GateOffer(t *testing.T) {
+	g := New(Options{})
+	names := []string{"propose_edit", "propose_delete", "propose_insert", "undo_edit"}
+	for _, name := range names {
+		g.SetOffer(contract.ToolOffer{})
+		if g.AdmitHost(name) == nil {
+			t.Fatalf("empty offer admitted %s", name)
+		}
+		g.SetOffer(contract.ToolOffer{HostTools: []contract.ToolOfferHostTool{{Name: name}}})
+		if got := g.AdmitHost(name); got != nil {
+			t.Fatalf("offered %s refused: %+v", name, got)
+		}
+		g.Calls().BeginCritic()
+		if g.AdmitHost(name) == nil {
+			t.Fatalf("critic admitted %s", name)
+		}
+		g.Calls().EndCritic()
+		g.Calls().BeginReformat()
+		if g.AdmitHost(name) == nil {
+			t.Fatalf("empty reformat offer admitted %s", name)
+		}
+		g.Calls().EndReformat()
+	}
+}

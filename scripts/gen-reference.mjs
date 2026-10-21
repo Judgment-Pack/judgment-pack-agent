@@ -367,6 +367,8 @@ async function toolsPage(page) {
   ]
   page.add('### Runtime tools per profile', '', table(['Profile', 'Rule', 'Runtime tools offered'], profiles.map(([a, b, c]) => [a, b, c])))
 
+  page.add(...['propose_edit','propose_delete','propose_insert','undo_edit','draftId'].map(name=>page.nodeOf('tool-offer.json',name)),page.nodeOf('provenance.json','edit'),page.nodeOf('provenance.json','edits'))
+
   const harnessTools = [
     [PROPOSE_PACK_TOOL, 'PROPOSE_PACK_TOOL', 'engines/contract', 'tool-offer.json $defs/proposePack'],
     [LOAD_TOOL, 'LOAD_TOOL', 'toolSources', 'tool-offer.json $defs/loadTool'],

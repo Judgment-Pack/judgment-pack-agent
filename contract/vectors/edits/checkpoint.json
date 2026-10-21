@@ -1,0 +1,80 @@
+{
+  "description": "ADR-0015: checkpoint. Written by hand from the accepted decision.",
+  "schema": "checkpoint.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/edits.ts"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "id": "edit-run",
+      "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "phase": "work",
+      "status": "running",
+      "unit": "model-requests",
+      "used": 1,
+      "limit": 20,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [],
+      "context": {
+        "scope": "edit-scope",
+        "entries": [
+          {
+            "id": "edit-scope:proposal-state:1da32378773e371bd9f89c52ed29d34e3835abaa729be464a53543a81f526632:c3f7b3927043ea34",
+            "kind": "artifact",
+            "label": "draft:pack@sha256:ac4c519e4a7d3c1d9c68382b39827f7339ee4f9399cf4805b0970c7cba8e8abc:0",
+            "value": {
+              "text": "{\n  \"specVersion\": \"1\",\n  \"id\": \"pack\",\n  \"title\": \"Before\",\n  \"notes\": \"same same\"\n}",
+              "unknowns": [],
+              "undo": []
+            },
+            "bytes": 141,
+            "digest": "c3f7b3927043ea34f6a5d47a77b088031a4d83fb56fd852d9bda96b754434364"
+          },
+          {
+            "id": "edit-scope:proposal-state:741fca048337c8c47a25e469e95dbb8761e3c78d76c430a494724600b67b2ec9:4bc6520db42cdae0",
+            "kind": "artifact",
+            "label": "draft:pack@sha256:f61cdb9a6ee45b05612346d92e5c64d260745f365683e71332462d21ee066516:1",
+            "value": {
+              "text": "{\n  \"specVersion\": \"1\",\n  \"id\": \"pack\",\n  \"title\": \"After\",\n  \"notes\": \"same same\"\n}",
+              "unknowns": [],
+              "undo": [
+                {
+                  "reference": "draft:pack@sha256:ac4c519e4a7d3c1d9c68382b39827f7339ee4f9399cf4805b0970c7cba8e8abc:0",
+                  "line": 4
+                }
+              ]
+            },
+            "bytes": 249,
+            "digest": "4bc6520db42cdae0b539cf5d4ea8f6307f19fa2368a092060556a0bbde0ae3a7"
+          }
+        ]
+      },
+      "draft": {
+        "documents": [
+          {
+            "id": "draft:pack",
+            "digest": "sha256:f61cdb9a6ee45b05612346d92e5c64d260745f365683e71332462d21ee066516",
+            "edits": [
+              {
+                "type": "propose_edit",
+                "document": "pack",
+                "line": 4,
+                "bytes": 5,
+                "valid": true
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -233,6 +233,7 @@ func heldImage(value *Value) *ImagePart {
 
 // ContextLedger is the run's ledger: what it retains, and the tools that read it.
 type ContextLedger struct {
+	Drafts func() []*Entry
 	// mu guards store and attached: a ledger may be used from more than one goroutine (the
 	// delegation coordinator's, by children running at once). Every exported method takes it; the
 	// store's own methods then take the chat's lock where the store is a chat's turn (ledger, then
@@ -300,6 +301,13 @@ func (l *ContextLedger) Store() LedgerStore {
 }
 
 func (l *ContextLedger) entry(id *Value) (*Entry, error) {
+	if l.Drafts != nil {
+		for _, d := range l.Drafts() {
+			if d.ID == id.Str() {
+				return d, nil
+			}
+		}
+	}
 	var held *Entry
 	missing := ""
 	if id.IsString() {
@@ -798,6 +806,9 @@ func (l *ContextLedger) searchHeld(args *Value) (SearchResult, error) {
 	}
 	// An image is not searched as text; one that cannot be shown is reported with its line, never
 	// passed over in silence.
+	if request.ID == "" && request.Scope == "all" && l.Drafts != nil {
+		scoped = append(scoped, l.Drafts()...)
+	}
 	notShown := []SearchNotShownItem{}
 	items := []Searchable{}
 	for _, e := range scoped {

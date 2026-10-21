@@ -429,7 +429,7 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
     }
 
     /** A proposal delivered through `propose_pack`; the fence is the fallback. */
-    let toolProposal: Proposal | null = null
+    let toolProposal: Proposal | null = context.drafts.proposal()
     /** What one call gives the model: its bounded result, that result as a data block where a reading tool answered, and the images a vision model is shown. */
     type Ran = { result: McpToolResult; images: HeldImage[]; framed?: string }
     const bare = (result: McpToolResult): Ran => ({ result, images: [] })
@@ -488,7 +488,7 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
       let answer: McpToolResult
       try {
         // agent#10: no host tool is the critic's; refused before anything of the host's runs.
-        context.admit(tool.name, 'host')
+        context.admit(tool.name, 'host', args)
         if (tool.interaction === 'delegation') {
           // An awaited call inside this step (agent#14): the coordinator runs the batch while the call is
           // open, bounded by its children's time limits and by this run's signal, not by the tool-call deadline.
@@ -506,7 +506,7 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
         } else if (tool.name === PROPOSE_PACK_TOOL) {
           // The proposal, delivered as a tool call, read by the contract's reader; the host's own
           // `execute` is never reached.
-          toolProposal = readProposedPack(args)
+          toolProposal = await context.drafts.seed(readProposedPack(args))
           answer = { content: [{ type: 'text', text: PROPOSAL_RECEIVED }] }
         } else {
           const limit = context.policy.toolCallMilliseconds
@@ -831,7 +831,7 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
               toolProposal = null
               throw twoProposals()
             }
-            proposal = toolProposal ?? extractProposal(finalText)
+            proposal = toolProposal === null ? extractProposal(finalText) : context.drafts.proposal() ?? toolProposal
           } catch (cause) {
             // One reformat request, within the allowance: tool-free, shown its own answer.
             if (unread === null && context.execution.remaining > 0 && answered !== null) {
@@ -850,14 +850,16 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
       await keepUnread()
       // A proposal made through propose_pack is finished work: a later request of the turn that fails
       // does not take it with it.
-      const made = toolProposal as Proposal | null
+      const made = toolProposal === null ? null : context.drafts.proposal() ?? toolProposal
       if (made !== null && !gate.signal.aborted && !gate.isClosed()) {
+        const drafts = context.drafts.proposals()
+        const candidates = drafts.length ? drafts : [made]
         toolProposal = null
         if (awaitingInput) {
-          await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns })
+          for (const made of candidates) await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns, ...(made.edits?{edits:made.edits}:{}) })
           throw cause
         }
-        await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns, note: proposalNote('turn-unfinished', overTime ? turnTimeFailure() : cause, 'model') })
+        for (const made of candidates) await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns, ...(made.edits?{edits:made.edits}:{}), note: proposalNote('turn-unfinished', overTime ? turnTimeFailure() : cause, 'model') })
         return
       }
       throw cause
@@ -879,6 +881,11 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
     const prose = (unread === null ? '' : proseOf((unread as { text: string }).text)) || proseOf(finalText)
     if (prose !== '') await deliver({ type: 'message', text: prose })
 
+    const decided = context.decideCritic(true)
+    await deliver(criticDecidedEvent(decided))
+    const drafts=toolProposal === null ? [] : context.drafts.proposals()
+    for(const candidate of drafts.length?drafts:[proposal]){
+    proposal=candidate
     // ------------------------------------------------------------------------------------------
     // The critic: a second agent on the same relay, the same boundary and the same dispatch, offered
     // its allow-list, after the proposal exists and before it is delivered.
@@ -886,8 +893,6 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
     let critique = null as ReturnType<CritiqueRecorder['critique']> | null
     let note: ProposalNote | null = null
     // ADR-0010: one decision on every engine, emitted before anything the critic does.
-    const decided = context.decideCritic(true)
-    await deliver(criticDecidedEvent(decided))
     const review = decided.ran
     const cannot = review ? criticCannotRun(session.testPrompt) : null
     if (cannot !== null) {
@@ -1027,7 +1032,8 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
       }
     }
 
-    await deliver({ type: 'proposal', document: proposal.document, unknowns: proposal.unknowns, ...critiqueOnProposal(critique), ...(note === null ? {} : { note }) })
+    await deliver({ type: 'proposal', document: proposal.document, unknowns: proposal.unknowns, ...(proposal.edits?{edits:proposal.edits}:{}), ...critiqueOnProposal(critique), ...(note === null ? {} : { note }) })
+    }
   }
 
   /** What the turn's wall clock passing is, as a failure the catalogue can say. */

@@ -62,7 +62,7 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
   const deliver = (event: AssistantEvent) => channel.push(event)
   const drive = async () => {
     /** A proposal delivered through `propose_pack`; the fence is the fallback. */
-    let toolProposal: Proposal | null = null
+    let toolProposal: Proposal | null = context.drafts.proposal()
     const names = new Set<string>()
     const routes = new Map<string, { name: string; host?: CodexSession['hostTools'][number] }>()
     const tools: AgentTool[] = []
@@ -140,7 +140,7 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
             const name = route?.name ?? call.name
             await deliver({ type: 'tool_call', callId: call.id, name, args: call.arguments })
             const text = route !== undefined || names.has(call.name)
-              ? unofferedRefusal(context.refuseUnoffered(name).message)
+              ? unofferedRefusal(context.refuseUnoffered(name,call.arguments).message)
               : await refusedUnoffered(callTool, name, call.arguments)
             if (toolSignal.aborted) throw new DOMException('Stopped', 'AbortError')
             await deliver({ type: 'tool_result', callId: call.id, name, isError: true, text })
@@ -162,7 +162,7 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
           let toolAnswered = false
           try {
             // agent#10: the critic's allow-list, before anything of the host's runs.
-            context.admit(route.name, route.host ? 'host' : 'runtime')
+            context.admit(route.name, route.host ? 'host' : 'runtime',call.arguments)
             if (route.host?.interaction === 'delegation') {
               const request = readDelegationRequest(call.arguments)
               recordSubagents(request,context.subagents)
@@ -183,7 +183,7 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
             // call is bounded by the policy's per-call deadline as well.
             const limit = context.policy.toolCallMilliseconds
             if (route.host && route.name === PROPOSE_PACK_TOOL) {
-              toolProposal = readProposedPack(call.arguments)
+              toolProposal = await context.drafts.seed(readProposedPack(call.arguments))
               result = { content: [{ type: 'text', text: PROPOSAL_RECEIVED }] }
             } else {
               result = route.host
@@ -264,15 +264,17 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
       // take it with it: it is delivered with a note naming the failure, and
       // the run ends. A person's Stop still stops; a question to the person
       // leaves the proposal delivered and the turn waiting.
-      const made = toolProposal as Proposal | null
+      const made = context.drafts.proposal() ?? toolProposal as Proposal | null
       if (made === null || gate.signal.aborted) throw cause
+      const drafts = context.drafts.proposals()
+      const candidates = drafts.length ? drafts : [made]
       toolProposal = null
       if (awaitingInput) {
-        await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns })
+        for (const made of candidates) await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns, ...(made.edits?{edits:made.edits}:{}) })
         throw cause
       }
       if (isCancelled(cause) || executionSignal.aborted) throw cause
-      await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns, note: proposalNote('turn-unfinished', cause, 'agent') })
+      for (const made of candidates) await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns, ...(made.edits?{edits:made.edits}:{}), note: proposalNote('turn-unfinished', cause, 'agent') })
       return
     }
     if (session.allowConversation && toolProposal === null && !hasProposalFence(final)) {
@@ -288,9 +290,10 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
       // A tool proposal beside a fenced one is ambiguous, refused as two
       // fenced proposals are.
       if (toolProposal !== null && hasProposalFence(final)) throw twoProposals()
-      proposal = toolProposal ?? extractProposal(final)
+      proposal = context.drafts.proposal() ?? toolProposal ?? extractProposal(final)
       prose = proseOf(final)
     } catch (unread) {
+      toolProposal = null
       // **One reformat run** (agent#29), tool-free, shown the model its own
       // answer and asked for the same proposal in the shape the contract reads.
       // Nothing finished is lost: whatever it returns, the first answer is
@@ -327,12 +330,15 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
       prose = proseOf(final) || proseOf(reformatted)
     }
     if (prose) await deliver({ type: 'message', text: prose })
+    const decided = context.decideCritic(true)
+    await deliver(criticDecidedEvent(decided))
+    const drafts=toolProposal === null ? [] : context.drafts.proposals()
+    for(const candidate of drafts.length?drafts:[proposal]){
+    proposal=candidate
     let critique: Critique | null = null
     let note: ProposalNote | null = null
     // ADR-0010: one decision on every engine, emitted before anything the critic does; on the agent
     // capability the critic has room where the response's invocations leave it one.
-    const decided = context.decideCritic(true)
-    await deliver(criticDecidedEvent(decided))
     if (decided.ran) {
       critique = criticCannotRun(session.testPrompt)
       if (!critique) {
@@ -371,7 +377,8 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
       }
       if (critique) await deliver(critiqueEvent(critique, context.recordProvider('critic')))
     }
-    await deliver({ type: 'proposal', document: proposal.document, unknowns: proposal.unknowns, ...critiqueOnProposal(critique), ...(note === null ? {} : { note }) })
+    await deliver({ type: 'proposal', document: proposal.document, unknowns: proposal.unknowns, ...(proposal.edits?{edits:proposal.edits}:{}), ...critiqueOnProposal(critique), ...(note === null ? {} : { note }) })
+    }
   }
   const open = () => {
     void drive().catch(async (cause: unknown) => {

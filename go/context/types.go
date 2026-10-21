@@ -283,6 +283,7 @@ type RuntimeIdentity struct {
 // host names it (host.ts's AITarget, a string here). DelegationReuse (agent#17) is false where
 // this response's delegated tasks reuse no earlier result of the chat.
 type Input struct {
+	AcceptedDocuments []AcceptedDocument
 	CurrentState      string
 	ArtifactProposals *bool
 	Authorize         func(ctx context.Context) error

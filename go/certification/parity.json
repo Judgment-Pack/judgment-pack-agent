@@ -905,12 +905,34 @@
           "14 memory write side",
           "14 agent memory write side"
         ]
+      },
+      {
+        "check": "15 · complete draft set on ${ending}",
+        "go": [
+          "15 proposal edits",
+          "15 agent proposal edits"
+        ]
+      },
+      {
+        "check": "15 · successful deletion and insertion carry shared provenance",
+        "go": [
+          "15 proposal edits",
+          "15 agent proposal edits"
+        ]
+      },
+      {
+        "check": "15 · proposal edits: search, read, validate, refuse, undo, resume and stable prefix",
+        "go": [
+          "15 proposal edits",
+          "15 agent proposal edits"
+        ]
       }
     ],
     "additionalSources": [
       "packages/harness/certification/providers.test.ts",
       "packages/harness/certification/subagents.test.ts",
-      "packages/harness/certification/memory-write.test.ts"
+      "packages/harness/certification/memory-write.test.ts",
+      "packages/harness/certification/proposal-edits.test.ts"
     ]
   },
   "delegation": {

@@ -1,0 +1,19 @@
+{
+  "description": "ADR-0015: propose_delete. Written by hand from the accepted decision.",
+  "schema": "tool-offer.json#/$defs/propose_delete",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/edits.ts"
+    ]
+  },
+  "items": [
+    {
+      "document": "pack",
+      "old_text": "unused"
+    }
+  ]
+}

@@ -385,7 +385,7 @@ func (r *runState) drive(ctx context.Context) error {
 		r.mu.Lock()
 		r.produced = 0
 		r.mu.Unlock()
-		err := r.runOnce(execution)
+		err := r.runOnce(execution, ctx)
 		if err == nil {
 			return nil
 		}

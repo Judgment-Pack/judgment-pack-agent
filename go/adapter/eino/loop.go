@@ -85,7 +85,7 @@ func (t *turnState) closeCalls(answer *schema.Message) *schema.Message {
 }
 
 // runOnce is one attempt at the turn.
-func (r *runState) runOnce(ctx context.Context) error {
+func (r *runState) runOnce(ctx, caller context.Context) error {
 	t := &turnState{r: r, turnLimit: r.sc.Execution.Remaining()}
 	runtimeTools, hostTools := r.offeredTools()
 	t.offered = map[string]bool{}
@@ -169,6 +169,9 @@ func (r *runState) runOnce(ctx context.Context) error {
 			r.deliver(contract.RunEvent{Message: &contract.RunEventMessage{Type: "message", Text: text}})
 		}
 	}
+	if d := r.sc.Drafts.Proposal(); d != nil {
+		t.toolProposal = &turn.Proposal{Document: d.Document, Unknowns: d.Unknowns, Edits: d.Edits}
+	}
 	var proposal *turn.Proposal
 	turnErr := func() error {
 		for {
@@ -247,7 +250,8 @@ func (r *runState) runOnce(ctx context.Context) error {
 					t.toolProposal = nil
 					readErr = turn.TwoProposals()
 				} else if t.toolProposal != nil {
-					proposal = t.toolProposal
+					d := r.sc.Drafts.Proposal()
+					proposal = &turn.Proposal{Document: d.Document, Unknowns: d.Unknowns, Edits: d.Edits}
 				} else {
 					held, err := turn.ExtractProposal(t.finalText)
 					if err != nil {
@@ -280,21 +284,29 @@ func (r *runState) runOnce(ctx context.Context) error {
 	if turnErr != nil {
 		keepUnread()
 		// A proposal made through propose_pack is finished work: a later request of the turn that
-		// fails does not take it with it.
-		if made := t.toolProposal; made != nil && ctx.Err() == nil {
+		// fails does not take it with it. A question cancels the internal execution
+		// context; only cancellation by the caller suppresses delivery.
+		if made := t.toolProposal; made != nil && caller.Err() == nil {
+			drafts := r.sc.Drafts.Proposals()
+			if len(drafts) == 0 {
+				drafts = []runcontext.DraftProposal{{Document: made.Document, Unknowns: made.Unknowns, Edits: made.Edits}}
+			}
 			t.toolProposal = nil
-			event := proposalEvent(*made)
-			if r.awaitingInput {
+			for _, draft := range drafts {
+				event := proposalEvent(turn.Proposal{Document: draft.Document, Unknowns: draft.Unknowns, Edits: draft.Edits})
+				if !r.awaitingInput {
+					cause := turnErr
+					if r.overTime {
+						cause = r.turnTimeFailure()
+					}
+					note := turn.ProposalNote("turn-unfinished", cause, "model")
+					event.Proposal.Note = &note
+				}
 				r.deliver(event)
+			}
+			if r.awaitingInput {
 				return turnErr
 			}
-			cause := turnErr
-			if r.overTime {
-				cause = r.turnTimeFailure()
-			}
-			note := turn.ProposalNote("turn-unfinished", cause, "model")
-			event.Proposal.Note = &note
-			r.deliver(event)
 			return nil
 		}
 		return turnErr
@@ -325,7 +337,7 @@ func proposalEvent(proposal turn.Proposal) contract.RunEvent {
 	if unknowns == nil {
 		unknowns = []string{}
 	}
-	return contract.RunEvent{Proposal: &contract.RunEventProposal{Type: "proposal", Document: document, Unknowns: unknowns}}
+	return contract.RunEvent{Proposal: &contract.RunEventProposal{Type: "proposal", Document: document, Unknowns: unknowns, Edits: proposal.Edits}}
 }
 
 // messageEvent is the model's own prose as a message event.

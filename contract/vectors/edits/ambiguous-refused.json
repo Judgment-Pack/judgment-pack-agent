@@ -1,0 +1,27 @@
+{
+  "description": "ADR-0015: ambiguous-refused. Written by hand from the accepted decision.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/edits.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "edit_refused",
+      "document": "pack",
+      "reason": "The anchor occurs 2 times; it must occur exactly once."
+    },
+    {
+      "type": "guardrail",
+      "tool": "propose_edit",
+      "action": "refused",
+      "reason": "edit refused",
+      "detail": "The anchor occurs 2 times; it must occur exactly once."
+    }
+  ]
+}

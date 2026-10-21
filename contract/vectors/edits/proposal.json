@@ -1,0 +1,34 @@
+{
+  "description": "ADR-0015: proposal. Written by hand from the accepted decision.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/edits.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "proposal",
+      "document": {
+        "specVersion": "1",
+        "id": "pack",
+        "title": "After",
+        "notes": "same same"
+      },
+      "unknowns": [],
+      "edits": [
+        {
+          "type": "propose_edit",
+          "document": "pack",
+          "line": 4,
+          "bytes": 5,
+          "valid": true
+        }
+      ]
+    }
+  ]
+}

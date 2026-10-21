@@ -682,7 +682,7 @@ describe('the tools this engine offers, and the schemas it writes', () => {
       )
     )
     const tools = seen[0]!.body.tools as { function: { name: string; parameters: unknown } }[]
-    expect(tools.map((tool) => tool.function.name)).toEqual(['remember', 'list_context', 'read_context', 'read_window', 'search', 'request_review', 'validate'])
+    expect(tools.map((tool) => tool.function.name)).toEqual(['propose_edit', 'propose_delete', 'propose_insert', 'undo_edit', 'remember', 'list_context', 'read_context', 'read_window', 'search', 'request_review', 'validate'])
     expect(tools.find(t=>t.function.name==='validate')!.function.parameters).toEqual(served)
   })
 
@@ -2156,7 +2156,7 @@ describe('host tools: the desk’s own, executed on the page', () => {
     expect(events[1]).toMatchObject({ type: 'tool_result', name: 'search_sources', isError: false, text: 'src-1: a hit' })
     // The model was offered the host tool beside the runtime's, under the desk's schema.
     const offered = (seen[0]!.body.tools as { function: { name: string } }[]).map((tool) => tool.function.name)
-    expect(offered).toEqual(['search_sources', 'remember', 'list_context', 'read_context', 'read_window', 'search', 'request_review', 'validate', 'experimental_evaluate'])
+    expect(offered).toEqual(['search_sources', 'propose_edit', 'propose_delete', 'propose_insert', 'undo_edit', 'remember', 'list_context', 'read_context', 'read_window', 'search', 'request_review', 'validate', 'experimental_evaluate'])
   })
 
   it('reports a host tool that threw as a refused result, and goes on', async () => {
@@ -2239,7 +2239,7 @@ describe('host tools: the desk’s own, executed on the page', () => {
     const { call, seen } = scriptedCall([turn({ text: PROPOSAL_TEXT })])
     await drain(vercel.start(session(call)))
     const offered = (seen[0]!.body.tools as { function: { name: string } }[]).map((tool) => tool.function.name)
-    expect(offered).toEqual(['remember', 'list_context', 'read_context', 'read_window', 'search', 'request_review', 'validate', 'experimental_evaluate'])
+    expect(offered).toEqual(['propose_edit', 'propose_delete', 'propose_insert', 'undo_edit', 'remember', 'list_context', 'read_context', 'read_window', 'search', 'request_review', 'validate', 'experimental_evaluate'])
   })
 })
 
@@ -2588,7 +2588,7 @@ describe('nothing finished is lost (agent#6)', () => {
       const events = await drain(vercel.start(session(call, { hostTools: [tool] })))
       expect(events.map((event) => event.type)).toEqual(['tool_call', 'tool_result', 'message', 'critic_decided', 'proposal', 'end'])
       expect(events[1]).toMatchObject({ name: PROPOSE_PACK_TOOL, isError: false, text: PROPOSAL_RECEIVED })
-      expect(events[4]).toEqual({ type: 'proposal', document: { id: 'p' }, unknowns: ['who signs'] })
+      expect(events[4]).toEqual({ type: 'proposal', edits: [], document: { id: 'p' }, unknowns: ['who signs'] })
       // The engine reads the call; the host's own function is never reached.
       expect(execute).not.toHaveBeenCalled()
       expect(JSON.stringify(seen[0]!.body)).toContain(`calling ${PROPOSE_PACK_TOOL}`)
@@ -2606,7 +2606,7 @@ describe('nothing finished is lost (agent#6)', () => {
       expect(events.map((event) => event.type)).toEqual(['tool_call', 'tool_result', 'tool_call', 'tool_result', 'critic_decided', 'proposal', 'end'])
       expect(events[1]).toMatchObject({ isError: true, structured: { failure: { code: 'invalid-tool-input' } } })
       expect((events[1] as { text: string }).text).toContain('not as a JSON string')
-      expect(events[5]).toEqual({ type: 'proposal', document: { id: 'p' }, unknowns: [] })
+      expect(events[5]).toEqual({ type: 'proposal', edits: [], document: { id: 'p' }, unknowns: [] })
       expect(seen).toHaveLength(3)
     })
 
@@ -2648,7 +2648,7 @@ describe('nothing finished is lost (agent#6)', () => {
       expect(events.map((event) => event.type)).toEqual(['tool_call', 'tool_result', 'tool_call', 'tool_result', 'critic_decided', 'proposal', 'end'])
       expect(events[1]).toMatchObject({ isError: true, structured: { failure: { code: 'invalid-tool-input' } } })
       expect((events[1] as { text: string }).text).toContain('Only a new pack can be proposed')
-      expect(events[5]).toEqual({ type: 'proposal', document: { id: 'p' }, unknowns: [] })
+      expect(events[5]).toEqual({ type: 'proposal', edits: [], document: { id: 'p' }, unknowns: [] })
     })
 
     it('refuses a tool proposal beside a fenced one as ambiguous, as two fences are', async () => {

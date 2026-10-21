@@ -1,0 +1,25 @@
+{
+  "description": "ADR-0015: read. Written by hand from the accepted decision.",
+  "schema": "tool-result.json#/$defs/readResult",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/edits.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "read",
+      "id": "draft:pack",
+      "unit": "line",
+      "offset": 3,
+      "count": 1,
+      "total": 6,
+      "text": "4\t  \"title\": \"Before\",",
+      "more": "line:4"
+    }
+  ]
+}
