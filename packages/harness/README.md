@@ -210,9 +210,9 @@ delivered, on every engine, where the critic's switch says so ([ADR-0010](../../
   session), else the author's (`criticReasoningFloor`: `author`); a lower one the host names is
   honoured. On the model engines it is the thinking members of the critic's requests; on `codex` the
   critic run's `effort`.
-- **The record.** Every run that reaches a proposal or its last message emits `critic_decided` (mode,
-  whether it ran, the reason, the tier and the `auto` trigger), and the boundary writes it into the
-  checkpoint's `critic`, durably. A critic with no room left is recorded with the reason `budget`.
+- **The record.** Runs reaching the critic decision point emit `critic_decided`; tracked runs checkpoint that
+  decision. Earlier failures or pauses may omit it; a checkpointed review request survives a resume.
+  A critic with no room left is recorded with the reason `budget`.
 - **`request_review`** is offered to the author under `auto` only, after the context tools; the first
   call is recorded and answered, a second, or a call anywhere else, is refused with a `guardrail`
   whose reason is `review refused`. On `codex` with delegation one agent run is held back for the

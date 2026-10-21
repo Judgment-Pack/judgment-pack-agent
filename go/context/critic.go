@@ -24,6 +24,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
@@ -264,6 +265,8 @@ type CriticSwitch struct {
 	Layer  string
 	Forced string
 
+	// mu serialises admission, checkpoint access and refusal queue append/drain (#113).
+	mu       sync.Mutex
 	settings CriticSettings
 	table    CriticTable
 	facts    CriticForcedFacts
@@ -286,6 +289,13 @@ func (s *CriticSwitch) Reserved() bool { return s.Forced == "" && s.Mode != "off
 
 // Asked is whether the model's ask was taken this run, a restored one's included.
 func (s *CriticSwitch) Asked() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.askedLocked()
+}
+
+// askedLocked reads the checkpoint while mu is held.
+func (s *CriticSwitch) askedLocked() bool {
 	held := s.state().Critic
 	return held != nil && held.Trigger != nil && *held.Trigger == "model-asked"
 }
@@ -293,6 +303,8 @@ func (s *CriticSwitch) Asked() bool {
 // Ask is the model's ask: the refusal's sentence where it is refused (review refused), or "" where
 // it is taken and recorded. authorPhase is false outside the author's run.
 func (s *CriticSwitch) Ask(authorPhase bool) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	switch {
 	case s.Forced != "":
 		return ReviewRefusal(s.Forced)
@@ -300,7 +312,7 @@ func (s *CriticSwitch) Ask(authorPhase bool) string {
 		return ReviewRefusal(s.Mode)
 	case !authorPhase:
 		return ReviewRefusal("outside")
-	case s.Asked():
+	case s.askedLocked():
 		return ReviewRefusal("asked")
 	}
 	trigger := "model-asked"
@@ -311,6 +323,8 @@ func (s *CriticSwitch) Ask(authorPhase bool) string {
 // Refuse is the guardrail a refused ask earns, put on the stream before the call's result, and the
 // failure the model reads: tool-failed, not-started.
 func (s *CriticSwitch) Refuse(detail string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	reason := "review refused"
 	s.notices = append(s.notices, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: RequestReview, Action: "refused", Detail: detail, Reason: &reason}})
 	return failure.NewError(contract.Failure{Version: 1, Code: "tool-failed", Source: "tool", Outcome: "not-started", Detail: &detail})
@@ -318,6 +332,8 @@ func (s *CriticSwitch) Refuse(detail string) error {
 
 // TakeNotices are the guardrail events refused asks earned since the last take.
 func (s *CriticSwitch) TakeNotices() []contract.RunEvent {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	out := s.notices
 	s.notices = nil
 	return out
@@ -326,7 +342,9 @@ func (s *CriticSwitch) TakeNotices() []contract.RunEvent {
 // Decide is the decision, once the run's facts are known: written into the checkpoint's critic (over
 // a carried ask) and answered with the tier, for the adapter to emit as critic_decided.
 func (s *CriticSwitch) Decide(run CriticRunFacts, author string) CriticDecision {
-	run.ModelAsked = s.Asked()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	run.ModelAsked = s.askedLocked()
 	decision := DecideCritic(s.settings, s.table, s.facts, run)
 	decision.Reasoning = CriticTier(author, s.settings.CriticReasoning, s.table.CriticReasoningFloor)
 	s.state().Critic = decision.Record()

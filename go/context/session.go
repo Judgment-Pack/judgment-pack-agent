@@ -233,6 +233,7 @@ func NewSessionContext(session Session) (*SessionContext, error) {
 	}
 	table := CriticTable{CriticDefault: policy.CriticDefault, CriticReasoningFloor: policy.CriticReasoningFloor, AdversarialReview: policy.AdversarialReview}
 	out.Review = NewCriticSwitch(settings, table, forced, func() *Execution { return out.Execution.State })
+	out.Execution.criticMu = &out.Review.mu
 	out.existingPack = session.ExistingPack
 	switch {
 	case session.Model != nil:

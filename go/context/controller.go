@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
@@ -272,6 +273,8 @@ type ExecutionController struct {
 	ledger   *ContextLedger
 	restored bool
 	attempt  int
+	// criticMu is the switch's lock: it also guards operation writers and snapshot serialisation.
+	criticMu *sync.Mutex
 
 	operationsReference *Value
 	restoredResults     []*Value
@@ -556,6 +559,10 @@ func (c *ExecutionController) RetainProgress(includeIndex bool) error {
 
 // ObserveToolCall is the tool_call half of observe: a new running operation.
 func (c *ExecutionController) ObserveToolCall(call contract.ToolCall) {
+	if c.criticMu != nil {
+		c.criticMu.Lock()
+		defer c.criticMu.Unlock()
+	}
 	id := randomUUID()
 	if call.CallID != nil && *call.CallID != "" {
 		c.inFlight[*call.CallID] = id
@@ -571,6 +578,10 @@ func (c *ExecutionController) ObserveToolCall(call contract.ToolCall) {
 
 // ObserveToolResult is the tool_result half of observe: the operation it answers, completed.
 func (c *ExecutionController) ObserveToolResult(result contract.ToolResult) {
+	if c.criticMu != nil {
+		c.criticMu.Lock()
+		defer c.criticMu.Unlock()
+	}
 	var operation *Operation
 	if result.CallID != nil && *result.CallID != "" {
 		held := c.inFlight[*result.CallID]
@@ -831,10 +842,26 @@ const budgetRefused = "Explain why more requests are needed and the next concret
 // Snapshot is snapshot: the state and the ledger's entries as one checkpoint, under the status
 // given (the state's own where it is empty).
 func (c *ExecutionController) Snapshot(status string) (contract.Checkpoint, error) {
+	if c.criticMu != nil {
+		// Lock order: adapter delivery lock, criticMu, then source/skill/ledger locks.
+		// Keep the state protected through copying and serialisation.
+		c.criticMu.Lock()
+		defer c.criticMu.Unlock()
+	}
 	if status == "" {
 		status = c.State.Status
 	}
 	held := *c.State
+	held.Operations = make([]*Operation, len(c.State.Operations))
+	for i, operation := range c.State.Operations {
+		copied := *operation
+		copied.Args = operation.Args.Clone()
+		if operation.Result != nil {
+			result := operation.Result.Clone()
+			copied.Result = &result
+		}
+		held.Operations[i] = &copied
+	}
 	held.Status = status
 	if c.SourceRows != nil {
 		held.Sources = c.SourceRows()

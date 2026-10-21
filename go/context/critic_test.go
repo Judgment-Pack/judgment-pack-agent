@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -353,5 +354,92 @@ func TestTheCriticsInvocationIsHeldBackUnderAutoAndOn(t *testing.T) {
 	}
 	if Defaults.CriticDefault != "auto" || Defaults.CriticReasoningFloor != "author" || Defaults.AdversarialReview != nil {
 		t.Errorf("the table states %q, %q, %v", Defaults.CriticDefault, Defaults.CriticReasoningFloor, Defaults.AdversarialReview)
+	}
+}
+
+// The adapter regression also exercises durable saves; its lock-removal runs
+// and observed race reports are documented in pr.md.
+func TestConcurrentReviewRequests(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		calls      int
+		already    bool
+		wantTaken  int
+		wantDenied int
+	}{
+		{"two first requests", 2, false, 1, 1},
+		{"fifteen refused requests", 15, true, 0, 15},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			run, err := ContextualSession(context.Background(), modelSession())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer run.Context.Close()
+			tool := run.Session.HostTools[len(run.Session.HostTools)-1]
+			if tc.already {
+				if _, err := tool.Execute(context.Background(), json.RawMessage(`{}`)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			type result struct {
+				answer  ToolResult
+				err     error
+				notices []contract.RunEvent
+			}
+			results := make(chan result, tc.calls)
+			start := make(chan struct{})
+			var ready sync.WaitGroup
+			ready.Add(tc.calls)
+			for range tc.calls {
+				go func() {
+					ready.Done()
+					<-start
+					answer, err := tool.Execute(context.Background(), json.RawMessage(`{}`))
+					// Readers and drainers overlap other requests, as on the adapter path.
+					_ = run.Context.Review.Asked()
+					if _, snapshotErr := run.Context.Execution.Snapshot("running"); snapshotErr != nil {
+						t.Error(snapshotErr)
+					}
+					results <- result{answer, err, run.Context.Review.TakeNotices()}
+				}()
+			}
+			ready.Wait()
+			close(start)
+			taken, denied := 0, 0
+			var notices []contract.RunEvent
+			for range tc.calls {
+				got := <-results
+				notices = append(notices, got.notices...)
+				if got.err == nil {
+					taken++
+					if got.answer.StructuredContent == nil || got.answer.StructuredContent.Text() != `{"asked":true,"note":`+QuoteJSON(ReviewTaken)+`}` {
+						t.Errorf("unexpected accepted answer: %+v", got.answer)
+					}
+				} else {
+					denied++
+					var held *failure.Error
+					if !errors.As(got.err, &held) || held.Failure.Code != "tool-failed" || held.Failure.Outcome != "not-started" || held.Failure.Detail == nil || *held.Failure.Detail != ReviewRefusal("asked") {
+						t.Errorf("unexpected refusal: %v", got.err)
+					}
+				}
+			}
+			notices = append(notices, run.Context.Review.TakeNotices()...)
+			if taken != tc.wantTaken || denied != tc.wantDenied || len(notices) != tc.wantDenied {
+				t.Fatalf("taken=%d refused=%d guardrails=%d; want %d, %d, %d", taken, denied, len(notices), tc.wantTaken, tc.wantDenied, tc.wantDenied)
+			}
+			for _, event := range notices {
+				g := event.Guardrail
+				if g == nil || g.Tool != RequestReview || g.Action != "refused" || g.Reason == nil || *g.Reason != "review refused" || g.Detail != ReviewRefusal("asked") {
+					t.Errorf("unexpected guardrail: %+v", g)
+				}
+			}
+			if got := marshaled(t, run.Context.Execution.State.Critic); got != `{"mode":"auto","trigger":"model-asked"}` {
+				t.Fatalf("the checkpoint lost the ask: %s", got)
+			}
+			if len(run.Context.Review.TakeNotices()) != 0 {
+				t.Fatal("a drained refusal was delivered twice")
+			}
+		})
 	}
 }

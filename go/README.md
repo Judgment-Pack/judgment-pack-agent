@@ -76,8 +76,10 @@ A host passes the critic's switch ([ADR-0010](../docs/adr/0010-the-critics-switc
 (the critic's tier: a thinking tier on the model capability, an effort on the agent capability; empty
 is the author's) and the facts `ExistingPack` and `ReviewerAssigned`; `Review` is read for one release
 as an alias of `Critic`. The table's default is `runcontext.Defaults.CriticDefault`, `auto`. Each
-adapter decides through `SessionContext.DecideCritic` (`go/context/critic.go`), emits `critic_decided`
-and writes the checkpoint's `critic`; under `auto` the boundary offers `request_review`, so a host that
+adapter decides through `SessionContext.DecideCritic` (`go/context/critic.go`).
+Runs reaching the critic decision point emit `critic_decided`; tracked runs checkpoint that
+decision. Earlier failures or pauses may omit it; a checkpointed review request survives a resume.
+Under `auto` the boundary offers `request_review`, so a host that
 opens the gate with its offer adds `runcontext.OfferedReviewTool(...)` beside the context tools. On
 the agent capability `delegate.With` holds one invocation back for the critic under `auto` and `on`.
 
