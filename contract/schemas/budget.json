@@ -68,7 +68,7 @@
       "minimum": 0
     },
     "memoryBytes": {
-      "description": "The most UTF-8 bytes of recalled project memory the host's memoryFor(query) may answer (ADR-0005; before it, the most the server added behind the adapter); a longer answer is refused as a brief's is. Nothing is reserved for it in a run's input allowance: a recalled memory is counted once, where it sits in the instructions. A run whose host says memory is off (context.memory: false, agent#11) asks memoryFor nothing; the policy is the same either way (contextPolicy in packages/harness/context/policy.ts).",
+      "description": "ADR-0014: most UTF-8 bytes of accepted, unexpired records recalled by memoryFor: sum of canonical JSON bytes before framing. The v0.8.0 bare-text alias uses text bytes. A larger answer fails configuration before any request. No reserve is taken; memory is counted where it sits. context.memory false disables recall.",
       "type": "integer",
       "minimum": 0
     },
@@ -227,6 +227,19 @@
     "subagentCatalogueBytes": {
       "type": "integer",
       "minimum": 0
+    },
+    "memoryProposalBytes": {
+      "description": "Most UTF-8 bytes of one remember proposal text (ADR-0014).",
+      "type": "integer",
+      "minimum": 0,
+      "default": 1000
+    },
+    "memoryProposalsPerRun": {
+      "description": "Most remember proposals per run, carried through resume (ADR-0014).",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 256,
+      "default": 4
     }
   },
   "additionalProperties": true,
@@ -503,7 +516,7 @@
       "additionalProperties": true
     },
     "hostPart": {
-      "description": "One of the host's parts of every request (ADR-0005; packages/harness/prompt.ts, HOST_PARTS): the member it is, the layer it is placed in, the host's injection point that answers it, the first and last lines of its block and the member of this table that bounds it. The adapter asks each injection point once per run, before its first request (memoryFor with the person's message, or a delegated child's objective, and not where the host said memory is off), and places each part it answered in the system text (the agent wire's instructions) after the package's guidance, in layer order, a blank line before each block: the header, the text, the end line. A part answered with nothing is left out; one that is not text, or is over its bound, is refused and the run fails before any request (configuration). The project's instructions are instructions at the lowest rank: they follow the package's guidance, and they cannot grant a tool or change an effect, because the offer and the gate are code. The system text through the last part is the request's stable prefix: the same bytes on every request of the run.",
+      "description": "One of the host's parts of every request (ADR-0005; packages/harness/prompt.ts, HOST_PARTS): the member it is, the layer it is placed in, the host's injection point that answers it, the first and last lines of its block and the member of this table that bounds it. The adapter asks each injection point once per run, before its first request (memoryFor with the person's message, or a delegated child's objective, and not where the host said memory is off), and places each part it answered in the system text (the agent wire's instructions) after the package's guidance, in layer order, a blank line before each block: the header, the text, the end line. A part answered with nothing is left out; one that is not text, or is over its bound, is refused and the run fails before any request (configuration). The project's instructions are instructions at the lowest rank: they follow the package's guidance, and they cannot grant a tool or change an effect, because the offer and the gate are code. The system text through the last part is the request's stable prefix: the same bytes on every request of the run. ADR-0014: memoryFor answers memory.json#/$defs/answer: accepted records are individually framed as data under the run marker with kind and source inside; the bare-text alias lasts for v0.8.0.",
       "type": "object",
       "required": [
         "name",

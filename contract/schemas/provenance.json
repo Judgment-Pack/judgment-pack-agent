@@ -565,6 +565,71 @@
         }
       },
       "additionalProperties": false
+    },
+    "memoryRecall": {
+      "type": "object",
+      "required": [
+        "id",
+        "digest",
+        "kind",
+        "state"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "fact",
+            "preference",
+            "decision",
+            "reference"
+          ]
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "proposed",
+            "accepted",
+            "declined",
+            "revoked",
+            "expired"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "memories": {
+      "type": "object",
+      "required": [
+        "proposed",
+        "recalled"
+      ],
+      "properties": {
+        "proposed": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "memory.json"
+          }
+        },
+        "recalled": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/memoryRecall"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "description": "Run report: proposals this run, and recalled ids and digests with kinds. Both lists survive resume; a recalled id supplied as revoked is reported revoked and withheld from the prompt."
     }
   }
 }

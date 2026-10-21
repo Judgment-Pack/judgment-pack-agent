@@ -96,6 +96,9 @@ func (b *Boundary) notices() []contract.RunEvent {
 	if b.run.Context.Review != nil {
 		out = append(out, b.run.Context.Review.TakeNotices()...)
 	}
+	if b.run.Context.Memories != nil {
+		out = append(out, b.run.Context.Memories.TakeNotices()...)
+	}
 	return out
 }
 

@@ -1,0 +1,31 @@
+{
+  "description": "ADR-0014: proposal. Written by hand; memory proposals never imply acceptance or storage.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/memories.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "memory_proposed",
+      "memory": {
+        "id": "proposal-1",
+        "kind": "preference",
+        "text": "Use metric units.",
+        "source": {
+          "run": "earlier-run",
+          "proposedBy": "model"
+        },
+        "scope": "project",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "createdAt": "2026-10-20T12:00:00Z",
+        "state": "proposed"
+      }
+    }
+  ]
+}

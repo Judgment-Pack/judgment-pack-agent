@@ -1,0 +1,21 @@
+{
+  "description": "ADR-0014 memory bounds. Written by hand.",
+  "schema": "policy.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/context/policy.ts"
+    ]
+  },
+  "items": [
+    {
+      "budget": {
+        "memoryProposalBytes": 1000,
+        "memoryProposalsPerRun": 4
+      }
+    }
+  ]
+}

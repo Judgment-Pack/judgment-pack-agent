@@ -1,0 +1,22 @@
+{
+  "description": "ADR-0014: refused-proposal. Written by hand; memory proposals never imply acceptance or storage.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/memories.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "guardrail",
+      "tool": "remember",
+      "action": "refused",
+      "detail": "Memory proposals exceed memoryProposalsPerRun.",
+      "reason": "memory refused"
+    }
+  ]
+}

@@ -292,7 +292,8 @@
         "load_tool",
         "load_skill",
         "unload_skill",
-        "request_review"
+        "request_review",
+        "remember"
       ]
     },
     "criticTools": {
@@ -767,6 +768,30 @@
         }
       },
       "additionalProperties": false
+    },
+    "remember": {
+      "type": "object",
+      "required": [
+        "kind",
+        "text"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "fact",
+            "preference",
+            "decision",
+            "reference"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false,
+      "description": "Propose memory for the person to review, never store or accept. Author only, including Plan mode; child and critic calls refused. UTF-8 text bounded by memoryProposalBytes, count by memoryProposalsPerRun across resume."
     }
   }
 }

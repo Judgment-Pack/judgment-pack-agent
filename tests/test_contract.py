@@ -29,7 +29,7 @@ HARNESS_ENGINE_ADDITIONS = ["deepagents", "eino"]
 # Event kinds the harness emits beyond the Desk's (contract/desk/inventory.json): the approval pause
 # (docs/adr/0008-the-approval-pause.md) and a skill's load and unload (docs/adr/0009-skills.md), on
 # the host's stream; and the critic's decision (docs/adr/0010-the-critics-switch.md).
-HARNESS_EVENT_ADDITIONS = ["approval_requested", "skill_loaded", "skill_unloaded", "critic_decided", "policy_resolved"]
+HARNESS_EVENT_ADDITIONS = ["approval_requested", "skill_loaded", "skill_unloaded", "critic_decided", "policy_resolved", "memory_proposed", "memory_recalled"]
 
 EXPECTED_SCHEMAS = {
     "run-event.json",
@@ -47,11 +47,13 @@ EXPECTED_SCHEMAS = {
     "capability.json",
     "skill.json",
     "subagent.json",
+    "memory.json",
 }
 
 # The $defs added or changed (beyond their descriptions) between v0.1.0 and the v0.2.0 release
 # review, whose members each need a vector (#43): (schema, definition).
 RELEASE_REVIEWED_DEFS = [
+    ("memory.json", "answer"), ("tool-offer.json", "remember"), ("provenance.json", "memories"), ("provenance.json", "memoryRecall"), ("run-event.json", "memory_proposed"), ("run-event.json", "memory_recalled"),
     ("run-event.json", "delegated_task"), ("subagent.json", "record"), ("tool-offer.json", "subagentCatalogueEntry"),
     ("provenance.json", "provider"), ("provenance.json", "crossProvider"),
     ("policy.json", "role"), ("policy.json", "member"), ("policy.json", "paceUsed"),
@@ -742,7 +744,7 @@ class VectorTests(unittest.TestCase):
         targets = []
         for name, definition in RELEASE_REVIEWED_DEFS:
             targets += [(name, ["$defs", definition] + path) for path in members(schemas_[name]["$defs"][definition], [])]
-        for name in ("checkpoint.json", "delegated-task.json", "tool-call.json", "tool-result.json", "skill.json", "tool-offer.json", "policy.json", "subagent.json"):
+        for name in ("checkpoint.json", "delegated-task.json", "tool-call.json", "tool-result.json", "skill.json", "tool-offer.json", "policy.json", "subagent.json", "memory.json"):
             root = {key: value for key, value in schemas_[name].items() if key != "$defs"}
             targets += [(name, path) for path in members(root, [])]
         # Scope capability records and overrides to members introduced by ADR-0012.
@@ -816,7 +818,7 @@ class VectorTests(unittest.TestCase):
         # Existing schemas: this ADR adds these values, not new obligations for
         # the unrelated event and failure values from earlier releases.
         added_values = {
-            ("run-event.json", ("properties", "type")): ["policy_resolved"],
+            ("run-event.json", ("properties", "type")): ["policy_resolved", "memory_proposed", "memory_recalled"],
             ("failure.json", ("$defs", "code")): ["pace exceeded"],
         }
         for name, path in enums:

@@ -211,6 +211,9 @@
       "items": {
         "$ref": "provenance.json#/$defs/crossProvider"
       }
+    },
+    "memories": {
+      "$ref": "provenance.json#/$defs/memories"
     }
   },
   "additionalProperties": true,

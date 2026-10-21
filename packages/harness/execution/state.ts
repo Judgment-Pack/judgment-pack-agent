@@ -1,3 +1,4 @@
+import { validMemories, type Memories } from '../memories'
 import {validSubagentRecord} from '../subagents'
 import {readCompletion,type ModelCompletion} from '../completion'
 import {failure,readFailure,type AIFailure} from '../failures'
@@ -45,6 +46,7 @@ export interface ExecutionCheckpoint {
  approval?:ApprovalRecord;
  /** ADR-0009: the skills loaded, in load order, carried through a resume (`skills.ts`, SkillGate). */
  skills?:SkillLoad[];
+ memories?:Memories;
  /**
   * ADR-0010: the critic's decision (`criticSwitch.ts`): written when the run decides, and before that,
   * under auto, when the model's request_review is taken; carried through a resume.
@@ -153,6 +155,7 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value.prompts!==undefined&&(!Array.isArray(value.prompts)||value.prompts.length>MAX_PROMPT_DIGESTS||value.prompts.some((row,at,rows)=>!object(row)||!exact(row,['request','sha256'])||!Number.isSafeInteger(row.request)||Number(row.request)<1||at>0&&Number(row.request)<=Number((rows[at-1] as Record<string,unknown>).request)||typeof row.sha256!=='string'||!/^[a-f0-9]{64}$/.test(row.sha256))))return fail()
  if(value.sources!==undefined&&!validSourceFigures(value.sources))return fail()
  if(value.approval!==undefined&&!validApproval(value.approval))return fail()
+ if(value.memories!==undefined&&!validMemories(value.memories))return fail()
  if(value.skills!==undefined&&!validSkillLoads(value.skills))return fail()
  if(value.critic!==undefined&&!validCriticRecord(value.critic))return fail()
  if(!Array.isArray(value.operations)||value.operations.length>400||new Set(value.operations.map(o=>o.id)).size!==value.operations.length)return fail()

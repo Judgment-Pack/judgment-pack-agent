@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/memory.json",
+  "title": "Memory",
+  "description": "ADR-0014: host-owned memory. The package proposes, records and recalls; it never accepts or stores. digest is sha256: followed by SHA-256 of UTF-8 text. Proposals use project scope, the execution id as source.run, and model as proposedBy.",
+  "type": "object",
+  "required": [
+    "id",
+    "kind",
+    "text",
+    "source",
+    "scope",
+    "digest",
+    "createdAt",
+    "state"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "fact",
+        "preference",
+        "decision",
+        "reference"
+      ]
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "run",
+        "proposedBy"
+      ],
+      "properties": {
+        "run": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "proposedBy": {
+          "type": "string",
+          "enum": [
+            "model",
+            "person",
+            "host"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "scope": {
+      "type": "string",
+      "enum": [
+        "project",
+        "person"
+      ]
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "proposed",
+        "accepted",
+        "declined",
+        "revoked",
+        "expired"
+      ]
+    },
+    "expiresAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "answer": {
+      "description": "memoryFor answers records. A bare string remains an alias for one release (v0.8.0): framed as host-supplied fact data, without inventing a persisted record. Null or an absent binding supplies nothing. Only accepted, unexpired records reach the prompt; revoked records can update a restored report. memoryBytes bounds the sum of UTF-8 canonical JSON bytes of accepted records, before framing; the string alias is bounded by its UTF-8 text bytes.",
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "$ref": "memory.json"
+          },
+          "maxItems": 256
+        },
+        {
+          "type": "string"
+        }
+      ]
+    }
+  }
+}

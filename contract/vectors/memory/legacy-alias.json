@@ -1,0 +1,16 @@
+{
+  "description": "ADR-0014: legacy-alias. Written by hand; memory proposals never imply acceptance or storage.",
+  "schema": "memory.json#/$defs/answer",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/memories.ts"
+    ]
+  },
+  "items": [
+    "Earlier work used SI units."
+  ]
+}

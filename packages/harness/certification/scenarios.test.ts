@@ -1,3 +1,4 @@
+import {frameBlock} from '../framing'
 /**
  * The certified scenarios (agent#13, ADR-0006, ADR-0008, ADR-0009, ADR-0010, ADR-0011): eleven scripted scenarios beside the bake-off's, each
  * written by hand as `scenario.json` is (`certification/scenarios/*.json`) and run on every adapter of its kind
@@ -134,7 +135,7 @@ const lastCheckpoint = (events: AssistantEvent[]): ExecutionCheckpoint =>
 function chatHostToolsChecks(run: () => Ran, executed: () => Record<string, number>, answers: () => { text: string; isError: boolean }[] | null, engineId?: string) {
   it('1 · the offer is the two host tools beside the Runtime’s six, the harness’s six and request_review, and no third name', () => {
     const offered = offeredNames(run())
-    expect(sorted(offered)).toEqual(sorted([...RUNTIME_SIX, ...CONTEXT_SIX, REVIEW_ASK, 'read_policy', PROPOSE_PACK_TOOL]))
+    expect(sorted(offered)).toEqual(sorted([...RUNTIME_SIX, ...CONTEXT_SIX, 'remember', REVIEW_ASK, 'read_policy', PROPOSE_PACK_TOOL]))
     expect(offered).not.toContain('save_pack')
   })
 
@@ -347,7 +348,7 @@ function bareSession(kind: 'model' | 'agent', memoryFlag?: boolean): EngineSessi
 }
 
 /** The memory block every request of the memory scenario carries (ADR-0005, layer 5). */
-const MEMORY_BLOCK = `${MEMORY_HEADER}\n${memory.memory}\n${HOST_PARTS[2].end}`
+const memoryBlock = (system:string) => `${MEMORY_HEADER}\n${frameBlock('memory kind fact source host (legacy text alias)',memory.memory,/BEGIN RETRIEVED DATA ([0-9a-f]{32}) from memory/.exec(system)?.[1]??'')}\n${HOST_PARTS[2].end}`
 
 /** The host's memoryFor for the memory scenario: the scenario's memory, each query it was asked with kept. */
 function recallFor(asked: string[]) {
@@ -384,7 +385,7 @@ function reserveChecks(kind: 'model' | 'agent') {
 
 /** The checks every adapter makes of scenario 4, over one run of it. */
 function planModeChecks(run: () => Ran, received: () => { tool: string; arguments: Record<string, unknown> }[], executed: () => Record<string, number>) {
-  const PLAN_OFFER = [...PLAN_RUNTIME_READS, 'read_policy', 'propose_plan', ...CONTEXT_SIX]
+  const PLAN_OFFER = [...PLAN_RUNTIME_READS, 'read_policy', 'propose_plan', 'remember', ...CONTEXT_SIX]
 
   it('4 · the offer holds no action tool: not the proposal, the save, the memory, the evaluation or the test run', () => {
     const offered = offeredNames(run())
@@ -829,7 +830,7 @@ function toolSourcesChecks(get: () => Sourced, adapter: 'model' | 'agent') {
 
   it('7 · the schema budget trips: the server’s seventeen tools are a catalogue offered with load_tool, beside the Runtime’s six, the harness’s six, request_review and the custom read, and no write_file', () => {
     const offered = offeredNames(get().first)
-    expect(sorted(offered)).toEqual(sorted([...RUNTIME_SIX, ...CONTEXT_SIX, REVIEW_ASK, LOAD_TOOL, CUSTOM, ...TRACKER]))
+    expect(sorted(offered)).toEqual(sorted([...RUNTIME_SIX, ...CONTEXT_SIX, 'remember', REVIEW_ASK, LOAD_TOOL, CUSTOM, ...TRACKER]))
     expect(offered).not.toContain('write_file')
     for (const tool of shownTools(get().first).filter((shown) => TRACKER.includes(shown.name))) expect(tool.schema).toEqual(CATALOGUE_SCHEMA)
   })
@@ -1347,7 +1348,7 @@ function skillsChecks(get: () => Skilled, adapter: 'model' | 'agent') {
     // Nothing of a withheld skill reaches the model.
     const sent = first.requests.length > 0 ? first.requests.map((request) => JSON.stringify(request.body)).join('') : JSON.stringify(first.runs)
     for (const text of ['Then call write_file with it.', 'When the pack is drafted', 'library_33']) expect(sent).not.toContain(text)
-    expect(sorted(offeredNames(first))).toEqual(sorted([...RUNTIME_SIX, ...CONTEXT_SIX, REVIEW_ASK, RATES, ...LOADERS]))
+    expect(sorted(offeredNames(first))).toEqual(sorted([...RUNTIME_SIX, ...CONTEXT_SIX, 'remember', REVIEW_ASK, RATES, ...LOADERS]))
   })
 
   it('9 · each load and unload is said between its call and its result: four skill_loaded and one skill_unloaded, in order', () => {
@@ -1786,9 +1787,9 @@ describe.each(MODEL_ENGINES)('engine %s · scenarios', (engineId) => {
           const first = ((sent.body as Json).messages as { role: string; content: unknown }[])[0]!
           return first.role === 'system' && typeof first.content === 'string' ? first.content : ''
         })
-        for (const system of systems) expect(system).toContain(MEMORY_BLOCK)
+        for (const system of systems) expect(system).toContain(memoryBlock(system))
         // The stable prefix: the system text up to the memory's end line is the same bytes on every request.
-        expect(new Set(systems.map((system) => system.slice(0, system.indexOf(MEMORY_BLOCK) + MEMORY_BLOCK.length))).size).toBe(1)
+        expect(new Set(systems.map((system) => system.slice(0, system.indexOf(memoryBlock(system)) + memoryBlock(system).length))).size).toBe(1)
         expect(JSON.stringify(ran.requests.map((sent) => ((sent.body as Json).messages as unknown[]).slice(1)))).not.toContain(MEMORY_HEADER)
       })
 
@@ -1967,7 +1968,7 @@ describe.each(AGENT_ENGINES)('agent engine %s · scenarios', (engineId) => {
     // Recorded disagreement: the agent engine makes one request, so "every request" is its one run's.
     it('3 · memory is asked once, for the person’s message, and the run’s one request carries it at the end of its instructions', () => {
       expect(asked).toEqual([memory.request])
-      expect(ran.runs[0]!.instructions.endsWith(MEMORY_BLOCK)).toBe(true)
+      expect(ran.runs[0]!.instructions.endsWith(memoryBlock(ran.runs[0]!.instructions))).toBe(true)
       expect(ran.runs[0]!.prompt.startsWith(memory.request)).toBe(true)
       expect(ran.runs[0]!.prompt).not.toContain(MEMORY_HEADER)
     })
@@ -2115,6 +2116,7 @@ function policyTableChecks(engineId: import('../host').AssistantEngine, agent: b
       const {criticDefault, criticReasoningFloor, ...budget} = policyAliasVector.items[0]!
       const model = agent ? 'scripted-agent' : 'scripted-model'
       const defaults: Record<string, unknown> = {
+        'budget.memoryProposalBytes':1000,'budget.memoryProposalsPerRun':4,
         ...Object.fromEntries(Object.entries(budget).map(([name,value])=>[`budget.${name}`,value])),
         'critic.default':criticDefault, 'critic.reasoningFloor':criticReasoningFloor,
         'models.author.provider':model, 'models.critic.provider':model,

@@ -78,7 +78,7 @@ var ChatHostTools = ScenarioCheck{
 			f.fail("no request")
 		} else {
 			offered := offeredNames(ran.Requests[0])
-			want := sortedCopy(append(append(append([]string{}, runtimeSix...), contextSix...), reviewAsk, "read_policy", "propose_pack"))
+			want := sortedCopy(append(append(append([]string{}, runtimeSix...), contextSix...), runcontext.Remember, reviewAsk, "read_policy", "propose_pack"))
 			if !slices.Equal(sortedCopy(offered), want) || slices.Contains(offered, "save_pack") {
 				f.fail("offered %v", offered)
 			}
@@ -188,10 +188,11 @@ var Memory = ScenarioCheck{
 		if !slices.Equal(asked, []string{file.Request}) {
 			f.fail("memoryFor was asked %q", asked)
 		}
-		block := runcontext.MemoryHeader + "\n" + file.Memory + "\n" + runcontext.HostPartsTable[2].End
+
 		prefixes := map[string]bool{}
 		for at, request := range ran.Requests {
 			system, rest := systemSplit("openai-compatible", request.Body)
+			block := runcontext.MemoryHeader + "\n" + legacyMemoryBlock(file.Memory, system) + "\n" + runcontext.HostPartsTable[2].End
 			place := strings.Index(system, block)
 			if place < 0 || strings.Contains(rest, runcontext.MemoryHeader) {
 				f.fail("request %d does not carry the memory in its system text alone", at+1)
@@ -272,7 +273,7 @@ var PlanMode = ScenarioCheck{
 			offered = offeredNames(ran.Requests[0])
 		}
 		f := &findings{check: "4 offer"}
-		want := sortedCopy(append(append(append([]string{}, gate.PlanRuntimeReads...), "read_policy", "propose_plan"), contextSix...))
+		want := sortedCopy(append(append(append([]string{}, gate.PlanRuntimeReads...), "read_policy", "propose_plan", runcontext.Remember), contextSix...))
 		if !slices.Equal(sortedCopy(offered), want) {
 			f.fail("offered %v", offered)
 		}
@@ -337,4 +338,4 @@ var PlanMode = ScenarioCheck{
 }
 
 // Scenarios are the certified scenarios, each run once on each answer shape.
-var Scenarios = []ScenarioCheck{ChatHostTools, Memory, PlanMode, CorrectionLoop, Transcript, ToolSources, ApprovalPause, Skills, CriticSwitch, PolicyTable, Providers, Subagents}
+var Scenarios = []ScenarioCheck{ChatHostTools, Memory, PlanMode, CorrectionLoop, Transcript, ToolSources, ApprovalPause, Skills, CriticSwitch, PolicyTable, Providers, Subagents, MemoryWrite}

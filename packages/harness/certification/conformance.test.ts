@@ -1,3 +1,4 @@
+import {frameBlock} from '../framing'
 /**
  * The desk's conformance session: the bake-off's scenario, in the repository,
  * in CI.
@@ -918,7 +919,8 @@ function placementMisses(api: EndpointKind, run: Pick<Run, 'bodies' | 'asked'>, 
     if (api === 'anthropic') misses.push(...cacheMisses(raw, at + 1, placement))
     const { system, rest } = split(api, raw)
     // Each part's block by its header and the end line after it; the text between them is the part's.
-    const blocks = placed.map((part) => {
+    const framed=placed.map(part=>part.name==='memory'?{...part,text:frameBlock('memory kind fact source host (legacy text alias)',part.text,/BEGIN RETRIEVED DATA ([0-9a-f]{32}) from memory/.exec(system)?.[1]??'')}:part)
+    const blocks = framed.map((part) => {
       const head = system.indexOf(`${part.header}\n`)
       const close = head < 0 ? -1 : system.indexOf(`\n${part.end}`, head)
       return { part, head, end: close < 0 ? -1 : close + 1 + part.end.length, text: close < 0 ? undefined : system.slice(head + part.header.length + 1, close) }
@@ -933,7 +935,7 @@ function placementMisses(api: EndpointKind, run: Pick<Run, 'bodies' | 'asked'>, 
     // execution instructions), then the host's section and nothing between, then the tools described
     // in text or the state or nothing.
     const guidanceEnd = system.indexOf(guidance) + guidance.length
-    const section = hostSection(Object.fromEntries(placed.map((part) => [part.name, part.text])))
+    const section = hostSection(Object.fromEntries(framed.map((part) => [part.name, part.text])))
     const after = system.slice(guidanceEnd + section.length)
     if (guidanceEnd < guidance.length || system.indexOf(DATA_RULE) > guidanceEnd || system.slice(guidanceEnd, guidanceEnd + section.length) !== section ||
       !(after === '' || after.startsWith(`\n\n${TEXT_TOOLS}`) || after.startsWith(`\n${STATE_HEADER}`))) {

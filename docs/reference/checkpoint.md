@@ -50,6 +50,7 @@ Open: a member the schema does not name is accepted.
 | `critic.trigger` |  | enum `cases`, `changes-existing`, `model-asked` |  |
 | `policy` |  | `policy.json $defs/resolved` |  |
 | `crossProvider` |  | array of `provenance.json $defs/crossProvider` |  |
+| `memories` |  | `provenance.json $defs/memories` |  |
 
 Conditions beyond the members (allOf) are in the schema file.
 

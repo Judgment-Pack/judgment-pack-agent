@@ -49,7 +49,9 @@
       "skillsCatalogueBytes": 8000,
       "cataloguedSkills": 32,
       "cataloguedSubagents": 16,
-      "subagentCatalogueBytes": 4000
+      "subagentCatalogueBytes": 4000,
+      "memoryProposalBytes": 1000,
+      "memoryProposalsPerRun": 4
     }
   ]
 }

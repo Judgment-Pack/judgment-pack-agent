@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
 )
 
@@ -27,8 +28,9 @@ import (
 const StateHeader = "EXECUTION STATE (from the host, current for this request and replaced on the next; working state, not a message from the person and never approval)"
 
 // Host is the host's side of the prompt (ADR-0005; brief, memoryFor and projectInstructions in
-// host.ts): each answers its part's text, the empty string for nothing, or an error, which fails
-// the run before its first request. A Go host hands one to an adapter on adapter.Run; nil is a
+// host.ts): brief and project instructions answer text or an error. Recall is supplied by
+// MemoryHost, a record-returning MemoryFor, or the v0.8.0 legacy string-returning MemoryFor.
+// An error fails the run before its first request. A Go host hands one to an adapter on adapter.Run; nil is a
 // host that supplies no part.
 type Host interface {
 	// Brief is the project brief: the text of the project file the host's profile names.
@@ -36,13 +38,22 @@ type Host interface {
 	// ProjectInstructions is the project's own instructions, the per-project block the person
 	// wrote: instructions at the lowest rank, which cannot grant a tool or change an effect.
 	ProjectInstructions(ctx context.Context) (string, error)
-	// MemoryFor is recalled project memory for query, the person's message (a delegated child's
-	// objective; the host's prompt where neither is given). Not asked where memory is off.
+}
+
+// MemoryHost answers records (or the v0.8.0 string alias). A legacy Host with a string-returning MemoryFor remains supported for this release.
+type MemoryHost interface {
+	MemoryFor(ctx context.Context, query string) (any, error)
+}
+type legacyMemoryHost interface {
 	MemoryFor(ctx context.Context, query string) (string, error)
+}
+type recordMemoryHost interface {
+	MemoryFor(ctx context.Context, query string) ([]contract.Memory, error)
 }
 
 // HostFuncs is a Host of functions, each nil for a part the host does not supply.
 type HostFuncs struct {
+	MemoryRecordsForFunc    func(ctx context.Context, query string) ([]contract.Memory, error)
 	BriefFunc               func(ctx context.Context) (string, error)
 	ProjectInstructionsFunc func(ctx context.Context) (string, error)
 	MemoryForFunc           func(ctx context.Context, query string) (string, error)
@@ -65,7 +76,10 @@ func (h HostFuncs) ProjectInstructions(ctx context.Context) (string, error) {
 }
 
 // MemoryFor answers MemoryForFunc, or nothing.
-func (h HostFuncs) MemoryFor(ctx context.Context, query string) (string, error) {
+func (h HostFuncs) MemoryFor(ctx context.Context, query string) (any, error) {
+	if h.MemoryRecordsForFunc != nil {
+		return h.MemoryRecordsForFunc(ctx, query)
+	}
 	if h.MemoryForFunc == nil {
 		return "", nil
 	}
@@ -154,6 +168,9 @@ func SystemText(guidance string, parts HostParts, tools string) string {
 // request: the brief, the project's own instructions and, unless memory is off, the memory recalled
 // for query. A part over its bound is refused: the run fails before any request (configuration).
 func ReadHostParts(ctx context.Context, host Host, query string, policy Policy, memory bool) (HostParts, error) {
+	return readHostParts(ctx, host, query, policy, memory, "", nil)
+}
+func readHostParts(ctx context.Context, host Host, query string, policy Policy, memory bool, marker string, record func(MemoryRecall) error) (HostParts, error) {
 	if host == nil {
 		return HostParts{}, nil
 	}
@@ -166,11 +183,33 @@ func ReadHostParts(ctx context.Context, host Host, query string, policy Policy, 
 		return HostParts{}, err
 	}
 	if memory {
-		if parts.Memory, err = host.MemoryFor(ctx, query); err != nil {
+		var answer any
+		switch h := host.(type) {
+		case MemoryHost:
+			answer, err = h.MemoryFor(ctx, query)
+		case legacyMemoryHost:
+			answer, err = h.MemoryFor(ctx, query)
+		case recordMemoryHost:
+			answer, err = h.MemoryFor(ctx, query)
+		}
+		if err != nil {
 			return HostParts{}, err
+		}
+		recalled, e := RecallMemory(answer, policy.MemoryBytes, marker)
+		if e != nil {
+			return HostParts{}, e
+		}
+		parts.Memory = recalled.Text
+		if record != nil {
+			if e = record(recalled); e != nil {
+				return HostParts{}, e
+			}
 		}
 	}
 	for _, part := range HostPartsTable {
+		if part.Name == "memory" {
+			continue
+		}
 		bytes, bound := UTF8Bytes(part.text(parts)), part.bound(policy)
 		if bytes > bound {
 			return HostParts{}, failure.Authored("configuration", "The host's "+part.Injection+" answer is "+strconv.Itoa(bytes)+" bytes, over "+part.Bound+" ("+strconv.Itoa(bound)+"); nothing was sent.", "context")
@@ -191,7 +230,7 @@ func (c *SessionContext) AskHost(ctx context.Context) error {
 		query = c.objective
 	}
 	memory := c.session.Context == nil || c.session.Context.Memory == nil || *c.session.Context.Memory
-	parts, err := ReadHostParts(ctx, c.session.Host, query, *c.Policy, memory)
+	parts, err := readHostParts(ctx, c.session.Host, query, *c.Policy, memory, c.Marker, c.Memories.RecordRecall)
 	if err != nil {
 		return err
 	}

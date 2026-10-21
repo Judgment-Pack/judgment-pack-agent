@@ -138,6 +138,7 @@ export const HELD_NAMES: ReadonlySet<string> = new Set([
   ...Object.keys(REFUSED_RUNTIME_TOOLS),
   'list_context', 'read_context', 'read_window', 'search', 'update_plan', 'request_budget_increase',
   LOAD_TOOL,
+  'remember',
   'load_skill',
   'unload_skill',
   // ADR-0010: the model's ask for a review.

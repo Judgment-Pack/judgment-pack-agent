@@ -51,5 +51,6 @@ func AllCheckNames() []string {
 	out = append(out, AgentPolicyNames...)
 	out = append(out, AgentProviderNames...)
 	out = append(out, AgentSubagentNames...)
+	out = append(out, AgentMemoryWriteNames...)
 	return append(out, AgentDelegationNames...)
 }

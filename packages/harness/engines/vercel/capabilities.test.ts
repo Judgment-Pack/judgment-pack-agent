@@ -203,17 +203,17 @@ describe('whether to offer tools reads the record', () => {
   it('refuses a host tool the critic was not offered, named in its text, without running it', async () => {
     // A memory tool: the loop is offered it, a review never is.
     let saved = 0
-    const remember: HostTool = { name: 'remember', effect: 'memory', description: 'save a memory', inputSchema: { type: 'object' }, execute: async () => { saved += 1; return { content: [{ type: 'text', text: 'saved' }] } } }
-    const turns = [text(PROPOSAL), text('Noting it first.\n' + textCall('remember', { note: 'the pack is fine' })), text('REFUTATION: none found.')]
+    const remember: HostTool = { name: 'host_memory', effect: 'memory', description: 'save a memory', inputSchema: { type: 'object' }, execute: async () => { saved += 1; return { content: [{ type: 'text', text: 'saved' }] } } }
+    const turns = [text(PROPOSAL), text('Noting it first.\n' + textCall('host_memory', { note: 'the pack is fine' })), text('REFUTATION: none found.')]
     const { call, sent } = scripted(turns)
     const events = await drain(vercel.start(session('openai-compatible', call, { nativeToolCalls: false }, { hostTools: [remember], adversarialReview: true, testPrompt: 'the runtime’s test_pack guidance' })))
     expect(saved).toBe(0)
-    const result = of(events, 'tool_result').find((event) => event.name === 'remember')!
+    const result = of(events, 'tool_result').find((event) => event.name === 'host_memory')!
     expect(result.isError).toBe(true)
     expect(result.text).toContain('never calls a tool it was not offered')
     // The loop was described it; the critic, its own tools: the loop's less the ones a review may not use.
-    expect(systemText(sent[0]!.body)).toContain('- remember: ')
-    expect(systemText(sent[1]!.body)).not.toContain('- remember: ')
+    expect(systemText(sent[0]!.body)).toContain('- host_memory: ')
+    expect(systemText(sent[1]!.body)).not.toContain('- host_memory: ')
     expect(of(events, 'critique')).toHaveLength(1)
   })
 

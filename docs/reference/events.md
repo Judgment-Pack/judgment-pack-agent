@@ -14,7 +14,7 @@ One event of a run, from the adapter to the host, in order, discriminated by typ
 
 See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](critic.md), [skills.md](skills.md), [budget.md](budget.md), [reasons.md](reasons.md), [checkpoint.md](checkpoint.md).
 
-## The 23 kinds
+## The 25 kinds
 
 | Kind | Defined in | Required beyond type |
 | --- | --- | --- |
@@ -41,6 +41,8 @@ See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](crit
 | `error` | `run-event.json $defs/error` | `message` |
 | `end` | `run-event.json $defs/end` |  |
 | `policy_resolved` | `run-event.json $defs/policy_resolved` | `members` |
+| `memory_proposed` | `run-event.json $defs/memory_proposed` | `memory` |
+| `memory_recalled` | `run-event.json $defs/memory_recalled` | `ids`, `digests`, `bytes` |
 
 ## Every kind with its members
 
@@ -248,7 +250,7 @@ Open: a member the schema does not name is accepted.
 | `tool` | yes | string |  |
 | `action` | yes | enum `rewrote`, `refused`, `narrowed` |  |
 | `detail` | yes | string |  |
-| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused` |  |
+| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused`, `memory refused` |  |
 
 ### `thinking_unavailable`
 
@@ -345,3 +347,23 @@ Closed: a member the schema does not name is refused.
 | --- | --- | --- | --- |
 | `type` | yes | const `policy_resolved` |  |
 | `members` | yes | `policy.json $defs/resolved` |  |
+
+### `memory_proposed`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `type` | yes | const `memory_proposed` |  |
+| `memory` | yes | `memory.json` |  |
+
+### `memory_recalled`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `type` | yes | const `memory_recalled` |  |
+| `ids` | yes | array of string |  |
+| `digests` | yes | array of string (pattern `^sha256:[0-9a-f]{64}$`) |  |
+| `bytes` | yes | integer (min 0) |  |

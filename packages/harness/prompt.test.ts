@@ -13,6 +13,7 @@
  * - **The prompt's digest.** Every request body the adapter sent is digested in the checkpoint's
  *   `prompts`, in order, on a model engine and on the agent wire (`provenance/prompt-digest.json`).
  */
+import {frameBlock} from './framing'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import hostPartsVector from '../../contract/vectors/budget/host-parts.json'
 import digestVector from '../../contract/vectors/provenance/prompt-digest.json'
@@ -88,7 +89,7 @@ describe('the host’s parts of the prompt', () => {
       const bound = CONTEXT_DEFAULTS[part.bound]
       const answer = (bytes: number) => 'é'.repeat(Math.floor(bytes / 2)) + 'x'.repeat(bytes % 2)
       configureHarness({ [part.injection]: () => answer(bound) })
-      expect((await readHostParts('q', CONTEXT_DEFAULTS))[part.name]).toBe(answer(bound))
+      expect((await readHostParts('q', CONTEXT_DEFAULTS))[part.name]).toBe(part.name==='memory'?frameBlock('memory kind fact source host (legacy text alias)',answer(bound),''):answer(bound))
       configureHarness({ [part.injection]: () => answer(bound + 1) })
       await expect(readHostParts('q', CONTEXT_DEFAULTS)).rejects.toMatchObject({ failure: { code: 'configuration' } })
       configureHarness({ [part.injection]: () => ({ text: 'not text' }) as unknown as string })
@@ -113,7 +114,7 @@ describe('the host’s parts of the prompt', () => {
     expect(turn.events.filter((event) => event.type === 'error')).toEqual([])
     expect(turn.requests).toHaveLength(2)
     expect(asked).toEqual(['Check the expense pack.'])
-    const section = hostSection({ brief: 'The brief.', projectInstructions: 'Be brief.', memory: 'Recalled 1.' })
+    const section = hostSection({ brief: 'The brief.', projectInstructions: 'Be brief.', memory: frameBlock('memory kind fact source host (legacy text alias)','Recalled 1.',/BEGIN RETRIEVED DATA ([0-9a-f]{32}) from memory/.exec(String(turn.requests[0]!.body.messages![0]!.content))![1]!) })
     for (const request of turn.requests) {
       const system = request.body.messages![0]!
       expect(system.role).toBe('system')

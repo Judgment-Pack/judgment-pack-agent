@@ -1,0 +1,19 @@
+{
+  "description": "ADR-0014: remember. Written by hand; memory proposals never imply acceptance or storage.",
+  "schema": "tool-offer.json#/$defs/remember",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/memories.ts"
+    ]
+  },
+  "items": [
+    {
+      "kind": "preference",
+      "text": "Use metric units."
+    }
+  ]
+}

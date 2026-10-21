@@ -88,7 +88,11 @@ func TestTheHostsPartsAreAskedOnceAndHeldToTheirBounds(t *testing.T) {
 				held.MemoryForFunc = func(context.Context, string) (string, error) { return text, nil }
 			}
 			parts, err := ReadHostParts(ctx, held, "q", Defaults, true)
-			if size == bound && (err != nil || part.text(parts) != text) {
+			expected := text
+			if part.Name == "memory" {
+				expected = FrameBlock("memory kind fact source host (legacy text alias)", text, "")
+			}
+			if size == bound && (err != nil || part.text(parts) != expected) {
 				t.Errorf("%s at its bound: %v", part.Name, err)
 			}
 			if size > bound && (err == nil || !strings.Contains(err.Error(), "over "+part.Bound+" ("+strconv.Itoa(bound)+")")) {
@@ -116,10 +120,10 @@ func TestTheRunAsksTheHostOnceWithThePersonsMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer run.Context.Close()
-	if len(asked) != 1 || asked[0] != "Check the pack." || run.Context.HostParts.Memory != "Recalled." {
+	if len(asked) != 1 || asked[0] != "Check the pack." || run.Context.HostParts.Memory != FrameBlock("memory kind fact source host (legacy text alias)", "Recalled.", run.Context.Marker) {
 		t.Errorf("asked %v, parts %+v", asked, run.Context.HostParts)
 	}
-	if held := run.Context.System("GUIDANCE", ""); held != "GUIDANCE\n\n"+MemoryHeader+"\nRecalled.\nEND PROJECT MEMORY" {
+	if held := run.Context.System("GUIDANCE", ""); held != "GUIDANCE\n\n"+MemoryHeader+"\n"+FrameBlock("memory kind fact source host (legacy text alias)", "Recalled.", run.Context.Marker)+"\nEND PROJECT MEMORY" {
 		t.Errorf("the system text is %q", held)
 	}
 	// A delegated child asks with its objective; memory off asks nothing.

@@ -782,7 +782,11 @@ async function providersPage(page) {
  '## Wire compatibility',table(['Family','Cache breakpoints','Thinking','Tool schemas narrowed','Images'],Object.values(records).map(r=>[r.family,r.cacheBreakpoints,r.reasoning.kind,r.toolSchemas==='gemini-subset',r.vision])),
  'The host may override a connection’s tiers and endpoint capabilities. Model loops retain off/on/ultra as their existing vocabulary; on uses medium and ultra uses high. Agent capability tiers are passed by their host binding. The matrix describes the default model wires, not the properties of every model served behind them.')
 }
+async function memoryPage(page) {
+ page.add('The host owns acceptance, storage, revision and revocation. The author proposes through remember, including Plan mode; children and the critic cannot propose. Recalled records are data, never instructions, at ADR-0005 layer 5. The bare-text alias lasts for v0.8.0.',page.rootOf('memory.json','## Record'),page.nodeOf('memory.json','answer'),page.nodeOf('tool-offer.json','remember'),page.nodeOf('provenance.json','memories'),page.nodeOf('provenance.json','memoryRecall'), 'Bounds: memoryProposalBytes (1,000 UTF-8 text bytes), memoryProposalsPerRun (4 across resume), memoryBytes (4,000 canonical JSON UTF-8 bytes before framing). Each recall is framed under the run marker with kind and source. Revoked or expired memories are withheld; a returned revoked state updates the restored report.');
+}
 const PAGES = [
+ ['memory.md','Memory',memoryPage],
  ['providers.md','Providers',providersPage],
   ['policy.md', 'The policy table', policyPage],
   ['tools.md', 'Tools', toolsPage],

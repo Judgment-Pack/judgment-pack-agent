@@ -898,11 +898,19 @@
           "13 declared sub-agents",
           "13 agent declared sub-agents"
         ]
+      },
+      {
+        "check": "14 memory proposals, framed recall, refusal, resume and alias",
+        "go": [
+          "14 memory write side",
+          "14 agent memory write side"
+        ]
       }
     ],
     "additionalSources": [
       "packages/harness/certification/providers.test.ts",
-      "packages/harness/certification/subagents.test.ts"
+      "packages/harness/certification/subagents.test.ts",
+      "packages/harness/certification/memory-write.test.ts"
     ]
   },
   "delegation": {
