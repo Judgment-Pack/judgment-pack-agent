@@ -25,6 +25,7 @@ export class RecordsRefused extends OutputRefused {}
 export class OutputGuard {
  declaredNames:ReadonlySet<string>=new Set()
  readonly mode:'off'|'redact'|'refuse'
+ private readonly emittedLabels=new Set<string>()
  private patterns:{name:string;compiled:CompiledPattern}[]
  constructor(members:PolicyMembers,private counts:()=>OutputCounts,private notify:(e:AssistantEvent)=>void){
   this.mode=(members.outputGuard?.value??'redact') as typeof this.mode
@@ -40,6 +41,7 @@ export class OutputGuard {
   this.notify({type:'output_guarded',where,pattern,action})
  }
  refuse(where:OutputWhere,pattern:string,marker?:RecordMarker):never{
+  this.emittedLabels.add(`Output refused: ${pattern}.`)
   this.record(where,pattern,'refuse',true,marker)
   this.notify({type:'guardrail',tool:marker?'records':where,action:'refused',reason:'output refused',detail:`Output refused: ${pattern}.`})
   throw marker?new RecordsRefused(pattern):new OutputRefused(pattern)
@@ -64,12 +66,21 @@ export class OutputGuard {
     while(i+1<matches.length&&matches[i+1]!.start<end){i++;end=Math.max(end,matches[i]!.end)}
     if(this.mode==='refuse')return this.refuse(where,m.name,marker)
     this.record(where,m.name,'redact',record,marker)
-    out+=s.slice(at,m.start)+`[redacted: ${m.name}]`;at=end
+    const label=`[redacted: ${m.name}]`;this.emittedLabels.add(label)
+    out+=s.slice(at,m.start)+label;at=end
    }
    return out+s.slice(at)
   }
   const walk=(v:unknown):unknown=>{
-   if(typeof v==='string')return marker?v.split(/(\[redacted: [a-z][a-z0-9-]{0,63}\]|Output refused: [a-z][a-z0-9-]{0,63}\.)/g).map((part,i)=>i%2?part:text(part)).join(''):text(v)
+   if(typeof v==='string'){
+    if(!marker)return text(v)
+    let out='',at=0
+    for(const match of v.matchAll(/\[redacted: [a-z][a-z0-9-]{0,63}\]|Output refused: [a-z][a-z0-9-]{0,63}\./g)){
+     if(!this.emittedLabels.has(match[0]))continue
+     out+=text(v.slice(at,match.index))+match[0];at=match.index+match[0].length
+    }
+    return out+text(v.slice(at))
+   }
    if(where==='draft edit'&&(v===null||typeof v==='number'||typeof v==='boolean')){const raw=JSON.stringify(v),clean=text(raw);return clean===raw?v:clean}
    if(Array.isArray(v))return v.map(walk)
    if(v&&typeof v==='object'){const out={...v} as Record<string,unknown>;for(const k of Object.keys(v).sort()){const key=walk(k) as string,clean=walk((v as Record<string,unknown>)[k]);if(key!==k)delete out[k];out[key]=clean}return out}

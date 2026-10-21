@@ -31,7 +31,7 @@ func failoverFindings(ctx context.Context, server *Server, inner Adapter, agent 
 		prefix = "20 agent "
 	}
 	var out []Finding
-	// Qualifying failure: the identical complete request is sent once to the same-family fallback.
+	// Qualifying failure: the request is rebuilt for and sent once to the same-family fallback.
 	f := findings{check: prefix + "switch"}
 	host, err := openScenario(ctx, server, ScenarioEndpoint{Scenario: "policy-table", AnswerAs: "whole"}, nil, true)
 	if err != nil {
@@ -41,7 +41,7 @@ func failoverFindings(ctx context.Context, server *Server, inner Adapter, agent 
 	var bodies []string
 	calls := []string{}
 	run := Run{ModelName: "primary-model", Wire: "openai-compatible", Thinking: "ultra", Prompt: file.Request, AllowConversation: true, Critic: "off", Gate: host.gate.Calls(), Tools: host.offer.Tools, Context: &runcontext.Input{Connection: "primary", CurrentRequest: &runcontext.CurrentRequest{Message: file.Request, Input: file.Request}}, Policy: runcontext.PolicyLayer{"models": map[string]any{"author": map[string]any{"fallback": []any{"backup"}}}}, Emit: func(e contract.RunEvent) { events = append(events, e) }}
-	backup := adapter.PolicyConnection{ModelName: "backup-model", Wire: "openai-compatible", Model: func(_ context.Context, _ string, r relay.Request) (*http.Response, error) {
+	backup := adapter.PolicyConnection{ModelName: "backup-model", Wire: "openai-compatible", Capabilities: &contract.CapabilityEndpointCapabilities{Tiers: &contract.CapabilityEndpointCapabilitiesTiers{Low: "low", Medium: "medium", High: "high"}}, Model: func(_ context.Context, _ string, r relay.Request) (*http.Response, error) {
 		calls = append(calls, "backup")
 		bodies = append(bodies, string(r.Body))
 		return providerAnswer("openai", file.Proposal, false), nil
@@ -67,6 +67,7 @@ func failoverFindings(ctx context.Context, server *Server, inner Adapter, agent 
 		run.Model = nil
 		run.Wire = ""
 		backup = adapter.PolicyConnection{Agent: makeAgent("backup", false)}
+		backup.Agent.Tiers = map[string]string{"low": "low", "medium": "medium", "high": "medium"}
 	}
 	run.PolicyConnections = map[string]adapter.PolicyConnection{"backup": backup}
 	if err = inner.Run(ctx, &run); err != nil {
@@ -75,8 +76,24 @@ func failoverFindings(ctx context.Context, server *Server, inner Adapter, agent 
 	if len(calls) != 2 || calls[0] != "primary" || calls[1] != "backup" {
 		f.fail("dispatch is %v", calls)
 	}
-	if len(bodies) == 2 && bodies[0] != bodies[1] {
-		f.fail("fallback request was not rebuilt identically")
+	if len(bodies) == 2 {
+		var first, second map[string]any
+		_ = json.Unmarshal([]byte(bodies[0]), &first)
+		_ = json.Unmarshal([]byte(bodies[1]), &second)
+		field, setting := "reasoning_effort", "high"
+		if agent {
+			field, setting = "effort", "medium"
+		}
+		if second["model"] != "backup-model" || second[field] != setting {
+			f.fail("backup model settings: %v", second)
+		}
+		delete(first, "model")
+		delete(second, "model")
+		delete(first, field)
+		delete(second, field)
+		if !reflect.DeepEqual(first, second) {
+			f.fail("fallback changed non-model request fields")
+		}
 	}
 	switches := ofType(events, func(e contract.RunEvent) *contract.RunEventConnectionSwitched { return e.ConnectionSwitched })
 	if len(switches) != 1 || switches[0].From != "primary" || switches[0].To != "backup" || switches[0].Reason != "unavailable" {
@@ -90,6 +107,9 @@ func failoverFindings(ctx context.Context, server *Server, inner Adapter, agent 
 		for _, row := range usage[0].Usage.Rows {
 			if (row.Connection == "primary" || row.Connection == "backup") && row.Bytes > 0 && (agent && row.Invocations == 1 || !agent && row.Requests == 1) {
 				accounted[row.Connection] = true
+			}
+			if row.Connection == "backup" && (row.Model == nil || *row.Model != "backup-model") {
+				f.fail("ledger model %v differs from request", row.Model)
 			}
 			if agent && row.Tokens != nil {
 				f.fail("agent tokens were invented")

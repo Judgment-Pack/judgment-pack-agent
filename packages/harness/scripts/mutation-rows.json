@@ -3111,7 +3111,7 @@
   {
    "name": "the prompt's digest is omitted",
    "file": "context/session.ts",
-   "find": "context.execution.claim();await context.execution.recordPrompt(request.body);",
+   "find": "context.execution.claim();await context.execution.recordPrompt(request.body)",
    "replace": "context.execution.claim();",
    "tests": [
     "prompt.test.ts"
@@ -4270,8 +4270,8 @@
   {
    "name": "context compaction fallback removed",
    "file": "context/session.ts",
-   "find": "}catch(cause){this.notices.push({type:'guardrail'",
-   "replace": "}catch(cause){throw cause;this.notices.push({type:'guardrail'",
+   "find": "}catch(cause){replacement=choice.summary.content as string;this.notices.push({type:'guardrail'",
+   "replace": "}catch(cause){throw cause;replacement=choice.summary.content as string;this.notices.push({type:'guardrail'",
    "tests": [
     "certification/scenarios.test.ts"
    ],
@@ -4678,6 +4678,31 @@
    "status": "caught",
    "origin": "agent#103 review #128",
    "note": "Go twin: return nil before validateCorpusManifest checks; TestCorpusInvalidManifestWritesNothing fails."
+  },
+  {
+    "name": "store guard forged-label exemption check removed",
+    "file": "outputGuard.ts",
+    "find": "if(!this.emittedLabels.has(match[0]))continue",
+    "replace": "void match",
+    "tests": [
+      "records.test.ts",
+      "certification/scenarios.test.ts"
+    ],
+    "status": "caught",
+    "origin": "agent#133",
+    "note": "Go twin: remove the emittedLabels membership check in OutputGuard.JSON; TestRecordsScanForgedLabels fails on a scratch copy."
+  },
+  {
+    "name": "output refusal terminal usage removed",
+    "file": "context/managed.ts",
+    "find": "   yield {type:'usage',usage}\n   yield {type:'end'};return\n  }\n  if(error instanceof PolicyRefusal)",
+    "replace": "   yield {type:'end'};return\n  }\n  if(error instanceof PolicyRefusal)",
+    "tests": [
+      "certification/output-boundary.test.ts"
+    ],
+    "status": "caught",
+    "origin": "agent#133",
+    "note": "Go twin: omit usage from the guardOutput refusal return in Boundary.Event; TestOutputRefusalClosesUsageBeforeEnd fails on a scratch copy."
   }
  ]
 }

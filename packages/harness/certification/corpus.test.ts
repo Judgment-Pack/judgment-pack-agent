@@ -31,3 +31,20 @@ describe.each([...MODEL_ENGINES,...AGENT_ENGINES])('scenario 22 · %s',engine=>{
   await replayCorpus(entry,async server=>{await server.model('chat/completions',{body:'{}'});return structuredClone(entry.events)})
  })
 })
+
+it('records and replays a real Codex run with ordered events and tool callbacks',async()=>{
+ const engine=await loadEngine('codex'),files:Record<string,string>={}
+ const manifest={...entries().find(row=>row.manifest.id.startsWith('agent-'))!.manifest,id:'agent-recorded-round-trip'}
+ const original=await runOnAgentEngine(async(request,callbacks)=>{
+  await callbacks.event({type:'text',id:'intro',text:'Inspecting.'})
+  const tool=request.tools.find(tool=>tool.name==='get_schema'||tool.description.startsWith('get_schema:'))!
+  await callbacks.tool({id:'schema-call',name:tool.name,arguments:{}},callbacks.signal)
+  await callbacks.event({type:'message',id:'intro',text:'Inspection complete.',phase:'final'})
+ },{engine,session:{critic:'off',record:true,corpus:{manifest,guard:{value:<T>(value:T)=>value},sink:{write(_id,written){Object.assign(files,written)}}}}})
+ expect(original.events.filter(e=>e.type==='error')).toEqual([])
+ expect(original.events.some(e=>e.type==='recorded')).toBe(true)
+ const entry:CorpusEntry={manifest:JSON.parse(files['manifest.json']!),requests:JSON.parse(files['requests.json']!),toolResults:JSON.parse(files['tool-results.json']!),events:JSON.parse(files['events.json']!),checkpoint:JSON.parse(files['checkpoint.json']!),expected:JSON.parse(files['expected.json']!)}
+ expect(JSON.parse(entry.requests[0]!.response.body).steps.map((step:object)=>Object.keys(step)[0])).toEqual(['event','tool','event'])
+ expect(entry.toolResults).toHaveLength(1)
+ await replayCorpus(entry,server=>releaseRun('codex',server))
+})

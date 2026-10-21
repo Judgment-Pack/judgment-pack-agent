@@ -1,6 +1,6 @@
 import {canonicalJSON} from './context/chat'
 import type {AssistantEvent,ModelRequest,McpToolResult} from './engine'
-import type {AgentCallbacks,AgentRequest} from './agent'
+import type {AgentCallbacks,AgentRequest,AgentEvent,AgentToolCall} from './agent'
 import corpusEntrySchema from '../../contract/schemas/corpus-entry.json'
 import {argumentProblem} from './sourceArguments'
 
@@ -107,8 +107,11 @@ export class ScriptedCorpusServer{
  async agent(_request:AgentRequest,callbacks:AgentCallbacks):Promise<void>{
   const row=this.entry.requests[this.requestAt++]
   if(!row)throw Error(`corpus request ${this.requestAt-1} differs`)
-  const body=JSON.parse(row.response.body) as {events?:unknown[]}
-  for(const event of body.events??[])await callbacks.event(event as Parameters<AgentCallbacks['event']>[0])
+  const body=JSON.parse(row.response.body) as {events?:AgentEvent[];steps?:({event:AgentEvent}|{tool:AgentToolCall})[]}
+  for(const step of body.steps??(body.events??[]).map(event=>({event}))){
+   if('event'in step)await callbacks.event(clone(step.event))
+   else await callbacks.tool(clone(step.tool),callbacks.signal)
+  }
  }
  async tool(name:string,args:Record<string,unknown>):Promise<McpToolResult>{
   const at=this.toolAt++,row=this.entry.toolResults[at],actual={name,args}
@@ -142,7 +145,15 @@ export function recordSession<T extends import('./engine').EngineSession>(sessio
   held.model={...held.model,call:async(suffix,request)=>{const {signal:_,...plain}=request,response=await call(suffix,request),copy=response.clone(),headers=Object.fromEntries(copy.headers.entries()),body=await copy.text();requests.push({suffix,request:plain,response:{status:copy.status,headers,body}});return response}}
  }else{
   const run=held.agent.run
-  held.agent={...held.agent,run:async(request,callbacks)=>{await run(request,callbacks);requests.push({suffix:'agent.run',request:structuredClone(request),response:{status:200,headers:{},body:''}})}}
+  held.agent={...held.agent,run:async(request,callbacks)=>{
+   const steps:({event:AgentEvent}|{tool:AgentToolCall})[]=[]
+   const row={suffix:'agent.run',request:clone(request),response:{status:200,headers:{},body:''}}
+   requests.push(row)
+   try{await run(request,{...callbacks,
+    event:async event=>{steps.push({event:clone(event)});await callbacks.event(event)},
+    tool:async(call,signal)=>{steps.push({tool:clone(call)});return callbacks.tool(call,signal)}
+   })}finally{row.response.body=canonicalJSON({steps})}
+  }}
  }
  const stream=async function*(events:AsyncIterable<AssistantEvent>):AsyncGenerator<AssistantEvent>{
   const recorded:AssistantEvent[]=[];let checkpoint:unknown={}

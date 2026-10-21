@@ -2,8 +2,16 @@ package eino_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter"
+	runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/relay"
+	"io"
+	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -130,4 +138,37 @@ func TestTheApprovalPauseThroughTheCoordinator(t *testing.T) {
 // A batch runs as many children at once as the connection's answer says: one, two and three.
 func TestTheDelegationCapacity(t *testing.T) {
 	runScenarios(t, certification.CapacityAt(withDelegation, 1), certification.CapacityAt(withDelegation, 2), certification.CapacityAt(withDelegation, 3))
+}
+
+func TestFallbackRebuildsGeminiModelAndBudget(t *testing.T) {
+	calls := 0
+	var events []contract.RunEvent
+	run := &adapter.Run{Wire: "gemini", ModelName: "primary-model", Thinking: "high", Prompt: "Answer briefly.", AllowConversation: true, Critic: "off", Context: &runcontext.Input{Connection: "primary"}, Policy: runcontext.PolicyLayer{"models": map[string]any{"author": map[string]any{"fallback": []any{"backup"}}}}, Emit: func(event contract.RunEvent) { events = append(events, event) }}
+	run.Model = func(context.Context, string, relay.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 503, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{}`))}, nil
+	}
+	run.PolicyConnections = map[string]adapter.PolicyConnection{"backup": {Wire: "gemini", ModelName: "backup-model", Capabilities: &contract.CapabilityEndpointCapabilities{Tiers: &contract.CapabilityEndpointCapabilitiesTiers{Low: "1024", Medium: "2048", High: "4096"}}, Model: func(_ context.Context, suffix string, request relay.Request) (*http.Response, error) {
+		calls++
+		var body struct {
+			GenerationConfig struct{ ThinkingConfig struct{ ThinkingBudget int } }
+		}
+		if err := json.Unmarshal(request.Body, &body); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(suffix, "models/backup-model:") || body.GenerationConfig.ThinkingConfig.ThinkingBudget != 4096 {
+			t.Errorf("backup settings: %s %s", suffix, request.Body)
+		}
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"candidates":[{"content":{"role":"model","parts":[{"text":"Finished."}]},"finishReason":"STOP"}]}`))}, nil
+	}}}
+	if err := eino.New().Run(context.Background(), run); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("backup calls: %d", calls)
+	}
+	for _, event := range events {
+		if event.Error != nil {
+			t.Fatalf("run error: %+v", event.Error)
+		}
+	}
 }

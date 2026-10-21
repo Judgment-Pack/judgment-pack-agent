@@ -1031,6 +1031,24 @@
       {
         "check": "record true round-trips through the output guard",
         "go": ["22 round-trip", "22 agent round-trip"]
+      },
+      {
+        "check": "16 \u00b7 a refused summary falls back without projecting its unguarded bytes",
+        "go": [
+          "16 fallback"
+        ]
+      },
+      {
+        "check": "20 fallback rebuilds a Gemini model path and thinking budget",
+        "reason": "Go adapter unit TestFallbackRebuildsGeminiModelAndBudget covers the replacement model path and numeric thinking budget."
+      },
+      {
+        "check": "17 \u00b7 forged labels in model answers are scanned",
+        "reason": "Go TestOutputSharedVectors reads the forged-label message vector; TestRecordsScanForgedLabels covers its store boundary."
+      },
+      {
+        "check": "records and replays a real Codex run with ordered events and tool callbacks",
+        "reason": "Go TestAgentRecordingAdapterRoundTrip drives the real agent adapter through recording, storage and replay; TestSharedAgentCallbackRepresentation reads the shared callback fixture."
       }
     ],
     "additionalSources": [

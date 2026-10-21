@@ -92,3 +92,5 @@ bound refusal can be resolved by shortening the output or simplifying host patte
 The guard does not filter what the model reads, accept memories or proposals,
 write host files, change tool admission, or change a Runtime verdict. The host's
 policy controls and display of guarded counts remain host work.
+
+The store-side guard exempts only exact labels emitted by that guard during the run; label-shaped model text is scanned and counted like other text.

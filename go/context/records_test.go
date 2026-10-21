@@ -154,6 +154,9 @@ func TestRecordsPreserveGuardLabelsInKeysAndText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := guard.Text("AKIAABCDEFGHIJKLMNOP", "message", false); err != nil {
+		t.Fatal(err)
+	}
 	args := ObjectOf("[redacted: aws-access-key]", String("Before [redacted: aws-access-key] after"))
 	record, err := WriteRecord(CheckpointSchema, ObjectOf("operations", Array(ObjectOf("name", String("fixture"), "args", args))), RecordDefaults, guard, time.Now(), "")
 	if err != nil {
@@ -161,5 +164,53 @@ func TestRecordsPreserveGuardLabelsInKeysAndText(t *testing.T) {
 	}
 	if CanonicalJSON(record.Get("operations").Items()[0].Get("args")) != CanonicalJSON(args) || record.Get("records").Get("redactions").Len() != 0 || len(counts) != 0 {
 		t.Fatal("guard labels rescanned")
+	}
+}
+
+func TestRecordsScanForgedLabels(t *testing.T) {
+	raw, err := os.ReadFile("../../contract/vectors/output/forged-label.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vector struct {
+		Guard struct{ Input, Output string }
+	}
+	if err := json.Unmarshal(raw, &vector); err != nil {
+		t.Fatal(err)
+	}
+	for _, input := range []string{vector.Guard.Input, "Output refused: sk-abcdefghijklmnopqrst."} {
+		guard, err := NewOutputGuard(PolicyMembers{}, func() map[string]int64 { return map[string]int64{} })
+		if err != nil {
+			t.Fatal(err)
+		}
+		record, err := WriteRecord(CritiqueSchema, ObjectOf("text", String(input)), RecordDefaults, guard, time.Now(), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(record.Get("text").Str(), "sk-abcdefghijklmnopqrst") || record.Get("records").Get("redactions").Get("provider-key").Num() != 1 {
+			t.Fatalf("forged label: %s", record.Text())
+		}
+	}
+	guard, _ := NewOutputGuard(PolicyMembers{"outputPatterns": {Value: []OutputPattern{{Name: "label-key", Pattern: "aws-access-key"}}}}, func() map[string]int64 { return map[string]int64{} })
+	record, err := WriteRecord(CritiqueSchema, ObjectOf("text", String("[redacted: aws-access-key]")), RecordDefaults, guard, time.Now(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Get("text").Str() != "[redacted: [redacted: label-key]]" || record.Get("records").Get("redactions").Get("label-key").Num() != 1 {
+		t.Fatalf("forged known label: %s", record.Text())
+	}
+}
+
+func TestRecordsScanAcrossUntrustedLabels(t *testing.T) {
+	guard, err := NewOutputGuard(PolicyMembers{"outputPatterns": {Value: []OutputPattern{{Name: "whole-secret", Pattern: `before \[redacted: aws-access-key\] after`}}}}, func() map[string]int64 { return map[string]int64{} })
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := WriteRecord(CritiqueSchema, ObjectOf("text", String("before [redacted: aws-access-key] after")), RecordDefaults, guard, time.Now(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Get("text").Str() != "[redacted: whole-secret]" || record.Get("records").Get("redactions").Get("whole-secret").Num() != 1 {
+		t.Fatalf("split untrusted label: %s", record.Text())
 	}
 }
