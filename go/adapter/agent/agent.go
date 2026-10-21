@@ -350,17 +350,25 @@ func (r *runState) drive(ctx context.Context) error {
 		if made == nil || ctx.Err() != nil {
 			return err
 		}
-		if errors.Is(err, errWaiting) || errors.Is(err, errHandoff) {
-			r.deliver(proposalEvent(*made))
+		drafts := r.sc.Drafts.Proposals()
+		if len(drafts) == 0 {
+			drafts = []runcontext.DraftProposal{{Document: made.Document, Unknowns: made.Unknowns, Edits: made.Edits}}
+		}
+		waiting := errors.Is(err, errWaiting) || errors.Is(err, errHandoff)
+		if !waiting && failure.IsCancelled(err) {
 			return err
 		}
-		if failure.IsCancelled(err) {
+		for _, draft := range drafts {
+			event := proposalEvent(turn.Proposal{Document: draft.Document, Unknowns: draft.Unknowns, Edits: draft.Edits})
+			if !waiting {
+				note := turn.ProposalNote("turn-unfinished", err, "agent")
+				event.Proposal.Note = &note
+			}
+			r.deliver(event)
+		}
+		if waiting {
 			return err
 		}
-		event := proposalEvent(*made)
-		note := turn.ProposalNote("turn-unfinished", err, "agent")
-		event.Proposal.Note = &note
-		r.deliver(event)
 		return nil
 	}
 	made := r.takeProposal()

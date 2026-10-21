@@ -1,3 +1,6 @@
+import invalidIdentifiers from '../../contract/vectors/edits/invalid-identifiers.json'
+import eventSchema from '../../contract/schemas/run-event.json'
+import {argumentProblem} from './sourceArguments'
 import {describe,it,expect} from 'vitest'
 import {Drafts} from './edits'
 import {ContextLedger,answer} from './context/ledger'
@@ -54,4 +57,14 @@ describe('proposal edits',()=>{
   const other=await opened({...CONTEXT_DEFAULTS,proposalBytes:95})
   await expect(other.drafts.edit('propose_insert',{document:'pack',after_anchor:'Before',text:'x'.repeat(40)},signal)).rejects.toThrow('proposalBytes')
  })
+})
+
+it('refuses the shared malformed identifiers with schema-valid events',async()=>{
+ const {drafts,events}=await opened()
+ for(const [at,call] of invalidIdentifiers.calls.entries()){
+  await expect(drafts.edit('undo_edit',call.arguments,signal)).rejects.toThrow()
+  const event=events.filter(e=>e.type==='edit_refused').at(-1)!
+  expect(event).toEqual(invalidIdentifiers.items[at])
+  expect(argumentProblem(eventSchema.$defs.edit_refused,event)).toBeUndefined()
+ }
 })

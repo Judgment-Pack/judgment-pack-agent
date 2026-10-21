@@ -846,6 +846,7 @@ class VectorTests(unittest.TestCase):
         enums += [("provenance.json", path) for path in enum_paths(schemas_["provenance.json"]["$defs"]["memoryRecall"], ["$defs", "memoryRecall"])]
         enums += [("tool-offer.json", path) for path in enum_paths(schemas_["tool-offer.json"]["$defs"]["remember"], ["$defs", "remember"])]
         enums += [("tool-offer.json", ["$defs", "reservedName"])]
+        enums += [("provenance.json", ["$defs", "edit", "properties", "type"])]
         # Existing schemas: this ADR adds these values, not new obligations for
         # the unrelated event and failure values from earlier releases.
         added_values = {

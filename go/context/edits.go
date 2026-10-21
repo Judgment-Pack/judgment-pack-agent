@@ -272,8 +272,18 @@ func (g *Drafts) Section() string {
 	return "PROPOSAL DRAFTS (package-owned data; read with search and read_window; edit with the reserved edit tools; the person accepts each whole document)\n" + FrameBlock("proposal drafts", strings.Join(parts, "\n\n"), g.session.Marker)
 }
 func (g *Drafts) refuse(name, document, reason string) error {
+	if document == "" || utf8.RuneCountInString(document) > 512 {
+		reason = "Invalid document identifier (expected 1 to 512 characters). " + reason
+	}
+	if utf8.RuneCountInString(document) > 512 {
+		document = string([]rune(document)[:512])
+	}
+	var identifier *string
+	if document != "" {
+		identifier = &document
+	}
 	guard := "edit refused"
-	g.notices = append(g.notices, contract.RunEvent{EditRefused: &contract.RunEventEditRefused{Type: "edit_refused", Document: document, Reason: reason}}, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: name, Action: "refused", Reason: &guard, Detail: reason}})
+	g.notices = append(g.notices, contract.RunEvent{EditRefused: &contract.RunEventEditRefused{Type: "edit_refused", Document: identifier, Reason: reason}}, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: name, Action: "refused", Reason: &guard, Detail: reason}})
 	return failure.ToolInput(reason)
 }
 func (g *Drafts) Refuse(name, document string) error {
@@ -461,6 +471,20 @@ func (g *Drafts) Proposals() []DraftProposal {
 	out := []DraftProposal{}
 	for _, d := range g.documents {
 		out = append(out, DraftProposal{Document: json.RawMessage(d.Text), Unknowns: append([]string{}, d.Unknowns...), Edits: append([]contract.ProvenanceEdit{}, d.Edits...)})
+	}
+	return out
+}
+
+// OfferedEditTools names the reserved edit family in the author's loop offer.
+// Hosts add these declarations beside OfferedSkillTools and OfferedReviewTool before opening the gate.
+func OfferedEditTools(session Session) []contract.ToolOfferHostTool {
+	if session.Context != nil && (session.Context.Objective != "" || session.Context.Phase != "" && session.Context.Phase != "loop") {
+		return nil
+	}
+	effect := "proposal"
+	out := []contract.ToolOfferHostTool{}
+	for _, name := range EditTools {
+		out = append(out, contract.ToolOfferHostTool{Name: name, Description: "Edit the package proposal draft.", InputSchema: EditSchema(name), Effect: &effect})
 	}
 	return out
 }

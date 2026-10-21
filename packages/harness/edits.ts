@@ -28,6 +28,11 @@ export function validDraft(value:unknown):value is DraftCheckpoint {
  })
 }
 const label=(d:{id:string;digest:string;edits:Edit[]})=>`${d.id}@${d.digest}:${d.edits.length}`
+export function editRefusal(document:unknown,reason:string):Extract<AssistantEvent,{type:'edit_refused'}>{
+ const id=typeof document==='string'?document:''
+ const invalid=!id||[...id].length>512
+ return {type:'edit_refused',...(id?{document:[...id].slice(0,512).join('')} : {}),reason:invalid?'Invalid document identifier (expected 1 to 512 characters). '+reason:reason}
+}
 export class Drafts {
  private documents=new Map<string,Held>()
  private queue:Promise<unknown>=Promise.resolve()
@@ -73,7 +78,7 @@ export class Drafts {
  proposals():Proposal[]{return [...this.documents.keys()].map(id=>this.proposal(id)!)}
  section(){return this.documents.size?'PROPOSAL DRAFTS (package-owned data; read with search and read_window; edit with the reserved edit tools; the person accepts each whole document)\n'+frameBlock('proposal drafts',[...this.documents.values()].map(d=>d.id+'\n'+d.text).join('\n\n'),this.marker()):''}
  refuse(type:string,document:string,reason:string):never{
-  this.notify({type:'edit_refused',document,reason})
+  this.notify(editRefusal(document,reason))
   this.notify({type:'guardrail',tool:type,action:'refused',reason:'edit refused',detail:reason})
   throw toolInputFailure(reason)
  }

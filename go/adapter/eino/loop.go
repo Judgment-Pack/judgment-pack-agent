@@ -85,7 +85,7 @@ func (t *turnState) closeCalls(answer *schema.Message) *schema.Message {
 }
 
 // runOnce is one attempt at the turn.
-func (r *runState) runOnce(ctx context.Context) error {
+func (r *runState) runOnce(ctx, caller context.Context) error {
 	t := &turnState{r: r, turnLimit: r.sc.Execution.Remaining()}
 	runtimeTools, hostTools := r.offeredTools()
 	t.offered = map[string]bool{}
@@ -284,24 +284,29 @@ func (r *runState) runOnce(ctx context.Context) error {
 	if turnErr != nil {
 		keepUnread()
 		// A proposal made through propose_pack is finished work: a later request of the turn that
-		// fails does not take it with it.
-		if made := t.toolProposal; made != nil && ctx.Err() == nil {
-			if d := r.sc.Drafts.Proposal(); d != nil {
-				made = &turn.Proposal{Document: d.Document, Unknowns: d.Unknowns, Edits: d.Edits}
+		// fails does not take it with it. A question cancels the internal execution
+		// context; only cancellation by the caller suppresses delivery.
+		if made := t.toolProposal; made != nil && caller.Err() == nil {
+			drafts := r.sc.Drafts.Proposals()
+			if len(drafts) == 0 {
+				drafts = []runcontext.DraftProposal{{Document: made.Document, Unknowns: made.Unknowns, Edits: made.Edits}}
 			}
 			t.toolProposal = nil
-			event := proposalEvent(*made)
-			if r.awaitingInput {
+			for _, draft := range drafts {
+				event := proposalEvent(turn.Proposal{Document: draft.Document, Unknowns: draft.Unknowns, Edits: draft.Edits})
+				if !r.awaitingInput {
+					cause := turnErr
+					if r.overTime {
+						cause = r.turnTimeFailure()
+					}
+					note := turn.ProposalNote("turn-unfinished", cause, "model")
+					event.Proposal.Note = &note
+				}
 				r.deliver(event)
+			}
+			if r.awaitingInput {
 				return turnErr
 			}
-			cause := turnErr
-			if r.overTime {
-				cause = r.turnTimeFailure()
-			}
-			note := turn.ProposalNote("turn-unfinished", cause, "model")
-			event.Proposal.Note = &note
-			r.deliver(event)
 			return nil
 		}
 		return turnErr

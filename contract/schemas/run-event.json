@@ -932,7 +932,6 @@
       "type": "object",
       "required": [
         "type",
-        "document",
         "reason"
       ],
       "properties": {
@@ -942,7 +941,8 @@
         "document": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 512
+          "maxLength": 512,
+          "description": "Offending document identifier, truncated to 512 Unicode characters. Omitted when missing, non-string or empty; reason names the invalid document identifier."
         },
         "reason": {
           "type": "string",

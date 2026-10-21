@@ -476,9 +476,6 @@ func (g *Gate) AdmitHost(name string) *Result {
 	phase := g.current()
 	// ADR-0014: the reserved package proposal tool is always available to the author, including Plan mode.
 	// The session boundary refuses host declarations using this name; children and the critic cannot enter it.
-	if (name == "propose_edit" || name == "propose_delete" || name == "propose_insert" || name == "undo_edit") && phase.Kind == PhaseLoop {
-		return nil
-	}
 	if name == "remember" && (phase.Kind == PhaseLoop || phase.Kind == PhasePlan) {
 		return nil
 	}

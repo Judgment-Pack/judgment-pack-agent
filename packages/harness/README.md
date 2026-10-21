@@ -713,3 +713,10 @@ a whole document with its edit provenance. Drafts and undo history survive
 checkpoint resume, and ride in execution state so the stable prefix is unchanged.
 Children and the critic never edit. Hosts supply accepted documents or the first
 `propose_pack` opens the draft; no host file is written.
+
+Proposal edit refusals omit `document` when the identifier is missing, non-string
+or empty; nonempty identifiers are truncated to 512 Unicode characters. The
+`reason` names an invalid identifier. This makes malformed calls schema-valid
+refusal events. Interrupted and waiting turns deliver every draft with its edits.
+Both languages execute the shared calls under `contract/vectors/edits/`, including
+successful deletion/insertion and malformed-identifier cases.

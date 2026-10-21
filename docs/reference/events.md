@@ -44,7 +44,7 @@ See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](crit
 | `memory_proposed` | `run-event.json $defs/memory_proposed` | `memory` |
 | `memory_recalled` | `run-event.json $defs/memory_recalled` | `ids`, `digests`, `bytes` |
 | `edit_applied` | `run-event.json $defs/edit_applied` | `document`, `line`, `bytes`, `valid` |
-| `edit_refused` | `run-event.json $defs/edit_refused` | `document`, `reason` |
+| `edit_refused` | `run-event.json $defs/edit_refused` | `reason` |
 
 ## Every kind with its members
 
@@ -390,5 +390,5 @@ Closed: a member the schema does not name is refused.
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
 | `type` | yes | const `edit_refused` |  |
-| `document` | yes | string (min length 1, max length 512) |  |
+| `document` |  | string (min length 1, max length 512) | Offending document identifier, truncated to 512 Unicode characters. Omitted when missing, non-string or empty; reason names the invalid document identifier. |
 | `reason` | yes | string (min length 1) |  |

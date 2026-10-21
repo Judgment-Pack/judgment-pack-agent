@@ -1,4 +1,4 @@
-import {Drafts,isEdit,type AcceptedDocument} from '../edits'
+import {Drafts,isEdit,editRefusal,type AcceptedDocument} from '../edits'
 import { REMEMBER, rememberTool, recordRecall } from '../memories'
 import {canonicalJSON} from './chat'
 import {normalize} from '../thinking'
@@ -353,7 +353,7 @@ this.turn=session.context?.chat?.openTurn();this.objective=session.context?.obje
   * before any call is made, whatever the phase, with its own guardrail event.
   */
  refuseUnoffered(name:string,args:Record<string,unknown>={}):GateViolation{
-  if(isEdit(name)){const detail='Only the author may edit a proposal draft.';this.notices.push({type:'edit_refused',document:typeof args.document==='string'?args.document:'unknown',reason:detail});return this.refuse(name,detail,'edit refused')}
+  if(isEdit(name)){const detail='Only the author may edit a proposal draft.';this.notices.push(editRefusal(args.document,detail));return this.refuse(name,detail,'edit refused')}
   if(name===REMEMBER)return this.refuse(name,'This run may not propose memory.','memory refused')
   // ADR-0010: request_review where it is not offered is refused with the switch's own guardrail.
   if(name==='delegate_tasks'&&this.objective)return this.refuse(name,'A child cannot delegate.','subagent refused')

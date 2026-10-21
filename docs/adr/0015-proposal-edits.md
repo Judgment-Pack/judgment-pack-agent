@@ -37,7 +37,9 @@ Every candidate, including undo, is checked as JSON and sent through the existin
 gated Runtime `validate` call. Only a `valid` result replaces the draft. A malformed,
 invalid, unavailable or failed check leaves the prior text and undo stack unchanged
 and emits `edit_refused {type, document, reason}` plus a guardrail with reason
-`edit refused`. A successful edit emits `edit_applied {type, document, line, bytes,
+`edit refused`. For a missing, non-string or empty identifier, `document` is
+omitted and `reason` names the invalid document identifier. Nonempty identifiers
+are truncated to 512 Unicode characters. A successful edit emits `edit_applied {type, document, line, bytes,
 valid}`. Calls are serialized so concurrent edits cannot validate one revision and
 replace another. A child and the critic never edit, including unoffered calls.
 
@@ -49,7 +51,8 @@ members for v0.8.0.
 
 The proposal at the end is the whole draft with `edits[]` provenance: the operation,
 document, anchor line, bytes and validation result. The person accepts a whole
-document. The critic reviews the whole proposal; edits are provenance only.
+document. Interrupted and waiting turns deliver the complete set, each with its
+edit provenance. The critic reviews the whole proposal; edits are provenance only.
 No edit changes a verdict, a tool effect, an approval or a host file.
 
 The draft rides after history, with loaded schemas and skills in the execution
@@ -81,3 +84,7 @@ person's review to a patch. Validation costs a Runtime call per edit; retained
 revisions and undo history consume the existing context and checkpoint budgets.
 The Desk's diff beside the whole document and naming of its accepted origin are
 follow-up work. Critic rounds and severity classes remain outside this decision.
+
+Both certifications execute the shared call vectors in `contract/vectors/edits/`.
+Go hosts register `OfferedEditTools(session)` through the existing offer mechanism;
+the gate admits only names in the phase offer and has no edit exception.

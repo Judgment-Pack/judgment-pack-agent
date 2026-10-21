@@ -852,3 +852,13 @@ describe('the contract’s gate vectors', () => {
     })
   })
 })
+
+// Twin of go/gate TestReview122GateOffer: an empty offer grants no edit call.
+it('refuses every edit name with an empty offer before sending a frame', async () => {
+ const gate = gated(new Set())
+ for (const name of ['propose_edit', 'propose_delete', 'propose_insert', 'undo_edit']) {
+  await expect(gate.transport.send(call(name, {document:'pack'}))).rejects.toThrow()
+ }
+ expect(gate.sent).toEqual([])
+ expect(gate.notices.map(n=>n.tool)).toEqual(['propose_edit', 'propose_delete', 'propose_insert', 'undo_edit'])
+})

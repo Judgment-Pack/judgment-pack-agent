@@ -76,3 +76,44 @@ func TestProposalEditsAtomicResumeAndUndo(t *testing.T) {
 		t.Fatal("undo applied twice")
 	}
 }
+
+func TestEditRefusalsUseSharedInvalidIdentifierVectors(t *testing.T) {
+	opened, err := ContextualSession(context.Background(), modelSession())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opened.Context.Close()
+	vector := readJSON(t, "contract/vectors/edits/invalid-identifiers.json")
+	schema := readJSON(t, "contract/schemas/run-event.json").Get("$defs").Get("edit_refused")
+	for at, call := range vector.Get("calls").Items() {
+		if _, err := opened.Context.Drafts.Edit(context.Background(), call.Get("name").Str(), json.RawMessage(CanonicalJSON(call.Get("arguments")))); err == nil {
+			t.Fatal("invalid identifier accepted")
+		}
+		event := opened.Context.Drafts.TakeNotices()[0]
+		raw, err := json.Marshal(event)
+		if err != nil {
+			t.Fatal(err)
+		}
+		actual, err := ParseJSON(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := ArgumentProblem(schema, actual); got != "" {
+			t.Fatal(got)
+		}
+		if CanonicalJSON(actual) != CanonicalJSON(vector.Get("items").Items()[at]) {
+			t.Fatalf("refusal differs: %s", raw)
+		}
+	}
+}
+
+func TestEditOfferNamesOnlyTheAuthorLoop(t *testing.T) {
+	if len(OfferedEditTools(Session{})) != 4 {
+		t.Fatal("author edit offer missing")
+	}
+	for _, input := range []*Input{{Objective: "Read only"}, {Phase: "plan"}, {Phase: "critic"}, {Phase: "reformat"}} {
+		if len(OfferedEditTools(Session{Context: input})) != 0 {
+			t.Fatal("edits offered outside author loop")
+		}
+	}
+}

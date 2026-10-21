@@ -26,7 +26,37 @@ func proposalEditFindings(ctx context.Context, inner Adapter, agent bool) ([]Fin
 		name = AgentProposalEditNames[0]
 	}
 	f := findings{check: name}
-	play := func(steps []memoryStep, input *runcontext.Input, critic bool) (memoryRun, error) {
+	vectorSteps := func(file string) ([]memoryStep, error) {
+		_, items, err := ReadVector("edits/" + file)
+		if err != nil {
+			return nil, err
+		}
+		var out []memoryStep
+		for _, item := range items {
+			var call struct {
+				Name      string          `json:"name"`
+				Arguments json.RawMessage `json:"arguments"`
+			}
+			if err := json.Unmarshal(item, &call); err != nil {
+				return nil, err
+			}
+			out = append(out, memoryStep{name: call.Name, args: call.Arguments})
+		}
+		return out, nil
+	}
+	steps, err := vectorSteps("sequence.json")
+	if err != nil {
+		return nil, err
+	}
+	var initial struct {
+		Document json.RawMessage `json:"document"`
+	}
+	if err := json.Unmarshal(steps[0].args, &initial); err != nil {
+		return nil, err
+	}
+	steps = append(steps, memoryStep{say: "The revised draft is ready."})
+	editStep := steps[3]
+	play := func(steps []memoryStep, input *runcontext.Input, critic bool, ending ...string) (memoryRun, error) {
 		out := memoryRun{}
 		var mu sync.Mutex
 		if input == nil {
@@ -70,16 +100,16 @@ func proposalEditFindings(ctx context.Context, inner Adapter, agent bool) ([]Fin
 			return runcontext.ToolResult{}, fmt.Errorf("host proposal executed")
 		}}
 		g := gate.New(gate.Options{Runtime: runtime, Granted: gate.Ceiling, Emit: emit})
-		offer, err := g.Open(ctx, append([]contract.ToolOfferHostTool{{Name: "propose_pack", Description: "Propose a pack.", InputSchema: turn.ProposePackSchema}}, boundaryTools(true)...))
+		offer, err := g.Open(ctx, append([]contract.ToolOfferHostTool{{Name: "propose_pack", Description: "Propose a pack.", InputSchema: turn.ProposePackSchema}, {Name: "ask_user", InputSchema: json.RawMessage(`{"type":"object"}`)}}, append(boundaryTools(true), runcontext.OfferedEditTools(runcontext.Session{Context: input})...)...))
 		if err != nil {
 			return memoryRun{}, err
 		}
-		run := Run{ModelName: "fixture", Wire: "openai-compatible", Thinking: "off", Prompt: "Revise the draft.", TestPrompt: "Review the entire proposal.", AllowConversation: true, Interactive: true, Critic: "off", Gate: g.Calls(), Tools: offer.Tools, HostTools: []runcontext.HostTool{propose}, Context: input, Emit: emit}
+		run := Run{ModelName: "fixture", Wire: "openai-compatible", Thinking: "off", Prompt: "Revise the draft.", TestPrompt: "Review the entire proposal.", AllowConversation: true, Interactive: true, Critic: "off", Gate: g.Calls(), Tools: offer.Tools, HostTools: []runcontext.HostTool{propose, {Name: "ask_user", Description: "Ask the person.", Interaction: "question", InputSchema: json.RawMessage(`{"type":"object"}`)}}, Context: input, Emit: emit}
 
 		if critic {
 			run.Critic = "on"
 		}
-		review := []memoryStep{{name: "propose_edit", args: json.RawMessage(`{"document":"pack","old_text":"Before","new_text":"After"}`)}, {say: "Reviewed the whole proposal."}}
+		review := []memoryStep{editStep, {say: "Reviewed the whole proposal."}}
 		parent, criticAt := 0, 0
 		run.Model = func(_ context.Context, _ string, request relay.Request) (*http.Response, error) {
 			system, _ := systemSplit("openai-compatible", request.Body)
@@ -91,6 +121,9 @@ func proposalEditFindings(ctx context.Context, inner Adapter, agent bool) ([]Fin
 				}
 				criticAt++
 			} else {
+				if parent >= len(steps) && len(ending) > 0 && ending[0] == "failure" {
+					return nil, fmt.Errorf("Interrupted after edit")
+				}
 				if parent < len(steps) {
 					step = steps[parent]
 				}
@@ -132,27 +165,17 @@ func proposalEditFindings(ctx context.Context, inner Adapter, agent bool) ([]Fin
 						}
 					}
 				}
+				if len(ending) > 0 && ending[0] == "failure" {
+					return fmt.Errorf("Interrupted after edit")
+				}
 				return nil
 			}}
 		}
 		err = inner.Run(ctx, &run)
 		return out, err
 	}
-	steps := []memoryStep{
-		{name: "propose_pack", args: json.RawMessage(`{"document":{"specVersion":"1","id":"pack","title":"Before","notes":"same same"}}`)},
-		{name: "search", args: json.RawMessage(`{"id":"draft:pack","pattern":"Before"}`)},
-		{name: "read_window", args: json.RawMessage(`{"id":"draft:pack","offset":3,"limit":1}`)},
-		{name: "propose_edit", args: json.RawMessage(`{"document":"pack","old_text":"Before","new_text":"After"}`)},
-		{name: "read_window", args: json.RawMessage(`{"id":"draft:pack","offset":3,"limit":1}`)},
-		{name: "propose_edit", args: json.RawMessage(`{"document":"pack","old_text":"same","new_text":"x"}`)},
-		{name: "propose_delete", args: json.RawMessage(`{"document":"pack","old_text":"  \"specVersion\": \"1\",\n"}`)},
-		{name: "propose_insert", args: json.RawMessage(`{"document":"pack","after_anchor":"After","text":" again"}`)},
-		{name: "undo_edit", args: json.RawMessage(`{"document":"pack"}`)},
-		{say: "The revised draft is ready."},
-	}
-
 	accepted, err := play([]memoryStep{steps[3], {say: "Two documents."}}, &runcontext.Input{AcceptedDocuments: []runcontext.AcceptedDocument{
-		{ID: "pack", Document: json.RawMessage(`{"specVersion":"1","id":"pack","title":"Before","notes":"same same"}`)},
+		{ID: "pack", Document: initial.Document},
 		{ID: "second", Document: json.RawMessage(`{"specVersion":"1","id":"second","title":"Second"}`)},
 	}}, false)
 	if err != nil {
@@ -172,6 +195,67 @@ func proposalEditFindings(ctx context.Context, inner Adapter, agent bool) ([]Fin
 			f.fail("draft placed in the stable prefix")
 		}
 	}
+	for _, ending := range []string{"failure", "waiting"} {
+		interruptedSteps := []memoryStep{steps[3]}
+		if ending == "waiting" {
+			interruptedSteps = append(interruptedSteps, memoryStep{name: "ask_user", args: json.RawMessage(`{"title":"Continue","question":"What next?","selection":"single","options":[],"recommendedOptionId":null,"recommendation":null}`)})
+		}
+		interrupted, err := play(interruptedSteps, &runcontext.Input{AcceptedDocuments: []runcontext.AcceptedDocument{{ID: "pack", Document: initial.Document}, {ID: "second", Document: json.RawMessage(`{"specVersion":"1","id":"second","title":"Second"}`)}}}, false, ending)
+		if err != nil {
+			return nil, err
+		}
+		count, edited, waiting := 0, false, false
+		for _, event := range interrupted.events {
+			if event.UserQuestion != nil {
+				waiting = true
+			}
+			if event.Proposal == nil {
+				continue
+			}
+			count++
+			if string(event.Proposal.Document["id"]) == `"pack"` {
+				edited = string(event.Proposal.Document["title"]) == `"After"` && len(event.Proposal.Edits) == 1
+			}
+			if ending == "failure" && event.Proposal.Note == nil {
+				f.fail("interrupted draft lacks note")
+			}
+		}
+		if count != 2 || !edited || ending == "waiting" && !waiting {
+			f.fail("%s lost draft set or edits: count=%d edited=%v waiting=%v", ending, count, edited, waiting)
+		}
+	}
+	deleteInsert, err := vectorSteps("delete-insert.json")
+	if err != nil {
+		return nil, err
+	}
+	changed, err := play(append(deleteInsert, memoryStep{say: "Edited."}), &runcontext.Input{AcceptedDocuments: []runcontext.AcceptedDocument{{ID: "pack", Document: initial.Document}}}, false)
+	if err != nil {
+		return nil, err
+	}
+	var expectedEdits []contract.ProvenanceEdit
+	for _, file := range []string{"propose_delete-provenance.json", "propose_insert-provenance.json"} {
+		_, items, err := ReadVector("edits/" + file)
+		if err != nil {
+			return nil, err
+		}
+		var edit contract.ProvenanceEdit
+		if err := json.Unmarshal(items[0], &edit); err != nil {
+			return nil, err
+		}
+		expectedEdits = append(expectedEdits, edit)
+	}
+	matched := false
+	for _, event := range changed.events {
+		if event.Proposal != nil {
+			got, _ := json.Marshal(event.Proposal.Edits)
+			want, _ := json.Marshal(expectedEdits)
+			matched = string(got) == string(want) && string(event.Proposal.Document["title"]) == `"After!"`
+		}
+	}
+	if !matched {
+		f.fail("successful deletion/insertion differs from shared provenance")
+	}
+
 	ran, err := play(steps, nil, false)
 	if err != nil {
 		return nil, err
@@ -202,9 +286,29 @@ func proposalEditFindings(ctx context.Context, inner Adapter, agent bool) ([]Fin
 		if e.Proposal != nil {
 			raw, _ := json.Marshal(e.Proposal.Document)
 			actual, _ := runcontext.ParseJSON(raw)
-			expected := runcontext.MustParseJSON(`{"specVersion":"1","id":"pack","title":"After","notes":"same same"}`)
+			_, expectedItems, err := ReadVector("edits/proposal.json")
+			if err != nil {
+				return nil, err
+			}
+			expected := runcontext.MustParseJSON(string(expectedItems[0]))
+			var expectedEdits []contract.ProvenanceEdit
+			_ = json.Unmarshal([]byte(runcontext.CanonicalJSON(expected.Get("edits"))), &expectedEdits)
+			for _, file := range []string{"propose_insert-provenance.json", "undo.json"} {
+				_, items, err := ReadVector("edits/" + file)
+				if err != nil {
+					return nil, err
+				}
+				for _, raw := range items {
+					var edit contract.ProvenanceEdit
+					if err := json.Unmarshal(raw, &edit); err != nil {
+						return nil, err
+					}
+					expectedEdits = append(expectedEdits, edit)
+				}
+			}
 			edits, _ := json.Marshal(e.Proposal.Edits)
-			proposed = runcontext.CanonicalJSON(actual) == runcontext.CanonicalJSON(expected) && string(edits) == `[{"type":"propose_edit","document":"pack","line":4,"bytes":5,"valid":true},{"type":"propose_insert","document":"pack","line":4,"bytes":6,"valid":true},{"type":"undo_edit","document":"pack","line":4,"bytes":0,"valid":true}]`
+			want, _ := json.Marshal(expectedEdits)
+			proposed = runcontext.CanonicalJSON(actual) == runcontext.CanonicalJSON(expected.Get("document")) && string(edits) == string(want)
 		}
 	}
 	if !readUpdated {
@@ -218,7 +322,11 @@ func proposalEditFindings(ctx context.Context, inner Adapter, agent bool) ([]Fin
 			f.fail("stable prefix changed")
 		}
 	}
-	continued, err := play([]memoryStep{{name: "propose_edit", args: json.RawMessage(`{"document":"pack","old_text":"After","new_text":"Continued"}`)}, {say: "Continued."}}, &runcontext.Input{Execution: saved}, false)
+	resume, err := vectorSteps("resume.json")
+	if err != nil {
+		return nil, err
+	}
+	continued, err := play(append(resume, memoryStep{say: "Continued."}), &runcontext.Input{Execution: saved}, false)
 	if err != nil {
 		return nil, err
 	}

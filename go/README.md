@@ -165,3 +165,10 @@ a whole document with its edit provenance. Drafts and undo history survive
 checkpoint resume, and ride in execution state so the stable prefix is unchanged.
 Children and the critic never edit. Hosts supply accepted documents or the first
 `propose_pack` opens the draft; no host file is written.
+
+Hosts add `runcontext.OfferedEditTools(session)` beside `OfferedSkillTools` and
+`OfferedReviewTool` when opening the gate. Only names in the phase's offer are
+admitted; an empty offer refuses every edit name. On interrupted or waiting turns,
+every draft is delivered with its own edit provenance. A malformed identifier is
+refused: the event omits `document` if missing, non-string or empty, otherwise
+truncates it to 512 Unicode characters; `reason` names an invalid identifier.

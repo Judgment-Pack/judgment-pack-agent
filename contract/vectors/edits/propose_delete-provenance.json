@@ -1,0 +1,22 @@
+{
+  "description": "ADR-0015 review: propose_delete-provenance.json. Written by hand from the accepted decision.",
+  "schema": "provenance.json#/$defs/edit",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/edits.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "propose_delete",
+      "document": "pack",
+      "line": 4,
+      "bytes": 0,
+      "valid": true
+    }
+  ]
+}

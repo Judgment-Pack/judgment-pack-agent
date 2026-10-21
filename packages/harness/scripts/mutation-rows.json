@@ -4178,6 +4178,50 @@
    ],
    "status": "caught",
    "origin": "agent#110"
+  },
+  {
+   "name": "proposal edits codex interrupted draft set truncated",
+   "file": "engines/codex/index.ts",
+   "find": "const candidates = drafts.length ? drafts : [made]",
+   "replace": "const candidates = [made]",
+   "tests": [
+    "certification/proposal-edits.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#110 review round"
+  },
+  {
+   "name": "proposal edits vercel interrupted draft set truncated",
+   "file": "engines/vercel/loop.ts",
+   "find": "const candidates = drafts.length ? drafts : [made]",
+   "replace": "const candidates = [made]",
+   "tests": [
+    "certification/proposal-edits.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#110 review round"
+  },
+  {
+   "name": "proposal edits deepagents interrupted draft set truncated",
+   "file": "engines/deepagents/loop.ts",
+   "find": "const candidates = drafts.length ? drafts : [made]",
+   "replace": "const candidates = [made]",
+   "tests": [
+    "certification/proposal-edits.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#110 review round"
+  },
+  {
+   "name": "proposal edits invalid identifier emitted unchanged",
+   "file": "edits.ts",
+   "find": "this.notify(editRefusal(document,reason))",
+   "replace": "this.notify({type:'edit_refused',document,reason})",
+   "tests": [
+    "edits.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#110 review round"
   }
  ]
 }

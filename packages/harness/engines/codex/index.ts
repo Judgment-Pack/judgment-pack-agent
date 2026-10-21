@@ -266,13 +266,15 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
       // leaves the proposal delivered and the turn waiting.
       const made = context.drafts.proposal() ?? toolProposal as Proposal | null
       if (made === null || gate.signal.aborted) throw cause
+      const drafts = context.drafts.proposals()
+      const candidates = drafts.length ? drafts : [made]
       toolProposal = null
       if (awaitingInput) {
-        await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns, ...(made.edits?{edits:made.edits}:{}) })
+        for (const made of candidates) await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns, ...(made.edits?{edits:made.edits}:{}) })
         throw cause
       }
       if (isCancelled(cause) || executionSignal.aborted) throw cause
-      await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns, ...(made.edits?{edits:made.edits}:{}), note: proposalNote('turn-unfinished', cause, 'agent') })
+      for (const made of candidates) await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns, ...(made.edits?{edits:made.edits}:{}), note: proposalNote('turn-unfinished', cause, 'agent') })
       return
     }
     if (session.allowConversation && toolProposal === null && !hasProposalFence(final)) {

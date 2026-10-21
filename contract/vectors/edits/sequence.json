@@ -1,0 +1,86 @@
+{
+  "description": "ADR-0015 review: sequence.json. Written by hand from the accepted decision.",
+  "schema": "tool-call.json#/$defs/mcpCall",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/edits.ts"
+    ]
+  },
+  "items": [
+    {
+      "name": "propose_pack",
+      "arguments": {
+        "document": {
+          "specVersion": "1",
+          "id": "pack",
+          "title": "Before",
+          "notes": "same same"
+        }
+      }
+    },
+    {
+      "name": "search",
+      "arguments": {
+        "id": "draft:pack",
+        "pattern": "Before"
+      }
+    },
+    {
+      "name": "read_window",
+      "arguments": {
+        "id": "draft:pack",
+        "offset": 3,
+        "limit": 1
+      }
+    },
+    {
+      "name": "propose_edit",
+      "arguments": {
+        "document": "pack",
+        "old_text": "Before",
+        "new_text": "After"
+      }
+    },
+    {
+      "name": "read_window",
+      "arguments": {
+        "id": "draft:pack",
+        "offset": 3,
+        "limit": 1
+      }
+    },
+    {
+      "name": "propose_edit",
+      "arguments": {
+        "document": "pack",
+        "old_text": "same",
+        "new_text": "x"
+      }
+    },
+    {
+      "name": "propose_delete",
+      "arguments": {
+        "document": "pack",
+        "old_text": "  \"specVersion\": \"1\",\n"
+      }
+    },
+    {
+      "name": "propose_insert",
+      "arguments": {
+        "document": "pack",
+        "after_anchor": "After",
+        "text": " again"
+      }
+    },
+    {
+      "name": "undo_edit",
+      "arguments": {
+        "document": "pack"
+      }
+    }
+  ]
+}

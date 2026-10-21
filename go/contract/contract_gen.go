@@ -4715,9 +4715,9 @@ func (v RunEventEditApplied) MarshalJSON() ([]byte, error) {
 
 // From run-event.json#/$defs/edit_refused.
 type RunEventEditRefused struct {
-	Type     string `json:"type"`
-	Document string `json:"document"`
-	Reason   string `json:"reason"`
+	Type     string  `json:"type"`
+	Document *string `json:"document,omitzero"`
+	Reason   string  `json:"reason"`
 }
 
 var runEventEditRefusedMembers = []string{"type", "document", "reason"}

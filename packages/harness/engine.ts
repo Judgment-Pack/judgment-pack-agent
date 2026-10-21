@@ -325,7 +325,7 @@ export type AssistantEvent =
   /** ADR-0009: a skill dropped by the model's `unload_skill` call, by its id. */
   | { type: 'skill_unloaded'; id: string }
   | { type:'edit_applied';document:string;line:number;bytes:number;valid:true }
-  | { type:'edit_refused';document:string;reason:string }
+  | { type:'edit_refused';document?:string;reason:string }
   | { type: 'memory_proposed'; memory: import('./memories').Memory }
   | { type: 'memory_recalled'; ids: string[]; digests: string[]; bytes: number }
   | { type: 'policy_resolved'; members: import('./policy').PolicyMembers }

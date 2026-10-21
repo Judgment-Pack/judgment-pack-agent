@@ -1399,12 +1399,14 @@ export function runVercelLoop(
       // to the person leaves the proposal delivered and the turn waiting.
       const made = toolProposal === null ? null : context.drafts.proposal() ?? toolProposal
       if (made !== null && !gate.signal.aborted && !gate.isClosed()) {
+        const drafts = context.drafts.proposals()
+        const candidates = drafts.length ? drafts : [made]
         toolProposal = null
         if (awaitingInput) {
-          await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns, ...(made.edits?{edits:made.edits}:{}) })
+          for (const made of candidates) await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns, ...(made.edits?{edits:made.edits}:{}) })
           throw cause
         }
-        await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns, ...(made.edits?{edits:made.edits}:{}),
+        for (const made of candidates) await deliver({ type: 'proposal', document: made.document, unknowns: made.unknowns, ...(made.edits?{edits:made.edits}:{}),
           note: proposalNote('turn-unfinished', overTime ? turnTimeFailure() : cause, 'model') })
         return
       }
