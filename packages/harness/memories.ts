@@ -27,9 +27,17 @@ export const REMEMBER = 'remember'
 export const REMEMBER_SCHEMA = { type: 'object', properties: { kind: { type: 'string', enum: MEMORY_KINDS }, text: { type: 'string', minLength: 1 } }, required: ['kind', 'text'], additionalProperties: false } as const
 const object = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v)
 const exact = (v: Record<string, unknown>, keys: string[]) => Object.keys(v).every(k => keys.includes(k))
-const identifier = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 100
+const identifier = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && [...v].length <= 100
 const digest = (v: unknown) => typeof v === 'string' && /^sha256:[0-9a-f]{64}$/.test(v)
-const date = (v: unknown) => typeof v === 'string' && /^\d{4}-\d\d-\d\dT/.test(v) && Number.isFinite(Date.parse(v))
+// RFC3339 grammar plus calendar validation; Date.parse alone normalizes impossible days.
+const date = (v: unknown): boolean => {
+  if (typeof v !== 'string') return false
+  const match = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])[Tt]([01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:[Zz]|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.exec(v)
+  if (!match || match[0] !== v) return false
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3])
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+  return year > 0 && day <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]!
+}
 const kind = (v: unknown) => (MEMORY_KINDS as readonly unknown[]).includes(v)
 const state = (v: unknown) => typeof v === 'string' && ['proposed', 'accepted', 'declined', 'revoked', 'expired'].includes(v)
 export function validMemory(v: unknown): v is Memory {
@@ -42,8 +50,8 @@ export async function recallMemory(value: unknown, bound: number, marker: string
   const fail = (detail: string): never => { throw authoredFailure('configuration', `The host's memoryFor answer ${detail}; nothing was sent.`, 'context') }
   if (value === undefined || value === null || value === '') return { rows: [], records: [], bytes: 0 }
   if (typeof value === 'string') {
-    if (utf8Bytes(value) > bound) fail(`is over memoryBytes (${bound})`)
-    return { text: frameBlock('memory kind fact source host (legacy text alias)', value, marker), rows: [], records: [], bytes: utf8Bytes(value) }
+    // Deterministic compatibility record: the ordinary record path owns accounting and framing.
+    value = [{ id: 'legacy-memory', kind: 'fact', text: value, source: { run: 'host', proposedBy: 'host' }, scope: 'project', digest: `sha256:${await contextDigest(value)}`, createdAt: '1970-01-01T00:00:00Z', state: 'accepted' }]
   }
   if (!Array.isArray(value) || value.length > 256 || !value.every(validMemory)) return fail('is not a list of closed memory records')
   if (new Set(value.map(m=>m.id)).size !== value.length) fail('has duplicate ids')

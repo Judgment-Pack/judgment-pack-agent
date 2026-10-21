@@ -1,0 +1,36 @@
+{
+  "description": "ADR-0014 review: handwritten alias-equivalence boundaries.",
+  "schema": "memory.json#/$defs/answer",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/memories.ts"
+    ]
+  },
+  "items": [
+    "Use metric units.",
+    [
+      {
+        "id": "legacy-memory",
+        "kind": "fact",
+        "text": "Use metric units.",
+        "source": {
+          "run": "host",
+          "proposedBy": "host"
+        },
+        "scope": "project",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "createdAt": "1970-01-01T00:00:00Z",
+        "state": "accepted"
+      }
+    ]
+  ],
+  "expected": {
+    "bytes": 262,
+    "frameBody": "kind: fact\nsource: {\"proposedBy\":\"host\",\"run\":\"host\"}\nid: \"legacy-memory\"\nUse metric units.",
+    "layer": 5
+  }
+}

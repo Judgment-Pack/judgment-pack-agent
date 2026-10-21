@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
@@ -25,9 +26,24 @@ func memoryKind(s string) bool {
 func memoryState(s string) bool {
 	return s == "proposed" || s == "accepted" || s == "declined" || s == "revoked" || s == "expired"
 }
-func memoryDate(s string) bool { _, err := time.Parse(time.RFC3339Nano, s); return err == nil }
+
+// Match the schema's RFC3339 grammar before parsing: Go also accepts single-digit
+// hours, comma fractions and out-of-range offsets that RFC3339 does not permit.
+var memoryDatePattern = regexp.MustCompile(`^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])[Tt]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\.[0-9]+)?([Zz]|[+-]([01][0-9]|2[0-3]):[0-5][0-9])$`)
+
+func memoryDate(s string) bool {
+	if !memoryDatePattern.MatchString(s) || strings.HasPrefix(s, "0000-") {
+		return false
+	}
+	_, err := time.Parse(time.RFC3339Nano, strings.ToUpper(s))
+	return err == nil
+}
+func memoryIdentifier(s string) bool {
+	n := utf8.RuneCountInString(s)
+	return n > 0 && n <= 100
+}
 func validMemory(m contract.Memory) bool {
-	return len(m.ID) > 0 && len(m.ID) <= 100 && memoryKind(m.Kind) && m.Text != "" && len(m.Source.Run) > 0 && len(m.Source.Run) <= 100 && (m.Source.ProposedBy == "model" || m.Source.ProposedBy == "person" || m.Source.ProposedBy == "host") && (m.Scope == "project" || m.Scope == "person") && digestPattern.MatchString(m.Digest) && memoryDate(m.CreatedAt) && (m.ExpiresAt == nil || memoryDate(*m.ExpiresAt)) && memoryState(m.State)
+	return memoryIdentifier(m.ID) && memoryKind(m.Kind) && m.Text != "" && memoryIdentifier(m.Source.Run) && (m.Source.ProposedBy == "model" || m.Source.ProposedBy == "person" || m.Source.ProposedBy == "host") && (m.Scope == "project" || m.Scope == "person") && digestPattern.MatchString(m.Digest) && memoryDate(m.CreatedAt) && (m.ExpiresAt == nil || memoryDate(*m.ExpiresAt)) && memoryState(m.State)
 }
 func ValidMemories(v *Value) bool {
 	if !isObject(v) || !hasOnly(v, "proposed", "recalled") || !v.Get("proposed").IsArray() || !v.Get("recalled").IsArray() {
@@ -46,7 +62,7 @@ func ValidMemories(v *Value) bool {
 	}
 	ids = map[string]bool{}
 	for _, m := range book.Recalled {
-		if m.ID == "" || len(m.ID) > 100 || !digestPattern.MatchString(m.Digest) || !memoryKind(m.Kind) || !memoryState(m.State) || ids[m.ID] {
+		if !memoryIdentifier(m.ID) || !digestPattern.MatchString(m.Digest) || !memoryKind(m.Kind) || !memoryState(m.State) || ids[m.ID] {
 			return false
 		}
 		ids[m.ID] = true
@@ -70,15 +86,13 @@ func RecallMemory(value any, bound int, marker string) (MemoryRecall, error) {
 		return out, nil
 	}
 	if text, ok := value.(string); ok {
-		if len(text) > bound {
-			return fail("is over memoryBytes (" + strconv.Itoa(bound) + ")")
+		if text == "" {
+			return out, nil
 		}
-		out.Bytes = len(text)
-		if text != "" {
-			out.Text = FrameBlock("memory kind fact source host (legacy text alias)", text, marker)
-		}
-		return out, nil
+		// Deterministic compatibility record; use the ordinary accounting and framing below.
+		value = []contract.Memory{{ID: "legacy-memory", Kind: "fact", Text: text, Source: contract.MemorySource{Run: "host", ProposedBy: "host"}, Scope: "project", Digest: "sha256:" + ContextDigest(text), CreatedAt: "1970-01-01T00:00:00Z", State: "accepted"}}
 	}
+
 	records, ok := value.([]contract.Memory)
 	if !ok || len(records) > 256 {
 		return fail("is not a list of closed memory records")
@@ -97,7 +111,7 @@ func RecallMemory(value any, bound int, marker string) (MemoryRecall, error) {
 			continue
 		}
 		if m.ExpiresAt != nil {
-			expiry, _ := time.Parse(time.RFC3339Nano, *m.ExpiresAt)
+			expiry, _ := time.Parse(time.RFC3339Nano, strings.ToUpper(*m.ExpiresAt))
 			if !expiry.After(time.Now()) {
 				continue
 			}
@@ -159,7 +173,7 @@ func (g *MemoryGate) RecordRecall(recall MemoryRecall) error {
 					g.book.Recalled[at].State = current.State
 				}
 				if current.State == "accepted" && current.ExpiresAt != nil {
-					expiry, _ := time.Parse(time.RFC3339Nano, *current.ExpiresAt)
+					expiry, _ := time.Parse(time.RFC3339Nano, strings.ToUpper(*current.ExpiresAt))
 					if !expiry.After(time.Now()) {
 						g.book.Recalled[at].State = "expired"
 					}

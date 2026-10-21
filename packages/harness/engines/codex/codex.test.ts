@@ -330,7 +330,7 @@ describe.each(AGENT_ENGINES)('agent engine %s', engineId => {
     const [chat, plain] = requests as [{ prompt: string; instructions: string }, { prompt: string; instructions: string }]
     // memoryFor was asked once per run, with the request text: these runs name no person's message.
     expect(asked).toEqual([policy, policy])
-    const parts = (instructions:string)=>hostSection({ brief: 'BRIEF-MARKER the expense team owns this pack.', projectInstructions: 'PROJECT-MARKER write unknowns as full sentences.', memory: frameBlock('memory kind fact source host (legacy text alias)','MEMORY-MARKER the receipt threshold was 50 USD last quarter.',/BEGIN RETRIEVED DATA ([0-9a-f]{32}) from memory/.exec(instructions)![1]!) })
+    const parts = (instructions:string)=>hostSection({ brief: 'BRIEF-MARKER the expense team owns this pack.', projectInstructions: 'PROJECT-MARKER write unknowns as full sentences.', memory: frameBlock('memory','kind: fact\nsource: {"proposedBy":"host","run":"host"}\nid: "legacy-memory"\n'+'MEMORY-MARKER the receipt threshold was 50 USD last quarter.',/BEGIN RETRIEVED DATA ([0-9a-f]{32}) from memory/.exec(instructions)![1]!) })
     for (const sent of [chat, plain]) {
       expect(sent.instructions.endsWith(parts(sent.instructions))).toBe(true)
       expect(sent.instructions.indexOf(BRIEF_HEADER)).toBeLessThan(sent.instructions.indexOf(PROJECT_INSTRUCTIONS_HEADER))

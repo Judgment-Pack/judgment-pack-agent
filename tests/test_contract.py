@@ -3,13 +3,14 @@ its schema and states nothing its schema does not, and the schemas name every ev
 failure class the Desk names at the pinned commit (contract/desk/)."""
 
 import copy
+from datetime import date
 import hashlib
 import json
 import re
 import unittest
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, FormatChecker
 from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012
 
@@ -712,6 +713,29 @@ class VectorTests(unittest.TestCase):
         self.assertEqual(stale[2]["structured"]["failure"]["outcome"], "not-started")
         self.assertEqual(stale[1]["detail"], stale[2]["text"])
 
+    def test_memory_review_shared_boundaries(self):
+        vector = self.vectors["memory/validation.json"]
+        # The schema supplies the RFC3339 grammar; check the calendar with the standard
+        # library so this test does not depend on jsonschema's optional format packages.
+        formats = FormatChecker()
+        @formats.checks("date-time", raises=(ValueError, TypeError))
+        def memory_calendar(value):
+            date(*map(int, value[:10].split("-")))
+            return True
+        check = Draft202012Validator({"$ref": BASE + vector["schema"]}, registry=registry(self.schemas), format_checker=formats)
+        self.assertEqual(problems(check, vector["items"]), [])
+        for refused in vector["refused"]:
+            with self.subTest(problem=refused["problem"]):
+                self.assertTrue(problems(check, [refused["record"]]))
+        for item in vector["items"][:2]:
+            self.assertEqual(len(item["id"]), 100)
+            self.assertEqual(len(item["source"]["run"]), 100)
+        alias = self.vectors["memory/alias-equivalence.json"]
+        record = alias["items"][1][0]
+        self.assertEqual(alias["items"][0], record["text"])
+        self.assertEqual(record["digest"], "sha256:" + sha256(record["text"]))
+        self.assertEqual(len(canonical(record).encode("utf-8")), alias["expected"]["bytes"])
+
     def test_every_member_the_release_review_named_is_carried_by_a_vector(self):
         # The members of the $defs added or changed between v0.1.0 and the v0.2.0 review, and the
         # root members of three schemas, each appear in at least one vector (#43): a probe sets
@@ -815,9 +839,15 @@ class VectorTests(unittest.TestCase):
             ("provenance.json", ["$defs", "provider", "properties", "family"]),
             ("provenance.json", ["$defs", "crossProvider", "properties", "relation"]),
         ]
+        # ADR-0014: include every new memory enum, including the reserved name itself.
+        enums += [("memory.json", path) for path in enum_paths(schemas_["memory.json"], [])]
+        enums += [("provenance.json", path) for path in enum_paths(schemas_["provenance.json"]["$defs"]["memoryRecall"], ["$defs", "memoryRecall"])]
+        enums += [("tool-offer.json", path) for path in enum_paths(schemas_["tool-offer.json"]["$defs"]["remember"], ["$defs", "remember"])]
+        enums += [("tool-offer.json", ["$defs", "reservedName"])]
         # Existing schemas: this ADR adds these values, not new obligations for
         # the unrelated event and failure values from earlier releases.
         added_values = {
+            ("tool-offer.json", ("$defs", "reservedName")): ["remember"],
             ("run-event.json", ("properties", "type")): ["policy_resolved", "memory_proposed", "memory_recalled"],
             ("failure.json", ("$defs", "code")): ["pace exceeded"],
         }

@@ -45,6 +45,24 @@
           "digest": "sha256:07e798826084d7e16e0f4465e250a5877e9fd7e41968ee89ca74bd0048c5ee53",
           "kind": "reference",
           "state": "revoked"
+        },
+        {
+          "id": "fact-proposed",
+          "digest": "sha256:a45988cceaaf7cfcdad757b77f739869f9adc3e577d5c6a31e7c58723dfdebc9",
+          "kind": "fact",
+          "state": "proposed"
+        },
+        {
+          "id": "fact-declined",
+          "digest": "sha256:a45988cceaaf7cfcdad757b77f739869f9adc3e577d5c6a31e7c58723dfdebc9",
+          "kind": "fact",
+          "state": "declined"
+        },
+        {
+          "id": "fact-expired",
+          "digest": "sha256:a45988cceaaf7cfcdad757b77f739869f9adc3e577d5c6a31e7c58723dfdebc9",
+          "kind": "fact",
+          "state": "expired"
         }
       ]
     }

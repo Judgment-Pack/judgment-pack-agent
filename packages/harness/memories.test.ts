@@ -1,5 +1,5 @@
 import {afterEach,describe,expect,it} from 'vitest'
-import {recallMemory,validMemory,type Memory} from './memories'
+import {recallMemory,validMemory,validMemories,REMEMBER,type Memory} from './memories'
 import {contextualSession} from './context/session'
 import {configureHarness} from './host'
 import {normalize} from './thinking'
@@ -8,6 +8,13 @@ import {frameBlock} from './framing'
 import scenario from './certification/scenarios/memory-write.json'
 import checkpointVector from '../../contract/vectors/memory/checkpoint.json'
 import {readExecution} from './execution/state'
+import aliasVector from '../../contract/vectors/memory/alias-equivalence.json'
+import validationVector from '../../contract/vectors/memory/validation.json'
+import {readHostParts,systemText,HOST_PARTS} from './prompt'
+import {CONTEXT_DEFAULTS} from './context/policy'
+import reportVector from '../../contract/vectors/memory/report.json'
+import rememberVector from '../../contract/vectors/memory/remember.json'
+import reservedVector from '../../contract/vectors/memory/reserved-name.json'
 const records=scenario.records as Memory[]
 afterEach(()=>configureHarness({memoryFor:()=>undefined}))
 async function open(objective?:string){return contextualSession({prompt:'Remember the facts.',testPrompt:'',tools:[],hostTools:[] as HostTool[],callTool:async()=>({}),signal:new AbortController().signal,thinking:normalize('off','openai-compatible'),model:{family:'openai-compatible',model:'fixture',call:async()=>new Response()},context:{phase:'plan',...(objective?{objective}:{})},critic:'off'})}
@@ -44,7 +51,45 @@ describe('memory write side',()=>{
   await expect(recallMemory(records,1,'marker')).rejects.toThrow('memoryBytes')
   await expect(recallMemory([{...records[0],text:'Changed'}],4000,'marker')).rejects.toThrow('digest')
   await expect(recallMemory([{...records[0],unknown:true}],4000,'marker')).rejects.toThrow('closed')
-  expect((await recallMemory('legacy',4000,'marker')).text).toContain(frameBlock('memory kind fact source host (legacy text alias)','legacy','marker'))
+  expect((await recallMemory('legacy',4000,'marker')).text).toContain(frameBlock('memory','kind: fact\nsource: {"proposedBy":"host","run":"host"}\nid: "legacy-memory"\nlegacy','marker'))
   expect((await recallMemory([{...records[0],expiresAt:'2000-01-01T00:00:00Z'}],4000,'marker')).rows).toEqual([])
  })
+})
+
+it('normalizes the shared alias and record to equal budget, frame and layer 5 placement',async()=>{
+ const outputs=[]
+ for(const value of aliasVector.items){
+  const recalled=await recallMemory(value,aliasVector.expected.bytes,'marker')
+  expect(recalled.bytes).toBe(aliasVector.expected.bytes)
+  expect(recalled.text).toBe(frameBlock('memory',aliasVector.expected.frameBody,'marker'))
+  await expect(recallMemory(value,aliasVector.expected.bytes-1,'marker')).rejects.toThrow('memoryBytes')
+  configureHarness({memoryFor:()=>value as string|Memory[]})
+  const parts=await readHostParts('q',CONTEXT_DEFAULTS,true,'marker')
+  outputs.push(systemText('guidance',{brief:'brief',projectInstructions:'project',...parts},'\ntools'))
+ }
+ expect(outputs[0]).toBe(outputs[1])
+ expect(outputs[0]!.indexOf('END PROJECT INSTRUCTIONS')).toBeLessThan(outputs[0]!.indexOf('BEGIN RETRIEVED DATA'))
+ expect(outputs[0]!.indexOf('END PROJECT MEMORY')).toBeLessThan(outputs[0]!.indexOf('\ntools'))
+ expect(HOST_PARTS.find(p=>p.name==='memory')!.layer).toBe(aliasVector.expected.layer)
+})
+it('validates shared Unicode identifier and RFC3339 calendar boundaries',async()=>{
+ for(const [record,accepted] of [...validationVector.items.map(m=>[m,true] as const),...validationVector.refused.map(v=>[v.record,false] as const)]){
+  expect(validMemory(record),JSON.stringify(record)).toBe(accepted)
+  expect(validMemories({proposed:[{...record,state:'proposed'}],recalled:[]})).toBe(accepted)
+  if(accepted)await expect(recallMemory([record],4000,'marker')).resolves.toBeDefined()
+  else await expect(recallMemory([record],4000,'marker')).rejects.toThrow()
+ }
+ for(const id of ['é'.repeat(100),'😀'.repeat(100),'é'.repeat(101),'😀'.repeat(101),'']){
+  expect(validMemories({proposed:[],recalled:[{id,digest:validationVector.items[0]!.digest,kind:'fact',state:'accepted'}]})).toBe([...id].length>0&&[...id].length<=100)
+ }
+})
+
+it('reads the enum coverage vectors and admits every remember kind',async()=>{
+ expect(reportVector.items.every(validMemories)).toBe(true)
+ expect(reservedVector.items).toContain(REMEMBER)
+ const run=await open();try{
+  const tool=run.session.hostTools.find(t=>t.name===REMEMBER)!
+  for(const args of rememberVector.items)await tool.execute(args,new AbortController().signal)
+  expect(run.context.execution.state.memories?.proposed.map(m=>m.kind)).toEqual(rememberVector.items.map(m=>m.kind))
+ }finally{run.context.close()}
 })

@@ -348,7 +348,7 @@ function bareSession(kind: 'model' | 'agent', memoryFlag?: boolean): EngineSessi
 }
 
 /** The memory block every request of the memory scenario carries (ADR-0005, layer 5). */
-const memoryBlock = (system:string) => `${MEMORY_HEADER}\n${frameBlock('memory kind fact source host (legacy text alias)',memory.memory,/BEGIN RETRIEVED DATA ([0-9a-f]{32}) from memory/.exec(system)?.[1]??'')}\n${HOST_PARTS[2].end}`
+const memoryBlock = (system:string) => `${MEMORY_HEADER}\n${frameBlock('memory','kind: fact\nsource: {"proposedBy":"host","run":"host"}\nid: "legacy-memory"\n'+memory.memory,/BEGIN RETRIEVED DATA ([0-9a-f]{32}) from memory/.exec(system)?.[1]??'')}\n${HOST_PARTS[2].end}`
 
 /** The host's memoryFor for the memory scenario: the scenario's memory, each query it was asked with kept. */
 function recallFor(asked: string[]) {

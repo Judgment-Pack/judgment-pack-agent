@@ -919,7 +919,7 @@ function placementMisses(api: EndpointKind, run: Pick<Run, 'bodies' | 'asked'>, 
     if (api === 'anthropic') misses.push(...cacheMisses(raw, at + 1, placement))
     const { system, rest } = split(api, raw)
     // Each part's block by its header and the end line after it; the text between them is the part's.
-    const framed=placed.map(part=>part.name==='memory'?{...part,text:frameBlock('memory kind fact source host (legacy text alias)',part.text,/BEGIN RETRIEVED DATA ([0-9a-f]{32}) from memory/.exec(system)?.[1]??'')}:part)
+    const framed=placed.map(part=>part.name==='memory'?{...part,text:frameBlock('memory','kind: fact\nsource: {"proposedBy":"host","run":"host"}\nid: "legacy-memory"\n'+part.text,/BEGIN RETRIEVED DATA ([0-9a-f]{32}) from memory/.exec(system)?.[1]??'')}:part)
     const blocks = framed.map((part) => {
       const head = system.indexOf(`${part.header}\n`)
       const close = head < 0 ? -1 : system.indexOf(`\n${part.end}`, head)

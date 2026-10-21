@@ -14,6 +14,18 @@
     {
       "kind": "preference",
       "text": "Use metric units."
+    },
+    {
+      "kind": "fact",
+      "text": "The project uses SI."
+    },
+    {
+      "kind": "decision",
+      "text": "Use the agreed threshold."
+    },
+    {
+      "kind": "reference",
+      "text": "Read the project brief."
     }
   ]
 }

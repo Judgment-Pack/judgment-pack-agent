@@ -77,7 +77,11 @@ func TestTheHostsPartsAreAskedOnceAndHeldToTheirBounds(t *testing.T) {
 	for _, part := range HostPartsTable {
 		bound := part.bound(Defaults)
 		for _, size := range []int{bound, bound + 1} {
-			text := answer(size)
+			overhead := 0
+			if part.Name == "memory" {
+				overhead = 245
+			} // compatibility metadata, before framing
+			text := answer(size - overhead)
 			held := HostFuncs{}
 			switch part.Name {
 			case "brief":
@@ -90,7 +94,7 @@ func TestTheHostsPartsAreAskedOnceAndHeldToTheirBounds(t *testing.T) {
 			parts, err := ReadHostParts(ctx, held, "q", Defaults, true)
 			expected := text
 			if part.Name == "memory" {
-				expected = FrameBlock("memory kind fact source host (legacy text alias)", text, "")
+				expected = FrameBlock("memory", "kind: fact\nsource: {\"proposedBy\":\"host\",\"run\":\"host\"}\nid: \"legacy-memory\"\n"+text, "")
 			}
 			if size == bound && (err != nil || part.text(parts) != expected) {
 				t.Errorf("%s at its bound: %v", part.Name, err)
@@ -120,10 +124,10 @@ func TestTheRunAsksTheHostOnceWithThePersonsMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer run.Context.Close()
-	if len(asked) != 1 || asked[0] != "Check the pack." || run.Context.HostParts.Memory != FrameBlock("memory kind fact source host (legacy text alias)", "Recalled.", run.Context.Marker) {
+	if len(asked) != 1 || asked[0] != "Check the pack." || run.Context.HostParts.Memory != FrameBlock("memory", "kind: fact\nsource: {\"proposedBy\":\"host\",\"run\":\"host\"}\nid: \"legacy-memory\"\nRecalled.", run.Context.Marker) {
 		t.Errorf("asked %v, parts %+v", asked, run.Context.HostParts)
 	}
-	if held := run.Context.System("GUIDANCE", ""); held != "GUIDANCE\n\n"+MemoryHeader+"\n"+FrameBlock("memory kind fact source host (legacy text alias)", "Recalled.", run.Context.Marker)+"\nEND PROJECT MEMORY" {
+	if held := run.Context.System("GUIDANCE", ""); held != "GUIDANCE\n\n"+MemoryHeader+"\n"+FrameBlock("memory", "kind: fact\nsource: {\"proposedBy\":\"host\",\"run\":\"host\"}\nid: \"legacy-memory\"\nRecalled.", run.Context.Marker)+"\nEND PROJECT MEMORY" {
 		t.Errorf("the system text is %q", held)
 	}
 	// A delegated child asks with its objective; memory off asks nothing.

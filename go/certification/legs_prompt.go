@@ -448,5 +448,5 @@ func legacyMemoryBlock(text, system string) string {
 	if len(m) == 2 {
 		marker = m[1]
 	}
-	return runcontext.FrameBlock("memory kind fact source host (legacy text alias)", text, marker)
+	return runcontext.FrameBlock("memory", "kind: fact\nsource: {\"proposedBy\":\"host\",\"run\":\"host\"}\nid: \"legacy-memory\"\n"+text, marker)
 }

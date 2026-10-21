@@ -4087,6 +4087,42 @@
    ],
    "status": "caught",
    "origin": "agent#98"
+  },
+  {
+   "name": "memory alias framed differently",
+   "file": "memories.ts",
+   "find": "    value = [{ id: 'legacy-memory', kind: 'fact', text: value, source: { run: 'host', proposedBy: 'host' }, scope: 'project', digest: `sha256:${await contextDigest(value)}`, createdAt: '1970-01-01T00:00:00Z', state: 'accepted' }]",
+   "replace": "    value = [{ id: 'legacy-memory', kind: 'fact', text: value, source: { run: 'host', proposedBy: 'host' }, scope: 'project', digest: `sha256:${await contextDigest(value)}`, createdAt: '1970-01-01T00:00:00Z', state: 'accepted' }]\n    const recalled = await recallMemory(value, bound, marker)\n    return { ...recalled, text: frameBlock('legacy memory', (value as Memory[])[0]!.text, marker) }",
+   "tests": [
+    "memories.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#98 review round",
+   "note": "Go twin: normalize and account through RecallMemory, then replace only the alias frame; TestMemoryAliasEquivalence fails."
+  },
+  {
+   "name": "memory identifier counts UTF-16 units",
+   "file": "memories.ts",
+   "find": "[...v].length <= 100",
+   "replace": "v.length <= 100",
+   "tests": [
+    "memories.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#98 review round",
+   "note": "Go twin: use len(s) instead of utf8.RuneCountInString(s); TestMemoryValidationBoundaries fails."
+  },
+  {
+   "name": "memory invalid calendar date admitted",
+   "file": "memories.ts",
+   "find": "return year > 0 && day <=",
+   "replace": "return true || year > 0 && day <=",
+   "tests": [
+    "memories.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#98 review round",
+   "note": "Go twin: ignore time.Parse errors after the grammar check; TestMemoryValidationBoundaries fails."
   }
  ]
 }

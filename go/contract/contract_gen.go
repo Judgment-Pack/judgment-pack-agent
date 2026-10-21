@@ -2589,11 +2589,13 @@ func (v Memory) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
-// From memory.json#/$defs/answer. memoryFor answers records. A bare string remains an alias for
-// one release (v0.8.0): framed as host-supplied fact data, without inventing a persisted record.
-// Null or an absent binding supplies nothing. Only accepted, unexpired records reach the prompt;
-// revoked records can update a restored report. memoryBytes bounds the sum of UTF-8 canonical JSON
-// bytes of accepted records, before framing; the string alias is bounded by its UTF-8 text bytes.
+// From memory.json#/$defs/answer. memoryFor answers records. For v0.8.0, nonempty bare text
+// normalizes to one accepted project fact record: id legacy-memory, source {run: host, proposedBy:
+// host}, createdAt 1970-01-01T00:00:00Z, digest sha256: plus the SHA-256 of its UTF-8 text, no
+// expiresAt. This compatibility record is not persisted. The alias and that record use identical
+// framing, recall rows and memoryBytes accounting: the sum of accepted records’ canonical JSON
+// UTF-8 bytes before framing. Empty text, null or an absent binding supplies nothing. Only
+// accepted, unexpired records reach the prompt; revoked records can update a restored report.
 //
 // A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
 type MemoryAnswer struct {
