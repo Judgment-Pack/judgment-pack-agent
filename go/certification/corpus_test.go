@@ -31,7 +31,7 @@ func TestScenario22TamperNamesMember(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := filepath.Join(root, "corpus")
-	target, err := os.MkdirTemp(filepath.Join(root, ".jpdev"), "corpus-tamper-")
+	target, err := os.MkdirTemp(root, ".corpus-tamper-")
 	if err != nil {
 		t.Fatal(err)
 	}
