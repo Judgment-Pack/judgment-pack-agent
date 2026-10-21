@@ -120,6 +120,8 @@ func (m *orderedValues) clear()          { m.order = nil; m.held = map[string]*V
 type SessionContext struct {
 	Memories         *MemoryGate
 	Drafts           *Drafts
+	Output           *OutputGuard
+	outputContext    context.Context
 	Subagents        []Subagent
 	ProviderFamilies map[string]string
 	ResolvedPolicy   PolicyMembers
@@ -1156,8 +1158,19 @@ func (c *SessionContext) Approval(ctx context.Context, name string, args json.Ra
 	if c.Sources == nil || !c.Sources.NeedsApproval(name) {
 		return nil
 	}
-	if answer, _, _ := c.Sources.Decide(ctx, name, args, callID, true); answer != "ask" {
+	clean := args
+	if c.Output != nil {
+		var err error
+		clean, err = c.Output.JSON(args, "tool argument", c.Output.Mode == "refuse")
+		if err != nil {
+			return nil
+		}
+	}
+	if answer, _, _ := c.Sources.Decide(ctx, name, clean, callID, true); answer != "ask" {
 		return nil
+	}
+	if c.Output != nil && c.Output.Mode == "redact" {
+		_, _ = c.Output.JSON(args, "tool argument", true)
 	}
 	return ApprovalRequested(*c.Execution.State.Approval)
 }
@@ -1369,6 +1382,16 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		}
 		held.CarryMarker()
 		held.OpenMemories()
+		outputCounts := map[string]int64{}
+		for name, count := range held.Execution.State.OutputGuard {
+			outputCounts[name] = count
+		}
+		held.Output, err = NewOutputGuard(held.ResolvedPolicy, func() map[string]int64 { return outputCounts })
+		held.outputContext = ctx
+		held.Execution.OutputRows = held.Output.Counts
+		if err != nil {
+			return err
+		}
 		if err := held.OpenDrafts(); err != nil {
 			return err
 		}
@@ -1498,6 +1521,13 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		run := held.Execution.WrapRead(declared.Name, inner, declared.ContextPolicy, readOnly, kept)
 		name := declared.Name
 		declared.Execute = func(ctx context.Context, args json.RawMessage) (ToolResult, error) {
+			if OutputWhere(name) != "draft edit" {
+				var err error
+				args, err = held.Output.JSON(args, OutputWhere(name), true)
+				if err != nil {
+					return ToolResult{}, err
+				}
+			}
 			if err := authorize(ctx); err != nil {
 				return ToolResult{}, err
 			}
@@ -1517,6 +1547,11 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		offered[tool.Name] = true
 	}
 	out.CallTool = func(ctx context.Context, name string, args json.RawMessage) (ToolResult, error) {
+		var err error
+		args, err = held.Output.JSON(args, "tool argument", true)
+		if err != nil {
+			return ToolResult{}, err
+		}
 		if err := authorize(ctx); err != nil {
 			return ToolResult{}, err
 		}
@@ -1585,7 +1620,11 @@ func (c *SessionContext) continueApproval(ctx context.Context, step string, tool
 			if tool.Name == approval.Name && tool.Execute != nil {
 				execute := tool.Execute
 				run = func(ctx context.Context, args json.RawMessage) (ToolResult, error) {
-					return execute(WithCallID(ctx, approval.CallID), args)
+					clean, err := c.Output.JSON(args, "tool argument", true)
+					if err != nil {
+						return ToolResult{}, err
+					}
+					return execute(WithCallID(ctx, approval.CallID), clean)
 				}
 			}
 		}

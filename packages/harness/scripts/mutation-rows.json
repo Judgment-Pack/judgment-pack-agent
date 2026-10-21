@@ -4269,6 +4269,95 @@
    "origin": "agent#99"
   },
   {
+   "name": "output boundary message skipped",
+   "file": "context/managed.ts",
+   "find": "if(event.type==='message')event={...event,text:context.output.value(event.text,'message')}",
+   "replace": "if(event.type==='message')event={...event,text:event.text}",
+   "tests": [
+    "certification/output-boundary.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#100"
+  },
+  {
+   "name": "output boundary base pattern removed",
+   "file": "outputGuard.ts",
+   "find": "[...base.patterns,...extra].filter(p=>!allow.includes(p.name))",
+   "replace": "[...base.patterns,...extra].filter(p=>p.name!=='aws-access-key'&&!allow.includes(p.name))",
+   "tests": [
+    "outputGuard.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#100"
+  },
+  {
+   "name": "output boundary allow ignored",
+   "file": "outputGuard.ts",
+   "find": "!allow.includes(p.name)",
+   "replace": "true",
+   "tests": [
+    "outputGuard.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#100"
+  },
+  {
+   "name": "output boundary count omitted",
+   "file": "outputGuard.ts",
+   "find": "counts[pattern]=(Object.hasOwn(counts,pattern)?counts[pattern]!:0)+1",
+   "replace": "counts[pattern]=counts[pattern]??0",
+   "tests": [
+    "outputGuard.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#100"
+  },
+  {
+   "name": "output boundary notice guard removed",
+   "file": "context/managed.ts",
+   "find": "if(notice.type==='edit_refused')",
+   "replace": "if(false&&notice.type==='edit_refused')",
+   "tests": [
+    "certification/output-boundary.test.ts",
+    "outputGuard.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#100 fix round",
+   "note": "Go twin: bypass guardNotice in Boundary.notices; TestOutputNoticeGuard catches the unchanged identifier."
+  },
+  {
+   "name": "output boundary closed parent counts omitted",
+   "file": "delegation.ts",
+   "find": "const outputGuard = this.parent?.execution.state.outputGuard",
+   "replace": "const outputGuard = undefined",
+   "tests": [
+    "delegation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#100 fix round",
+   "note": "Go twin: omit live.Output.Counts in coordinator.save; TestClosedAgentParentKeepsChildOutputCounts catches the stale checkpoint."
+  },
+  {
+   "name": "output boundary gate notice guard removed",
+   "file": "session.ts",
+   "find": "const delivered = guard ? guard(event) : event",
+   "replace": "const delivered = event",
+   "tests": ["certification/output-boundary.test.ts"],
+   "status": "caught",
+   "origin": "agent#100 fix round 2",
+   "note": "Go twin: bypass noticeGuard in Gate.emitNotice; both TestOutputBoundaryOnAgent and TestOutputBoundaryOnModel catch the unguarded notice."
+  },
+  {
+   "name": "output boundary undeclared-name guard removed",
+   "file": "context/managed.ts",
+   "find": "if(declaredNames.has(name))return name",
+   "replace": "if(true)return name",
+   "tests": ["certification/output-boundary.test.ts"],
+   "status": "caught",
+   "origin": "agent#100 fix round 3",
+   "note": "Go twin: return the unchanged name from Boundary.guardName; both scenario 17 adapter tests catch call and checkpoint leaks."
+  },
+  {
    "name": "provider failover treats refusal as qualifying",
    "file": "engines/vercel/retry.ts",
    "find": "if(switched||!(['unavailable','rate-limited','timeout'] as const).includes(failure.code as FailoverClass))return false",

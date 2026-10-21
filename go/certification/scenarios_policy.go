@@ -80,6 +80,7 @@ func policyFindings(ctx context.Context, agent bool, play switchPlay) ([]Finding
 			"models.compactor.model": model, "models.compactor.reasoning": "low",
 			"models.author.fallback": []any{}, "models.critic.fallback": []any{}, "models.compactor.fallback": []any{},
 			"concurrency.children": 2, "concurrency.requests": 2,
+			"outputGuard": "redact", "outputPatterns": []any{}, "outputAllow": []any{},
 			"pace.requestsPerDay": nil, "pace.invocationsPerDay": nil, "pace.bytesPerDay": nil, "pace.warnAt": 0.8, "taskClass": "routine"}
 		if agent {
 			values["concurrency.children"] = 1

@@ -94,6 +94,20 @@ func policyKeys[V any](m map[string]V) []string {
 	return keys
 }
 func policyRead(value any, s policyShape, path, layer string, out map[string]any) error {
+	if path == "outputPatterns" || path == "outputAllow" {
+		var err error
+		if path == "outputPatterns" {
+			_, err = ReadOutputPatterns(value)
+		} else {
+			_, err = ReadOutputAllow(value)
+		}
+		if err != nil {
+			return &PolicyRefusal{Member: path, Layer: layer, Detail: "invalid output guard configuration"}
+		}
+		out[path] = value
+		return nil
+	}
+
 	if s.Ref == "#/$defs/role" {
 		s = policySchema.Defs["role"]
 	}

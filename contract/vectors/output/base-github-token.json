@@ -1,0 +1,33 @@
+{
+  "description": "ADR-0017: base-github-token. Handwritten from the accepted output-boundary decision.",
+  "schema": "run-event.json#/$defs/message",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/outputGuard.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "message",
+      "text": "[redacted: github-token]"
+    },
+    {
+      "type": "message",
+      "text": "ghp_short"
+    }
+  ],
+  "guard": {
+    "input": "ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJ",
+    "output": "[redacted: github-token]",
+    "negative": "ghp_short",
+    "where": "message",
+    "mode": "redact",
+    "counts": {
+      "github-token": 1
+    }
+  }
+}

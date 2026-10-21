@@ -755,6 +755,7 @@ async function runLeg(
     await runAssistantSession(
       engine,
       {
+        policy:{outputGuard:'off'}, // This leg certifies the legacy streaming protocol; scenario 17 certifies guarded delivery.
         // The prompt the desk fetched over prompts/get. Its text is the
         // runtime's; what matters here is that the engine sends it and adds
         // no authoring instructions of its own.

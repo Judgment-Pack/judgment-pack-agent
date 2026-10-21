@@ -75,6 +75,7 @@ var Registry = map[string]func() any{
 	"policy.json#/$defs/member":                     func() any { return new(PolicyMember) },
 	"policy.json#/$defs/resolved":                   func() any { return new(map[string]PolicyMember) },
 	"policy.json#/$defs/paceUsed":                   func() any { return new(PolicyPaceUsed) },
+	"policy.json#/$defs/outputPattern":              func() any { return new(PolicyOutputPattern) },
 	"provenance.json":                               func() any { return new(Provenance) },
 	"provenance.json#/$defs/completion":             func() any { return new(ProvenanceCompletion) },
 	"provenance.json#/$defs/tokens":                 func() any { return new(int64) },
@@ -103,6 +104,7 @@ var Registry = map[string]func() any{
 	"provenance.json#/$defs/memories":               func() any { return new(ProvenanceMemories) },
 	"provenance.json#/$defs/edit":                   func() any { return new(ProvenanceEdit) },
 	"provenance.json#/$defs/edits":                  func() any { return new([]ProvenanceEdit) },
+	"provenance.json#/$defs/outputGuard":            func() any { return new(map[string]int64) },
 	"question.json":                                 func() any { return new(Question) },
 	"question.json#/$defs/option":                   func() any { return new(QuestionOption) },
 	"question.json#/$defs/draft":                    func() any { return new(QuestionDraft) },
@@ -117,7 +119,6 @@ var Registry = map[string]func() any{
 	"run-event.json#/$defs/skill_unloaded":          func() any { return new(RunEventSkillUnloaded) },
 	"run-event.json#/$defs/retry":                   func() any { return new(RunEventRetry) },
 	"run-event.json#/$defs/response_recovery":       func() any { return new(RunEventResponseRecovery) },
-	"run-event.json#/$defs/connection_switched":     func() any { return new(RunEventConnectionSwitched) },
 	"run-event.json#/$defs/delegation_requested":    func() any { return new(RunEventDelegationRequested) },
 	"run-event.json#/$defs/delegated_task":          func() any { return new(RunEventDelegatedTask) },
 	"run-event.json#/$defs/user_question":           func() any { return new(RunEventUserQuestion) },
@@ -135,11 +136,13 @@ var Registry = map[string]func() any{
 	"run-event.json#/$defs/caseComparison":          func() any { return new(RunEventCaseComparison) },
 	"run-event.json#/$defs/criticCase":              func() any { return new(RunEventCriticCase) },
 	"run-event.json#/$defs/policy_resolved":         func() any { return new(RunEventPolicyResolved) },
-	"run-event.json#/$defs/usage":                   func() any { return new(RunEventUsage) },
 	"run-event.json#/$defs/memory_proposed":         func() any { return new(RunEventMemoryProposed) },
 	"run-event.json#/$defs/memory_recalled":         func() any { return new(RunEventMemoryRecalled) },
 	"run-event.json#/$defs/edit_applied":            func() any { return new(RunEventEditApplied) },
 	"run-event.json#/$defs/edit_refused":            func() any { return new(RunEventEditRefused) },
+	"run-event.json#/$defs/output_guarded":          func() any { return new(RunEventOutputGuarded) },
+	"run-event.json#/$defs/connection_switched":     func() any { return new(RunEventConnectionSwitched) },
+	"run-event.json#/$defs/usage":                   func() any { return new(RunEventUsage) },
 	"skill.json":                                    func() any { return new(Skill) },
 	"skill.json#/$defs/name":                        func() any { return new(string) },
 	"skill.json#/$defs/resource":                    func() any { return new(SkillResource) },
@@ -1094,11 +1097,12 @@ type Checkpoint struct {
 	Compaction    *ProvenanceCompactionReport `json:"compaction,omitzero"`
 	Memories      *ProvenanceMemories         `json:"memories,omitzero"`
 	Draft         *CheckpointDraft            `json:"draft,omitzero"`
+	OutputGuard   map[string]int64            `json:"outputGuard,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var checkpointMembers = []string{"version", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "usage", "compaction", "memories", "draft"}
+var checkpointMembers = []string{"version", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "usage", "compaction", "memories", "draft", "outputGuard"}
 
 // UnmarshalJSON decodes a Checkpoint object and keeps the members the schema does not name.
 func (v *Checkpoint) UnmarshalJSON(data []byte) error {
@@ -2778,17 +2782,20 @@ func (v MemorySource) MarshalJSON() ([]byte, error) {
 // Dynamic roles inherit the author unless explicitly set. Unset members without a table or
 // host-derived default are refused at admission. Model-visible text never supplies a layer.
 type Policy struct {
-	Compaction  *string            `json:"compaction,omitzero"`
-	Budget      *PolicyBudget      `json:"budget,omitzero"`
-	Critic      *PolicyCritic      `json:"critic,omitzero"`
-	Models      *PolicyModels      `json:"models,omitzero"`
-	Failover    *PolicyFailover    `json:"failover,omitzero"`
-	Concurrency *PolicyConcurrency `json:"concurrency,omitzero"`
-	Pace        *PolicyPace        `json:"pace,omitzero"`
-	TaskClass   *string            `json:"taskClass,omitzero"`
+	Compaction     *string               `json:"compaction,omitzero"`
+	Budget         *PolicyBudget         `json:"budget,omitzero"`
+	Critic         *PolicyCritic         `json:"critic,omitzero"`
+	Models         *PolicyModels         `json:"models,omitzero"`
+	Concurrency    *PolicyConcurrency    `json:"concurrency,omitzero"`
+	Pace           *PolicyPace           `json:"pace,omitzero"`
+	TaskClass      *string               `json:"taskClass,omitzero"`
+	OutputGuard    *string               `json:"outputGuard,omitzero"`
+	OutputPatterns []PolicyOutputPattern `json:"outputPatterns,omitzero"`
+	OutputAllow    []string              `json:"outputAllow,omitzero"`
+	Failover       *PolicyFailover       `json:"failover,omitzero"`
 }
 
-var policyMembers = []string{"compaction", "budget", "critic", "models", "failover", "concurrency", "pace", "taskClass"}
+var policyMembers = []string{"compaction", "budget", "critic", "models", "concurrency", "pace", "taskClass", "outputGuard", "outputPatterns", "outputAllow", "failover"}
 
 // UnmarshalJSON decodes a Policy object and refuses a member the closed schema does not name.
 func (v *Policy) UnmarshalJSON(data []byte) error {
@@ -3043,6 +3050,33 @@ func (v *PolicyModelsTaskClasses) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a PolicyModelsTaskClasses object.
 func (v PolicyModelsTaskClasses) MarshalJSON() ([]byte, error) {
 	type plain PolicyModelsTaskClasses
+	return encodeObject(plain(v), nil)
+}
+
+// From policy.json#/$defs/outputPattern.
+type PolicyOutputPattern struct {
+	Name    string `json:"name"`
+	Pattern string `json:"pattern"`
+}
+
+var policyOutputPatternMembers = []string{"name", "pattern"}
+
+// UnmarshalJSON decodes a PolicyOutputPattern object and refuses a member the closed schema does not name.
+func (v *PolicyOutputPattern) UnmarshalJSON(data []byte) error {
+	type plain PolicyOutputPattern
+	var p plain
+	extra, err := decodeObject(data, &p, policyOutputPatternMembers, true)
+	if err != nil {
+		return errorf("PolicyOutputPattern: %w", err)
+	}
+	*v = PolicyOutputPattern(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a PolicyOutputPattern object.
+func (v PolicyOutputPattern) MarshalJSON() ([]byte, error) {
+	type plain PolicyOutputPattern
 	return encodeObject(plain(v), nil)
 }
 
@@ -4036,8 +4070,6 @@ type RunEvent struct {
 	Retry *RunEventRetry
 	// ResponseRecovery is set where type is "response_recovery".
 	ResponseRecovery *RunEventResponseRecovery
-	// ConnectionSwitched is set where type is "connection_switched".
-	ConnectionSwitched *RunEventConnectionSwitched
 	// DelegationRequested is set where type is "delegation_requested".
 	DelegationRequested *RunEventDelegationRequested
 	// DelegatedTask is set where type is "delegated_task".
@@ -4070,8 +4102,6 @@ type RunEvent struct {
 	End *RunEventEnd
 	// PolicyResolved is set where type is "policy_resolved".
 	PolicyResolved *RunEventPolicyResolved
-	// Usage is set where type is "usage".
-	Usage *RunEventUsage
 	// MemoryProposed is set where type is "memory_proposed".
 	MemoryProposed *RunEventMemoryProposed
 	// MemoryRecalled is set where type is "memory_recalled".
@@ -4080,6 +4110,12 @@ type RunEvent struct {
 	EditApplied *RunEventEditApplied
 	// EditRefused is set where type is "edit_refused".
 	EditRefused *RunEventEditRefused
+	// OutputGuarded is set where type is "output_guarded".
+	OutputGuarded *RunEventOutputGuarded
+	// ConnectionSwitched is set where type is "connection_switched".
+	ConnectionSwitched *RunEventConnectionSwitched
+	// Usage is set where type is "usage".
+	Usage *RunEventUsage
 }
 
 // UnmarshalJSON sets the one member the value decodes as.
@@ -4116,9 +4152,6 @@ func (v *RunEvent) UnmarshalJSON(data []byte) error {
 		case "response_recovery":
 			v.ResponseRecovery = new(RunEventResponseRecovery)
 			return json.Unmarshal(data, v.ResponseRecovery)
-		case "connection_switched":
-			v.ConnectionSwitched = new(RunEventConnectionSwitched)
-			return json.Unmarshal(data, v.ConnectionSwitched)
 		case "delegation_requested":
 			v.DelegationRequested = new(RunEventDelegationRequested)
 			return json.Unmarshal(data, v.DelegationRequested)
@@ -4167,9 +4200,6 @@ func (v *RunEvent) UnmarshalJSON(data []byte) error {
 		case "policy_resolved":
 			v.PolicyResolved = new(RunEventPolicyResolved)
 			return json.Unmarshal(data, v.PolicyResolved)
-		case "usage":
-			v.Usage = new(RunEventUsage)
-			return json.Unmarshal(data, v.Usage)
 		case "memory_proposed":
 			v.MemoryProposed = new(RunEventMemoryProposed)
 			return json.Unmarshal(data, v.MemoryProposed)
@@ -4182,6 +4212,15 @@ func (v *RunEvent) UnmarshalJSON(data []byte) error {
 		case "edit_refused":
 			v.EditRefused = new(RunEventEditRefused)
 			return json.Unmarshal(data, v.EditRefused)
+		case "output_guarded":
+			v.OutputGuarded = new(RunEventOutputGuarded)
+			return json.Unmarshal(data, v.OutputGuarded)
+		case "connection_switched":
+			v.ConnectionSwitched = new(RunEventConnectionSwitched)
+			return json.Unmarshal(data, v.ConnectionSwitched)
+		case "usage":
+			v.Usage = new(RunEventUsage)
+			return json.Unmarshal(data, v.Usage)
 		}
 		return errorf("RunEvent: no member has type %q", tag)
 	}
@@ -4214,9 +4253,6 @@ func (v RunEvent) MarshalJSON() ([]byte, error) {
 	}
 	if v.ResponseRecovery != nil {
 		set = append(set, v.ResponseRecovery)
-	}
-	if v.ConnectionSwitched != nil {
-		set = append(set, v.ConnectionSwitched)
 	}
 	if v.DelegationRequested != nil {
 		set = append(set, v.DelegationRequested)
@@ -4266,9 +4302,6 @@ func (v RunEvent) MarshalJSON() ([]byte, error) {
 	if v.PolicyResolved != nil {
 		set = append(set, v.PolicyResolved)
 	}
-	if v.Usage != nil {
-		set = append(set, v.Usage)
-	}
 	if v.MemoryProposed != nil {
 		set = append(set, v.MemoryProposed)
 	}
@@ -4280,6 +4313,15 @@ func (v RunEvent) MarshalJSON() ([]byte, error) {
 	}
 	if v.EditRefused != nil {
 		set = append(set, v.EditRefused)
+	}
+	if v.OutputGuarded != nil {
+		set = append(set, v.OutputGuarded)
+	}
+	if v.ConnectionSwitched != nil {
+		set = append(set, v.ConnectionSwitched)
+	}
+	if v.Usage != nil {
+		set = append(set, v.Usage)
 	}
 	if len(set) != 1 {
 		return nil, errorf("RunEvent: %d members are set; a union holds exactly one", len(set))
@@ -5206,6 +5248,36 @@ func (v *RunEventMessageProgress) UnmarshalJSON(data []byte) error {
 func (v RunEventMessageProgress) MarshalJSON() ([]byte, error) {
 	type plain RunEventMessageProgress
 	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From run-event.json#/$defs/output_guarded. ADR-0017: outbound text held by a named pattern,
+// without the matched text.
+type RunEventOutputGuarded struct {
+	Type    string `json:"type"`
+	Where   string `json:"where"`
+	Pattern string `json:"pattern"`
+	Action  string `json:"action"`
+}
+
+var runEventOutputGuardedMembers = []string{"type", "where", "pattern", "action"}
+
+// UnmarshalJSON decodes a RunEventOutputGuarded object and refuses a member the closed schema does not name.
+func (v *RunEventOutputGuarded) UnmarshalJSON(data []byte) error {
+	type plain RunEventOutputGuarded
+	var p plain
+	extra, err := decodeObject(data, &p, runEventOutputGuardedMembers, true)
+	if err != nil {
+		return errorf("RunEventOutputGuarded: %w", err)
+	}
+	*v = RunEventOutputGuarded(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunEventOutputGuarded object.
+func (v RunEventOutputGuarded) MarshalJSON() ([]byte, error) {
+	type plain RunEventOutputGuarded
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/policy_resolved.

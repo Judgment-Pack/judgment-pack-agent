@@ -28,6 +28,7 @@ package runcontext
 
 import (
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -991,4 +992,87 @@ func NewMatcher(pattern *CompiledPattern) Matcher {
 // own.
 func FirstMatch(pattern *CompiledPattern, line string, budget *PatternBudget) (int, bool) {
 	return NewMatcher(pattern)(line, budget)
+}
+
+// MatchRanges unions overlapping matches in one bounded Pike pass.
+// Offsets are UTF-16 units, as in the shared TypeScript matcher.
+func MatchRanges(pattern *CompiledPattern, text string, budget *PatternBudget) ([][2]int, bool) {
+	units := u16(text)
+	ranges := [][2]int{}
+	current := map[int]int{}
+	holds := func(kind string, pos int) bool {
+		if kind == "bol" {
+			return pos == 0
+		}
+		if kind == "eol" {
+			return pos == len(units) || pos == len(units)-1 && units[pos] == 13
+		}
+		before := pos > 0 && pattern.word(rune(units[pos-1]))
+		after := pos < len(units) && pattern.word(rune(units[pos]))
+		return (before != after) == (kind == "word")
+	}
+	add := func(set map[int]int, pc, start, pos int) {
+		stack := []int{pc}
+		for len(stack) > 0 {
+			at := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			if prior, ok := set[at]; ok && prior <= start {
+				continue
+			}
+			set[at] = start
+			budget.Steps--
+			switch pattern.ops[at] {
+			case opJmp:
+				stack = append(stack, pattern.x[at])
+			case opSplit:
+				stack = append(stack, pattern.y[at], pattern.x[at])
+			case opAssert:
+				if holds(pattern.asserts[at], pos) {
+					stack = append(stack, at+1)
+				}
+			}
+		}
+	}
+	budget.Steps -= len(pattern.ops)
+	for pos := 0; ; {
+		if budget.Steps <= 0 {
+			return nil, false
+		}
+		add(current, 0, pos, pos)
+		code, width := rune(-1), 1
+		if pos < len(units) {
+			code, width = codePointAt(units, pos)
+		}
+		next := map[int]int{}
+		// Instruction order makes work accounting byte-identical to TypeScript.
+		pcs := make([]int, 0, len(current))
+		for pc := range current {
+			pcs = append(pcs, pc)
+		}
+		sort.Ints(pcs)
+		for _, pc := range pcs {
+			start := current[pc]
+			budget.Steps--
+			if pattern.ops[pc] == opMatch && start <= pos {
+				from := start
+				for len(ranges) > 0 && (ranges[len(ranges)-1][1] > from || ranges[len(ranges)-1][0] == from) {
+					if ranges[len(ranges)-1][0] < from {
+						from = ranges[len(ranges)-1][0]
+					}
+					ranges = ranges[:len(ranges)-1]
+				}
+				ranges = append(ranges, [2]int{from, pos})
+			} else if pattern.ops[pc] == opChar && code >= 0 && pattern.tests[pc](code) {
+				add(next, pc+1, start, pos+width)
+			}
+		}
+		if budget.Steps <= 0 {
+			return nil, false
+		}
+		if pos == len(units) {
+			return ranges, true
+		}
+		current = next
+		pos += width
+	}
 }

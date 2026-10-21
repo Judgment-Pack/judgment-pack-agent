@@ -556,7 +556,7 @@ func (r *runState) answer(ctx context.Context, call adapter.AgentToolCall, held 
 		if err != nil {
 			return runcontext.ToolResult{}, false, err
 		}
-		if err := r.sc.Drafts.Seed(proposal.Document, proposal.Unknowns); err != nil {
+		if err := r.sc.Drafts.SeedContext(ctx, proposal.Document, proposal.Unknowns); err != nil {
 			return runcontext.ToolResult{}, false, err
 		}
 		r.held.Lock()

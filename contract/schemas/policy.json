@@ -352,29 +352,6 @@
         }
       }
     },
-    "failover": {
-      "description": "ADR-0020. Provider failures that may move one request to the next same-family fallback after the ordinary retry rule. The package never switches for any other class.",
-      "type": "object",
-      "properties": {
-        "classes": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "enum": [
-              "unavailable",
-              "rate-limited",
-              "timeout"
-            ]
-          },
-          "default": [
-            "unavailable",
-            "rate-limited",
-            "timeout"
-          ]
-        }
-      },
-      "additionalProperties": false
-    },
     "concurrency": {
       "type": "object",
       "properties": {
@@ -441,6 +418,57 @@
         "boundary"
       ],
       "default": "routine"
+    },
+    "outputGuard": {
+      "enum": [
+        "off",
+        "redact",
+        "refuse"
+      ],
+      "default": "redact"
+    },
+    "outputPatterns": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/outputPattern"
+      },
+      "maxItems": 32,
+      "default": []
+    },
+    "outputAllow": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]{0,63}$",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "uniqueItems": true,
+      "maxItems": 64,
+      "default": []
+    },
+    "failover": {
+      "description": "ADR-0020. Provider failures that may move one request to the next same-family fallback after the ordinary retry rule. The package never switches for any other class.",
+      "type": "object",
+      "properties": {
+        "classes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "unavailable",
+              "rate-limited",
+              "timeout"
+            ]
+          },
+          "default": [
+            "unavailable",
+            "rate-limited",
+            "timeout"
+          ]
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,
@@ -529,6 +557,27 @@
           "minimum": 0
         }
       },
+      "additionalProperties": false
+    },
+    "outputPattern": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,63}$",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "pattern": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "name",
+        "pattern"
+      ],
       "additionalProperties": false
     }
   }

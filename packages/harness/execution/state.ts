@@ -1,3 +1,4 @@
+import {validOutputCounts,type OutputCounts} from '../outputGuard'
 import {validDraft,type DraftCheckpoint} from '../edits'
 import { validMemories, type Memories } from '../memories'
 import {validSubagentRecord} from '../subagents'
@@ -52,6 +53,7 @@ export interface ExecutionCheckpoint {
  approval?:ApprovalRecord;
  /** ADR-0009: the skills loaded, in load order, carried through a resume (`skills.ts`, SkillGate). */
  skills?:SkillLoad[];
+ outputGuard?:OutputCounts;
  memories?:Memories;
  draft?:DraftCheckpoint;
  /**
@@ -173,6 +175,7 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value.sources!==undefined&&!validSourceFigures(value.sources))return fail()
  if(value.usage!==undefined&&!validUsage(value.usage))return fail()
  if(value.approval!==undefined&&!validApproval(value.approval))return fail()
+ if(value.outputGuard!==undefined&&!validOutputCounts(value.outputGuard))return fail()
  if(value.memories!==undefined&&!validMemories(value.memories))return fail()
  if(value.draft!==undefined&&!validDraft(value.draft))return fail()
  if(value.skills!==undefined&&!validSkillLoads(value.skills))return fail()

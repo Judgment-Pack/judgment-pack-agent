@@ -944,6 +944,20 @@
         "go": ["16 resume"]
       },
       {
+        "check": "17 \u00b7 output boundary: undeclared names and gate notices are guarded before delivery and save",
+        "go": [
+          "17 output boundary",
+          "17 agent output boundary"
+        ]
+      },
+      {
+        "check": "17 \u00b7 output boundary: answer, proposal, arguments, memory, draft, refusal, allow and resume",
+        "go": [
+          "17 output boundary",
+          "17 agent output boundary"
+        ]
+      },
+      {
         "check": "20 qualifying failure switches once, rebuilds the request and emits the usage ledger",
         "go": ["20 switch", "20 usage", "20 agent switch", "20 agent usage"]
       },
@@ -964,7 +978,8 @@
       "packages/harness/certification/providers.test.ts",
       "packages/harness/certification/subagents.test.ts",
       "packages/harness/certification/memory-write.test.ts",
-      "packages/harness/certification/proposal-edits.test.ts"
+      "packages/harness/certification/proposal-edits.test.ts",
+      "packages/harness/certification/output-boundary.test.ts"
     ]
   },
   "delegation": {

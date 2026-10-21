@@ -40,10 +40,11 @@ type Options struct {
 // handed Calls, the narrow handle, which can call, admit a host tool, and narrow the run to the
 // critic's or the reformat run's phase and back, and nothing else (ADR-0004, decision 3).
 type Gate struct {
-	transport Call
-	allowed   []string
-	bounds    Bounds
-	emit      func(contract.RunEvent)
+	transport   Call
+	allowed     []string
+	bounds      Bounds
+	emit        func(contract.RunEvent)
+	noticeGuard func(contract.RunEvent) (contract.RunEvent, bool)
 
 	mu       sync.Mutex
 	offer    contract.ToolOffer
@@ -52,6 +53,33 @@ type Gate struct {
 	turn     *turnCount
 	nextID   int64
 	calls    *Calls
+}
+
+// GuardNotices binds only notice delivery to a run's output boundary. The returned function
+// releases the binding when that run ends; neither the verdict nor the model's result changes.
+func GuardNotices(c *Calls, guard func(contract.RunEvent) (contract.RunEvent, bool)) func() {
+	if c == nil {
+		return func() {}
+	}
+	g := c.g
+	g.mu.Lock()
+	g.noticeGuard = guard
+	g.mu.Unlock()
+	return func() { g.mu.Lock(); g.noticeGuard = nil; g.mu.Unlock() }
+}
+
+func (g *Gate) emitNotice(event contract.RunEvent) {
+	g.mu.Lock()
+	guard := g.noticeGuard
+	g.mu.Unlock()
+	if guard != nil {
+		var deliver bool
+		event, deliver = guard(event)
+		if !deliver {
+			return
+		}
+	}
+	g.emit(event)
 }
 
 // turnCount is a turn's test calls, one count shared by the turn's gate and its children's.
@@ -139,7 +167,7 @@ func New(options Options) *Gate {
 	if g.emit == nil {
 		g.emit = func(contract.RunEvent) {}
 	}
-	g.transport = Transport(options.Runtime, g.allowed, g.bounds, func(notice Notice) { g.emit(notice.Event()) })
+	g.transport = Transport(options.Runtime, g.allowed, g.bounds, func(notice Notice) { g.emitNotice(notice.Event()) })
 	g.phase = LoopPhase(contract.ToolOffer{})
 	g.calls = &Calls{g: g}
 	return g
@@ -313,7 +341,7 @@ const (
 
 // refuse emits the guardrail and returns the refusal the model is told.
 func (g *Gate) refuse(name, detail string) Result {
-	g.emit(Notice{Tool: name, Action: "refused", Detail: detail}.Event())
+	g.emitNotice(Notice{Tool: name, Action: "refused", Detail: detail}.Event())
 	return Result{Text: UnofferedRefusal(detail), IsError: true}
 }
 
@@ -366,7 +394,7 @@ func (g *Gate) CallTool(ctx context.Context, name string, args json.RawMessage) 
 		if verdict.Send {
 			return Result{}, errors.New("the gate would send a call its phase did not offer; it was not sent")
 		}
-		g.emit(verdict.Notice.Event())
+		g.emitNotice(verdict.Notice.Event())
 		return Result{Text: UnofferedRefusal(verdict.Violation.Error()), IsError: true}, nil
 	}
 	if name == TestTool {

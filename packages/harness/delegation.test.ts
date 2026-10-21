@@ -941,3 +941,19 @@ describe('limits after the review of agent#35',()=>{
   expect(runtime).not.toHaveBeenCalled()
  })
 })
+
+it('carries a child redaction into the closed Codex parent continuation and saved checkpoint',async()=>{
+ const run=vi.fn<AgentRun>(async(r,cb)=>{
+  const delegate=r.tools.find((t:{description:string})=>t.description.startsWith('delegate_tasks:'))
+  if(delegate&&!r.prompt.includes('DELEGATION RESULT')){await cb.tool({id:'call',name:delegate.name,arguments:{tasks:[task('Review')]}},cb.signal);throw Error('Parent must yield')}
+  await cb.event({type:'message',id:'reply',text:r.prompt.includes('DELEGATION RESULT')?'Parent finished.':'AKIAABCDEFGHIJKLMNOP',phase:'final'})
+ })
+ const checkpoints:import('./execution/state').ExecutionCheckpoint[]=[]
+ const {model:_model,thinking:_thinking,...base}=apiSession({critic:'off',context:{currentRequest:{message:'Review',input:'Review'},checkpoint:async state=>{checkpoints.push(structuredClone(state))}}})
+ const events:AssistantEvent[]=[]
+ for await(const event of withDelegation(codex).start({...base,agent:{model:'fixture',run}})){events.push(event);if(event.type==='execution_checkpoint'&&event.durable)checkpoints.push(structuredClone(event.checkpoint))}
+ expect(run).toHaveBeenCalledTimes(3)
+ expect(results(events)[0]?.result).toBe('[redacted: aws-access-key]')
+ expect(events.filter(e=>e.type==='execution_checkpoint').at(-1)).toMatchObject({checkpoint:{outputGuard:{'aws-access-key':1}}})
+ expect(checkpoints.at(-1)?.outputGuard).toEqual({'aws-access-key':1})
+})
