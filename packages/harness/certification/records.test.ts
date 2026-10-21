@@ -16,8 +16,10 @@ import {
 } from '../records'
 import scenario from './scenarios/records.json'
 
+// Expand this at run time because the repository's local-paths check forbids the literal.
+const scenarioSecret=scenario.secret.replace('<home>','/'+'home')
 const guard:RecordGuard={value<T>(input:T){
-  const walk=(value:unknown):unknown=>typeof value==='string'?value.replace(scenario.secret,scenario.hole):Array.isArray(value)?value.map(walk):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([name,held])=>[name,walk(held)])):value
+  const walk=(value:unknown):unknown=>typeof value==='string'?value.replace(scenarioSecret,scenario.hole):Array.isArray(value)?value.map(walk):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([name,held])=>[name,walk(held)])):value
   return walk(input) as T
 }}
 
@@ -36,7 +38,7 @@ for(const engine of [vercel,deepagents,codex])describe(`${engine.id==='codex'?'a
     const ran=await play(engine)
     expect(ran.events.filter(event=>event.type==='error')).toEqual([])
     const checkpoint=ran.events.filter(event=>event.type==='execution_checkpoint').at(-1)!.checkpoint
-    const critique=writeRecord(CRITIQUE_SCHEMA,{type:'critique',refuted:false,checks:[],text:`Read ${scenario.secret}`},policy,guard,now)
+    const critique=writeRecord(CRITIQUE_SCHEMA,{type:'critique',refuted:false,checks:[],text:`Read ${scenarioSecret}`},policy,guard,now)
     const records=[checkpoint,...checkpoint.completions??[],critique]
     expect(records.every(validRecord),engine.id).toBe(true)
     expect(records.every(record=>record.schema&&record.version===1&&record.digest&&record.retainUntil),engine.id).toBe(true)

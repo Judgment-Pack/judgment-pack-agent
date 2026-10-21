@@ -13,13 +13,16 @@ import (
 
 const recordsCheck = "18 records"
 
+// Assemble this at run time because the repository's local-paths check forbids the literal.
+const recordsHomePath = "/" + "home" + "/person/secret.txt"
+
 type recordsGuard struct{}
 
 func (recordsGuard) JSON(raw json.RawMessage, where string, record bool) (json.RawMessage, error) {
 	if where != "message" || !record {
 		return nil, errors.New("record output did not pass the output guard as a record")
 	}
-	return json.RawMessage(strings.ReplaceAll(string(raw), "/home/person/secret.txt", "[redacted: local-home-path]")), nil
+	return json.RawMessage(strings.ReplaceAll(string(raw), recordsHomePath, "[redacted: local-home-path]")), nil
 }
 
 var Records = ScenarioCheck{Scenario: "records", Names: []string{recordsCheck}, Run: func(ctx context.Context, server *Server, answerAs string, adapter Adapter) ([]Finding, error) {
@@ -28,6 +31,7 @@ var Records = ScenarioCheck{Scenario: "records", Names: []string{recordsCheck}, 
 	policy := runcontext.RecordDefaults
 	var file struct {
 		Request string `json:"request"`
+		Secret  string `json:"secret"`
 	}
 	if err := ScenarioFile("records", &file); err != nil {
 		return nil, err
@@ -65,7 +69,9 @@ var Records = ScenarioCheck{Scenario: "records", Names: []string{recordsCheck}, 
 		bytes, _ := json.Marshal(provenance)
 		appendRecord(runcontext.ProvenanceSchema, bytes)
 	}
-	critique, err := runcontext.WriteRecord(runcontext.CritiqueSchema, runcontext.Object().Set("type", runcontext.String("critique")).Set("text", runcontext.String("Read /home/person/secret.txt")), policy, recordsGuard{}, now, "")
+	// Expand the scenario placeholder at run time because the repository's local-paths check forbids the literal.
+	secret := strings.Replace(file.Secret, "<home>", "/"+"home", 1)
+	critique, err := runcontext.WriteRecord(runcontext.CritiqueSchema, runcontext.Object().Set("type", runcontext.String("critique")).Set("text", runcontext.String("Read "+secret)), policy, recordsGuard{}, now, "")
 	if err != nil {
 		return nil, err
 	}

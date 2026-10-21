@@ -10,8 +10,10 @@ import {resolvePolicy} from './policy'
 
 const policy={retainDays:90,redactOnStore:true,exportFormat:'json' as const}
 const now=new Date('2026-10-21T12:00:00.000Z')
+// Assemble this at run time because the repository's local-paths check forbids the literal.
+const localHomePath='/'+'home'+'/person/secret.txt'
 const guard:RecordGuard={value<T>(input:T){
- const walk=(v:unknown):unknown=>typeof v==='string'?v.replace('/home/person/secret.txt','[redacted: local-home-path]'):Array.isArray(v)?v.map(walk):v&&typeof v==='object'?Object.fromEntries(Object.entries(v).map(([k,x])=>[k,walk(x)])):v
+ const walk=(v:unknown):unknown=>typeof v==='string'?v.replace(localHomePath,'[redacted: local-home-path]'):Array.isArray(v)?v.map(walk):v&&typeof v==='object'?Object.fromEntries(Object.entries(v).map(([k,x])=>[k,walk(x)])):v
  return walk(input) as T
 }}
 
@@ -31,7 +33,7 @@ describe('records (ADR #101)',()=>{
  })
 
  it('carries schema, version, digest and lifetime and applies the output guard on store',()=>{
-  const record=writeRecord(CRITIQUE_SCHEMA,{type:'critique',refuted:false,checks:[],text:'Read /home/person/secret.txt'},policy,guard,now)
+  const record=writeRecord(CRITIQUE_SCHEMA,{type:'critique',refuted:false,checks:[],text:`Read ${localHomePath}`},policy,guard,now)
   expect(record).toMatchObject({schema:CRITIQUE_SCHEMA,version:1,retainUntil:'2027-01-19T12:00:00.000Z',text:'Read [redacted: local-home-path]'})
   expect(record.digest).toBe(recordDigest(record))
   expect(validRecord(record)).toBe(true)

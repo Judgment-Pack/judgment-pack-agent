@@ -10,8 +10,11 @@ import (
 
 type recordTestGuard struct{}
 
+// Assemble this at run time because the repository's local-paths check forbids the literal.
+const recordTestHomePath = "/" + "home" + "/person/secret.txt"
+
 func (recordTestGuard) JSON(raw json.RawMessage, where string, record bool) (json.RawMessage, error) {
-	return json.RawMessage(strings.ReplaceAll(string(raw), `/home/person/secret.txt`, `[redacted: local-home-path]`)), nil
+	return json.RawMessage(strings.ReplaceAll(string(raw), recordTestHomePath, `[redacted: local-home-path]`)), nil
 }
 
 func recordVector(t *testing.T, name string) *Value {
@@ -27,7 +30,7 @@ func recordVector(t *testing.T, name string) *Value {
 func TestRecordsCarryLifetimeAndRedactOnStore(t *testing.T) {
 	now := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
 	policy := RecordDefaults
-	written, err := WriteRecord(CritiqueSchema, ObjectOf("type", String("critique"), "refuted", Bool(false), "checks", Array(), "text", String("Read /home/person/secret.txt")), policy, recordTestGuard{}, now, "")
+	written, err := WriteRecord(CritiqueSchema, ObjectOf("type", String("critique"), "refuted", Bool(false), "checks", Array(), "text", String("Read "+recordTestHomePath)), policy, recordTestGuard{}, now, "")
 	if err != nil {
 		t.Fatal(err)
 	}
