@@ -14,6 +14,14 @@
     {
       "type": "policy_resolved",
       "members": {
+        "compaction": {
+          "value": "summary",
+          "layer": "run"
+        },
+        "budget.summaryBytes": {
+          "value": 4000,
+          "layer": "run"
+        },
         "budget.readBytes": {
           "value": 1024,
           "layer": "run"
@@ -24,6 +32,14 @@
         },
         "models.author.reasoning": {
           "value": "ultra",
+          "layer": "run"
+        },
+        "models.compactor.reasoning": {
+          "value": "low",
+          "layer": "run"
+        },
+        "models.compactor.provider": {
+          "value": "author-connection",
           "layer": "run"
         },
         "concurrency.requests": {

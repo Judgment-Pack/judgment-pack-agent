@@ -13,6 +13,7 @@
         "execution_checkpoint",
         "budget_paused",
         "approval_requested",
+        "compacted",
         "skill_loaded",
         "skill_unloaded",
         "retry",
@@ -50,6 +51,9 @@
     },
     {
       "$ref": "#/$defs/approval_requested"
+    },
+    {
+      "$ref": "#/$defs/compacted"
     },
     {
       "$ref": "#/$defs/skill_loaded"
@@ -128,6 +132,19 @@
     }
   ],
   "$defs": {
+    "compacted": {
+      "description": "ADR-0016: the visible marker that one context compaction replaced complete turns. digest is the digest of the framed replacement; mode says whether the deterministic index or a model-authored summary was used.",
+      "type": "object",
+      "required": ["type", "turns", "bytes", "digest", "mode"],
+      "properties": {
+        "type": {"const": "compacted"},
+        "turns": {"type": "integer", "minimum": 1},
+        "bytes": {"type": "integer", "minimum": 1},
+        "digest": {"$ref": "provenance.json#/$defs/sha256"},
+        "mode": {"enum": ["index", "summary"]}
+      },
+      "additionalProperties": false
+    },
     "execution_checkpoint": {
       "description": "The execution's state, for the host to save: at the start of a tracked run, after each tool call, tool result and question, and at the end. durable true asks the host to save before the next operation (anything but a read); absent or false means the save may be lazy. Emitted by the shared context boundary (context/managed.ts) and by the delegation coordinator, only where the session carries a current request or a saved execution.",
       "type": "object",
@@ -442,6 +459,7 @@
             "subagent refused",
             "memory refused",
             "edit refused",
+            "compaction refused",
             "records expired"
           ]
         }

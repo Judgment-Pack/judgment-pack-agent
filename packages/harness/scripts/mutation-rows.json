@@ -4224,6 +4224,51 @@
    "origin": "agent#110 review round"
   },
   {
+   "name": "context compaction answer size unchecked",
+   "file": "context/session.ts",
+   "find": "if(typeof raw!=='string'||utf8Bytes(raw)>this.policy.summaryBytes)throw Error('The compactor returned no bounded summary.')",
+   "replace": "if(typeof raw!=='string')throw Error('The compactor returned no bounded summary.')",
+   "tests": ["certification/scenarios.test.ts"],
+   "status": "caught",
+   "origin": "agent#99 fix round"
+  },
+  {
+   "name": "context compaction summary unframed",
+   "file": "context/session.ts",
+   "find": "frameBlock('context compaction summary',encoded({summary:answer,digests,index:indexed===undefined?replacement:JSON.parse(indexed)}),this.marker)",
+   "replace": "encoded({summary:answer,digests,index:indexed===undefined?replacement:JSON.parse(indexed)})",
+   "tests": ["certification/scenarios.test.ts"],
+   "status": "caught",
+   "origin": "agent#99"
+  },
+  {
+   "name": "context compaction digests not carried",
+   "file": "context/session.ts",
+   "find": "encoded({summary:answer,digests,index:indexed===undefined?replacement:JSON.parse(indexed)})",
+   "replace": "encoded({summary:answer,index:indexed===undefined?replacement:JSON.parse(indexed)})",
+   "tests": ["certification/scenarios.test.ts"],
+   "status": "caught",
+   "origin": "agent#99"
+  },
+  {
+   "name": "context compaction fallback removed",
+   "file": "context/session.ts",
+   "find": "}catch(cause){this.notices.push({type:'guardrail'",
+   "replace": "}catch(cause){throw cause;this.notices.push({type:'guardrail'",
+   "tests": ["certification/scenarios.test.ts"],
+   "status": "caught",
+   "origin": "agent#99"
+  },
+  {
+   "name": "context compaction prefix moved",
+   "file": "context/session.ts",
+   "find": "return [messages[0]!,{role:'user',content:replacement},...messages.slice(choice.end)]",
+   "replace": "return [{role:'user',content:replacement},messages[0]!,...messages.slice(choice.end)]",
+   "tests": ["certification/scenarios.test.ts"],
+   "status": "caught",
+   "origin": "agent#99"
+  },
+  {
    "name": "records lifetime not carried",
    "file": "records.ts",
    "find": ",retainUntil:keepRetainUntil??retainUntil(policy,now)",

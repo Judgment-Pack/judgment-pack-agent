@@ -1,8 +1,8 @@
-# ADR-0017: Records
+# ADR-0018: Records
 
 Status: accepted, 2026-10-21. Issue agent#101, milestone v0.8.0. The maintainer's
 accepted decision builds on [ADR-0011](0011-the-agents-policy-table.md) and
-[ADR-0016](0016-the-output-boundary.md).
+[ADR-0017](0017-the-output-boundary.md).
 
 ## Context
 

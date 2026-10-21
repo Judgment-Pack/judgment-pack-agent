@@ -59,6 +59,18 @@ after the tools and, under `trailing-user` placement only, after the request tex
 of the first user turn): three under `trailing-user`, two under `system-tail`, where the state sits
 before the messages and the bytes through the request text grow on every request.
 
+## Context compaction
+
+`runcontext.SessionContext` implements ADR-0016 for both adapters. The policy
+defaults to the byte-identical deterministic `index`; `summary` keeps
+`RecentMessages` raw and calls `Input.Compactor` with the policy-selected
+`models.compactor` binding, `low` by default, and the `SummaryBytes` bound. The
+callback sees prose and replaced-turn digests but no tool calls or results. Those
+remain referenced through the retained index, framed with the summary as data.
+`compacted` reports the marker; failure emits `compaction refused` and continues
+with the index. `Checkpoint.Compaction` makes resume reuse exactly the same bytes,
+after the unchanged stable prefix.
+
 ## Tool sources
 
 A tool from a gateway connection, a public MCP server or the person is a `runcontext.HostTool` with
@@ -166,7 +178,7 @@ checkpoint resume, and ride in execution state so the stable prefix is unchanged
 
 ### Records
 
-`context/records.go` implements ADR-0017 in both Go adapters. The records policy
+`context/records.go` implements ADR-0018 in both Go adapters. The records policy
 defaults to 90 days, redaction on store and JSON export. New checkpoints, provenance
 rows and critiques carry `schema`, `version`, `digest` and `retainUntil`; an expired
 resume is refused before dispatch. `ExportRecords` exports only the records supplied

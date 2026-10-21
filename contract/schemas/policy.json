@@ -5,6 +5,14 @@
   "description": "ADR-0011. Closed partial host layers: run > project > table, resolved per member. Models default to the connected author and its tier; critic keeps the author floor. Dynamic roles inherit the author unless explicitly set. Unset members without a table or host-derived default are refused at admission. Model-visible text never supplies a layer.",
   "type": "object",
   "properties": {
+    "compaction": {
+      "description": "ADR-0016: index keeps the deterministic completed-step index; summary asks the compactor named by models.compactor and frames its answer as data.",
+      "enum": [
+        "index",
+        "summary"
+      ],
+      "default": "index"
+    },
     "records": {
       "description": "ADR records (#101). The host stores and deletes; the package stamps, optionally redacts, exports, and refuses an expired resume.",
       "type": "object",
@@ -73,10 +81,16 @@
           "default": 8388608
         },
         "recentMessages": {
-          "description": "Declared in the table; read by no assistant code today.",
+          "description": "ADR-0016: the newest messages retained verbatim when summary compaction replaces older complete turns.",
           "type": "integer",
           "minimum": 0,
           "default": 8
+        },
+        "summaryBytes": {
+          "description": "ADR-0016: the most UTF-8 bytes of model-authored summary text retained by one context compaction.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 4000
         },
         "historyBytes": {
           "description": "Declared in the table; read by the server's research worker, not by the assistant loop.",
@@ -300,6 +314,9 @@
           "$ref": "#/$defs/role"
         },
         "critic": {
+          "$ref": "#/$defs/role"
+        },
+        "compactor": {
           "$ref": "#/$defs/role"
         },
         "taskClasses": {

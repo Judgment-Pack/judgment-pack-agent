@@ -266,6 +266,18 @@ type RuntimeIdentity struct {
 	Version  string `json:"version"`
 }
 
+// CompactorRequest is ADR-0016's bounded, tool-free request to the connection selected by
+// models.compactor. Tool results stay in the deterministic retained-context index.
+type CompactorRequest struct {
+	Messages   []Message
+	Digests    []string
+	MaxBytes   int
+	Connection string
+	Family     string
+	Model      string
+	Reasoning  string
+}
+
 // Input is the context a host gives one run (ContextInput in session.ts).
 //
 // CurrentState is host-authored text that changes between requests or responses (the chat's draft
@@ -301,6 +313,7 @@ type Input struct {
 	Link              ExecutionLink
 	Connection        string
 	DelegationReuse   *bool
+	Compactor         func(ctx context.Context, request CompactorRequest) (string, error)
 	// Approval is the person's decision on the act call a paused Execution waits for (ADR-0008;
 	// checkpoint.json#/$defs/approvalDecision), the continuation input beside a request grant. A
 	// decision for any other call is refused before anything runs (stale-state).

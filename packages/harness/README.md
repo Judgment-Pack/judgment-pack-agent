@@ -295,6 +295,16 @@ string for both adapters, defined in `engines/contract.ts`.
 
 ### Across the turns of a chat
 
+When history reaches its allowance, `context/session.ts` follows ADR-0016. The
+policy's default `compaction: index` preserves the existing deterministic turn
+index byte for byte. `summary` keeps `recentMessages` raw and asks the
+`models.compactor` connection at its resolved tier (`low` by default) for prose
+bounded by `summaryBytes`. Tool results stay in the index; the prose, index and
+replaced-turn digests are framed as data. `compacted` exposes the replacement,
+and a failed compactor emits `compaction refused` and continues with the index.
+The checkpoint stores the exact framed replacement for byte-identical resume.
+Neither mode changes the stable prefix.
+
 A run's context ledger and read cache are its own and end with it, unless the host hands it a
 chat-scoped context (`context/chat.ts`, agent#8). The host makes one per chat and passes it to every
 run of that chat:
@@ -716,7 +726,7 @@ Children and the critic never edit. Hosts supply accepted documents or the first
 
 ### Records
 
-`records.ts` implements ADR-0017. Resolved policy members
+`records.ts` implements ADR-0018. Resolved policy members
 `records.retainDays`, `records.redactOnStore` and `records.exportFormat` default to
 90, true and `json`. Each newly emitted checkpoint, completion provenance row and
 critique is guarded on store and carries `schema`, `version`, `digest` and

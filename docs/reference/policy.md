@@ -18,6 +18,7 @@ Closed: a member the schema does not name is refused.
 
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
+| `compaction` |  | enum `index`, `summary` | ADR-0016: index keeps the deterministic completed-step index; summary asks the compactor named by models.compactor and frames its answer as data. Default: `"index"`. |
 | `records` |  | object | ADR records (#101). The host stores and deletes; the package stamps, optionally redacts, exports, and refuses an expired resume. |
 | `records.retainDays` |  | integer (min 1, max 36500) | Default: `90`. |
 | `records.redactOnStore` |  | boolean | Default: `true`. |
@@ -30,7 +31,8 @@ Closed: a member the schema does not name is refused.
 | `budget.toolResultBytes` |  | integer (min 1) | The largest tool result, as JSON text, the model is shown whole (tool-result.json). Default: `12000`. |
 | `budget.readBytes` |  | integer (min 128) | The largest read_context window. Default: `6000`. |
 | `budget.retainedBytes` |  | integer (min 1) | What one execution's context ledger may retain in all. Default: `8388608`. |
-| `budget.recentMessages` |  | integer (min 0) | Declared in the table; read by no assistant code today. Default: `8`. |
+| `budget.recentMessages` |  | integer (min 0) | ADR-0016: the newest messages retained verbatim when summary compaction replaces older complete turns. Default: `8`. |
+| `budget.summaryBytes` |  | integer (min 1) | ADR-0016: the most UTF-8 bytes of model-authored summary text retained by one context compaction. Default: `4000`. |
 | `budget.historyBytes` |  | integer (min 0) | Declared in the table; read by the server's research worker, not by the assistant loop. Default: `32000`. |
 | `budget.briefBytes` |  | integer (min 0) | The most UTF-8 bytes of the project brief the host's brief() may answer (ADR-0005; before it, the most the server added behind the adapter). A longer answer is refused before the run's first request (configuration) and nothing is sent. Default: `8000`. |
 | `budget.memoryBytes` |  | integer (min 0) | ADR-0014: most UTF-8 bytes of accepted, unexpired records recalled by memoryFor: sum of canonical JSON bytes before framing. The v0.8.0 bare-text alias uses text bytes. A larger answer fails configuration before any request. No reserve is taken; memory is counted where it sits. context.memory false disables recall. Default: `4000`. |
@@ -69,6 +71,7 @@ Closed: a member the schema does not name is refused.
 | `models` |  | object |  |
 | `models.author` |  | `$defs/role` |  |
 | `models.critic` |  | `$defs/role` |  |
+| `models.compactor` |  | `$defs/role` |  |
 | `models.taskClasses` |  | object |  |
 | `models.taskClasses.routine` |  | enum `off`, `on`, `ultra`, `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` |  |
 | `models.taskClasses.material` |  | enum `off`, `on`, `ultra`, `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` |  |
