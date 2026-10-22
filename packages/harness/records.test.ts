@@ -20,9 +20,9 @@ const guard:RecordGuard={value<T>(input:T){
 describe('records (ADR #101)',()=>{
  it('resolves the records policy run over project over table',()=>{
   const resolved=resolvePolicy({records:{retainDays:7}},{records:{retainDays:30,redactOnStore:false}},{models:{author:{model:'connected',reasoning:'off'}},records:{retainDays:90,redactOnStore:true,exportFormat:'json'}},{connections:['connected'],agent:false,requests:16})
-  expect(resolved.members['records.retainDays']).toEqual({value:7,layer:'run'})
-  expect(resolved.members['records.redactOnStore']).toEqual({value:false,layer:'project'})
-  expect(resolved.members['records.exportFormat']).toEqual({value:'json',layer:'table'})
+  expect(resolved.members['records.retainDays']).toEqual({value:7,layer:'run',source:'layer'})
+  expect(resolved.members['records.redactOnStore']).toEqual({value:false,layer:'project',source:'layer'})
+  expect(resolved.members['records.exportFormat']).toEqual({value:'json',layer:'table',source:'layer'})
  })
  it('shares the canonical digest rule with the handwritten records',()=>{
   expect(sha256('')).toBe('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')

@@ -50,7 +50,7 @@ import { readModelQuestion } from '../../questions'
 import { questionFailureResult } from '../../questionFailure'
 import { separateImages, type HeldImage, type ImageRouting } from '../../images'
 import { capabilitiesFor, type ModelCapabilities } from '../../capabilities'
-import { normalize, openThinking } from '../../thinking'
+import { openThinking, withThinkingTier } from '../../thinking'
 import { criticDecidedEvent } from '../../criticSwitch'
 import { refusedSchemaKeyword, refusedSchemaSentence } from '../../geminiSchema'
 import {
@@ -263,10 +263,10 @@ function systemMessage(head: string, tail?: string): SystemMessage {
  * Where this endpoint gets the state after the first request: the `vercel` adapter's rule
  * (`budget.json#/$defs/stateLocation`), decided once per run so the prefix does not move.
  */
-function statePlacement(family: EndpointKind, tier: ThinkingTier, capabilities: EndpointCapabilities): StatePlacement {
+function statePlacement(family: EndpointKind, tier: ThinkingTier | undefined, capabilities: EndpointCapabilities): StatePlacement {
   if (capabilities.strictAlternation === true) return 'system-tail'
   if (capabilities.statePlacement !== undefined) return capabilities.statePlacement
-  return family === 'anthropic' && tier !== 'off' ? 'system-tail' : 'trailing-user'
+  return family === 'anthropic' && tier !== undefined && tier !== 'off' ? 'system-tail' : 'trailing-user'
 }
 
 /** The state's text: the header, then whatever is current for this request. */
@@ -386,7 +386,7 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
   let slot = openThinking(session, capabilities.reasoning)
   /** The tier's members, held for an attempt; a refusal of the tier starts a new attempt. */
   let tier: Record<string, unknown> | null = null
-  let placement = statePlacement(session.model.family, session.thinking.tier, capabilities)
+  let placement = statePlacement(session.model.family, session.thinking?.tier, capabilities)
   const offered = new Set([...session.tools, ...session.hostTools].map((tool) => tool.name))
   const collision = session.hostTools.find((tool) => session.tools.some((served) => served.name === tool.name))
   const inputPause = new AbortController()
@@ -924,14 +924,14 @@ export function runDeepAgentsLoop(session: AssistantSession, id: AssistantEngine
         session={...session,model:{...criticBinding.model,call:session.model.call}}
         capabilities=capabilitiesFor(criticBinding.model)
         nativeTools=capabilities.nativeToolCalls
-        placement=statePlacement(session.model.family,session.thinking.tier,capabilities)
+        placement=statePlacement(session.model.family,session.thinking?.tier,capabilities)
       }
       const before = { used: context.execution.state.used, rows: (context.execution.state.completions ?? []).length }
       // A different critic binding owns its slot, even at the author's family and tier.
-      // The identical binding retains learned refusals; no decision tier means off.
-      const criticTier = (decided.reasoning ?? 'off') as ThinkingTier
-      if (criticTier !== session.thinking.tier || criticBinding !== context.connection('author')) {
-        slot = openThinking({ ...session, thinking: normalize(criticTier, session.model.family) }, capabilities.reasoning)
+      // The identical binding retains learned refusals; no decision tier stays omitted.
+      const criticTier = decided.reasoning as ThinkingTier | undefined
+      if (criticTier !== session.thinking?.tier || criticBinding !== context.connection('author')) {
+        slot = openThinking(withThinkingTier(session, criticTier), capabilities.reasoning)
         tier = slot.members()
         context.reserveOutput(tier?.max_tokens)
       }

@@ -12,7 +12,7 @@ See also: [budget.md](budget.md), [critic.md](critic.md), [events.md](events.md)
 
 ## The policy table
 
-ADR-0011. Closed partial host layers: run > project > table, resolved per member. Models default to the connected author and its tier; critic keeps the author floor. Dynamic roles inherit the author unless explicitly set. Unset members without a table or host-derived default are refused at admission. Model-visible text never supplies a layer.
+ADR-0011. Closed partial host layers: run > project > table, resolved per member. Models default to the connected author; an omitted reasoning preference stays absent unless authenticated discovery supplies the selected model's default. Critic and dynamic roles inherit the author unless explicitly set. Other unset required members without a table or host-derived default are refused at admission. Model-visible text never supplies a layer.
 
 Closed: a member the schema does not name is refused.
 
@@ -93,14 +93,27 @@ Closed: a member the schema does not name is refused.
 | `failover` |  | object | ADR-0020. Provider failures that may move one request to the next same-family fallback after the ordinary retry rule. The package never switches for any other class. |
 | `failover.classes` |  | array of enum `unavailable`, `rate-limited`, `timeout` | Default: `["unavailable","rate-limited","timeout"]`. |
 
+### `policy.json $defs/discovered`
+
+Authenticated host-supplied capabilities for the selected model, read before policy admission.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `reasoning` | yes | object |  |
+| `reasoning.default` | yes | `$defs/reasoningValue` |  |
+| `reasoning.supported` | yes | array of `$defs/reasoningValue` (max items 10) |  |
+
 ### `policy.json $defs/member`
 
 Closed: a member the schema does not name is refused.
 
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
-| `value` | yes | any |  |
+| `value` |  | any |  |
 | `layer` | yes | enum `run`, `project`, `table` |  |
+| `source` |  | enum `layer`, `model-default`, `discovered` | layer for an explicit policy value, model-default when reasoning stays absent, or discovered when authenticated model discovery supplied the default. |
 
 ### `policy.json $defs/outputPattern`
 
@@ -121,6 +134,10 @@ Closed: a member the schema does not name is refused.
 | `invocationsPerDay` |  | integer (min 0) |  |
 | `bytesPerDay` |  | integer (min 0) |  |
 
+### `policy.json $defs/reasoningValue`
+
+Type: enum `off`, `on`, `ultra`, `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`
+
 ### `policy.json $defs/resolved`
 
 Open: a member the schema does not name is accepted.
@@ -134,6 +151,7 @@ Closed: a member the schema does not name is refused.
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
 | `model` |  | string (min length 1, max length 128) |  |
-| `reasoning` |  | enum `off`, `on`, `ultra`, `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` |  |
+| `reasoning` |  | enum `off`, `on`, `ultra`, `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` | An explicit preference. Omission uses discovery's advertised default when present and otherwise leaves the provider request's effort member absent. |
+| `discovered` |  | `$defs/discovered` |  |
 | `provider` |  | string (min length 1, max length 128) | same selects the author's connection; other selects a host connection of another family; otherwise a connected ID. Run > project > table. Default: `"same"`. |
 | `fallback` |  | array of string (min length 1, max length 128) (max items 16) | ADR-0020. Ordered host connection IDs tried after this role's selected connection. Every entry must be connected and in the selected connection's family. Default: `[]`. |

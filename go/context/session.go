@@ -275,9 +275,6 @@ func NewSessionContext(session Session) (*SessionContext, error) {
 	switch {
 	case session.Model != nil:
 		out.authorTier = session.Model.Thinking
-		if out.authorTier == "" {
-			out.authorTier = "off"
-		}
 	case session.Agent != nil:
 		out.authorTier = session.Agent.Effort
 	}
@@ -1383,7 +1380,11 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 						record[name] = member
 						var value any
 						_ = json.Unmarshal(member.Value, &value)
-						held.ResolvedPolicy[name] = PolicyMember{Value: value, Layer: member.Layer}
+						source := ""
+						if member.Source != nil {
+							source = *member.Source
+						}
+						held.ResolvedPolicy[name] = PolicyMember{Value: value, Layer: member.Layer, Source: source}
 					}
 				}
 			}

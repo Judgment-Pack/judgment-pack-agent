@@ -114,7 +114,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		AllowConversation: run.AllowConversation,
 		Interactive:       run.Interactive,
 		CallTool:          r.gatedCall,
-		Model:             &runcontext.ModelSession{Family: run.Wire, Model: run.ModelName, Budget: budgetOf(capabilities), ToolSchemas: string(capabilities.ToolSchemas), Thinking: orOff(run.Thinking)},
+		Model:             &runcontext.ModelSession{Family: run.Wire, Model: run.ModelName, Budget: budgetOf(capabilities), ToolSchemas: string(capabilities.ToolSchemas), Thinking: run.Thinking},
 		Host:              run.Host,
 		Skills:            run.Skills,
 		Subagents:         run.Subagents, ChildDefinition: run.ChildDefinition,
@@ -167,8 +167,8 @@ func Run(ctx context.Context, run *adapter.Run) error {
 	r.sc.Execution.UseConnection(r.run.Connection("author"), "author")
 	r.emitAll(r.boundary.Open())
 
-	r.slot = wire.OpenThinking(wire.ThinkingTier(orOff(local.Thinking)), r.family, &capabilities.Reasoning, capabilities.Tiers, capabilities.FallbackTiers)
-	r.placement = statePlacement(r.family, wire.ThinkingTier(orOff(local.Thinking)), capabilities)
+	r.slot = wire.OpenThinking(wire.ThinkingTier(local.Thinking), r.family, &capabilities.Reasoning, capabilities.Tiers, capabilities.FallbackTiers)
+	r.placement = statePlacement(r.family, wire.ThinkingTier(local.Thinking), capabilities)
 	r.listener = &listener{r: r}
 
 	err = r.drive(ctx)
@@ -187,13 +187,6 @@ func Run(ctx context.Context, run *adapter.Run) error {
 	}
 	r.deliver(contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}})
 	return nil
-}
-
-func orOff(tier string) string {
-	if tier == "" {
-		return "off"
-	}
-	return tier
 }
 
 // budgetOf is the capability record's window and output cap, where it carries both.
@@ -215,7 +208,7 @@ func statePlacement(family wire.EndpointKind, tier wire.ThinkingTier, capabiliti
 	if capabilities.StatePlacement != "" {
 		return capabilities.StatePlacement
 	}
-	if family == wire.Anthropic && tier != wire.TierOff {
+	if family == wire.Anthropic && tier != "" && tier != wire.TierOff {
 		return "system-tail"
 	}
 	return "trailing-user"
@@ -270,7 +263,8 @@ func (r *runState) modelCall(phase func() string) wire.ModelCall {
 			if r.run.Connection != nil && r.run.Connection(role) != r.sc.ResolvedPolicy["models."+role+".provider"].Value {
 				binding := r.run.PolicyConnections[r.run.Connection(role)]
 				var err error
-				suffix, request, err = fallbackRequest(binding, r.sc.ResolvedPolicy["models."+role+".reasoning"].Value.(string), suffix, request)
+				tier, _ := r.sc.ResolvedPolicy["models."+role+".reasoning"].Value.(string)
+				suffix, request, err = fallbackRequest(binding, tier, suffix, request)
 				if err != nil {
 					return nil, err
 				}
@@ -554,7 +548,7 @@ func fallbackRequest(binding adapter.PolicyConnection, tier, suffix string, requ
 		body.Set("generationConfig", config)
 	}
 	var settings *wire.WireThinking
-	if caps.Reasoning.Kind != "none" {
+	if tier != "" && caps.Reasoning.Kind != "none" {
 		settings = wire.WireFor(wire.ThinkingTier(tier), wire.DialectFor(caps.Reasoning.Kind), caps.Tiers, caps.FallbackTiers)
 	}
 	if binding.Wire == "gemini" {

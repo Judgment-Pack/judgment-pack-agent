@@ -19,8 +19,9 @@ var policySchemaJSON []byte
 
 type PolicyLayer map[string]any
 type PolicyMember struct {
-	Value any    `json:"value"`
-	Layer string `json:"layer"`
+	Value  any    `json:"value"`
+	Layer  string `json:"layer"`
+	Source string `json:"source,omitempty"`
 }
 type PolicyMembers map[string]PolicyMember
 type PolicyHost struct {
@@ -63,6 +64,7 @@ type policyShape struct {
 	Type        json.RawMessage        `json:"type"`
 	Properties  map[string]policyShape `json:"properties"`
 	Patterns    map[string]policyShape `json:"patternProperties"`
+	Required    []string               `json:"required"`
 	Items       *policyShape           `json:"items"`
 	Defs        map[string]policyShape `json:"$defs"`
 	Enum        []any                  `json:"enum"`
@@ -108,8 +110,8 @@ func policyRead(value any, s policyShape, path, layer string, out map[string]any
 		return nil
 	}
 
-	if s.Ref == "#/$defs/role" {
-		s = policySchema.Defs["role"]
+	if strings.HasPrefix(s.Ref, "#/$defs/") {
+		s = policySchema.Defs[strings.TrimPrefix(s.Ref, "#/$defs/")]
 	}
 	refuse := func() error {
 		return &PolicyRefusal{Member: path, Layer: layer, Detail: "invalid or unknown policy member"}
@@ -118,6 +120,11 @@ func policyRead(value any, s policyShape, path, layer string, out map[string]any
 		object, ok := value.(map[string]any)
 		if !ok {
 			return refuse()
+		}
+		for _, required := range s.Required {
+			if _, ok := object[required]; !ok {
+				return refuse()
+			}
 		}
 		for _, key := range policyKeys(object) {
 			child, ok := s.Properties[key]
@@ -199,7 +206,7 @@ func policyDefaults(s policyShape, path string, out PolicyMembers) {
 	if s.Default != nil {
 		var v any
 		_ = json.Unmarshal(s.Default, &v)
-		out[path] = PolicyMember{v, "table"}
+		out[path] = PolicyMember{Value: v, Layer: "table", Source: "layer"}
 	}
 	for k, v := range s.Properties {
 		name := k
@@ -279,7 +286,7 @@ func ResolvePolicy(run, project, table PolicyLayer, host PolicyHost) (ResolvedPo
 			return result, err
 		}
 		for k, v := range flat {
-			members[k] = PolicyMember{v, layer.name}
+			members[k] = PolicyMember{Value: v, Layer: layer.name, Source: "layer"}
 		}
 	}
 	refuse := func(name, detail string, pace bool) error {
@@ -295,7 +302,7 @@ func ResolvePolicy(run, project, table PolicyLayer, host PolicyHost) (ResolvedPo
 			members["models.author.reasoning"] = mapped
 		}
 	}
-	for _, name := range []string{"models.author.model", "models.author.reasoning"} {
+	for _, name := range []string{"models.author.model"} {
 		if _, ok := members[name]; !ok {
 			return result, refuse(name, "no default or host value", false)
 		}
@@ -310,14 +317,17 @@ func ResolvePolicy(run, project, table PolicyLayer, host PolicyHost) (ResolvedPo
 		}
 		return map[string]int{"off": 0, "low": 1, "on": 2, "medium": 2, "ultra": 3, "high": 3}[value]
 	}
-	author, _ := members["models.author.reasoning"].Value.(string)
-	if _, ok := members["models.compactor.reasoning"]; !ok {
-		members["models.compactor.reasoning"] = PolicyMember{Value: "low", Layer: "table"}
-	}
 	roles := map[string]bool{"author": true, "critic": true}
 	for name := range members {
 		if strings.HasPrefix(name, "models.") && !strings.HasPrefix(name, "models.taskClasses.") {
-			roles[name[7:strings.LastIndex(name, ".")]] = true
+			role := strings.TrimPrefix(name, "models.")
+			for _, suffix := range []string{".model", ".reasoning", ".provider", ".fallback"} {
+				role = strings.TrimSuffix(role, suffix)
+			}
+			if at := strings.Index(role, ".discovered."); at >= 0 {
+				role = role[:at]
+			}
+			roles[role] = true
 		}
 	}
 	base := host.AuthorConnection
@@ -344,7 +354,7 @@ func ResolvePolicy(run, project, table PolicyLayer, host PolicyHost) (ResolvedPo
 		name := "models." + role + ".provider"
 		member, ok := members[name]
 		if !ok {
-			member = PolicyMember{"same", "table"}
+			member = PolicyMember{Value: "same", Layer: "table", Source: "layer"}
 		}
 		members[name] = member
 		choice, _ := member.Value.(string)
@@ -364,11 +374,11 @@ func ResolvePolicy(run, project, table PolicyLayer, host PolicyHost) (ResolvedPo
 		if selected == "" || !slices.Contains(host.Connections, selected) {
 			return result, refuse(name, "no connected provider satisfies the role", false)
 		}
-		members[name] = PolicyMember{selected, member.Layer}
+		members[name] = PolicyMember{Value: selected, Layer: member.Layer, Source: member.Source}
 		fallbackName := "models." + role + ".fallback"
 		fallbackMember, ok := members[fallbackName]
 		if !ok {
-			fallbackMember = PolicyMember{[]any{}, "table"}
+			fallbackMember = PolicyMember{Value: []any{}, Layer: "table", Source: "layer"}
 			members[fallbackName] = fallbackMember
 		}
 		fallbacks, ok := fallbackMember.Value.([]any)
@@ -391,25 +401,74 @@ func ResolvePolicy(run, project, table PolicyLayer, host PolicyHost) (ResolvedPo
 			authorConnection = selected
 		}
 	}
+	resolveReasoning := func(role string, inherited *PolicyMember) (PolicyMember, error) {
+		name := "models." + role + ".reasoning"
+		explicit, hasExplicit := members[name]
+		defaultMember, hasDefault := members["models."+role+".discovered.reasoning.default"]
+		supportedMember, hasSupported := members["models."+role+".discovered.reasoning.supported"]
+		supported, _ := supportedMember.Value.([]any)
+		contains := func(value any) bool {
+			for _, candidate := range supported {
+				if candidate == value {
+					return true
+				}
+			}
+			return false
+		}
+		if hasDefault && (!hasSupported || !contains(defaultMember.Value)) {
+			return PolicyMember{}, &PolicyRefusal{Member: name, Layer: defaultMember.Layer, Detail: fmt.Sprintf("discovered default %q is not advertised as supported", defaultMember.Value)}
+		}
+		if hasExplicit {
+			if hasSupported && !contains(explicit.Value) {
+				model := members["models."+role+".model"].Value
+				return PolicyMember{}, &PolicyRefusal{Member: name, Layer: explicit.Layer, Detail: fmt.Sprintf("reasoning value %q is not supported by model %q", explicit.Value, model)}
+			}
+			return explicit, nil
+		}
+		if hasDefault {
+			return PolicyMember{Value: defaultMember.Value, Layer: defaultMember.Layer, Source: "discovered"}, nil
+		}
+		if inherited != nil {
+			member := *inherited
+			member.Layer = "table"
+			return member, nil
+		}
+		return PolicyMember{Layer: "table", Source: "model-default"}, nil
+	}
+	authorMember, err := resolveReasoning("author", nil)
+	if err != nil {
+		return result, err
+	}
+	members["models.author.reasoning"] = authorMember
+	author, _ := authorMember.Value.(string)
 	for _, role := range policyKeys(roles) {
 		for _, field := range []string{"model", "reasoning"} {
 			name := "models." + role + "." + field
-			if _, ok := members[name]; !ok {
-				members[name] = PolicyMember{members["models.author."+field].Value, "table"}
+			if _, ok := members[name]; !ok && field == "model" {
+				members[name] = PolicyMember{Value: members["models.author."+field].Value, Layer: "table", Source: "layer"}
+			}
+			if field == "reasoning" && role != "author" {
+				member, reasoningErr := resolveReasoning(role, &authorMember)
+				if reasoningErr != nil {
+					return result, reasoningErr
+				}
+				members[name] = member
 			}
 			value, _ := members[name].Value.(string)
 			if field == "model" && !slices.Contains(host.Connections, value) {
 				return result, refuse(name, "model connection is not available", false)
 			}
 			if field == "reasoning" {
-				if !slices.Contains(tiers, value) {
+				if value != "" && !slices.Contains(tiers, value) {
 					return result, refuse(name, "tier is not supported on this capability", false)
 				}
-				if (strings.HasPrefix(role, "child.") || strings.HasPrefix(role, "subagent.")) && rank(value) > rank(author) {
+				if value != "" && (strings.HasPrefix(role, "child.") || strings.HasPrefix(role, "subagent.")) {
 					models, _ := project["models"].(map[string]any)
 					assigned, _ := models[role].(map[string]any)
 					allowance, _ := assigned["reasoning"].(string)
-					if allowance == "" || rank(value) > rank(allowance) {
+					unknownRunIncrease := author == "" && members[name].Layer == "run" && allowance == ""
+					knownIncrease := author != "" && rank(value) > rank(author) && (allowance == "" || rank(value) > rank(allowance))
+					if unknownRunIncrease || knownIncrease {
 						return result, refuse(name, "tier exceeds the author's without project authorization", false)
 					}
 				}
@@ -445,8 +504,15 @@ func ResolvePolicy(run, project, table PolicyLayer, host PolicyHost) (ResolvedPo
 func (p PolicyMembers) Record() map[string]contract.PolicyMember {
 	out := map[string]contract.PolicyMember{}
 	for k, v := range p {
-		data, _ := json.Marshal(v.Value)
-		out[k] = contract.PolicyMember{Value: data, Layer: v.Layer}
+		var data json.RawMessage
+		if v.Value != nil || v.Source != "model-default" {
+			data, _ = json.Marshal(v.Value)
+		}
+		var source *string
+		if v.Source != "" {
+			source = &v.Source
+		}
+		out[k] = contract.PolicyMember{Value: data, Layer: v.Layer, Source: source}
 	}
 	return out
 }
@@ -459,19 +525,24 @@ func resolveSessionPolicy(session Session, budget Policy) (ResolvedPolicy, error
 	if session.Context != nil && session.Context.Connection != "" {
 		current = session.Context.Connection
 	}
-	tier := "off"
+	tier := ""
 	if session.Model != nil && session.Model.Thinking != "" {
 		tier = session.Model.Thinking
 	}
 	if session.Agent != nil {
 		tier = session.Agent.Effort
-		if tier == "" {
-			tier = "none"
-		}
 	}
-	table["models"] = map[string]any{"author": map[string]any{"model": current, "reasoning": tier}}
+	authorRole := map[string]any{"model": current}
+	if tier != "" {
+		authorRole["reasoning"] = tier
+	}
+	table["models"] = map[string]any{"author": authorRole, "compactor": map[string]any{"model": current, "reasoning": "low"}}
 	for _, s := range session.Subagents {
-		table["models"].(map[string]any)["subagent."+s.ID] = map[string]any{"model": s.Model, "reasoning": s.Reasoning}
+		role := map[string]any{"model": s.Model}
+		if s.Reasoning != "" {
+			role["reasoning"] = s.Reasoning
+		}
+		table["models"].(map[string]any)["subagent."+s.ID] = role
 	}
 	capacity := 2
 	if session.PolicyLegacyModels != nil && session.PolicyLegacyModels.ConcurrentRequests != nil {

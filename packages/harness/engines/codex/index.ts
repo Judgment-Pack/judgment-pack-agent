@@ -114,7 +114,7 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
       const partial = new Map<string, string>()
       let final = ''
       let messages = 0
-      await withAbort(() => session.agent.run({ prompt, instructions, tools: offeredHere, effort, phase: phase === 'critic' ? 'critic' : 'author', ...(model === undefined ? {} : { model }) }, {
+      await withAbort(() => session.agent.run({ prompt, instructions, tools: offeredHere, ...(effort === undefined ? {} : { effort }), phase: phase === 'critic' ? 'critic' : 'author', ...(model === undefined ? {} : { model }) }, {
         signal: executionSignal,
         connectionSwitched: deliver,
         event: async (event: AgentEvent) => {

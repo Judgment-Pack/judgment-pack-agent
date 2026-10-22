@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/policy.json",
   "title": "The agent's policy table",
-  "description": "ADR-0011. Closed partial host layers: run > project > table, resolved per member. Models default to the connected author and its tier; critic keeps the author floor. Dynamic roles inherit the author unless explicitly set. Unset members without a table or host-derived default are refused at admission. Model-visible text never supplies a layer.",
+  "description": "ADR-0011. Closed partial host layers: run > project > table, resolved per member. Models default to the connected author; an omitted reasoning preference stays absent unless authenticated discovery supplies the selected model's default. Critic and dynamic roles inherit the author unless explicitly set. Other unset required members without a table or host-derived default are refused at admission. Model-visible text never supplies a layer.",
   "type": "object",
   "properties": {
     "compaction": {
@@ -518,6 +518,7 @@
           "maxLength": 128
         },
         "reasoning": {
+          "description": "An explicit preference. Omission uses discovery's advertised default when present and otherwise leaves the provider request's effort member absent.",
           "enum": [
             "off",
             "on",
@@ -530,6 +531,9 @@
             "xhigh",
             "max"
           ]
+        },
+        "discovered": {
+          "$ref": "#/$defs/discovered"
         },
         "provider": {
           "type": "string",
@@ -563,12 +567,64 @@
             "project",
             "table"
           ]
+        },
+        "source": {
+          "description": "layer for an explicit policy value, model-default when reasoning stays absent, or discovered when authenticated model discovery supplied the default.",
+          "enum": [
+            "layer",
+            "model-default",
+            "discovered"
+          ]
         }
       },
       "additionalProperties": false,
       "required": [
-        "value",
         "layer"
+      ]
+    },
+    "discovered": {
+      "description": "Authenticated host-supplied capabilities for the selected model, read before policy admission.",
+      "type": "object",
+      "properties": {
+        "reasoning": {
+          "type": "object",
+          "properties": {
+            "default": {
+              "$ref": "#/$defs/reasoningValue"
+            },
+            "supported": {
+              "type": "array",
+              "maxItems": 10,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/reasoningValue"
+              }
+            }
+          },
+          "required": [
+            "default",
+            "supported"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "reasoning"
+      ],
+      "additionalProperties": false
+    },
+    "reasoningValue": {
+      "enum": [
+        "off",
+        "on",
+        "ultra",
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
       ]
     },
     "resolved": {

@@ -188,7 +188,10 @@ func ApplyPolicy(run *Run, sc *runcontext.SessionContext, named runcontext.RunMo
 				binding = run.PolicyConnections[id]
 			}
 			selected := *binding.Agent
-			selected.Effort, _ = sc.ResolvedPolicy["models."+role+".reasoning"].Value.(string)
+			selected.Effort = ""
+			if effort, ok := sc.ResolvedPolicy["models."+role+".reasoning"].Value.(string); ok {
+				selected.Effort = effort
+			}
 			activeAgents[role] = selected
 		}
 		var failoverMu sync.Mutex
@@ -254,7 +257,10 @@ func ApplyPolicy(run *Run, sc *runcontext.SessionContext, named runcontext.RunMo
 			activeIDs[role] = to
 			remember(role, from, to, reason)
 			switched := *binding.Agent
-			switched.Effort, _ = sc.ResolvedPolicy["models."+role+".reasoning"].Value.(string)
+			switched.Effort = ""
+			if effort, ok := sc.ResolvedPolicy["models."+role+".reasoning"].Value.(string); ok {
+				switched.Effort = effort
+			}
 			activeAgents[role] = switched
 			sc.Execution.UseConnection(to, role)
 			return from, to, true

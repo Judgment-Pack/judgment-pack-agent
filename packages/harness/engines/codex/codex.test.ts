@@ -234,7 +234,7 @@ describe.each(AGENT_ENGINES)('agent engine %s', engineId => {
   it('does not manufacture proposals or claim verification for an ordinary chat reply', async () => {
     const events = await collect(session(reply('Hello.'), { allowConversation: true }))
     // ADR-0010: the decision says no critic ran, nothing having been proposed; no tier, since the session states no effort.
-    expect(events).toEqual([{ type: 'critic_decided', mode: 'auto', ran: false, reason: 'no-proposal', reasoning:'none' }, { type: 'message', text: 'Hello.' }, { type: 'end' }])
+    expect(events).toEqual([{ type: 'critic_decided', mode: 'auto', ran: false, reason: 'no-proposal' }, { type: 'message', text: 'Hello.' }, { type: 'end' }])
   })
 
   it('executes a host tool with cancellation and returns structured content without treating it as a runtime check', async () => {

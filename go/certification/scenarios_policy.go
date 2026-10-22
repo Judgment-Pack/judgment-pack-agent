@@ -9,8 +9,8 @@ import (
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 )
 
-var policyNames = []string{"11 resolved", "11 pace", "11 ceiling", "11 resume", "11 alias"}
-var AgentPolicyNames = []string{"11 agent resolved", "11 agent pace", "11 agent ceiling", "11 agent resume", "11 agent alias"}
+var policyNames = []string{"11 resolved", "11 model reasoning defaults", "11 pace", "11 ceiling", "11 resume", "11 alias"}
+var AgentPolicyNames = []string{"11 agent resolved", "11 agent reasoning defaults", "11 agent pace", "11 agent ceiling", "11 agent resume", "11 agent alias"}
 
 func policyFindings(ctx context.Context, agent bool, play switchPlay) ([]Finding, error) {
 	prefix := "11 "
@@ -39,7 +39,11 @@ func policyFindings(ctx context.Context, agent bool, play switchPlay) ([]Finding
 		if layer == "run" {
 			run.Policy = runLayer
 		}
-		ran, err = play(ctx, turns, run, low, nil)
+		tier := low
+		if agent && layer == "table" {
+			tier = ""
+		}
+		ran, err = play(ctx, turns, run, tier, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -86,13 +90,19 @@ func policyFindings(ctx context.Context, agent bool, play switchPlay) ([]Finding
 			"pace.requestsPerDay": nil, "pace.invocationsPerDay": nil, "pace.bytesPerDay": nil, "pace.warnAt": 0.8, "taskClass": "routine"}
 		if agent {
 			values["concurrency.children"] = 1
+			delete(values, "models.author.reasoning")
+			delete(values, "models.critic.reasoning")
 		}
 		for name, value := range budget {
 			values["budget."+name] = value
 		}
 		want := runcontext.PolicyMembers{}
 		for name, value := range values {
-			want[name] = runcontext.PolicyMember{Value: value, Layer: "table"}
+			want[name] = runcontext.PolicyMember{Value: value, Layer: "table", Source: "layer"}
+		}
+		if agent {
+			want["models.author.reasoning"] = runcontext.PolicyMember{Layer: "table", Source: "model-default"}
+			want["models.critic.reasoning"] = runcontext.PolicyMember{Layer: "table", Source: "model-default"}
 		}
 		if layer != "table" {
 			selected := []string{"budget.readBytes", "critic.default", "models.author.reasoning", "concurrency.requests", "pace.requestsPerDay", "taskClass"}
@@ -101,9 +111,9 @@ func policyFindings(ctx context.Context, agent bool, play switchPlay) ([]Finding
 				chosen = []any{512, "auto", low, 3, 10, "boundary"}
 			}
 			for i, name := range selected {
-				want[name] = runcontext.PolicyMember{Value: chosen[i], Layer: layer}
+				want[name] = runcontext.PolicyMember{Value: chosen[i], Layer: layer, Source: "layer"}
 			}
-			want["models.critic.reasoning"] = runcontext.PolicyMember{Value: chosen[2], Layer: "table"}
+			want["models.critic.reasoning"] = runcontext.PolicyMember{Value: chosen[2], Layer: "table", Source: "layer"}
 		}
 		if comparisonJSON(resolved[0].Members) != comparisonJSON(want.Record()) {
 			f.fail("%s members: got %s want %s", layer, comparisonJSON(resolved[0].Members), comparisonJSON(want.Record()))
@@ -118,6 +128,96 @@ func policyFindings(ctx context.Context, agent bool, play switchPlay) ([]Finding
 		}
 	}
 	out = append(out, f.list...)
+	if !agent {
+		f = findings{check: prefix + "model reasoning defaults"}
+		run = base()
+		run.Critic = "off"
+		ran, err = play(ctx, turns, run, "", nil)
+		if err != nil {
+			return nil, err
+		}
+		if len(ran.Requests) != 1 || strings.Contains(string(ran.Requests[0].Body), `"reasoning_effort"`) {
+			f.fail("omitted model reasoning request: %+v", ran.Requests)
+		}
+		resolved := ofType(ran.Events, func(e contract.RunEvent) *contract.RunEventPolicyResolved { return e.PolicyResolved })
+		if len(resolved) != 1 {
+			f.fail("omitted model reasoning has no resolved event")
+		} else {
+			member := resolved[0].Members["models.author.reasoning"]
+			if len(member.Value) != 0 || member.Source == nil || *member.Source != "model-default" {
+				f.fail("omitted model reasoning record: %+v", member)
+			}
+		}
+		out = append(out, f.list...)
+	}
+	if agent {
+		f = findings{check: prefix + "reasoning defaults"}
+		run = base()
+		run.Critic = "off"
+		ran, err = play(ctx, turns, run, "", nil)
+		if err != nil {
+			return nil, err
+		}
+		if len(ran.Invocations) != 1 || ran.Invocations[0].Effort != "" {
+			f.fail("omitted effort was dispatched as %+v", ran.Invocations)
+		}
+		omittedRequest := ""
+		if len(ran.Invocations) == 1 {
+			omittedRequest = comparisonJSON(ran.Invocations[0])
+		}
+		resolved := ofType(ran.Events, func(e contract.RunEvent) *contract.RunEventPolicyResolved { return e.PolicyResolved })
+		if len(resolved) != 1 {
+			f.fail("omitted reasoning has no resolved event")
+		} else {
+			member := resolved[0].Members["models.author.reasoning"]
+			if len(member.Value) != 0 || member.Source == nil || *member.Source != "model-default" {
+				f.fail("omitted reasoning record: %+v", member)
+			}
+		}
+		run = base()
+		run.Critic = "off"
+		run.Policy = runcontext.PolicyLayer{"models": map[string]any{"author": map[string]any{"discovered": map[string]any{"reasoning": map[string]any{"default": "high", "supported": []any{"low", "medium", "high"}}}}}}
+		ran, err = play(ctx, turns, run, "", nil)
+		if err != nil {
+			return nil, err
+		}
+		if len(ran.Invocations) != 1 || ran.Invocations[0].Effort != "high" {
+			f.fail("discovered default was not dispatched: %+v", ran.Invocations)
+		}
+		run.Policy = runcontext.PolicyLayer{"models": map[string]any{"author": map[string]any{"reasoning": "none", "discovered": map[string]any{"reasoning": map[string]any{"default": "high", "supported": []any{"low", "medium", "high"}}}}}}
+		ran, err = play(ctx, turns, run, "", nil)
+		if err != nil {
+			return nil, err
+		}
+		if len(ran.Invocations) != 0 {
+			f.fail("unsupported none dispatched")
+		}
+		run = base()
+		run.Critic = "off"
+		first, firstErr := play(ctx, turns, run, "", func(event contract.RunEvent) bool {
+			return event.ExecutionCheckpoint != nil && event.ExecutionCheckpoint.Checkpoint.Policy != nil
+		})
+		if firstErr != nil {
+			return nil, firstErr
+		}
+		saved, savedErr := readBack(lastCheckpointOf(first.Events))
+		if savedErr != nil {
+			return nil, savedErr
+		}
+		run.Context.Execution = saved
+		resumed, resumeErr := play(ctx, turns, run, "", nil)
+		if resumeErr != nil {
+			return nil, resumeErr
+		}
+		if len(resumed.Invocations) != 1 || comparisonJSON(resumed.Invocations[0]) != omittedRequest {
+			f.fail("omitted reasoning resume changed request bytes")
+		}
+		last := lastCheckpointOf(resumed.Events)
+		if last == nil || comparisonJSON(last.Policy["models.author.reasoning"]) != comparisonJSON(saved.Policy["models.author.reasoning"]) {
+			f.fail("omitted reasoning resume changed source")
+		}
+		out = append(out, f.list...)
+	}
 	f = findings{check: prefix + "resume"}
 	run = base()
 	run.Policy = runLayer
@@ -303,7 +403,12 @@ var PolicyTable = ScenarioCheck{Scenario: "policy-table", Names: policyNames, Ru
 			}
 		})
 		defer scenario.watch(nil)
-		ran, err := scenario.runOn(broken, inner, &run)
+		var ran *ScenarioRun
+		if tier == "" {
+			ran, err = scenario.runOnOmittedThinking(broken, inner, &run)
+		} else {
+			ran, err = scenario.runOn(broken, inner, &run)
+		}
 		if err != nil {
 			return nil, err
 		}

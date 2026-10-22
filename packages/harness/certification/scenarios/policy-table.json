@@ -16,6 +16,12 @@
     "pace warning",
     "pace refusal before any request",
     "resume policy",
-    "budget alias"
+    "budget alias",
+    "omitted reasoning without discovery",
+    "omitted reasoning with discovery",
+    "explicit supported reasoning",
+    "explicit unsupported none refusal",
+    "reasoning precedence",
+    "reasoning source and request bytes through resume"
   ]
 }

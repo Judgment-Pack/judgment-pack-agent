@@ -180,6 +180,16 @@ func openScenario(ctx context.Context, server *Server, endpoint ScenarioEndpoint
 
 // runOn runs the adapter once on the scenario session, the run's events collected.
 func (h *scenarioHost) runOn(ctx context.Context, adapter Adapter, run *Run) (*ScenarioRun, error) {
+	return h.runOnWithDefault(ctx, adapter, run, true)
+}
+
+// runOnOmittedThinking is the one certification path that distinguishes omission from explicit
+// off; legacy scenario fixtures that do not state a tier retain their historical off default.
+func (h *scenarioHost) runOnOmittedThinking(ctx context.Context, adapter Adapter, run *Run) (*ScenarioRun, error) {
+	return h.runOnWithDefault(ctx, adapter, run, false)
+}
+
+func (h *scenarioHost) runOnWithDefault(ctx context.Context, adapter Adapter, run *Run, defaultOff bool) (*ScenarioRun, error) {
 	run.Wire = "openai-compatible"
 	if run.ModelName == "" {
 		run.ModelName = "scripted-model"
@@ -187,7 +197,7 @@ func (h *scenarioHost) runOn(ctx context.Context, adapter Adapter, run *Run) (*S
 	run.Model = h.session.ModelCall()
 	run.Gate = h.gate.Calls()
 	run.Tools = h.offer.Tools
-	if run.Thinking == "" {
+	if defaultOff && run.Thinking == "" {
 		run.Thinking = "off"
 	}
 	run.Emit = h.emit

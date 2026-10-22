@@ -326,7 +326,7 @@ func typesOf(events []contract.RunEvent) []string {
 func switchFindings(state *switched, prefix string, kind string, tiers []string) []Finding {
 	var out []Finding
 	low, high := tiers[0], tiers[1]
-	unset := "none"
+	unset := ""
 	if kind == "model" {
 		unset = "off"
 	}
@@ -661,7 +661,7 @@ func switchReserve(ctx context.Context, host AgentHost, with func(Adapter) Adapt
 		!strings.Contains(parents[1].Request.Prompt, "one kept for the critic; no task was started") {
 		f.fail("the refused batch's continuation did not carry the refusal")
 	}
-	if got := decided(events); got != comparisonJSON(&contract.RunEventCriticDecided{Type: "critic_decided", Mode: "auto", Ran: true, Reason: "cases", Trigger: optionalString("cases"), Reasoning: optionalString("none")}) {
+	if got := decided(events); got != comparisonJSON(&contract.RunEventCriticDecided{Type: "critic_decided", Mode: "auto", Ran: true, Reason: "cases", Trigger: optionalString("cases")}) {
 		f.fail("the refused batch's response decided %s", got)
 	}
 	events, calls, err = respond(2, "")
@@ -671,7 +671,7 @@ func switchReserve(ctx context.Context, host AgentHost, with func(Adapter) Adapt
 	if count(calls, "child") != 2 || count(calls, "critic") != 1 || len(calls) != 5 {
 		f.fail("a batch of two under auto ran %v", kinds(calls))
 	}
-	if got := decided(events); got != comparisonJSON(&contract.RunEventCriticDecided{Type: "critic_decided", Mode: "auto", Ran: true, Reason: "cases", Trigger: optionalString("cases"), Reasoning: optionalString("none")}) {
+	if got := decided(events); got != comparisonJSON(&contract.RunEventCriticDecided{Type: "critic_decided", Mode: "auto", Ran: true, Reason: "cases", Trigger: optionalString("cases")}) {
 		f.fail("the batch of two's response decided %s", got)
 	}
 	events, calls, err = respond(3, "off")
@@ -681,7 +681,7 @@ func switchReserve(ctx context.Context, host AgentHost, with func(Adapter) Adapt
 	if count(calls, "child") != 3 || count(calls, "critic") != 0 || len(calls) != 5 {
 		f.fail("a batch of three under off ran %v", kinds(calls))
 	}
-	if got := decided(events); got != comparisonJSON(&contract.RunEventCriticDecided{Type: "critic_decided", Mode: "off", Ran: false, Reason: "off", Reasoning: optionalString("none")}) {
+	if got := decided(events); got != comparisonJSON(&contract.RunEventCriticDecided{Type: "critic_decided", Mode: "off", Ran: false, Reason: "off"}) {
 		f.fail("the batch of three under off's response decided %s", got)
 	}
 	return f.list, nil

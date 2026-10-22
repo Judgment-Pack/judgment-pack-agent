@@ -1,0 +1,38 @@
+{
+  "description": "Written by hand from the 2026-10-23 amendment to ADR-0011; authenticated model discovery is a closed policy input.",
+  "schema": "policy.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/policy.ts"
+    ]
+  },
+  "items": [
+    {
+      "models": {
+        "author": {
+          "discovered": {
+            "reasoning": {
+              "default": "high",
+              "supported": [
+                "off",
+                "on",
+                "ultra",
+                "none",
+                "minimal",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "description": "Written by hand from the 2026-10-23 amendment to ADR-0011; an interrupted native run retains absent reasoning and its request digest.",
+  "schema": "checkpoint.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/execution/state.ts"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "id": "8d30bb70-d246-4cbc-9bf5-862f84c61142",
+      "requestKey": "7d8af09155ef9a28f9b45e1e37b8adab904adc86391bb488b243f4567251f0c1",
+      "phase": "work",
+      "status": "stopped",
+      "unit": "provider-managed",
+      "used": 1,
+      "limit": 1,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [],
+      "context": {
+        "scope": "reasoning-resume",
+        "entries": []
+      },
+      "prompts": [
+        {
+          "request": 1,
+          "sha256": "70a4966f1c76f76d8759cd2216f8cf184c8bce8f0e27beef3e69ef1680490cb8"
+        }
+      ],
+      "policy": {
+        "models.author.model": {
+          "value": "model-a",
+          "layer": "table",
+          "source": "layer"
+        },
+        "models.author.reasoning": {
+          "layer": "table",
+          "source": "model-default"
+        }
+      }
+    }
+  ]
+}

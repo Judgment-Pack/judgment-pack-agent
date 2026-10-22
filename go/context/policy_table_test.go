@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 )
 
 func TestPolicyTable(t *testing.T) {
@@ -33,10 +35,98 @@ func TestPolicyTable(t *testing.T) {
 				t.Fatal(err)
 			}
 			for name, want := range vector.Items[i] {
-				if !reflect.DeepEqual(got.Members[name], want) {
+				member := got.Members[name]
+				if member.Value != want.Value || member.Layer != want.Layer || member.Source != "layer" {
 					t.Errorf("%s %s: got %+v want %+v", c.Name, name, got.Members[name], want)
 				}
 			}
+		}
+	})
+	t.Run("reasoning defaults and discovery", func(t *testing.T) {
+		raw, err := os.ReadFile("../../contract/vectors/policy/reasoning-default.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var vector struct {
+			Cases   []struct{ Run, Project, Table PolicyLayer }
+			Items   []PolicyMembers
+			Refusal struct {
+				Run, Project, Table PolicyLayer
+				Detail              string
+			}
+		}
+		if err = json.Unmarshal(raw, &vector); err != nil {
+			t.Fatal(err)
+		}
+		h := PolicyHost{Connections: []string{"model-a"}, Agent: true, Requests: 16}
+		for i, input := range vector.Cases {
+			got, resolveErr := ResolvePolicy(input.Run, input.Project, input.Table, h)
+			want := vector.Items[i]["models.author.reasoning"]
+			if resolveErr != nil || !reflect.DeepEqual(got.Members["models.author.reasoning"], want) {
+				t.Fatalf("case %d: got %+v want %+v: %v", i, got.Members["models.author.reasoning"], want, resolveErr)
+			}
+		}
+		if _, err = ResolvePolicy(vector.Refusal.Run, vector.Refusal.Project, vector.Refusal.Table, h); err == nil || err.Error() != vector.Refusal.Detail {
+			t.Fatalf("unsupported effort: %v", err)
+		}
+	})
+	t.Run("discovery vector", func(t *testing.T) {
+		raw, err := os.ReadFile("../../contract/vectors/policy/discovery.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var vector struct{ Items []PolicyLayer }
+		if err = json.Unmarshal(raw, &vector); err != nil {
+			t.Fatal(err)
+		}
+		got, err := ResolvePolicy(vector.Items[0], nil, PolicyLayer{"models": map[string]any{"author": map[string]any{"model": "connected"}}}, PolicyHost{Connections: []string{"connected"}, Agent: true, Requests: 16})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if member := got.Members["models.author.reasoning"]; member.Value != "high" || member.Source != "discovered" {
+			t.Fatalf("discovery: %+v", member)
+		}
+		oversized := make([]any, 11)
+		for i := range oversized {
+			oversized[i] = "low"
+		}
+		for _, discovered := range []any{
+			map[string]any{},
+			map[string]any{"reasoning": map[string]any{"supported": []any{"low"}}},
+			map[string]any{"reasoning": map[string]any{"default": "low", "supported": oversized}},
+		} {
+			_, resolveErr := ResolvePolicy(PolicyLayer{"models": map[string]any{"author": map[string]any{"discovered": discovered}}}, nil, PolicyLayer{"models": map[string]any{"author": map[string]any{"model": "connected"}}}, PolicyHost{Connections: []string{"connected"}, Agent: true, Requests: 16})
+			var refusal *PolicyRefusal
+			if !errors.As(resolveErr, &refusal) {
+				t.Fatalf("malformed discovery admitted: %#v", discovered)
+			}
+			eventJSON, marshalErr := json.Marshal(refusal.Event())
+			var event contract.RunEvent
+			if marshalErr != nil || json.Unmarshal(eventJSON, &event) != nil || event.Guardrail == nil {
+				t.Fatalf("invalid refusal event for %#v: %s (%v)", discovered, eventJSON, marshalErr)
+			}
+		}
+	})
+	t.Run("reasoning resume vector", func(t *testing.T) {
+		raw, err := os.ReadFile("../../contract/vectors/policy/reasoning-resume.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var vector struct{ Items []json.RawMessage }
+		if err = json.Unmarshal(raw, &vector); err != nil {
+			t.Fatal(err)
+		}
+		value, err := ParseJSON(vector.Items[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		saved, err := ReadExecution(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		member := saved.Policy["models.author.reasoning"]
+		if len(member.Value) != 0 || member.Source == nil || *member.Source != "model-default" || len(saved.Prompts) != 1 {
+			t.Fatalf("resume vector: %+v", saved)
 		}
 	})
 	t.Run("alias", func(t *testing.T) {

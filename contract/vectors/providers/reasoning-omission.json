@@ -1,0 +1,60 @@
+{
+  "description": "Hand-authored request-member cases for an omitted native reasoning preference (agent#142 review round 1).",
+  "schema": "capability.json#/$defs/endpointCapabilities",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/certification/providers.test.ts",
+      "packages/harness/delegation.test.ts"
+    ]
+  },
+  "items": [
+    {
+      "family": "openai"
+    },
+    {
+      "family": "gemini"
+    }
+  ],
+  "cases": [
+    {
+      "name": "author openai",
+      "record": 0,
+      "phase": "author",
+      "absent": "reasoning_effort"
+    },
+    {
+      "name": "author gemini",
+      "record": 1,
+      "phase": "author",
+      "absent": "thinkingConfig"
+    },
+    {
+      "name": "critic openai",
+      "record": 0,
+      "phase": "critic",
+      "absent": "reasoning_effort"
+    },
+    {
+      "name": "critic gemini",
+      "record": 1,
+      "phase": "critic",
+      "absent": "thinkingConfig"
+    },
+    {
+      "name": "fallback openai",
+      "record": 0,
+      "phase": "fallback",
+      "absent": "reasoning_effort"
+    },
+    {
+      "name": "fallback gemini",
+      "record": 1,
+      "phase": "fallback",
+      "absent": "thinkingConfig"
+    }
+  ]
+}

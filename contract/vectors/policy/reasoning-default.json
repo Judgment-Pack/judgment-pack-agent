@@ -1,0 +1,58 @@
+{
+  "description": "Written by hand from the 2026-10-23 amendment to ADR-0011; no output recorded from an implementation.",
+  "schema": "policy.json#/$defs/resolved",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/policy.ts"
+    ]
+  },
+  "cases": [
+    {
+      "name": "omitted without discovery",
+      "run": {},
+      "project": {},
+      "table": {"models": {"author": {"model": "model-a"}}}
+    },
+    {
+      "name": "omitted with discovery",
+      "run": {"models": {"author": {"discovered": {"reasoning": {"default": "high", "supported": ["low", "medium", "high"]}}}}},
+      "project": {},
+      "table": {"models": {"author": {"model": "model-a"}}}
+    },
+    {
+      "name": "explicit supported",
+      "run": {"models": {"author": {"reasoning": "medium", "discovered": {"reasoning": {"default": "high", "supported": ["low", "medium", "high"]}}}}},
+      "project": {},
+      "table": {"models": {"author": {"model": "model-a"}}}
+    },
+    {
+      "name": "project over table",
+      "run": {},
+      "project": {"models": {"author": {"reasoning": "medium"}}},
+      "table": {"models": {"author": {"model": "model-a", "reasoning": "low"}}}
+    },
+    {
+      "name": "chat over project",
+      "run": {"models": {"author": {"reasoning": "high"}}},
+      "project": {"models": {"author": {"reasoning": "medium"}}},
+      "table": {"models": {"author": {"model": "model-a", "reasoning": "low"}}}
+    }
+  ],
+  "items": [
+    {"models.author.reasoning": {"layer": "table", "source": "model-default"}},
+    {"models.author.reasoning": {"value": "high", "layer": "run", "source": "discovered"}},
+    {"models.author.reasoning": {"value": "medium", "layer": "run", "source": "layer"}},
+    {"models.author.reasoning": {"value": "medium", "layer": "project", "source": "layer"}},
+    {"models.author.reasoning": {"value": "high", "layer": "run", "source": "layer"}}
+  ],
+  "refusal": {
+    "run": {"models": {"author": {"reasoning": "none", "discovered": {"reasoning": {"default": "high", "supported": ["low", "medium", "high"]}}}}},
+    "project": {},
+    "table": {"models": {"author": {"model": "model-a"}}},
+    "detail": "models.author.reasoning (run): reasoning value \"none\" is not supported by model \"model-a\""
+  }
+}

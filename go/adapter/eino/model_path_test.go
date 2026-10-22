@@ -45,3 +45,92 @@ func TestGeminiFallbackModelPathVectors(t *testing.T) {
 		})
 	}
 }
+
+func TestFallbackReasoningOmissionVectors(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "contract", "vectors", "providers", "reasoning-omission.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vector struct {
+		Items []struct{ Family string }
+		Cases []struct {
+			Name   string
+			Record int
+			Phase  string
+			Absent string
+		}
+	}
+	if err := json.Unmarshal(raw, &vector); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range vector.Cases {
+		if item.Phase != "fallback" {
+			continue
+		}
+		t.Run(item.Name, func(t *testing.T) {
+			family := vector.Items[item.Record].Family
+			if family == "openai" {
+				family = "openai-compatible"
+			}
+			body := []byte(`{"model":"primary","reasoning_effort":"high","messages":[]}`)
+			if family == "gemini" {
+				body = []byte(`{"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"thinkingBudget":0}},"contents":[]}`)
+			}
+			_, rebuilt, rebuildErr := fallbackRequest(adapter.PolicyConnection{Wire: family, ModelName: "backup"}, "", "v1beta/models/primary:generateContent", wire.ModelRequest{Body: body})
+			if rebuildErr != nil {
+				t.Fatal(rebuildErr)
+			}
+			var decoded map[string]any
+			if err := json.Unmarshal(rebuilt.Body, &decoded); err != nil {
+				t.Fatal(err)
+			}
+			container := decoded
+			if family == "gemini" {
+				container = decoded["generationConfig"].(map[string]any)
+			}
+			if _, present := container[item.Absent]; present {
+				t.Fatalf("%s remained in %s", item.Absent, rebuilt.Body)
+			}
+		})
+	}
+}
+
+func TestCriticReasoningOmissionVectors(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "contract", "vectors", "providers", "reasoning-omission.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vector struct {
+		Items []json.RawMessage
+		Cases []struct {
+			Name   string
+			Record int
+			Phase  string
+		}
+	}
+	if err := json.Unmarshal(raw, &vector); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range vector.Cases {
+		if item.Phase != "critic" {
+			continue
+		}
+		t.Run(item.Name, func(t *testing.T) {
+			override, parseErr := wire.Parse(vector.Items[item.Record])
+			if parseErr != nil {
+				t.Fatal(parseErr)
+			}
+			family := wire.EndpointKind(override.Get("family").Text())
+			if family == "openai" {
+				family = wire.OpenAICompatible
+			}
+			capabilities, capabilityErr := wire.CapabilitiesFor(family, "critic", nil, override)
+			if capabilityErr != nil {
+				t.Fatal(capabilityErr)
+			}
+			if members := criticThinking("", family, capabilities).Members(); members != nil {
+				t.Fatalf("omitted critic reasoning produced %s", members.JSON())
+			}
+		})
+	}
+}

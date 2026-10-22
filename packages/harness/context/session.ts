@@ -84,7 +84,7 @@ export function resolveSessionPolicy(session:EngineSession,engine?:AssistantEngi
  const resolved=resolvePolicy(
   {...session.policy, ...(session.taskClass?{taskClass:session.taskClass}:{}),critic:{...(session.critic!==undefined||session.adversarialReview!==undefined?{default:session.critic??(session.adversarialReview?'on':'off')}:{}),...session.policy?.critic},models:{...session.policy?.models,...(session.criticReasoning?{critic:{reasoning:session.criticReasoning,...session.policy?.models?.critic}}:{})}},
   {...session.policyProject,critic:{...(session.criticProject?{default:session.criticProject}:{}),...session.policyProject?.critic}},
-  {...policy,concurrency:{children:'agent'in session?1:named.concurrentRequests??2,requests:named.concurrentRequests??2},models:{author:{model:current,reasoning:authorTier??('agent'in session?'none':'off')},critic:{model:named.critic},...Object.fromEntries((session.subagents??[]).filter(s=>s&&typeof s.id==='string').map(s=>[`subagent.${s.id}`,{model:s.model,reasoning:s.reasoning}]))}},
+  {...policy,concurrency:{children:'agent'in session?1:named.concurrentRequests??2,requests:named.concurrentRequests??2},models:{author:{model:current,...(authorTier===undefined?{}:{reasoning:authorTier})},critic:{model:named.critic},compactor:{model:current,reasoning:'low'},...Object.fromEntries((session.subagents??[]).filter(s=>s&&typeof s.id==='string').map(s=>[`subagent.${s.id}`,{model:s.model,...(s.reasoning===undefined?{}:{reasoning:s.reasoning})}]))}},
   {connections:Object.keys(bindings),authorConnection:current,families:Object.fromEntries(Object.entries(bindings).map(([id,b])=>[id,'model'in b?capabilitiesFor(b.model).family??(b.model.family==='openai-compatible'?'openai':b.model.family):b.agent.family??'codex'])),agent:'agent'in session,requests:session.policyRequests??named.concurrentRequests??2,paceUsed:session.paceUsed})
  for(const [name,member] of Object.entries(resolved.members))if(name.startsWith('models.')&&name.endsWith('.provider')){
   const selected=bindings[String(member.value)]!
@@ -310,8 +310,8 @@ export class SessionContext {
 this.turn=session.context?.chat?.openTurn();this.objective=session.context?.objective;this.ledger=new ContextLedger(this.policy,this.turn);this.execution=new ExecutionController(session,this.ledger,this.resolvedPolicy);this.execution.recordGuard=()=>((this as unknown as {output?:import('../records').RecordGuard}).output);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))
   for(const [name,member] of Object.entries(resolved.members))if(name.startsWith('budget.'))Object.assign(this.policy,{[name.slice(7)]:member.value})
   this.policy.criticDefault=String(resolved.members['critic.default']!.value)
-  this.authorTier=resolved.members['models.author.reasoning']!.value as CriticTier
-  const reviewSettings={...session,resolvedPolicy:resolved.members,criticReasoning:resolved.members['models.critic.reasoning']!.value as CriticTier}
+  this.authorTier=resolved.members['models.author.reasoning']!.value as CriticTier|undefined
+  const reviewSettings={...session,resolvedPolicy:resolved.members,criticReasoning:resolved.members['models.critic.reasoning']!.value as CriticTier|undefined}
   // ADR-0010: the forced-off facts are the session's: a delegated child (its objective), Plan mode, a
   // graph-purpose run, a reviewer assigned.
   this.review=new CriticSwitch(reviewSettings,this.policy,{child:!!session.context?.objective,phase:session.context?.phase,purpose:session.purpose,reviewerAssigned:session.reviewerAssigned===true},{get:()=>this.execution.state.critic,set:value=>{this.execution.state.critic=value}})
@@ -697,11 +697,11 @@ function encodePathSegment(value:string){
  return encoded
 }
 /** Rebuild only the model-dependent wire fields after a connection switch. */
-function fallbackRequest(model:import('../engine').AssistantSession['model'],tier:string,suffix:string,request:import('../engine').ModelRequest){
+function fallbackRequest(model:import('../engine').AssistantSession['model'],tier:string|undefined,suffix:string,request:import('../engine').ModelRequest){
  const body=JSON.parse(request.body),caps=capabilitiesFor(model)
  for(const key of TIER_MEMBERS)delete body[key]
  if(body.generationConfig)delete body.generationConfig.thinkingConfig
- const members=caps.reasoning.kind==='none'?null:wireFor(tier as import('../host').ThinkingTier,dialectFor(caps.reasoning.kind),caps.tiers,caps.fallbackTiers)?.members
+ const members=tier===undefined||caps.reasoning.kind==='none'?null:wireFor(tier as import('../host').ThinkingTier,dialectFor(caps.reasoning.kind),caps.tiers,caps.fallbackTiers)?.members
  if(model.family==='gemini'){
   suffix=suffix.replace(/models\/[^:]+:/,`models/${encodePathSegment(model.model)}:`)
   body.generationConfig={...body.generationConfig,...members}
@@ -730,8 +730,8 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  }
  const context=new SessionContext(session,engine)
  const author=context.connection('author')!
- const tier=String(context.resolvedPolicy['models.author.reasoning']!.value)
- session={...session,...author,...('model'in author?{thinking:normalize(tier as import('../host').ThinkingTier,author.model.family)}:{effort:tier})} as T
+ const tier=context.resolvedPolicy['models.author.reasoning']!.value
+ session={...session,...author,...('model'in author?(tier===undefined?{}:{thinking:normalize(String(tier) as import('../host').ThinkingTier,author.model.family)}):(tier===undefined?{}:{effort:String(tier) as import('../agent').CodexEffort}))} as T
  // A chat's turn is open from here: a run that cannot start closes it again.
  try{
  // ADR-0009: the skills, read and admitted before any request; their sources report beside the tools'.
@@ -819,7 +819,7 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   const role=context.criticRunning?'critic':'author',binding=context.connection(role)
   const selected=binding&&'model'in binding?binding.model:session.model
   if(context.provider(role).connection!==context.resolvedPolicy[`models.${role}.provider`]!.value&&request.method!=='GET'){
-   const rebuilt=fallbackRequest(selected,String(context.resolvedPolicy[`models.${role}.reasoning`]!.value),suffix,request)
+   const rebuilt=fallbackRequest(selected,context.resolvedPolicy[`models.${role}.reasoning`]!.value as string|undefined,suffix,request)
    suffix=rebuilt.suffix;request=rebuilt.request
   }
   context.execution.useConnection(context.provider(role).connection,role,selected.model)
@@ -835,9 +835,9 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   let binding=context.connection(role),selected=binding&&'agent'in binding?binding.agent:session.agent
   const prepare=()=>{
    const switched=context.provider(role).connection!==context.resolvedPolicy[`models.${role}.provider`]!.value
-   const effort=switched?String(context.resolvedPolicy[`models.${role}.reasoning`]!.value):original.effort
+   const effort=switched?context.resolvedPolicy[`models.${role}.reasoning`]!.value as import('../agent').CodexEffort|undefined:original.effort
    const setting=selected.tiers?.[effort as 'low'|'medium'|'high']
-   request={...original,...(switched?{model:selected.model,effort:effort as import('../agent').CodexEffort}:{}),...(setting?{effort:setting as import('../agent').CodexEffort}:{})}
+   request={...original,...(switched?{model:selected.model,...(effort===undefined?{}:{effort})}:{}),...(setting?{effort:setting as import('../agent').CodexEffort}:{})}
    context.execution.useConnection(context.provider(role).connection,role,request.model??selected.model)
    const {delegated:_delegated,...sent}=request
    return JSON.stringify(sent)

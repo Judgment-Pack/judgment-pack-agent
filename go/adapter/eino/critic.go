@@ -93,7 +93,7 @@ func planUnfinished(plan *runcontext.Value) bool {
 func (t *turnState) critic(ctx context.Context, proposal turn.Proposal, tier string) (*turn.Critique, *contract.RunEventProposalNote, error) {
 	r := t.r
 	// The selected critic's capabilities own its slot, including at the author's family and tier.
-	// A decision with no tier sends the critic none: off.
+	// A decision with no tier leaves the critic's reasoning member omitted.
 	named, err := r.run.Models()
 	if err != nil {
 		return nil, nil, err
@@ -113,12 +113,11 @@ func (t *turnState) critic(ctx context.Context, proposal turn.Proposal, tier str
 		return nil, nil, err
 	}
 	r.nativeTools = r.capabilities.NativeToolCalls
-	r.placement = statePlacement(r.family, wire.ThinkingTier(orOff(tier)), r.capabilities)
-	tier = orOff(tier)
+	r.placement = statePlacement(r.family, wire.ThinkingTier(tier), r.capabilities)
 	// Preserve learned refusals only for the identical binding and tier.
 	bindingChanged := r.sc.Provider("critic").Connection != r.sc.Provider("author").Connection || binding.ModelName != r.run.ModelName
-	if tier != orOff(r.run.Thinking) || bindingChanged {
-		r.slot = wire.OpenThinking(wire.ThinkingTier(tier), r.family, &r.capabilities.Reasoning, r.capabilities.Tiers, r.capabilities.FallbackTiers)
+	if tier != r.run.Thinking || bindingChanged {
+		r.slot = criticThinking(tier, r.family, r.capabilities)
 		r.tier = r.slot.Members()
 		if r.tier != nil {
 			if maximum := r.tier.Get("max_tokens"); maximum != nil {
@@ -374,6 +373,11 @@ func (t *turnState) critic(ctx context.Context, proposal turn.Proposal, tier str
 	}
 	note := turn.CriticNote(cause, "model", figures())
 	return nil, &note, nil
+}
+
+// criticThinking preserves an absent policy value while opening a fresh binding-owned slot.
+func criticThinking(tier string, family wire.EndpointKind, capabilities wire.ModelCapabilities) *wire.ThinkingSlot {
+	return wire.OpenThinking(wire.ThinkingTier(tier), family, &capabilities.Reasoning, capabilities.Tiers, capabilities.FallbackTiers)
 }
 
 // casesOf is the host's declared cases as one JSON array.

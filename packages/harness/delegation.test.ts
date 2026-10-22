@@ -18,6 +18,7 @@ import budgetSchema from '../../contract/schemas/budget.json'
 import profilesVector from '../../contract/vectors/delegation/profiles.json'
 import continuationVector from '../../contract/vectors/delegation/continuation.json'
 import connectionVector from '../../contract/vectors/delegation/connection-models.json'
+import { subagentDigest, type SubagentDeclaration } from './subagents'
 
 // agent#17: each title its own objective, so tasks of one batch are not identical (an identical task is reused).
 const task=(title='Check evidence',profile='review')=>({title,profile,objective:`Check the supplied claims (${title}).`})
@@ -51,6 +52,33 @@ it('isolates child context and capabilities, then returns the findings to the pa
  expect(events.filter(e=>e.type==='message')).toEqual([{type:'message',text:'Review complete.'}])
  expect(results(events)[0]).toMatchObject({state:'complete',result:'One unsupported claim.',toolCalls:1,steps:[{name:'read_context',state:'complete'}]})
  expect(writeTool.execute).not.toHaveBeenCalled()
+})
+
+it('dispatches a profile and a declared subagent when resolved reasoning is omitted',async()=>{
+ const declared:SubagentDeclaration={id:'auditor',name:'Auditor',purpose:'Check supplied evidence.',instructions:'Use only supplied evidence.',source:{kind:'custom',id:'project',version:'1',trust:'person'},tools:[],skills:[],model:'fixture',reasoning:'low',bounds:{modelRequests:2,agentRuns:1,toolCalls:1,bytes:12000,milliseconds:30000,resultBytes:3000},pinnedDigest:'sha256:'+'0'.repeat(64)}
+ declared.pinnedDigest=await subagentDigest(declared)
+ for(const profile of ['analyze','auditor']){
+  let children=0
+  const engine:Engine={id:'vercel',async *start(input){
+   const opened=await contextualSession(input)
+   try{
+    if(input.context?.objective){
+     children++
+     expect((input.policy?.models?.author as {reasoning?:unknown}|undefined)?.reasoning,profile).toBeUndefined()
+     yield {type:'message',text:'Child finding.'};yield {type:'end'};return
+    }
+    const role=`models.${profile==='auditor'?'subagent.auditor':'child.analyze'}.reasoning`
+    opened.context.resolvedPolicy[role]={layer:'table',source:'model-default'}
+    const delegate=opened.session.hostTools.find(tool=>tool.name===DELEGATE_TOOL)!
+    await delegate.execute({tasks:[task('Omission',profile)]},input.signal)
+    yield {type:'message',text:'Parent answer.'};yield {type:'end'}
+   }finally{opened.context.close()}
+  }}
+  const events=await collect(withDelegation(engine),apiSession({thinking:undefined,policy:{models:{[profile==='auditor'?'subagent.auditor':'child.analyze']:{model:'fixture'}}},...(profile==='auditor'?{subagents:[declared]}:{})}))
+  expect(children,profile).toBe(1)
+  expect(events.filter(event=>event.type==='error'),profile).toEqual([])
+  expect(results(events)[0],profile).toMatchObject({state:'complete',result:'Child finding.'})
+ }
 })
 
 it('keeps a queued parent steer out of a delegated child and delivers it to the parent',async()=>{

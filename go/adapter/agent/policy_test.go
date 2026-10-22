@@ -1,6 +1,7 @@
 package agent_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -12,6 +13,68 @@ import (
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
 )
+
+func TestOmittedReasoningStaysOmittedAcrossResume(t *testing.T) {
+	var firstRequest adapter.AgentRequest
+	var firstEvents []contract.RunEvent
+	runOnce := func(saved *contract.Checkpoint, sent *adapter.AgentRequest, events *[]contract.RunEvent) {
+		emit := func(e contract.RunEvent) { *events = append(*events, e) }
+		g := gate.New(gate.Options{Runtime: emptyRuntime, Granted: gate.Ceiling, Emit: emit})
+		offer, err := g.Open(context.Background(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		run := &adapter.Run{ModelName: "connected", Prompt: "Draft a pack.", TestPrompt: "", Critic: "off", Gate: g.Calls(), Tools: offer.Tools, Emit: emit, AllowConversation: true,
+			Context: &runcontext.Input{CurrentRequest: &runcontext.CurrentRequest{Message: "Draft a pack.", Input: "Draft a pack."}, Execution: saved},
+			Agent: &adapter.Agent{Model: "connected", Run: func(ctx context.Context, request adapter.AgentRequest, callbacks adapter.AgentCallbacks) error {
+				*sent = request
+				return callbacks.Event(ctx, adapter.AgentEvent{Type: "message", ID: "reply", Text: "Done.", Phase: "final"})
+			}}}
+		if err = agent.New().Run(context.Background(), run); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runOnce(nil, &firstRequest, &firstEvents)
+	if firstRequest.Effort != "" {
+		t.Fatalf("omitted effort became %q", firstRequest.Effort)
+	}
+	raw, err := json.Marshal(firstRequest)
+	if err != nil || bytes.Contains(raw, []byte(`"effort"`)) {
+		t.Fatalf("request carries effort: %s (%v)", raw, err)
+	}
+	var saved *contract.Checkpoint
+	for _, event := range firstEvents {
+		if event.PolicyResolved != nil {
+			member := event.PolicyResolved.Members["models.author.reasoning"]
+			if len(member.Value) != 0 || member.Source == nil || *member.Source != "model-default" {
+				t.Fatalf("resolved member: %+v", member)
+			}
+		}
+		if saved == nil && event.ExecutionCheckpoint != nil {
+			checkpoint := event.ExecutionCheckpoint.Checkpoint
+			saved = &checkpoint
+		}
+	}
+	if saved == nil {
+		t.Fatal("no resumable checkpoint")
+	}
+	var resumedRequest adapter.AgentRequest
+	var resumedEvents []contract.RunEvent
+	runOnce(saved, &resumedRequest, &resumedEvents)
+	firstJSON, _ := json.Marshal(firstRequest)
+	resumedJSON, _ := json.Marshal(resumedRequest)
+	if !bytes.Equal(firstJSON, resumedJSON) {
+		t.Fatalf("resume request changed:\n%s\n%s", firstJSON, resumedJSON)
+	}
+	for _, event := range resumedEvents {
+		if event.PolicyResolved != nil {
+			member := event.PolicyResolved.Members["models.author.reasoning"]
+			if member.Source == nil || *member.Source != "model-default" {
+				t.Fatalf("resume source: %+v", member)
+			}
+		}
+	}
+}
 
 func TestPolicyLegacyCollisionsRecordAndWireAgree(t *testing.T) {
 	raw, err := os.ReadFile("../../../contract/vectors/policy/legacy-collisions.json")
