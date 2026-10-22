@@ -3,8 +3,8 @@ import {existsSync,mkdirSync,mkdtempSync,readdirSync,readFileSync,realpathSync,r
 import {tmpdir} from 'node:os'
 import {dirname,extname,isAbsolute,join,relative,resolve,sep} from 'node:path'
 import {fileURLToPath,pathToFileURL} from 'node:url'
+import {build} from 'esbuild'
 import {initSync,parse} from 'es-module-lexer'
-import {build} from 'vite'
 
 const packageDirectory=fileURLToPath(new URL('..',import.meta.url))
 const namedExports=['./contract','./vercel','./codex','./deepagents','./certification']
@@ -114,6 +114,35 @@ export function validatePackage(packageRoot){
  return entries
 }
 
+export async function bundleEntrypoints(projectRoot,packageRoot,entries){
+ const consumers=join(projectRoot,'consumers')
+ mkdirSync(consumers,{recursive:true})
+ const inputs={}
+ for(const [index,entry] of entries.entries()){
+  const name=`entry-${index}`
+  const consumer=join(consumers,`${name}.mjs`)
+  writeFileSync(consumer,`import * as entry from ${JSON.stringify(entry.specifier)}\nexport default Object.keys(entry).length\n`)
+  inputs[name]=consumer
+ }
+ await build({
+  absWorkingDir:projectRoot,
+  entryPoints:inputs,
+  bundle:true,
+  format:'esm',
+  outdir:'bundle',
+  platform:'browser',
+  treeShaking:false,
+  write:false,
+  logLevel:'silent',
+  plugins:[{
+   name:'external-package-dependencies',
+   setup(esbuild){
+    esbuild.onResolve({filter:/^(?:@[^/]+\/)?[^./][^:]*/},args=>inside(packageRoot,args.importer)?{path:args.path,external:true}:undefined)
+   }
+  }]
+ })
+}
+
 export async function packedSmoke(){
  const temporary=mkdtempSync(join(tmpdir(),'judgment-pack-harness-'))
  try{
@@ -123,27 +152,10 @@ export async function packedSmoke(){
   execFileSync(npm,['install','--ignore-scripts','--no-audit','--no-fund',tarball],{cwd:temporary,stdio:'inherit'})
   const installedRoot=join(temporary,'node_modules','@judgment-pack','harness')
   const entries=validatePackage(installedRoot)
-  const consumers=join(temporary,'consumers')
-  mkdirSync(consumers,{recursive:true})
-  const inputs={}
-  for(const [index,entry] of entries.entries()){
-   const name=`entry-${index}`
-   const consumer=join(consumers,`${name}.mjs`)
-   writeFileSync(consumer,`import * as entry from ${JSON.stringify(entry.specifier)}\nexport default Object.keys(entry).length\n`)
-   inputs[name]=consumer
-  }
-  // These bare, non-runtime seams are deliberately outside the package-local dependency proof.
-  const virtual=new Map([['ws','export default undefined'],['vitest','export const vi={stubGlobal(){}}']])
-  await build({
-   root:temporary,configFile:false,logLevel:'silent',
-   plugins:[{name:'non-runtime-bare-imports',resolveId:id=>virtual.has(id)?`\0empty-${id}`:null,load:id=>id.startsWith('\0empty-')?virtual.get(id.slice(7)):null}],
-   build:{minify:false,reportCompressedSize:false,outDir:'bundle',rollupOptions:{preserveEntrySignatures:'strict',input:inputs,output:{entryFileNames:'[name].js'}}}
-  })
-  const names=JSON.stringify(Object.keys(inputs).map(name=>`./bundle/${name}.js`))
-  execFileSync(process.execPath,['--input-type=module','--eval',`for(const file of ${names}){const loaded=await import(file);if(typeof loaded.default!=='number')throw Error(file+' did not import')}`],{cwd:temporary,stdio:'inherit'})
+  await bundleEntrypoints(temporary,installedRoot,entries)
   const installed=join(installedRoot,'contract','schemas','corpus-entry.json')
   if(!readFileSync(installed).equals(readFileSync(new URL('../../../contract/schemas/corpus-entry.json',import.meta.url))))throw Error('packed corpus schema differs from its repository original')
-  console.log(`packed harness: imported ${entries.length} supported entrypoints`)
+  console.log(`packed harness: bundled ${entries.length} supported entrypoints from an isolated project; native Node ESM import is not the supported path (#143)`)
  }finally{
   rmSync(temporary,{recursive:true,force:true})
  }
