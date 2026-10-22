@@ -52,7 +52,8 @@
         },
         "models.author.reasoning": {
           "value": "ultra",
-          "layer": "run"
+          "layer": "run",
+          "source": "layer"
         },
         "concurrency.requests": {
           "value": 3,

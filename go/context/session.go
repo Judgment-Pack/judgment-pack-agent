@@ -1383,7 +1383,11 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 						record[name] = member
 						var value any
 						_ = json.Unmarshal(member.Value, &value)
-						held.ResolvedPolicy[name] = PolicyMember{Value: value, Layer: member.Layer}
+						source := ""
+						if member.Source != nil {
+							source = *member.Source
+						}
+						held.ResolvedPolicy[name] = PolicyMember{Value: value, Layer: member.Layer, Source: source}
 					}
 				}
 			}

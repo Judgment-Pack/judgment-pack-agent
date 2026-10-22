@@ -139,3 +139,16 @@ Connection overrides replace this map just as they replace `tiers`. Both fallbac
 encoders read it; there is no fallback exception. Off retains its existing omission
 or minimum-setting behavior. Shared vectors specify all three default and overridden
 settings for both dialects in both implementations.
+
+## Amendment: discovered reasoning defaults (2026-10-23)
+
+Provider discovery may advertise the selected model's reasoning default and supported
+values before policy admission. The common policy contract owns that input; an engine
+does not rewrite an omitted preference after resolution. Without discovery, omission
+uses the model default by leaving the wire member absent. With discovery, the advertised
+default is sent and recorded. An explicit value, including `none`, is checked against
+the selected model's advertised set and refused before generation when unsupported.
+
+The resolved member's `source` distinguishes a policy layer, the undiscovered model
+default, and a discovered default. Provider failover and resume retain that member so
+the replacement or resumed request is rebuilt from the same value and provenance.

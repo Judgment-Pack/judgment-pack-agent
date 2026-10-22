@@ -1605,7 +1605,7 @@ function decidedInOrder(ran: Ran) {
 function criticSwitchChecks(get: () => Switched, kind: 'model' | 'agent') {
   const [low, high] = switchTiers(kind)
   // The author's tier where the scenario sets none: the model's off; the agent's effort is unstated.
-  const unset = { reasoning: kind === 'model' ? 'off' : 'none' }
+  const unset = kind === 'model' ? {reasoning:'off' as const} : {}
 
   it('10 · auto with a proposal and declared cases runs the critic: the decision says cases, before the critique, the proposal after', () => {
     const ran = get().runs.cases!
@@ -1713,13 +1713,13 @@ function criticSwitchChecks(get: () => Switched, kind: 'model' | 'agent') {
       const continued = three.runs.filter((one) => one.phase === 'author')
       expect(continued).toHaveLength(2)
       expect(continued[1]!.prompt).toContain('one kept for the critic; no task was started')
-      expect(decidedIn(three)).toEqual({ mode: 'auto', ran: true, reason: 'cases', trigger: 'cases', reasoning:'none' })
+      expect(decidedIn(three)).toEqual({ mode: 'auto', ran: true, reason: 'cases', trigger: 'cases' })
       expect(children(two)).toBe(2)
-      expect(decidedIn(two)).toEqual({ mode: 'auto', ran: true, reason: 'cases', trigger: 'cases', reasoning:'none' })
+      expect(decidedIn(two)).toEqual({ mode: 'auto', ran: true, reason: 'cases', trigger: 'cases' })
       expect(two.runs.map((one) => one.phase).filter((phase) => phase === 'critic')).toHaveLength(1)
       expect(two.runs).toHaveLength(5)
       expect(children(off)).toBe(3)
-      expect(decidedIn(off)).toEqual({ mode: 'off', ran: false, reason: 'off', reasoning:'none' })
+      expect(decidedIn(off)).toEqual({ mode: 'off', ran: false, reason: 'off' })
       expect(off.runs).toHaveLength(5)
     })
   }
@@ -2140,16 +2140,18 @@ function policyTableChecks(engineId: import('../host').AssistantEngine, agent: b
         'failover.classes':['unavailable','rate-limited','timeout'],
         compaction:'index','models.author.provider':model, 'models.critic.provider':model,'models.compactor.provider':model,
         'models.author.fallback':[], 'models.critic.fallback':[], 'models.compactor.fallback':[],
-        'models.author.model':model, 'models.author.reasoning':agent?'none':'off',
-        'models.critic.model':model, 'models.critic.reasoning':agent?'none':'off','models.compactor.model':model,'models.compactor.reasoning':'low',
+        'models.author.model':model, 'models.author.reasoning':'off',
+        'models.critic.model':model, 'models.critic.reasoning':'off','models.compactor.model':model,'models.compactor.reasoning':'low',
         'concurrency.children':agent?1:2, 'concurrency.requests':2,
         'pace.requestsPerDay':null, 'pace.invocationsPerDay':null, 'pace.bytesPerDay':null, 'pace.warnAt':0.8, taskClass:'routine'
       }
-      const expected = Object.fromEntries(Object.entries(defaults).map(([name,value])=>[name,{value,layer:'table'}]))
+      if(agent){delete defaults['models.author.reasoning'];delete defaults['models.critic.reasoning']}
+      const expected:Record<string,{value?:unknown;layer:'run'|'project'|'table';source:'layer'|'model-default'|'discovered'}> = Object.fromEntries(Object.entries(defaults).map(([name,value])=>[name,{value,layer:'table',source:'layer'}]))
+      if(agent){expected['models.author.reasoning']={layer:'table',source:'model-default'};expected['models.critic.reasoning']={layer:'table',source:'model-default'}}
       if (layer !== 'table') {
         const values = layer === 'run' ? [512,'auto',tier,3,10,'boundary'] : [768,'off',projectTier,2,20,'material']
-        selected.forEach((name,i)=>{expected[name]={value:values[i],layer}})
-        expected['models.critic.reasoning']={value:layer==='run'?tier:projectTier,layer:'table'}
+        selected.forEach((name,i)=>{expected[name]={value:values[i],layer,source:'layer'}})
+        expected['models.critic.reasoning']={value:layer==='run'?tier:projectTier,layer:'table',source:'layer'}
       }
       expect(resolved[0]!.members).toEqual(expected)
       expect(durable?.policy).toEqual(expected)
@@ -2167,6 +2169,26 @@ function policyTableChecks(engineId: import('../host').AssistantEngine, agent: b
     expect(ofType(resumed.events,'policy_resolved')).toEqual([{type:'policy_resolved',members:saved.policy}])
     expect(lastCheckpoint(resumed.events).policy).toEqual(saved.policy)
   })
+  if(agent)it('11 · native reasoning omission, discovery, refusal and resume keep source and request bytes',async()=>{
+    const omitted=await play({critic:'off'})
+    expect(omitted.runs).toHaveLength(1)
+    expect(omitted.runs[0]).not.toHaveProperty('effort')
+    expect(ofType(omitted.events,'policy_resolved')[0]!.members['models.author.reasoning']).toEqual({layer:'table',source:'model-default'})
+    const discovered={reasoning:{default:'high' as const,supported:['low','medium','high'] as import('../policy').ReasoningValue[]}}
+    const selected=await play({critic:'off',policy:{models:{author:{discovered}}}})
+    expect(selected.runs[0]?.effort).toBe('high')
+    expect(ofType(selected.events,'policy_resolved')[0]!.members['models.author.reasoning']).toEqual({value:'high',layer:'run',source:'discovered'})
+    const supported=await play({critic:'off',policy:{models:{author:{reasoning:'medium',discovered}}}})
+    expect(supported.runs[0]?.effort).toBe('medium')
+    const refused=await play({critic:'off',policy:{models:{author:{reasoning:'none',discovered}}}})
+    expect(refused.runs).toHaveLength(0)
+    expect(ofType(refused.events,'error')[0]?.message).toContain('none')
+    const first=await play({critic:'off'},event=>event.type==='execution_checkpoint'&&!!event.checkpoint.policy)
+    const saved=JSON.parse(JSON.stringify(lastCheckpoint(first.events))) as ExecutionCheckpoint
+    const resumed=await play({critic:'off',context:{...request(policyScenario.request),execution:saved}})
+    expect(JSON.stringify(resumed.runs[0])).toBe(JSON.stringify(omitted.runs[0]))
+    expect(lastCheckpoint(resumed.events).policy?.['models.author.reasoning']).toEqual({layer:'table',source:'model-default'})
+  })
   it('11 · budget.json reads as policy.budget, with nested spelling winning', async () => {
     const alias = {...policyAliasVector.items[0]!,readBytes:512}
     const legacy = await play({policy:policyAlias(alias)})
@@ -2175,9 +2197,9 @@ function policyTableChecks(engineId: import('../host').AssistantEngine, agent: b
     expect(ofType(legacy.events,'error')).toEqual([])
     expect(ofType(nested.events,'error')).toEqual([])
     expect(ofType(legacy.events,'policy_resolved')).toEqual(ofType(nested.events,'policy_resolved'))
-    expect(lastCheckpoint(legacy.events).policy?.['budget.readBytes']).toEqual({value:512,layer:'run'})
+    expect(lastCheckpoint(legacy.events).policy?.['budget.readBytes']).toEqual({value:512,layer:'run',source:'layer'})
     const both = await play({policy:policyAlias({...alias,budget:{readBytes:768}})})
-    expect(lastCheckpoint(both.events).policy?.['budget.readBytes']).toEqual({value:768,layer:'run'})
+    expect(lastCheckpoint(both.events).policy?.['budget.readBytes']).toEqual({value:768,layer:'run',source:'layer'})
   })
   it('11 · pace warns at the threshold and refuses past it before a request', async()=>{
     for(const used of [8,10,11]){
@@ -2207,7 +2229,7 @@ function policyTableChecks(engineId: import('../host').AssistantEngine, agent: b
       const session={critic:'off' as const,...(project?{policyProject:raised}:{policy:raised})}
       const turns:Turn[]=[{say:'Done.'}]
       const ran=agent?await runOnAgentEngine(agentRunFrom(turns),{engine,session}):await runOnModelEngine(answerFrom(turns,answerAs),{engine,session})
-      if(project){expect(ofType(ran.events,'error')).toEqual([]);expect(ofType(ran.events,'policy_resolved')[0]!.members['models.child.review.reasoning']).toEqual({value:agent?'high':'ultra',layer:'project'});expect(ran.requests.length+ran.runs.length).toBe(1)}
+      if(project){expect(ofType(ran.events,'error')).toEqual([]);expect(ofType(ran.events,'policy_resolved')[0]!.members['models.child.review.reasoning']).toEqual({value:agent?'high':'ultra',layer:'project',source:'layer'});expect(ran.requests.length+ran.runs.length).toBe(1)}
       else {expect(ran.requests).toHaveLength(0);expect(ran.runs).toHaveLength(0);expect(ofType(ran.events,'guardrail')[0]?.reason).toBe('policy refused')}
     }
   })

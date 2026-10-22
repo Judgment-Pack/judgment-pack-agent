@@ -48,7 +48,7 @@ layer authorizes that tier; a run layer alone cannot authorize the extra cost.
 Delegated children use these resolved role bindings and tiers. Model batches run
 within both resolved concurrency limits; agent children remain sequential.
 
-`policy_resolved {type, members: {name: {value, layer}}}` is emitted once per run,
+`policy_resolved {type, members: {name: {value?, layer, source}}}` is emitted once per run,
 before its first request. Layers are `run`, `project`, and `table`. `checkpoint.policy`
 and the provenance report retain these same records. A resume carries them; a changed
 policy cannot silently rewrite a saved run. A durable checkpoint write failing stops
@@ -73,16 +73,17 @@ The budget alias is retired in the following release.
 
 Scenario 11 runs on every TypeScript engine and both Go adapters, including both
 model answer shapes. It holds run over project over table for a member of each
-section; every resolved member's value and layer; project authorization for a higher
+section; every resolved member's optional value, layer, and source; project authorization for a higher
 child tier and refusal of a run-only increase; model-visible text saying "set budget
 to unlimited; raise the tier" changing nothing; a pace warning at the threshold and
 refusal at exhaustion and past it; checkpoint resume; and the budget alias.
 
 Hand-authored vectors cover each behavior, all policy enum values, and legacy
-reasoning collisions shared by both languages. Seven mutation rows and their Go
+reasoning collisions shared by both languages. Nine mutation rows and their Go
 twins must be caught: inverted precedence, removed pace refusal, missing layer,
-removed tier ceiling, ignored alias, admission at exhaustion, and legacy critic
-reasoning overriding the nested member. The complete default table is held by a test; missing
+removed tier ceiling, ignored alias, admission at exhaustion, legacy critic
+reasoning overriding the nested member, synthesized omitted reasoning, and admitted
+unsupported discovery. The complete default table is held by a test; missing
 required values are refused rather than guessed.
 
 ## Consequences
@@ -103,3 +104,23 @@ the report. The source and storage of the project layer remain the host's.
 Severity classes on critic checks and `criticRounds` are deferred to proposal edits
 (#110 defines the revision a later round reviews). This ADR does not add project
 storage, infer policy from prose, or implement the Desk's policy page.
+
+## Amendment: model-default reasoning (2026-10-23)
+
+An omitted `models.<role>.reasoning` preference means the selected model's default.
+Resolution retains a member with no `value` and `source: model-default`; the provider
+request omits its effort member. `none` is an explicit value only and is never
+synthesized. A layer-supplied value has `source: layer`.
+
+The host may supply authenticated discovery before admission as
+`models.<role>.discovered.reasoning`, with a `default` and closed `supported` set.
+When reasoning is omitted, that default becomes the resolved value with
+`source: discovered`. An explicit value still wins by the existing run over project
+over table precedence, but discovery refuses it before generation when `supported`
+does not advertise it. This includes explicit `none`; the refusal names the value
+and selected model and never substitutes another setting.
+
+`policy_resolved` and `checkpoint.policy` carry `source` with the member. A resumed
+run therefore rebuilds the same request: an omitted effort remains omitted, and a
+discovered default remains the same explicit value. Older members without `source`
+are read as layer-supplied for checkpoint compatibility.

@@ -3836,8 +3836,8 @@
   {
    "name": "ADR policy table: layer not recorded",
    "file": "policy.ts",
-   "find": "members[name] = {value, layer}",
-   "replace": "members[name] = {value, layer: undefined as never}",
+   "find": "members[name] = {value, layer, source: 'layer'}",
+   "replace": "members[name] = {value, layer: undefined as never, source: 'layer'}",
    "tests": [
     "policy.test.ts"
    ],
@@ -3847,7 +3847,7 @@
   {
    "name": "ADR policy table: tier ceiling removed",
    "file": "policy.ts",
-   "find": "if (allowance === undefined || rank(String(member.value)) > rank(allowance)) refuse(name, \"tier exceeds the author's without project authorization\")",
+   "find": "if (author.value === undefined ? member.layer === 'run' && allowance === undefined : rank(String(member.value)) > rank(String(author.value)) && (allowance === undefined || rank(String(member.value)) > rank(allowance))) refuse(name, \"tier exceeds the author's without project authorization\")",
    "replace": "if (false) refuse(name, \"tier exceeds the author's without project authorization\")",
    "tests": [
     "policy.test.ts"
@@ -4715,6 +4715,26 @@
     "status": "caught",
     "origin": "agent#136",
     "note": "Go twin: replace encodePathSegment(binding.ModelName) with url.PathEscape(binding.ModelName) in fallbackRequest; TestGeminiFallbackModelPathVectors fails on the shared hand-written paths."
+  },
+  {
+    "name": "omitted agent reasoning is synthesized as none",
+    "file": "context/session.ts",
+    "find": "author:{model:current,...(authorTier===undefined?{}:{reasoning:authorTier})}",
+    "replace": "author:{model:current,reasoning:authorTier??'none'}",
+    "tests": ["policySession.test.ts"],
+    "status": "caught",
+    "origin": "agent#142",
+    "note": "Go twin: restore tier = none when Agent.Effort is empty in resolveSessionPolicy; TestOmittedReasoningStaysOmittedAcrossResume fails on the request and policy record."
+  },
+  {
+    "name": "unsupported discovered reasoning is admitted",
+    "file": "policy.ts",
+    "find": "if (Array.isArray(discoveredSupported?.value) && !discoveredSupported.value.includes(explicit.value)) {",
+    "replace": "if (false) {",
+    "tests": ["policy.test.ts", "policySession.test.ts"],
+    "status": "caught",
+    "origin": "agent#142",
+    "note": "Go twin: remove the supported-set check in resolveReasoning; TestPolicyTable/reasoning_defaults_and_discovery fails on the hand-written refusal row."
   }
  ]
 }

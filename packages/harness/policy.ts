@@ -10,7 +10,9 @@ export interface CrossProvider { continued?: boolean; role: string; relation: 's
 export type PolicyLayerName = 'run' | 'project' | 'table'
 export type TaskClass = 'routine' | 'material' | 'boundary'
 export type FailoverClass = 'unavailable' | 'rate-limited' | 'timeout'
-export interface PolicyRole { model?: string; reasoning?: string; provider?: string; fallback?: string[] }
+export type ReasoningValue = 'off' | 'on' | 'ultra' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+export interface DiscoveredReasoning { default: ReasoningValue; supported: ReasoningValue[] }
+export interface PolicyRole { model?: string; reasoning?: string; discovered?: {reasoning: DiscoveredReasoning}; provider?: string; fallback?: string[] }
 export interface PolicyLayer {
   compaction?: 'index' | 'summary'
   outputGuard?: 'off' | 'redact' | 'refuse'
@@ -25,7 +27,9 @@ export interface PolicyLayer {
   pace?: { requestsPerDay?: number | null; invocationsPerDay?: number | null; bytesPerDay?: number | null; warnAt?: number }
   taskClass?: TaskClass
 }
-export type PolicyMembers = Record<string, { value: unknown; layer: PolicyLayerName }>
+export type PolicyMemberSource = 'layer' | 'model-default' | 'discovered'
+export type PolicyMember = { value?: unknown; layer: PolicyLayerName; source?: PolicyMemberSource }
+export type PolicyMembers = Record<string, PolicyMember>
 export type PaceUsed = Partial<Record<'requestsPerDay' | 'invocationsPerDay' | 'bytesPerDay', number>>
 export interface PolicyHost {
   /** Connected IDs, not names obtained from model text. */
@@ -43,15 +47,16 @@ export class PolicyRefusal extends AIFailureError {
   }
   event() { return {type: 'guardrail' as const, tool: this.member, action: 'refused' as const, reason: this.member.includes('.fallback') ? 'failover refused' as const : 'policy refused' as const, detail: this.message} }
 }
-type Shape = { $ref?: string; type?: string | string[]; properties?: Record<string, Shape>; patternProperties?: Record<string, Shape>; items?: Shape; enum?: unknown[]; const?: unknown; minimum?: number; maximum?: number; minLength?: number; maxLength?: number; minItems?: number; maxItems?: number; uniqueItems?: boolean; default?: unknown }
+type Shape = { $ref?: string; type?: string | string[]; properties?: Record<string, Shape>; patternProperties?: Record<string, Shape>; required?: string[]; items?: Shape; enum?: unknown[]; const?: unknown; minimum?: number; maximum?: number; minLength?: number; maxLength?: number; minItems?: number; maxItems?: number; uniqueItems?: boolean; default?: unknown }
 const object = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v)
-const deref = (s: Shape): Shape => s.$ref === '#/$defs/role' ? schema.$defs.role as Shape : s
+const deref = (s: Shape): Shape => s.$ref?.startsWith('#/$defs/') ? (schema.$defs as Record<string, Shape>)[s.$ref.slice(8)]! : s
 function read(value: unknown, shape: Shape, path: string, layer: PolicyLayerName, out: Record<string, unknown>) {
   if(path==='outputPatterns'||path==='outputAllow'){try{out[path]=path==='outputPatterns'?readOutputPatterns(value):readOutputAllow(value);return}catch{throw new PolicyRefusal(path,layer,'invalid output guard configuration')}}
   shape = deref(shape)
   const refuse = () => { throw new PolicyRefusal(path, layer, 'invalid or unknown policy member') }
   if (shape.type === 'object') {
     if (!object(value)) return refuse()
+    for (const key of shape.required ?? []) if (!Object.hasOwn(value, key)) return refuse()
     for (const [key, v] of Object.entries(value)) {
       const next = shape.properties?.[key] ?? Object.entries(shape.patternProperties ?? {}).find(([pattern]) => new RegExp(pattern).test(key))?.[1]
       if (!next) throw new PolicyRefusal(path ? `${path}.${key}` : key, layer, 'unknown policy member')
@@ -91,11 +96,11 @@ export function policyAlias(value: PolicyLayer | Record<string, unknown>): Polic
 /** One precedence, every section. Returns detached records; callers retain these in the checkpoint. */
 export function resolvePolicy(run: PolicyLayer, project: PolicyLayer, table: PolicyLayer | Record<string, unknown>, host: PolicyHost): {members: PolicyMembers; warning?: string} {
   const layers: [PolicyLayerName, PolicyLayer][] = [['table', policyAlias(table)], ['project', project], ['run', run]]
-  const members: PolicyMembers = Object.fromEntries(Object.entries(defaults(schema as Shape)).map(([key, value]) => [key, {value, layer: 'table'}]))
+  const members: PolicyMembers = Object.fromEntries(Object.entries(defaults(schema as Shape)).map(([key, value]) => [key, {value, layer: 'table', source: 'layer'}]))
   for (const [layer, input] of layers) {
     const flat: Record<string, unknown> = {}
     read(input, schema as Shape, '', layer, flat)
-    for (const [name, value] of Object.entries(flat)) members[name] = {value, layer}
+    for (const [name, value] of Object.entries(flat)) members[name] = {value, layer, source: 'layer'}
   }
   const need = (name: string) => {
     const member = members[name]
@@ -108,9 +113,28 @@ export function resolvePolicy(run: PolicyLayer, project: PolicyLayer, table: Pol
   const task = String(need('taskClass').value)
   const mapped = members[`models.taskClasses.${task}`]
   if (mapped && (!members['models.author.reasoning'] || members['models.author.reasoning'].layer === 'table')) members['models.author.reasoning'] = {...mapped}
-  const author = need('models.author.reasoning')
-  if (!members['models.compactor.reasoning']) members['models.compactor.reasoning'] = {value: 'low', layer: 'table'}
-  const roles = new Set(['author', 'critic', ...Object.keys(members).filter(k => k.startsWith('models.') && !k.startsWith('models.taskClasses.')).map(k => k.slice(7, k.lastIndexOf('.')))])
+  const resolveReasoning = (role: string, inherited?: PolicyMember): PolicyMember => {
+    const name = `models.${role}.reasoning`
+    const explicit = members[name]
+    const discoveredDefault = members[`models.${role}.discovered.reasoning.default`]
+    const discoveredSupported = members[`models.${role}.discovered.reasoning.supported`]
+    if (discoveredDefault && (!Array.isArray(discoveredSupported?.value) || !discoveredSupported.value.includes(discoveredDefault.value))) {
+      throw new PolicyRefusal(name, discoveredDefault.layer, `discovered default ${JSON.stringify(discoveredDefault.value)} is not advertised as supported`)
+    }
+    if (explicit) {
+      if (Array.isArray(discoveredSupported?.value) && !discoveredSupported.value.includes(explicit.value)) {
+        const model = members[`models.${role}.model`]?.value ?? role
+        throw new PolicyRefusal(name, explicit.layer, `reasoning value ${JSON.stringify(explicit.value)} is not supported by model ${JSON.stringify(model)}`)
+      }
+      return explicit
+    }
+    if (discoveredDefault) return {value: discoveredDefault.value, layer: discoveredDefault.layer, source: 'discovered'}
+    if (inherited) return {...inherited, layer: 'table'}
+    return {layer: 'table', source: 'model-default'}
+  }
+  const roleOf = (name: string) => name.startsWith('models.') && !name.startsWith('models.taskClasses.')
+    ? name.slice(7).replace(/\.(?:model|reasoning|provider|fallback|discovered\..*)$/, '') : undefined
+  const roles = new Set(['author', 'critic', ...Object.keys(members).map(roleOf).filter((role): role is string => role !== undefined)])
   const base = host.authorConnection ?? String(need('models.author.model').value)
   const family = (id: string) => host.families?.[id] ?? (host.agent ? 'codex' : 'openai')
   let authorConnection = base
@@ -118,14 +142,14 @@ export function resolvePolicy(run: PolicyLayer, project: PolicyLayer, table: Pol
     const name = `models.${role}.provider`
     const legacy = members[`models.${role}.model`]
     if(legacy&&!host.connections.includes(String(legacy.value)))refuse(`models.${role}.model`,'model connection is not available')
-    members[name] ??= {value: 'same', layer: 'table'}
+    members[name] ??= {value: 'same', layer: 'table', source: 'layer'}
     const choice = String(members[name]!.value)
     const selected = choice === 'same' ? authorConnection : choice === 'other'
       ? host.connections.find(id => family(id) !== family(authorConnection)) : choice
     if (!selected || !host.connections.includes(selected)) refuse(name, 'no connected provider satisfies the role')
-    members[name] = {value: selected, layer: members[name]!.layer}
+    members[name] = {value: selected, layer: members[name]!.layer, source: members[name]!.source}
     const fallbackName = `models.${role}.fallback`
-    members[fallbackName] ??= {value: [], layer: 'table'}
+    members[fallbackName] ??= {value: [], layer: 'table', source: 'layer'}
     const fallbacks = members[fallbackName]!.value
     if (!Array.isArray(fallbacks)) refuse(fallbackName, 'fallback must be an array')
     for (const id of fallbacks as unknown[]) {
@@ -135,17 +159,20 @@ export function resolvePolicy(run: PolicyLayer, project: PolicyLayer, table: Pol
     }
     if (role === 'author') authorConnection = selected!
   }
+  members['models.author.reasoning'] = resolveReasoning('author')
+  const author = members['models.author.reasoning']!
   for (const role of roles) {
     for (const field of ['model', 'reasoning']) {
       const name = `models.${role}.${field}`
-      if (!members[name] && role !== 'author') members[name] = {value: need(`models.author.${field}`).value, layer: 'table'}
+      if (!members[name] && role !== 'author' && field === 'model') members[name] = {value: need(`models.author.${field}`).value, layer: 'table', source: 'layer'}
+      if (field === 'reasoning' && role !== 'author') members[name] = resolveReasoning(role, author)
       const member = need(name)
       if (field === 'model' && !host.connections.includes(String(member.value))) refuse(name, 'model connection is not available')
       if (field === 'reasoning') {
-        if (!tiers.includes(String(member.value))) refuse(name, 'tier is not supported on this capability')
-        if (/^(child|subagent)\./.test(role) && rank(String(member.value)) > rank(String(author.value))) {
+        if (member.value !== undefined && !tiers.includes(String(member.value))) refuse(name, 'tier is not supported on this capability')
+        if (member.value !== undefined && /^(child|subagent)\./.test(role)) {
           const allowance = (project.models?.[role] as PolicyRole | undefined)?.reasoning
-          if (allowance === undefined || rank(String(member.value)) > rank(allowance)) refuse(name, "tier exceeds the author's without project authorization")
+          if (author.value === undefined ? member.layer === 'run' && allowance === undefined : rank(String(member.value)) > rank(String(author.value)) && (allowance === undefined || rank(String(member.value)) > rank(allowance))) refuse(name, "tier exceeds the author's without project authorization")
         }
       }
     }

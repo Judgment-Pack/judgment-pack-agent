@@ -32,11 +32,13 @@
         },
         "models.author.reasoning": {
           "value": "ultra",
-          "layer": "run"
+          "layer": "run",
+          "source": "layer"
         },
         "models.compactor.reasoning": {
           "value": "low",
-          "layer": "run"
+          "layer": "run",
+          "source": "layer"
         },
         "models.compactor.provider": {
           "value": "author-connection",

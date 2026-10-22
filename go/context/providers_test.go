@@ -30,7 +30,7 @@ func TestProviders(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := result.Members["models."+v.Role+".provider"]; !reflect.DeepEqual(got, PolicyMember{v.Expected, "run"}) {
+			if got := result.Members["models."+v.Role+".provider"]; !reflect.DeepEqual(got, PolicyMember{Value: v.Expected, Layer: "run", Source: "layer"}) {
 				t.Fatalf("provider: %+v", got)
 			}
 		})
@@ -40,7 +40,7 @@ func TestProviders(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := result.Members["models.critic.provider"]; !reflect.DeepEqual(got, PolicyMember{"author", "table"}) {
+		if got := result.Members["models.critic.provider"]; !reflect.DeepEqual(got, PolicyMember{Value: "author", Layer: "table", Source: "layer"}) {
 			t.Fatalf("provider: %+v", got)
 		}
 	})

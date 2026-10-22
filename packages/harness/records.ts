@@ -36,7 +36,7 @@ export function sha256(text:string):string{
 const withoutDigest=(record:object)=>Object.fromEntries(Object.entries(record).filter(([name])=>name!=='digest'))
 export const recordDigest=(record:object)=>`sha256:${sha256(canonicalJSON(withoutDigest(record)))}`
 export function retainUntil(policy:RecordsPolicy,now=new Date()):string{return new Date(now.getTime()+policy.retainDays*DAY).toISOString()}
-export function recordsPolicy(members:Record<string,{value:unknown}>):RecordsPolicy{
+export function recordsPolicy(members:Record<string,{value?:unknown}>):RecordsPolicy{
  const retainDays=members['records.retainDays']?.value??RECORD_DEFAULTS.retainDays
  const redactOnStore=members['records.redactOnStore']?.value??RECORD_DEFAULTS.redactOnStore
  const exportFormat=members['records.exportFormat']?.value??RECORD_DEFAULTS.exportFormat

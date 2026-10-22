@@ -78,6 +78,8 @@ var Registry = map[string]func() any{
 	"policy.json":                                   func() any { return new(Policy) },
 	"policy.json#/$defs/role":                       func() any { return new(PolicyRole) },
 	"policy.json#/$defs/member":                     func() any { return new(PolicyMember) },
+	"policy.json#/$defs/discovered":                 func() any { return new(PolicyDiscovered) },
+	"policy.json#/$defs/reasoningValue":             func() any { return new(string) },
 	"policy.json#/$defs/resolved":                   func() any { return new(map[string]PolicyMember) },
 	"policy.json#/$defs/paceUsed":                   func() any { return new(PolicyPaceUsed) },
 	"policy.json#/$defs/outputPattern":              func() any { return new(PolicyOutputPattern) },
@@ -3125,8 +3127,9 @@ func (v MemorySource) MarshalJSON() ([]byte, error) {
 }
 
 // From policy.json. ADR-0011. Closed partial host layers: run > project > table, resolved per
-// member. Models default to the connected author and its tier; critic keeps the author floor.
-// Dynamic roles inherit the author unless explicitly set. Unset members without a table or
+// member. Models default to the connected author; an omitted reasoning preference stays absent
+// unless authenticated discovery supplies the selected model's default. Critic and dynamic roles
+// inherit the author unless explicitly set. Other unset required members without a table or
 // host-derived default are refused at admission. Model-visible text never supplies a layer.
 type Policy struct {
 	Compaction     *string               `json:"compaction,omitzero"`
@@ -3286,6 +3289,60 @@ func (v PolicyCritic) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From policy.json#/$defs/discovered. Authenticated host-supplied capabilities for the selected
+// model, read before policy admission.
+type PolicyDiscovered struct {
+	Reasoning PolicyDiscoveredReasoning `json:"reasoning"`
+}
+
+var policyDiscoveredMembers = []string{"reasoning"}
+
+// UnmarshalJSON decodes a PolicyDiscovered object and refuses a member the closed schema does not name.
+func (v *PolicyDiscovered) UnmarshalJSON(data []byte) error {
+	type plain PolicyDiscovered
+	var p plain
+	extra, err := decodeObject(data, &p, policyDiscoveredMembers, true)
+	if err != nil {
+		return errorf("PolicyDiscovered: %w", err)
+	}
+	*v = PolicyDiscovered(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a PolicyDiscovered object.
+func (v PolicyDiscovered) MarshalJSON() ([]byte, error) {
+	type plain PolicyDiscovered
+	return encodeObject(plain(v), nil)
+}
+
+// From policy.json#/$defs/discovered/properties/reasoning.
+type PolicyDiscoveredReasoning struct {
+	Default   string   `json:"default"`
+	Supported []string `json:"supported"`
+}
+
+var policyDiscoveredReasoningMembers = []string{"default", "supported"}
+
+// UnmarshalJSON decodes a PolicyDiscoveredReasoning object and refuses a member the closed schema does not name.
+func (v *PolicyDiscoveredReasoning) UnmarshalJSON(data []byte) error {
+	type plain PolicyDiscoveredReasoning
+	var p plain
+	extra, err := decodeObject(data, &p, policyDiscoveredReasoningMembers, true)
+	if err != nil {
+		return errorf("PolicyDiscoveredReasoning: %w", err)
+	}
+	*v = PolicyDiscoveredReasoning(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a PolicyDiscoveredReasoning object.
+func (v PolicyDiscoveredReasoning) MarshalJSON() ([]byte, error) {
+	type plain PolicyDiscoveredReasoning
+	return encodeObject(plain(v), nil)
+}
+
 // From policy.json#/properties/failover. ADR-0020. Provider failures that may move one request to
 // the next same-family fallback after the ordinary retry rule. The package never switches for any
 // other class.
@@ -3316,11 +3373,12 @@ func (v PolicyFailover) MarshalJSON() ([]byte, error) {
 
 // From policy.json#/$defs/member.
 type PolicyMember struct {
-	Value json.RawMessage `json:"value"`
-	Layer string          `json:"layer"`
+	Value  json.RawMessage `json:"value,omitzero"`
+	Layer  string          `json:"layer"`
+	Source *string         `json:"source,omitzero"`
 }
 
-var policyMemberMembers = []string{"value", "layer"}
+var policyMemberMembers = []string{"value", "layer", "source"}
 
 // UnmarshalJSON decodes a PolicyMember object and refuses a member the closed schema does not name.
 func (v *PolicyMember) UnmarshalJSON(data []byte) error {
@@ -3518,13 +3576,14 @@ func (v PolicyRecords) MarshalJSON() ([]byte, error) {
 
 // From policy.json#/$defs/role.
 type PolicyRole struct {
-	Model     *string  `json:"model,omitzero"`
-	Reasoning *string  `json:"reasoning,omitzero"`
-	Provider  *string  `json:"provider,omitzero"`
-	Fallback  []string `json:"fallback,omitzero"`
+	Model      *string           `json:"model,omitzero"`
+	Reasoning  *string           `json:"reasoning,omitzero"`
+	Discovered *PolicyDiscovered `json:"discovered,omitzero"`
+	Provider   *string           `json:"provider,omitzero"`
+	Fallback   []string          `json:"fallback,omitzero"`
 }
 
-var policyRoleMembers = []string{"model", "reasoning", "provider", "fallback"}
+var policyRoleMembers = []string{"model", "reasoning", "discovered", "provider", "fallback"}
 
 // UnmarshalJSON decodes a PolicyRole object and refuses a member the closed schema does not name.
 func (v *PolicyRole) UnmarshalJSON(data []byte) error {

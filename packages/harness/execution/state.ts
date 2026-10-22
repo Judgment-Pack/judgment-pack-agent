@@ -175,6 +175,7 @@ export function validDelegationFigures(v:unknown,unit:'model-requests'|'provider
 }
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v)
 const text=(v:unknown,max:number):v is string=>typeof v==='string'&&v.length<=max
+const validPolicy=(v:unknown):boolean=>object(v)&&Object.keys(v).length<=512&&Object.values(v).every(member=>object(member)&&exact(member,['value','layer','source'])&&['run','project','table'].includes(String(member.layer))&&(member.source===undefined||['layer','model-default','discovered'].includes(String(member.source)))&&(member.source!=='model-default'||!Object.hasOwn(member,'value'))&&(member.source!=='discovered'||Object.hasOwn(member,'value')))
 export function validTaskSteps(value:unknown):value is TaskStep[] {
  return Array.isArray(value)&&value.length>0&&value.length<=20&&value.every(s=>object(s)&&text(s.step,1000)&&!!s.step.trim()&&['pending','in_progress','completed'].includes(String(s.status))&&(s.detail===undefined||text(s.detail,1500)))&&value.filter(s=>s.status==='in_progress').length<=1
 }
@@ -203,11 +204,13 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value.failover!==undefined&&(!Array.isArray(value.failover)||value.failover.length>64||new Set(value.failover.map(r=>object(r)?r.role:undefined)).size!==value.failover.length||value.failover.some(r=>!object(r)||!exact(r,['role','connection','history','consumed'])||!count(r.consumed,256)||!text(r.role,128)||!r.role||!text(r.connection,128)||!r.connection||!Array.isArray(r.history)||r.history.length>256||r.consumed!==r.history.length||r.history.some(h=>!object(h)||!exact(h,['from','to','reason'])||!text(h.from,128)||!h.from||!text(h.to,128)||!h.to||!['unavailable','rate-limited','timeout'].includes(String(h.reason))))))return fail()
  if(value.childUsage!==undefined&&(!Array.isArray(value.childUsage)||value.childUsage.length>256||new Set(value.childUsage.map(r=>object(r)?r.id:undefined)).size!==value.childUsage.length||value.childUsage.some(r=>!object(r)||!exact(r,['id','usage'])||!text(r.id,128)||!r.id||!validUsage(r.usage))))return fail()
  if(value.usage!==undefined&&!validUsage(value.usage))return fail()
+ if(value.policy!==undefined&&!validPolicy(value.policy))return fail()
  if(!Array.isArray(value.operations)||value.operations.length>400||new Set(value.operations.map(o=>o.id)).size!==value.operations.length)return fail()
  for(const op of value.operations){if(!object(op)||!text(op.id,100)||!text(op.name,150)||!['running','complete','failed','interrupted'].includes(String(op.status))||op.result!==undefined&&(!object(op.result)||(op.result.content!==undefined&&(!Array.isArray(op.result.content)||op.result.content.some(p=>!object(p)||p.type!==undefined&&typeof p.type!=='string'||p.text!==undefined&&typeof p.text!=='string')))))return fail()}
  if(!object(value.context)||!text(value.context.scope,100)||!Array.isArray(value.context.entries)||value.context.entries.length>800||new Set(value.context.entries.map(e=>e.id)).size!==value.context.entries.length)return fail()
  for(const e of value.context.entries){if(!object(e)||!text(e.id,300)||!e.id.startsWith(value.context.scope+':')||!['history','artifact','request','tool'].includes(String(e.kind))||!text(e.label,1000)||typeof e.digest!=='string'||!/^[a-f0-9]{64}$/.test(e.digest)||e.revision!==undefined&&!text(e.revision,256)||!Number.isInteger(e.bytes)||Number(e.bytes)<0||!Object.hasOwn(e,'value'))return fail()}
  const result=structuredClone(value) as unknown as ExecutionCheckpoint
+ if(result.policy)for(const member of Object.values(result.policy))member.source??='layer'
  if(result.completions)result.completions=result.completions.map(({schema,version,digest,retainUntil,records,request,phase,result,attempt,failure,waitMs,connection,role})=>({...(schema===undefined?{}:{schema,version,digest,retainUntil,records} as RecordMembers<typeof PROVENANCE_SCHEMA>),request,phase,result:readCompletion(result)!,...(attempt===undefined?{}:{attempt}),...(failure===undefined?{}:{failure:readFailure(failure)!}),...(waitMs===undefined?{}:{waitMs}),...(connection===undefined?{}:{connection}),...(role===undefined?{}:{role})}))
  return result
 }

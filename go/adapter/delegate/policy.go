@@ -18,7 +18,11 @@ func (c *coordinator) parentPolicy() runcontext.PolicyMembers {
 			for k, v := range c.run.Context.Execution.Policy {
 				var value any
 				_ = json.Unmarshal(v.Value, &value)
-				members[k] = runcontext.PolicyMember{Value: value, Layer: v.Layer}
+				source := ""
+				if v.Source != nil {
+					source = *v.Source
+				}
+				members[k] = runcontext.PolicyMember{Value: value, Layer: v.Layer, Source: source}
 			}
 			return members
 		}
@@ -55,16 +59,15 @@ func (c *coordinator) childBinding(profile turn.TaskProfile) (adapter.PolicyConn
 		if c.run.Agent != nil {
 			tier = c.run.Agent.Effort
 		}
-		if tier == "" {
-			tier = "off"
-			if c.run.Agent != nil {
-				tier = "none"
-			}
-		}
 		if author, ok := members["models.author.reasoning"]; ok {
 			tier, _ = author.Value.(string)
 		}
-		selected := runcontext.PolicyMembers{"models." + role + ".model": {Value: id, Layer: "table"}, "models." + role + ".reasoning": {Value: tier, Layer: "table"}}
+		selected := runcontext.PolicyMembers{"models." + role + ".model": {Value: id, Layer: "table", Source: "layer"}}
+		if tier == "" {
+			selected["models."+role+".reasoning"] = runcontext.PolicyMember{Layer: "table", Source: "model-default"}
+		} else {
+			selected["models."+role+".reasoning"] = runcontext.PolicyMember{Value: tier, Layer: "table", Source: "layer"}
+		}
 		for k, v := range members {
 			selected[k] = v
 		}
@@ -103,7 +106,11 @@ func (c *coordinator) childBinding(profile turn.TaskProfile) (adapter.PolicyConn
 		}
 		object[leaf] = member.Value
 	}
-	policy["models"] = map[string]any{"author": map[string]any{"model": id, "reasoning": tier}}
+	author := map[string]any{"model": id}
+	if tier != "" {
+		author["reasoning"] = tier
+	}
+	policy["models"] = map[string]any{"author": author}
 	if fallback, ok := members["models."+role+".fallback"]; ok {
 		policy["models"].(map[string]any)["author"].(map[string]any)["fallback"] = fallback.Value
 	}

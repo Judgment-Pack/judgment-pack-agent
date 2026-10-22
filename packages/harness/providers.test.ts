@@ -22,20 +22,20 @@ const host={connections:['author','reviewer'],families:{author:'openai',reviewer
 describe('ADR-0012 provider boundary',()=>{
  for(const name of ['same','other','explicit','child','subagent'])it(name,()=>{
   const v=vector(name), result=resolvePolicy(v.items[0],{},table,host)
-  expect(result.members[`models.${v.role}.provider`]).toEqual({value:v.expected,layer:'run'})
+  expect(result.members[`models.${v.role}.provider`]).toEqual({value:v.expected,layer:'run',source:'layer'})
  })
  it('defaults every declared role to same',()=>{
   const result=resolvePolicy({models:{'child.review':{reasoning:'on'},'subagent.audit':{reasoning:'off'}}},{},table,host)
-  for(const role of ['author','critic','child.review','subagent.audit'])expect(result.members[`models.${role}.provider`]).toEqual({value:'author',layer:'table'})
+  for(const role of ['author','critic','child.review','subagent.audit'])expect(result.members[`models.${role}.provider`]).toEqual({value:'author',layer:'table',source:'layer'})
  })
  it('a model connection does not override the provider default',()=>{
   const result=resolvePolicy({models:{critic:{model:'reviewer'}}},{},table,host)
-  expect(result.members['models.critic.provider']).toEqual({value:'author',layer:'table'})
+  expect(result.members['models.critic.provider']).toEqual({value:'author',layer:'table',source:'layer'})
  })
  it('uses run over project over table independently per member',()=>{
   const [run,project,defaults]=vector('precedence').items
-  expect(resolvePolicy(run,project,{...table,models:{...table.models,...defaults.models}},host).members['models.critic.provider']).toEqual({value:'author',layer:'run'})
-  expect(resolvePolicy({},project,table,host).members['models.critic.provider']).toEqual({value:'reviewer',layer:'project'})
+  expect(resolvePolicy(run,project,{...table,models:{...table.models,...defaults.models}},host).members['models.critic.provider']).toEqual({value:'author',layer:'run',source:'layer'})
+  expect(resolvePolicy({},project,table,host).members['models.critic.provider']).toEqual({value:'reviewer',layer:'project',source:'layer'})
  })
  it('refuses other without a connected other family, naming the role',()=>{
   try{resolvePolicy(vector('other').items[0],{},table,{...host,connections:['author']});expect.fail('other fell back to same')}

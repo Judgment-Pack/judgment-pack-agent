@@ -362,6 +362,23 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 	if skills := value.Get("skills"); skills != nil && !ValidSkillLoads(skills) {
 		return nil, errSavedExecution
 	}
+	if policy := value.Get("policy"); policy != nil {
+		if !policy.IsObject() || policy.Len() > 512 {
+			return nil, errSavedExecution
+		}
+		for _, name := range policy.Keys() {
+			member := policy.Get(name)
+			if !isObject(member) || !hasOnly(member, "value", "layer", "source") || !oneOf(member.Get("layer"), "run", "project", "table") {
+				return nil, errSavedExecution
+			}
+			source := member.Get("source")
+			if source != nil {
+				if !oneOf(source, "layer", "model-default", "discovered") || source.Str() == "model-default" && member.Has("value") || source.Str() == "discovered" && !member.Has("value") {
+					return nil, errSavedExecution
+				}
+			}
+		}
+	}
 	// ADR-0010: the critic's decision, or the model's ask before it, read closed.
 	if critic := value.Get("critic"); critic != nil {
 		var held contract.CheckpointCritic
@@ -510,6 +527,13 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 	var out contract.Checkpoint
 	if err := json.Unmarshal(value.JSON(), &out); err != nil {
 		return nil, errSavedExecution
+	}
+	for name, member := range out.Policy {
+		if member.Source == nil {
+			source := "layer"
+			member.Source = &source
+			out.Policy[name] = member
+		}
 	}
 	// The completions are rebuilt from the members the reader names, each checked.
 	for at, row := range out.Completions {
