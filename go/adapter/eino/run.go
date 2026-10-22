@@ -491,6 +491,24 @@ func (r *runState) reasoningField() wire.ReasoningField {
 	return r.capabilities.StreamingQuirks.ReasoningField
 }
 
+// encodePathSegment encodes one UTF-8 value as an RFC 3986 path segment, leaving only
+// ASCII letters, digits, hyphen, dot, underscore and tilde bare.
+func encodePathSegment(value string) string {
+	const hex = "0123456789ABCDEF"
+	var encoded strings.Builder
+	encoded.Grow(len(value))
+	for _, b := range []byte(value) {
+		if b >= 'A' && b <= 'Z' || b >= 'a' && b <= 'z' || b >= '0' && b <= '9' || b == '-' || b == '.' || b == '_' || b == '~' {
+			encoded.WriteByte(b)
+		} else {
+			encoded.WriteByte('%')
+			encoded.WriteByte(hex[b>>4])
+			encoded.WriteByte(hex[b&0x0f])
+		}
+	}
+	return encoded.String()
+}
+
 // imageBounds are the images one request carries, at most.
 func (r *runState) imageBounds() wire.ImageBounds {
 	return wire.ImageBounds{Count: r.sc.Policy.ImagesPerRequest, Bytes: r.sc.Policy.ImageBytesPerRequest}
@@ -542,7 +560,7 @@ func fallbackRequest(binding adapter.PolicyConnection, tier, suffix string, requ
 	if binding.Wire == "gemini" {
 		if at := strings.Index(suffix, "models/"); at >= 0 {
 			if end := strings.Index(suffix[at:], ":"); end >= 0 {
-				suffix = suffix[:at] + "models/" + binding.ModelName + suffix[at+end:]
+				suffix = suffix[:at] + "models/" + encodePathSegment(binding.ModelName) + suffix[at+end:]
 			}
 		}
 		if !config.IsObject() {

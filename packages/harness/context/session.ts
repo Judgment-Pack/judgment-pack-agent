@@ -686,6 +686,16 @@ export class ApprovalPaused extends Error {
 export function testCallCapFailure(limit:number):AIFailureError{
  return new AIFailureError({version:1,code:'tool-failed',source:'tool',outcome:'not-started',detail:`This turn has called ${TEST_TOOL} ${limit} time${limit===1?'':'s'}, the most one turn may (testCallsPerTurn); this call was not run. Use the reports already obtained: fix what they show and propose, or say what remains. The person can test again in a new turn.`})
 }
+/** Encode one UTF-8 value as an RFC 3986 path segment, leaving only unreserved bytes bare. */
+function encodePathSegment(value:string){
+ const hex='0123456789ABCDEF'
+ let encoded=''
+ for(const byte of new TextEncoder().encode(value)){
+  if(byte>=0x41&&byte<=0x5a||byte>=0x61&&byte<=0x7a||byte>=0x30&&byte<=0x39||byte===0x2d||byte===0x2e||byte===0x5f||byte===0x7e)encoded+=String.fromCharCode(byte)
+  else encoded+=`%${hex[byte>>4]}${hex[byte&0x0f]}`
+ }
+ return encoded
+}
 /** Rebuild only the model-dependent wire fields after a connection switch. */
 function fallbackRequest(model:import('../engine').AssistantSession['model'],tier:string,suffix:string,request:import('../engine').ModelRequest){
  const body=JSON.parse(request.body),caps=capabilitiesFor(model)
@@ -693,7 +703,7 @@ function fallbackRequest(model:import('../engine').AssistantSession['model'],tie
  if(body.generationConfig)delete body.generationConfig.thinkingConfig
  const members=caps.reasoning.kind==='none'?null:wireFor(tier as import('../host').ThinkingTier,dialectFor(caps.reasoning.kind),caps.tiers,caps.fallbackTiers)?.members
  if(model.family==='gemini'){
-  suffix=suffix.replace(/models\/[^:]+:/,`models/${encodeURIComponent(model.model)}:`)
+  suffix=suffix.replace(/models\/[^:]+:/,`models/${encodePathSegment(model.model)}:`)
   body.generationConfig={...body.generationConfig,...members}
  }else{
   body.model=model.model
