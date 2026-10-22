@@ -22,6 +22,7 @@ var Registry = map[string]func() any{
 	"capability.json":                               func() any { return new(Capability) },
 	"capability.json#/$defs/reasoning":              func() any { return new(CapabilityReasoning) },
 	"capability.json#/$defs/streamingQuirks":        func() any { return new(CapabilityStreamingQuirks) },
+	"capability.json#/$defs/geminiModelPath":        func() any { return new(CapabilityGeminiModelPath) },
 	"capability.json#/$defs/endpointCapabilities":   func() any { return new(CapabilityEndpointCapabilities) },
 	"checkpoint.json":                               func() any { return new(Checkpoint) },
 	"checkpoint.json#/$defs/grant":                  func() any { return new(CheckpointGrant) },
@@ -972,6 +973,34 @@ func (v *CapabilityFallbackTiers) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a CapabilityFallbackTiers object.
 func (v CapabilityFallbackTiers) MarshalJSON() ([]byte, error) {
 	type plain CapabilityFallbackTiers
+	return encodeObject(plain(v), nil)
+}
+
+// From capability.json#/$defs/geminiModelPath. One hand-written pair proving how a Gemini fallback
+// model id is encoded as a single RFC 3986 path segment.
+type CapabilityGeminiModelPath struct {
+	Model   string `json:"model"`
+	Segment string `json:"segment"`
+}
+
+var capabilityGeminiModelPathMembers = []string{"model", "segment"}
+
+// UnmarshalJSON decodes a CapabilityGeminiModelPath object and refuses a member the closed schema does not name.
+func (v *CapabilityGeminiModelPath) UnmarshalJSON(data []byte) error {
+	type plain CapabilityGeminiModelPath
+	var p plain
+	extra, err := decodeObject(data, &p, capabilityGeminiModelPathMembers, true)
+	if err != nil {
+		return errorf("CapabilityGeminiModelPath: %w", err)
+	}
+	*v = CapabilityGeminiModelPath(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CapabilityGeminiModelPath object.
+func (v CapabilityGeminiModelPath) MarshalJSON() ([]byte, error) {
+	type plain CapabilityGeminiModelPath
 	return encodeObject(plain(v), nil)
 }
 

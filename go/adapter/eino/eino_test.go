@@ -147,7 +147,7 @@ func TestFallbackRebuildsGeminiModelAndBudget(t *testing.T) {
 	run.Model = func(context.Context, string, relay.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 503, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{}`))}, nil
 	}
-	run.PolicyConnections = map[string]adapter.PolicyConnection{"backup": {Wire: "gemini", ModelName: "backup-model", Capabilities: &contract.CapabilityEndpointCapabilities{Tiers: &contract.CapabilityEndpointCapabilitiesTiers{Low: "1024", Medium: "2048", High: "4096"}}, Model: func(_ context.Context, suffix string, request relay.Request) (*http.Response, error) {
+	run.PolicyConnections = map[string]adapter.PolicyConnection{"backup": {Wire: "gemini", ModelName: "backup/model!", Capabilities: &contract.CapabilityEndpointCapabilities{Tiers: &contract.CapabilityEndpointCapabilitiesTiers{Low: "1024", Medium: "2048", High: "4096"}}, Model: func(_ context.Context, suffix string, request relay.Request) (*http.Response, error) {
 		calls++
 		var body struct {
 			GenerationConfig struct{ ThinkingConfig struct{ ThinkingBudget int } }
@@ -155,7 +155,7 @@ func TestFallbackRebuildsGeminiModelAndBudget(t *testing.T) {
 		if err := json.Unmarshal(request.Body, &body); err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(suffix, "models/backup-model:") || body.GenerationConfig.ThinkingConfig.ThinkingBudget != 4096 {
+		if !strings.Contains(suffix, "models/backup%2Fmodel%21:") || body.GenerationConfig.ThinkingConfig.ThinkingBudget != 4096 {
 			t.Errorf("backup settings: %s %s", suffix, request.Body)
 		}
 		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"candidates":[{"content":{"role":"model","parts":[{"text":"Finished."}]},"finishReason":"STOP"}]}`))}, nil
