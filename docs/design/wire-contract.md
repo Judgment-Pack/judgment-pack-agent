@@ -97,9 +97,12 @@ ADR-0020 adds `connection_switched` and the terminal `usage` record. A qualifyin
 `unavailable`, `rate-limited` (after the refusal retry rule), or `timeout` may
 move a request once to the next `models.<role>.fallback` connection of the same
 family. The full request is rebuilt for that connection and the event precedes
-its dispatch. Refusals, content filters and invalid requests never switch. An
-agent-capability switch during delegation is refused because its account is
-exclusive. `usage.json` is emitted once immediately before `end`, carried in the
+its dispatch. A Gemini fallback puts the model id in the request path as one
+segment, percent-encoding every UTF-8 byte except RFC 3986's unreserved ASCII
+set (`A-Z a-z 0-9 - . _ ~`) with uppercase `%XX`; an ordinary id such as
+`gemini-2.5-pro` is unchanged. Refusals, content filters and invalid requests
+never switch. An agent-capability switch during delegation is refused because
+its account is exclusive. `usage.json` is emitted once immediately before `end`, carried in the
 checkpoint, and groups observed counts by source, connection and role; token
 members are absent when the wire reports none. The host owns prices and project
 totals.

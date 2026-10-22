@@ -171,6 +171,26 @@
       },
       "additionalProperties": false
     },
+    "geminiModelPath": {
+      "description": "One hand-written pair proving how a Gemini fallback model id is encoded as a single RFC 3986 path segment.",
+      "type": "object",
+      "required": [
+        "model",
+        "segment"
+      ],
+      "properties": {
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "segment": {
+          "description": "The model's UTF-8 bytes with only RFC 3986 unreserved ASCII bytes bare and every other byte encoded as uppercase %XX.",
+          "type": "string",
+          "pattern": "^(?:[A-Za-z0-9._~-]|%[0-9A-F]{2})+$"
+        }
+      },
+      "additionalProperties": false
+    },
     "endpointCapabilities": {
       "description": "What a host answers for one endpoint and model (configureHarness's endpointCapabilities, EndpointCapabilities in packages/harness/host.ts), and what a session may carry as session.model.capabilities: any members of the record, each as the record states it. The harness completes the rest from the family's default record. An endpoint the host knows nothing about answers {}. Closed, as the record is.",
       "type": "object",

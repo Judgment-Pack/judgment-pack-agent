@@ -2,6 +2,7 @@ import {describe,it,expect} from 'vitest'
 import refusals from '../../../contract/vectors/failover/refused-mid-delegation.json'
 import {contextualSession} from '../context/session'
 import partialUsage from '../../../contract/vectors/failover/usage-partial.json'
+import geminiModelPaths from '../../../contract/vectors/failover/gemini-model-path.json'
 import {appendFileSync} from 'node:fs'
 import {vercel} from '../engines/vercel'
 import {deepagents} from '../engines/deepagents'
@@ -137,18 +138,20 @@ for(const engine of [vercel,deepagents,codex])describe(`${engine.id==='codex'?'a
  })
  it('20 fallback rebuilds a Gemini model path and thinking budget',async()=>{
   if(engine.id==='codex')return
-  const requests:{suffix:string;body:Record<string,any>}[]=[],events:AssistantEvent[]=[]
-  const session:AssistantSession={prompt:'Answer briefly.',testPrompt:'',tools:[],hostTools:[],callTool:async()=>({}),signal:new AbortController().signal,allowConversation:true,critic:'off',thinking:normalize('high','gemini'),
-   model:{family:'gemini',model:'primary-model',call:async()=>new Response('{}',{status:503})},
-   policy:{models:{author:{fallback:['backup']}}},context:{connection:{connectionId:'primary'}},
-   policyConnections:{backup:{model:{family:'gemini',model:'backup-model',capabilities:{tiers:{low:'1024',medium:'2048',high:'4096'}},call:async(suffix,request)=>{requests.push({suffix,body:JSON.parse(request.body)});return answer('gemini','Finished.')}}}}
+  for(const path of geminiModelPaths.items){
+   const requests:{suffix:string;body:Record<string,any>}[]=[],events:AssistantEvent[]=[]
+   const session:AssistantSession={prompt:'Answer briefly.',testPrompt:'',tools:[],hostTools:[],callTool:async()=>({}),signal:new AbortController().signal,allowConversation:true,critic:'off',thinking:normalize('high','gemini'),
+    model:{family:'gemini',model:'primary-model',call:async()=>new Response('{}',{status:503})},
+    policy:{models:{author:{fallback:['backup']}}},context:{connection:{connectionId:'primary'}},
+    policyConnections:{backup:{model:{family:'gemini',model:path.model,capabilities:{tiers:{low:'1024',medium:'2048',high:'4096'}},call:async(suffix,request)=>{requests.push({suffix,body:JSON.parse(request.body)});return answer('gemini','Finished.')}}}}
+   }
+   for await(const event of engine.start(session))events.push(event)
+   expect(events.filter(e=>e.type==='error'),path.model).toEqual([])
+   expect(requests,path.model).toHaveLength(1)
+   expect(requests[0]!.suffix,path.model).toContain(`models/${path.segment}:`)
+   expect(requests[0]!.body.generationConfig.thinkingConfig,path.model).toEqual({includeThoughts:true,thinkingBudget:4096})
+   expect(events.find(e=>e.type==='usage')?.usage.rows.find(row=>row.connection==='backup')?.model,path.model).toBe(path.model)
   }
-  for await(const event of engine.start(session))events.push(event)
-  expect(events.filter(e=>e.type==='error')).toEqual([])
-  expect(requests).toHaveLength(1)
-  expect(requests[0]!.suffix).toContain('models/backup-model:')
-  expect(requests[0]!.body.generationConfig.thinkingConfig).toEqual({includeThoughts:true,thinkingBudget:4096})
-  expect(events.find(e=>e.type==='usage')?.usage.rows.find(row=>row.connection==='backup')?.model).toBe('backup-model')
  })
  it('20 exhausted switch bound emits a refusal',async()=>{
   const events:AssistantEvent[]=[],calls:string[]=[]
