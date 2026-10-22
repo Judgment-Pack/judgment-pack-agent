@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for helping. This repository is an early research preview with one maintainer; expect
+Thank you for helping. This repository is early, with one maintainer; expect
 the contract to change while the first adapters are extracted.
 
 ## Working on an issue

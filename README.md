@@ -21,7 +21,7 @@ resolver covers critic, models, concurrency, pace, and task class, with each mem
 value and layer in `policy_resolved` and `checkpoint.policy`. `budget.json` is a
 read alias for one release. Model-visible text cannot set policy.
 
-Research preview, scaffolded 2026-10-18. This repository holds the agent harness behind
+Scaffolded 2026-10-18. This repository holds the agent harness behind
 [Judgment Pack Desk](https://github.com/Judgment-Pack/judgment-pack-desk): the loop that drives a
 model through tools, the context budget and ledger, delegation to subagents, the tool gate and the
 policy-selected context compaction (the deterministic index by default, or a framed bounded summary),
