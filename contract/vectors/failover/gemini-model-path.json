@@ -1,0 +1,20 @@
+{
+  "description": "The Gemini fallback model id is one RFC 3986 path segment: only ASCII letters, digits, hyphen, dot, underscore and tilde stay bare; every other UTF-8 byte is uppercase percent-encoded. Written by hand.",
+  "schema": "capability.json#/$defs/geminiModelPath",
+  "items": [
+    {"model": "gemini-2.5-pro", "segment": "gemini-2.5-pro"},
+    {"model": "gemini/preview", "segment": "gemini%2Fpreview"},
+    {"model": "gemini:preview", "segment": "gemini%3Apreview"},
+    {"model": "gemini@preview", "segment": "gemini%40preview"},
+    {"model": "gemini preview", "segment": "gemini%20preview"},
+    {"model": "gemini+preview", "segment": "gemini%2Bpreview"},
+    {"model": "gemini%preview", "segment": "gemini%25preview"},
+    {"model": "gemini!preview", "segment": "gemini%21preview"},
+    {"model": "gemini*preview", "segment": "gemini%2Apreview"},
+    {"model": "gemini'preview", "segment": "gemini%27preview"},
+    {"model": "gemini(preview", "segment": "gemini%28preview"},
+    {"model": "gemini)preview", "segment": "gemini%29preview"},
+    {"model": "gemini~preview", "segment": "gemini~preview"},
+    {"model": "gemini-é", "segment": "gemini-%C3%A9"}
+  ]
+}
