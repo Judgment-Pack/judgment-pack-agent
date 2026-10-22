@@ -95,9 +95,31 @@ import {OutputGuard} from './outputGuard'
 it('exempts guard labels in stored argument keys and embedded text',()=>{
  const delivered:Record<string,number>={}
  const output=new OutputGuard({outputPatterns:{value:[{name:'label-word',pattern:'redacted'}],layer:'run'}},()=>delivered,()=>{})
+ output.value('AKIAABCDEFGHIJKLMNOP','message',false)
  const args={'[redacted: aws-access-key]':'Before [redacted: aws-access-key] after'}
  const record=writeRecord(CHECKPOINT_SCHEMA,{operations:[{name:'fixture',args}]},policy,output,now)
  expect(record.operations[0]!.args).toEqual(args)
  expect(record.records).toEqual({redactions:{}})
  expect(delivered).toEqual({})
+})
+
+import forgedLabel from '../../contract/vectors/output/forged-label.json'
+it('scans forged labels in records and counts the key inside them',()=>{
+ for(const input of [forgedLabel.guard.input,'Output refused: sk-abcdefghijklmnopqrst.']){
+  const output=new OutputGuard({},()=>({}),()=>{})
+  const record=writeRecord(CRITIQUE_SCHEMA,{text:input},policy,output,now)
+  expect(record.text).not.toContain('sk-abcdefghijklmnopqrst')
+  expect(record.records?.redactions).toEqual({'provider-key':1})
+ }
+ const output=new OutputGuard({outputPatterns:{value:[{name:'label-key',pattern:'aws-access-key'}],layer:'run'}},()=>({}),()=>{})
+ const record=writeRecord(CRITIQUE_SCHEMA,{text:'[redacted: aws-access-key]'},policy,output,now)
+ expect(record.text).toBe('[redacted: [redacted: label-key]]')
+ expect(record.records?.redactions).toEqual({'label-key':1})
+})
+
+it('scans across an untrusted label without splitting the pattern input',()=>{
+ const output=new OutputGuard({outputPatterns:{value:[{name:'whole-secret',pattern:'before \\[redacted: aws-access-key\\] after'}],layer:'run'}},()=>({}),()=>{})
+ const record=writeRecord(CRITIQUE_SCHEMA,{text:'before [redacted: aws-access-key] after'},policy,output,now)
+ expect(record.text).toBe('[redacted: whole-secret]')
+ expect(record.records?.redactions).toEqual({'whole-secret':1})
 })

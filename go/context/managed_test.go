@@ -171,3 +171,30 @@ func TestTheBoundaryDoesNotCheckpointAnUntrackedRun(t *testing.T) {
 		t.Errorf("%d operations were journaled", len(run.Context.Execution.State.Operations))
 	}
 }
+
+func TestOutputRefusalClosesUsageBeforeEnd(t *testing.T) {
+	for _, input := range []string{"AKIAABCDEFGHIJKLMNOP", strings.Repeat("x", 200000)} {
+		session, _ := trackedSession(t)
+		session.Policy = PolicyLayer{"outputGuard": "refuse"}
+		opened := openRun(t, session)
+		boundary := NewBoundary(opened)
+		events, ended := boundary.Event(contract.RunEvent{Message: &contract.RunEventMessage{Type: "message", Text: input}})
+		if !ended || len(events) < 2 || events[len(events)-2].Usage == nil || events[len(events)-1].End == nil {
+			t.Fatalf("terminal events: %v", eventTypes(events))
+		}
+		count := 0
+		for _, event := range events {
+			if event.Usage != nil {
+				count++
+			}
+		}
+		if count != 1 || opened.Context.Execution.State.Usage == nil {
+			t.Fatalf("usage count: %d", count)
+		}
+		raw, _ := json.Marshal(events[len(events)-2])
+		var decoded contract.RunEvent
+		if err := json.Unmarshal(raw, &decoded); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

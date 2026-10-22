@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -266,6 +267,14 @@ func (r *runState) modelCall(phase func() string) wire.ModelCall {
 			r.sc.Execution.UseConnection(r.run.Connection(role), role)
 		}
 		if request.Method != http.MethodGet {
+			if r.run.Connection != nil && r.run.Connection(role) != r.sc.ResolvedPolicy["models."+role+".provider"].Value {
+				binding := r.run.PolicyConnections[r.run.Connection(role)]
+				var err error
+				suffix, request, err = fallbackRequest(binding, r.sc.ResolvedPolicy["models."+role+".reasoning"].Value.(string), suffix, request)
+				if err != nil {
+					return nil, err
+				}
+			}
 			if err := r.sc.ClaimRequest(ctx, request.Body); err != nil {
 				return nil, err
 			}
@@ -485,4 +494,81 @@ func (r *runState) reasoningField() wire.ReasoningField {
 // imageBounds are the images one request carries, at most.
 func (r *runState) imageBounds() wire.ImageBounds {
 	return wire.ImageBounds{Count: r.sc.Policy.ImagesPerRequest, Bytes: r.sc.Policy.ImageBytesPerRequest}
+}
+
+// fallbackRequest rebuilds model-dependent fields before prompt accounting and dispatch.
+func fallbackRequest(binding adapter.PolicyConnection, tier, suffix string, request wire.ModelRequest) (string, wire.ModelRequest, error) {
+	body, err := wire.Parse(request.Body)
+	if err != nil {
+		return suffix, request, err
+	}
+	var overrides *wire.Value
+	if binding.Capabilities != nil {
+		raw, _ := json.Marshal(binding.Capabilities)
+		overrides, err = wire.Parse(raw)
+		if err != nil {
+			return suffix, request, err
+		}
+	}
+	caps, err := wire.CapabilitiesFor(wire.EndpointKind(binding.Wire), binding.ModelName, nil, overrides)
+	if err != nil {
+		return suffix, request, err
+	}
+	strip := func(value *wire.Value, keys []string) *wire.Value {
+		out := wire.Obj()
+		for _, field := range value.Members() {
+			omit := false
+			for _, key := range keys {
+				if key == field.Name {
+					omit = true
+				}
+			}
+			if !omit {
+				out.Set(field.Name, field.Value)
+			}
+		}
+		return out
+	}
+	body = strip(body, wire.TierMembers)
+	config := body.Get("generationConfig")
+	if config.IsObject() {
+		config = strip(config, []string{"thinkingConfig"})
+		body.Set("generationConfig", config)
+	}
+	var settings *wire.WireThinking
+	if caps.Reasoning.Kind != "none" {
+		settings = wire.WireFor(wire.ThinkingTier(tier), wire.DialectFor(caps.Reasoning.Kind), caps.Tiers, caps.FallbackTiers)
+	}
+	if binding.Wire == "gemini" {
+		if at := strings.Index(suffix, "models/"); at >= 0 {
+			if end := strings.Index(suffix[at:], ":"); end >= 0 {
+				suffix = suffix[:at] + "models/" + binding.ModelName + suffix[at+end:]
+			}
+		}
+		if !config.IsObject() {
+			config = wire.Obj()
+			body.Set("generationConfig", config)
+		}
+		if settings != nil {
+			for _, field := range settings.Members.Members() {
+				config.Set(field.Name, field.Value)
+			}
+		}
+	} else {
+		body.Set("model", wire.Str(binding.ModelName))
+		if binding.Wire == "anthropic" {
+			max := wire.ResponseTokens
+			if caps.OutputTokens != nil {
+				max = *caps.OutputTokens
+			}
+			body.Set("max_tokens", wire.Int(max))
+		}
+		if settings != nil {
+			for _, field := range settings.Members.Members() {
+				body.Set(field.Name, field.Value)
+			}
+		}
+	}
+	request.Body = body.JSON()
+	return suffix, request, nil
 }

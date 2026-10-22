@@ -9,5 +9,10 @@
     "files": {"requests": "requests.json", "toolResults": "tool-results.json", "events": "events.json", "checkpoint": "checkpoint.json"},
     "expected": {"file": "expected.json"},
     "tolerance": ["/timings", "/drawnMarkers/0"]
-  }]
+  }],
+  "agentResponse": {"steps": [
+    {"event": {"type": "text", "id": "reply", "text": "Inspecting."}},
+    {"tool": {"id": "schema-call", "name": "get_schema", "arguments": {}}},
+    {"event": {"type": "message", "id": "reply", "text": "Inspection complete.", "phase": "final"}}
+  ]}
 }

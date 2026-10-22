@@ -130,7 +130,17 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 		role = "critic"
 	}
 	if r.run.Connection != nil {
-		r.sc.Execution.UseConnection(r.run.Connection(role), role)
+		id := r.run.Connection(role)
+		r.sc.Execution.UseConnection(id, role)
+		if id != r.sc.ResolvedPolicy["models."+role+".provider"].Value {
+			selected := r.run.PolicyConnections[id].Agent
+			request.Model = selected.Model
+			request.Effort, _ = r.sc.ResolvedPolicy["models."+role+".reasoning"].Value.(string)
+			if setting := selected.Tiers[request.Effort]; setting != "" {
+				request.Effort = setting
+			}
+			admit = selected.Admit
+		}
 	}
 	request, err = admit(ctx, request)
 	if err != nil {
@@ -169,6 +179,17 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 			if from, to, ok := r.run.Failover(role, classified.Code); ok {
 				switched = true
 				agent = r.run.Agent
+				selected := r.run.PolicyConnections[to].Agent
+				request.Model = selected.Model
+				request.Effort, _ = r.sc.ResolvedPolicy["models."+role+".reasoning"].Value.(string)
+				if setting := selected.Tiers[request.Effort]; setting != "" {
+					request.Effort = setting
+				}
+				request, runErr = selected.Admit(ctx, request)
+				if runErr != nil {
+					break
+				}
+				body, marshalErr = json.Marshal(request)
 				attempt = 0
 				r.deliver(contract.RunEvent{ConnectionSwitched: &contract.RunEventConnectionSwitched{Type: "connection_switched", Role: role, From: from, To: to, Reason: classified.Code}})
 				// The replacement is a separate provider invocation and its request body belongs to

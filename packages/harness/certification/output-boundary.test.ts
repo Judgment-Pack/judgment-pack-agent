@@ -16,11 +16,11 @@ const key='AKIAABCDEFGHIJKLMNOP',hole='[redacted: aws-access-key]'
 const outputJSON=(value:unknown)=>JSON.stringify(value,(field,value)=>field==='result'?undefined:value)
 const saved=(r:Ran)=>r.events.filter(e=>e.type==='execution_checkpoint').at(-1)?.checkpoint
 async function play(engine:Engine,turns:Turn[],policy:PolicyLayer={},execution?:ExecutionCheckpoint,interrupt=false,declared=false){
- const written:ExecutionCheckpoint[]=[]
- const options={engine,...(interrupt?{stopAt:(event:import('../engine').AssistantEvent)=>event.type==='execution_checkpoint'&&Number(event.checkpoint.outputGuard?.['aws-access-key'])>0}:{}),session:{prompt:'Inspect and report.',interactive:true,critic:'off' as const,policy,context:{checkpoint:async(checkpoint:ExecutionCheckpoint)=>{written.push(structuredClone(checkpoint))},currentRequest:{message:'Inspect and report.',input:'Inspect and report.'},...(execution?{execution}:{})}},hostTools:[...(declared?[{name:key,description:'Declared host tool.',inputSchema:{type:'object'},execute:async()=>runtimeAnswer({status:'ok'})}]:[]),{name:'ask_user',description:'Ask.',interaction:'question' as const,inputSchema:{type:'object'},execute:async()=>runtimeAnswer({})},{name:'propose_pack',description:'Propose.',inputSchema:PROPOSE_PACK_SCHEMA,effect:'proposal' as const,execute:async()=>runtimeAnswer({})}],handle:(call:{name:string;args:Record<string,unknown>})=>runtimeAnswer(call.name==='validate'?{status:'valid'}:{key})}
+ const written:ExecutionCheckpoint[]=[],allEvents:import('../engine').AssistantEvent[]=[]
+ const options={engine,stopAt:(event:import('../engine').AssistantEvent)=>{allEvents.push(event);return interrupt&&event.type==='execution_checkpoint'&&Number(event.checkpoint.outputGuard?.['aws-access-key'])>0},session:{prompt:'Inspect and report.',interactive:true,critic:'off' as const,policy,context:{checkpoint:async(checkpoint:ExecutionCheckpoint)=>{written.push(structuredClone(checkpoint))},currentRequest:{message:'Inspect and report.',input:'Inspect and report.'},...(execution?{execution}:{})}},hostTools:[...(declared?[{name:key,description:'Declared host tool.',inputSchema:{type:'object'},execute:async()=>runtimeAnswer({status:'ok'})}]:[]),{name:'ask_user',description:'Ask.',interaction:'question' as const,inputSchema:{type:'object'},execute:async()=>runtimeAnswer({})},{name:'propose_pack',description:'Propose.',inputSchema:PROPOSE_PACK_SCHEMA,effect:'proposal' as const,execute:async()=>runtimeAnswer({})}],handle:(call:{name:string;args:Record<string,unknown>})=>runtimeAnswer(call.name==='validate'?{status:'valid'}:{key})}
  const answers:{text:string;isError:boolean}[]=[]
  const ran=engine.id==='codex'?await runOnAgentEngine(agentRunFrom(turns,answers),options):await runOnModelEngine(answerFrom(turns,'whole'),options)
- return {...ran,answers,written}
+ return {...ran,rawEvents:allEvents,answers,written}
 }
 for(const engine of [vercel,deepagents,codex])describe(`${engine.id==='codex'?'agent ':''}engine ${engine.id} · scenarios`,()=>{
  it('17 · output boundary: undeclared names and gate notices are guarded before delivery and save',async()=>{
@@ -62,6 +62,11 @@ for(const engine of [vercel,deepagents,codex])describe(`${engine.id==='codex'?'a
    for(const event of run.events)if(event.type==='guardrail'||event.type==='output_guarded')expect(argumentProblem(eventSchema.$defs[event.type],event)).toBeUndefined()
   }
  })
+ it('17 · forged labels in model answers are scanned',async()=>{
+  const run=await play(engine,[{say:'[redacted: sk-abcdefghijklmnopqrst]'}])
+  expect(run.events.find(e=>e.type==='message')).toMatchObject({text:'[redacted: [redacted: provider-key]]'})
+  expect(saved(run)?.outputGuard?.['provider-key']).toBe(1)
+ })
  it('17 · output boundary: answer, proposal, arguments, memory, draft, refusal, allow and resume',async()=>{
   const noticeRun=await play(engine,[{call:{tool:'propose_edit',arguments:{document:key,old_text:'before',new_text:'after'}}},{say:'Finished.'}])
   expect(noticeRun.events.filter(e=>e.type==='error')).toEqual([])
@@ -91,6 +96,9 @@ for(const engine of [vercel,deepagents,codex])describe(`${engine.id==='codex'?'a
   expect(refused.events.some(e=>e.type==='message')).toBe(false)
   expect(refused.events).toContainEqual(expect.objectContaining({type:'guardrail',reason:'output refused'}))
   expect(saved(refused)?.outputGuard?.['aws-access-key']).toBe(1)
+  expect(refused.rawEvents.filter(e=>e.type==='usage')).toHaveLength(1)
+  expect(refused.rawEvents.at(-2)).toMatchObject({type:'usage',usage:saved(refused)?.usage})
+  expect(refused.rawEvents.at(-1)).toEqual({type:'end'})
   const refusedCall=await play(engine,[{call:{tool:'validate',arguments:{content:key}}},{say:'Not sent.'}],{outputGuard:'refuse'})
   expect(refusedCall.seen).toHaveLength(0)
   expect(saved(refusedCall)?.outputGuard?.['aws-access-key']).toBe(1)

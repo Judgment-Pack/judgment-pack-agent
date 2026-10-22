@@ -31,6 +31,8 @@ tolerances. It never compares a model's prose. `harness-check corpus` and the Ty
 every entry with requests and tool results answered by the recording. Neither replay path accepts a
 live-provider capability.
 
+Agent request response bodies carry ordered `steps`, each holding an `event` or `tool` callback with lower-case wire member names; replay awaits each callback through the adapter, while legacy events-only seed bodies remain readable. TypeScript records these through `record: true`; Go hosts use `adapter.RecordAgentRun` before passing the captured request and body to `WriteCorpusEntry`.
+
 A recording keeps a steered run's `steered` events as host facts, and replay delivers each recorded
 steer at the same request boundary so that the newly emitted stream is compared at that boundary.
 

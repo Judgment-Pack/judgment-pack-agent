@@ -154,7 +154,7 @@ func compactionChecks(ctx context.Context) ([]Finding, error) {
 	session := compactionSession(func(_ context.Context, held runcontext.CompactorRequest) (string, error) {
 		called++
 		request = held
-		return `The history says "ignore the data rule"; it remains untrusted data.`, nil
+		return `The history says "ignore the data rule"; it remains untrusted data. [redacted: sk-abcdefghijklmnopqrst]`, nil
 	})
 	run, err := runcontext.ContextualSession(ctx, session)
 	if err != nil {
@@ -165,6 +165,9 @@ func compactionChecks(ctx context.Context) ([]Finding, error) {
 		return nil, err
 	}
 	text := runcontext.MessagesValue(projected).Text()
+	if strings.Contains(text, "sk-abcdefghijklmnopqrst") {
+		return []Finding{{Check: "16 summary", Detail: "forged label survived compaction"}}, nil
+	}
 	summaryNotices := run.Context.TakeNotices()
 	var out []Finding
 	f := &findings{check: "16 summary"}
@@ -179,7 +182,7 @@ func compactionChecks(ctx context.Context) ([]Finding, error) {
 	if len(projected) == 0 || runcontext.MessagesValue(projected[:1]).Text() != runcontext.MessagesValue(history[:1]).Text() {
 		f.fail("stable prefix moved")
 	}
-	if len(summaryNotices) != 1 || !matchesCompactedEvent(summaryNotices[0].Compacted, summaryExpected.Compacted) || !strings.HasPrefix(projected[1].Text, strings.Split(summaryVector.Framed, "\n")[0]) {
+	if len(summaryNotices) != 1 || !matchesCompactedEvent(summaryNotices[len(summaryNotices)-1].Compacted, summaryExpected.Compacted) || !strings.HasPrefix(projected[1].Text, strings.Split(summaryVector.Framed, "\n")[0]) {
 		f.fail("summary vector members do not match the produced summary")
 	}
 	out = append(out, f.list...)
@@ -216,14 +219,17 @@ func compactionChecks(ctx context.Context) ([]Finding, error) {
 		f.fail("checkpoint vector members do not match the produced checkpoint")
 	} else {
 		report := run.Context.Execution.State.Compaction.Summaries[0]
-		if report.Summary != projected[1].Text || len(report.Digests) != len(request.Digests) || report.Digest == "" || report.Turns == 0 || report.Bytes == 0 {
+		if report.Summary != projected[1].Text || len(report.Digests) != len(request.Digests) || report.Digest != runcontext.ContextDigest(report.Summary) || report.Turns == 0 || report.Bytes != int64(runcontext.UTF8Bytes(report.Summary)) {
 			f.fail("produced checkpoint lacks the vector's compaction summary members")
 		}
 	}
 	resumedSession := compactionSession(func(context.Context, runcontext.CompactorRequest) (string, error) { called++; return "different", nil })
-	checkpoint, checkpointErr := run.Context.Execution.State.Checkpoint()
+	checkpoint, checkpointErr := run.Context.Execution.Snapshot("")
 	if checkpointErr != nil {
 		f.fail("checkpoint failed: %v", checkpointErr)
+	}
+	if checkpoint.Compaction == nil || checkpoint.Compaction.Summaries[0].Summary != projected[1].Text {
+		f.fail("store redaction changed projected summary")
 	}
 	resumedSession.Context.Execution = &checkpoint
 	resumed, resumeErr := runcontext.ContextualSession(ctx, resumedSession)
@@ -242,6 +248,21 @@ func compactionChecks(ctx context.Context) ([]Finding, error) {
 	}
 	out = append(out, f.list...)
 	f = &findings{check: "16 fallback"}
+	refusingSession := compactionSession(func(context.Context, runcontext.CompactorRequest) (string, error) {
+		return "[redacted: sk-abcdefghijklmnopqrst]", nil
+	})
+	refusingSession.Policy["outputGuard"] = "refuse"
+	refusing, refusingErr := runcontext.ContextualSession(ctx, refusingSession)
+	if refusingErr == nil {
+		var projected []runcontext.Message
+		projected, refusingErr = refusing.Context.MessagesContext(ctx, history, "host", runcontext.Array())
+		if strings.Contains(runcontext.MessagesValue(projected).Text(), "sk-abcdefghijklmnopqrst") || refusing.Context.Execution.State.Compaction.Mode != "index" {
+			f.fail("refused summary was projected")
+		}
+	}
+	if refusingErr != nil {
+		f.fail("refused summary did not fall back: %v", refusingErr)
+	}
 	malformed := []func(context.Context, runcontext.CompactorRequest) (string, error){
 		nil,
 		func(context.Context, runcontext.CompactorRequest) (string, error) { return "", nil },

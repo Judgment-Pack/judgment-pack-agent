@@ -163,10 +163,12 @@ func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 		if !reported {
 			out = append(out, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: "output", Action: "refused", Reason: &reason, Detail: err.Error()}})
 		}
+		usage := b.usage()
 		out = append(out, b.checkpoint(nil, "stopped")...)
+		usage.Usage.Usage = *b.run.Context.Execution.State.Usage
 		out = append(out, b.notices()...)
 		b.ended = true
-		return append(out, contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}}), true
+		return append(out, usage, contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}}), true
 	}
 	context := b.run.Context
 	if err := context.Execution.takeRecordError(); err != nil {
