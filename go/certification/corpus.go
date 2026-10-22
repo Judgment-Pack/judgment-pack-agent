@@ -63,7 +63,8 @@ func agentCorpusChecks(ctx context.Context, _ *Server, host AgentHost, _ func(Ad
 }
 
 type corpusRequest struct {
-	Suffix   string `json:"suffix"`
+	Suffix   string          `json:"suffix"`
+	Request  json.RawMessage `json:"request,omitempty"`
 	Response struct {
 		Status  int               `json:"status"`
 		Headers map[string]string `json:"headers"`
@@ -114,28 +115,14 @@ func runCorpusAdapter(ctx context.Context, entry runcontext.CorpusEntry, a Adapt
 			return fmt.Errorf("agent corpus replay has no recording-backed binding")
 		}
 		run.Model = nil
-		run.Agent = &adapter.Agent{Model: "scripted-agent", Run: bind(func(_ adapter.AgentRequest, _ int) AgentPlay {
+		run.Agent = &adapter.Agent{Model: "scripted-agent", Run: func(ctx context.Context, _ adapter.AgentRequest, callbacks adapter.AgentCallbacks) error {
 			if at >= len(requests) {
-				return AgentPlay{Fail: fmt.Errorf("corpus request %d differs", at)}
+				return fmt.Errorf("corpus request %d differs", at)
 			}
 			row := requests[at]
 			at++
-			var body struct {
-				Events []adapter.AgentEvent `json:"events"`
-			}
-			if err := json.Unmarshal([]byte(row.Response.Body), &body); err != nil {
-				return AgentPlay{Fail: err}
-			}
-			steps := make([]AgentStep, 0, len(body.Events))
-			for _, event := range body.Events {
-				if event.Type == "message" {
-					steps = append(steps, AgentStep{Say: event.Text})
-				} else if event.Type == "text" {
-					steps = append(steps, AgentStep{Commentary: event.Text})
-				}
-			}
-			return AgentPlay{Steps: steps}
-		})}
+			return adapter.ReplayAgentBody(ctx, json.RawMessage(row.Response.Body), callbacks)
+		}}
 	} else {
 		run.Model = relay.Call(func(_ context.Context, _ string, _ relay.Request) (*http.Response, error) {
 			if at >= len(requests) {

@@ -87,3 +87,5 @@ and independently checkable, while an old checkpoint remains readable during the
 transition. Retention is an enforcement boundary on resume, not permission to keep a
 record: a host may delete earlier. Export signatures and repository review records
 remain future or host-owned work.
+
+The store-side guard exempts only exact labels emitted by that guard during the run; label-shaped model text is scanned and counted like other text, and compaction summaries are guarded before projection and hashing so stored and resumed bytes agree.

@@ -1,3 +1,4 @@
+import {contextDigest} from '../context/ledger'
 import {frameBlock} from '../framing'
 /**
  * The certified scenarios (agent#13, ADR-0006, ADR-0008, ADR-0009, ADR-0010, ADR-0011): eleven scripted scenarios beside the bake-off's, each
@@ -2341,10 +2342,21 @@ function contextCompactionChecks(){
    expect(compacted).toMatchObject({type:indexExpected!.type,mode:indexExpected!.mode,turns:expect.any(Number),bytes:expect.any(Number),digest:expect.stringMatching(/^[a-f0-9]{64}$/)})
   }
  })
+ it('16 · a refused summary falls back without projecting its unguarded bytes',async()=>{
+  const session=compactionSession('summary',async()=> '[redacted: sk-abcdefghijklmnopqrst]')
+  session.policy={...session.policy,outputGuard:'refuse'}
+  const ready=await contextualSession(session)
+  const projected=await ready.context.messages(compactionHistory(),'stable-prefix',[])
+  expect(JSON.stringify(projected)).not.toContain('sk-abcdefghijklmnopqrst')
+  expect(ready.context.execution.state.compaction).toEqual({mode:'index',summaries:[]})
+  ready.context.close()
+ })
  it('16 · checkpoint resume gives the same request bytes without asking the compactor again',async()=>{
-  const first=await contextualSession(compactionSession('summary',async()=> 'A stable summary.'))
+  const first=await contextualSession(compactionSession('summary',async()=> 'A stable summary. [redacted: sk-abcdefghijklmnopqrst]'))
   const projected=await first.context.messages(compactionHistory(),'stable-prefix',[])
   const saved=JSON.parse(JSON.stringify(first.context.execution.snapshot())) as ExecutionCheckpoint
+  expect(JSON.stringify(saved.compaction)).not.toContain('sk-abcdefghijklmnopqrst')
+  expect(saved.compaction!.summaries[0]!.digest).toBe(await contextDigest(String(projected[1]!.content)))
   const expected=compactionCheckpointVector.items[0]!.compaction
   expect(saved.compaction).toMatchObject({mode:expected.mode,summaries:[{digest:expect.stringMatching(/^[a-f0-9]{64}$/),turns:expect.any(Number),bytes:expect.any(Number),summary:projected[1]!.content,digests:expect.arrayContaining([expect.stringMatching(/^[a-f0-9]{64}$/)])}]})
   let asked=false

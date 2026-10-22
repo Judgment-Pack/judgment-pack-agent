@@ -43,19 +43,19 @@ type AgentRequest struct {
 // (type text, its id and the text added), a finished message (type message, its id, its text and
 // its phase, commentary or final), or the provider's own recovery notice (type retry, its attempt).
 type AgentEvent struct {
-	Type    string
-	ID      string
-	Text    string
-	Phase   string
-	Attempt int
+	Type    string `json:"type"`
+	ID      string `json:"id,omitempty"`
+	Text    string `json:"text,omitempty"`
+	Phase   string `json:"phase,omitempty"`
+	Attempt int    `json:"attempt,omitempty"`
 }
 
 // AgentToolCall is one tool call an invocation makes (AgentToolCall): the provider's call id, the
 // name it was offered and the arguments as the model wrote them.
 type AgentToolCall struct {
-	ID        string
-	Name      string
-	Arguments json.RawMessage
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Arguments json.RawMessage `json:"arguments"`
 }
 
 // AgentToolAnswer is the answer to one call (AgentToolAnswer): text only, and whether it failed.

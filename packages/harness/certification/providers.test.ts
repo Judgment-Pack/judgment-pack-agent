@@ -103,13 +103,16 @@ for(const engine of [vercel,deepagents,codex])describe(`${engine.id==='codex'?'a
   if(engine.id==='codex'){
    const primary:AgentRun=async(request)=>{requests.push({connection:'primary',body:JSON.stringify(request)});throw new AIFailureError({version:1,code:'unavailable',source:'agent',outcome:'unknown'})}
    const backup:AgentRun=async(request,callbacks)=>{requests.push({connection:'backup',body:JSON.stringify(request)});await callbacks.event({type:'message',id:'answer',text:proposal,phase:'final'})}
-   session={...common,effort:'high',agent:{family:'codex',model:'author-model',run:primary},policyConnections:{backup:{agent:{family:'codex',model:'backup-model',run:backup}}}}
+   session={...common,effort:'high',agent:{family:'codex',model:'author-model',run:primary},policyConnections:{backup:{agent:{family:'codex',model:'backup-model',tiers:{low:'low',medium:'medium',high:'medium'},run:backup}}}}
   }else{
-   session={...common,thinking:normalize('ultra','openai-compatible'),model:{family:'openai-compatible',model:'author-model',call:async(_suffix,request)=>{requests.push({connection:'primary',body:request.body??''});return new Response('{}',{status:503})}},policyConnections:{backup:{model:{family:'openai-compatible',model:'backup-model',call:async(_suffix,request)=>{requests.push({connection:'backup',body:request.body??''});return answer('openai',proposal)}}}}} as AssistantSession
+   session={...common,thinking:normalize('ultra','openai-compatible'),model:{family:'openai-compatible',model:'author-model',call:async(_suffix,request)=>{requests.push({connection:'primary',body:request.body??''});return new Response('{}',{status:503})}},policyConnections:{backup:{model:{family:'openai-compatible',model:'backup-model',capabilities:{tiers:{low:'low',medium:'medium',high:'high'}},call:async(_suffix,request)=>{requests.push({connection:'backup',body:request.body??''});return answer('openai',proposal)}}}}} as AssistantSession
   }
   for await(const event of engine.start(session))events.push(event)
   expect(requests.map(r=>r.connection)).toEqual(['primary','backup'])
-  expect(requests[1]!.body).toBe(requests[0]!.body)
+  expect(JSON.parse(requests[1]!.body)).toMatchObject({model:'backup-model',[engine.id==='codex'?'effort':'reasoning_effort']:engine.id==='codex'?'medium':'high'})
+  const {model:primaryModel,effort:primaryEffort,reasoning_effort:primaryReasoning,...primaryBody}=JSON.parse(requests[0]!.body)
+  const {model:backupModel,effort:backupEffort,reasoning_effort:backupReasoning,...backupBody}=JSON.parse(requests[1]!.body)
+  expect(backupBody).toEqual(primaryBody)
   expect(events.find(e=>e.type==='connection_switched')).toEqual({type:'connection_switched',role:'author',from:'primary',to:'backup',reason:'unavailable'})
   const usage=events.filter(e=>e.type==='usage')
   expect(usage).toHaveLength(1)
@@ -117,6 +120,7 @@ for(const engine of [vercel,deepagents,codex])describe(`${engine.id==='codex'?'a
   const rows=usage[0]!.usage.rows
   for(const connection of ['primary','backup'])expect(rows.find(row=>row.connection===connection)).toMatchObject({bytes:expect.any(Number),[engine.id==='codex'?'invocations':'requests']:1})
   expect(rows.filter(row=>row.connection==='primary'||row.connection==='backup').every(row=>row.bytes>0)).toBe(true)
+  expect(rows.find(row=>row.connection==='backup')?.model).toBe('backup-model')
   if(engine.id==='codex')expect(rows.every(row=>row.tokens===undefined)).toBe(true)
   const saved=events.filter(e=>e.type==='execution_checkpoint').at(-1)!.checkpoint
   expect(saved.failover).toEqual([{role:'author',connection:'backup',consumed:1,history:[{from:'primary',to:'backup',reason:'unavailable'}]}])
@@ -130,6 +134,21 @@ for(const engine of [vercel,deepagents,codex])describe(`${engine.id==='codex'?'a
   expect(restored.context.takeNotices()).toContainEqual(refusals.items[1])
   restored.context.close()
 
+ })
+ it('20 fallback rebuilds a Gemini model path and thinking budget',async()=>{
+  if(engine.id==='codex')return
+  const requests:{suffix:string;body:Record<string,any>}[]=[],events:AssistantEvent[]=[]
+  const session:AssistantSession={prompt:'Answer briefly.',testPrompt:'',tools:[],hostTools:[],callTool:async()=>({}),signal:new AbortController().signal,allowConversation:true,critic:'off',thinking:normalize('high','gemini'),
+   model:{family:'gemini',model:'primary-model',call:async()=>new Response('{}',{status:503})},
+   policy:{models:{author:{fallback:['backup']}}},context:{connection:{connectionId:'primary'}},
+   policyConnections:{backup:{model:{family:'gemini',model:'backup-model',capabilities:{tiers:{low:'1024',medium:'2048',high:'4096'}},call:async(suffix,request)=>{requests.push({suffix,body:JSON.parse(request.body)});return answer('gemini','Finished.')}}}}
+  }
+  for await(const event of engine.start(session))events.push(event)
+  expect(events.filter(e=>e.type==='error')).toEqual([])
+  expect(requests).toHaveLength(1)
+  expect(requests[0]!.suffix).toContain('models/backup-model:')
+  expect(requests[0]!.body.generationConfig.thinkingConfig).toEqual({includeThoughts:true,thinkingBudget:4096})
+  expect(events.find(e=>e.type==='usage')?.usage.rows.find(row=>row.connection==='backup')?.model).toBe('backup-model')
  })
  it('20 exhausted switch bound emits a refusal',async()=>{
   const events:AssistantEvent[]=[],calls:string[]=[]

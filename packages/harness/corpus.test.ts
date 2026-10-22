@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest'
-import {compareCorpus,replayCorpus,writeCorpusEntry,type CorpusEntry} from './corpus'
+import {compareCorpus,replayCorpus,writeCorpusEntry,ScriptedCorpusServer,type CorpusEntry} from './corpus'
 import eventSchema from '../../contract/schemas/run-event.json'
 import {argumentProblem} from './sourceArguments'
 import manifestVector from '../../contract/vectors/corpus/manifest.json'
@@ -43,4 +43,13 @@ describe('evaluation corpus',()=>{
   const entry:CorpusEntry={manifest,requests:[],toolResults:[],events:[],checkpoint:{},expected:{gateDecisions:[],outcomes:[],refusals:[]}}
   await expect(replayCorpus(entry,async server=>{await server.tool('get_schema',{});return []})).rejects.toMatchObject({id:manifest.id,difference:{member:'/toolResults/0',expected:null,actual:{name:'get_schema',args:{}}}})
  })
+})
+
+it('reads the shared ordered agent callback representation',async()=>{
+ const steps:unknown[]=[]
+ const entry:CorpusEntry={manifest,requests:[{suffix:'agent.run',request:{},response:{status:200,headers:{},body:JSON.stringify(manifestVector.agentResponse)}}],toolResults:[],events:[],checkpoint:{},expected:{gateDecisions:[],outcomes:[],refusals:[]}}
+ const server=new ScriptedCorpusServer(entry)
+ await server.agent({prompt:'',instructions:'',tools:[],phase:'author'},{signal:new AbortController().signal,event:async event=>{steps.push({event})},tool:async tool=>{steps.push({tool});return {text:'Schema response.',isError:false}}})
+ expect(steps).toEqual(manifestVector.agentResponse.steps)
+ server.complete()
 })

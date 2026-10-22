@@ -203,7 +203,11 @@ async function* execute<T extends EngineSession>(session:T,run:(session:T)=>Asyn
    const notices=context?takeNotices(context):[]
    for(const notice of notices)yield notice
    if(!notices.some(e=>e.type==='guardrail'&&e.reason==='output refused'))yield {type:'guardrail',tool:'output',action:'refused',reason:'output refused',detail:error.message}
+   let usage=context?context.execution.usage():{rows:[]}
+   if(context)context.execution.state.usage=usage
    if(context&&tracked){try{yield {type:'execution_checkpoint',checkpoint:context.execution.snapshot('stopped')}}catch(held){if(!(held instanceof RecordsRefused))throw held;for(const notice of takeNotices(context))yield notice}}
+   if(context)usage=context.execution.state.usage??usage
+   yield {type:'usage',usage}
    yield {type:'end'};return
   }
   if(error instanceof PolicyRefusal){

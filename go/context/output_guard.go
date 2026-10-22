@@ -95,6 +95,7 @@ type OutputGuard struct {
 	mu            sync.Mutex
 	Mode          string
 	patterns      []outputCompiled
+	emittedLabels map[string]bool
 	counts        func() map[string]int64
 	notices       []contract.RunEvent
 }
@@ -122,7 +123,7 @@ func NewOutputGuard(members PolicyMembers, counts func() map[string]int64) (*Out
 	if err != nil {
 		return nil, err
 	}
-	g := &OutputGuard{Mode: mode, counts: counts}
+	g := &OutputGuard{Mode: mode, counts: counts, emittedLabels: map[string]bool{}}
 	for _, p := range append(append([]OutputPattern{}, baseOutputPatterns...), extra...) {
 		skip := false
 		for _, a := range allow {
@@ -163,6 +164,7 @@ func (g *OutputGuard) record(where, name, action string, record bool, markers ..
 }
 func (g *OutputGuard) refuse(where, name string, _ bool, markers ...*RecordMarker) error {
 	record := true
+	g.emittedLabels[(&OutputRefused{name}).Error()] = true
 	g.record(where, name, "refuse", record, markers...)
 	if record {
 		reason := "output refused"
@@ -239,7 +241,9 @@ func (g *OutputGuard) text(s, where string, record bool, budget *PatternBudget, 
 		}
 		g.record(where, m.name, "redact", record, markers...)
 		out.WriteString(string(utf16.Decode(units[at:m.start])))
-		out.WriteString("[redacted: " + m.name + "]")
+		label := "[redacted: " + m.name + "]"
+		g.emittedLabels[label] = true
+		out.WriteString(label)
 		at = end
 	}
 	out.WriteString(string(utf16.Decode(units[at:])))
@@ -274,6 +278,9 @@ func (g *OutputGuard) JSON(raw json.RawMessage, where string, record bool, marke
 				var out strings.Builder
 				at := 0
 				for _, span := range recordGuardLabel.FindAllStringIndex(x, -1) {
+					if !g.emittedLabels[x[span[0]:span[1]]] {
+						continue
+					}
 					clean, err := g.text(x[at:span[0]], where, record, budget, markers...)
 					if err != nil {
 						return nil, err
