@@ -20,6 +20,8 @@
     {"name": "mutation-rows", "run": "node packages/harness/scripts/mutation-check.mjs --check", "toolchain": "node",
      "summary": "rows checked", "timeout": 300},
     {"name": "build", "run": "npm run build", "toolchain": "node", "timeout": 900},
+    {"name": "packed-smoke", "run": "node packages/harness/scripts/packed-smoke.mjs", "toolchain": "node",
+     "summary": "^packed harness:", "timeout": 900},
     {"name": "reference", "run": "node scripts/gen-reference.mjs --check && node --test scripts/gen-reference.test.mjs", "toolchain": "node", "summary": "^(reference:|# (pass|fail))", "timeout": 600},
     {"name": "unit-tests", "run": "npm test", "cwd": "packages/harness", "toolchain": "node",
      "summary": "^\\s*(Test Files|Tests)\\s", "timeout": 1200},

@@ -1,7 +1,7 @@
 import {canonicalJSON} from './context/chat'
 import type {AssistantEvent,ModelRequest,McpToolResult} from './engine'
 import type {AgentCallbacks,AgentRequest,AgentEvent,AgentToolCall} from './agent'
-import corpusEntrySchema from '../../contract/schemas/corpus-entry.json'
+import corpusEntrySchema from './contract/schemas/corpus-entry.json'
 import {argumentProblem} from './sourceArguments'
 
 export const CORPUS_FILES={requests:'requests.json',toolResults:'tool-results.json',events:'events.json',checkpoint:'checkpoint.json',expected:'expected.json',manifest:'manifest.json'} as const
