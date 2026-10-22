@@ -525,7 +525,7 @@ func resolveSessionPolicy(session Session, budget Policy) (ResolvedPolicy, error
 	if session.Context != nil && session.Context.Connection != "" {
 		current = session.Context.Connection
 	}
-	tier := "off"
+	tier := ""
 	if session.Model != nil && session.Model.Thinking != "" {
 		tier = session.Model.Thinking
 	}

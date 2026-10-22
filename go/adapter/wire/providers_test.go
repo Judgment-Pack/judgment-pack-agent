@@ -65,6 +65,9 @@ func TestFallbackTierMaps(t *testing.T) {
 				t.Fatal(err)
 			}
 			family := EndpointKind(override.Get("family").Text())
+			if family == "openai" {
+				family = OpenAICompatible
+			}
 			caps, err := CapabilitiesFor(family, "test", nil, override)
 			if err != nil {
 				t.Fatal(err)
@@ -90,5 +93,55 @@ func TestFallbackTierMaps(t *testing.T) {
 	}
 	if _, err = CapabilitiesFor(Anthropic, "test", nil, refused); err == nil || err.Error() != v.Error {
 		t.Fatalf("non-integer fallback tier: %v, want %q", err, v.Error)
+	}
+}
+
+func TestReasoningOmissionRequestVectors(t *testing.T) {
+	raw, err := os.ReadFile("../../../contract/vectors/providers/reasoning-omission.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v struct {
+		Items []json.RawMessage
+		Cases []struct {
+			Name   string
+			Record int
+			Phase  string
+			Absent string
+		}
+	}
+	if err = json.Unmarshal(raw, &v); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range v.Cases {
+		if c.Phase == "fallback" {
+			continue
+		}
+		t.Run(c.Name, func(t *testing.T) {
+			override, parseErr := Parse(v.Items[c.Record])
+			if parseErr != nil {
+				t.Fatal(parseErr)
+			}
+			family := EndpointKind(override.Get("family").Text())
+			caps, capabilityErr := CapabilitiesFor(family, "test", nil, override)
+			if capabilityErr != nil {
+				t.Fatal(capabilityErr)
+			}
+			slot := OpenThinking("", family, &caps.Reasoning, caps.Tiers, caps.FallbackTiers)
+			if slot.Members() != nil || slot.Opening() != nil || slot.TurnEnded(true) != nil {
+				t.Fatal("an omitted preference produced thinking state")
+			}
+			body, parseErr := Parse(EncodeRequest(oneRequest(family, slot.Members())).Body)
+			if parseErr != nil {
+				t.Fatal(parseErr)
+			}
+			container := body
+			if family == Gemini {
+				container = body.Get("generationConfig")
+			}
+			if container.Get(c.Absent) != nil {
+				t.Fatalf("%s was present in %s", c.Absent, body.JSON())
+			}
+		})
 	}
 }

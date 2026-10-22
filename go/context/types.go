@@ -348,7 +348,7 @@ type ModelSession struct {
 	// record says ("json-schema" or "gemini-subset"): how a schema load_tool loads is shown. Empty,
 	// it is read from Family, as the family's default record reads it.
 	ToolSchemas string
-	// Thinking is the tier the run asks at (off, on or ultra; "" is off): the author's tier, which
+	// Thinking is the tier the run asks at (off, on or ultra; "" stays omitted): the author's tier, which
 	// the critic's floor reads (ADR-0010).
 	Thinking string
 }

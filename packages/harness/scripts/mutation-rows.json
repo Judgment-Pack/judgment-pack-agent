@@ -3963,8 +3963,8 @@
   {
    "name": "ADR cross-provider round two: Vercel same-family critic retains author slot",
    "file": "engines/vercel/loop.ts",
-   "find": "criticTier !== session.thinking.tier || criticBinding !== context.connection('author')",
-   "replace": "criticTier !== session.thinking.tier",
+   "find": "criticTier !== session.thinking?.tier || criticBinding !== context.connection('author')",
+   "replace": "criticTier !== session.thinking?.tier",
    "tests": [
     "certification/providers.test.ts"
    ],
@@ -3975,8 +3975,8 @@
   {
    "name": "ADR cross-provider round two: DeepAgents same-family critic retains author slot",
    "file": "engines/deepagents/loop.ts",
-   "find": "criticTier !== session.thinking.tier || criticBinding !== context.connection('author')",
-   "replace": "criticTier !== session.thinking.tier",
+   "find": "criticTier !== session.thinking?.tier || criticBinding !== context.connection('author')",
+   "replace": "criticTier !== session.thinking?.tier",
    "tests": [
     "certification/providers.test.ts"
    ],
@@ -4725,6 +4725,46 @@
     "status": "caught",
     "origin": "agent#142",
     "note": "Go twin: restore tier = none when Agent.Effort is empty in resolveSessionPolicy; TestOmittedReasoningStaysOmittedAcrossResume fails on the request and policy record."
+  },
+  {
+    "name": "omitted model author reasoning is synthesized as off",
+    "file": "context/session.ts",
+    "find": " const authorTier='model'in session?session.thinking?.tier:session.effort",
+    "replace": " const authorTier='model'in session?session.thinking?.tier??'off':session.effort",
+    "tests": ["certification/providers.test.ts", "certification/scenarios.test.ts"],
+    "status": "caught",
+    "origin": "agent#142-review-1",
+    "note": "Go twin: initialize tier to off in resolveSessionPolicy; TestPolicyScenarios/model_reasoning_defaults and TestReasoningOmissionRequestVectors fail on the resolved member and request bytes."
+  },
+  {
+    "name": "omitted model critic reasoning is synthesized as off",
+    "file": "thinking.ts",
+    "find": "  return {...session, thinking: tier === undefined ? undefined : normalize(tier, session.model.family)}",
+    "replace": "  return {...session, thinking: normalize(tier ?? 'off', session.model.family)}",
+    "tests": ["providers.test.ts"],
+    "status": "caught",
+    "origin": "agent#142-review-1",
+    "note": "Go twin: pass orOff(tier) to OpenThinking in critic.go; TestReasoningOmissionRequestVectors and the Eino critic certification legs fail on request bytes."
+  },
+  {
+    "name": "omitted model fallback reasoning is synthesized as off",
+    "file": "context/session.ts",
+    "find": " const members=tier===undefined||caps.reasoning.kind==='none'?null:wireFor(tier as import('../host').ThinkingTier,dialectFor(caps.reasoning.kind),caps.tiers,caps.fallbackTiers)?.members",
+    "replace": " const members=caps.reasoning.kind==='none'?null:wireFor((tier??'off') as import('../host').ThinkingTier,dialectFor(caps.reasoning.kind),caps.tiers,caps.fallbackTiers)?.members",
+    "tests": ["providers.test.ts"],
+    "status": "caught",
+    "origin": "agent#142-review-1",
+    "note": "Go twin: remove tier != empty from fallbackRequest and pass off to WireFor; TestFallbackReasoningOmissionVectors fails on the rebuilt request bytes."
+  },
+  {
+    "name": "omitted delegated reasoning is stringified",
+    "file": "delegation.ts",
+    "find": "const childReasoning = (member: {value?: unknown} | undefined) => member?.value === undefined ? {} : {reasoning:String(member.value)}",
+    "replace": "const childReasoning = (member: {value?: unknown} | undefined) => ({reasoning:String(member?.value)})",
+    "tests": ["delegation.test.ts"],
+    "status": "caught",
+    "origin": "agent#142-review-1",
+    "note": "Go twin: always write author reasoning from the resolved member in childBinding; TestOmittedChildAndSubagentReasoningStayOutOfChildPolicy fails for both delegated role forms."
   },
   {
     "name": "unsupported discovered reasoning is admitted",

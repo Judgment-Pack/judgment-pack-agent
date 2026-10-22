@@ -805,6 +805,12 @@
         ]
       },
       {
+        "check": "11 \u00b7 native model reasoning omission keeps source and request bytes",
+        "go": [
+          "11 model reasoning defaults"
+        ]
+      },
+      {
         "check": "11 \u00b7 pace warns at the threshold and refuses past it before a request",
         "go": [
           "11 pace",

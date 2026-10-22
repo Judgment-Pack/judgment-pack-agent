@@ -152,3 +152,33 @@ func TestChildrenUseResolvedBindingsTiersAndConcurrency(t *testing.T) {
 		})
 	}
 }
+
+func TestOmittedChildAndSubagentReasoningStayOutOfChildPolicy(t *testing.T) {
+	for _, profile := range []string{"review", "audit"} {
+		t.Run(profile, func(t *testing.T) {
+			role := "child." + profile
+			if profile == "audit" {
+				role = "subagent.audit"
+			}
+			layer := runcontext.PolicyLayer{"models": map[string]any{role: map[string]any{"model": "reviewer", "provider": "reviewer"}}}
+			parent, err := runcontext.NewSessionContext(runcontext.Session{Policy: layer, PolicyConnections: []string{"parent", "reviewer"}, Model: &runcontext.ModelSession{Family: "openai-compatible", Model: "parent"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer parent.Close()
+			run := &adapter.Run{Policy: layer, ModelName: "parent", Wire: "openai-compatible", Context: &runcontext.Input{Connection: "parent"}, PolicyConnections: map[string]adapter.PolicyConnection{"reviewer": {ModelName: "reviewer", Wire: "openai-compatible", Model: func(context.Context, string, relay.Request) (*http.Response, error) { return nil, nil }}}}
+			if profile == "audit" {
+				run.Subagents = []runcontext.Subagent{{ID: "audit"}}
+			}
+			c := &coordinator{run: run, shared: allowance{parent: parent}}
+			_, _, childPolicy, err := c.childBinding(turn.TaskProfile{ID: profile})
+			if err != nil {
+				t.Fatal(err)
+			}
+			author := childPolicy["models"].(map[string]any)["author"].(map[string]any)
+			if _, present := author["reasoning"]; present {
+				t.Fatalf("omitted reasoning entered child policy: %#v", author)
+			}
+		})
+	}
+}

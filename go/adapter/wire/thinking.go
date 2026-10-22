@@ -404,7 +404,8 @@ type ThinkingSlot struct {
 // there was a record. The TypeScript takes the session and reads its tier and family off it; this
 // takes the two.
 func OpenThinking(tier ThinkingTier, family EndpointKind, reasoning *ReasoningCapability, maps ...map[string]string) *ThinkingSlot {
-	silent := reasoning != nil && (reasoning.Kind == NoReasoning || (reasoning.Ignored != nil && *reasoning.Ignored))
+	absent := tier == ""
+	silent := absent || reasoning != nil && (reasoning.Kind == NoReasoning || (reasoning.Ignored != nil && *reasoning.Ignored))
 	dialect := FirstDialect(family)
 	if reasoning != nil && reasoning.Kind != NoReasoning {
 		dialect = DialectFor(reasoning.Kind)
@@ -423,7 +424,7 @@ func OpenThinking(tier ThinkingTier, family EndpointKind, reasoning *ReasoningCa
 		tier:                tier,
 		silent:              silent,
 		dialect:             dialect,
-		unavailable:         silent && tier != TierOff,
+		unavailable:         !absent && silent && tier != TierOff,
 		reasoningCapability: reasoning,
 	}
 }
@@ -513,6 +514,9 @@ func (s *ThinkingSlot) SawReasoning() { s.reasonedThisTurn = true }
 // permanence is decided, and it takes more than one turn. A turn that said nothing but called a
 // tool is no evidence either way, so it neither counts nor resets.
 func (s *ThinkingSlot) TurnEnded(hadText bool) *contract.RunEvent {
+	if s.tier == "" {
+		return nil
+	}
 	reasoned := s.reasonedThisTurn
 	s.reasonedThisTurn = false
 	if !hadText {
@@ -549,6 +553,9 @@ func (s *ThinkingSlot) TurnEnded(hadText bool) *contract.RunEvent {
 
 // Truncated is a carried signature that came back short. It degrades, once, with the reason.
 func (s *ThinkingSlot) Truncated(reason string) *contract.RunEvent {
+	if s.tier == "" {
+		return nil
+	}
 	if s.unavailable {
 		return nil
 	}
@@ -560,7 +567,7 @@ func (s *ThinkingSlot) Truncated(reason string) *contract.RunEvent {
 // says the endpoint has no reasoning parameter, or ignores the one it has, a tier other than off is
 // unavailable from the start.
 func (s *ThinkingSlot) Opening() *contract.RunEvent {
-	if !s.silent || s.tier == TierOff || s.announced {
+	if !s.silent || s.tier == "" || s.tier == TierOff || s.announced {
 		return nil
 	}
 	if s.reasoningCapability != nil && s.reasoningCapability.Kind == NoReasoning {

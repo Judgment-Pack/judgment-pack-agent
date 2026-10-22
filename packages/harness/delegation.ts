@@ -288,6 +288,8 @@ interface Planned {subagent?:Subagent;request: DelegatedTaskRequest; profile?: T
 interface ChildMeter {started: number; firstByte?: number; contexts: SessionContext[]}
 /** What one run of a child left: its finished messages, its prose so far, what it asked of the parent, and how it ended. */
 interface ChildRun {text: string; progress: string; questions: OpenQuestion[]; failed: string; paused: boolean; error?: unknown; streamed?: string}
+/** A resolved member exists for model-default too; only its value belongs in a child's input policy. */
+const childReasoning = (member: {value?: unknown} | undefined) => member?.value === undefined ? {} : {reasoning:String(member.value)}
 
 /**
  * What a delegated child is offered of its parent's session (agent#15): the Runtime tools its profile
@@ -636,14 +638,14 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
       const base = {...session,
         // ADR-0021: a child has its own empty host-input queue; it cannot drain the parent's steer.
         input:[],
-        ...(selected&&provider?{policyProject:undefined,policyConnections:shared.context?.connectionBindings()??session.policyConnections,policy:{...session.policy,models:{author:{model:provider.connection,provider:provider.connection,...(fallback?{fallback}:{}),...(role?{reasoning:String(role.value)}:{})}},critic:{default:'off'}},...( 'agent'in selected?{agent:selected.agent}:{})}:{}),
+        ...(selected&&provider?{policyProject:undefined,policyConnections:shared.context?.connectionBindings()??session.policyConnections,policy:{...session.policy,models:{author:{model:provider.connection,provider:provider.connection,...(fallback?{fallback}:{}),...childReasoning(role)}},critic:{default:'off'}},...( 'agent'in selected?{agent:selected.agent}:{})}:{}),
         // agent#11: the objective is the child's request text, the first text part of its first message.
         context:{configuration:session.context?.configuration,phase:session.context?.phase,authorize:session.context?.authorize,artifactProposals:session.context?.artifactProposals,memory:session.context?.memory,objective,runtime:session.context?.runtime,chat:chat.childScope(planned.visible),link,...(provider?{connection:{...session.context?.connection,connectionId:provider.connection}}:session.context?.connection?{connection:session.context.connection}:{})},
         purpose:undefined,prompt,testPrompt:'',allowConversation:true,interactive:true,adversarialReview:false,
         // ADR-0009: a child is handed no skills; it inherits none of the parent's loaded set.
         skills:planned.subagent?session.skills?.filter(s=>planned.subagent!.skills.includes(s.id)):undefined,
         subagents:undefined,childDefinition:planned.subagent,
-        ...(planned.subagent?{policy:{budget:{...Object.fromEntries(Object.entries(shared.context?.resolvedPolicy??{}).filter(([k])=>k.startsWith('budget.')).map(([k,v])=>[k.slice(7),v.value])),maxInputBytes:planned.subagent.bounds.bytes,toolResultBytes:planned.subagent.bounds.resultBytes,turnMilliseconds:planned.subagent.bounds.milliseconds},models:{author:{model:provider?.connection??model.name,...(fallback?{fallback}:{}),...(role?{reasoning:String(role.value)}:{})}},critic:{default:'off'}}}:{}),
+        ...(planned.subagent?{policy:{budget:{...Object.fromEntries(Object.entries(shared.context?.resolvedPolicy??{}).filter(([k])=>k.startsWith('budget.')).map(([k,v])=>[k.slice(7),v.value])),maxInputBytes:planned.subagent.bounds.bytes,toolResultBytes:planned.subagent.bounds.resultBytes,turnMilliseconds:planned.subagent.bounds.milliseconds},models:{author:{model:provider?.connection??model.name,...(fallback?{fallback}:{}),...childReasoning(role)}},critic:{default:'off'}}}:{}),
         // agent#15: the gate's Runtime tools the profile names, and nothing beside them.
         tools,callTool:async(name:string,args:Record<string,unknown>)=>{if(!runtime.has(name))throw toolInputFailure('This task was not offered that Runtime tool.');return session.callTool(name,args)},
         hostTools,signal:childSignal,

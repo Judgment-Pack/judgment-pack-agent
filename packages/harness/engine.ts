@@ -306,7 +306,7 @@ export interface AssistantSession {
    * for an endpoint; the table, the dialect fallback between the two Anthropic
    * spellings and the two states a tier cannot express are `assistant/thinking.ts`.
    */
-  thinking: NormalizedThinking
+  thinking?: NormalizedThinking
   signal: AbortSignal
 }
 

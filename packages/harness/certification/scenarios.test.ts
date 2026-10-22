@@ -2189,6 +2189,12 @@ function policyTableChecks(engineId: import('../host').AssistantEngine, agent: b
     expect(JSON.stringify(resumed.runs[0])).toBe(JSON.stringify(omitted.runs[0]))
     expect(lastCheckpoint(resumed.events).policy?.['models.author.reasoning']).toEqual({layer:'table',source:'model-default'})
   })
+  if(!agent)it('11 · native model reasoning omission keeps source and request bytes',async()=>{
+    const omitted=await play({critic:'off',thinking:undefined})
+    expect(omitted.requests).toHaveLength(1)
+    expect(omitted.requests[0]!.body).not.toHaveProperty('reasoning_effort')
+    expect(ofType(omitted.events,'policy_resolved')[0]!.members['models.author.reasoning']).toEqual({layer:'table',source:'model-default'})
+  })
   it('11 · budget.json reads as policy.budget, with nested spelling winning', async () => {
     const alias = {...policyAliasVector.items[0]!,readBytes:512}
     const legacy = await play({policy:policyAlias(alias)})

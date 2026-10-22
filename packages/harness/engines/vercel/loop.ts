@@ -97,7 +97,7 @@ import {
 } from '../contract'
 import { decodedBytes, separateImages, type HeldImage, type ImageRouting } from '../../images'
 import type { ModelCapabilities, StreamingQuirks } from '../../capabilities'
-import { normalize, openThinking } from '../../thinking'
+import { openThinking, withThinkingTier } from '../../thinking'
 import { criticDecidedEvent } from '../../criticSwitch'
 import { capabilitiesFor } from '../../capabilities'
 import {
@@ -292,10 +292,10 @@ export { STATE_HEADER }
  * thinking would lose it. Otherwise the host's `statePlacement`, or by default
  * `trailing-user`. Decided once per run, so the prefix does not move.
  */
-export function statePlacement(family: EndpointKind, tier: ThinkingTier, capabilities: EndpointCapabilities): StatePlacement {
+export function statePlacement(family: EndpointKind, tier: ThinkingTier | undefined, capabilities: EndpointCapabilities): StatePlacement {
   if (capabilities.strictAlternation === true) return 'system-tail'
   if (capabilities.statePlacement !== undefined) return capabilities.statePlacement
-  return family === 'anthropic' && tier !== 'off' ? 'system-tail' : 'trailing-user'
+  return family === 'anthropic' && tier !== undefined && tier !== 'off' ? 'system-tail' : 'trailing-user'
 }
 
 /**
@@ -670,7 +670,7 @@ export function runVercelLoop(
    */
   let tier: ReturnType<typeof sdkThinking> = {}
   // Where the state goes after the first request, once per run.
-  let placement = statePlacement(session.model.family, session.thinking.tier, capabilities)
+  let placement = statePlacement(session.model.family, session.thinking?.tier, capabilities)
   const ledger = signatureLedger()
   /**
    * The truncation notice, **delivered at the transition rather than owed**.
@@ -1492,16 +1492,16 @@ export function runVercelLoop(
         session={...session,model:{...criticBinding.model,call:session.model.call}}
         capabilities=capabilitiesFor(criticBinding.model)
         nativeTools=capabilities.nativeToolCalls
-        placement=statePlacement(session.model.family,session.thinking.tier,capabilities)
+        placement=statePlacement(session.model.family,session.thinking?.tier,capabilities)
       }
       // What the critic costs is counted from here (agent#10).
       const before = { used: context.execution.state.used, rows: (context.execution.state.completions ?? []).length }
       // A different critic binding owns its slot, even at the author's family and tier.
-      // The identical binding retains learned refusals; no decision tier means off.
-      const criticTier = (decided.reasoning ?? 'off') as ThinkingTier
-      const retiered = criticTier !== session.thinking.tier || criticBinding !== context.connection('author')
+      // The identical binding retains learned refusals; no decision tier stays omitted.
+      const criticTier = decided.reasoning as ThinkingTier | undefined
+      const retiered = criticTier !== session.thinking?.tier || criticBinding !== context.connection('author')
       if(retiered){
-        slot = openThinking({ ...session, thinking: normalize(criticTier, session.model.family) }, capabilities.reasoning)
+        slot = openThinking(withThinkingTier(session, criticTier), capabilities.reasoning)
         tier = sdkThinking(session.model.family, slot.members())
         context.reserveOutput(tier.maxOutputTokens)
       }

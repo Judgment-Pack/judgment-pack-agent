@@ -275,9 +275,6 @@ func NewSessionContext(session Session) (*SessionContext, error) {
 	switch {
 	case session.Model != nil:
 		out.authorTier = session.Model.Thinking
-		if out.authorTier == "" {
-			out.authorTier = "off"
-		}
 	case session.Agent != nil:
 		out.authorTier = session.Agent.Effort
 	}

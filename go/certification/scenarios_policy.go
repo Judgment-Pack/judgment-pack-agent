@@ -9,7 +9,7 @@ import (
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 )
 
-var policyNames = []string{"11 resolved", "11 pace", "11 ceiling", "11 resume", "11 alias"}
+var policyNames = []string{"11 resolved", "11 model reasoning defaults", "11 pace", "11 ceiling", "11 resume", "11 alias"}
 var AgentPolicyNames = []string{"11 agent resolved", "11 agent reasoning defaults", "11 agent pace", "11 agent ceiling", "11 agent resume", "11 agent alias"}
 
 func policyFindings(ctx context.Context, agent bool, play switchPlay) ([]Finding, error) {
@@ -128,6 +128,28 @@ func policyFindings(ctx context.Context, agent bool, play switchPlay) ([]Finding
 		}
 	}
 	out = append(out, f.list...)
+	if !agent {
+		f = findings{check: prefix + "model reasoning defaults"}
+		run = base()
+		run.Critic = "off"
+		ran, err = play(ctx, turns, run, "", nil)
+		if err != nil {
+			return nil, err
+		}
+		if len(ran.Requests) != 1 || strings.Contains(string(ran.Requests[0].Body), `"reasoning_effort"`) {
+			f.fail("omitted model reasoning request: %+v", ran.Requests)
+		}
+		resolved := ofType(ran.Events, func(e contract.RunEvent) *contract.RunEventPolicyResolved { return e.PolicyResolved })
+		if len(resolved) != 1 {
+			f.fail("omitted model reasoning has no resolved event")
+		} else {
+			member := resolved[0].Members["models.author.reasoning"]
+			if len(member.Value) != 0 || member.Source == nil || *member.Source != "model-default" {
+				f.fail("omitted model reasoning record: %+v", member)
+			}
+		}
+		out = append(out, f.list...)
+	}
 	if agent {
 		f = findings{check: prefix + "reasoning defaults"}
 		run = base()
@@ -381,7 +403,12 @@ var PolicyTable = ScenarioCheck{Scenario: "policy-table", Names: policyNames, Ru
 			}
 		})
 		defer scenario.watch(nil)
-		ran, err := scenario.runOn(broken, inner, &run)
+		var ran *ScenarioRun
+		if tier == "" {
+			ran, err = scenario.runOnOmittedThinking(broken, inner, &run)
+		} else {
+			ran, err = scenario.runOn(broken, inner, &run)
+		}
 		if err != nil {
 			return nil, err
 		}

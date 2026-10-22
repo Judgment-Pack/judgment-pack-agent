@@ -478,9 +478,9 @@ export type ThinkingRefusal =
  * announce a degrade twice because it is not the thing counting.
  */
 export interface ThinkingSlot {
-  readonly tier: ThinkingTier
+  readonly tier: ThinkingTier | undefined
   /** The current state, which only ever moves away from the tier. */
-  state(): ThinkingState
+  state(): ThinkingState | undefined
   /** The members this request carries, or null. */
   members(): Record<string, unknown> | null
   /** What the endpoint's refusal meant. */
@@ -530,7 +530,19 @@ const IGNORED_PARAMETER = sourceMessage('its capability record says the endpoint
  * before there was a record.
  */
 export function openThinking(session: Pick<AssistantSession, 'thinking' | 'model'>, reasoning?: ReasoningCapability): ThinkingSlot {
-  const tier = session.thinking.tier
+  const tier = session.thinking?.tier
+  if (tier === undefined) {
+    return {
+      tier,
+      state: () => undefined,
+      members: () => null,
+      refused: () => ({ kind: 'other' }),
+      sawReasoning: () => {},
+      turnEnded: () => null,
+      truncated: () => null,
+      opening: () => null
+    }
+  }
   /** The record leaves nothing to ask with: no parameter, or one the endpoint ignores. */
   const silent = reasoning !== undefined && (reasoning.kind === 'none' || reasoning.ignored === true)
   let dialect = reasoning === undefined || reasoning.kind === 'none' ? firstDialect(session.model.family) : dialectFor(reasoning.kind)
@@ -656,4 +668,9 @@ export function openThinking(session: Pick<AssistantSession, 'thinking' | 'model
       return notice('unavailable', reasoning?.kind === 'none' ? NO_PARAMETER : IGNORED_PARAMETER)
     }
   }
+}
+
+/** Retier one phase without turning an omitted preference into an explicit off request. */
+export function withThinkingTier<T extends Pick<AssistantSession, 'thinking' | 'model'>>(session: T, tier: ThinkingTier | undefined): T {
+  return {...session, thinking: tier === undefined ? undefined : normalize(tier, session.model.family)}
 }
