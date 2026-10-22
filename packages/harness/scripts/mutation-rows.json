@@ -4705,16 +4705,16 @@
     "note": "Go twin: omit usage from the guardOutput refusal return in Boundary.Event; TestOutputRefusalClosesUsageBeforeEnd fails on a scratch copy."
   },
   {
-    "name": "Gemini fallback model path is left raw",
+    "name": "Gemini fallback model path uses encodeURIComponent",
     "file": "context/session.ts",
     "find": "`models/${encodePathSegment(model.model)}:`",
-    "replace": "`models/${model.model}:`",
+    "replace": "`models/${encodeURIComponent(model.model)}:`",
     "tests": [
       "certification/providers.test.ts"
     ],
     "status": "caught",
     "origin": "agent#136",
-    "note": "Go twin: replace encodePathSegment(binding.ModelName) with binding.ModelName in fallbackRequest; TestFallbackRebuildsGeminiModelAndBudget fails on the hand-written reserved-character path."
+    "note": "Go twin: replace encodePathSegment(binding.ModelName) with url.PathEscape(binding.ModelName) in fallbackRequest; TestGeminiFallbackModelPathVectors fails on the shared hand-written paths."
   }
  ]
 }
