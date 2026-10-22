@@ -7,6 +7,6 @@
     "declaration": true,
     "sourceMap": true
   },
-  "include": ["**/*.ts", "contract/*.json", "certification/*.json"],
+  "include": ["**/*.ts", "contract/*.json", "contract/schemas/corpus-entry.json", "certification/*.json"],
   "exclude": ["node_modules", "dist", "testing", "scripts", "**/*.test.ts", "vitest.config.ts", "certification/certification"]
 }

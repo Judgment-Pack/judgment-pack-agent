@@ -112,6 +112,7 @@ $pkg/package.json
 $pkg/tsconfig.json
 $pkg/tsconfig.build.json
 $pkg/vitest.config.ts
+$pkg/contract-copy.test.ts
 $pkg/host.ts
 $pkg/host.test.ts
 $pkg/entries/contract.ts
@@ -155,6 +156,7 @@ $pkg/scripts/mutation-check.mjs
 $pkg/scripts/mutation-rows.json
 $pkg/scripts/record-conformance.mjs
 $pkg/scripts/scripted-server.mjs
+$pkg/scripts/packed-smoke.mjs
 $pkg/testing/sdkWarnings.ts
 $pkg/certification/scenarios.test.ts
 $pkg/certification/scenarios/chat-host-tools.json
@@ -199,6 +201,7 @@ $pkg/certification/scenarios/skills.json
 $pkg/policy.ts
 $pkg/policy.test.ts
 $pkg/policySession.test.ts
+$pkg/contract/schemas/corpus-entry.json
 $pkg/contract/policy-schema.json
 $pkg/certification/scenarios/policy-table.json
 $pkg/providers.test.ts

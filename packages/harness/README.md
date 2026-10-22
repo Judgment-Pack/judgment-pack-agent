@@ -71,6 +71,12 @@ agent#13, delegation as one parent run with context by reference and per-profile
 | `@judgment-pack/harness/certification` | The scripted model and runtime server, and the recorded scenario and runtime the suite runs on. |
 | `@judgment-pack/harness/<path>` | Any module at its Desk path, for example `context/session` or `failures`. |
 
+## Consuming the package
+
+Consume the five named entrypoints above, or a module exposed by
+`@judgment-pack/harness/<path>`, through a bundler such as Vite or esbuild. Native Node ESM import
+is not a supported consumption path yet and is tracked separately as issue #143.
+
 `npm run build` typechecks every file, tests included, and emits ES modules with declarations to
 `dist/`. The modules keep the Desk's extensionless relative imports and import JSON directly
 (`contract/catalog.json`, `contract/policy.json`, `certification/*.json`), so they are consumed
