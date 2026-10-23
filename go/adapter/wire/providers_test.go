@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -109,6 +110,10 @@ func TestReasoningOmissionRequestVectors(t *testing.T) {
 			Phase  string
 			Absent string
 		}
+		Dropped []struct {
+			Name, Role, Capability, RequestPath string
+			Record                              *int
+		}
 	}
 	if err = json.Unmarshal(raw, &v); err != nil {
 		t.Fatal(err)
@@ -141,6 +146,36 @@ func TestReasoningOmissionRequestVectors(t *testing.T) {
 			}
 			if container.Get(c.Absent) != nil {
 				t.Fatalf("%s was present in %s", c.Absent, body.JSON())
+			}
+		})
+	}
+	for _, c := range v.Dropped {
+		if c.Capability != "model" {
+			continue
+		}
+		t.Run(c.Name, func(t *testing.T) {
+			override, parseErr := Parse(v.Items[*c.Record])
+			if parseErr != nil {
+				t.Fatal(parseErr)
+			}
+			family := EndpointKind(override.Get("family").Text())
+			caps, capabilityErr := CapabilitiesFor(family, "test", nil, override)
+			if capabilityErr != nil {
+				t.Fatal(capabilityErr)
+			}
+			body, parseErr := Parse(EncodeRequest(oneRequest(family, OpenThinking("", family, &caps.Reasoning, caps.Tiers, caps.FallbackTiers).Members())).Body)
+			if parseErr != nil {
+				t.Fatal(parseErr)
+			}
+			member := body
+			for _, segment := range strings.Split(c.RequestPath, ".") {
+				member = member.Get(segment)
+				if member == nil {
+					break
+				}
+			}
+			if member != nil {
+				t.Fatalf("%s was present in %s", c.RequestPath, body.JSON())
 			}
 		})
 	}

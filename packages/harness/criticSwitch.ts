@@ -248,7 +248,10 @@ export class CriticSwitch {
    */
   decide(run: Omit<CriticRunFacts, 'modelAsked'>, tiers: { author?: CriticTier }): CriticDecision {
     const decided = criticDecision(this.settings, this.table, this.forcedFacts, { ...run, modelAsked: this.asked })
-    const reasoning = criticTier(tiers.author, this.settings.criticReasoning, this.table.criticReasoningFloor)
+    const resolved = this.settings.resolvedPolicy?.['models.critic.reasoning']
+    const reasoning = this.settings.resolvedPolicy === undefined
+      ? criticTier(tiers.author, this.settings.criticReasoning, this.table.criticReasoningFloor)
+      : resolved?.value as CriticTier | undefined
     // The contract's order: mode, ran, reason, reasoning, trigger.
     const decision: CriticDecision = { mode: decided.mode, ran: decided.ran, reason: decided.reason, ...(reasoning === undefined ? {} : { reasoning }), ...(decided.trigger === undefined ? {} : { trigger: decided.trigger }) }
     this.record.set({ ...decision })

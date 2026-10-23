@@ -177,7 +177,6 @@ func ApplyPolicy(run *Run, sc *runcontext.SessionContext, named runcontext.RunMo
 	capacity := int(sc.ResolvedPolicy["concurrency.requests"].Value.(float64))
 	named.ConcurrentRequests = &capacity
 	run.Models = func() (runcontext.RunModels, error) { return named, nil }
-	tier, _ := sc.ResolvedPolicy["models.author.reasoning"].Value.(string)
 	if run.Agent != nil {
 		activeIDs := map[string]string{}
 		activeAgents := map[string]Agent{}
@@ -188,10 +187,6 @@ func ApplyPolicy(run *Run, sc *runcontext.SessionContext, named runcontext.RunMo
 				binding = run.PolicyConnections[id]
 			}
 			selected := *binding.Agent
-			selected.Effort = ""
-			if effort, ok := sc.ResolvedPolicy["models."+role+".reasoning"].Value.(string); ok {
-				selected.Effort = effort
-			}
 			activeAgents[role] = selected
 		}
 		var failoverMu sync.Mutex
@@ -257,10 +252,6 @@ func ApplyPolicy(run *Run, sc *runcontext.SessionContext, named runcontext.RunMo
 			activeIDs[role] = to
 			remember(role, from, to, reason)
 			switched := *binding.Agent
-			switched.Effort = ""
-			if effort, ok := sc.ResolvedPolicy["models."+role+".reasoning"].Value.(string); ok {
-				switched.Effort = effort
-			}
 			activeAgents[role] = switched
 			sc.Execution.UseConnection(to, role)
 			return from, to, true
@@ -327,7 +318,6 @@ func ApplyPolicy(run *Run, sc *runcontext.SessionContext, named runcontext.RunMo
 		run.ModelName = author.ModelName
 		run.Wire = author.Wire
 		run.Capabilities = author.Capabilities
-		run.Thinking = tier
 		run.Model = func(ctx context.Context, suffix string, request relay.Request) (*http.Response, error) {
 			role := "author"
 			if sc.CriticReading {

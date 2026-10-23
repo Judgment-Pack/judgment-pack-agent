@@ -3963,8 +3963,8 @@
   {
    "name": "ADR cross-provider round two: Vercel same-family critic retains author slot",
    "file": "engines/vercel/loop.ts",
-   "find": "criticTier !== session.thinking?.tier || criticBinding !== context.connection('author')",
-   "replace": "criticTier !== session.thinking?.tier",
+   "find": "criticTier !== session.reasoning?.tier || criticBinding !== context.connection('author')",
+   "replace": "criticTier !== session.reasoning?.tier",
    "tests": [
     "certification/providers.test.ts"
    ],
@@ -3975,8 +3975,8 @@
   {
    "name": "ADR cross-provider round two: DeepAgents same-family critic retains author slot",
    "file": "engines/deepagents/loop.ts",
-   "find": "criticTier !== session.thinking?.tier || criticBinding !== context.connection('author')",
-   "replace": "criticTier !== session.thinking?.tier",
+   "find": "criticTier !== session.reasoning?.tier || criticBinding !== context.connection('author')",
+   "replace": "criticTier !== session.reasoning?.tier",
    "tests": [
     "certification/providers.test.ts"
    ],
@@ -4739,8 +4739,8 @@
   {
     "name": "omitted model critic reasoning is synthesized as off",
     "file": "thinking.ts",
-    "find": "  return {...session, thinking: tier === undefined ? undefined : normalize(tier, session.model.family)}",
-    "replace": "  return {...session, thinking: normalize(tier ?? 'off', session.model.family)}",
+    "find": "  return {...session, reasoning: tier === undefined ? undefined : normalize(tier, session.model.family)}",
+    "replace": "  return {...session, reasoning: normalize(tier ?? 'off', session.model.family)}",
     "tests": ["providers.test.ts"],
     "status": "caught",
     "origin": "agent#142-review-1",
@@ -4805,6 +4805,46 @@
     "status": "caught",
     "origin": "agent#142-release-audit",
     "note": "Go twin: give the final model-default PolicyMember a low value and layer source; TestPolicyTable/reasoning_defaults_and_discovery and table_reasoning_defaults_and_explicit_refusals fail on omitted rows."
+  },
+  {
+    "name": "dropped author table reasoning keeps the raw legacy session value",
+    "file": "context/session.ts",
+    "find": " const value=members['models.author.reasoning']?.value",
+    "replace": " const value=('model'in session?session.thinking?.tier:session.effort)??members['models.author.reasoning']?.value",
+    "tests": ["policySession.test.ts", "providers.test.ts"],
+    "status": "caught",
+    "origin": "agent#142-release-audit-2",
+    "note": "Go twin: let NewRequestSession restore an absent author value from ReadAdmissionReasoning; the request vectors and TestDroppedTableDefaultsStayOmittedAcrossAgentResume fail."
+  },
+  {
+    "name": "dropped critic table reasoning falls back to the author floor",
+    "file": "criticSwitch.ts",
+    "find": "    const resolved = this.settings.resolvedPolicy?.['models.critic.reasoning']\n    const reasoning = this.settings.resolvedPolicy === undefined\n      ? criticTier(tiers.author, this.settings.criticReasoning, this.table.criticReasoningFloor)\n      : resolved?.value as CriticTier | undefined",
+    "replace": "    const reasoning = criticTier(tiers.author, this.settings.criticReasoning, this.table.criticReasoningFloor)",
+    "tests": ["policySession.test.ts", "providers.test.ts", "criticSwitch.test.ts"],
+    "status": "caught",
+    "origin": "agent#142-release-audit-2",
+    "note": "Go twin: replace the resolved-member branch in CriticSwitch.Decide with CriticTier; TestDroppedCriticTableDefaultsStayOutOfDecisions and TestDroppedTableDefaultsStayOmittedAcrossAgentResume fail."
+  },
+  {
+    "name": "dropped agent critic reasoning uses the author effort default parameter",
+    "file": "engines/codex/index.ts",
+    "find": "effort?: CodexEffort) => {",
+    "replace": "effort: CodexEffort | undefined = session.reasoning) => {",
+    "tests": ["policySession.test.ts"],
+    "status": "caught",
+    "origin": "agent#142-release-audit-2",
+    "note": "Go twin: set an empty critic effort back to r.run.Reasoning(\"author\") in adapter/agent/invoke.go; TestDroppedTableDefaultsStayOmittedAcrossAgentResume fails on the critic request."
+  },
+  {
+    "name": "request session boundary exposes raw effort",
+    "file": "engine.ts",
+    "find": "type RequestBoundary = {readonly [requestSessionBoundary]:'resolved'}",
+    "replace": "type RequestBoundary = {readonly [requestSessionBoundary]:'resolved';effort?:import('./agent').CodexEffort}",
+    "tests": ["policySession.test.ts"],
+    "status": "caught",
+    "origin": "agent#142-release-audit-2",
+    "note": "Go twin: add Thinking to adapter.RequestSession; TestRequestSessionRejectsRawReasoningShapes fails. The boundary tests keep direct, alias, destructured, computed, copied-struct and raw-helper compile failures in both languages."
   }
  ]
 }

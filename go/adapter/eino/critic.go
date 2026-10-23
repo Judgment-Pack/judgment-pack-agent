@@ -6,7 +6,6 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
-	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/turn"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/wire"
 	runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
@@ -98,7 +97,7 @@ func (t *turnState) critic(ctx context.Context, proposal turn.Proposal, tier str
 	if err != nil {
 		return nil, nil, err
 	}
-	binding, err := adapter.PolicyBinding(r.run, r.sc.ResolvedPolicy, named, "critic")
+	binding, err := r.run.PolicyBinding(r.sc.ResolvedPolicy, named, "critic")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -116,7 +115,7 @@ func (t *turnState) critic(ctx context.Context, proposal turn.Proposal, tier str
 	r.placement = statePlacement(r.family, wire.ThinkingTier(tier), r.capabilities)
 	// Preserve learned refusals only for the identical binding and tier.
 	bindingChanged := r.sc.Provider("critic").Connection != r.sc.Provider("author").Connection || binding.ModelName != r.run.ModelName
-	if tier != r.run.Thinking || bindingChanged {
+	if tier != r.run.Reasoning("author") || bindingChanged {
 		r.slot = criticThinking(tier, r.family, r.capabilities)
 		r.tier = r.slot.Members()
 		if r.tier != nil {

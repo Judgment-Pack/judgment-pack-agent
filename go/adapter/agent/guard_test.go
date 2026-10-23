@@ -29,11 +29,12 @@ func TestNoInvocationIsDispatchedWhileAnApprovalIsAsked(t *testing.T) {
 	defer opened.Context.Close()
 	opened.Context.Execution.State.Approval = &contract.CheckpointApproval{CallID: "call-a", Name: "tracker__create_issue", Tool: "create_issue", State: "asked"}
 	dispatched := 0
-	r := &runState{sc: opened.Context, session: opened.Session, run: &adapter.Run{Agent: &adapter.Agent{Model: "fixture",
+	raw := &adapter.Run{Agent: &adapter.Agent{Model: "fixture",
 		Run: func(context.Context, adapter.AgentRequest, adapter.AgentCallbacks) error {
 			dispatched++
 			return nil
-		}}}}
+		}}}
+	r := &runState{sc: opened.Context, session: opened.Session, run: adapter.NewRequestSession(raw, opened.Context.ResolvedPolicy)}
 	for _, phase := range []string{"author", "critic"} {
 		if _, err := r.invoke(context.Background(), "Current request", "", phase, nil, "", ""); !errors.Is(err, runcontext.ErrApprovalPaused) {
 			t.Fatalf("%s: the invocation answered %v", phase, err)

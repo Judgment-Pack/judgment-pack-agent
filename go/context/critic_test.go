@@ -95,6 +95,36 @@ func TestTheDecisionIsTheVectors(t *testing.T) {
 	}
 }
 
+func TestDroppedCriticTableDefaultsStayOutOfDecisions(t *testing.T) {
+	var vector struct {
+		Dropped []struct {
+			Name, Role, Capability, Raw string
+			Resolved                    PolicyMember
+		}
+	}
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "contract", "vectors", "providers", "reasoning-omission.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, &vector); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range vector.Dropped {
+		if row.Role != "critic" {
+			continue
+		}
+		t.Run(row.Name, func(t *testing.T) {
+			execution := &Execution{}
+			members := PolicyMembers{"models.critic.reasoning": row.Resolved}
+			switcher := NewCriticSwitch(CriticSettings{ResolvedPolicy: members, Critic: "on"}, CriticTable{CriticReasoningFloor: "author"}, CriticForcedFacts{}, func() *Execution { return execution })
+			decision := switcher.Decide(CriticRunFacts{Proposal: true, Room: true}, row.Raw)
+			if decision.Reasoning != "" || decision.Record().Reasoning != nil || CriticDecidedEvent(decision).CriticDecided.Reasoning != nil {
+				t.Fatalf("%s decision restored reasoning: %+v", row.Capability, decision)
+			}
+		})
+	}
+}
+
 func TestTheTriggerOrderIsTheContract(t *testing.T) {
 	schema := readJSON(t, "contract/schemas/provenance.json")
 	values := schema.Get("$defs").Get("criticDecision").Get("properties").Get("trigger").Get("enum").Items()

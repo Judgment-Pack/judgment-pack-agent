@@ -4,7 +4,7 @@ import {PolicyRefusal} from '../policy'
 import {RecordsExpired} from '../records'
 import {failureError,failureEvent,toolFailureResult} from '../failures'
 import {ExecutionPaused} from '../execution/state'
-import type {AssistantEvent,EngineSession} from '../engine'
+import type {AssistantEvent,EngineSession,RequestSession,RequestSessionFor} from '../engine'
 import {eventIterator,openRun} from '../engines/contract'
 import {GateViolation} from '../toolGate'
 import {approvalContinuation} from '../toolSources'
@@ -13,17 +13,17 @@ import {recordSession} from '../corpus'
 import {canonicalJSON} from './chat'
 import {contextDigest} from './ledger'
 const contexts=new WeakMap<object,SessionContext>()
-export function contextOf(session:EngineSession):SessionContext {
+export function contextOf(session:RequestSession):SessionContext {
  const context=contexts.get(session);if(!context)throw Error('AI execution requires the shared Desk context boundary.');return context
 }
 /** All adapters enter here, including direct tests, critics and delegated runs.
  * Derived context lives only as long as the execution, or, where the host hands
  * the run a chat-scoped context, as long as the chat (agent#8). Originals remain in
  * the owning chat/research journal. Rebuilding cannot resurrect deleted snapshots. */
-export function managedContext<T extends EngineSession>(session:T,run:(session:T)=>AsyncIterable<AssistantEvent>,engine?:import('../host').AssistantEngine):AsyncIterable<AssistantEvent>{
+export function managedContext<T extends EngineSession>(session:T,run:(session:RequestSessionFor<T>)=>AsyncIterable<AssistantEvent>,engine?:import('../host').AssistantEngine):AsyncIterable<AssistantEvent>{
  const recording=recordSession(session)
  const gate=openRun(recording.session,()=>{})
- return recording.stream(eventIterator({gate,open:()=>execute({...recording.session,signal:gate.signal},run,engine)}))
+ return recording.stream(eventIterator({gate,open:()=>execute({...recording.session,signal:gate.signal} as T,run,engine)}))
 }
 /** Notices carry model-derived identifiers and refusal details, independently of tool results.
  * Guard-generated labels are trusted metadata and must not be scanned again. */
@@ -41,7 +41,7 @@ function takeNotices(context:SessionContext):AssistantEvent[]{
  // These are the labels just produced by guarding notices, never tool results.
  return [...out,...context.takeNotices()]
 }
-async function* execute<T extends EngineSession>(session:T,run:(session:T)=>AsyncIterable<AssistantEvent>,engine?:import('../host').AssistantEngine):AsyncGenerator<AssistantEvent>{
+async function* execute<T extends EngineSession>(session:T,run:(session:RequestSessionFor<T>)=>AsyncIterable<AssistantEvent>,engine?:import('../host').AssistantEngine):AsyncGenerator<AssistantEvent>{
  let releaseNotices:(()=>void)|undefined
  let context:SessionContext|undefined
  let ended=false

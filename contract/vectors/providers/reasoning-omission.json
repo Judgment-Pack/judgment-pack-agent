@@ -1,5 +1,5 @@
 {
-  "description": "Hand-authored request-member cases for an omitted native reasoning preference (agent#142 review round 1).",
+  "description": "Hand-authored request-member cases for an omitted native reasoning preference and a table default that discovery drops (agent#142 release audits).",
   "schema": "capability.json#/$defs/endpointCapabilities",
   "source": {
     "harness": {
@@ -8,7 +8,8 @@
     },
     "files": [
       "packages/harness/certification/providers.test.ts",
-      "packages/harness/delegation.test.ts"
+      "packages/harness/delegation.test.ts",
+      "packages/harness/policySession.test.ts"
     ]
   },
   "items": [
@@ -55,6 +56,63 @@
       "record": 1,
       "phase": "fallback",
       "absent": "thinkingConfig"
+    }
+  ],
+  "dropped": [
+    {
+      "name": "author agent table default",
+      "role": "author",
+      "capability": "agent",
+      "raw": "low",
+      "supported": ["high"],
+      "resolved": {"layer": "table", "source": "model-default"},
+      "requestPath": "effort",
+      "resume": true
+    },
+    {
+      "name": "author OpenAI table default",
+      "role": "author",
+      "capability": "model",
+      "record": 0,
+      "raw": "low",
+      "supported": ["high"],
+      "resolved": {"layer": "table", "source": "model-default"},
+      "requestPath": "reasoning_effort",
+      "resume": true
+    },
+    {
+      "name": "author Gemini table default",
+      "role": "author",
+      "capability": "model",
+      "record": 1,
+      "raw": "low",
+      "supported": ["high"],
+      "resolved": {"layer": "table", "source": "model-default"},
+      "requestPath": "generationConfig.thinkingConfig",
+      "resume": true
+    },
+    {
+      "name": "critic model table default",
+      "role": "critic",
+      "capability": "model",
+      "record": 0,
+      "raw": "low",
+      "supported": ["high"],
+      "resolved": {"layer": "table", "source": "model-default"},
+      "requestPath": "reasoning_effort",
+      "decisionPath": "reasoning",
+      "resume": true
+    },
+    {
+      "name": "critic agent table default",
+      "role": "critic",
+      "capability": "agent",
+      "raw": "low",
+      "supported": ["high"],
+      "resolved": {"layer": "table", "source": "model-default"},
+      "requestPath": "effort",
+      "decisionPath": "reasoning",
+      "resume": true
     }
   ]
 }

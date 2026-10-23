@@ -204,7 +204,11 @@ export interface ModelRequest {
  */
 export type ModelCall = (suffix: string, request: ModelRequest) => Promise<Response>
 
+declare const requestSessionBoundary: unique symbol
+
 export interface AssistantSession {
+  /** A resolved RequestSession carries the incompatible side of this private brand. */
+  readonly [requestSessionBoundary]?:never
   /** ADR-0021: the host-owned in-flight input queue. Hosts append; engines drain at request boundaries. */
   input?: EngineInput[]
   /** ADR-0022: opt this run into a redacted evaluation-corpus recording. */
@@ -415,6 +419,20 @@ export type AgentAssistantSession = Omit<AssistantSession, 'model' | 'thinking'>
   effort?: import('./agent').CodexEffort
 }
 export type EngineSession = AssistantSession | AgentAssistantSession
+
+/**
+ * The session an engine loop receives after policy admission.  It deliberately
+ * cannot be passed back to code which accepts a raw EngineSession: the private
+ * brand conflicts with the raw session's absent brand, while the raw reasoning
+ * inputs themselves are omitted.  `reasoning` is made only from the admitted
+ * `models.author.reasoning` member.
+ */
+type RequestBoundary = {readonly [requestSessionBoundary]:'resolved'}
+type RawRequestMembers = 'thinking'|'effort'|'criticReasoning'
+export type RequestAssistantSession = Omit<AssistantSession,RawRequestMembers|typeof requestSessionBoundary> & RequestBoundary & {reasoning?:NormalizedThinking}
+export type RequestAgentAssistantSession = Omit<AgentAssistantSession,RawRequestMembers|typeof requestSessionBoundary> & RequestBoundary & {reasoning?:import('./agent').CodexEffort}
+export type RequestSession = RequestAssistantSession|RequestAgentAssistantSession
+export type RequestSessionFor<T extends EngineSession> = T extends AgentAssistantSession ? RequestAgentAssistantSession : RequestAssistantSession
 
 export interface Engine {
   readonly id: AssistantEngine

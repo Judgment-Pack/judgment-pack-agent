@@ -67,7 +67,7 @@ type route struct {
 
 // runState is one run.
 type runState struct {
-	run      *adapter.Run
+	run      *adapter.RequestSession
 	sc       *runcontext.SessionContext
 	session  runcontext.Session
 	boundary *runcontext.Boundary
@@ -95,7 +95,7 @@ type runState struct {
 
 // Run is the adapter: one run on the agent capability.
 func Run(ctx context.Context, run *adapter.Run) error {
-	r := &runState{run: run}
+	r := &runState{run: adapter.NewRequestSession(run, nil)}
 	if run.Agent == nil || run.Agent.Run == nil || run.Model != nil {
 		r.emitAll(runcontext.FailedToOpen(failure.Authored("configuration", "The run is not on an agent capability alone; nothing was sent.", "desk")))
 		return nil
@@ -119,6 +119,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 	if named.Child == "" {
 		named.Child = run.Agent.Model
 	}
+	rawReasoning := adapter.ReadAdmissionReasoning(run)
 	session := runcontext.Session{
 		Prompt:            run.Prompt,
 		TestPrompt:        run.TestPrompt,
@@ -128,7 +129,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		AllowConversation: run.AllowConversation,
 		Interactive:       run.Interactive,
 		CallTool:          r.gatedCall,
-		Agent:             &runcontext.AgentSession{Model: run.Agent.Model, Effort: run.Agent.Effort},
+		Agent:             &runcontext.AgentSession{Model: run.Agent.Model, Effort: rawReasoning.Effort},
 		Host:              run.Host,
 		Skills:            run.Skills,
 		Subagents:         run.Subagents, ChildDefinition: run.ChildDefinition,
@@ -136,7 +137,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		Critic: run.Critic,
 		Policy: run.Policy, PolicyProject: run.PolicyProject, TaskClass: run.TaskClass, PaceUsed: run.PaceUsed, PolicyLegacyModels: &named, PolicyFamilies: adapter.PolicyFamilies(run, named), PolicyConnections: append(adapter.PolicyConnectionIDs(run), named.Critic, named.Child), PolicyRequests: run.PolicyRequests,
 		CriticProject:     run.CriticProject,
-		CriticReasoning:   run.CriticReasoning,
+		CriticReasoning:   rawReasoning.Critic,
 		ExistingPack:      run.ExistingPack,
 		ReviewerAssigned:  run.ReviewerAssigned,
 		AdversarialReview: run.Review,
@@ -157,7 +158,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		r.emitAll(runcontext.FailedToOpen(err))
 		return nil
 	}
-	r.run = &local
+	r.run = adapter.NewRequestSession(&local, r.sc.ResolvedPolicy)
 	// ADR-0008: an act call's approval is written asked only once this run has claimed its pause.
 	r.sc.PauseClaim = func() bool { return r.claimPause(false) }
 	r.session = opened.Session

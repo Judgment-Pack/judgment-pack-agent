@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest'
-import {resolvePolicy,PolicyRefusal,failoverRefusal,type PolicyLayer} from './policy'
+import {resolvePolicy,PolicyRefusal,failoverRefusal,type PolicyLayer,type ReasoningValue} from './policy'
 import v0 from '../../contract/vectors/providers/same.json'
 import v1 from '../../contract/vectors/providers/other.json'
 import v2 from '../../contract/vectors/providers/explicit.json'
@@ -56,7 +56,7 @@ describe('ADR-0012 provider boundary',()=>{
   const [anthropic,gemini]=vector('tier-override').items
   for(const [family,capabilities,path,want] of [['anthropic',anthropic,'output_config','high'],['gemini',gemini,'thinkingConfig',4096]] as const){
    const model={family,model:'test',call:async()=>new Response(),capabilities}
-   const slot=openThinking({model,thinking:normalize('ultra',family)},capabilitiesFor(model).reasoning)
+   const slot=openThinking({model,reasoning:normalize('ultra',family)},capabilitiesFor(model).reasoning)
    expect(slot.members()?.[path]).toMatchObject(family==='anthropic'?{effort:want}:{thinkingBudget:want})
   }
  })
@@ -66,7 +66,7 @@ for(const c of fallback.cases)it(`fallback map ${c.record} ${c.tier}`,()=>{
  const record=fallback.items[c.record]!
  const family=record.family as 'anthropic'|'gemini'
  const model={family,model:'test',call:async()=>new Response(),capabilities:{...record,family}}
- const slot=openThinking({model,thinking:normalize(c.tier as ThinkingTier,family)},capabilitiesFor(model).reasoning)
+ const slot=openThinking({model,reasoning:normalize(c.tier as ThinkingTier,family)},capabilitiesFor(model).reasoning)
  expect(slot.refused(400,family==='anthropic'?'thinking':'thinkingBudget').kind).toBe('retry')
  expect(slot.members()).toEqual(c.members)
 })
@@ -113,6 +113,31 @@ const omissionSession=(family:'openai-compatible'|'gemini',record:unknown,call:A
 const omissionBody=(body:Record<string,any>,family:'openai-compatible'|'gemini')=>family==='gemini'?body.generationConfig:body
 
 for(const engine of [vercel,deepagents] as Engine[])describe(`${engine.id} reasoning omission request bytes`,()=>{
+ it('does not restore a table default that discovery dropped, including after resume',async()=>{
+  for(const row of omission.dropped.filter(row=>row.capability==='model')){
+   const record=omission.items[row.record!]!,family=record.family==='openai'?'openai-compatible' as const:'gemini' as const
+   const makeSession=(bodies:Record<string,any>[])=>{
+    const call=async(_suffix:string,request:import('./engine').ModelRequest)=>{bodies.push(JSON.parse(request.body));const text=bodies.length===1&&row.role==='critic'?omissionProposal:row.role==='critic'?'No check refuted it.':'Finished.';return omissionAnswer(family,text)}
+    return omissionSession(family,record,call,{thinking:normalize(row.raw as ThinkingTier,family),prompt:row.role==='critic'?'Draft a pack.':'Answer briefly.',testPrompt:row.role==='critic'?'Refute it.':'',allowConversation:row.role!=='critic',critic:row.role==='critic'?'on':'off',
+     policy:{models:{[row.role]:{discovered:{reasoning:{supported:[...row.supported] as ReasoningValue[]}}}}},context:{currentRequest:{message:'Draft a pack.',input:'Draft a pack.'},connection:{connectionId:'author'}}})
+   }
+   const seed=makeSession([]),opened=await contextualSession(seed,engine.id),saved=opened.context.execution.snapshot('stopped');opened.context.close()
+   const attempts:Record<string,any>[][]=[]
+   for(const execution of [undefined,saved]){
+    const bodies:Record<string,any>[]=[],session=makeSession(bodies)
+    if(execution)session.context={...session.context,execution}
+    const events:AssistantEvent[]=[];for await(const event of engine.start(session))events.push(event)
+    expect(events.filter(event=>event.type==='error'),row.name).toEqual([])
+    const body=bodies[row.role==='critic'?1:0]!
+    expect(body,row.name).not.toHaveProperty(row.requestPath)
+    expect(events.find(event=>event.type==='policy_resolved'),row.name).toMatchObject({members:{[`models.${row.role}.reasoning`]:row.resolved}})
+    if(row.decisionPath)expect(events.find(event=>event.type==='critic_decided'),row.name).not.toHaveProperty(row.decisionPath)
+    expect(events.filter(event=>event.type==='execution_checkpoint').at(-1)?.checkpoint.policy?.[`models.${row.role}.reasoning`],row.name).toEqual(row.resolved)
+    attempts.push(bodies)
+   }
+   expect(JSON.stringify(attempts[1]),row.name).toBe(JSON.stringify(attempts[0]))
+  }
+ })
  it('omits the author member on OpenAI and Gemini',async()=>{
   for(const one of omission.cases.filter(one=>one.phase==='author')){
    const record=omission.items[one.record]!,family=record.family==='openai'?'openai-compatible' as const:'gemini' as const,bodies:Record<string,any>[]=[]

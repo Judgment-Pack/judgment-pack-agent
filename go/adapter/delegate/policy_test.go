@@ -114,17 +114,18 @@ func TestChildrenUseResolvedBindingsTiersAndConcurrency(t *testing.T) {
 				if err := adapter.ApplyPolicy(child, opened.Context, named); err != nil {
 					return err
 				}
+				request := adapter.NewRequestSession(child, opened.Context.ResolvedPolicy)
 				if agent {
-					r, err := child.Agent.Admit(ctx, adapter.AgentRequest{Phase: "author", Effort: child.Agent.Effort, Model: child.Agent.Delegated, Delegated: true})
+					r, err := request.Agent.Admit(ctx, adapter.AgentRequest{Phase: "author", Effort: request.Reasoning("author"), Model: request.Agent.Delegated, Delegated: true})
 					if err != nil {
 						return err
 					}
-					return child.Agent.Run(ctx, r, adapter.AgentCallbacks{})
+					return request.Agent.Run(ctx, r, adapter.AgentCallbacks{})
 				}
-				if child.Thinking != childTier {
-					t.Fatalf("wire tier %q", child.Thinking)
+				if request.Reasoning("author") != childTier {
+					t.Fatalf("wire tier %q", request.Reasoning("author"))
 				}
-				response, err := child.Model(ctx, "chat/completions", relay.Request{Method: "POST", Body: []byte("{}")})
+				response, err := request.Model(ctx, "chat/completions", relay.Request{Method: "POST", Body: []byte("{}")})
 				if err == nil {
 					response.Body.Close()
 				}
