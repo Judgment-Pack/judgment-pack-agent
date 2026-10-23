@@ -1,7 +1,7 @@
 /**
  * What the certified scenarios (`certification/scenarios/*.json`, agent#13) are driven with: a
- * scripted model's turns, read from a scenario's own file, put on each adapter's wire. Tests only,
- * like the rest of `testing/`.
+ * scripted model's turns, read from a scenario's own file, put on each adapter's wire.
+ * Also emitted for the exported certification scenario server.
  *
  * A scenario lists its turns by hand: a call (a tool and its arguments) or a statement. The
  * endpoint answers a request with the turn after the tool results the request already carries, as
@@ -10,7 +10,7 @@
  * (`AgentRun`), by the name the offer gave each tool where it was offered and by its own name where
  * it was not. A delegation scenario lists the parent's turns and each child's, told by its brief.
  */
-import { vi } from 'vitest'
+import { captureGlobal } from './captureGlobal'
 import { PROPOSE_PACK_SCHEMA, PROPOSE_PACK_TOOL } from '../engines/contract'
 import { ASSISTANT_TOOLS } from '../host'
 import { bindModelCall, runAssistantSession } from '../session'
@@ -318,7 +318,7 @@ function sinkOf(events: AssistantEvent[], stopAt?: (event: AssistantEvent) => bo
 export async function runOnModelEngine(answer: (request: EndpointRequest) => Response | Promise<Response>, options: Options = {}): Promise<Ran> {
   const events: AssistantEvent[] = []
   const endpoint = scriptedEndpoint(answer)
-  vi.stubGlobal('fetch', endpoint.fetch)
+  const call = captureGlobal('fetch', endpoint.fetch, () => bindModelCall('openai-compatible'))
   const runtime = await gatedRuntime({
     tools: [...(options.tools ?? RECORDED_TOOLS), TEST_CASES_TOOL],
     allowed: [...ASSISTANT_TOOLS],
@@ -335,7 +335,7 @@ export async function runOnModelEngine(answer: (request: EndpointRequest) => Res
         callTool: runtime.callTool,
         hostTools: options.hostTools ?? [],
         allowConversation: true,
-        model: { family: 'openai-compatible', model: 'scripted-model', call: bindModelCall('openai-compatible') },
+        model: { family: 'openai-compatible', model: 'scripted-model', call },
         thinking: normalize('off', 'openai-compatible'),
         signal: new AbortController().signal,
         ...options.session

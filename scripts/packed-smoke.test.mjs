@@ -3,7 +3,7 @@ import {mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs'
 import {tmpdir} from 'node:os'
 import {dirname,join,resolve} from 'node:path'
 import test from 'node:test'
-import {bundleEntrypoints,inspectEmittedModules,nativeEntrypoints,packageEntrypoints,validateDeclarations,validatePackage} from '../packages/harness/scripts/packed-smoke.mjs'
+import {bundleEntrypoints,consumerDirectory,inspectEmittedModules,nativeEntrypoints,packageEntrypoints,validateDeclarations,validatePackage,validateRuntimeDependencies} from '../packages/harness/scripts/packed-smoke.mjs'
 
 import {normalizeEmittedModules,rewriteMap} from '../packages/harness/scripts/normalize-esm.mjs'
 import {decode} from '@jridgewell/sourcemap-codec'
@@ -146,4 +146,26 @@ test('native and declaration checks reject extensionless installed imports, then
  normalizeEmittedModules(join(project,'node_modules','fixture','dist'))
  nativeEntrypoints(project,entries)
  validateDeclarations(project,join(project,'node_modules','fixture'),entries)
+})
+
+
+test('rejects a dev-only runtime import even when an ancestor checkout could supply it',t=>{
+ const root=fixture({
+  'package.json':JSON.stringify({name:'fixture',dependencies:{declared:'1.0.0'},devDependencies:{'development-only':'1.0.0'}}),
+  'dist/entry.js':"import 'development-only'\n",
+  'node_modules/development-only/package.json':'{"name":"development-only","type":"module","main":"index.js"}',
+  'node_modules/development-only/index.js':'export const development=true;'
+ })
+ t.after(()=>rmSync(root,{recursive:true,force:true}))
+ assert.throws(()=>validateRuntimeDependencies(root),/undeclared runtime dependency development-only/)
+ writeFileSync(join(root,'dist','entry.js'),"import 'declared/subpath'; import 'node:fs'; import 'fs';\n")
+ validateRuntimeDependencies(root)
+})
+
+test('refuses consumers inside the checkout or underneath ancestor node_modules',t=>{
+ const checkout=fixture({'work/tmp/.keep':'','elsewhere/.keep':'','node_modules/dev/.keep':''})
+ const unrelated=fixture({'.keep':''})
+ t.after(()=>{rmSync(checkout,{recursive:true,force:true});rmSync(unrelated,{recursive:true,force:true})})
+ assert.throws(()=>consumerDirectory(join(checkout,'work','tmp'),checkout),/outside the checkout/)
+ assert.throws(()=>consumerDirectory(join(checkout,'elsewhere'),unrelated),/ancestor node_modules/)
 })

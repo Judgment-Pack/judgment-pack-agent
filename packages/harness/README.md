@@ -89,8 +89,16 @@ text. The TypeScript sources retain the Desk's import paths.
 
 The packed-package smoke check installs the actual tarball into an isolated project, directly
 imports every named and wildcard runtime entrypoint with stock Node, bundles every entrypoint,
-and checks the package-local declaration imports and a TypeScript NodeNext consumer. All existing
-exports remain available.
+and checks the package-local declaration imports and a TypeScript NodeNext consumer. It refuses a
+temporary directory inside the checkout or below an ancestor `node_modules`, and rejects runtime
+imports supplied only by development dependencies. Set `TMPDIR` to an isolated external directory
+when the host normally places temporary files inside the checkout. All existing exports remain
+available.
+
+The certification scenarios also emit the scripted fixture helpers under `testing/`. These helpers
+capture each scripted transport synchronously and restore the exact host global before asynchronous
+work starts; importing them requires no Vitest installation. The shared `testing/captureGlobal`
+helper is an additional wildcard export for this synchronous capture operation.
 
 ## Host injection points
 

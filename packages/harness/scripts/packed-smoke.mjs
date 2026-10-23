@@ -1,12 +1,14 @@
 import {execFileSync} from 'node:child_process'
 import {existsSync,mkdirSync,mkdtempSync,readdirSync,readFileSync,realpathSync,rmSync,statSync,writeFileSync} from 'node:fs'
 import {tmpdir} from 'node:os'
+import {isBuiltin} from 'node:module'
 import {dirname,extname,isAbsolute,join,relative,resolve,sep} from 'node:path'
 import {fileURLToPath,pathToFileURL} from 'node:url'
 import {build} from 'esbuild'
 import {emittedTarget,moduleImports} from './normalize-esm.mjs'
 
 const packageDirectory=fileURLToPath(new URL('..',import.meta.url))
+const repositoryDirectory=fileURLToPath(new URL('../../..',import.meta.url))
 const namedExports=['./contract','./vercel','./codex','./deepagents','./certification']
 const npm=process.platform==='win32'?'npm.cmd':'npm'
 
@@ -97,9 +99,33 @@ export function packageEntrypoints(packageRoot){
  return entries
 }
 
+export function validateRuntimeDependencies(packageRoot){
+ const manifest=JSON.parse(readFileSync(join(packageRoot,'package.json'),'utf8'))
+ const declared=new Set([manifest.name,...Object.keys(manifest.dependencies??{}),...Object.keys(manifest.optionalDependencies??{}),...Object.keys(manifest.peerDependencies??{})])
+ for(const file of filesUnder(join(packageRoot,'dist'),file=>file.endsWith('.js'))){
+  for(const specifier of importSpecifiers(file)){
+   if(localBase(file,specifier)!==undefined||isBuiltin(specifier)||specifier.startsWith('#')||/^[a-z][a-z\d+.-]*:/i.test(specifier))continue
+   const name=specifier.startsWith('@')?specifier.split('/').slice(0,2).join('/'):specifier.split('/')[0]
+   if(!declared.has(name))throw Error(`${displayed(packageRoot,file)} imports undeclared runtime dependency ${specifier}`)
+  }
+ }
+}
+
+export function consumerDirectory(temporaryRoot=tmpdir(),checkoutRoot=repositoryDirectory){
+ const root=realpathSync(temporaryRoot)
+ if(inside(realpathSync(checkoutRoot),root))throw Error('packed smoke needs a temporary directory outside the checkout; set TMPDIR to an external directory')
+ // Prevent undeclared dependencies from resolving through another ancestor project.
+ for(let ancestor=root;;ancestor=dirname(ancestor)){
+  if(existsSync(join(ancestor,'node_modules')))throw Error('packed smoke temporary directory has an ancestor node_modules; set TMPDIR to an isolated external directory')
+  if(dirname(ancestor)===ancestor)break
+ }
+ return mkdtempSync(join(root,'judgment-pack-harness-'))
+}
+
 export function validatePackage(packageRoot){
  const root=realpathSync(packageRoot)
  const graph=inspectEmittedModules(root)
+ validateRuntimeDependencies(root)
  const entries=packageEntrypoints(root)
  for(const entry of entries){
   const seen=new Set()
@@ -175,7 +201,7 @@ export function validateDeclarations(projectRoot,packageRoot,entries){
 }
 
 export async function packedSmoke(){
- const temporary=mkdtempSync(join(tmpdir(),'judgment-pack-harness-'))
+ const temporary=consumerDirectory()
  try{
   const packed=JSON.parse(execFileSync(npm,['pack','--json','--pack-destination',temporary],{cwd:packageDirectory,encoding:'utf8'}))
   const tarball=join(temporary,packed[0].filename)
