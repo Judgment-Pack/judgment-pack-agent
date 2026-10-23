@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict'
-import {mkdirSync,mkdtempSync,rmSync,writeFileSync} from 'node:fs'
+import {mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs'
 import {tmpdir} from 'node:os'
 import {dirname,join,resolve} from 'node:path'
 import test from 'node:test'
-import {bundleEntrypoints,inspectEmittedModules,packageEntrypoints,validatePackage} from '../packages/harness/scripts/packed-smoke.mjs'
+import {bundleEntrypoints,inspectEmittedModules,nativeEntrypoints,packageEntrypoints,validateDeclarations,validatePackage} from '../packages/harness/scripts/packed-smoke.mjs'
+
+import {normalizeEmittedModules,rewriteMap} from '../packages/harness/scripts/normalize-esm.mjs'
+import {decode} from '@jridgewell/sourcemap-codec'
 
 const fixture=files=>{
  const root=mkdtempSync(join(tmpdir(),'packed-smoke-test-'))
@@ -24,15 +27,15 @@ test('checks dynamic import and require targets',t=>{
  const dynamic=fixture({'dist/entry.js':"import('./missing-dynamic.js')\n"})
  const required=fixture({'dist/entry.js':"module.require('./missing-required.js')\n"})
  t.after(()=>{rmSync(dynamic,{recursive:true,force:true});rmSync(required,{recursive:true,force:true})})
- assert.throws(()=>inspectEmittedModules(dynamic),/imports a missing package file/)
- assert.throws(()=>inspectEmittedModules(required),/imports a missing package file/)
+ assert.throws(()=>inspectEmittedModules(dynamic),/imports a missing package file|missing emitted import/)
+ assert.throws(()=>inspectEmittedModules(required),/imports a missing package file|missing emitted import/)
 })
 
 test('rejects a missing dependency of a wildcard-exported module',t=>{
  const exports={"./contract":"./dist/good.js","./vercel":"./dist/good.js","./codex":"./dist/good.js","./deepagents":"./dist/good.js","./certification":"./dist/good.js","./*":"./dist/*.js"}
  const root=fixture({'package.json':JSON.stringify({name:'fixture',exports}),'dist/good.js':'export const good=true\n','dist/broken.js':"import './missing.js'\n"});t.after(()=>rmSync(root,{recursive:true,force:true}))
  assert(packageEntrypoints(root).some(entry=>entry.specifier==='fixture/broken'))
- assert.throws(()=>validatePackage(root),/imports a missing package file/)
+ assert.throws(()=>validatePackage(root),/imports a missing package file|missing emitted import/)
 })
 
 test('accepts the built harness and all of its exported modules',()=>{
@@ -60,4 +63,87 @@ test('bundles an extensionless package import from an external project',async t=
  })
  t.after(()=>rmSync(broken,{recursive:true,force:true}))
  await assert.rejects(()=>bundleEntrypoints(broken,join(broken,'node_modules','fixture'),[{specifier:'fixture/entry'}]),/Could not resolve/)
+})
+
+
+test('normalizes file, dotted file, directory, dynamic and declaration imports deterministically',t=>{
+ const source=`import {answer} from './answer'; export * from './directory'; export * from './dotted.name';
+import external from 'external/package'; import fs from 'node:fs';
+export const load=()=>import('./directory');
+export const text="import('./answer')"; // import './answer'
+`
+ const declarations="export type {Answer} from './answer'; export * from './directory'; export declare const x: import('./answer').Answer;\n"
+ const root=fixture({'entry.js':source,'entry.d.ts':declarations,'answer.js':'export const answer=42;','answer.d.ts':'export type Answer=42;','directory/index.js':'export const found=true;','directory/index.d.ts':'export type Found=true;','dotted.name.js':'export const dotted=true;'})
+ t.after(()=>rmSync(root,{recursive:true,force:true}))
+ normalizeEmittedModules(root)
+ assert.equal(readFileSync(join(root,'entry.js'),'utf8'),`import {answer} from "./answer.js"; export * from "./directory/index.js"; export * from "./dotted.name.js";
+import external from 'external/package'; import fs from 'node:fs';
+export const load=()=>import("./directory/index.js");
+export const text="import('./answer')"; // import './answer'
+`)
+ assert.equal(readFileSync(join(root,'entry.d.ts'),'utf8'),'export type {Answer} from "./answer.js"; export * from "./directory/index.js"; export declare const x: import("./answer.js").Answer;\n')
+ const first=readFileSync(join(root,'entry.js'),'utf8')
+ const firstDeclaration=readFileSync(join(root,'entry.d.ts'),'utf8')
+ normalizeEmittedModules(root)
+ assert.equal(readFileSync(join(root,'entry.js'),'utf8'),first)
+ assert.equal(readFileSync(join(root,'entry.d.ts'),'utf8'),firstDeclaration)
+})
+
+test('adds JSON attributes for imports, re-exports and dynamic imports and preserves existing attributes',t=>{
+ const root=fixture({'entry.js':"import data from './data.json'; export {default as json} from './data.json'; export const load=()=>import('./data.json'); import existing from './data.json' with {type:'json'};",'data.json':'{"answer":42}'})
+ t.after(()=>rmSync(root,{recursive:true,force:true}))
+ normalizeEmittedModules(root)
+ const expected="import data from './data.json' with { type: 'json' }; export {default as json} from './data.json' with { type: 'json' }; export const load=()=>import('./data.json', { with: { type: 'json' } }); import existing from './data.json' with {type:'json'};"
+ assert.equal(readFileSync(join(root,'entry.js'),'utf8'),expected)
+ normalizeEmittedModules(root)
+ assert.equal(readFileSync(join(root,'entry.js'),'utf8'),expected)
+})
+
+test('fails missing, computed and escaping imports without partially rewriting files',t=>{
+ for(const bad of ["export * from './missing'", "import(name)", "import '../outside.js'"]){
+  const root=fixture({'a.js':"export * from './ok'",'ok.js':'export const ok=true;','z.js':bad})
+  t.after(()=>rmSync(root,{recursive:true,force:true}))
+  assert.throws(()=>normalizeEmittedModules(root),/missing emitted import|not a string literal|escapes emitted tree/)
+  assert.equal(readFileSync(join(root,'a.js'),'utf8'),"export * from './ok'")
+ }
+})
+
+test('moves generated source-map columns without changing original sources or positions',()=>{
+ const source="import './a'; export const answer=42;\n"
+ // Handwritten mappings at columns 0, 7, 12, 14 and 27, all to source line 0.
+ const map={version:3,file:'entry.js',sourceRoot:'../',sources:['entry.ts'],sourcesContent:[source],names:[],mappings:'AAAA,OAAO,KAAK,EAAE,aAAa'}
+ const output=rewriteMap(map,source,[{start:7,end:12,text:'"./a.js"'},{start:12,end:12,text:" with { type: 'json' }"}])
+ assert.deepEqual(decode(output.mappings),[[[0,0,0,0],[7,0,0,7],[37,0,0,12],[39,0,0,14],[52,0,0,27]]])
+ assert.deepEqual({...output,mappings:map.mappings},map)
+})
+
+test('normalizes adjacent JavaScript and declaration maps deterministically',t=>{
+ const map={version:3,file:'entry.js',sourceRoot:'',sources:['../entry.ts'],names:[],mappings:'AAAA,OAAO,KAAK'}
+ const root=fixture({'entry.js':"import './a';\n//# sourceMappingURL=entry.js.map\n",'entry.js.map':JSON.stringify(map),'entry.d.ts':"export * from './a';\n//# sourceMappingURL=entry.d.ts.map\n",'entry.d.ts.map':JSON.stringify({...map,file:'entry.d.ts'}),'a.js':'export const a=42;','a.d.ts':'export declare const a:42;'})
+ t.after(()=>rmSync(root,{recursive:true,force:true}))
+ normalizeEmittedModules(root)
+ for(const file of ['entry.js.map','entry.d.ts.map']){
+  const first=readFileSync(join(root,file),'utf8')
+  assert.equal(JSON.parse(first).sources[0],'../entry.ts')
+  normalizeEmittedModules(root)
+  assert.equal(readFileSync(join(root,file),'utf8'),first)
+ }
+})
+
+test('native and declaration checks reject extensionless installed imports, then pass normalized imports',async t=>{
+ const project=fixture({
+  'package.json':'{"private":true,"type":"module"}\n',
+  'node_modules/fixture/package.json':JSON.stringify({name:'fixture',type:'module',exports:{'./entry':{types:'./dist/entry.d.ts',default:'./dist/entry.js'}}}),
+  'node_modules/fixture/dist/entry.js':"export {answer} from './directory'\n",
+  'node_modules/fixture/dist/entry.d.ts':"export type {Answer} from './directory'\n",
+  'node_modules/fixture/dist/directory/index.js':'export const answer=42\n',
+  'node_modules/fixture/dist/directory/index.d.ts':'export type Answer=42\n'
+ })
+ t.after(()=>rmSync(project,{recursive:true,force:true}))
+ const entries=[{specifier:'fixture/entry'}]
+ assert.throws(()=>nativeEntrypoints(project,entries),/ERR_UNSUPPORTED_DIR_IMPORT|ERR_MODULE_NOT_FOUND/)
+ assert.throws(()=>validateDeclarations(project,join(project,'node_modules','fixture'),entries),/explicit emitted module specifier|TS2834|TS2835/)
+ normalizeEmittedModules(join(project,'node_modules','fixture','dist'))
+ nativeEntrypoints(project,entries)
+ validateDeclarations(project,join(project,'node_modules','fixture'),entries)
 })

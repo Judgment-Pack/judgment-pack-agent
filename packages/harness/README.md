@@ -74,13 +74,23 @@ agent#13, delegation as one parent run with context by reference and per-profile
 ## Consuming the package
 
 Consume the five named entrypoints above, or a module exposed by
-`@judgment-pack/harness/<path>`, through a bundler such as Vite or esbuild. Native Node ESM import
-is not a supported consumption path yet and is tracked separately as issue #143.
+`@judgment-pack/harness/<path>`, with native Node.js 22+ ESM or a bundler such as Vite or esbuild.
+For example:
+
+```js
+import { configureHarness } from '@judgment-pack/harness/contract'
+```
 
 `npm run build` typechecks every file, tests included, and emits ES modules with declarations to
-`dist/`. The modules keep the Desk's extensionless relative imports and import JSON directly
-(`contract/catalog.json`, `contract/policy.json`, `certification/*.json`), so they are consumed
-through a bundler, as the Desk's Vite consumes them (`moduleResolution: bundler`).
+`dist/`. A deterministic build step resolves package-local file and directory imports to explicit
+`.js` specifiers, updates the declarations to match, and adds `with { type: 'json' }` to JSON imports.
+It preserves external package imports and adjusts generated source-map columns for the rewritten
+text. The TypeScript sources retain the Desk's import paths.
+
+The packed-package smoke check installs the actual tarball into an isolated project, directly
+imports every named and wildcard runtime entrypoint with stock Node, bundles every entrypoint,
+and checks the package-local declaration imports and a TypeScript NodeNext consumer. All existing
+exports remain available.
 
 ## Host injection points
 

@@ -223,6 +223,7 @@ $pkg/certification/records.test.ts
 $pkg/certification/scenarios/records.json
 $pkg/certification/scenarios/identity.json
 $pkg/steering.test.ts
+$pkg/scripts/normalize-esm.mjs
 EOF
 }
 
