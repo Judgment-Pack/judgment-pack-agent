@@ -9,8 +9,8 @@ import (
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 )
 
-var policyNames = []string{"11 resolved", "11 model reasoning defaults", "11 pace", "11 ceiling", "11 resume", "11 alias"}
-var AgentPolicyNames = []string{"11 agent resolved", "11 agent reasoning defaults", "11 agent pace", "11 agent ceiling", "11 agent resume", "11 agent alias"}
+var policyNames = []string{"11 resolved", "11 model reasoning defaults", "11 pace", "11 ceiling", "11 resume", "11 retired alias"}
+var AgentPolicyNames = []string{"11 agent resolved", "11 agent reasoning defaults", "11 agent pace", "11 agent ceiling", "11 agent resume", "11 agent retired alias"}
 
 func policyFindings(ctx context.Context, agent bool, play switchPlay) ([]Finding, error) {
 	prefix := "11 "
