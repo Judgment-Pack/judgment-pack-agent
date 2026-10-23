@@ -55,6 +55,11 @@ projects it after restoring its own state. Those ownership rules are deliberate 
 
 The source-wide guards discover production files and use the language type checker to reject
 direct aggregate writes, including aliases, computed TypeScript keys and direct nested writes.
+Nested member and array aliases retain their originating book. An explicit later patch of that
+same book under its own member permits a working-copy edit; a different member, a fresh read,
+an uncalled closure or an earlier publication does not. The scanner recognizes the
+owning source-book publisher and synchronous collection callbacks, and Go deferred publication closures.
+Implementation and reader-materialization exemptions name their exact owning paths.
 They also reject a new writer file without adding it to a filename inventory. Go's private live
 store is accessible only in the mutation implementation. Both languages test nested alias
 isolation, unchanged/rejected revisions and concurrent counter producers.

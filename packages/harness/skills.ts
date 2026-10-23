@@ -392,10 +392,6 @@ export class SkillGate {
     return (this.run.sources?.() ?? this.run.state().sources ?? []).reduce((sum, row) => sum + (row.skills ?? 0), 0)
   }
 
-  private row(skill: Skill): SourceFigures | undefined {
-    return (this.run.sources?.() ?? this.run.state().sources ?? []).find((held) => held.source === skill.source.id)
-  }
-
   /** The checkpoint's loaded set, written at each load and unload. */
   private write(at: SkillLoad[]): void {
     this.commit({skills:at.length?at:undefined})
@@ -473,8 +469,9 @@ export class SkillGate {
       this.run.notify({ type: 'guardrail', tool: LOAD_SKILL, action: 'refused', detail, reason: 'skill budget' })
       throw new AIFailureError({ version: 1, code: 'tool-failed', source: 'tool', outcome: 'not-started', detail })
     }
-    const row = this.row(skill)
-    if (row !== undefined) {row.skills = (row.skills ?? 0) + 1;this.commitSources(this.run.sources?.() ?? this.run.state().sources ?? [])}
+    const rows = this.run.sources?.() ?? this.run.state().sources ?? []
+    const row = rows.find((held) => held.source === skill.source.id)
+    if (row !== undefined) {row.skills = (row.skills ?? 0) + 1;this.commitSources(rows)}
     this.loaded.push(skill)
     this.write([...(this.run.state().skills ?? []), { id: skill.id, digest: skill.digest, bytes: skill.bytes, loadedAt: new Date().toISOString() }])
     this.run.notify({ type: 'skill_loaded', skill: loadedSkill(skill), bytes: skill.bytes })
