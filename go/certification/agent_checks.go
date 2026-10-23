@@ -504,11 +504,10 @@ func admissionCheck(ctx context.Context, _ *Server, host AgentHost, with func(Ad
 	}
 	w.enabled = []string{parentModel}
 	proposal := "Here is the pack.\n\n```json\n{\"proposal\":{\"document\":{\"id\":\"expense\"},\"unknowns\":[]}}\n```"
-	on := true
 	w.run(ctx, func(inner Adapter) Adapter { return inner }, inner, func(request adapter.AgentRequest, _ int) AgentPlay {
 		return AgentPlay{Steps: []AgentStep{say(proposal)}}
 	}, nil, nil, func(run *Run) {
-		run.AllowConversation, run.Interactive, run.Review, run.TestPrompt = false, false, &on, "THE RUNTIME'S TEST GUIDANCE"
+		run.AllowConversation, run.Interactive, run.Critic, run.TestPrompt = false, false, "on", "THE RUNTIME'S TEST GUIDANCE"
 	})
 	events = w.take()
 	if got := kinds(w.watch.admitted()); !slices.Equal(got, []string{"parent"}) {
@@ -668,7 +667,6 @@ func toolCeilingsCheck(ctx context.Context, _ *Server, host AgentHost, with func
 		return nil, err
 	}
 	proposal := "Here is the pack.\n\n```json\n{\"proposal\":{\"document\":{\"id\":\"expense\"},\"unknowns\":[]}}\n```"
-	on := true
 	author := []string{writeTool, readTool, "list_examples"}
 	aliases := map[string]string{}
 	w.run(ctx, func(inner Adapter) Adapter { return inner }, inner, func(request adapter.AgentRequest, _ int) AgentPlay {
@@ -684,7 +682,7 @@ func toolCeilingsCheck(ctx context.Context, _ *Server, host AgentHost, with func
 		}
 		return AgentPlay{Steps: []AgentStep{say(proposal)}}
 	}, nil, nil, func(run *Run) {
-		run.AllowConversation, run.Interactive, run.Review, run.TestPrompt = false, false, &on, "THE RUNTIME'S TEST GUIDANCE"
+		run.AllowConversation, run.Interactive, run.Critic, run.TestPrompt = false, false, "on", "THE RUNTIME'S TEST GUIDANCE"
 	})
 	events = w.take()
 	calls = w.watch.admitted()
