@@ -4722,7 +4722,8 @@
     "find": "author:{model:current,...(authorTier===undefined?{}:{reasoning:authorTier})}",
     "replace": "author:{model:current,reasoning:authorTier??'none'}",
     "tests": ["policySession.test.ts"],
-    "status": "caught",
+    "status": "retired",
+    "reason": "agent#162 extended author table construction with admitted delegated-role input; the historical anchor is superseded by appended active row: omitted agent author reasoning is synthesized as none after delegation handoff.",
     "origin": "agent#142",
     "note": "Go twin: restore tier = none when Agent.Effort is empty in resolveSessionPolicy; TestOmittedReasoningStaysOmittedAcrossResume fails on the request and policy record."
   },
@@ -4732,7 +4733,8 @@
     "find": " const authorTier='model'in session?session.thinking?.tier:session.effort",
     "replace": " const authorTier='model'in session?session.thinking?.tier??'off':session.effort",
     "tests": ["certification/providers.test.ts", "certification/scenarios.test.ts"],
-    "status": "caught",
+    "status": "retired",
+    "reason": "agent#162 guards raw authorTier resolution with the delegated-role projection; the historical anchor is superseded by appended active row: omitted model author reasoning is synthesized as off after delegation handoff.",
     "origin": "agent#142-review-1",
     "note": "Go twin: initialize tier to off in resolveSessionPolicy; TestPolicyScenarios/model_reasoning_defaults and TestReasoningOmissionRequestVectors fail on the resolved member and request bytes."
   },
@@ -4762,7 +4764,8 @@
     "find": "const childReasoning = (member: {value?: unknown} | undefined) => member?.value === undefined ? {} : {reasoning:String(member.value)}",
     "replace": "const childReasoning = (member: {value?: unknown} | undefined) => ({reasoning:String(member?.value)})",
     "tests": ["delegation.test.ts"],
-    "status": "caught",
+    "status": "retired",
+    "reason": "agent#162 removed childReasoning and moved its omission guard into context admission; superseded by appended active row: omitted delegated role reasoning is stringified in the admission projection.",
     "origin": "agent#142-review-1",
     "note": "Go twin: always write author reasoning from the resolved member in childBinding; TestOmittedChildAndSubagentReasoningStayOutOfChildPolicy fails for both delegated role forms."
   },
@@ -4845,6 +4848,55 @@
     "status": "caught",
     "origin": "agent#142-release-audit-2",
     "note": "Go twin: add Thinking to adapter.RequestSession; TestRequestSessionRejectsRawReasoningShapes fails. The boundary tests keep direct, alias, destructured, computed, copied-struct and raw-helper compile failures in both languages."
+  },
+  {
+    "name": "delegated child restores raw parent reasoning instead of the admitted role",
+    "file": "delegation.ts",
+    "find": "const child=shared.context?delegatedRoleSession(base,shared.context,shared.context.delegatedRole(profile.id)):base",
+    "replace": "const child=base",
+    "tests": [
+      "delegation.test.ts"
+    ],
+    "status": "caught",
+    "origin": "agent#162",
+    "note": "Go twin: replace parent.DelegatedPolicy(role, id, name) assignment with nil, nil in delegate/batch.go; TestDelegatedRequestReasoning/model/review/omitted fails because the child request restores raw low. The saved-policy variant uses the same opaque projection and fresh-admission consistency check."
+  },
+  {
+    "name": "omitted agent author reasoning is synthesized as none after delegation handoff",
+    "file": "context/session.ts",
+    "find": "author:{model:current,...(authorTier===undefined?{}:{reasoning:authorTier}),...delegatedAuthor(projection)}",
+    "replace": "author:{model:current,reasoning:authorTier??'none',...delegatedAuthor(projection)}",
+    "tests": [
+      "policySession.test.ts"
+    ],
+    "note": "Go twin remains the original empty-Agent.Effort to none mutation in resolveSessionPolicy; existing omission/resume request controls catch it.",
+    "status": "caught",
+    "origin": "agent#162-mutation-compatibility"
+  },
+  {
+    "name": "omitted model author reasoning is synthesized as off after delegation handoff",
+    "file": "context/session.ts",
+    "find": " const authorTier=projection?undefined:'model'in session?session.thinking?.tier:session.effort",
+    "replace": " const authorTier=projection?undefined:'model'in session?session.thinking?.tier??'off':session.effort",
+    "tests": [
+      "certification/providers.test.ts",
+      "certification/scenarios.test.ts"
+    ],
+    "note": "Go twin remains initializing the raw model tier to off in resolveSessionPolicy; existing model reasoning-default/request-vector controls catch it.",
+    "status": "caught",
+    "origin": "agent#162-mutation-compatibility"
+  },
+  {
+    "name": "omitted delegated role reasoning is stringified in the admission projection",
+    "file": "context/session.ts",
+    "find": "...(members['models.author.reasoning']?.value===undefined?{}:{reasoning:String(members['models.author.reasoning']!.value)})",
+    "replace": "...{reasoning:String(members['models.author.reasoning']?.value)}",
+    "tests": [
+      "delegation.test.ts"
+    ],
+    "note": "Go twin: remove the nil-value guard around author reasoning in DelegatedPolicy.author; the live and saved TestDelegatedRequestReasoning omission controls reject the stringified nil/invalid tier instead of dispatching the child.",
+    "status": "caught",
+    "origin": "agent#162-mutation-compatibility"
   }
  ]
 }
