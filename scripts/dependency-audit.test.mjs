@@ -31,6 +31,28 @@ test('clean evidence and findings have distinct failing/successful statuses', ()
   assert.equal(run(transitive, 1).total, 2)
 })
 
+test('each severity level is a finding at the info threshold', () => {
+  for (const severity of ['info', 'low', 'moderate', 'high', 'critical']) {
+    const report = clean()
+    const name = `example-${severity}`
+    report.vulnerabilities[name] = { name, severity, nodes: [`node_modules/${name}`],
+      via: [{ source: 123, name, severity, range: '<2.0.0',
+        url: 'https://github.com/advisories/GHSA-2345-6789-cfgh' }] }
+    report.metadata.vulnerabilities[severity] = 1
+    report.metadata.vulnerabilities.total = 1
+    const result = audit((command, args) => {
+      assert.equal(command, 'npm')
+      const status = severity === 'info' && !args.includes('--audit-level=info') ? 0 : 1
+      return { stdout: JSON.stringify(report), status }
+    })
+    assert.equal(result.status, 'findings', severity)
+    assert.equal(result.exitCode, 1, severity)
+    assert.deepEqual(result.counts, { info: Number(severity === 'info'), low: Number(severity === 'low'),
+      moderate: Number(severity === 'moderate'), high: Number(severity === 'high'),
+      critical: Number(severity === 'critical') })
+  }
+})
+
 test('empty, missing, oversized and malformed evidence refuses without exposing raw data', () => {
   for (const stdout of ['', '{', '{}', JSON.stringify({ error: { summary: 'private-token' } })]) {
     assert.throws(() => parseReport(stdout))
@@ -70,7 +92,7 @@ test('invocation covers the lockfile without installation and bounds captured ou
   const result = audit((command, args, options) => {
     assert.equal(command, 'npm')
     for (const arg of ['audit', '--package-lock-only', '--ignore-scripts', '--include=dev',
-      '--include=optional', '--include=peer', '--audit-level=low', '--registry=https://registry.npmjs.org']) assert.ok(args.includes(arg), arg)
+      '--include=optional', '--include=peer', '--audit-level=info', '--registry=https://registry.npmjs.org']) assert.ok(args.includes(arg), arg)
     assert.equal(options.timeout, 120_000)
     assert.equal(options.maxBuffer, 16 * 1024 * 1024)
     return { stdout: JSON.stringify(clean()), status: 0 }

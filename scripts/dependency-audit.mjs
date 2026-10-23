@@ -42,7 +42,7 @@ export function parseReport(text) {
 export function audit(runner = spawnSync) {
   try {
     const result = runner('npm', ['audit', '--json', '--package-lock-only', '--ignore-scripts',
-      '--include=dev', '--include=optional', '--include=peer', '--audit-level=low',
+      '--include=dev', '--include=optional', '--include=peer', '--audit-level=info',
       '--registry=https://registry.npmjs.org'],
     { encoding: 'utf8', timeout: 120_000, maxBuffer: 16 * 1024 * 1024 })
     if (result.error || result.signal || ![0, 1].includes(result.status)) invalid()
