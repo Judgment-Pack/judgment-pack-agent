@@ -31,11 +31,11 @@
       }
     },
     "critic": {
-      "description": "The run's word on the critic (ADR-0010; the person's, from the host's per-run control): off, auto or on. It wins over the project's word (criticProject) and the policy table's (budget.json criticDefault). Absent, the run states none. adversarialReview is retired in v0.9.1 and refused on presence; use critic.",
+      "description": "The run's word on the critic (ADR-0010; the person's, from the host's per-run control): off, auto or on. It wins over the project's word (criticProject) and the policy table's (policy.critic.default). Absent, the run states none. adversarialReview is retired in v0.9.1 and refused on presence; use critic.",
       "$ref": "#/$defs/criticMode"
     },
     "criticProject": {
-      "description": "The project's word on the critic (ADR-0010), as the host passes it from the project's settings: off, auto or on. Read where the run states none; absent, the policy table's default (budget.json criticDefault) decides.",
+      "description": "The project's word on the critic (ADR-0010), as the host passes it from the project's settings: off, auto or on. Read where the run states none; absent, the policy table's default (policy.critic.default) decides.",
       "$ref": "#/$defs/criticMode"
     },
     "criticReasoning": {

@@ -67,7 +67,14 @@ rule.
    mutation table's `--check`, the parity run against the Desk, and the whitespace and path checks.
    The parity step needs a checkout of the Desk at the commit `scripts/parity.sh` names (`desk_pin`),
    which it reads from `JPDEV_DESK`. The runner is the devkit's, vendored (see the README).
-3. Merge the pull request.
+3. Include the latest `dependency-audit` run for the release candidate in release review, following
+   the [dependency advisory policy](security/dependency-policy.md). Record the candidate commit,
+   query time, coverage, result and every finding's disposition. Run the live check for that commit
+   (`DEPENDENCY_AUDIT_LIVE=1 scripts/dev/check.sh --only dependency-audit-live`) if there is no current
+   result. Unavailable evidence is not clean evidence. Review Go and Python dependencies separately,
+   since the npm audit does not cover them. Link explicit, unexpired maintainer approvals for any
+   reachability exceptions and reassess each before release; withdrawal is separate from remediation.
+4. Merge the pull request.
 
 ## Tag
 

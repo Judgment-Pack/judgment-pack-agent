@@ -46,9 +46,9 @@ record `{id, digest, source}`; model-supplied records are refused.
 
 The adapter assembles the child's prompt through ADR-0005's assembler, with the
 definition's instructions at the project block's rank. The child receives only the
-definition's tools and skills, with its own `skillsPerRun` count. It inherits none
-of the parent's loaded skills. Empty `skills` loads nothing. This closes ADR-0009's
-child-skills deferral.
+definition's tools and exactly its definition's skills, with its own `skillsPerRun` count.
+No child inherits the parent's loaded skills. An ad hoc delegated child is handed no
+skills. Empty `skills` loads nothing. This closes ADR-0009's child-skills deferral.
 
 The seven decided points are:
 
