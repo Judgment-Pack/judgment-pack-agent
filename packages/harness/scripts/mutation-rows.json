@@ -3614,7 +3614,7 @@
   {
    "name": "a load is not counted against skillsPerRun",
    "file": "skills.ts",
-   "find": "    if (row !== undefined) {row.skills = (row.skills ?? 0) + 1;this.commitSources(this.run.sources?.() ?? this.run.state().sources ?? [])}",
+   "find": "    if (row !== undefined) {row.skills = (row.skills ?? 0) + 1;this.commitSources(rows)}",
    "replace": "    void row",
    "tests": [
     "skills.test.ts",
