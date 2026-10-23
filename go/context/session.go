@@ -1111,7 +1111,9 @@ func (c *SessionContext) OpenSources(declared *Declared, catalogue bool, toolSch
 	if parent != nil {
 		c.Sources.publish = parent.publish
 	}
-	c.Sources.publish()
+	c.Sources.mu.Lock()
+	c.Sources.publishLocked()
+	c.Sources.mu.Unlock()
 	// ADR-0008: the run's approval, in the execution state; no act call is admitted in a delegated
 	// child, in Plan mode, while the critic reads or in the reformat run.
 	c.Sources.SetApprovals(approvalBook{c: c, child: parent != nil})

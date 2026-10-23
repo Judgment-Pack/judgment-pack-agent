@@ -21,7 +21,7 @@ export function mutateCheckpoint(target:ExecutionCheckpoint,patch:CheckpointPatc
  validate?.(structuredClone(candidate))
  if(canonicalJSON(candidate)===canonicalJSON(target))return false
  for(const key of Object.keys(target) as (keyof ExecutionCheckpoint)[])delete target[key]
- Object.assign(target,candidate)
+ Object.defineProperties(target,Object.getOwnPropertyDescriptors(candidate))
  revisions.set(target,(revisions.get(target)??0)+1)
  return true
 }

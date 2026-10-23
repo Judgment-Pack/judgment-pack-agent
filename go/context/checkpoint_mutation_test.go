@@ -242,3 +242,51 @@ func TestCheckpointReorderedObjectIsNoop(t *testing.T) {
 		t.Fatal("invalid increment committed")
 	}
 }
+
+func TestCheckpointSuccessfulValidatorCannotChangeCommittedCandidate(t *testing.T) {
+	c := &ExecutionController{}
+	c.MutateCheckpoint(CheckpointPatch{"Used": 1})
+	err := c.MutateCheckpoint(CheckpointPatch{"Used": 2}, func(candidate *Execution) error {
+		candidate.Used = 9
+		return nil
+	})
+	if err != nil || c.State().Used != 2 || c.CheckpointRevision() != 2 {
+		t.Fatalf("successful validator changed committed candidate: used=%d revision=%d error=%v", c.State().Used, c.CheckpointRevision(), err)
+	}
+}
+
+func TestCheckpointSourcePublicationHoldsOwnerLock(t *testing.T) {
+	policy := Defaults
+	declared := &Declared{Entries: map[string]*SourceEntry{}}
+	makeContext := func() *SessionContext {
+		execution := &ExecutionController{}
+		if err := execution.MutateCheckpoint(CheckpointPatch{"Used": 0}); err != nil {
+			t.Fatal(err)
+		}
+		return &SessionContext{Policy: &policy, Execution: execution, Marker: "source-publication"}
+	}
+	parent := makeContext()
+	parent.OpenSources(declared, false, "", nil)
+	start := make(chan struct{})
+	var group sync.WaitGroup
+	group.Add(2)
+	go func() {
+		defer group.Done()
+		<-start
+		for i := 0; i < 1200; i++ {
+			parent.Sources.RuntimeRefused()
+		}
+	}()
+	go func() {
+		defer group.Done()
+		<-start
+		for i := 0; i < 120; i++ {
+			makeContext().OpenSources(declared, false, "", parent.Sources)
+		}
+	}()
+	close(start)
+	group.Wait()
+	if rows := parent.Execution.State().Sources; len(rows) != 1 || rows[0].Refused != 1200 {
+		t.Fatalf("shared source publication lost counts: %+v", rows)
+	}
+}

@@ -1,30 +1,75 @@
 import {describe,it,expect} from 'vitest'
 import {join,resolve} from 'node:path'
-import {readFileSync,readdirSync,mkdtempSync,writeFileSync} from 'node:fs'
+import {readFileSync,readdirSync,mkdtempSync,mkdirSync,writeFileSync} from 'node:fs'
 import {tmpdir} from 'node:os'
 import {API,type Snapshot} from 'typescript/unstable/sync'
 import * as ts from 'typescript/unstable/ast'
-import {CHECKPOINT_MEMBERS,CheckpointIncrement,CheckpointMutation} from './mutation'
+import {CHECKPOINT_MEMBERS,CheckpointIncrement,CheckpointMutation,mutateCheckpoint} from './mutation'
 import type {ExecutionCheckpoint} from './state'
 
 const seed=():ExecutionCheckpoint=>({version:1,id:'mutation',requestKey:'a'.repeat(64),phase:'work',status:'running',unit:'model-requests',used:0,limit:20,grants:[],plan:[],explanation:'',operations:[],context:{scope:'mutation',entries:[]}})
 const files=(root:string):string[]=>readdirSync(root,{withFileTypes:true}).flatMap(entry=>entry.isDirectory()&&!['node_modules','dist','.git'].includes(entry.name)?files(join(root,entry.name)):entry.isFile()&&entry.name.endsWith('.ts')&&!entry.name.endsWith('.test.ts')?[join(root,entry.name)]:[])
-function checkpointWrites(paths:string[],snapshot:Snapshot):string[]{
+function checkpointWrites(paths:string[],snapshot:Snapshot,root=resolve(process.cwd())):string[]{
  const found:string[]=[]
  for(const path of paths){
-  if(path.endsWith('/execution/mutation.ts'))continue
+  if(path===join(root,'execution/mutation.ts'))continue
   const project=snapshot.getDefaultProjectForFile(path)??snapshot.getProjects()[0],file=project?.program?.getSourceFile(path),checker=project?.checker
   if(!file||!checker)continue
   const aggregate=(expression:ts.Expression):boolean=>{
    const type=checker.getTypeAtLocation(expression),member=type&&checker.getPropertyOfType(type,'requestKey')
    return member?.declarations.some(d=>d.resolve()?.getSourceFile().fileName.endsWith('/execution/state.ts'))??false
   }
+  // Follow member copies by symbol, retaining the first local book so unrelated reads
+  // or publication under a different member cannot excuse a lost detached edit.
+  type Origin={member:string,book:unknown}
+  const aliases=new Map<unknown,Origin>(),scopes=new Map<ts.Node,ts.Node>()
+  const origin=(expression:ts.Expression):Origin|undefined=>{
+   if(ts.isIdentifier(expression))return aliases.get(checker.getSymbolAtLocation(expression))
+   if(ts.isPropertyAccessExpression(expression)||ts.isElementAccessExpression(expression)){
+    if(aggregate(expression.expression))return {member:ts.isPropertyAccessExpression(expression)?expression.name.text:expression.argumentExpression?.getText(file).replace(/^['"]|['"]$/g,'')??'',book:undefined}
+    return origin(expression.expression)
+   }
+   if(ts.isNonNullExpression(expression)||ts.isAsExpression(expression)||ts.isParenthesizedExpression(expression))return origin(expression.expression)
+   if(ts.isBinaryExpression(expression)&&expression.operatorToken.kind===ts.SyntaxKind.QuestionQuestionToken)return origin(expression.left)??origin(expression.right)
+   if(ts.isCallExpression(expression)&&ts.isPropertyAccessExpression(expression.expression))return origin(expression.expression.expression)
+   return undefined
+  }
+  const collect=(node:ts.Node,scope:ts.Node,immediate=false)=>{
+   if(ts.isFunctionLikeDeclaration(node)&&!immediate)scope=node
+   scopes.set(node,scope)
+   if(ts.isVariableDeclaration(node)&&ts.isIdentifier(node.name)&&node.initializer){
+    const held=origin(node.initializer),symbol=checker.getSymbolAtLocation(node.name)
+    if(held&&symbol)aliases.set(symbol,{...held,book:held.book??symbol})
+   }
+   node.forEachChild(child=>collect(child,scope,ts.isCallExpression(node)&&ts.isPropertyAccessExpression(node.expression)&&checker.isArrayLikeType(checker.getTypeAtLocation(node.expression.expression)!)&&['map','forEach','filter','reduce'].includes(node.expression.name.text)&&node.arguments.includes(child as ts.Expression)))
+  };collect(file,file)
+  const publications:{scope:ts.Node|undefined,member:string,book:unknown,position:number}[]=[]
+  const publish=(node:ts.Node)=>{
+   if(ts.isCallExpression(node)){
+    const name=ts.isPropertyAccessExpression(node.expression)?node.expression.name.text:node.expression.getText(file)
+    const patch=node.arguments[name==='mutateCheckpoint'?1:0]
+    const symbol=checker.getSymbolAtLocation(node.expression)
+    const owner=symbol?.declarations.some(d=>{const source=d.resolve()?.getSourceFile().fileName;return source===join(root,'execution/mutation.ts')||source===join(root,'execution/controller.ts')||(name==='commitSources'&&source===join(root,'skills.ts'))})
+    if(owner&&name==='commitSources'&&patch){const held=origin(patch);if(held?.book&&held.member==='sources')publications.push({scope:scopes.get(node),member:'sources',book:held.book,position:node.getStart(file)})}
+    if(owner&&['mutate','apply','mutateCheckpoint'].includes(name)&&patch&&ts.isObjectLiteralExpression(patch))for(const property of patch.properties){
+     if(!ts.isShorthandPropertyAssignment(property)&&!ts.isPropertyAssignment(property))continue
+     const held=ts.isShorthandPropertyAssignment(property)?aliases.get(checker.getShorthandAssignmentValueSymbol(property)):origin(property.initializer)
+     const member=property.name.getText(file).replace(/^['"]|['"]$/g,'')
+     if(held?.book)publications.push({scope:scopes.get(node),member,book:held.book,position:node.getStart(file)})
+    }
+   }
+   node.forEachChild(publish)
+  };publish(file)
   const rooted=(expression:ts.Expression):boolean=>{
    if(aggregate(expression))return true
    if(ts.isPropertyAccessExpression(expression)||ts.isElementAccessExpression(expression)||ts.isNonNullExpression(expression)||ts.isAsExpression(expression)||ts.isParenthesizedExpression(expression))return rooted(expression.expression)
    return false
   }
-  const record=(expression:ts.Expression)=>{if(rooted(expression))found.push(`${path}:${file.getLineAndCharacterOfPosition(expression.getStart(file)).line+1}`)}
+  const record=(expression:ts.Expression)=>{
+   const held=origin(expression)
+   const committed=held?.book&&publications.some(p=>p.scope===scopes.get(expression)&&p.member===held.member&&p.book===held.book&&p.position>expression.getStart(file))
+   if(rooted(expression)||(held&&!committed))found.push(`${path}:${file.getLineAndCharacterOfPosition(expression.getStart(file)).line+1}`)
+  }
   const visit=(node:ts.Node)=>{
    if(ts.isBinaryExpression(node)&&node.operatorToken.kind>=ts.SyntaxKind.FirstAssignment&&node.operatorToken.kind<=ts.SyntaxKind.LastAssignment)record(node.left)
    if(ts.isDeleteExpression(node))record(node.expression)
@@ -58,10 +103,16 @@ describe('canonical checkpoint mutation',()=>{
   store.apply({reason:''});expect(Object.hasOwn(store.read(),'reason')).toBe(true)
   store.apply({reason:undefined});expect(Object.hasOwn(store.read(),'reason')).toBe(false)
  })
+ it('isolates a successful validator from the candidate that is committed',()=>{
+  const store=new CheckpointMutation(seed())
+  store.apply({used:2},candidate=>{candidate.used=9})
+  expect(store.read().used).toBe(2)
+  expect(store.revision).toBe(2)
+ })
  it('keeps every production aggregate writer behind the API',()=>{
   const root=process.env.JP_CHECKPOINT_GUARD_ROOT?join(process.env.JP_CHECKPOINT_GUARD_ROOT,'packages/harness'):resolve(process.cwd())
   const paths=files(root),api=new API({cwd:process.cwd()}),snapshot=api.updateSnapshot({openFiles:paths})
-  try{expect(checkpointWrites(paths,snapshot)).toEqual([])}finally{snapshot.dispose();api.close()}
+  try{expect(checkpointWrites(paths,snapshot,root)).toEqual([])}finally{snapshot.dispose();api.close()}
  })
  it('catches a newly introduced writer, aliases, computed members and nested writes',()=>{
   const directory=mkdtempSync(join(tmpdir(),'checkpoint-guard-')),path=join(directory,'new-writer.ts')
@@ -71,11 +122,29 @@ export function newWriter(state:ExecutionCheckpoint){
  const alias=state;alias['testCalls']=1
  state.context.entries.push({} as never)
  state.approval!.state='answered'
+ const approval=state.approval!;approval.state='answered'
+ const context=state.context;context.scope='lost'
+ const operations=state.operations;operations.push({} as never)
  const unrelated={reason:''};unrelated.reason='allowed'
 }`)
   const api=new API({cwd:process.cwd()}),snapshot=api.updateSnapshot({openFiles:[path]})
-  try{expect(checkpointWrites([path],snapshot)).toHaveLength(4)}finally{snapshot.dispose();api.close()}
+  try{expect(checkpointWrites([path],snapshot)).toHaveLength(7)}finally{snapshot.dispose();api.close()}
  })
+ it('allows a member copy only when its own book is explicitly published under that member',()=>{
+  const directory=mkdtempSync(join(tmpdir(),'checkpoint-publication-')),path=join(directory,'execution','mutation.ts')
+  mkdirSync(join(directory,'execution'))
+  writeFileSync(path,`import {ExecutionController} from ${JSON.stringify(join(resolve(process.cwd()),'execution/controller'))}
+export function committed(c:ExecutionController){const approval=c.state.approval!;approval.state='answered';c.mutate({approval})}
+export function wrongMember(c:ExecutionController){const approval=c.state.approval!;approval.state='answered';c.mutate({critic:approval as never})}
+export function otherBook(c:ExecutionController){const approval=c.state.approval!;approval.state='answered';const other=c.state.approval;c.mutate({approval:other})}
+export function otherScope(c:ExecutionController){const approval=c.state.approval!;approval.state='answered';const later=()=>c.mutate({approval});void later}
+export function tooEarly(c:ExecutionController){const approval=c.state.approval!;c.mutate({approval});approval.state='answered'}
+export function committedArray(c:ExecutionController){const operations=c.state.operations;operations.forEach(operation=>{operation.status='complete'});c.mutate({operations})}
+`)
+  const api=new API({cwd:process.cwd()}),snapshot=api.updateSnapshot({openFiles:[path]})
+  try{expect(checkpointWrites([path],snapshot)).toEqual([3,4,5,6].map(line=>`${path}:${line}`))}finally{snapshot.dispose();api.close()}
+ })
+
 })
 
 import {ExecutionController} from './controller'
@@ -159,3 +228,24 @@ it('applies concurrent counter producers at the canonical boundary',async()=>{co
 it('carries validated open members without admitting new unknown patch members',async()=>{const saved={...memberSeed(),opaque:{nested:[null,false,0]}};const controller=await memberController(saved);expect((controller.state as any).opaque).toEqual(saved.opaque);expect(()=>controller.mutate({newOpaque:1} as never)).toThrow(/Unknown checkpoint member/)})
 
 it('detaches the validated initial checkpoint',()=>{const initial=seed(),store=new CheckpointMutation(initial);initial.context.scope='changed';expect(store.read().context.scope).toBe('mutation')})
+
+describe('accepted opaque checkpoint members',()=>{
+ it('preserves an own __proto__ member as serialized data through unrelated patches',()=>{
+  const fixture=memberSeed()
+  delete fixture.policy;delete fixture.completions
+  Object.defineProperty(fixture,'__proto__',{value:{probe:'opaque'},enumerable:true,writable:true,configurable:true})
+  const accepted=readExecution(JSON.parse(JSON.stringify(fixture)))!
+  expect(Object.hasOwn(accepted,'__proto__')).toBe(true)
+  const store=new CheckpointMutation(accepted),target=structuredClone(accepted)
+  const prototype=Object.getPrototypeOf(target)
+  store.apply({explanation:'unrelated'})
+  mutateCheckpoint(target,{explanation:'unrelated'})
+  for(const value of [store.read(),target]){
+   expect(Object.hasOwn(value,'__proto__')).toBe(true)
+   expect(JSON.parse(JSON.stringify(value))['__proto__']).toEqual({probe:'opaque'})
+   expect(Object.getPrototypeOf(value)).toBe(prototype)
+   expect((value as any).probe).toBeUndefined()
+  }
+  expect(store.revision).toBe(2)
+ })
+})
