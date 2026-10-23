@@ -60,7 +60,7 @@
     "@langchain/langgraph": "1.4.19",
     "@langchain/langgraph-checkpoint": "1.1.5",
     "@langchain/langgraph-sdk": "1.12.1",
-    "@modelcontextprotocol/sdk": "1.30.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "ai": "7.0.129",
     "deepagents": "1.14.1",
     "langchain": "1.5.15",
@@ -71,10 +71,10 @@
     "@babel/parser": "7.29.9",
     "@jridgewell/sourcemap-codec": "1.6.0",
     "@types/node": "26.2.0",
-    "esbuild": "0.28.0",
+    "esbuild": "0.28.2",
     "jsdom": "30.1.1",
     "typescript": "7.0.2",
-    "vite": "8.2.2",
+    "vite": "8.2.4",
     "vitest": "5.0.3"
   },
   "engines": {
