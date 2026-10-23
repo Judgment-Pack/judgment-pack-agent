@@ -1094,7 +1094,7 @@ export function runDeepAgentsLoop(session: RequestAssistantSession, id: Assistan
         const cause = unwrapped(thrown)
         if (awaitingInput) return
         if (overTime && !gate.signal.aborted) {
-          context.execution.state.reason = `${turnTimeFailure().message} Completed work is kept. Continuing takes a grant of more requests, so a run already at the ${MAX_REQUEST_ALLOWANCE}-request limit cannot be continued; start a new response instead.`
+          context.execution.mutate({reason:`${turnTimeFailure().message} Completed work is kept. Continuing takes a grant of more requests, so a run already at the ${MAX_REQUEST_ALLOWANCE}-request limit cannot be continued; start a new response instead.`})
           throw new ExecutionPaused()
         }
         const refusal = refusalOf(cause)

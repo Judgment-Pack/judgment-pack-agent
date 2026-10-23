@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 )
 
@@ -142,7 +143,7 @@ func (c *coordinator) withFigures(checkpoint contract.Checkpoint) contract.Check
 		parent.ModelRequests = &held
 		parent.Tokens = tokenFigures(checkpoint.Completions)
 	}
-	checkpoint.Delegation = &contract.ProvenanceDelegationReport{Batches: batches, Parent: parent}
+	checkpoint, _, _ = runcontext.MutateCheckpoint(checkpoint, runcontext.CheckpointPatch{"Delegation": &contract.ProvenanceDelegationReport{Batches: batches, Parent: parent}})
 	return checkpoint
 }
 
@@ -150,6 +151,6 @@ func (c *coordinator) withFigures(checkpoint contract.Checkpoint) contract.Check
 // an agent capability, the handoff in progress.
 func (c *coordinator) decorate(checkpoint contract.Checkpoint) contract.Checkpoint {
 	checkpoint = c.withFigures(checkpoint)
-	checkpoint.Handoff = c.handoffRecord()
+	checkpoint, _, _ = runcontext.MutateCheckpoint(checkpoint, runcontext.CheckpointPatch{"Handoff": c.handoffRecord()})
 	return checkpoint
 }

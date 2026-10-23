@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/eino"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/certification"
 	runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
@@ -340,5 +341,36 @@ func TestTheRunCarriesOnlyTheAdapterHandle(t *testing.T) {
 	}
 	if field, ok := run.FieldByName("Gate"); !ok || field.Type != reflect.TypeOf(&gate.Calls{}) {
 		t.Fatal("Run.Gate is not the adapter's handle")
+	}
+}
+
+// The capacity probe must report insufficient concurrency rather than waiting forever for its
+// first wave. The coordinator deliberately receives two slots while the probe requires three.
+func TestCapacityProbeRejectsInsufficientConcurrency(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	limited := func(inner certification.Adapter) certification.Adapter {
+		return certification.AdapterFunc(func(ctx context.Context, run *certification.Run) error {
+			run.Models = func() (runcontext.RunModels, error) {
+				capacity := 2
+				return runcontext.RunModels{ConcurrentRequests: &capacity}, nil
+			}
+			return withDelegation(inner).Run(ctx, run)
+		})
+	}
+	findings, err := certification.CapacityAt(limited, 3).Run(ctx, server, "stream", eino.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ctx.Err() != nil {
+		t.Fatal("the capacity probe did not finish its own bounded wait")
+	}
+	wave, peak := false, false
+	for _, finding := range findings {
+		wave = wave || strings.Contains(finding.Detail, "first wave")
+		peak = peak || strings.Contains(finding.Detail, "at most 2 at once")
+	}
+	if !wave || !peak {
+		t.Fatalf("insufficient concurrency escaped the bounded capacity probe: %v", findings)
 	}
 }

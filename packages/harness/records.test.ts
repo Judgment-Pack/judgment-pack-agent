@@ -77,7 +77,7 @@ it('continues after refusing a whole checkpoint and critique at the store bounda
  const events:AssistantEvent[]=[]
  const session={prompt:'Review',testPrompt:'',tools:[],hostTools:[],callTool:async()=>answer({}),signal:new AbortController().signal,allowConversation:true,interactive:true,critic:'off' as const,context:{currentRequest:{message:'Review',input:'Review'}},agent:{model:'fixture',run:async()=>{}}}
  for await(const event of managedContext(session,async function*(ready){
-  contextOf(ready).execution.state.explanation='x'.repeat(200000)
+  contextOf(ready).execution.mutate({explanation:'x'.repeat(200000)})
   yield {type:'tool_result' as const,name:'fixture',text:'Exempt.',isError:false}
   yield {type:'critique' as const,refuted:false,checks:[],text:'x'.repeat(200000)}
   yield {type:'message' as const,text:'Continued.'}

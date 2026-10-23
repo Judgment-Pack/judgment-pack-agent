@@ -97,6 +97,7 @@ type OutputGuard struct {
 	patterns      []outputCompiled
 	emittedLabels map[string]bool
 	counts        func() map[string]int64
+	publish       func(map[string]int64)
 	notices       []contract.RunEvent
 }
 
@@ -160,6 +161,9 @@ func (g *OutputGuard) record(where, name, action string, record bool, markers ..
 		return
 	}
 	g.counts()[name]++
+	if g.publish != nil {
+		g.publish(g.counts())
+	}
 	g.notices = append(g.notices, contract.RunEvent{OutputGuarded: &contract.RunEventOutputGuarded{Type: "output_guarded", Where: where, Pattern: name, Action: action}})
 }
 func (g *OutputGuard) refuse(where, name string, _ bool, markers ...*RecordMarker) error {
@@ -368,4 +372,11 @@ func (g *OutputGuard) Counts() map[string]int64 {
 }
 
 // Adopt records one already-guarded child event in the parent's report.
-func (g *OutputGuard) Adopt(pattern string) { g.mu.Lock(); defer g.mu.Unlock(); g.counts()[pattern]++ }
+func (g *OutputGuard) Adopt(pattern string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.counts()[pattern]++
+	if g.publish != nil {
+		g.publish(g.counts())
+	}
+}

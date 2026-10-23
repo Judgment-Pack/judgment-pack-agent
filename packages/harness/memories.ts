@@ -1,3 +1,4 @@
+import {mutateCheckpoint,type CheckpointPatch} from './execution/mutation'
 /** ADR-0014: proposals are run records; acceptance and storage belong to the host. */
 import { contextDigest, answer } from './context/ledger'
 import { canonicalJSON } from './context/chat'
@@ -66,8 +67,8 @@ export async function recallMemory(value: unknown, bound: number, marker: string
   const text = accepted.map(m => frameBlock('memory', `kind: ${m.kind}\nsource: ${canonicalJSON(m.source)}\nid: ${JSON.stringify(m.id)}\n${m.text}`, marker)).join('\n\n')
   return { ...(text ? { text } : {}), rows: accepted.map(({id,digest,kind,state})=>({id,digest,kind,state})), records, bytes }
 }
-export function recordRecall(checkpoint: ExecutionCheckpoint, recall: Awaited<ReturnType<typeof recallMemory>>): void {
-  const book = checkpoint.memories ??= { proposed: [], recalled: [] }
+export function recordRecall(checkpoint: ExecutionCheckpoint, recall: Awaited<ReturnType<typeof recallMemory>>,write:(patch:CheckpointPatch)=>void=patch=>{mutateCheckpoint(checkpoint,patch)}): void {
+  const book = structuredClone(checkpoint.memories ?? { proposed: [], recalled: [] })
   for (const previous of book.recalled) {
     const current = recall.records.find(m=>m.id === previous.id)
     if (current && current.state !== 'accepted') previous.state = current.state
@@ -79,17 +80,19 @@ export function recordRecall(checkpoint: ExecutionCheckpoint, recall: Awaited<Re
     else book.recalled.push(row)
   }
   if (book.recalled.length > 256) throw authoredFailure('configuration','The recalled memory report is full.','context')
+  write({memories:book})
 }
-export function rememberTool(checkpoint: () => ExecutionCheckpoint, policy: ContextPolicy, refused: (detail: string) => Error, notify: (event: AssistantEvent) => void): HostTool {
+export function rememberTool(checkpoint: () => ExecutionCheckpoint, policy: ContextPolicy, refused: (detail: string) => Error, notify: (event: AssistantEvent) => void,write:(patch:CheckpointPatch)=>void=patch=>{mutateCheckpoint(checkpoint(),patch)}): HostTool {
   return { name: REMEMBER, description: 'Propose a memory for the person to accept or decline. This records a proposal only; nothing is stored or accepted.', inputSchema: REMEMBER_SCHEMA, effect: 'plan',
     async execute(args) {
       if (!exact(args,['kind','text']) || !kind(args.kind) || typeof args.text !== 'string' || args.text.length === 0 || utf8Bytes(args.text) > policy.memoryProposalBytes) throw refused('Memory proposal has an invalid kind, text or byte bound.')
       const hash = `sha256:${await contextDigest(args.text)}`
       const saved = checkpoint()
-      const book = saved.memories ??= { proposed: [], recalled: [] }
+      const book = structuredClone(saved.memories ?? { proposed: [], recalled: [] })
       if (book.proposed.length >= policy.memoryProposalsPerRun) throw refused('Memory proposals exceed memoryProposalsPerRun.')
       const memory: Memory = { id: crypto.randomUUID(), kind: args.kind as Memory['kind'], text: args.text, source: {run:saved.id,proposedBy:'model'}, scope:'project',digest:hash,createdAt:new Date().toISOString(),state:'proposed' }
       book.proposed.push(memory)
+      write({memories:book})
       notify({ type:'memory_proposed',memory:structuredClone(memory) })
       return answer({ proposed: memory.id, state:'proposed' })
     }

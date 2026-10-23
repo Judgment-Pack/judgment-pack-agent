@@ -1,3 +1,4 @@
+import {CheckpointIncrement,CheckpointMutation,mutateCheckpoint,type CheckpointPatch} from './mutation'
 import {ExecutionProgressTracker} from './progress'
 import type {ContextToolPolicy} from '../context/toolPolicy'
 import {authoredFailure,toolInputFailure} from '../failures'
@@ -17,7 +18,10 @@ export interface ToolAllowance {used:number;limit:number;scope:'response'|'task'
 
 export class ExecutionController {
  readonly progress=new ExecutionProgressTracker()
- state!:ExecutionCheckpoint
+ private checkpoint=new CheckpointMutation()
+ get state():ExecutionCheckpoint{return this.checkpoint.read()}
+ get revision(){return this.checkpoint.revision}
+ mutate(patch:CheckpointPatch){return this.checkpoint.apply(patch)}
  pauseRequested=false
  /**
   * agent#13: the tool-call cap this run works under, where a delegation coordinator holds one (set
@@ -71,25 +75,25 @@ export class ExecutionController {
    if(restored.unit!==('model'in this.session?'model-requests':'provider-managed'))throw toolInputFailure('Continue this response with the same connection type, or start a new response.')
    await this.ledger.restore(restored.context)
    this.progress.seed(restored.operations)
-   this.state={...restored,operations:restored.operations.map(op=>op.status==='running'?{...op,status:'interrupted'}:op),status:'running'}
+   this.checkpoint=new CheckpointMutation({...restored,operations:restored.operations.map(op=>op.status==='running'?{...op,status:'interrupted'}:op),status:'running'})
    for(const source of this.state.sources??[])this.usageSources.set(source.source,{calls:source.calls,milliseconds:source.milliseconds,bytes:source.bytes})
    this.restored=true
    const approval=this.state.approval
    if(approval?.state==='asked'){
     const decidedAt=new Date().toISOString()
-    this.state.approval=decision!.approved
+    this.mutate({approval:decision!.approved
      ?{...approval,state:'approved',decidedAt,...(decision!.note===undefined?{}:{note:decision!.note})}
-     :{...approval,state:'refused',decidedAt,...(decision!.note===undefined?{}:{note:decision!.note}),result:refusedResult(approval.name)}
+     :{...approval,state:'refused',decidedAt,...(decision!.note===undefined?{}:{note:decision!.note}),result:refusedResult(approval.name)}})
     this.approvalStep=decision!.approved?'execute':'write'
    }else if(approval?.state==='approved'){
     // Approved, and its result never written: it may have run, and it is not run again.
-    this.state.approval={...approval,state:'executed',result:unknownOutcome(approval.name)}
+    this.mutate({approval:{...approval,state:'executed',result:unknownOutcome(approval.name)}})
     this.approvalStep='write'
    }else if(approval?.state==='executed'||approval?.state==='refused')this.approvalStep='continue'
   }else{
-   this.state={version:1,id:crypto.randomUUID(),requestKey,phase:this.session.context?.phase??'work',status:'running',unit:'model'in this.session?'model-requests':'provider-managed',used:0,limit:'model'in this.session?MAX_TURNS:1,grants:[],plan:[],explanation:'',operations:[],context:{scope:this.ledger.scope,entries:[]}}
+   this.mutate({version:1,id:crypto.randomUUID(),requestKey,phase:this.session.context?.phase??'work',status:'running',unit:'model'in this.session?'model-requests':'provider-managed',used:0,limit:'model'in this.session?MAX_TURNS:1,grants:[],plan:[],explanation:'',operations:[],context:{scope:this.ledger.scope,entries:[]}})
    const plan=this.session.context?.plan
-   if(plan&&['accepted','started'].includes(plan.status))this.state.plan=plan.steps.map(step=>({step,status:'pending'}))
+   if(plan&&['accepted','started'].includes(plan.status))this.mutate({plan:plan.steps.map(step=>({step,status:'pending'}))})
   }
  }
  get remaining(){return this.state.limit-this.state.used}
@@ -99,40 +103,41 @@ export class ExecutionController {
   if(this.usageBound&&(connection!==this.usageConnection||role!==this.usageRole||model!==this.usageModel)){this.recordUsageElapsed();this.recordSourceUsage()}
   if(!this.usageBound)this.usageStarted=Date.now()
   this.usageConnection=connection;this.usageRole=role;this.usageModel=model;this.usageBound=true
-  this.usageRow(this.state.unit==='provider-managed'?'agent':'model',connection,role)
+  const usage=this.state.usage??{rows:[]};this.usageRow(usage,this.state.unit==='provider-managed'?'agent':'model',connection,role);this.mutate({usage})
  }
  private recordUsageElapsed(){
-  const row=this.usageRow(this.state.unit==='provider-managed'?'agent':'model')
+  const usage=this.state.usage??{rows:[]},row=this.usageRow(usage,this.state.unit==='provider-managed'?'agent':'model')
   const now=Date.now();row.milliseconds+=Math.max(0,now-this.usageStarted);this.usageStarted=now
+  this.mutate({usage})
  }
  private recordSourceUsage(){
   if(!this.usageBound)return
   for(const source of this.state.sources??[]){
    const before=this.usageSources.get(source.source)??{calls:0,milliseconds:0,bytes:0}
    const calls=Math.max(0,source.calls-before.calls),milliseconds=Math.max(0,source.milliseconds-before.milliseconds),bytes=Math.max(0,source.bytes-before.bytes)
-   if(calls||milliseconds||bytes){const row=this.usageRow(source.source);row.invocations+=calls;row.milliseconds+=milliseconds;row.bytes+=bytes}
+   if(calls||milliseconds||bytes){const usage=this.state.usage??{rows:[]},row=this.usageRow(usage,source.source);row.invocations+=calls;row.milliseconds+=milliseconds;row.bytes+=bytes;this.mutate({usage})}
    this.usageSources.set(source.source,{calls:source.calls,milliseconds:source.milliseconds,bytes:source.bytes})
   }
  }
- private usageRow(source:string,connection=this.usageConnection,role=this.usageRole){
-  this.state.usage??={rows:[]}
+ private usageRow(usage:import('./state').UsageLedger,source:string,connection=this.usageConnection,role=this.usageRole){
   const model=source==='model'||source==='agent'?this.usageModel:undefined
-  let row=this.state.usage.rows.find(row=>row.source===source&&row.connection===connection&&row.role===role&&row.model===model)
-  if(!row){row={source,connection,role,requests:0,invocations:0,milliseconds:0,bytes:0};if(model)row.model=model;this.state.usage.rows.push(row)}
+  let row=usage.rows.find(row=>row.source===source&&row.connection===connection&&row.role===role&&row.model===model)
+  if(!row){row={source,connection,role,requests:0,invocations:0,milliseconds:0,bytes:0};if(model)row.model=model;usage.rows.push(row)}
   return row
  }
- mergeChildUsage(id:string,usage:import('./state').UsageLedger,role:string){
-  this.state.childUsage??=[]
-  const previous=this.state.childUsage.find(row=>row.id===id)
-  const next={rows:usage.rows.filter(row=>row.source==='model'||row.source==='agent').map(row=>({...structuredClone(row),role}))}
-  this.state.usage??={rows:[]}
+ mergeChildUsage(id:string,incomingUsage:import('./state').UsageLedger,role:string){
+  const childUsage=this.state.childUsage??[]
+  const previous=childUsage.find(row=>row.id===id)
+  const next={rows:incomingUsage.rows.filter(row=>row.source==='model'||row.source==='agent').map(row=>({...structuredClone(row),role}))}
+  const usage=this.state.usage??{rows:[]}
   for(const [ledger,sign] of [[previous?.usage,-1],[next,1]] as const)for(const incoming of ledger?.rows??[]){
-   let row=this.state.usage.rows.find(row=>row.source===incoming.source&&row.connection===incoming.connection&&row.role===incoming.role&&row.model===incoming.model)
-   if(!row){row={...incoming,requests:0,invocations:0,milliseconds:0,bytes:0};delete row.tokens;this.state.usage.rows.push(row)}
+   let row=usage.rows.find(row=>row.source===incoming.source&&row.connection===incoming.connection&&row.role===incoming.role&&row.model===incoming.model)
+   if(!row){row={...incoming,requests:0,invocations:0,milliseconds:0,bytes:0};delete row.tokens;usage.rows.push(row)}
    for(const key of ['requests','invocations','milliseconds','bytes'] as const)row[key]+=sign*incoming[key]
    for(const key of Object.keys(incoming.tokens??{}) as (keyof import('./state').UsageTokens)[]){row.tokens??={};row.tokens[key]=(row.tokens[key]??0)+sign*incoming.tokens![key]!}
   }
-  if(previous)previous.usage=next;else this.state.childUsage.push({id,usage:next})
+  if(previous)previous.usage=next;else childUsage.push({id,usage:next})
+  this.mutate({usage,childUsage})
  }
  usage():import('./state').UsageLedger{
   if(this.usageBound)this.recordUsageElapsed()
@@ -144,7 +149,7 @@ export class ExecutionController {
  /** ADR-0021: accept host input into the checkpointed queue, without placing it in a request. */
  queueSteers(input:import('../engine').EngineInput[]|undefined,bounds:{steerBytes:number;steersPerRun:number}){
   const events:import('../engine').AssistantEvent[]=[]
-  this.state.steers??={queued:[],delivered:[]}
+  const steers=this.state.steers??{queued:[],delivered:[]}
   while(input?.length){
    const value=input.shift() as unknown
    const steer=typeof value==='object'&&value!==null?(value as {steer?:unknown}).steer:undefined
@@ -154,9 +159,10 @@ export class ExecutionController {
    if(this.approvalAsked){refuse('A steer is refused while this run waits for the person’s approval decision.');continue}
    if(typeof text!=='string'||text.length===0){refuse('A steer must carry non-empty text.');continue}
    if(bytes>bounds.steerBytes){refuse(`A steer is larger than the ${bounds.steerBytes} byte limit.`);continue}
-   if(this.state.steers.queued.length+this.state.steers.delivered.length>=bounds.steersPerRun){refuse(`This run already accepted its ${bounds.steersPerRun} steers.`);continue}
-   this.state.steers.queued.push({text,bytes})
+   if(steers.queued.length+steers.delivered.length>=bounds.steersPerRun){refuse(`This run already accepted its ${bounds.steersPerRun} steers.`);continue}
+   steers.queued.push({text,bytes})
   }
+  this.mutate({steers})
   return events
  }
  /** ADR-0021: deliver the checkpointed queue only at this request boundary. */
@@ -169,15 +175,16 @@ export class ExecutionController {
    events.push({type:'steered',bytes:row.bytes,atRequest})
    return frameBlock("the person's new instruction",row.text,marker)
   })
+  this.mutate({steers:report})
   return {text:blocks.join('\n\n'),events}
  }
- claim(){if(this.remaining<=0)throw new ExecutionPaused();this.state.used++;this.usageRow('model').requests++}
+ claim(){if(this.remaining<=0)throw new ExecutionPaused();const usage=this.state.usage??{rows:[]};this.usageRow(usage,'model').requests++;this.mutate({used:new CheckpointIncrement(1),usage})}
  /**
   * A first allowance below MAX_TURNS, for a delegated child (agent#15): its profile's request budget,
   * held further to what the response's shared allowance can still give it, so its loop plans its
   * final answer within what it may spend. A restored execution keeps its own.
   */
- limitTo(requests:number){if(!this.restored)this.state.limit=Math.max(1,Math.min(this.state.limit,Math.floor(requests)))}
+ limitTo(requests:number){if(!this.restored)this.mutate({limit:Math.max(1,Math.min(this.state.limit,Math.floor(requests)))})}
  /** The instructions and the state together, as an agent's prompt carries them. */
  guidance(){return EXECUTION_INSTRUCTIONS+'\n'+this.requestState()}
  /** The part of the guidance that changes between requests: the repetition note, the request
@@ -200,20 +207,22 @@ export class ExecutionController {
   if(event.type==='tool_call'){
    const id=crypto.randomUUID()
    if(event.callId)this.inFlight.set(event.callId,id)
-   this.state.operations.push({id,name:event.name,args:structuredClone(event.args??{}),status:'running'})
+   this.mutate({operations:[...this.state.operations,{id,name:event.name,args:structuredClone(event.args??{}),status:'running'}]})
   }
   if(event.type==='tool_result'){
-   const op=event.callId?this.state.operations.find(o=>o.id===this.inFlight.get(event.callId!)):[...this.state.operations].reverse().find(o=>o.name===event.name&&o.status==='running')
-   if(op){op.status=event.isError?'failed':'complete';op.result={isError:event.isError,content:[{type:'text',text:event.text}],...(event.structured===undefined?{}:{structuredContent:structuredClone(event.structured)})};if(event.callId)this.inFlight.delete(event.callId);this.progress.observe(op)}
+   const operations=this.state.operations
+   const op=event.callId?operations.find(o=>o.id===this.inFlight.get(event.callId!)):[...operations].reverse().find(o=>o.name===event.name&&o.status==='running')
+   if(op){op.status=event.isError?'failed':'complete';op.result={isError:event.isError,content:[{type:'text',text:event.text}],...(event.structured===undefined?{}:{structuredContent:structuredClone(event.structured)})};if(event.callId)this.inFlight.delete(event.callId);this.progress.observe(op);this.mutate({operations})}
   }
  }
  recordCompletion(result:import('../completion').ModelCompletion,phase:'work'|'synthesis'|'review'){
   const attempt=this.attempt;this.attempt=1
   const completion=writeRecord(PROVENANCE_SCHEMA,{request:this.state.used,phase,result,connection:this.usageConnection,role:this.usageRole,...(attempt>1?{attempt}:{})},this.recordPolicy,this.recordGuard?.())
-  this.state.completions=[...(this.state.completions??[]),completion]
-  const row=this.usageRow('model')
+  this.mutate({completions:[...(this.state.completions??[]),completion]})
+  const usage=this.state.usage??{rows:[]},row=this.usageRow(usage,'model')
   const entries=Object.entries(result).filter(([key,value])=>key.endsWith('Tokens')&&typeof value==='number') as [keyof import('./state').UsageTokens,number][]
   if(entries.length){row.tokens??={};for(const [key,value] of entries)row.tokens[key]=(row.tokens[key]??0)+value}
+  this.mutate({usage})
  }
  /**
   * ADR-0005: the digest of one request body the adapter is about to send, recorded before it is
@@ -223,20 +232,21 @@ export class ExecutionController {
  async recordPrompt(body:string){
   // ADR-0008: the continuation request carries the approval's result; once it is sent, the approval is answered.
   const approval=this.state.approval
-  if(approval&&(approval.state==='executed'||approval.state==='refused'))this.state.approval={...approval,state:'answered'}
+  if(approval&&(approval.state==='executed'||approval.state==='refused'))this.mutate({approval:{...approval,state:'answered'}})
   const sha256=await contextDigest(body)
   const prompts=this.state.prompts??[]
-  this.state.prompts=[...prompts,{request:(prompts.at(-1)?.request??0)+1,sha256}].slice(-MAX_PROMPT_DIGESTS)
-  const source=this.state.unit==='provider-managed'?'agent':'model',row=this.usageRow(source)
+  this.mutate({prompts:[...prompts,{request:(prompts.at(-1)?.request??0)+1,sha256}].slice(-MAX_PROMPT_DIGESTS)})
+  const usage=this.state.usage??{rows:[]},source=this.state.unit==='provider-managed'?'agent':'model',row=this.usageRow(usage,source)
   row.bytes+=utf8Bytes(body)
   if(source==='agent')row.invocations++
+  this.mutate({usage})
  }
  /** Which attempt at a model request is being sent, said before each one, so a new call starts again at 1. */
  beginAttempt(attempt:number){this.attempt=attempt}
  /** A refused attempt at a model request: its own row. */
  recordRefusal(phase:'work'|'synthesis'|'review',refused:{attempt:number;failure:import('../failures').AIFailure;waitMs?:number}){
   const row=writeRecord(PROVENANCE_SCHEMA,{request:this.state.used,phase,result:{finishReason:'error' as const},connection:this.usageConnection,role:this.usageRole,...refused},this.recordPolicy,this.recordGuard?.())
-  this.state.completions=[...(this.state.completions??[]),row]
+  this.mutate({completions:[...(this.state.completions??[]),row]})
  }
  recordCritique(event:Extract<AssistantEvent,{type:'critique'}>):Extract<AssistantEvent,{type:'critique'}>{
   const {schema:_,version:__,digest:___,retainUntil:____,...payload}=event
@@ -277,7 +287,7 @@ export class ExecutionController {
   return {name:'update_plan',effect:'plan',description:'Track this task’s execution progress. Use for multi-stage work, not simple answers. This does not approve a plan, increase limits, save artifacts or prove success. Keep completed steps and explain material changes. At most one step is in progress.',inputSchema:{type:'object',properties:{explanation:{type:'string',maxLength:2000},plan:{type:'array',minItems:1,maxItems:20,items:{type:'object',properties:{step:{type:'string',maxLength:1000},status:{type:'string',enum:['pending','in_progress','completed']},detail:{type:'string',maxLength:1500}},required:['step','status'],additionalProperties:false}}},required:['explanation','plan'],additionalProperties:false},execute:async(args,signal)=>{
    signal.throwIfAborted()
    if(!validTaskSteps(args.plan)||typeof args.explanation!=='string'||args.explanation.length>2000)throw toolInputFailure('Provide one to twenty task steps, at most one in progress, and a short explanation.')
-   this.state.plan=structuredClone(args.plan);this.state.explanation=args.explanation
+   this.mutate({plan:args.plan,explanation:args.explanation})
    return answer({status:'progress-recorded',plan:this.state.plan,...(this.state.unit==='model-requests'?{remaining:this.remaining}:{budget:'provider-managed'}),permissionsUnchanged:true})
   }}
  }
@@ -287,16 +297,16 @@ export class ExecutionController {
    if(typeof args.reason!=='string'||!args.reason.trim()||args.reason.length>1000||typeof args.nextStep!=='string'||!args.nextStep.trim()||args.nextStep.length>900)throw toolInputFailure('Explain why more requests are needed and the next concrete step.')
    if(this.state.unit!=='model-requests')return answer({status:'unavailable',message:'The subscription agent owns its internal request budget. Return findings or ask for missing information.'})
    if(this.remaining>2)return answer({status:'within-allowance',remaining:this.remaining,message:'Continue useful work within the current allowance. Do not ask for an increase yet.'})
-   this.state.reason=args.reason+' Next: '+args.nextStep;this.pauseRequested=true
+   this.mutate({reason:args.reason+' Next: '+args.nextStep});this.pauseRequested=true
    return answer({status:'approval-required',message:'Desk will pause and present the request. Do not perform more work until the person continues.'})
   }}
  }
  snapshot(status=this.state.status){
-  this.state.usage=this.usage()
+  this.mutate({usage:this.usage()})
   const retain=this.state.retainUntil
-  const payload={...this.state,status,context:this.ledger.snapshot()}
-  delete payload.schema;delete payload.digest;delete payload.retainUntil
-  const snapshot=writeRecord(CHECKPOINT_SCHEMA,payload,this.recordPolicy,this.recordGuard?.(),new Date(),retain)
+  const payload=this.state
+  mutateCheckpoint(payload,{status,context:this.ledger.snapshot(),schema:undefined,digest:undefined,retainUntil:undefined})
+  const snapshot=writeRecord(CHECKPOINT_SCHEMA,{...payload},this.recordPolicy,this.recordGuard?.(),new Date(),retain)
   if(utf8Bytes(JSON.stringify(snapshot))>MAX_CHECKPOINT_BYTES)throw toolInputFailure('The execution checkpoint is full. Completed work remains visible; start a focused follow-up before further work.')
   return structuredClone(snapshot)
  }

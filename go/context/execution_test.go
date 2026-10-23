@@ -193,8 +193,8 @@ func TestUpdatePlanGrantsNoWorkOrRequests(t *testing.T) {
 		!answered.StructuredContent.Get("permissionsUnchanged").Truth() {
 		t.Errorf("update_plan answered %s", answered.StructuredContent.Text())
 	}
-	if run.Context.Execution.State.Limit != MaxTurns {
-		t.Errorf("the limit is %d", run.Context.Execution.State.Limit)
+	if run.Context.Execution.State().Limit != MaxTurns {
+		t.Errorf("the limit is %d", run.Context.Execution.State().Limit)
 	}
 	_, err = plan.Execute(context.Background(),
 		json.RawMessage(`{"explanation":"","plan":[{"step":"a","status":"in_progress"},{"step":"b","status":"in_progress"}]}`))
@@ -216,7 +216,7 @@ func TestTheBudgetToolAsksOnlyNearTheCeiling(t *testing.T) {
 	if run.Context.Execution.PauseRequested {
 		t.Error("a pause was requested within the allowance")
 	}
-	run.Context.Execution.State.Used = 18
+	run.Context.Execution.MutateCheckpoint(CheckpointPatch{"Used": 18})
 	answered, err = request.Execute(context.Background(), args)
 	if err != nil {
 		t.Fatal(err)
@@ -224,7 +224,7 @@ func TestTheBudgetToolAsksOnlyNearTheCeiling(t *testing.T) {
 	if answered.StructuredContent.Get("status").Str() != "approval-required" {
 		t.Errorf("the tool answered %s", answered.StructuredContent.Text())
 	}
-	state := run.Context.Execution.State
+	state := run.Context.Execution.State()
 	if state.Used != 18 || state.Limit != 20 || len(state.Grants) != 0 {
 		t.Errorf("the state is %+v", state)
 	}
@@ -280,7 +280,7 @@ func TestAnExhaustedFailedRequestNeedsAnExplicitGrant(t *testing.T) {
 	session, _ := trackedSession(t)
 	run := openRun(t, session)
 	task := run.Context.Execution
-	task.State.Used = 20
+	task.MutateCheckpoint(CheckpointPatch{"Used": 20})
 	callID := "call-1"
 	task.ObserveToolCall(contract.ToolCall{Type: "tool_call", Name: "read_contract",
 		Args: json.RawMessage(`{"revision":"retained"}`), CallID: &callID})
@@ -370,11 +370,13 @@ func TestUsageAttributesSourceDeltasToTheActiveConnectionAndRole(t *testing.T) {
 	session, _ := trackedSession(t)
 	run := openRun(t, session)
 	run.Context.Execution.UseConnection("fixture", "author")
-	run.Context.Execution.State.Sources = []contract.ProvenanceSourceFigures{{Source: "runtime", Kind: "runtime", Calls: 1, Bytes: 30, Milliseconds: 4}}
+	run.Context.Execution.MutateCheckpoint(CheckpointPatch{"Sources": []contract.ProvenanceSourceFigures{{Source: "runtime", Kind: "runtime", Calls: 1, Bytes: 30, Milliseconds: 4}}})
 	run.Context.Execution.UseConnection("backup", "critic")
-	run.Context.Execution.State.Sources[0].Calls = 2
-	run.Context.Execution.State.Sources[0].Bytes = 50
-	run.Context.Execution.State.Sources[0].Milliseconds = 7
+	sources := run.Context.Execution.State().Sources
+	sources[0].Calls = 2
+	sources[0].Bytes = 50
+	sources[0].Milliseconds = 7
+	run.Context.Execution.MutateCheckpoint(CheckpointPatch{"Sources": sources})
 	rows := []contract.UsageRow{}
 	for _, row := range run.Context.Execution.Usage().Rows {
 		if row.Source == "runtime" {
@@ -427,15 +429,15 @@ func TestLimitToHoldsAChildToItsBudget(t *testing.T) {
 	session, _ := trackedSession(t)
 	run := openRun(t, session)
 	run.Context.Execution.LimitTo(4)
-	if run.Context.Execution.State.Limit != 4 {
-		t.Errorf("the limit is %d", run.Context.Execution.State.Limit)
+	if run.Context.Execution.State().Limit != 4 {
+		t.Errorf("the limit is %d", run.Context.Execution.State().Limit)
 	}
 	run.Context.Execution.LimitTo(0)
-	if run.Context.Execution.State.Limit != 1 {
-		t.Errorf("the floor is %d", run.Context.Execution.State.Limit)
+	if run.Context.Execution.State().Limit != 1 {
+		t.Errorf("the floor is %d", run.Context.Execution.State().Limit)
 	}
 	// Claim takes one request, and the ceiling pauses the run.
-	run.Context.Execution.State.Limit = 1
+	run.Context.Execution.MutateCheckpoint(CheckpointPatch{"Limit": 1})
 	if err := run.Context.Execution.Claim(); err != nil {
 		t.Fatal(err)
 	}
@@ -508,7 +510,7 @@ func TestChildUsageSurvivesResumeWithoutDoubleCounting(t *testing.T) {
 			}
 		}
 	}
-	if count != 1 || len(resumed.Context.Execution.State.ChildUsage) != 1 {
+	if count != 1 || len(resumed.Context.Execution.State().ChildUsage) != 1 {
 		t.Fatalf("child counted %d times", count)
 	}
 }

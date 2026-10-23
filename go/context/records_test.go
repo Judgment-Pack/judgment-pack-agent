@@ -128,7 +128,7 @@ func TestRecordsRefusalContinuesBoundary(t *testing.T) {
 	}
 	defer opened.Context.Close()
 	b := NewBoundary(opened)
-	opened.Context.Execution.State.Explanation = strings.Repeat("x", 200000)
+	opened.Context.Execution.MutateCheckpoint(CheckpointPatch{"Explanation": strings.Repeat("x", 200000)})
 	events := b.checkpoint(nil, "")
 	for _, event := range events {
 		if event.ExecutionCheckpoint != nil {

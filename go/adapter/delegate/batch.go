@@ -288,7 +288,7 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 			c.shared.mu.Lock()
 			if parent := c.shared.parent; parent != nil && len(m.contexts) > 0 {
 				child := m.contexts[len(m.contexts)-1]
-				parent.Execution.MergeChildUsage(child.Execution.State.ID, event.Usage.Usage, delegatedRole(parent.ResolvedPolicy, profile.ID, parent.Subagents))
+				parent.Execution.MergeChildUsage(child.Execution.State().ID, event.Usage.Usage, delegatedRole(parent.ResolvedPolicy, profile.ID, parent.Subagents))
 			}
 			c.shared.mu.Unlock()
 		case event.ExecutionCheckpoint != nil:

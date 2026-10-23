@@ -261,20 +261,19 @@ func (c *coordinator) save(ctx context.Context) error {
 		// parent's rows (ADR-0006), which the last checkpoint, a copy, may not hold yet.
 		if live != nil {
 			c.shared.mu.Lock()
-			state.Sources = live.Sources.Rows(state.Sources)
+			state, _, _ = runcontext.MutateCheckpoint(state, runcontext.CheckpointPatch{"Sources": live.Sources.Rows(state.Sources)})
 			usage := live.Execution.Usage()
-			state.Usage = &usage
-			data, _ := json.Marshal(live.Execution.State.ChildUsage)
-			_ = json.Unmarshal(data, &state.ChildUsage)
+			state, _, _ = runcontext.MutateCheckpoint(state, runcontext.CheckpointPatch{"Usage": &usage})
+			state, _, _ = runcontext.MutateCheckpoint(state, runcontext.CheckpointPatch{"ChildUsage": live.Execution.State().ChildUsage})
 			if live.Output != nil {
-				state.OutputGuard = live.Output.Counts()
+				state, _, _ = runcontext.MutateCheckpoint(state, runcontext.CheckpointPatch{"OutputGuard": live.Output.Counts()})
 			}
 			c.shared.mu.Unlock()
 		}
 	default:
 		return nil
 	}
-	state.Status = "running"
+	state, _, _ = runcontext.MutateCheckpoint(state, runcontext.CheckpointPatch{"Status": "running"})
 	state = c.decorate(state)
 	if c.run.Context != nil && c.run.Context.Checkpoint != nil {
 		if err := c.run.Context.Checkpoint(ctx, state); err != nil {

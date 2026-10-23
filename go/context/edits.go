@@ -114,7 +114,7 @@ func (c *SessionContext) OpenDrafts() error {
 	g := &Drafts{session: c}
 	g.entries.Store([]*Entry{})
 	c.Drafts = g
-	if saved := c.Execution.State.Draft; saved != nil {
+	if saved := c.Execution.State().Draft; saved != nil {
 		snapshot := c.Ledger.Snapshot()
 		for _, row := range saved.Documents {
 			var found *heldDraft
@@ -167,6 +167,7 @@ func (g *Drafts) publishEntries() {
 		out = append(out, &Entry{ID: d.ID, Kind: "artifact", Label: d.ID, Value: String(d.Text), Bytes: len(d.Text)})
 	}
 	g.entries.Store(out)
+	g.session.Execution.MutateCheckpoint(CheckpointPatch{"Draft": g.snapshot()})
 }
 func (g *Drafts) Snapshot() *contract.CheckpointDraft {
 	g.mu.Lock()

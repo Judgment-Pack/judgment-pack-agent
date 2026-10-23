@@ -108,7 +108,7 @@ func ApplyPolicy(run *Run, sc *runcontext.SessionContext, named runcontext.RunMo
 	}
 	sc.Execution.UsageModels[id] = own
 	restored := map[string]string{}
-	for _, row := range sc.Execution.State.Failover {
+	for _, row := range sc.Execution.State().Failover {
 		if _, seen := restored[row.Role]; seen {
 			return &runcontext.PolicyRefusal{Member: "models." + row.Role + ".fallback", Layer: "run", Detail: "saved failover roles repeat"}
 		}
@@ -131,7 +131,9 @@ func ApplyPolicy(run *Run, sc *runcontext.SessionContext, named runcontext.RunMo
 		restored[row.Role] = row.Connection
 	}
 	remember := func(role, from, to, reason string) {
-		rows := &sc.Execution.State.Failover
+		copiedRows := sc.Execution.State().Failover
+		rows := &copiedRows
+		defer func() { sc.Execution.MutateCheckpoint(runcontext.CheckpointPatch{"Failover": copiedRows}) }()
 		for i := range *rows {
 			if (*rows)[i].Role == role {
 				(*rows)[i].Connection = to

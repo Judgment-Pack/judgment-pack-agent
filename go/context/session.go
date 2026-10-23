@@ -269,7 +269,7 @@ func NewSessionContext(session Session) (*SessionContext, error) {
 	}
 	table := CriticTable{CriticDefault: policy.CriticDefault, CriticReasoningFloor: policy.CriticReasoningFloor, AdversarialReview: policy.AdversarialReview}
 	settings.CriticReasoning, _ = out.ResolvedPolicy["models.critic.reasoning"].Value.(string)
-	out.Review = NewCriticSwitch(settings, table, forced, func() *Execution { return out.Execution.State })
+	out.Review = NewCriticSwitch(settings, table, forced, func() *Execution { return out.Execution.State() }, func(patch CheckpointPatch) { out.Execution.MutateCheckpoint(patch) })
 	out.Execution.criticMu = &out.Review.mu
 	out.existingPack = session.ExistingPack
 	out.authorTier, _ = out.ResolvedPolicy["models.author.reasoning"].Value.(string)
@@ -392,7 +392,7 @@ func (c *SessionContext) ReserveOutput(tokens int) error {
 // CarryMarker takes the marker the restored checkpoint's approval carries (ADR-0008), where it
 // carries one; a run with none keeps the one it drew.
 func (c *SessionContext) CarryMarker() {
-	if approval := c.Execution.State.Approval; approval != nil && approval.Marker != nil {
+	if approval := c.Execution.State().Approval; approval != nil && approval.Marker != nil {
 		c.Marker = *approval.Marker
 	}
 }
@@ -931,8 +931,8 @@ func (c *SessionContext) MessagesContext(ctx context.Context, messages []Message
 	}
 	if member := c.ResolvedPolicy["compaction"]; member.Value == "summary" {
 		var restored *contract.ProvenanceCompactionSummary
-		if c.Execution != nil && c.Execution.State != nil && c.Execution.State.Compaction != nil {
-			report := c.Execution.State.Compaction
+		if c.Execution != nil && c.Execution.State() != nil && c.Execution.State().Compaction != nil {
+			report := c.Execution.State().Compaction
 			for i := range report.Summaries {
 				if slices.Equal(report.Summaries[i].Digests, digests) {
 					restored = &report.Summaries[i]
@@ -1003,15 +1003,15 @@ func (c *SessionContext) MessagesContext(ctx context.Context, messages []Message
 						summary = candidate
 						report := contract.ProvenanceCompactionSummary{Digest: ContextDigest(summary), Turns: int64(len(chosen.block)), Bytes: int64(UTF8Bytes(summary)), Summary: summary, Digests: digests}
 						rows := []contract.ProvenanceCompactionSummary{}
-						if c.Execution != nil && c.Execution.State != nil && c.Execution.State.Compaction != nil {
-							rows = append(rows, c.Execution.State.Compaction.Summaries...)
+						if c.Execution != nil && c.Execution.State() != nil && c.Execution.State().Compaction != nil {
+							rows = append(rows, c.Execution.State().Compaction.Summaries...)
 						}
 						rows = append(rows, report)
 						if len(rows) > 100 {
 							rows = rows[len(rows)-100:]
 						}
-						if c.Execution != nil && c.Execution.State != nil {
-							c.Execution.State.Compaction = &contract.ProvenanceCompactionReport{Mode: "summary", Summaries: rows}
+						if c.Execution != nil && c.Execution.State() != nil {
+							c.Execution.MutateCheckpoint(CheckpointPatch{"Compaction": &contract.ProvenanceCompactionReport{Mode: "summary", Summaries: rows}})
 						}
 						mode = "summary"
 					}
@@ -1023,8 +1023,8 @@ func (c *SessionContext) MessagesContext(ctx context.Context, messages []Message
 			}
 		}
 	}
-	if mode == "index" && c.Execution != nil && c.Execution.State != nil {
-		c.Execution.State.Compaction = &contract.ProvenanceCompactionReport{Mode: "index", Summaries: []contract.ProvenanceCompactionSummary{}}
+	if mode == "index" && c.Execution != nil && c.Execution.State() != nil {
+		c.Execution.MutateCheckpoint(CheckpointPatch{"Compaction": &contract.ProvenanceCompactionReport{Mode: "index", Summaries: []contract.ProvenanceCompactionSummary{}}})
 	}
 	c.compactedSteps = chosen.steps
 	c.contracts = chosen.contracts
@@ -1101,10 +1101,17 @@ var reservedNames = []string{"propose_edit", "propose_delete", "propose_insert",
 // execution state, a guardrail for each declaration the package withheld, and the loaded schemas
 // after the history, in the request state.
 func (c *SessionContext) OpenSources(declared *Declared, catalogue bool, toolSchemas string, parent *SourceGate) {
-	if c.Execution.State.Sources == nil {
-		c.Execution.State.Sources = []contract.ProvenanceSourceFigures{}
+	if c.Execution.State().Sources == nil {
+		c.Execution.MutateCheckpoint(CheckpointPatch{"Sources": []contract.ProvenanceSourceFigures{}})
 	}
-	c.Sources = NewSourceGate(declared, c.Policy, c.Marker, toolSchemas, func() *[]contract.ProvenanceSourceFigures { return &c.Execution.State.Sources }, parent, &c.Execution.State.SourceIdentities)
+	rows := c.Execution.State().Sources
+	identities := c.Execution.State().SourceIdentities
+	c.Sources = NewSourceGate(declared, c.Policy, c.Marker, toolSchemas, func() *[]contract.ProvenanceSourceFigures { return &rows }, parent, &identities)
+	c.Sources.publish = func() { c.Execution.MutateCheckpoint(CheckpointPatch{"Sources": rows, "SourceIdentities": identities}) }
+	if parent != nil {
+		c.Sources.publish = parent.publish
+	}
+	c.Sources.publish()
 	// ADR-0008: the run's approval, in the execution state; no act call is admitted in a delegated
 	// child, in Plan mode, while the critic reads or in the reformat run.
 	c.Sources.SetApprovals(approvalBook{c: c, child: parent != nil})
@@ -1122,7 +1129,7 @@ func (c *SessionContext) OpenSources(declared *Declared, catalogue bool, toolSch
 func (c *SessionContext) OpenSkills(declared *DeclaredSkills, agentWire bool) {
 	section, catalogued, withheld := CatalogueSkills(declared.Skills, *c.Policy, c.Marker)
 	c.SkillCatalogue = section
-	c.Skills = NewSkillGate(catalogued, *c.Policy, c.Sources, c.Execution.State, c.Marker, agentWire, declared.SourceIDs)
+	c.Skills = NewSkillGate(catalogued, *c.Policy, c.Sources, c.Execution.State(), c.Marker, agentWire, declared.SourceIDs, func(patch CheckpointPatch) { c.Execution.MutateCheckpoint(patch) })
 	// The critic reading (agent#10): on the agent wire its load of a skill already loaded is answered with the block.
 	c.Skills.critic = func() bool { return c.CriticReading }
 	notices := append(append(append([]SkillNotice{}, declared.Withheld...), withheld...), c.Skills.Restore()...)
@@ -1139,7 +1146,7 @@ type approvalBook struct {
 	child bool
 }
 
-func (b approvalBook) Current() *contract.CheckpointApproval { return b.c.Execution.State.Approval }
+func (b approvalBook) Current() *contract.CheckpointApproval { return b.c.Execution.State().Approval }
 
 func (b approvalBook) Ask(record contract.CheckpointApproval) bool {
 	if b.c.PauseClaim != nil && !b.c.PauseClaim() {
@@ -1147,7 +1154,7 @@ func (b approvalBook) Ask(record contract.CheckpointApproval) bool {
 	}
 	marker := b.c.Marker
 	record.Marker = &marker
-	b.c.Execution.State.Approval = &record
+	b.c.Execution.MutateCheckpoint(CheckpointPatch{"Approval": &record})
 	return true
 }
 
@@ -1186,7 +1193,7 @@ func (c *SessionContext) Approval(ctx context.Context, name string, args json.Ra
 	if c.Output != nil && c.Output.Mode == "redact" {
 		_, _ = c.Output.JSON(args, "tool argument", true)
 	}
-	return ApprovalRequested(*c.Execution.State.Approval)
+	return ApprovalRequested(*c.Execution.State().Approval)
 }
 
 // ApprovalRequested is the approval_requested event of an asked approval (ADR-0008).
@@ -1283,12 +1290,13 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 			return err
 		}
 		outputCounts := map[string]int64{}
-		for name, count := range held.Execution.State.OutputGuard {
+		for name, count := range held.Execution.State().OutputGuard {
 			outputCounts[name] = count
 		}
 		held.Output, err = NewOutputGuard(held.ResolvedPolicy, func() map[string]int64 { return outputCounts })
 		held.outputContext = ctx
 		held.Execution.OutputRows = held.Output.Counts
+		held.Output.publish = func(counts map[string]int64) { held.Execution.MutateCheckpoint(CheckpointPatch{"OutputGuard": counts}) }
 		if err != nil {
 			return err
 		}
@@ -1299,8 +1307,8 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		for _, tool := range session.HostTools {
 			held.Output.DeclaredNames[tool.Name] = true
 		}
-		if held.Execution.State.Compaction != nil {
-			for _, summary := range held.Execution.State.Compaction.Summaries {
+		if held.Execution.State().Compaction != nil {
+			for _, summary := range held.Execution.State().Compaction.Summaries {
 				held.summaries[summary.Summary] = true
 			}
 		}
@@ -1335,7 +1343,7 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 			}
 		}
 		// A connection ID may be rebound; the saved execution's provider identities may not.
-		for _, row := range held.Execution.State.CrossProvider {
+		for _, row := range held.Execution.State().CrossProvider {
 			if strings.HasPrefix(row.Role, "subagent.") {
 				found := false
 				for _, s := range session.Subagents {
@@ -1356,9 +1364,11 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 			}
 			if changed != nil {
 				continued := false
-				for i := range held.Execution.State.CrossProvider {
-					held.Execution.State.CrossProvider[i].Continued = &continued
+				rows := held.Execution.State().CrossProvider
+				for i := range rows {
+					rows[i].Continued = &continued
 				}
+				held.Execution.MutateCheckpoint(CheckpointPatch{"CrossProvider": rows})
 				saved, err := held.Snapshot("stopped")
 				if err != nil {
 					return err
@@ -1367,7 +1377,7 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 			}
 		}
 		record := held.ResolvedPolicy.Record()
-		if saved := held.Execution.State.Policy; saved != nil {
+		if saved := held.Execution.State().Policy; saved != nil {
 			for name, member := range saved {
 				if strings.HasPrefix(name, "models.subagent.") {
 					if _, exists := record[name]; !exists {
@@ -1404,8 +1414,8 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 				return failure.Authored("stale-state", "The policy differs from the saved run.", "context")
 			}
 		}
-		freshPolicy := held.Execution.State.Policy == nil
-		held.Execution.State.Policy = record
+		freshPolicy := held.Execution.State().Policy == nil
+		held.Execution.MutateCheckpoint(CheckpointPatch{"Policy": record})
 		if freshPolicy && session.Context != nil && session.Context.Checkpoint != nil {
 			state, err := held.Snapshot("")
 			if err != nil {
@@ -1610,7 +1620,7 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 			held.Close()
 			return nil, err
 		}
-		out.Prompt += "\n\n" + ApprovalContinuationText(*held.Execution.State.Approval, DataMarker())
+		out.Prompt += "\n\n" + ApprovalContinuationText(*held.Execution.State().Approval, DataMarker())
 	}
 	return &Run{Context: held, Session: out}, nil
 }
@@ -1646,7 +1656,7 @@ func (c *SessionContext) continueApproval(ctx context.Context, step string, tool
 		if err := write(); err != nil {
 			return err
 		}
-		approval := *c.Execution.State.Approval
+		approval := *c.Execution.State().Approval
 		var run func(context.Context, json.RawMessage) (ToolResult, error)
 		for _, tool := range tools {
 			if tool.Name == approval.Name && tool.Execute != nil {
@@ -1672,7 +1682,7 @@ func (c *SessionContext) continueApproval(ctx context.Context, step string, tool
 		}
 		approval.State = "executed"
 		approval.Result = contractResult(result)
-		c.Execution.State.Approval = &approval
+		c.Execution.MutateCheckpoint(CheckpointPatch{"Approval": &approval})
 		if c.Sources != nil {
 			c.continued = append(c.continued, c.Sources.TakeNotices()...)
 		}
@@ -1684,7 +1694,7 @@ func (c *SessionContext) continueApproval(ctx context.Context, step string, tool
 		// The person refused the call: said once, after the refusal is written, with the refused
 		// result's own sentence. The person's note is not in it; it reaches the model only inside
 		// the continuation's block.
-		if approval := c.Execution.State.Approval; approval != nil && approval.State == "refused" {
+		if approval := c.Execution.State().Approval; approval != nil && approval.State == "refused" {
 			reason := "approval refused"
 			c.continued = append(c.continued, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: approval.Name, Action: "refused", Detail: RefusedDetail(approval.Name), Reason: &reason}})
 		}
@@ -1761,7 +1771,7 @@ func (c *SessionContext) RecordProvider(role string) *contract.ProvenanceProvide
 		defer c.Execution.criticMu.Unlock()
 	}
 	provider, author := c.Provider(role), c.Provider("author")
-	for _, row := range c.Execution.State.CrossProvider {
+	for _, row := range c.Execution.State().CrossProvider {
 		if row.Role == role {
 			return provider
 		}
@@ -1770,6 +1780,6 @@ func (c *SessionContext) RecordProvider(role string) *contract.ProvenanceProvide
 	if provider.Family != author.Family {
 		relation = "other"
 	}
-	c.Execution.State.CrossProvider = append(c.Execution.State.CrossProvider, contract.ProvenanceCrossProvider{Role: role, Relation: relation, Author: *author, Provider: *provider})
+	c.Execution.MutateCheckpoint(CheckpointPatch{"CrossProvider": append(c.Execution.State().CrossProvider, contract.ProvenanceCrossProvider{Role: role, Relation: relation, Author: *author, Provider: *provider})})
 	return provider
 }

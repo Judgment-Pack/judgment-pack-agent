@@ -135,7 +135,7 @@ func (b *Boundary) checkpoint(durable *bool, status string) []contract.RunEvent 
 
 func (b *Boundary) usage() contract.RunEvent {
 	usage := b.run.Context.Execution.Usage()
-	b.run.Context.Execution.State.Usage = &usage
+	b.run.Context.Execution.MutateCheckpoint(CheckpointPatch{"Usage": &usage})
 	return contract.RunEvent{Usage: &contract.RunEventUsage{Type: "usage", Usage: usage}}
 }
 
@@ -165,7 +165,7 @@ func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 		}
 		usage := b.usage()
 		out = append(out, b.checkpoint(nil, "stopped")...)
-		usage.Usage.Usage = *b.run.Context.Execution.State.Usage
+		usage.Usage.Usage = *b.run.Context.Execution.State().Usage
 		out = append(out, b.notices()...)
 		b.ended = true
 		return append(out, usage, contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}}), true
@@ -223,18 +223,18 @@ func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 	// refused request's error, or a pause of its own all end it paused, with the checkpoint durable
 	// and no error.
 	if context.Execution.ApprovalAsked() && (event.End != nil || event.Error != nil || event.BudgetPaused != nil) {
-		asked := *context.Execution.State.Approval
+		asked := *context.Execution.State().Approval
 		if b.requested != asked.CallID {
 			out = append(out, *ApprovalRequested(asked))
 		}
 		b.paused = true
-		context.Execution.State.Status = "paused"
+		context.Execution.MutateCheckpoint(CheckpointPatch{"Status": "paused"})
 		b.usage()
 		durable := true
 		if state, err := context.Execution.Snapshot("paused"); err == nil {
 			out = append(out, contract.RunEvent{ExecutionCheckpoint: &contract.RunEventExecutionCheckpoint{Type: "execution_checkpoint", Durable: &durable, Checkpoint: state}})
 		}
-		usage := contract.RunEvent{Usage: &contract.RunEventUsage{Type: "usage", Usage: *context.Execution.State.Usage}}
+		usage := contract.RunEvent{Usage: &contract.RunEventUsage{Type: "usage", Usage: *context.Execution.State().Usage}}
 		out = append(out, b.notices()...)
 		b.ended = true
 		return append(out, usage, contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}}), true
@@ -275,7 +275,7 @@ func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 	}
 	if paused {
 		b.paused = true
-		context.Execution.State.Status = "paused"
+		context.Execution.MutateCheckpoint(CheckpointPatch{"Status": "paused"})
 		b.usage()
 		if state, err := context.Execution.Snapshot("paused"); err == nil {
 			out = append(out, contract.RunEvent{BudgetPaused: &contract.RunEventBudgetPaused{
@@ -285,13 +285,13 @@ func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 	}
 	if event.ToolResult != nil && context.Execution.PauseRequested {
 		out = append(out, event)
-		context.Execution.State.Status = "paused"
+		context.Execution.MutateCheckpoint(CheckpointPatch{"Status": "paused"})
 		b.usage()
 		if state, err := context.Execution.Snapshot("paused"); err == nil {
 			out = append(out, contract.RunEvent{BudgetPaused: &contract.RunEventBudgetPaused{
 				Type: "budget_paused", Checkpoint: state}})
 		}
-		usage := contract.RunEvent{Usage: &contract.RunEventUsage{Type: "usage", Usage: *context.Execution.State.Usage}}
+		usage := contract.RunEvent{Usage: &contract.RunEventUsage{Type: "usage", Usage: *context.Execution.State().Usage}}
 		out = append(out, b.notices()...)
 		out = append(out, usage, contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}})
 		b.ended = true
@@ -331,15 +331,15 @@ func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 		if b.stopped || b.failed {
 			status = "stopped"
 		}
-		context.Execution.State.Status = status
+		context.Execution.MutateCheckpoint(CheckpointPatch{"Status": status})
 		durable := true
 		out = append(out, b.checkpoint(&durable, "")...)
 	}
 	var usage *contract.RunEvent
 	if event.End != nil {
 		var held contract.RunEvent
-		if b.tracked && context.Execution.State.Usage != nil {
-			held = contract.RunEvent{Usage: &contract.RunEventUsage{Type: "usage", Usage: *context.Execution.State.Usage}}
+		if b.tracked && context.Execution.State().Usage != nil {
+			held = contract.RunEvent{Usage: &contract.RunEventUsage{Type: "usage", Usage: *context.Execution.State().Usage}}
 		} else {
 			held = b.usage()
 		}

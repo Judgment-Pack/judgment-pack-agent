@@ -91,14 +91,14 @@ func (a *allowance) used() int {
 
 func (a *allowance) usedLocked() int {
 	if a.parent != nil {
-		return a.parent.Execution.State.Used
+		return a.parent.Execution.State().Used
 	}
 	return a.usedHere
 }
 
 func (a *allowance) limitLocked() int {
 	if a.parent != nil {
-		return a.parent.Execution.State.Limit
+		return a.parent.Execution.State().Limit
 	}
 	return a.limitHere
 }
@@ -166,7 +166,7 @@ func (a *allowance) childRequest(task *contract.DelegatedTask) error {
 		return runcontext.ErrExecutionPaused
 	}
 	if a.parent != nil {
-		a.parent.Execution.State.Used++
+		a.parent.Execution.MutateCheckpoint(runcontext.CheckpointPatch{"Used": runcontext.CheckpointIncrement(1)})
 	} else {
 		a.usedHere++
 	}
@@ -444,7 +444,7 @@ func (c *coordinator) parentEmit(event contract.RunEvent) {
 		c.emitMu.Unlock()
 		if handedOff {
 			// The parent's invocation ended at its handoff, and the response goes on.
-			held.Checkpoint.Status = "running"
+			held.Checkpoint, _, _ = runcontext.MutateCheckpoint(held.Checkpoint, runcontext.CheckpointPatch{"Status": "running"})
 		}
 		c.emitMu.Lock()
 		state := held.Checkpoint

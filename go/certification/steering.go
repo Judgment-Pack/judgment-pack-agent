@@ -22,13 +22,15 @@ func certifySteerPauseAndResume(ctx context.Context, f *findings) error {
 		return err
 	}
 	defer opened.Context.Close()
-	opened.Context.Execution.State.Approval = &contract.CheckpointApproval{State: "asked"}
-	opened.Context.Execution.State.Steers = &contract.ProvenanceSteerReport{Queued: []contract.ProvenanceQueuedSteer{{Text: "accepted before pause", Bytes: 21}}, Delivered: []contract.ProvenanceDeliveredSteer{}}
+	opened.Context.Execution.MutateCheckpoint(runcontext.CheckpointPatch{"Approval": &contract.CheckpointApproval{State: "asked"}})
+	opened.Context.Execution.MutateCheckpoint(runcontext.CheckpointPatch{"Steers": &contract.ProvenanceSteerReport{Queued: []contract.ProvenanceQueuedSteer{{Text: "accepted before pause", Bytes: 21}}, Delivered: []contract.ProvenanceDeliveredSteer{}}})
 	refused := opened.Context.Execution.QueueSteers(*opened.Context.Policy)
-	if len(refused) != 1 || refused[0].Guardrail == nil || refused[0].Guardrail.Reason == nil || *refused[0].Guardrail.Reason != "steer refused" || len(opened.Context.Execution.State.Steers.Queued) != 1 {
-		f.fail("pause refusal or queued steer: %#v, %#v", refused, opened.Context.Execution.State.Steers)
+	if len(refused) != 1 || refused[0].Guardrail == nil || refused[0].Guardrail.Reason == nil || *refused[0].Guardrail.Reason != "steer refused" || len(opened.Context.Execution.State().Steers.Queued) != 1 {
+		f.fail("pause refusal or queued steer: %#v, %#v", refused, opened.Context.Execution.State().Steers)
 	}
-	opened.Context.Execution.State.Approval.State = "refused"
+	approval := opened.Context.Execution.State().Approval
+	approval.State = "refused"
+	opened.Context.Execution.MutateCheckpoint(runcontext.CheckpointPatch{"Approval": approval})
 	text, delivered := opened.Context.Execution.TakeSteers(opened.Context.Marker, 2, *opened.Context.Policy)
 	if !strings.Contains(text, "\naccepted before pause\n") || len(delivered) != 1 || delivered[0].Steered == nil || delivered[0].Steered.AtRequest != 2 {
 		f.fail("resume did not deliver the checkpointed queue: %q, %#v", text, delivered)

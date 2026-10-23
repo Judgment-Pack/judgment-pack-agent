@@ -22,7 +22,7 @@ func (t *turnState) finish(ctx context.Context, proposal *turn.Proposal, unread 
 		// ADR-0010: nothing to refute; the decision says so.
 		r.deliver(runcontext.CriticDecidedEvent(r.sc.DecideCritic(false, len(r.run.Cases) > 0)))
 		r.deliver(messageEvent(turn.ProseOf(t.finalText)))
-		if r.sc.Execution.Remaining() <= 0 && planUnfinished(r.sc.Execution.State.Plan) {
+		if r.sc.Execution.Remaining() <= 0 && planUnfinished(r.sc.Execution.State().Plan) {
 			return runcontext.ErrExecutionPaused
 		}
 		return nil
@@ -142,11 +142,11 @@ func (t *turnState) critic(ctx context.Context, proposal turn.Proposal, tier str
 		r.sc.CriticReading = false
 		r.run.Gate.EndCritic()
 	}()
-	before := turn.CriticStart{Used: r.sc.Execution.State.Used, Rows: len(r.sc.Execution.State.Completions)}
+	before := turn.CriticStart{Used: r.sc.Execution.State().Used, Rows: len(r.sc.Execution.State().Completions)}
 	criticModel := r.run.ModelName
 	harnessCalls := 0
 	figures := func() *contract.ProvenanceCriticFigures {
-		held := turn.ModelCriticFigures(criticModel, before, turn.CriticEnd{Used: r.sc.Execution.State.Used, Completions: r.sc.Execution.State.Completions})
+		held := turn.ModelCriticFigures(criticModel, before, turn.CriticEnd{Used: r.sc.Execution.State().Used, Completions: r.sc.Execution.State().Completions})
 		if harnessCalls > 0 {
 			calls := int64(harnessCalls)
 			held.HarnessCalls = &calls

@@ -35,7 +35,7 @@ it('propagates storage, transport and cancellation before any next request',asyn
 it.each(['gemini','openai-compatible','anthropic'] as const)('cannot reset the shared request budget while correcting through %s',async family=>{
  const original:AssistantSession={prompt:'Fix requested artifact',context:{currentRequest:{message:'Fix it',input:'Current artifact and saved expectations'}},allowConversation:true,interactive:true,testPrompt:'',tools:[],hostTools:[],callTool:vi.fn(async()=>({content:[]})),model:{family,model:'fixture',call:vi.fn(async()=>new Response('{}'))},thinking:normalize('off',family),signal:signal()}
  const first=await contextualSession(original)
- first.context.execution.state.used=19
+ first.context.execution.mutate({used:19})
  let held=first.context.execution.snapshot('complete')
  const checked:number[]=[]
  await expect(correctArtifact({initial:1,maxCorrections:5,fingerprint:String,check:async()=>false,passed:c=>c,checkpoint:async c=>{checked.push(c)},correct:async c=>{

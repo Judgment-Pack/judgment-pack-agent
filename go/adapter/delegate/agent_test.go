@@ -118,3 +118,37 @@ func TestTheCriticsInvocationIsHeldBackBeforeABatch(t *testing.T) {
 		t.Error("the critic has room once the response's five invocations are taken")
 	}
 }
+
+// The schema inventory routes handoff to the coordinator that actually restores and projects it.
+func TestCheckpointMembersHandoffInterruptResume(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	raw, err := os.ReadFile(filepath.Join(root, "contract", "vectors", "checkpoint", "members.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vector struct {
+		ProbeOwners map[string]string     `json:"probeOwners"`
+		Items       []contract.Checkpoint `json:"items"`
+	}
+	if err := json.Unmarshal(raw, &vector); err != nil {
+		t.Fatal(err)
+	}
+	if vector.ProbeOwners["handoff"] != "delegation" || len(vector.Items) != 1 {
+		t.Fatal("handoff coverage inventory missing")
+	}
+	saved := vector.Items[0]
+	// A stopped parent is handed back by the host, then restored before any child dispatch.
+	saved.Status = "stopped"
+	c := &coordinator{run: &adapter.Run{Agent: &adapter.Agent{Model: "fixture"}}, runs: agentRuns{children: map[string]int{}}, account: newAccount()}
+	pending := c.restore(&saved)
+	if pending == nil {
+		t.Fatal("interrupted handoff not restored")
+	}
+	c.setHandoff(pending)
+	continued := c.decorate(saved)
+	want, _ := json.Marshal(saved.Handoff)
+	got, _ := json.Marshal(continued.Handoff)
+	if string(got) != string(want) {
+		t.Fatalf("handoff changed across owning projection: %s versus %s", got, want)
+	}
+}

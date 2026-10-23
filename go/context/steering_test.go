@@ -25,7 +25,9 @@ func validSteerRefusal(t *testing.T, event contract.RunEvent) {
 }
 
 func steerController(input <-chan SteerInput) *ExecutionController {
-	return &ExecutionController{session: Session{Context: &Input{Steer: input}}, State: &Execution{Steers: &contract.ProvenanceSteerReport{Queued: []contract.ProvenanceQueuedSteer{}, Delivered: []contract.ProvenanceDeliveredSteer{}}}}
+	c := &ExecutionController{session: Session{Context: &Input{Steer: input}}}
+	c.MutateCheckpoint(CheckpointPatch{"Steers": &contract.ProvenanceSteerReport{Queued: []contract.ProvenanceQueuedSteer{}, Delivered: []contract.ProvenanceDeliveredSteer{}}})
+	return c
 }
 
 func steerInput(values ...string) <-chan SteerInput {
@@ -44,8 +46,8 @@ func TestSteersAreFramedOrderedBoundedAndRecorded(t *testing.T) {
 	if len(events) != 2 || events[0].Steered == nil || events[0].Steered.Bytes != 5 || events[1].Steered == nil || events[1].Steered.Bytes != 6 || strings.Index(text, "\nfirst\n") >= strings.Index(text, "\nsecond\n") || strings.Count(text, Opening) != 2 {
 		t.Fatalf("ordered framed delivery: %q %#v", text, events)
 	}
-	if len(c.State.Steers.Queued) != 0 || len(c.State.Steers.Delivered) != 2 || c.State.Steers.Delivered[0].AtRequest != 3 {
-		t.Fatalf("report: %#v", c.State.Steers)
+	if len(c.State().Steers.Queued) != 0 || len(c.State().Steers.Delivered) != 2 || c.State().Steers.Delivered[0].AtRequest != 3 {
+		t.Fatalf("report: %#v", c.State().Steers)
 	}
 
 	c = steerController(steerInput(strings.Repeat("x", 2001)))
@@ -60,7 +62,9 @@ func TestSteersAreFramedOrderedBoundedAndRecorded(t *testing.T) {
 	validSteerRefusal(t, events[0])
 
 	c = steerController(steerInput("fifth"))
-	c.State.Steers.Delivered = make([]contract.ProvenanceDeliveredSteer, policy.SteersPerRun)
+	steers := c.State().Steers
+	steers.Delivered = make([]contract.ProvenanceDeliveredSteer, policy.SteersPerRun)
+	c.MutateCheckpoint(CheckpointPatch{"Steers": steers})
 	_, events = c.TakeSteers(strings.Repeat("b", 32), 2, policy)
 	validSteerRefusal(t, events[0])
 }
@@ -68,18 +72,22 @@ func TestSteersAreFramedOrderedBoundedAndRecorded(t *testing.T) {
 func TestSteerIsRefusedDuringApprovalPauseAndQueuedStateResumes(t *testing.T) {
 	policy := Defaults
 	c := steerController(steerInput("not the decision"))
-	c.State.Approval = &contract.CheckpointApproval{State: "asked"}
-	c.State.Steers.Queued = []contract.ProvenanceQueuedSteer{{Text: "accepted before pause", Bytes: 21}}
+	c.MutateCheckpoint(CheckpointPatch{"Approval": &contract.CheckpointApproval{State: "asked"}})
+	steers := c.State().Steers
+	steers.Queued = []contract.ProvenanceQueuedSteer{{Text: "accepted before pause", Bytes: 21}}
+	c.MutateCheckpoint(CheckpointPatch{"Steers": steers})
 	events := c.QueueSteers(policy)
-	if len(events) != 1 || events[0].Guardrail == nil || len(c.State.Steers.Queued) != 1 || c.State.Steers.Queued[0].Text != "accepted before pause" {
-		t.Fatalf("pause refusal: %#v, queue %#v", events, c.State.Steers.Queued)
+	if len(events) != 1 || events[0].Guardrail == nil || len(c.State().Steers.Queued) != 1 || c.State().Steers.Queued[0].Text != "accepted before pause" {
+		t.Fatalf("pause refusal: %#v, queue %#v", events, c.State().Steers.Queued)
 	}
 	validSteerRefusal(t, events[0])
 
 	c = steerController(nil)
-	c.State.Steers.Queued = []contract.ProvenanceQueuedSteer{{Text: "resume this", Bytes: 11}}
+	steers = c.State().Steers
+	steers.Queued = []contract.ProvenanceQueuedSteer{{Text: "resume this", Bytes: 11}}
+	c.MutateCheckpoint(CheckpointPatch{"Steers": steers})
 	text, events := c.TakeSteers(strings.Repeat("d", 32), 2, policy)
-	if !strings.Contains(text, "\nresume this\n") || len(events) != 1 || len(c.State.Steers.Queued) != 0 || len(c.State.Steers.Delivered) != 1 {
-		t.Fatalf("resumed queue: %q %#v", text, c.State.Steers)
+	if !strings.Contains(text, "\nresume this\n") || len(events) != 1 || len(c.State().Steers.Queued) != 0 || len(c.State().Steers.Delivered) != 1 {
+		t.Fatalf("resumed queue: %q %#v", text, c.State().Steers)
 	}
 }

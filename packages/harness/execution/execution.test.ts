@@ -32,9 +32,9 @@ describe('shared execution continuity',()=>{
  })
  it('attributes source deltas to the connection and role active when they ran',async()=>{
   const ready=await contextualSession(base()),execution=ready.context.execution
-  execution.state.sources=[{source:'runtime',kind:'runtime',calls:1,refused:0,proposed:0,bytes:30,milliseconds:4}]
+  execution.mutate({sources:[{source:'runtime',kind:'runtime',calls:1,refused:0,proposed:0,bytes:30,milliseconds:4}]})
   execution.useConnection('backup','critic')
-  execution.state.sources[0]={...execution.state.sources[0]!,calls:2,bytes:50,milliseconds:7}
+  execution.mutate({sources:[{...execution.state.sources![0]!,calls:2,bytes:50,milliseconds:7}]})
   const rows=execution.usage().rows.filter(row=>row.source==='runtime')
   expect(rows).toEqual([
    {source:'runtime',connection:'fixture',role:'author',requests:0,invocations:1,milliseconds:4,bytes:30},
@@ -83,7 +83,7 @@ it('requests an extension only near the ceiling and records a concrete reason wi
  const args={reason:'The proposed guard needs two boundary checks.',nextStep:'Evaluate both boundaries with unchanged expectations.'}
  expect((await request.execute(args,input.signal)).structuredContent).toMatchObject({status:'within-allowance'})
  expect(context.execution.pauseRequested).toBe(false)
- context.execution.state.used=18
+ context.execution.mutate({used:18})
  expect((await request.execute(args,input.signal)).structuredContent).toMatchObject({status:'approval-required'})
  expect(context.execution.state).toMatchObject({used:18,limit:20,grants:[]})
  expect(context.execution.pauseRequested).toBe(true)
@@ -122,7 +122,7 @@ it('uses declared immutable read semantics for future tools and never caches wri
 
 it('requires an explicit interrupted grant for an exhausted failed request and preserves completed operations',async()=>{
  const ready=await contextualSession(base()),task=ready.context.execution
- task.state.used=20
+ task.mutate({used:20})
  task.observe({type:'tool_call',name:'read_contract',args:{revision:'retained'}})
  task.observe({type:'tool_result',name:'read_contract',isError:false,text:'Already read'})
  const stopped=task.snapshot('stopped')

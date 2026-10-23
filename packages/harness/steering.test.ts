@@ -9,7 +9,7 @@ import orderedVector from '../../contract/vectors/steer/ordered.json'
 import refusedPauseVector from '../../contract/vectors/steer/refused-pause.json'
 
 const state=():ExecutionCheckpoint=>({version:1,id:'steer-test',requestKey:'0'.repeat(64),phase:'work',status:'running',unit:'model-requests',used:1,limit:20,grants:[],plan:[],explanation:'',operations:[],context:{scope:'steer',entries:[]}})
-const controller=(saved=state())=>{const c=new ExecutionController({} as never,{} as never);c.state=structuredClone(saved);return c}
+const controller=(saved=state())=>{const c=new ExecutionController({} as never,{} as never);c.mutate(structuredClone(saved));return c}
 const bounds={steerBytes:2000,steersPerRun:4}
 
 describe('ADR-0021 steering',()=>{

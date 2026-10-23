@@ -446,7 +446,7 @@ func (r *runState) drive(ctx context.Context) error {
 			r.overTime = true
 			reason := r.turnTimeFailure().Error() + " Completed work is kept. Continuing takes a grant of more requests, so a run already at the " +
 				strconv.Itoa(runcontext.MaxRequestAllowance) + "-request limit cannot be continued; start a new response instead."
-			r.sc.Execution.State.Reason = &reason
+			r.sc.Execution.MutateCheckpoint(runcontext.CheckpointPatch{"Reason": &reason})
 			return runcontext.ErrExecutionPaused
 		}
 		status, message, refused := refusalOf(err)

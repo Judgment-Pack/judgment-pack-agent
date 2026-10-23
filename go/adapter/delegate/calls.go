@@ -94,8 +94,8 @@ func (c *coordinator) chargeChild(task *contract.DelegatedTask, budget turn.Task
 	c.emitMu.Unlock()
 	if held != nil {
 		state := *held
-		state.Status = "running"
-		state.Used = int64(c.shared.used())
+		state, _, _ = runcontext.MutateCheckpoint(state, runcontext.CheckpointPatch{"Status": "running"})
+		state, _, _ = runcontext.MutateCheckpoint(state, runcontext.CheckpointPatch{"Used": int64(c.shared.used())})
 		durable := true
 		c.deliver(contract.RunEvent{ExecutionCheckpoint: &contract.RunEventExecutionCheckpoint{Type: "execution_checkpoint", Durable: &durable, Checkpoint: c.withFigures(state)}})
 	}
@@ -117,7 +117,7 @@ func (c *coordinator) accountChild(ctx context.Context, task *contract.Delegated
 	c.usageMu.Lock()
 	c.shared.mu.Lock()
 	if parent := c.shared.parent; parent != nil {
-		parent.Execution.MergeChildUsage(child.Execution.State.ID, child.Execution.Usage(), delegatedRole(parent.ResolvedPolicy, task.Profile, parent.Subagents))
+		parent.Execution.MergeChildUsage(child.Execution.State().ID, child.Execution.Usage(), delegatedRole(parent.ResolvedPolicy, task.Profile, parent.Subagents))
 	}
 	c.shared.mu.Unlock()
 	c.usageMu.Unlock()

@@ -76,7 +76,7 @@ func (t *turnState) loopPhase(shown []wire.WireTool) *phase {
 			if t.synthesis {
 				r.currentPhase = "synthesis"
 			}
-			steers, notices := r.sc.Execution.TakeSteers(r.sc.Marker, r.sc.Execution.State.Used+1, *r.sc.Policy)
+			steers, notices := r.sc.Execution.TakeSteers(r.sc.Marker, r.sc.Execution.State().Used+1, *r.sc.Policy)
 			r.emitAll(notices)
 			state := stateText(r.sc.Execution.RequestState(), currentState, instruction)
 			// Budgeted as one request: the system text and the state together.

@@ -437,6 +437,7 @@ type SkillGate struct {
 	order     []string
 	sources   *SourceGate
 	state     *Execution
+	write     func(CheckpointPatch)
 	marker    string
 	agentWire bool
 	limit     int
@@ -447,8 +448,8 @@ type SkillGate struct {
 
 // NewSkillGate holds a run's catalogued skills; sourceIDs are every source a skill is declared from,
 // whose rows count its loads from 0.
-func NewSkillGate(catalogued []AdmittedSkill, policy Policy, sources *SourceGate, state *Execution, marker string, agentWire bool, sourceIDs []string) *SkillGate {
-	g := &SkillGate{byName: map[string]AdmittedSkill{}, sources: sources, state: state, marker: marker, agentWire: agentWire, limit: policy.SkillsPerRun,
+func NewSkillGate(catalogued []AdmittedSkill, policy Policy, sources *SourceGate, state *Execution, marker string, agentWire bool, sourceIDs []string, write ...func(CheckpointPatch)) *SkillGate {
+	g := &SkillGate{write: checkpointWriter(state, write), byName: map[string]AdmittedSkill{}, sources: sources, state: state, marker: marker, agentWire: agentWire, limit: policy.SkillsPerRun,
 		critic: func() bool { return false }}
 	for _, skill := range catalogued {
 		g.byName[skill.Name] = skill
@@ -494,7 +495,7 @@ func (g *SkillGate) Restore() []SkillNotice {
 		kept = append(kept, load)
 	}
 	if len(saved) > 0 {
-		g.state.Skills = kept
+		g.write(CheckpointPatch{"Skills": kept})
 	}
 	return notices
 }
@@ -596,7 +597,7 @@ func (g *SkillGate) load(asked any) (ToolResult, error) {
 		return ToolResult{}, failure.NewError(contract.Failure{Version: 1, Code: "tool-failed", Source: "tool", Outcome: "not-started", Detail: &detail})
 	}
 	g.loaded = append(g.loaded, skill)
-	g.state.Skills = append(append([]contract.ProvenanceSkillLoad{}, g.state.Skills...), contract.ProvenanceSkillLoad{ID: skill.ID, Digest: skill.Digest, Bytes: int64(skill.Bytes), LoadedAt: time.Now().UTC().Format("2006-01-02T15:04:05.000Z")})
+	g.write(CheckpointPatch{"Skills": append(append([]contract.ProvenanceSkillLoad{}, g.state.Skills...), contract.ProvenanceSkillLoad{ID: skill.ID, Digest: skill.Digest, Bytes: int64(skill.Bytes), LoadedAt: time.Now().UTC().Format("2006-01-02T15:04:05.000Z")})})
 	g.sources.Notify(contract.RunEvent{SkillLoaded: &contract.RunEventSkillLoaded{Type: "skill_loaded", Skill: LoadedSkillOf(skill), Bytes: int64(skill.Bytes)}})
 	note := LoadedNote
 	if g.agentWire {
@@ -631,7 +632,7 @@ func (g *SkillGate) unload(asked any) (ToolResult, error) {
 			kept = append(kept, load)
 		}
 	}
-	g.state.Skills = kept
+	g.write(CheckpointPatch{"Skills": kept})
 	g.sources.Notify(contract.RunEvent{SkillUnloaded: &contract.RunEventSkillUnloaded{Type: "skill_unloaded", ID: skill.ID}})
 	note := UnloadedNote
 	if g.agentWire {

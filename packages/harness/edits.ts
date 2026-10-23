@@ -1,3 +1,4 @@
+import {mutateCheckpoint,type CheckpointPatch} from './execution/mutation'
 import {OutputRefused} from './outputGuard'
 /** ADR-0015: the package's draft, never a host file or an approval. */
 import type {AssistantEvent,HostTool,McpToolResult} from './engine'
@@ -37,7 +38,7 @@ export function editRefusal(document:unknown,reason:string):Extract<AssistantEve
 export class Drafts {
  private documents=new Map<string,Held>()
  private queue:Promise<unknown>=Promise.resolve()
- constructor(private ledger:ContextLedger,private policy:ContextPolicy,private state:()=>ExecutionCheckpoint,private notify:(event:AssistantEvent)=>void,private allowed:()=>boolean,private validate:(text:string,signal:AbortSignal)=>Promise<McpToolResult>,private marker:()=>string,private guard:<T>(value:T,where:import('./outputGuard').OutputWhere)=>T=(v)=>v,private signal:AbortSignal=new AbortController().signal,private outputRefuse:(where:import('./outputGuard').OutputWhere,pattern:string)=>never=(_w,p)=>{throw new OutputRefused(p)}){}
+ constructor(private ledger:ContextLedger,private policy:ContextPolicy,private state:()=>ExecutionCheckpoint,private notify:(event:AssistantEvent)=>void,private allowed:()=>boolean,private validate:(text:string,signal:AbortSignal)=>Promise<McpToolResult>,private marker:()=>string,private guard:<T>(value:T,where:import('./outputGuard').OutputWhere)=>T=(v)=>v,private signal:AbortSignal=new AbortController().signal,private outputRefuse:(where:import('./outputGuard').OutputWhere,pattern:string)=>never=(_w,p)=>{throw new OutputRefused(p)},private write:(patch:CheckpointPatch)=>void=patch=>{mutateCheckpoint(this.state(),patch)}){}
  private serial<T>(work:()=>Promise<T>):Promise<T>{const next=this.queue.then(work);this.queue=next.catch(()=>{});return next}
  async open(accepted:AcceptedDocument[]=[]){
   const checkpoint=this.state().draft
@@ -59,7 +60,7 @@ export class Drafts {
   d.digest='sha256:'+await contextDigest(d.text)
   await this.ledger.retain({id:'proposal-state:'+await contextDigest(label(d)),kind:'artifact',label:label(d),value:{text:d.text,unknowns:d.unknowns,undo:d.undo}})
   this.documents.set(d.id,d)
-  this.state().draft={documents:[...this.documents.values()].map(v=>({id:v.id,digest:v.digest,edits:structuredClone(v.edits)}))}
+  this.write({draft:{documents:[...this.documents.values()].map(v=>({id:v.id,digest:v.digest,edits:structuredClone(v.edits)}))}})
  }
  async seed(proposal:Proposal,id?:string):Promise<Proposal>{return this.serial(async()=>{
   if(id===undefined){

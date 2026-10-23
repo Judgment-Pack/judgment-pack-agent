@@ -215,10 +215,10 @@ func compactionChecks(ctx context.Context) ([]Finding, error) {
 	}
 	out = append(out, f.list...)
 	f = &findings{check: "16 resume"}
-	if run.Context.Execution.State.Compaction == nil || checkpointExpected.Compaction == nil || run.Context.Execution.State.Compaction.Mode != checkpointExpected.Compaction.Mode || len(run.Context.Execution.State.Compaction.Summaries) != 1 {
+	if run.Context.Execution.State().Compaction == nil || checkpointExpected.Compaction == nil || run.Context.Execution.State().Compaction.Mode != checkpointExpected.Compaction.Mode || len(run.Context.Execution.State().Compaction.Summaries) != 1 {
 		f.fail("checkpoint vector members do not match the produced checkpoint")
 	} else {
-		report := run.Context.Execution.State.Compaction.Summaries[0]
+		report := run.Context.Execution.State().Compaction.Summaries[0]
 		if report.Summary != projected[1].Text || len(report.Digests) != len(request.Digests) || report.Digest != runcontext.ContextDigest(report.Summary) || report.Turns == 0 || report.Bytes != int64(runcontext.UTF8Bytes(report.Summary)) {
 			f.fail("produced checkpoint lacks the vector's compaction summary members")
 		}
@@ -317,7 +317,7 @@ func compactionChecks(ctx context.Context) ([]Finding, error) {
 	if refusingErr == nil {
 		var projected []runcontext.Message
 		projected, refusingErr = refusing.Context.MessagesContext(ctx, history, "host", runcontext.Array())
-		if strings.Contains(runcontext.MessagesValue(projected).Text(), "sk-abcdefghijklmnopqrst") || refusing.Context.Execution.State.Compaction.Mode != "index" {
+		if strings.Contains(runcontext.MessagesValue(projected).Text(), "sk-abcdefghijklmnopqrst") || refusing.Context.Execution.State().Compaction.Mode != "index" {
 			f.fail("refused summary was projected")
 		}
 	}

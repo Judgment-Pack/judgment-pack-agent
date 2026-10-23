@@ -494,7 +494,7 @@ describe('identity per tool call (ADR-0019)', () => {
     try {
       for (const source of ['expenses', 'billing']) {
         expect((await first.context.sources!.decide(`${source}__submit`, {}, undefined, false)).answer).toBe('ask')
-        first.context.execution.state.approval!.state = 'answered'
+        first.context.execution.mutate({approval:{...first.context.execution.state.approval!,state:'answered'}})
       }
       current = { kind: 'service', label: 'changed-bot' }
       await expect(first.session.hostTools.find(tool => tool.name === 'expenses__submit')!.execute({}, signal())).rejects.toBeInstanceOf(GateViolation)

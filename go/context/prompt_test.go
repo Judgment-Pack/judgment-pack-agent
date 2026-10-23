@@ -178,7 +178,7 @@ func TestThePromptDigestIsTheContractVector(t *testing.T) {
 		c.Execution.RecordPrompt([]byte(body.Str()))
 	}
 	for at, item := range items {
-		held := c.Execution.State.Prompts[at]
+		held := c.Execution.State().Prompts[at]
 		if held.Request != int64(item.Get("request").Num()) || held.Sha256 != item.Get("sha256").Str() {
 			t.Errorf("item %d: recorded %+v", at, held)
 		}
@@ -188,7 +188,7 @@ func TestThePromptDigestIsTheContractVector(t *testing.T) {
 	if err != nil || len(state.Prompts) != len(items) {
 		t.Fatalf("the checkpoint carries %d prompts (%v)", len(state.Prompts), err)
 	}
-	value := c.Execution.State.Value()
+	value := c.Execution.State().Value()
 	if _, err := ReadExecution(value); err != nil {
 		t.Errorf("the reader refused the checkpoint: %v", err)
 	}

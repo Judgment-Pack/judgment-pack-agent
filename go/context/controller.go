@@ -323,7 +323,8 @@ type ExecutionController struct {
 	// Progress is the repeated-work tracker.
 	Progress *ProgressTracker
 	// State is the execution state this response carries.
-	State        *Execution
+	checkpoint   checkpointMutation
+	usageMu      sync.Mutex
 	RecordPolicy RecordsPolicy
 	// RecordGuard resolves late because the output guard opens after the execution journal.
 	RecordGuard func() RecordGuard
@@ -483,8 +484,8 @@ func (c *ExecutionController) Initialize() error {
 				operation.Status = "interrupted"
 			}
 		}
-		state.Status = "running"
-		c.State = state
+		_ = c.MutateCheckpoint(checkpointMembers(state))
+		_ = c.MutateCheckpoint(CheckpointPatch{"Status": "running"})
 		for _, source := range state.Sources {
 			c.usageSources[source.Source] = source
 		}
@@ -515,14 +516,15 @@ func (c *ExecutionController) Initialize() error {
 			case "executed", "refused":
 				c.ApprovalStep = "continue"
 			}
-			state.Approval = &held
+			_ = c.MutateCheckpoint(CheckpointPatch{"Approval": &held})
 		}
 		return nil
 	}
-	c.State = &Execution{Version: 1, ID: randomUUID(), RequestKey: requestKey, Phase: phase,
+	initial := &Execution{Version: 1, ID: randomUUID(), RequestKey: requestKey, Phase: phase,
 		Status: "running", Unit: unit, Used: 0, Limit: limit, Grants: []contract.CheckpointGrant{},
 		Plan: Array(), Explanation: "", Operations: []*Operation{},
 		Context: contract.CheckpointContext{Scope: c.ledger.Scope(), Entries: []contract.CheckpointRetainedEntry{}}}
+	_ = c.MutateCheckpoint(checkpointMembers(initial))
 	if c.session.Context != nil && c.session.Context.Plan != nil {
 		plan := c.session.Context.Plan
 		status := plan.Get("status")
@@ -531,7 +533,7 @@ func (c *ExecutionController) Initialize() error {
 			for _, step := range plan.Get("steps").Items() {
 				steps.Append(ObjectOf("step", step, "status", String("pending")))
 			}
-			c.State.Plan = steps
+			c.MutateCheckpoint(CheckpointPatch{"Plan": steps})
 		}
 	}
 	return nil
@@ -540,13 +542,14 @@ func (c *ExecutionController) Initialize() error {
 // ApprovalAsked reports an act call of this run waiting for the person's decision (ADR-0008): no
 // request is sent while one does.
 func (c *ExecutionController) ApprovalAsked() bool {
-	return c.State.Approval != nil && c.State.Approval.State == "asked"
+	return c.State().Approval != nil && c.State().Approval.State == "asked"
 }
 
 // QueueSteers accepts the person's input into the checkpointed queue without placing it in a request.
 func (c *ExecutionController) QueueSteers(policy Policy) []contract.RunEvent {
-	if c.State.Steers == nil {
-		c.State.Steers = &contract.ProvenanceSteerReport{Queued: []contract.ProvenanceQueuedSteer{}, Delivered: []contract.ProvenanceDeliveredSteer{}}
+	steers := c.State().Steers
+	if steers == nil {
+		steers = &contract.ProvenanceSteerReport{Queued: []contract.ProvenanceQueuedSteer{}, Delivered: []contract.ProvenanceDeliveredSteer{}}
 	}
 	var events []contract.RunEvent
 	refuse := func(detail string) {
@@ -569,10 +572,10 @@ func (c *ExecutionController) QueueSteers(policy Policy) []contract.RunEvent {
 					refuse("A steer must carry non-empty text.")
 				case bytes > policy.SteerBytes:
 					refuse(fmt.Sprintf("A steer is larger than the %d byte limit.", policy.SteerBytes))
-				case len(c.State.Steers.Queued)+len(c.State.Steers.Delivered) >= policy.SteersPerRun:
+				case len(steers.Queued)+len(steers.Delivered) >= policy.SteersPerRun:
 					refuse(fmt.Sprintf("This run already accepted its %d steers.", policy.SteersPerRun))
 				default:
-					c.State.Steers.Queued = append(c.State.Steers.Queued, contract.ProvenanceQueuedSteer{Text: input.Text, Bytes: int64(bytes)})
+					steers.Queued = append(steers.Queued, contract.ProvenanceQueuedSteer{Text: input.Text, Bytes: int64(bytes)})
 				}
 				continue
 			default:
@@ -580,19 +583,22 @@ func (c *ExecutionController) QueueSteers(policy Policy) []contract.RunEvent {
 			break
 		}
 	}
+	c.MutateCheckpoint(CheckpointPatch{"Steers": steers})
 	return events
 }
 
 // TakeSteers accepts pending input and delivers the checkpointed queue at this request boundary.
 func (c *ExecutionController) TakeSteers(marker string, atRequest int, policy Policy) (string, []contract.RunEvent) {
 	events := c.QueueSteers(policy)
+	steers := c.State().Steers
 	var blocks []string
-	for _, row := range c.State.Steers.Queued {
-		c.State.Steers.Delivered = append(c.State.Steers.Delivered, contract.ProvenanceDeliveredSteer{Bytes: row.Bytes, AtRequest: int64(atRequest)})
+	for _, row := range steers.Queued {
+		steers.Delivered = append(steers.Delivered, contract.ProvenanceDeliveredSteer{Bytes: row.Bytes, AtRequest: int64(atRequest)})
 		events = append(events, contract.RunEvent{Steered: &contract.RunEventSteered{Type: "steered", Bytes: row.Bytes, AtRequest: int64(atRequest)}})
 		blocks = append(blocks, FrameBlock("the person's new instruction", row.Text, marker))
 	}
-	c.State.Steers.Queued = []contract.ProvenanceQueuedSteer{}
+	steers.Queued = []contract.ProvenanceQueuedSteer{}
+	c.MutateCheckpoint(CheckpointPatch{"Steers": steers})
 	return strings.Join(blocks, "\n\n"), events
 }
 
@@ -606,37 +612,49 @@ func contractResult(result ToolResult) *contract.ToolResultMCPToolResult {
 }
 
 // Remaining is how many model requests the response may still make.
-func (c *ExecutionController) Remaining() int { return c.State.Limit - c.State.Used }
+func (c *ExecutionController) Remaining() int { return c.State().Limit - c.State().Used }
 
 // UseConnection selects the ledger row for later requests. A failover calls it before resending.
 func (c *ExecutionController) UseConnection(connection, role string) {
+	c.usageMu.Lock()
+	defer c.usageMu.Unlock()
 	if c.usageBound && (connection != c.usageConnection || role != c.usageRole) {
 		c.recordUsageElapsed()
-		c.recordSourceUsage(c.State.Sources)
+		c.recordSourceUsage(c.State().Sources)
 	}
 	if !c.usageBound {
 		c.usageStarted = time.Now()
 	}
 	c.usageConnection, c.usageRole = connection, role
 	c.usageBound = true
-	if c.State.Usage == nil {
-		c.State.Usage = &contract.Usage{}
+	if c.State().Usage == nil {
+		c.MutateCheckpoint(CheckpointPatch{"Usage": &contract.Usage{}})
 	}
 	source := "model"
-	if c.State.Unit == "provider-managed" {
+	if c.State().Unit == "provider-managed" {
 		source = "agent"
 	}
-	c.usageRow(source, connection, role)
+	usageLedger := c.State().Usage
+	if usageLedger == nil {
+		usageLedger = &contract.Usage{}
+	}
+	c.usageRow(usageLedger, source, connection, role)
+	c.MutateCheckpoint(CheckpointPatch{"Usage": usageLedger})
 }
 
 func (c *ExecutionController) recordUsageElapsed() {
 	source := "model"
-	if c.State.Unit == "provider-managed" {
+	if c.State().Unit == "provider-managed" {
 		source = "agent"
 	}
 	now := time.Now()
-	c.usageRow(source, c.usageConnection, c.usageRole).Milliseconds += now.Sub(c.usageStarted).Milliseconds()
+	usageLedger := c.State().Usage
+	if usageLedger == nil {
+		usageLedger = &contract.Usage{}
+	}
+	c.usageRow(usageLedger, source, c.usageConnection, c.usageRole).Milliseconds += now.Sub(c.usageStarted).Milliseconds()
 	c.usageStarted = now
+	c.MutateCheckpoint(CheckpointPatch{"Usage": usageLedger})
 }
 
 func (c *ExecutionController) recordSourceUsage(sources []contract.ProvenanceSourceFigures) {
@@ -656,21 +674,23 @@ func (c *ExecutionController) recordSourceUsage(sources []contract.ProvenanceSou
 			bytes = 0
 		}
 		if calls != 0 || milliseconds != 0 || bytes != 0 {
-			row := c.usageRow(source.Source, c.usageConnection, c.usageRole)
+			usageLedger := c.State().Usage
+			if usageLedger == nil {
+				usageLedger = &contract.Usage{}
+			}
+			row := c.usageRow(usageLedger, source.Source, c.usageConnection, c.usageRole)
 			row.Invocations += calls
 			row.Milliseconds += milliseconds
 			row.Bytes += bytes
+			c.MutateCheckpoint(CheckpointPatch{"Usage": usageLedger})
 		}
 		c.usageSources[source.Source] = source
 	}
 }
 
-func (c *ExecutionController) usageRow(source, connection, role string) *contract.UsageRow {
+func (c *ExecutionController) usageRow(usage *contract.Usage, source, connection, role string) *contract.UsageRow {
 	if connection == "" {
 		connection = "unbound"
-	}
-	if c.State.Usage == nil {
-		c.State.Usage = &contract.Usage{}
 	}
 	model := c.UsageModels[connection]
 	if named := c.UsageModels[role+"@"+connection]; named != "" {
@@ -679,8 +699,8 @@ func (c *ExecutionController) usageRow(source, connection, role string) *contrac
 	if source != "model" && source != "agent" {
 		model = ""
 	}
-	for i := range c.State.Usage.Rows {
-		row := &c.State.Usage.Rows[i]
+	for i := range usage.Rows {
+		row := &usage.Rows[i]
 		if row.Source == source && row.Connection == connection && row.Role == role && (row.Model == nil && model == "" || row.Model != nil && *row.Model == model) {
 			return row
 		}
@@ -689,12 +709,19 @@ func (c *ExecutionController) usageRow(source, connection, role string) *contrac
 	if model != "" {
 		row.Model = &model
 	}
-	c.State.Usage.Rows = append(c.State.Usage.Rows, row)
-	return &c.State.Usage.Rows[len(c.State.Usage.Rows)-1]
+	usage.Rows = append(usage.Rows, row)
+	return &usage.Rows[len(usage.Rows)-1]
 }
 
 // MergeChildUsage replaces a child's accounted snapshot, so repeated delivery and resume do not double count.
 func (c *ExecutionController) MergeChildUsage(id string, usage contract.Usage, role string) {
+	c.usageMu.Lock()
+	defer c.usageMu.Unlock()
+	usageLedger := c.State().Usage
+	if usageLedger == nil {
+		usageLedger = &contract.Usage{}
+	}
+	childUsage := c.State().ChildUsage
 	next := contract.Usage{Rows: []contract.UsageRow{}}
 	for _, row := range usage.Rows {
 		if row.Source == "model" || row.Source == "agent" {
@@ -704,15 +731,12 @@ func (c *ExecutionController) MergeChildUsage(id string, usage contract.Usage, r
 	}
 	previous := contract.Usage{}
 	at := -1
-	for i, saved := range c.State.ChildUsage {
+	for i, saved := range childUsage {
 		if saved.ID == id {
 			previous = saved.Usage
 			at = i
 			break
 		}
-	}
-	if c.State.Usage == nil {
-		c.State.Usage = &contract.Usage{}
 	}
 	for n, ledger := range []contract.Usage{previous, next} {
 		sign := int64(1)
@@ -721,17 +745,17 @@ func (c *ExecutionController) MergeChildUsage(id string, usage contract.Usage, r
 		}
 		for _, incoming := range ledger.Rows {
 			index := -1
-			for i, row := range c.State.Usage.Rows {
+			for i, row := range usageLedger.Rows {
 				if row.Source == incoming.Source && row.Connection == incoming.Connection && row.Role == incoming.Role && (row.Model == nil && incoming.Model == nil || row.Model != nil && incoming.Model != nil && *row.Model == *incoming.Model) {
 					index = i
 					break
 				}
 			}
 			if index < 0 {
-				c.State.Usage.Rows = append(c.State.Usage.Rows, contract.UsageRow{Source: incoming.Source, Connection: incoming.Connection, Role: incoming.Role, Model: incoming.Model})
-				index = len(c.State.Usage.Rows) - 1
+				usageLedger.Rows = append(usageLedger.Rows, contract.UsageRow{Source: incoming.Source, Connection: incoming.Connection, Role: incoming.Role, Model: incoming.Model})
+				index = len(usageLedger.Rows) - 1
 			}
-			row := &c.State.Usage.Rows[index]
+			row := &usageLedger.Rows[index]
 			row.Requests += sign * incoming.Requests
 			row.Invocations += sign * incoming.Invocations
 			row.Bytes += sign * incoming.Bytes
@@ -755,19 +779,22 @@ func (c *ExecutionController) MergeChildUsage(id string, usage contract.Usage, r
 	}
 	saved := contract.CheckpointChildUsageItem{ID: id, Usage: next}
 	if at < 0 {
-		c.State.ChildUsage = append(c.State.ChildUsage, saved)
+		childUsage = append(childUsage, saved)
 	} else {
-		c.State.ChildUsage[at] = saved
+		childUsage[at] = saved
 	}
+	c.MutateCheckpoint(CheckpointPatch{"Usage": usageLedger, "ChildUsage": childUsage})
 }
 
 // Usage returns the closed run ledger, adding observed source rows and this run's elapsed time.
 func (c *ExecutionController) Usage() contract.Usage {
+	c.usageMu.Lock()
+	defer c.usageMu.Unlock()
 	if c.usageBound {
 		c.recordUsageElapsed()
 	}
-	c.recordSourceUsage(c.State.Sources)
-	data, _ := json.Marshal(c.State.Usage)
+	c.recordSourceUsage(c.State().Sources)
+	data, _ := json.Marshal(c.State().Usage)
 	var out contract.Usage
 	_ = json.Unmarshal(data, &out)
 	if out.Rows == nil {
@@ -778,11 +805,17 @@ func (c *ExecutionController) Usage() contract.Usage {
 
 // Claim takes one model request, or answers ExecutionPaused at the ceiling.
 func (c *ExecutionController) Claim() error {
+	c.usageMu.Lock()
+	defer c.usageMu.Unlock()
 	if c.Remaining() <= 0 {
 		return ErrExecutionPaused
 	}
-	c.State.Used++
-	c.usageRow("model", c.usageConnection, c.usageRole).Requests++
+	usageLedger := c.State().Usage
+	if usageLedger == nil {
+		usageLedger = &contract.Usage{}
+	}
+	c.usageRow(usageLedger, "model", c.usageConnection, c.usageRole).Requests++
+	c.MutateCheckpoint(CheckpointPatch{"Used": CheckpointIncrement(1), "Usage": usageLedger})
 	return nil
 }
 
@@ -794,14 +827,14 @@ func (c *ExecutionController) LimitTo(requests int) {
 	if c.restored {
 		return
 	}
-	limit := c.State.Limit
+	limit := c.State().Limit
 	if requests < limit {
 		limit = requests
 	}
 	if limit < 1 {
 		limit = 1
 	}
-	c.State.Limit = limit
+	c.MutateCheckpoint(CheckpointPatch{"Limit": limit})
 }
 
 // Guidance is the instructions and the state together, as an agent's prompt carries them.
@@ -818,11 +851,11 @@ func (c *ExecutionController) RequestState() string {
 		tools = c.ToolAllowance()
 	}
 	state := Object()
-	if c.State.Unit == "model-requests" {
-		state.Set("requests", ObjectOf("unit", String(c.State.Unit), "used", Number(float64(c.State.Used)),
-			"limit", Number(float64(c.State.Limit)), "remaining", Number(float64(c.Remaining()))))
+	if c.State().Unit == "model-requests" {
+		state.Set("requests", ObjectOf("unit", String(c.State().Unit), "used", Number(float64(c.State().Used)),
+			"limit", Number(float64(c.State().Limit)), "remaining", Number(float64(c.Remaining()))))
 	} else {
-		state.Set("requests", ObjectOf("unit", String(c.State.Unit),
+		state.Set("requests", ObjectOf("unit", String(c.State().Unit),
 			"note", String("The subscription provider manages its internal model loop; tool calls are not model-request counts.")))
 	}
 	if tools != nil {
@@ -838,8 +871,8 @@ func (c *ExecutionController) RequestState() string {
 			"limit", Number(float64(tools.Limit)), "remaining", Number(float64(remaining)),
 			"scope", String(tools.Scope), "note", String(note)))
 	}
-	state.Set("tasks", orArray(c.State.Plan))
-	state.Set("explanation", String(c.State.Explanation))
+	state.Set("tasks", orArray(c.State().Plan))
+	state.Set("explanation", String(c.State().Explanation))
 	if c.operationsReference != nil {
 		state.Set("retainedOperations", c.operationsReference)
 	}
@@ -850,7 +883,7 @@ func (c *ExecutionController) RequestState() string {
 		}
 		state.Set("resumeFromCompletedResults", rows)
 	}
-	state.Set("completedOperationCount", Number(float64(len(c.State.Operations))))
+	state.Set("completedOperationCount", Number(float64(len(c.State().Operations))))
 	loaded := ""
 	if c.LoadedSchemas != nil {
 		if section := c.LoadedSchemas(); section != "" {
@@ -873,13 +906,13 @@ func (c *ExecutionController) RequestState() string {
 // RetainProgress is retainProgress: each completed operation retained once, and the index of them
 // the request state names.
 func (c *ExecutionController) RetainProgress(includeIndex bool) error {
-	if len(c.State.Operations) == 0 {
+	if len(c.State().Operations) == 0 {
 		return nil
 	}
 	rows := Array()
 	// Retain each completed operation once. Repeated extensions must not copy the entire growing
 	// operation log into another snapshot every time.
-	for _, operation := range c.State.Operations {
+	for _, operation := range c.State().Operations {
 		entry, err := c.ledger.Retain(Document{ID: "operation-" + operation.ID, Kind: "history",
 			Label: operation.Name + " · " + operation.Status, Value: operation.Value()}, false)
 		if err != nil {
@@ -916,7 +949,7 @@ func (c *ExecutionController) ObserveToolCall(call contract.ToolCall) {
 			args = held
 		}
 	}
-	c.State.Operations = append(c.State.Operations, &Operation{ID: id, Name: call.Name, Args: args.Clone(), Status: "running"})
+	c.MutateCheckpoint(CheckpointPatch{"Operations": append(c.State().Operations, &Operation{ID: id, Name: call.Name, Args: args.Clone(), Status: "running"})})
 }
 
 // ObserveToolResult is the tool_result half of observe: the operation it answers, completed.
@@ -925,19 +958,20 @@ func (c *ExecutionController) ObserveToolResult(result contract.ToolResult) {
 		c.criticMu.Lock()
 		defer c.criticMu.Unlock()
 	}
+	operations := c.State().Operations
 	var operation *Operation
 	if result.CallID != nil && *result.CallID != "" {
 		held := c.inFlight[*result.CallID]
-		for _, one := range c.State.Operations {
+		for _, one := range operations {
 			if one.ID == held {
 				operation = one
 				break
 			}
 		}
 	} else {
-		for at := len(c.State.Operations) - 1; at >= 0; at-- {
-			if c.State.Operations[at].Name == result.Name && c.State.Operations[at].Status == "running" {
-				operation = c.State.Operations[at]
+		for at := len(operations) - 1; at >= 0; at-- {
+			if operations[at].Name == result.Name && operations[at].Status == "running" {
+				operation = operations[at]
 				break
 			}
 		}
@@ -962,20 +996,27 @@ func (c *ExecutionController) ObserveToolResult(result contract.ToolResult) {
 		delete(c.inFlight, *result.CallID)
 	}
 	c.Progress.Observe(operation)
+	c.MutateCheckpoint(CheckpointPatch{"Operations": operations})
 }
 
 // RecordCompletion is recordCompletion: one model request's row.
 func (c *ExecutionController) RecordCompletion(result contract.ProvenanceCompletion, phase string) {
+	c.usageMu.Lock()
+	defer c.usageMu.Unlock()
 	attempt := c.attempt
 	c.attempt = 1
 	connection, role := c.usageConnection, c.usageRole
-	row := contract.Provenance{Request: int64(c.State.Used), Phase: phase, Result: result, Connection: &connection, Role: &role}
+	row := contract.Provenance{Request: int64(c.State().Used), Phase: phase, Result: result, Connection: &connection, Role: &role}
 	if attempt > 1 {
 		held := int64(attempt)
 		row.Attempt = &held
 	}
-	c.State.Completions = append(c.State.Completions, c.writeProvenance(row))
-	usage := c.usageRow("model", connection, role)
+	c.MutateCheckpoint(CheckpointPatch{"Completions": append(c.State().Completions, c.writeProvenance(row))})
+	usageLedger := c.State().Usage
+	if usageLedger == nil {
+		usageLedger = &contract.Usage{}
+	}
+	usage := c.usageRow(usageLedger, "model", connection, role)
 	tokens := usage.Tokens
 	if tokens == nil {
 		tokens = &contract.UsageTokens{}
@@ -997,6 +1038,7 @@ func (c *ExecutionController) RecordCompletion(result contract.ProvenanceComplet
 	if present {
 		usage.Tokens = tokens
 	}
+	c.MutateCheckpoint(CheckpointPatch{"Usage": usageLedger})
 }
 
 func (c *ExecutionController) writeProvenance(row contract.Provenance) contract.Provenance {
@@ -1018,28 +1060,35 @@ func (c *ExecutionController) writeProvenance(row contract.Provenance) contract.
 // send, recorded before it is sent: the SHA-256 of the body, numbered after the last one recorded.
 // The newest MaxPromptDigests are kept.
 func (c *ExecutionController) RecordPrompt(body []byte) {
+	c.usageMu.Lock()
+	defer c.usageMu.Unlock()
 	// ADR-0008: the continuation request carries the approval's result; once it is sent, the approval is answered.
-	if held := c.State.Approval; held != nil && (held.State == "executed" || held.State == "refused") {
+	if held := c.State().Approval; held != nil && (held.State == "executed" || held.State == "refused") {
 		answered := *held
 		answered.State = "answered"
-		c.State.Approval = &answered
+		c.MutateCheckpoint(CheckpointPatch{"Approval": &answered})
 	}
 	next := int64(1)
-	if held := len(c.State.Prompts); held > 0 {
-		next = c.State.Prompts[held-1].Request + 1
+	if held := len(c.State().Prompts); held > 0 {
+		next = c.State().Prompts[held-1].Request + 1
 	}
-	c.State.Prompts = append(c.State.Prompts, contract.ProvenancePromptDigest{Request: next, Sha256: ContextDigest(string(body))})
+	c.MutateCheckpoint(CheckpointPatch{"Prompts": append(c.State().Prompts, contract.ProvenancePromptDigest{Request: next, Sha256: ContextDigest(string(body))})})
 	source := "model"
-	if c.State.Unit == "provider-managed" {
+	if c.State().Unit == "provider-managed" {
 		source = "agent"
 	}
-	usage := c.usageRow(source, c.usageConnection, c.usageRole)
+	usageLedger := c.State().Usage
+	if usageLedger == nil {
+		usageLedger = &contract.Usage{}
+	}
+	usage := c.usageRow(usageLedger, source, c.usageConnection, c.usageRole)
 	usage.Bytes += int64(len(body))
 	if source == "agent" {
 		usage.Invocations++
 	}
-	if extra := len(c.State.Prompts) - MaxPromptDigests; extra > 0 {
-		c.State.Prompts = append([]contract.ProvenancePromptDigest{}, c.State.Prompts[extra:]...)
+	c.MutateCheckpoint(CheckpointPatch{"Usage": usageLedger})
+	if extra := len(c.State().Prompts) - MaxPromptDigests; extra > 0 {
+		c.MutateCheckpoint(CheckpointPatch{"Prompts": append([]contract.ProvenancePromptDigest{}, c.State().Prompts[extra:]...)})
 	}
 }
 
@@ -1050,7 +1099,7 @@ func (c *ExecutionController) BeginAttempt(attempt int) { c.attempt = attempt }
 // RecordRefusal is recordRefusal: a refused attempt at a model request, its own row.
 func (c *ExecutionController) RecordRefusal(phase string, attempt int, f contract.Failure, waitMs *int) {
 	connection, role := c.usageConnection, c.usageRole
-	row := contract.Provenance{Request: int64(c.State.Used), Phase: phase, Connection: &connection, Role: &role,
+	row := contract.Provenance{Request: int64(c.State().Used), Phase: phase, Connection: &connection, Role: &role,
 		Result: contract.ProvenanceCompletion{FinishReason: "error"}}
 	held := int64(attempt)
 	row.Attempt = &held
@@ -1060,7 +1109,7 @@ func (c *ExecutionController) RecordRefusal(phase string, attempt int, f contrac
 		wait := int64(*waitMs)
 		row.WaitMs = &wait
 	}
-	c.State.Completions = append(c.State.Completions, c.writeProvenance(row))
+	c.MutateCheckpoint(CheckpointPatch{"Completions": append(c.State().Completions, c.writeProvenance(row))})
 }
 
 // ClearReadCache empties the run's own read cache (the critic's isolation).
@@ -1172,10 +1221,10 @@ func (c *ExecutionController) Tool() HostTool {
 			if !ValidTaskSteps(args.Get("plan")) || !explanation.IsString() || U16Length(explanation.Str()) > 2000 {
 				return ToolResult{}, failure.ToolInput(planRefused)
 			}
-			c.State.Plan = args.Get("plan").Clone()
-			c.State.Explanation = explanation.Str()
-			out := ObjectOf("status", String("progress-recorded"), "plan", c.State.Plan)
-			if c.State.Unit == "model-requests" {
+			c.MutateCheckpoint(CheckpointPatch{"Plan": args.Get("plan").Clone()})
+			c.MutateCheckpoint(CheckpointPatch{"Explanation": explanation.Str()})
+			out := ObjectOf("status", String("progress-recorded"), "plan", c.State().Plan)
+			if c.State().Unit == "model-requests" {
 				out.Set("remaining", Number(float64(c.Remaining())))
 			} else {
 				out.Set("budget", String("provider-managed"))
@@ -1214,7 +1263,7 @@ func (c *ExecutionController) BudgetTool() HostTool {
 				!next.IsString() || strings.TrimSpace(next.Str()) == "" || U16Length(next.Str()) > 900 {
 				return ToolResult{}, failure.ToolInput(budgetRefused)
 			}
-			if c.State.Unit != "model-requests" {
+			if c.State().Unit != "model-requests" {
 				return Answer(ObjectOf("status", String("unavailable"),
 					"message", String("The subscription agent owns its internal request budget. Return findings or ask for missing information."))), nil
 			}
@@ -1223,7 +1272,7 @@ func (c *ExecutionController) BudgetTool() HostTool {
 					"message", String("Continue useful work within the current allowance. Do not ask for an increase yet."))), nil
 			}
 			held := reason.Str() + " Next: " + next.Str()
-			c.State.Reason = &held
+			c.MutateCheckpoint(CheckpointPatch{"Reason": &held})
 			c.PauseRequested = true
 			return Answer(ObjectOf("status", String("approval-required"),
 				"message", String("Desk will pause and present the request. Do not perform more work until the person continues."))), nil
@@ -1246,46 +1295,39 @@ func (c *ExecutionController) Snapshot(status string) (contract.Checkpoint, erro
 		defer c.criticMu.Unlock()
 	}
 	if status == "" {
-		status = c.State.Status
+		status = c.State().Status
 	}
-	sourceRows := c.State.Sources
+	sourceRows := c.State().Sources
 	if c.SourceRows != nil {
 		sourceRows = c.SourceRows()
+		c.usageMu.Lock()
 		c.recordSourceUsage(sourceRows)
+		c.usageMu.Unlock()
 	}
 	usage := c.Usage()
-	c.State.Usage = &usage
-	held := *c.State
-	held.Operations = make([]*Operation, len(c.State.Operations))
-	for i, operation := range c.State.Operations {
-		copied := *operation
-		copied.Args = operation.Args.Clone()
-		if operation.Result != nil {
-			result := operation.Result.Clone()
-			copied.Result = &result
-		}
-		held.Operations[i] = &copied
-	}
-	held.Status = status
+	projection := &ExecutionController{}
+	projection.MutateCheckpoint(checkpointMembers(c.State()))
+	patch := CheckpointPatch{"Status": status, "Context": c.ledger.Snapshot(), "Usage": &usage}
 	if c.SourceIdentities != nil {
-		held.SourceIdentities = c.SourceIdentities()
+		patch["SourceIdentities"] = c.SourceIdentities()
 	}
 	if c.SourceRows != nil {
-		held.Sources = c.SourceRows()
+		patch["Sources"] = c.SourceRows()
 	}
 	if c.DraftRows != nil {
-		held.Draft = c.DraftRows()
+		patch["Draft"] = c.DraftRows()
 	}
 	if c.OutputRows != nil {
-		held.OutputGuard = c.OutputRows()
+		patch["OutputGuard"] = c.OutputRows()
 	}
 	if c.MemoryRows != nil {
-		held.Memories = c.MemoryRows()
+		patch["Memories"] = c.MemoryRows()
 	}
 	if c.SkillLoads != nil {
-		held.Skills = c.SkillLoads()
+		patch["Skills"] = c.SkillLoads()
 	}
-	held.Context = c.ledger.Snapshot()
+	projection.MutateCheckpoint(patch)
+	held := projection.State()
 	value, err := WriteRecord(CheckpointSchema, held.Value(), c.RecordPolicy, c.recordGuard(), time.Now(), held.RetainUntil)
 	if err != nil {
 		return contract.Checkpoint{}, err
@@ -1302,11 +1344,13 @@ func (c *ExecutionController) Snapshot(status string) (contract.Checkpoint, erro
 
 // TestCalls is the turn's test calls so far, zero where the checkpoint carries none.
 func (c *ExecutionController) TestCalls() int {
-	if c.State.TestCalls == nil {
+	if c.State().TestCalls == nil {
 		return 0
 	}
-	return *c.State.TestCalls
+	return *c.State().TestCalls
 }
 
 // SetTestCalls records the turn's test calls, as the gate counts them.
-func (c *ExecutionController) SetTestCalls(count int) { c.State.TestCalls = &count }
+func (c *ExecutionController) SetTestCalls(count int) {
+	c.MutateCheckpoint(CheckpointPatch{"TestCalls": &count})
+}
