@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -70,6 +71,37 @@ func TestRequestSessionRejectsRawReasoningShapes(t *testing.T) {
 	}
 }
 
+func isRawReasoningSelection(selection *types.Selection) bool {
+	// A defined type retains its underlying struct's field objects, even when
+	// the receiver has a different name or belongs to another package.
+	field, ok := selection.Obj().(*types.Var)
+	if !ok || !field.IsField() || field.Pkg() == nil || field.Pkg().Path() != "github.com/Judgment-Pack/judgment-pack-agent/go/adapter" {
+		return false
+	}
+	owner := "Run"
+	switch field.Name() {
+	case "Thinking", "CriticReasoning":
+	case "Effort":
+		owner = "Agent"
+	default:
+		return false
+	}
+	declaration := field.Pkg().Scope().Lookup(owner)
+	if declaration == nil {
+		return false
+	}
+	structure, ok := declaration.Type().Underlying().(*types.Struct)
+	if !ok {
+		return false
+	}
+	for i := 0; i < structure.NumFields(); i++ {
+		if structure.Field(i) == field {
+			return true
+		}
+	}
+	return false
+}
+
 func TestRawReasoningReadsStayInTheAdmissionConversion(t *testing.T) {
 	root := os.Getenv("JP_REASONING_GUARD_ROOT")
 	if root == "" {
@@ -116,6 +148,53 @@ func TestRawReasoningReadsStayInTheAdmissionConversion(t *testing.T) {
 		}
 		return os.Open(file)
 	}
+	t.Run("typed-probes", func(t *testing.T) {
+		// These hand-written fixtures must type-check before the source guard runs.
+		const source = `package guardprobe
+import "github.com/Judgment-Pack/judgment-pack-agent/go/adapter"
+type restored adapter.Run
+type twice restored
+type restoredAgent adapter.Agent
+type twiceAgent restoredAgent
+type runAlias = adapter.Run
+type agentAlias = adapter.Agent
+type resolved struct { Thinking, CriticReasoning, Effort string }
+func probe(run *adapter.Run, agent *adapter.Agent, admitted adapter.AdmissionReasoning, request adapter.AgentRequest) {
+ _ = restored(*run).Thinking
+ _ = (*restored)(run).CriticReasoning
+ _ = twice(*run).Thinking
+ _ = runAlias(*run).Thinking
+ _ = restoredAgent(*agent).Effort
+ _ = (*twiceAgent)(agent).Effort
+ _ = agentAlias(*agent).Effort
+ _ = admitted.Thinking
+ _ = admitted.Effort
+ _ = request.Effort
+ _ = resolved{}.Thinking
+ _ = resolved{}.CriticReasoning
+ _ = resolved{}.Effort
+}`
+		files := token.NewFileSet()
+		file, err := parser.ParseFile(files, "probe.go", source, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		info := types.Info{Selections: map[*ast.SelectorExpr]*types.Selection{}}
+		configuration := types.Config{Importer: importer.ForCompiler(files, "gc", lookup)}
+		if _, err := configuration.Check("guardprobe", files, []*ast.File{file}, &info); err != nil {
+			t.Fatalf("typed probes do not compile: %v", err)
+		}
+		caught := map[int]string{}
+		for selector, selection := range info.Selections {
+			if isRawReasoningSelection(selection) {
+				caught[files.Position(selector.Pos()).Line] = selector.Sel.Name
+			}
+		}
+		expected := map[int]string{11: "Thinking", 12: "CriticReasoning", 13: "Thinking", 14: "Thinking", 15: "Effort", 16: "Effort", 17: "Effort"}
+		if !reflect.DeepEqual(caught, expected) {
+			t.Fatalf("raw field provenance: got %v, want %v", caught, expected)
+		}
+	})
 	unexpected := []string{}
 	for _, item := range packages {
 		files := token.NewFileSet()
@@ -164,15 +243,7 @@ func TestRawReasoningReadsStayInTheAdmissionConversion(t *testing.T) {
 			if written[selector] {
 				continue
 			}
-			receiver := selection.Recv()
-			if pointer, ok := receiver.(*types.Pointer); ok {
-				receiver = pointer.Elem()
-			}
-			named, ok := receiver.(*types.Named)
-			if !ok || named.Obj().Pkg() == nil || named.Obj().Pkg().Path() != "github.com/Judgment-Pack/judgment-pack-agent/go/adapter" {
-				continue
-			}
-			raw := named.Obj().Name() == "Run" && (selector.Sel.Name == "Thinking" || selector.Sel.Name == "CriticReasoning") || named.Obj().Name() == "Agent" && selector.Sel.Name == "Effort"
+			raw := isRawReasoningSelection(selection)
 			if !raw {
 				continue
 			}

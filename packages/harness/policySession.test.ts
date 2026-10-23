@@ -1,7 +1,8 @@
 import {describe,it,expect,vi} from 'vitest'
-import {join} from 'node:path'
-import {readdirSync} from 'node:fs'
-import {API} from 'typescript/unstable/sync'
+import {join,resolve} from 'node:path'
+import {tmpdir} from 'node:os'
+import {mkdtempSync,readdirSync,rmSync,writeFileSync} from 'node:fs'
+import {API,type Snapshot,type Type} from 'typescript/unstable/sync'
 import * as ts from 'typescript/unstable/ast'
 import {contextualSession} from './context/session'
 import {codex} from './engines/codex'
@@ -36,6 +37,44 @@ function requestBoundaryTypeCases(session:RequestSession){
 void requestBoundaryTypeCases
 
 const sourceFiles=(root:string):string[]=>readdirSync(root,{withFileTypes:true}).flatMap(entry=>entry.isDirectory()?sourceFiles(join(root,entry.name)):entry.name.endsWith('.ts')&&!entry.name.endsWith('.test.ts')?[join(root,entry.name)]:[])
+function rawReasoningReads(harness:string,files:string[],snapshot:Snapshot):string[]{
+ const unexpected:string[]=[]
+ for(const path of files){
+  const project=snapshot.getDefaultProjectForFile(path)??snapshot.getProjects()[0],program=project?.program,checker=project?.checker,file=program?.getSourceFile(path)
+  if(!file||!checker)continue
+  const rawMember=(expression:ts.Expression,name:string):boolean=>{
+   const type=checker.getTypeAtLocation(expression),symbol=type&&checker.getPropertyOfType(type,name)
+   if(symbol?.declarations.some(declaration=>declaration.resolve()?.getSourceFile().fileName.endsWith('/engine.ts')))return true
+   if(ts.isObjectLiteralExpression(expression))return expression.properties.some(property=>ts.isSpreadAssignment(property)&&rawMember(property.expression,name))
+   if(ts.isParenthesizedExpression(expression)||ts.isAsExpression(expression)||ts.isNonNullExpression(expression))return rawMember(expression.expression,name)
+   return false
+  }
+  // The checker retains literal keys through annotations, unions and const aliases.
+  const literalKeys=(type:Type|undefined):string[]=>type?.isStringLiteralType()?[type.value]:type?.isUnionType()?type.getTypes().flatMap(literalKeys):[]
+  const record=(node:ts.Node,name:string,base:ts.Expression):void=>{
+   if(!['effort','thinking','criticReasoning'].includes(name)||!rawMember(base,name))return
+   let parent:ts.Node|undefined=node,fn=''
+   while(parent){if(ts.isFunctionDeclaration(parent)&&parent.name){fn=parent.name.text;break}parent=parent.parent}
+   const relative=path.slice(harness.length+1),allowed=relative==='context/session.ts'&&(fn==='resolveSessionPolicy'||fn==='requestSession')
+   if(!allowed)unexpected.push(`${relative}:${file.getLineAndCharacterOfPosition(node.getStart(file)).line+1}:${name}`)
+  }
+  const visit=(node:ts.Node):void=>{
+   if(ts.isPropertyAccessExpression(node))record(node,node.name.text,node.expression)
+   else if(ts.isElementAccessExpression(node)){
+    for(const name of literalKeys(checker.getTypeAtLocation(node.argumentExpression)))record(node,name,node.expression)
+   }else if(ts.isBindingElement(node)&&ts.isObjectBindingPattern(node.parent)){
+    const named=node.propertyName??node.name,declaration=node.parent.parent,initializer=ts.isVariableDeclaration(declaration)?declaration.initializer:undefined
+    if(initializer&&named){
+     const names=ts.isComputedPropertyName(named)?literalKeys(checker.getTypeAtLocation(named.expression)):(ts.isIdentifier(named)||ts.isStringLiteralLikeNode(named))?[named.text]:[]
+     for(const name of names)record(node,name,initializer)
+    }
+   }
+   node.forEachChild(visit)
+  }
+  visit(file)
+ }
+ return unexpected
+}
 describe('ADR policy table review',()=>{
  it('keeps raw session reasoning reads inside resolution and conversion',()=>{
   const root=process.env.JP_REASONING_GUARD_ROOT??process.cwd()
@@ -44,38 +83,45 @@ describe('ADR policy table review',()=>{
 	 const api=new API({cwd:process.cwd()})
 	 const snapshot=process.env.JP_REASONING_GUARD_ROOT?api.updateSnapshot({openFiles:files}):api.updateSnapshot({openProjects:[join(process.cwd(),'tsconfig.json')]})
 	 try{
-	  const unexpected:string[]=[]
-	  for(const path of files){const project=snapshot.getDefaultProjectForFile(path)??snapshot.getProjects()[0],program=project?.program,checker=project?.checker,file=program?.getSourceFile(path);if(!file||!checker)continue
-	   const rawMember=(expression:ts.Expression,name:string):boolean=>{
-	    const type=checker.getTypeAtLocation(expression),symbol=type&&checker.getPropertyOfType(type,name)
-	    if(symbol?.declarations.some(declaration=>declaration.resolve()?.getSourceFile().fileName.endsWith('/engine.ts')))return true
-	    if(ts.isObjectLiteralExpression(expression))return expression.properties.some(property=>ts.isSpreadAssignment(property)&&rawMember(property.expression,name))
-	    if(ts.isParenthesizedExpression(expression)||ts.isAsExpression(expression)||ts.isNonNullExpression(expression))return rawMember(expression.expression,name)
-	    return false
-	   }
-	   const record=(node:ts.Node,name:string,raw:boolean):void=>{if(!raw)return
-	    let parent:ts.Node|undefined=node,fn='';while(parent){if(ts.isFunctionDeclaration(parent)&&parent.name){fn=parent.name.text;break}parent=parent.parent}
-	    const relative=path.slice(harness.length+1),allowed=relative==='context/session.ts'&&(fn==='resolveSessionPolicy'||fn==='requestSession')
-	    if(!allowed)unexpected.push(`${relative}:${file.getLineAndCharacterOfPosition(node.getStart(file)).line+1}:${name}`)
-	   }
-	   const visit=(node:ts.Node):void=>{
-	    let base:ts.Expression|undefined,name:string|undefined
-	    if(ts.isPropertyAccessExpression(node)){base=node.expression;name=node.name.text}
-	    else if(ts.isElementAccessExpression(node)&&ts.isStringLiteralLikeNode(node.argumentExpression)){base=node.expression;name=node.argumentExpression.text}
-	    if(base&&name&&['effort','thinking','criticReasoning'].includes(name)){
-	     record(node,name,rawMember(base,name))
-	    }else if(ts.isBindingElement(node)&&ts.isObjectBindingPattern(node.parent)){
-	     const named=node.propertyName??node.name
-	     if(named&&(ts.isIdentifier(named)||ts.isStringLiteralLikeNode(named))&&['effort','thinking','criticReasoning'].includes(named.text)){
-	      const declaration=node.parent.parent,initializer=ts.isVariableDeclaration(declaration)?declaration.initializer:undefined
-	      if(initializer)record(node,named.text,rawMember(initializer,named.text))
-	     }
-	    }
-     node.forEachChild(visit)
-    };visit(file)
-   }
-   expect(unexpected).toEqual([])
+   expect(rawReasoningReads(harness,files,snapshot)).toEqual([])
   }finally{snapshot.dispose();api.close()}
+ })
+ it('catches typed raw reasoning keys while allowing resolved and unrelated members',()=>{
+  const harness=resolve(process.cwd()),directory=mkdtempSync(join(tmpdir(),'reasoning-guard-')),path=join(directory,'probe.ts')
+  const source=`import type {AgentAssistantSession,AssistantSession} from ${JSON.stringify(join(harness,'engine'))}
+export function probe(raw:AgentAssistantSession,assistant:AssistantSession,key:'thinking',union:'effort'|'criticReasoning',mixed:'effort'|'prompt'){
+ const constant='effort' as const
+ const alias=constant
+ void raw[constant]
+ void raw[alias]
+ void assistant[key]
+ void raw[union]
+ void raw[mixed]
+ void assistant['thinking']
+ const resolved:{effort?:string;thinking?:string;criticReasoning?:string}={}
+ void resolved[constant]
+ void resolved[key]
+ void resolved[union]
+ void {effort:'high'}[alias]
+ void raw.prompt
+ const {[alias]:effort}=raw
+ void effort
+ const {[alias]:resolvedEffort}=resolved
+ void resolvedEffort
+}`
+  writeFileSync(path,source)
+  writeFileSync(join(directory,'tsconfig.json'),JSON.stringify({compilerOptions:{strict:true,skipLibCheck:true,target:'ES2022',module:'ESNext',moduleResolution:'bundler'},files:['probe.ts']}))
+  const api=new API({cwd:directory}),snapshot=api.updateSnapshot({openProjects:[join(directory,'tsconfig.json')]})
+  try{
+   const project=snapshot.getProjects()[0]
+   expect(project).toBeDefined()
+   expect(project!.program.getSyntacticDiagnostics(path)).toEqual([])
+   expect(project!.program.getSemanticDiagnostics(path)).toEqual([])
+   expect(rawReasoningReads(directory,[path],snapshot).sort()).toEqual([
+    'probe.ts:5:effort','probe.ts:6:effort','probe.ts:7:thinking',
+    'probe.ts:8:criticReasoning','probe.ts:8:effort','probe.ts:9:effort','probe.ts:10:thinking','probe.ts:17:effort'
+   ].sort())
+  }finally{snapshot.dispose();api.close();rmSync(directory,{recursive:true,force:true})}
  })
  it('omits an omitted agent effort and carries model-default source into the event and checkpoint',async()=>{
   const sent:Record<string,unknown>[]=[]
