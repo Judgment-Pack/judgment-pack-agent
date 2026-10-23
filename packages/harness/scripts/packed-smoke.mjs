@@ -7,6 +7,7 @@ import {fileURLToPath,pathToFileURL} from 'node:url'
 import {build} from 'esbuild'
 import {emittedTarget,moduleImports} from './normalize-esm.mjs'
 import {existingLockZodConsumer,verifyHarnessZod} from './zod-consumer.mjs'
+import {existingLockBodyParserConsumer,verifyBodyParserConsumer} from './body-parser-consumer.mjs'
 
 const packageDirectory=fileURLToPath(new URL('..',import.meta.url))
 const repositoryDirectory=fileURLToPath(new URL('../../..',import.meta.url))
@@ -238,7 +239,7 @@ export function validateDeclarations(projectRoot,packageRoot,entries){
  catch(error){throw Error(`packed declaration resolution failed:\n${error.stdout??''}${error.stderr??''}`,{cause:error})}
 }
 
-export async function packedSmoke(){
+export async function packedSmoke({bodyParserOnly=false}={}){
  const temporary=consumerDirectory()
  try{
   const packed=JSON.parse(execFileSync(npm,['pack','--json','--pack-destination',temporary],{cwd:packageDirectory,encoding:'utf8'}))
@@ -248,6 +249,11 @@ export async function packedSmoke(){
   const installedRoot=join(temporary,'node_modules','@judgment-pack','harness')
   const entries=validatePackage(installedRoot)
   verifyHarnessZod(temporary,installedRoot,'fresh consumer')
+  await verifyBodyParserConsumer(temporary,installedRoot,'fresh consumer')
+  const oldBodyParser=consumerDirectory()
+  try{await existingLockBodyParserConsumer(oldBodyParser,tarball)}
+  finally{rmSync(oldBodyParser,{recursive:true,force:true})}
+  if(bodyParserOnly){console.log('packed body-parser: fresh and existing-lock SDK/Express paths passed');return}
   nativeEntrypoints(temporary,entries)
   process.stdout.write(memoryLifecycleConsumer(temporary))
   await bundleEntrypoints(temporary,installedRoot,entries)
@@ -263,4 +269,4 @@ export async function packedSmoke(){
  }
 }
 
-if(process.argv[1]&&realpathSync(process.argv[1])===realpathSync(fileURLToPath(import.meta.url)))await packedSmoke()
+if(process.argv[1]&&realpathSync(process.argv[1])===realpathSync(fileURLToPath(import.meta.url)))await packedSmoke({bodyParserOnly:process.argv.includes('--body-parser-only')})
