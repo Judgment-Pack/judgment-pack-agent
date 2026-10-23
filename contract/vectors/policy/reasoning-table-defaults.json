@@ -1,0 +1,100 @@
+{
+  "description": "Written by hand from the 2026-10-23 release-audit amendment to ADR-0011: table reasoning is a default, discovery may replace it, and run or project reasoning remains explicit.",
+  "schema": "policy.json#/$defs/resolved",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/policy.ts",
+      "packages/harness/context/session.ts"
+    ]
+  },
+  "cases": [
+    {
+      "name": "compactor table default without discovery",
+      "run": {},
+      "project": {},
+      "table": {"models": {"author": {"model": "model-a", "reasoning": "off"}, "compactor": {"model": "model-a", "reasoning": "low"}}},
+      "member": "models.compactor.reasoning"
+    },
+    {
+      "name": "compactor table default is advertised",
+      "run": {"models": {"compactor": {"discovered": {"reasoning": {"default": "high", "supported": ["low", "high"]}}}}},
+      "project": {},
+      "table": {"models": {"author": {"model": "model-a", "reasoning": "off"}, "compactor": {"model": "model-a", "reasoning": "low"}}},
+      "member": "models.compactor.reasoning"
+    },
+    {
+      "name": "compactor table default falls back to discovery",
+      "run": {"models": {"compactor": {"discovered": {"reasoning": {"default": "high", "supported": ["high"]}}}}},
+      "project": {},
+      "table": {"models": {"author": {"model": "model-a", "reasoning": "off"}, "compactor": {"model": "model-a", "reasoning": "low"}}},
+      "member": "models.compactor.reasoning"
+    },
+    {
+      "name": "compactor table default falls back to omission",
+      "run": {"models": {"compactor": {"discovered": {"reasoning": {"supported": ["high"]}}}}},
+      "project": {},
+      "table": {"models": {"author": {"model": "model-a", "reasoning": "off"}, "compactor": {"model": "model-a", "reasoning": "low"}}},
+      "member": "models.compactor.reasoning"
+    },
+    {
+      "name": "author table default falls back to discovery",
+      "run": {"models": {"author": {"discovered": {"reasoning": {"default": "high", "supported": ["high"]}}}}},
+      "project": {},
+      "table": {"models": {"author": {"model": "model-a", "reasoning": "off"}}},
+      "member": "models.author.reasoning"
+    },
+    {
+      "name": "critic inherited table default falls back to discovery",
+      "run": {"models": {"critic": {"discovered": {"reasoning": {"default": "high", "supported": ["high"]}}}}},
+      "project": {},
+      "table": {"models": {"author": {"model": "model-a", "reasoning": "off"}, "critic": {"model": "model-a"}}},
+      "member": "models.critic.reasoning"
+    },
+    {
+      "name": "child table default falls back to discovery",
+      "run": {"models": {"child.review": {"discovered": {"reasoning": {"default": "high", "supported": ["high"]}}}}},
+      "project": {},
+      "table": {"models": {"author": {"model": "model-a", "reasoning": "off"}, "child.review": {"model": "model-a", "reasoning": "off"}}},
+      "member": "models.child.review.reasoning"
+    },
+    {
+      "name": "subagent table default falls back to discovery",
+      "run": {"models": {"subagent.audit": {"discovered": {"reasoning": {"default": "high", "supported": ["high"]}}}}},
+      "project": {},
+      "table": {"models": {"author": {"model": "model-a", "reasoning": "off"}, "subagent.audit": {"model": "model-a", "reasoning": "off"}}},
+      "member": "models.subagent.audit.reasoning"
+    }
+  ],
+  "items": [
+    {"models.compactor.reasoning": {"value": "low", "layer": "table", "source": "layer"}},
+    {"models.compactor.reasoning": {"value": "low", "layer": "table", "source": "layer"}},
+    {"models.compactor.reasoning": {"value": "high", "layer": "run", "source": "discovered"}},
+    {"models.compactor.reasoning": {"layer": "table", "source": "model-default"}},
+    {"models.author.reasoning": {"value": "high", "layer": "run", "source": "discovered"}},
+    {"models.critic.reasoning": {"value": "high", "layer": "run", "source": "discovered"}},
+    {"models.child.review.reasoning": {"value": "high", "layer": "run", "source": "discovered"}},
+    {"models.subagent.audit.reasoning": {"value": "high", "layer": "run", "source": "discovered"}}
+  ],
+  "requests": [
+    {"reasoning": "low"},
+    {"reasoning": "low"},
+    {"reasoning": "high"},
+    {}
+  ],
+  "refusals": [
+    {"name": "run author off", "agent": false, "layer": "run", "role": "author", "value": "off"},
+    {"name": "project author off", "agent": false, "layer": "project", "role": "author", "value": "off"},
+    {"name": "run critic off", "agent": false, "layer": "run", "role": "critic", "value": "off"},
+    {"name": "project critic off", "agent": false, "layer": "project", "role": "critic", "value": "off"},
+    {"name": "run compactor off", "agent": false, "layer": "run", "role": "compactor", "value": "off"},
+    {"name": "project compactor off", "agent": false, "layer": "project", "role": "compactor", "value": "off"},
+    {"name": "run child none", "agent": true, "layer": "run", "role": "child.review", "value": "none"},
+    {"name": "project child none", "agent": true, "layer": "project", "role": "child.review", "value": "none"},
+    {"name": "run subagent none", "agent": true, "layer": "run", "role": "subagent.audit", "value": "none"},
+    {"name": "project subagent none", "agent": true, "layer": "project", "role": "subagent.audit", "value": "none"}
+  ]
+}
