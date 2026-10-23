@@ -56,7 +56,7 @@ describe('ADR-0012 provider boundary',()=>{
   const [anthropic,gemini]=vector('tier-override').items
   for(const [family,capabilities,path,want] of [['anthropic',anthropic,'output_config','high'],['gemini',gemini,'thinkingConfig',4096]] as const){
    const model={family,model:'test',call:async()=>new Response(),capabilities}
-   const slot=openThinking({model,thinking:normalize('ultra',family)},capabilitiesFor(model).reasoning)
+   const slot=openThinking({model,reasoning:normalize('ultra',family)},capabilitiesFor(model).reasoning)
    expect(slot.members()?.[path]).toMatchObject(family==='anthropic'?{effort:want}:{thinkingBudget:want})
   }
  })
@@ -66,7 +66,7 @@ for(const c of fallback.cases)it(`fallback map ${c.record} ${c.tier}`,()=>{
  const record=fallback.items[c.record]!
  const family=record.family as 'anthropic'|'gemini'
  const model={family,model:'test',call:async()=>new Response(),capabilities:{...record,family}}
- const slot=openThinking({model,thinking:normalize(c.tier as ThinkingTier,family)},capabilitiesFor(model).reasoning)
+ const slot=openThinking({model,reasoning:normalize(c.tier as ThinkingTier,family)},capabilitiesFor(model).reasoning)
  expect(slot.refused(400,family==='anthropic'?'thinking':'thinkingBudget').kind).toBe('retry')
  expect(slot.members()).toEqual(c.members)
 })

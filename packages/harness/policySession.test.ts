@@ -1,99 +1,80 @@
 import {describe,it,expect,vi} from 'vitest'
 import {join} from 'node:path'
+import {readdirSync} from 'node:fs'
 import {API} from 'typescript/unstable/sync'
 import * as ts from 'typescript/unstable/ast'
 import {contextualSession} from './context/session'
 import {codex} from './engines/codex'
 import {withDelegation} from './delegation'
 import type {AgentRun} from './agent'
-import type {AgentAssistantSession,AssistantEvent} from './engine'
+import type {AgentAssistantSession,AssistantEvent,EngineSession,RequestSession} from './engine'
 import type {ReasoningValue} from './policy'
 import collisions from '../../contract/vectors/policy/legacy-collisions.json'
 import omission from '../../contract/vectors/providers/reasoning-omission.json'
 
 const base=():AgentAssistantSession=>({prompt:'Draft a pack.',testPrompt:'Review the pack.',tools:[],hostTools:[],callTool:vi.fn(),signal:new AbortController().signal,allowConversation:true,agent:{model:'connected',run:vi.fn()}})
 
-function aliasedRawReasoningRead(session:{effort?:string}){const raw=session;return raw.effort}
-function destructuredRawReasoningRead(session:{effort?:string}){const {effort}=session;return effort}
-function computedRawReasoningRead(session:{effort?:string}){const key='effort';return session[key]}
+function requestBoundaryTypeCases(session:RequestSession){
+ // @ts-expect-error RequestSession has no raw direct effort.
+ void session.effort
+ const alias=session
+ // @ts-expect-error An alias cannot restore raw effort.
+ void alias.effort
+ // @ts-expect-error Destructuring cannot restore raw effort.
+ const {effort}=session
+ void effort
+ const key='effort' as const
+ // @ts-expect-error A computed key cannot restore raw effort.
+ void session[key]
+ const spread={...session}
+ // @ts-expect-error A spread cannot restore raw effort.
+ void spread.effort
+ const rawHelper=(_raw:EngineSession)=>undefined
+ // @ts-expect-error A request boundary cannot be passed to a raw-session helper.
+ rawHelper(session)
+}
+void requestBoundaryTypeCases
 
-type ReasoningRead={path:string,line:number,member:string,root:string}
-const sensitive=new Set(['effort','thinking','thinkingBudget','reasoning_effort','criticReasoningFloor','author'])
-const stringValue=(node:ts.Expression|ts.PropertyName|undefined,strings:Map<string,string>):string|undefined=>{
- if(!node)return undefined
- if(ts.isStringLiteralLikeNode(node))return node.text
- if(ts.isIdentifier(node))return strings.get(node.text)
- if(ts.isBinaryExpression(node)&&node.operatorToken.kind===ts.SyntaxKind.PlusToken){const left=stringValue(node.left,strings),right=stringValue(node.right,strings);return left===undefined||right===undefined?undefined:left+right}
- return undefined
-}
-const propertyNameValue=(node:ts.PropertyName|undefined,strings:Map<string,string>)=>node&&ts.isIdentifier(node)?node.text:stringValue(node,strings)
-const reasoningReads=(file:ts.SourceFile,path:string,roots:string[],scope:ts.Node=file):ReasoningRead[]=>{
- const aliases=new Map<string,string>(),strings=new Map<string,string>(),reads:ReasoningRead[]=[]
- const rooted=(value:string|undefined)=>value!==undefined&&roots.some(root=>value===root||value.startsWith(`${root}.`))
- const canonical=(node:ts.Expression|undefined):string|undefined=>{
-  if(!node)return undefined
-  if(ts.isIdentifier(node))return aliases.get(node.text)??node.text
-  if(node.kind===ts.SyntaxKind.ThisKeyword)return 'this'
-  if(ts.isParenthesizedExpression(node)||ts.isAsExpression(node)||ts.isTypeAssertion(node)||ts.isNonNullExpression(node))return canonical(node.expression)
-  if(ts.isPropertyAccessExpression(node)){const base=canonical(node.expression);return base===undefined?undefined:`${base}.${node.name.text}`}
-  if(ts.isElementAccessExpression(node)){const base=canonical(node.expression),member=stringValue(node.argumentExpression,strings);return base===undefined||member===undefined?undefined:`${base}.${member}`}
-  return undefined
- }
- const line=(node:ts.Node)=>file.getLineAndCharacterOfPosition(node.getStart(file)).line+1
- const memberRead=(node:ts.Node,base:string|undefined,member:string|undefined)=>{if(member&&sensitive.has(member)&&rooted(base))reads.push({path,line:line(node),member,root:base!})}
- const bind=(name:ts.BindingName,base:string|undefined)=>{
-  if(!rooted(base))return
-  if(ts.isIdentifier(name)){aliases.set(name.text,base!);return}
-  for(const element of name.elements){
-   if(ts.isOmittedExpression(element)||element.name===undefined)continue
-   const member=element.propertyName?propertyNameValue(element.propertyName,strings):ts.isIdentifier(element.name)?element.name.text:undefined
-   memberRead(element,base,member)
-   bind(element.name,member===undefined?base:`${base}.${member}`)
-  }
- }
- const isWrite=(node:ts.Node)=>node.parent!==undefined&&ts.isBinaryExpression(node.parent)&&node.parent.left===node&&node.parent.operatorToken.kind>=ts.SyntaxKind.FirstAssignment&&node.parent.operatorToken.kind<=ts.SyntaxKind.LastAssignment
- const visit=(node:ts.Node):void=>{
-  if(ts.isVariableDeclaration(node)&&node.initializer){
-   if(ts.isIdentifier(node.name)){const value=stringValue(node.initializer,strings);if(value!==undefined)strings.set(node.name.text,value)}
-   bind(node.name,canonical(node.initializer))
-  }
-  if(ts.isBinaryExpression(node)&&node.operatorToken.kind===ts.SyntaxKind.EqualsToken&&ts.isIdentifier(node.left))bind(node.left,canonical(node.right))
-  if(!isWrite(node)&&ts.isPropertyAccessExpression(node))memberRead(node,canonical(node.expression),node.name.text)
-  if(!isWrite(node)&&ts.isElementAccessExpression(node))memberRead(node,canonical(node.expression),stringValue(node.argumentExpression,strings))
-  node.forEachChild(visit)
- }
- visit(scope)
- return reads
-}
-const guardedReads=[
- {path:'./context/session.ts',roots:['session','original'],allowed:['71:thinking','71:effort','838:effort']},
- {path:'./criticSwitch.ts',roots:['tiers','this.table'],allowed:['253:author','253:criticReasoningFloor']},
- {path:'./thinking.ts',roots:['session'],allowed:['533:thinking']},
- {path:'./engines/codex/index.ts',roots:['session'],allowed:['269:effort']},
- {path:'./engines/vercel/loop.ts',roots:['session'],allowed:['673:thinking','1495:thinking','1502:thinking']},
- {path:'./engines/deepagents/loop.ts',roots:['session'],allowed:['389:thinking','927:thinking','933:thinking']}
-] as const
+const sourceFiles=(root:string):string[]=>readdirSync(root,{withFileTypes:true}).flatMap(entry=>entry.isDirectory()?sourceFiles(join(root,entry.name)):entry.name.endsWith('.ts')&&!entry.name.endsWith('.test.ts')?[join(root,entry.name)]:[])
 describe('ADR policy table review',()=>{
- it('constructs reasoning requests only from the AST-enumerated admitted reads',()=>{
-  const root=process.env.JP_REASONING_GUARD_ROOT
-  const files=guardedReads.map(row=>join(root??process.cwd(),...(root?['packages','harness',row.path.replace(/^\.\//,'')]:[row.path])))
-  const api=new API({cwd:process.cwd()})
-  const snapshot=root?api.updateSnapshot({openFiles:files}):api.updateSnapshot({openProjects:[join(process.cwd(),'tsconfig.json')]})
-  try{for(const [at,row] of guardedReads.entries()){
-   const program=snapshot.getDefaultProjectForFile(files[at]!)?.program??snapshot.getProjects()[0]?.program
-   const file=program?.getSourceFile(files[at]!)
-   expect(file,`${row.path} is in the compiler project`).toBeDefined()
-   const got=reasoningReads(file!,row.path,[...row.roots]).map(read=>`${read.line}:${read.member}`)
-   expect(got,row.path).toEqual(row.allowed)
-  }}finally{snapshot.dispose();api.close()}
- })
- it('rejects aliased, destructured and computed raw reasoning reads',()=>{
-  expect([aliasedRawReasoningRead,destructuredRawReasoningRead,computedRawReasoningRead]).toHaveLength(3)
-  const path=join(process.cwd(),'policySession.test.ts'),api=new API({cwd:process.cwd()}),snapshot=api.updateSnapshot({openProjects:[join(process.cwd(),'tsconfig.json')]})
-  try{
-   const file=snapshot.getDefaultProjectForFile(path)!.program.getSourceFile(path)!,fixtures=new Map<string,ts.Node>()
-   const visit=(node:ts.Node):void=>{if(ts.isFunctionDeclaration(node)&&node.name?.text.endsWith('RawReasoningRead'))fixtures.set(node.name.text,node);node.forEachChild(visit)};visit(file)
-   for(const name of ['aliasedRawReasoningRead','destructuredRawReasoningRead','computedRawReasoningRead'])expect(reasoningReads(file,path,['session'],fixtures.get(name)).map(read=>read.member),name).toEqual(['effort'])
+ it('keeps raw session reasoning reads inside resolution and conversion',()=>{
+  const root=process.env.JP_REASONING_GUARD_ROOT??process.cwd()
+	 const harness=process.env.JP_REASONING_GUARD_ROOT?join(root,'packages','harness'):root
+	 const files=sourceFiles(harness)
+	 const api=new API({cwd:process.cwd()})
+	 const snapshot=process.env.JP_REASONING_GUARD_ROOT?api.updateSnapshot({openFiles:files}):api.updateSnapshot({openProjects:[join(process.cwd(),'tsconfig.json')]})
+	 try{
+	  const unexpected:string[]=[]
+	  for(const path of files){const project=snapshot.getDefaultProjectForFile(path)??snapshot.getProjects()[0],program=project?.program,checker=project?.checker,file=program?.getSourceFile(path);if(!file||!checker)continue
+	   const rawMember=(expression:ts.Expression,name:string):boolean=>{
+	    const type=checker.getTypeAtLocation(expression),symbol=type&&checker.getPropertyOfType(type,name)
+	    if(symbol?.declarations.some(declaration=>declaration.resolve()?.getSourceFile().fileName.endsWith('/engine.ts')))return true
+	    if(ts.isObjectLiteralExpression(expression))return expression.properties.some(property=>ts.isSpreadAssignment(property)&&rawMember(property.expression,name))
+	    if(ts.isParenthesizedExpression(expression)||ts.isAsExpression(expression)||ts.isNonNullExpression(expression))return rawMember(expression.expression,name)
+	    return false
+	   }
+	   const record=(node:ts.Node,name:string,raw:boolean):void=>{if(!raw)return
+	    let parent:ts.Node|undefined=node,fn='';while(parent){if(ts.isFunctionDeclaration(parent)&&parent.name){fn=parent.name.text;break}parent=parent.parent}
+	    const relative=path.slice(harness.length+1),allowed=relative==='context/session.ts'&&(fn==='resolveSessionPolicy'||fn==='requestSession')
+	    if(!allowed)unexpected.push(`${relative}:${file.getLineAndCharacterOfPosition(node.getStart(file)).line+1}:${name}`)
+	   }
+	   const visit=(node:ts.Node):void=>{
+	    let base:ts.Expression|undefined,name:string|undefined
+	    if(ts.isPropertyAccessExpression(node)){base=node.expression;name=node.name.text}
+	    else if(ts.isElementAccessExpression(node)&&ts.isStringLiteralLikeNode(node.argumentExpression)){base=node.expression;name=node.argumentExpression.text}
+	    if(base&&name&&['effort','thinking','criticReasoning'].includes(name)){
+	     record(node,name,rawMember(base,name))
+	    }else if(ts.isBindingElement(node)&&ts.isObjectBindingPattern(node.parent)){
+	     const named=node.propertyName??node.name
+	     if(named&&(ts.isIdentifier(named)||ts.isStringLiteralLikeNode(named))&&['effort','thinking','criticReasoning'].includes(named.text)){
+	      const declaration=node.parent.parent,initializer=ts.isVariableDeclaration(declaration)?declaration.initializer:undefined
+	      if(initializer)record(node,named.text,rawMember(initializer,named.text))
+	     }
+	    }
+     node.forEachChild(visit)
+    };visit(file)
+   }
+   expect(unexpected).toEqual([])
   }finally{snapshot.dispose();api.close()}
  })
  it('omits an omitted agent effort and carries model-default source into the event and checkpoint',async()=>{
@@ -163,7 +144,7 @@ describe('ADR policy table review',()=>{
   const opened=await contextualSession(session,'codex')
   expect(opened.context.resolvedPolicy['models.author.reasoning']?.value).toBe(expected.author)
   expect(opened.context.resolvedPolicy['models.critic.reasoning']).toEqual({value:expected.critic,layer:'run',source:'layer'})
-  expect(opened.session.effort).toBe(expected.author)
+  expect(opened.session.reasoning).toBe(expected.author)
   opened.context.close()
   const events:AssistantEvent[]=[]
   for await(const event of codex.start(session))events.push(event)

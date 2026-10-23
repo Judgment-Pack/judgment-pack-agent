@@ -99,7 +99,7 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 		wirePhase = "critic"
 	}
 	agent := r.run.Agent
-	effort := agent.Effort
+	effort := r.run.Reasoning("author")
 	tierMap := agent.Tiers
 	admit := agent.Admit
 	if phase == "critic" {
@@ -109,7 +109,7 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 		if bindErr != nil {
 			return "", bindErr
 		}
-		binding, bindErr := adapter.PolicyBinding(r.run, r.sc.ResolvedPolicy, named, "critic")
+		binding, bindErr := r.run.PolicyBinding(r.sc.ResolvedPolicy, named, "critic")
 		if bindErr != nil {
 			return "", bindErr
 		}
@@ -178,7 +178,6 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 		if runErr != nil && !watched.reached() && !switched && r.run.Failover != nil && (classified.Code == "unavailable" || classified.Code == "rate-limited" || classified.Code == "timeout") {
 			if from, to, ok := r.run.Failover(role, classified.Code); ok {
 				switched = true
-				agent = r.run.Agent
 				selected := r.run.PolicyConnections[to].Agent
 				request.Model = selected.Model
 				request.Effort, _ = r.sc.ResolvedPolicy["models."+role+".reasoning"].Value.(string)

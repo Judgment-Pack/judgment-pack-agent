@@ -76,11 +76,6 @@ func (c *coordinator) childBinding(profile turn.TaskProfile) (adapter.PolicyConn
 		id = provider
 	}
 	tier, _ := members["models."+role+".reasoning"].Value.(string)
-	if binding.Agent != nil {
-		held := *binding.Agent
-		held.Effort = tier
-		binding.Agent = &held
-	}
 	policy := runcontext.PolicyLayer{}
 	// Inherit effective limits, without reinterpreting the parent's other roles
 	// against this child's (possibly lower) author tier.

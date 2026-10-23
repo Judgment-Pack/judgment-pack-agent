@@ -8,7 +8,7 @@ import { assistantLanguageInstructions } from '../../host'
 import { separateImages } from '../../images'
 import { DATA_RULE, readingTool } from '../../framing'
 import { GateViolation } from '../../toolGate'
-import type { AssistantEvent, AgentAssistantSession, EngineSession, Engine, McpToolResult, ProposalNote } from '../../engine'
+import type { AssistantEvent, AgentAssistantSession, RequestAgentAssistantSession, EngineSession, Engine, McpToolResult, ProposalNote } from '../../engine'
 import type { AgentTool, AgentEvent } from '../../agent'
 import {
   SYSTEM, CONVERSATION_SYSTEM, TEST_DESIGN_SYSTEM, BRIEF_SYSTEM, GRAPH_SYSTEM,
@@ -49,7 +49,7 @@ export function reformatPrompt(answer: string, cause: unknown): string {
 export const CRITIC_PASS_MILLISECONDS = 10 * 60_000
 
 export function runCodex(session:CodexSession):AsyncIterable<AssistantEvent>{return managedContext(session,runCodexLoop,'codex')}
-function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
+function runCodexLoop(session: RequestAgentAssistantSession): AsyncIterable<AssistantEvent> {
   const context=contextOf(session)
   let closeRun = () => {}
   const channel = eventChannel({ onAbandon: () => closeRun() })
@@ -266,7 +266,7 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
     const state = [session.context?.currentState, session.allowConversation ? context.execution.guidance() : undefined].filter((part): part is string => !!part).join('\n\n')
     let final: string
     try {
-      final = await run(session.prompt, instructions + (offersProposeTool(session.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : ''), 'author', undefined, undefined, state, session.effort)
+      final = await run(session.prompt, instructions + (offersProposeTool(session.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : ''), 'author', undefined, undefined, state, session.reasoning)
     } catch (cause) {
       // **A proposal made through propose_pack is finished work.** The run
       // failing after it (the bridge's deadline, a lost connection) does not
