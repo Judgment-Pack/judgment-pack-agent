@@ -123,6 +123,35 @@ export function probe(raw:AgentAssistantSession,assistant:AssistantSession,key:'
    ].sort())
   }finally{snapshot.dispose();api.close();rmSync(directory,{recursive:true,force:true})}
  })
+ it('keeps raw reasoning members out of declared request session types',()=>{
+  const harness=resolve(process.cwd()),directory=mkdtempSync(join(tmpdir(),'request-boundary-')),path=join(directory,'probe.ts')
+  writeFileSync(path,`import type {AgentAssistantSession,RequestAssistantSession,RequestAgentAssistantSession,RequestSession} from ${JSON.stringify(join(harness,'engine'))}
+export function probe(raw:AgentAssistantSession,assistant:RequestAssistantSession,agent:RequestAgentAssistantSession,session:RequestSession) {}`)
+  writeFileSync(join(directory,'tsconfig.json'),JSON.stringify({compilerOptions:{strict:true,skipLibCheck:true,target:'ES2022',module:'ESNext',moduleResolution:'bundler'},files:['probe.ts']}))
+  const api=new API({cwd:directory}),snapshot=api.updateSnapshot({openProjects:[join(directory,'tsconfig.json')]})
+  try{
+   const project=snapshot.getProjects()[0]
+   expect(project).toBeDefined()
+   const {program,checker}=project!,file=program.getSourceFile(path)!
+   expect(program.getSyntacticDiagnostics(path)).toEqual([])
+   expect(program.getSemanticDiagnostics(path)).toEqual([])
+   const probe=file.statements.find(ts.isFunctionDeclaration)!
+   expect(probe.parameters).toHaveLength(4)
+   const constituents=(type:Type):Type[]=>type.isUnionType()?type.getTypes().flatMap(constituents):[type]
+   for(const parameter of probe.parameters){
+    const type=checker.getTypeAtLocation(parameter.name)!
+    // Positive controls ensure imports resolve to the real session declarations.
+    expect(checker.getPropertyOfType(type,'prompt'),parameter.name.getText(file)).toBeDefined()
+    if(parameter.name.getText(file)==='raw')expect(checker.getPropertyOfType(type,'effort')).toBeDefined()
+    else for(const constituent of constituents(type)){
+     // Union-wide lookups omit members exposed by only one constituent.
+     expect(checker.getPropertyOfType(constituent,'prompt'),parameter.name.getText(file)).toBeDefined()
+     expect(checker.getPropertyOfType(constituent,'reasoning'),parameter.name.getText(file)).toBeDefined()
+     for(const member of ['effort','thinking','criticReasoning'])expect(checker.getPropertyOfType(constituent,member),`${parameter.name.getText(file)} exposes raw ${member}`).toBeUndefined()
+    }
+   }
+  }finally{snapshot.dispose();api.close();rmSync(directory,{recursive:true,force:true})}
+ })
  it('omits an omitted agent effort and carries model-default source into the event and checkpoint',async()=>{
   const sent:Record<string,unknown>[]=[]
   const session={...base(),critic:'off' as const,context:{currentRequest:{message:'Draft a pack.',input:'Draft a pack.'}},agent:{model:'connected',run:vi.fn(async(request,callbacks)=>{sent.push({...request});await callbacks.event({type:'message',id:'done',text:'Done.',phase:'final'})})}}
