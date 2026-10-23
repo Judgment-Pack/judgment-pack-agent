@@ -1,6 +1,6 @@
 /**
  * Scripted endpoints for the tests that drive one failure, one bound or one
- * page at a time. Tests only, like the rest of `testing/`.
+ * page at a time. Also emitted for the exported certification scenario server.
  *
  * - `scriptedEndpoint`: the relay's model endpoint on the OpenAI-compatible
  *   wire, as a `fetch` stub that answers each request with whatever the test
@@ -17,7 +17,7 @@
  */
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
-import { vi } from 'vitest'
+import { captureGlobal } from './captureGlobal'
 import { bindModelCall, openAssistantConnection, runAssistantSession } from '../session'
 import { bindAgentRun } from '../agentTransport'
 import { ASSISTANT_TOOLS } from '../host'
@@ -25,8 +25,8 @@ import { normalize } from '../thinking'
 import { vercel } from '../engines/vercel'
 import { codex } from '../engines/codex'
 import { RECORDED_TOOLS } from '../certification/scriptedServer'
-import type { AgentRequest } from '../agent'
-import type { AgentAssistantSession, AssistantEvent, AssistantSession, Engine, HostTool, McpTool, McpToolResult } from '../engine'
+import type { AgentRequest, AgentRun } from '../agent'
+import type { AgentAssistantSession, AssistantEvent, AssistantSession, Engine, HostTool, McpTool, McpToolResult, ModelCall } from '../engine'
 
 /**
  * `experimental_test_cases` as `jpack mcp` serves it: its description and its
@@ -268,7 +268,7 @@ export interface Bridge {
 
 /**
  * The agent socket, scripted: each run the browser starts runs `script` once,
- * with the run's request. Hand `WebSocket` to `vi.stubGlobal` before
+ * with the run's request. Bind the scripted `WebSocket` synchronously before
  * `bindAgentRun` captures it.
  */
 export function scriptedBridge(script: (bridge: Bridge, run: number) => Promise<void>): {
@@ -364,7 +364,10 @@ export async function vercelTurn(options: {
 }): Promise<TurnRecord & { requests: EndpointRequest[] }> {
   const events: AssistantEvent[] = []
   const endpoint = scriptedEndpoint(options.answer)
-  vi.stubGlobal('fetch', endpoint.fetch)
+  const boundCall = captureGlobal('fetch', endpoint.fetch, () => bindModelCall('openai-compatible'))
+  const override = options.session?.model?.call
+  // Existing overrides may synchronously bind their own recording/decorating transport.
+  const call: ModelCall = override ? (...args) => captureGlobal('fetch', endpoint.fetch, () => override(...args)) : boundCall
   const runtime = await gatedRuntime({
     tools: [...RECORDED_TOOLS, TEST_CASES_TOOL],
     allowed: [...ASSISTANT_TOOLS],
@@ -381,11 +384,11 @@ export async function vercelTurn(options: {
         callTool: runtime.callTool,
         hostTools: options.hostTools ?? [],
         allowConversation: true,
-        model: { family: 'openai-compatible', model: 'scripted-model', call: bindModelCall('openai-compatible') },
         thinking: normalize('off', 'openai-compatible'),
         signal: new AbortController().signal,
         context: { currentRequest: CURRENT_REQUEST },
-        ...options.session
+        ...options.session,
+        model: { family: 'openai-compatible', model: 'scripted-model', ...options.session?.model, call }
       },
       (event) => events.push(event)
     )
@@ -407,7 +410,9 @@ export async function codexTurn(options: {
 }): Promise<TurnRecord & { runs: AgentRequest[] }> {
   const events: AssistantEvent[] = []
   const bridge = scriptedBridge(options.script)
-  vi.stubGlobal('WebSocket', bridge.WebSocket)
+  const boundRun = captureGlobal('WebSocket', bridge.WebSocket, () => bindAgentRun('scripted-agent'))
+  const override = options.session?.agent?.run
+  const run: AgentRun = override ? (...args) => captureGlobal('WebSocket', bridge.WebSocket, () => override(...args)) : boundRun
   const runtime = await gatedRuntime({
     tools: [...RECORDED_TOOLS, TEST_CASES_TOOL],
     allowed: [...ASSISTANT_TOOLS],
@@ -424,10 +429,10 @@ export async function codexTurn(options: {
         callTool: runtime.callTool,
         hostTools: options.hostTools ?? [],
         allowConversation: true,
-        agent: { model: 'scripted-agent', run: bindAgentRun('scripted-agent') },
         signal: new AbortController().signal,
         context: { currentRequest: CURRENT_REQUEST },
-        ...options.session
+        ...options.session,
+        agent: { model: 'scripted-agent', ...options.session?.agent, run }
       },
       (event) => events.push(event)
     )
