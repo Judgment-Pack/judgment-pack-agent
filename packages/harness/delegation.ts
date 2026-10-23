@@ -641,7 +641,7 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
         ...(selected&&provider?{policyProject:undefined,policyConnections:shared.context?.connectionBindings()??session.policyConnections,policy:{...session.policy,models:{author:{model:provider.connection,provider:provider.connection,...(fallback?{fallback}:{})}},critic:{default:'off'}},...( 'agent'in selected?{agent:selected.agent}:{})}:{}),
         // agent#11: the objective is the child's request text, the first text part of its first message.
         context:{configuration:session.context?.configuration,phase:session.context?.phase,authorize:session.context?.authorize,artifactProposals:session.context?.artifactProposals,memory:session.context?.memory,objective,runtime:session.context?.runtime,chat:chat.childScope(planned.visible),link,...(provider?{connection:{...session.context?.connection,connectionId:provider.connection}}:session.context?.connection?{connection:session.context.connection}:{})},
-        purpose:undefined,prompt,testPrompt:'',allowConversation:true,interactive:true,adversarialReview:false,
+        purpose:undefined,prompt,testPrompt:'',allowConversation:true,interactive:true,critic:'off',
         // ADR-0009: a child is handed no skills; it inherits none of the parent's loaded set.
         skills:planned.subagent?session.skills?.filter(s=>planned.subagent!.skills.includes(s.id)):undefined,
         subagents:undefined,childDefinition:planned.subagent,

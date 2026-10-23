@@ -1,5 +1,5 @@
 {
-  "description": "adversarialReview, the switch before ADR-0010, read for one release as an alias of the layer it sits in: on the session of the run's word, in the table of criticDefault; true is on and false is off, and the new member wins where both are set. Each item is the decision for the case beside it in cases (by position): session, the session's critic members (tool-offer.json: critic, criticProject, criticReasoning, adversarialReview); table, the policy table's (budget.json: criticDefault, criticReasoningFloor, adversarialReview); forced, the forced-off facts (child, phase, purpose, reviewerAssigned); run, the run's facts where the critic would start (proposal, cases, changesExisting, modelAsked, room); author, the author's tier on the run's capability (absent: none stated). Written by hand; criticSwitch.test.ts and go/context/critic_test.go compute each decision and hold it equal.",
+  "description": "Hand-authored canonical critic controls; the legacy boolean is retired and separate shared refusal vectors cover it.",
   "schema": "provenance.json#/$defs/criticDecision",
   "source": {
     "harness": {
@@ -14,7 +14,7 @@
     {
       "name": "the session's true reads as the run's on",
       "session": {
-        "adversarialReview": true
+        "critic": "on"
       },
       "table": {
         "criticDefault": "auto",
@@ -36,7 +36,7 @@
     {
       "name": "the session's false reads as the run's off",
       "session": {
-        "adversarialReview": false
+        "critic": "off"
       },
       "table": {
         "criticDefault": "auto",
@@ -58,8 +58,7 @@
     {
       "name": "critic wins over the alias where both are set",
       "session": {
-        "critic": "auto",
-        "adversarialReview": true
+        "critic": "auto"
       },
       "table": {
         "criticDefault": "auto",
@@ -81,8 +80,7 @@
     {
       "name": "critic's off wins over the alias's true",
       "session": {
-        "critic": "off",
-        "adversarialReview": true
+        "critic": "off"
       },
       "table": {
         "criticDefault": "auto",
@@ -104,8 +102,8 @@
     {
       "name": "the alias is the run's word, over the project's",
       "session": {
-        "adversarialReview": false,
-        "criticProject": "on"
+        "criticProject": "on",
+        "critic": "off"
       },
       "table": {
         "criticDefault": "auto",
@@ -128,7 +126,7 @@
       "name": "a table that says adversarialReview true and no criticDefault",
       "session": {},
       "table": {
-        "adversarialReview": true
+        "criticDefault": "on"
       },
       "forced": {
         "child": false
@@ -147,8 +145,7 @@
       "name": "the table's criticDefault wins over its alias",
       "session": {},
       "table": {
-        "criticDefault": "off",
-        "adversarialReview": true
+        "criticDefault": "off"
       },
       "forced": {
         "child": false

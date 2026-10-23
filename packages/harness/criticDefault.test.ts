@@ -1,7 +1,7 @@
 /**
  * The critic's default is the policy table's, and every engine reads it from
  * there (agent#10; ADR-0010). This file runs on a table that states no
- * `criticDefault` and says `adversarialReview: true`, as a host's table from
+ * `criticDefault` and says `critic: 'on'`, as a host's table from
  * before ADR-0010 would: the alias reads as `on`. `critic.test.ts` runs on the
  * package's table, which says `criticDefault: auto`.
  */
@@ -17,12 +17,12 @@ import type { AssistantEvent } from './engine'
 
 vi.mock('./contract/policy.json', async (original) => {
   const { critic: _critic, ...table } = ((await original()) as { default: Record<string, unknown> }).default
-  return { default: { ...table, adversarialReview: true } }
+  return { default: { ...table, critic: {default:'on',reasoningFloor:'author'} } }
 })
 
 const PROPOSAL = 'Ready.\n\n```json\n' + JSON.stringify({ proposal: { document: { id: 'p' }, unknowns: [] } }) + '\n```'
 
-describe('a policy table that says adversarialReview: true and no criticDefault (agent#10; ADR-0010 alias)', () => {
+describe('a canonical policy table with critic on', () => {
   it('is the harness’s default, read as on at the table’s layer', () => {
     expect(CONTEXT_DEFAULTS.criticDefault).toBe('on')
     expect(criticMode({}, CONTEXT_DEFAULTS)).toEqual({ mode: 'on', layer: 'table' })
@@ -38,7 +38,7 @@ describe('a policy table that says adversarialReview: true and no criticDefault 
         if (reviewing) critic += 1
         return streamed(sseTurn({ text: reviewing ? 'Done.' : PROPOSAL }))
       },
-      session: { testPrompt: 'Test the pack.', ...(review === undefined ? {} : { adversarialReview: review }) }
+      session: { testPrompt: 'Test the pack.', ...(review === undefined ? {} : { critic: review ? 'on' : 'off' }) }
     })
     expect(critic > 0).toBe(review === undefined)
     expect(ofType(events, 'critique')).toHaveLength(review === undefined ? 1 : 0)
@@ -56,7 +56,7 @@ describe('a policy table that says adversarialReview: true and no criticDefault 
     const events: AssistantEvent[] = []
     await runAssistantSession(codex, {
       prompt: 'p', testPrompt: 'Test the pack.', tools: [], callTool: vi.fn(), hostTools: [],
-      ...(review === undefined ? {} : { adversarialReview: review }),
+      ...(review === undefined ? {} : { critic: review ? 'on' : 'off' }),
       agent: { model: 'agent-model', run }, signal: new AbortController().signal
     }, (event) => events.push(event))
     expect(phases).toEqual(review === undefined ? ['author', 'critic'] : ['author'])

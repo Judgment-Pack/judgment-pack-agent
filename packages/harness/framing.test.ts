@@ -203,7 +203,7 @@ describe.each([vercel, deepagents])('what the model is shown, on $id', (engine) 
     const schema = { $defs: Object.fromEntries(Array.from({ length: 300 }, (_, index) => [`d${index}`, { description: 'field '.repeat(10) }])) }
     let reference = ''
     const { requests, events } = await vercelTurn({ engine: modelEngine,
-      session: { allowConversation: false, adversarialReview: true, testPrompt: 'Test the proposal with the runtime.' },
+      session: { allowConversation: false, critic: 'on', testPrompt: 'Test the proposal with the runtime.' },
       handle: () => runtimeAnswer(schema),
       answer: (request) => {
         if (request.number === 1) return streamed(sseTurn({ tool: { name: 'get_schema', args: {} } }))

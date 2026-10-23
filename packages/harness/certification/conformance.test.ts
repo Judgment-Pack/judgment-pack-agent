@@ -1,3 +1,4 @@
+import {typedMemory} from '../testing/memory'
 import {frameBlock} from '../framing'
 /**
  * The desk's conformance session: the bake-off's scenario, in the repository,
@@ -725,7 +726,7 @@ async function runLeg(
     projectInstructions: () => how.host?.projectInstructions,
     memoryFor: (query) => {
       asked.push(query)
-      return how.host?.memory === undefined ? undefined : `${how.host.memory} (recall ${asked.length})`
+      return how.host?.memory === undefined ? undefined : typedMemory(`${how.host.memory} (recall ${asked.length})`)
     }
   })
   const runtime = await scriptedRuntime()
@@ -770,7 +771,7 @@ async function runLeg(
         hostTools: [],
         model: { family: leg.api, model: 'scripted-model', call },
         thinking: normalize(how.tier ?? 'off', leg.api),
-        ...(how.review === undefined ? {} : { adversarialReview: how.review }),
+        ...(how.review === undefined ? {} : { critic: how.review ? 'on' : 'off' }),
         ...(how.cases === undefined ? {} : { criticCases: how.cases }),
         signal: new AbortController().signal
       },

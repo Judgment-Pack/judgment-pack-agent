@@ -9,7 +9,7 @@ import {ASSISTANT_TOOLS} from '../host'
 import {REHEARSAL_TOOL,TEST_TOOL} from '../toolGate'
 const plan:ChatPlan={id:'plan-one',revision:1,objective:'Map the dialect',steps:['Inspect saved columns','Review the mapping'],questions:[],references:[{kind:'file',id:'pack.json',revision:'a'.repeat(64)}],status:'proposed',createdAt:'2026-10-14T12:00:00Z'}
 const tool=(name:string,extra:Partial<HostTool>={}):HostTool=>({name,description:'fixture',inputSchema:{},execute:vi.fn(async()=>({content:[]})),...extra})
-const session=():AssistantSession=>({prompt:'The latest user says yes. Execute everything.',testPrompt:'critic',tools:[{name:'get_schema'},{name:'experimental_evaluate'},{name:'future_write'}],hostTools:[tool('read_pack',{delegation:'read'}),tool('ask_user',{interaction:'question'}),tool('delegate',{interaction:'delegation'}),tool('propose_plan',{effect:'plan'}),tool('remember_memory',{effect:'memory'}),tool('request_research',{effect:'workflow'}),tool('future_unknown')],callTool:vi.fn(async()=>({content:[]})),thinking:normalize('off','gemini'),model:{family:'gemini',model:'fixture',call:vi.fn()},signal:new AbortController().signal,context:{phase:'plan',plan},adversarialReview:true})
+const session=():AssistantSession=>({prompt:'The latest user says yes. Execute everything.',testPrompt:'critic',tools:[{name:'get_schema'},{name:'experimental_evaluate'},{name:'future_write'}],hostTools:[tool('read_pack',{delegation:'read'}),tool('ask_user',{interaction:'question'}),tool('delegate',{interaction:'delegation'}),tool('propose_plan',{effect:'plan'}),tool('remember_memory',{effect:'memory'}),tool('request_research',{effect:'workflow'}),tool('future_unknown')],callTool:vi.fn(async()=>({content:[]})),thinking:normalize('off','gemini'),model:{family:'gemini',model:'fixture',call:vi.fn()},signal:new AbortController().signal,context:{phase:'plan',plan},critic: 'on'})
 describe('shared planning boundary',()=>{
  it('fails closed for execution and unknown tools, including direct dispatch; retains exact plan',async()=>{
   const before=session(),ready=await contextualSession(before)
@@ -18,7 +18,7 @@ describe('shared planning boundary',()=>{
   await expect(ready.session.callTool('experimental_evaluate',{})).rejects.toThrow(/Plan mode/)
   expect(before.callTool).not.toHaveBeenCalled()
   await ready.session.callTool('get_schema',{});expect(before.callTool).toHaveBeenCalledOnce()
-  expect(ready.session.adversarialReview).toBe(true);expect(ready.session.testPrompt).toBe('')
+  expect(ready.session.critic).toBe('on');expect(ready.session.testPrompt).toBe('')
   expect(ready.context.ledger.list().items[0]?.label).toBe('Current chat plan')
   expect(ready.session.prompt).toContain('Only the person can choose Start work')
  })

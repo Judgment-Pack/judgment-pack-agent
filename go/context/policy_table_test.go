@@ -233,8 +233,8 @@ func TestPolicyTable(t *testing.T) {
 	t.Run("alias", func(t *testing.T) {
 		old := PolicyLayer{"readBytes": 512, "models": table["models"]}
 		got, err := ResolvePolicy(nil, nil, old, host)
-		if err != nil || got.Members["budget.readBytes"].Value != float64(512) {
-			t.Fatalf("alias: %+v %v", got, err)
+		if err == nil || !strings.Contains(err.Error(), "use budget.readBytes") {
+			t.Fatalf("retired alias: %+v %v", got, err)
 		}
 	})
 	t.Run("pace", func(t *testing.T) {

@@ -95,6 +95,24 @@ func policyKeys[V any](m map[string]V) []string {
 	sort.Strings(keys)
 	return keys
 }
+func retiredPolicyDetail(key, path string) string {
+	replacement := ""
+	if path == "" {
+		if _, ok := policySchema.Properties["budget"].Properties[key]; ok {
+			replacement = "budget." + key
+		}
+		if key == "criticDefault" || key == "adversarialReview" {
+			replacement = "critic.default"
+		}
+		if key == "criticReasoningFloor" {
+			replacement = "critic.reasoningFloor"
+		}
+	}
+	if replacement != "" {
+		return "unknown policy member; use " + replacement
+	}
+	return "unknown policy member"
+}
 func policyRead(value any, s policyShape, path, layer string, out map[string]any) error {
 	if path == "outputPatterns" || path == "outputAllow" {
 		var err error
@@ -142,7 +160,7 @@ func policyRead(value any, s policyShape, path, layer string, out map[string]any
 				name = path + "." + key
 			}
 			if !ok {
-				return &PolicyRefusal{Member: name, Layer: layer, Detail: "unknown policy member"}
+				return &PolicyRefusal{Member: name, Layer: layer, Detail: retiredPolicyDetail(key, path)}
 			}
 			if err := policyRead(object[key], child, name, layer, out); err != nil {
 				return err
@@ -217,50 +235,8 @@ func policyDefaults(s policyShape, path string, out PolicyMembers) {
 	}
 }
 
-// PolicyAlias reads budget.json as policy.budget for one release; new members win.
-func PolicyAlias(value PolicyLayer) PolicyLayer {
-	out := PolicyLayer{}
-	budget := map[string]any{}
-	critic := map[string]any{}
-	for k, v := range value {
-		if _, ok := policySchema.Properties["budget"].Properties[k]; ok {
-			budget[k] = v
-		} else {
-			out[k] = v
-		}
-	}
-	if v, ok := value["criticDefault"]; ok {
-		critic["default"] = v
-	} else if v, ok := value["adversarialReview"].(bool); ok {
-		critic["default"] = "off"
-		if v {
-			critic["default"] = "on"
-		}
-	}
-	if v, ok := value["criticReasoningFloor"]; ok {
-		critic["reasoningFloor"] = v
-	}
-	for _, k := range []string{"criticDefault", "criticReasoningFloor", "adversarialReview"} {
-		delete(out, k)
-	}
-	if v, ok := value["budget"].(map[string]any); ok {
-		for k, x := range v {
-			budget[k] = x
-		}
-	}
-	if v, ok := value["critic"].(map[string]any); ok {
-		for k, x := range v {
-			critic[k] = x
-		}
-	}
-	if len(budget) > 0 {
-		out["budget"] = budget
-	}
-	if len(critic) > 0 {
-		out["critic"] = critic
-	}
-	return out
-}
+// PolicyAlias no longer normalizes retired flat input; ResolvePolicy refuses it.
+func PolicyAlias(value PolicyLayer) PolicyLayer { return value }
 
 // ResolvePolicy is the one run > project > table resolver. It reads only typed host inputs.
 func ResolvePolicy(run, project, table PolicyLayer, host PolicyHost) (ResolvedPolicy, error) {
@@ -524,9 +500,19 @@ func (p PolicyMembers) Record() map[string]contract.PolicyMember {
 }
 
 func resolveSessionPolicy(session Session, budget Policy) (ResolvedPolicy, error) {
+	if session.AdversarialReview != nil {
+		return ResolvedPolicy{}, &PolicyRefusal{Member: "adversarialReview", Layer: "run", Detail: "unknown session member; use critic"}
+	}
+	if budget.AdversarialReview != nil {
+		return ResolvedPolicy{}, &PolicyRefusal{Member: "adversarialReview", Layer: "table", Detail: "unknown policy member; use critic.default"}
+	}
 	data, _ := json.Marshal(budget)
 	table := PolicyLayer{}
 	_ = json.Unmarshal(data, &table)
+	delete(table, "criticDefault")
+	delete(table, "criticReasoningFloor")
+	delete(table, "adversarialReview")
+	table = PolicyLayer{"budget": map[string]any(table), "critic": map[string]any{"default": budget.CriticDefault, "reasoningFloor": budget.CriticReasoningFloor}}
 	current := session.ModelName()
 	if session.Context != nil && session.Context.Connection != "" {
 		current = session.Context.Connection
@@ -594,9 +580,6 @@ func resolveSessionPolicy(session Session, budget Policy) (ResolvedPolicy, error
 		layer["critic"] = v
 	}
 	mode := session.Critic
-	if mode == "" {
-		mode = criticAlias(session.AdversarialReview)
-	}
 	critic(run, mode)
 	critic(project, session.CriticProject)
 	if session.TaskClass != "" {

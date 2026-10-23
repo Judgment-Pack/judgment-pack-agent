@@ -26,7 +26,7 @@ Budgets are the `budget` section of the [agent's policy table](../../docs/adr/00
 The host's run layer wins over its project layer, then table defaults. The same
 resolver covers critic, models, concurrency, pace, and task class, with each member's
 value and layer in `policy_resolved` and `checkpoint.policy`. `budget.json` is a
-read alias for one release. Model-visible text cannot set policy.
+retired input in v0.9.1. Use nested policy.budget. Model-visible text cannot set policy.
 
 The assistant harness of [Judgment Pack Desk](https://github.com/Judgment-Pack/judgment-pack-desk),
 extracted from the Desk's `web/src/assistant` as it is at `integration/v0.13`, `d9251ec`, with no
@@ -146,7 +146,8 @@ prompt, `brief`, `memoryFor` and `projectInstructions`, nothing.)
 | `endpointCapabilities({ family, model })` | What the host knows about an endpoint and model: any members of its capability record (see The capability record), its probe result. Answers `{}`, nothing known, until supplied | none (new, agent#9, agent#4: the Desk decides by its three families) | `capabilities.ts`, read once per run by `context/session.ts` |
 | `renderImageToText(image, signal)` | An image as text, for a model whose record says no vision: the host's render adapter | none (new, agent#5) | `images.ts`, from `engines/vercel/loop.ts`, `engines/codex/index.ts` and `engines/deepagents/loop.ts` |
 | `brief()` | The project brief: the text of the project file the host's profile names, or nothing; at most `briefBytes`. Asked once per run, before its first request, and placed in the third layer of every request (see The prompt) | the Desk server's addition behind the relay (`internal/desk/ai_context.go`, `aiContext`) | `prompt.ts`, `readHostParts`, read by `context/session.ts`, `SessionContext.askHost` |
-| `memoryFor(query)` | Closed memory records for `query` (bare text is an alias for v0.8.0), the person's message (a delegated child's objective; the host's prompt where neither is given), or nothing; at most `memoryBytes`. Asked once per run, not where `context.memory` is `false`, and placed in the fifth layer, the end of the stable prefix | the Desk server's recall behind the relay (`ai_context.go`, `memoryBackground`) | as `brief` |
+| `memoryFor(query)` | Closed memory records for `query` (bare text is refused in v0.9.1), the person's message (a delegated child's objective; the host's prompt where neither is given), or nothing; at most `memoryBytes`. Asked once per run, not where `context.memory` is `false`, and placed in the fifth layer, the end of the stable prefix | the Desk server's recall behind the relay (`ai_context.go`, `memoryBackground`) | as `brief` |
+| `memoryLifecycle(recalled)` (optional) | Detached prior recalled metadata in; up to 256 closed id/digest/kind/revoked-or-expired rows out. Asked once by the canonical session even when text recall is disabled; null/undefined supplies no updates | none (v0.9.1 lifecycle correction) | `host.ts`, `memories.ts`, `context/session.ts` |
 | `projectInstructions()` | The project's own instructions, the per-project block the person wrote, or nothing; at most `projectInstructionsBytes`. Instructions at the lowest rank, placed in the fourth layer after the package's guidance and the brief; they cannot grant a tool or change an effect | none (new, ADR-0005) | as `brief` |
 | `modelsFor({ connection, engine, family, model })` | The models a run's connection names for its subordinate work: `child`, delegated children's, and `critic`, the critic's; each absent or null for the run's own model. Asked once per run with the run's connection (`context.connection`), engine, family and model. Answers none until supplied. It replaces agent#10's `criticModel` (see The critic) | none (new, agent#10; one seam since the review of agent#35) | `host.ts`, `runModels`, read by `context/session.ts`, `SessionContext.models`, for `engines/vercel/loop.ts`, `engines/codex/index.ts`, `engines/deepagents/loop.ts` and `delegation.ts` |
 
@@ -258,7 +259,7 @@ delivered, on every engine, where the critic's switch says so ([ADR-0010](../../
   the model called `request_review` this run, the host declared `criticCases`, or the host says the run
   works on an existing pack (`existingPack`). A reviewer assigned (`reviewerAssigned`), a
   graph-purpose run, Plan mode and a delegated child turn it off in every mode. `adversarialReview` is
-  read for one release as an alias of `critic` (`true` is `on`, `false` is `off`). One decision for
+  retired and refused in v0.9.1; use `critic`. One decision for
   every engine (`criticDecision`, through the boundary's `decideCritic`); nothing is read from prose.
 - **Its tier** is `criticReasoning` (a thinking tier on a model session, an effort on an agent
   session), else the author's (`criticReasoningFloor`: `author`); a lower one the host names is
@@ -771,8 +772,7 @@ Memory proposals ([ADR-0014](../../docs/adr/0014-memory-the-write-side.md)) use 
 `remember {kind, text}` tool. Only the author may propose, including Plan mode. The defaults are
 1,000 UTF-8 text bytes and four proposals per run; prior proposals count after resume. The package
 emits `memory_proposed`, records `checkpoint.memories.proposed`, and stores nothing. The host
-accepts, declines, revises, revokes and stores. `memoryFor` returns `Memory[]`; the text alias lasts
-for v0.8.0. Only accepted, unexpired records are framed. `memory_recalled` and the checkpoint's
+accepts, declines, revises, revokes and stores. `memoryFor` returns `Memory[]`; bare-text answers are refused in v0.9.1. Only accepted, unexpired records are framed. `memory_recalled` and the checkpoint's
 recalled rows record ids/digests and kinds; a revoked record returned after resume updates the
 report but never enters the prompt. Scenario 14 certifies the write side on every engine.
 
@@ -814,3 +814,21 @@ labelled holes for the versioned base patterns and host `outputPatterns`.
 the decision visible and carry it through checkpoint resume. Redacted proposals
 are validated with their holes. Model input remains unchanged, and incomplete
 fragments wait for the complete guarded answer.
+
+### v0.9.1 typed memory and retired inputs
+
+Hosts may supply `memoryLifecycle(recalled)` in the browser, or optional native
+`MemoryLifecycleHost.MemoryLifecycle(ctx, recalled)` / `HostFuncs.MemoryLifecycleFunc`.
+The argument is a detached prior recalled metadata list, without text. Return up to 256 closed
+`{id,digest,kind,state}` rows with state `revoked` or `expired`, or null/nil/undefined for none.
+Only exact prior canonical identities can change: accepted becomes terminal, identical terminal
+replay is a no-op; terminal switching, resurrection, identity rewrites and contradictions with
+full-record recall refuse atomically. Concurrent proposals survive preparation. The callback
+runs even when prompt memory is disabled, while `memoryFor` / `MemoryRecordsForFunc` does not.
+Omission never revokes. Prompt text stays fixed per run and checkpoint/report shapes stay the same.
+
+Migrate `adversarialReview` (Go `Run.Review`) to `critic` / `Critic` (`on` or `off`), flat policy
+budget fields to `policy.budget`, and `criticDefault` / `criticReasoningFloor` to `policy.critic`.
+Any retired member refuses on presence even beside its replacement. Replace every bare-text
+memory answer, including empty text and `MemoryForFunc`, with closed `Memory[]` /
+`MemoryRecordsForFunc`; null/nil/undefined means no answer. See ADR-0014 for the transition matrix.

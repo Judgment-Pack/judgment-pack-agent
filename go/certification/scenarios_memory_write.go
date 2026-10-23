@@ -69,7 +69,7 @@ func memoryWriteFindings(ctx context.Context, server *Server, inner Adapter, age
 		}
 		run.Host = runcontext.HostFuncs{MemoryRecordsForFunc: func(context.Context, string) ([]contract.Memory, error) { out.asked++; return records, nil }}
 		if alias != "" {
-			run.Host = runcontext.HostFuncs{MemoryForFunc: func(context.Context, string) (string, error) { out.asked++; return alias, nil }}
+			run.Host = runcontext.HostFuncs{MemoryRecordsForFunc: func(context.Context, string) ([]contract.Memory, error) { out.asked++; return typedMemory(alias), nil }}
 		}
 		review := []memoryStep{{name: runcontext.Remember, args: file.Proposals[0]}, {say: "No refutation found."}}
 		parent, criticAt := 0, 0

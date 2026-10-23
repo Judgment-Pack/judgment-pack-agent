@@ -1,3 +1,4 @@
+import {typedMemory} from '../testing/memory'
 import {contextDigest} from '../context/ledger'
 import {frameBlock} from '../framing'
 /**
@@ -48,7 +49,7 @@ import { REFUTATION_MARKER, type CriticCase } from '../refutation'
 import { REQUEST_REVIEW, REVIEW_TAKEN, reviewRefusal } from '../criticSwitch'
 import criticSwitch from './scenarios/critic-switch.json'
 import { appendFileSync } from 'node:fs'
-import { policyAlias, type PolicyLayer } from '../policy'
+import { type PolicyLayer } from '../policy'
 import policyAliasVector from '../../../contract/vectors/policy/alias.json'
 import reasoningTableDefaults from '../../../contract/vectors/policy/reasoning-table-defaults.json'
 import policyScenario from './scenarios/policy-table.json'
@@ -365,7 +366,7 @@ const memoryBlock = (system:string) => `${MEMORY_HEADER}\n${frameBlock('memory',
 
 /** The host's memoryFor for the memory scenario: the scenario's memory, each query it was asked with kept. */
 function recallFor(asked: string[]) {
-  configureHarness({ memoryFor: (query) => { asked.push(query); return memory.memory } })
+  configureHarness({ memoryFor: (query) => { asked.push(query); return typedMemory(memory.memory) } })
 }
 
 /** The checks both adapters make of the input allowance: no reserve is taken for the brief or the memory, whatever the host says of memory. */
@@ -506,7 +507,7 @@ async function correctionLoop(kind: 'model' | 'agent', engine: Engine, answerAs:
         tools: ready.tools,
         callTool: ready.callTool,
         hostTools: [],
-        adversarialReview: review,
+        critic: review ? 'on' as const : 'off' as const,
         ...(review ? { criticCases: DECLARED } : {}),
         signal: new AbortController().signal
       }
@@ -1875,7 +1876,7 @@ describe.each(MODEL_ENGINES)('engine %s · scenarios', (engineId) => {
           runOnModelEngine(answerFrom(turns, answerAs), { engine, hostTools, session: { prompt: skillsScenario.request, interactive: true, skills, context } }), null,
         async (hostTools, skills, context) => ({
           ran: await runOnModelEngine((request) => answerFrom((JSON.stringify(request.body).includes(REFUTATION_MARKER) ? skillsScenario.critic.critic : skillsScenario.critic.author) as unknown as Turn[], answerAs)(request),
-            { engine, hostTools, session: { prompt: skillsScenario.request, interactive: true, skills, context, adversarialReview: true, testPrompt: skillsScenario.critic.testPrompt } }),
+            { engine, hostTools, session: { prompt: skillsScenario.request, interactive: true, skills, context, critic: 'on', testPrompt: skillsScenario.critic.testPrompt } }),
           answers: null
         }))
       })
@@ -2074,7 +2075,7 @@ describe.each(AGENT_ENGINES)('agent engine %s · scenarios', (engineId) => {
         return runOnAgentEngine(agentRunFrom(turns, kept), { engine, hostTools, session: { prompt: skillsScenario.request, interactive: true, skills, context } })
       }, answers, async (hostTools, skills, context) => {
         const criticAnswers: NonNullable<Skilled['criticAnswers']> = []
-        const ran = await runOnAgentEngine(criticAgentRun(criticAnswers), { engine, hostTools, session: { prompt: skillsScenario.request, interactive: true, skills, context, adversarialReview: true, testPrompt: skillsScenario.critic.testPrompt } })
+        const ran = await runOnAgentEngine(criticAgentRun(criticAnswers), { engine, hostTools, session: { prompt: skillsScenario.request, interactive: true, skills, context, critic: 'on', testPrompt: skillsScenario.critic.testPrompt } })
         return { ran, answers: criticAnswers }
       })
     })
@@ -2196,17 +2197,14 @@ function policyTableChecks(engineId: import('../host').AssistantEngine, agent: b
     expect(omitted.requests[0]!.body).not.toHaveProperty('reasoning_effort')
     expect(ofType(omitted.events,'policy_resolved')[0]!.members['models.author.reasoning']).toEqual({layer:'table',source:'model-default'})
   })
-  it('11 · budget.json reads as policy.budget, with nested spelling winning', async () => {
-    const alias = {...policyAliasVector.items[0]!,readBytes:512}
-    const legacy = await play({policy:policyAlias(alias)})
-    const {criticDefault,criticReasoningFloor,...budget} = alias
-    const nested = await play({policy:{budget,critic:{default:criticDefault as 'auto',reasoningFloor:criticReasoningFloor as 'author'}}})
-    expect(ofType(legacy.events,'error')).toEqual([])
-    expect(ofType(nested.events,'error')).toEqual([])
-    expect(ofType(legacy.events,'policy_resolved')).toEqual(ofType(nested.events,'policy_resolved'))
-    expect(lastCheckpoint(legacy.events).policy?.['budget.readBytes']).toEqual({value:512,layer:'run',source:'layer'})
-    const both = await play({policy:policyAlias({...alias,budget:{readBytes:768}})})
-    expect(lastCheckpoint(both.events).policy?.['budget.readBytes']).toEqual({value:768,layer:'run',source:'layer'})
+  it('11 · refuses retired flat budgets even beside canonical input', async () => {
+    for(const policy of [{readBytes:512},{readBytes:512,budget:{readBytes:768}}]){
+      const retired=await play({policy:policy as PolicyLayer})
+      expect(ofType(retired.events,'error')).toHaveLength(1)
+      expect(ofType(retired.events,'policy_resolved')).toEqual([])
+    }
+    const nested=await play({policy:{budget:{readBytes:512}}})
+    expect(lastCheckpoint(nested.events).policy?.['budget.readBytes']).toEqual({value:512,layer:'run',source:'layer'})
   })
   it('11 · pace warns at the threshold and refuses past it before a request', async()=>{
     for(const used of [8,10,11]){

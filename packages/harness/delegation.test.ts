@@ -24,7 +24,7 @@ import type { PolicyMember, PolicyRole } from './policy'
 // agent#17: each title its own objective, so tasks of one batch are not identical (an identical task is reused).
 const task=(title='Check evidence',profile='review')=>({title,profile,objective:`Check the supplied claims (${title}).`})
 const request:DelegationRequest={tasks:[task()]}
-const apiSession=(patch:Partial<AssistantSession>={}):AssistantSession=>({prompt:'PARENT PRIVATE HISTORY',testPrompt:'',tools:[],callTool:vi.fn(),hostTools:[],signal:new AbortController().signal,allowConversation:true,interactive:true,adversarialReview:false,model:{family:'openai-compatible',model:'fixture',call:vi.fn(async()=>new Response('{}'))},thinking:normalize('off','openai-compatible'),...patch})
+const apiSession=(patch:Partial<AssistantSession>={}):AssistantSession=>({prompt:'PARENT PRIVATE HISTORY',testPrompt:'',tools:[],callTool:vi.fn(),hostTools:[],signal:new AbortController().signal,allowConversation:true,interactive:true,critic: 'off',model:{family:'openai-compatible',model:'fixture',call:vi.fn(async()=>new Response('{}'))},thinking:normalize('off','openai-compatible'),...patch})
 const collect=async(engine:Engine,session:EngineSession)=>{const events:AssistantEvent[]=[];for await(const e of engine.start(session))events.push(e);return events}
 // The delegated tasks a finished run left, as the host reads them: the last state of each task, and a
 // task still queued or running read as interrupted (the Desk's chat history, chat/responseHistory.ts).
@@ -45,7 +45,7 @@ it('isolates child context and capabilities, then returns the findings to the pa
  const sessions:EngineSession[]=[]
  const engine:Engine={id:'vercel',async *start(s){sessions.push(s)
   if(delegateIn(s)){const result=answered(await delegateIn(s)!.execute({...request},s.signal));expect(result.tasks[0]).toMatchObject({state:'complete',result:'One unsupported claim.'});yield {type:'message',text:'Review complete.'};yield {type:'end'};return}
-  expect(s.context?.authorize).toBe(authorize);expect(s.context?.artifactProposals).toBe(false);expect(s.prompt).not.toContain('PARENT PRIVATE HISTORY');expect(s.hostTools.map(t=>t.name)).toEqual(['read_context']);expect(s.tools).toEqual([]);expect(s.adversarialReview).toBe(false);await s.hostTools[0]!.execute({},s.signal);yield {type:'message',text:'One unsupported claim.'};yield {type:'end'}
+  expect(s.context?.authorize).toBe(authorize);expect(s.context?.artifactProposals).toBe(false);expect(s.prompt).not.toContain('PARENT PRIVATE HISTORY');expect(s.hostTools.map(t=>t.name)).toEqual(['read_context']);expect(s.tools).toEqual([]);expect(s.critic).toBe('off');await s.hostTools[0]!.execute({},s.signal);yield {type:'message',text:'One unsupported claim.'};yield {type:'end'}
  }}
  const events=await collect(withDelegation(engine),apiSession({context:{authorize,artifactProposals:false},hostTools:[readTool,writeTool]}))
  expect(sessions.filter(delegateIn)).toHaveLength(1)
@@ -93,7 +93,7 @@ describe.each(['model','agent'] as const)('delegated %s request reasoning',capab
     }finally{opened.context.close()}
    }}
    const common={policy:{models:{author:row.author??{},[role]:{model:'fixture',...row.child}}},...(row.project?{policyProject:{models:{[role]:row.project}}}:{}),...(profile==='auditor'?{subagents:[declared]}:{})}
-   const input:EngineSession=capability==='model'?apiSession({...common,thinking:row.raw?normalize(row.raw,'openai-compatible'):undefined}):{prompt:'Parent request',testPrompt:'',tools:[],hostTools:[],callTool:vi.fn(),signal:new AbortController().signal,allowConversation:true,interactive:true,adversarialReview:false,agent:{model:'fixture',run:vi.fn()},effort:row.raw,...common}
+   const input:EngineSession=capability==='model'?apiSession({...common,thinking:row.raw?normalize(row.raw,'openai-compatible'):undefined}):{prompt:'Parent request',testPrompt:'',tools:[],hostTools:[],callTool:vi.fn(),signal:new AbortController().signal,allowConversation:true,interactive:true,critic: 'off',agent:{model:'fixture',run:vi.fn()},effort:row.raw,...common}
    const events=await collect(withDelegation(engine),input)
    expect(events.filter(event=>event.type==='error'),profile).toEqual([])
    expect(observed,profile).toHaveLength(2)

@@ -14,9 +14,7 @@ package runcontext
 // into the checkpoint (critic). The three rules of the refutation pass (go/adapter/turn) do not
 // change: the switch decides only whether the pass runs.
 //
-// AdversarialReview, the boolean before ADR-0010, is read for one release as an alias of the layer it
-// sits in: on the session of the run's word, in the table of CriticDefault; true is on, false is off,
-// and the new member wins where both are set.
+// AdversarialReview is retired in v0.9.1; canonical admission refuses its presence.
 
 import (
 	"context"
@@ -100,27 +98,14 @@ type CriticRunFacts struct {
 	Room bool
 }
 
-func criticAlias(value *bool) string {
-	if value == nil {
-		return ""
-	}
-	if *value {
-		return "on"
-	}
-	return "off"
-}
-
 // CriticMode is criticMode: the precedence run > project > table, in one place. The run's word
-// (Critic, else the alias AdversarialReview), else the project's, else the table's default
-// (CriticDefault, else the table's alias), else auto. It answers the mode and the layer that set it.
+// (Critic), else the project's, else the table's CriticDefault, else auto.
+// Rejected legacy input never supplies a mode.
 func CriticMode(session CriticSettings, table CriticTable) (mode, layer string) {
 	members := session.ResolvedPolicy
 	if members == nil {
 		run, project := PolicyLayer{}, PolicyLayer{}
 		mode := session.Critic
-		if mode == "" {
-			mode = criticAlias(session.AdversarialReview)
-		}
 		if mode != "" {
 			run["critic"] = map[string]any{"default": mode}
 		}
@@ -129,7 +114,7 @@ func CriticMode(session CriticSettings, table CriticTable) (mode, layer string) 
 		}
 		mode = table.CriticDefault
 		if !slices.Contains(CriticModes, mode) {
-			mode = criticAlias(table.AdversarialReview)
+			mode = "auto"
 		}
 		if mode == "" {
 			mode = "auto"
@@ -227,6 +212,9 @@ func TierFits(tier string, agent bool) bool {
 // request: each mode one of the three, the tier one of its capability's enum. It answers the sentence
 // a configuration failure carries.
 func ReadCriticSettings(session CriticSettings, agent bool) error {
+	if session.AdversarialReview != nil {
+		return errors.New("Unknown session member adversarialReview; use critic.")
+	}
 	for _, member := range []struct{ name, value string }{{"critic", session.Critic}, {"criticProject", session.CriticProject}} {
 		if member.value != "" && !slices.Contains(CriticModes, member.value) {
 			return errors.New("The session's " + member.name + " must be off, auto or on.")

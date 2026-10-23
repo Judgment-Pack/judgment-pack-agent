@@ -3,7 +3,7 @@ import {mutateCheckpoint,type CheckpointPatch} from './execution/mutation'
 import { contextDigest, answer } from './context/ledger'
 import { canonicalJSON } from './context/chat'
 import { utf8Bytes, type ContextPolicy } from './context/policy'
-import { authoredFailure } from './failures'
+import { AIFailureError, authoredFailure } from './failures'
 import { frameBlock } from './framing'
 import type { HostTool, AssistantEvent } from './engine'
 import type { ExecutionCheckpoint } from './execution/state'
@@ -22,8 +22,10 @@ export interface Memory {
 }
 export interface MemoryRecall { id: string; digest: string; kind: Memory['kind']; state: Memory['state'] }
 export interface Memories { proposed: Memory[]; recalled: MemoryRecall[] }
-/** The string alias is supported for v0.8.0 only. */
-export type MemoryAnswer = Memory[] | string | null | undefined
+export type MemoryAnswer = Memory[] | null | undefined
+/** Host-owned lifecycle reporting contains canonical metadata, never recalled prose. */
+export interface MemoryLifecycleUpdate { id: string; digest: string; kind: Memory['kind']; state: 'revoked' | 'expired' }
+export type MemoryLifecycleAnswer = readonly MemoryLifecycleUpdate[] | null | undefined
 export const REMEMBER = 'remember'
 export const REMEMBER_SCHEMA = { type: 'object', properties: { kind: { type: 'string', enum: MEMORY_KINDS }, text: { type: 'string', minLength: 1 } }, required: ['kind', 'text'], additionalProperties: false } as const
 const object = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v)
@@ -47,40 +49,74 @@ export function validMemory(v: unknown): v is Memory {
 export function validMemories(v: unknown): v is Memories {
   return object(v) && exact(v,['proposed','recalled']) && Array.isArray(v.proposed) && v.proposed.length <= 256 && v.proposed.every(m => validMemory(m) && m.state === 'proposed') && Array.isArray(v.recalled) && v.recalled.length <= 256 && v.recalled.every(m => object(m) && exact(m,['id','digest','kind','state']) && identifier(m.id) && digest(m.digest) && kind(m.kind) && state(m.state)) && new Set(v.proposed.map(m=>m.id)).size === v.proposed.length && new Set(v.recalled.map(m=>m.id)).size === v.recalled.length
 }
-export async function recallMemory(value: unknown, bound: number, marker: string): Promise<{ text?: string; rows: MemoryRecall[]; records: Memory[]; bytes: number }> {
+export async function recallMemory(value: unknown, bound: number, marker: string): Promise<{ text?: string; rows: MemoryRecall[]; records: Memory[]; bytes: number; now: number }> {
   const fail = (detail: string): never => { throw authoredFailure('configuration', `The host's memoryFor answer ${detail}; nothing was sent.`, 'context') }
-  if (value === undefined || value === null || value === '') return { rows: [], records: [], bytes: 0 }
-  if (typeof value === 'string') {
-    // Deterministic compatibility record: the ordinary record path owns accounting and framing.
-    value = [{ id: 'legacy-memory', kind: 'fact', text: value, source: { run: 'host', proposedBy: 'host' }, scope: 'project', digest: `sha256:${await contextDigest(value)}`, createdAt: '1970-01-01T00:00:00Z', state: 'accepted' }]
-  }
+  const now = Date.now()
+  if (value === undefined || value === null) return { rows: [], records: [], bytes: 0, now }
+  if (typeof value === 'string') return fail('has an unknown bare-text alias; use a list of closed Memory records')
   if (!Array.isArray(value) || value.length > 256 || !value.every(validMemory)) return fail('is not a list of closed memory records')
   if (new Set(value.map(m=>m.id)).size !== value.length) fail('has duplicate ids')
   const records: Memory[] = structuredClone(value as Memory[])
   for (const memory of records) {
     if (memory.digest !== `sha256:${await contextDigest(memory.text)}`) fail('has a mismatched digest')
   }
-  const now = Date.now()
   const accepted = records.filter(m => m.state === 'accepted' && (m.expiresAt === undefined || Date.parse(m.expiresAt) > now))
   const bytes = accepted.reduce((sum,m)=>sum+utf8Bytes(canonicalJSON(m)),0)
   if (bytes > bound) fail(`is over memoryBytes (${bound})`)
   const text = accepted.map(m => frameBlock('memory', `kind: ${m.kind}\nsource: ${canonicalJSON(m.source)}\nid: ${JSON.stringify(m.id)}\n${m.text}`, marker)).join('\n\n')
-  return { ...(text ? { text } : {}), rows: accepted.map(({id,digest,kind,state})=>({id,digest,kind,state})), records, bytes }
+  return { ...(text ? { text } : {}), rows: accepted.map(({id,digest,kind,state})=>({id,digest,kind,state})), records, bytes, now }
 }
-export function recordRecall(checkpoint: ExecutionCheckpoint, recall: Awaited<ReturnType<typeof recallMemory>>,write:(patch:CheckpointPatch)=>void=patch=>{mutateCheckpoint(checkpoint,patch)}): void {
-  const book = structuredClone(checkpoint.memories ?? { proposed: [], recalled: [] })
-  for (const previous of book.recalled) {
-    const current = recall.records.find(m=>m.id === previous.id)
-    if (current && current.state !== 'accepted') previous.state = current.state
-    if (current?.state === 'accepted' && current.expiresAt && Date.parse(current.expiresAt) <= Date.now()) previous.state = 'expired'
+const lifecycleFailure = (detail: string): never => { const error=authoredFailure('configuration', `The host's memoryLifecycle answer ${detail}; nothing was sent.`, 'context'); throw new AIFailureError({...error.failure,outcome:'not-started'}) }
+export function readMemoryLifecycle(value: unknown): MemoryLifecycleUpdate[] {
+  if (value === undefined || value === null) return []
+  const keys = ['id','digest','kind','state']
+  if (!Array.isArray(value) || value.length > 256 || !Array.from(value).every(row => object(row) && Reflect.ownKeys(row).length === 4 && keys.every(key => Object.hasOwn(row,key)))) return lifecycleFailure('is not a list of closed lifecycle rows')
+  let rows: MemoryLifecycleUpdate[]
+  try { rows = structuredClone(Array.from(value)) } catch { return lifecycleFailure('is not a list of closed lifecycle rows') }
+  if (!rows.every(row => identifier(row.id) && digest(row.digest) && kind(row.kind) && (row.state === 'revoked' || row.state === 'expired'))) return lifecycleFailure('is not a list of closed lifecycle rows')
+  if (new Set(rows.map(row => row.id)).size !== rows.length) return lifecycleFailure('has duplicate ids')
+  return rows
+}
+/** Prepare both answers against the prior book, never an intermediate lifecycle state. */
+export function nextMemoryRecall(prior: readonly MemoryRecall[], recall: Awaited<ReturnType<typeof recallMemory>>, lifecycle: readonly MemoryLifecycleUpdate[]): MemoryRecall[] {
+  const next = structuredClone(prior) as MemoryRecall[]
+  const before = new Map(prior.map(row => [row.id, row]))
+  const full = new Map(recall.records.map(record => [record.id, record]))
+  const effective = (record: Memory): Memory['state'] => record.state === 'accepted' && record.expiresAt && Date.parse(record.expiresAt) <= recall.now ? 'expired' : record.state
+  const transition = (previous: MemoryRecall, target: Memory['state']) => {
+    if (previous.state !== target && !(previous.state === 'accepted' && (target === 'revoked' || target === 'expired'))) lifecycleFailure('has an invalid transition')
   }
-  for (const row of recall.rows) {
-    const previous = book.recalled.find(m=>m.id === row.id)
-    if (previous) Object.assign(previous,row)
-    else book.recalled.push(row)
+  for (const record of recall.records) {
+    const previous = before.get(record.id)
+    if (!previous) continue
+    if (previous.digest !== record.digest || previous.kind !== record.kind) lifecycleFailure('has a mismatched digest or kind in full-record recall')
+    const target = effective(record)
+    transition(previous, target)
+    next.find(row => row.id === record.id)!.state = target
   }
-  if (book.recalled.length > 256) throw authoredFailure('configuration','The recalled memory report is full.','context')
-  write({memories:book})
+  for (const update of lifecycle) {
+    const previous = before.get(update.id)
+    if (!previous) lifecycleFailure('names an unknown recalled identity')
+    if (previous!.digest !== update.digest || previous!.kind !== update.kind) lifecycleFailure('has a mismatched digest or kind')
+    transition(previous!, update.state)
+    const record = full.get(update.id)
+    if (record && effective(record) !== update.state) lifecycleFailure('contradicts full-record recall')
+    next.find(row => row.id === update.id)!.state = update.state
+  }
+  for (const row of recall.rows) if (!before.has(row.id)) next.push(structuredClone(row))
+  return next
+}
+/** One synchronous owner transaction: retain proposals made while host callbacks awaited. */
+export function commitMemoryRecall(read: () => ExecutionCheckpoint, write: (patch: CheckpointPatch) => void, expected: readonly MemoryRecall[], next: readonly MemoryRecall[]): void {
+  const current = read().memories ?? { proposed: [], recalled: [] }
+  if (canonicalJSON(current.recalled) !== canonicalJSON(expected)) lifecycleFailure('is stale because the recalled report changed')
+  const candidate = structuredClone({ proposed: current.proposed, recalled: [...next] })
+  if (!validMemories(candidate)) lifecycleFailure('produces an invalid or full memory report')
+  write({ memories: candidate })
+}
+export function recordRecall(checkpoint: ExecutionCheckpoint, recall: Awaited<ReturnType<typeof recallMemory>>, write: (patch: CheckpointPatch) => void = patch => { mutateCheckpoint(checkpoint, patch) }): void {
+  const prior = checkpoint.memories?.recalled ?? []
+  commitMemoryRecall(() => checkpoint, write, prior, nextMemoryRecall(prior, recall, []))
 }
 export function rememberTool(checkpoint: () => ExecutionCheckpoint, policy: ContextPolicy, refused: (detail: string) => Error, notify: (event: AssistantEvent) => void,write:(patch:CheckpointPatch)=>void=patch=>{mutateCheckpoint(checkpoint(),patch)}): HostTool {
   return { name: REMEMBER, description: 'Propose a memory for the person to accept or decline. This records a proposal only; nothing is stored or accepted.', inputSchema: REMEMBER_SCHEMA, effect: 'plan',

@@ -14,11 +14,9 @@
  * see why a review ran or did not. The three rules of the refutation pass (`refutation.ts`) do not
  * change: the switch decides only whether the pass runs.
  *
- * `adversarialReview`, the boolean before ADR-0010, is read for one release as an alias of the
- * layer it sits in: on the session of the run's word, in the table of `criticDefault`; `true` is
- * `on`, `false` is `off`, and the new member wins where both are set.
+ * `adversarialReview` is retired in v0.9.1 and refused on presence; use `critic` or policy.critic.default.
  */
-import {resolvePolicy,type PolicyMembers,type PolicyLayer} from './policy'
+import {PolicyRefusal,resolvePolicy,type PolicyMembers,type PolicyLayer} from './policy'
 import type { ThinkingTier } from './host'
 import type { CodexEffort } from './agent'
 
@@ -95,19 +93,19 @@ export interface CriticRunFacts {
   room: boolean
 }
 
-const alias = (value: boolean | undefined): CriticMode | undefined => (value === undefined ? undefined : value ? 'on' : 'off')
 const isMode = (value: unknown): value is CriticMode => typeof value === 'string' && (CRITIC_MODES as readonly string[]).includes(value)
 
 /**
- * **The precedence, run > project > table**, in one place: the run's word (`critic`, else the alias
- * `adversarialReview`), else the project's, else the table's default (`criticDefault`, else the
- * table's alias), else `auto`. Answers the mode and the layer that set it.
+ * The precedence run > project > table, using canonical critic members only.
+ * Answers the mode and the layer that set it.
  */
 export function criticMode(session: CriticSettings, table: CriticTable): { mode: CriticMode; layer: CriticLayer } {
+  if(Object.hasOwn(session,'adversarialReview'))throw new PolicyRefusal('adversarialReview','run','unknown session member; use critic')
+  if(Object.hasOwn(table,'adversarialReview'))throw new PolicyRefusal('adversarialReview','table','unknown policy member; use critic.default')
   const members = session.resolvedPolicy ?? resolvePolicy(
-    {...session.policy,critic:{...(session.critic !== undefined || session.adversarialReview !== undefined ? {default:session.critic ?? alias(session.adversarialReview)} : {}),...session.policy?.critic}},
+    {...session.policy,critic:{...(session.critic !== undefined ? {default:session.critic} : {}),...session.policy?.critic}},
     {...session.policyProject,critic:{...(session.criticProject !== undefined ? {default:session.criticProject} : {}),...session.policyProject?.critic}},
-    {...table,models:{author:{model:'current',reasoning:'off'}}},
+    {critic:{...(table.criticDefault===undefined?{}:{default:table.criticDefault}),...(table.criticReasoningFloor===undefined?{}:{reasoningFloor:table.criticReasoningFloor})},models:{author:{model:'current',reasoning:'off'}}},
     {connections:['current'],agent:false,requests:16}).members
   const held = members['critic.default']!
   return {mode:held.value as CriticMode,layer:held.layer === 'run' ? 'person' : held.layer}
@@ -166,6 +164,7 @@ export function tierFits(tier: CriticTier, agent: boolean): boolean {
  * carries.
  */
 export function readCriticSettings(session: CriticSettings & { existingPack?: unknown; reviewerAssigned?: unknown }, agent: boolean): void {
+  if(Object.hasOwn(session,'adversarialReview'))throw new PolicyRefusal('adversarialReview','run','unknown session member; use critic')
   for (const member of ['critic', 'criticProject'] as const) {
     const value = session[member]
     if (value !== undefined && !isMode(value)) throw new Error(`The session's ${member} must be off, auto or on.`)
@@ -173,7 +172,7 @@ export function readCriticSettings(session: CriticSettings & { existingPack?: un
   if (session.criticReasoning !== undefined && (typeof session.criticReasoning !== 'string' || !tierFits(session.criticReasoning, agent))) {
     throw new Error(`The session's criticReasoning must be one of ${(agent ? AGENT_TIERS : MODEL_TIERS).join(', ')} on this capability.`)
   }
-  for (const member of ['adversarialReview', 'existingPack', 'reviewerAssigned'] as const) {
+  for (const member of ['existingPack', 'reviewerAssigned'] as const) {
     const value = (session as Record<string, unknown>)[member]
     if (value !== undefined && typeof value !== 'boolean') throw new Error(`The session's ${member} must be true or false.`)
   }

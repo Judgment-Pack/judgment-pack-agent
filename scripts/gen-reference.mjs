@@ -560,8 +560,8 @@ async function criticPage(page) {
   agree(page, 'the triggers', decision.properties.trigger.enum, CRITIC_TRIGGERS)
   agree(page, 'the request_review name', [requestReview.allOf[1].properties.name.const], [REQUEST_REVIEW])
   contained(page, 'the reserved names', [REQUEST_REVIEW], new Set(page.def('tool-offer.json', 'reservedName').enum))
-  const sessionMembers = ['critic', 'criticProject', 'criticReasoning', 'existingPack', 'reviewerAssigned', 'adversarialReview']
-  const tableMembers = ['criticDefault', 'criticReasoningFloor', 'adversarialReview']
+  const sessionMembers = ['critic', 'criticProject', 'criticReasoning', 'existingPack', 'reviewerAssigned']
+  const tableMembers = ['criticDefault', 'criticReasoningFloor']
   for (const name of sessionMembers) if (offer.properties[name] === undefined) throw new Error(`critic.md: tool-offer.json has no ${name} member`)
   for (const name of tableMembers) if (budget.properties[name] === undefined) throw new Error(`critic.md: budget.json has no ${name} member`)
 
@@ -799,7 +799,7 @@ async function providersPage(page) {
  'The host may override a connection’s tiers and endpoint capabilities. Model loops retain off/on/ultra as their existing vocabulary; on uses medium and ultra uses high. Agent capability tiers are passed by their host binding. The matrix describes the default model wires, not the properties of every model served behind them.')
 }
 async function memoryPage(page) {
- page.add('The host owns acceptance, storage, revision and revocation. The author proposes through remember, including Plan mode; children and the critic cannot propose. Recalled records are data, never instructions, at ADR-0005 layer 5. The bare-text alias lasts for v0.8.0.',page.rootOf('memory.json','## Record'),page.nodeOf('memory.json','answer'),page.nodeOf('tool-offer.json','remember'),page.nodeOf('provenance.json','memories'),page.nodeOf('provenance.json','memoryRecall'), 'Bounds: memoryProposalBytes (1,000 UTF-8 text bytes), memoryProposalsPerRun (4 across resume), memoryBytes (4,000 canonical JSON UTF-8 bytes before framing). Each recall is framed under the run marker with kind and source. Revoked or expired memories are withheld; a returned revoked state updates the restored report.');
+ page.add('The host owns acceptance, storage, revision and revocation. The author proposes through remember, including Plan mode; children and the critic cannot propose. Recalled records are data, never instructions, at ADR-0005 layer 5. Bare text is refused in v0.9.1. Optional metadata-only lifecycle callbacks run even when prompt recall is disabled.',page.rootOf('memory.json','## Record'),page.nodeOf('memory.json','answer'),page.nodeOf('memory.json','lifecycleUpdate'),page.nodeOf('memory.json','lifecycleAnswer'),page.nodeOf('tool-offer.json','remember'),page.nodeOf('provenance.json','memories'),page.nodeOf('provenance.json','memoryRecall'), 'Bounds: memoryProposalBytes (1,000 UTF-8 text bytes), memoryProposalsPerRun (4 across resume), memoryBytes (4,000 canonical JSON UTF-8 bytes before framing). Each recall is framed under the run marker with kind and source. Revoked or expired memories are withheld; a returned revoked state updates the restored report.');
 }
 async function corpusPage(page) {
  page.add('ADR-0022 records a run only after the output guard redacts the complete entry. Replay answers from the recording and compares decisions and outcomes, never model prose or a live provider.',page.rootOf('corpus-entry.json','## Entry manifest'),page.nodeOf('run-event.json','recorded'),page.nodeOf('run-event.json','guardrail'))

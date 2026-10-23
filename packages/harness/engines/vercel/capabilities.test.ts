@@ -206,7 +206,7 @@ describe('whether to offer tools reads the record', () => {
     const remember: HostTool = { name: 'host_memory', effect: 'memory', description: 'save a memory', inputSchema: { type: 'object' }, execute: async () => { saved += 1; return { content: [{ type: 'text', text: 'saved' }] } } }
     const turns = [text(PROPOSAL), text('Noting it first.\n' + textCall('host_memory', { note: 'the pack is fine' })), text('REFUTATION: none found.')]
     const { call, sent } = scripted(turns)
-    const events = await drain(vercel.start(session('openai-compatible', call, { nativeToolCalls: false }, { hostTools: [remember], adversarialReview: true, testPrompt: 'the runtime’s test_pack guidance' })))
+    const events = await drain(vercel.start(session('openai-compatible', call, { nativeToolCalls: false }, { hostTools: [remember], critic: 'on', testPrompt: 'the runtime’s test_pack guidance' })))
     expect(saved).toBe(0)
     const result = of(events, 'tool_result').find((event) => event.name === 'host_memory')!
     expect(result.isError).toBe(true)

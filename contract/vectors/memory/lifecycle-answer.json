@@ -1,0 +1,178 @@
+{
+  "description": "Hand-authored closed metadata lifecycle answers and refusals.",
+  "schema": "memory.json#/$defs/lifecycleAnswer",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/memories.ts"
+    ]
+  },
+  "items": [
+    [
+      {
+        "id": "metric",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "kind": "preference",
+        "state": "revoked"
+      },
+      {
+        "id": "fact",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "kind": "fact",
+        "state": "expired"
+      },
+      {
+        "id": "decision",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "kind": "decision",
+        "state": "revoked"
+      },
+      {
+        "id": "reference",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "kind": "reference",
+        "state": "expired"
+      }
+    ],
+    []
+  ],
+  "refused": [
+    {
+      "name": "missing id",
+      "answer": [
+        {
+          "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+          "kind": "preference",
+          "state": "revoked"
+        }
+      ]
+    },
+    {
+      "name": "missing digest",
+      "answer": [
+        {
+          "id": "metric",
+          "kind": "preference",
+          "state": "revoked"
+        }
+      ]
+    },
+    {
+      "name": "missing kind",
+      "answer": [
+        {
+          "id": "metric",
+          "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+          "state": "revoked"
+        }
+      ]
+    },
+    {
+      "name": "missing state",
+      "answer": [
+        {
+          "id": "metric",
+          "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+          "kind": "preference"
+        }
+      ]
+    },
+    {
+      "name": "empty string",
+      "answer": ""
+    },
+    {
+      "name": "empty id",
+      "answer": [
+        {
+          "id": "",
+          "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+          "kind": "preference",
+          "state": "revoked"
+        }
+      ]
+    },
+    {
+      "name": "oversized id",
+      "answer": [
+        {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+          "kind": "preference",
+          "state": "revoked"
+        }
+      ]
+    },
+    {
+      "name": "wrong digest",
+      "answer": [
+        {
+          "id": "metric",
+          "digest": "sha256:bad",
+          "kind": "preference",
+          "state": "revoked"
+        }
+      ]
+    },
+    {
+      "name": "invalid kind",
+      "answer": [
+        {
+          "id": "metric",
+          "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+          "kind": "instruction",
+          "state": "revoked"
+        }
+      ]
+    },
+    {
+      "name": "accepted lifecycle",
+      "answer": [
+        {
+          "id": "metric",
+          "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+          "kind": "preference",
+          "state": "accepted"
+        }
+      ]
+    },
+    {
+      "name": "prose",
+      "answer": [
+        {
+          "id": "metric",
+          "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+          "kind": "preference",
+          "state": "revoked",
+          "text": "deleted"
+        }
+      ]
+    },
+    {
+      "name": "null row",
+      "answer": [
+        null
+      ]
+    },
+    {
+      "name": "duplicate",
+      "answer": [
+        {
+          "id": "metric",
+          "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+          "kind": "preference",
+          "state": "revoked"
+        },
+        {
+          "id": "metric",
+          "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+          "kind": "preference",
+          "state": "revoked"
+        }
+      ]
+    }
+  ]
+}

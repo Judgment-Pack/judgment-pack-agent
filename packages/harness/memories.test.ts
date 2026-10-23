@@ -51,19 +51,19 @@ describe('memory write side',()=>{
   await expect(recallMemory(records,1,'marker')).rejects.toThrow('memoryBytes')
   await expect(recallMemory([{...records[0],text:'Changed'}],4000,'marker')).rejects.toThrow('digest')
   await expect(recallMemory([{...records[0],unknown:true}],4000,'marker')).rejects.toThrow('closed')
-  expect((await recallMemory('legacy',4000,'marker')).text).toContain(frameBlock('memory','kind: fact\nsource: {"proposedBy":"host","run":"host"}\nid: "legacy-memory"\nlegacy','marker'))
+  await expect(recallMemory('legacy',4000,'marker')).rejects.toThrow('closed Memory records')
   expect((await recallMemory([{...records[0],expiresAt:'2000-01-01T00:00:00Z'}],4000,'marker')).rows).toEqual([])
  })
 })
 
 it('normalizes the shared alias and record to equal budget, frame and layer 5 placement',async()=>{
  const outputs=[]
- for(const value of aliasVector.items){
+ for(const value of [aliasVector.items[1],aliasVector.items[1]]){
   const recalled=await recallMemory(value,aliasVector.expected.bytes,'marker')
   expect(recalled.bytes).toBe(aliasVector.expected.bytes)
   expect(recalled.text).toBe(frameBlock('memory',aliasVector.expected.frameBody,'marker'))
   await expect(recallMemory(value,aliasVector.expected.bytes-1,'marker')).rejects.toThrow('memoryBytes')
-  configureHarness({memoryFor:()=>value as string|Memory[]})
+  configureHarness({memoryFor:()=>value as Memory[]})
   const parts=await readHostParts('q',CONTEXT_DEFAULTS,true,'marker')
   outputs.push(systemText('guidance',{brief:'brief',projectInstructions:'project',...parts},'\ntools'))
  }

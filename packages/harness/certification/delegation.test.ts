@@ -47,7 +47,7 @@ const session = {
   hostTools: [],
   allowConversation: true,
   interactive: true,
-  adversarialReview: false,
+  critic: 'off',
   context: { connection: CONNECTION }
 }
 

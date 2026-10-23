@@ -77,8 +77,9 @@ export function systemText(guidance: string, parts: HostParts, tools = ''): stri
  * instructions and, unless the host said memory is off (`memory` false), the memory recalled for
  * `query`, the person's message. An answer of nothing (`undefined`, `null`, the empty string) leaves
  * the part out. An invalid answer, or one over its bound, is refused: the run fails before
- * any request (`configuration`), and nothing is sent. ADR-0014: memory answers records (or the
- * v0.8.0 text alias); accepted records are individually framed under marker before placement.
+ * any request (`configuration`), and nothing is sent. ADR-0014: memory answers closed records;
+ * accepted records are individually framed under marker before placement. Null/undefined is no
+ * memory answer; every string, including empty text, is refused. Lifecycle custody is the session's.
  */
 export async function readHostParts(query: string, policy: Pick<ContextPolicy, 'briefBytes' | 'memoryBytes' | 'projectInstructionsBytes'>, memory = true, marker = '', record?: (recall: Awaited<ReturnType<typeof recallMemory>>) => void): Promise<HostParts> {
   const answers: Record<keyof HostParts, unknown> = {

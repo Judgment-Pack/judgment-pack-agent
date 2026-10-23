@@ -78,10 +78,10 @@ func TestAnEinoActCallsDecisionIsItsOwnOnARunWithoutIDs(t *testing.T) {
 	}
 	var events []contract.RunEvent
 	emit := func(event contract.RunEvent) { events = append(events, event) }
-	off := false
+
 	run := &adapter.Run{
 		Wire: "openai-compatible", ModelName: "fixture", Model: model, Gate: g.Calls(), Tools: offer.Tools, Thinking: "off",
-		Prompt: "Update the item.", AllowConversation: true, Interactive: false, Review: &off, HostTools: []runcontext.HostTool{tool},
+		Prompt: "Update the item.", AllowConversation: true, Interactive: false, Critic: "off", HostTools: []runcontext.HostTool{tool},
 		Context: &runcontext.Input{
 			CurrentRequest: &runcontext.CurrentRequest{Message: "Update the item.", Input: "Update the item."},
 			// The host's authorization fails once, for the first call, after its decision and before the source gate.

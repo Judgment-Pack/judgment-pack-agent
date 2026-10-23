@@ -1,5 +1,5 @@
 {
-  "description": "ADR-0014: legacy-alias. Written by hand; memory proposals never imply acceptance or storage.",
+  "description": "Explicit typed replacement for the retired text alias; negative alias controls live in compatibility/retired-aliases.json.",
   "schema": "memory.json#/$defs/answer",
   "source": {
     "harness": {
@@ -11,6 +11,20 @@
     ]
   },
   "items": [
-    "Earlier work used SI units."
+    [
+      {
+        "id": "legacy-memory",
+        "kind": "fact",
+        "text": "Use metric units.",
+        "source": {
+          "run": "host",
+          "proposedBy": "host"
+        },
+        "scope": "project",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "createdAt": "1970-01-01T00:00:00Z",
+        "state": "accepted"
+      }
+    ]
   ]
 }

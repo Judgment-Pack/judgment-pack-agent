@@ -1104,9 +1104,9 @@ func agentMemoryChecks(ctx context.Context, server *Server, host AgentHost, _ fu
 	on := true
 	input.Memory = &on
 	var asked []string
-	recall := runcontext.HostFuncs{MemoryForFunc: func(_ context.Context, query string) (string, error) {
+	recall := runcontext.HostFuncs{MemoryRecordsForFunc: func(_ context.Context, query string) ([]contract.Memory, error) {
 		asked = append(asked, query)
-		return file.Memory, nil
+		return typedMemory(file.Memory), nil
 	}}
 	run := &Run{ModelName: parentModel, Gate: scenario.gate.Calls(), Tools: scenario.offer.Tools, Prompt: file.Request, AllowConversation: true,
 		Context: input, Host: recall, Emit: scenario.emit,

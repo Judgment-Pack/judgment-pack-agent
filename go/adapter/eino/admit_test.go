@@ -67,10 +67,10 @@ func TestAHostToolTheGateDoesNotAdmitIsNotRun(t *testing.T) {
 		}
 		return openAIStream(map[string]any{"content": "Done."}, "stop"), nil
 	}
-	off := false
+
 	run := &adapter.Run{
 		Wire: "openai-compatible", ModelName: "fixture", Model: model, Gate: g.Calls(), Tools: offer.Tools, Thinking: "off",
-		Prompt: "Write a note.", AllowConversation: true, Interactive: true, Review: &off, HostTools: []runcontext.HostTool{note},
+		Prompt: "Write a note.", AllowConversation: true, Interactive: true, Critic: "off", HostTools: []runcontext.HostTool{note},
 		Context: &runcontext.Input{CurrentRequest: &runcontext.CurrentRequest{Message: "Write a note.", Input: "Write a note."}}, Emit: emit,
 	}
 	if err := eino.New().Run(legContext(t), run); err != nil {
@@ -121,4 +121,45 @@ func openAIStream(delta map[string]any, finish string) *http.Response {
 	}
 	body := frame(map[string]any{"role": "assistant", "content": nil}, nil) + frame(delta, nil) + frame(map[string]any{}, finish) + "data: [DONE]\n\n"
 	return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(body))}
+}
+
+// Run.Review is the native spelling of the retired adversarialReview input.
+func TestRetiredReviewRefusesPresence(t *testing.T) {
+	for _, legacy := range []bool{false, true} {
+		events := []contract.RunEvent{}
+		emit := func(event contract.RunEvent) { events = append(events, event) }
+		g := gate.New(gate.Options{Runtime: func(_ context.Context, raw json.RawMessage) (json.RawMessage, error) {
+			var request struct {
+				ID json.RawMessage `json:"id"`
+			}
+			json.Unmarshal(raw, &request)
+			return json.Marshal(map[string]any{"jsonrpc": "2.0", "id": request.ID, "result": map[string]any{"tools": []any{}}})
+		}, Granted: gate.Ceiling, Emit: emit})
+		offer, err := g.Open(context.Background(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		calls := 0
+		run := &adapter.Run{Wire: "openai-compatible", ModelName: "fixture", Thinking: "off", Critic: "on", Review: &legacy, Prompt: "Current request", Gate: g.Calls(), Tools: offer.Tools, Emit: emit, Model: func(context.Context, string, relay.Request) (*http.Response, error) { calls++; return nil, nil }}
+		if err = eino.New().Run(context.Background(), run); err != nil {
+			t.Fatal(err)
+		}
+		refused := 0
+		guided := false
+		for _, event := range events {
+			if event.Guardrail != nil && strings.Contains(event.Guardrail.Detail, "use critic") {
+				guided = true
+			}
+			if event.Error != nil {
+				refused++
+				if event.Error.Failure == nil || event.Error.Failure.Code != "configuration" {
+					t.Fatal("wrong alias refusal")
+				}
+
+			}
+		}
+		if calls != 0 || refused != 1 || !guided {
+			t.Fatal("retired Review dispatched")
+		}
+	}
 }

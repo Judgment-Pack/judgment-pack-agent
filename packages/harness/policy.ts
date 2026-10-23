@@ -59,7 +59,7 @@ function read(value: unknown, shape: Shape, path: string, layer: PolicyLayerName
     for (const key of shape.required ?? []) if (!Object.hasOwn(value, key)) return refuse()
     for (const [key, v] of Object.entries(value)) {
       const next = shape.properties?.[key] ?? Object.entries(shape.patternProperties ?? {}).find(([pattern]) => new RegExp(pattern).test(key))?.[1]
-      if (!next) throw new PolicyRefusal(path ? `${path}.${key}` : key, layer, 'unknown policy member')
+      if (!next) { const replacement = path ? undefined : key === 'adversarialReview' || key === 'criticDefault' ? 'critic.default' : key === 'criticReasoningFloor' ? 'critic.reasoningFloor' : Object.hasOwn(schema.properties.budget.properties,key) ? `budget.${key}` : undefined; throw new PolicyRefusal(path ? `${path}.${key}` : key, layer, `unknown policy member${replacement ? '; use '+replacement : ''}`) }
       read(v, next, path ? `${path}.${key}` : key, layer, out)
     }
     return
@@ -83,15 +83,13 @@ function defaults(shape: Shape, path = '', out: Record<string, unknown> = {}) {
   for (const [name, child] of Object.entries(shape.properties ?? {})) defaults(child, path ? `${path}.${name}` : name, out)
   return out
 }
-/** Read the old budget table for one release. The nested spelling wins. */
+/** Retired aliases refuse even when a canonical member is also present. */
 export function policyAlias(value: PolicyLayer | Record<string, unknown>): PolicyLayer {
-  const {criticDefault, criticReasoningFloor, adversarialReview, ...rest} = value as Record<string, unknown>
-  const budget: Record<string, unknown> = {}
-  for (const key of Object.keys(schema.properties.budget.properties)) if (Object.hasOwn(rest, key)) { budget[key] = rest[key]; delete rest[key] }
-  return {...rest, ...(Object.keys(budget).length || rest.budget ? {budget: {...budget, ...(rest.budget as object)}} : {}),
-    ...(criticDefault !== undefined || criticReasoningFloor !== undefined || adversarialReview !== undefined || rest.critic ? {critic: {
-      ...(criticDefault !== undefined ? {default: criticDefault} : adversarialReview !== undefined ? {default: adversarialReview ? 'on' : 'off'} : {}),
-      ...(criticReasoningFloor !== undefined ? {reasoningFloor: criticReasoningFloor} : {}), ...(rest.critic as object)}} : {})} as PolicyLayer
+  for (const key of Object.keys(value)) {
+    const replacement = key === 'adversarialReview' || key === 'criticDefault' ? 'critic.default' : key === 'criticReasoningFloor' ? 'critic.reasoningFloor' : Object.hasOwn(schema.properties.budget.properties,key) ? `budget.${key}` : undefined
+    if (replacement) throw new PolicyRefusal(key,'table',`unknown policy member; use ${replacement}`)
+  }
+  return value as PolicyLayer
 }
 /** One precedence, every section. Returns detached records; callers retain these in the checkpoint. */
 export function resolvePolicy(run: PolicyLayer, project: PolicyLayer, table: PolicyLayer | Record<string, unknown>, host: PolicyHost): {members: PolicyMembers; warning?: string} {

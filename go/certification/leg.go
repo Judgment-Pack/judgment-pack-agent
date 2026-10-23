@@ -248,7 +248,12 @@ func scenarioLeg(ctx context.Context, server *Server, endpoint Endpoint, adapter
 		run.Thinking = options.Tier
 	}
 	run.Capabilities = options.Capabilities
-	run.Review = options.Review
+	if options.Review != nil {
+		run.Critic = "off"
+		if *options.Review {
+			run.Critic = "on"
+		}
+	}
 	run.Cases = options.Cases
 	if options.Tools != nil {
 		run.Tools = options.Tools
@@ -258,14 +263,14 @@ func scenarioLeg(ctx context.Context, server *Server, endpoint Endpoint, adapter
 		run.Host = runcontext.HostFuncs{
 			BriefFunc:               func(context.Context) (string, error) { return parts.Brief, nil },
 			ProjectInstructionsFunc: func(context.Context) (string, error) { return parts.ProjectInstructions, nil },
-			MemoryForFunc: func(_ context.Context, query string) (string, error) {
+			MemoryRecordsForFunc: func(_ context.Context, query string) ([]contract.Memory, error) {
 				askedMu.Lock()
 				defer askedMu.Unlock()
 				result.asked = append(result.asked, query)
 				if parts.Memory == "" {
-					return "", nil
+					return nil, nil
 				}
-				return parts.Memory + " (recall " + strconv.Itoa(len(result.asked)) + ")", nil
+				return typedMemory(parts.Memory + " (recall " + strconv.Itoa(len(result.asked)) + ")"), nil
 			},
 		}
 	}
@@ -624,4 +629,12 @@ func BoundaryHostTools() ([]contract.ToolOfferHostTool, error) {
 		return nil, err
 	}
 	return offer.HostTools, nil
+}
+
+// reviewMode is a fixture's explicit canonical critic selector.
+func reviewMode(review bool) string {
+	if review {
+		return "on"
+	}
+	return "off"
 }

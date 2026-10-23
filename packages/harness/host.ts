@@ -16,7 +16,7 @@
  *   instructions, recalled memory; ADR-0005). Each is a binding the host
  *   replaces once, with `configureHarness`, before it starts a run. One the
  *   host has not supplied throws and names itself; nothing here guesses a
- *   host's answer. The three prompt parts, `endpointCapabilities` and
+ *   host's answer. The three prompt parts, optional `memoryLifecycle`, `endpointCapabilities` and
  *   `modelsFor` are the exceptions: each has an answer before the host
  *   supplies it, nothing.
  *
@@ -221,7 +221,7 @@ export interface HarnessHost {
   brief(): HostPart
   /**
    * Recalled project memory for `query` (ADR-0014): closed Memory records, or nothing.
-   * The bare-text answer is an alias for v0.8.0. Accepted records are framed as data, never instructions. Asked once per run, before
+   * Accepted records are framed as data, never instructions. Asked once per run, before
    * its first request, with the person's message (`context.currentRequest.message`; a delegated
    * child's objective; the host's prompt where neither is given), and not asked where the host said
    * memory is off (`context.memory: false`). Placed in the fifth layer, the last of the stable
@@ -229,6 +229,8 @@ export interface HarnessHost {
    * refused as the brief's is. Unsupplied, nothing.
    */
   memoryFor(query: string): import('./memories').MemoryAnswer | Promise<import('./memories').MemoryAnswer>
+  /** Once per session, even with prompt memory disabled: explicit metadata-only revocation/expiry. */
+  memoryLifecycle?(recalled: readonly Readonly<import('./memories').MemoryRecall>[]): import('./memories').MemoryLifecycleAnswer | Promise<import('./memories').MemoryLifecycleAnswer>
   /**
    * The project's own instructions (ADR-0005): the per-project block the person wrote, or nothing.
    * Instructions at the lowest rank, not data: placed in the fourth layer, after the package's
@@ -295,6 +297,7 @@ export let renderImageToText: HarnessHost['renderImageToText'] = () => unsupplie
 export let modelsFor: HarnessHost['modelsFor'] = () => ({})
 export let brief: HarnessHost['brief'] = () => undefined
 export let memoryFor: HarnessHost['memoryFor'] = () => undefined
+export let memoryLifecycle: NonNullable<HarnessHost['memoryLifecycle']> = () => undefined
 export let projectInstructions: HarnessHost['projectInstructions'] = () => undefined
 
 /**
@@ -352,5 +355,6 @@ export function configureHarness(host: Partial<HarnessHost>): void {
   if (host.modelsFor) modelsFor = host.modelsFor
   if (host.brief) brief = host.brief
   if (host.memoryFor) memoryFor = host.memoryFor
+  if (host.memoryLifecycle) memoryLifecycle = host.memoryLifecycle
   if (host.projectInstructions) projectInstructions = host.projectInstructions
 }

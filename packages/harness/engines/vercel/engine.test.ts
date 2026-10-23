@@ -1390,7 +1390,7 @@ describe('the thinking tier, through the SDK’s own call settings', () => {
     // the critic (agent#10: the tier alone no longer starts one).
     const { call, seen } = scriptedCall([turn({ text: PROPOSAL_TEXT })])
     const events = await drain(
-      vercel.start(session(call, { thinking: normalize('on', 'openai-compatible'), adversarialReview: true }))
+      vercel.start(session(call, { thinking: normalize('on', 'openai-compatible'), critic: 'on' }))
     )
     const notices = events.filter((event) => event.type === 'thinking_unavailable')
     expect(notices).toHaveLength(1)
@@ -1777,7 +1777,7 @@ describe('the refutation pass, on this SDK’s second streamText', () => {
     return {
       session: session(
         call,
-        { thinking: normalize(options.tier, 'openai-compatible'), ...(options.review === undefined ? {} : { adversarialReview: options.review }) },
+        { thinking: normalize(options.tier, 'openai-compatible'), ...(options.review === undefined ? {} : { critic: options.review ? 'on' : 'off' }) },
         async (name, args) => {
           asked.push({ name, args })
           return { content: [{ type: 'text', text: options.answer }] }
@@ -1914,7 +1914,7 @@ describe('the refutation pass, on this SDK’s second streamText', () => {
         session(call, {
           signal: controller.signal,
           thinking: normalize('on', 'openai-compatible'),
-          adversarialReview: true
+          critic: 'on'
         })
       )
     )
@@ -2279,7 +2279,7 @@ describe('interactive conversation presentation', () => {
 
   it('does not expose a partial proposal as message text', async () => {
     const scripted = scriptedCall([turn({ text: 'Here is the draft.\n\n' + PROPOSAL_TEXT })])
-    const events = await drain(vercel.start(session(scripted.call, { allowConversation: true, interactive: true, adversarialReview: false })))
+    const events = await drain(vercel.start(session(scripted.call, { allowConversation: true, interactive: true, critic: 'off' })))
     expect(events.filter(event => event.type === 'message_progress').every(event => !event.text.includes('"proposal"'))).toBe(true)
     expect(events.some(event => event.type === 'proposal')).toBe(true)
   })
@@ -2305,11 +2305,11 @@ it('does not let an empty progress reset consume the thinking fallback', async (
 })
 it('separates adversarial review from requested thinking effort', async () => {
   const plain = scriptedCall([turn({ text: PROPOSAL_TEXT })])
-  const events = await drain(vercel.start(session(plain.call, { thinking: normalize('on', 'openai-compatible'), adversarialReview: false })))
+  const events = await drain(vercel.start(session(plain.call, { thinking: normalize('on', 'openai-compatible'), critic: 'off' })))
   expect(plain.seen).toHaveLength(1)
   expect(events.some(event => event.type === 'critique')).toBe(false)
   const reviewed = scriptedCall([turn({ text: PROPOSAL_TEXT }), turn({ text: 'Reviewed.' })])
-  const checked = await drain(vercel.start(session(reviewed.call, { thinking: normalize('off', 'openai-compatible'), adversarialReview: true })))
+  const checked = await drain(vercel.start(session(reviewed.call, { thinking: normalize('off', 'openai-compatible'), critic: 'on' })))
   expect(reviewed.seen).toHaveLength(2)
   expect(checked.some(event => event.type === 'critique')).toBe(true)
 })
@@ -2322,7 +2322,7 @@ describe('response language at the model boundary', () => {
       return new Response(turn({ text: request.body.includes(REFUTATION_MARKER) ? 'Review complete.' : PROPOSAL_TEXT }),
         { status: 200, headers: { 'content-type': 'text/event-stream' } })
     }
-    const events = await drain(vercel.start(session(call, { replyLanguage: locale.id, thinking: normalize('on', 'openai-compatible'), adversarialReview: true })))
+    const events = await drain(vercel.start(session(call, { replyLanguage: locale.id, thinking: normalize('on', 'openai-compatible'), critic: 'on' })))
     expect(requests.length).toBe(2)
     for (const body of requests) {
       expect(body).toContain(locale.instruction)
@@ -2337,7 +2337,7 @@ describe('response language at the model boundary', () => {
 it('emits a draft artifact when a conversational reply includes indented probe examples', async () => {
   const text = 'Checks:\n```text\nValid\n```\n1. Probe\n     ```json\n     {"status":"evaluated"}\n     ```\n' + PROPOSAL_TEXT
   const scripted = scriptedCall([turn({ text })])
-  const events = await drain(vercel.start(session(scripted.call, { allowConversation: true, interactive: true, adversarialReview: false })))
+  const events = await drain(vercel.start(session(scripted.call, { allowConversation: true, interactive: true, critic: 'off' })))
   expect(events.filter(event => event.type === 'proposal')).toEqual([{ type: 'proposal', digest: 'sha256:681f94562c65706b6b99916c65ad1a90bf2f8a90cd3067f3326ca514502042fa', document: { id: 'p' }, unknowns: ['who signs'] }])
   expect(events.some(event => event.type === 'error')).toBe(false)
   expect(events.find(event => event.type === 'message')?.text).toContain('"status":"evaluated"')
@@ -2346,7 +2346,7 @@ it('emits a draft artifact when a conversational reply includes indented probe e
 
 it('graph authoring uses its proposal envelope and host-tool instructions', async () => {
   const { call, seen } = scriptedCall([turn({ text: PROPOSAL_TEXT })])
-  const events = await drain(vercel.start(session(call, { purpose: 'graph', adversarialReview: false })))
+  const events = await drain(vercel.start(session(call, { purpose: 'graph', critic: 'off' })))
   expect(JSON.stringify(seen[0])).toContain('graph authoring assistant')
   expect(JSON.stringify(seen[0])).toContain('graph_validate and graph_explain')
   expect(events.some(event => event.type === 'proposal')).toBe(true)
@@ -2410,7 +2410,7 @@ it.each(['openai-compatible','anthropic','gemini'] as const)('opens a %s questio
 it.each(['openai-compatible','anthropic','gemini'] as const)('bounds a long UTF-8 prompt on the actual %s wire and keeps the latest request',async family=>{
  const wire=family==='anthropic'?anthropicTurn:family==='gemini'?geminiTurn:turn
  const scripted=scriptedCall([wire({text:'Ready'})])
- const events=await drain(vercel.start(session(scripted.call,{prompt:'Original task\n'+('Earlier material 😀 " '.repeat(24000))+'\nLATEST REQUEST: map current dialect',allowConversation:true,interactive:true,adversarialReview:false,model:{family,model:'fixture-model',call:scripted.call},thinking:normalize('off',family)})))
+ const events=await drain(vercel.start(session(scripted.call,{prompt:'Original task\n'+('Earlier material 😀 " '.repeat(24000))+'\nLATEST REQUEST: map current dialect',allowConversation:true,interactive:true,critic: 'off',model:{family,model:'fixture-model',call:scripted.call},thinking:normalize('off',family)})))
  expect(events.filter(e=>e.type==='error')).toEqual([])
  expect(scripted.seen).toHaveLength(1)
  const body=JSON.stringify(scripted.seen[0]!.body)
@@ -2441,7 +2441,7 @@ it.each(['openai-compatible','anthropic','gemini'] as const)('reserves the final
   }
   return new Response(wire(final?{text:'The missing-size exception precedes the no-routing rule. No changes were saved.'}:{tool:{name:'read_context',args:{id,path:'/input',offset:(seen.length-1)*128,limit:256}}}),{status:200,headers:{'content-type':'text/event-stream'}})
  }
- const events=await drain(vercel.start(session(call,{prompt:'Earlier messages '.repeat(20000),context:{currentRequest:{message,input:'Facts and observed results. '.repeat(1000)}},allowConversation:true,interactive:true,adversarialReview:false,model:{family,model:'fixture',call},thinking:normalize('off',family)})))
+ const events=await drain(vercel.start(session(call,{prompt:'Earlier messages '.repeat(20000),context:{currentRequest:{message,input:'Facts and observed results. '.repeat(1000)}},allowConversation:true,interactive:true,critic: 'off',model:{family,model:'fixture',call},thinking:normalize('off',family)})))
  expect(seen).toHaveLength(MAX_TURNS)
  expect(events.filter(e=>e.type==='tool_result')).toHaveLength(MAX_TURNS-1)
  expect(events.filter(e=>e.type==='tool_result').every(e=>!e.isError)).toBe(true)
@@ -2460,7 +2460,7 @@ it.each(['empty','tool'] as const)('reports exhaustion accurately and refuses fi
   const step=final?(response==='empty'?{text:''}:{tool:{name:'propose_change',args:{}}}):{tool:{name:'read_context',args:{id,path:'/message',limit:128+calls}}}
   return new Response(geminiTurn(step),{status:200,headers:{'content-type':'text/event-stream'}})
  }
- const events=await drain(vercel.start(session(call,{prompt:'history '.repeat(40000),context:{currentRequest:{message:'Explain the mismatch',input:'Omitted size facts'}},hostTools:[{name:'propose_change',description:'Propose change',effect:'proposal',inputSchema:{type:'object'},execute}],allowConversation:true,interactive:true,adversarialReview:false,model:{family:'gemini',model:'fixture',call},thinking:normalize('off','gemini')})))
+ const events=await drain(vercel.start(session(call,{prompt:'history '.repeat(40000),context:{currentRequest:{message:'Explain the mismatch',input:'Omitted size facts'}},hostTools:[{name:'propose_change',description:'Propose change',effect:'proposal',inputSchema:{type:'object'},execute}],allowConversation:true,interactive:true,critic: 'off',model:{family:'gemini',model:'fixture',call},thinking:normalize('off','gemini')})))
  expect(calls).toBe(MAX_TURNS);expect(execute).not.toHaveBeenCalled()
  expect(events.filter(e=>e.type==='message'||e.type==='proposal')).toEqual([])
  expect(events.filter(e=>e.type==='error')).toEqual([])
@@ -2483,7 +2483,7 @@ it.each(['openai-compatible','anthropic','gemini'] as const)('resumes %s after b
   return new Response(wire(step),{status:200,headers:{'content-type':'text/event-stream'}})
  }
  const callTool=vi.fn(async()=>({content:[{type:'text',text:'EXACT CONTRACT: preserve decimals as strings'}]}))
- const input=session(call,{prompt:executionInput.input,context:{currentRequest:executionInput},tools:[{name:'get_schema',inputSchema:{type:'object',properties:{}}}],callTool,allowConversation:true,interactive:true,adversarialReview:false,model:{family,model:'fixture',call},thinking:normalize('off',family)})
+ const input=session(call,{prompt:executionInput.input,context:{currentRequest:executionInput},tools:[{name:'get_schema',inputSchema:{type:'object',properties:{}}}],callTool,allowConversation:true,interactive:true,critic: 'off',model:{family,model:'fixture',call},thinking:normalize('off',family)})
  const first=await drain(vercel.start(input)),pause=first.find(e=>e.type==='budget_paused')
  expect(pause?.type).toBe('budget_paused');if(pause?.type!=='budget_paused')return
  expect(callTool).toHaveBeenCalledTimes(18)
@@ -2502,7 +2502,7 @@ it('honors a model-requested budget pause without spending the reserved final re
   calls++
   return new Response(turn({tool:calls===19?{name:'request_budget_increase',args:{reason:'Boundary checks remain.',nextStep:'Verify the two boundaries.'}}:{name:'get_schema',args:{section:calls}}}),{status:200,headers:{'content-type':'text/event-stream'}})
  }
- const input=session(call,{allowConversation:true,interactive:true,adversarialReview:false,context:{currentRequest:{message:'Verify the repair',input:'Current pack'}},tools:[{name:'get_schema',inputSchema:{type:'object',properties:{}}}],callTool:async()=>({content:[{type:'text',text:'Contract'}]})})
+ const input=session(call,{allowConversation:true,interactive:true,critic: 'off',context:{currentRequest:{message:'Verify the repair',input:'Current pack'}},tools:[{name:'get_schema',inputSchema:{type:'object',properties:{}}}],callTool:async()=>({content:[{type:'text',text:'Contract'}]})})
  const events=await drain(vercel.start(input))
  expect(calls).toBe(19)
  expect(events.find(e=>e.type==='budget_paused')).toMatchObject({checkpoint:{used:19,limit:20,reason:'Boundary checks remain. Next: Verify the two boundaries.'}})
@@ -2560,7 +2560,7 @@ describe('nothing finished is lost (agent#6)', () => {
       }
       return stream(turn({ text: PROPOSAL_TEXT }))
     }
-    const events = await drain(vercel.start(session(call, { thinking: normalize('on', 'openai-compatible'), adversarialReview: true })))
+    const events = await drain(vercel.start(session(call, { thinking: normalize('on', 'openai-compatible'), critic: 'on' })))
     expect(criticRequests).toBe(1)
     expect(events.filter((event) => event.type === 'error')).toEqual([])
     expect(events.some((event) => event.type === 'critique')).toBe(false)
@@ -2741,7 +2741,7 @@ describe('the allowance and the retry (agent#2)', () => {
       if (requests === 2) return new Response(JSON.stringify({ error: { message: 'Unsupported parameter: reasoning_effort' } }), { status: 400, headers: { 'content-type': 'application/json' } })
       return stream(turn({ text: PROPOSAL_TEXT }))
     }
-    const events = await drain(vercel.start(session(call, { thinking: normalize('on', 'openai-compatible'), adversarialReview: false, context: { currentRequest: request } })))
+    const events = await drain(vercel.start(session(call, { thinking: normalize('on', 'openai-compatible'), critic: 'off', context: { currentRequest: request } })))
     expect(requests).toBe(3)
     expect(events.some((event) => event.type === 'proposal')).toBe(true)
     const checkpoints = events.flatMap((event) => (event.type === 'execution_checkpoint' ? [event.checkpoint] : []))

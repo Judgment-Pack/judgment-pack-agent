@@ -154,3 +154,5 @@ therefore remains a default rather than becoming an explicit run preference.
 The Go handoff restored from a checkpoint uses the existing closed checkpoint reader
 before projecting its saved role. It then applies the same fresh child admission and
 consistency checks as a live parent. No wire or checkpoint members are added.
+
+v0.9.1 amendment (#155): the flat budget.json policy-layer reader is retired; use nested policy.budget and policy.critic; any retired root member refuses even beside a canonical member.

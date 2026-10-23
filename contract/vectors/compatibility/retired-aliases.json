@@ -1,0 +1,54 @@
+{
+  "description": "Hand-authored retired-input refusals for both runtimes; canonical spellings do not hide retired input.",
+  "schema": "failure.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/memories.ts"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "code": "configuration",
+      "source": "context",
+      "outcome": "not-started",
+      "detail": "Unknown compatibility input; use its canonical replacement."
+    }
+  ],
+  "cases": [
+    {
+      "alias": "critic",
+      "value": false,
+      "replacement": "critic"
+    },
+    {
+      "alias": "critic",
+      "value": true,
+      "replacement": "critic"
+    },
+    {
+      "alias": "budget",
+      "value": 0,
+      "replacement": "budget.readBytes"
+    },
+    {
+      "alias": "budget",
+      "value": "",
+      "replacement": "budget.readBytes"
+    },
+    {
+      "alias": "memory",
+      "value": "",
+      "replacement": "closed Memory records"
+    },
+    {
+      "alias": "memory",
+      "value": "old text",
+      "replacement": "closed Memory records"
+    }
+  ]
+}

@@ -58,7 +58,7 @@ func correctionLoop(ctx context.Context, server *Server, answerAs string, adapte
 	declared := declaredCase(file.Case.ID, "declared", scenario.Documents["FACTS"], file.Case.ExpectedOutcome)
 	out := &corrected{}
 	author := func(ctx context.Context, prompt string, review bool) (json.RawMessage, error) {
-		run := &Run{Prompt: prompt, TestPrompt: testGuidance, Review: &review}
+		run := &Run{Prompt: prompt, TestPrompt: testGuidance, Critic: reviewMode(review)}
 		if review {
 			run.Cases = []json.RawMessage{declared}
 		}

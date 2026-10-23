@@ -3856,15 +3856,17 @@
    "origin": "ADR-0011 (#116)"
   },
   {
-   "name": "ADR policy table: alias ignored",
+   "name": "retired flat policy alias admitted",
    "file": "policy.ts",
-   "find": "if (Object.hasOwn(rest, key)) { budget[key] = rest[key]; delete rest[key] }",
-   "replace": "if (Object.hasOwn(rest, key)) { delete rest[key] }",
+   "find": "  for (const key of Object.keys(value)) {",
+   "replace": "  if (Object.hasOwn(value,'readBytes')) { const {readBytes,...rest}=value as Record<string,unknown>; return {...rest,budget:{readBytes,...(rest.budget as object)}} as PolicyLayer }\n  for (const key of Object.keys(value)) {",
    "tests": [
+    "memoryLifecycle.test.ts",
     "policy.test.ts"
    ],
    "status": "caught",
-   "origin": "ADR-0011 (#116)"
+   "origin": "agent#155",
+   "note": "Go twin: normalize root readBytes into budget before policyRead; TestMemoryLifecycleCanonicalRefusalsAndAliases and TestPolicyTable/alias fail."
   },
   {
    "name": "ADR policy table review: exhausted pace admitted",
@@ -4100,16 +4102,16 @@
    "origin": "agent#98"
   },
   {
-   "name": "memory alias framed differently",
+   "name": "retired empty memory text admitted",
    "file": "memories.ts",
-   "find": "    value = [{ id: 'legacy-memory', kind: 'fact', text: value, source: { run: 'host', proposedBy: 'host' }, scope: 'project', digest: `sha256:${await contextDigest(value)}`, createdAt: '1970-01-01T00:00:00Z', state: 'accepted' }]",
-   "replace": "    value = [{ id: 'legacy-memory', kind: 'fact', text: value, source: { run: 'host', proposedBy: 'host' }, scope: 'project', digest: `sha256:${await contextDigest(value)}`, createdAt: '1970-01-01T00:00:00Z', state: 'accepted' }]\n    const recalled = await recallMemory(value, bound, marker)\n    return { ...recalled, text: frameBlock('legacy memory', (value as Memory[])[0]!.text, marker) }",
+   "find": "if (typeof value === 'string') return fail('has an unknown bare-text alias; use a list of closed Memory records')",
+   "replace": "if (value === '') return { rows: [], records: [], bytes: 0, now }\n  if (typeof value === 'string') return fail('has an unknown bare-text alias; use a list of closed Memory records')",
    "tests": [
-    "memories.test.ts"
+    "memoryLifecycle.test.ts"
    ],
    "status": "caught",
-   "origin": "agent#98 review round",
-   "note": "Go twin: normalize and account through RecallMemory, then replace only the alias frame; TestMemoryAliasEquivalence fails."
+   "origin": "agent#155",
+   "note": "Go twin: return an empty recall for string empty input; TestMemoryLifecycleCanonicalRefusalsAndAliases fails the empty string vector."
   },
   {
    "name": "memory identifier counts UTF-16 units",
@@ -5041,6 +5043,186 @@
     "status": "caught",
     "origin": "agent#154",
     "note": "Go twin: remove the integer-overflow condition in MutateCheckpoint; TestCheckpointMutationAtomicRevisionAndDetachedReads fails the invalid-patch assertion for a count above the integer maximum."
+  },
+  {
+   "name": "lifecycle closure removed",
+   "file": "memories.ts",
+   "find": "Reflect.ownKeys(row).length === 4",
+   "replace": "true",
+   "tests": [
+    "memoryLifecycle.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#173",
+   "note": "Go twin: TestMemoryLifecycleSharedAnswers: remove hasOnly for lifecycle rows."
+  },
+  {
+   "name": "lifecycle duplicate identities admitted",
+   "file": "memories.ts",
+   "find": "if (new Set(rows.map(row => row.id)).size !== rows.length)",
+   "replace": "if (false)",
+   "tests": [
+    "memoryLifecycle.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#173",
+   "note": "Go twin: TestMemoryLifecycleSharedAnswers: remove duplicate-id check."
+  },
+  {
+   "name": "lifecycle fingerprint mismatch admitted",
+   "file": "memories.ts",
+   "find": "if (previous!.digest !== update.digest || previous!.kind !== update.kind)",
+   "replace": "if (false)",
+   "tests": [
+    "memoryLifecycle.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#173",
+   "note": "Go twin: TestMemoryLifecycleSharedTransitions: remove lifecycle digest/kind match."
+  },
+  {
+   "name": "lifecycle terminal resurrection admitted",
+   "file": "memories.ts",
+   "find": "if (previous.state !== target && !(previous.state === 'accepted' && (target === 'revoked' || target === 'expired')))",
+   "replace": "if (false)",
+   "tests": [
+    "memoryLifecycle.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#173",
+   "note": "Go twin: TestMemoryLifecycleSharedTransitions: disable transition predicate."
+  },
+  {
+   "name": "lifecycle full-record contradiction admitted",
+   "file": "memories.ts",
+   "find": "if (record && effective(record) !== update.state)",
+   "replace": "if (false)",
+   "tests": [
+    "memoryLifecycle.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#173",
+   "note": "Go twin: TestMemoryLifecycleSharedTransitions: remove full target/update consistency check."
+  },
+  {
+   "name": "lifecycle stale report overwrites owner",
+   "file": "memories.ts",
+   "find": "if (canonicalJSON(current.recalled) !== canonicalJSON(expected))",
+   "replace": "if (false)",
+   "tests": [
+    "memoryLifecycle.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#173",
+   "note": "Go twin: TestMemoryLifecycleAtomicityProposalPreservationAndStaleState: remove prior/current comparison."
+  },
+  {
+   "name": "lifecycle overwrites current proposals",
+   "file": "memories.ts",
+   "find": "{ proposed: current.proposed, recalled: [...next] }",
+   "replace": "{ proposed: [], recalled: [...next] }",
+   "tests": [
+    "memoryLifecycle.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#173",
+   "note": "Go twin: TestMemoryLifecycleAtomicityProposalPreservationAndStaleState: clear candidate.Proposed."
+  },
+  {
+   "name": "lifecycle cumulative report validation dropped",
+   "file": "memories.ts",
+   "find": "if (!validMemories(candidate))",
+   "replace": "if (false)",
+   "tests": [
+    "memoryLifecycle.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#173",
+   "note": "Go twin: TestMemoryLifecycleCannotCreateIdentityAndBoundsFinalBook: remove candidate and final-validator bounds."
+  },
+  {
+   "name": "lifecycle preparation mutates prior snapshot",
+   "file": "memories.ts",
+   "find": "const next = structuredClone(prior) as MemoryRecall[]",
+   "replace": "const next = prior as MemoryRecall[]",
+   "tests": [
+    "memoryLifecycle.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#173",
+   "note": "Go twin: TestMemoryLifecycleAtomicityProposalPreservationAndStaleState: reuse prior slice for next."
+  },
+  {
+   "name": "lifecycle skipped when prompt memory disabled",
+   "file": "context/session.ts",
+   "find": "readMemoryLifecycle(await memoryLifecycle(structuredClone(prior)))",
+   "replace": "readMemoryLifecycle(session.context?.memory===false?undefined:await memoryLifecycle(structuredClone(prior)))",
+   "tests": [
+    "memoryLifecycle.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#173",
+   "note": "Go twin: TestMemoryLifecyclePublicResumeDeletedTextAndDisabledRecall: skip callback when Input.Memory false."
+  },
+  {
+   "name": "lifecycle answer count bound dropped",
+   "file": "memories.ts",
+   "find": "value.length > 256 || !Array.from(value).every(row => object(row) && Reflect.ownKeys(row).length === 4",
+   "replace": "false || !Array.from(value).every(row => object(row) && Reflect.ownKeys(row).length === 4",
+   "tests": [
+    "memoryLifecycle.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#173",
+   "note": "Go twin: TestMemoryLifecycleSharedAnswers: remove the lifecycle answer count bound."
+  },
+  {
+   "name": "lifecycle full-record fingerprint rewritten",
+   "file": "memories.ts",
+   "find": "if (previous.digest !== record.digest || previous.kind !== record.kind)",
+   "replace": "if (false)",
+   "tests": [
+    "memoryLifecycle.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#173",
+   "note": "Go twin: TestMemoryLifecycleSharedTransitions: remove full-record fingerprint match."
+  },
+  {
+   "name": "lifecycle callback receives comparison snapshot alias",
+   "file": "context/session.ts",
+   "find": "await memoryLifecycle(structuredClone(prior))",
+   "replace": "await memoryLifecycle(prior)",
+   "tests": [
+    "memoryLifecycle.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#173",
+   "note": "Go twin: TestMemoryLifecyclePublicResumeDeletedTextAndDisabledRecall: pass prior directly instead of a separate copied metadata slice."
+  },
+  {
+   "name": "lifecycle reads disabled memory text",
+   "file": "context/session.ts",
+   "find": "readHostParts(query,this.policy,session.context?.memory!==false,this.marker,value=>{recall=value})",
+   "replace": "readHostParts(query,this.policy,true,this.marker,value=>{recall=value})",
+   "tests": [
+    "memoryLifecycle.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#173",
+   "note": "Go twin: TestMemoryLifecyclePublicResumeDeletedTextAndDisabledRecall: pass true to readHostParts regardless of Input.Memory."
+  },
+  {
+   "name": "retired critic alias silently discarded",
+   "file": "context/session.ts",
+   "find": "constructor(session:EngineSession,engine?:AssistantEngine){",
+   "replace": "constructor(session:EngineSession,engine?:AssistantEngine){\n  delete session.adversarialReview",
+   "tests": [
+    "memoryLifecycle.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#155",
+   "note": "Go twin: TestMemoryLifecycleCanonicalRefusalsAndAliases and native adapter TestRetiredReviewRefusesPresence: clear Session.AdversarialReview before admission."
   }
  ]
 }

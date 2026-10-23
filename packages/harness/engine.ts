@@ -264,8 +264,7 @@ export interface AssistantSession {
   /** ADR-0010: a human reviewer is assigned; the critic does not run, whatever the mode. */
   reviewerAssigned?: boolean
   /**
-   * The switch before ADR-0010, read for one release as an alias of `critic`: `true` is `on`, `false`
-   * is `off`; `critic` wins where both are set.
+   * Retired in v0.9.1: any presence is refused; use `critic` (`on` or `off`).
    */
   adversarialReview?: boolean
   /**

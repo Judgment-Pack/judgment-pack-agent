@@ -1,3 +1,4 @@
+import {typedMemory} from './testing/memory'
 /**
  * The prompt is the adapter's (ADR-0005), the harness side.
  *
@@ -62,7 +63,7 @@ describe('the host’s parts of the prompt', () => {
   it('are asked once each, memory with the query, and an answer of nothing leaves the part out', async () => {
     const asked: string[] = []
     let briefs = 0
-    configureHarness({ brief: async () => { briefs++; return 'The brief.' }, projectInstructions: () => null, memoryFor: (query) => { asked.push(query); return '' } })
+    configureHarness({ brief: async () => { briefs++; return 'The brief.' }, projectInstructions: () => null, memoryFor: (query) => { asked.push(query); return undefined } })
     expect(await readHostParts('the person’s message', CONTEXT_DEFAULTS)).toEqual({ brief: 'The brief.' })
     expect(briefs).toBe(1)
     expect(asked).toEqual(['the person’s message'])
@@ -79,7 +80,7 @@ describe('the host’s parts of the prompt', () => {
 
   it('does not ask for memory where the host said memory is off', async () => {
     const asked: string[] = []
-    configureHarness({ memoryFor: (query) => { asked.push(query); return 'Recalled.' } })
+    configureHarness({ memoryFor: (query) => { asked.push(query); return typedMemory('Recalled.') } })
     expect(await readHostParts('q', contextPolicy(undefined, 'scripted-model'), false)).toEqual({})
     expect(asked).toEqual([])
   })
@@ -90,9 +91,9 @@ describe('the host’s parts of the prompt', () => {
       // The compatibility record contributes 245 bytes beyond unescaped text.
       const overhead = part.name === 'memory' ? 245 : 0
       const answer = (bytes: number) => 'é'.repeat(Math.floor((bytes - overhead) / 2)) + 'x'.repeat((bytes - overhead) % 2)
-      configureHarness({ [part.injection]: () => answer(bound) })
+      configureHarness({ [part.injection]: () => part.name === 'memory' ? typedMemory(answer(bound)) : answer(bound) })
       expect((await readHostParts('q', CONTEXT_DEFAULTS))[part.name]).toBe(part.name==='memory'?frameBlock('memory','kind: fact\nsource: {"proposedBy":"host","run":"host"}\nid: "legacy-memory"\n'+answer(bound),''):answer(bound))
-      configureHarness({ [part.injection]: () => answer(bound + 1) })
+      configureHarness({ [part.injection]: () => part.name === 'memory' ? typedMemory(answer(bound + 1)) : answer(bound + 1) })
       await expect(readHostParts('q', CONTEXT_DEFAULTS)).rejects.toMatchObject({ failure: { code: 'configuration' } })
       configureHarness({ [part.injection]: () => ({ text: 'not text' }) as unknown as string })
       await expect(readHostParts('q', CONTEXT_DEFAULTS)).rejects.toMatchObject({ failure: { code: 'configuration' } })
@@ -109,7 +110,7 @@ describe('the host’s parts of the prompt', () => {
 
   it('reach every request of a run, in the system text, with memory asked once for the person’s message', async () => {
     const asked: string[] = []
-    configureHarness({ brief: () => 'The brief.', projectInstructions: () => 'Be brief.', memoryFor: (query) => { asked.push(query); return `Recalled ${asked.length}.` } })
+    configureHarness({ brief: () => 'The brief.', projectInstructions: () => 'Be brief.', memoryFor: (query) => { asked.push(query); return typedMemory(`Recalled ${asked.length}.`) } })
     const turn = await vercelTurn({
       answer: (request) => (request.number === 1 ? streamed(sseTurn({ tool: { name: 'get_schema', args: {}, id: 'call_schema' } })) : streamed(sseTurn({ text: 'Done.' })))
     })
@@ -159,7 +160,7 @@ describe('the request text where the prompt is previewed, and for a delegated ch
       : streamed(sseTurn({ text: 'Done.' })))
     vi.stubGlobal('fetch', endpoint.fetch)
     const events: AssistantEvent[] = []
-    for await (const event of withDelegation(vercel).start({ ...bare(), prompt: 'Review the expense pack.', context: { currentRequest: { message: 'Review the expense pack.', input: '' } }, model: { family: 'openai-compatible', model: 'scripted-model', call: bindModelCall('openai-compatible') }, allowConversation: true, interactive: true, adversarialReview: false })) events.push(event)
+    for await (const event of withDelegation(vercel).start({ ...bare(), prompt: 'Review the expense pack.', context: { currentRequest: { message: 'Review the expense pack.', input: '' } }, model: { family: 'openai-compatible', model: 'scripted-model', call: bindModelCall('openai-compatible') }, allowConversation: true, interactive: true, critic: 'off' })) events.push(event)
     expect(events.filter((event) => event.type === 'error')).toEqual([])
     const child = endpoint.requests.filter(isChild)
     expect(child).toHaveLength(1)
@@ -210,7 +211,7 @@ async function truncatedRun(answers: string[], overrides: Partial<AssistantSessi
     return new Response(answer, { status: 200, headers: { 'content-type': 'text/event-stream' } })
   }
   const events: AssistantEvent[] = []
-  for await (const event of vercel.start({ ...bare(), prompt: 'Check the expense pack.', tools: [{ name: 'validate', description: 'check a document', inputSchema: { type: 'object' } }], callTool: async () => ({ content: [{ type: 'text', text: '{"status":"ok"}' }] }), model: { family: 'anthropic', model: 'a-model', call }, thinking: normalize('on', 'anthropic'), adversarialReview: false, ...overrides })) {
+  for await (const event of vercel.start({ ...bare(), prompt: 'Check the expense pack.', tools: [{ name: 'validate', description: 'check a document', inputSchema: { type: 'object' } }], callTool: async () => ({ content: [{ type: 'text', text: '{"status":"ok"}' }] }), model: { family: 'anthropic', model: 'a-model', call }, thinking: normalize('on', 'anthropic'), critic: 'off', ...overrides })) {
     events.push(event)
     if (event.type === 'thinking_unavailable') {
       await new Promise((resolve) => setTimeout(resolve, 50))

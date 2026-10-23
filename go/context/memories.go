@@ -4,6 +4,7 @@ package runcontext
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -71,6 +72,7 @@ func ValidMemories(v *Value) bool {
 }
 
 type MemoryRecall struct {
+	Now     time.Time
 	Text    string
 	Rows    []contract.ProvenanceMemoryRecall
 	Records []contract.Memory
@@ -78,19 +80,15 @@ type MemoryRecall struct {
 }
 
 func RecallMemory(value any, bound int, marker string) (MemoryRecall, error) {
-	out := MemoryRecall{Rows: []contract.ProvenanceMemoryRecall{}}
+	out := MemoryRecall{Rows: []contract.ProvenanceMemoryRecall{}, Now: time.Now()}
 	fail := func(detail string) (MemoryRecall, error) {
 		return MemoryRecall{}, failure.Authored("configuration", "The host's memoryFor answer "+detail+"; nothing was sent.", "context")
 	}
 	if value == nil {
 		return out, nil
 	}
-	if text, ok := value.(string); ok {
-		if text == "" {
-			return out, nil
-		}
-		// Deterministic compatibility record; use the ordinary accounting and framing below.
-		value = []contract.Memory{{ID: "legacy-memory", Kind: "fact", Text: text, Source: contract.MemorySource{Run: "host", ProposedBy: "host"}, Scope: "project", Digest: "sha256:" + ContextDigest(text), CreatedAt: "1970-01-01T00:00:00Z", State: "accepted"}}
+	if _, ok := value.(string); ok {
+		return fail("has an unknown bare-text alias; use a list of closed Memory records")
 	}
 
 	records, ok := value.([]contract.Memory)
@@ -112,7 +110,7 @@ func RecallMemory(value any, bound int, marker string) (MemoryRecall, error) {
 		}
 		if m.ExpiresAt != nil {
 			expiry, _ := time.Parse(time.RFC3339Nano, strings.ToUpper(*m.ExpiresAt))
-			if !expiry.After(time.Now()) {
+			if !expiry.After(out.Now) {
 				continue
 			}
 		}
@@ -163,43 +161,148 @@ func (g *MemoryGate) TakeNotices() []contract.RunEvent {
 	g.notices = nil
 	return out
 }
-func (g *MemoryGate) RecordRecall(recall MemoryRecall) error {
-	g.mu.Lock()
-	defer func() { g.session.Execution.MutateCheckpoint(CheckpointPatch{"Memories": &g.book}); g.mu.Unlock() }()
-	for at, previous := range g.book.Recalled {
-		for _, current := range recall.Records {
-			if previous.ID == current.ID {
-				if current.State != "accepted" {
-					g.book.Recalled[at].State = current.State
-				}
-				if current.State == "accepted" && current.ExpiresAt != nil {
-					expiry, _ := time.Parse(time.RFC3339Nano, strings.ToUpper(*current.ExpiresAt))
-					if !expiry.After(time.Now()) {
-						g.book.Recalled[at].State = "expired"
-					}
-				}
+func lifecycleFailure(detail string) error {
+	err := failure.Authored("configuration", "The host's memoryLifecycle answer "+detail+"; nothing was sent.", "context")
+	err.Failure.Outcome = "not-started"
+	return err
+}
+
+// ReadMemoryLifecycle checks closed host input before any report publication.
+func ReadMemoryLifecycle(answer any) ([]contract.MemoryLifecycleUpdate, error) {
+	if answer == nil {
+		return nil, nil
+	}
+	raw, err := json.Marshal(answer)
+	if err != nil {
+		return nil, lifecycleFailure("is not a list of closed lifecycle rows")
+	}
+	if string(raw) == "null" {
+		return nil, nil
+	}
+	value, err := ParseJSON(raw)
+	if err != nil || !value.IsArray() || len(value.Items()) > 256 {
+		return nil, lifecycleFailure("is not a list of closed lifecycle rows")
+	}
+	rows := []contract.MemoryLifecycleUpdate{}
+	ids := map[string]bool{}
+	for _, row := range value.Items() {
+		if !isObject(row) || !hasOnly(row, "id", "digest", "kind", "state") || !row.Get("id").IsString() || !memoryIdentifier(row.Get("id").Str()) || !row.Get("digest").IsString() || !digestPattern.MatchString(row.Get("digest").Str()) || !row.Get("kind").IsString() || !memoryKind(row.Get("kind").Str()) || !row.Get("state").IsString() || (row.Get("state").Str() != "revoked" && row.Get("state").Str() != "expired") {
+			return nil, lifecycleFailure("is not a list of closed lifecycle rows")
+		}
+		if ids[row.Get("id").Str()] {
+			return nil, lifecycleFailure("has duplicate ids")
+		}
+		ids[row.Get("id").Str()] = true
+		var update contract.MemoryLifecycleUpdate
+		if json.Unmarshal(row.JSON(), &update) != nil {
+			return nil, lifecycleFailure("is not a list of closed lifecycle rows")
+		}
+		rows = append(rows, update)
+	}
+	return rows, nil
+}
+func nextMemoryRecall(prior []contract.ProvenanceMemoryRecall, recall MemoryRecall, lifecycle []contract.MemoryLifecycleUpdate) ([]contract.ProvenanceMemoryRecall, error) {
+	next := append([]contract.ProvenanceMemoryRecall{}, prior...)
+	before := map[string]contract.ProvenanceMemoryRecall{}
+	indexes := map[string]int{}
+	full := map[string]string{}
+	now := recall.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	transition := func(previous contract.ProvenanceMemoryRecall, target string) error {
+		if previous.State != target && !(previous.State == "accepted" && (target == "revoked" || target == "expired")) {
+			return lifecycleFailure("has an invalid transition")
+		}
+		return nil
+	}
+	for i, row := range prior {
+		before[row.ID] = row
+		indexes[row.ID] = i
+	}
+	for _, record := range recall.Records {
+		target := record.State
+		if target == "accepted" && record.ExpiresAt != nil {
+			expiry, _ := time.Parse(time.RFC3339Nano, strings.ToUpper(*record.ExpiresAt))
+			if !expiry.After(now) {
+				target = "expired"
 			}
 		}
+		full[record.ID] = target
+		previous, known := before[record.ID]
+		if !known {
+			continue
+		}
+		if previous.Digest != record.Digest || previous.Kind != record.Kind {
+			return nil, lifecycleFailure("has a mismatched digest or kind in full-record recall")
+		}
+		if err := transition(previous, target); err != nil {
+			return nil, err
+		}
+		next[indexes[record.ID]].State = target
+	}
+	for _, update := range lifecycle {
+		previous, known := before[update.ID]
+		if !known {
+			return nil, lifecycleFailure("names an unknown recalled identity")
+		}
+		if previous.Digest != update.Digest || previous.Kind != update.Kind {
+			return nil, lifecycleFailure("has a mismatched digest or kind")
+		}
+		if err := transition(previous, update.State); err != nil {
+			return nil, err
+		}
+		if target, present := full[update.ID]; present && target != update.State {
+			return nil, lifecycleFailure("contradicts full-record recall")
+		}
+		next[indexes[update.ID]].State = update.State
 	}
 	for _, row := range recall.Rows {
-		found := false
-		for at, previous := range g.book.Recalled {
-			if row.ID == previous.ID {
-				g.book.Recalled[at] = row
-				found = true
-				break
-			}
-		}
-		if !found {
-			g.book.Recalled = append(g.book.Recalled, row)
+		if _, known := before[row.ID]; !known {
+			next = append(next, row)
 		}
 	}
-	if len(g.book.Recalled) > 256 {
-		return failure.Authored("configuration", "The recalled memory report is full.", "context")
+	return next, nil
+}
+func (g *MemoryGate) recalledSnapshot() []contract.ProvenanceMemoryRecall {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return append([]contract.ProvenanceMemoryRecall{}, g.book.Recalled...)
+}
+func validMemoryBook(book *contract.ProvenanceMemories) bool {
+	raw, err := json.Marshal(book)
+	if err != nil {
+		return false
 	}
+	value, err := ParseJSON(raw)
+	return err == nil && ValidMemories(value)
+}
+func (g *MemoryGate) commitRecall(expected, next []contract.ProvenanceMemoryRecall, recall MemoryRecall) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if !reflect.DeepEqual(append([]contract.ProvenanceMemoryRecall{}, g.book.Recalled...), append([]contract.ProvenanceMemoryRecall{}, expected...)) {
+		return lifecycleFailure("is stale because the recalled report changed")
+	}
+	raw, _ := json.Marshal(g.book)
+	var candidate contract.ProvenanceMemories
+	if json.Unmarshal(raw, &candidate) != nil {
+		return lifecycleFailure("produces an invalid memory report")
+	}
+	candidate.Recalled = append([]contract.ProvenanceMemoryRecall{}, next...)
+	if !validMemoryBook(&candidate) {
+		return lifecycleFailure("produces an invalid or full memory report")
+	}
+	if err := g.session.Execution.MutateCheckpoint(CheckpointPatch{"Memories": &candidate}, func(saved *Execution) error {
+		if !validMemoryBook(saved.Memories) {
+			return lifecycleFailure("produces an invalid or full memory report")
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	g.book = candidate
 	if recall.Bytes > 0 || len(recall.Rows) > 0 {
-		ids := []string{}
-		digests := []string{}
+		ids, digests := []string{}, []string{}
 		for _, row := range recall.Rows {
 			ids = append(ids, row.ID)
 			digests = append(digests, row.Digest)
@@ -207,6 +310,14 @@ func (g *MemoryGate) RecordRecall(recall MemoryRecall) error {
 		g.notices = append(g.notices, contract.RunEvent{MemoryRecalled: &contract.RunEventMemoryRecalled{Type: "memory_recalled", Ids: ids, Digests: digests, Bytes: int64(recall.Bytes)}})
 	}
 	return nil
+}
+func (g *MemoryGate) RecordRecall(recall MemoryRecall) error {
+	prior := g.recalledSnapshot()
+	next, err := nextMemoryRecall(prior, recall, nil)
+	if err != nil {
+		return err
+	}
+	return g.commitRecall(prior, next, recall)
 }
 func (c *SessionContext) MemoryAdmitted() bool {
 	return c.objective == "" && c.session.ChildDefinition == nil && !c.CriticReading && !c.Reformatting

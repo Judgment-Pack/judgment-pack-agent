@@ -43,9 +43,9 @@ func oneTool(t *testing.T, tool runcontext.HostTool, run adapter.AgentRun) (*ada
 	if err != nil {
 		t.Fatal(err)
 	}
-	off := false
+
 	return &adapter.Run{ModelName: "agent-model", Agent: &adapter.Agent{Model: "agent-model", Run: run}, Gate: g.Calls(), Tools: offer.Tools,
-		HostTools: []runcontext.HostTool{tool}, Prompt: "Write the note.", AllowConversation: true, Review: &off,
+		HostTools: []runcontext.HostTool{tool}, Prompt: "Write the note.", AllowConversation: true, Critic: "off",
 		Context: &runcontext.Input{CurrentRequest: &runcontext.CurrentRequest{Message: "Write the note.", Input: "Write the note."}}, Emit: emit}, events
 }
 
@@ -139,5 +139,34 @@ func TestTheAdapterWaitsForACallStillRunningWhenTheHostReturns(t *testing.T) {
 	}
 	if !finished.Load() {
 		t.Fatal("the adapter returned while the host tool was still running")
+	}
+}
+
+func TestRetiredReviewRefusesPresence(t *testing.T) {
+	for _, legacy := range []bool{false, true} {
+		calls := 0
+		note := runcontext.HostTool{Name: "read_note", Effect: "read", Description: "Reads a note.", InputSchema: json.RawMessage(`{"type":"object"}`)}
+		run, events := oneTool(t, note, func(context.Context, adapter.AgentRequest, adapter.AgentCallbacks) error { calls++; return nil })
+		run.Review = &legacy
+		run.Critic = "on"
+		if err := agent.New().Run(context.Background(), run); err != nil {
+			t.Fatal(err)
+		}
+		refused := 0
+		guided := false
+		for _, event := range *events {
+			if event.Guardrail != nil && strings.Contains(event.Guardrail.Detail, "use critic") {
+				guided = true
+			}
+			if event.Error != nil {
+				refused++
+				if event.Error.Failure == nil || event.Error.Failure.Code != "configuration" {
+					t.Fatal("wrong alias refusal")
+				}
+			}
+		}
+		if calls != 0 || refused != 1 || !guided {
+			t.Fatal("retired Review invoked")
+		}
 	}
 }

@@ -122,7 +122,7 @@ describe('the session’s members, read closed (ADR-0010)', () => {
     [{ criticReasoning: 'ultra' }, true, 'criticReasoning must be one of none, minimal, low, medium, high, xhigh, max'],
     [{ existingPack: 'yes' }, false, 'existingPack must be true or false'],
     [{ reviewerAssigned: 1 }, false, 'reviewerAssigned must be true or false'],
-    [{ adversarialReview: 'on' }, true, 'adversarialReview must be true or false']
+    [{ adversarialReview: 'on' }, true, 'unknown session member; use critic']
   ] as const)('refuses %j', (session, agent, said) => {
     expect(() => readCriticSettings(session as never, agent)).toThrow(said)
   })
