@@ -3,6 +3,7 @@ package runcontext
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"reflect"
 	"strings"
@@ -70,6 +71,52 @@ func TestPolicyTable(t *testing.T) {
 			t.Fatalf("unsupported effort: %v", err)
 		}
 	})
+	t.Run("table reasoning defaults and explicit refusals", func(t *testing.T) {
+		raw, err := os.ReadFile("../../contract/vectors/policy/reasoning-table-defaults.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var vector struct {
+			Cases []struct {
+				Run, Project, Table PolicyLayer
+				Member              string
+			}
+			Items    []PolicyMembers
+			Refusals []struct {
+				Name, Layer, Role, Value string
+				Agent                    bool
+			}
+		}
+		if err = json.Unmarshal(raw, &vector); err != nil {
+			t.Fatal(err)
+		}
+		for i, input := range vector.Cases {
+			got, resolveErr := ResolvePolicy(input.Run, input.Project, input.Table, PolicyHost{Connections: []string{"model-a"}, Requests: 16})
+			want := vector.Items[i][input.Member]
+			if resolveErr != nil || !reflect.DeepEqual(got.Members[input.Member], want) {
+				t.Fatalf("case %d: got %+v want %+v: %v", i, got.Members[input.Member], want, resolveErr)
+			}
+		}
+		for _, row := range vector.Refusals {
+			role := map[string]any{"model": "model-a", "reasoning": row.Value, "discovered": map[string]any{"reasoning": map[string]any{"default": "high", "supported": []any{"high"}}}}
+			layer := PolicyLayer{"models": map[string]any{row.Role: role}}
+			author := map[string]any{"model": "model-a"}
+			if !row.Agent {
+				author["reasoning"] = "off"
+			}
+			tableLayer := PolicyLayer{"models": map[string]any{"author": author, row.Role: map[string]any{"model": "model-a"}}}
+			var run, project PolicyLayer
+			if row.Layer == "run" {
+				run = layer
+			} else {
+				project = layer
+			}
+			_, resolveErr := ResolvePolicy(run, project, tableLayer, PolicyHost{Connections: []string{"model-a"}, Agent: row.Agent, Requests: 16})
+			if resolveErr == nil || !strings.Contains(resolveErr.Error(), fmt.Sprintf("models.%s.reasoning (%s): reasoning value %q", row.Role, row.Layer, row.Value)) {
+				t.Fatalf("%s: %v", row.Name, resolveErr)
+			}
+		}
+	})
 	t.Run("discovery vector", func(t *testing.T) {
 		raw, err := os.ReadFile("../../contract/vectors/policy/discovery.json")
 		if err != nil {
@@ -92,7 +139,7 @@ func TestPolicyTable(t *testing.T) {
 		}
 		for _, discovered := range []any{
 			map[string]any{},
-			map[string]any{"reasoning": map[string]any{"supported": []any{"low"}}},
+			map[string]any{"reasoning": map[string]any{}},
 			map[string]any{"reasoning": map[string]any{"default": "low", "supported": oversized}},
 		} {
 			_, resolveErr := ResolvePolicy(PolicyLayer{"models": map[string]any{"author": map[string]any{"discovered": discovered}}}, nil, PolicyLayer{"models": map[string]any{"author": map[string]any{"model": "connected"}}}, PolicyHost{Connections: []string{"connected"}, Agent: true, Requests: 16})
@@ -127,6 +174,30 @@ func TestPolicyTable(t *testing.T) {
 		member := saved.Policy["models.author.reasoning"]
 		if len(member.Value) != 0 || member.Source == nil || *member.Source != "model-default" || len(saved.Prompts) != 1 {
 			t.Fatalf("resume vector: %+v", saved)
+		}
+	})
+	t.Run("table reasoning resume vector", func(t *testing.T) {
+		raw, err := os.ReadFile("../../contract/vectors/policy/reasoning-table-resume.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var vector struct {
+			Items   []json.RawMessage
+			Members []PolicyMember
+		}
+		if err = json.Unmarshal(raw, &vector); err != nil {
+			t.Fatal(err)
+		}
+		for i, item := range vector.Items {
+			value, parseErr := ParseJSON(item)
+			if parseErr != nil {
+				t.Fatal(parseErr)
+			}
+			saved, readErr := ReadExecution(value)
+			want := PolicyMembers{"member": vector.Members[i]}.Record()["member"]
+			if readErr != nil || !reflect.DeepEqual(saved.Policy["models.compactor.reasoning"], want) || len(saved.Prompts) != 1 {
+				t.Fatalf("case %d: %+v (%v)", i, saved, readErr)
+			}
 		}
 	})
 	t.Run("alias", func(t *testing.T) {
@@ -173,6 +244,23 @@ func TestPolicyTable(t *testing.T) {
 			got, err := ResolvePolicy(nil, raised, table, host)
 			if err != nil || got.Members["models."+role+".reasoning"].Layer != "project" {
 				t.Fatalf("project tier: %+v %v", got, err)
+			}
+		}
+	})
+	t.Run("omitted author has no invented child ceiling", func(t *testing.T) {
+		for _, row := range []struct {
+			agent bool
+			value string
+		}{{false, "off"}, {true, "none"}} {
+			for _, role := range []string{"child.review", "subagent.audit"} {
+				assigned := PolicyLayer{"models": map[string]any{role: map[string]any{"reasoning": row.value}}}
+				omitted := PolicyLayer{"models": map[string]any{"author": map[string]any{"model": "connected"}, role: map[string]any{"model": "connected"}}}
+				for _, project := range []PolicyLayer{nil, assigned} {
+					got, err := ResolvePolicy(assigned, project, omitted, PolicyHost{Connections: []string{"connected"}, Agent: row.agent, Requests: 16})
+					if err != nil || got.Members["models."+role+".reasoning"].Value != row.value {
+						t.Fatalf("agent=%t role=%s project=%t: %+v %v", row.agent, role, project != nil, got, err)
+					}
+				}
 			}
 		}
 	})

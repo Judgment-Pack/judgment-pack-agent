@@ -11,7 +11,7 @@ import (
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 )
 
-var compactionNames = []string{"16 index", "16 summary", "16 fallback", "16 resume", "16 gate"}
+var compactionNames = []string{"16 index", "16 summary", "16 table reasoning defaults", "16 fallback", "16 resume", "16 gate"}
 
 func compactionHistory() []runcontext.Message {
 	messages := []runcontext.Message{runcontext.TextMessage("user", "Keep this stable prefix.")}
@@ -245,6 +245,67 @@ func compactionChecks(ctx context.Context) ([]Finding, error) {
 	}
 	if called != 1 {
 		f.fail("resume called the compactor again")
+	}
+	out = append(out, f.list...)
+	f = &findings{check: "16 table reasoning defaults"}
+	reasoningRaw, readErr := os.ReadFile(filepath.Join(root, "contract", "vectors", "policy", "reasoning-table-defaults.json"))
+	var reasoningVector struct {
+		Cases []struct {
+			Run    runcontext.PolicyLayer
+			Member string
+		}
+		Items    []runcontext.PolicyMembers
+		Requests []map[string]string
+	}
+	if readErr != nil || json.Unmarshal(reasoningRaw, &reasoningVector) != nil {
+		f.fail("reasoning table vector could not be read: %v", readErr)
+	} else {
+		for at := 0; at < 4; at++ {
+			var asked runcontext.CompactorRequest
+			tableSession := compactionSession(func(_ context.Context, request runcontext.CompactorRequest) (string, error) {
+				asked = request
+				return "A bounded summary.", nil
+			})
+			tableSession.Policy = reasoningVector.Cases[at].Run
+			tableSession.Policy["compaction"] = "summary"
+			tableRun, tableErr := runcontext.ContextualSession(ctx, tableSession)
+			var saved contract.Checkpoint
+			if tableErr == nil {
+				saved, tableErr = tableRun.Context.Execution.Snapshot("")
+			}
+			if tableErr == nil {
+				_, tableErr = tableRun.Context.MessagesContext(ctx, history, "host", runcontext.Array())
+			}
+			request := map[string]string{}
+			if asked.Reasoning != "" {
+				request["reasoning"] = asked.Reasoning
+			}
+			member := reasoningVector.Cases[at].Member
+			if tableErr != nil {
+				f.fail("case %d failed: %v", at, tableErr)
+				continue
+			}
+			var resumedAsked runcontext.CompactorRequest
+			resumedSession := compactionSession(func(_ context.Context, request runcontext.CompactorRequest) (string, error) {
+				resumedAsked = request
+				return "A bounded summary.", nil
+			})
+			resumedSession.Policy = reasoningVector.Cases[at].Run
+			resumedSession.Policy["compaction"] = "summary"
+			resumedSession.Context.Execution = &saved
+			resumedRun, resumedErr := runcontext.ContextualSession(ctx, resumedSession)
+			if resumedErr == nil {
+				_, resumedErr = resumedRun.Context.MessagesContext(ctx, history, "host", runcontext.Array())
+			}
+			resumedRequest := map[string]string{}
+			if resumedAsked.Reasoning != "" {
+				resumedRequest["reasoning"] = resumedAsked.Reasoning
+			}
+			wantRecord := runcontext.PolicyMembers{"member": reasoningVector.Items[at][member]}.Record()["member"]
+			if comparisonJSON(request) != comparisonJSON(reasoningVector.Requests[at]) || comparisonJSON(request) != comparisonJSON(resumedRequest) || comparisonJSON(tableRun.Context.ResolvedPolicy[member]) != comparisonJSON(reasoningVector.Items[at][member]) || comparisonJSON(saved.Policy[member]) != comparisonJSON(wantRecord) || resumedErr != nil {
+				f.fail("case %d: request=%s resumed=%s member=%s error=%v", at, comparisonJSON(request), comparisonJSON(resumedRequest), comparisonJSON(tableRun.Context.ResolvedPolicy[member]), resumedErr)
+			}
+		}
 	}
 	out = append(out, f.list...)
 	f = &findings{check: "16 fallback"}

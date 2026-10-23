@@ -102,7 +102,7 @@ Closed: a member the schema does not name is refused.
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
 | `reasoning` | yes | object |  |
-| `reasoning.default` | yes | `$defs/reasoningValue` |  |
+| `reasoning.default` |  | `$defs/reasoningValue` |  |
 | `reasoning.supported` | yes | array of `$defs/reasoningValue` (max items 10) |  |
 
 ### `policy.json $defs/member`

@@ -113,14 +113,31 @@ request omits its effort member. `none` is an explicit value only and is never
 synthesized. A layer-supplied value has `source: layer`.
 
 The host may supply authenticated discovery before admission as
-`models.<role>.discovered.reasoning`, with a `default` and closed `supported` set.
+`models.<role>.discovered.reasoning`, with an optional `default` and closed `supported` set.
 When reasoning is omitted, that default becomes the resolved value with
-`source: discovered`. An explicit value still wins by the existing run over project
-over table precedence, but discovery refuses it before generation when `supported`
-does not advertise it. This includes explicit `none`; the refusal names the value
-and selected model and never substitutes another setting.
+`source: discovered`; discovery may omit `default`, in which case reasoning stays
+absent. An explicit run or project value still wins by the existing precedence, but
+discovery refuses it before generation when `supported` does not advertise it. This
+includes explicit `none`; the refusal names the value and selected model and never
+substitutes another setting. A table value follows the later table-default amendment.
 
 `policy_resolved` and `checkpoint.policy` carry `source` with the member. A resumed
 run therefore rebuilds the same request: an omitted effort remains omitted, and a
 discovered default remains the same explicit value. Older members without `source`
 are read as layer-supplied for checkpoint compatibility.
+
+## Amendment: table reasoning is a default (2026-10-23)
+
+A reasoning value supplied by the policy table is a default rather than a person or
+project preference. When authenticated discovery does not advertise that value,
+resolution uses discovery's advertised default with `source: discovered`; if discovery
+advertises no default, the resolved member has no value and uses `source: model-default`.
+The provider request follows that resolution. A supported table value remains unchanged
+with `source: layer`.
+
+Only table-layer values receive this fallback. A run or project value remains explicit,
+including `none` or `off`, and is refused when the selected model does not advertise it.
+When author reasoning is omitted and discovery is absent, the resolver has no tier from
+which to infer a child ceiling; a run-only child or sub-agent tier is therefore admitted
+as it was before discovery admission. A known author tier retains the existing project
+authorization rule.

@@ -418,20 +418,27 @@ func ResolvePolicy(run, project, table PolicyLayer, host PolicyHost) (ResolvedPo
 		if hasDefault && (!hasSupported || !contains(defaultMember.Value)) {
 			return PolicyMember{}, &PolicyRefusal{Member: name, Layer: defaultMember.Layer, Detail: fmt.Sprintf("discovered default %q is not advertised as supported", defaultMember.Value)}
 		}
-		if hasExplicit {
-			if hasSupported && !contains(explicit.Value) {
+		selected, hasSelected := explicit, hasExplicit
+		if !hasSelected && inherited != nil {
+			selected = *inherited
+			selected.Layer = "table"
+			hasSelected = true
+		}
+		if hasSelected {
+			if hasSupported && !contains(selected.Value) {
+				if selected.Layer == "table" {
+					if hasDefault {
+						return PolicyMember{Value: defaultMember.Value, Layer: defaultMember.Layer, Source: "discovered"}, nil
+					}
+					return PolicyMember{Layer: "table", Source: "model-default"}, nil
+				}
 				model := members["models."+role+".model"].Value
-				return PolicyMember{}, &PolicyRefusal{Member: name, Layer: explicit.Layer, Detail: fmt.Sprintf("reasoning value %q is not supported by model %q", explicit.Value, model)}
+				return PolicyMember{}, &PolicyRefusal{Member: name, Layer: selected.Layer, Detail: fmt.Sprintf("reasoning value %q is not supported by model %q", selected.Value, model)}
 			}
-			return explicit, nil
+			return selected, nil
 		}
 		if hasDefault {
 			return PolicyMember{Value: defaultMember.Value, Layer: defaultMember.Layer, Source: "discovered"}, nil
-		}
-		if inherited != nil {
-			member := *inherited
-			member.Layer = "table"
-			return member, nil
 		}
 		return PolicyMember{Layer: "table", Source: "model-default"}, nil
 	}
@@ -466,9 +473,8 @@ func ResolvePolicy(run, project, table PolicyLayer, host PolicyHost) (ResolvedPo
 					models, _ := project["models"].(map[string]any)
 					assigned, _ := models[role].(map[string]any)
 					allowance, _ := assigned["reasoning"].(string)
-					unknownRunIncrease := author == "" && members[name].Layer == "run" && allowance == ""
-					knownIncrease := author != "" && rank(value) > rank(author) && (allowance == "" || rank(value) > rank(allowance))
-					if unknownRunIncrease || knownIncrease {
+					knownIncrease := members[name].Source == "layer" && author != "" && rank(value) > rank(author) && (allowance == "" || rank(value) > rank(allowance))
+					if knownIncrease {
 						return result, refuse(name, "tier exceeds the author's without project authorization", false)
 					}
 				}

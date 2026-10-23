@@ -29,7 +29,7 @@ import {declareSubagents,catalogueSubagents,subagentOffer,type Subagent} from '.
 import {catalogueSkills,declareSkills,SkillGate,LOAD_SKILL,UNLOAD_SKILL,type DeclaredSkills,type SkillNotice} from '../skills'
 import type {HostTool} from '../engine'
 export interface CurrentRequest {message:string;input:string}
-export interface CompactorRequest {messages:ModelMessage[];digests:string[];maxBytes:number;reasoning:string;connection:PolicyConnection}
+export interface CompactorRequest {messages:ModelMessage[];digests:string[];maxBytes:number;reasoning?:string;connection:PolicyConnection}
 export type Compactor=(request:CompactorRequest,signal:AbortSignal)=>Promise<string>
 /** `currentState`: host-authored text that changes between requests or responses (the chat's
  * draft snapshot, the latest check). An adapter sends it after the history, at the end of every
@@ -632,7 +632,8 @@ this.turn=session.context?.chat?.openTurn();this.objective=session.context?.obje
     // Tool calls and results are intentionally absent: their exact retained paths remain in the
     // deterministic index embedded beside the prose summary.
     const prose=choice.block.map(message=>Array.isArray(message.content)?{...message,content:message.content.filter(part=>part.type==='text')}:message).filter(message=>typeof message.content==='string'||message.content.length>0) as ModelMessage[]
-    const raw=await this.compactor({messages:prose,digests,maxBytes:this.policy.summaryBytes,reasoning:String(this.resolvedPolicy['models.compactor.reasoning']!.value),connection},this.signal)
+    const reasoning=this.resolvedPolicy['models.compactor.reasoning']!.value
+    const raw=await this.compactor({messages:prose,digests,maxBytes:this.policy.summaryBytes,...(reasoning===undefined?{}:{reasoning:String(reasoning)}),connection},this.signal)
     if(typeof raw!=='string'||utf8Bytes(raw)>this.policy.summaryBytes)throw Error('The compactor returned no bounded summary.')
     const answer=raw.trim()
     if(!answer)throw Error('The compactor returned no summary.')
