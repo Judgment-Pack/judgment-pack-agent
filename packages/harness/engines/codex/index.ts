@@ -20,7 +20,7 @@ import {
 import { eventChannel } from '../vercel/channel'
 import { criticDecidedEvent } from '../../criticSwitch'
 import type { CodexEffort } from '../../agent'
-import { CRITIC_SYSTEM, compareTheRest, criticMayCall, criticMayRead, criticMessage, criticCannotRun, critiqueEvent, critiqueOnProposal, criticNote, proposalNote, openCritique } from '../../refutation'
+import { CRITIC_SYSTEM, compareTheRest, criticMessage, criticCannotRun, critiqueEvent, critiqueOnProposal, criticNote, proposalNote, openCritique } from '../../refutation'
 import type { CritiqueRecorder, Critique, CriticFigures } from '../../refutation'
 
 /** Candidate contract. No fake model endpoint, and no selectable registry entry
@@ -66,7 +66,7 @@ function runCodexLoop(session: RequestAgentAssistantSession): AsyncIterable<Assi
     const names = new Set<string>()
     const routes = new Map<string, { name: string; host?: CodexSession['hostTools'][number] }>()
     const tools: AgentTool[] = []
-    for (const [kind, offered] of [['runtime', session.tools], ['host', session.hostTools]] as const) {
+    for (const [kind, offered] of [['runtime', session.values.tools], ['host', session.values.hostTools]] as const) {
       for (const tool of offered) {
         if (names.has(tool.name)) throw new Error('Assistant tool names must be unique')
         names.add(tool.name)
@@ -83,7 +83,7 @@ function runCodexLoop(session: RequestAgentAssistantSession): AsyncIterable<Assi
     const offeredTo = (phase: 'author' | 'critic' | 'reformat') =>
       phase === 'author' ? tools
         : phase === 'reformat' ? []
-          : tools.filter(tool => { const route = routes.get(tool.name); return route !== undefined && (route.host === undefined ? criticMayCall(route.name) : criticMayRead(route.name)) })
+          : tools.filter(tool => { const route = routes.get(tool.name); return route !== undefined && session.values.allowsTool(route.name,route.host===undefined?'runtime':'host','critic') })
     /**
      * One agent run. `prompt` is the run's request text; `state`, on the author's run, what changes
      * between runs (ADR-0005, layer 8). The instructions are the system text: the package's guidance,
@@ -114,7 +114,7 @@ function runCodexLoop(session: RequestAgentAssistantSession): AsyncIterable<Assi
       const partial = new Map<string, string>()
       let final = ''
       let messages = 0
-      await withAbort(() => session.agent.run({ prompt, instructions, tools: offeredHere, ...(effort === undefined ? {} : { effort }), phase: phase === 'critic' ? 'critic' : 'author', ...(model === undefined ? {} : { model }) }, {
+      await withAbort(() => session.values.agent.run({ prompt, instructions, tools: offeredHere, ...(effort === undefined ? {} : { effort }), phase: phase === 'critic' ? 'critic' : 'author', ...(model === undefined ? {} : { model }) }, {
         signal: executionSignal,
         connectionSwitched: deliver,
         event: async (event: AgentEvent) => {
@@ -266,7 +266,7 @@ function runCodexLoop(session: RequestAgentAssistantSession): AsyncIterable<Assi
     const state = [session.context?.currentState, session.allowConversation ? context.execution.guidance() : undefined].filter((part): part is string => !!part).join('\n\n')
     let final: string
     try {
-      final = await run(session.prompt, instructions + (offersProposeTool(session.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : ''), 'author', undefined, undefined, state, session.reasoning)
+      final = await run(session.prompt, instructions + (offersProposeTool(session.values.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : ''), 'author', undefined, undefined, state, session.values.reasoning)
     } catch (cause) {
       // **A proposal made through propose_pack is finished work.** The run
       // failing after it (the bridge's deadline, a lost connection) does not
@@ -355,7 +355,7 @@ function runCodexLoop(session: RequestAgentAssistantSession): AsyncIterable<Assi
         // What the critic costs (agent#10): one agent run on the host's critic
         // model, or the run's; the bridge reports no tokens; and the harness's
         // own calls (review row 8).
-        let figures: CriticFigures = { model: session.agent.model, unit: 'agent-runs', requests: 0 }
+        let figures: CriticFigures = { model: session.values.agent.model, unit: 'agent-runs', requests: 0 }
         let harnessCalls = 0
         const counted = (): CriticFigures => ({ ...figures, ...(harnessCalls === 0 ? {} : { harnessCalls }) })
         // The critic's phase spans its run and the harness's calls after it, so
@@ -368,7 +368,7 @@ function runCodexLoop(session: RequestAgentAssistantSession): AsyncIterable<Assi
           const model = context.models('codex').critic
           figures = { model, unit: 'agent-runs', requests: 1 }
           // ADR-0010: the critic's effort, the decision's tier (at least the author's unless lowered).
-          const text = await run(criticMessage(session.testPrompt, proposal.document, context.criticCases), CRITIC_SYSTEM, 'critic', recorder, model === session.agent.model ? undefined : model, '', decided.reasoning as CodexEffort | undefined)
+          const text = await run(criticMessage(session.testPrompt, proposal.document, context.criticCases), CRITIC_SYSTEM, 'critic', recorder, model === session.values.agent.model ? undefined : model, '', session.values.forRole('critic').reasoning)
           // agent#10: the declared cases the critic's run left uncompared, run once each by the harness.
           const offered = new Set(offeredTo('critic').map(tool => routes.get(tool.name)!.name))
           await compareTheRest(recorder, proposal.document, offered, async (name, args) => {

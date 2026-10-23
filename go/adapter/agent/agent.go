@@ -35,7 +35,6 @@ import (
 	runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
-	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
 )
 
 // ID is the engine id the contract gives a run on an agent capability (the inventory's codex): it
@@ -69,7 +68,7 @@ type route struct {
 type runState struct {
 	run      *adapter.RequestSession
 	sc       *runcontext.SessionContext
-	session  runcontext.Session
+	session  *adapter.PreparedRequest
 	boundary *runcontext.Boundary
 
 	routes map[string]route
@@ -82,9 +81,6 @@ type runState struct {
 	ended      bool
 	invocation int
 
-	// criticEffort is the critic's effort (ADR-0010): the decision's tier, set before the critic runs.
-	criticEffort string
-
 	held          sync.Mutex
 	awaitingInput bool
 	handoff       bool
@@ -95,7 +91,7 @@ type runState struct {
 
 // Run is the adapter: one run on the agent capability.
 func Run(ctx context.Context, run *adapter.Run) error {
-	r := &runState{run: adapter.NewRequestSession(run, nil)}
+	r := &runState{run: adapter.NewRequestOperations(run)}
 	if run.Agent == nil || run.Agent.Run == nil || run.Model != nil {
 		r.emitAll(runcontext.FailedToOpen(failure.Authored("configuration", "The run is not on an agent capability alone; nothing was sent.", "desk")))
 		return nil
@@ -158,10 +154,10 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		r.emitAll(runcontext.FailedToOpen(err))
 		return nil
 	}
-	r.run = adapter.NewRequestSession(&local, r.sc.ResolvedPolicy)
+	r.run = adapter.NewRequestSession(&local, r.sc.ResolvedPolicy, opened)
 	// ADR-0008: an act call's approval is written asked only once this run has claimed its pause.
 	r.sc.PauseClaim = func() bool { return r.claimPause(false) }
-	r.session = opened.Session
+	r.session = r.run.Prepared()
 	r.boundary = runcontext.NewBoundary(opened)
 	defer r.boundary.Close()
 	defer r.boundary.GuardGateNotices(run.Gate)()
@@ -256,7 +252,7 @@ func (r *runState) buildRoutes() error {
 		r.all = append(r.all, adapter.AgentTool{Name: alias, Description: name + ": " + description, InputSchema: schema})
 		return nil
 	}
-	for _, tool := range r.run.Tools {
+	for _, tool := range r.run.RuntimeTools() {
 		description := ""
 		if tool.Description != nil {
 			description = *tool.Description
@@ -265,8 +261,9 @@ func (r *runState) buildRoutes() error {
 			return err
 		}
 	}
-	for at := range r.session.HostTools {
-		tool := &r.session.HostTools[at]
+	hosts := r.session.HostTools()
+	for at := range hosts {
+		tool := &hosts[at]
 		if err := add("host", tool.Name, tool.Description, tool.InputSchema, tool); err != nil {
 			return err
 		}
@@ -282,21 +279,9 @@ func (r *runState) offeredTo(phase string) []adapter.AgentTool {
 	if phase == "reformat" {
 		return out
 	}
-	plan := r.run.Context != nil && r.run.Context.Phase == "plan"
 	for _, tool := range r.all {
 		held := r.routes[tool.Name]
-		keep := true
-		switch {
-		case phase == "critic" && held.host == nil:
-			keep = turn.CriticMayCall(held.name)
-		case phase == "critic":
-			keep = turn.CriticMayRead(held.name)
-		case plan && held.host == nil:
-			keep = contains(gate.PlanRuntimeReads, held.name)
-		case plan:
-			keep = contains(gate.ContextTools, held.name) || gate.PlanningTool(held.host.Declaration())
-		}
-		if keep {
+		if r.run.AllowsTool(held.name, held.host, phase) {
 			out = append(out, tool)
 		}
 	}
@@ -321,8 +306,8 @@ func (r *runState) drive(ctx context.Context) error {
 	if _, err := turn.ReadCriticCases(casesOf(r.run.Cases)); err != nil {
 		return failure.Authored("configuration", err.Error(), "context")
 	}
-	for _, host := range r.run.HostTools {
-		for _, served := range r.run.Tools {
+	for _, host := range r.run.OfferedHostTools() {
+		for _, served := range r.run.RuntimeTools() {
 			if host.Name == served.Name {
 				return failure.Authored("configuration", "host tool "+host.Name+" is named like a tool the runtime serves; nothing was run", "desk")
 			}
@@ -332,7 +317,7 @@ func (r *runState) drive(ctx context.Context) error {
 		return err
 	}
 	var declared []contract.ToolOfferHostTool
-	for _, tool := range r.session.HostTools {
+	for _, tool := range r.session.HostTools() {
 		declared = append(declared, tool.Declaration())
 	}
 	instructions := r.systemFor()
@@ -340,8 +325,8 @@ func (r *runState) drive(ctx context.Context) error {
 		instructions += turn.ProposePackInstructions
 	}
 	var parts []string
-	if r.run.Context != nil && strings.TrimSpace(r.run.Context.CurrentState) != "" {
-		parts = append(parts, r.run.Context.CurrentState)
+	if r.run.RequestContext() != nil && strings.TrimSpace(r.run.RequestContext().CurrentState) != "" {
+		parts = append(parts, r.run.RequestContext().CurrentState)
 	}
 	if r.session.AllowConversation {
 		parts = append(parts, r.sc.Execution.Guidance())
@@ -448,7 +433,6 @@ func (r *runState) drive(ctx context.Context) error {
 		var note *contract.RunEventProposalNote
 		// ADR-0010: one decision on every adapter, emitted before anything the critic does; on this
 		// capability the critic has room where the response's invocations leave it one.
-		r.criticEffort = decided.Reasoning
 		if decided.Ran {
 			if cannot := turn.CriticCannotRun(r.session.TestPrompt); cannot != nil {
 				critique = cannot
@@ -495,7 +479,7 @@ func (r *runState) critic(ctx context.Context, proposal turn.Proposal) (*turn.Cr
 		return nil, nil, failure.Authored("configuration", err.Error(), "context")
 	}
 	recorder := turn.OpenCritique(turn.CritiqueOptions{Cases: cases, Document: proposal.Document})
-	figures := contract.ProvenanceCriticFigures{Model: r.run.Agent.Model, Unit: "agent-runs"}
+	figures := contract.ProvenanceCriticFigures{Model: r.run.AgentCapability().Name(), Unit: "agent-runs"}
 	harnessCalls := 0
 	counted := func() *contract.ProvenanceCriticFigures {
 		held := figures
@@ -515,8 +499,8 @@ func (r *runState) critic(ctx context.Context, proposal turn.Proposal) (*turn.Cr
 	started := time.Now()
 	text := ""
 	err = func() error {
-		model := r.run.Agent.Model
-		if r.run.Models != nil {
+		model := r.run.AgentCapability().Name()
+		if r.run.HasModels() {
 			named, err := r.run.Models()
 			if err != nil {
 				return err
@@ -527,7 +511,7 @@ func (r *runState) critic(ctx context.Context, proposal turn.Proposal) (*turn.Cr
 		}
 		figures = contract.ProvenanceCriticFigures{Model: model, Unit: "agent-runs", Requests: 1}
 		asked := ""
-		if model != r.run.Agent.Model {
+		if model != r.run.AgentCapability().Name() {
 			asked = model
 		}
 		said, err := r.invoke(ctx, turn.CriticMessage(r.session.TestPrompt, proposal.Document, cases), turn.CriticSystem, "critic", recorder, asked, "")

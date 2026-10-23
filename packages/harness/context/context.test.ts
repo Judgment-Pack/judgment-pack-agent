@@ -191,7 +191,7 @@ it('starts an independent review with no author summary, reference material or c
  const input=session();input.hostTools=[{name:'future_reference',effect:'read',contextPolicy:{reference:true},description:'Read task reference',inputSchema:{},execute:async()=>({})}]
  const {context:c,session:prepared}=await contextualSession(input)
  const original=await c.ledger.retain({id:'author-only',kind:'artifact',label:'Author material',value:{private:'AUTHOR_ONLY_SENTINEL'}})
- const read=prepared.hostTools.find(t=>t.name==='read_context')!
+ const read=prepared.values.hostTools.find(t=>t.name==='read_context')!
  await read.execute({id:original.id},input.signal)
  const pair=(label:string):ModelMessage[]=>[{role:'user',content:'Current explicit task'},{role:'assistant',content:[{type:'tool-call',toolCallId:label,toolName:'future_reference',input:{},providerOptions:{google:{thoughtSignature:'s'.repeat(50000)}}}]},{role:'tool',content:[{type:'tool-result',toolCallId:label,toolName:'future_reference',output:{type:'json',value:{reference:label}}}]}]
  expect(JSON.stringify(await c.messages(pair('AUTHOR_ONLY_SENTINEL'),'host',[]))).toContain('AUTHOR_ONLY_SENTINEL')

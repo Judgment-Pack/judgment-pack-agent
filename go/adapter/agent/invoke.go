@@ -80,8 +80,8 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 			stated = "\n\n" + runcontext.StateHeader + "\n" + state
 		}
 		var current *runcontext.CurrentRequest
-		if r.run.Context != nil {
-			current = r.run.Context.CurrentRequest
+		if r.run.RequestContext() != nil {
+			current = r.run.RequestContext().CurrentRequest
 		}
 		parts, err := r.sc.Opening(prompt, instructions+stated, shown, current)
 		if err != nil {
@@ -98,45 +98,41 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 	if phase == "critic" {
 		wirePhase = "critic"
 	}
-	agent := r.run.Agent
+	agent := r.run.AgentCapability()
 	effort := r.run.Reasoning("author")
-	tierMap := agent.Tiers
+	tierMap := agent.TierMap()
 	admit := agent.Admit
 	if phase == "critic" {
 		// ADR-0010: the critic's effort is the decision's tier, the author's unless the host named one.
-		effort = r.criticEffort
-		named, bindErr := r.run.Models()
+		effort = r.run.Reasoning("critic")
+		binding, bindErr := r.run.PolicyBinding("critic")
 		if bindErr != nil {
 			return "", bindErr
 		}
-		binding, bindErr := r.run.PolicyBinding(r.sc.ResolvedPolicy, named, "critic")
-		if bindErr != nil {
-			return "", bindErr
-		}
-		if binding.Agent != nil {
-			tierMap = binding.Agent.Tiers
-			admit = binding.Agent.Admit
+		if binding.AgentCapability() != nil {
+			tierMap = binding.AgentCapability().TierMap()
+			admit = binding.AgentCapability().Admit
 		}
 	}
 	if setting := tierMap[effort]; setting != "" {
 		effort = setting
 	}
 	request := adapter.AgentRequest{Prompt: prompt, Instructions: instructions, Tools: tools, Effort: effort, Phase: wirePhase, Model: model}
-	if agent.Delegated != "" && agent.Delegated != agent.Model {
-		request.Model, request.Delegated = agent.Delegated, true
+	if agent.DelegatedModel() != "" && agent.DelegatedModel() != agent.Name() {
+		request.Model, request.Delegated = agent.DelegatedModel(), true
 	}
 	role := "author"
 	if request.Phase == "critic" {
 		role = "critic"
 	}
-	if r.run.Connection != nil {
+	if r.run.HasConnection() {
 		id := r.run.Connection(role)
 		r.sc.Execution.UseConnection(id, role)
-		if id != r.sc.ResolvedPolicy["models."+role+".provider"].Value {
-			selected := r.run.PolicyConnections[id].Agent
-			request.Model = selected.Model
-			request.Effort, _ = r.sc.ResolvedPolicy["models."+role+".reasoning"].Value.(string)
-			if setting := selected.Tiers[request.Effort]; setting != "" {
+		if id != r.run.Member("models."+role+".provider").Value {
+			selected := r.run.Binding(id).AgentCapability()
+			request.Model = selected.Name()
+			request.Effort, _ = r.run.Member("models." + role + ".reasoning").Value.(string)
+			if setting := selected.TierMap()[request.Effort]; setting != "" {
 				request.Effort = setting
 			}
 			admit = selected.Admit
@@ -152,7 +148,7 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 	}
 	// Durable before dispatch: the coordinator counts the invocation and writes the checkpoint; a run
 	// it did not start writes its own. A checkpoint not acknowledged dispatches nothing.
-	if agent.Begin != nil {
+	if agent.HasBegin() {
 		err = agent.Begin(ctx, request)
 	} else {
 		err = r.save(ctx)
@@ -175,13 +171,13 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 		runErr = agent.Run(invCtx, request, callbacks)
 		watched.wait()
 		classified := failure.Normalize(runErr, "agent", time.Now())
-		if runErr != nil && !watched.reached() && !switched && r.run.Failover != nil && (classified.Code == "unavailable" || classified.Code == "rate-limited" || classified.Code == "timeout") {
+		if runErr != nil && !watched.reached() && !switched && r.run.HasFailover() && (classified.Code == "unavailable" || classified.Code == "rate-limited" || classified.Code == "timeout") {
 			if from, to, ok := r.run.Failover(role, classified.Code); ok {
 				switched = true
-				selected := r.run.PolicyConnections[to].Agent
-				request.Model = selected.Model
-				request.Effort, _ = r.sc.ResolvedPolicy["models."+role+".reasoning"].Value.(string)
-				if setting := selected.Tiers[request.Effort]; setting != "" {
+				selected := r.run.Binding(to).AgentCapability()
+				request.Model = selected.Name()
+				request.Effort, _ = r.run.Member("models." + role + ".reasoning").Value.(string)
+				if setting := selected.TierMap()[request.Effort]; setting != "" {
 					request.Effort = setting
 				}
 				request, runErr = selected.Admit(ctx, request)
@@ -196,7 +192,7 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 				if marshalErr == nil {
 					r.sc.Execution.RecordPrompt(body)
 				}
-				if agent.Begin != nil {
+				if agent.HasBegin() {
 					runErr = agent.Begin(ctx, request)
 				} else {
 					runErr = r.save(ctx)
@@ -209,7 +205,7 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 		}
 		if runErr != nil && !watched.reached() && switched && (classified.Code == "unavailable" || classified.Code == "rate-limited" || classified.Code == "timeout") {
 			allowed := false
-			classes, _ := r.sc.ResolvedPolicy["failover.classes"].Value.([]any)
+			classes, _ := r.run.Member("failover.classes").Value.([]any)
 			for _, held := range classes {
 				if held == classified.Code {
 					allowed = true
@@ -349,7 +345,7 @@ func (r *runState) stopping() bool {
 // save writes the run's checkpoint through the host's durable callback, where it gave one, and
 // answers storage (not started) where the host did not acknowledge it.
 func (r *runState) save(ctx context.Context) error {
-	if r.run.Context == nil || r.run.Context.Checkpoint == nil {
+	if r.run.RequestContext() == nil || r.run.RequestContext().Checkpoint == nil {
 		return nil
 	}
 	// Match deliver's lock order: r.mu, then the execution snapshot's criticMu.
@@ -363,7 +359,7 @@ func (r *runState) save(ctx context.Context) error {
 		}
 		return err
 	}
-	if err := r.run.Context.Checkpoint(ctx, state); err != nil {
+	if err := r.run.RequestContext().Checkpoint(ctx, state); err != nil {
 		if failure.IsCancelled(err) || ctx.Err() != nil {
 			return failure.Cancelled
 		}
@@ -531,7 +527,7 @@ func (r *runState) refuseUnoffered(ctx context.Context, call adapter.AgentToolCa
 		name = held.name
 	}
 	r.deliver(callEvent(call.ID, name, args, ""))
-	if name == "delegate_tasks" && r.run.ChildDefinition != nil {
+	if name == "delegate_tasks" && r.run.IsChild() {
 		r.deliver(runcontext.SubagentNotice(name, "A child cannot delegate.", "subagent refused"))
 	}
 	// ADR-0006: the Runtime's row of the run report counts the refusal, as the TypeScript boundary's

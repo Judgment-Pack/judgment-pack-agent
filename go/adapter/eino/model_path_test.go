@@ -30,7 +30,7 @@ func TestGeminiFallbackModelPathVectors(t *testing.T) {
 				t.Fatalf("encoded segment %q, want %q", got, item.Segment)
 			}
 			suffix, _, err := fallbackRequest(
-				adapter.RequestPolicyConnection{Wire: "gemini", ModelName: item.Model},
+				fallbackBinding("gemini", item.Model),
 				"off",
 				"v1beta/models/primary:streamGenerateContent?alt=sse",
 				wire.ModelRequest{Body: []byte(`{}`)},
@@ -76,7 +76,7 @@ func TestFallbackReasoningOmissionVectors(t *testing.T) {
 			if family == "gemini" {
 				body = []byte(`{"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"thinkingBudget":0}},"contents":[]}`)
 			}
-			_, rebuilt, rebuildErr := fallbackRequest(adapter.RequestPolicyConnection{Wire: family, ModelName: "backup"}, "", "v1beta/models/primary:generateContent", wire.ModelRequest{Body: body})
+			_, rebuilt, rebuildErr := fallbackRequest(fallbackBinding(family, "backup"), "", "v1beta/models/primary:generateContent", wire.ModelRequest{Body: body})
 			if rebuildErr != nil {
 				t.Fatal(rebuildErr)
 			}
@@ -133,4 +133,9 @@ func TestCriticReasoningOmissionVectors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func fallbackBinding(family, model string) adapter.RequestPolicyConnection {
+	run := &adapter.Run{PolicyConnections: map[string]adapter.PolicyConnection{"fixture": {Wire: family, ModelName: model}}}
+	return adapter.NewRequestSession(run, nil).Binding("fixture")
 }

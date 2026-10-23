@@ -99,13 +99,11 @@ import { decodedBytes, separateImages, type HeldImage, type ImageRouting } from 
 import type { ModelCapabilities, StreamingQuirks } from '../../capabilities'
 import { openThinking, withThinkingTier } from '../../thinking'
 import { criticDecidedEvent } from '../../criticSwitch'
-import { capabilitiesFor } from '../../capabilities'
+
 import {
   CRITIC_SYSTEM,
   MAX_CRITIC_TURNS,
   criticCannotRun,
-  criticMayCall,
-  criticMayRead,
   criticMessage,
   compareTheRest,
   critiqueEvent,
@@ -134,7 +132,7 @@ type ToolResultOutput = Awaited<ReturnType<NonNullable<Tool['toModelOutput']>>>
  *
  * This is the one tool name in the adapter, and it is here because the SDK's
  * refinement hook is keyed by tool name. No schema is written anywhere in this
- * file: `session.tools` carries the runtime's own, and `jsonSchema()` passes
+ * file: `session.values.tools` carries the runtime's own, and `jsonSchema()` passes
  * each through untouched, so the model is shown the contract the runtime
  * enforces or it is shown nothing.
  */
@@ -405,7 +403,7 @@ function modelFor(
   quirks: StreamingQuirks
 ): LanguageModel {
   const fetch = relayFetch({
-    family: session.model.family,
+    family: session.values.model.family,
     call,
     signal,
     ledger,
@@ -418,8 +416,8 @@ function modelFor(
     reasoningField: quirks.reasoningField,
     wholeAnswer: quirks.wholeJsonAnswer
   })
-  const baseURL = placeholderBase(session.model.family)
-  if (session.model.family === 'gemini') {
+  const baseURL = placeholderBase(session.values.model.family)
+  if (session.values.model.family === 'gemini') {
     return createGoogleGenerativeAI({
       baseURL,
       // `createGoogleGenerativeAI` reaches `loadApiKey` the way
@@ -430,9 +428,9 @@ function modelFor(
       // before injecting the configured key.
       apiKey: 'placeholder-the-desk-relay-injects-the-key',
       fetch
-    })(session.model.model)
+    })(session.values.model.model)
   }
-  if (session.model.family === 'anthropic') {
+  if (session.values.model.family === 'anthropic') {
     return createAnthropic({
       baseURL,
       // `createAnthropic` reaches `loadApiKey`, which **throws** in a browser
@@ -442,12 +440,12 @@ function modelFor(
       // sent before injecting the configured key.
       apiKey: 'placeholder-the-desk-relay-injects-the-key',
       fetch
-    })(session.model.model)
+    })(session.values.model.model)
   }
   // `createOpenAICompatible` simply omits `Authorization` when it has no key.
   // That is a convenience: the allow-list in `relay.ts` is the guard.
   return createOpenAICompatible({ name: ENDPOINT_NAME, baseURL, fetch }).chatModel(
-    session.model.model
+    session.values.model.model
   )
 }
 
@@ -650,7 +648,7 @@ export function runVercelLoop(
    * shared boundary: read wherever this loop decides, in place of the family.
    * The family stays the wire: the provider, the signatures, the breakpoints.
    */
-  let capabilities: ModelCapabilities = capabilitiesFor(session.model)
+  let capabilities: ModelCapabilities = session.values.capabilities
   /** Whether the endpoint takes native tool calls; if not, the tools are described and called in text. */
   let nativeTools = capabilities.nativeToolCalls
   /** The schema the model is shown for one tool, as the record says the endpoint takes them. */
@@ -658,7 +656,7 @@ export function runVercelLoop(
   // The tier, held by the desk. This adapter asks it for members and pushes
   // whatever notice it hands back; it never decides what a refusal meant.
   // ADR-0010: the critic's own tier opens a slot of its own when the critic starts.
-  let slot = openThinking(session, capabilities.reasoning)
+  let slot = openThinking(session.values, capabilities.reasoning)
   /**
    * **The tier this run asks at, held for every step.** A request whose tier
    * changed mid-run changes the request's prefix, and the provider's cache with
@@ -670,7 +668,7 @@ export function runVercelLoop(
    */
   let tier: ReturnType<typeof sdkThinking> = {}
   // Where the state goes after the first request, once per run.
-  let placement = statePlacement(session.model.family, session.reasoning?.tier, capabilities)
+  let placement = statePlacement(session.values.model.family, session.values.reasoning?.tier, capabilities)
   const ledger = signatureLedger()
   /**
    * The truncation notice, **delivered at the transition rather than owed**.
@@ -683,15 +681,15 @@ export function runVercelLoop(
    */
   const onTruncated = async (reason: string): Promise<void> => {
     const said = slot.truncated(reason)
-    tier = sdkThinking(session.model.family, slot.members())
+    tier = sdkThinking(session.values.model.family, slot.members())
     if (said !== null) await channel.push(said)
   }
   // Both the runtime's and the desk's: an SDK refusal of a host tool's input
   // is the host tool's to report, never a call for the gate. A host tool
   // named like a runtime tool would shadow it in the SDK's set, so a
   // collision ends the run before the model is shown either.
-  const offered = new Set([...session.tools, ...session.hostTools].map((tool) => tool.name))
-  const collision = session.hostTools.find((tool) => session.tools.some((served) => served.name === tool.name))
+  const offered = new Set([...session.values.tools, ...session.values.hostTools].map((tool) => tool.name))
+  const collision = session.values.hostTools.find((tool) => session.values.tools.some((served) => served.name === tool.name))
   // What the model asked for, before the SDK's refinement touched it.
   //
   // One queue and not a map, because the refinement hook below is registered for
@@ -726,7 +724,7 @@ export function runVercelLoop(
     // the result's own turn. Such an endpoint is shown the rendering instead. On
     // the text path the image rides inside the result's own user turn, so the
     // turn order holds and the image is shown.
-    vision: capabilities.vision && (!nativeTools || capabilities.strictAlternation !== true || session.model.family === 'anthropic'),
+    vision: capabilities.vision && (!nativeTools || capabilities.strictAlternation !== true || session.values.model.family === 'anthropic'),
     resolve: (reference) => context.ledger.image(reference),
     signal: executionSignal
   }
@@ -1026,11 +1024,11 @@ export function runVercelLoop(
       return result
     }
     const tools = toolsFor(
-      session.model.family,
+      session.values.model.family,
       schemaOf,
-      session.tools,
+      session.values.tools,
       (name, input, toolCallId) => sdkCall(() => runRuntime(name, input), name, toolCallId),
-      session.hostTools,
+      session.values.hostTools,
       (tool, input, toolCallId) => sdkCall(() => runHost(tool, input), tool.name, toolCallId),
       (callId, output) => {
         const data = framed.get(callId)
@@ -1057,7 +1055,7 @@ export function runVercelLoop(
      */
     const runText = async (name: string, args: Record<string, unknown>, offeredHere: ReadonlySet<string>): Promise<Ran> => {
       if (!offeredHere.has(name)) return bare(await refuseUnoffered(name, args))
-      const host = session.hostTools.find((tool) => tool.name === name)
+      const host = session.values.hostTools.find((tool) => tool.name === name)
       return host !== undefined ? runHost(host, args) : runRuntime(name, args)
     }
     /** The messages that carry a text call's answer, and its result, back to the model. */
@@ -1075,7 +1073,7 @@ export function runVercelLoop(
     // One model and one refinement hook, shared by the loop and the critic:
     // the pass runs on the same everything, which is what makes "inside the
     // same ToolGate" structural rather than a habit.
-    const call = retryingCall(session.model.call, {
+    const call = retryingCall(session.values.model.call, {
       signal: executionSignal,
       // Each refused attempt is a row of the completion record; a retry is
       // said on the stream, as the codex engine says its bridge's.
@@ -1103,14 +1101,14 @@ export function runVercelLoop(
 
     let streamed: unknown = null
     let publicText = ''
-    const instructions=(session.purpose === 'graph' ? GRAPH_SYSTEM : session.purpose === 'brief' ? BRIEF_SYSTEM : session.purpose === 'test-design' ? TEST_DESIGN_SYSTEM : session.allowConversation ? CONVERSATION_SYSTEM : SYSTEM) + (offersProposeTool(session.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : '') + DATA_RULE + assistantLanguageInstructions(session.replyLanguage)
+    const instructions=(session.purpose === 'graph' ? GRAPH_SYSTEM : session.purpose === 'brief' ? BRIEF_SYSTEM : session.purpose === 'test-design' ? TEST_DESIGN_SYSTEM : session.allowConversation ? CONVERSATION_SYSTEM : SYSTEM) + (offersProposeTool(session.values.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : '') + DATA_RULE + assistantLanguageInstructions(session.replyLanguage)
     // The tools a native request carries, counted against the budget; on an
     // endpoint without native tool calls they are in the system text instead.
-    const schemas=nativeTools?[...session.tools,...session.hostTools].map(({name,description,inputSchema})=>({name,description,inputSchema})):[]
+    const schemas=nativeTools?[...session.values.tools,...session.values.hostTools].map(({name,description,inputSchema})=>({name,description,inputSchema})):[]
     /** The tools described in text, for an endpoint without native tool calls (agent#4): host tools first, as natively. */
-    const described=(names:ReadonlySet<string>)=>textToolInstructions([...session.hostTools,...session.tools].filter(tool=>names.has(tool.name)).map(tool=>({name:tool.name,description:tool.description,schema:schemaOf(tool)})))
+    const described=(names:ReadonlySet<string>)=>textToolInstructions([...session.values.hostTools,...session.values.tools].filter(tool=>names.has(tool.name)).map(tool=>({name:tool.name,description:tool.description,schema:schemaOf(tool)})))
     const toolSection=nativeTools?'':'\n\n'+described(offered)
-    tier=sdkThinking(session.model.family,slot.members())
+    tier=sdkThinking(session.values.model.family,slot.members())
     context.reserveOutput(tier.maxOutputTokens)
     /**
      * What one request asks besides its messages: the tier, and, where the record
@@ -1118,7 +1116,7 @@ export function runVercelLoop(
      * that offers tools (agent#4).
      */
     const callOptions=(toolsOpen:boolean)=>{
-      const single=!capabilities.parallelToolCalls&&nativeTools&&toolsOpen?oneCallPerTurn(session.model.family):undefined
+      const single=!capabilities.parallelToolCalls&&nativeTools&&toolsOpen?oneCallPerTurn(session.values.model.family):undefined
       return single===undefined?tier:{...tier,providerOptions:mergeProviderOptions((tier as {providerOptions?:Record<string,Record<string,unknown>>}).providerOptions,single)}
     }
     // **A stable prefix** (agent#9, ADR-0005): the package's guidance with the
@@ -1129,7 +1127,7 @@ export function runVercelLoop(
     // one before it up to the state. An endpoint without native tool calls has its
     // tools described at the end of the system text, after the host's parts (agent#4).
     const system=context.system(instructions+'\n'+EXECUTION_INSTRUCTIONS,toolSection)
-    const cachedSystem=cachedInstructions(session.model.family,system)
+    const cachedSystem=cachedInstructions(session.values.model.family,system)
     // The request text is the first text part of the first user message on every request of the
     // run: nothing moves it, and the state, where it joins this message, comes after it. A chat's
     // index of the results earlier runs kept (agent#8) is its last part (`opening`).
@@ -1204,8 +1202,8 @@ export function runVercelLoop(
           lastMessages=await context.messages(withoutImages(withoutState(messages,stated)),system+'\n'+state+'\n'+steers.text,schemas)
           return {...callOptions(!toolsClosed),
             ...(toolsClosed&&nativeTools?{activeTools:[],toolChoice:'none' as const}:{}),
-            ...(steers.text?placeSteer(placeState(session.model.family,placement,cachedOpening(session.model.family,placement,withImages(lastMessages)),system,state,stated),steers.text,stated):{
-            ...placeState(session.model.family,placement,cachedOpening(session.model.family,placement,withImages(lastMessages)),system,state,stated)})}
+            ...(steers.text?placeSteer(placeState(session.values.model.family,placement,cachedOpening(session.values.model.family,placement,withImages(lastMessages)),system,state,stated),steers.text,stated):{
+            ...placeState(session.values.model.family,placement,cachedOpening(session.values.model.family,placement,withImages(lastMessages)),system,state,stated)})}
         },
         // **No retries, deliberately.** The SDK's default is two, with an
         // exponential backoff, and its retryable set includes 409 — which is the
@@ -1217,7 +1215,7 @@ export function runVercelLoop(
         maxRetries: 0,
         // Google's chat schema currently omits error-only chunks. Inspect only
         // the error envelope; raw chunks never enter events or saved context.
-        includeRawChunks: session.model.family === 'gemini',
+        includeRawChunks: session.values.model.family === 'gemini',
         // `streamText` does not throw: a refused request surfaces here and again
         // as an `error` part on the stream. Both are read, and whichever arrives
         // first is the one reported.
@@ -1276,7 +1274,7 @@ export function runVercelLoop(
         }
         if (part.type === 'raw') {
           const raw=part.rawValue as {error?:unknown}|null
-          if(session.model.family==='gemini'&&raw&&typeof raw==='object'&&raw.error!==undefined)streamed??=new AIFailureError({...normalizeFailure(raw.error,'model'),outcome:'unknown'})
+          if(session.values.model.family==='gemini'&&raw&&typeof raw==='object'&&raw.error!==undefined)streamed??=new AIFailureError({...normalizeFailure(raw.error,'model'),outcome:'unknown'})
           continue
         }
         if (part.type === 'error') {
@@ -1295,7 +1293,7 @@ export function runVercelLoop(
           reasoning += text
           // Every signature fragment, as it arrives, wherever this family's
           // provider puts one. See `signatureLedger` and `signatureOf`.
-          const carried = signatureOf(session.model.family, part)
+          const carried = signatureOf(session.values.model.family, part)
           if (carried !== undefined) {
             ledger.fragment(String((part as { id?: unknown }).id ?? ''), carried)
           }
@@ -1317,7 +1315,7 @@ export function runVercelLoop(
         // which repeat the same value three times before it.
         if (part.type === 'tool-call') {
           lastToolCalls++
-          const onCall = signatureOf(session.model.family, part)
+          const onCall = signatureOf(session.values.model.family, part)
           if (onCall !== undefined) {
             ledger.fragment(String((part as { toolCallId?: unknown }).toolCallId ?? ''), onCall)
           }
@@ -1487,27 +1485,27 @@ export function runVercelLoop(
       ledger.conversation()
       // agent#10: from here every call is held to the critic's allow-list, below this engine.
       context.beginCriticPhase()
-      const criticBinding = context.connection('critic')
-      if(criticBinding && 'model' in criticBinding){
-        session={...session,model:{...criticBinding.model,call:session.model.call}}
-        capabilities=capabilitiesFor(criticBinding.model)
-        nativeTools=capabilities.nativeToolCalls
-        placement=statePlacement(session.model.family,session.reasoning?.tier,capabilities)
-      }
+      const authorValues=session.values
+      const criticValues=authorValues.forRole('critic')
+      const criticBinding = !criticValues.sameBinding('author')
+      session={...session,values:criticValues}
+      capabilities=criticValues.capabilities
+      nativeTools=capabilities.nativeToolCalls
+      placement=statePlacement(session.values.model.family,authorValues.reasoning?.tier,capabilities)
       // What the critic costs is counted from here (agent#10).
       const before = { used: context.execution.state.used, rows: (context.execution.state.completions ?? []).length }
       // A different critic binding owns its slot, even at the author's family and tier.
       // The identical binding retains learned refusals; no decision tier stays omitted.
-      const criticTier = decided.reasoning as ThinkingTier | undefined
-      const retiered = criticTier !== session.reasoning?.tier || criticBinding !== context.connection('author')
+      const criticTier = criticValues.reasoning?.tier
+      const retiered = criticTier !== authorValues.reasoning?.tier || criticBinding
       if(retiered){
-        slot = openThinking(withThinkingTier(session, criticTier), capabilities.reasoning)
-        tier = sdkThinking(session.model.family, slot.members())
+        slot = openThinking(withThinkingTier(session.values, criticTier), capabilities.reasoning)
+        tier = sdkThinking(session.values.model.family, slot.members())
         context.reserveOutput(tier.maxOutputTokens)
       }
       // The critic's model: the host's for this connection, or the run's (agent#10),
       // read inside the pass so a host answer it refuses is the critic's note.
-      let criticModelId = session.model.model
+      let criticModelId = session.values.model.model
       let criticModel = model
       /** The runtime calls the harness made itself in this pass (review row 8). */
       let harnessCalls = 0
@@ -1519,7 +1517,7 @@ export function runVercelLoop(
       // A call to any other name is refused as unoffered, and the boundary
       // refuses it before the gate.
       const criticTools = Object.fromEntries(Object.entries(tools).filter(([name]) =>
-        criticMayCall(name) ? session.tools.some(tool => tool.name === name) : criticMayRead(name) && session.hostTools.some(tool => tool.name === name)))
+        session.values.allowsTool(name,'runtime','critic')||session.values.allowsTool(name,'host','critic')))
       const criticOffered = new Set(Object.keys(criticTools))
       // The critic's system text, set once: the call and every step use it.
       const criticSystem = context.system(CRITIC_SYSTEM + DATA_RULE + assistantLanguageInstructions(session.replyLanguage), nativeTools ? '' : '\n\n' + described(criticOffered))
@@ -1538,15 +1536,15 @@ export function runVercelLoop(
        criticHeld = criticMessages
        // The host's modelsFor answer for the run's connection, asked once per run (review of agent#35, row 5).
        criticModelId = context.models(id).critic
-       if (criticModelId !== session.model.model || retiered || criticBinding) {
+       if (criticModelId !== session.values.model.model || retiered || criticBinding) {
          // The same connection, relay and capability record: only the model id differs.
-         criticModel = modelFor({ ...session, model: { ...session.model, model: criticModelId } }, call, executionSignal, ledger, onTruncated, slot, capabilities.streamingQuirks)
+         criticModel = modelFor({ ...session, values:session.values.withModel(criticModelId) }, call, executionSignal, ledger, onTruncated, slot, capabilities.streamingQuirks)
        }
        for (;;) {
         const critic = streamText({
           telemetry: { isEnabled: false },
           model: criticModel,
-          instructions: cachedInstructions(session.model.family, criticSystem),
+          instructions: cachedInstructions(session.values.model.family, criticSystem),
           ...(nativeTools ? { tools: criticTools } : {}),
           messages: criticMessages,
           stopWhen: [stepCountIs(MAX_CRITIC_TURNS),()=>toolsClosed],
@@ -1554,7 +1552,7 @@ export function runVercelLoop(
           maxRetries: 0,
           // Google's chat schema currently omits error-only chunks. Inspect only
           // the error envelope; raw chunks never enter events or saved context.
-          includeRawChunks: session.model.family === 'gemini',
+          includeRawChunks: session.values.model.family === 'gemini',
           onError: (event: { error: unknown }) => {
             streamed ??= event.error
           },
@@ -1572,7 +1570,7 @@ export function runVercelLoop(
             const note=step||skills?stateText(step,skills):''
             const held=await context.messages(withoutImages(withoutState(messages,stated)),instructions+(note?'\n'+note:''),schemas)
             criticHeld=held
-            return {...callOptions(!toolsClosed),...(toolsClosed&&nativeTools?{activeTools:[],toolChoice:'none' as const}:{}),...(note?placeState(session.model.family,placement,cachedOpening(session.model.family,placement,withImages(held)),instructions,note,stated):{instructions:cachedInstructions(session.model.family,instructions),messages:cachedOpening(session.model.family,placement,withImages(held))})}
+            return {...callOptions(!toolsClosed),...(toolsClosed&&nativeTools?{activeTools:[],toolChoice:'none' as const}:{}),...(note?placeState(session.values.model.family,placement,cachedOpening(session.values.model.family,placement,withImages(held)),instructions,note,stated):{instructions:cachedInstructions(session.values.model.family,instructions),messages:cachedOpening(session.values.model.family,placement,withImages(held))})}
           },
           maxOutputTokens:context.policy.outputTokens,
           [REHEARSAL_HOOK]: refine
@@ -1599,7 +1597,7 @@ export function runVercelLoop(
           }
           if (part.type === 'raw') {
             const raw=part.rawValue as {error?:unknown}|null
-            if(session.model.family==='gemini'&&raw&&typeof raw==='object'&&raw.error!==undefined)streamed??=new AIFailureError({...normalizeFailure(raw.error,'model'),outcome:'unknown'})
+            if(session.values.model.family==='gemini'&&raw&&typeof raw==='object'&&raw.error!==undefined)streamed??=new AIFailureError({...normalizeFailure(raw.error,'model'),outcome:'unknown'})
             continue
           }
           if (part.type === 'error') {
@@ -1609,7 +1607,7 @@ export function runVercelLoop(
           if (part.type === 'reasoning-delta') {
             const text = (part as { text?: string }).text ?? ''
             criticReasoning += text
-            const carried = signatureOf(session.model.family, part)
+            const carried = signatureOf(session.values.model.family, part)
             if (carried !== undefined) {
               ledger.fragment(String((part as { id?: unknown }).id ?? ''), carried)
             }
@@ -1623,7 +1621,7 @@ export function runVercelLoop(
             continue
           }
           if (part.type === 'tool-call') {
-            const onCall = signatureOf(session.model.family, part)
+            const onCall = signatureOf(session.values.model.family, part)
             if (onCall !== undefined) {
               ledger.fragment(String((part as { toolCallId?: unknown }).toolCallId ?? ''), onCall)
             }
@@ -1745,7 +1743,7 @@ export function runVercelLoop(
     const keyword = refusedSchemaKeyword(
       refusal.status,
       refusal.message,
-      schemasShown(capabilities.toolSchemas, session.tools)
+      schemasShown(capabilities.toolSchemas, session.values.tools)
     )
     return keyword === '' ? null : authoredFailure('invalid-request',refusedSchemaSentence(keyword),'model')
   }
@@ -1774,7 +1772,7 @@ export function runVercelLoop(
     // counting them as delivered would spend the one retry a tier refusal
     // earns, on every run that narrows a schema at all — and pushing them here
     // rather than from `open` keeps them in order with everything after them.
-    for (const notice of narrowingEvents(id, session.model.family, [...session.tools, ...session.hostTools])) {
+    for (const notice of narrowingEvents(id, session.values.model.family, [...session.values.tools, ...session.values.hostTools])) {
       await channel.push(notice)
     }
     // A record that leaves the tier nothing to ask with says so once, here (agent#4).

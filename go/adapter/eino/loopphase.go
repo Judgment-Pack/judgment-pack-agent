@@ -69,8 +69,8 @@ func (t *turnState) loopPhase(shown []wire.WireTool) *phase {
 				instruction = finalInstructions
 			}
 			currentState := ""
-			if r.run.Context != nil {
-				currentState = r.run.Context.CurrentState
+			if r.run.RequestContext() != nil {
+				currentState = r.run.RequestContext().CurrentState
 			}
 			r.currentPhase = "work"
 			if t.synthesis {

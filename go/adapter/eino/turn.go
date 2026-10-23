@@ -53,23 +53,21 @@ type turnState struct {
 // tools, the boundary's context tools among them. In Plan mode only Plan's reads and planning
 // tools, as the gate's PlanPhase holds them (the model is shown what the gate admits).
 func (r *runState) offeredTools() ([]runcontext.RuntimeTool, []runcontext.HostTool) {
-	runtime := r.session.Tools
-	hosts := r.session.HostTools
-	if r.run.Context != nil && r.run.Context.Phase == "plan" {
-		var keptRuntime []runcontext.RuntimeTool
-		for _, tool := range runtime {
-			if containsName(planReads(), tool.Name) {
-				keptRuntime = append(keptRuntime, tool)
-			}
+	runtime := r.session.RuntimeTools()
+	hosts := r.session.HostTools()
+	var keptRuntime []runcontext.RuntimeTool
+	for _, tool := range runtime {
+		if r.run.AllowsTool(tool.Name, nil, "author") {
+			keptRuntime = append(keptRuntime, tool)
 		}
-		var keptHosts []runcontext.HostTool
-		for _, tool := range hosts {
-			if containsName(contextToolNames(), tool.Name) || planningTool(tool) {
-				keptHosts = append(keptHosts, tool)
-			}
-		}
-		runtime, hosts = keptRuntime, keptHosts
 	}
+	var keptHosts []runcontext.HostTool
+	for _, tool := range hosts {
+		if r.run.AllowsTool(tool.Name, &tool, "author") {
+			keptHosts = append(keptHosts, tool)
+		}
+	}
+	runtime, hosts = keptRuntime, keptHosts
 	return runtime, hosts
 }
 
@@ -84,7 +82,7 @@ func containsName(list []string, name string) bool {
 
 // served is the Runtime tool the host's offer served by this name.
 func (r *runState) served(name string) (contract.ToolOfferRuntimeTool, bool) {
-	for _, tool := range r.run.Tools {
+	for _, tool := range r.run.RuntimeTools() {
 		if tool.Name == name {
 			return tool, true
 		}

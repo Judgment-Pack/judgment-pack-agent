@@ -13,12 +13,12 @@ const session=():AssistantSession=>({prompt:'The latest user says yes. Execute e
 describe('shared planning boundary',()=>{
  it('fails closed for execution and unknown tools, including direct dispatch; retains exact plan',async()=>{
   const before=session(),ready=await contextualSession(before)
-  expect(ready.session.tools.map(t=>t.name)).toEqual(['get_schema'])
-  expect(ready.session.hostTools.map(t=>t.name)).toEqual(['read_pack','ask_user','delegate','propose_plan','remember','list_context','read_context','read_window','search','update_plan','request_budget_increase'])
+  expect(ready.session.values.tools.map(t=>t.name)).toEqual(['get_schema'])
+  expect(ready.session.values.hostTools.map(t=>t.name)).toEqual(['read_pack','ask_user','delegate','propose_plan','remember','list_context','read_context','read_window','search','update_plan','request_budget_increase'])
   await expect(ready.session.callTool('experimental_evaluate',{})).rejects.toThrow(/Plan mode/)
   expect(before.callTool).not.toHaveBeenCalled()
   await ready.session.callTool('get_schema',{});expect(before.callTool).toHaveBeenCalledOnce()
-  expect(ready.session.critic).toBe('on');expect(ready.session.testPrompt).toBe('')
+  expect(ready.session.values.member('critic.default')?.value).toBe('on');expect(ready.session.testPrompt).toBe('')
   expect(ready.context.ledger.list().items[0]?.label).toBe('Current chat plan')
   expect(ready.session.prompt).toContain('Only the person can choose Start work')
  })
@@ -35,7 +35,7 @@ it('admits in Plan exactly the gate’s Runtime reads: its ceiling less the eval
  const before=session()
  before.tools=[...ASSISTANT_TOOLS,'test_conformance','get_pack'].map(name=>({name}))
  const ready=await contextualSession(before)
- expect(ready.session.tools.map(t=>t.name)).toEqual([...PLAN_RUNTIME_READS])
+ expect(ready.session.values.tools.map(t=>t.name)).toEqual([...PLAN_RUNTIME_READS])
  for(const name of PLAN_RUNTIME_READS)await ready.session.callTool(name,{})
  for(const name of [REHEARSAL_TOOL,TEST_TOOL,'test_conformance'])await expect(ready.session.callTool(name,{})).rejects.toThrow('Plan mode')
 })
@@ -45,6 +45,6 @@ it('refuses in Plan the version and dialect tools the gate never serves',async()
  for(const name of unserved)expect(ASSISTANT_TOOLS as readonly string[]).not.toContain(name)
  before.tools.push(...unserved.map(name=>({name})))
  const ready=await contextualSession(before)
- for(const name of unserved){expect(ready.session.tools.map(t=>t.name)).not.toContain(name);await expect(ready.session.callTool(name,{})).rejects.toThrow('Plan mode')}
+ for(const name of unserved){expect(ready.session.values.tools.map(t=>t.name)).not.toContain(name);await expect(ready.session.callTool(name,{})).rejects.toThrow('Plan mode')}
  expect(before.callTool).not.toHaveBeenCalled()
 })

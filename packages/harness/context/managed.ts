@@ -69,7 +69,7 @@ async function* execute<T extends EngineSession>(session:T,run:(session:RequestS
   })
   // Only names declared by the host, Runtime or reserved harness offer are trusted.
   // Keep dispatch on the original name: an unknown call still earns the gate's refusal.
-  const declaredNames=new Set([...ready.session.tools,...ready.session.hostTools].map(tool=>tool.name))
+  const declaredNames=new Set([...ready.session.values.tools,...ready.session.values.hostTools].map(tool=>tool.name))
   const deliveredNames=new Map<string,string>()
   const guardName=(name:string,call=false):string=>{
    if(declaredNames.has(name))return name
@@ -185,7 +185,7 @@ async function* execute<T extends EngineSession>(session:T,run:(session:RequestS
    }
    if(event.type==='tool_result'&&context.execution.pauseRequested){yield event;context.execution.mutate({status:'paused'});context.execution.mutate({usage:context.execution.usage()});yield* checkpoint('paused',undefined,true);yield {type:'usage',usage:structuredClone(context.execution.state.usage!)};yield {type:'end'};return}
    if(tracked&&(event.type==='tool_call'||event.type==='tool_result'||event.type==='user_question')){
-    const tool=event.type==='user_question'?undefined:ready.session.hostTools.find(tool=>tool.name===event.name)
+    const tool=event.type==='user_question'?undefined:ready.session.values.hostTools.find(tool=>tool.name===event.name)
     const read=tool?.effect==='read'||tool?.delegation==='read'||tool?.delegation==='research'||event.type!=='user_question'&&['get_schema','get_authoring_instructions','list_context','read_context','list_examples','get_example'].includes(event.name)
     yield* checkpoint(context.execution.state.status,!read)
    }

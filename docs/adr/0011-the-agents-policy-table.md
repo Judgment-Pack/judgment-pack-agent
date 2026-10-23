@@ -156,3 +156,31 @@ before projecting its saved role. It then applies the same fresh child admission
 consistency checks as a live parent. No wire or checkpoint members are added.
 
 v0.9.1 amendment (#155): the flat budget.json policy-layer reader is retired; use nested policy.budget and policy.critic; any retired root member refuses even beside a canonical member.
+
+
+### v0.9.1 request value representation (#164)
+
+Request builders receive an explicit operational surface and a private admitted
+value view in both languages. The view carries the complete resolved member book,
+selected model and provider bindings, normalized endpoint capabilities and phase
+tool admission. New host fields stay absent until converted. Critic, failover,
+delegation and standalone compaction consume the same admitted role projection.
+Role capability lookup stays lazy; omission, request bytes and existing gate
+authority are preserved. The compactor's public DTO is unchanged.
+
+Compiler-negative fixtures and declaration-based source guards cover raw reads,
+writes, copies, typed keys, helper calls, new fields and new production writers.
+Operational exemptions belong to their declaring raw type; a new value with the
+same name on another raw type does not inherit that exemption.
+Construction of the internal request surfaces is confined to named conversion functions.
+These are regression guards, not a language sandbox; deliberate TypeScript any
+and Go reflection or unsafe remain outside this contract.
+
+Request-builder source migration: TypeScript internal request sessions read model,
+reasoning, capabilities and tool offers through `session.values`; use `forRole`
+for a critic and `withModel` for an admitted model name. Raw host EngineSession
+inputs keep their existing shape. Go request builders use `ModelID`, `Family`,
+`AgentCapability`, `PolicyBinding`, `ResolvedCapabilities`, `RuntimeTools` and
+`OfferedHostTools` in place of exported raw fields. `Reasoning(role)` retains its
+omission behavior. These internal exported source types change; public host Run
+inputs and CompactorRequest DTO fields do not.

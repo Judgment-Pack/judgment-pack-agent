@@ -23,14 +23,14 @@ import {
   unsupportedThinking,
   wireFor
 } from './thinking'
-import type { AssistantEvent, RequestAssistantSession } from './engine'
+import type { AssistantEvent } from './engine'
 import type { EndpointKind, ThinkingTier } from './host'
 
 const slot = (tier: ThinkingTier, family: EndpointKind = 'openai-compatible') =>
   openThinking({
     reasoning: normalize(tier, family),
     model: { family, model: 'a-model', call: async () => new Response('{}') }
-  } as Pick<RequestAssistantSession, 'reasoning' | 'model'>)
+  } as Pick<import('./engine').RequestModelValues, 'reasoning' | 'model'>)
 
 describe('the table, per family and tier', () => {
   it('expresses off by omission on the two dialects that accept omission', () => {

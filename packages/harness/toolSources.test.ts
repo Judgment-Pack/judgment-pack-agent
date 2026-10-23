@@ -279,7 +279,7 @@ describe('the declaration (ADR-0006)', () => {
     const guardrails = context.takeNotices().filter((event) => event.type === 'guardrail')
     expect(guardrails).toHaveLength(1)
     expect(guardrails[0]).toMatchObject({ tool: 'wide', action: 'refused', detail: expect.stringContaining('cataloguedTools') })
-    expect(ready.hostTools.filter((tool) => tool.name.startsWith('wide__'))).toHaveLength(both.offer.hostTools.length)
+    expect(ready.values.hostTools.filter((tool) => tool.name.startsWith('wide__'))).toHaveLength(both.offer.hostTools.length)
     context.close()
   })
 })
@@ -497,15 +497,15 @@ describe('identity per tool call (ADR-0019)', () => {
         first.context.execution.mutate({approval:{...first.context.execution.state.approval!,state:'answered'}})
       }
       current = { kind: 'service', label: 'changed-bot' }
-      await expect(first.session.hostTools.find(tool => tool.name === 'expenses__submit')!.execute({}, signal())).rejects.toBeInstanceOf(GateViolation)
+      await expect(first.session.values.hostTools.find(tool => tool.name === 'expenses__submit')!.execute({}, signal())).rejects.toBeInstanceOf(GateViolation)
       saved = readExecution(JSON.parse(JSON.stringify(first.context.execution.snapshot())))!
       expect(saved.sourceIdentities).toEqual(identityCheckpoint.items[0]!.sourceIdentities)
     } finally { first.context.close() }
     current = { kind: 'service', label: 'expense-bot' }
     const restored = await contextualSession({ ...base, context: { ...base.context, execution: saved } })
     try {
-      await expect(restored.session.hostTools.find(tool => tool.name === 'expenses__submit')!.execute({}, signal())).rejects.toBeInstanceOf(GateViolation)
-      await expect(restored.session.hostTools.find(tool => tool.name === 'billing__submit')!.execute({}, signal())).resolves.toBeDefined()
+      await expect(restored.session.values.hostTools.find(tool => tool.name === 'expenses__submit')!.execute({}, signal())).rejects.toBeInstanceOf(GateViolation)
+      await expect(restored.session.values.hostTools.find(tool => tool.name === 'billing__submit')!.execute({}, signal())).resolves.toBeDefined()
     } finally { restored.context.close() }
   })
 
@@ -771,17 +771,17 @@ describe('the boundary over tools with a source (ADR-0006)', () => {
     expect(JSON.stringify(sourced)).toContain('Full output is retained')
     // The run-wide bound holds for every other tool: 9,000 bytes is under toolResultBytes.
     expect(await context.result('read_context', result)).toEqual(result)
-    expect(ready.hostTools.map((tool) => tool.name)).toContain('databricks__query_table')
+    expect(ready.values.hostTools.map((tool) => tool.name)).toContain('databricks__query_table')
     context.close()
   })
 
   it('offers load_tool only where a source is a catalogue, and refuses a host tool named load_tool', async () => {
     const plain = await contextualSession(session(declared(declarations.items)))
-    expect(plain.session.hostTools.map((tool) => tool.name)).not.toContain(LOAD_TOOL)
+    expect(plain.session.values.hostTools.map((tool) => tool.name)).not.toContain(LOAD_TOOL)
     plain.context.close()
     const many = declared(Array.from({ length: 17 }, (_, at) => ({ name: `tool_${at}`, description: 'd', inputSchema: { type: 'object' }, source: { kind: 'gateway', id: 'wide', trust: 'connected', version: '1' }, effectClass: 'read' })))
     const catalogue = await contextualSession(session(many))
-    expect(catalogue.session.hostTools.map((tool) => tool.name)).toContain(LOAD_TOOL)
+    expect(catalogue.session.values.hostTools.map((tool) => tool.name)).toContain(LOAD_TOOL)
     catalogue.context.close()
     await expect(contextualSession(session([{ name: LOAD_TOOL, description: 'd', inputSchema: { type: 'object' }, execute: async () => ({ content: [] }) }]))).rejects.toThrow(/reserved/)
   })
@@ -793,8 +793,8 @@ describe('the boundary over tools with a source (ADR-0006)', () => {
     const engine: Engine = {
       id: 'vercel',
       start: (given) => managedContext(given, async function* (ready) {
-        const tool = ready.hostTools.find((held) => held.name === 'mine__lookup')!
-        const delegate = ready.hostTools.find((held) => held.name === DELEGATE_TOOL)
+        const tool = ready.values.hostTools.find((held) => held.name === 'mine__lookup')!
+        const delegate = ready.values.hostTools.find((held) => held.name === DELEGATE_TOOL)
         if (delegate !== undefined) {
           for (let at = 0; at < 5; at++) await tool.execute({}, ready.signal, `parent-${at}`)
           await delegate.execute({ tasks: [{ title: 'Look', objective: 'Look the value up five times.', profile: 'review' }] }, ready.signal)
@@ -910,7 +910,7 @@ describe('the approval pause (ADR-0008)', () => {
     expect(await context.sources!.decide('tracker__create_issue', {}, 'critic')).toMatchObject({ answer: 'closed', detail: expect.stringContaining('critic') })
     context.close()
     const plan = await contextualSession({ prompt: 'Plan.', testPrompt: '', tools: [], hostTools: tools, callTool: async () => ({ content: [] }), context: { phase: 'plan' }, model: { family: 'openai-compatible', model: 'small', call: async () => { throw Error('no model call here') } }, thinking: normalize('off', 'openai-compatible'), signal: new AbortController().signal })
-    expect(plan.session.hostTools.map((tool) => tool.name)).not.toContain('tracker__create_issue')
+    expect(plan.session.values.hostTools.map((tool) => tool.name)).not.toContain('tracker__create_issue')
     expect((await plan.context.sources!.decide('tracker__create_issue', {}, 'plan')).answer).toBe('closed')
     plan.context.close()
   })
@@ -1039,7 +1039,7 @@ describe('the framing marker across the approval pause (ADR-0008)', () => {
     const requestKey = await contextDigest(JSON.stringify({ request: { message: request, input: request }, phase: 'work', purpose: null }))
     const offered: string[] = []
     const written: ExecutionCheckpoint[] = []
-    const engine: Engine = { id: 'vercel', start: (given) => managedContext(given, async function* (ready) { offered.push(...ready.hostTools.map((tool) => tool.description)); yield { type: 'message', text: 'done' }; yield { type: 'end' } }) }
+    const engine: Engine = { id: 'vercel', start: (given) => managedContext(given, async function* (ready) { offered.push(...ready.values.hostTools.map((tool) => tool.description)); yield { type: 'message', text: 'done' }; yield { type: 'end' } }) }
     for await (const event of engine.start(session(declared(declarations.items).map((tool) => ({ ...tool, approve: () => 'ask' as const })), request, { execution: { ...base, requestKey, status: 'running', ...execution }, approval: { callId: 'call-a', approved: false } }))) {
       if (event.type === 'execution_checkpoint') written.push(event.checkpoint)
     }

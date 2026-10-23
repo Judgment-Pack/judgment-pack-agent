@@ -11,7 +11,7 @@
  * the `vercel` adapter does. Everything the run can reach goes through seams the host owns:
  *
  * - **The model is the host's relay, keyless.** The chat model (`model.ts`) sends every request through
- *   `session.model.call`, wrapped in the one retry a refusal earns (`../vercel/retry.ts`).
+ *   `session.values.model.call`, wrapped in the one retry a refusal earns (`../vercel/retry.ts`).
  * - **The gate is the only tool boundary.** Deep Agents' own middleware (its filesystem tools, the
  *   `task` subagent tool, summarization and the tool-call patcher) is replaced by name with middleware
  *   that does nothing, so none of it is offered or run. The tools the agent is given are declarations
@@ -49,7 +49,7 @@ import { APPROVAL_HELD } from '../../toolSources'
 import { readModelQuestion } from '../../questions'
 import { questionFailureResult } from '../../questionFailure'
 import { separateImages, type HeldImage, type ImageRouting } from '../../images'
-import { capabilitiesFor, type ModelCapabilities } from '../../capabilities'
+import type { ModelCapabilities } from '../../capabilities'
 import { openThinking, withThinkingTier } from '../../thinking'
 import { criticDecidedEvent } from '../../criticSwitch'
 import { refusedSchemaKeyword, refusedSchemaSentence } from '../../geminiSchema'
@@ -57,8 +57,6 @@ import {
   CRITIC_SYSTEM,
   MAX_CRITIC_TURNS,
   criticCannotRun,
-  criticMayCall,
-  criticMayRead,
   criticMessage,
   compareTheRest,
   critiqueEvent,
@@ -379,16 +377,16 @@ export function runDeepAgentsLoop(session: RequestAssistantSession, id: Assistan
   closeRun = gate.close
   const context = contextOf(session)
   const callTool = guardedCallTool(session, gate.signal)
-  let capabilities: ModelCapabilities = capabilitiesFor(session.model)
+  let capabilities: ModelCapabilities = session.values.capabilities
   let nativeTools = capabilities.nativeToolCalls
   const schemaOf = (tool: McpTool) => shownSchema(capabilities.toolSchemas, tool)
   // ADR-0010: the critic's own tier opens a slot of its own when the critic starts.
-  let slot = openThinking(session, capabilities.reasoning)
+  let slot = openThinking(session.values, capabilities.reasoning)
   /** The tier's members, held for an attempt; a refusal of the tier starts a new attempt. */
   let tier: Record<string, unknown> | null = null
-  let placement = statePlacement(session.model.family, session.reasoning?.tier, capabilities)
-  const offered = new Set([...session.tools, ...session.hostTools].map((tool) => tool.name))
-  const collision = session.hostTools.find((tool) => session.tools.some((served) => served.name === tool.name))
+  let placement = statePlacement(session.values.model.family, session.values.reasoning?.tier, capabilities)
+  const offered = new Set([...session.values.tools, ...session.values.hostTools].map((tool) => tool.name))
+  const collision = session.values.hostTools.find((tool) => session.values.tools.some((served) => served.name === tool.name))
   const inputPause = new AbortController()
   const turnClock = new AbortController()
   let overTime = false
@@ -400,7 +398,7 @@ export function runDeepAgentsLoop(session: RequestAssistantSession, id: Assistan
    * after the results they belong to; any other is shown the host's rendering inside the result.
    */
   const routing: ImageRouting = {
-    vision: capabilities.vision && (!nativeTools || capabilities.strictAlternation !== true || session.model.family === 'anthropic'),
+    vision: capabilities.vision && (!nativeTools || capabilities.strictAlternation !== true || session.values.model.family === 'anthropic'),
     resolve: (reference) => context.ledger.image(reference),
     signal: executionSignal
   }
@@ -566,7 +564,7 @@ export function runDeepAgentsLoop(session: RequestAssistantSession, id: Assistan
         const rejected = await rejectToolStep(name, args)
         return bare(rejected ?? (await refuseUnoffered(name, args)))
       }
-      const host = session.hostTools.find((tool) => tool.name === name)
+      const host = session.values.hostTools.find((tool) => tool.name === name)
       return host !== undefined ? runHost(host, args) : runRuntime(name, args)
     }
 
@@ -588,7 +586,7 @@ export function runDeepAgentsLoop(session: RequestAssistantSession, id: Assistan
     }
 
     // One model capability and one retry rule, shared by the loop and the critic.
-    const call = retryingCall(session.model.call, {
+    const call = retryingCall(session.values.model.call, {
       signal: executionSignal,
       onRefused: async (refused) => {
         context.execution.recordRefusal(recording !== null ? 'review' : synthesis ? 'synthesis' : 'work', refused)
@@ -620,7 +618,7 @@ export function runDeepAgentsLoop(session: RequestAssistantSession, id: Assistan
     }
     const relayModel = (name: string) =>
       new RelayChatModel({
-        family: session.model.family,
+        family: session.values.model.family,
         model: name,
         call,
         signal: executionSignal,
@@ -631,20 +629,20 @@ export function runDeepAgentsLoop(session: RequestAssistantSession, id: Assistan
         listener,
         ids: () => `call-${crypto.randomUUID()}`
       })
-    const model = relayModel(session.model.model)
+    const model = relayModel(session.values.model.model)
 
     /** A failure a step met, kept as it was thrown: LangChain wraps what a middleware rethrows. */
     let streamed: unknown = null
     const instructions =
       (session.purpose === 'graph' ? GRAPH_SYSTEM : session.purpose === 'brief' ? BRIEF_SYSTEM : session.purpose === 'test-design' ? TEST_DESIGN_SYSTEM : session.allowConversation ? CONVERSATION_SYSTEM : SYSTEM) +
-      (offersProposeTool(session.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : '') +
+      (offersProposeTool(session.values.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : '') +
       DATA_RULE +
       assistantLanguageInstructions(session.replyLanguage)
     // The tools a native request carries, counted against the budget; on an endpoint without native
     // tool calls they are in the system text instead.
-    const schemas = nativeTools ? [...session.tools, ...session.hostTools].map(({ name, description, inputSchema }) => ({ name, description, inputSchema })) : []
+    const schemas = nativeTools ? [...session.values.tools, ...session.values.hostTools].map(({ name, description, inputSchema }) => ({ name, description, inputSchema })) : []
     const described = (names: ReadonlySet<string>) =>
-      textToolInstructions([...session.hostTools, ...session.tools].filter((tool) => names.has(tool.name)).map((tool) => ({ name: tool.name, description: tool.description, schema: schemaOf(tool) })))
+      textToolInstructions([...session.values.hostTools, ...session.values.tools].filter((tool) => names.has(tool.name)).map((tool) => ({ name: tool.name, description: tool.description, schema: schemaOf(tool) })))
     const toolSection = nativeTools ? '' : '\n\n' + described(offered)
     tier = slot.members()
     // The enabled dialect spends its budget out of the maximum, so the reserve is the table's.
@@ -770,7 +768,7 @@ export function runDeepAgentsLoop(session: RequestAssistantSession, id: Assistan
 
     let phase: Phase = loopPhase
     const nativeDeclarations = nativeTools
-      ? declared([...session.hostTools, ...session.tools].map((tool) => ({ name: tool.name, description: tool.description, schema: schemaOf(tool) })))
+      ? declared([...session.values.hostTools, ...session.values.tools].map((tool) => ({ name: tool.name, description: tool.description, schema: schemaOf(tool) })))
       : []
     const agentFor = (chatModel: RelayChatModel, tools: DynamicStructuredTool[]) =>
       createDeepAgent({
@@ -919,30 +917,30 @@ export function runDeepAgentsLoop(session: RequestAssistantSession, id: Assistan
       recording = recorder
       toolsClosed = false
       context.beginCriticPhase()
-      const criticBinding = context.connection('critic')
-      if(criticBinding && 'model' in criticBinding){
-        session={...session,model:{...criticBinding.model,call:session.model.call}}
-        capabilities=capabilitiesFor(criticBinding.model)
-        nativeTools=capabilities.nativeToolCalls
-        placement=statePlacement(session.model.family,session.reasoning?.tier,capabilities)
-      }
+      const authorValues=session.values
+      const criticValues=authorValues.forRole('critic')
+      const criticBinding = !criticValues.sameBinding('author')
+      session={...session,values:criticValues}
+      capabilities=criticValues.capabilities
+      nativeTools=capabilities.nativeToolCalls
+      placement=statePlacement(session.values.model.family,authorValues.reasoning?.tier,capabilities)
       const before = { used: context.execution.state.used, rows: (context.execution.state.completions ?? []).length }
       // A different critic binding owns its slot, even at the author's family and tier.
       // The identical binding retains learned refusals; no decision tier stays omitted.
-      const criticTier = decided.reasoning as ThinkingTier | undefined
-      if (criticTier !== session.reasoning?.tier || criticBinding !== context.connection('author')) {
-        slot = openThinking(withThinkingTier(session, criticTier), capabilities.reasoning)
+      const criticTier = criticValues.reasoning?.tier
+      if (criticTier !== authorValues.reasoning?.tier || criticBinding) {
+        slot = openThinking(withThinkingTier(session.values, criticTier), capabilities.reasoning)
         tier = slot.members()
         context.reserveOutput(tier?.max_tokens)
       }
-      let criticModelId = session.model.model
+      let criticModelId = session.values.model.model
       let harnessCalls = 0
       const figures = () => ({ ...modelCriticFigures(criticModelId, before, context.execution.state), ...(harnessCalls === 0 ? {} : { harnessCalls }) })
       let criticText = ''
       const criticOffered = new Set(
-        [...session.hostTools, ...session.tools]
+        [...session.values.hostTools, ...session.values.tools]
           .map((tool) => tool.name)
-          .filter((name) => (criticMayCall(name) ? session.tools.some((tool) => tool.name === name) : criticMayRead(name) && session.hostTools.some((tool) => tool.name === name)))
+          .filter((name) => (session.values.allowsTool(name,'runtime','critic')||session.values.allowsTool(name,'host','critic')))
       )
       const criticSystem = context.system(CRITIC_SYSTEM + DATA_RULE + assistantLanguageInstructions(session.replyLanguage), nativeTools ? '' : '\n\n' + described(criticOffered))
       let criticMessages: BaseMessage[] = []
@@ -955,9 +953,9 @@ export function runDeepAgentsLoop(session: RequestAssistantSession, id: Assistan
         criticMessages = [new HumanMessage(await context.prompt(criticMessage(session.testPrompt, proposal.document, context.criticCases), criticSystem, schemas))]
         criticHeld = criticMessages
         criticModelId = context.models(id).critic
-        const criticModel = criticModelId === session.model.model && !criticBinding ? model : relayModel(criticModelId)
+        const criticModel = criticModelId === session.values.model.model && !criticBinding ? model : relayModel(criticModelId)
         const criticDeclarations = nativeTools
-          ? declared([...session.hostTools, ...session.tools].filter((tool) => criticOffered.has(tool.name)).map((tool) => ({ name: tool.name, description: tool.description, schema: schemaOf(tool) })))
+          ? declared([...session.values.hostTools, ...session.values.tools].filter((tool) => criticOffered.has(tool.name)).map((tool) => ({ name: tool.name, description: tool.description, schema: schemaOf(tool) })))
           : []
         const criticPhase: Phase = {
           offered: criticOffered,
@@ -1068,7 +1066,7 @@ export function runDeepAgentsLoop(session: RequestAssistantSession, id: Assistan
     if (capabilities.toolSchemas !== 'gemini-subset') return null
     const refusal = refusalOf(cause)
     if (refusal === null) return null
-    const keyword = refusedSchemaKeyword(refusal.status, refusal.message, schemasShown(capabilities.toolSchemas, session.tools))
+    const keyword = refusedSchemaKeyword(refusal.status, refusal.message, schemasShown(capabilities.toolSchemas, session.values.tools))
     return keyword === '' ? null : authoredFailure('invalid-request', refusedSchemaSentence(keyword), 'model')
   }
 
@@ -1082,7 +1080,7 @@ export function runDeepAgentsLoop(session: RequestAssistantSession, id: Assistan
     const tracing = tracingAsked()
     if (tracing !== undefined) throw tracingRefusal(tracing)
     if (collision !== undefined) throw authoredFailure('configuration', `host tool ${collision.name} is named like a tool the runtime serves; nothing was run`)
-    for (const notice of narrowingEvents(id, session.model.family, [...session.tools, ...session.hostTools])) await channel.push(notice)
+    for (const notice of narrowingEvents(id, session.values.model.family, [...session.values.tools, ...session.values.hostTools])) await channel.push(notice)
     const opened = slot.opening()
     if (opened !== null) await channel.push(opened)
     for (let attempt = 1; ; attempt += 1) {

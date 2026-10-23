@@ -153,9 +153,9 @@ const textOf = (result: McpToolResult) => result.content?.map((part) => ('text' 
 describe('request_review, the model’s ask (ADR-0010)', () => {
   it('critic/request-review.json: the boundary offers it as declared, after the context tools, under auto', async () => {
     const { session } = await contextualSession(modelSession())
-    const names = session.hostTools.map((tool) => tool.name)
+    const names = session.values.hostTools.map((tool) => tool.name)
     expect(names.at(-1)).toBe(REQUEST_REVIEW)
-    const offered = session.hostTools.find((tool) => tool.name === REQUEST_REVIEW)!
+    const offered = session.values.hostTools.find((tool) => tool.name === REQUEST_REVIEW)!
     expect({ name: offered.name, description: offered.description, inputSchema: offered.inputSchema, effect: offered.effect }).toEqual(requestReview.items[0])
   })
 
@@ -168,12 +168,12 @@ describe('request_review, the model’s ask (ADR-0010)', () => {
     ['a reviewer assigned', { reviewerAssigned: true }]
   ])('is not offered under %s', async (_name, patch) => {
     const { session } = await contextualSession(modelSession(patch as Partial<AssistantSession>))
-    expect(session.hostTools.map((tool) => tool.name)).not.toContain(REQUEST_REVIEW)
+    expect(session.values.hostTools.map((tool) => tool.name)).not.toContain(REQUEST_REVIEW)
   })
 
   it('takes the first ask, refuses the second with the guardrail review refused, and records only the first', async () => {
     const { session, context } = await contextualSession(modelSession())
-    const tool = session.hostTools.find((one) => one.name === REQUEST_REVIEW)!
+    const tool = session.values.hostTools.find((one) => one.name === REQUEST_REVIEW)!
     const answer = await tool.execute({ reason: 'The pack changes the approval threshold.' }, new AbortController().signal)
     expect(JSON.parse(textOf(answer))).toEqual({ asked: true, note: REVIEW_TAKEN })
     expect(context.execution.state.critic).toEqual({ mode: 'auto', trigger: 'model-asked' })
@@ -184,7 +184,7 @@ describe('request_review, the model’s ask (ADR-0010)', () => {
 
   it('refuses an ask that is not a reason, records nothing', async () => {
     const { session, context } = await contextualSession(modelSession())
-    const tool = session.hostTools.find((one) => one.name === REQUEST_REVIEW)!
+    const tool = session.values.hostTools.find((one) => one.name === REQUEST_REVIEW)!
     await expect(tool.execute({ reason: 7 }, new AbortController().signal)).rejects.toMatchObject({ failure: { code: 'invalid-tool-input' } })
     expect(context.execution.state.critic).toBeUndefined()
   })
@@ -264,7 +264,7 @@ describe('the decision event and the checkpoint’s member (ADR-0010)', () => {
     restored.requestKey = probe.context.execution.state.requestKey
     const { session, context } = await contextualSession(modelSession({ context: { currentRequest: { message: 'Check the expense pack.', input: 'Check the expense pack.' }, execution: restored as never } }))
     expect(context.execution.state.critic).toEqual({ mode: 'auto', trigger: 'model-asked' })
-    const tool = session.hostTools.find((one) => one.name === REQUEST_REVIEW)!
+    const tool = session.values.hostTools.find((one) => one.name === REQUEST_REVIEW)!
     await expect(tool.execute({}, new AbortController().signal)).rejects.toMatchObject({ failure: { detail: reviewRefusal('asked') } })
     expect(context.decideCritic(true)).toEqual({ mode: 'auto', ran: true, reason: 'model-asked', reasoning: 'on', trigger: 'model-asked' })
     expect(context.execution.snapshot().critic).toEqual({ mode: 'auto', ran: true, reason: 'model-asked', reasoning: 'on', trigger: 'model-asked' })

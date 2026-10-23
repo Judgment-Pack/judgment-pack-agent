@@ -1,0 +1,104 @@
+{
+  "description": "Hand-written complete admitted request book: every role, omission and a future member pass through the same private projection.",
+  "schema": "policy.json#/$defs/resolved",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/context/requestValues.ts"
+    ]
+  },
+  "items": [
+    {
+      "models.author.model": {
+        "value": "author-model",
+        "layer": "table",
+        "source": "layer"
+      },
+      "models.author.provider": {
+        "value": "primary",
+        "layer": "run",
+        "source": "layer"
+      },
+      "models.author.reasoning": {
+        "layer": "table",
+        "source": "model-default"
+      },
+      "models.critic.model": {
+        "value": "review-model",
+        "layer": "run",
+        "source": "layer"
+      },
+      "models.critic.provider": {
+        "value": "reviewer",
+        "layer": "project",
+        "source": "layer"
+      },
+      "models.critic.reasoning": {
+        "value": "high",
+        "layer": "run",
+        "source": "discovered"
+      },
+      "models.compactor.model": {
+        "value": "compact-model",
+        "layer": "run",
+        "source": "layer"
+      },
+      "models.compactor.provider": {
+        "value": "compact",
+        "layer": "run",
+        "source": "layer"
+      },
+      "models.compactor.reasoning": {
+        "layer": "table",
+        "source": "model-default"
+      },
+      "models.child.review.reasoning": {
+        "value": "low",
+        "layer": "project",
+        "source": "layer"
+      },
+      "models.subagent.audit.reasoning": {
+        "value": "medium",
+        "layer": "table",
+        "source": "discovered"
+      },
+      "models.author.fallback": {
+        "value": [
+          "backup"
+        ],
+        "layer": "run",
+        "source": "layer"
+      },
+      "failover.classes": {
+        "value": [
+          "unavailable"
+        ],
+        "layer": "project",
+        "source": "layer"
+      },
+      "budget.outputTokens": {
+        "value": 4096,
+        "layer": "run",
+        "source": "layer"
+      },
+      "concurrency.requests": {
+        "value": 2,
+        "layer": "project",
+        "source": "layer"
+      },
+      "future.request.option": {
+        "value": {
+          "enabled": true,
+          "names": [
+            "admitted"
+          ]
+        },
+        "layer": "run",
+        "source": "layer"
+      }
+    }
+  ]
+}
