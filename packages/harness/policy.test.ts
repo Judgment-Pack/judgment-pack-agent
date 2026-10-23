@@ -8,6 +8,8 @@ import canonical from '../../contract/schemas/policy.json'
 import runEventSchema from '../../contract/schemas/run-event.json'
 import {argumentProblem} from './sourceArguments'
 import reasoningResume from '../../contract/vectors/policy/reasoning-resume.json'
+import reasoningTableDefaults from '../../contract/vectors/policy/reasoning-table-defaults.json'
+import reasoningTableResume from '../../contract/vectors/policy/reasoning-table-resume.json'
 import discovery from '../../contract/vectors/policy/discovery.json'
 import {readExecution} from './execution/state'
 
@@ -29,6 +31,21 @@ describe('ADR-0011 policy table',()=>{
   const refused=reasoningDefault.refusal
   expect(()=>resolvePolicy(refused.run as PolicyLayer,refused.project as PolicyLayer,refused.table as PolicyLayer,agentHost)).toThrow(refused.detail)
  })
+ it('treats table reasoning as a discovery-aware default for every role',()=>{
+  for(const [index,input] of reasoningTableDefaults.cases.entries()){
+   const result=resolvePolicy(input.run as PolicyLayer,input.project as PolicyLayer,input.table as PolicyLayer,{...host,connections:['model-a']})
+   expect(result.members[input.member]).toEqual(reasoningTableDefaults.items[index]![input.member as keyof typeof reasoningTableDefaults.items[number]])
+  }
+ })
+ it('refuses unsupported run and project reasoning for every role',()=>{
+  for(const row of reasoningTableDefaults.refusals){
+   const role={model:'model-a',reasoning:row.value,discovered:{reasoning:{default:'high',supported:['high']}}}
+   const layer={models:{[row.role]:role}} as PolicyLayer
+   const tableLayer={models:{author:{model:'model-a',...(row.agent?{}:{reasoning:'off'})},[row.role]:{model:'model-a'}}} as PolicyLayer
+   const run=row.layer==='run'?layer:{},project=row.layer==='project'?layer:{}
+   expect(()=>resolvePolicy(run,project,tableLayer,{connections:['model-a'],agent:row.agent,requests:16}),row.name).toThrow(`models.${row.role}.reasoning (${row.layer}): reasoning value "${row.value}" is not supported by model "model-a"`)
+  }
+ })
  it('reads the shared closed discovery input',()=>{
   expect(resolvePolicy(discovery.items[0] as PolicyLayer,{},{models:{author:{model:'connected'}}},{...host,agent:true}).members['models.author.reasoning']).toEqual({value:'high',layer:'run',source:'discovered'})
  })
@@ -37,11 +54,18 @@ describe('ADR-0011 policy table',()=>{
   expect(saved.policy?.['models.author.reasoning']).toEqual({layer:'table',source:'model-default'})
   expect(saved.prompts).toEqual(reasoningResume.items[0].prompts)
  })
+ it('reads every table-default reasoning outcome unchanged from an interrupted checkpoint',()=>{
+  for(const [index,item] of reasoningTableResume.items.entries()){
+   const saved=readExecution(item)!
+   expect(saved.policy?.['models.compactor.reasoning']).toEqual(reasoningTableResume.members[index])
+   expect(saved.prompts).toEqual(item.prompts)
+  }
+ })
  it('emits schema-valid discovery refusals for empty, missing, oversized and unsupported input',()=>{
   const agentHost={connections:['model-a'],agent:true,requests:16}
   const malformed:unknown[]=[
    {},
-   {reasoning:{supported:['low']}},
+   {reasoning:{}},
    {reasoning:{default:'low',supported:Array.from({length:11},(_,i)=>i===0?'low':`bad-${i}`)}}
   ]
   for(const discovered of malformed){
@@ -73,6 +97,14 @@ describe('ADR-0011 policy table',()=>{
    expect(()=>resolvePolicy(raised,{},table,host)).toThrow('tier exceeds')
    expect(resolvePolicy({},raised,table,host).members[`models.${role}.reasoning`]).toEqual({value:'ultra',layer:'project',source:'layer'})
    expect(()=>resolvePolicy(raised,{models:{[role]:{reasoning:'on'}}},table,host)).toThrow('tier exceeds')
+  }
+ })
+ it('does not invent a child or subagent ceiling when author reasoning is omitted',()=>{
+  for(const [agent,value] of [[false,'off'],[true,'none']] as const)for(const role of ['child.review','subagent.audit']){
+   const assigned={models:{[role]:{reasoning:value}}} as PolicyLayer
+   const omitted={models:{author:{model:'connected'},[role]:{model:'connected'}}} as PolicyLayer
+   expect(resolvePolicy(assigned,{},omitted,{...host,agent}).members[`models.${role}.reasoning`]).toEqual({value,layer:'run',source:'layer'})
+   expect(resolvePolicy(assigned,assigned,omitted,{...host,agent}).members[`models.${role}.reasoning`]).toEqual({value,layer:'run',source:'layer'})
   }
  })
  it('inherits the critic floor and permits only an explicit lower tier',()=>{

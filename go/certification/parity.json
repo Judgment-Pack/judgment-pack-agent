@@ -948,6 +948,10 @@
         "go": ["16 summary", "16 gate"]
       },
       {
+        "check": "16 · compactor table reasoning follows discovery and stays absent when discovery has no default",
+        "go": ["16 table reasoning defaults"]
+      },
+      {
         "check": "16 · absent, empty, and 4,001-byte compactor answers refuse and fall back to the index",
         "go": ["16 fallback"]
       },
