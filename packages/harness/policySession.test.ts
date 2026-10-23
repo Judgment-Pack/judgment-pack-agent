@@ -137,14 +137,17 @@ export function probe(raw:AgentAssistantSession,assistant:RequestAssistantSessio
    expect(program.getSemanticDiagnostics(path)).toEqual([])
    const probe=file.statements.find(ts.isFunctionDeclaration)!
    expect(probe.parameters).toHaveLength(4)
+   const constituents=(type:Type):Type[]=>type.isUnionType()?type.getTypes().flatMap(constituents):[type]
    for(const parameter of probe.parameters){
     const type=checker.getTypeAtLocation(parameter.name)!
     // Positive controls ensure imports resolve to the real session declarations.
     expect(checker.getPropertyOfType(type,'prompt'),parameter.name.getText(file)).toBeDefined()
     if(parameter.name.getText(file)==='raw')expect(checker.getPropertyOfType(type,'effort')).toBeDefined()
-    else{
-     expect(checker.getPropertyOfType(type,'reasoning'),parameter.name.getText(file)).toBeDefined()
-     for(const member of ['effort','thinking','criticReasoning'])expect(checker.getPropertyOfType(type,member),`${parameter.name.getText(file)} exposes raw ${member}`).toBeUndefined()
+    else for(const constituent of constituents(type)){
+     // Union-wide lookups omit members exposed by only one constituent.
+     expect(checker.getPropertyOfType(constituent,'prompt'),parameter.name.getText(file)).toBeDefined()
+     expect(checker.getPropertyOfType(constituent,'reasoning'),parameter.name.getText(file)).toBeDefined()
+     for(const member of ['effort','thinking','criticReasoning'])expect(checker.getPropertyOfType(constituent,member),`${parameter.name.getText(file)} exposes raw ${member}`).toBeUndefined()
     }
    }
   }finally{snapshot.dispose();api.close();rmSync(directory,{recursive:true,force:true})}
