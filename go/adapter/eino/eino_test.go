@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/delegate"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/eino"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/certification"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
 )
 
 var server *certification.Server
@@ -170,5 +172,119 @@ func TestFallbackRebuildsGeminiModelAndBudget(t *testing.T) {
 		if event.Error != nil {
 			t.Fatalf("run error: %+v", event.Error)
 		}
+	}
+}
+
+func TestDroppedModelReasoningRequestBytesSurviveInterruptAndResume(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "contract", "vectors", "providers", "reasoning-omission.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vector struct {
+		Dropped []struct {
+			Name, Role, Capability, Raw string
+			Supported                   []any
+			Resume                      bool
+			Record                      *int
+		}
+	}
+	if err := json.Unmarshal(raw, &vector); err != nil {
+		t.Fatal(err)
+	}
+	response := func(family, text string) *http.Response {
+		var body any
+		if family == "gemini" {
+			body = map[string]any{"candidates": []any{map[string]any{"content": map[string]any{"role": "model", "parts": []any{map[string]any{"text": text}}}, "finishReason": "STOP"}}}
+		} else {
+			body = map[string]any{"id": "response", "object": "chat.completion", "model": "connected", "choices": []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "content": text}, "finish_reason": "stop"}}}
+		}
+		raw, _ := json.Marshal(body)
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(string(raw)))}
+	}
+	emptyRuntime := func(_ context.Context, frame json.RawMessage) (json.RawMessage, error) {
+		var request struct {
+			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
+		}
+		if err := json.Unmarshal(frame, &request); err != nil {
+			return nil, err
+		}
+		if request.Method == "notifications/initialized" {
+			return nil, nil
+		}
+		return json.RawMessage(`{"jsonrpc":"2.0","id":` + string(request.ID) + `,"result":{"tools":[]}}`), nil
+	}
+	for _, row := range vector.Dropped {
+		if row.Capability != "model" || !row.Resume {
+			continue
+		}
+		t.Run(row.Name, func(t *testing.T) {
+			family := "openai-compatible"
+			if row.Record != nil && *row.Record == 1 {
+				family = "gemini"
+			}
+			runOnce := func(saved *contract.Checkpoint, interrupt bool) ([][]byte, []contract.RunEvent) {
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				var bodies [][]byte
+				var events []contract.RunEvent
+				emit := func(event contract.RunEvent) {
+					events = append(events, event)
+					if interrupt && event.ExecutionCheckpoint != nil && event.ExecutionCheckpoint.Checkpoint.Status == "running" && len(bodies) == 0 {
+						cancel()
+					}
+				}
+				g := gate.New(gate.Options{Runtime: emptyRuntime, Granted: gate.Ceiling, Emit: emit})
+				offer, openErr := g.Open(context.Background(), nil)
+				if openErr != nil {
+					t.Fatal(openErr)
+				}
+				calls := 0
+				model := func(modelContext context.Context, _ string, request relay.Request) (*http.Response, error) {
+					if err := modelContext.Err(); err != nil {
+						return nil, err
+					}
+					calls++
+					bodies = append(bodies, append([]byte(nil), request.Body...))
+					text := "Done."
+					if row.Role == "critic" && calls == 1 {
+						text = "```json\n{\"proposal\":{\"document\":{\"id\":\"pack\"},\"unknowns\":[]}}\n```"
+					} else if row.Role == "critic" {
+						text = "No counterexample found."
+					}
+					return response(family, text), nil
+				}
+				policy := runcontext.PolicyLayer{"models": map[string]any{row.Role: map[string]any{"discovered": map[string]any{"reasoning": map[string]any{"supported": row.Supported}}}}}
+				critic, testPrompt := "off", ""
+				if row.Role == "critic" {
+					critic, testPrompt = "on", "Refute it."
+				}
+				run := &adapter.Run{Wire: family, ModelName: "connected", Model: model, Thinking: row.Raw, Prompt: "Draft a pack.", TestPrompt: testPrompt, Critic: critic, Policy: policy, Gate: g.Calls(), Tools: offer.Tools, Emit: emit, AllowConversation: row.Role != "critic", Context: &runcontext.Input{CurrentRequest: &runcontext.CurrentRequest{Message: "Draft a pack.", Input: "Draft a pack."}, Execution: saved}}
+				if runErr := eino.New().Run(ctx, run); runErr != nil {
+					t.Fatal(runErr)
+				}
+				return bodies, events
+			}
+			baseline, _ := runOnce(nil, false)
+			_, events := runOnce(nil, true)
+			var saved *contract.Checkpoint
+			for _, event := range events {
+				if event.ExecutionCheckpoint != nil && event.ExecutionCheckpoint.Checkpoint.Status == "stopped" {
+					checkpoint := event.ExecutionCheckpoint.Checkpoint
+					saved = &checkpoint
+				}
+			}
+			if saved == nil {
+				t.Fatal("interrupted run emitted no stopped checkpoint")
+			}
+			resumed, _ := runOnce(saved, false)
+			target := 0
+			if row.Role == "critic" {
+				target = 1
+			}
+			if len(baseline) <= target || len(resumed) <= target || string(baseline[target]) != string(resumed[target]) {
+				t.Fatalf("target request changed across resume:\n%s\n%s", baseline[target], resumed)
+			}
+		})
 	}
 }

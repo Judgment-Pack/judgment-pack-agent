@@ -55,13 +55,7 @@ func (c *coordinator) childBinding(profile turn.TaskProfile) (adapter.PolicyConn
 		if id == "" || profile.Model != nil && *profile.Model == "parent" {
 			id = c.run.ModelName
 		}
-		tier := c.run.Thinking
-		if c.run.Agent != nil {
-			tier = c.run.Agent.Effort
-		}
-		if author, ok := members["models.author.reasoning"]; ok {
-			tier, _ = author.Value.(string)
-		}
+		tier, _ := members["models.author.reasoning"].Value.(string)
 		selected := runcontext.PolicyMembers{"models." + role + ".model": {Value: id, Layer: "table", Source: "layer"}}
 		if tier == "" {
 			selected["models."+role+".reasoning"] = runcontext.PolicyMember{Layer: "table", Source: "model-default"}

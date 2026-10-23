@@ -4837,14 +4837,14 @@
     "note": "Go twin: set an empty critic effort back to agent.Effort in adapter/agent/invoke.go; TestDroppedTableDefaultsStayOmittedAcrossAgentResume fails on the critic request."
   },
   {
-    "name": "reasoning request-read guard is bypassed with a raw author read",
+    "name": "reasoning request-read AST guard is bypassed with an aliased raw author read",
     "file": "context/session.ts",
     "find": " const tier=context.resolvedPolicy['models.author.reasoning']!.value",
-    "replace": " const tier='model'in session?session.thinking?.tier:session.effort",
+    "replace": " const rawSession=session\n const tier='model'in rawSession?rawSession.thinking?.tier:rawSession.effort",
     "tests": ["policySession.test.ts", "providers.test.ts"],
     "status": "caught",
     "origin": "agent#142-release-audit-2",
-    "note": "Go twin: restore out.authorTier from session.Model.Thinking or session.Agent.Effort in context/session.go; TestReasoningRequestReadsAreEnumerated fails even before a request uses the bypass."
+    "note": "Go twin: alias session before restoring out.authorTier from its Thinking or Effort in context/session.go; TestReasoningRequestReadsAreASTEnumerated fails before a request uses the bypass. The guard's own tests also cover destructured and computed access in both languages."
   }
  ]
 }
