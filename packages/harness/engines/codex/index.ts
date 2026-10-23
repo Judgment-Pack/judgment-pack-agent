@@ -93,7 +93,7 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
      * order the model wires send in the first user message (`SessionContext.opening`).
      */
     let invocation=0
-    const run = async (prompt: string, instructions: string, phase: 'author' | 'critic' | 'reformat', recorder?: CritiqueRecorder, model?: string, state = '', effort: CodexEffort | undefined = session.effort) => {
+    const run = async (prompt: string, instructions: string, phase: 'author' | 'critic' | 'reformat', recorder?: CritiqueRecorder, model?: string, state = '', effort?: CodexEffort) => {
       invocation++
       const steers=context.execution.takeSteers(session.input,context.marker,invocation,context.policy)
       for(const event of steers.events)await deliver(event)
@@ -266,7 +266,7 @@ function runCodexLoop(session: CodexSession): AsyncIterable<AssistantEvent> {
     const state = [session.context?.currentState, session.allowConversation ? context.execution.guidance() : undefined].filter((part): part is string => !!part).join('\n\n')
     let final: string
     try {
-      final = await run(session.prompt, instructions + (offersProposeTool(session.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : ''), 'author', undefined, undefined, state)
+      final = await run(session.prompt, instructions + (offersProposeTool(session.hostTools) ? PROPOSE_PACK_INSTRUCTIONS : ''), 'author', undefined, undefined, state, session.effort)
     } catch (cause) {
       // **A proposal made through propose_pack is finished work.** The run
       // failing after it (the bridge's deadline, a lost connection) does not

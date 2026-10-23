@@ -4805,6 +4805,46 @@
     "status": "caught",
     "origin": "agent#142-release-audit",
     "note": "Go twin: give the final model-default PolicyMember a low value and layer source; TestPolicyTable/reasoning_defaults_and_discovery and table_reasoning_defaults_and_explicit_refusals fail on omitted rows."
+  },
+  {
+    "name": "dropped author table reasoning keeps the raw legacy session value",
+    "file": "context/session.ts",
+    "find": " session={...session,...author,...('model'in author?{thinking:tier===undefined?undefined:normalize(String(tier) as import('../host').ThinkingTier,author.model.family)}:{effort:tier===undefined?undefined:String(tier) as import('../agent').CodexEffort})} as T",
+    "replace": " session={...session,...author,...('model'in author?(tier===undefined?{}:{thinking:normalize(String(tier) as import('../host').ThinkingTier,author.model.family)}):(tier===undefined?{}:{effort:String(tier) as import('../agent').CodexEffort}))} as T",
+    "tests": ["policySession.test.ts", "providers.test.ts"],
+    "status": "caught",
+    "origin": "agent#142-release-audit-2",
+    "note": "Go twin: stop clearing selected.Effort before the resolved-member type assertion in adapter/policy.go; TestDroppedTableDefaultsStayOmittedAcrossAgentResume fails on the author request."
+  },
+  {
+    "name": "dropped critic table reasoning falls back to the author floor",
+    "file": "criticSwitch.ts",
+    "find": "    const resolved = this.settings.resolvedPolicy?.['models.critic.reasoning']\n    const reasoning = this.settings.resolvedPolicy === undefined\n      ? criticTier(tiers.author, this.settings.criticReasoning, this.table.criticReasoningFloor)\n      : resolved?.value as CriticTier | undefined",
+    "replace": "    const reasoning = criticTier(tiers.author, this.settings.criticReasoning, this.table.criticReasoningFloor)",
+    "tests": ["policySession.test.ts", "providers.test.ts", "criticSwitch.test.ts"],
+    "status": "caught",
+    "origin": "agent#142-release-audit-2",
+    "note": "Go twin: replace the resolved-member branch in CriticSwitch.Decide with CriticTier; TestDroppedCriticTableDefaultsStayOutOfDecisions and TestDroppedTableDefaultsStayOmittedAcrossAgentResume fail."
+  },
+  {
+    "name": "dropped agent critic reasoning uses the author effort default parameter",
+    "file": "engines/codex/index.ts",
+    "find": "effort?: CodexEffort) => {",
+    "replace": "effort: CodexEffort | undefined = session.effort) => {",
+    "tests": ["policySession.test.ts"],
+    "status": "caught",
+    "origin": "agent#142-release-audit-2",
+    "note": "Go twin: set an empty critic effort back to agent.Effort in adapter/agent/invoke.go; TestDroppedTableDefaultsStayOmittedAcrossAgentResume fails on the critic request."
+  },
+  {
+    "name": "reasoning request-read guard is bypassed with a raw author read",
+    "file": "context/session.ts",
+    "find": " const tier=context.resolvedPolicy['models.author.reasoning']!.value",
+    "replace": " const tier='model'in session?session.thinking?.tier:session.effort",
+    "tests": ["policySession.test.ts", "providers.test.ts"],
+    "status": "caught",
+    "origin": "agent#142-release-audit-2",
+    "note": "Go twin: restore out.authorTier from session.Model.Thinking or session.Agent.Effort in context/session.go; TestReasoningRequestReadsAreEnumerated fails even before a request uses the bypass."
   }
  ]
 }

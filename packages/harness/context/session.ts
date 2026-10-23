@@ -300,7 +300,6 @@ export class SessionContext {
   const admission=resolveSessionPolicy(session,engine)
   this.identity=admission.identity
   this.existingPack=session.existingPack===true
-  this.authorTier='model'in session?session.thinking?.tier:session.effort
   this.capabilities=admission.capabilities;this.policy=admission.policy
   const {bindings,named,resolved}=admission
   this.bindings=bindings
@@ -732,7 +731,7 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  const context=new SessionContext(session,engine)
  const author=context.connection('author')!
  const tier=context.resolvedPolicy['models.author.reasoning']!.value
- session={...session,...author,...('model'in author?(tier===undefined?{}:{thinking:normalize(String(tier) as import('../host').ThinkingTier,author.model.family)}):(tier===undefined?{}:{effort:String(tier) as import('../agent').CodexEffort}))} as T
+ session={...session,...author,...('model'in author?{thinking:tier===undefined?undefined:normalize(String(tier) as import('../host').ThinkingTier,author.model.family)}:{effort:tier===undefined?undefined:String(tier) as import('../agent').CodexEffort})} as T
  // A chat's turn is open from here: a run that cannot start closes it again.
  try{
  // ADR-0009: the skills, read and admitted before any request; their sources report beside the tools'.

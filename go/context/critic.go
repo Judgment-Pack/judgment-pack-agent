@@ -364,7 +364,11 @@ func (s *CriticSwitch) Decide(run CriticRunFacts, author string) CriticDecision 
 	defer s.mu.Unlock()
 	run.ModelAsked = s.askedLocked()
 	decision := DecideCritic(s.settings, s.table, s.facts, run)
-	decision.Reasoning = CriticTier(author, s.settings.CriticReasoning, s.table.CriticReasoningFloor)
+	if resolved, ok := s.settings.ResolvedPolicy["models.critic.reasoning"]; ok {
+		decision.Reasoning, _ = resolved.Value.(string)
+	} else {
+		decision.Reasoning = CriticTier(author, s.settings.CriticReasoning, s.table.CriticReasoningFloor)
+	}
 	s.state().Critic = decision.Record()
 	return decision
 }

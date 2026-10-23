@@ -95,6 +95,80 @@ func TestTheDecisionIsTheVectors(t *testing.T) {
 	}
 }
 
+func TestDroppedCriticTableDefaultsStayOutOfDecisions(t *testing.T) {
+	var vector struct {
+		Dropped []struct {
+			Name, Role, Capability, Raw string
+			Resolved                    PolicyMember
+		}
+	}
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "contract", "vectors", "providers", "reasoning-omission.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, &vector); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range vector.Dropped {
+		if row.Role != "critic" {
+			continue
+		}
+		t.Run(row.Name, func(t *testing.T) {
+			execution := &Execution{}
+			members := PolicyMembers{"models.critic.reasoning": row.Resolved}
+			switcher := NewCriticSwitch(CriticSettings{ResolvedPolicy: members, Critic: "on"}, CriticTable{CriticReasoningFloor: "author"}, CriticForcedFacts{}, func() *Execution { return execution })
+			decision := switcher.Decide(CriticRunFacts{Proposal: true, Room: true}, row.Raw)
+			if decision.Reasoning != "" || decision.Record().Reasoning != nil || CriticDecidedEvent(decision).CriticDecided.Reasoning != nil {
+				t.Fatalf("%s decision restored reasoning: %+v", row.Capability, decision)
+			}
+		})
+	}
+}
+
+func TestReasoningRequestReadsAreEnumerated(t *testing.T) {
+	reads := []struct {
+		path, needle, why string
+		count             int
+	}{
+		{"go/context/policy_table.go", "tier = session.Model.Thinking", "legacy model layer admitted into the table", 1},
+		{"go/context/policy_table.go", "tier = session.Agent.Effort", "legacy agent layer admitted into the table", 1},
+		{"go/context/session.go", `out.authorTier, _ = out.ResolvedPolicy["models.author.reasoning"].Value.(string)`, "resolved author member", 1},
+		{"go/context/session.go", `reasoning, _ := c.ResolvedPolicy["models.compactor.reasoning"].Value.(string)`, "resolved compactor member", 1},
+		{"go/context/critic.go", `s.settings.ResolvedPolicy["models.critic.reasoning"]`, "resolved critic member", 1},
+		{"go/adapter/policy.go", `sc.ResolvedPolicy["models."+role+".reasoning"].Value.(string)`, "resolved selected agent member", 2},
+		{"go/adapter/policy.go", `sc.ResolvedPolicy["models.author.reasoning"].Value.(string)`, "resolved selected model member", 1},
+		{"go/adapter/delegate/policy.go", `members["models."+role+".reasoning"].Value.(string)`, "resolved delegated member", 1},
+		{"go/adapter/agent/invoke.go", "effort := agent.Effort", "policy-normalized author agent", 1},
+		{"go/adapter/agent/invoke.go", "effort = r.criticEffort", "resolved critic decision", 1},
+		{"go/adapter/agent/invoke.go", `r.sc.ResolvedPolicy["models."+role+".reasoning"].Value.(string)`, "resolved switched agent member", 2},
+		{"go/adapter/eino/run.go", "wire.ThinkingTier(local.Thinking)", "policy-normalized author model", 2},
+		{"go/adapter/eino/run.go", `r.sc.ResolvedPolicy["models."+role+".reasoning"].Value.(string)`, "resolved switched model member", 1},
+		{"go/adapter/eino/critic.go", "criticThinking(tier, r.family, r.capabilities)", "resolved critic decision", 1},
+		{"go/adapter/eino/run.go", "wire.WireFor(wire.ThinkingTier(tier)", "resolved fallback member", 1},
+		{"go/adapter/wire/thinking.go", "return WireFor(s.tier, s.dialect", "slot opened from an admitted tier", 1},
+		{"go/adapter/wire/encode.go", "range request.Tier.Members()", "binding-owned wire members", 3},
+	}
+	root := repositoryRoot(t)
+	for _, read := range reads {
+		raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(read.path)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Count(string(raw), read.needle); got != read.count {
+			t.Errorf("%s: %q occurs %d times, want %d (%s)", read.path, read.needle, got, read.count, read.why)
+		}
+	}
+	sessionSource, err := os.ReadFile(filepath.Join(root, "go", "context", "session.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"out.authorTier = session.Model.Thinking", "out.authorTier = session.Agent.Effort"} {
+		if strings.Contains(string(sessionSource), forbidden) {
+			t.Errorf("raw session reasoning restored by %q", forbidden)
+		}
+	}
+}
+
 func TestTheTriggerOrderIsTheContract(t *testing.T) {
 	schema := readJSON(t, "contract/schemas/provenance.json")
 	values := schema.Get("$defs").Get("criticDecision").Get("properties").Get("trigger").Get("enum").Items()
