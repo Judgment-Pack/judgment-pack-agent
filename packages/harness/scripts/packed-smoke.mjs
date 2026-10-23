@@ -1,15 +1,16 @@
 import {execFileSync} from 'node:child_process'
 import {existsSync,mkdirSync,mkdtempSync,readdirSync,readFileSync,realpathSync,rmSync,statSync,writeFileSync} from 'node:fs'
 import {tmpdir} from 'node:os'
+import {isBuiltin} from 'node:module'
 import {dirname,extname,isAbsolute,join,relative,resolve,sep} from 'node:path'
 import {fileURLToPath,pathToFileURL} from 'node:url'
 import {build} from 'esbuild'
-import {initSync,parse} from 'es-module-lexer'
+import {emittedTarget,moduleImports} from './normalize-esm.mjs'
 
 const packageDirectory=fileURLToPath(new URL('..',import.meta.url))
+const repositoryDirectory=fileURLToPath(new URL('../../..',import.meta.url))
 const namedExports=['./contract','./vercel','./codex','./deepagents','./certification']
 const npm=process.platform==='win32'?'npm.cmd':'npm'
-initSync()
 
 const filesUnder=(directory,accept)=>{
  const files=[]
@@ -24,12 +25,7 @@ const displayed=(root,path)=>inside(root,path)?relative(root,path):path
 
 function importSpecifiers(file){
  const source=readFileSync(file,'utf8')
- const [imports]=parse(source,`${file}`)
- const found=imports.flatMap(row=>{
-  if(typeof row.n==='string')return [row.n]
-  if(row.d>=0&&row.d!==-2)throw Error(`${file}: dynamic import is not a string literal`)
-  return []
- })
+ const found=moduleImports(source,file).map(row=>row.specifier)
  const requires=/(?:\brequire|\bmodule\s*\.\s*require)\s*\(\s*(?:'([^'\\]*(?:\\.[^'\\]*)*)'|"([^"\\]*(?:\\.[^"\\]*)*)")\s*\)/g
  for(const match of source.matchAll(requires)){
   const specifier=match[1]??match[2]
@@ -66,7 +62,12 @@ export function inspectEmittedModules(packageRoot){
  const emitted=filesUnder(join(root,'dist'),file=>file.endsWith('.js')||file.endsWith('.d.ts'))
  const graph=new Map()
  for(const file of emitted){
-  const local=importSpecifiers(file).map(specifier=>resolveLocalImport(root,file,specifier)).filter(Boolean)
+  const local=importSpecifiers(file).map(specifier=>{
+   // NodeNext declarations use runtime .js specifiers, resolved to their .d.ts twin.
+   const emitted=emittedTarget(join(root,'dist'),file,specifier)
+   if(emitted&&emitted.specifier!==specifier)throw Error(`${displayed(root,file)} needs an explicit emitted module specifier: ${specifier}`)
+   return emitted?.target??resolveLocalImport(root,file,specifier)
+  }).filter(Boolean)
   graph.set(realpathSync(file),local)
  }
  return graph
@@ -76,8 +77,10 @@ export function packageEntrypoints(packageRoot){
  const root=realpathSync(packageRoot)
  const manifest=JSON.parse(readFileSync(join(root,'package.json'),'utf8'))
  const entries=[]
- for(const key of namedExports){
-  const target=exportTarget(manifest.exports?.[key])
+ for(const key of namedExports)if(!manifest.exports?.[key])throw Error(`package export ${key} is missing its runtime target`)
+ for(const [key,value] of Object.entries(manifest.exports??{})){
+  if(key.includes('*'))continue
+  const target=exportTarget(value)
   if(typeof target!=='string')throw Error(`package export ${key} is missing its runtime target`)
   entries.push({specifier:`${manifest.name}${key.slice(1)}`,target:resolveLocalImport(root,join(root,'package.json'),target)})
  }
@@ -96,9 +99,33 @@ export function packageEntrypoints(packageRoot){
  return entries
 }
 
+export function validateRuntimeDependencies(packageRoot){
+ const manifest=JSON.parse(readFileSync(join(packageRoot,'package.json'),'utf8'))
+ const declared=new Set([manifest.name,...Object.keys(manifest.dependencies??{}),...Object.keys(manifest.optionalDependencies??{}),...Object.keys(manifest.peerDependencies??{})])
+ for(const file of filesUnder(join(packageRoot,'dist'),file=>file.endsWith('.js'))){
+  for(const specifier of importSpecifiers(file)){
+   if(localBase(file,specifier)!==undefined||isBuiltin(specifier)||specifier.startsWith('#')||/^[a-z][a-z\d+.-]*:/i.test(specifier))continue
+   const name=specifier.startsWith('@')?specifier.split('/').slice(0,2).join('/'):specifier.split('/')[0]
+   if(!declared.has(name))throw Error(`${displayed(packageRoot,file)} imports undeclared runtime dependency ${specifier}`)
+  }
+ }
+}
+
+export function consumerDirectory(temporaryRoot=tmpdir(),checkoutRoot=repositoryDirectory){
+ const root=realpathSync(temporaryRoot)
+ if(inside(realpathSync(checkoutRoot),root))throw Error('packed smoke needs a temporary directory outside the checkout; set TMPDIR to an external directory')
+ // Prevent undeclared dependencies from resolving through another ancestor project.
+ for(let ancestor=root;;ancestor=dirname(ancestor)){
+  if(existsSync(join(ancestor,'node_modules')))throw Error('packed smoke temporary directory has an ancestor node_modules; set TMPDIR to an isolated external directory')
+  if(dirname(ancestor)===ancestor)break
+ }
+ return mkdtempSync(join(root,'judgment-pack-harness-'))
+}
+
 export function validatePackage(packageRoot){
  const root=realpathSync(packageRoot)
  const graph=inspectEmittedModules(root)
+ validateRuntimeDependencies(root)
  const entries=packageEntrypoints(root)
  for(const entry of entries){
   const seen=new Set()
@@ -143,8 +170,38 @@ export async function bundleEntrypoints(projectRoot,packageRoot,entries){
  })
 }
 
+export function nativeEntrypoints(projectRoot,entries){
+ const consumer=join(projectRoot,'native-consumer.mjs')
+ writeFileSync(consumer,`import {strictEqual} from 'node:assert'
+const seen=new Map()
+let failed=0
+for(const entry of ${JSON.stringify(entries)}){
+ try{
+  const namespace=await import(entry.specifier)
+  if(entry.target&&seen.has(entry.target))strictEqual(namespace,seen.get(entry.target))
+  if(entry.target)seen.set(entry.target,namespace)
+ }catch(error){failed++;console.error(entry.specifier,error)}
+}
+if(failed)process.exitCode=1
+`)
+ return execFileSync(process.execPath,[consumer],{cwd:projectRoot,encoding:'utf8',env:{...process.env,NODE_OPTIONS:''},stdio:'pipe'})
+}
+
+export function validateDeclarations(projectRoot,packageRoot,entries){
+ // Check every local declaration edge ourselves. The consumer uses the package's
+ // existing skipLibCheck policy for dependency declaration bodies.
+ inspectEmittedModules(packageRoot)
+ const consumer=join(projectRoot,'declaration-consumer.mts')
+ writeFileSync(consumer,entries.map((entry,index)=>`import * as entry${index} from ${JSON.stringify(entry.specifier)}\nexport type Entry${index}=typeof entry${index}\n`).join(''))
+ const config=join(projectRoot,'declaration-tsconfig.json')
+ writeFileSync(config,JSON.stringify({compilerOptions:{module:'NodeNext',moduleResolution:'NodeNext',target:'ES2022',lib:['ES2022','DOM','DOM.Iterable'],strict:true,noEmit:true,skipLibCheck:true,resolveJsonModule:true,types:[]},files:[consumer]}))
+ const compiler=fileURLToPath(new URL('./bin/tsc',import.meta.resolve('typescript/package.json')))
+ try{return execFileSync(process.execPath,[compiler,'-p',config],{cwd:projectRoot,encoding:'utf8',stdio:'pipe'})}
+ catch(error){throw Error(`packed declaration resolution failed:\n${error.stdout??''}${error.stderr??''}`,{cause:error})}
+}
+
 export async function packedSmoke(){
- const temporary=mkdtempSync(join(tmpdir(),'judgment-pack-harness-'))
+ const temporary=consumerDirectory()
  try{
   const packed=JSON.parse(execFileSync(npm,['pack','--json','--pack-destination',temporary],{cwd:packageDirectory,encoding:'utf8'}))
   const tarball=join(temporary,packed[0].filename)
@@ -152,10 +209,12 @@ export async function packedSmoke(){
   execFileSync(npm,['install','--ignore-scripts','--no-audit','--no-fund',tarball],{cwd:temporary,stdio:'inherit'})
   const installedRoot=join(temporary,'node_modules','@judgment-pack','harness')
   const entries=validatePackage(installedRoot)
+  nativeEntrypoints(temporary,entries)
   await bundleEntrypoints(temporary,installedRoot,entries)
+  validateDeclarations(temporary,installedRoot,entries)
   const installed=join(installedRoot,'contract','schemas','corpus-entry.json')
   if(!readFileSync(installed).equals(readFileSync(new URL('../../../contract/schemas/corpus-entry.json',import.meta.url))))throw Error('packed corpus schema differs from its repository original')
-  console.log(`packed harness: bundled ${entries.length} supported entrypoints from an isolated project; native Node ESM import is not the supported path (#143)`)
+  console.log(`packed harness: imported ${entries.length} supported entrypoints with native Node ESM, bundled them, and resolved their declarations from an isolated installed tarball`)
  }finally{
   rmSync(temporary,{recursive:true,force:true})
  }
