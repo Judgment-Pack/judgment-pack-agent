@@ -1,5 +1,6 @@
 // Dependency regressions run with the packed-consumer check.
 import './zod-size.test.mjs'
+import './body-parser.test.mjs'
 import assert from 'node:assert/strict'
 import {mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs'
 import {tmpdir} from 'node:os'
@@ -10,6 +11,7 @@ import {bundleEntrypoints,consumerDirectory,inspectEmittedModules,nativeEntrypoi
 import {normalizeEmittedModules,rewriteMap} from '../packages/harness/scripts/normalize-esm.mjs'
 import {decode} from '@jridgewell/sourcemap-codec'
 import {requireFixedZod,traceZodResolutions} from '../packages/harness/scripts/zod-consumer.mjs'
+import {requireFixedBodyParser,traceBodyParser} from '../packages/harness/scripts/body-parser-consumer.mjs'
 
 const fixture=files=>{
  const root=mkdtempSync(join(tmpdir(),'packed-smoke-test-'))
@@ -192,4 +194,22 @@ test('traces a shared SDK Zod copy instead of trusting the harness-local pin',t=
  writeFileSync(join(project,'node_modules','zod','package.json'),'{"name":"zod","version":"4.6.7"}')
  requireFixedZod(traceZodResolutions(root))
  assert.throws(()=>requireFixedZod([]),/must not be empty/)
+})
+
+
+test('body-parser path: traces the SDK-owned Express copy rather than a fixed unrelated root copy',t=>{
+ const project=fixture({
+  'node_modules/@judgment-pack/harness/package.json':'{"name":"@judgment-pack/harness","version":"fixture"}',
+  'node_modules/@modelcontextprotocol/sdk/package.json':'{"name":"@modelcontextprotocol/sdk","version":"1.32.1","dependencies":{"express":"^5.2.1"}}',
+  'node_modules/@modelcontextprotocol/sdk/node_modules/express/package.json':'{"name":"express","version":"5.2.1","dependencies":{"body-parser":"^2.2.1"}}',
+  'node_modules/@modelcontextprotocol/sdk/node_modules/body-parser/package.json':'{"name":"body-parser","version":"2.3.0"}',
+  'node_modules/body-parser/package.json':'{"name":"body-parser","version":"2.4.0"}'
+ })
+ t.after(()=>rmSync(project,{recursive:true,force:true}))
+ const root=join(project,'node_modules','@judgment-pack','harness')
+ const row=traceBodyParser(project,root)
+ assert.equal(row.bodyParserVersion,'2.3.0')
+ assert.throws(()=>requireFixedBodyParser(row),/must resolve fixed/)
+ writeFileSync(join(project,'node_modules','@modelcontextprotocol','sdk','node_modules','body-parser','package.json'),'{"name":"body-parser","version":"2.4.0"}')
+ requireFixedBodyParser(traceBodyParser(project,root))
 })
