@@ -5331,6 +5331,78 @@
    "status": "caught",
    "origin": "agent#154-review-fixes",
    "note": "Go twin: basename-only checkpointMutationOwner; TestCheckpointMutationOwnerExemptionIsExact fails. The reader-materialization exemption has its own exact-path control."
+  },
+  {
+   "name": "checkpoint guard publication credits another owner",
+   "file": "execution/mutation.test.ts",
+   "find": "&&p.owner===held.owner",
+   "replace": "",
+   "tests": [
+    "execution/mutation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#177",
+   "note": "Go twin: remove publication.owner == held.owner; owner.go wrong receiver/aggregate controls must fail."
+  },
+  {
+   "name": "checkpoint guard callback element loses collection origin",
+   "file": "execution/mutation.test.ts",
+   "find": "if(element)bindParameter(element.name,collection)",
+   "replace": "void element",
+   "tests": [
+    "execution/mutation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#177",
+   "note": "Go twin: remove range value binding; range.go unpublished/wrong-owner element controls must fail."
+  },
+  {
+   "name": "checkpoint guard callback array parameter loses collection origin",
+   "file": "execution/mutation.test.ts",
+   "find": "if(array)bindParameter(array.name,collection)",
+   "replace": "void array",
+   "tests": [
+    "execution/mutation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#177",
+   "note": "The callback array parameter retains its source collection. Go native range has no equivalent array callback parameter; the range-origin twin covers element ownership."
+  },
+  {
+   "name": "checkpoint guard asynchronous callback receives synchronous publication credit",
+   "file": "execution/mutation.test.ts",
+   "find": "if(!candidate.modifiers?.some(modifier=>modifier.kind===ts.SyntaxKind.AsyncKeyword))callback=candidate",
+   "replace": "callback=candidate",
+   "tests": [
+    "execution/mutation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#177",
+   "note": "A publication outside an async callback cannot excuse its later edit. Go callbacks retain their separate function scope; native range is synchronous."
+  },
+  {
+   "name": "checkpoint guard reassigned receiver retains earlier identity",
+   "file": "execution/mutation.test.ts",
+   "find": "if(reassigned.has(symbol))return undefined",
+   "replace": "",
+   "tests": [
+    "execution/mutation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#177",
+   "note": "Go twin: omit clearing receiverAliases after an unresolved replacement; unknownReceiver must remain a writer."
+  },
+  {
+   "name": "checkpoint guard reassigned aggregate retains earlier identity",
+   "file": "execution/mutation.test.ts",
+   "find": "reassigned.has(symbol)?undefined:aggregateOwners.get(symbol)??identity(expression)",
+   "replace": "aggregateOwners.get(symbol)??identity(expression)",
+   "tests": [
+    "execution/mutation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#177",
+   "note": "Go twin: omit clearing aggregateOwners after an unresolved replacement; unknownAggregate must remain a writer."
   }
  ]
 }
