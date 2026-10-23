@@ -6,6 +6,7 @@ import {dirname,extname,isAbsolute,join,relative,resolve,sep} from 'node:path'
 import {fileURLToPath,pathToFileURL} from 'node:url'
 import {build} from 'esbuild'
 import {emittedTarget,moduleImports} from './normalize-esm.mjs'
+import {existingLockZodConsumer,verifyHarnessZod} from './zod-consumer.mjs'
 
 const packageDirectory=fileURLToPath(new URL('..',import.meta.url))
 const repositoryDirectory=fileURLToPath(new URL('../../..',import.meta.url))
@@ -246,12 +247,16 @@ export async function packedSmoke(){
   execFileSync(npm,['install','--ignore-scripts','--no-audit','--no-fund',tarball],{cwd:temporary,stdio:'inherit'})
   const installedRoot=join(temporary,'node_modules','@judgment-pack','harness')
   const entries=validatePackage(installedRoot)
+  verifyHarnessZod(temporary,installedRoot,'fresh consumer')
   nativeEntrypoints(temporary,entries)
   process.stdout.write(memoryLifecycleConsumer(temporary))
   await bundleEntrypoints(temporary,installedRoot,entries)
   validateDeclarations(temporary,installedRoot,entries)
   const installed=join(installedRoot,'contract','schemas','corpus-entry.json')
   if(!readFileSync(installed).equals(readFileSync(new URL('../../../contract/schemas/corpus-entry.json',import.meta.url))))throw Error('packed corpus schema differs from its repository original')
+  const existing=consumerDirectory()
+  try{existingLockZodConsumer(existing,tarball,JSON.parse(readFileSync(join(packageDirectory,'package.json'),'utf8')))}
+  finally{rmSync(existing,{recursive:true,force:true})}
   console.log(`packed harness: imported ${entries.length} supported entrypoints with native Node ESM, bundled them, and resolved their declarations from an isolated installed tarball`)
  }finally{
   rmSync(temporary,{recursive:true,force:true})

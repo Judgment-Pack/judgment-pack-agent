@@ -41,14 +41,75 @@ func checkpointField(selection *types.Selection) bool {
 	return false
 }
 
-func checkpointWriteSites(file *ast.File, info *types.Info) []token.Pos {
+func checkpointWriteSites(file *ast.File, info *types.Info, initializationOwner ...bool) []token.Pos {
 	found := []token.Pos{}
 	type origin struct {
 		member    string
 		book      types.Object
 		aggregate types.Object
+		owner     string
 	}
 	aliases := map[types.Object]origin{}
+
+	receiverAliases := map[types.Object]string{}
+	aggregateOwners := map[types.Object]string{}
+	objectIDs := map[types.Object]int{}
+	objectKey := func(object types.Object) string {
+		if object == nil {
+			return ""
+		}
+		id := objectIDs[object]
+		if id == 0 {
+			id = len(objectIDs) + 1
+			objectIDs[object] = id
+		}
+		return strconv.Itoa(id)
+	}
+	var identity func(ast.Expr) string
+	identity = func(expression ast.Expr) string {
+		switch held := expression.(type) {
+		case *ast.Ident:
+			object := info.ObjectOf(held)
+			if alias := receiverAliases[object]; alias != "" {
+				return alias
+			}
+			return objectKey(object)
+		case *ast.SelectorExpr:
+			if root := identity(held.X); root != "" {
+				return root + "." + held.Sel.Name
+			}
+		case *ast.ParenExpr:
+			return identity(held.X)
+		case *ast.StarExpr:
+			return identity(held.X)
+		case *ast.UnaryExpr:
+			return identity(held.X)
+		}
+		return ""
+	}
+	functionOf := func(expression ast.Expr) types.Object {
+		switch held := expression.(type) {
+		case *ast.Ident:
+			return info.ObjectOf(held)
+		case *ast.SelectorExpr:
+			return info.ObjectOf(held.Sel)
+		}
+		return nil
+	}
+	aggregateOwner := func(expression ast.Expr) string {
+		if id, ok := expression.(*ast.Ident); ok {
+			if owner := aggregateOwners[info.ObjectOf(id)]; owner != "" {
+				return owner
+			}
+		}
+		if call, ok := expression.(*ast.CallExpr); ok {
+			function := functionOf(call.Fun)
+			if selected, ok := call.Fun.(*ast.SelectorExpr); ok && function != nil && function.Name() == "State" && function.Pkg() != nil && function.Pkg().Path() == "github.com/Judgment-Pack/judgment-pack-agent/go/context" {
+				return identity(selected.X)
+			}
+		}
+		return identity(expression)
+	}
 	var source func(ast.Expr) (origin, bool)
 	source = func(expression ast.Expr) (origin, bool) {
 		switch held := expression.(type) {
@@ -61,7 +122,7 @@ func checkpointWriteSites(file *ast.File, info *types.Info) []token.Pos {
 				if id, ok := held.X.(*ast.Ident); ok {
 					aggregate = info.ObjectOf(id)
 				}
-				return origin{member: held.Sel.Name, aggregate: aggregate}, true
+				return origin{member: held.Sel.Name, aggregate: aggregate, owner: aggregateOwner(held.X)}, true
 			}
 			return source(held.X)
 		case *ast.IndexExpr:
@@ -83,6 +144,7 @@ func checkpointWriteSites(file *ast.File, info *types.Info) []token.Pos {
 	// a detached edit. Publication of a fresh read or another member is insufficient.
 	scopes := map[ast.Node]ast.Node{}
 	deferred := map[ast.Node]ast.Node{}
+	initializers := map[ast.Node]string{}
 	var collect func(ast.Node, ast.Node)
 	collect = func(node ast.Node, scope ast.Node) {
 		if node == nil {
@@ -96,34 +158,72 @@ func checkpointWriteSites(file *ast.File, info *types.Info) []token.Pos {
 				scope = node
 			}
 		}
+
+		if fn, ok := node.(*ast.FuncDecl); ok && len(initializationOwner) > 0 && initializationOwner[0] && fn.Name.Name == "Initialize" && fn.Recv != nil && len(fn.Recv.List) == 1 && len(fn.Recv.List[0].Names) == 1 {
+			function := info.Defs[fn.Name]
+			if function != nil && function.Pkg() != nil && function.Pkg().Path() == "github.com/Judgment-Pack/judgment-pack-agent/go/context" {
+				signature, _ := function.Type().(*types.Signature)
+				if signature != nil && signature.Recv() != nil {
+					receiver := signature.Recv().Type()
+					if pointer, ok := receiver.(*types.Pointer); ok {
+						receiver = pointer.Elem()
+					}
+					if named, ok := receiver.(*types.Named); ok && named.Obj().Name() == "ExecutionController" {
+						initializers[scope] = identity(fn.Recv.List[0].Names[0])
+					}
+				}
+			}
+		}
 		scopes[node] = scope
 		if statement, ok := node.(*ast.DeferStmt); ok {
 			if fn, ok := statement.Call.Fun.(*ast.FuncLit); ok {
 				deferred[fn] = scope
 			}
 		}
+
 		bind := func(left ast.Expr, right ast.Expr) {
-			if id, ok := left.(*ast.Ident); ok {
-				if held, ok := source(right); ok {
-					symbol := info.ObjectOf(id)
-					// Copying a pointed-to struct creates a separate working book.
-					copied := false
-					if _, dereference := right.(*ast.StarExpr); dereference {
-						valueType := info.TypeOf(right)
-						if valueType != nil {
-							switch valueType.Underlying().(type) {
-							case *types.Struct, *types.Array:
-								copied = true
-							}
-						}
+			id, ok := left.(*ast.Ident)
+			if !ok {
+				return
+			}
+			symbol := info.ObjectOf(id)
+			// Copying a pointed-to struct creates a separate working book.
+			copied := false
+			if _, dereference := right.(*ast.StarExpr); dereference {
+				if valueType := info.TypeOf(right); valueType != nil {
+					switch valueType.Underlying().(type) {
+					case *types.Struct, *types.Array:
+						copied = true
 					}
-					if held.book == nil || copied {
-						held.book = symbol
-					}
-					aliases[symbol] = held
 				}
 			}
+			if receiver := identity(right); receiver != "" && !copied {
+				receiverAliases[symbol] = receiver
+			} else {
+				delete(receiverAliases, symbol)
+			}
+			if owner := aggregateOwner(right); owner != "" {
+				aggregateOwners[symbol] = owner
+			} else {
+				delete(aggregateOwners, symbol)
+			}
+			// Only the owning Initialize method may attach a validated materialization
+			// to its receiver. A later publication never supplies an unknown origin owner.
+			if receiver := initializers[scope]; receiver != "" {
+				if call, ok := right.(*ast.CallExpr); ok {
+					if factory := functionOf(call.Fun); factory != nil && factory.Name() == "executionOf" && factory.Pkg() != nil && factory.Pkg().Path() == "github.com/Judgment-Pack/judgment-pack-agent/go/context" {
+						aggregateOwners[symbol] = receiver
+					}
+				}
+			}
+			if held, ok := source(right); ok {
+				if held.book == nil || copied {
+					held.book = symbol
+				}
+				aliases[symbol] = held
+			}
 		}
+
 		switch held := node.(type) {
 		case *ast.AssignStmt:
 			for i, left := range held.Lhs {
@@ -155,6 +255,7 @@ func checkpointWriteSites(file *ast.File, info *types.Info) []token.Pos {
 		scope    ast.Node
 		origin   origin
 		position token.Pos
+		owner    string
 	}
 	published := []publication{}
 	ast.Inspect(file, func(node ast.Node) bool {
@@ -163,17 +264,30 @@ func checkpointWriteSites(file *ast.File, info *types.Info) []token.Pos {
 			return true
 		}
 
-		var function types.Object
-		switch target := call.Fun.(type) {
-		case *ast.SelectorExpr:
-			function = info.ObjectOf(target.Sel)
-		case *ast.Ident:
-			function = info.ObjectOf(target)
-		}
+		function := functionOf(call.Fun)
 		if function == nil || function.Name() != "MutateCheckpoint" || function.Pkg() == nil || function.Pkg().Path() != "github.com/Judgment-Pack/judgment-pack-agent/go/context" {
 			return true
 		}
-		for _, arg := range call.Args {
+		publishingOwner := ""
+		arguments := call.Args
+		signature, _ := function.Type().(*types.Signature)
+		if signature != nil && signature.Recv() != nil {
+			if selected, ok := call.Fun.(*ast.SelectorExpr); ok {
+				if selection := info.Selections[selected]; selection != nil && selection.Kind() == types.MethodExpr {
+					if len(arguments) > 0 {
+						publishingOwner = identity(arguments[0])
+						arguments = arguments[1:]
+					}
+				} else {
+					publishingOwner = identity(selected.X)
+				}
+			}
+		} else if len(arguments) > 0 {
+			publishingOwner = identity(arguments[0])
+			arguments = arguments[1:]
+		}
+
+		for _, arg := range arguments {
 			if projection, ok := arg.(*ast.CallExpr); ok {
 				if fn, ok := projection.Fun.(*ast.Ident); ok && fn.Name == "checkpointMembers" && len(projection.Args) == 1 {
 					owner := info.ObjectOf(fn)
@@ -183,7 +297,7 @@ func checkpointWriteSites(file *ast.File, info *types.Info) []token.Pos {
 					if id, ok := projection.Args[0].(*ast.Ident); ok {
 						for _, held := range aliases {
 							if held.aggregate != nil && held.aggregate == info.ObjectOf(id) {
-								published = append(published, publication{scopes[call], held, call.Pos()})
+								published = append(published, publication{scopes[call], held, call.Pos(), publishingOwner})
 							}
 						}
 					}
@@ -191,7 +305,7 @@ func checkpointWriteSites(file *ast.File, info *types.Info) []token.Pos {
 			}
 		}
 
-		for _, arg := range call.Args {
+		for _, arg := range arguments {
 			if patch, ok := arg.(*ast.CompositeLit); ok {
 				for _, entry := range patch.Elts {
 					pair, ok := entry.(*ast.KeyValueExpr)
@@ -214,7 +328,7 @@ func checkpointWriteSites(file *ast.File, info *types.Info) []token.Pos {
 								position = scope.End()
 							}
 						}
-						published = append(published, publication{scopes[call], held, position})
+						published = append(published, publication{scopes[call], held, position, publishingOwner})
 					}
 				}
 			}
@@ -227,7 +341,7 @@ func checkpointWriteSites(file *ast.File, info *types.Info) []token.Pos {
 		if held, ok := source(expression); ok && held.book != nil {
 			committed := false
 			for _, publication := range published {
-				if publication.scope == scopes[expression] && publication.origin == held && publication.position > expression.Pos() {
+				if publication.scope == scopes[expression] && publication.origin == held && held.owner != "" && publication.owner == held.owner && publication.position > expression.Pos() {
 					committed = true
 				}
 			}
@@ -352,7 +466,7 @@ func TestCheckpointWritersUseMutationBoundary(t *testing.T) {
 			if checkpointMutationOwner(root, name) {
 				continue
 			}
-			for _, position := range checkpointWriteSites(tree, info) {
+			for _, position := range checkpointWriteSites(tree, info, checkpointMaterializationOwner(root, name)) {
 				// Materializing a validated read is not a live writer. The factory owns its new object.
 				materialization := false
 				if checkpointMaterializationOwner(root, name) {
@@ -431,6 +545,52 @@ func wrongProjection(c *runcontext.ExecutionController){state:=c.State();operati
 			t.Fatalf("publication site %d: line %d, want %d", i, line, expected)
 		}
 	}
+
+	checkSource := func(name, source string, expected []int) {
+		t.Helper()
+		positions := token.NewFileSet()
+		tree, err := parser.ParseFile(positions, name, source, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		info := checkpointTypeInfo()
+		config := types.Config{Importer: importer.ForCompiler(positions, "gc", lookup)}
+		if _, err := config.Check("probe", positions, []*ast.File{tree}, info); err != nil {
+			t.Fatal(err)
+		}
+		sites := checkpointWriteSites(tree, info)
+		if len(sites) != len(expected) {
+			t.Fatalf("%s: got %d writer sites, want %d", name, len(sites), len(expected))
+		}
+		for index, site := range sites {
+			if line := positions.Position(site).Line; line != expected[index] {
+				t.Fatalf("%s site %d: line %d, want %d", name, index, line, expected[index])
+			}
+		}
+	}
+	checkSource("owner.go", `package probe
+import runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
+func wrongOwner(c,d *runcontext.ExecutionController){approval:=c.State().Approval;approval.State="answered";d.MutateCheckpoint(runcontext.CheckpointPatch{"Approval":approval})}
+func receiverAlias(c *runcontext.ExecutionController){publisher:=c;state:=c.State();view:=state;approval:=view.Approval;approval.State="answered";publisher.MutateCheckpoint(runcontext.CheckpointPatch{"Approval":approval})}
+func wrongAlias(c,d *runcontext.ExecutionController){publisher:=d;approval:=c.State().Approval;approval.State="answered";publisher.MutateCheckpoint(runcontext.CheckpointPatch{"Approval":approval})}
+func rawOwner(state *runcontext.Execution){approval:=state.Approval;approval.State="answered";runcontext.MutateCheckpoint(state,runcontext.CheckpointPatch{"Approval":approval})}
+func wrongRawOwner(state,other *runcontext.Execution){approval:=state.Approval;approval.State="answered";runcontext.MutateCheckpoint(other,runcontext.CheckpointPatch{"Approval":approval})}
+func fieldOwner(pair struct{First,Second *runcontext.ExecutionController}){publisher:=pair.First;approval:=publisher.State().Approval;approval.State="answered";pair.First.MutateCheckpoint(runcontext.CheckpointPatch{"Approval":approval})}
+func wrongFieldOwner(pair struct{First,Second *runcontext.ExecutionController}){approval:=pair.First.State().Approval;approval.State="answered";pair.Second.MutateCheckpoint(runcontext.CheckpointPatch{"Approval":approval})}
+func methodExpression(c *runcontext.ExecutionController){approval:=c.State().Approval;approval.State="answered";(*runcontext.ExecutionController).MutateCheckpoint(c,runcontext.CheckpointPatch{"Approval":approval})}
+func wrongMethodExpression(c,d *runcontext.ExecutionController){approval:=c.State().Approval;approval.State="answered";(*runcontext.ExecutionController).MutateCheckpoint(d,runcontext.CheckpointPatch{"Approval":approval})}
+func choose(c *runcontext.ExecutionController)*runcontext.ExecutionController{return c}
+func unknownReceiver(c,d *runcontext.ExecutionController){publisher:=c;approval:=c.State().Approval;approval.State="answered";publisher=choose(d);publisher.MutateCheckpoint(runcontext.CheckpointPatch{"Approval":approval})}
+func chooseState(c *runcontext.ExecutionController)*runcontext.Execution{return c.State()}
+func unknownAggregate(c,d *runcontext.ExecutionController){state:=c.State();state=chooseState(d);approval:=state.Approval;approval.State="answered";c.MutateCheckpoint(runcontext.CheckpointPatch{"Approval":approval})}
+`, []int{3, 5, 7, 9, 11, 13, 15})
+	checkSource("range.go", `package probe
+import runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
+func unpublished(c *runcontext.ExecutionController){operations:=c.State().Operations;for _,operation:=range operations {operation.Status="complete"}}
+func wrongOwner(c,d *runcontext.ExecutionController){operations:=c.State().Operations;for _,operation:=range operations {operation.Status="complete"};d.MutateCheckpoint(runcontext.CheckpointPatch{"Operations":operations})}
+func committed(c *runcontext.ExecutionController){publisher:=c;operations:=c.State().Operations;for _,operation:=range operations {held:=operation;held.Status="complete"};publisher.MutateCheckpoint(runcontext.CheckpointPatch{"Operations":operations})}
+func rawOwner(state *runcontext.Execution){operations:=state.Operations;for _,operation:=range operations {operation.Status="complete"};runcontext.MutateCheckpoint(state,runcontext.CheckpointPatch{"Operations":operations})}
+`, []int{3, 4})
 
 }
 

@@ -231,6 +231,7 @@ $pkg/execution/mutation.ts
 $pkg/execution/mutation.test.ts
 $pkg/memoryLifecycle.test.ts
 $pkg/testing/memory.ts
+$pkg/scripts/zod-consumer.mjs
 EOF
 }
 

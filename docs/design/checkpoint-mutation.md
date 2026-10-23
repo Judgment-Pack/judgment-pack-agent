@@ -56,10 +56,17 @@ projects it after restoring its own state. Those ownership rules are deliberate 
 The source-wide guards discover production files and use the language type checker to reject
 direct aggregate writes, including aliases, computed TypeScript keys and direct nested writes.
 Nested member and array aliases retain their originating book. An explicit later patch of that
-same book under its own member permits a working-copy edit; a different member, a fresh read,
-an uncalled closure or an earlier publication does not. The scanner recognizes the
-owning source-book publisher and synchronous collection callbacks, and Go deferred publication closures.
-Implementation and reader-materialization exemptions name their exact owning paths.
+same book under its own member by its originating controller or raw aggregate permits a
+working-copy edit; a different owner or member, a fresh read, an uncalled closure or an earlier
+publication does not. Stable receiver and aggregate aliases retain that owner identity;
+reassigned or unresolved aliases receive no publication credit from an earlier value. A generic
+mutator names the raw aggregate it publishes; Go's validated initialization projection is
+attached to its controller only inside the owning Initialize implementation.
+Inline synchronous map/forEach/filter/reduce callback element and array parameters retain their
+collection's origin. Async callbacks keep their own publication scope. The scanner also
+recognizes the owning source-book publisher and Go deferred publication closures.
+Implementation and reader-materialization exemptions name their exact owning paths. These typed
+structural guards cover the documented forms; they do not prove arbitrary control flow.
 They also reject a new writer file without adding it to a filename inventory. Go's private live
 store is accessible only in the mutation implementation. Both languages test nested alias
 isolation, unchanged/rejected revisions and concurrent counter producers.
