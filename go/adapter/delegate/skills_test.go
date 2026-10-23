@@ -34,12 +34,14 @@ func TestADelegatedChildIsHandedNoSkills(t *testing.T) {
 	var runs []seen
 	inner := adapter.Func(func(ctx context.Context, run *adapter.Run) error {
 		session := runcontext.Session{Prompt: run.Prompt, HostTools: run.HostTools, Skills: run.Skills, Context: run.Context,
-			Model: &runcontext.ModelSession{Family: "openai-compatible", Model: "scripted-model"},
+			Policy: run.Policy, PolicyProject: run.PolicyProject, PolicyConnections: adapter.PolicyConnectionIDs(run),
+			Model: &runcontext.ModelSession{Family: run.Wire, Model: run.ModelName},
 			CallTool: func(context.Context, string, json.RawMessage) (runcontext.ToolResult, error) {
 				return runcontext.ToolResult{}, nil
 			}}
 		opened, err := runcontext.ContextualSession(ctx, session)
 		if err != nil {
+			t.Errorf("session for %q failed admission: %v", run.ModelName, err)
 			return err
 		}
 		defer opened.Context.Close()
@@ -63,7 +65,7 @@ func TestADelegatedChildIsHandedNoSkills(t *testing.T) {
 		run.Emit(contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}})
 		return nil
 	})
-	run := &adapter.Run{AllowConversation: true, Interactive: true, Prompt: "Draft the pack.", Skills: []runcontext.Skill{skill},
+	run := &adapter.Run{ModelName: "scripted-model", Wire: "openai-compatible", AllowConversation: true, Interactive: true, Prompt: "Draft the pack.", Skills: []runcontext.Skill{skill},
 		Model: func(context.Context, string, relay.Request) (*http.Response, error) {
 			return nil, errors.New("no model call here")
 		}, Emit: func(contract.RunEvent) {},

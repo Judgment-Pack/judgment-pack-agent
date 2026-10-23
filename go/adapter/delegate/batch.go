@@ -257,7 +257,10 @@ type childLink struct {
 	budget  turn.TaskBudget
 	m       *meter
 	sources func() *runcontext.SourceGate
+	policy  *runcontext.DelegatedPolicy
 }
+
+func (l childLink) DelegatedPolicy() *runcontext.DelegatedPolicy { return l.policy }
 
 // ParentSources is the source gate of the run that delegated this one, or nil.
 func (l childLink) ParentSources() *runcontext.SourceGate { return l.sources() }
@@ -348,6 +351,20 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 	if binding.Agent != nil {
 		name = binding.Agent.Model
 	}
+	var projection *runcontext.DelegatedPolicy
+	c.shared.mu.Lock()
+	parent := c.shared.parent
+	c.shared.mu.Unlock()
+	role := delegatedRole(c.parentPolicy(), profile.ID, c.run.Subagents)
+	if parent != nil {
+		role = delegatedRole(parent.ResolvedPolicy, profile.ID, parent.Subagents)
+		projection, err = parent.DelegatedPolicy(role, id, name)
+	} else if c.run.Context != nil && c.run.Context.Execution != nil && c.run.Context.Execution.Policy != nil {
+		projection, err = runcontext.RestoredDelegatedPolicy(c.run.Context.Execution, role, id, name)
+	}
+	if err != nil {
+		return err
+	}
 	c.childMu.Lock()
 	c.models[task.ID] = name
 	c.childMu.Unlock()
@@ -370,13 +387,16 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 	} else {
 		tools = nil
 	}
-	input := &runcontext.Input{Objective: objective, Chat: c.chat.ChildScope(p.visible), Link: childLink{limit: limit, calls: c.toolCalls, task: task, budget: p.budget, m: m, sources: c.parentSources}}
+	input := &runcontext.Input{Objective: objective, Chat: c.chat.ChildScope(p.visible), Link: childLink{limit: limit, calls: c.toolCalls, task: task, budget: p.budget, m: m, sources: c.parentSources, policy: projection}}
 	if parent := c.run.Context; parent != nil {
 		input.Configuration, input.Phase, input.ArtifactProposals, input.Memory, input.Runtime, input.Authorize, input.Connection =
 			parent.Configuration, parent.Phase, parent.ArtifactProposals, parent.Memory, parent.Runtime, parent.Authorize, parent.Connection
 	}
 	no := false
 	child := *c.run
+	if projection != nil {
+		child.Thinking = ""
+	}
 	child.ModelName = name
 	if c.run.Agent != nil {
 		child.Model = nil

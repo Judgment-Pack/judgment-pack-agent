@@ -75,7 +75,6 @@ func (c *coordinator) childBinding(profile turn.TaskProfile) (adapter.PolicyConn
 	if provider, ok := members["models."+role+".provider"].Value.(string); ok {
 		id = provider
 	}
-	tier, _ := members["models."+role+".reasoning"].Value.(string)
 	policy := runcontext.PolicyLayer{}
 	// Inherit effective limits, without reinterpreting the parent's other roles
 	// against this child's (possibly lower) author tier.
@@ -96,9 +95,6 @@ func (c *coordinator) childBinding(profile turn.TaskProfile) (adapter.PolicyConn
 		object[leaf] = member.Value
 	}
 	author := map[string]any{"model": id}
-	if tier != "" {
-		author["reasoning"] = tier
-	}
 	policy["models"] = map[string]any{"author": author}
 	if fallback, ok := members["models."+role+".fallback"]; ok {
 		policy["models"].(map[string]any)["author"].(map[string]any)["fallback"] = fallback.Value
