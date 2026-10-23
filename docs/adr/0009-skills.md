@@ -248,6 +248,15 @@ withheld`, says so. The loads counted before the resume stay counted.
 - A skill naming an undeclared tool, over `skillBytes`, or whose digest is not the pinned one is
   withheld at declaration with a guardrail naming the reason; nothing of it reaches the model.
 
+## Amendment: declared subagent skills (ADR-0013, #156)
+
+[ADR-0013](0013-sub-agents.md) supersedes point 2's blanket no-skills statement and
+its deferral below: an ad hoc delegated child is handed no skills; a declared subagent
+is handed exactly its definition's skills, admitted against the child's tools and
+loaded under its own `skillsPerRun` count. Neither inherits the parent's loaded set.
+The current implementations are `packages/harness/delegation.ts` and
+`go/adapter/delegate/batch.go`.
+
 ## Plan mode, the critic, and a delegated child
 
 - **Plan mode** is offered the catalogue and the loaders (effect `plan`, which Plan mode keeps). A
@@ -260,8 +269,9 @@ withheld`, says so. The loads counted before the resume stay counted.
   once, carrying no loaded set, so its `load_skill` of a skill already loaded is answered with the
   block the author was given (`ALREADY_LOADED_CRITIC_NOTE`, then the framed block), counted nothing; a
   skill not yet loaded loads as in the loop. Scenario 9's critic run holds both.
-- **A delegated child** is handed no skills (`delegation.ts`, `go/adapter/delegate`): no catalogue,
-  no loaders, none of the parent's loaded set.
+- **An ad hoc delegated child** is handed no skills: no catalogue, no loaders, none of the
+  parent's loaded set. A declared subagent is handed exactly its definition's skills, as amended
+  above (`delegation.ts`, `go/adapter/delegate`).
 
 ## Certification
 

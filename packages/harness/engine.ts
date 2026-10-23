@@ -286,8 +286,8 @@ export interface AssistantSession {
    * The skills the host declares for the run (ADR-0009, `skills.ts`), beside its host tools: each a
    * bundle of instructions from a source, with the digest the person approved (`pinnedDigest`). The
    * package admits each, lists the admitted ones in the system text, and loads one on the model's
-   * `load_skill` call; a skill grants no tool. Absent or empty, the run has no skills. A delegated child
-   * is handed none.
+   * `load_skill` call; a skill grants no tool. Absent or empty, the run has no skills. An ad hoc delegated
+   * child is handed no skills; a declared subagent is handed exactly its definition's skills.
    */
   skills?: import('./skills').SkillDeclaration[]
   subagents?: import('./subagents').SubagentDeclaration[]
