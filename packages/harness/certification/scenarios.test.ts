@@ -50,6 +50,7 @@ import criticSwitch from './scenarios/critic-switch.json'
 import { appendFileSync } from 'node:fs'
 import { policyAlias, type PolicyLayer } from '../policy'
 import policyAliasVector from '../../../contract/vectors/policy/alias.json'
+import reasoningTableDefaults from '../../../contract/vectors/policy/reasoning-table-defaults.json'
 import policyScenario from './scenarios/policy-table.json'
 import type { ThinkingTier } from '../host'
 import { bindModelCall, openAssistantConnection, runAssistantSession } from '../session'
@@ -2232,7 +2233,7 @@ function policyTableChecks(engineId: import('../host').AssistantEngine, agent: b
     for(const project of [true,false]){
       const engine=await loadEngine(engineId)
       const raised={models:{'child.review':{reasoning:agent?'high':'ultra'}}}
-      const session={critic:'off' as const,...(project?{policyProject:raised}:{policy:raised})}
+      const session={critic:'off' as const,...(agent?{effort:'low' as const}:{}),...(project?{policyProject:raised}:{policy:raised})}
       const turns:Turn[]=[{say:'Done.'}]
       const ran=agent?await runOnAgentEngine(agentRunFrom(turns),{engine,session}):await runOnModelEngine(answerFrom(turns,answerAs),{engine,session})
       if(project){expect(ofType(ran.events,'error')).toEqual([]);expect(ofType(ran.events,'policy_resolved')[0]!.members['models.child.review.reasoning']).toEqual({value:agent?'high':'ultra',layer:'project',source:'layer'});expect(ran.requests.length+ran.runs.length).toBe(1)}
@@ -2320,10 +2321,10 @@ const compactionIndexHistory=():ModelMessage[]=>[
  {role:'user',content:'Keep this stable prefix.'},
  {role:'assistant',content:'x'.repeat(60000)}
 ]
-const compactionSession=(compaction:'index'|'summary',compactor?:ContextInput['compactor'],execution?:ExecutionCheckpoint):AssistantSession=>({
+const compactionSession=(compaction:'index'|'summary',compactor?:ContextInput['compactor'],execution?:ExecutionCheckpoint,policy?:PolicyLayer):AssistantSession=>({
  prompt:'Keep the stable prefix and finish the current task.',testPrompt:'',tools:[],hostTools:[],callTool:async()=>({content:[]}),
  model:{family:'openai-compatible',model:'scripted-model',call:async()=>{throw Error('the context test makes no author request')}},thinking:normalize('off','openai-compatible'),signal:new AbortController().signal,
- policy:{compaction},context:{currentRequest:{message:'Keep the stable prefix and finish the current task.',input:'Keep the stable prefix and finish the current task.'},configuration:{version:1,models:{'scripted-model':{contextWindowTokens:16384,outputTokens:4096}}},compactor,...(execution?{execution}:{})}
+ policy:{compaction,...policy},context:{currentRequest:{message:'Keep the stable prefix and finish the current task.',input:'Keep the stable prefix and finish the current task.'},configuration:{version:1,models:{'scripted-model':{contextWindowTokens:16384,outputTokens:4096}}},compactor,...(execution?{execution}:{})}
 })
 function contextCompactionChecks(){
  it('16 · index is byte-identical to the pre-ADR deterministic compaction',async()=>{
@@ -2355,6 +2356,25 @@ function contextCompactionChecks(){
   expect(event).toMatchObject({type:expected.type,mode:expected.mode,turns:expect.any(Number),bytes:expect.any(Number),digest:expect.stringMatching(/^[a-f0-9]{64}$/)})
   expect(summary.startsWith(compactionSummaryVector.framed.split('\n')[0]!)).toBe(true)
   expect(ready.context.refuseUnoffered('write_file')).toBeInstanceOf(Error)
+ })
+ it('16 · compactor table reasoning follows discovery and stays absent when discovery has no default',async()=>{
+  for(let index=0;index<4;index++){
+   let asked:CompactorRequest|undefined
+   const input=reasoningTableDefaults.cases[index]!
+   const ready=await contextualSession(compactionSession('summary',async request=>{asked=request;return 'A bounded summary.'},undefined,input.run as PolicyLayer))
+   const saved=JSON.parse(JSON.stringify(ready.context.execution.snapshot())) as ExecutionCheckpoint
+   await ready.context.messages(compactionHistory(),'stable-prefix',[])
+   const actual=asked&&Object.hasOwn(asked,'reasoning')?{reasoning:asked.reasoning}:{}
+   expect(actual,input.name).toEqual(reasoningTableDefaults.requests[index])
+   expect(ready.context.resolvedPolicy[input.member],input.name).toEqual(reasoningTableDefaults.items[index]![input.member as keyof typeof reasoningTableDefaults.items[number]])
+   expect(saved.policy?.[input.member],input.name).toEqual(reasoningTableDefaults.items[index]![input.member as keyof typeof reasoningTableDefaults.items[number]])
+   let resumedRequest:CompactorRequest|undefined
+   const resumed=await contextualSession(compactionSession('summary',async request=>{resumedRequest=request;return 'A bounded summary.'},saved,input.run as PolicyLayer))
+   await resumed.context.messages(compactionHistory(),'stable-prefix',[])
+   const resumedActual=resumedRequest&&Object.hasOwn(resumedRequest,'reasoning')?{reasoning:resumedRequest.reasoning}:{}
+   expect(resumedActual,input.name).toEqual(actual)
+   expect(resumed.context.resolvedPolicy[input.member],input.name).toEqual(ready.context.resolvedPolicy[input.member])
+  }
  })
  it('16 · absent, empty, and 4,001-byte compactor answers refuse and fall back to the index',async()=>{
   const malformed:Array<ContextInput['compactor']|undefined>=[undefined,async()=>'',async()=> 'x'.repeat(4001)]

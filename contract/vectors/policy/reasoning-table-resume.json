@@ -1,0 +1,89 @@
+{
+  "description": "Written by hand from the 2026-10-23 release-audit amendment to ADR-0011; interrupted compactor runs retain each table-default resolution and request digest.",
+  "schema": "checkpoint.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/execution/state.ts"
+    ]
+  },
+  "members": [
+    {"value": "low", "layer": "table", "source": "layer"},
+    {"value": "low", "layer": "table", "source": "layer"},
+    {"value": "high", "layer": "run", "source": "discovered"},
+    {"layer": "table", "source": "model-default"}
+  ],
+  "items": [
+    {
+      "version": 1,
+      "id": "1d30bb70-d246-4cbc-9bf5-862f84c61142",
+      "requestKey": "1d8af09155ef9a28f9b45e1e37b8adab904adc86391bb488b243f4567251f0c1",
+      "phase": "work",
+      "status": "stopped",
+      "unit": "provider-managed",
+      "used": 1,
+      "limit": 1,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [],
+      "context": {"scope": "reasoning-table-resume-1", "entries": []},
+      "prompts": [{"request": 1, "sha256": "10a4966f1c76f76d8759cd2216f8cf184c8bce8f0e27beef3e69ef1680490cb8"}],
+      "policy": {"models.compactor.reasoning": {"value": "low", "layer": "table", "source": "layer"}}
+    },
+    {
+      "version": 1,
+      "id": "2d30bb70-d246-4cbc-9bf5-862f84c61142",
+      "requestKey": "2d8af09155ef9a28f9b45e1e37b8adab904adc86391bb488b243f4567251f0c1",
+      "phase": "work",
+      "status": "stopped",
+      "unit": "provider-managed",
+      "used": 1,
+      "limit": 1,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [],
+      "context": {"scope": "reasoning-table-resume-2", "entries": []},
+      "prompts": [{"request": 1, "sha256": "20a4966f1c76f76d8759cd2216f8cf184c8bce8f0e27beef3e69ef1680490cb8"}],
+      "policy": {"models.compactor.reasoning": {"value": "low", "layer": "table", "source": "layer"}}
+    },
+    {
+      "version": 1,
+      "id": "3d30bb70-d246-4cbc-9bf5-862f84c61142",
+      "requestKey": "3d8af09155ef9a28f9b45e1e37b8adab904adc86391bb488b243f4567251f0c1",
+      "phase": "work",
+      "status": "stopped",
+      "unit": "provider-managed",
+      "used": 1,
+      "limit": 1,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [],
+      "context": {"scope": "reasoning-table-resume-3", "entries": []},
+      "prompts": [{"request": 1, "sha256": "30a4966f1c76f76d8759cd2216f8cf184c8bce8f0e27beef3e69ef1680490cb8"}],
+      "policy": {"models.compactor.reasoning": {"value": "high", "layer": "run", "source": "discovered"}}
+    },
+    {
+      "version": 1,
+      "id": "4d30bb70-d246-4cbc-9bf5-862f84c61142",
+      "requestKey": "4d8af09155ef9a28f9b45e1e37b8adab904adc86391bb488b243f4567251f0c1",
+      "phase": "work",
+      "status": "stopped",
+      "unit": "provider-managed",
+      "used": 1,
+      "limit": 1,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [],
+      "context": {"scope": "reasoning-table-resume-4", "entries": []},
+      "prompts": [{"request": 1, "sha256": "40a4966f1c76f76d8759cd2216f8cf184c8bce8f0e27beef3e69ef1680490cb8"}],
+      "policy": {"models.compactor.reasoning": {"layer": "table", "source": "model-default"}}
+    }
+  ]
+}

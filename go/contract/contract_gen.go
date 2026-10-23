@@ -3318,7 +3318,7 @@ func (v PolicyDiscovered) MarshalJSON() ([]byte, error) {
 
 // From policy.json#/$defs/discovered/properties/reasoning.
 type PolicyDiscoveredReasoning struct {
-	Default   string   `json:"default"`
+	Default   *string  `json:"default,omitzero"`
 	Supported []string `json:"supported"`
 }
 

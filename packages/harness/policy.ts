@@ -11,7 +11,7 @@ export type PolicyLayerName = 'run' | 'project' | 'table'
 export type TaskClass = 'routine' | 'material' | 'boundary'
 export type FailoverClass = 'unavailable' | 'rate-limited' | 'timeout'
 export type ReasoningValue = 'off' | 'on' | 'ultra' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
-export interface DiscoveredReasoning { default: ReasoningValue; supported: ReasoningValue[] }
+export interface DiscoveredReasoning { default?: ReasoningValue; supported: ReasoningValue[] }
 export interface PolicyRole { model?: string; reasoning?: string; discovered?: {reasoning: DiscoveredReasoning}; provider?: string; fallback?: string[] }
 export interface PolicyLayer {
   compaction?: 'index' | 'summary'
@@ -121,15 +121,19 @@ export function resolvePolicy(run: PolicyLayer, project: PolicyLayer, table: Pol
     if (discoveredDefault && (!Array.isArray(discoveredSupported?.value) || !discoveredSupported.value.includes(discoveredDefault.value))) {
       throw new PolicyRefusal(name, discoveredDefault.layer, `discovered default ${JSON.stringify(discoveredDefault.value)} is not advertised as supported`)
     }
-    if (explicit) {
-      if (Array.isArray(discoveredSupported?.value) && !discoveredSupported.value.includes(explicit.value)) {
+    const selected = explicit ?? (inherited ? {...inherited, layer: 'table' as const} : undefined)
+    if (selected) {
+      if (Array.isArray(discoveredSupported?.value) && !discoveredSupported.value.includes(selected.value)) {
+        if (selected.layer === 'table') {
+          if (discoveredDefault) return {value: discoveredDefault.value, layer: discoveredDefault.layer, source: 'discovered'}
+          return {layer: 'table', source: 'model-default'}
+        }
         const model = members[`models.${role}.model`]?.value ?? role
-        throw new PolicyRefusal(name, explicit.layer, `reasoning value ${JSON.stringify(explicit.value)} is not supported by model ${JSON.stringify(model)}`)
+        throw new PolicyRefusal(name, selected.layer, `reasoning value ${JSON.stringify(selected.value)} is not supported by model ${JSON.stringify(model)}`)
       }
-      return explicit
+      return selected
     }
     if (discoveredDefault) return {value: discoveredDefault.value, layer: discoveredDefault.layer, source: 'discovered'}
-    if (inherited) return {...inherited, layer: 'table'}
     return {layer: 'table', source: 'model-default'}
   }
   const roleOf = (name: string) => name.startsWith('models.') && !name.startsWith('models.taskClasses.')
@@ -172,7 +176,7 @@ export function resolvePolicy(run: PolicyLayer, project: PolicyLayer, table: Pol
         if (member.value !== undefined && !tiers.includes(String(member.value))) refuse(name, 'tier is not supported on this capability')
         if (member.value !== undefined && /^(child|subagent)\./.test(role)) {
           const allowance = (project.models?.[role] as PolicyRole | undefined)?.reasoning
-          if (author.value === undefined ? member.layer === 'run' && allowance === undefined : rank(String(member.value)) > rank(String(author.value)) && (allowance === undefined || rank(String(member.value)) > rank(allowance))) refuse(name, "tier exceeds the author's without project authorization")
+          if (member.source === 'layer' && author.value !== undefined && rank(String(member.value)) > rank(String(author.value)) && (allowance === undefined || rank(String(member.value)) > rank(allowance))) refuse(name, "tier exceeds the author's without project authorization")
         }
       }
     }

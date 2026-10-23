@@ -56,3 +56,11 @@ Summary mode adds one bounded model request when compaction first occurs and may
 lose prose detail, while the retained turns and index keep exact material
 available by reference. Index remains the default and has no new model cost.
 The Desk's visual treatment of the `compacted` marker is follow-up work.
+
+## Amendment: compactor reasoning discovery (2026-10-23)
+
+The compactor's table `low` setting follows ADR-0011's table-default rule. It remains
+`low` without discovery or when advertised, resolves to the discovered default when
+`low` is not advertised, and is omitted when discovery advertises no default. The
+compactor request carries the resulting value and provenance through checkpoint resume;
+an explicit run or project compactor value remains subject to capability refusal.

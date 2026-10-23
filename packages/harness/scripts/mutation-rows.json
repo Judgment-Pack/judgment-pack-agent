@@ -3847,7 +3847,7 @@
   {
    "name": "ADR policy table: tier ceiling removed",
    "file": "policy.ts",
-   "find": "if (author.value === undefined ? member.layer === 'run' && allowance === undefined : rank(String(member.value)) > rank(String(author.value)) && (allowance === undefined || rank(String(member.value)) > rank(allowance))) refuse(name, \"tier exceeds the author's without project authorization\")",
+   "find": "if (member.source === 'layer' && author.value !== undefined && rank(String(member.value)) > rank(String(author.value)) && (allowance === undefined || rank(String(member.value)) > rank(allowance))) refuse(name, \"tier exceeds the author's without project authorization\")",
    "replace": "if (false) refuse(name, \"tier exceeds the author's without project authorization\")",
    "tests": [
     "policy.test.ts"
@@ -4769,12 +4769,42 @@
   {
     "name": "unsupported discovered reasoning is admitted",
     "file": "policy.ts",
-    "find": "if (Array.isArray(discoveredSupported?.value) && !discoveredSupported.value.includes(explicit.value)) {",
+    "find": "if (Array.isArray(discoveredSupported?.value) && !discoveredSupported.value.includes(selected.value)) {",
     "replace": "if (false) {",
     "tests": ["policy.test.ts", "policySession.test.ts"],
     "status": "caught",
     "origin": "agent#142",
     "note": "Go twin: remove the supported-set check in resolveReasoning; TestPolicyTable/reasoning_defaults_and_discovery fails on the hand-written refusal row."
+  },
+  {
+    "name": "table reasoning fallback is applied to an explicit value",
+    "file": "policy.ts",
+    "find": "if (selected.layer === 'table') {",
+    "replace": "if (true) {",
+    "tests": ["policy.test.ts"],
+    "status": "caught",
+    "origin": "agent#142-release-audit",
+    "note": "Go twin: replace selected.Layer == table with true in resolveReasoning; TestPolicyTable/table_reasoning_defaults_and_explicit_refusals fails on every run and project refusal row."
+  },
+  {
+    "name": "table reasoning fallback is not applied",
+    "file": "policy.ts",
+    "find": "if (selected.layer === 'table') {",
+    "replace": "if (false) {",
+    "tests": ["policy.test.ts"],
+    "status": "caught",
+    "origin": "agent#142-release-audit",
+    "note": "Go twin: replace selected.Layer == table with false in resolveReasoning; TestPolicyTable/table_reasoning_defaults_and_explicit_refusals fails on the shared table-default cases."
+  },
+  {
+    "name": "omitted table reasoning is synthesized after discovery",
+    "file": "policy.ts",
+    "find": "if (discoveredDefault) return {value: discoveredDefault.value, layer: discoveredDefault.layer, source: 'discovered'}\n    return {layer: 'table', source: 'model-default'}",
+    "replace": "if (discoveredDefault) return {value: discoveredDefault.value, layer: discoveredDefault.layer, source: 'discovered'}\n    return {value: 'low', layer: 'table', source: 'layer'}",
+    "tests": ["policy.test.ts"],
+    "status": "caught",
+    "origin": "agent#142-release-audit",
+    "note": "Go twin: give the final model-default PolicyMember a low value and layer source; TestPolicyTable/reasoning_defaults_and_discovery and table_reasoning_defaults_and_explicit_refusals fail on omitted rows."
   }
  ]
 }
