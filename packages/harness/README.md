@@ -97,7 +97,9 @@ available.
 
 The certification scenarios also emit the scripted fixture helpers under `testing/`. These helpers
 capture each scripted transport synchronously and restore the exact host global before asynchronous
-work starts; importing them requires no Vitest installation. The shared `testing/captureGlobal`
+work starts. Custom call/run overrides can also bind synchronously when invoked; the global is
+restored before awaiting their returned promise, including a thrown override. Importing these
+helpers requires no Vitest installation. The shared `testing/captureGlobal`
 helper is an additional wildcard export for this synchronous capture operation.
 
 ## Host injection points

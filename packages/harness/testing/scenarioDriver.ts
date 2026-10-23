@@ -318,7 +318,9 @@ function sinkOf(events: AssistantEvent[], stopAt?: (event: AssistantEvent) => bo
 export async function runOnModelEngine(answer: (request: EndpointRequest) => Response | Promise<Response>, options: Options = {}): Promise<Ran> {
   const events: AssistantEvent[] = []
   const endpoint = scriptedEndpoint(answer)
-  const call = captureGlobal('fetch', endpoint.fetch, () => bindModelCall('openai-compatible'))
+  const boundCall = captureGlobal('fetch', endpoint.fetch, () => bindModelCall('openai-compatible'))
+  const override = options.session?.model?.call
+  const call: import('../engine').ModelCall = override ? (...args) => captureGlobal('fetch', endpoint.fetch, () => override(...args)) : boundCall
   const runtime = await gatedRuntime({
     tools: [...(options.tools ?? RECORDED_TOOLS), TEST_CASES_TOOL],
     allowed: [...ASSISTANT_TOOLS],
@@ -335,10 +337,10 @@ export async function runOnModelEngine(answer: (request: EndpointRequest) => Res
         callTool: runtime.callTool,
         hostTools: options.hostTools ?? [],
         allowConversation: true,
-        model: { family: 'openai-compatible', model: 'scripted-model', call },
         thinking: normalize('off', 'openai-compatible'),
         signal: new AbortController().signal,
-        ...options.session
+        ...options.session,
+        model: { family: 'openai-compatible', model: 'scripted-model', ...options.session?.model, call }
       } as AssistantSession,
       sinkOf(events, options.stopAt)
     ).catch((cause: unknown) => { if (!(cause instanceof BrokenOff)) throw cause })
