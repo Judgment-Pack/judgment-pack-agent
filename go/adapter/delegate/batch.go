@@ -390,7 +390,6 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 	child.Capabilities = binding.Capabilities
 	if policy != nil {
 		child.Policy, child.PolicyProject = policy, nil
-		child.Thinking, _ = policy["models"].(map[string]any)["author"].(map[string]any)["reasoning"].(string)
 		child.TaskClass, child.Critic, child.CriticProject, child.CriticReasoning = "", "off", "", ""
 		input.Connection = id
 		child.PolicyConnections = map[string]adapter.PolicyConnection{}

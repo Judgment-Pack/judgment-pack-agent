@@ -15,7 +15,7 @@ import {ExecutionController} from '../execution/controller'
 import {planningSession} from '../planning/policy'
 import type {ChatPlan} from '../planning/model'
 import type {ModelMessage} from 'ai'
-import type {AssistantEvent,EngineSession,McpToolResult} from '../engine'
+import type {AssistantEvent,EngineSession,McpToolResult,RequestSessionFor} from '../engine'
 import {ContextLedger,answer,contextDigest,type ContextDocument} from './ledger'
 import {READ_TOOL} from './reader'
 import {SEARCH_TOOL} from './search'
@@ -91,6 +91,16 @@ export function resolveSessionPolicy(session:EngineSession,engine?:AssistantEngi
   if(('model'in session)!==('model'in selected))throw new PolicyRefusal(name,member.layer,'connection requires a different capability or wire family')
  }
  return {identity,capabilities,policy,bindings,named,resolved}
+}
+
+/** The only conversion from host input to the session request builders receive. */
+export function requestSession<T extends EngineSession>(session:T,members:PolicyMembers):RequestSessionFor<T>{
+ const {thinking:_thinking,effort:_effort,criticReasoning:_criticReasoning,...safe}=session as T&{thinking?:unknown;effort?:unknown;criticReasoning?:unknown}
+ const value=members['models.author.reasoning']?.value
+ const reasoning='model'in session
+  ? value===undefined?undefined:normalize(String(value) as import('../host').ThinkingTier,session.model.family)
+  : value as import('../agent').CodexEffort|undefined
+ return {...safe,...(reasoning===undefined?{}:{reasoning})} as unknown as RequestSessionFor<T>
 }
 
 export class SessionContext {
@@ -300,7 +310,6 @@ export class SessionContext {
   const admission=resolveSessionPolicy(session,engine)
   this.identity=admission.identity
   this.existingPack=session.existingPack===true
-  this.authorTier='model'in session?session.thinking?.tier:session.effort
   this.capabilities=admission.capabilities;this.policy=admission.policy
   const {bindings,named,resolved}=admission
   this.bindings=bindings
@@ -713,7 +722,7 @@ function fallbackRequest(model:import('../engine').AssistantSession['model'],tie
  }
  return {suffix,request:{...request,body:JSON.stringify(body)}}
 }
-export async function contextualSession<T extends EngineSession>(session:T,engine?:AssistantEngine):Promise<{session:T;context:SessionContext}>{
+export async function contextualSession<T extends EngineSession>(session:T,engine?:AssistantEngine):Promise<{session:RequestSessionFor<T>;context:SessionContext}>{
  // ADR-0006: the tools with a source, read and named for the wire before anything else sees them.
  const declared=await declareSources(session.hostTools,session.tools.map(t=>t.name))
  // ADR-0009: a skill may name only the host's declared tools, whatever this phase offers of them.
@@ -731,8 +740,7 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  }
  const context=new SessionContext(session,engine)
  const author=context.connection('author')!
- const tier=context.resolvedPolicy['models.author.reasoning']!.value
- session={...session,...author,...('model'in author?(tier===undefined?{}:{thinking:normalize(String(tier) as import('../host').ThinkingTier,author.model.family)}):(tier===undefined?{}:{effort:String(tier) as import('../agent').CodexEffort}))} as T
+ session={...session,...author} as T
  // A chat's turn is open from here: a run that cannot start closes it again.
  try{
  // ADR-0009: the skills, read and admitted before any request; their sources report beside the tools'.
@@ -865,5 +873,6 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   }
  }}:undefined
  context.output.declaredNames=new Set([...session.tools,...hostTools].map(tool=>tool.name))
- return {context,session:{...session,...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{context.admit(name,'runtime',args);await session.context?.authorize?.(session.signal);args=context.output.value(args,'tool argument');context.claimTestCall(name);const call=()=>context.execution.wrapRead(name,a=>session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true,{runtime:true,offered:session.tools.some(t=>t.name===name)})(args);return context.sources?context.sources.runtime(call):call()}}}
+ const prepared={...session,...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{context.admit(name,'runtime',args);await session.context?.authorize?.(session.signal);args=context.output.value(args,'tool argument');context.claimTestCall(name);const call=()=>context.execution.wrapRead(name,a=>session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true,{runtime:true,offered:session.tools.some(t=>t.name===name)})(args);return context.sources?context.sources.runtime(call):call()}} as T
+ return {context,session:requestSession(prepared,context.resolvedPolicy)}
 }

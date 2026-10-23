@@ -121,7 +121,7 @@ import { placeholderBase, relayFetch, signatureLedger, signatureOf } from './rel
 import { retryingCall } from './retry'
 import type { LanguageModel, ToolSet, ModelMessage, SystemModelMessage, Tool } from 'ai'
 import type { AssistantEngine, EndpointCapabilities, EndpointKind, StatePlacement, ThinkingTier } from '../../host'
-import type { AssistantEvent, AssistantSession, McpTool, McpToolResult, HostTool, ModelCall, ProposalNote } from '../../engine'
+import type { AssistantEvent, AssistantSession, RequestAssistantSession, McpTool, McpToolResult, HostTool, ModelCall, ProposalNote } from '../../engine'
 import type { CritiqueRecorder } from '../../refutation'
 import type { ThinkingSlot } from '../../thinking'
 import type { SignatureLedger } from './relay'
@@ -395,7 +395,7 @@ export const IMAGES_HEADER = 'IMAGES from'
 
 /** One model, built for the family the desk configured and nothing else. */
 function modelFor(
-  session: AssistantSession,
+  session: RequestAssistantSession,
   /** The session's model capability, wrapped in the one retry a refusal earns (`retry.ts`). */
   call: ModelCall,
   signal: AbortSignal,
@@ -609,7 +609,7 @@ export function runVercel(session:AssistantSession,id:AssistantEngine):AsyncIter
 }
 
 export function runVercelLoop(
-  session: AssistantSession,
+  session: RequestAssistantSession,
   /** The id the registry loaded this engine under. See `runBuiltin`. */
   id: AssistantEngine
 ): AsyncIterable<AssistantEvent> {
@@ -670,7 +670,7 @@ export function runVercelLoop(
    */
   let tier: ReturnType<typeof sdkThinking> = {}
   // Where the state goes after the first request, once per run.
-  let placement = statePlacement(session.model.family, session.thinking?.tier, capabilities)
+  let placement = statePlacement(session.model.family, session.reasoning?.tier, capabilities)
   const ledger = signatureLedger()
   /**
    * The truncation notice, **delivered at the transition rather than owed**.
@@ -1492,14 +1492,14 @@ export function runVercelLoop(
         session={...session,model:{...criticBinding.model,call:session.model.call}}
         capabilities=capabilitiesFor(criticBinding.model)
         nativeTools=capabilities.nativeToolCalls
-        placement=statePlacement(session.model.family,session.thinking?.tier,capabilities)
+        placement=statePlacement(session.model.family,session.reasoning?.tier,capabilities)
       }
       // What the critic costs is counted from here (agent#10).
       const before = { used: context.execution.state.used, rows: (context.execution.state.completions ?? []).length }
       // A different critic binding owns its slot, even at the author's family and tier.
       // The identical binding retains learned refusals; no decision tier stays omitted.
       const criticTier = decided.reasoning as ThinkingTier | undefined
-      const retiered = criticTier !== session.thinking?.tier || criticBinding !== context.connection('author')
+      const retiered = criticTier !== session.reasoning?.tier || criticBinding !== context.connection('author')
       if(retiered){
         slot = openThinking(withThinkingTier(session, criticTier), capabilities.reasoning)
         tier = sdkThinking(session.model.family, slot.members())

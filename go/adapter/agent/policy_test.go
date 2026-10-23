@@ -76,6 +76,92 @@ func TestOmittedReasoningStaysOmittedAcrossResume(t *testing.T) {
 	}
 }
 
+func TestDroppedTableDefaultsStayOmittedAcrossAgentResume(t *testing.T) {
+	raw, err := os.ReadFile("../../../contract/vectors/providers/reasoning-omission.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vector struct {
+		Dropped []struct {
+			Name, Role, Capability, Raw string
+			Supported                   []string
+		}
+	}
+	if err := json.Unmarshal(raw, &vector); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range vector.Dropped {
+		if row.Capability != "agent" {
+			continue
+		}
+		t.Run(row.Name, func(t *testing.T) {
+			runOnce := func(saved *contract.Checkpoint) ([]adapter.AgentRequest, []contract.RunEvent) {
+				var sent []adapter.AgentRequest
+				var events []contract.RunEvent
+				emit := func(e contract.RunEvent) { events = append(events, e) }
+				g := gate.New(gate.Options{Runtime: emptyRuntime, Granted: gate.Ceiling, Emit: emit})
+				offer, openErr := g.Open(context.Background(), nil)
+				if openErr != nil {
+					t.Fatal(openErr)
+				}
+				policy := runcontext.PolicyLayer{"models": map[string]any{row.Role: map[string]any{"discovered": map[string]any{"reasoning": map[string]any{"supported": row.Supported}}}}}
+				critic, testPrompt := "off", ""
+				if row.Role == "critic" {
+					critic, testPrompt = "on", "Refute it."
+				}
+				run := &adapter.Run{ModelName: "connected", Prompt: "Draft a pack.", TestPrompt: testPrompt, Critic: critic, Policy: policy, Gate: g.Calls(), Tools: offer.Tools, Emit: emit, AllowConversation: row.Role != "critic",
+					Context: &runcontext.Input{CurrentRequest: &runcontext.CurrentRequest{Message: "Draft a pack.", Input: "Draft a pack."}, Execution: saved},
+					Agent: &adapter.Agent{Model: "connected", Effort: row.Raw, Run: func(ctx context.Context, request adapter.AgentRequest, callbacks adapter.AgentCallbacks) error {
+						sent = append(sent, request)
+						text := "Done."
+						if row.Role == "critic" {
+							text = "```json\n{\"proposal\":{\"document\":{\"id\":\"pack\"},\"unknowns\":[]}}\n```"
+							if request.Phase == "critic" {
+								text = "No counterexample found."
+							}
+						}
+						return callbacks.Event(ctx, adapter.AgentEvent{Type: "message", ID: request.Phase + "-reply", Text: text, Phase: "final"})
+					}}}
+				if runErr := agent.New().Run(context.Background(), run); runErr != nil {
+					t.Fatal(runErr)
+				}
+				return sent, events
+			}
+			first, events := runOnce(nil)
+			var saved *contract.Checkpoint
+			for _, event := range events {
+				if event.ExecutionCheckpoint != nil && saved == nil {
+					checkpoint := event.ExecutionCheckpoint.Checkpoint
+					saved = &checkpoint
+				}
+				if event.CriticDecided != nil && row.Role == "critic" && event.CriticDecided.Reasoning != nil {
+					t.Fatalf("critic decision restored %q", *event.CriticDecided.Reasoning)
+				}
+			}
+			if saved == nil {
+				t.Fatal("no resumable checkpoint")
+			}
+			selected := first[0]
+			if row.Role == "critic" {
+				selected = first[1]
+			}
+			if selected.Effort != "" {
+				t.Fatalf("request restored effort %q", selected.Effort)
+			}
+			member := saved.Policy["models."+row.Role+".reasoning"]
+			if len(member.Value) != 0 || member.Source == nil || *member.Source != "model-default" {
+				t.Fatalf("checkpoint member: %+v", member)
+			}
+			resumed, _ := runOnce(saved)
+			firstJSON, _ := json.Marshal(first)
+			resumedJSON, _ := json.Marshal(resumed)
+			if !bytes.Equal(firstJSON, resumedJSON) {
+				t.Fatalf("resume requests changed:\n%s\n%s", firstJSON, resumedJSON)
+			}
+		})
+	}
+}
+
 func TestPolicyLegacyCollisionsRecordAndWireAgree(t *testing.T) {
 	raw, err := os.ReadFile("../../../contract/vectors/policy/legacy-collisions.json")
 	if err != nil {

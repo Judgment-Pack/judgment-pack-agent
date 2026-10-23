@@ -38,7 +38,7 @@ import { sourceMessage } from './host'
  * configures.
  */
 import type { EndpointKind, ThinkingTier } from './host'
-import type { AssistantEvent, AssistantSession } from './engine'
+import type { AssistantEvent, RequestAssistantSession } from './engine'
 import type { ReasoningCapability, ReasoningKind } from './capabilities'
 
 /**
@@ -529,8 +529,8 @@ const IGNORED_PARAMETER = sourceMessage('its capability record says the endpoint
  * ignores, sends no member at any tier. Absent, the family's first dialect, as
  * before there was a record.
  */
-export function openThinking(session: Pick<AssistantSession, 'thinking' | 'model'>, reasoning?: ReasoningCapability): ThinkingSlot {
-  const tier = session.thinking?.tier
+export function openThinking(session: Pick<RequestAssistantSession, 'reasoning' | 'model'>, capability?: ReasoningCapability): ThinkingSlot {
+  const tier = session.reasoning?.tier
   if (tier === undefined) {
     return {
       tier,
@@ -544,8 +544,8 @@ export function openThinking(session: Pick<AssistantSession, 'thinking' | 'model
     }
   }
   /** The record leaves nothing to ask with: no parameter, or one the endpoint ignores. */
-  const silent = reasoning !== undefined && (reasoning.kind === 'none' || reasoning.ignored === true)
-  let dialect = reasoning === undefined || reasoning.kind === 'none' ? firstDialect(session.model.family) : dialectFor(reasoning.kind)
+  const silent = capability !== undefined && (capability.kind === 'none' || capability.ignored === true)
+  let dialect = capability === undefined || capability.kind === 'none' ? firstDialect(session.model.family) : dialectFor(capability.kind)
   let unavailable = silent && tier !== 'off'
   let always = false
   /**
@@ -665,12 +665,12 @@ export function openThinking(session: Pick<AssistantSession, 'thinking' | 'model
     },
     opening() {
       if (!silent || tier === 'off' || announced) return null
-      return notice('unavailable', reasoning?.kind === 'none' ? NO_PARAMETER : IGNORED_PARAMETER)
+      return notice('unavailable', capability?.kind === 'none' ? NO_PARAMETER : IGNORED_PARAMETER)
     }
   }
 }
 
 /** Retier one phase without turning an omitted preference into an explicit off request. */
-export function withThinkingTier<T extends Pick<AssistantSession, 'thinking' | 'model'>>(session: T, tier: ThinkingTier | undefined): T {
-  return {...session, thinking: tier === undefined ? undefined : normalize(tier, session.model.family)}
+export function withThinkingTier<T extends Pick<RequestAssistantSession, 'reasoning' | 'model'>>(session: T, tier: ThinkingTier | undefined): T {
+  return {...session, reasoning: tier === undefined ? undefined : normalize(tier, session.model.family)}
 }

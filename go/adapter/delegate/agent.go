@@ -177,29 +177,30 @@ func (c *coordinator) tracked(run adapter.AgentRun, m *meter) adapter.AgentRun {
 // parentAgent is the parent's capability: the host's function tracked on the account, and each
 // invocation counted and made durable before it is dispatched.
 func (c *coordinator) parentAgent() *adapter.Agent {
-	base := c.run.Agent
-	return &adapter.Agent{Model: base.Model, Effort: base.Effort, Enabled: base.Enabled, Run: c.tracked(base.Run, nil),
-		Begin: func(ctx context.Context, _ adapter.AgentRequest) error {
-			if err := c.account.released(ctx); err != nil {
-				return err
-			}
-			if err := c.admitRun(nil); err != nil {
-				return err
-			}
-			c.emitMu.Lock()
-			if c.handoff != nil && c.handoff.state == "answered" {
-				c.handoff.state = "continued"
-			}
-			c.emitMu.Unlock()
-			return c.durable(ctx)
-		}}
+	held := adapter.AdmissionAgent(c.run.Agent)
+	held.Run = c.tracked(held.Run, nil)
+	held.Begin = func(ctx context.Context, _ adapter.AgentRequest) error {
+		if err := c.account.released(ctx); err != nil {
+			return err
+		}
+		if err := c.admitRun(nil); err != nil {
+			return err
+		}
+		c.emitMu.Lock()
+		if c.handoff != nil && c.handoff.state == "answered" {
+			c.handoff.state = "continued"
+		}
+		c.emitMu.Unlock()
+		return c.durable(ctx)
+	}
+	return held
 }
 
 // childAgent is a child's capability: the model the host named for children, the host's function
 // tracked on the account, and its invocation dispatched only after every earlier one has returned,
 // counted under its task and made durable first.
 func (c *coordinator) childAgent(task *contract.DelegatedTask, model string, m *meter, base *adapter.Agent, definition *runcontext.Subagent) *adapter.Agent {
-	return &adapter.Agent{Model: base.Model, Effort: base.Effort, Enabled: base.Enabled, Delegated: model, Run: c.tracked(base.Run, m),
+	return &adapter.Agent{Family: base.Family, Tiers: base.Tiers, Model: base.Model, Enabled: base.Enabled, Delegated: model, Run: c.tracked(base.Run, m),
 		Begin: func(ctx context.Context, _ adapter.AgentRequest) error {
 			if err := c.account.released(ctx); err != nil {
 				return err

@@ -117,6 +117,36 @@ func TestPolicyTable(t *testing.T) {
 			}
 		}
 	})
+	t.Run("dropped table defaults stay absent", func(t *testing.T) {
+		raw, err := os.ReadFile("../../contract/vectors/providers/reasoning-omission.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var vector struct {
+			Dropped []struct {
+				Name, Role, Capability, Raw string
+				Supported                   []any
+				Resolved                    PolicyMember
+			}
+		}
+		if err = json.Unmarshal(raw, &vector); err != nil {
+			t.Fatal(err)
+		}
+		for _, row := range vector.Dropped {
+			t.Run(row.Name, func(t *testing.T) {
+				tableModels := map[string]any{"author": map[string]any{"model": "model-a", "reasoning": row.Raw}}
+				if row.Role == "critic" {
+					tableModels["critic"] = map[string]any{"model": "model-a"}
+				}
+				run := PolicyLayer{"models": map[string]any{row.Role: map[string]any{"discovered": map[string]any{"reasoning": map[string]any{"supported": row.Supported}}}}}
+				got, resolveErr := ResolvePolicy(run, nil, PolicyLayer{"models": tableModels}, PolicyHost{Connections: []string{"model-a"}, Agent: row.Capability == "agent", Requests: 16})
+				member := got.Members["models."+row.Role+".reasoning"]
+				if resolveErr != nil || !reflect.DeepEqual(member, row.Resolved) {
+					t.Fatalf("got %+v, want %+v: %v", member, row.Resolved, resolveErr)
+				}
+			})
+		}
+	})
 	t.Run("discovery vector", func(t *testing.T) {
 		raw, err := os.ReadFile("../../contract/vectors/policy/discovery.json")
 		if err != nil {

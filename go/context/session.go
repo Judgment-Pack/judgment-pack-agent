@@ -272,12 +272,6 @@ func NewSessionContext(session Session) (*SessionContext, error) {
 	out.Review = NewCriticSwitch(settings, table, forced, func() *Execution { return out.Execution.State })
 	out.Execution.criticMu = &out.Review.mu
 	out.existingPack = session.ExistingPack
-	switch {
-	case session.Model != nil:
-		out.authorTier = session.Model.Thinking
-	case session.Agent != nil:
-		out.authorTier = session.Agent.Effort
-	}
 	out.authorTier, _ = out.ResolvedPolicy["models.author.reasoning"].Value.(string)
 	for _, tool := range session.HostTools {
 		if tool.ContextPolicy != nil && tool.ContextPolicy.Reference {

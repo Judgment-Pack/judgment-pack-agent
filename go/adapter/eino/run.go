@@ -33,7 +33,7 @@ var errWaiting = errors.New("waiting for input")
 // runState is one run: what the host handed it, the context the boundary opened, and everything
 // the turn holds between requests.
 type runState struct {
-	run          *adapter.Run
+	run          *adapter.RequestSession
 	family       wire.EndpointKind
 	capabilities wire.ModelCapabilities
 	opened       *runcontext.Run
@@ -63,7 +63,7 @@ type runState struct {
 
 // Run is the adapter: one run of the contract's turn, its loop on Eino's ChatModelAgent.
 func Run(ctx context.Context, run *adapter.Run) error {
-	r := &runState{run: run, family: wire.EndpointKind(run.Wire)}
+	r := &runState{run: adapter.NewRequestSession(run, nil), family: wire.EndpointKind(run.Wire)}
 	host := func(wire.EndpointKind, string) *wire.Value {
 		if run.Capabilities == nil {
 			return wire.Obj()
@@ -105,6 +105,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 	if named.Child == "" {
 		named.Child = run.ModelName
 	}
+	rawReasoning := adapter.ReadAdmissionReasoning(run)
 	session := runcontext.Session{
 		Prompt:            run.Prompt,
 		TestPrompt:        run.TestPrompt,
@@ -114,7 +115,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		AllowConversation: run.AllowConversation,
 		Interactive:       run.Interactive,
 		CallTool:          r.gatedCall,
-		Model:             &runcontext.ModelSession{Family: run.Wire, Model: run.ModelName, Budget: budgetOf(capabilities), ToolSchemas: string(capabilities.ToolSchemas), Thinking: run.Thinking},
+		Model:             &runcontext.ModelSession{Family: run.Wire, Model: run.ModelName, Budget: budgetOf(capabilities), ToolSchemas: string(capabilities.ToolSchemas), Thinking: rawReasoning.Thinking},
 		Host:              run.Host,
 		Skills:            run.Skills,
 		Subagents:         run.Subagents, ChildDefinition: run.ChildDefinition,
@@ -122,7 +123,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		Critic: run.Critic,
 		Policy: run.Policy, PolicyProject: run.PolicyProject, TaskClass: run.TaskClass, PaceUsed: run.PaceUsed, PolicyLegacyModels: &named, PolicyFamilies: adapter.PolicyFamilies(run, named), PolicyConnections: append(adapter.PolicyConnectionIDs(run), named.Critic, named.Child), PolicyRequests: run.PolicyRequests,
 		CriticProject:     run.CriticProject,
-		CriticReasoning:   run.CriticReasoning,
+		CriticReasoning:   rawReasoning.Critic,
 		ExistingPack:      run.ExistingPack,
 		ReviewerAssigned:  run.ReviewerAssigned,
 		AdversarialReview: run.Review,
@@ -144,14 +145,14 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		r.emitAll(runcontext.FailedToOpen(err))
 		return nil
 	}
-	r.run = &local
-	r.family = wire.EndpointKind(local.Wire)
+	r.run = adapter.NewRequestSession(&local, r.sc.ResolvedPolicy)
+	r.family = wire.EndpointKind(r.run.Wire)
 	var override *wire.Value
-	if local.Capabilities != nil {
-		raw, _ := json.Marshal(local.Capabilities)
+	if r.run.Capabilities != nil {
+		raw, _ := json.Marshal(r.run.Capabilities)
 		override, _ = wire.Parse(raw)
 	}
-	capabilities, err = wire.CapabilitiesFor(r.family, local.ModelName, nil, override)
+	capabilities, err = wire.CapabilitiesFor(r.family, r.run.ModelName, nil, override)
 	if err != nil {
 		r.sc.Close()
 		r.emitAll(runcontext.FailedToOpen(err))
@@ -167,8 +168,9 @@ func Run(ctx context.Context, run *adapter.Run) error {
 	r.sc.Execution.UseConnection(r.run.Connection("author"), "author")
 	r.emitAll(r.boundary.Open())
 
-	r.slot = wire.OpenThinking(wire.ThinkingTier(local.Thinking), r.family, &capabilities.Reasoning, capabilities.Tiers, capabilities.FallbackTiers)
-	r.placement = statePlacement(r.family, wire.ThinkingTier(local.Thinking), capabilities)
+	tier := r.run.Reasoning("author")
+	r.slot = wire.OpenThinking(wire.ThinkingTier(tier), r.family, &capabilities.Reasoning, capabilities.Tiers, capabilities.FallbackTiers)
+	r.placement = statePlacement(r.family, wire.ThinkingTier(tier), capabilities)
 	r.listener = &listener{r: r}
 
 	err = r.drive(ctx)
@@ -509,7 +511,7 @@ func (r *runState) imageBounds() wire.ImageBounds {
 }
 
 // fallbackRequest rebuilds model-dependent fields before prompt accounting and dispatch.
-func fallbackRequest(binding adapter.PolicyConnection, tier, suffix string, request wire.ModelRequest) (string, wire.ModelRequest, error) {
+func fallbackRequest(binding adapter.RequestPolicyConnection, tier, suffix string, request wire.ModelRequest) (string, wire.ModelRequest, error) {
 	body, err := wire.Parse(request.Body)
 	if err != nil {
 		return suffix, request, err
