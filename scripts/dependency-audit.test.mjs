@@ -1,4 +1,9 @@
 import assert from 'node:assert/strict'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 import { audit, formatResult, parseReport } from './dependency-audit.mjs'
 
@@ -51,6 +56,37 @@ test('each severity level is a finding at the info threshold', () => {
       moderate: Number(severity === 'moderate'), high: Number(severity === 'high'),
       critical: Number(severity === 'critical') })
   }
+})
+
+test('each report guard refuses malformed evidence in isolation', () => {
+  const cases = [
+    ['entry name', r => { r.vulnerabilities.example.name = 'other' }],
+    ['node string', r => { r.vulnerabilities.example.nodes = [7] }],
+    ['positive source', r => { r.vulnerabilities.example.via[0].source = 0 }],
+    ['advisory name', r => { r.vulnerabilities.example.via[0].name = 7 }],
+    ['advisory severity', r => { r.vulnerabilities.example.via[0].severity = 'unknown' }],
+    ['advisory URL', r => { r.vulnerabilities.example.via[0].url = 7 }],
+    ['advisory range', r => { delete r.vulnerabilities.example.via[0].range }],
+    ['total count', r => { r.metadata.vulnerabilities.total = 2 }],
+  ]
+  for (const [name, change] of cases) { const report = finding(); change(report); assert.equal(run(report, 1).status, 'unavailable', name) }
+  assert.equal(run(finding(), 2).status, 'unavailable', 'nonzero exit status')
+})
+
+test('CLI keeps raw npm output and stderr out of stdout and step summary', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'audit166-cli-'))
+  try {
+    const bin = join(dir, 'bin'); mkdirSync(bin)
+    const npm = join(bin, 'npm')
+    writeFileSync(npm, '#!/usr/bin/env node\nprocess.stdout.write(process.env.PROBE_REPORT);process.stderr.write("PRIVATE_TOKEN");process.exitCode=Number(process.env.PROBE_EXIT)\n', { mode: 0o755 })
+    for (const [name, report, status, exit] of [['clean', clean(), 0, 0], ['findings', finding(), 1, 1], ['unavailable', { error: 'PRIVATE_RESPONSE' }, 2, 2]]) {
+      const summary = join(dir, name + '.md')
+      const input = { ...report, private: 'PRIVATE_RESPONSE' }
+      const result = spawnSync(process.execPath, [fileURLToPath(new URL('./dependency-audit.mjs', import.meta.url))], { encoding: 'utf8', timeout: 15_000, env: { ...process.env, PATH: bin + ':' + process.env.PATH, PROBE_REPORT: JSON.stringify(input), PROBE_EXIT: String(status), GITHUB_STEP_SUMMARY: summary } })
+      assert.equal(result.status, exit, name); assert.equal(result.stderr, ''); assert.match(result.stdout, new RegExp('dependency audit: ' + name))
+      assert.doesNotMatch(result.stdout, /PRIVATE_TOKEN|PRIVATE_RESPONSE/); assert.equal(readFileSync(summary, 'utf8'), result.stdout)
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }) }
 })
 
 test('empty, missing, oversized and malformed evidence refuses without exposing raw data', () => {
