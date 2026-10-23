@@ -65,10 +65,41 @@ export interface ContextInput {acceptedDocuments?:AcceptedDocument[];currentStat
 export interface ExecutionLink {attach(context:SessionContext):void;/** ADR-0006: the delegating run's source gate, which a child's gate shares the report's rows and the changed sources of. */sources?():SourceGate|undefined}
 export interface ContextUsage {inputBytes:number;estimatedInputTokens:number;inputBudgetBytes:number;outputReserveTokens:number;compactions:number;retainedItems:number}
 const encoded=(value:unknown)=>JSON.stringify(value)
+// Only this module can create a delegated role projection. It survives the
+// coordinator's link copies without becoming a serializable policy input.
+const delegatedPolicy=Symbol('delegated-policy')
+type DelegatedPolicy={connection:string;model:string;members:PolicyMembers}
+const delegatedPolicies=new WeakMap<object,DelegatedPolicy>()
+/** @internal Carry an admitted role into the child's fresh policy admission. */
+export function delegatedRoleSession<T extends EngineSession>(session:T,parent:SessionContext,role:string):T{
+ const prefix=`models.${role}.`
+ const selected=parent.resolvedPolicy[prefix+'reasoning']?role:'author'
+ const from=`models.${selected}.`
+ const members=Object.fromEntries(Object.entries(parent.resolvedPolicy).filter(([key])=>key===from+'reasoning'||key.startsWith(from+'discovered.reasoning.')).map(([key,value])=>['models.author.'+key.slice(from.length),structuredClone(value)]))
+ const projection:DelegatedPolicy={connection:session.context?.connection?.connectionId??('model'in session?session.model.model:session.agent.model),model:'model'in session?session.model.model:session.agent.model,members}
+ const binding=parent.connection(role),provider=parent.resolvedPolicy[`models.${role}.provider`]
+ if(binding&&(projection.model!==('model'in binding?binding.model.model:binding.agent.model)||projection.connection!==parent.provider(role).connection))throw new PolicyRefusal('models.author.provider',provider!.layer,'delegated role differs from child admission')
+ const token=Object.freeze({})
+ delegatedPolicies.set(token,projection)
+ const link={...session.context!.link!,[delegatedPolicy]:token}
+ return {...session,thinking:undefined,effort:undefined,criticReasoning:undefined,context:{...session.context,link}}
+}
+const delegatedProjection=(session:EngineSession):DelegatedPolicy|undefined=>{
+ const token=(session.context?.link as (ExecutionLink&{[delegatedPolicy]?:object})|undefined)?.[delegatedPolicy]
+ return token?delegatedPolicies.get(token):undefined
+}
+const delegatedAuthor=(projection:DelegatedPolicy|undefined)=>{
+ if(!projection)return {}
+ const members=projection.members
+ const supported=members['models.author.discovered.reasoning.supported']?.value
+ const defaultValue=members['models.author.discovered.reasoning.default']?.value
+ return {...(members['models.author.reasoning']?.value===undefined?{}:{reasoning:String(members['models.author.reasoning']!.value)}),...(supported===undefined?{}:{discovered:{reasoning:{supported:supported as import('../policy').ReasoningValue[],...(defaultValue===undefined?{}:{default:defaultValue as import('../policy').ReasoningValue})}}})}
+}
 /** Resolve admission against the host's actual connections, also for delegation's critic reserve. */
 export function resolveSessionPolicy(session:EngineSession,engine?:AssistantEngine){
  const identity={...(session.context?.connection?{connection:session.context.connection}:{}),...('model'in session?{family:session.model.family}:{}),model:'model'in session?session.model.model:session.agent.model}
- const authorTier='model'in session?session.thinking?.tier:session.effort
+ const projection=delegatedProjection(session)
+ const authorTier=projection?undefined:'model'in session?session.thinking?.tier:session.effort
  const capabilities='model'in session?capabilitiesFor(session.model):undefined
  const policy=contextPolicy(session.context?.configuration,identity.model,capabilities)
  const current=identity.connection?.connectionId??identity.model
@@ -84,11 +115,21 @@ export function resolveSessionPolicy(session:EngineSession,engine?:AssistantEngi
  const resolved=resolvePolicy(
   {...session.policy, ...(session.taskClass?{taskClass:session.taskClass}:{}),critic:{...(session.critic!==undefined||session.adversarialReview!==undefined?{default:session.critic??(session.adversarialReview?'on':'off')}:{}),...session.policy?.critic},models:{...session.policy?.models,...(session.criticReasoning?{critic:{reasoning:session.criticReasoning,...session.policy?.models?.critic}}:{})}},
   {...session.policyProject,critic:{...(session.criticProject?{default:session.criticProject}:{}),...session.policyProject?.critic}},
-  {...policy,concurrency:{children:'agent'in session?1:named.concurrentRequests??2,requests:named.concurrentRequests??2},models:{author:{model:current,...(authorTier===undefined?{}:{reasoning:authorTier})},critic:{model:named.critic},compactor:{model:current,reasoning:'low'},...Object.fromEntries((session.subagents??[]).filter(s=>s&&typeof s.id==='string').map(s=>[`subagent.${s.id}`,{model:s.model,...(s.reasoning===undefined?{}:{reasoning:s.reasoning})}]))}},
+  {...policy,concurrency:{children:'agent'in session?1:named.concurrentRequests??2,requests:named.concurrentRequests??2},models:{author:{model:current,...(authorTier===undefined?{}:{reasoning:authorTier}),...delegatedAuthor(projection)},critic:{model:named.critic},compactor:{model:current,reasoning:'low'},...Object.fromEntries((session.subagents??[]).filter(s=>s&&typeof s.id==='string').map(s=>[`subagent.${s.id}`,{model:s.model,...(s.reasoning===undefined?{}:{reasoning:s.reasoning})}]))}},
   {connections:Object.keys(bindings),authorConnection:current,families:Object.fromEntries(Object.entries(bindings).map(([id,b])=>[id,'model'in b?capabilitiesFor(b.model).family??(b.model.family==='openai-compatible'?'openai':b.model.family):b.agent.family??'codex'])),agent:'agent'in session,requests:session.policyRequests??named.concurrentRequests??2,paceUsed:session.paceUsed})
  for(const [name,member] of Object.entries(resolved.members))if(name.startsWith('models.')&&name.endsWith('.provider')){
   const selected=bindings[String(member.value)]!
   if(('model'in session)!==('model'in selected))throw new PolicyRefusal(name,member.layer,'connection requires a different capability or wire family')
+ }
+ if(projection){
+  // Admission decides the value and binding first. The handoff may restore only
+  // the provenance of that same value, never override a different admission.
+  if(current!==projection.connection||resolved.members['models.author.provider']?.value!==projection.connection||identity.model!==projection.model||resolved.members['models.author.reasoning']?.value!==projection.members['models.author.reasoning']?.value)throw new PolicyRefusal('models.author.reasoning','table','delegated role differs from child admission')
+  for(const key of Object.keys(resolved.members))if(key.startsWith('models.author.discovered.reasoning.')&&!Object.hasOwn(projection.members,key))throw new PolicyRefusal(key,resolved.members[key]!.layer,'delegated discovery differs from child admission')
+  for(const [key,member] of Object.entries(projection.members)){
+   if(key!=='models.author.reasoning'&&JSON.stringify(resolved.members[key]?.value)!==JSON.stringify(member.value))throw new PolicyRefusal(key,member.layer,'delegated discovery differs from child admission')
+   resolved.members[key]=structuredClone(member)
+  }
  }
  return {identity,capabilities,policy,bindings,named,resolved}
 }

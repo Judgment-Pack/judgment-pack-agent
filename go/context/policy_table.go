@@ -538,9 +538,18 @@ func resolveSessionPolicy(session Session, budget Policy) (ResolvedPolicy, error
 	if session.Agent != nil {
 		tier = session.Agent.Effort
 	}
+	projection := delegatedSessionPolicy(session)
+	if projection != nil {
+		tier = ""
+	}
 	authorRole := map[string]any{"model": current}
 	if tier != "" {
 		authorRole["reasoning"] = tier
+	}
+	if projection != nil {
+		for key, value := range projection.author() {
+			authorRole[key] = value
+		}
 	}
 	table["models"] = map[string]any{"author": authorRole, "compactor": map[string]any{"model": current, "reasoning": "low"}}
 	for _, s := range session.Subagents {
@@ -619,7 +628,11 @@ func resolveSessionPolicy(session Session, budget Policy) (ResolvedPolicy, error
 			requests = *session.PolicyLegacyModels.ConcurrentRequests
 		}
 	}
-	return ResolvePolicy(run, project, table, PolicyHost{Connections: connections, Families: session.PolicyFamilies, AuthorConnection: current, Agent: session.Agent != nil, Requests: requests, PaceUsed: session.PaceUsed})
+	resolved, err := ResolvePolicy(run, project, table, PolicyHost{Connections: connections, Families: session.PolicyFamilies, AuthorConnection: current, Agent: session.Agent != nil, Requests: requests, PaceUsed: session.PaceUsed})
+	if err == nil && projection != nil {
+		err = projection.restore(session, current, &resolved)
+	}
+	return resolved, err
 }
 
 // FailoverRefusal records the boundary; same-family failover is left to issue #104.

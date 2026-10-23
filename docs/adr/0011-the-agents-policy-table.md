@@ -141,3 +141,16 @@ When author reasoning is omitted and discovery is absent, the resolver has no ti
 which to infer a child ceiling; a run-only child or sub-agent tier is therefore admitted
 as it was before discovery admission. A known author tier retains the existing project
 authorization rule.
+
+## Amendment: delegated role admission (2026-10-23)
+
+A delegated child carries its already admitted role's effective reasoning and actual
+discovery evidence into fresh child admission. Raw parent thinking or effort cannot
+restore an omitted value. The internal handoff is bound to the child's selected
+connection and model; fresh admission must agree with its reasoning and discovery
+before the original member provenance is retained. A discovered or table default
+therefore remains a default rather than becoming an explicit run preference.
+
+The Go handoff restored from a checkpoint uses the existing closed checkpoint reader
+before projecting its saved role. It then applies the same fresh child admission and
+consistency checks as a live parent. No wire or checkpoint members are added.

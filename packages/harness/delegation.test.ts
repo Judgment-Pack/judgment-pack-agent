@@ -5,7 +5,7 @@ import { AUTHOR_TEST_TOOLS, DELEGATE_TOOL, DELEGATION_INSTRUCTIONS, MAX_BATCHES,
 import type { AssistantEvent, AssistantSession, Engine, EngineSession, HostTool, McpToolResult } from './engine'
 import { ASSISTANT_TOOLS, configureHarness, type RunIdentity } from './host'
 import { ChatContext, readCacheKey } from './context/chat'
-import { contextualSession } from './context/session'
+import { contextualSession, delegatedRoleSession } from './context/session'
 import { criticDecidedEvent } from './criticSwitch'
 import { codex } from './engines/codex'
 import { vercel } from './engines/vercel'
@@ -19,6 +19,7 @@ import profilesVector from '../../contract/vectors/delegation/profiles.json'
 import continuationVector from '../../contract/vectors/delegation/continuation.json'
 import connectionVector from '../../contract/vectors/delegation/connection-models.json'
 import { subagentDigest, type SubagentDeclaration } from './subagents'
+import type { PolicyMember, PolicyRole } from './policy'
 
 // agent#17: each title its own objective, so tasks of one batch are not identical (an identical task is reused).
 const task=(title='Check evidence',profile='review')=>({title,profile,objective:`Check the supplied claims (${title}).`})
@@ -54,31 +55,70 @@ it('isolates child context and capabilities, then returns the findings to the pa
  expect(writeTool.execute).not.toHaveBeenCalled()
 })
 
-it('dispatches a profile and a declared subagent when resolved reasoning is omitted',async()=>{
- const declared:SubagentDeclaration={id:'auditor',name:'Auditor',purpose:'Check supplied evidence.',instructions:'Use only supplied evidence.',source:{kind:'custom',id:'project',version:'1',trust:'person'},tools:[],skills:[],model:'fixture',reasoning:'low',bounds:{modelRequests:2,agentRuns:1,toolCalls:1,bytes:12000,milliseconds:30000,resultBytes:3000},pinnedDigest:'sha256:'+'0'.repeat(64)}
- declared.pinnedDigest=await subagentDigest(declared)
- for(const profile of ['analyze','auditor']){
-  let children=0
-  const engine:Engine={id:'vercel',async *start(input){
-   const opened=await contextualSession(input)
-   try{
-    if(input.context?.objective){
-     children++
-     expect((input.policy?.models?.author as {reasoning?:unknown}|undefined)?.reasoning,profile).toBeUndefined()
-     yield {type:'message',text:'Child finding.'};yield {type:'end'};return
-    }
-    const role=`models.${profile==='auditor'?'subagent.auditor':'child.analyze'}.reasoning`
-    opened.context.resolvedPolicy[role]={layer:'table',source:'model-default'}
-    const delegate=opened.session.hostTools.find(tool=>tool.name===DELEGATE_TOOL)!
-    await delegate.execute({tasks:[task('Omission',profile)]},input.signal)
-    yield {type:'message',text:'Parent answer.'};yield {type:'end'}
-   }finally{opened.context.close()}
-  }}
-  const events=await collect(withDelegation(engine),apiSession({thinking:undefined,policy:{models:{[profile==='auditor'?'subagent.auditor':'child.analyze']:{model:'fixture'}}},...(profile==='auditor'?{subagents:[declared]}:{})}))
-  expect(children,profile).toBe(1)
-  expect(events.filter(event=>event.type==='error'),profile).toEqual([])
-  expect(results(events)[0],profile).toMatchObject({state:'complete',result:'Child finding.'})
- }
+describe.each(['model','agent'] as const)('delegated %s request reasoning',capability=>{
+ const omitted:PolicyMember={layer:'table',source:'model-default'}
+ const cases:{name:string;author?:PolicyRole;child?:PolicyRole;project?:PolicyRole;raw?:'low';parent:PolicyMember;expected:PolicyMember}[]=[
+  {name:'omits a raw parent default rejected by discovery',raw:'low',author:{discovered:{reasoning:{supported:['high']}}},child:{discovered:{reasoning:{supported:['high']}}},parent:omitted,expected:omitted},
+  {name:'omits a rejected child default while the parent keeps low',raw:'low',child:{discovered:{reasoning:{supported:['high']}}},parent:{value:'low',layer:'table',source:'layer'},expected:omitted},
+  {name:'retains an advertised discovered default',raw:'low',author:{discovered:{reasoning:{default:'high',supported:['high']}}},child:{discovered:{reasoning:{default:'high',supported:['high']}}},parent:{value:'high',layer:'run',source:'discovered'},expected:{value:'high',layer:'run',source:'discovered'}},
+  {name:'retains a supported explicit run preference',raw:'low',author:{reasoning:'low',discovered:{reasoning:{supported:['low','high']}}},child:{reasoning:'low',discovered:{reasoning:{supported:['low','high']}}},parent:{value:'low',layer:'run',source:'layer'},expected:{value:'low',layer:'run',source:'layer'}},
+  {name:'retains a supported explicit project preference',raw:'low',project:{reasoning:'low',discovered:{reasoning:{supported:['low','high']}}},parent:{value:'low',layer:'table',source:'layer'},expected:{value:'low',layer:'project',source:'layer'}},
+  {name:'keeps absent input omitted without discovery',parent:omitted,expected:omitted},
+  {name:'retains a table value without discovery',raw:'low',parent:{value:'low',layer:'table',source:'layer'},expected:{value:'low',layer:'table',source:'layer'}},
+ ]
+ it.each(cases)('$name through profile and declared-subagent admission',async row=>{
+  const declared:SubagentDeclaration={id:'auditor',name:'Auditor',purpose:'Check supplied evidence.',instructions:'Use only supplied evidence.',source:{kind:'custom',id:'project',version:'1',trust:'person'},tools:[],skills:[],model:'fixture',reasoning:'low',bounds:{modelRequests:2,agentRuns:1,toolCalls:1,bytes:12000,milliseconds:30000,resultBytes:3000},pinnedDigest:'sha256:'+'0'.repeat(64)}
+  declared.pinnedDigest=await subagentDigest(declared)
+  for(const profile of ['analyze','auditor']){
+   const role=profile==='auditor'?'subagent.auditor':'child.analyze'
+   const expected:PolicyMember=!row.raw&&profile==='auditor'?{value:'low',layer:'table',source:'layer'}:row.expected.source==='discovered'&&profile==='analyze'?{...row.expected,layer:'table'}:row.expected
+   const observed:{member:PolicyMember;request:unknown;discovery:Record<string,PolicyMember>}[]=[]
+   const engine:Engine={id:capability==='model'?'vercel':'codex',async *start(input){
+    const opened=await contextualSession(input)
+    try{
+     const request='model'in opened.session?opened.session.reasoning?.wire?.members:opened.session.reasoning
+     if(input.context?.objective){
+      observed.push({member:opened.context.resolvedPolicy['models.author.reasoning']!,request,discovery:Object.fromEntries(Object.entries(opened.context.resolvedPolicy).filter(([key])=>key.startsWith('models.author.discovered.')))})
+      yield {type:'message',text:'Child finding.'};yield {type:'end'};return
+     }
+     expect(opened.context.resolvedPolicy['models.author.reasoning'],profile).toEqual(row.parent)
+     expect(opened.context.resolvedPolicy[`models.${role}.reasoning`],profile).toEqual(expected)
+     const parentRequest=structuredClone(request)
+     const delegate=opened.session.hostTools.find(tool=>tool.name===DELEGATE_TOOL)!
+     const first=answered(await delegate.execute({tasks:[task('Reasoning',profile)]},input.signal))
+     await delegate.execute({tasks:[{...task('Continue reasoning',profile),resume:first.tasks[0]!.id}]},input.signal)
+     expect(opened.context.resolvedPolicy['models.author.reasoning'],profile).toEqual(row.parent)
+     expect('model'in opened.session?opened.session.reasoning?.wire?.members:opened.session.reasoning,profile).toEqual(parentRequest)
+     yield {type:'message',text:'Parent answer.'};yield {type:'end'}
+    }finally{opened.context.close()}
+   }}
+   const common={policy:{models:{author:row.author??{},[role]:{model:'fixture',...row.child}}},...(row.project?{policyProject:{models:{[role]:row.project}}}:{}),...(profile==='auditor'?{subagents:[declared]}:{})}
+   const input:EngineSession=capability==='model'?apiSession({...common,thinking:row.raw?normalize(row.raw,'openai-compatible'):undefined}):{prompt:'Parent request',testPrompt:'',tools:[],hostTools:[],callTool:vi.fn(),signal:new AbortController().signal,allowConversation:true,interactive:true,adversarialReview:false,agent:{model:'fixture',run:vi.fn()},effort:row.raw,...common}
+   const events=await collect(withDelegation(engine),input)
+   expect(events.filter(event=>event.type==='error'),profile).toEqual([])
+   expect(observed,profile).toHaveLength(2)
+   for(const child of observed){
+   expect(child.request,profile).toEqual(expected.value===undefined?undefined:capability==='model'?{reasoning_effort:expected.value==='high'?'xhigh':expected.value}:expected.value)
+   expect(child.member,profile).toEqual(expected)
+   const expectedDiscovery=Object.fromEntries(Object.entries(row.child?.discovered?.reasoning??row.project?.discovered?.reasoning??{}).map(([key,value])=>[`models.author.discovered.reasoning.${key}`,{value,layer:row.project?'project':'run',source:'layer'}]))
+   expect(child.discovery,profile).toEqual(expectedDiscovery)
+   }
+   expect(results(events)[0],profile).toMatchObject({state:'complete',result:'Child finding.'})
+  }
+ })
+})
+
+it('refuses a delegated projection whose fresh admission changes its value or binding',async()=>{
+ const opened=await contextualSession(apiSession({thinking:normalize('low','openai-compatible'),policy:{models:{'child.analyze':{model:'fixture'}}}}))
+ try{
+  const base=apiSession({thinking:undefined,policy:{models:{author:{model:'fixture'}}},context:{objective:'Check evidence.',link:{attach(){}}}})
+  const child=delegatedRoleSession(base,opened.context,'child.analyze')
+  await expect(contextualSession({...child,policy:{models:{author:{model:'fixture',reasoning:'high'}}}})).rejects.toThrow('delegated role differs from child admission')
+  await expect(contextualSession({...child,model:{...child.model,model:'changed'},policy:{models:{author:{model:'changed'}}}})).rejects.toThrow('delegated role differs from child admission')
+  await expect(contextualSession({...child,policy:{models:{author:{model:'fixture',discovered:{reasoning:{supported:['low','high']}}}}}})).rejects.toThrow('delegated discovery differs from child admission')
+  const admitted=await contextualSession(child)
+  try{expect(admitted.session.reasoning?.wire?.members).toEqual({reasoning_effort:'low'});expect(admitted.context.resolvedPolicy['models.author.reasoning']).toEqual({value:'low',layer:'table',source:'layer'})}finally{admitted.context.close()}
+ }finally{opened.context.close()}
 })
 
 it('keeps a queued parent steer out of a delegated child and delivers it to the parent',async()=>{
