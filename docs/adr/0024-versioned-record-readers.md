@@ -14,7 +14,11 @@ A positive supported integer above the kind's current version is refused by the 
 `UnsupportedRecordVersion` error before body interpretation. An unknown structural member is
 refused by `UnknownRecordMember`. Their bounded guardrail reasons are respectively
 `record version unsupported` and `record member unsupported`; a malformed input cannot supply
-text for the refusal event. No provider request or tool action follows refused admission.
+text for the refusal event. The unknown-member event detail is the fixed sentence
+`Record contains an unsupported member.` The diagnostic error retains its member pointer
+(`member` in TypeScript, `Member` in Go) and bounded diagnostic message for callers; neither
+is copied into the public refusal event, including startup before an output guard exists.
+No provider request or tool action follows refused admission.
 
 Schema-owned integers use the shared finite IEEE-754 parsed-value domain: integral values
 between -(2^53-1) and 2^53-1, with versions positive. Integral JSON spellings such as 2.0 and

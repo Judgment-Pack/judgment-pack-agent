@@ -66,7 +66,7 @@ func (e *UnknownRecordMember) FailureCode() string {
 	return "stale-state"
 }
 func (e *UnknownRecordMember) Event() RunEvent {
-	return recordRefusal("records", "record member unsupported", e.Error())
+	return recordRefusal("records", "record member unsupported", "Record contains an unsupported member.")
 }
 func recordRefusal(tool, reason, detail string) RunEvent {
 	return StampEvent(RunEvent{Guardrail: &RunEventGuardrail{Type: "guardrail", Tool: tool, Action: "refused", Reason: &reason, Detail: detail}})
@@ -226,7 +226,7 @@ func integerShape(s map[string]any) bool {
 func CheckRecord(kind string, data []byte) error { return checkRecord(kind, data, nil) }
 
 // recordDecodeBytes normalizes only declared integer leaves in a detached decode tree.
-// Arbitrary payload json.Number tokens and the supplied bytes remain untouched.
+// Arbitrary payload bytes (including member order) and the supplied bytes remain untouched.
 func recordDecodeBytes(kind string, data []byte) ([]byte, error) {
 	var normalized []byte
 	if err := checkRecord(kind, data, &normalized); err != nil {
@@ -262,32 +262,36 @@ func checkRecord(kind string, data []byte, normalized *[]byte) error {
 		return errRecord
 	}
 	work := 0
-	var walk func(string, map[string]any, any, string, int, func(any)) error
+	replacements := map[string]string{}
+	var walk func(map[string]any, string, map[string]any, any, string, int) error
 	pointer := func(path, key string) string {
 		return path + "/" + strings.ReplaceAll(strings.ReplaceAll(key, "~", "~0"), "/", "~1")
 	}
-	walk = func(file string, s map[string]any, v any, path string, depth int, set func(any)) error {
+	walk = func(graph map[string]any, file string, s map[string]any, v any, path string, depth int) error {
 		work++
 		if work > 200000 || depth > 64 {
 			return errRecord
 		}
 		if s["$ref"] == "checkpoint.json" && path != "" {
 			raw, _ := json.Marshal(v)
-			if normalized == nil {
-				return CheckRecord("checkpoint", raw)
+			if len(raw) > 4*1024*1024 {
+				return errRecord
 			}
-			raw, err := recordDecodeBytes("checkpoint", raw)
+			version, err := recordVersion("checkpoint", v)
 			if err != nil {
 				return err
 			}
-			decoder := json.NewDecoder(bytes.NewReader(raw))
-			decoder.UseNumber()
-			var child any
-			if err := decoder.Decode(&child); err != nil {
-				return errRecord
+			generation := "current"
+			if version == 1 {
+				generation = "historical"
 			}
-			set(child)
-			return nil
+			nested := recordShapes[generation]
+			// A nested record keeps its own traversal budget, as the TypeScript root reader does.
+			outerWork := work
+			work = 0
+			err = walk(nested, "checkpoint.json", shapeObject(nested["checkpoint.json"]), v, path, 0)
+			work = outerWork
+			return err
 		}
 		if s["$ref"] == "tool-result.json#/$defs/mcpToolResult" {
 			return nil
@@ -302,7 +306,10 @@ func checkRecord(kind string, data []byte, normalized *[]byte) error {
 			}
 			if normalized != nil {
 				f, _ := v.(json.Number).Float64()
-				set(json.Number(strconv.FormatInt(int64(f), 10)))
+				replacement := strconv.FormatInt(int64(f), 10)
+				if v.(json.Number).String() != replacement {
+					replacements[path] = replacement
+				}
 			}
 		}
 		branches := shapeList(s["oneOf"])
@@ -325,7 +332,7 @@ func checkRecord(kind string, data []byte, normalized *[]byte) error {
 				if !shapeMatches(graph, file, shapeObject(b), v) {
 					continue
 				}
-				e := walk(file, shapeObject(b), v, path, depth+1, set)
+				e := walk(graph, file, shapeObject(b), v, path, depth+1)
 				if e == nil {
 					return nil
 				}
@@ -345,7 +352,7 @@ func checkRecord(kind string, data []byte, normalized *[]byte) error {
 		if list, ok := v.([]any); ok {
 			if child := shapeObject(s["items"]); child != nil {
 				for i, x := range list {
-					if e := walk(file, child, x, pointer(path, fmt.Sprint(i)), depth+1, func(v any) { list[i] = v }); e != nil {
+					if e := walk(graph, file, child, x, pointer(path, fmt.Sprint(i)), depth+1); e != nil {
 						return e
 					}
 				}
@@ -400,13 +407,13 @@ func checkRecord(kind string, data []byte, normalized *[]byte) error {
 				}
 			}
 			if found {
-				if e := walk(child.file, child.shape, obj[key], pointer(path, key), depth+1, func(v any) { obj[key] = v }); e != nil {
+				if e := walk(graph, child.file, child.shape, obj[key], pointer(path, key), depth+1); e != nil {
 					return e
 				}
 				continue
 			}
 			if mapped != nil {
-				if e := walk(file, mapped, obj[key], pointer(path, key), depth+1, func(v any) { obj[key] = v }); e != nil {
+				if e := walk(graph, file, mapped, obj[key], pointer(path, key), depth+1); e != nil {
 					return e
 				}
 				continue
@@ -415,17 +422,100 @@ func checkRecord(kind string, data []byte, normalized *[]byte) error {
 		}
 		return nil
 	}
-	if err := walk(file, shapeObject(graph[file]), value, "", 0, func(v any) { value = v }); err != nil {
+	if err := walk(graph, file, shapeObject(graph[file]), value, "", 0); err != nil {
 		return err
 	}
 	if normalized != nil {
-		out, err := json.Marshal(value)
+		out, err := patchRecordIntegers(data, replacements)
 		if err != nil {
 			return errRecord
 		}
 		*normalized = out
 	}
 	return nil
+}
+
+// patchRecordIntegers changes only numeric token spans selected by the structural walk.
+// In particular it never reserializes arbitrary values: retained-context digests bind
+// their original member order, as well as their numeric/string representation.
+func patchRecordIntegers(data []byte, replacements map[string]string) ([]byte, error) {
+	if len(replacements) == 0 {
+		return data, nil
+	}
+	type patch struct {
+		start, end int
+		text       string
+	}
+	patches := map[string]patch{}
+	prefixes := map[string]bool{"": true}
+	for path := range replacements {
+		for at := strings.LastIndex(path, "/"); at > 0; at = strings.LastIndex(path[:at], "/") {
+			prefixes[path[:at]] = true
+		}
+	}
+	var scan func([]byte, string, int) error
+	scan = func(raw []byte, path string, base int) error {
+		if replacement, found := replacements[path]; found {
+			patches[path] = patch{base, base + len(raw), replacement}
+			return nil
+		}
+		if !prefixes[path] {
+			return nil
+		}
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		token, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		delimiter, ok := token.(json.Delim)
+		if !ok {
+			return errRecord
+		}
+		index := 0
+		for decoder.More() {
+			key := fmt.Sprint(index)
+			if delimiter == '{' {
+				token, err := decoder.Token()
+				if err != nil {
+					return err
+				}
+				key, ok = token.(string)
+				if !ok {
+					return errRecord
+				}
+			}
+			var child json.RawMessage
+			if err := decoder.Decode(&child); err != nil {
+				return err
+			}
+			childPath := path + "/" + strings.ReplaceAll(strings.ReplaceAll(key, "~", "~0"), "/", "~1")
+			if err := scan(child, childPath, base+int(decoder.InputOffset())-len(child)); err != nil {
+				return err
+			}
+			index++
+		}
+		return nil
+	}
+	if err := scan(data, "", 0); err != nil {
+		return nil, err
+	}
+	if len(patches) != len(replacements) {
+		return nil, errRecord
+	}
+	ordered := make([]patch, 0, len(patches))
+	for _, p := range patches {
+		ordered = append(ordered, p)
+	}
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].start < ordered[j].start })
+	var out bytes.Buffer
+	cursor := 0
+	for _, p := range ordered {
+		out.Write(data[cursor:p.start])
+		out.WriteString(p.text)
+		cursor = p.end
+	}
+	out.Write(data[cursor:])
+	return out.Bytes(), nil
 }
 
 // StampEvent is the writer boundary; codecs keep historical records unchanged.

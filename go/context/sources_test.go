@@ -682,7 +682,7 @@ func TestIdentityFiguresSurviveCheckpointJSON(t *testing.T) {
 	if err := json.Unmarshal(want.JSON(), &figures); err != nil {
 		t.Fatal(err)
 	}
-	raw := (&Execution{Sources: []contract.ProvenanceSourceFigures{figures}}).Value().JSON()
+	raw := (&Execution{Version: 1, ID: "identity", RequestKey: strings.Repeat("a", 64), Phase: "work", Status: "running", Unit: "model-requests", Limit: 20, Context: contract.CheckpointContext{Scope: "identity"}, Sources: []contract.ProvenanceSourceFigures{figures}}).Value().JSON()
 	var restored contract.Checkpoint
 	if err := json.Unmarshal(raw, &restored); err != nil {
 		t.Fatal(err)

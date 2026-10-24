@@ -163,7 +163,7 @@ describe('model request retries', () => {
     expect(model.requests).toHaveLength(8)
     expect(arrivals).toHaveLength(9)
     expect(elapsedMs).toBeGreaterThanOrEqual(1_000)
-    expect(ofType(events, 'retry')).toEqual([{ type: 'retry', attempt: 1 }])
+    expect(ofType(events, 'retry')).toEqual([{ version: 1, type: 'retry', attempt: 1 }])
     expect(ofType(events, 'error')).toEqual([])
     expect(ofType(events, 'proposal')).toHaveLength(1)
     expect(ofType(events, 'proposal')[0]!.document).toEqual(DRAFT_V2)

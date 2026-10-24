@@ -381,8 +381,19 @@ gets a view of its parent's that shows it its references and what it reads itsel
 
 A tool from a gateway connection, a public MCP server or the person is a host tool whose declaration
 carries `source` (`ToolSource`: `kind` `gateway`, `mcp` or `custom`, `id`, `trust`, and `version` or,
-for an MCP server, the `toolListDigest` the person approved, with `currentDigest()` to check the
-list it serves now). ADR-0019 adds `identity` (`person`, `service` or `connection`, with a
+for an MCP server, the `toolListDigest` the person approved). New registrations supply raw
+`descriptorSnapshot` bytes and required `currentDescriptorSnapshot()`; the full canonical Gateway
+snapshot bytes are the pin, including original `inputSchemaText`, metadata and capture time.
+`descriptorSnapshotDigest` and `readDescriptorSnapshot` are exported from `contract` and the
+`descriptorSnapshot` subpath. A changed, malformed or failed observation refuses every tool of
+that source before execution, including approval and resumed continuation paths. Callbacks must
+observe current descriptors under approved metadata; a fresh capture time requires re-approval.
+They may overlap and run outside observation locks. The host remains responsible for observing
+the server and for validation and authorization. Only host-declared captured names are admitted;
+missing captured schema projects open while the original host schema remains independently
+checked in the package-supported subset. Digest-only declarations are explicitly legacy and keep
+`currentDigest()` behavior. Migrate through a new person-approved snapshot declaration, never by
+rewriting historical records. See ADR-0006 for the exact strict canonical-byte contract. ADR-0019 adds `identity` (`person`, `service` or `connection`, with a
 recognisable label that is never a credential) and `currentIdentity()`; absent identity defaults to
 the connection labelled by the source id. The offer says `runs as: <label>`, every call and result
 carries the pinned identity, and source figures count calls per identity. A changed identity is
@@ -415,7 +426,7 @@ loaded, the source has made
 delegated child's calls count against the same turn), or an act has no approval, held for the review card where it is a
 proposal (`tool_result` `proposed`), and otherwise run under `sourceCallMilliseconds`, its result
 framed and shown whole up to `sourceResultBytes`. The events carry `source`; the checkpoint's
-`sources` counts each source. `toolListDigest` is exported for a host pinning a server's list.
+`sources` counts each source. `toolListDigest` remains exported for legacy server-list pins.
 
 ### Skills (ADR-0009)
 

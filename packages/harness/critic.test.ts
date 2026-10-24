@@ -252,9 +252,9 @@ describe('the critic’s tools are an allow-list of reads (agent#10)', () => {
     expect(events.filter((event) => ['user_question', 'delegation_requested', 'error'].includes(event.type))).toEqual([])
     // The call, the boundary's refusal, the result the model read.
     expect(refusalOf(events, name)).toEqual([
-      { type: 'tool_call', name, args: {} },
-      { type: 'guardrail', tool: name, action: 'refused', detail: expect.stringContaining(`${name} is not one of the tools the critic may call`) },
-      { type: 'tool_result', name, isError: true, text: expect.stringContaining('refused') }
+      { version: 1, type: 'tool_call', name, args: {} },
+      { version: 1, type: 'guardrail', tool: name, action: 'refused', detail: expect.stringContaining(`${name} is not one of the tools the critic may call`) },
+      { version: 1, type: 'tool_result', name, isError: true, text: expect.stringContaining('refused') }
     ])
     expect(ofType(events, 'proposal')).toHaveLength(1)
   })
@@ -270,9 +270,9 @@ describe('the critic’s tools are an allow-list of reads (agent#10)', () => {
     // A name the session serves is refused before any call (review row 5);
     // any other goes to the boundary, which refuses it for the critic.
     expect(refusalOf(events, name)).toEqual([
-      { type: 'tool_call', callId: 'critic-0', name, args: {} },
-      { type: 'guardrail', tool: name, action: 'refused', detail: expect.stringMatching(new RegExp(`^${name} (is not one of the tools the critic may call|is served to this session but was not offered to this run)`)) },
-      { type: 'tool_result', callId: 'critic-0', name, isError: true, text: expect.stringContaining('refused') }
+      { version: 1, type: 'tool_call', callId: 'critic-0', name, args: {} },
+      { version: 1, type: 'guardrail', tool: name, action: 'refused', detail: expect.stringMatching(new RegExp(`^${name} (is not one of the tools the critic may call|is served to this session but was not offered to this run)`)) },
+      { version: 1, type: 'tool_result', callId: 'critic-0', name, isError: true, text: expect.stringContaining('refused') }
     ])
     expect(answers).toEqual([{ isError: true, text: expect.stringContaining('refused') }])
     expect(ofType(events, 'proposal')).toHaveLength(1)
@@ -887,7 +887,7 @@ describe('the proposal and figures vectors are what the engines emit (agent#10 r
     const events = engine === 'vercel'
       ? (await vercelTurn({ answer: () => streamed(sseTurn({ text: answer })) })).events
       : (await codexTurn({ script: async (bridge) => { bridge.started(); bridge.say(answer); bridge.end() } })).events
-    expect(work(events)).toEqual(unreadable.items)
+    expect(work(events)).toEqual(unreadable.items.map(event=>({...event,version:1})))
   })
 
   it('proposal/critic-unfinished.json: vercel, the critic’s request answered 503', async () => {
@@ -897,7 +897,7 @@ describe('the proposal and figures vectors are what the engines emit (agent#10 r
         ? new Response(JSON.stringify({ error: { message: 'busy' } }), { status: 503, headers: { 'content-type': 'application/json' } })
         : streamed(sseTurn({ text: answer }))
     })
-    expect(work(events)).toEqual(criticUnfinished.items)
+    expect(work(events)).toEqual(criticUnfinished.items.map(event=>({...event,version:1})))
   })
 
   it('critic/figures.json: what each engine’s critique carries', async () => {

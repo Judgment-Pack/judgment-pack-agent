@@ -240,7 +240,7 @@ describe('the question pause', () => {
     expect(ofType(ran.events, 'tool_result')).toEqual([])
     expect(ofType(ran.events, 'error')).toEqual([])
     expect(ran.requests).toHaveLength(1)
-    expect(ran.events.at(-1)).toEqual({ type: 'end' })
+    expect(ran.events.at(-1)).toEqual({ version: 1, type: 'end' })
   })
 
   it('answers a malformed one with a failed result naming the field, and the model asks again in the same turn', async () => {
@@ -306,7 +306,7 @@ describe('the relay', () => {
     expect(seen).toHaveLength(1)
     expect(ofType(events, 'retry')).toEqual([])
     expect(ofType(events, 'error')).toEqual([expect.objectContaining({ failure: expect.objectContaining({ code: 'authentication', status: 401, source: 'model' }) })])
-    expect(events.at(-1)).toEqual({ type: 'end' })
+    expect(events.at(-1)).toEqual({ version: 1, type: 'end' })
   })
 })
 

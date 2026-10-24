@@ -322,6 +322,7 @@ async function toolsPage(page) {
   const EFFECT_CLASSES = await page.use('toolSources', 'EFFECT_CLASSES')
   const APPROVAL_DEFAULT = await page.use('toolSources', 'APPROVAL_DEFAULT')
   const SOURCE_ID = await page.use('toolSources', 'SOURCE_ID')
+  const SNAPSHOT_BYTES = await page.use('descriptorSnapshot', 'DESCRIPTOR_SNAPSHOT_BYTES')
   const NAME_BYTES = await page.use('toolSources', 'NAME_BYTES')
   const PROPOSE_PACK_TOOL = await page.use('engines/contract', 'PROPOSE_PACK_TOOL')
   const DELEGATE_TOOL = await page.use('delegationContract', 'DELEGATE_TOOL')
@@ -409,7 +410,16 @@ async function toolsPage(page) {
     '## Tool sources',
     '',
     `Kinds a host declares: ${DECLARED_SOURCE_KINDS.map((k) => code(k)).join(', ')}; the record also carries ${code('runtime')} (the Runtime's own row) and ${code('exchange')} (a skill from a Judgment Exchange entry, see [skills.md](skills.md)). Trust classes: ${TRUST_CLASSES.map((k) => code(k)).join(', ')}. A source's id matches ${code(SOURCE_ID.source)}; a wire name is at most ${NAME_BYTES} characters.`,
-    nodeSection('### The source record', sourceRecord, 'tool-offer.json')
+    nodeSection('### The source record', sourceRecord, 'tool-offer.json'),
+    '### Gateway descriptor snapshot pins',
+    '',
+    `New MCP registrations supply approved raw UTF-8 descriptorSnapshot bytes (Go DescriptorSnapshot), their complete sha256 pin as toolListDigest, and required currentDescriptorSnapshot (Go CurrentDescriptorSnapshot). readDescriptorSnapshot and descriptorSnapshotDigest are public helpers. A snapshot is at most ${SNAPSHOT_BYTES} bytes and must match Gateway SPEC 1.1 canonical bytes: Unicode code-point key order, strict UTF-8, no lone surrogate, duplicate member, noninteger numeric spelling or trailing text. Agent record canonicalization is unchanged. inputSchemaText stays opaque original text in the pin.`,
+    '',
+    'Only host-declared captured tool names are admitted; an uncaptured name or wrong digest withholds that source whole. Offered descriptors derive from captured candidates; absent schema projects open while the original host schema is independently checked in the package-supported subset. The host executor retains every other validation and authorization rule. Snapshot platform/server metadata does not replace the local source id or execution identity.',
+    '',
+    'The observer reports current server descriptor content under the approved metadata before ordinary calls, approval decisions and approved continuations. Binding, endpoint, capturedAt, policy and server identity are pinned: a fresh capture timestamp requires re-approval. Agent does not independently verify the host observer. Observers may overlap and run outside observation locks; they must not recursively invoke source tools. A changed, malformed or failed observation latches refusal for the source within the run; an older overlapping observation cannot clear it.',
+    '',
+    'Absent descriptorSnapshot explicitly selects legacy list-pin behavior with toolListDigest/ToolListDigest and currentDigest/CurrentDigest. Snapshot mode cannot also supply the legacy observer; malformed supplied snapshots never fall back. Migrate through a newly person-approved snapshot declaration, and re-supply its observer on resume. Historical checkpoint and event bytes stay unchanged; this change adds no persisted record member. See ADR-0006 and contract/vectors/tool-offer/descriptor-snapshot.json.'
   )
 }
 
@@ -781,6 +791,7 @@ async function recordsPage(page) {
     seeAlso('policy.md', 'checkpoint.md', 'events.md', 'reasons.md'),
     'The host owns storage and deletion. The package writes self-describing records, refuses expired checkpoints and exports only records the host supplies; it has no store.',
     'ADR-0024: writers use checkpoint version 2 and event/policy version 1. Readers also accept checkpoint 1 and historical events/policy layers with no version. Newer versions and unknown structural members are refused by name. Historical reads and exports preserve the supplied version and lifecycle metadata; a resumed snapshot writes the current checkpoint version without extending retention.',
+    'UnknownRecordMember keeps its member pointer and bounded message on the diagnostic error. Public refusal events use fixed input-independent detail, including startup before an output guard exists.',
     page.rootOf('export.json', '## The export manifest'),
     page.nodeOf('export.json', 'record'),
     page.nodeOf('provenance.json', 'recordDigest'),

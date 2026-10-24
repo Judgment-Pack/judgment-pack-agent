@@ -7621,7 +7621,17 @@ func (v ToolOfferSkillCatalogueEntry) MarshalJSON() ([]byte, error) {
 // delegation), or delegation on anything but a read, is refused before any request
 // (configuration). A declaration whose name is a Runtime tool's (runtimeCeiling, and the Runtime
 // tools kept off it), a reserved name, load_tool or propose_pack is withheld from the offer with a
-// guardrail refused event: a Runtime's tools reach the model only through the gate.
+// guardrail refused event: a Runtime's tools reach the model only through the gate. Snapshot mode
+// (agent#168) supplies descriptorSnapshot and currentDescriptorSnapshot on the in-process
+// ToolSource, not on the recorded sourceRecord; neither raw bytes nor callbacks are recorded.
+// These members are MCP-only and must appear together; legacy currentDigest cannot be combined
+// with snapshot mode. Offered descriptions and schemas come from captured candidates, with absent
+// descriptions empty and absent schemas projecting an open object. Uncaptured tool names are
+// refused, a stricter admission boundary than a Gateway binding whose tool descriptors all fell
+// back. The original host schema remains an independent argument constraint in the
+// package-supported subset, and the original host execute and approval functions retain all other
+// validation and grants. Local source id and execution identity remain host records, distinct from
+// the snapshot platform/server metadata.
 type ToolOfferSourceDeclaration struct {
 	Name          string                          `json:"name"`
 	Description   string                          `json:"description"`
@@ -7665,13 +7675,14 @@ func (v ToolOfferSourceDeclaration) MarshalJSON() ([]byte, error) {
 // events (with receipt on a result where the host's answer gave one), and counts the source in the
 // run report (provenance.json#/$defs/sourceFigures). gateway: a gateway connection the person
 // configured (Databricks, Azure DevOps, Drive), which may give a receipt for each call; mcp: a
-// public MCP server the host connected, whose tool list is pinned by digest at connection time;
-// custom: a tool the person created; exchange (ADR-0009): a skill whose bytes the host fetched
-// from a Judgment Exchange entry, the entry's id and version the record's id and version, which a
-// host tool may not declare. runtime is the Runtime's own row in the run report: its tools come
-// through tools/list behind the gate, carry no declaration, and a host tool declared with kind
-// runtime is refused. Either version or toolListDigest is present; mcp carries toolListDigest.
-// Closed: the package refuses another member before any request (configuration).
+// public MCP server the host connected, whose approved descriptor snapshot (or explicit legacy
+// tool list) is pinned by digest at connection time; custom: a tool the person created; exchange
+// (ADR-0009): a skill whose bytes the host fetched from a Judgment Exchange entry, the entry's id
+// and version the record's id and version, which a host tool may not declare. runtime is the
+// Runtime's own row in the run report: its tools come through tools/list behind the gate, carry no
+// declaration, and a host tool declared with kind runtime is refused. Either version or
+// toolListDigest is present; mcp carries toolListDigest. Closed: the package refuses another
+// member before any request (configuration).
 type ToolOfferSourceRecord struct {
 	Kind           string             `json:"kind"`
 	ID             string             `json:"id"`

@@ -16,7 +16,7 @@ export class UnsupportedRecordVersion extends Error {
 export class UnknownRecordMember extends Error {
  get failureCode(){return this.kind==='policy'?'configuration':'stale-state'}
  constructor(readonly member:string,readonly kind:RecordKind='checkpoint'){super(`Unknown record member: ${member.slice(0,256)}.`);this.name='UnknownRecordMember'}
- event(){return {version:1 as const,type:'guardrail' as const,tool:'records',action:'refused' as const,reason:'record member unsupported' as const,detail:this.message}}
+ event(){return {version:1 as const,type:'guardrail' as const,tool:'records',action:'refused' as const,reason:'record member unsupported' as const,detail:'Record contains an unsupported member.'}}
 }
 export class InvalidRecord extends Error {constructor(){super('Record is invalid.');this.name='InvalidRecord'}}
 const invalid=():never=>{throw new InvalidRecord()} // fixed text, independent of supplied values
@@ -91,4 +91,15 @@ export function checkRecordVersion(kind:RecordKind,value:unknown):void{versionOf
 export function readPolicyLayer(value:unknown):PolicyLayer{checkRecord('policy',value);return structuredClone(value) as PolicyLayer}
 /** Internal unversioned event bodies become current records at the delivery boundary. */
 export function writeRunEvent<T extends AssistantEvent>(event:T):T&{version:1}{return {...event,version:1}}
-export async function* versionEvents(events:AsyncIterable<AssistantEvent>):AsyncGenerator<AssistantEvent>{for await(const event of events)yield writeRunEvent(event)}
+export function versionEvents(events:AsyncIterable<AssistantEvent>):AsyncIterable<AssistantEvent>{
+ return {[Symbol.asyncIterator](){
+  const source=events[Symbol.asyncIterator]()
+  const stamp=(step:IteratorResult<AssistantEvent>):IteratorResult<AssistantEvent>=>step.done?step:{value:writeRunEvent(step.value),done:false}
+  // Forward closing immediately: an async generator would queue it behind a pending next().
+  return {
+   async next(value?:unknown){return stamp(await source.next(value))},
+   async return(value?:unknown){return source.return?stamp(await source.return(value)):{value,done:true as const}},
+   async throw(cause?:unknown){if(source.throw)return stamp(await source.throw(cause));await source.return?.();throw cause}
+  }
+ }}
+}

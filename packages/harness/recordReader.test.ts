@@ -60,12 +60,50 @@ describe('versioned record readers',()=>{
   const value={...checkpoint.items[0],used:1,completions:[{request:1,phase:'work',result:{finishReason:'stop'},connection:'primary',role:'author'}]}
   expect(readExecution(value)).toEqual(value)
  })
+ it('keeps a synchronous iterator failure as a rejected read',async()=>{
+  const cause=Error('source failed')
+  const source={ [Symbol.asyncIterator](){return {next(){throw cause}}} }
+  const iterator=versionEvents(source)[Symbol.asyncIterator]()
+  await expect(iterator.next()).rejects.toBe(cause)
+ })
+ it.each(['return','throw'] as const)('forwards %s immediately while an event read is pending',async method=>{
+  let release!:(step:IteratorResult<import('./engine').AssistantEvent>)=>void
+  const pending=new Promise<IteratorResult<import('./engine').AssistantEvent>>(resolve=>{release=resolve})
+  const calls:string[]=[]
+  const cause=Error('consumer closed')
+  const source={
+   [Symbol.asyncIterator](){return this},
+   next:()=>{calls.push('next');return pending},
+   return:()=>{calls.push('return');release({done:true,value:undefined});return Promise.resolve({done:true as const,value:undefined})},
+   throw:(error?:unknown)=>{calls.push('throw');release({done:true,value:undefined});return Promise.reject(error)}
+  }
+  const iterator=versionEvents(source)[Symbol.asyncIterator](),read=iterator.next()
+  const closed=method==='return'?iterator.return!():iterator.throw!(cause)
+  expect(calls).toEqual(['next',method]) // no turn of the event loop or pending read is needed to close
+  expect(await read).toEqual({done:true,value:undefined})
+  if(method==='return')expect(await closed).toEqual({done:true,value:undefined})
+  else await expect(closed).rejects.toBe(cause)
+ })
  it('stamps every event kind and queued/failure notices at the writer seam',async()=>{
   async function* input(){for(const event of events.items)yield readRunEvent(event)}
   const emitted=[];for await(const event of versionEvents(input()))emitted.push(event)
   expect(emitted).toHaveLength(events.items.length);expect(emitted.every(e=>e.version===1)).toBe(true)
   for(const event of emitted)expect(readRunEvent(event)).toEqual(event)
   expect(writeRunEvent({type:'end'})).toEqual({version:1,type:'end'})
+ })
+ it('keeps policy version admission outside the value fallback for every layer',()=>{
+  const host={connections:['primary'],agent:false,requests:2}
+  const table={models:{author:{model:'primary',reasoning:'off'}}}
+  for(const layer of [0,1,2]){
+   for(const version of [0,-1,1.5,null,'1',9007199254740992]){
+    const inputs:[import('./policy').PolicyLayer,import('./policy').PolicyLayer,import('./policy').PolicyLayer]=[{},{},table]
+    inputs[layer]={...inputs[layer],version} as never
+    expect(()=>resolvePolicy(...inputs,host)).toThrow(InvalidRecord)
+   }
+   const inputs:[import('./policy').PolicyLayer,import('./policy').PolicyLayer,import('./policy').PolicyLayer]=[{},{},table]
+   inputs[layer]={version:3,readBytes:1} as never
+   expect(()=>resolvePolicy(...inputs,host)).toThrow(UnsupportedRecordVersion)
+  }
  })
  it('does not turn policy version metadata into an admitted policy value',()=>{
   const host={connections:['primary'],agent:false,requests:2}

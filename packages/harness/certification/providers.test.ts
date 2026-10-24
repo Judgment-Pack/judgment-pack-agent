@@ -114,7 +114,7 @@ for(const engine of [vercel,deepagents,codex])describe(`${engine.id==='codex'?'a
   const {model:primaryModel,effort:primaryEffort,reasoning_effort:primaryReasoning,...primaryBody}=JSON.parse(requests[0]!.body)
   const {model:backupModel,effort:backupEffort,reasoning_effort:backupReasoning,...backupBody}=JSON.parse(requests[1]!.body)
   expect(backupBody).toEqual(primaryBody)
-  expect(events.find(e=>e.type==='connection_switched')).toEqual({type:'connection_switched',role:'author',from:'primary',to:'backup',reason:'unavailable'})
+  expect(events.find(e=>e.type==='connection_switched')).toEqual({ version: 1,type:'connection_switched',role:'author',from:'primary',to:'backup',reason:'unavailable'})
   const usage=events.filter(e=>e.type==='usage')
   expect(usage).toHaveLength(1)
   expect(events.at(-2)).toEqual(usage[0])
@@ -161,7 +161,7 @@ for(const engine of [vercel,deepagents,codex])describe(`${engine.id==='codex'?'a
   const session:EngineSession=engine.id==='codex'?{...common,effort:'high',agent:agent('primary'),policyConnections:{backup:{agent:agent('backup')}}}:{...common,thinking:normalize('off','openai-compatible'),model:model('primary'),policyConnections:{backup:{model:model('backup')}}}
   for await(const event of engine.start(session))events.push(event)
   expect(calls).toEqual(['primary','backup'])
-  expect(events.filter(e=>e.type==='guardrail'&&e.reason==='failover refused')).toEqual([refusals.items[2]])
+  expect(events.filter(e=>e.type==='guardrail'&&e.reason==='failover refused')).toEqual([{...refusals.items[2],version:1}])
  })
  it('20 partial usage preserves wire presence on every model family',async()=>{
   if(engine.id==='codex')return

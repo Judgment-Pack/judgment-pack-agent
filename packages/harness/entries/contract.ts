@@ -33,3 +33,7 @@ export type { Edit, EditType, DraftCheckpoint, AcceptedDocument } from '../edits
 export { EDIT_TOOLS, editSchema } from '../edits'
 
 export {readRunEvent,readPolicyLayer,RECORD_VERSIONS,UnsupportedRecordVersion,UnknownRecordMember} from '../recordReader'
+
+// Shared Gateway descriptor snapshot pins (agent#168).
+export { DESCRIPTOR_SNAPSHOT_BYTES, descriptorSnapshotDigest, readDescriptorSnapshot } from '../descriptorSnapshot'
+export type { DescriptorSnapshot, DescriptorTool } from '../descriptorSnapshot'

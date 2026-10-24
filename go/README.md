@@ -87,7 +87,8 @@ after the unchanged stable prefix.
 ## Tool sources
 
 A tool from a gateway connection, a public MCP server or the person is a `runcontext.HostTool` with
-`Source` (`runcontext.ToolSource`, with `CurrentDigest` for an MCP server's served list, and
+`Source` (`runcontext.ToolSource`, with `DescriptorSnapshot` and `CurrentDescriptorSnapshot` for
+new MCP snapshot pins, `CurrentDigest` for explicit legacy list pins, and
 ADR-0019's `Identity` plus `CurrentIdentity`),
 `EffectClass`, `Approval` and `Approve`, the host's approval policy (`runcontext.ApprovalPolicy`), which
 is handed the call (`runcontext.ApprovalRequest`: the wire name, the tool's own name, the source record
@@ -256,3 +257,16 @@ budget fields to `policy.budget`, and `criticDefault` / `criticReasoningFloor` t
 Any retired member refuses on presence even beside its replacement. Replace every bare-text
 memory answer, including empty text and `MemoryForFunc`, with closed `Memory[]` /
 `MemoryRecordsForFunc`; null/nil/undefined means no answer. See ADR-0014 for the transition matrix.
+
+
+MCP registrations share Gateway's complete canonical descriptor-snapshot byte pin (agent#168).
+Use `runcontext.ReadDescriptorSnapshot` and `DescriptorSnapshotDigest`, and supply approved raw
+bytes plus `CurrentDescriptorSnapshot` on `ToolSource`. The observer must retain approved
+metadata while reporting current descriptor content; a fresh capture timestamp changes the pin.
+Only host-declared captured tool names are admitted. Captured descriptions/schemas determine the
+offer, while host argument validation, effects, approvals, identity and authorization remain in
+force. Observers run outside internal observation locks and may overlap; a failure or change
+stays refused within the run even if an older observation later completes. They must not invoke
+source tools recursively. Digest-only declarations retain legacy behavior. Migration requires a
+new person-approved snapshot declaration; historical record bytes stay unchanged. ADR-0006 states
+the exact raw UTF-8/canonical-byte rules and the host's observation responsibility.
