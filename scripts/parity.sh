@@ -233,6 +233,7 @@ $pkg/memoryLifecycle.test.ts
 $pkg/testing/memory.ts
 $pkg/scripts/zod-consumer.mjs
 $pkg/scripts/body-parser-consumer.mjs
+$pkg/scripts/undici-controls.mjs
 EOF
 }
 

@@ -1,6 +1,7 @@
 // Dependency regressions run with the packed-consumer check.
 import './zod-size.test.mjs'
 import './body-parser.test.mjs'
+import './undici.test.mjs'
 import assert from 'node:assert/strict'
 import {mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs'
 import {tmpdir} from 'node:os'
