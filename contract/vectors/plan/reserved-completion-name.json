@@ -6,10 +6,10 @@
       "package": "packages/harness"
     },
     "files": [
-      "packages/harness/execution/controller.ts",
-      "go/gate/phase.go"
+      "packages/harness/execution/controller.ts"
     ]
   },
+  "description": "The package-reserved completion action name, carried directly by the reservedName contract enum.",
   "items": [
     "complete_plan_step"
   ]

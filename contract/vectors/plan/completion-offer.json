@@ -6,10 +6,10 @@
       "package": "packages/harness"
     },
     "files": [
-      "packages/harness/execution/planActions.ts",
-      "go/context/plan_actions.go"
+      "packages/harness/execution/controller.ts"
     ]
   },
+  "description": "Handwritten completion tool declaration: active-step identity and revision, with evidence or a not-needed reason. Shared behavior is checked by TS and Go plan controls.",
   "items": [
     {
       "name": "complete_plan_step",

@@ -6,10 +6,10 @@
       "package": "packages/harness"
     },
     "files": [
-      "packages/harness/execution/planActions.ts",
-      "go/context/plan_actions.go"
+      "packages/harness/execution/planActions.ts"
     ]
   },
+  "description": "Handwritten shared TS/Go checkpoints covering accepted task lineage, successful evidence closure, not-needed work, drift proposals, decisions, refusal journals and original pin validation.",
   "items": [
     {
       "version": 2,

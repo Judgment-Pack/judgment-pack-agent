@@ -1,7 +1,15 @@
 {
   "schema": "run-report.json",
   "description": "Handwritten v1 report expectations: absent facts, recorded empty facts, explicit zero counts and every intended source. Checkpoint inputs add only the required internal request/context shell. Nested types are the checkpoint types, never redefined here.",
-  "source": {"harness": {"repository": "Judgment-Pack/judgment-pack-agent", "package": "packages/harness"}, "files": ["packages/harness/runReport.ts", "go/context/run_report.go"]},
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/runReport.ts"
+    ]
+  },
   "items": [
     {"version":1,"checkpointVersion":1,"id":"report-minimal","phase":"plan","status":"stopped","unit":"provider-managed","used":0,"limit":1,"grants":[],"plan":[],"explanation":""},
     {

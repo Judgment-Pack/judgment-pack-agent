@@ -6,10 +6,10 @@
       "package": "packages/harness"
     },
     "files": [
-      "packages/harness/execution/planActions.ts",
-      "go/context/plan_actions.go"
+      "packages/harness/execution/planActions.ts"
     ]
   },
+  "description": "Handwritten shared TS/Go plan revision, departure, completion refusal, purpose-bound approval and plan decision events.",
   "items": [
     {
       "type": "plan_revised",

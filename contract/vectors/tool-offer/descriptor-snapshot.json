@@ -1,4 +1,20 @@
 {
+  "description": "Complete-byte Gateway descriptor conformance fixture. Contract items are the fixed approved and changed byte-pin digests; dedicated TS and Go readers validate the unchanged raw snapshot text, refusal expectations and malformed variants retained below.",
+  "schema": "tool-offer.json#/$defs/toolListDigest",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/descriptorSnapshot.ts",
+      "packages/harness/toolSources.ts"
+    ]
+  },
+  "items": [
+    "sha256:f341766dd23377d73751268ec4df352e1da93732648def1ffd89693b3439530e",
+    "sha256:2a83344b27fd759ac58e0d161d9e45b850903a2792b0a1465040de5005df2815"
+  ],
   "gatewayCommit": "17168fc11cac3a9f4947564dfb65b2f239827681",
   "snapshotText": "{\"binding\":\"tickets@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"capturedAt\":\"2026-10-24T01:02:03Z\",\"endpoint\":\"https://tickets.example/mcp\",\"platform\":\"tickets\",\"policy\":1,\"server\":{\"name\":\"tickets-mcp\",\"version\":\"2.4.1\"},\"tools\":{\"close\":{\"inputSchemaText\":\"{\\\"type\\\":\\\"object\\\"}\"},\"search_tickets\":{\"description\":\"Search tickets\",\"inputSchemaText\":\"{ \\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"limit\\\": {\\\"type\\\": \\\"integer\\\", \\\"minimum\\\": 1.0}} }\"},\"�\":{\"description\":\"Replacement letter tool\"},\"𐀀\":{\"description\":\"Linear B tool\"}}}",
   "digest": "sha256:f341766dd23377d73751268ec4df352e1da93732648def1ffd89693b3439530e",
