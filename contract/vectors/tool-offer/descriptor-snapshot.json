@@ -1,0 +1,130 @@
+{
+  "gatewayCommit": "17168fc11cac3a9f4947564dfb65b2f239827681",
+  "snapshotText": "{\"binding\":\"tickets@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"capturedAt\":\"2026-10-24T01:02:03Z\",\"endpoint\":\"https://tickets.example/mcp\",\"platform\":\"tickets\",\"policy\":1,\"server\":{\"name\":\"tickets-mcp\",\"version\":\"2.4.1\"},\"tools\":{\"close\":{\"inputSchemaText\":\"{\\\"type\\\":\\\"object\\\"}\"},\"search_tickets\":{\"description\":\"Search tickets\",\"inputSchemaText\":\"{ \\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"limit\\\": {\\\"type\\\": \\\"integer\\\", \\\"minimum\\\": 1.0}} }\"},\"�\":{\"description\":\"Replacement letter tool\"},\"𐀀\":{\"description\":\"Linear B tool\"}}}",
+  "digest": "sha256:f341766dd23377d73751268ec4df352e1da93732648def1ffd89693b3439530e",
+  "changedText": "{\"binding\":\"tickets@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"capturedAt\":\"2026-10-24T01:02:03Z\",\"endpoint\":\"https://tickets.example/mcp\",\"platform\":\"tickets\",\"policy\":1,\"server\":{\"name\":\"tickets-mcp\",\"version\":\"2.4.1\"},\"tools\":{\"close\":{\"inputSchemaText\":\"{\\\"type\\\":\\\"object\\\"}\"},\"search_tickets\":{\"description\":\"Search all tickets\",\"inputSchemaText\":\"{ \\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"limit\\\": {\\\"type\\\": \\\"integer\\\", \\\"minimum\\\": 1.0}} }\"},\"�\":{\"description\":\"Replacement letter tool\"},\"𐀀\":{\"description\":\"Linear B tool\"}}}",
+  "changedDigest": "sha256:2a83344b27fd759ac58e0d161d9e45b850903a2792b0a1465040de5005df2815",
+  "refusal": {
+    "agentCode": "permission",
+    "agentOutcome": "not-started",
+    "agentDetail": "the tool list tickets serves is no longer the one the person approved (sha256:f341766dd23377d73751268ec4df352e1da93732648def1ffd89693b3439530e); its tools are refused until the person approves the new list, and this call was not run",
+    "gatewayContains": "does not digest to its pin"
+  },
+  "invalid": [
+    {
+      "name": "whitespace",
+      "old": "\"policy\":1",
+      "new": "\"policy\": 1"
+    },
+    {
+      "name": "fractional spelling",
+      "old": "\"policy\":1",
+      "new": "\"policy\":1.0"
+    },
+    {
+      "name": "exponent spelling",
+      "old": "\"policy\":1",
+      "new": "\"policy\":1e0"
+    },
+    {
+      "name": "duplicate member",
+      "old": "\"policy\":1",
+      "new": "\"policy\":1,\"policy\":1"
+    },
+    {
+      "name": "escaped duplicate member",
+      "old": "\"policy\":1",
+      "new": "\"policy\":1,\"pol\\u0069cy\":1"
+    },
+    {
+      "name": "lone surrogate",
+      "old": "Search tickets",
+      "new": "Search \\ud800"
+    },
+    {
+      "name": "unknown member",
+      "old": "\"platform\":\"tickets\"",
+      "new": "\"extra\":1,\"platform\":\"tickets\""
+    },
+    {
+      "name": "unsafe integer",
+      "old": "\"policy\":1",
+      "new": "\"policy\":9007199254740992"
+    },
+    {
+      "name": "unknown policy",
+      "old": "\"policy\":1",
+      "new": "\"policy\":2"
+    },
+    {
+      "name": "wrong canonical codepoint key order",
+      "old": "\"�\":{\"description\":\"Replacement letter tool\"},\"𐀀\":{\"description\":\"Linear B tool\"}",
+      "new": "\"𐀀\":{\"description\":\"Linear B tool\"},\"�\":{\"description\":\"Replacement letter tool\"}"
+    },
+    {
+      "name": "invalid date",
+      "old": "2026-10-24T01:02:03Z",
+      "new": "2026-02-30T01:02:03Z"
+    },
+    {
+      "name": "unpinned binding",
+      "old": "tickets@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "new": "tickets"
+    },
+    {
+      "name": "invalid platform",
+      "old": "\"platform\":\"tickets\"",
+      "new": "\"platform\":\"tickets/path\""
+    },
+    {
+      "name": "platform newer than Unicode 15",
+      "old": "\"platform\":\"tickets\"",
+      "new": "\"platform\":\"𮯰\""
+    },
+    {
+      "name": "invalid endpoint",
+      "old": "https://tickets.example/mcp",
+      "new": "http://tickets.example/mcp"
+    },
+    {
+      "name": "schema object instead of original text",
+      "old": "\"inputSchemaText\":\"{\\\"type\\\":\\\"object\\\"}\"",
+      "new": "\"inputSchemaText\":{\"type\":\"object\"}"
+    },
+    {
+      "name": "empty candidate",
+      "old": "\"close\":{\"inputSchemaText\":\"{\\\"type\\\":\\\"object\\\"}\"}",
+      "new": "\"close\":{}"
+    },
+    {
+      "name": "server without version",
+      "old": "\"name\":\"tickets-mcp\",\"version\":\"2.4.1\"",
+      "new": "\"name\":\"tickets-mcp\""
+    },
+    {
+      "name": "server version not string",
+      "old": "\"version\":\"2.4.1\"",
+      "new": "\"version\":2"
+    },
+    {
+      "name": "policy not integer",
+      "old": "\"policy\":1",
+      "new": "\"policy\":\"1\""
+    },
+    {
+      "name": "tool description not string",
+      "old": "\"description\":\"Search tickets\"",
+      "new": "\"description\":true"
+    },
+    {
+      "name": "tool unknown member",
+      "old": "\"close\":{\"inputSchemaText\":\"{\\\"type\\\":\\\"object\\\"}\"}",
+      "new": "\"close\":{\"inputSchemaText\":\"{\\\"type\\\":\\\"object\\\"}\",\"title\":\"x\"}"
+    },
+    {
+      "name": "missing binding",
+      "old": "\"binding\":\"tickets@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",",
+      "new": ""
+    }
+  ]
+}

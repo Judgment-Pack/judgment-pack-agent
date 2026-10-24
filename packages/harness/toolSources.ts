@@ -1,4 +1,5 @@
 import outputPatterns from './contract/output-patterns.json'
+import { descriptorSnapshotDigest, readDescriptorJSON, readDescriptorSnapshot, type DescriptorSnapshot } from './descriptorSnapshot'
 /**
  * Tool sources (ADR-0006): tools from outside the Runtime, held at the boundary.
  *
@@ -118,7 +119,12 @@ export interface ToolSource extends Omit<SourceRecord, 'tool' | 'receipt' | 'ide
   identity?: SourceIdentity
   /** The identity the connection uses now, checked before each call where the host can report it. */
   currentIdentity?: () => SourceIdentity | Promise<SourceIdentity>
+  /** Legacy list-pin observation; snapshot declarations use currentDescriptorSnapshot instead. */
   currentDigest?: () => string | Promise<string>
+  /** Complete approved canonical Gateway snapshot bytes; absent selects explicit legacy list-pin mode. */
+  descriptorSnapshot?: Uint8Array
+  /** Current descriptors under the approved snapshot metadata; a fresh capture timestamp changes the pin. */
+  currentDescriptorSnapshot?: () => Uint8Array | Promise<Uint8Array>
 }
 
 /** The harness tool that loads a catalogued tool's schema; a reserved name. */
@@ -184,10 +190,11 @@ export interface ListedTool {
 }
 
 /**
- * The digest of a source's tool list (`tool-offer.json#/$defs/toolListDigest`): `sha256:` and the
+ * The legacy digest of a source's tool list (`tool-offer.json#/$defs/toolListDigest`): `sha256:` and the
  * SHA-256 of the canonical JSON of its tools, each `{name, description, inputSchema}` (description
  * `''` where it has none), ordered by name in UTF-16 code units. A host computes it with this when
- * the person approves a server, and again for `currentDigest`.
+ * the person approves a legacy registration, and again for `currentDigest`. New registrations use
+ * `descriptorSnapshotDigest` over complete Gateway snapshot bytes.
  */
 export async function toolListDigest(tools: readonly ListedTool[]): Promise<string> {
   const list = tools
@@ -251,7 +258,7 @@ const credentialLabel = (label: unknown): boolean =>
 function declarationProblem(tool: HostTool): string {
   const source = tool.source as unknown
   if (!object(source)) return 'its source is not an object'
-  const known = ['kind', 'id', 'trust', 'version', 'toolListDigest', 'identity', 'currentIdentity', 'currentDigest']
+  const known = ['kind', 'id', 'trust', 'version', 'toolListDigest', 'identity', 'currentIdentity', 'currentDigest', 'descriptorSnapshot', 'currentDescriptorSnapshot']
   const extra = Object.keys(source).filter((member) => !known.includes(member))
   if (extra.length > 0) return `its source carries ${JSON.stringify(extra[0]!.slice(0, 64))}, which a source record does not name`
   if (source.kind === 'runtime') return "its source is the Runtime, whose tools come through tools/list behind the gate and are never declared"
@@ -265,6 +272,11 @@ function declarationProblem(tool: HostTool): string {
   if (source.identity !== undefined && (!object(source.identity) || !exactIdentity(source.identity))) return 'its identity is not a person, service or connection with a label of 1 to 128 characters'
   if (source.currentIdentity !== undefined && typeof source.currentIdentity !== 'function') return "its source's currentIdentity is not a function"
   if (source.currentDigest !== undefined && typeof source.currentDigest !== 'function') return "its source's currentDigest is not a function"
+  if (source.descriptorSnapshot !== undefined) {
+    if (source.kind !== 'mcp' || !(source.descriptorSnapshot instanceof Uint8Array)) return 'its descriptor snapshot is not MCP snapshot bytes'
+    if (typeof source.currentDescriptorSnapshot !== 'function') return 'its descriptor snapshot has no current snapshot observer'
+    if (source.currentDigest !== undefined) return 'its snapshot declaration also carries the legacy currentDigest observer'
+  } else if (source.currentDescriptorSnapshot !== undefined) return 'its current snapshot observer has no approved snapshot'
   if (typeof tool.name !== 'string' || tool.name.length < 1 || tool.name.length > 128) return 'its name is not 1 to 128 characters'
   if (typeof tool.description !== 'string') return 'its description is not text'
   if (!object(tool.inputSchema)) return 'its input schema is not a JSON object'
@@ -304,9 +316,13 @@ export async function declareSources(hostTools: readonly HostTool[], served: rea
   const withheld: Withheld[] = []
   const sources = new Map<string, SourceRecord>()
   const bySource = new Map<string, HostTool[]>()
+  const snapshots = new Map<string, { bytes: Uint8Array; digest: string; snapshot: DescriptorSnapshot; changed: boolean }>()
+  const modes = new Map<string, boolean>()
+  const prepared: HostTool[] = []
   const declared: { tool: HostTool; wire: string }[] = []
-  for (const tool of hostTools) {
-    if (tool.source === undefined) continue
+  for (const original of hostTools) {
+    let tool = original
+    if (tool.source === undefined) { prepared.push(tool); continue }
     if (credentialLabel(tool.source?.identity?.label)) {
       withheld.push({ tool: 'source', detail: 'A source identity label carries a credential; its declaration was withheld before publication.' })
       continue
@@ -316,6 +332,45 @@ export async function declareSources(hostTools: readonly HostTool[], served: rea
       throw authoredFailure('configuration', `The host tool ${JSON.stringify(String(tool.name).slice(0, 64))} has a source declaration this package cannot read: ${problem}. Nothing was sent.`, 'context')
     }
     const source = tool.source
+    const snapshotMode = source.descriptorSnapshot !== undefined
+    if (modes.has(source.id) && modes.get(source.id) !== snapshotMode) throw authoredFailure('configuration', `The source ${source.id} mixes snapshot and legacy declarations. Nothing was sent.`, 'context')
+    modes.set(source.id, snapshotMode)
+    if (snapshotMode) {
+      try {
+        const bytes = Uint8Array.from(source.descriptorSnapshot!)
+        const snapshot = readDescriptorSnapshot(bytes)
+        const digest = await descriptorSnapshotDigest(bytes)
+        const earlier = snapshots.get(source.id)
+        if (earlier !== undefined && (earlier.bytes.length !== bytes.length || !bytes.every((b, at) => b === earlier.bytes[at]))) throw Error('different snapshots')
+        const admitted = earlier ?? { bytes, digest, snapshot, changed: false }
+        snapshots.set(source.id, admitted)
+        const approved = source.toolListDigest
+        const observe = source.currentDescriptorSnapshot!.bind(source)
+        const hostSchema = structuredClone(tool.inputSchema)
+        const execute = tool.execute.bind(tool)
+        const approve = tool.approve?.bind(tool)
+        const candidate = snapshot.tools[tool.name]
+        const schema = candidate?.inputSchemaText === undefined ? { type: 'object' } : readDescriptorJSON(candidate.inputSchemaText)
+        if (!object(schema)) throw Error('schema is not an object')
+        tool = { ...tool, description: candidate?.description ?? '', inputSchema: schema, approve,
+          source: Object.freeze({ ...source, descriptorSnapshot: bytes, identity: source.identity === undefined ? undefined : { ...source.identity }, currentDigest: async () => {
+            if (admitted.changed) return ''
+            try {
+              const now = await descriptorSnapshotDigest(await observe())
+              if (admitted.changed || now !== approved) { admitted.changed = true; return '' }
+              return now
+            } catch { admitted.changed = true; throw Error('descriptor snapshot observation failed') }
+          } }),
+          execute: async (args, signal, callId) => {
+            if (argumentProblem(hostSchema, args) !== undefined) throw toolInputFailure('The arguments do not match the host schema; this call was not run.')
+            return execute(args, signal, callId)
+          }
+        }
+      } catch {
+        throw authoredFailure('configuration', `The source ${source.id} has a malformed or inconsistent descriptor snapshot. Nothing was sent.`, 'context')
+      }
+    }
+    prepared.push(tool)
     const identity = source.identity ?? { kind: 'connection', label: source.id }
     const record: SourceRecord = { kind: source.kind, id: source.id, trust: source.trust, ...(source.version === undefined ? {} : { version: source.version }), ...(source.toolListDigest === undefined ? {} : { toolListDigest: source.toolListDigest }), identity: { ...identity }, identityDigest: await identityDigest(identity) }
     const earlier = sources.get(source.id)
@@ -330,7 +385,13 @@ export async function declareSources(hostTools: readonly HostTool[], served: rea
   const unapproved = new Set<string>()
   for (const [id, record] of sources) {
     if (record.kind !== 'mcp') continue
-    const digest = await toolListDigest(bySource.get(id)!)
+    const snapshot = snapshots.get(id)
+    if (snapshot !== undefined && bySource.get(id)!.some(tool => !Object.hasOwn(snapshot.snapshot.tools, tool.name))) {
+      unapproved.add(id)
+      withheld.push({ tool: id, detail: `the tools ${id} declares include a name absent from the approved descriptor snapshot; none of its tools is offered` })
+      continue
+    }
+    const digest = snapshot?.digest ?? await toolListDigest(bySource.get(id)!)
     if (digest !== record.toolListDigest) {
       unapproved.add(id)
       withheld.push({ tool: id, detail: `the tools ${id} declares are not the list the person approved (approved ${record.toolListDigest}, declared ${digest}); none of its tools is offered until the person approves the new list` })
@@ -360,7 +421,7 @@ export async function declareSources(hostTools: readonly HostTool[], served: rea
     entries.set(wire, { wire, record: record as SourceEntry['record'], effectClass, approval: shown.approval!, declared: tool, description: tool.description, catalogued: false })
   }
   return {
-    hostTools: hostTools.flatMap((tool) => (tool.source === undefined ? [tool] : offered.has(tool) ? [offered.get(tool)!] : [])),
+    hostTools: prepared.flatMap((tool) => (tool.source === undefined ? [tool] : offered.has(tool) ? [offered.get(tool)!] : [])),
     entries,
     sources: [...sources.values()],
     withheld
@@ -828,6 +889,7 @@ export class SourceGate {
     const check = entry.declared.source?.currentDigest
     if (closed === '' && check !== undefined && entry.record.kind === 'mcp' && !this.alteredSources.has(id)) {
       try { served = (await check()) === entry.record.toolListDigest } catch { served = false }
+      if (!served && entry.declared.source?.descriptorSnapshot !== undefined) this.alteredSources.add(id)
     }
     if (closed !== '') {
       answer = 'closed'

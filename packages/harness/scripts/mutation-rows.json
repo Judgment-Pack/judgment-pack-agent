@@ -5918,6 +5918,270 @@
    "status": "caught",
    "origin": "agent#165",
    "note": "R200-1: actual managedContext checkpoint/policy startup under redact/refuse, including invalid guard configuration, plus public event readers. Go twin restores e.Error() in UnknownRecordMember.Event and fails TestRecordRefusalStartupDoesNotPublishMember."
+  },
+  {
+   "name": "agent#168 snapshot canonical bytes",
+   "file": "descriptorSnapshot.ts",
+   "find": "if (canonical(v) !== text)",
+   "replace": "if (false)",
+   "tests": [
+    "descriptorSnapshot.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#168",
+   "note": "Shared handwritten snapshot vector; Go twin recorded in the issue handoff."
+  },
+  {
+   "name": "agent#168 snapshot codepoint ordering",
+   "file": "descriptorSnapshot.ts",
+   "find": "Object.keys(v).sort(codePointOrder)",
+   "replace": "Object.keys(v).sort()",
+   "tests": [
+    "descriptorSnapshot.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#168",
+   "note": "Shared handwritten snapshot vector; Go twin recorded in the issue handoff."
+  },
+  {
+   "name": "agent#168 snapshot byte bound",
+   "file": "descriptorSnapshot.ts",
+   "find": "bytes.byteLength > DESCRIPTOR_SNAPSHOT_BYTES",
+   "replace": "false",
+   "tests": [
+    "descriptorSnapshot.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#168",
+   "note": "Shared handwritten snapshot vector; Go twin recorded in the issue handoff."
+  },
+  {
+   "name": "agent#168 snapshot exact members",
+   "file": "descriptorSnapshot.ts",
+   "find": "if (required.some(k => !Object.hasOwn(v, k)) || Object.keys(v).some(k => !required.includes(k) && !optional.includes(k)))",
+   "replace": "if (false)",
+   "tests": [
+    "descriptorSnapshot.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#168",
+   "note": "Shared handwritten snapshot vector; Go twin recorded in the issue handoff."
+  },
+  {
+   "name": "agent#168 snapshot duplicate members",
+   "file": "descriptorSnapshot.ts",
+   "find": "if (Object.hasOwn(result, key))",
+   "replace": "if (false)",
+   "tests": [
+    "descriptorSnapshot.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#168",
+   "note": "Shared handwritten snapshot vector; Go twin recorded in the issue handoff."
+  },
+  {
+   "name": "agent#168 snapshot scalar strings",
+   "file": "descriptorSnapshot.ts",
+   "find": "typeof v !== 'string' || !scalarString(v)",
+   "replace": "typeof v !== 'string'",
+   "tests": [
+    "descriptorSnapshot.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#168",
+   "note": "Shared handwritten snapshot vector; Go twin recorded in the issue handoff."
+  },
+  {
+   "name": "agent#168 snapshot raw number domain",
+   "file": "descriptorSnapshot.ts",
+   "find": "!/^-?(?:0|[1-9][0-9]*)$/.test(match[0]) || ",
+   "replace": "",
+   "tests": [
+    "descriptorSnapshot.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#168",
+   "note": "Shared handwritten snapshot vector; Go twin recorded in the issue handoff."
+  },
+  {
+   "name": "agent#168 snapshot full byte digest",
+   "file": "descriptorSnapshot.ts",
+   "find": "Uint8Array.from(bytes)",
+   "replace": "new TextEncoder().encode(JSON.stringify(readDescriptorSnapshot(bytes).tools))",
+   "tests": [
+    "descriptorSnapshot.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#168",
+   "note": "Shared handwritten snapshot vector; Go twin recorded in the issue handoff."
+  },
+  {
+   "name": "agent#168 snapshot pinned graphic policy",
+   "file": "descriptorSnapshot.ts",
+   "find": "graphic(c.codePointAt(0)!)",
+   "replace": "true",
+   "tests": [
+    "descriptorSnapshot.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#168",
+   "note": "Shared handwritten snapshot vector; Go twin recorded in the issue handoff."
+  },
+  {
+   "name": "agent#168 snapshot safe integers",
+   "file": "descriptorSnapshot.ts",
+   "find": "!Number.isSafeInteger(number)",
+   "replace": "false",
+   "tests": [
+    "descriptorSnapshot.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#168",
+   "note": "Shared handwritten snapshot vector; Go twin recorded in the issue handoff."
+  },
+  {
+   "name": "agent#168 schema finite numbers",
+   "file": "descriptorSnapshot.ts",
+   "find": "!Number.isFinite(number) || ",
+   "replace": "",
+   "tests": [
+    "descriptorSnapshot.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#168",
+   "note": "Shared handwritten snapshot vector; Go twin recorded in the issue handoff."
+  },
+  {
+   "name": "agent#168 snapshot supported policy",
+   "file": "descriptorSnapshot.ts",
+   "find": "v.policy !== 1",
+   "replace": "false",
+   "tests": [
+    "descriptorSnapshot.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#168",
+   "note": "Shared handwritten snapshot vector; Go twin recorded in the issue handoff."
+  },
+  {
+   "name": "agent#168 snapshot approved digest",
+   "file": "toolSources.ts",
+   "find": "if (digest !== record.toolListDigest) {",
+   "replace": "if (false) {",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#168",
+   "note": "Shared handwritten snapshot vector; Go twin recorded in the issue handoff."
+  },
+  {
+   "name": "agent#168 snapshot captured allowed subset",
+   "file": "toolSources.ts",
+   "find": "snapshot !== undefined && bySource.get(id)!.some(tool => !Object.hasOwn(snapshot.snapshot.tools, tool.name))",
+   "replace": "false",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#168",
+   "note": "Shared handwritten snapshot vector; Go twin recorded in the issue handoff."
+  },
+  {
+   "name": "agent#168 snapshot current observation",
+   "file": "toolSources.ts",
+   "find": "const now = await descriptorSnapshotDigest(await observe())",
+   "replace": "const now = approved",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#168",
+   "note": "Shared handwritten snapshot vector; Go twin recorded in the issue handoff."
+  },
+  {
+   "name": "agent#168 snapshot shared source latch",
+   "file": "toolSources.ts",
+   "find": "const admitted = earlier ?? { bytes, digest, snapshot, changed: false }",
+   "replace": "const admitted = { bytes, digest, snapshot, changed: false }",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#168",
+   "note": "Shared handwritten snapshot vector; Go twin recorded in the issue handoff."
+  },
+  {
+   "name": "agent#168 snapshot overlapping latch",
+   "file": "toolSources.ts",
+   "find": "admitted.changed || now !== approved",
+   "replace": "now !== approved",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#168",
+   "note": "Shared handwritten snapshot vector; Go twin recorded in the issue handoff."
+  },
+  {
+   "name": "agent#168 snapshot frozen observer",
+   "file": "toolSources.ts",
+   "find": "const observe = source.currentDescriptorSnapshot!.bind(source)",
+   "replace": "const observe = () => source.currentDescriptorSnapshot!()",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#168",
+   "note": "Shared handwritten snapshot vector; Go twin recorded in the issue handoff."
+  },
+  {
+   "name": "agent#168 snapshot host argument validator",
+   "file": "toolSources.ts",
+   "find": "if (argumentProblem(hostSchema, args) !== undefined)",
+   "replace": "if (false && argumentProblem(hostSchema, args) !== undefined)",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#168",
+   "note": "Shared handwritten snapshot vector; Go twin recorded in the issue handoff."
+  },
+  {
+   "name": "agent#168 snapshot malformed pin refusal",
+   "file": "toolSources.ts",
+   "find": "throw authoredFailure('configuration', `The source ${source.id} has a malformed or inconsistent descriptor snapshot. Nothing was sent.`, 'context')",
+   "replace": "continue",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#168",
+   "note": "A supplied malformed snapshot must produce the named configuration failure, never silently disappear or fall through; Go twin removes the same refusal."
+  },
+  {
+   "name": "agent#168 snapshot mixed declaration modes",
+   "file": "toolSources.ts",
+   "find": "if (modes.has(source.id) && modes.get(source.id) !== snapshotMode)",
+   "replace": "if (false && modes.has(source.id) && modes.get(source.id) !== snapshotMode)",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#168",
+   "note": "Shared handwritten snapshot vector; Go twin recorded in the issue handoff."
+  },
+  {
+   "name": "agent#168 snapshot delegated decision latch",
+   "file": "toolSources.ts",
+   "find": "if (!served && entry.declared.source?.descriptorSnapshot !== undefined) this.alteredSources.add(id)",
+   "replace": "if (false && !served && entry.declared.source?.descriptorSnapshot !== undefined) this.alteredSources.add(id)",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#168",
+   "note": "A snapshot-only decision refusal reaches the shared parent/child source map; focused Go twin in handoff."
   }
  ]
 }

@@ -5,6 +5,8 @@
  * receipt and the report. The certified scenario 7 runs the same on every engine.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import descriptorVector from '../../contract/vectors/tool-offer/descriptor-snapshot.json'
+import { readRunEvent, writeRunEvent } from './recordReader'
 import sourceNames from '../../contract/vectors/tool-offer/source-names.json'
 import listDigests from '../../contract/vectors/tool-offer/tool-list-digest.json'
 import declarations from '../../contract/vectors/tool-offer/source-declarations.json'
@@ -34,7 +36,7 @@ import runEventSchema from '../../contract/schemas/run-event.json'
 import toolSourcesServer from './certification/scenarios/tool-sources.json'
 import { CONTEXT_DEFAULTS, SOURCE_DEFAULTS } from './context/policy'
 import { readingTool } from './framing'
-import { toolFailureResult, AIFailureError } from './failures'
+import { toolFailureResult, AIFailureError, failureEvent } from './failures'
 import { GateViolation } from './toolGate'
 import { readApprovalDecision, readExecution, refusedResult, validApproval, validSourceFigures, type ApprovalRecord, type ExecutionCheckpoint, type SourceFigures } from './execution/state'
 import { contextDigest } from './context/ledger'
@@ -65,7 +67,7 @@ import { withDelegation } from './delegation'
 import { loadEngine } from './engines'
 import { DELEGATE_TOOL } from './delegationContract'
 import { normalize } from './thinking'
-import { answerFrom, offeredNames, runOnModelEngine, type Turn } from './testing/scenarioDriver'
+import { answerFrom, offeredNames, runOnModelEngine, runOnAgentEngine, type Turn } from './testing/scenarioDriver'
 import { ofType } from './testing/scripted'
 import { testHost } from './testing/host'
 import { configureHarness } from './host'
@@ -516,7 +518,7 @@ describe('identity per tool call (ADR-0019)', () => {
 })
 
 /** A SourceGate over the vector's declarations, with its refusals' guardrails and its report collected. */
-async function gateFor(tools: HostTool[], bounds: Partial<SourceBounds> = {}, catalogue = false, book?: ApprovalBook, identityState: SourceIdentityState[] = []) {
+async function gateFor(tools: HostTool[], bounds: Partial<SourceBounds> = {}, catalogue = false, book?: ApprovalBook, identityState: SourceIdentityState[] = [], parent?: SourceGate) {
   const out = await declareSources(tools, [])
   const policy = { ...CONTEXT_DEFAULTS, ...bounds }
   const offered = offerSources(out.hostTools, out.entries, catalogue ? { ...policy, offeredSchemas: 0 } : policy, MARKER)
@@ -525,7 +527,7 @@ async function gateFor(tools: HostTool[], bounds: Partial<SourceBounds> = {}, ca
   const gate = new SourceGate(out.entries, out.sources, policy, MARKER, (tool, detail, reason) => {
     notices.push({ tool, detail, ...(reason === undefined ? {} : { reason }) })
     return new GateViolation(tool, detail)
-  }, () => rows, 'json-schema', undefined, book, (event) => notices.push({ tool: event.tool, detail: event.detail, ...(event.reason === undefined ? {} : { reason: event.reason }) }), identityState)
+  }, () => rows, 'json-schema', parent, book, (event) => notices.push({ tool: event.tool, detail: event.detail, ...(event.reason === undefined ? {} : { reason: event.reason }) }), identityState)
   const byName = new Map(offered.hostTools.map((tool) => [tool.name, tool]))
   const call = (name: string, args: Record<string, unknown> = {}, signal = new AbortController().signal, callId?: string) => gate.call(byName.get(name)!, args, signal, (given, bounded) => byName.get(name)!.execute(given, bounded), callId)
   return { gate, notices, rows, call, offered }
@@ -1092,5 +1094,181 @@ describe('the approval pause’s words, the contract’s vectors (ADR-0008)', ()
     const { gate } = await gateFor(tools, { offeredSchemas: 100, offeredSchemaBytes: 1_000_000 }, false, { current: () => held.approval, ask: (record) => { held.approval = record }, closed: () => '' })
     expect((await gate.decide('tracker__create_issue', {}, 'a')).answer).toBe('ask')
     expect((await gate.decide('tracker__create_issue', {}, 'b')).detail).toBe(pendingVector.detail)
+  })
+})
+
+// Snapshot pins are full Gateway bytes; legacy toolListDigest vectors above remain unchanged.
+describe('Gateway descriptor snapshot source pins (agent#168)', () => {
+  const bytes = (text: string) => Uint8Array.from(new TextEncoder().encode(text))
+  const snapshotTool = (changes: Partial<HostTool> = {}): HostTool => ({
+    name: 'search_tickets', description: 'Unpinned host text', inputSchema: { type: 'object' }, effectClass: 'read',
+    source: { kind: 'mcp', id: 'tickets', trust: 'public', toolListDigest: descriptorVector.digest, descriptorSnapshot: bytes(descriptorVector.snapshotText), currentDescriptorSnapshot: () => bytes(descriptorVector.snapshotText) },
+    execute: async () => ({ content: [{ type: 'text', text: 'found' }] }), ...changes
+  })
+  it('admits a host-authorized subset, derives its offer from captured text, and refuses uncaptured names or a wrong pin whole', async () => {
+    const out = await declareSources([snapshotTool()], [])
+    expect(out.withheld).toEqual([])
+    expect(out.hostTools.map(tool => tool.name)).toEqual(['tickets__search_tickets'])
+    expect(out.hostTools[0]).toMatchObject({ description: 'Search tickets', inputSchema: { type: 'object', properties: { limit: { type: 'integer', minimum: 1 } } } })
+    for (const tool of [snapshotTool({ name: 'unapproved' }), snapshotTool({ source: { ...snapshotTool().source!, toolListDigest: descriptorVector.changedDigest } })]) {
+      const refused = await declareSources([snapshotTool({ name: 'close', source: tool.source }), tool], [])
+      expect(refused.hostTools).toEqual([])
+      expect(refused.withheld).toHaveLength(1)
+      expect(() => readRunEvent(writeRunEvent({ type: 'guardrail', action: 'refused', ...refused.withheld[0]! }))).not.toThrow()
+    }
+  })
+  it('never falls back from malformed snapshot mode or mixed same-source declarations to legacy mode', async () => {
+    for (const data of [new Uint8Array(), bytes('{}'), bytes(descriptorVector.snapshotText + '\n'), bytes(descriptorVector.snapshotText.replace('Search tickets', 'x'.repeat(327680)))]) {
+      const refused = await declareSources([snapshotTool({ source: { ...snapshotTool().source!, descriptorSnapshot: data } })], []).catch(error => error as unknown)
+      expect(refused).toMatchObject({ failure: { code: 'configuration', outcome: 'unknown' }, message: expect.stringContaining('descriptor snapshot') })
+      expect(() => readRunEvent(writeRunEvent(failureEvent(refused, 'context')))).not.toThrow()
+    }
+    for (const source of [
+      { ...snapshotTool().source!, currentDescriptorSnapshot: undefined },
+      { ...snapshotTool().source!, currentDigest: () => descriptorVector.digest },
+      { ...snapshotTool().source!, descriptorSnapshot: undefined },
+      { ...snapshotTool().source!, kind: 'custom' as const }
+    ]) await expect(declareSources([snapshotTool({ source })], [])).rejects.toMatchObject({ failure: { code: 'configuration' } })
+    const legacy = snapshotTool({ name: 'close', source: { kind: 'mcp', id: 'tickets', trust: 'public', toolListDigest: descriptorVector.digest } })
+    await expect(declareSources([snapshotTool(), legacy], [])).rejects.toMatchObject({ failure: { code: 'configuration' } })
+    const changed = snapshotTool({ name: 'close', source: { ...snapshotTool().source!, descriptorSnapshot: bytes(descriptorVector.changedText) } })
+    await expect(declareSources([snapshotTool(), changed], [])).rejects.toMatchObject({ failure: { code: 'configuration' } })
+  })
+  it('checks current full bytes before any call and latches changed/error/malformed observations for every tool', async () => {
+    for (const changed of [bytes(descriptorVector.changedText), new Uint8Array(), bytes('{}'), new Uint8Array(327681), undefined]) {
+      let served = bytes(descriptorVector.snapshotText), ran = 0, broken = false
+      const observe = () => { if (broken) { if (changed === undefined) throw Error('untrusted observation detail'); return changed } return served }
+      const tool = snapshotTool({ source: { ...snapshotTool().source!, currentDescriptorSnapshot: observe }, execute: async () => { ran++; return { content: [] } } })
+      const { call, notices } = await gateFor([tool, { ...tool, name: 'close' }])
+      await call('tickets__search_tickets', {})
+      broken = true
+      await expect(call('tickets__search_tickets', {})).rejects.toMatchObject({ failure: { code: descriptorVector.refusal.agentCode, outcome: descriptorVector.refusal.agentOutcome, detail: descriptorVector.refusal.agentDetail } })
+      broken = false
+      served = bytes(descriptorVector.snapshotText)
+      await expect(call('tickets__close', {})).rejects.toBeInstanceOf(GateViolation)
+      expect(ran).toBe(1)
+      for (const notice of notices) {
+        expect(notice.detail).toBe(descriptorVector.refusal.agentDetail)
+        expect(notice.detail.length).toBeLessThan(1024)
+        expect(notice.reason).toBeUndefined()
+        expect(() => readRunEvent(writeRunEvent({ type: 'guardrail', action: 'refused', tool: notice.tool, detail: notice.detail }))).not.toThrow()
+        expect(notice.detail).not.toContain('untrusted observation detail')
+      }
+    }
+  })
+  it('freezes the declaration and observer, retaining independent host validation even when capture has no schema', async () => {
+    let ran = 0, changed = false
+    const schema = { type: 'object', required: ['ticket'] }
+    const tool = snapshotTool({ name: '�', inputSchema: schema, source: { ...snapshotTool().source!, currentDescriptorSnapshot: () => bytes(changed ? descriptorVector.changedText : descriptorVector.snapshotText) }, execute: async () => { ran++; return { content: [] } } })
+    const { call, offered } = await gateFor([tool])
+    expect(offered.hostTools[0]!.inputSchema).toEqual({ type: 'object' })
+    schema.required.length = 0
+    tool.source!.descriptorSnapshot!.fill(0)
+    tool.source!.currentDescriptorSnapshot = () => bytes(descriptorVector.snapshotText)
+    tool.source!.currentDigest = () => descriptorVector.digest
+    await expect(call(offered.hostTools[0]!.name, {})).rejects.toMatchObject({ failure: { code: 'invalid-tool-input', outcome: 'unknown' } })
+    await call(offered.hostTools[0]!.name, { ticket: 'T-1' })
+    changed = true
+    await expect(call(offered.hostTools[0]!.name, { ticket: 'T-1' })).rejects.toBeInstanceOf(GateViolation)
+    expect(ran).toBe(1)
+  })
+  it('latches a decision observation and rechecks full bytes on resumed approved continuation before execute', async () => {
+    let changed = true, approved = 0, ran = 0, held: ApprovalRecord | undefined
+    const source = { ...snapshotTool().source!, currentDescriptorSnapshot: () => bytes(changed ? descriptorVector.changedText : descriptorVector.snapshotText) }
+    const tool = snapshotTool({ effectClass: 'act', source, approve: () => { approved++; return 'ask' }, execute: async () => { ran++; return { content: [] } } })
+    const book: ApprovalBook = { current: () => held, ask: record => { held = record }, closed: () => '' }
+    const first = await gateFor([tool], {}, false, book)
+    expect((await first.gate.decide('tickets__search_tickets', {}, 'snapshot-decide')).answer).toBe('checked')
+    changed = false
+    await expect(first.call('tickets__search_tickets', {})).rejects.toBeInstanceOf(GateViolation)
+    expect(approved).toBe(0)
+    const paused = await gateFor([tool], {}, false, book)
+    expect((await paused.gate.decide('tickets__search_tickets', {}, 'snapshot-approved')).answer).toBe('ask')
+    const restored = JSON.parse(JSON.stringify({ ...held!, state: 'approved' })) as ApprovalRecord
+    expect(validApproval(restored)).toBe(true)
+    changed = true
+    const resumed = await gateFor([tool], {}, false, { ...book, current: () => restored })
+    const execute = resumed.offered.hostTools[0]!.execute
+    const result = await resumed.gate.approved(restored, signal(), (args, bounded) => execute(args, bounded))
+    expect(result.ran).toBe(false)
+    expect(ran).toBe(0)
+    expect(resumed.notices).toHaveLength(1)
+  })
+  it('keeps decision failures sticky across source tools and approved calls for changed, malformed and errored observations', async () => {
+    for (const kind of ['changed', 'malformed', 'error']) {
+      let broken = true, ran = 0
+      const source = { ...snapshotTool().source!, currentDescriptorSnapshot: () => {
+        if (!broken) return bytes(descriptorVector.snapshotText)
+        if (kind === 'error') throw Error('untrusted observation detail')
+        return bytes(kind === 'malformed' ? '{}' : descriptorVector.changedText)
+      } }
+      const tool = snapshotTool({ effectClass: 'act', source, execute: async () => { ran++; return { content: [] } } })
+      const first = await gateFor([tool, { ...tool, name: 'close' }])
+      expect((await first.gate.decide('tickets__search_tickets', {}, 'failed-observation')).answer).toBe('checked')
+      broken = false
+      await expect(first.call('tickets__close', {})).rejects.toBeInstanceOf(GateViolation)
+      const record: ApprovalRecord = { callId: 'approved-close', name: 'tickets__close', tool: 'close', source: first.gate.entries.get('tickets__close')!.record, args: {}, state: 'approved' }
+      expect((await first.gate.approved(record, signal(), async () => { ran++; return { content: [] } })).ran).toBe(false)
+      expect(ran).toBe(0)
+    }
+  })
+  it('shares snapshot decision failure with separately declared delegated source gates', async () => {
+    let changed = true, ran = 0
+    const tool = snapshotTool({ effectClass: 'act', source: { ...snapshotTool().source!, currentDescriptorSnapshot: () => bytes(changed ? descriptorVector.changedText : descriptorVector.snapshotText) }, execute: async () => { ran++; return { content: [] } } })
+    const parent = await gateFor([tool])
+    expect((await parent.gate.decide('tickets__search_tickets', {}, 'parent-failure')).answer).toBe('checked')
+    changed = false
+    const child = await gateFor([{ ...tool, effectClass: 'read' }], {}, false, undefined, [], parent.gate)
+    await expect(child.call('tickets__search_tickets', {})).rejects.toBeInstanceOf(GateViolation)
+    expect(ran).toBe(0)
+  })
+  it('does not let an overlapping old observation clear a failure observed first', async () => {
+    let release!: (value: Uint8Array) => void, started!: () => void, checks = 0, ran = 0
+    const waiting = new Promise<Uint8Array>(resolve => { release = resolve })
+    const observed = new Promise<void>(resolve => { started = resolve })
+    const tool = snapshotTool({ source: { ...snapshotTool().source!, currentDescriptorSnapshot: () => {
+      if (++checks === 1) { started(); return waiting }
+      return bytes(descriptorVector.changedText)
+    } }, execute: async () => { ran++; return { content: [] } } })
+    const { call } = await gateFor([tool, { ...tool, name: 'close' }])
+    const first = call('tickets__search_tickets', {}).catch(error => error as unknown)
+    await observed
+    await expect(call('tickets__close', {})).rejects.toBeInstanceOf(GateViolation)
+    release(bytes(descriptorVector.snapshotText))
+    expect(await first).toBeInstanceOf(GateViolation)
+    expect(ran).toBe(0)
+  })
+  it('refuses changed snapshots through the Codex agent capability before host execution', async () => {
+    let ran = 0, authorized = 0, observed = 0
+    const tool = snapshotTool({ source: { ...snapshotTool().source!, currentDescriptorSnapshot: () => { observed++; return bytes(descriptorVector.changedText) } }, execute: async () => { ran++; return { content: [] } } })
+    const run = await runOnAgentEngine(async (request, callbacks) => {
+      expect(request.phase).toBe('author')
+      const offered = request.tools.find(tool => tool.description.startsWith('tickets__search_tickets:'))
+      expect(offered).toBeDefined()
+      const result = await callbacks.tool({ id: 'snapshot-agent-1', name: offered!.name, arguments: {} }, callbacks.signal)
+      expect(result.isError).toBe(true)
+      expect(result.text).toContain(descriptorVector.refusal.agentDetail)
+      await callbacks.event({ type: 'message', id: 'snapshot-final', text: 'The registration needs approval.', phase: 'final' })
+    }, { hostTools: [tool], session: { prompt: 'Search tickets.', interactive: false, context: { authorize: async () => { authorized++ } } } })
+    expect(run.runs).toHaveLength(1)
+    expect(observed).toBe(1)
+    expect(ran).toBe(0)
+    expect(authorized).toBeGreaterThan(0)
+    expect(ofType(run.events, 'guardrail')).toContainEqual(expect.objectContaining({ version: 1, tool: 'tickets__search_tickets', action: 'refused', detail: descriptorVector.refusal.agentDetail }))
+    expect(ofType(run.events, 'tool_result')).toContainEqual(expect.objectContaining({ callId: 'snapshot-agent-1', name: 'tickets__search_tickets', isError: true }))
+    for (const event of run.events) expect(() => readRunEvent(event)).not.toThrow()
+  })
+  it('holds snapshot changes below each model engine and preserves the external authorization callback', async () => {
+    let changed = true, ran = 0, authorized = 0
+    const tool = snapshotTool({ source: { ...snapshotTool().source!, currentDescriptorSnapshot: () => bytes(changed ? descriptorVector.changedText : descriptorVector.snapshotText) }, execute: async () => { ran++; return { content: [] } } })
+    for (const engineId of ['vercel', 'deepagents'] as const) {
+      changed = true
+      const turns: Turn[] = [{ call: { tool: 'tickets__search_tickets', arguments: {} } }, { say: 'The registration needs approval.' }]
+      const run = await runOnModelEngine(answerFrom(turns, 'stream'), { engine: await loadEngine(engineId), hostTools: [tool], session: { prompt: 'Search tickets.', interactive: false, context: { authorize: async () => { authorized++ } } } })
+      expect(ofType(run.events, 'guardrail').some(event => event.tool === 'tickets__search_tickets' && event.action === 'refused' && event.version === 1)).toBe(true)
+      for (const event of run.events) expect(() => readRunEvent(event)).not.toThrow()
+    }
+    expect(ran).toBe(0)
+    expect(authorized).toBeGreaterThanOrEqual(2)
   })
 })

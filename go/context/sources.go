@@ -25,6 +25,7 @@ package runcontext
 // boundary's context tools: the gate holds a host tool to its phase by the offered name.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -54,7 +55,10 @@ type ToolSource struct {
 	ToolListDigest  string
 	Identity        *contract.ToolOfferIdentity
 	CurrentIdentity func(ctx context.Context) (contract.ToolOfferIdentity, error)
-	CurrentDigest   func(ctx context.Context) (string, error)
+	// CurrentDigest is the legacy tool-list observer; snapshot mode uses the raw observer below.
+	CurrentDigest             func(ctx context.Context) (string, error)
+	DescriptorSnapshot        []byte
+	CurrentDescriptorSnapshot func(ctx context.Context) ([]byte, error)
 }
 
 // Record is the source as the contract's sourceRecord carries it, with the tool's own name.
@@ -252,8 +256,9 @@ type ListedTool struct {
 	InputSchema json.RawMessage
 }
 
-// ToolListDigest is toolListDigest: sha256: and the SHA-256 of the canonical JSON of the tools,
+// ToolListDigest is the legacy toolListDigest: sha256: and the SHA-256 of the canonical JSON of the tools,
 // each {name, description, inputSchema}, ordered by name in UTF-16 code units.
+// New registrations use DescriptorSnapshotDigest over complete Gateway snapshot bytes.
 func ToolListDigest(tools []ListedTool) string {
 	held := append([]ListedTool{}, tools...)
 	sort.SliceStable(held, func(i, j int) bool { return lessUTF16(held[i].Name, held[j].Name) })
@@ -344,6 +349,14 @@ func declarationProblem(tool HostTool) string {
 		return "its source is an MCP server whose tool list is not pinned by digest"
 	case s.Identity != nil && (s.Identity.Kind != "person" && s.Identity.Kind != "service" && s.Identity.Kind != "connection" || s.Identity.Label == "" || U16Length(s.Identity.Label) > 128):
 		return "its identity is not a person, service or connection with a label of 1 to 128 characters"
+	case s.DescriptorSnapshot != nil && s.Kind != "mcp":
+		return "its descriptor snapshot is not MCP snapshot bytes"
+	case s.DescriptorSnapshot != nil && s.CurrentDescriptorSnapshot == nil:
+		return "its descriptor snapshot has no current snapshot observer"
+	case s.DescriptorSnapshot != nil && s.CurrentDigest != nil:
+		return "its snapshot declaration also carries the legacy currentDigest observer"
+	case s.DescriptorSnapshot == nil && s.CurrentDescriptorSnapshot != nil:
+		return "its current snapshot observer has no approved snapshot"
 	case tool.Name == "" || U16Length(tool.Name) > 128:
 		return "its name is not 1 to 128 characters"
 	}
@@ -374,6 +387,14 @@ func DeclareSources(tools []HostTool, served []string) (*Declared, error) {
 	out := &Declared{Entries: map[string]*SourceEntry{}}
 	sources := map[string]ToolSource{}
 	bySource := map[string][]ListedTool{}
+	type admittedSnapshot struct {
+		data        []byte
+		digest      string
+		snapshot    DescriptorSnapshot
+		observation *descriptorObservation
+	}
+	snapshots := map[string]admittedSnapshot{}
+	modes := map[string]bool{}
 	type held struct {
 		tool HostTool
 		wire string
@@ -394,6 +415,30 @@ func DeclareSources(tools []HostTool, served []string) (*Declared, error) {
 			}
 			return nil, failure.Authored("configuration", "The host tool "+QuoteJSON(name)+" has a source declaration this package cannot read: "+problem+". Nothing was sent.", "context")
 		}
+		snapshotMode := tool.Source.DescriptorSnapshot != nil
+		if earlier, known := modes[tool.Source.ID]; known && earlier != snapshotMode {
+			return nil, failure.Authored("configuration", "The source "+tool.Source.ID+" mixes snapshot and legacy declarations. Nothing was sent.", "context")
+		}
+		modes[tool.Source.ID] = snapshotMode
+		if snapshotMode {
+			data := append([]byte{}, tool.Source.DescriptorSnapshot...)
+			snapshot, err := ReadDescriptorSnapshot(data)
+			digest, digestErr := DescriptorSnapshotDigest(data)
+			earlier, known := snapshots[tool.Source.ID]
+			if err != nil || digestErr != nil || known && !bytes.Equal(earlier.data, data) {
+				return nil, failure.Authored("configuration", "The source "+tool.Source.ID+" has a malformed or inconsistent descriptor snapshot. Nothing was sent.", "context")
+			}
+			observation := earlier.observation
+			if !known {
+				observation = &descriptorObservation{approved: tool.Source.ToolListDigest}
+			}
+			snapshots[tool.Source.ID] = admittedSnapshot{data, digest, snapshot, observation}
+			prepared, err := descriptorHostTool(tool, data, snapshot, observation)
+			if err != nil {
+				return nil, failure.Authored("configuration", "The source "+tool.Source.ID+" has a malformed or inconsistent descriptor snapshot. Nothing was sent.", "context")
+			}
+			tool = prepared
+		}
 		record := *tool.Source
 		if earlier, ok := sources[record.ID]; ok {
 			if earlier.Kind != record.Kind || earlier.Trust != record.Trust || earlier.Version != record.Version || earlier.ToolListDigest != record.ToolListDigest || IdentityDigest(*earlier.Record("").Identity) != IdentityDigest(*record.Record("").Identity) {
@@ -411,7 +456,22 @@ func DeclareSources(tools []HostTool, served []string) (*Declared, error) {
 		if source.Kind != "mcp" {
 			continue
 		}
-		if digest := ToolListDigest(bySource[source.ID]); digest != source.ToolListDigest {
+		digest := ToolListDigest(bySource[source.ID])
+		if snapshot, ok := snapshots[source.ID]; ok {
+			allowed := true
+			for _, tool := range bySource[source.ID] {
+				if _, present := snapshot.snapshot.Tools[tool.Name]; !present {
+					allowed = false
+				}
+			}
+			if !allowed {
+				unapproved[source.ID] = true
+				out.Withheld = append(out.Withheld, Withheld{Tool: source.ID, Detail: "the tools " + source.ID + " declares include a name absent from the approved descriptor snapshot; none of its tools is offered"})
+				continue
+			}
+			digest = snapshot.digest
+		}
+		if digest != source.ToolListDigest {
 			unapproved[source.ID] = true
 			out.Withheld = append(out.Withheld, Withheld{Tool: source.ID, Detail: "the tools " + source.ID + " declares are not the list the person approved (approved " +
 				source.ToolListDigest + ", declared " + digest + "); none of its tools is offered until the person approves the new list"})
@@ -1146,6 +1206,11 @@ func (g *SourceGate) Decide(ctx context.Context, name string, args json.RawMessa
 	if check := entry.Declared.Source.CurrentDigest; closed == "" && check != nil && entry.Record.Kind == "mcp" && !altered {
 		now, err := check(WithCallID(ctx, callID))
 		served = err == nil && entry.Record.ToolListDigest != nil && now == *entry.Record.ToolListDigest
+		if !served && entry.Declared.Source.DescriptorSnapshot != nil {
+			g.mu.Lock()
+			g.changed[id] = true
+			g.mu.Unlock()
+		}
 	}
 	identityChanged := false
 	if closed == "" {
@@ -1903,4 +1968,68 @@ func (g *SourceGate) publishLocked() {
 	if g.publish != nil {
 		g.publish()
 	}
+}
+
+type descriptorObservation struct {
+	mu       sync.Mutex
+	changed  bool
+	approved string
+}
+
+// descriptorHostTool freezes the admitted observer and preserves independent host validation.
+func descriptorHostTool(tool HostTool, data []byte, snapshot DescriptorSnapshot, observation *descriptorObservation) (HostTool, error) {
+	source := *tool.Source
+	source.DescriptorSnapshot = append([]byte{}, data...)
+	if source.Identity != nil {
+		identity := *source.Identity
+		source.Identity = &identity
+	}
+	observe := source.CurrentDescriptorSnapshot
+	source.CurrentDigest = func(ctx context.Context) (string, error) {
+		observation.mu.Lock()
+		changed := observation.changed
+		observation.mu.Unlock()
+		if changed {
+			return "", nil
+		}
+		// The host observer runs outside our locks and may overlap another check.
+		current, err := observe(ctx)
+		digest := ""
+		if err == nil {
+			digest, err = DescriptorSnapshotDigest(append([]byte{}, current...))
+		}
+		observation.mu.Lock()
+		defer observation.mu.Unlock()
+		if observation.changed || err != nil || digest != observation.approved {
+			observation.changed = true
+			return "", nil
+		}
+		return digest, nil
+	}
+	hostSchema, err := ParseJSON(append([]byte{}, tool.InputSchema...))
+	if err != nil {
+		return HostTool{}, err
+	}
+	execute := tool.Execute
+	candidate := snapshot.Tools[tool.Name]
+	tool.Description = ""
+	if candidate.Description != nil {
+		tool.Description = *candidate.Description
+	}
+	tool.InputSchema = json.RawMessage(`{"type":"object"}`)
+	if candidate.InputSchemaText != nil {
+		tool.InputSchema, err = descriptorSchema(*candidate.InputSchemaText)
+		if err != nil {
+			return HostTool{}, err
+		}
+	}
+	tool.Source = &source
+	tool.Execute = func(ctx context.Context, args json.RawMessage) (ToolResult, error) {
+		value, err := ParseJSON(args)
+		if err != nil || ArgumentProblem(hostSchema, value) != "" {
+			return ToolResult{}, failure.ToolInput("The arguments do not match the host schema; this call was not run.")
+		}
+		return execute(ctx, args)
+	}
+	return tool, nil
 }

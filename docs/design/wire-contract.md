@@ -309,7 +309,12 @@ What the contract states, and where:
   declaration the package cannot read ends the run before any request (`configuration`). A tool
   whose own name is a Runtime tool's, a reserved name, `load_tool` or `propose_pack`, and every tool
   bearing a wire name that still collides, is withheld with a `guardrail` `refused`; so are all of an
-  `mcp` source's tools where their digest (`$defs/toolListDigest`) is not the pinned one.
+  `mcp` source's tools where their digest (`$defs/toolListDigest`) is not the pinned one. New MCP
+  declarations supply raw `descriptorSnapshot` bytes and `currentDescriptorSnapshot`; the pin is
+  Gateway's entire canonical UTF-8 snapshot, including original schema text and metadata. Only a
+  host-authorized subset of captured names is admitted. Malformed new pins never select legacy
+  behavior; digest-only declarations remain explicitly legacy. ADR-0006 states the migration and
+  canonical rules, separate from Agent record canonicalization.
 - **The offer** (`$defs/hostTool`, the vector `tool-offer/source-offer.json`): the wire name
   (`$defs/wireName`, `[A-Za-z0-9_-]{1,64}`, the source's id first, a deterministic suffix where a
   character was replaced or the name cut; `$defs/nameMapping`, the vector
@@ -335,8 +340,8 @@ What the contract states, and where:
   schema it loaded (`invalid-tool-input`, checked by the package against the subset of JSON Schema
   `sourceArguments.ts` and `go/context/arguments.go` read; the host validates the rest).
 - **Each call**, after the phase admits the name: refused (a `guardrail` and a `permission` failure)
-  where the source's served list changed (the host's `currentDigest()`, asked before each `mcp`
-  call), or its identity changed (the host's `currentIdentity()`, where supplied); once either
+  where the source's served descriptors changed (`currentDescriptorSnapshot()` in snapshot mode,
+  the legacy `currentDigest()` otherwise, checked before each `mcp` call and approval continuation), or its identity changed (the host's `currentIdentity()`, where supplied); once either
   changes, every later call of the source in the run is withheld until re-approval. An `act` under
   a `service` identity is asked on the first act call of that source in the run even if the policy
   says `allow` or the declaration says `approval: none`, with an `approval downgraded` guardrail;
