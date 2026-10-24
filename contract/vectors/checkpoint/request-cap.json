@@ -2,7 +2,14 @@
   "description": "Handwritten legacy and fixed host request cap records, including interrupted unused and consumed one-request reservations.",
   "schema": "checkpoint.json",
   "source": {
-    "issue": 186
+    "issue": 186,
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/execution/requestCap.test.ts (fixed request cap checkpoint records)"
+    ]
   },
   "items": [
     {

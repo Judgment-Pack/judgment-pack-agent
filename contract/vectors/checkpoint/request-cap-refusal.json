@@ -2,7 +2,14 @@
   "description": "Handwritten fixed-cap configuration and trusted-resume identity refusals.",
   "schema": "run-event.json",
   "source": {
-    "issue": 186
+    "issue": 186,
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/execution/requestCap.test.ts (fixed request cap refusals)"
+    ]
   },
   "items": [
     {
@@ -26,6 +33,9 @@
         "outcome": "not-started",
         "detail": "The fixed request cap must match the admitted API execution and cannot change after initialization."
       }
+    },
+    {
+      "type": "end"
     }
   ]
 }
