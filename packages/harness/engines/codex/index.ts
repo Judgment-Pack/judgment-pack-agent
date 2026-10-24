@@ -176,7 +176,7 @@ function runCodexLoop(session: RequestAgentAssistantSession): AsyncIterable<Assi
               const request = readDelegationRequest(call.arguments)
               recordSubagents(request,context.subagents)
               awaitingInput = true
-              await deliver({type:'delegation_requested',request,...(request.tasks.length===1&&request.tasks[0]?.subagent?{subagent:request.tasks[0].subagent}:{})})
+              await deliver({type:'delegation_requested',callId:call.id,request,...(request.tasks.length===1&&request.tasks[0]?.subagent?{subagent:request.tasks[0].subagent}:{})})
               inputPause.abort()
               throw new DOMException('Delegation handoff', 'AbortError')
             }

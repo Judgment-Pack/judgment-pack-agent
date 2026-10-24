@@ -412,3 +412,12 @@ The canonical session validates transition/identity consistency and the whole re
 no-answer callbacks do not revoke. Bare text and the old critic/flat-policy inputs are refused.
 
 Versioned checkpoint, event and policy readers follow [ADR-0024](../docs/adr/0024-versioned-record-readers.md). Current writers use checkpoint 2 and event/policy 1; supported historical formats have frozen structural inventories.
+
+## Storage recovery records
+
+Checkpoint version 2 adds `durable`: scoped pre-dispatch/result/unknown claims, exact safe
+prepared request bytes and their digests, acknowledged operation/artifact provenance, child
+checkpoints and pending handoff intent. Handoff may retain exact `continuation` bytes.
+`vectors/storage/checkpoints.json` covers the added members and enum values in both readers.
+The stored event envelope is version 1 `{version,scope,event}`; cursors/revisions remain host
+metadata outside signed records. See [storage integration](../docs/design/storage.md).

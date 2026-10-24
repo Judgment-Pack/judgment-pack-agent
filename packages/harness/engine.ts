@@ -121,6 +121,9 @@ export type CallTool = (name: string, args: Record<string, unknown>) => Promise<
  * so the narrowing notice a served schema can earn never fires for one.
  */
 export interface HostTool {
+ /** Host-authenticated artifact observations from the actual result; never model narration. */
+ artifacts?:(result:McpToolResult,args:Record<string,unknown>)=>import('./storage/writer').ArtifactObservation[]
+
   /** Context retention is independent of topic, provider and action permissions. */
   contextPolicy?: import('./context/toolPolicy').ContextToolPolicy
   /** Host-declared effect, never supplied by model arguments. */
@@ -350,7 +353,7 @@ type AssistantEventBody =
   | {type:'recorded';id:string;bytes:number}
   | { type: 'retry'; attempt: number }
   | { type: 'response_recovery' }
-  | { type: 'delegation_requested'; subagent?: import('./subagents').SubagentRecord; request: import('./delegationContract').DelegationRequest }
+  | { type: 'delegation_requested'; callId?:string; subagent?: import('./subagents').SubagentRecord; request: import('./delegationContract').DelegationRequest }
   | { type: 'delegated_task'; subagent?: import('./subagents').SubagentRecord; provider?: import('./policy').ProviderRecord; task: import('./delegationContract').DelegatedTask }
   | { type: 'user_question'; id: string; question: import('./questions').UserQuestion }
   | { type: 'reasoning'; text: string; done: boolean }

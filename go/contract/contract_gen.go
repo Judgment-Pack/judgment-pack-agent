@@ -36,6 +36,11 @@ var Registry = map[string]func() any{
 	"checkpoint.json#/$defs/draftDocument":          func() any { return new(CheckpointDraftDocument) },
 	"checkpoint.json#/$defs/draft":                  func() any { return new(CheckpointDraft) },
 	"checkpoint.json#/$defs/sourceIdentity":         func() any { return new(CheckpointSourceIdentity) },
+	"checkpoint.json#/$defs/durableScope":           func() any { return new(CheckpointDurableScope) },
+	"checkpoint.json#/$defs/artifactObservation":    func() any { return new(CheckpointArtifactObservation) },
+	"checkpoint.json#/$defs/durableDispatch":        func() any { return new(CheckpointDurableDispatch) },
+	"checkpoint.json#/$defs/durableObservation":     func() any { return new(CheckpointDurableObservation) },
+	"checkpoint.json#/$defs/durableBook":            func() any { return new(CheckpointDurableBook) },
 	"corpus-entry.json":                             func() any { return new(CorpusEntry) },
 	"delegated-task.json":                           func() any { return new(DelegatedTask) },
 	"delegated-task.json#/$defs/uuid":               func() any { return new(string) },
@@ -1158,9 +1163,10 @@ type Checkpoint struct {
 	Failover         []CheckpointFailoverItem    `json:"failover,omitzero"`
 	ChildUsage       []CheckpointChildUsageItem  `json:"childUsage,omitzero"`
 	RequestCap       *int64                      `json:"requestCap,omitzero"`
+	Durable          *CheckpointDurableBook      `json:"durable,omitzero"`
 }
 
-var checkpointMembers = []string{"schema", "version", "digest", "retainUntil", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "compaction", "memories", "draft", "outputGuard", "records", "sourceIdentities", "steers", "usage", "failover", "childUsage", "requestCap"}
+var checkpointMembers = []string{"schema", "version", "digest", "retainUntil", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "compaction", "memories", "draft", "outputGuard", "records", "sourceIdentities", "steers", "usage", "failover", "childUsage", "requestCap", "durable"}
 
 // UnmarshalJSON decodes a Checkpoint object and refuses a member the closed schema does not name.
 func (v *Checkpoint) UnmarshalJSON(data []byte) error {
@@ -1262,6 +1268,35 @@ func (v *CheckpointApprovalDecision) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a CheckpointApprovalDecision object.
 func (v CheckpointApprovalDecision) MarshalJSON() ([]byte, error) {
 	type plain CheckpointApprovalDecision
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/artifactObservation.
+type CheckpointArtifactObservation struct {
+	Kind   string  `json:"kind"`
+	ID     string  `json:"id"`
+	Digest string  `json:"digest"`
+	Access *string `json:"access,omitzero"`
+}
+
+var checkpointArtifactObservationMembers = []string{"kind", "id", "digest", "access"}
+
+// UnmarshalJSON decodes a CheckpointArtifactObservation object and refuses a member the closed schema does not name.
+func (v *CheckpointArtifactObservation) UnmarshalJSON(data []byte) error {
+	type plain CheckpointArtifactObservation
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointArtifactObservationMembers, true)
+	if err != nil {
+		return errorf("CheckpointArtifactObservation: %w", err)
+	}
+	*v = CheckpointArtifactObservation(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointArtifactObservation object.
+func (v CheckpointArtifactObservation) MarshalJSON() ([]byte, error) {
+	type plain CheckpointArtifactObservation
 	return encodeObject(plain(v), nil)
 }
 
@@ -1416,6 +1451,187 @@ func (v CheckpointDraftDocument) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From checkpoint.json#/$defs/durableBook.
+type CheckpointDurableBook struct {
+	Dispatches     []CheckpointDurableDispatch          `json:"dispatches"`
+	Observations   []CheckpointDurableObservation       `json:"observations"`
+	Children       []CheckpointDurableBookChildrenItem  `json:"children"`
+	PendingHandoff *CheckpointDurableBookPendingHandoff `json:"pendingHandoff,omitzero"`
+}
+
+var checkpointDurableBookMembers = []string{"dispatches", "observations", "children", "pendingHandoff"}
+
+// UnmarshalJSON decodes a CheckpointDurableBook object and refuses a member the closed schema does not name.
+func (v *CheckpointDurableBook) UnmarshalJSON(data []byte) error {
+	type plain CheckpointDurableBook
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointDurableBookMembers, true)
+	if err != nil {
+		return errorf("CheckpointDurableBook: %w", err)
+	}
+	*v = CheckpointDurableBook(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointDurableBook object.
+func (v CheckpointDurableBook) MarshalJSON() ([]byte, error) {
+	type plain CheckpointDurableBook
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/durableBook/properties/children/items.
+type CheckpointDurableBookChildrenItem struct {
+	Scope      CheckpointDurableScope `json:"scope"`
+	Checkpoint Checkpoint             `json:"checkpoint"`
+}
+
+var checkpointDurableBookChildrenItemMembers = []string{"scope", "checkpoint"}
+
+// UnmarshalJSON decodes a CheckpointDurableBookChildrenItem object and refuses a member the closed schema does not name.
+func (v *CheckpointDurableBookChildrenItem) UnmarshalJSON(data []byte) error {
+	type plain CheckpointDurableBookChildrenItem
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointDurableBookChildrenItemMembers, true)
+	if err != nil {
+		return errorf("CheckpointDurableBookChildrenItem: %w", err)
+	}
+	*v = CheckpointDurableBookChildrenItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointDurableBookChildrenItem object.
+func (v CheckpointDurableBookChildrenItem) MarshalJSON() ([]byte, error) {
+	type plain CheckpointDurableBookChildrenItem
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/durableBook/properties/pendingHandoff.
+type CheckpointDurableBookPendingHandoff struct {
+	CallID  string               `json:"callId"`
+	Request DelegatedTaskRequest `json:"request"`
+}
+
+var checkpointDurableBookPendingHandoffMembers = []string{"callId", "request"}
+
+// UnmarshalJSON decodes a CheckpointDurableBookPendingHandoff object and refuses a member the closed schema does not name.
+func (v *CheckpointDurableBookPendingHandoff) UnmarshalJSON(data []byte) error {
+	type plain CheckpointDurableBookPendingHandoff
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointDurableBookPendingHandoffMembers, true)
+	if err != nil {
+		return errorf("CheckpointDurableBookPendingHandoff: %w", err)
+	}
+	*v = CheckpointDurableBookPendingHandoff(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointDurableBookPendingHandoff object.
+func (v CheckpointDurableBookPendingHandoff) MarshalJSON() ([]byte, error) {
+	type plain CheckpointDurableBookPendingHandoff
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/durableDispatch.
+type CheckpointDurableDispatch struct {
+	ID            string                          `json:"id"`
+	Scope         CheckpointDurableScope          `json:"scope"`
+	Kind          string                          `json:"kind"`
+	Source        string                          `json:"source"`
+	Tool          string                          `json:"tool"`
+	Fingerprint   string                          `json:"fingerprint"`
+	Request       string                          `json:"request"`
+	RequestDigest string                          `json:"requestDigest"`
+	State         string                          `json:"state"`
+	Read          bool                            `json:"read"`
+	Result        json.RawMessage                 `json:"result,omitzero"`
+	Failure       *Failure                        `json:"failure,omitzero"`
+	Artifacts     []CheckpointArtifactObservation `json:"artifacts,omitzero"`
+}
+
+var checkpointDurableDispatchMembers = []string{"id", "scope", "kind", "source", "tool", "fingerprint", "request", "requestDigest", "state", "read", "result", "failure", "artifacts"}
+
+// UnmarshalJSON decodes a CheckpointDurableDispatch object and refuses a member the closed schema does not name.
+func (v *CheckpointDurableDispatch) UnmarshalJSON(data []byte) error {
+	type plain CheckpointDurableDispatch
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointDurableDispatchMembers, true)
+	if err != nil {
+		return errorf("CheckpointDurableDispatch: %w", err)
+	}
+	*v = CheckpointDurableDispatch(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointDurableDispatch object.
+func (v CheckpointDurableDispatch) MarshalJSON() ([]byte, error) {
+	type plain CheckpointDurableDispatch
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/durableObservation.
+type CheckpointDurableObservation struct {
+	ID         string                         `json:"id"`
+	Scope      CheckpointDurableScope         `json:"scope"`
+	Kind       string                         `json:"kind"`
+	Source     string                         `json:"source"`
+	DispatchID string                         `json:"dispatchId"`
+	CommitID   string                         `json:"commitId"`
+	Artifact   *CheckpointArtifactObservation `json:"artifact,omitzero"`
+}
+
+var checkpointDurableObservationMembers = []string{"id", "scope", "kind", "source", "dispatchId", "commitId", "artifact"}
+
+// UnmarshalJSON decodes a CheckpointDurableObservation object and refuses a member the closed schema does not name.
+func (v *CheckpointDurableObservation) UnmarshalJSON(data []byte) error {
+	type plain CheckpointDurableObservation
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointDurableObservationMembers, true)
+	if err != nil {
+		return errorf("CheckpointDurableObservation: %w", err)
+	}
+	*v = CheckpointDurableObservation(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointDurableObservation object.
+func (v CheckpointDurableObservation) MarshalJSON() ([]byte, error) {
+	type plain CheckpointDurableObservation
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/durableScope.
+type CheckpointDurableScope struct {
+	Execution string  `json:"execution"`
+	Role      string  `json:"role"`
+	Task      *string `json:"task,omitzero"`
+}
+
+var checkpointDurableScopeMembers = []string{"execution", "role", "task"}
+
+// UnmarshalJSON decodes a CheckpointDurableScope object and refuses a member the closed schema does not name.
+func (v *CheckpointDurableScope) UnmarshalJSON(data []byte) error {
+	type plain CheckpointDurableScope
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointDurableScopeMembers, true)
+	if err != nil {
+		return errorf("CheckpointDurableScope: %w", err)
+	}
+	*v = CheckpointDurableScope(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointDurableScope object.
+func (v CheckpointDurableScope) MarshalJSON() ([]byte, error) {
+	type plain CheckpointDurableScope
+	return encodeObject(plain(v), nil)
+}
+
 // From checkpoint.json#/properties/failover/items.
 type CheckpointFailoverItem struct {
 	Role       string                              `json:"role"`
@@ -1514,16 +1730,19 @@ func (v CheckpointGrant) MarshalJSON() ([]byte, error) {
 // continuation. A child a checkpoint shows running is never dispatched again; a restored answered
 // or continued handoff starts the parent's continuation again with answer, as any restored parent
 // run starts again, and the operations a checkpoint shows committed are not repeated.
+// Current-format continuation holds the exact safe framed answer bytes; resumed answered/continued
+// records without reconstructible safe bytes refuse by name.
 type CheckpointHandoff struct {
-	CallID  string               `json:"callId"`
-	Batch   int64                `json:"batch"`
-	State   string               `json:"state"`
-	Request DelegatedTaskRequest `json:"request"`
-	Tasks   []DelegatedTask      `json:"tasks"`
-	Answer  *DelegatedTaskAnswer `json:"answer,omitzero"`
+	CallID       string               `json:"callId"`
+	Batch        int64                `json:"batch"`
+	State        string               `json:"state"`
+	Request      DelegatedTaskRequest `json:"request"`
+	Tasks        []DelegatedTask      `json:"tasks"`
+	Answer       *DelegatedTaskAnswer `json:"answer,omitzero"`
+	Continuation *string              `json:"continuation,omitzero"`
 }
 
-var checkpointHandoffMembers = []string{"callId", "batch", "state", "request", "tasks", "answer"}
+var checkpointHandoffMembers = []string{"callId", "batch", "state", "request", "tasks", "answer", "continuation"}
 
 // UnmarshalJSON decodes a CheckpointHandoff object and refuses a member the closed schema does not name.
 func (v *CheckpointHandoff) UnmarshalJSON(data []byte) error {

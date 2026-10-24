@@ -190,7 +190,7 @@ function chatHostToolsChecks(run: () => Ran, executed: () => Record<string, numb
 
   it('1 · the answer is delivered, once, and the run ends once', () => {
     const { events } = run()
-    expect(ofType(events, 'message')).toEqual([{ type: 'message', text: (chatHostTools.turns.at(-1) as { say: string }).say }])
+    expect(ofType(events, 'message')).toEqual([{ version: 1, type: 'message', text: (chatHostTools.turns.at(-1) as { say: string }).say }])
     expect(events.filter((event) => event.type === 'end')).toHaveLength(1)
   })
 }
@@ -433,7 +433,7 @@ function planModeChecks(run: () => Ran, received: () => { tool: string; argument
     ])
     expect(ofType(events, 'tool_result').find((event) => event.name === 'propose_plan')).toMatchObject({ isError: false })
     expect(ofType(events, 'proposal')).toEqual([])
-    expect(ofType(events, 'message')).toEqual([{ type: 'message', text: (planMode.turns.at(-1) as { say: string }).say }])
+    expect(ofType(events, 'message')).toEqual([{ version: 1, type: 'message', text: (planMode.turns.at(-1) as { say: string }).say }])
     expect(ofType(events, 'error')).toEqual([])
     expect(events.filter((event) => event.type === 'end')).toHaveLength(1)
   })
@@ -616,7 +616,7 @@ function criticBoundaryChecks(get: () => Corrected) {
   it('5 · a critic call of a tool outside its allow-list is refused below the engine, reaches no runtime, and the pass still ends', () => {
     const { authors, seen } = get()
     expect(ofType(authors[1]!, 'guardrail')).toEqual([
-      { type: 'guardrail', tool: 'write_file', action: 'refused', detail: expect.stringContaining('write_file is not one of the tools the critic may call') }
+      { version: 1, type: 'guardrail', tool: 'write_file', action: 'refused', detail: expect.stringContaining('write_file is not one of the tools the critic may call') }
     ])
     expect(seen.filter((call) => call.name === 'write_file')).toEqual([])
     expect(ofType(authors[1]!, 'critique')).toHaveLength(1)
@@ -721,7 +721,7 @@ function transcriptChecks(get: () => Transcript) {
     expect(chat.isDisposed).toBe(true)
     expect(after.requests.length + after.runs.length).toBe(0)
     expect(ofType(after.events, 'error')[0]!.message).toMatch(/disposed|could not complete/)
-    expect(after.events.at(-1)).toEqual({ type: 'end' })
+    expect(after.events.at(-1)).toEqual({ version: 1, type: 'end' })
   })
 }
 
@@ -1084,25 +1084,25 @@ function approvalPauseChecks(get: () => Paused, adapter: 'model' | 'agent') {
     const { pausing, saved, counts } = get()
     const asked = ofType(pausing.events, 'approval_requested')
     expect(asked).toHaveLength(1)
-    expect(asked[0]).toEqual({ type: 'approval_requested', callId: expect.any(String), name: 'tracker__create_issue', tool: 'create_issue', source: record, args: approvalPause.asked.arguments })
+    expect(asked[0]).toEqual({ version: 1, type: 'approval_requested', callId: expect.any(String), name: 'tracker__create_issue', tool: 'create_issue', source: record, args: approvalPause.asked.arguments })
     // Its call is never on the stream as a call or a result.
     expect(pausing.events.filter((event) => (event.type === 'tool_call' || event.type === 'tool_result') && event.callId === asked[0]!.callId)).toEqual([])
     const [checkpoint, end] = pausing.events.slice(-2)
     expect(checkpoint).toMatchObject({ type: 'execution_checkpoint', durable: true, checkpoint: { status: 'paused', approval: { callId: asked[0]!.callId, name: 'tracker__create_issue', tool: 'create_issue', source: record, args: approvalPause.asked.arguments, state: 'asked' } } })
-    expect(end).toEqual({ type: 'end' })
+    expect(end).toEqual({ version: 1, type: 'end' })
     expect(ofType(pausing.events, 'end')).toHaveLength(1)
     expect(ofType(pausing.events, 'error')).toEqual([])
     expect(JSON.parse(saved)).toEqual((checkpoint as { checkpoint: unknown }).checkpoint)
     // The contract's vector (approval/pause.json): the same event, the same approval, durable and paused, then end; only the call id and the framing marker are the run's own.
     const [vectorEvent, vectorCheckpoint, vectorEnd] = pauseVector.items as [Record<string, unknown>, { durable: boolean; checkpoint: ExecutionCheckpoint }, unknown]
     const legacy = (value: unknown) => JSON.parse(JSON.stringify(value, (key, held) => key === 'identity' || key === 'identityDigest' ? undefined : held)) as unknown
-    expect(legacy(asked[0])).toEqual({ ...vectorEvent, callId: asked[0]!.callId })
+    expect(legacy(asked[0])).toEqual({ ...vectorEvent, version: 1, callId: asked[0]!.callId })
     const emitted = (checkpoint as { durable?: boolean; checkpoint: ExecutionCheckpoint })
     expect(emitted.durable).toBe(vectorCheckpoint.durable)
     expect(emitted.checkpoint.status).toBe(vectorCheckpoint.checkpoint.status)
     expect(emitted.checkpoint.approval?.marker).toMatch(/^[0-9a-f]{32}$/)
     expect(legacy(emitted.checkpoint.approval)).toEqual({ ...vectorCheckpoint.checkpoint.approval, callId: asked[0]!.callId, marker: emitted.checkpoint.approval?.marker })
-    expect(end).toEqual(vectorEnd)
+    expect(end).toEqual({ ...(vectorEnd as Record<string,unknown>), version: 1 })
     expect(counts[0]).toBe(0)
     // No request is sent once the call waits: the two of the scripted turns, and no third.
     if (adapter === 'model') expect(get().pausing.requests).toHaveLength(2)
@@ -1126,9 +1126,9 @@ function approvalPauseChecks(get: () => Paused, adapter: 'model' | 'agent') {
   it('8 · the paused checkpoint, read back from its JSON text in a fresh session, refuses a decision for another call before anything runs', () => {
     const { wrong, counts } = get()
     expect(ofType(wrong.events, 'error')).toEqual([expect.objectContaining({ failure: expect.objectContaining({ code: 'stale-state', source: 'context' }) })])
-    expect(wrong.events.at(-1)).toEqual({ type: 'end' })
+    expect(wrong.events.at(-1)).toEqual({ version: 1, type: 'end' })
     // The contract's vector (approval/wrong-call-id.json): the run's events are its events, word for word.
-    expect(wrong.events.filter((event) => event.type !== 'execution_checkpoint')).toEqual(wrongCallVector.events)
+    expect(wrong.events.filter((event) => event.type !== 'execution_checkpoint')).toEqual(wrongCallVector.events.map(event=>({...event,version:1})))
     expect(wrong.requests).toHaveLength(0)
     expect(wrong.runs).toHaveLength(0)
     expect(counts[1]).toBe(0)
@@ -1152,7 +1152,7 @@ function approvalPauseChecks(get: () => Paused, adapter: 'model' | 'agent') {
   it('8 · refused: one guardrail with the reason approval refused follows the written refusal, and it is not the person’s note', () => {
     const { refused, approved, restarted } = get()
     const notices = ofType(refused.events, 'guardrail')
-    expect(notices).toEqual([{ type: 'guardrail', tool: 'tracker__create_issue', action: 'refused', detail: expect.stringContaining('The person refused this call of tracker__create_issue'), reason: 'approval refused' }])
+    expect(notices).toEqual([{ version: 1, type: 'guardrail', tool: 'tracker__create_issue', action: 'refused', detail: expect.stringContaining('The person refused this call of tracker__create_issue'), reason: 'approval refused' }])
     expect(notices[0]!.detail).not.toContain(approvalPause.note)
     const flow = refused.events
     const written = flow.findIndex((event) => event.type === 'execution_checkpoint' && event.durable === true && event.checkpoint.approval?.state === 'refused')
@@ -1379,7 +1379,7 @@ function skillsChecks(get: () => Skilled, adapter: 'model' | 'agent') {
     }
     const loaded = ofType(flow, 'skill_loaded')[0]!
     const policy = (skillsScenario.skills as unknown as SkillDeclaration[])[0]!
-    expect(loaded).toEqual({ type: 'skill_loaded', skill: { id: policy.id, name: policy.name, source: policy.source, digest: policy.pinnedDigest }, bytes: 240 })
+    expect(loaded).toEqual({ version: 1, type: 'skill_loaded', skill: { id: policy.id, name: policy.name, source: policy.source, digest: policy.pinnedDigest }, bytes: 240 })
   })
 
   if (adapter === 'model') {
@@ -1587,7 +1587,8 @@ const criticRan = (ran: Ran) => ran.requests.some((one) => JSON.stringify(one.bo
 const decidedIn = (ran: Ran) => {
   const decided = ofType(ran.events, 'critic_decided')
   expect(decided).toHaveLength(1)
-  const { type: _type, ...decision } = decided[0]!
+  expect(decided[0]!.version).toBe(1)
+  const { type: _type, version: _version, ...decision } = decided[0]!
   return decision
 }
 /** The decision is followed at once by the durable checkpoint that carries it, and comes before the critique and the proposal. */
@@ -1595,7 +1596,8 @@ function decidedInOrder(ran: Ran) {
   const at = ran.events.findIndex((event) => event.type === 'critic_decided')
   const next = ran.events[at + 1]
   expect(next?.type).toBe('execution_checkpoint')
-  const { type: _type, ...decision } = ran.events[at] as Extract<AssistantEvent, { type: 'critic_decided' }>
+  expect(ran.events[at]!.version).toBe(1)
+  const { type: _type, version: _version, ...decision } = ran.events[at] as Extract<AssistantEvent, { type: 'critic_decided' }>
   expect(next).toMatchObject({ durable: true, checkpoint: { critic: decision } })
   const critique = ran.events.findIndex((event) => event.type === 'critique')
   const proposal = ran.events.findIndex((event) => event.type === 'proposal')
@@ -2168,7 +2170,7 @@ function policyTableChecks(engineId: import('../host').AssistantEngine, agent: b
     const resumed = await play({...session,context:{...session.context,execution:saved}})
     expect(ofType(resumed.events,'error')).toEqual([])
     expect(resumed.requests.length + resumed.runs.length).toBe(1)
-    expect(ofType(resumed.events,'policy_resolved')).toEqual([{type:'policy_resolved',members:saved.policy}])
+    expect(ofType(resumed.events,'policy_resolved')).toEqual([{ version: 1,type:'policy_resolved',members:saved.policy}])
     expect(lastCheckpoint(resumed.events).policy).toEqual(saved.policy)
   })
   if(agent)it('11 · native reasoning omission, discovery, refusal and resume keep source and request bytes',async()=>{
@@ -2438,7 +2440,7 @@ for(const engineId of MODEL_ENGINES)for(const answerAs of LEGS)describe(`engine 
   expect(first).not.toContain("the person's new instruction")
   expect(second).toContain("from the person's new instruction")
   expect(second.indexOf('first')).toBeLessThan(second.indexOf('second'))
-  expect(ofType(ran.events,'steered')).toEqual([{type:'steered',bytes:5,atRequest:2},{type:'steered',bytes:6,atRequest:2}])
+  expect(ofType(ran.events,'steered')).toEqual([{ version: 1,type:'steered',bytes:5,atRequest:2},{ version: 1,type:'steered',bytes:6,atRequest:2}])
   const system=(body:unknown)=>JSON.stringify(body).match(/"role":"system","content":"([^"]*)/)?.[1]
   expect(system(ran.requests[1]!.body)).toBe(system(ran.requests[0]!.body))
   const rankedInput:import('../engine').EngineInput[]=[],rankedAnswer=answerFrom([{call:{tool:'get_schema',arguments:{}}},{say:'Done.'}],answerAs);let rankedAt=0
@@ -2466,7 +2468,7 @@ for(const engineId of AGENT_ENGINES)describe(`agent engine ${engineId} · scenar
   expect(ran.runs[0]!.prompt).not.toContain("the person's new instruction")
   expect(ran.runs[1]!.prompt).toContain("from the person's new instruction")
   expect(ran.runs[1]!.instructions).toBe(ran.runs[0]!.instructions)
-  expect(ofType(ran.events,'steered')).toEqual([{type:'steered',bytes:18,atRequest:2}])
+  expect(ofType(ran.events,'steered')).toEqual([{ version: 1,type:'steered',bytes:18,atRequest:2}])
   certifySteerPauseAndResume()
  })
 })

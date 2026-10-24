@@ -133,6 +133,12 @@ func TestCheckpointMembersInterruptResume(t *testing.T) {
 		if owners.Get(name).Str() != "controller" || name == "status" {
 			continue
 		}
+		if name == "version" {
+			if value.Get(name).Num() != 2 || interrupted.Version != 2 || continued.Version != 2 {
+				t.Fatal("current checkpoint version changed across interruption/resume")
+			}
+			continue
+		}
 		if CanonicalJSON(result.Get(name)) != CanonicalJSON(value.Get(name)) {
 			t.Errorf("%s changed across interruption/resume: %s versus %s", name, CanonicalJSON(result.Get(name)), CanonicalJSON(value.Get(name)))
 		}

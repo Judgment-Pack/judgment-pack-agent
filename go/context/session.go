@@ -1236,6 +1236,11 @@ type Run struct {
 // (gate counts it), and the refusal of a name the session serves but the run was not offered.
 // Plan mode's tool filtering is the gate's too (gate.PlanPhase); PlanningSession gives the prompt.
 func ContextualSession(ctx context.Context, session Session) (*Run, error) {
+	var admissionErr error
+	session.Context, admissionErr = PrepareDurableInput(ctx, session.Context)
+	if admissionErr != nil {
+		return nil, admissionErr
+	}
 	if session.Context != nil {
 		copied := *session.Context
 		if copied.RequestCap != nil {
@@ -1307,6 +1312,15 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		}
 		if err := held.Execution.Initialize(); err != nil {
 			return err
+		}
+		if session.Context != nil && session.Context.Persistence != nil {
+			binding := session.Context.Persistence
+			if err := held.Execution.MutateCheckpoint(CheckpointPatch{"ID": binding.Scope.Execution}); err != nil {
+				return err
+			}
+			if binding.Root {
+				binding.Writer.Bind(func() (contract.Checkpoint, error) { return held.Snapshot("") }, held.Execution.RecordPolicy, func() RecordGuard { return held.Execution.recordGuard() })
+			}
 		}
 		outputCounts := map[string]int64{}
 		for name, count := range held.Execution.State().OutputGuard {
@@ -1396,12 +1410,8 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 			}
 		}
 		record := held.ResolvedPolicy.Record()
-		if saved := held.Execution.State().Policy; saved != nil {
+		if saved := policyComparisonRecord(held.Execution.State().Policy); saved != nil {
 			for name, member := range saved {
-				if member.Source == nil {
-					source := "layer"
-					member.Source = &source
-				}
 				if strings.HasPrefix(name, "models.subagent.") {
 					if _, exists := record[name]; !exists {
 						record[name] = member
@@ -1415,14 +1425,7 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 					}
 				}
 			}
-			comparable := make(map[string]contract.PolicyMember)
-			for name, member := range saved {
-				if member.Source == nil {
-					source := "layer"
-					member.Source = &source
-				}
-				comparable[name] = member
-			}
+			comparable := policyComparisonRecord(saved)
 			for role := range changedRoles {
 				for name := range comparable {
 					if strings.HasPrefix(name, role) {
@@ -1580,7 +1583,10 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		if own[declared.Name] {
 			kept = &KeptRead{Runtime: false}
 		}
-		inner := declared.Execute
+		actualExecute := declared.Execute
+		inner := func(ctx context.Context, args json.RawMessage) (ToolResult, error) {
+			return held.ExecuteDurableHost(ctx, declared, args, actualExecute)
+		}
 		run := held.Execution.WrapRead(declared.Name, inner, declared.ContextPolicy, readOnly, kept)
 		name := declared.Name
 		declared.Execute = func(ctx context.Context, args json.RawMessage) (ToolResult, error) {
@@ -1694,7 +1700,7 @@ func (c *SessionContext) continueApproval(ctx context.Context, step string, tool
 					if err != nil {
 						return ToolResult{}, err
 					}
-					return execute(WithCallID(ctx, approval.CallID), clean)
+					return c.ExecuteDurableHost(WithCallID(ctx, approval.CallID), tool, clean, execute)
 				}
 			}
 		}

@@ -974,6 +974,14 @@
         ]
       },
       {
+        "check": "refuses future records before any provider or tool work and emits a current named notice",
+        "go": ["18 records", "18 agent records"]
+      },
+      {
+        "check": "resumes legacy source absence without rewriting its input or extending retention",
+        "go": ["18 records", "18 agent records"]
+      },
+      {
         "check": "18 · records carry identity, lifetime and redaction; export binds their digests; expired resume is refused",
         "go": [
           "18 records",

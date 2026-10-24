@@ -259,6 +259,7 @@ import {ContextLedger} from '../context/ledger'
 import {CONTEXT_DEFAULTS} from '../context/policy'
 import {canonicalJSON} from '../context/chat'
 import {readExecution} from './state'
+import {UnknownRecordMember} from '../recordReader'
 import {writeRecord,CHECKPOINT_SCHEMA,recordDigest} from '../records'
 import type {EngineSession} from '../engine'
 
@@ -288,6 +289,7 @@ describe('checkpoint member omission and interruption/resume',()=>{
   const continued=resumed.snapshot('running')
   for(const key of Object.keys(memberVector.probeOwners)){
    if(memberVector.probeOwners[key]!=='controller'||key==='status')continue
+   if(key==='version'){expect(fixture.version).toBe(2);expect(interrupted.version).toBe(2);expect(continued.version).toBe(2);continue}
    expect(canonicalJSON((continued as any)[key]),key).toBe(canonicalJSON((fixture as any)[key]))
   }
   // Interruption and initialization deliberately project status; its running value resumes exactly.
@@ -332,26 +334,29 @@ describe('checkpoint member omission and interruption/resume',()=>{
 
 it('applies concurrent counter producers at the canonical boundary',async()=>{const state=new CheckpointMutation();state.apply(seed());await Promise.all(Array.from({length:100},async()=>{state.apply({used:new CheckpointIncrement(1)})}));expect(state.read().used).toBe(100);expect(state.revision).toBe(101)})
 
-it('carries validated open members without admitting new unknown patch members',async()=>{const saved={...memberSeed(),opaque:{nested:[null,false,0]}};const controller=await memberController(saved);expect((controller.state as any).opaque).toEqual(saved.opaque);expect(()=>controller.mutate({newOpaque:1} as never)).toThrow(/Unknown checkpoint member/)})
+it('refuses unknown structural members on read and on patch',async()=>{const saved={...memberSeed(),opaque:{nested:[null,false,0]}};await expect(memberController(saved)).rejects.toThrow(UnknownRecordMember);const controller=await memberController(memberSeed());expect(()=>controller.mutate({newOpaque:1} as never)).toThrow(/Unknown checkpoint member/)})
 
 it('detaches the validated initial checkpoint',()=>{const initial=seed(),store=new CheckpointMutation(initial);initial.context.scope='changed';expect(store.read().context.scope).toBe('mutation')})
 
-describe('accepted opaque checkpoint members',()=>{
+describe('declared arbitrary checkpoint payloads',()=>{
  it('preserves an own __proto__ member as serialized data through unrelated patches',()=>{
   const fixture=memberSeed()
   delete fixture.policy;delete fixture.completions
-  Object.defineProperty(fixture,'__proto__',{value:{probe:'opaque'},enumerable:true,writable:true,configurable:true})
+  const args:Record<string,unknown>={}
+  Object.defineProperty(args,'__proto__',{value:{probe:'opaque'},enumerable:true,writable:true,configurable:true})
+  fixture.operations=[{id:'opaque-call',name:'read',args,status:'complete',result:{content:[]}}]
   const accepted=readExecution(JSON.parse(JSON.stringify(fixture)))!
-  expect(Object.hasOwn(accepted,'__proto__')).toBe(true)
+  expect(Object.hasOwn(accepted.operations[0]!.args as object,'__proto__')).toBe(true)
   const store=new CheckpointMutation(accepted),target=structuredClone(accepted)
-  const prototype=Object.getPrototypeOf(target)
+  const prototype=Object.getPrototypeOf(target.operations[0]!.args)
   store.apply({explanation:'unrelated'})
   mutateCheckpoint(target,{explanation:'unrelated'})
   for(const value of [store.read(),target]){
-   expect(Object.hasOwn(value,'__proto__')).toBe(true)
-   expect(JSON.parse(JSON.stringify(value))['__proto__']).toEqual({probe:'opaque'})
-   expect(Object.getPrototypeOf(value)).toBe(prototype)
-   expect((value as any).probe).toBeUndefined()
+   const payload=value.operations[0]!.args as Record<string,unknown>
+   expect(Object.hasOwn(payload,'__proto__')).toBe(true)
+   expect(JSON.parse(JSON.stringify(payload))['__proto__']).toEqual({probe:'opaque'})
+   expect(Object.getPrototypeOf(payload)).toBe(prototype)
+   expect(payload.probe).toBeUndefined()
   }
   expect(store.revision).toBe(2)
  })

@@ -28,6 +28,16 @@ type Options struct {
 // call's exact result (agent.go).
 func With(inner adapter.Adapter, options Options) adapter.Adapter {
 	return adapter.Func(func(ctx context.Context, run *adapter.Run) error {
+		prepared, err := runcontext.PrepareDurableInput(ctx, run.Context)
+		if err != nil {
+			for _, event := range runcontext.FailedToOpen(err) {
+				run.Emit(event)
+			}
+			return nil
+		}
+		copied := *run
+		copied.Context = prepared
+		run = &copied
 		if !run.AllowConversation || !run.Interactive || run.Children == nil {
 			return inner.Run(ctx, run)
 		}
@@ -40,9 +50,12 @@ func With(inner adapter.Adapter, options Options) adapter.Adapter {
 		if profiles == nil {
 			profiles = turn.TaskProfiles
 		}
-		c := &coordinator{inner: inner, run: run, profiles: profiles, parentRunID: newID(), models: map[string]string{},
+		c := &coordinator{inner: inner, run: run, profiles: profiles, parentRunID: newID(), storageContext: ctx, models: map[string]string{},
 			refusedBy: map[string]string{}, childStarts: map[string]time.Time{}, childStops: map[string]context.CancelFunc{}, handedBack: map[string]bool{},
 			runs: agentRuns{children: map[string]int{}}, account: newAccount(), criticReserve: criticReserve(run)}
+		if run.Context != nil && run.Context.Persistence != nil {
+			run.Context.Persistence.Writer.Decorate = func(state contract.Checkpoint) (contract.Checkpoint, error) { return c.decorate(state), nil }
+		}
 		return c.drive(ctx)
 	})
 }
@@ -215,11 +228,14 @@ type coordinator struct {
 	ledger   *runcontext.ContextLedger
 	chatTurn *runcontext.ChatTurn
 
+	deliveryMu       sync.Mutex
+	storageContext   context.Context
 	usageMu          sync.Mutex
 	emitMu           sync.Mutex
 	ended            bool
 	parentCheckpoint *contract.Checkpoint
 	fatal            error
+	releaseFailure   error
 
 	// The locks, taken in this order where more than one is held: shared.mu, batchMu, taskMu,
 	// childMu. taskMu guards every task record's members once runBatch has published it (children
@@ -267,13 +283,32 @@ type pendingReuse struct {
 }
 
 // deliver hands one event to the host, in order; nothing after the end.
-func (c *coordinator) deliver(event contract.RunEvent) {
+func (c *coordinator) deliver(event contract.RunEvent, committed ...bool) {
+	c.deliveryMu.Lock()
+	defer c.deliveryMu.Unlock()
 	c.emitMu.Lock()
-	defer c.emitMu.Unlock()
-	if c.ended {
+	ended := c.ended
+	c.emitMu.Unlock()
+	if ended {
 		return
 	}
-	c.run.Emit(event)
+	if c.run.Context != nil && c.run.Context.Persistence != nil && len(committed) == 0 {
+		binding := c.run.Context.Persistence
+		if !binding.Writer.Failed() {
+			saved, err := binding.Writer.Event(c.storageContext, *binding, event)
+			if err != nil {
+				c.emitMu.Lock()
+				if c.fatal == nil {
+					c.fatal = err
+				}
+				c.emitMu.Unlock()
+				event = failure.Event(err, "storage")
+			} else {
+				event = saved
+			}
+		}
+	}
+	c.run.Emit(contract.StampEvent(event))
 }
 
 // publish is one task's record as its delegated_task event.
@@ -438,11 +473,13 @@ func (c *coordinator) parentEmit(event contract.RunEvent) {
 		c.emitMu.Unlock()
 	case event.ExecutionCheckpoint != nil:
 		held := *event.ExecutionCheckpoint
-		held.Checkpoint = c.decorate(held.Checkpoint)
+		if c.run.Context == nil || c.run.Context.Persistence == nil {
+			held.Checkpoint = c.decorate(held.Checkpoint)
+		}
 		c.emitMu.Lock()
 		handedOff := c.requested != nil
 		c.emitMu.Unlock()
-		if handedOff {
+		if handedOff && (c.run.Context == nil || c.run.Context.Persistence == nil) {
 			// The parent's invocation ended at its handoff, and the response goes on.
 			held.Checkpoint, _, _ = runcontext.MutateCheckpoint(held.Checkpoint, runcontext.CheckpointPatch{"Status": "running"})
 		}
@@ -453,10 +490,12 @@ func (c *coordinator) parentEmit(event contract.RunEvent) {
 		event = contract.RunEvent{ExecutionCheckpoint: &held}
 	case event.BudgetPaused != nil:
 		held := *event.BudgetPaused
-		held.Checkpoint = c.decorate(held.Checkpoint)
+		if c.run.Context == nil || c.run.Context.Persistence == nil {
+			held.Checkpoint = c.decorate(held.Checkpoint)
+		}
 		event = contract.RunEvent{BudgetPaused: &held}
 	}
-	c.deliver(event)
+	c.deliver(event, true)
 }
 
 func (c *coordinator) batchesLeft() bool {

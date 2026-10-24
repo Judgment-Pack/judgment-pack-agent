@@ -52,7 +52,7 @@ func requireCapFailure(t *testing.T, err error, code string) {
 	if code == "stale-state" {
 		index = 1
 	}
-	expected := vectorItems(t, "checkpoint/request-cap-refusal.json")[index]
+	expected := vectorItems(t, "checkpoint/request-cap-refusal.json")[index].Clone().Set("version", Number(1))
 	if CanonicalJSON(actual) != CanonicalJSON(expected) {
 		t.Fatal("refusal event differs from the shared schema-validated vector")
 	}

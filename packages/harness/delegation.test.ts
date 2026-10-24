@@ -229,7 +229,7 @@ it('pauses the real Codex adapter and runs children serially before continuing',
  const {model:_model,thinking:_thinking,...base}=apiSession()
  const events=await collect(withDelegation(codex),{...base,agent:{model:'fixture',run}})
  expect(calls).toBe(4);expect(peak).toBe(1);expect(results(events)).toHaveLength(2)
- expect(events.filter(e=>e.type==='message')).toEqual([{type:'message',text:'Parent finished.'}])
+ expect(events.filter(e=>e.type==='message')).toEqual([{ version: 1,type:'message',text:'Parent finished.'}])
  // The continuation carries the findings, as the call's result, and no copy of the parent's earlier work.
  const continuation=prompts.at(-1)!
  expect(continuation).toContain('Child finding.');expect(continuation).not.toContain('PARENT CONTINUATION');expect(continuation).not.toContain('priorParentWork')
@@ -257,7 +257,7 @@ it('carries the Codex parent’s earlier reads to its next run by reference, and
  const events=await collect(withDelegation(codex),{...base,agent:{model:'fixture',run}})
  expect(parents).toBe(3)
  expect(results(events).map(t=>[t.title,t.state])).toEqual([['First','complete'],['Second','complete']])
- expect(events.filter(e=>e.type==='message')).toEqual([{type:'message',text:'Both batches done.'}])
+ expect(events.filter(e=>e.type==='message')).toEqual([{ version: 1,type:'message',text:'Both batches done.'}])
  const second=prompts.filter(p=>p.includes('DELEGATION RESULT'))[0]!
  // The earlier read is in the index, by its read_window id and its first line; its text is not copied into the prompt.
  expect(second).toContain('Earlier runs in this chat kept these tool results')
@@ -288,7 +288,7 @@ it('supports the real Vercel SDK delegation without emitting child prose into th
  const call=vi.fn(async()=>{calls++;return calls===1?sse(undefined,{name:'delegate_tasks',args:request}):sse(calls===2?'Child finding.':'Parent answer.')})
  const events=await collect(withDelegation(vercel),apiSession({model:{family:'openai-compatible',model:'fixture',call}}))
  expect(calls).toBe(3);expect(results(events)[0]).toMatchObject({state:'complete',result:'Child finding.',modelRequests:1})
- expect(events.filter(e=>e.type==='message')).toEqual([{type:'message',text:'Parent answer.'}])
+ expect(events.filter(e=>e.type==='message')).toEqual([{ version: 1,type:'message',text:'Parent answer.'}])
  expect(events.filter(e=>e.type==='end')).toHaveLength(1)
 })
 
@@ -385,7 +385,7 @@ describe('one parent run (agent#14)',()=>{
   const said=events.find(e=>e.type==='tool_result'&&e.name===DELEGATE_TOOL) as Extract<AssistantEvent,{type:'tool_result'}>
   expect(said.isError).toBe(false)
   expect((said.structured as Answered).tasks[0]).toMatchObject({state:'complete',result:'Child finding: the claim has no source.'})
-  expect(events.filter(e=>e.type==='message')).toEqual([{type:'message',text:'Parent answer.'}])
+  expect(events.filter(e=>e.type==='message')).toEqual([{ version: 1,type:'message',text:'Parent answer.'}])
   expect(events.some(e=>e.type==='delegation_requested')).toBe(false)
  })
 
@@ -402,7 +402,7 @@ describe('one parent run (agent#14)',()=>{
   const last=parentRequests(sent).at(-1)!
   expect(toolMessages(last)).toHaveLength(2)
   expect(toolMessages(last)[1]).toContain('Second finding.')
-  expect(events.filter(e=>e.type==='message')).toEqual([{type:'message',text:'Both checks are done.'}])
+  expect(events.filter(e=>e.type==='message')).toEqual([{ version: 1,type:'message',text:'Both checks are done.'}])
   expect(events.filter(e=>e.type==='error')).toEqual([])
  })
 
@@ -571,7 +571,7 @@ describe('context by reference and profiles (agent#15)',()=>{
   const {model:_model,thinking:_thinking,...base}=apiSession()
   const events=await collect(withDelegation(codex),{...base,agent:{model:'scripted-agent',run:bindAgentRun('scripted-agent')}})
   expect(bridge.errors).toEqual([])
-  expect(events.filter(e=>e.type==='message')).toEqual([{type:'message',text:'Done.'}])
+  expect(events.filter(e=>e.type==='message')).toEqual([{ version: 1,type:'message',text:'Done.'}])
   // The parent's runs keep the bound model; the review child's names the child model, the author-test child's the parent's.
   expect(bridge.runs.map(run=>[run.phase,run.model])).toEqual([['author','scripted-agent'],['author','cheaper-agent'],['author','scripted-agent'],['author','scripted-agent']])
   expect(results(events).map(t=>[t.title,t.model])).toEqual([['Cheap','cheaper-agent'],['Tests','scripted-agent']])
@@ -828,7 +828,7 @@ describe('the rest of agent#13',()=>{
   const next=LINES[record.result!.split('\n').length]!
   expect(readOn).toContain(next)
   expect(parentRequests(sent)).toHaveLength(3)
-  expect(events.filter(e=>e.type==='message')).toEqual([{type:'message',text:'Every trip matches.'}])
+  expect(events.filter(e=>e.type==='message')).toEqual([{ version: 1,type:'message',text:'Every trip matches.'}])
  })
 
  it('cuts a head at whole lines, or inside a first line too long, with the cursor read_window takes',()=>{
@@ -906,7 +906,7 @@ describe('limits after the review of agent#35',()=>{
   // Runs: parent, child, parent, child, parent: five, the last with no delegate_tasks.
   expect(codexRuns.run).toHaveBeenCalledTimes(5)
   expect(codexRuns.counts()).toEqual({batches:2,children:2})
-  expect(events.filter(e=>e.type==='message')).toEqual([{type:'message',text:'The parent’s answer.'}])
+  expect(events.filter(e=>e.type==='message')).toEqual([{ version: 1,type:'message',text:'The parent’s answer.'}])
   expect(events.filter(e=>e.type==='error')).toEqual([])
   // The limit is stated where the parent reads it, and the last run is told delegation is spent.
   expect(codexRuns.prompts[0]).toContain(AGENT_DELEGATION_INSTRUCTIONS)
@@ -935,7 +935,7 @@ describe('limits after the review of agent#35',()=>{
   const events=await collect(withDelegation(codex),{...base,agent:{model:'fixture',run:codexRuns.run}})
   expect(codexRuns.run).toHaveBeenCalledTimes(5)
   expect(results(events).map(t=>[t.title,t.state])).toEqual([['One','complete'],['A','complete'],['B','failed'],['C','failed']])
-  expect(events.filter(e=>e.type==='message')).toEqual([{type:'message',text:'The parent’s answer.'}])
+  expect(events.filter(e=>e.type==='message')).toEqual([{ version: 1,type:'message',text:'The parent’s answer.'}])
  })
 
  // Review row 2.
@@ -955,7 +955,7 @@ describe('limits after the review of agent#35',()=>{
   // Seven requests were left for children: granted three and four, each its last request tool-free.
   expect(records.map(t=>t.modelRequests).sort()).toEqual([3,4])
   expect(sent).toHaveLength(20)
-  expect(events.filter(e=>e.type==='message')).toEqual([{type:'message',text:'Both found something.'}])
+  expect(events.filter(e=>e.type==='message')).toEqual([{ version: 1,type:'message',text:'Both found something.'}])
  })
 
  // Review row 4 and row 8.

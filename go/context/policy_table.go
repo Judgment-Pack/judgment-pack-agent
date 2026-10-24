@@ -236,6 +236,22 @@ func policyDefaults(s policyShape, path string, out PolicyMembers) {
 	}
 }
 
+// policyComparisonRecord normalizes a detached map for runtime comparisons only.
+func policyComparisonRecord(saved map[string]contract.PolicyMember) map[string]contract.PolicyMember {
+	if saved == nil {
+		return nil
+	}
+	out := make(map[string]contract.PolicyMember, len(saved))
+	for name, member := range saved {
+		if member.Source == nil {
+			source := "layer"
+			member.Source = &source
+		}
+		out[name] = member
+	}
+	return out
+}
+
 // PolicyAlias no longer normalizes retired flat input; ResolvePolicy refuses it.
 func PolicyAlias(value PolicyLayer) PolicyLayer { return value }
 
@@ -258,8 +274,22 @@ func ResolvePolicy(run, project, table PolicyLayer, host PolicyHost) (ResolvedPo
 				return result, err
 			}
 		}
+		// The value-specific fallback below must never swallow malformed version metadata.
+		if version, present := input["version"]; present {
+			header, _ := json.Marshal(map[string]any{"version": version})
+			if err := contract.CheckRecord("policy", header); err != nil {
+				return result, err
+			}
+		}
 		checked, _ := json.Marshal(input)
 		if err := contract.CheckRecord("policy", checked); err != nil && !errors.Is(err, contract.ErrInvalidRecord) {
+			var unknown *contract.UnknownRecordMember
+			if errors.As(err, &unknown) && strings.Count(unknown.Member, "/") == 1 {
+				key := strings.TrimPrefix(unknown.Member, "/")
+				if detail := retiredPolicyDetail(key, ""); detail != "unknown policy member" {
+					return result, &PolicyRefusal{Member: key, Layer: layer.name, Detail: detail}
+				}
+			}
 			return result, err
 		}
 		delete(input, "version")

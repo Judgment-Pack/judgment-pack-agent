@@ -33,3 +33,21 @@ export type { Edit, EditType, DraftCheckpoint, AcceptedDocument } from '../edits
 export { EDIT_TOOLS, editSchema } from '../edits'
 
 export {readRunEvent,readPolicyLayer,RECORD_VERSIONS,UnsupportedRecordVersion,UnknownRecordMember} from '../recordReader'
+
+export * from '../storage/run'
+export * from '../storage/common'
+export * from '../storage/conformance'
+export {MemoryChatStore} from '../storage/chat'
+export type {ChatEntry,ChatListRequest,ChatPage,StoredChat,ChatPatch} from '../storage/chat'
+export type {DurableRunInput,DurableScope,ArtifactObservation,DurableObservation} from '../storage/writer'
+export {ContinuationNotRecoverable,ContinuationIdentityChanged,HostOutcomeUnknown,StorageAcknowledgementInvalid,StorageOutcomeUnknown} from '../storage/writer'
+
+export * from '../planning/references'
+export type {ChatPlan,PlanReference,CurrentPlanReference,LegacyPlanReference} from '../planning/model'
+export {planTools,acceptPlan,checkPlan} from '../planning/tools'
+
+export {readStoredRunEvent} from '../storage/writer'
+export {legacyChatStoreAdapter} from '../storage/legacyChat'
+
+export {ProviderReleaseUnknown} from '../storage/release'
+export type {ProviderRelease} from '../storage/release'

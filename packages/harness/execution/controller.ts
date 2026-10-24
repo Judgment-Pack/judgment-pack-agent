@@ -65,6 +65,8 @@ export class ExecutionController {
  private readonly recordPolicy:RecordsPolicy
  recordGuard?:()=>RecordGuard|undefined
  constructor(private session:EngineSession,private ledger:ContextLedger,members?:import('../policy').PolicyMembers){this.recordPolicy=recordsPolicy(members??{})}
+ get storagePolicy(){return this.recordPolicy}
+ get storageGuard(){return this.recordGuard?.()}
  async initialize(){
   const requestCap=this.session.context?.requestCap
   if(this.initialized&&(this.requestCap!==undefined||requestCap!==undefined))throw this.capRefusal()

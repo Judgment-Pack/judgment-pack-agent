@@ -50,6 +50,9 @@ func (o *Operation) Value() *Value {
 // (ExecutionCheckpoint in execution/state.ts). Its values are ordered JSON values, so what the
 // checkpoint weighs is what the TypeScript's weighs.
 type Execution struct {
+	Durable *Value
+	Handoff *contract.CheckpointHandoff
+
 	OutputGuard map[string]int64
 	Memories    *contract.ProvenanceMemories
 	RetainUntil string
@@ -269,6 +272,14 @@ func (e *Execution) Value() *Value {
 		value, _ := ParseJSON(data)
 		out.Set("usage", value)
 	}
+	if e.Durable != nil {
+		out.Set("durable", e.Durable.Clone())
+	}
+	if e.Handoff != nil {
+		raw, _ := json.Marshal(e.Handoff)
+		held, _ := ParseJSON(raw)
+		out.Set("handoff", held)
+	}
 	return out
 }
 
@@ -300,7 +311,7 @@ func executionOf(saved *contract.Checkpoint) (*Execution, error) {
 	if saved.RetainUntil != nil {
 		retainUntil = *saved.RetainUntil
 	}
-	out := &Execution{RetainUntil: retainUntil, Version: int(saved.Version), ID: saved.ID, RequestKey: saved.RequestKey,
+	out := &Execution{Durable: value.Get("durable"), Handoff: saved.Handoff, RetainUntil: retainUntil, Version: int(saved.Version), ID: saved.ID, RequestKey: saved.RequestKey,
 		Phase: saved.Phase, Status: saved.Status, Unit: saved.Unit, Used: int(saved.Used),
 		Limit: int(saved.Limit), Grants: saved.Grants, Plan: value.Get("plan"),
 		Explanation: saved.Explanation, Completions: saved.Completions, Context: saved.Context,

@@ -62,7 +62,7 @@ type Boundary struct {
 func NewBoundary(run *Run) *Boundary {
 	tracked := false
 	if run.Session.Context != nil {
-		tracked = run.Session.Context.CurrentRequest != nil || run.Session.Context.Execution != nil
+		tracked = run.Session.Context.Persistence != nil || run.Session.Context.CurrentRequest != nil || run.Session.Context.Execution != nil
 	}
 	return &Boundary{run: run, tracked: tracked, held: map[string]bool{}, heldByName: map[string]int{}, deliveredNames: map[string]string{}}
 }
@@ -447,12 +447,23 @@ func currentEvents(events []contract.RunEvent) []contract.RunEvent {
 	}
 	return events
 }
-func (b *Boundary) Open() []contract.RunEvent { return currentEvents(b.open()) }
+func (b *Boundary) persist(events []contract.RunEvent) ([]contract.RunEvent, bool) {
+	output, err := b.run.Context.PersistEvents(events)
+	if err != nil {
+		b.failed = true
+		b.ended = true
+		return append(output, currentEvents([]contract.RunEvent{failure.Event(err, "storage"), {End: &contract.RunEventEnd{Type: "end"}}})...), true
+	}
+	return output, false
+}
+func (b *Boundary) Open() []contract.RunEvent { output, _ := b.persist(b.open()); return output }
 func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 	events, stop := b.event(event)
-	return currentEvents(events), stop
+	output, failed := b.persist(events)
+	return output, stop || failed
 }
 func (b *Boundary) Failed(cause error) []contract.RunEvent {
-	return currentEvents(b.failureEvents(cause))
+	output, _ := b.persist(b.failureEvents(cause))
+	return output
 }
 func FailedToOpen(cause error) []contract.RunEvent { return currentEvents(failedToOpen(cause)) }

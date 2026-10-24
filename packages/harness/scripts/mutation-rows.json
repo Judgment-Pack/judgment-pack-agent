@@ -5895,6 +5895,128 @@
    ],
    "status": "caught",
    "origin": "agent#165"
+  },
+  {
+   "name": "storage foundation run CAS",
+   "file": "storage/run.ts",
+   "find": "if((held?.head.revision??null)!==frozen.expectedRevision)throw new StorageConflict(frozen.expectedRevision,held?.head.revision??null)",
+   "replace": "void frozen.expectedRevision",
+   "tests": [
+    "storage/storage.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#159/#179/#158"
+  },
+  {
+   "name": "storage foundation idempotency content",
+   "file": "storage/run.ts",
+   "find": "if(!identical(prior.input,frozen))throw new StorageCommitMismatch();",
+   "replace": "void frozen;",
+   "tests": [
+    "storage/storage.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#159/#179/#158"
+  },
+  {
+   "name": "storage foundation byte copies",
+   "file": "storage/common.ts",
+   "find": "const out=new Uint8Array(value)",
+   "replace": "const out=value",
+   "tests": [
+    "storage/storage.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#159/#179/#158"
+  },
+  {
+   "name": "storage foundation logical scope replay",
+   "file": "storage/writer.ts",
+   "find": "row.kind===kind&&row.fingerprint===fingerprint",
+   "replace": "row.kind===kind",
+   "tests": [
+    "storage/writer.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#159/#179/#158"
+  },
+  {
+   "name": "storage foundation exact prepared bytes",
+   "file": "storage/writer.ts",
+   "find": "safeRequest(pending.request);return pending.request",
+   "replace": "safeRequest(pending.request);return request",
+   "tests": [
+    "storage/writer.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#159/#179/#158"
+  },
+  {
+   "name": "storage foundation receipt acknowledgement",
+   "file": "storage/writer.ts",
+   "find": "if(!receipt||receipt.commitId!==commitId||!storageId(receipt.revision)||receipt.revision===this.revision||receipt.cursor!==null&&!storageId(receipt.cursor)||output&&receipt.cursor===null)throw new StorageAcknowledgementInvalid()",
+   "replace": "void receipt",
+   "tests": [
+    "storage/writer.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#159/#179/#158"
+  },
+  {
+   "name": "storage foundation recursive record bound",
+   "file": "recordReader.ts",
+   "find": "if(recordDepth>4)return invalid()",
+   "replace": "void recordDepth",
+   "tests": [
+    "storage/writer.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#159/#179/#158"
+  },
+  {
+   "name": "storage foundation artifact content pin",
+   "file": "planning/references.ts",
+   "find": "if(pin!==undefined&&pin!==found.digest)throw new PlanReferenceChanged()",
+   "replace": "void pin",
+   "tests": [
+    "storage/planning.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#159/#179/#158"
+  },
+  {
+   "name": "storage foundation invocation release scope",
+   "file": "storage/release.ts",
+   "find": "!live||token!==invocation||acknowledged",
+   "replace": "!live||acknowledged",
+   "tests": [
+    "storage/engines.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#159/#179/#158"
+  },
+  {
+   "name": "record versions admit policy metadata before value fallback",
+   "file": "policy.ts",
+   "find": "    checkRecordVersion('policy',input)",
+   "replace": "    // version admission removed",
+   "tests": [
+    "recordReader.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#165"
+  },
+  {
+   "name": "record member startup refusal never publishes diagnostic input",
+   "file": "recordReader.ts",
+   "find": "reason:'record member unsupported' as const,detail:'Record contains an unsupported member.'",
+   "replace": "reason:'record member unsupported' as const,detail:this.message",
+   "tests": [
+    "recordRefusal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#165",
+   "note": "R200-1: actual managedContext checkpoint/policy startup under redact/refuse, including invalid guard configuration, plus public event readers. Go twin restores e.Error() in UnknownRecordMember.Event and fails TestRecordRefusalStartupDoesNotPublishMember."
   }
  ]
 }

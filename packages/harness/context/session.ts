@@ -1,3 +1,6 @@
+import {quarantineModelResponse} from '../storage/model'
+import {durableOwner,durableSession,prepareProviderDispatch,scopeFor,hostSucceeded,type DurableBinding,type DurableRunInput} from '../storage/writer'
+import {sha256} from '../records'
 import {RequestValues} from './requestValues'
 import {CheckpointIncrement} from '../execution/mutation'
 import {OutputGuard,RecordsRefused,outputWhere} from '../outputGuard'
@@ -62,7 +65,7 @@ export type Compactor=(request:CompactorRequest,signal:AbortSignal)=>Promise<str
  * (`checkpoint.json#/$defs/approvalDecision`), the continuation input beside a request grant. A
  * decision for any other call is refused before anything runs (`stale-state`).
  */
-export interface ContextInput {acceptedDocuments?:AcceptedDocument[];currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;requestCap?:number;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatScope;runtime?:RuntimeIdentity;memory?:boolean;objective?:string;link?:ExecutionLink;connection?:AITarget;delegationReuse?:boolean;approval?:import('../execution/state').ApprovalDecision;compactor?:Compactor}
+export interface ContextInput {[prepareProviderDispatch]?:(kind:'model'|'agent',role:string,recovering:boolean)=>Promise<void>;runStore?:DurableRunInput;[durableOwner]?:DurableBinding;acceptedDocuments?:AcceptedDocument[];currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;requestCap?:number;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatScope;runtime?:RuntimeIdentity;memory?:boolean;objective?:string;link?:ExecutionLink;connection?:AITarget;connectionRevisions?:Readonly<Record<string,string>>;delegationReuse?:boolean;approval?:import('../execution/state').ApprovalDecision;compactor?:Compactor}
 /** How the delegation coordinator reaches a run it starts (agent#14): told the run's context once its execution is initialized, before its first request. */
 export interface ExecutionLink {attach(context:SessionContext):void;/** ADR-0006: the delegating run's source gate, which a child's gate shares the report's rows and the changed sources of. */sources?():SourceGate|undefined}
 export interface ContextUsage {inputBytes:number;estimatedInputTokens:number;inputBudgetBytes:number;outputReserveTokens:number;compactions:number;retainedItems:number}
@@ -215,6 +218,7 @@ export class SessionContext {
   * allow-list; the codex engine's tool-free reformat run, to nothing (review row 5).
   */
  private narrowed:'critic'|'reformat'|null=null
+ get storageRole(){return this.narrowed==='reformat'?'reformat':this.criticRunning?'critic':'author'}
  /** agent#10: the guardrail events the critic's refusals earned, for the boundary to put on the stream. */
  private notices:AssistantEvent[]=[]
  /** This run's turn on its chat (agent#8), or none. */
@@ -801,6 +805,7 @@ function fallbackRequest(values:import('../engine').RequestModelValues,suffix:st
  return {suffix,request:{...request,body:JSON.stringify(body)}}
 }
 export async function contextualSession<T extends EngineSession>(session:T,engine?:AssistantEngine):Promise<{session:RequestSessionFor<T>;context:SessionContext}>{
+ session=await durableSession(session)
  // Copy the host's scalar admission input before any asynchronous setup.
  session={...session,context:session.context?{...session.context,requestCap:session.context.requestCap}:undefined}
  // ADR-0006: the tools with a source, read and named for the wire before anything else sees them.
@@ -827,6 +832,11 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  const skills=await declareSkills(session.skills,declaredNames,context.policy,declared.sources)
  declared.sources.push(...skills.sources)
  await context.execution.initialize()
+ const persistence=session.context?.[durableOwner]
+ if(persistence){
+  if(persistence.root){context.execution.mutate({id:persistence.writer.id});persistence.writer.bind(()=>context.execution.snapshot(),context.execution.storagePolicy,()=>context.execution.storageGuard)}
+  else context.execution.mutate({id:persistence.scope.execution})
+ }
  context.output=new OutputGuard(context.resolvedPolicy,()=>context.execution.state.outputGuard??{},event=>context.memoryNotice(event),counts=>context.execution.mutate({outputGuard:counts}))
  context.output.declaredNames=new Set([...session.tools,...session.hostTools].map(tool=>tool.name))
  context.restoreCompaction()
@@ -896,16 +906,25 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  // ADR-0006: load_tool beside the ledger's tools where the tools with a source are a catalogue; each call
  // of a tool with a source is held by the source gate before the host's execute (SourceGate.call).
  // ADR-0009: load_skill and unload_skill beside them where any skill is catalogued, in every phase but a child's (which is handed no skills).
- const hostTools=[...session.hostTools,...(session.context?.objective||session.childDefinition||session.context?.phase==='plan'||session.context?.artifactProposals===false?[]:context.drafts.tools()),...(session.context?.objective||session.childDefinition?[]:[rememberTool(()=>context.execution.state,context.policy,detail=>context.refuse(REMEMBER,detail,'memory refused'),event=>context.memoryNotice(event),patch=>context.execution.mutate(patch))]),...context.ledger.tools(),...(context.catalogue?[context.sources!.loadTool()]:[]),...(context.skills?.offered?[context.skills.loadTool(),context.skills.unloadTool()]:[]),...(context.review.offered?[context.reviewTool()]:[]),...(session.allowConversation?[context.execution.tool(),context.execution.budgetTool()]:[])].map(tool=>({...tool,execute:async(args:Record<string,unknown>,signal:AbortSignal,callId?:string)=>{context.admit(tool.name,'host',args);if(!isEdit(tool.name))args=context.output.value(args,outputWhere(tool.name));await session.context?.authorize?.(signal);const run=(given:Record<string,unknown>,bounded:AbortSignal)=>context.execution.wrapRead(tool.name,a=>tool.execute(a,bounded,callId),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read',own.has(tool.name)?{runtime:false}:undefined)(given);return context.sources?context.sources.call(tool,args,signal,run,callId):run(args,signal)}}))
+ const executeHost=async(tool:HostTool,args:Record<string,unknown>,signal:AbortSignal,callId?:string)=>{
+  const binding=session.context?.[durableOwner]
+  const source=declared.entries.get(tool.name)?.record
+  const invoke=async(raw:string)=>{await session.context?.authorize?.(signal);signal.throwIfAborted();return tool.execute(JSON.parse(raw),signal,callId)}
+  if(!binding)return invoke(canonicalJSON(args))
+  const identity=source?`sha256:${await contextDigest(canonicalJSON(source))}`:'host'
+  return binding.writer.invoke(scopeFor(binding,context.storageRole),'host',identity,tool.name,canonicalJSON(args),readingTool(tool),invoke,hostSucceeded,result=>tool.artifacts?.(result,args)??[],signal)
+ }
+ const hostTools=[...session.hostTools,...(session.context?.objective||session.childDefinition||session.context?.phase==='plan'||session.context?.artifactProposals===false?[]:context.drafts.tools()),...(session.context?.objective||session.childDefinition?[]:[rememberTool(()=>context.execution.state,context.policy,detail=>context.refuse(REMEMBER,detail,'memory refused'),event=>context.memoryNotice(event),patch=>context.execution.mutate(patch))]),...context.ledger.tools(),...(context.catalogue?[context.sources!.loadTool()]:[]),...(context.skills?.offered?[context.skills.loadTool(),context.skills.unloadTool()]:[]),...(context.review.offered?[context.reviewTool()]:[]),...(session.allowConversation?[context.execution.tool(),context.execution.budgetTool()]:[])].map(tool=>({...tool,execute:async(args:Record<string,unknown>,signal:AbortSignal,callId?:string)=>{context.admit(tool.name,'host',args);if(!isEdit(tool.name))args=context.output.value(args,outputWhere(tool.name));await session.context?.authorize?.(signal);const run=(given:Record<string,unknown>,bounded:AbortSignal)=>context.execution.wrapRead(tool.name,a=>executeHost(tool,a,bounded,callId),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read',own.has(tool.name)?{runtime:false}:undefined)(given);return context.sources?context.sources.call(tool,args,signal,run,callId):run(args,signal)}}))
  // ADR-0008: the act call the person approved runs through the host's own execute, as every call of it would.
  const approval=context.execution.state.approval
  if(context.execution.approvalStep==='execute'&&approval){
   const declaredTool=session.hostTools.find(tool=>tool.name===approval.name) as HostTool|undefined
-  context.runApproved=signal=>context.sources?context.sources.approved(approval,signal,declaredTool===undefined?undefined:(given,bounded)=>context.execution.wrapRead(declaredTool.name,a=>declaredTool.execute(context.output.value(a,'tool argument'),bounded,approval.callId),declaredTool.contextPolicy,false)(given))
+  context.runApproved=signal=>context.sources?context.sources.approved(approval,signal,declaredTool===undefined?undefined:(given,bounded)=>context.execution.wrapRead(declaredTool.name,a=>executeHost(declaredTool,context.output.value(a,'tool argument'),bounded,approval.callId),declaredTool.contextPolicy,false)(given))
    :Promise.resolve({result:{isError:true,content:[{type:'text',text:`${approval.name} is no longer offered; the call was not run and nothing was changed.`}]},ran:false})
  }
  // ADR-0008: while an act call waits for the person's decision, no request is sent: the run ends paused.
  const held=()=>{if(context.execution.approvalAsked)throw new ApprovalPaused()}
+ const providerSource=(role:string)=>{const id=context.provider(role).connection;return `sha256:${sha256(canonicalJSON({id,revision:session.context?.connectionRevisions?.[id]??(id===session.context?.connection?.connectionId?session.context?.connection?.connectionRevision??null:null)}))}`}
  const model='model'in session?{...session.model,call:async(suffix:string,request:import('../engine').ModelRequest)=>{
   await session.context?.authorize?.(session.signal)
   const role=context.criticRunning?'critic':'author',binding=context.connection(role)
@@ -915,11 +934,17 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
    suffix=rebuilt.suffix;request=rebuilt.request
   }
   context.execution.useConnection(context.provider(role).connection,role,selected.model)
+  const persistence=session.context?.[durableOwner]
+  if(persistence){const source=providerSource(role);const prepared=JSON.parse(persistence.writer.prepared(scopeFor(persistence,context.storageRole),'model',source,selected.model,canonicalJSON({suffix,method:request.method,body:request.body})));suffix=prepared.suffix;request={...request,method:prepared.method,body:prepared.body}}
   if(request.method!=='GET'){
-   held();context.execution.claim();await context.execution.recordPrompt(request.body)
+   await session.context?.[prepareProviderDispatch]?.('model',context.storageRole,persistence?.writer.recovering(scopeFor(persistence,context.storageRole),'model')===true)
+   held();if(!persistence?.writer.recovering(scopeFor(persistence,context.storageRole),'model')){context.execution.claim();await context.execution.recordPrompt(request.body)}
    try{await session.context?.checkpoint?.(context.execution.snapshot())}catch(error){if(!(error instanceof RecordsRefused)||context.execution.state.requestCap!==undefined)throw failureError('storage','storage','not-started')}
   }
-  return selected.call(suffix,request)
+  const durable=session.context?.[durableOwner]
+  if(!durable)return selected.call(suffix,request)
+  const dispatchSignal=request.signal?AbortSignal.any([session.signal,request.signal]):session.signal
+  return durable.writer.invokeModel(scopeFor(durable,context.storageRole),providerSource(role),selected.model,canonicalJSON({suffix,method:request.method,body:request.body}),async raw=>{await session.context?.authorize?.(dispatchSignal);dispatchSignal.throwIfAborted();const prepared=JSON.parse(raw);return selected.call(prepared.suffix,{...request,method:prepared.method,body:prepared.body,signal:dispatchSignal})},response=>quarantineModelResponse(selected.family,response,dispatchSignal),dispatchSignal)
  }}:undefined
  const agent='agent'in session?{...session.agent,run:async(request:import('../agent').AgentRequest,callbacks:import('../agent').AgentCallbacks)=>{
   await session.context?.authorize?.(callbacks.signal);held()
@@ -935,13 +960,18 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
    const {delegated:_delegated,...sent}=request
    return JSON.stringify(sent)
   }
-  await context.execution.recordPrompt(prepare())
+  let preparedBody=prepare()
+  const persistence=session.context?.[durableOwner]
+  if(persistence){const source=providerSource(role);preparedBody=persistence.writer.prepared(scopeFor(persistence,context.storageRole),'agent',source,selected.model,preparedBody);request=JSON.parse(preparedBody)}
+  await context.execution.recordPrompt(preparedBody)
+  await session.context?.[prepareProviderDispatch]?.('agent',context.storageRole,persistence?.writer.recovering(scopeFor(persistence,context.storageRole),'agent')===true)
   let reached=false
   const watched={...callbacks,
    event:async(event:import('../agent').AgentEvent)=>{reached=true;return callbacks.event(event)},
    tool:async(call:import('../agent').AgentToolCall,signal:AbortSignal)=>{reached=true;return callbacks.tool(call,signal)}
   }
-  try{return await selected.run(request,watched)}catch(cause){
+  const send=()=>{const binding=session.context?.[durableOwner];return binding?binding.writer.invoke(scopeFor(binding,context.storageRole),'agent',providerSource(role),selected.model,JSON.stringify(request),true,async raw=>{await session.context?.authorize?.(callbacks.signal);return selected.run(JSON.parse(raw),watched)},()=>false,()=>[],session.signal):selected.run(request,watched)}
+  try{return await send()}catch(cause){
    const failure=normalizeFailure(cause,'agent')
    if(reached||!(['unavailable','rate-limited','timeout'] as const).includes(failure.code as FailoverClass))throw cause
    const switched=context.fallback(role,failure.code as FailoverClass,callbacks.connectionSwitched===undefined)
@@ -949,7 +979,7 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
    if(callbacks.connectionSwitched)await callbacks.connectionSwitched({type:'connection_switched',role,...switched,reason:failure.code as FailoverClass})
    binding=context.connection(role);selected=binding&&'agent'in binding?binding.agent:session.agent
    await context.execution.recordPrompt(prepare())
-   try{return await selected.run(request,watched)}catch(error){
+   try{return await send()}catch(error){
     const last=normalizeFailure(error,'agent')
     if(!reached&&(['unavailable','rate-limited','timeout'] as string[]).includes(last.code))context.refuseExhausted(role,last.code as FailoverClass)
     throw error

@@ -189,22 +189,24 @@ the run's deadline), authentication and session, policy admission and the enable
 durable run store behind the checkpoint callback, host tools and approvals, and the UI and its event
 client. In the Desk: `internal/codexbridge`, its run store and its assistant handler.
 
-## Departures from the TypeScript coordinator
+## Shared storage recovery
 
-- The Go coordinator writes `handoff` and acknowledges each transition; the TypeScript coordinator
-  keeps the handoff in memory, so a TypeScript response that stops between a handoff and its
-  continuation starts again from the parent.
-- The Go adapter waits for the host's function to return at a handoff before its run ends; the
-  TypeScript `codex` engine ends the run when the call's signal is aborted, and the bridge's own
-  close follows.
-- On the agent capability the Go checkpoint carries the `delegation` figures from the parent's
-  first invocation, so the count survives a restart before any batch; the TypeScript coordinator
-  writes them once a batch has started.
-- The Go adapter writes the checkpoint, acknowledged, before a host tool that is not a read; the
-  TypeScript `codex` engine relies on the boundary's durable `execution_checkpoint` events.
+Both coordinators now write and acknowledge all handoff states through one root RunStore
+writer, await the actual provider function's release before child/continuation dispatch, retain
+zero-batch parent figures, and journal host dispatch claims before calling the host. TypeScript
+consumer cancellation remains prompt while an invocation or commit may still be unresolved;
+that uncertainty never permits another dispatch. Callback migration remains single writer.
 
 ## Not decided here
 
 ADR-0006's tool sources; a provider-specific transport in this repository (the Desk's bridge stays
 the Desk's); the critic's and a child's model on the agent wire beyond the host's admission; a
 partial child result streamed into the parent's checkpoint.
+
+## Storage foundation follow-up
+
+The shared RunStore integration extends these durable handoff transitions to TypeScript. Both
+languages use one root CAS writer and retain the exact continuation frame before the next
+parent invocation. Storage acknowledgement and actual provider release are separate waits;
+neither a callback label nor stream backpressure proves either. See
+[storage integration](../design/storage.md) for recovery, limits and legacy adapter migration.

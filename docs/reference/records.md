@@ -16,6 +16,8 @@ The host owns storage and deletion. The package writes self-describing records, 
 
 ADR-0024: writers use checkpoint version 2 and event/policy version 1. Readers also accept checkpoint 1 and historical events/policy layers with no version. Newer versions and unknown structural members are refused by name. Historical reads and exports preserve the supplied version and lifecycle metadata; a resumed snapshot writes the current checkpoint version without extending retention.
 
+UnknownRecordMember keeps its member pointer and bounded message on the diagnostic error. Public refusal events use fixed input-independent detail, including startup before an output guard exists.
+
 ## The export manifest
 
 ADR records (#101). The closed export.json manifest beside the host-supplied records. The package has no record store.

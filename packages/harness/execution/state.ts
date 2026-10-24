@@ -1,3 +1,5 @@
+import {validDurable} from '../storage/durable'
+import {validHandoff} from '../storage/handoff'
 import {mutateCheckpoint} from './mutation'
 import {checkRecord} from '../recordReader'
 import {validOutputCounts,type OutputCounts} from '../outputGuard'
@@ -44,6 +46,8 @@ export const MAX_PROMPT_DIGESTS = 300
 /** A local execution record, never permissions, evidence approval or private reasoning. */
 export interface ExecutionCheckpoint {
  schema?:typeof CHECKPOINT_SCHEMA;digest?:string;retainUntil?:string;records?:import("../outputGuard").RecordMarker;
+ durable?:import('../storage/writer').DurableBook;
+ handoff?:import('../storage/handoff').DurableHandoff;
  version:1|2;id:string;requestKey:string;phase:'plan'|'work';status:'running'|'paused'|'complete'|'stopped';
  unit:'model-requests'|'provider-managed';used:number;limit:number;requestCap?:number;grants:{from:number;to:number;at:string}[];
  plan:TaskStep[];explanation:string;operations:Operation[];
@@ -211,6 +215,7 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value.childUsage!==undefined&&(!Array.isArray(value.childUsage)||value.childUsage.length>256||new Set(value.childUsage.map(r=>object(r)?r.id:undefined)).size!==value.childUsage.length||value.childUsage.some(r=>!object(r)||!exact(r,['id','usage'])||!text(r.id,128)||!r.id||!validUsage(r.usage))))return fail()
  if(value.usage!==undefined&&!validUsage(value.usage))return fail()
  if(value.policy!==undefined&&!validPolicy(value.policy))return fail()
+ if(value.durable!==undefined&&!validDurable(value.durable)||value.handoff!==undefined&&!validHandoff(value.handoff))return fail()
  if(!Array.isArray(value.operations)||value.operations.length>400||new Set(value.operations.map(o=>o.id)).size!==value.operations.length)return fail()
  for(const op of value.operations){if(!object(op)||!text(op.id,100)||!text(op.name,150)||!['running','complete','failed','interrupted'].includes(String(op.status))||op.result!==undefined&&(!object(op.result)||(op.result.content!==undefined&&(!Array.isArray(op.result.content)||op.result.content.some(p=>!object(p)||p.type!==undefined&&typeof p.type!=='string'||p.text!==undefined&&typeof p.text!=='string')))))return fail()}
  if(!object(value.context)||!text(value.context.scope,100)||!Array.isArray(value.context.entries)||value.context.entries.length>800||new Set(value.context.entries.map(e=>e.id)).size!==value.context.entries.length)return fail()

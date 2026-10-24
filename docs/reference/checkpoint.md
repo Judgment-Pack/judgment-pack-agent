@@ -40,7 +40,7 @@ Closed: a member the schema does not name is refused.
 | `reason` |  | string (max length 2000) | Why work paused: the model's request_budget_increase reason and next step, or, on the vercel engine, the turn's wall clock (budget.json, turnMilliseconds). |
 | `testCalls` |  | integer (min 0, max 400) | The turn's experimental_test_cases calls so far (agent#7), counted by the harness and carried as used is, so a Retry, a budget continuation and a delegation's parent continuation keep counting against testCallsPerTurn (budget.json). Absent until the first test call. The harness's reader refuses one that is not an integer from 0 to 400. |
 | `delegation` |  | `provenance.json $defs/delegationReport` | Each delegated child's figures, each batch's total and the parent's own (agent#18): written by the delegation coordinator once a batch has finished, and on an agent capability by the Go coordinator from the parent's first invocation (ADR-0007), so the response's agent runs survive a restart; kept through a resume, and refused by the harness's reader where it does not read closed. Each declared child carries its subagent id, digest and source in its figures; handoff tasks carry the same record. A withdrawn or changed queued definition is interrupted, never dispatched. |
-| `handoff` |  | `$defs/handoff` | The delegation handoff on an agent capability (ADR-0007): written by the Go coordinator (go/adapter/delegate) on every checkpoint from the parent's delegate_tasks call until the response's next run has been dispatched with the call's result, and on every checkpoint after it in that response; read closed by the Go reader (ReadExecution). Each such checkpoint is acknowledged by the host's save before the next invocation is dispatched. Not written by the TypeScript coordinator, whose handoff lives in memory; its reader keeps the member as it keeps any it does not name. |
+| `handoff` |  | `$defs/handoff` | The durable delegation handoff, written and restored in both languages. Each transition is acknowledged before the next invocation. Current writers retain exact continuation framing; historical formats remain frozen. |
 | `approval` |  | `$defs/approval` | The act call the run paused at for the person's decision, and what became of it (ADR-0008): written by the shared context boundary in both languages, at most one per checkpoint. asked: the call is pending and the status is paused; the run continues only with the person's decision (approvalDecision) for this callId, and a decision for any other call is refused. On the continued run, approved is written and acknowledged before the call runs, once, under its bounds; executed, with the result, is written and acknowledged before anything else; refused carries the refused result instead; answered once the continuation request carrying the result has been sent. A restored executed or refused approval starts the continuation with the recorded result and never runs the call; a restored approved one, whose call may have run, is not run again: its result says its outcome is unknown. The approval carries the run's framing marker (marker), and the continued run uses it for the descriptions it frames. |
 | `prompts` |  | array of `provenance.json $defs/promptDigest` (max items 300) | The digest of every request body the adapter sent in this execution, in the order sent (ADR-0005; provenance.json#/$defs/promptDigest), each request numbered one more than the one before it; at most the newest 300 (MAX_PROMPT_DIGESTS: three attempts at each request of the largest allowance). Carried as used is through a resume. |
 | `sources` |  | array of `provenance.json $defs/sourceFigures` (max items 64) | The run report's rows by source (ADR-0006; provenance.json#/$defs/sourceFigures): present where the session declares a tool with a source, the Runtime's row first, then each declared source in the order declared; at most 64. Carried as used is through a resume, so sourceCallsPerTurn counts the turn. |
@@ -73,6 +73,7 @@ Closed: a member the schema does not name is refused.
 | `childUsage[].id` | yes | string (min length 1, max length 128) |  |
 | `childUsage[].usage` | yes | `usage.json` |  |
 | `requestCap` |  | integer (min 1, max 20) | Optional fixed host API request cap. When present, unit is model-requests, limit equals this cap, used is at most it, and grants is empty. It must match independently trusted resume input; it cannot be extended. |
+| `durable` |  | `$defs/durableBook` | Current-format acknowledged dispatch/recovery journal. Scope comes from admitted host execution/role/task, never model text. A containing commit proves recorded provenance, not current authority or external success. Credentials and private reasoning are excluded; exact required bytes that cannot be safely retained are refused before dispatch. |
 
 Conditions beyond the members (allOf) are in the schema file.
 
@@ -128,7 +129,7 @@ Closed: a member the schema does not name is refused.
 
 ### `checkpoint.json $defs/handoff`
 
-One delegation handoff on an agent capability (ADR-0007). callId: the agent wire's id of the parent's delegate_tasks call. batch: the batch's number in the response. state: released, the parent's invocation returned (the account it ran on released) and no child has been dispatched; children, the batch's task records are written and its children are dispatched one at a time, each record in its state (a task running in a restored checkpoint is an admitted invocation whose outcome is unknown, never dispatched again); answered, every child finished and answer is the call's exact result, given to no run yet; continued, the response's next run has been dispatched with answer. request: the call's arguments. tasks: the batch's task records, each child's result and report among them. A restored checkpoint is continued only when the host hands it back, the person's explicit continuation. A child a checkpoint shows running is never dispatched again; a restored answered or continued handoff starts the parent's continuation again with answer, as any restored parent run starts again, and the operations a checkpoint shows committed are not repeated.
+One delegation handoff on an agent capability (ADR-0007). callId: the agent wire's id of the parent's delegate_tasks call. batch: the batch's number in the response. state: released, the parent's invocation returned (the account it ran on released) and no child has been dispatched; children, the batch's task records are written and its children are dispatched one at a time, each record in its state (a task running in a restored checkpoint is an admitted invocation whose outcome is unknown, never dispatched again); answered, every child finished and answer is the call's exact result, given to no run yet; continued, the response's next run has been dispatched with answer. request: the call's arguments. tasks: the batch's task records, each child's result and report among them. A restored checkpoint is continued only when the host hands it back, the person's explicit continuation. A child a checkpoint shows running is never dispatched again; a restored answered or continued handoff starts the parent's continuation again with answer, as any restored parent run starts again, and the operations a checkpoint shows committed are not repeated. Current-format continuation holds the exact safe framed answer bytes; resumed answered/continued records without reconstructible safe bytes refuse by name.
 
 Closed: a member the schema does not name is refused.
 
@@ -140,6 +141,7 @@ Closed: a member the schema does not name is refused.
 | `request` | yes | `delegated-task.json $defs/request` |  |
 | `tasks` | yes | array of `delegated-task.json` (max items 3) |  |
 | `answer` |  | `delegated-task.json $defs/answer` |  |
+| `continuation` |  | string (max length 4194304) |  |
 
 ### `checkpoint.json $defs/approval`
 
@@ -208,3 +210,73 @@ Closed: a member the schema does not name is refused.
 | `identityDigest` | yes | string (pattern `^sha256:[0-9a-f]{64}$`) |  |
 | `withheld` | yes | boolean |  |
 | `serviceAsked` | yes | boolean |  |
+
+### `checkpoint.json $defs/durableScope`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `execution` | yes | string (min length 1, max length 256) |  |
+| `role` | yes | string (min length 1, max length 128) |  |
+| `task` |  | string (min length 1, max length 256) |  |
+
+### `checkpoint.json $defs/artifactObservation`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `kind` | yes | enum `artifact`, `dialect` |  |
+| `id` | yes | string (min length 1, max length 256) |  |
+| `digest` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `access` |  | enum `read`, `produced` |  |
+
+### `checkpoint.json $defs/durableDispatch`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `id` | yes | string (min length 1, max length 256) |  |
+| `scope` | yes | `$defs/durableScope` |  |
+| `kind` | yes | enum `model`, `agent`, `host`, `runtime` |  |
+| `source` | yes | string (min length 1, max length 256) |  |
+| `tool` | yes | string (min length 1, max length 256) |  |
+| `fingerprint` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `request` | yes | string (max length 4194304) |  |
+| `requestDigest` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `state` | yes | enum `claimed`, `result`, `unknown` |  |
+| `read` | yes | boolean |  |
+| `result` |  | any |  |
+| `failure` |  | `failure.json` |  |
+| `artifacts` |  | array of `$defs/artifactObservation` (max items 32) |  |
+
+### `checkpoint.json $defs/durableObservation`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `id` | yes | string (min length 1, max length 256) |  |
+| `scope` | yes | `$defs/durableScope` |  |
+| `kind` | yes | enum `operation`, `artifact-read`, `artifact-produced` |  |
+| `source` | yes | string (min length 1, max length 256) |  |
+| `dispatchId` | yes | string (min length 1, max length 256) |  |
+| `commitId` | yes | string (min length 1, max length 256) |  |
+| `artifact` |  | `$defs/artifactObservation` |  |
+
+### `checkpoint.json $defs/durableBook`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `dispatches` | yes | array of `$defs/durableDispatch` (max items 400) |  |
+| `observations` | yes | array of `$defs/durableObservation` (max items 400) |  |
+| `children` | yes | array of object (max items 32) |  |
+| `children[].scope` | yes | `$defs/durableScope` |  |
+| `children[].checkpoint` | yes | `checkpoint.json` |  |
+| `pendingHandoff` |  | object |  |
+| `pendingHandoff.callId` | yes | string (min length 1, max length 256) |  |
+| `pendingHandoff.request` | yes | `delegated-task.json $defs/request` |  |

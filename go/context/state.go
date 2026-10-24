@@ -345,6 +345,9 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 	if figures := value.Get("delegation"); figures != nil && !ValidDelegationFigures(figures, value.Get("unit").Str()) {
 		return nil, errSavedExecution
 	}
+	if durable := value.Get("durable"); durable != nil && !ValidDurable(durable) {
+		return nil, failure.ToolInput("The saved execution is not valid.")
+	}
 	if handoff := value.Get("handoff"); handoff != nil && !ValidHandoff(handoff) {
 		return nil, errSavedExecution
 	}

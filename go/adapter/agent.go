@@ -68,8 +68,10 @@ type AgentToolAnswer struct {
 // order the provider makes them. An error from Tool ends the invocation: the host's function stops
 // the provider's run and returns.
 type AgentCallbacks struct {
-	Event func(ctx context.Context, event AgentEvent) error
-	Tool  func(ctx context.Context, call AgentToolCall) (AgentToolAnswer, error)
+	// Live invocation-scoped release acknowledgement; never serialized into AgentRequest.
+	ProviderRelease *ProviderRelease
+	Event           func(ctx context.Context, event AgentEvent) error
+	Tool            func(ctx context.Context, call AgentToolCall) (AgentToolAnswer, error)
 }
 
 // AgentRun is the host's provider-run function: one invocation, from admission on its account to

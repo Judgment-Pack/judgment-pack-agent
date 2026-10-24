@@ -1,6 +1,7 @@
 package contract
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -207,4 +208,35 @@ func TestRecordNumericDecodeKeepsOpaqueTokens(t *testing.T) {
 		return
 	}
 	t.Fatal("missing opaque numeric control")
+}
+
+func TestRecordIntegerSpellingKeepsOpaqueMemberOrder(t *testing.T) {
+	payload := `{"z":2,"a":{"last":1,"first":0}}`
+	for _, version := range []string{"1", "2", "2e0"} {
+		raw := []byte(fmt.Sprintf(`{"version":%s,"id":"compatibility","requestKey":"%s","phase":"work","status":"running","unit":"model-requests","us\u0065d":0e0,"limit":20,"grants":[],"plan":[],"explanation":"","operations":[],"context":{"scope":"compatibility","entries":[{"id":"compatibility:kept","kind":"tool","label":"Ordered fixture","value":%s,"bytes":%d,"digest":"%x"}]}}`, version, strings.Repeat("0", 64), payload, len(payload), sha256.Sum256([]byte(payload))))
+		before := append([]byte(nil), raw...)
+		normalized, err := recordDecodeBytes("checkpoint", raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(raw, before) || !bytes.Contains(normalized, []byte(payload)) {
+			t.Fatal("input or opaque member order changed")
+		}
+		var saved Checkpoint
+		if err := json.Unmarshal(raw, &saved); err != nil {
+			t.Fatal(err)
+		}
+		if string(saved.Context.Entries[0].Value) != payload {
+			t.Fatal("typed root rewrote retained value")
+		}
+		event := append([]byte(`{"version":1,"type":"execution_checkpoint","durable":true,"checkpoint":`), raw...)
+		event = append(event, '}')
+		var decoded RunEvent
+		if err := json.Unmarshal(event, &decoded); err != nil {
+			t.Fatal(err)
+		}
+		if string(decoded.ExecutionCheckpoint.Checkpoint.Context.Entries[0].Value) != payload {
+			t.Fatal("nested root rewrote retained value")
+		}
+	}
 }

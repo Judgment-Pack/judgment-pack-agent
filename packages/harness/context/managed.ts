@@ -1,12 +1,13 @@
+import {durableOwner,durableSession} from '../storage/writer'
 import {guardConnectionNotices} from '../session'
 import {OutputRefused,RecordsRefused,outputWhere} from '../outputGuard'
 import {PolicyRefusal} from '../policy'
 import {RecordsExpired} from '../records'
 import {versionEvents,writeRunEvent,UnsupportedRecordVersion,UnknownRecordMember} from '../recordReader'
-import {failureError,failureEvent,toolFailureResult} from '../failures'
+import {authoredFailure,failureError,failureEvent,toolFailureResult} from '../failures'
 import {ExecutionPaused,RequestCapRefusal} from '../execution/state'
 import type {AssistantEvent,EngineSession,RequestSession,RequestSessionFor} from '../engine'
-import {eventIterator,openRun} from '../engines/contract'
+import {eventIterator,openRun,withAbort} from '../engines/contract'
 import {GateViolation} from '../toolGate'
 import {approvalContinuation} from '../toolSources'
 import {contextualSession,type SessionContext} from './session'
@@ -24,7 +25,7 @@ export function contextOf(session:RequestSession):SessionContext {
 export function managedContext<T extends EngineSession>(session:T,run:(session:RequestSessionFor<T>)=>AsyncIterable<AssistantEvent>,engine?:import('../host').AssistantEngine):AsyncIterable<AssistantEvent>{
  const recording=recordSession(session)
  const gate=openRun(recording.session,()=>{})
- return versionEvents(recording.stream(versionEvents(eventIterator({gate,open:()=>execute({...recording.session,signal:gate.signal} as T,run,engine)}))))
+ return versionEvents(recording.stream(versionEvents(eventIterator({gate,open:()=>persistedExecute({...recording.session,signal:gate.signal} as T,run,engine)}))))
 }
 /** Notices carry model-derived identifiers and refusal details, independently of tool results.
  * Guard-generated labels are trusted metadata and must not be scanned again. */
@@ -42,11 +43,26 @@ function takeNotices(context:SessionContext):AssistantEvent[]{
  // These are the labels just produced by guarding notices, never tool results.
  return [...out,...context.takeNotices()]
 }
+async function* persistedExecute<T extends EngineSession>(session:T,run:(session:RequestSessionFor<T>)=>AsyncIterable<AssistantEvent>,engine?:import('../host').AssistantEngine):AsyncGenerator<AssistantEvent>{
+ let events:AsyncGenerator<AssistantEvent>|undefined
+ try{
+  session=await withAbort(()=>durableSession(session),session.signal)
+  events=execute(session,run,engine)
+  for(;;){
+   const step=await withAbort(()=>events!.next(),session.signal)
+   if(step.done)return
+   const event=step.value,binding=session.context?.[durableOwner]
+   if(!binding&&event.type==='execution_checkpoint'){const {durable:_durable,...body}=event;yield writeRunEvent(body)}
+   else yield binding&&!binding.writer.failed?await withAbort(()=>binding.writer.event(binding,event,session.signal),session.signal):writeRunEvent(event)
+  }
+ }catch(error){if(!session.signal.aborted){yield writeRunEvent(failureEvent(error,'storage'));yield writeRunEvent({type:'end'})}}
+ finally{void events?.return(undefined).catch(()=>undefined)}
+}
 async function* execute<T extends EngineSession>(session:T,run:(session:RequestSessionFor<T>)=>AsyncIterable<AssistantEvent>,engine?:import('../host').AssistantEngine):AsyncGenerator<AssistantEvent>{
  let releaseNotices:(()=>void)|undefined
  let context:SessionContext|undefined
  let ended=false
- const tracked=!!session.context?.currentRequest||!!session.context?.execution
+ const tracked=!!session.context?.[durableOwner]||!!session.context?.currentRequest||!!session.context?.execution
  let paused=false
  let failed=false
  // ADR-0008: the engine's results the boundary answered itself (a call refused while another waits
@@ -101,6 +117,7 @@ async function* execute<T extends EngineSession>(session:T,run:(session:RequestS
     return {type:'execution_checkpoint',durable:true,checkpoint}
    }
    if(step==='execute'){
+    if(!session.context?.checkpoint)throw authoredFailure('configuration','DurableStoreRequired: an approved act requires acknowledged persistence.','storage')
     yield await write()
     const ran=await context.runApproved!(session.signal)
     context.execution.mutate({approval:{...context.execution.state.approval!,state:'executed',result:ran.result}})
