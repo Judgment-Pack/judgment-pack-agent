@@ -345,7 +345,7 @@ func TestTheSnapshotValidatesAgainstTheCheckpointSchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the snapshot was refused: %v", err)
 	}
-	if read.Version != 1 || read.Unit != "model-requests" || read.Limit != MaxTurns ||
+	if read.Version != 2 || read.Unit != "model-requests" || read.Limit != MaxTurns ||
 		len(read.Operations) != 1 || read.Operations[0].Status != "complete" ||
 		len(read.Context.Entries) != 1 {
 		t.Errorf("the checkpoint is %+v", read)

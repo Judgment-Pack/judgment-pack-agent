@@ -2,7 +2,9 @@ package runcontext
 
 import (
 	"encoding/json"
+	"errors"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
+	"strings"
 	"testing"
 	"time"
 )
@@ -70,6 +72,72 @@ func TestRecordVersionFailedOpenNotices(t *testing.T) {
 			if err := contract.CheckRecord("event", raw); err != nil {
 				t.Fatal(err)
 			}
+		}
+	}
+}
+
+func TestRecordVersionsRetainedDigestSurvivesNumericDecode(t *testing.T) {
+	payload := MustParseJSON(`{"z":2,"a":{"last":1,"first":0}}`)
+	entry := (&Entry{ID: "compatibility:kept", Kind: "tool", Label: "Ordered fixture", Value: payload, Bytes: UTF8Bytes(payload.Text()), Digest: ContextDigest(payload.Text())}).Retained()
+	for _, version := range []string{"1", "2", "2e0"} {
+		saved := recordVector(t, "checkpoint").Clone()
+		rawEntry, err := json.Marshal(entry)
+		if err != nil {
+			t.Fatal(err)
+		}
+		saved.Set("version", Number(2)).Set("context", ObjectOf("scope", String("compatibility"), "entries", Array(MustParseJSON(string(rawEntry)))))
+		raw := strings.Replace(string(saved.JSON()), `"version":2`, `"version":`+version, 1)
+		var checkpoint contract.Checkpoint
+		if err := json.Unmarshal([]byte(raw), &checkpoint); err != nil {
+			t.Fatal(err)
+		}
+		policy := Defaults
+		ledger := NewContextLedger(&policy, nil)
+		if err := ledger.Restore(checkpoint.Context); err != nil {
+			t.Fatalf("%s: retained digest changed on decode: %v", version, err)
+		}
+		if string(checkpoint.Context.Entries[0].Value) != payload.Text() {
+			t.Fatal("retained member order changed")
+		}
+	}
+}
+
+func TestRecordPolicyComparisonIsDetached(t *testing.T) {
+	original := map[string]contract.PolicyMember{"pace": {Value: json.RawMessage(`"steady"`), Layer: "run"}}
+	compared := policyComparisonRecord(original)
+	if original["pace"].Source != nil || compared["pace"].Source == nil || *compared["pace"].Source != "layer" {
+		t.Fatal("comparison rewrote historical source or lost its runtime default")
+	}
+	delete(compared, "pace")
+	if len(original) != 1 {
+		t.Fatal("comparison map aliases the checkpoint")
+	}
+	if policyComparisonRecord(nil) != nil || policyComparisonRecord(map[string]contract.PolicyMember{}) == nil {
+		t.Fatal("comparison merged absent and empty policy")
+	}
+}
+
+func TestRecordPolicyVersionPrecedesValueFallback(t *testing.T) {
+	table := PolicyLayer{"models": map[string]any{"author": map[string]any{"model": "connected", "reasoning": "off"}}}
+	host := PolicyHost{Connections: []string{"connected"}, Requests: 16}
+	for layer := 0; layer < 3; layer++ {
+		for _, version := range []any{0, -1, 1.5, nil, "1", float64(9007199254740992)} {
+			inputs := []PolicyLayer{{}, {}, table}
+			changed := PolicyLayer{}
+			for key, value := range inputs[layer] {
+				changed[key] = value
+			}
+			changed["version"] = version
+			inputs[layer] = changed
+			if _, err := ResolvePolicy(inputs[0], inputs[1], inputs[2], host); !errors.Is(err, contract.ErrInvalidRecord) {
+				t.Fatalf("layer %d version %v bypassed admission: %v", layer, version, err)
+			}
+		}
+		inputs := []PolicyLayer{{}, {}, table}
+		inputs[layer] = PolicyLayer{"version": 3, "readBytes": 1}
+		var future *contract.UnsupportedRecordVersion
+		if _, err := ResolvePolicy(inputs[0], inputs[1], inputs[2], host); !errors.As(err, &future) {
+			t.Fatalf("layer %d did not refuse future metadata before retired body: %v", layer, err)
 		}
 	}
 }

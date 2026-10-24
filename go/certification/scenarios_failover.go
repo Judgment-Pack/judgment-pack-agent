@@ -180,7 +180,7 @@ func failoverFindings(ctx context.Context, server *Server, inner Adapter, agent 
 				return nil, err
 			}
 			var expected contract.RunEvent
-			if err := json.Unmarshal(items[2], &expected); err != nil {
+			if err := json.Unmarshal(expectedCurrentEvent(items[2]), &expected); err != nil {
 				return nil, err
 			}
 			if !reflect.DeepEqual(e, expected) {

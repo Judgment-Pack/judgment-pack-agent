@@ -91,6 +91,20 @@ describe('versioned record readers',()=>{
   for(const event of emitted)expect(readRunEvent(event)).toEqual(event)
   expect(writeRunEvent({type:'end'})).toEqual({version:1,type:'end'})
  })
+ it('keeps policy version admission outside the value fallback for every layer',()=>{
+  const host={connections:['primary'],agent:false,requests:2}
+  const table={models:{author:{model:'primary',reasoning:'off'}}}
+  for(const layer of [0,1,2]){
+   for(const version of [0,-1,1.5,null,'1',9007199254740992]){
+    const inputs:[import('./policy').PolicyLayer,import('./policy').PolicyLayer,import('./policy').PolicyLayer]=[{},{},table]
+    inputs[layer]={...inputs[layer],version} as never
+    expect(()=>resolvePolicy(...inputs,host)).toThrow(InvalidRecord)
+   }
+   const inputs:[import('./policy').PolicyLayer,import('./policy').PolicyLayer,import('./policy').PolicyLayer]=[{},{},table]
+   inputs[layer]={version:3,readBytes:1} as never
+   expect(()=>resolvePolicy(...inputs,host)).toThrow(UnsupportedRecordVersion)
+  }
+ })
  it('does not turn policy version metadata into an admitted policy value',()=>{
   const host={connections:['primary'],agent:false,requests:2}
   const table={models:{author:{model:'primary',reasoning:'off'}}}

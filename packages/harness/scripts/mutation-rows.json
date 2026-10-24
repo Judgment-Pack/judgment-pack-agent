@@ -5895,6 +5895,17 @@
    ],
    "status": "caught",
    "origin": "agent#165"
+  },
+  {
+   "name": "record versions admit policy metadata before value fallback",
+   "file": "policy.ts",
+   "find": "    checkRecordVersion('policy',input)",
+   "replace": "    // version admission removed",
+   "tests": [
+    "recordReader.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#165"
   }
  ]
 }

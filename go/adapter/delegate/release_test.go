@@ -101,6 +101,17 @@ func TestAChildWaitsForTheParentsRelease(t *testing.T) {
 	}
 	children := 0
 	for _, event := range events {
+		raw, err := json.Marshal(event)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var header struct{ Version int }
+		if err := json.Unmarshal(raw, &header); err != nil {
+			t.Fatal(err)
+		}
+		if header.Version != 1 {
+			t.Fatalf("coordinator event has no current header: %s", raw)
+		}
 		if event.DelegatedTask != nil && event.DelegatedTask.Task.State == "complete" {
 			children++
 		}

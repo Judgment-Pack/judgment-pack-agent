@@ -102,6 +102,7 @@ export function resolvePolicy(run: PolicyLayer, project: PolicyLayer, table: Pol
   for (const [layer, input] of layers) {
     const flat: Record<string, unknown> = {}
     let body:PolicyLayer
+    checkRecordVersion('policy',input)
     try{body=readPolicyLayer(input)}catch(error){if(!(error instanceof InvalidRecord))throw error;body=structuredClone(input)}
     delete body.version
     read(body, schema as Shape, '', layer, flat)
