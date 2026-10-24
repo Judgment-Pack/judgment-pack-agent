@@ -333,6 +333,7 @@ export function childOffer<T extends {name: string}, H extends {name: string; in
 export function withDelegation(engine:Engine,options:DelegationOptions={}):Engine {
  const wrapped=delegationEngine(engine,options)
  return {id:wrapped.id,start(session){
+  session={...session,context:session.context?{...session.context}:undefined}
   const gate=openRun(session,()=>{})
   return eventIterator({gate,open:async function*(){
    let events:AsyncIterator<AssistantEvent>|undefined
@@ -394,7 +395,7 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
     // A v0.4.0 checkpoint on an agent capability wrote modelRequests: 0 on its children and totals; nothing writes it there now
     // (agent#71), so the restored figures drop the zero rather than mix 0 and absence.
     const noZero = <T extends {modelRequests?: number}>(figure: T): T => { if ('agent' in session && figure.modelRequests === 0) { const { modelRequests: _zero, ...rest } = figure; return rest as T } return figure }
-    const figures: BatchFigures[] = (restored?.delegation?.batches ?? []).map(batch=>({...structuredClone(batch),children:batch.children.map(child=>noZero(child.state==='running'?{...child,state:'interrupted' as const}:child)),total:noZero(structuredClone(batch.total))}))
+    const figures: BatchFigures[] = (restored?.delegation?.batches ?? []).map(batch=>({...structuredClone(batch),children:batch.children.map(child=>noZero(child.state==='queued'||child.state==='running'?{...child,state:'interrupted' as const}:child)),total:noZero(structuredClone(batch.total))}))
     /** The batch running now: its tasks, its number and when it started. */
     let running: {tasks: DelegatedTask[]; number: number; started: number} | undefined
     /**
@@ -1013,6 +1014,13 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
         }finally{await released(request!==undefined);shared.closed()}
         if(fatal!==undefined)throw fatal
         if(!request||failed||signal.aborted)return
+        if(!persistence){
+          let result:McpToolResult
+          try{result=batchAnswer(await runBatch(request,signal));commitReuse()}
+          catch(error){if(signal.aborted||fatal!==undefined)throw error;result=toolFailureResult(error)}
+          continued='\n\n'+CONTINUATION+'\n'+frameData(DELEGATE_TOOL,JSON.stringify(result.structuredContent??textOf(result)),dataMarker())
+          execution=parentCheckpoint;continue
+        }
         if(!callId&&persistence)throw new ContinuationNotRecoverable()
         handoff={callId:callId??crypto.randomUUID(),batch:(figures.at(-1)?.batch??0)+1,state:'released',request,tasks:[]}
         await saveHandoff()

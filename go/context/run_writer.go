@@ -193,6 +193,9 @@ func canonicalRaw(value any) ([]byte, error) {
 }
 func durableDigest(raw []byte) string { return "sha256:" + ContextDigest(string(raw)) }
 func NewRunWriter(store RunStore, id string, head *RunHead, legacy *contract.Checkpoint) (*RunWriter, error) {
+	if store != nil && store.Durability() == RunStoreSingleWriterCallback {
+		return nil, &ContinuationNotRecoverable{}
+	}
 	w := &RunWriter{Store: store, ID: id, recovered: map[string]bool{}, models: map[*modelCompletion]bool{}, book: DurableBook{Dispatches: []DurableDispatch{}, Observations: []DurableObservation{}, Children: []DurableChild{}}}
 	saved := legacy
 	if head != nil {
@@ -718,6 +721,12 @@ func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
 	if input == nil || input.Persistence != nil {
 		return input, nil
 	}
+	if input.checkpointProfile {
+		if input.Execution != nil && input.Execution.Durable != nil {
+			return nil, &ContinuationNotRecoverable{}
+		}
+		return input, nil
+	}
 	if input.RunStore == nil && input.Checkpoint == nil {
 		if input.Execution != nil && input.Execution.Durable != nil {
 			if input.Execution.Version > contract.CheckpointVersion {
@@ -728,6 +737,10 @@ func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
 		return input, nil
 	}
 	copy := *input
+	if copy.RequestCap != nil {
+		cap := *copy.RequestCap
+		copy.RequestCap = &cap
+	}
 	if copy.RunStore != nil && copy.Checkpoint != nil {
 		return nil, &ContinuationIdentityChanged{}
 	}
@@ -784,6 +797,22 @@ func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
 			}
 			return *saved, nil
 		})
+	}
+	if store.Durability() == RunStoreSingleWriterCallback {
+		if head != nil && (head.RunID != id || !validStorageID(head.Revision) || !validStorageID(head.CommitID) || head.Cursor != "" && !validStorageID(head.Cursor)) {
+			return nil, &StorageAcknowledgementInvalid{}
+		}
+		if copy.Execution != nil && copy.Execution.ID != id {
+			return nil, &ContinuationIdentityChanged{}
+		}
+		if copy.Execution != nil && copy.Execution.Durable != nil {
+			return nil, &ContinuationNotRecoverable{}
+		}
+		copy.checkpointProfile = true
+		copy.checkpointRunID = id
+		copy.RunStore = nil
+		copy.Checkpoint = legacyCheckpointSave(store, id, head)
+		return &copy, nil
 	}
 	if copy.Execution != nil && copy.Execution.Durable != nil {
 		if copy.Execution.Durable.PendingHandoff != nil && copy.Execution.Handoff == nil {
@@ -941,4 +970,42 @@ func ReadStoredRunEvent(raw []byte) (StoredRunEnvelope, error) {
 		return StoredRunEnvelope{}, &StorageInputError{}
 	}
 	return out, nil
+}
+
+// legacyCheckpointSave retains acknowledged legacy checkpoint delivery without journal authority.
+func legacyCheckpointSave(store RunStore, id string, head *RunHead) func(context.Context, contract.Checkpoint) error {
+	var mu sync.Mutex
+	revision := ""
+	if head != nil {
+		revision = head.Revision
+	}
+	var fatal error
+	return func(ctx context.Context, state contract.Checkpoint) error {
+		if state.Durable != nil {
+			return &ContinuationNotRecoverable{}
+		}
+		raw, err := canonicalRaw(state)
+		if err != nil {
+			return err
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if fatal != nil {
+			return fatal
+		}
+		commitID := newStorageIdentity()
+		receipt, err := store.Commit(ctx, RunCommit{RunID: id, ExpectedRevision: revision, CommitID: commitID, Checkpoint: raw, Events: [][]byte{}})
+		if err == nil && (receipt.CommitID != commitID || !validStorageID(receipt.Revision) || receipt.Revision == revision || receipt.Cursor != "" && !validStorageID(receipt.Cursor)) {
+			err = &StorageAcknowledgementInvalid{}
+		}
+		if err != nil {
+			fatal = err
+			return err
+		}
+		revision = receipt.Revision
+		if err = ctx.Err(); err != nil {
+			fatal = err
+		}
+		return err
+	}
 }

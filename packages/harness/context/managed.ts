@@ -23,6 +23,7 @@ export function contextOf(session:RequestSession):SessionContext {
  * the run a chat-scoped context, as long as the chat (agent#8). Originals remain in
  * the owning chat/research journal. Rebuilding cannot resurrect deleted snapshots. */
 export function managedContext<T extends EngineSession>(session:T,run:(session:RequestSessionFor<T>)=>AsyncIterable<AssistantEvent>,engine?:import('../host').AssistantEngine):AsyncIterable<AssistantEvent>{
+ session={...session,context:session.context?{...session.context}:undefined}
  const recording=recordSession(session)
  const gate=openRun(recording.session,()=>{})
  return versionEvents(recording.stream(versionEvents(eventIterator({gate,open:()=>persistedExecute({...recording.session,signal:gate.signal} as T,run,engine)}))))
@@ -52,10 +53,9 @@ async function* persistedExecute<T extends EngineSession>(session:T,run:(session
    const step=await withAbort(()=>events!.next(),session.signal)
    if(step.done)return
    const event=step.value,binding=session.context?.[durableOwner]
-   if(!binding&&event.type==='execution_checkpoint'){const {durable:_durable,...body}=event;yield writeRunEvent(body)}
-   else yield binding&&!binding.writer.failed?await withAbort(()=>binding.writer.event(binding,event,session.signal),session.signal):writeRunEvent(event)
+   yield binding&&!binding.writer.failed?await withAbort(()=>binding.writer.event(binding,event,session.signal),session.signal):writeRunEvent(event)
   }
- }catch(error){if(!session.signal.aborted){yield writeRunEvent(failureEvent(error,'storage'));yield writeRunEvent({type:'end'})}}
+ }catch(error){if(!session.signal.aborted){if(error instanceof UnsupportedRecordVersion||error instanceof UnknownRecordMember||error instanceof RecordsExpired)yield writeRunEvent(error.event());yield writeRunEvent(failureEvent(error,'storage'));yield writeRunEvent({type:'end'})}}
  finally{void events?.return(undefined).catch(()=>undefined)}
 }
 async function* execute<T extends EngineSession>(session:T,run:(session:RequestSessionFor<T>)=>AsyncIterable<AssistantEvent>,engine?:import('../host').AssistantEngine):AsyncGenerator<AssistantEvent>{

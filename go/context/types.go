@@ -313,7 +313,9 @@ type SteerInput struct {
 // host names it (host.ts's AITarget, a string here). DelegationReuse (agent#17) is false where
 // this response's delegated tasks reuse no earlier result of the chat.
 type Input struct {
-	RunStore *DurableRunInput
+	checkpointProfile bool
+	checkpointRunID   string
+	RunStore          *DurableRunInput
 	// Persistence is inherited only by the trusted coordinator, never decoded from a checkpoint.
 	Persistence *RunBinding
 

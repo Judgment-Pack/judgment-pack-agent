@@ -64,8 +64,16 @@ Historical checkpoint version 1 inventories remain frozen.
 MemoryRunStore and MemoryChatStore are ephemeral test kinds. RunStore conformance is
 parameterized for host kinds: CAS, atomic failure, idempotency, ordering, cursor scope, byte
 copies and bounds. It cannot certify a filesystem/database implementation Agent does not ship.
-Existing checkpoint callbacks use an explicit single-writer adapter with process-local CAS and
-no recovered event log. The legacy ChatStore adapter likewise requires external writers to be
+Existing checkpoint callbacks use the adapter's limited legacy profile: serialized acknowledged
+checkpoint delivery, process-local CAS and no recovered event log. They preserve request-cap,
+approval, output-guard and standalone legacy handoff behavior, without exact prepared-request
+journaling or strict durable model-completion claims. Adapter kind selects this capability; no new
+host option is required. Explicit RunStore journals cannot be imported through this profile, and
+its adapter cannot construct a full journal writer. The legacy `durable:true` event flag denotes
+acknowledged checkpoint delivery, never physical crash persistence or provider completion.
+Ephemeral MemoryRunStore likewise proves only its stated in-process capabilities. Full RunStore
+execution keeps strict claim/body/acknowledgement/recovery gates, including stopping an ambiguous
+504 response; legacy callback execution retains the admitted bounded read-only fallback rule. The legacy ChatStore adapter likewise requires external writers to be
 stopped. Neither adapter qualifies as a durable concurrent host kind.
 
 TypeScript ChatStore asynchronously gets one opaque chat id, lists bounded pages, and updates

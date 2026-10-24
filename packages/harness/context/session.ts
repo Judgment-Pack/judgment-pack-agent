@@ -1,5 +1,5 @@
 import {quarantineModelResponse} from '../storage/model'
-import {durableOwner,durableSession,prepareProviderDispatch,scopeFor,hostSucceeded,type DurableBinding,type DurableRunInput} from '../storage/writer'
+import {durableOwner,durableSession,legacyCheckpointIdentity,prepareProviderDispatch,scopeFor,hostSucceeded,type DurableBinding,type DurableRunInput} from '../storage/writer'
 import {sha256} from '../records'
 import {RequestValues} from './requestValues'
 import {CheckpointIncrement} from '../execution/mutation'
@@ -805,9 +805,9 @@ function fallbackRequest(values:import('../engine').RequestModelValues,suffix:st
  return {suffix,request:{...request,body:JSON.stringify(body)}}
 }
 export async function contextualSession<T extends EngineSession>(session:T,engine?:AssistantEngine):Promise<{session:RequestSessionFor<T>;context:SessionContext}>{
- session=await durableSession(session)
  // Copy the host's scalar admission input before any asynchronous setup.
  session={...session,context:session.context?{...session.context,requestCap:session.context.requestCap}:undefined}
+ session=await durableSession(session)
  // ADR-0006: the tools with a source, read and named for the wire before anything else sees them.
  const declared=await declareSources(session.hostTools,session.tools.map(t=>t.name))
  // ADR-0009: a skill may name only the host's declared tools, whatever this phase offers of them.
@@ -833,6 +833,8 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  declared.sources.push(...skills.sources)
  await context.execution.initialize()
  const persistence=session.context?.[durableOwner]
+ const legacyID=legacyCheckpointIdentity(session.context?.checkpoint)
+ if(legacyID)context.execution.mutate({id:legacyID})
  if(persistence){
   if(persistence.root){context.execution.mutate({id:persistence.writer.id});persistence.writer.bind(()=>context.execution.snapshot(),context.execution.storagePolicy,()=>context.execution.storageGuard)}
   else context.execution.mutate({id:persistence.scope.execution})
