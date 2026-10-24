@@ -45,6 +45,7 @@ export class RunWriter {
  private guard?:()=>RecordGuard|undefined
  private latest?:ExecutionCheckpoint
  private readonly models=new WeakMap<object,{binding:DurableBinding;claim:DurableDispatch}>()
+ private readonly planDelivery=new Map<AssistantEvent,{scope:string;bytes:string}>()
  private recovered:Set<string>
  decorate:(state:ExecutionCheckpoint)=>ExecutionCheckpoint=state=>state
  constructor(readonly store:RunStore,readonly id:string,head?:RunHead,legacy?:ExecutionCheckpoint){
@@ -65,6 +66,7 @@ export class RunWriter {
   if(!this.policy)throw new ContinuationNotRecoverable()
   const before=canonicalJSON(projected.durable)
   const saved=writeRecord(CHECKPOINT_SCHEMA,{...projected},this.policy,this.guard?.(),new Date(),state.retainUntil)
+  if(state.planState&&(canonicalJSON(saved.plan)!==canonicalJSON(state.plan)||canonicalJSON(saved.planState)!==canonicalJSON(state.planState)))throw new ContinuationNotRecoverable()
   if(canonicalJSON(saved.durable)!==before||encoder.encode(canonicalJSON(saved)).length>STORAGE_RECORD_BYTES)throw new ContinuationNotRecoverable()
   checkRecord('checkpoint',saved)
   if(saved.id!==this.id||saved.digest!==recordDigest(saved))throw new ContinuationIdentityChanged()
@@ -95,7 +97,15 @@ export class RunWriter {
   return output
  }
  save(binding:DurableBinding,state:ExecutionCheckpoint,signal?:AbortSignal){return this.enqueue(()=>this.publish(binding,state,undefined,undefined,signal)).then(()=>undefined)}
- event(binding:DurableBinding,event:AssistantEvent,signal?:AbortSignal){return this.enqueue(()=>{if(binding.root&&event.type==='delegation_requested'){if(!event.callId)throw new ContinuationNotRecoverable();this.book.pendingHandoff={callId:event.callId,request:structuredClone(event.request)}}return this.publish(binding,event.type==='execution_checkpoint'||event.type==='budget_paused'?event.checkpoint:undefined,event,undefined,signal)}).then(result=>result!)}
+ /** Commit once, then issue a private writer-owned delivery identity. It is never serialized. */
+ commitPlan(binding:DurableBinding,state:ExecutionCheckpoint,event:Extract<AssistantEvent,{type:'plan_revised'}>,signal?:AbortSignal){return this.enqueue(async()=>{
+  if(event.type!=='plan_revised'||event.execution!==binding.scope.execution)throw new ContinuationIdentityChanged()
+  if(this.planDelivery.size>=400)throw new ContinuationNotRecoverable()
+  const output=(await this.publish(binding,state,event,undefined,signal))!
+  this.planDelivery.set(output,{scope:scopeKey(binding.scope),bytes:canonicalJSON(output)})
+  return output
+ })}
+ event(binding:DurableBinding,event:AssistantEvent,signal?:AbortSignal){return this.enqueue(()=>{const delivery=this.planDelivery.get(event);if(delivery){this.planDelivery.delete(event);if(delivery.scope!==scopeKey(binding.scope)||delivery.bytes!==canonicalJSON(event))throw new ContinuationIdentityChanged();return event}if(binding.root&&event.type==='delegation_requested'){if(!event.callId)throw new ContinuationNotRecoverable();this.book.pendingHandoff={callId:event.callId,request:structuredClone(event.request)}}return this.publish(binding,event.type==='execution_checkpoint'||event.type==='budget_paused'?event.checkpoint:undefined,event,undefined,signal)}).then(result=>result!)}
  recovering(binding:DurableBinding,kind:DurableDispatch['kind']):boolean {
   return this.book.dispatches.some(row=>this.recovered.has(row.id)&&row.kind===kind&&scopeKey(row.scope)===scopeKey(binding.scope)&&row.state==='unknown'&&(kind!=='agent'||!this.latest?.handoff||this.latest.handoff.state==='continued'&&!!this.latest.handoff.continuation&&row.request.includes(JSON.stringify(this.latest.handoff.continuation).slice(1,-1))))
  }

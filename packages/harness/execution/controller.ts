@@ -1,3 +1,4 @@
+import {identifyPlan,revisePlan} from './plan'
 import {CheckpointIncrement,CheckpointMutation,mutateCheckpoint,type CheckpointPatch} from './mutation'
 import {ExecutionProgressTracker} from './progress'
 import type {ContextToolPolicy} from '../context/toolPolicy'
@@ -44,6 +45,10 @@ export class ExecutionController {
  loadedSkills?:()=>string
  /** ADR-0015: mutable proposal drafts follow the loaded schemas and skills. */
  loadedDrafts?:()=>string
+ private planQueue:Promise<unknown>=Promise.resolve()
+ private serialPlan<T>(run:()=>Promise<T>):Promise<T>{const task=this.planQueue.then(run);this.planQueue=task.catch(()=>{});return task}
+ planRefused?:()=>void
+ publishPlan?: (state:ExecutionCheckpoint,event:Extract<AssistantEvent,{type:"plan_revised"}>)=>Promise<void>
  private restored=false
  /**
   * ADR-0008: what the restored approval asks of this run before its first request: `execute`, the
@@ -111,6 +116,7 @@ export class ExecutionController {
    const plan=this.session.context?.plan
    if(plan&&['accepted','started'].includes(plan.status))this.mutate({plan:plan.steps.map(step=>({step,status:'pending'}))})
   }
+  this.mutate({...identifyPlan(this.state.plan,this.state.planState),version:2})
  }
  get remaining(){return this.state.limit-this.state.used}
  useConnection(connection:string,role='author',selectedModel?:string){
@@ -211,7 +217,7 @@ export class ExecutionController {
  /** The part of the guidance that changes between requests: the repetition note, the request
   * counters, the plan, the operations index. A model loop sends it after the history, at the end
   * of every request, and EXECUTION_INSTRUCTIONS once in its stable system text. */
- requestState(){const tools=this.toolAllowance?.();return this.progress.guidance+'\n'+JSON.stringify({requests:this.state.unit==='model-requests'?{unit:this.state.unit,used:this.state.used,limit:this.state.limit,remaining:this.remaining}:{unit:this.state.unit,note:'The subscription provider manages its internal model loop; tool calls are not model-request counts.'},...(tools?{toolCalls:{unit:'tool-calls',used:tools.used,limit:tools.limit,remaining:Math.max(0,tools.limit-tools.used),scope:tools.scope,note:tools.scope==='response'?'Tool calls this response may make, yours and your delegated children’s together; the context tools are not counted.':'Tool calls this task may make; the context tools are not counted.'}}:{}),tasks:this.state.plan,explanation:this.state.explanation,retainedOperations:this.operationsReference,...(this.restoredResults.length?{resumeFromCompletedResults:this.restoredResults}:{}),completedOperationCount:this.state.operations.length})+((loaded)=>loaded?'\n'+loaded:'')(this.loadedSchemas?.())+((skills)=>skills?'\n'+skills:'')(this.loadedSkills?.())+((draft)=>draft?'\n'+draft:'')(this.loadedDrafts?.())}
+ requestState(){const tools=this.toolAllowance?.();return this.progress.guidance+'\n'+JSON.stringify({requests:this.state.unit==='model-requests'?{unit:this.state.unit,used:this.state.used,limit:this.state.limit,remaining:this.remaining}:{unit:this.state.unit,note:'The subscription provider manages its internal model loop; tool calls are not model-request counts.'},...(tools?{toolCalls:{unit:'tool-calls',used:tools.used,limit:tools.limit,remaining:Math.max(0,tools.limit-tools.used),scope:tools.scope,note:tools.scope==='response'?'Tool calls this response may make, yours and your delegated children’s together; the context tools are not counted.':'Tool calls this task may make; the context tools are not counted.'}}:{}),tasks:this.state.plan,planRevision:this.state.planState?.revision,planSequence:this.state.planState?.sequence,explanation:this.state.explanation,retainedOperations:this.operationsReference,...(this.restoredResults.length?{resumeFromCompletedResults:this.restoredResults}:{}),completedOperationCount:this.state.operations.length})+((loaded)=>loaded?'\n'+loaded:'')(this.loadedSchemas?.())+((skills)=>skills?'\n'+skills:'')(this.loadedSkills?.())+((draft)=>draft?'\n'+draft:'')(this.loadedDrafts?.())}
  async retainProgress(includeIndex=true){
   if(!this.state.operations.length)return
   const rows=[]
@@ -305,12 +311,16 @@ export class ExecutionController {
   }
  }
  tool():HostTool {
-  return {name:'update_plan',effect:'plan',description:'Track this task’s execution progress. Use for multi-stage work, not simple answers. This does not approve a plan, increase limits, save artifacts or prove success. Keep completed steps and explain material changes. At most one step is in progress.',inputSchema:{type:'object',properties:{explanation:{type:'string',maxLength:2000},plan:{type:'array',minItems:1,maxItems:20,items:{type:'object',properties:{step:{type:'string',maxLength:1000},status:{type:'string',enum:['pending','in_progress','completed']},detail:{type:'string',maxLength:1500}},required:['step','status'],additionalProperties:false}}},required:['explanation','plan'],additionalProperties:false},execute:async(args,signal)=>{
+  return {name:'update_plan',effect:'plan',description:'Track this task’s execution progress. Use for multi-stage work, not simple answers. This does not approve a plan, increase limits, save artifacts or prove success. Refer to current steps by their package id; omit id only for a new step. Keep completed steps and explain material changes. At most one step is in progress.',inputSchema:{type:'object',properties:{explanation:{type:'string',maxLength:2000},plan:{type:'array',minItems:1,maxItems:20,items:{type:'object',properties:{id:{type:'string',pattern:'^step-[1-9][0-9]{0,15}$'},step:{type:'string',maxLength:1000},status:{type:'string',enum:['pending','in_progress','completed']},detail:{type:'string',maxLength:1500}},required:['step','status'],additionalProperties:false}}},required:['explanation','plan'],additionalProperties:false},execute:async(args,signal)=>this.serialPlan(async()=>{
    signal.throwIfAborted()
-   if(!validTaskSteps(args.plan)||typeof args.explanation!=='string'||args.explanation.length>2000)throw toolInputFailure('Provide one to twenty task steps, at most one in progress, and a short explanation.')
-   this.mutate({plan:args.plan,explanation:args.explanation})
-   return answer({status:'progress-recorded',plan:this.state.plan,...(this.state.unit==='model-requests'?{remaining:this.remaining}:{budget:'provider-managed'}),permissionsUnchanged:true})
-  }}
+   if(!validTaskSteps(args.plan)||typeof args.explanation!=='string'||args.explanation.length>2000){this.planRefused?.();throw toolInputFailure('Provide one to twenty task steps, at most one in progress, and a short explanation.')}
+   let next:ReturnType<typeof revisePlan>
+   try{next=revisePlan(identifyPlan(this.state.plan,this.state.planState),args.plan,args.explanation)}catch(error){this.planRefused?.();throw error}
+   const event:Extract<AssistantEvent,{type:'plan_revised'}>={type:'plan_revised',execution:this.state.id,...next.planState.history.at(-1)!}
+   this.mutate({...next,explanation:args.explanation})
+   await this.publishPlan?.(this.snapshot(),event)
+   return answer({status:'progress-recorded',plan:this.state.plan,planRevision:next.planState.revision,planSequence:next.planState.sequence,...(this.state.unit==='model-requests'?{remaining:this.remaining}:{budget:'provider-managed'}),permissionsUnchanged:true})
+  })}
  }
  budgetTool():HostTool {
   return {name:'request_budget_increase',effect:'plan',description:'Pause near the request limit and ask the person for more compute. Explain useful remaining work and the next concrete step. This never grants more requests or action permissions. Use ask_user for missing policy decisions instead.',inputSchema:{type:'object',properties:{reason:{type:'string',maxLength:1000},nextStep:{type:'string',maxLength:900}},required:['reason','nextStep'],additionalProperties:false},execute:async(args,signal)=>{

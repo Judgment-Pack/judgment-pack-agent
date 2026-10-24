@@ -43,7 +43,8 @@
         "steered",
         "connection_switched",
         "usage",
-        "recorded"
+        "recorded",
+        "plan_revised"
       ]
     }
   },
@@ -149,6 +150,9 @@
     },
     {
       "$ref": "#/$defs/recorded"
+    },
+    {
+      "$ref": "#/$defs/plan_revised"
     }
   ],
   "$defs": {
@@ -1332,6 +1336,56 @@
           "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
+      "additionalProperties": false
+    },
+    "plan_revised": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "plan_revised"
+        },
+        "execution": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "previous": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "explanation": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "diff": {
+          "type": "array",
+          "maxItems": 40,
+          "items": {
+            "$ref": "checkpoint.json#/$defs/planChange"
+          }
+        },
+        "version": {
+          "const": 1
+        }
+      },
+      "required": [
+        "type",
+        "execution",
+        "sequence",
+        "previous",
+        "revision",
+        "explanation",
+        "diff"
+      ],
       "additionalProperties": false
     }
   }

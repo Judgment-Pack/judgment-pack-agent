@@ -763,6 +763,7 @@ async function reasonsPage(page) {
 async function checkpointPage(page) {
   page.add(
     seeAlso('events.md', 'budget.md', 'delegation.md', 'skills.md', 'reasons.md'),
+    'Task steps use package-issued execution-scoped ids. update_plan retains ids explicitly; an omitted id means a new step. planState.revision is the canonical ordered task-content digest, while sequence orders the newest 32 bounded history entries. Storage compare-and-set revisions remain opaque host tokens. See docs/design/task-plan.md for migration and deterministic diff ordering.',
     page.rootOf('checkpoint.json', '## The checkpoint')
   )
   for (const name of Object.keys(page.schema('checkpoint.json').$defs)) {

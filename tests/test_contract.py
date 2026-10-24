@@ -30,7 +30,7 @@ HARNESS_ENGINE_ADDITIONS = ["deepagents", "eino"]
 # Event kinds the harness emits beyond the Desk's (contract/desk/inventory.json): the approval pause
 # (docs/adr/0008-the-approval-pause.md) and a skill's load and unload (docs/adr/0009-skills.md), on
 # the host's stream; and the critic's decision (docs/adr/0010-the-critics-switch.md).
-HARNESS_EVENT_ADDITIONS = ["approval_requested", "skill_loaded", "skill_unloaded", "critic_decided", "policy_resolved", "memory_proposed", "memory_recalled", "edit_applied", "edit_refused", "compacted", "output_guarded", "export_written", "steered", "connection_switched", "usage", "recorded"]
+HARNESS_EVENT_ADDITIONS = ["approval_requested", "skill_loaded", "skill_unloaded", "critic_decided", "policy_resolved", "memory_proposed", "memory_recalled", "edit_applied", "edit_refused", "compacted", "output_guarded", "export_written", "steered", "connection_switched", "usage", "recorded", "plan_revised"]
 
 EXPECTED_SCHEMAS = {
     "run-event.json",
@@ -57,6 +57,7 @@ EXPECTED_SCHEMAS = {
 # The $defs added or changed (beyond their descriptions) between v0.1.0 and the v0.2.0 release
 # review, whose members each need a vector (#43): (schema, definition).
 RELEASE_REVIEWED_DEFS = [
+    ("checkpoint.json", "planChange"), ("checkpoint.json", "planRevision"), ("checkpoint.json", "planState"), ("run-event.json", "plan_revised"),
     ("checkpoint.json", "durableBook"), ("checkpoint.json", "durableScope"),
     ("checkpoint.json", "durableDispatch"), ("checkpoint.json", "durableObservation"),
     ("checkpoint.json", "artifactObservation"),

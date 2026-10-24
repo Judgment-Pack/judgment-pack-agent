@@ -1572,6 +1572,18 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 	if held.Review.Offered() {
 		tools = append(tools, held.Review.ReviewHost(func() bool { return !held.CriticReading && !held.Reformatting }))
 	}
+ held.Execution.PlanRefused=func(){reason:="plan update refused";held.notices=append(held.notices,contract.RunEvent{Guardrail:&contract.RunEventGuardrail{Type:"guardrail",Tool:"update_plan",Action:"refused",Reason:&reason,Detail:"The plan update is invalid or exceeds its bounds. The plan was left untouched."}})}
+ held.Execution.PublishPlan=func(ctx context.Context,state contract.Checkpoint,event contract.RunEvent)(contract.RunEvent,error){
+  raw,e:=canonicalRaw(event);if e!=nil{return contract.RunEvent{},e}
+  guarded,e:=held.Output.JSON(raw,"message",false);if e!=nil{return contract.RunEvent{},e}
+  parsed,e:=ParseJSON(guarded);if e!=nil||CanonicalJSON(parsed)!=string(raw){return contract.RunEvent{},&ContinuationNotRecoverable{}}
+  if binding:=held.Persistence("author");binding!=nil{
+   output,e:=binding.Writer.CommitPlan(ctx,*binding,state,event);if e!=nil{return contract.RunEvent{},e}
+   held.notices=append(held.notices,output);return output,nil
+  }
+  if session.Context!=nil&&session.Context.Checkpoint!=nil{if e=session.Context.Checkpoint(ctx,state);e!=nil{return contract.RunEvent{},e}}
+  held.notices=append(held.notices,event);return event,nil
+ }
 	if session.AllowConversation {
 		tools = append(tools, held.Execution.Tool(), held.Execution.BudgetTool())
 	}

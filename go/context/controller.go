@@ -67,6 +67,7 @@ type Execution struct {
 	RequestCap  *int
 	Grants      []contract.CheckpointGrant
 	Plan        *Value
+ PlanState *Value
 	Explanation string
 	Operations  []*Operation
 	Completions []contract.Provenance
@@ -134,7 +135,8 @@ func (e *Execution) Value() *Value {
 		"phase", String(e.Phase), "status", String(e.Status), "unit", String(e.Unit),
 		"used", Number(float64(e.Used)), "limit", Number(float64(e.Limit)), "grants", grants,
 		"plan", orArray(e.Plan), "explanation", String(e.Explanation), "operations", operations)
-	if e.RequestCap != nil {
+	if e.PlanState != nil { out.Set("planState",e.PlanState) }
+ if e.RequestCap != nil {
 		out.Set("requestCap", Number(float64(*e.RequestCap)))
 	}
 	if e.Completions != nil {
@@ -313,7 +315,7 @@ func executionOf(saved *contract.Checkpoint) (*Execution, error) {
 	}
 	out := &Execution{Durable: value.Get("durable"), Handoff: saved.Handoff, RetainUntil: retainUntil, Version: int(saved.Version), ID: saved.ID, RequestKey: saved.RequestKey,
 		Phase: saved.Phase, Status: saved.Status, Unit: saved.Unit, Used: int(saved.Used),
-		Limit: int(saved.Limit), Grants: saved.Grants, Plan: value.Get("plan"),
+		Limit: int(saved.Limit), Grants: saved.Grants, Plan: value.Get("plan"), PlanState: value.Get("planState"),
 		Explanation: saved.Explanation, Completions: saved.Completions, Context: saved.Context,
 		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, SourceIdentities: saved.SourceIdentities, Approval: saved.Approval, Skills: saved.Skills, Draft: saved.Draft, Memories: saved.Memories, Critic: saved.Critic, CrossProvider: saved.CrossProvider, Compaction: saved.Compaction, OutputGuard: saved.OutputGuard, Policy: saved.Policy, Steers: saved.Steers, Usage: saved.Usage, Failover: saved.Failover, ChildUsage: saved.ChildUsage}
 	if saved.RequestCap != nil {
@@ -377,7 +379,10 @@ type ExecutionController struct {
 	// state written first; "" for none.
 	ApprovalStep string
 
-	session  Session
+	planMu sync.Mutex
+ PlanRefused func()
+ PublishPlan func(context.Context,contract.Checkpoint,contract.RunEvent)(contract.RunEvent,error)
+ session  Session
 	ledger   *ContextLedger
 	restored bool
 	attempt  int
@@ -552,7 +557,8 @@ func (c *ExecutionController) Initialize() error {
 			}
 			_ = c.MutateCheckpoint(CheckpointPatch{"Approval": &held})
 		}
-		return nil
+        plan,planState:=identifyPlan(c.State().Plan,c.State().PlanState)
+        return c.MutateCheckpoint(CheckpointPatch{"Version":contract.CheckpointVersion,"Plan":plan,"PlanState":planState})
 	}
 	var capPointer *int
 	if requestCap != 0 {
@@ -578,7 +584,8 @@ func (c *ExecutionController) Initialize() error {
 			c.MutateCheckpoint(CheckpointPatch{"Plan": steps})
 		}
 	}
-	return nil
+ plan,planState:=identifyPlan(c.State().Plan,c.State().PlanState)
+ return c.MutateCheckpoint(CheckpointPatch{"Version":contract.CheckpointVersion,"Plan":plan,"PlanState":planState})
 }
 
 // ApprovalAsked reports an act call of this run waiting for the person's decision (ADR-0008): no
@@ -906,6 +913,7 @@ func (c *ExecutionController) RequestState() string {
 			"scope", String(tools.Scope), "note", String(note)))
 	}
 	state.Set("tasks", orArray(c.State().Plan))
+ if c.State().PlanState!=nil{state.Set("planRevision",c.State().PlanState.Get("revision"));state.Set("planSequence",c.State().PlanState.Get("sequence"))}
 	state.Set("explanation", String(c.State().Explanation))
 	if c.operationsReference != nil {
 		state.Set("retainedOperations", c.operationsReference)
@@ -1229,13 +1237,14 @@ func (c *ExecutionController) Tool() HostTool {
 	return HostTool{
 		Name:        "update_plan",
 		Effect:      "plan",
-		Description: "Track this task’s execution progress. Use for multi-stage work, not simple answers. This does not approve a plan, increase limits, save artifacts or prove success. Keep completed steps and explain material changes. At most one step is in progress.",
+		Description: "Track this task’s execution progress. Use for multi-stage work, not simple answers. This does not approve a plan, increase limits, save artifacts or prove success. Refer to current steps by their package id; omit id only for a new step. Keep completed steps and explain material changes. At most one step is in progress.",
 		InputSchema: json.RawMessage(ObjectOf("type", String("object"),
 			"properties", ObjectOf(
 				"explanation", ObjectOf("type", String("string"), "maxLength", Number(2000)),
 				"plan", ObjectOf("type", String("array"), "minItems", Number(1), "maxItems", Number(20),
 					"items", ObjectOf("type", String("object"),
 						"properties", ObjectOf(
+ "id",ObjectOf("type",String("string"),"pattern",String("^step-[1-9][0-9]{0,15}$")),
 							"step", ObjectOf("type", String("string"), "maxLength", Number(1000)),
 							"status", ObjectOf("type", String("string"), "enum", Array(String("pending"), String("in_progress"), String("completed"))),
 							"detail", ObjectOf("type", String("string"), "maxLength", Number(1500))),
@@ -1249,15 +1258,20 @@ func (c *ExecutionController) Tool() HostTool {
 			}
 			args, err := ParseJSON(raw)
 			if err != nil {
-				return ToolResult{}, failure.ToolInput(planRefused)
+				if c.PlanRefused!=nil{c.PlanRefused()};return ToolResult{}, failure.ToolInput(planRefused)
 			}
 			explanation := args.Get("explanation")
 			if !ValidTaskSteps(args.Get("plan")) || !explanation.IsString() || U16Length(explanation.Str()) > 2000 {
-				return ToolResult{}, failure.ToolInput(planRefused)
+				if c.PlanRefused!=nil{c.PlanRefused()};return ToolResult{}, failure.ToolInput(planRefused)
 			}
-			c.MutateCheckpoint(CheckpointPatch{"Plan": args.Get("plan").Clone()})
-			c.MutateCheckpoint(CheckpointPatch{"Explanation": explanation.Str()})
-			out := ObjectOf("status", String("progress-recorded"), "plan", c.State().Plan)
+			c.planMu.Lock();defer c.planMu.Unlock()
+            plan,state:=identifyPlan(c.State().Plan,c.State().PlanState)
+            plan,state,err=revisePlan(plan,state,args.Get("plan"),explanation.Str());if err!=nil{if c.PlanRefused!=nil{c.PlanRefused()};return ToolResult{},err}
+            if err=c.MutateCheckpoint(CheckpointPatch{"Plan":plan,"PlanState":state,"Explanation":explanation.Str()});err!=nil{return ToolResult{},err}
+            row:=state.Get("history").Items()[state.Get("history").Len()-1].Clone();row.Set("type",String("plan_revised"));row.Set("execution",String(c.State().ID));row.Set("version",Number(1))
+            var event contract.RunEvent;if err=json.Unmarshal(row.JSON(),&event);err!=nil{return ToolResult{},err}
+            if c.PublishPlan!=nil{snapshot,e:=c.Snapshot("");if e!=nil{return ToolResult{},e};if _,e=c.PublishPlan(ctx,snapshot,event);e!=nil{return ToolResult{},e}}
+			out := ObjectOf("status", String("progress-recorded"), "plan", c.State().Plan,"planRevision",state.Get("revision"),"planSequence",state.Get("sequence"))
 			if c.State().Unit == "model-requests" {
 				out.Set("remaining", Number(float64(c.Remaining())))
 			} else {

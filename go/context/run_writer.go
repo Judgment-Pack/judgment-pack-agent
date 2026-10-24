@@ -173,7 +173,8 @@ type RunWriter struct {
 	book      DurableBook
 	recovered map[string]bool
 	models    map[*modelCompletion]bool
-	fatal     error
+	planDelivery map[*contract.RunEventPlanRevised]planDelivery
+ fatal     error
 	snapshot  func() (contract.Checkpoint, error)
 	policy    RecordsPolicy
 	guard     func() RecordGuard
@@ -418,6 +419,18 @@ func (w *RunWriter) saveLocked(ctx context.Context, binding RunBinding, state *c
 	}
 	return output, nil
 }
+type planDelivery struct { scope DurableScope; bytes string }
+// CommitPlan returns a private pointer identity for this exact acknowledged event delivery.
+func (w *RunWriter) CommitPlan(ctx context.Context,binding RunBinding,state contract.Checkpoint,event contract.RunEvent)(contract.RunEvent,error){
+ w.mu.Lock();defer w.mu.Unlock()
+ if event.PlanRevised==nil||event.PlanRevised.Execution!=binding.Scope.Execution{return contract.RunEvent{},&ContinuationIdentityChanged{}}
+ if len(w.planDelivery)>=400{return contract.RunEvent{},&ContinuationNotRecoverable{}}
+ output,err:=w.saveLocked(ctx,binding,&state,&event,nil,nil);if err!=nil{return contract.RunEvent{},err}
+ if w.planDelivery==nil{w.planDelivery=map[*contract.RunEventPlanRevised]planDelivery{}}
+ raw,err:=canonicalRaw(output);if err!=nil{return contract.RunEvent{},err}
+ w.planDelivery[output.PlanRevised]=planDelivery{scope:binding.Scope,bytes:string(raw)}
+ return output,nil
+}
 func (w *RunWriter) Save(ctx context.Context, binding RunBinding, state contract.Checkpoint) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -427,6 +440,13 @@ func (w *RunWriter) Save(ctx context.Context, binding RunBinding, state contract
 func (w *RunWriter) Event(ctx context.Context, binding RunBinding, event contract.RunEvent) (contract.RunEvent, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+ if delivery,ok:=w.planDelivery[event.PlanRevised];ok{
+  delete(w.planDelivery,event.PlanRevised)
+  raw,err:=canonicalRaw(event)
+  if err!=nil||delivery.scope!=binding.Scope||delivery.bytes!=string(raw){return contract.RunEvent{},&ContinuationIdentityChanged{}}
+  if w.fatal!=nil{return contract.RunEvent{},w.fatal}
+  return event,nil
+ }
 	if binding.Root && event.DelegationRequested != nil {
 		held := event.DelegationRequested
 		if held.CallID == nil {

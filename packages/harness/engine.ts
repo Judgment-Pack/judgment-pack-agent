@@ -326,6 +326,7 @@ export interface AssistantSession {
  */
 export type AssistantEvent = ({version?:1} & AssistantEventBody)
 type AssistantEventBody =
+  | ({type:'plan_revised';execution:string}&import('./execution/plan').PlanRevision)
   | {type:'execution_checkpoint'; durable?:boolean; checkpoint:import('./execution/state').ExecutionCheckpoint}
   | {type:'budget_paused'; checkpoint:import('./execution/state').ExecutionCheckpoint}
   | {type:'compacted';turns:number;bytes:number;digest:string;mode:'index'|'summary'}
