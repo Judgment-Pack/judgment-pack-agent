@@ -342,6 +342,9 @@ bounded by `summaryBytes`. Tool results stay in the index; the prose, index and
 replaced-turn digests are framed as data. `compacted` exposes the replacement,
 and a failed compactor emits `compaction refused` and continues with the index.
 The checkpoint stores the exact framed replacement for byte-identical resume.
+
+Checkpoint contributors use the [canonical mutation API](../../docs/design/checkpoint-mutation.md).
+Controller reads are detached; the guide covers the TypeScript getter and Go `State()` source API migration.
 Neither mode changes the stable prefix.
 
 A run's context ledger and read cache are its own and end with it, unless the host hands it a

@@ -27,12 +27,12 @@ export class OutputGuard {
  readonly mode:'off'|'redact'|'refuse'
  private readonly emittedLabels=new Set<string>()
  private patterns:{name:string;compiled:CompiledPattern}[]
- constructor(members:PolicyMembers,private counts:()=>OutputCounts,private notify:(e:AssistantEvent)=>void){
+ constructor(members:PolicyMembers,private counts:()=>OutputCounts,private notify:(e:AssistantEvent)=>void,private publish?:(counts:OutputCounts)=>void){
   this.mode=(members.outputGuard?.value??'redact') as typeof this.mode
   const extra=readOutputPatterns(members.outputPatterns?.value??[]),allow=readOutputAllow(members.outputAllow?.value??[])
   this.patterns=[...base.patterns,...extra].filter(p=>!allow.includes(p.name)).map(p=>({name:p.name,compiled:compilePattern(p.pattern)}))
  }
- private count(pattern:string){const counts=this.counts();counts[pattern]=(Object.hasOwn(counts,pattern)?counts[pattern]!:0)+1}
+ private count(pattern:string){const counts=this.counts();counts[pattern]=(Object.hasOwn(counts,pattern)?counts[pattern]!:0)+1;this.publish?.(counts)}
  adopt(pattern:string){this.count(pattern)}
  private record(where:OutputWhere,pattern:string,action:'redact'|'refuse',record:boolean,marker?:RecordMarker){
   if(marker){if(action==='redact')marker.redactions[pattern]=(Object.hasOwn(marker.redactions,pattern)?marker.redactions[pattern]!:0)+1;return}

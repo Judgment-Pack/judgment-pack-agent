@@ -1,3 +1,4 @@
+import {CheckpointIncrement,mutateCheckpoint} from './execution/mutation'
 import {SUBAGENT_RESULT_MIN_BYTES,SUBAGENT_CHANGED} from './subagents'
 import {subagentProfile,subagentRecord,recordSubagents,type Subagent} from './subagents'
 import {failure,failureError,failureEvent,normalizeFailure,canRetryAdmission,canRetryRefusal,readFailure,refusalCode,failureMessage,toolInputFailure,toolFailureResult,RETRYABLE_OVERLOAD_CODES,RETRYABLE_REFUSAL_CLASSES,type AIFailure} from './failures'
@@ -234,7 +235,7 @@ class ResponseAllowance {
   /** A request of a child's, charged to the response and to its grant; refused where it would take the request kept for the parent. */
   childRequest(task: DelegatedTask) {
     if (this.remaining <= SYNTHESIS_RESERVE) throw new ExecutionPaused()
-    if (this.parent) this.parent.execution.state.used++
+    if (this.parent) this.parent.execution.mutate({used:new CheckpointIncrement(1)})
     else this.usedHere++
     const given = this.granted.get(task.id)
     if (given) given.spent++
@@ -273,7 +274,9 @@ class ResponseAllowance {
     // The children's source calls are in the parent's rows (ADR-0006), which `last`, a copy, may not hold yet.
     const sources = this.parent?.execution.state.sources
     const outputGuard = this.parent?.execution.state.outputGuard
-    return {...last, ...(this.parent?{usage:this.parent.execution.usage(),childUsage:structuredClone(this.parent.execution.state.childUsage)}:{}), ...(outputGuard === undefined ? {} : {outputGuard: structuredClone(outputGuard)}), status: 'running', used: this.used, testCalls: Math.max(last.testCalls ?? 0, this.testCalls), ...(sources === undefined ? {} : {sources: structuredClone(sources)})}
+    const checkpoint=structuredClone(last)
+    mutateCheckpoint(checkpoint,{...(this.parent?{usage:this.parent.execution.usage(),childUsage:this.parent.execution.state.childUsage}:{}),...(outputGuard===undefined?{}:{outputGuard}),status:'running',used:this.used,testCalls:Math.max(last.testCalls??0,this.testCalls),...(sources===undefined?{}:{sources})})
+    return checkpoint
   }
 }
 

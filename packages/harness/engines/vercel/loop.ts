@@ -1790,7 +1790,7 @@ export function runVercelLoop(
         if (overTime && !gate.signal.aborted) {
           // Continuing a pause takes a request grant, the clock's as much as
           // the allowance's, so a run already at the cap cannot be continued.
-          context.execution.state.reason = `${turnTimeFailure().message} Completed work is kept. Continuing takes a grant of more requests, so a run already at the ${MAX_REQUEST_ALLOWANCE}-request limit cannot be continued; start a new response instead.`
+          context.execution.mutate({reason:`${turnTimeFailure().message} Completed work is kept. Continuing takes a grant of more requests, so a run already at the ${MAX_REQUEST_ALLOWANCE}-request limit cannot be continued; start a new response instead.`})
           throw new ExecutionPaused()
         }
         const refusal = refusalOf(cause)

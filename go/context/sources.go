@@ -885,6 +885,7 @@ type SourceGate struct {
 	// "gemini-subset"): how a loaded schema is shown (ModelSession.ToolSchemas).
 	schemas string
 	rows    func() *[]contract.ProvenanceSourceFigures
+	publish func()
 
 	// mu is the lock every member below is held under: the gate's own, or its parent's.
 	mu              *sync.Mutex
@@ -966,6 +967,7 @@ func NewSourceGate(declared *Declared, policy *Policy, marker, schemas string, r
 			g.serviceActs[source.ID+"\x00"+row.IdentityDigest] = true
 		}
 	}
+	g.publishLocked()
 	g.mu.Unlock()
 	for _, withheld := range declared.Withheld {
 		g.notices = append(g.notices, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: withheld.Tool, Action: "refused", Detail: withheld.Detail}})
@@ -976,7 +978,7 @@ func NewSourceGate(declared *Declared, policy *Policy, marker, schemas string, r
 // IdentityRows snapshots the identity checkpoint state under the shared lock.
 func (g *SourceGate) IdentityRows() []contract.CheckpointSourceIdentity {
 	g.mu.Lock()
-	defer g.mu.Unlock()
+	defer func() { g.publishLocked(); g.mu.Unlock() }()
 	return append([]contract.CheckpointSourceIdentity{}, (*g.identityState)...)
 }
 
@@ -1036,13 +1038,14 @@ func (g *SourceGate) identityChanged(ctx context.Context, entry *SourceEntry) bo
 	id := entry.Record.ID
 	g.mu.Lock()
 	withheld := g.changedIdentity[id]
+	g.publishLocked()
 	g.mu.Unlock()
 	if withheld {
 		return true
 	}
 	if entry.Declared.Source.CurrentIdentity == nil {
 		g.mu.Lock()
-		defer g.mu.Unlock()
+		defer func() { g.publishLocked(); g.mu.Unlock() }()
 		return g.changedIdentity[id]
 	}
 	now, err := entry.Declared.Source.CurrentIdentity(ctx)
@@ -1051,6 +1054,7 @@ func (g *SourceGate) identityChanged(ctx context.Context, entry *SourceEntry) bo
 		g.mu.Lock()
 		g.changed[id], g.changedIdentity[id] = true, true
 		g.identityRow(id).Withheld = true
+		g.publishLocked()
 		g.mu.Unlock()
 	}
 	return changed
@@ -1101,6 +1105,7 @@ func (g *SourceGate) SetApprovals(book ApprovalBook) {
 	if approval := book.Current(); approval != nil && approval.Source.Identity != nil && approval.Source.Identity.Kind == "service" && approval.Source.IdentityDigest != nil {
 		g.mu.Lock()
 		g.rememberService(approval.Source.ID, *approval.Source.IdentityDigest)
+		g.publishLocked()
 		g.mu.Unlock()
 	}
 }
@@ -1136,6 +1141,7 @@ func (g *SourceGate) Decide(ctx context.Context, name string, args json.RawMessa
 	served := true
 	g.mu.Lock()
 	altered := g.changed[id]
+	g.publishLocked()
 	g.mu.Unlock()
 	if check := entry.Declared.Source.CurrentDigest; closed == "" && check != nil && entry.Record.Kind == "mcp" && !altered {
 		now, err := check(WithCallID(ctx, callID))
@@ -1146,7 +1152,7 @@ func (g *SourceGate) Decide(ctx context.Context, name string, args json.RawMessa
 		identityChanged = g.identityChanged(WithCallID(ctx, callID), entry)
 	}
 	g.mu.Lock()
-	defer g.mu.Unlock()
+	defer func() { g.publishLocked(); g.mu.Unlock() }()
 	held := decision{}
 	row := g.row(id)
 	given, _ := ParseJSON(nonEmptyArgs(args))
@@ -1249,7 +1255,7 @@ func orNullValue(v *Value) *Value {
 // guardrail and its refused result, and the adapter's own result for it is not delivered again.
 func (g *SourceGate) Pending(callID, name string) string {
 	g.mu.Lock()
-	defer g.mu.Unlock()
+	defer func() { g.publishLocked(); g.mu.Unlock() }()
 	var held decision
 	if callID != "" {
 		held = g.decisions[callID]
@@ -1293,6 +1299,7 @@ func (g *SourceGate) Approved(ctx context.Context, record contract.CheckpointApp
 	if entry == nil || run == nil || !g.NeedsApproval(record.Name) || CanonicalJSON(recordValue(entry.Record)) != CanonicalJSON(recordValue(record.Source)) {
 		g.mu.Lock()
 		err := g.refuse(record.Name, record.Name+" is no longer offered as it was when the person decided; the call was not run and nothing was changed", "approval stale")
+		g.publishLocked()
 		g.mu.Unlock()
 		return refusedWith(err)
 	}
@@ -1308,6 +1315,7 @@ func (g *SourceGate) Approved(ctx context.Context, record contract.CheckpointApp
 			reason = "identity changed"
 		}
 		err := g.refused(entry, record.CallID, g.refuse(record.Name, g.changedDetail(entry), reason))
+		g.publishLocked()
 		g.mu.Unlock()
 		return refusedWith(err)
 	}
@@ -1316,6 +1324,7 @@ func (g *SourceGate) Approved(ctx context.Context, record contract.CheckpointApp
 		given, _ := ParseJSON(args)
 		if problem := ArgumentProblem(DescribedSchema(orNullValue(declared), g.policy.ToolDescriptionBytes, nil, nil), orNullValue(given)); problem != "" {
 			err := g.refused(entry, record.CallID, failure.ToolInput(record.Name+"'s arguments do not match its schema: "+problem+". This call was not run."))
+			g.publishLocked()
 			g.mu.Unlock()
 			return refusedWith(err)
 		}
@@ -1328,15 +1337,18 @@ func (g *SourceGate) Approved(ctx context.Context, record contract.CheckpointApp
 		}
 		detail := fmt.Sprintf("This turn has called %s's tools %d time%s, the most one turn may (sourceCallsPerTurn); this call was not run.", id, limit, plural)
 		err := g.refused(entry, record.CallID, failure.NewError(contract.Failure{Version: 1, Code: "tool-failed", Source: "tool", Outcome: "not-started", Detail: &detail}))
+		g.publishLocked()
 		g.mu.Unlock()
 		return refusedWith(err)
 	}
 	g.claimCall(g.row(id), *entry.Record.Identity)
+	g.publishLocked()
 	g.mu.Unlock()
 	if g.identityChanged(ctx, entry) {
 		g.mu.Lock()
 		g.giveBackCall(g.row(id), *entry.Record.Identity)
 		err := g.refused(entry, record.CallID, g.refuse(record.Name, g.changedDetail(entry), "identity changed"))
+		g.publishLocked()
 		g.mu.Unlock()
 		return refusedWith(err)
 	}
@@ -1347,6 +1359,7 @@ func (g *SourceGate) Approved(ctx context.Context, record contract.CheckpointApp
 			g.changed[id] = true
 			g.giveBackCall(g.row(id), *entry.Record.Identity)
 			err := g.refused(entry, record.CallID, g.refuse(record.Name, g.changedDetail(entry)))
+			g.publishLocked()
 			g.mu.Unlock()
 			return refusedWith(err)
 		}
@@ -1355,7 +1368,7 @@ func (g *SourceGate) Approved(ctx context.Context, record contract.CheckpointApp
 	started := time.Now()
 	result, err := withSourceDeadline(ctx, limit, func(bounded context.Context) (ToolResult, error) { return run(bounded, args) })
 	g.mu.Lock()
-	defer g.mu.Unlock()
+	defer func() { g.publishLocked(); g.mu.Unlock() }()
 	g.row(id).Milliseconds += time.Since(started).Milliseconds()
 	if err != nil {
 		if ctx.Err() != nil {
@@ -1403,14 +1416,14 @@ func (g *SourceGate) Rows(fallback []contract.ProvenanceSourceFigures) []contrac
 		return fallback
 	}
 	g.mu.Lock()
-	defer g.mu.Unlock()
+	defer func() { g.publishLocked(); g.mu.Unlock() }()
 	return append([]contract.ProvenanceSourceFigures{}, *g.rows()...)
 }
 
 // TakeNotices are the guardrail events the source gate's refusals earned since the last take.
 func (g *SourceGate) TakeNotices() []contract.RunEvent {
 	g.mu.Lock()
-	defer g.mu.Unlock()
+	defer func() { g.publishLocked(); g.mu.Unlock() }()
 	out := g.notices
 	g.notices = nil
 	return out
@@ -1464,6 +1477,7 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 		if ok && held.args != canonicalArgs(args) {
 			held = decision{answer: "stale", detail: name + " was called with arguments other than those its approval was decided for; it was not run and nothing was changed"}
 		}
+		g.publishLocked()
 		g.mu.Unlock()
 		if !ok {
 			if asked := g.currentApproval(); asked != nil && asked.State == "asked" && callID != "" && asked.CallID == callID {
@@ -1495,6 +1509,7 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 			reason = "approval stale"
 		}
 		err := g.refused(entry, callID, g.refuse(name, decided.detail, reason))
+		g.publishLocked()
 		g.mu.Unlock()
 		return ToolResult{}, err
 	}
@@ -1505,10 +1520,12 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 			reason = "identity changed"
 		}
 		err := g.refused(entry, callID, g.refuse(name, g.changedDetail(entry), reason))
+		g.publishLocked()
 		g.mu.Unlock()
 		return ToolResult{}, err
 	case entry.Catalogued && !g.isLoaded(name):
 		err := g.refused(entry, callID, failure.ToolInput(name+" is catalogued: call "+LoadTool+" with its name first and call it with the schema that loads. This call was not run."))
+		g.publishLocked()
 		g.mu.Unlock()
 		return ToolResult{}, err
 	}
@@ -1519,6 +1536,7 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 		}
 		if problem := ArgumentProblem(g.loadedSchema(name), given); problem != "" {
 			err := g.refused(entry, callID, failure.ToolInput(name+"'s arguments do not match the schema "+LoadTool+" loaded: "+problem+". This call was not run."))
+			g.publishLocked()
 			g.mu.Unlock()
 			return ToolResult{}, err
 		}
@@ -1531,6 +1549,7 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 		}
 		detail := fmt.Sprintf("This turn has called %s's tools %d time%s, the most one turn may (sourceCallsPerTurn); this call was not run. Use the results already obtained, or say what remains.", id, limit, plural)
 		err := g.refused(entry, callID, failure.NewError(contract.Failure{Version: 1, Code: "tool-failed", Source: "tool", Outcome: "not-started", Detail: &detail}))
+		g.publishLocked()
 		g.mu.Unlock()
 		return ToolResult{}, err
 	}
@@ -1541,6 +1560,7 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 	} else {
 		g.claimCall(g.row(id), *entry.Record.Identity)
 	}
+	g.publishLocked()
 	g.mu.Unlock()
 	giveBack := func() {
 		if proposal {
@@ -1553,6 +1573,7 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 		g.mu.Lock()
 		giveBack()
 		err := g.refused(entry, callID, g.refuse(name, g.changedDetail(entry), "identity changed"))
+		g.publishLocked()
 		g.mu.Unlock()
 		return ToolResult{}, err
 	}
@@ -1563,6 +1584,7 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 			g.changed[id] = true
 			giveBack()
 			err := g.refused(entry, callID, g.refuse(name, g.changedDetail(entry)))
+			g.publishLocked()
 			g.mu.Unlock()
 			return ToolResult{}, err
 		}
@@ -1570,6 +1592,7 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 	if proposal {
 		g.mu.Lock()
 		g.mark(name, callID, mark{proposed: true})
+		g.publishLocked()
 		g.mu.Unlock()
 		return ResultOf([]Content{TextContent(Proposed)}, nil), nil
 	}
@@ -1578,6 +1601,7 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 		g.mu.Lock()
 		giveBack()
 		err := g.refused(entry, callID, g.refuse(name, name+" acts on "+id+", and this call's approval was not given; it was not run and nothing was changed", "approval stale"))
+		g.publishLocked()
 		g.mu.Unlock()
 		return ToolResult{}, err
 	}
@@ -1585,6 +1609,7 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 		g.mu.Lock()
 		giveBack()
 		g.mark(name, callID, mark{})
+		g.publishLocked()
 		g.mu.Unlock()
 		return ToolResult{}, failure.Cancelled
 	}
@@ -1592,7 +1617,7 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 	started := time.Now()
 	result, err := withSourceDeadline(ctx, limit, func(bounded context.Context) (ToolResult, error) { return run(bounded, args) })
 	g.mu.Lock()
-	defer g.mu.Unlock()
+	defer func() { g.publishLocked(); g.mu.Unlock() }()
 	g.row(id).Milliseconds += time.Since(started).Milliseconds()
 	if err != nil {
 		g.mark(name, callID, mark{})
@@ -1655,7 +1680,7 @@ func (g *SourceGate) Runtime(call func() (ToolResult, error)) (ToolResult, error
 	started := time.Now()
 	result, err := call()
 	g.mu.Lock()
-	defer g.mu.Unlock()
+	defer func() { g.publishLocked(); g.mu.Unlock() }()
 	row := g.row("runtime")
 	row.Milliseconds += time.Since(started).Milliseconds()
 	switch {
@@ -1674,7 +1699,7 @@ func (g *SourceGate) Runtime(call func() (ToolResult, error)) (ToolResult, error
 // Runtime call (the adapter's refusedUnoffered), in the Runtime's row.
 func (g *SourceGate) RuntimeRefused() {
 	g.mu.Lock()
-	defer g.mu.Unlock()
+	defer func() { g.publishLocked(); g.mu.Unlock() }()
 	g.row("runtime").Refused++
 }
 
@@ -1743,6 +1768,7 @@ func (g *SourceGate) LoadToolHost() HostTool {
 			if !g.isLoaded(name) {
 				bytes := UTF8Bytes(schema.Text())
 				if g.loadedBytes+bytes > g.policy.OfferedSchemaBytes {
+					g.publishLocked()
 					g.mu.Unlock()
 					detail := fmt.Sprintf("Loading %s would pass the %d bytes of schemas one response may load (offeredSchemaBytes); nothing was loaded. Use the tools already loaded.", name, g.policy.OfferedSchemaBytes)
 					return ToolResult{}, failure.NewError(contract.Failure{Version: 1, Code: "tool-failed", Source: "tool", Outcome: "not-started", Detail: &detail})
@@ -1750,6 +1776,7 @@ func (g *SourceGate) LoadToolHost() HostTool {
 				g.loaded = append(g.loaded, loadedSchema{name: name, schema: schema})
 				g.loadedBytes += bytes
 			}
+			g.publishLocked()
 			g.mu.Unlock()
 			record, err := json.Marshal(entry.Record)
 			if err != nil {
@@ -1780,7 +1807,7 @@ func (g *SourceGate) shownSchema(raw json.RawMessage) (*Value, error) {
 // LoadedSection is the loaded schemas, as one data block for the execution state, or "".
 func (g *SourceGate) LoadedSection() string {
 	g.mu.Lock()
-	defer g.mu.Unlock()
+	defer func() { g.publishLocked(); g.mu.Unlock() }()
 	if len(g.loaded) == 0 {
 		return ""
 	}
@@ -1818,6 +1845,7 @@ func (g *SourceGate) Decorate(event contract.RunEvent) contract.RunEvent {
 			taken = queue[0]
 			g.queued[event.ToolResult.Name] = queue[1:]
 		}
+		g.publishLocked()
 		g.mu.Unlock()
 		held := *event.ToolResult
 		record := entry.Record
@@ -1869,4 +1897,10 @@ func ValidSourceFigures(rows *Value) bool {
 		}
 	}
 	return true
+}
+
+func (g *SourceGate) publishLocked() {
+	if g.publish != nil {
+		g.publish()
+	}
 }

@@ -27,7 +27,7 @@ func TestNoInvocationIsDispatchedWhileAnApprovalIsAsked(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer opened.Context.Close()
-	opened.Context.Execution.State.Approval = &contract.CheckpointApproval{CallID: "call-a", Name: "tracker__create_issue", Tool: "create_issue", State: "asked"}
+	opened.Context.Execution.MutateCheckpoint(runcontext.CheckpointPatch{"Approval": &contract.CheckpointApproval{CallID: "call-a", Name: "tracker__create_issue", Tool: "create_issue", State: "asked"}})
 	dispatched := 0
 	raw := &adapter.Run{Agent: &adapter.Agent{Model: "fixture",
 		Run: func(context.Context, adapter.AgentRequest, adapter.AgentCallbacks) error {

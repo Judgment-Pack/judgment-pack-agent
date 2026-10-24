@@ -221,7 +221,7 @@ func TestOutputDraftScalars(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer opened.Context.Close()
-					before, _ := json.Marshal(opened.Context.Execution.State.Draft)
+					before, _ := json.Marshal(opened.Context.Execution.State().Draft)
 					args, _ := json.Marshal(map[string]string{"document": "pack", "old_text": scalar.before, "new_text": scalar.after})
 					_, err = opened.Context.Drafts.Edit(context.Background(), "propose_edit", args)
 					if (err != nil) != (mode == "refuse" || !valid) {
@@ -235,7 +235,7 @@ func TestOutputDraftScalars(t *testing.T) {
 						t.Fatalf("validation calls=%d", calls)
 					}
 					if mode == "refuse" || !valid {
-						after, _ := json.Marshal(opened.Context.Execution.State.Draft)
+						after, _ := json.Marshal(opened.Context.Execution.State().Draft)
 						if string(before) != string(after) {
 							t.Fatal("refusal changed prior draft checkpoint")
 						}

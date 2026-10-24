@@ -688,7 +688,8 @@ export class SourceGate {
     /** The run's approval (ADR-0008): where an asked one is written, and whether an act call is admitted here. */
     private readonly book?: ApprovalBook,
     private readonly notify?: SourceNotice,
-    private readonly identityState: SourceIdentityState[] = []
+    private readonly identityState: SourceIdentityState[] = [],
+    private readonly changedState?:()=>void
   ) {
     const held = this.tally()
     const want: SourceFigures[] = [{ source: 'runtime', kind: 'runtime', calls: 0, refused: 0, proposed: 0, bytes: 0, milliseconds: 0 }, ...sources.map((record) => ({ source: record.id, kind: record.kind, calls: 0, refused: 0, proposed: 0, bytes: 0, milliseconds: 0 }))]
@@ -706,7 +707,11 @@ export class SourceGate {
     }
     const approval = book?.current()
     if (approval?.source.identity?.kind === 'service' && approval.source.identityDigest !== undefined) this.rememberService(approval.source.id, approval.source.identityDigest)
+    this.publish()
   }
+
+  figures():SourceFigures[]{return this.tally()}
+  publish(){if(this.parent)this.parent.publish();else this.changedState?.()}
 
   private get identityStates(): SourceIdentityState[] {
     return this.parent ? this.parent.identityStates : this.identityState
@@ -715,7 +720,7 @@ export class SourceGate {
   private rememberService(source: string, digest: string): void {
     this.serviceActs.add(`${source}\u0000${digest}`)
     const saved = this.identityStates.find((row) => row.source === source && row.identityDigest === digest)
-    if (saved) saved.serviceAsked = true
+    if (saved) {saved.serviceAsked = true;this.publish()}
   }
 
   /** The rows this run reports into: its own, or its delegating run's, which is the turn's. */
@@ -756,7 +761,8 @@ export class SourceGate {
     row.calls++
     const figures = this.identityRow(row, identity)
     figures.calls++
-    return () => { row.calls--; figures.calls-- }
+    this.publish()
+    return () => { row.calls--; figures.calls--;this.publish() }
   }
 
   private async identityChanged(entry: SourceEntry): Promise<boolean> {
@@ -768,6 +774,7 @@ export class SourceGate {
     if (changed) {
       this.alteredIdentities.add(entry.record.id); this.alteredSources.add(entry.record.id)
       this.identityStates.find((row) => row.source === entry.record.id)!.withheld = true
+      this.publish()
     }
     return changed
   }
@@ -779,7 +786,7 @@ export class SourceGate {
 
   /** A refusal of one call: counted, its event marked, and thrown by the caller. */
   private refused(entry: SourceEntry, error: Error, callId: string | undefined): Error {
-    this.row(entry.record.id).refused++
+    this.row(entry.record.id).refused++;this.publish()
     this.mark(entry.wire, callId, {})
     return error
   }
@@ -830,7 +837,7 @@ export class SourceGate {
     } else if (this.book?.current()?.state === 'asked') {
       answer = 'pending'
       detail = `${name} acts on ${id}, and another act call of this run waits for the person's decision; one call waits at a time, so this call was not run and nothing was changed. Call it again once the person has decided.`
-      row.refused++
+      row.refused++;this.publish()
       this.mark(name, callId, {})
     } else {
       let given: unknown
@@ -932,13 +939,13 @@ export class SourceGate {
     try {
       const result = await withDeadline((bounded) => run(structuredClone(record.args), bounded), signal, limit, () => toolTimeout(limit))
       const { receipt: _receipt, ...shown } = result as McpToolResult & { receipt?: unknown }
-      row.bytes += utf8Bytes(JSON.stringify(shown) ?? '')
+      row.bytes += utf8Bytes(JSON.stringify(shown) ?? '');this.publish()
       return { result: shown, ran: true }
     } catch (error) {
       if (signal.aborted) throw error
       return { result: toolFailureResult(error), ran: true }
     } finally {
-      row.milliseconds += Date.now() - started
+      row.milliseconds += Date.now() - started;this.publish()
     }
   }
 
@@ -991,7 +998,8 @@ export class SourceGate {
     else row.calls++
     const identityFigures = proposal ? undefined : this.identityRow(row, entry.record.identity)
     if (identityFigures !== undefined) identityFigures.calls++
-    const giveBackCall = proposal ? () => { row.proposed-- } : () => { row.calls--; identityFigures!.calls-- }
+    this.publish()
+    const giveBackCall = proposal ? () => { row.proposed--;this.publish() } : () => { row.calls--; identityFigures!.calls--;this.publish() }
     if ((entry.declared.source?.currentIdentity !== undefined || this.alteredIdentities.has(id)) && await this.identityChanged(entry)) {
       giveBackCall()
       throw this.refused(entry, this.refuse(tool.name, this.changedDetail(entry), 'identity changed'), callId)
@@ -1026,13 +1034,13 @@ export class SourceGate {
     try {
       result = await withDeadline((bounded) => run(args, bounded), signal, limit, () => toolTimeout(limit))
     } catch (error) {
-      row.milliseconds += Date.now() - started
+      row.milliseconds += Date.now() - started;this.publish()
       this.mark(tool.name, callId, {})
       throw error
     }
-    row.milliseconds += Date.now() - started
+    row.milliseconds += Date.now() - started;this.publish()
     const { receipt, ...shown } = result as McpToolResult & { receipt?: unknown }
-    row.bytes += utf8Bytes(JSON.stringify(shown) ?? '')
+    row.bytes += utf8Bytes(JSON.stringify(shown) ?? '');this.publish()
     this.mark(tool.name, callId, typeof receipt === 'string' && receipt.length >= 1 && receipt.length <= 128 ? { receipt } : {})
     return shown
   }
@@ -1052,7 +1060,7 @@ export class SourceGate {
       else row.calls++
       throw error
     } finally {
-      row.milliseconds += Date.now() - started
+      row.milliseconds += Date.now() - started;this.publish()
     }
   }
 

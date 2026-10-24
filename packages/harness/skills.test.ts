@@ -20,6 +20,7 @@ import unloadSkillVector from '../../contract/vectors/skills/unload-skill.json'
 import harnessDefaults from '../../contract/vectors/budget/harness-defaults.json'
 import { CONTEXT_DEFAULTS, SKILL_DEFAULTS } from './context/policy'
 import { contextDigest } from './context/ledger'
+import { CheckpointMutation } from './execution/mutation'
 import { contextualSession, type ContextInput } from './context/session'
 import { readExecution, validSkillLoads, type ExecutionCheckpoint } from './execution/state'
 import { toolFailureResult } from './failures'
@@ -352,3 +353,20 @@ describe('the boundary over skills (ADR-0009)', () => {
 function ofKind(events: AssistantEvent[], type: AssistantEvent['type']): AssistantEvent[] {
   return events.filter((event) => event.type === type)
 }
+
+describe('detached SkillRun accounting', () => {
+  it('publishes the edited source book with only the documented writer callback', async () => {
+    const skills = await admittedSkills(), store = new CheckpointMutation(runState())
+    const events: AssistantEvent[] = []
+    const gate = new SkillGate(skills, {skillsPerRun: 1}, {
+      state: () => store.read(), write: patch => {store.apply(patch)}, marker: () => MARKER,
+      agentWire: false, notify: event => {events.push(event)}
+    }, skills.map(skill => skill.source.id))
+    await gate.loadTool().execute({name: skills[0]!.name}, new AbortController().signal)
+    expect(gate.loads()).toBe(1)
+    expect(store.read().sources!.find(row => row.source === skills[0]!.source.id)!.skills).toBe(1)
+    await expect(gate.loadTool().execute({name: skills[1]!.name}, new AbortController().signal)).rejects.toThrow(/skillsPerRun/)
+    expect(gate.loads()).toBe(1)
+    expect(events.filter(event => event.type === 'skill_loaded')).toHaveLength(1)
+  })
+})

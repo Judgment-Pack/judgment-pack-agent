@@ -622,7 +622,9 @@ func TestIdentitySessionSnapshotRestoresPinsAndServiceHistory(t *testing.T) {
 		if answer != "ask" {
 			t.Fatalf("first service act: %s", answer)
 		}
-		first.Context.Execution.State.Approval.State = "answered"
+		approval := first.Context.Execution.State().Approval
+		approval.State = "answered"
+		first.Context.Execution.MutateCheckpoint(CheckpointPatch{"Approval": approval})
 	}
 	current.Label = "changed-bot"
 	if _, err := hostTool(t, first, "expenses__submit").Execute(context.Background(), json.RawMessage(`{}`)); err == nil {

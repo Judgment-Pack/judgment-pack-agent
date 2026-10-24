@@ -103,7 +103,7 @@ func (c *coordinator) child(p *planned, task *contract.DelegatedTask, batch *bat
 		m.mu.Lock()
 		var rows []contract.Provenance
 		for _, context := range m.contexts {
-			rows = append(rows, context.Execution.State.Completions...)
+			rows = append(rows, context.Execution.State().Completions...)
 		}
 		first := m.firstByte
 		m.mu.Unlock()

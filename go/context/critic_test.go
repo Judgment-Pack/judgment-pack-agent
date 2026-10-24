@@ -242,7 +242,7 @@ func TestTheAskIsTakenOnceAndRefusedAfterWithTheGuardrail(t *testing.T) {
 	if got := answer.StructuredContent.Text(); got != `{"asked":true,"note":`+QuoteJSON(ReviewTaken)+`}` {
 		t.Fatalf("the ask was answered %s", got)
 	}
-	if critic := run.Context.Execution.State.Critic; critic == nil || marshaled(t, critic) != `{"mode":"auto","trigger":"model-asked"}` {
+	if critic := run.Context.Execution.State().Critic; critic == nil || marshaled(t, critic) != `{"mode":"auto","trigger":"model-asked"}` {
 		t.Fatalf("the ask was recorded as %s", marshaled(t, critic))
 	}
 	_, err = tool.Execute(context.Background(), json.RawMessage(`{}`))
@@ -287,7 +287,7 @@ func TestTheAskIsTakenOnceAndRefusedAfterWithTheGuardrail(t *testing.T) {
 	if notices := offRun.Context.Review.TakeNotices(); len(notices) != 1 || marshaled(t, notices[0]) != string(compactJSON(t, refused.Items[4])) {
 		t.Fatalf("the ask under off earned %s", marshaled(t, notices))
 	}
-	if offRun.Context.Execution.State.Critic != nil {
+	if offRun.Context.Execution.State().Critic != nil {
 		t.Fatal("the ask under off was recorded")
 	}
 }
@@ -477,7 +477,7 @@ func TestConcurrentReviewRequests(t *testing.T) {
 					t.Errorf("unexpected guardrail: %+v", g)
 				}
 			}
-			if got := marshaled(t, run.Context.Execution.State.Critic); got != `{"mode":"auto","trigger":"model-asked"}` {
+			if got := marshaled(t, run.Context.Execution.State().Critic); got != `{"mode":"auto","trigger":"model-asked"}` {
 				t.Fatalf("the checkpoint lost the ask: %s", got)
 			}
 			if len(run.Context.Review.TakeNotices()) != 0 {

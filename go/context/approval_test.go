@@ -297,8 +297,8 @@ func TestAnActCallThatLosesThePauseLeavesNoAskedApproval(t *testing.T) {
 	}
 	defer run.Context.Close()
 	run.Context.PauseClaim = func() bool { return false }
-	if held := run.Context.Approval(context.Background(), "tracker__create_issue", json.RawMessage(`{}`), "call-a"); held != nil || run.Context.Execution.State.Approval != nil {
-		t.Fatalf("an act call that lost the pause was held: %+v, %+v", held, run.Context.Execution.State.Approval)
+	if held := run.Context.Approval(context.Background(), "tracker__create_issue", json.RawMessage(`{}`), "call-a"); held != nil || run.Context.Execution.State().Approval != nil {
+		t.Fatalf("an act call that lost the pause was held: %+v, %+v", held, run.Context.Execution.State().Approval)
 	}
 	for _, tool := range run.Session.HostTools {
 		if tool.Name == "tracker__create_issue" {
@@ -458,7 +458,7 @@ func TestTheContinuedRunUsesThePausedRunsMarker(t *testing.T) {
 	if continued.Context.Marker != marker || !strings.Contains(offered(continued), "BEGIN RETRIEVED DATA "+marker+" from the description of tool") {
 		t.Fatalf("the continued run's marker is %q, the paused run's %q; offered: %s", continued.Context.Marker, marker, offered(continued))
 	}
-	if approval := continued.Context.Execution.State.Approval; approval == nil || approval.Marker == nil || *approval.Marker != marker {
+	if approval := continued.Context.Execution.State().Approval; approval == nil || approval.Marker == nil || *approval.Marker != marker {
 		t.Fatalf("the continued run's approval carries %+v", approval)
 	}
 	// A checkpoint with none: a run draws its own.

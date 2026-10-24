@@ -44,6 +44,8 @@ func CapacityAt(with func(adapter.Adapter) adapter.Adapter, capacity int) Scenar
 			}
 			var mu sync.Mutex
 			active, peak, children := 0, 0, 0
+			firstWave := make(chan struct{})
+			waveTimedOut := false
 			model := func(ctx context.Context, _ string, request relay.Request) (*http.Response, error) {
 				body := string(request.Body)
 				if strings.Contains(body, childBrief) {
@@ -51,7 +53,24 @@ func CapacityAt(with func(adapter.Adapter) adapter.Adapter, capacity int) Scenar
 					active++
 					children++
 					peak = max(peak, active)
+					if children == capacity {
+						close(firstWave)
+					}
 					mu.Unlock()
+					// Wait for the configured first wave rather than assuming every child
+					// reaches its model within 50ms of the first. Insufficient concurrency
+					// must still finish with a finding, even if the caller has no deadline.
+					timer := time.NewTimer(5 * time.Second)
+					select {
+					case <-firstWave:
+					case <-timer.C:
+						mu.Lock()
+						waveTimedOut = true
+						mu.Unlock()
+					case <-ctx.Done():
+					}
+					timer.Stop()
+					// Retain the original request hold to observe excess concurrency too.
 					select {
 					case <-time.After(50 * time.Millisecond):
 					case <-ctx.Done():
@@ -94,6 +113,9 @@ func CapacityAt(with func(adapter.Adapter) adapter.Adapter, capacity int) Scenar
 			}
 			for _, failed := range errorsOf(events) {
 				f.fail("an error event: %s", failed.Message)
+			}
+			if waveTimedOut {
+				f.fail("the configured first wave of %d child requests did not arrive before the bounded wait", capacity)
 			}
 			if children != 3 || peak != capacity {
 				f.fail("%d child requests, at most %d at once, where the connection's answer says %d", children, peak, capacity)

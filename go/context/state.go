@@ -528,15 +528,17 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 	if err := json.Unmarshal(value.JSON(), &out); err != nil {
 		return nil, errSavedExecution
 	}
-	for name, member := range out.Policy {
+	policy := out.Policy
+	for name, member := range policy {
 		if member.Source == nil {
 			source := "layer"
 			member.Source = &source
-			out.Policy[name] = member
+			policy[name] = member
 		}
 	}
 	// The completions are rebuilt from the members the reader names, each checked.
-	for at, row := range out.Completions {
+	completions := out.Completions
+	for at, row := range completions {
 		completion, _ := failure.ReadCompletion(row.Result)
 		rebuilt := contract.Provenance{Request: row.Request, Phase: row.Phase, Result: completion,
 			Schema: row.Schema, Version: row.Version, Digest: row.Digest, RetainUntil: row.RetainUntil, Records: row.Records,
@@ -545,7 +547,11 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 			checked, _ := failure.Read(*row.Failure)
 			rebuilt.Failure = &checked
 		}
-		out.Completions[at] = rebuilt
+		completions[at] = rebuilt
+	}
+	out, _, err := MutateCheckpoint(out, CheckpointPatch{"Policy": policy, "Completions": completions})
+	if err != nil {
+		return nil, err
 	}
 	return &out, nil
 }
@@ -628,17 +634,18 @@ func ExtendExecution(checkpoint contract.Checkpoint, interrupted bool, now time.
 	if limit > MaxRequestAllowance {
 		limit = MaxRequestAllowance
 	}
-	out := *saved
-	out.Limit = limit
-	out.Status = "running"
-	out.Reason = nil
-	out.Grants = append(append([]contract.CheckpointGrant{}, saved.Grants...),
-		contract.CheckpointGrant{From: saved.Limit, To: limit, At: now.UTC().Format("2006-01-02T15:04:05.000Z")})
+	out, _, err := MutateCheckpoint(*saved, CheckpointPatch{"Limit": limit, "Status": "running", "Reason": nil, "Grants": append(append([]contract.CheckpointGrant{}, saved.Grants...), contract.CheckpointGrant{From: saved.Limit, To: limit, At: now.UTC().Format("2006-01-02T15:04:05.000Z")})})
+	if err != nil {
+		return nil, err
+	}
 	if out.Schema != nil {
 		raw, _ := json.Marshal(out)
 		value, _ := ParseJSON(raw)
 		digest := RecordDigest(value)
-		out.Digest = &digest
+		out, _, err = MutateCheckpoint(out, CheckpointPatch{"Digest": &digest})
+		if err != nil {
+			return nil, err
+		}
 	}
 	return &out, nil
 }

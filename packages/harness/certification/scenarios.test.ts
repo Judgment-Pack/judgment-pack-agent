@@ -2420,12 +2420,12 @@ for(const engineId of AGENT_ENGINES)describe(`agent engine ${engineId} · scenar
 // requests; the agent capability receives it on its next (reformat) invocation.
 function certifySteerPauseAndResume(){
  const saved:ExecutionCheckpoint={version:1,id:'steer-certification',requestKey:'0'.repeat(64),phase:'work',status:'paused',unit:'model-requests',used:1,limit:20,grants:[],plan:[],explanation:'',operations:[],context:{scope:'steer',entries:[]},approval:{callId:'call',name:'tracker__act',tool:'act',source:{kind:'mcp',id:'tracker',trust:'public'},args:{},state:'asked'},steers:{queued:[{text:'accepted before pause',bytes:21}],delivered:[]}}
- const controller=new ExecutionController({} as never,{} as never);controller.state=structuredClone(saved)
+ const controller=new ExecutionController({} as never,{} as never);controller.mutate(structuredClone(saved))
  const refused=controller.queueSteers([{steer:{text:'not the decision'}}],{steerBytes:2000,steersPerRun:4})
  expect(refused).toEqual([{type:'guardrail',tool:'steer',action:'refused',reason:'steer refused',detail:'A steer is refused while this run waits for the person’s approval decision.'}])
  expect(argumentProblem(runEventSchema.$defs.guardrail,refused[0])).toBeUndefined()
  expect(controller.state.steers?.queued).toEqual(saved.steers?.queued)
- controller.state.approval={...controller.state.approval!,state:'refused'}
+ controller.mutate({approval:{...controller.state.approval!,state:'refused'}})
  const resumed=controller.takeSteers([],'f'.repeat(32),2,{steerBytes:2000,steersPerRun:4})
  expect(resumed.text).toContain('\naccepted before pause\n')
  expect(resumed.events).toEqual([{type:'steered',bytes:21,atRequest:2}])

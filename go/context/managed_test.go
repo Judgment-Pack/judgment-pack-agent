@@ -59,8 +59,8 @@ func TestTheBoundaryCheckpointsTheOpeningAndEachCall(t *testing.T) {
 	if !stop || eventTypes(held)[0] != "execution_checkpoint+durable" || eventTypes(held)[1] != "usage" || eventTypes(held)[2] != "end" {
 		t.Errorf("the closing events are %v", eventTypes(held))
 	}
-	if run.Context.Execution.State.Status != "complete" {
-		t.Errorf("the closing status is %s", run.Context.Execution.State.Status)
+	if run.Context.Execution.State().Status != "complete" {
+		t.Errorf("the closing status is %s", run.Context.Execution.State().Status)
 	}
 	// Nothing more is delivered for a run whose end was delivered.
 	if held := boundary.Failed(&authoredError{"after the end"}); held != nil {
@@ -79,8 +79,8 @@ func TestTheBoundaryPausesTheRunAtItsRequestLimit(t *testing.T) {
 	if stop || len(held) != 1 || eventTypes(held)[0] != "budget_paused" {
 		t.Errorf("the pause is %v", eventTypes(held))
 	}
-	if run.Context.Execution.State.Status != "paused" {
-		t.Errorf("the status is %s", run.Context.Execution.State.Status)
+	if run.Context.Execution.State().Status != "paused" {
+		t.Errorf("the status is %s", run.Context.Execution.State().Status)
 	}
 	// A pause the budget tool asked for ends the run after the call's result.
 	run.Context.Execution.PauseRequested = true
@@ -167,8 +167,8 @@ func TestTheBoundaryDoesNotCheckpointAnUntrackedRun(t *testing.T) {
 		t.Errorf("an untracked call is %v", got)
 	}
 	// Its operations are still journaled, so a later checkpoint carries them.
-	if len(run.Context.Execution.State.Operations) != 1 {
-		t.Errorf("%d operations were journaled", len(run.Context.Execution.State.Operations))
+	if len(run.Context.Execution.State().Operations) != 1 {
+		t.Errorf("%d operations were journaled", len(run.Context.Execution.State().Operations))
 	}
 }
 
@@ -188,7 +188,7 @@ func TestOutputRefusalClosesUsageBeforeEnd(t *testing.T) {
 				count++
 			}
 		}
-		if count != 1 || opened.Context.Execution.State.Usage == nil {
+		if count != 1 || opened.Context.Execution.State().Usage == nil {
 			t.Fatalf("usage count: %d", count)
 		}
 		raw, _ := json.Marshal(events[len(events)-2])

@@ -289,13 +289,15 @@ type CriticSwitch struct {
 	table    CriticTable
 	facts    CriticForcedFacts
 	state    func() *Execution
+	write    func(CheckpointPatch)
 	notices  []contract.RunEvent
 }
 
 // NewCriticSwitch holds one run's switch over the execution state it writes its member into.
-func NewCriticSwitch(settings CriticSettings, table CriticTable, forced CriticForcedFacts, state func() *Execution) *CriticSwitch {
+func NewCriticSwitch(settings CriticSettings, table CriticTable, forced CriticForcedFacts, state func() *Execution, write ...func(CheckpointPatch)) *CriticSwitch {
+	commit := func(patch CheckpointPatch) { checkpointWriter(state(), write)(patch) }
 	mode, layer := CriticMode(settings, table)
-	return &CriticSwitch{Mode: mode, Layer: layer, Forced: CriticForcedOff(forced), settings: settings, table: table, facts: forced, state: state}
+	return &CriticSwitch{Mode: mode, Layer: layer, Forced: CriticForcedOff(forced), settings: settings, table: table, facts: forced, state: state, write: commit}
 }
 
 // Offered is whether request_review is offered: under auto, on a run nothing forces the critic off.
@@ -334,7 +336,7 @@ func (s *CriticSwitch) Ask(authorPhase bool) string {
 		return ReviewRefusal("asked")
 	}
 	trigger := "model-asked"
-	s.state().Critic = &contract.CheckpointCritic{Mode: s.Mode, Trigger: &trigger}
+	s.write(CheckpointPatch{"Critic": &contract.CheckpointCritic{Mode: s.Mode, Trigger: &trigger}})
 	return ""
 }
 
@@ -369,7 +371,7 @@ func (s *CriticSwitch) Decide(run CriticRunFacts, author string) CriticDecision 
 	} else {
 		decision.Reasoning = CriticTier(author, s.settings.CriticReasoning, s.table.CriticReasoningFloor)
 	}
-	s.state().Critic = decision.Record()
+	s.write(CheckpointPatch{"Critic": decision.Record()})
 	return decision
 }
 

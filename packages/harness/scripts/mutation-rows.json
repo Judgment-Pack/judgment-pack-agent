@@ -3614,7 +3614,7 @@
   {
    "name": "a load is not counted against skillsPerRun",
    "file": "skills.ts",
-   "find": "    if (row !== undefined) row.skills = (row.skills ?? 0) + 1",
+   "find": "    if (row !== undefined) {row.skills = (row.skills ?? 0) + 1;this.commitSources(rows)}",
    "replace": "    void row",
    "tests": [
     "skills.test.ts",
@@ -4453,8 +4453,8 @@
   {
    "name": "identity change not withheld",
    "file": "toolSources.ts",
-   "find": "    if (changed) {\n      this.alteredIdentities.add(entry.record.id); this.alteredSources.add(entry.record.id)\n      this.identityStates.find((row) => row.source === entry.record.id)!.withheld = true\n    }\n    return changed",
-   "replace": "    if (changed) {\n      this.alteredIdentities.add(entry.record.id); this.alteredSources.add(entry.record.id)\n      this.identityStates.find((row) => row.source === entry.record.id)!.withheld = true\n    }\n    return false",
+   "find": "    if (changed) {\n      this.alteredIdentities.add(entry.record.id); this.alteredSources.add(entry.record.id)\n      this.identityStates.find((row) => row.source === entry.record.id)!.withheld = true\n      this.publish()\n    }\n    return changed",
+   "replace": "    if (changed) {\n      this.alteredIdentities.add(entry.record.id); this.alteredSources.add(entry.record.id)\n      this.identityStates.find((row) => row.source === entry.record.id)!.withheld = true\n      this.publish()\n    }\n    return false",
    "tests": ["toolSources.test.ts", "certification/scenarios.test.ts"],
    "status": "caught",
    "origin": "agent#102"
@@ -4597,7 +4597,7 @@
   {
    "name": "child usage dropped",
    "file": "execution/controller.ts",
-   "find": "  this.state.childUsage??=[]",
+   "find": "  const childUsage=this.state.childUsage??[]",
    "replace": "  return",
    "tests": [
     "execution/execution.test.ts",
@@ -4897,6 +4897,258 @@
     "note": "Go twin: remove the nil-value guard around author reasoning in DelegatedPolicy.author; the live and saved TestDelegatedRequestReasoning omission controls reject the stringified nil/invalid tier instead of dispatching the child.",
     "status": "caught",
     "origin": "agent#162-mutation-compatibility"
+  },
+  {
+    "name": "checkpoint writer bypasses canonical mutation",
+    "file": "context/session.ts",
+    "find": "  this.execution.mutate({testCalls:new CheckpointIncrement(1)})",
+    "replace": "  this.execution.state.testCalls=made+1",
+    "tests": [
+      "execution/mutation.test.ts"
+    ],
+    "status": "caught",
+    "origin": "agent#154",
+    "note": "Go twin: bypass MutateCheckpoint in SetTestCalls with c.State().TestCalls = &count; TestCheckpointWritersUseMutationBoundary catches the direct writer."
+  },
+  {
+    "name": "checkpoint mutation misses dirty revision",
+    "file": "execution/mutation.ts",
+    "find": " revisions.set(target,(revisions.get(target)??0)+1)",
+    "replace": " void revisions",
+    "tests": [
+      "execution/mutation.test.ts"
+    ],
+    "status": "caught",
+    "origin": "agent#154",
+    "note": "Go twin: omit c.checkpoint.revision++; TestCheckpointMutationAtomicRevisionAndDetachedReads fails the initial revision assertion."
+  },
+  {
+    "name": "checkpoint no-op increments dirty revision",
+    "file": "execution/mutation.ts",
+    "find": " if(canonicalJSON(candidate)===canonicalJSON(target))return false",
+    "replace": " // no-op guard removed",
+    "tests": [
+      "execution/mutation.test.ts"
+    ],
+    "status": "caught",
+    "origin": "agent#154",
+    "note": "Go twin: remove the !changed early return in ExecutionController.MutateCheckpoint; TestCheckpointMutationAtomicRevisionAndDetachedReads fails the no-op revision assertion."
+  },
+  {
+    "name": "checkpoint getter exposes nested mutable aliases",
+    "file": "execution/mutation.ts",
+    "find": " read():ExecutionCheckpoint {return structuredClone(this.#value)}",
+    "replace": " read():ExecutionCheckpoint {return this.#value}",
+    "tests": [
+      "execution/mutation.test.ts"
+    ],
+    "status": "caught",
+    "origin": "agent#154",
+    "note": "Go twin: return c.checkpoint.value from State(); TestCheckpointMutationAtomicRevisionAndDetachedReads fails the mutable alias assertion."
+  },
+  {
+    "name": "checkpoint patch retains caller nested aliases",
+    "file": "execution/mutation.ts",
+    "find": "}else Object.assign(candidate,{[key]:structuredClone(patch[key])})",
+    "replace": "}else Object.assign(candidate,{[key]:patch[key]})",
+    "tests": [
+      "execution/mutation.test.ts"
+    ],
+    "status": "caught",
+    "origin": "agent#154",
+    "note": "Go twin: replace field.Set(cloneCheckpointValue(incoming)) with field.Set(incoming); TestCheckpointMutationAtomicRevisionAndDetachedReads fails after the input steer is modified."
+  },
+  {
+    "name": "checkpoint validation mutates committed state",
+    "file": "execution/mutation.ts",
+    "find": " validate?.(structuredClone(candidate))",
+    "replace": " validate?.(target)",
+    "tests": [
+      "execution/mutation.test.ts"
+    ],
+    "status": "caught",
+    "origin": "agent#154",
+    "note": "Go twin: pass current to validation instead of the detached candidate in MutateCheckpoint; TestCheckpointMutationAtomicRevisionAndDetachedReads detects the changed context after rejection."
+  },
+  {
+    "name": "checkpoint schema inventory no longer requires every member",
+    "file": "execution/mutation.test.ts",
+    "find": " expect([Object.keys(owners).sort(),Object.keys(value).sort()]).toEqual([Object.keys(schema.properties).sort(),Object.keys(schema.properties).sort()])",
+    "replace": " void schema",
+    "tests": [
+      "execution/mutation.test.ts"
+    ],
+    "status": "caught",
+    "origin": "agent#154",
+    "note": "Go twin: add an uncovered member to a disposable schema copy; TestCheckpointMembersInterruptResume and TestCheckpointMembersOmissionVersusDefaults fail the schema coverage inventory."
+  },
+  {
+    "name": "checkpoint runtime patch admits unknown members",
+    "file": "execution/mutation.ts",
+    "find": "  if(!members.has(key))throw Error('Unknown checkpoint member: '+key)",
+    "replace": "  void members",
+    "note": "Go twin: ignore an invalid reflection field instead of returning an unknown-member error; TestCheckpointMutationAtomicRevisionAndDetachedReads fails the invalid-patch assertion.",
+    "tests": [
+      "execution/mutation.test.ts"
+    ],
+    "status": "caught",
+    "origin": "agent#154"
+  },
+  {
+    "name": "checkpoint increment admits a non-counter member",
+    "file": "execution/mutation.ts",
+    "find": "if(!counters.has(key)||typeof before!=='number'||!Number.isSafeInteger(amount)||!Number.isSafeInteger(before+amount))",
+    "replace": "if(typeof before!=='number'||!Number.isSafeInteger(amount)||!Number.isSafeInteger(before+amount))",
+    "note": "Go twin: remove the Used/Limit/TestCalls member whitelist in the increment operation; TestCheckpointReorderedObjectIsNoop fails because incrementing Version succeeds.",
+    "tests": [
+      "execution/mutation.test.ts"
+    ],
+    "status": "caught",
+    "origin": "agent#154"
+  },
+  {
+    "name": "checkpoint reordered object keys dirty the revision",
+    "file": "execution/mutation.ts",
+    "find": "if(canonicalJSON(candidate)===canonicalJSON(target))return false",
+    "replace": "if(JSON.stringify(candidate)===JSON.stringify(target))return false",
+    "note": "Go twin: replace checkpointEqual with reflect.DeepEqual; TestCheckpointReorderedObjectIsNoop fails the reordered JSON object control.",
+    "tests": [
+      "execution/mutation.test.ts"
+    ],
+    "status": "caught",
+    "origin": "agent#154"
+  },
+  {
+    "name": "checkpoint initialization retains caller aliases",
+    "file": "execution/mutation.ts",
+    "find": "this.#value=structuredClone(value??{} as ExecutionCheckpoint)",
+    "replace": "this.#value=value??{} as ExecutionCheckpoint",
+    "note": "Go twin: make the generic mutator use current directly instead of cloning it; TestCheckpointMutationAtomicRevisionAndDetachedReads fails when rejected validation leaks into committed state.",
+    "tests": [
+      "execution/mutation.test.ts"
+    ],
+    "status": "caught",
+    "origin": "agent#154"
+  },
+  {
+    "name": "checkpoint increment accepts an overflowing count",
+    "file": "execution/mutation.ts",
+    "find": "||!Number.isSafeInteger(before+amount)",
+    "replace": "",
+    "tests": [
+      "execution/mutation.test.ts"
+    ],
+    "status": "caught",
+    "origin": "agent#154",
+    "note": "Go twin: remove the integer-overflow condition in MutateCheckpoint; TestCheckpointMutationAtomicRevisionAndDetachedReads fails the invalid-patch assertion for a count above the integer maximum."
+  },
+  {
+   "name": "checkpoint review skill fallback republishes a fresh detached source book",
+   "file": "skills.ts",
+   "find": "if (row !== undefined) {row.skills = (row.skills ?? 0) + 1;this.commitSources(rows)}",
+   "replace": "if (row !== undefined) {row.skills = (row.skills ?? 0) + 1;this.commitSources(this.run.sources?.() ?? this.run.state().sources ?? [])}",
+   "tests": [
+    "skills.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#154-review-fixes",
+   "note": "The detached SkillRun writer-only control must retain skillsPerRun accounting. Go source bookkeeping is owned by SourceGate under its gate lock, without this detached-getter fallback; R1 separately checks the shared source publication lock."
+  },
+  {
+   "name": "checkpoint review opaque own member invokes a prototype setter",
+   "file": "execution/mutation.ts",
+   "find": "Object.defineProperties(target,Object.getOwnPropertyDescriptors(candidate))",
+   "replace": "Object.assign(target,candidate)",
+   "tests": [
+    "execution/mutation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#154-review-fixes",
+   "note": "The accepted own __proto__ member remains serialized data and the local target prototype stays unchanged. Go struct checkpoints have no JavaScript property setters; no equivalent language operation exists."
+  },
+  {
+   "name": "checkpoint review successful validator edits the committed candidate",
+   "file": "execution/mutation.ts",
+   "find": "validate?.(structuredClone(candidate))",
+   "replace": "validate?.(candidate)",
+   "tests": [
+    "execution/mutation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#154-review-fixes",
+   "note": "Go twin: candidate := next in generic MutateCheckpoint; TestCheckpointSuccessfulValidatorCannotChangeCommittedCandidate rejects Used=9."
+  },
+  {
+   "name": "checkpoint review nested aliases lose their source book",
+   "file": "execution/mutation.test.ts",
+   "find": "if(ts.isIdentifier(expression))return aliases.get(checker.getSymbolAtLocation(expression))",
+   "replace": "if(ts.isIdentifier(expression))return undefined",
+   "tests": [
+    "execution/mutation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#154-review-fixes",
+   "note": "Go twin: omit identifier lookup in source; the synthetic nested member, array element and append controls must fail their writer-site count."
+  },
+  {
+   "name": "checkpoint review publication uses a different member",
+   "file": "execution/mutation.test.ts",
+   "find": "&&p.member===held.member",
+   "replace": "",
+   "tests": [
+    "execution/mutation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#154-review-fixes",
+   "note": "Go twin: omit held.member == member in publication matching; wrong-member publication is detected as a missing expected writer."
+  },
+  {
+   "name": "checkpoint review publication uses a fresh book",
+   "file": "execution/mutation.test.ts",
+   "find": "&&p.book===held.book",
+   "replace": "",
+   "tests": [
+    "execution/mutation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#154-review-fixes",
+   "note": "Go twin: compare only publication member instead of book identity; the fresh-read publication control fails."
+  },
+  {
+   "name": "checkpoint review publication occurs in an uncalled closure",
+   "file": "execution/mutation.test.ts",
+   "find": "p.scope===scopes.get(expression)&&",
+   "replace": "",
+   "tests": [
+    "execution/mutation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#154-review-fixes",
+   "note": "Go twin: omit publication scope equality; the uncalled-closure control fails while actual deferred publication remains usable."
+  },
+  {
+   "name": "checkpoint review publication precedes the detached edit",
+   "file": "execution/mutation.test.ts",
+   "find": "&&p.position>expression.getStart(file)",
+   "replace": "",
+   "tests": [
+    "execution/mutation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#154-review-fixes",
+   "note": "Go twin: omit publication order; the earlier-publication control fails."
+  },
+  {
+   "name": "checkpoint review mutation owner exemption accepts a nested basename",
+   "file": "execution/mutation.test.ts",
+   "find": "if(path===join(root,'execution/mutation.ts'))continue",
+   "replace": "if(path.endsWith('/execution/mutation.ts'))continue",
+   "tests": [
+    "execution/mutation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#154-review-fixes",
+   "note": "Go twin: basename-only checkpointMutationOwner; TestCheckpointMutationOwnerExemptionIsExact fails. The reader-materialization exemption has its own exact-path control."
   }
  ]
 }

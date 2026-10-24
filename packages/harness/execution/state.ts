@@ -1,3 +1,4 @@
+import {mutateCheckpoint} from './mutation'
 import {validOutputCounts,type OutputCounts} from '../outputGuard'
 import {validDraft,type DraftCheckpoint} from '../edits'
 import { validMemories, type Memories } from '../memories'
@@ -210,8 +211,8 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(!object(value.context)||!text(value.context.scope,100)||!Array.isArray(value.context.entries)||value.context.entries.length>800||new Set(value.context.entries.map(e=>e.id)).size!==value.context.entries.length)return fail()
  for(const e of value.context.entries){if(!object(e)||!text(e.id,300)||!e.id.startsWith(value.context.scope+':')||!['history','artifact','request','tool'].includes(String(e.kind))||!text(e.label,1000)||typeof e.digest!=='string'||!/^[a-f0-9]{64}$/.test(e.digest)||e.revision!==undefined&&!text(e.revision,256)||!Number.isInteger(e.bytes)||Number(e.bytes)<0||!Object.hasOwn(e,'value'))return fail()}
  const result=structuredClone(value) as unknown as ExecutionCheckpoint
- if(result.policy)for(const member of Object.values(result.policy))member.source??='layer'
- if(result.completions)result.completions=result.completions.map(({schema,version,digest,retainUntil,records,request,phase,result,attempt,failure,waitMs,connection,role})=>({...(schema===undefined?{}:{schema,version,digest,retainUntil,records} as RecordMembers<typeof PROVENANCE_SCHEMA>),request,phase,result:readCompletion(result)!,...(attempt===undefined?{}:{attempt}),...(failure===undefined?{}:{failure:readFailure(failure)!}),...(waitMs===undefined?{}:{waitMs}),...(connection===undefined?{}:{connection}),...(role===undefined?{}:{role})}))
+ if(result.policy){const policy=structuredClone(result.policy);for(const member of Object.values(policy))member.source??='layer';mutateCheckpoint(result,{policy})}
+ if(result.completions)mutateCheckpoint(result,{completions:result.completions.map(({schema,version,digest,retainUntil,records,request,phase,result,attempt,failure,waitMs,connection,role})=>({...(schema===undefined?{}:{schema,version,digest,retainUntil,records} as RecordMembers<typeof PROVENANCE_SCHEMA>),request,phase,result:readCompletion(result)!,...(attempt===undefined?{}:{attempt}),...(failure===undefined?{}:{failure:readFailure(failure)!}),...(waitMs===undefined?{}:{waitMs}),...(connection===undefined?{}:{connection}),...(role===undefined?{}:{role})}))})
  return result
 }
 /** A stopped API request can fail exactly at the ceiling; recovery still needs an explicit grant. */
@@ -223,8 +224,9 @@ export function extendExecution(checkpoint:ExecutionCheckpoint,interrupted=false
  const saved=readExecution(checkpoint)!
  if((saved.status!=='paused'&&!(interrupted&&canExtendInterruptedExecution(saved)))||saved.unit!=='model-requests'||saved.limit>=MAX_REQUEST_ALLOWANCE)throw Error('This execution cannot receive another request allowance.')
  const limit=Math.min(MAX_REQUEST_ALLOWANCE,saved.limit+REQUEST_INCREMENT)
- const extended={...saved,limit,status:'running' as const,reason:undefined,grants:[...saved.grants,{from:saved.limit,to:limit,at:new Date().toISOString()}]}
- if(extended.schema)extended.digest=recordDigest(extended)
+ const extended=structuredClone(saved)
+ mutateCheckpoint(extended,{limit,status:'running',reason:undefined,grants:[...saved.grants,{from:saved.limit,to:limit,at:new Date().toISOString()}]})
+ if(extended.schema)mutateCheckpoint(extended,{digest:recordDigest(extended)})
  return extended
 }
 export class ExecutionPaused extends Error {readonly failureCode='request-limit';constructor(){super('Work paused at the approved request limit. Continue with an additional allowance, or keep the completed work.')}}
