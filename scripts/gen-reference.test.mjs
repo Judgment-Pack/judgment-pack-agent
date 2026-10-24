@@ -151,9 +151,17 @@ func emit(event RunEvent) {}
 func unrelatedJSON() RunEvent {
  unused := "{\\\"type\\\":\\\"end\\\"}"
  _ = unused
+ var unusedDecoded RunEvent
+ _ = json.Unmarshal([]byte("{\\\"type\\\":\\\"end\\\"}"), &unusedDecoded)
  var event RunEvent
- _ = json.Unmarshal([]byte("{}"), &event)
+ _ = json.Unmarshal([]byte("{\\\"type\\\":\\\"message\\\"}"), &event)
  return event
+}
+func publishedJSON() {
+ var published RunEvent
+ alias := &published
+ _ = json.Unmarshal([]byte("{\\\"type\\\":\\\"message\\\"}"), alias)
+ emit(published)
 }
 func source() {
  unused := RunEvent{End:&RunEventEnd{Type:"end"}}
@@ -168,6 +176,11 @@ func source() {
  requireCoverage(kinds,matrix)
  assert.equal(matrix.TypeScript.emits.filter(s=>s.kind==='end').length,1)
  assert.equal(matrix.Go.emits.filter(s=>s.kind==='end').length,1)
+ for(const destination of ['&event','alias']){
+  const line=goSource.split('\n').findIndex(row=>row.includes('json.Unmarshal')&&row.endsWith(', '+destination+')'))+1
+  assert.ok(line>0)
+  assert.ok(matrix.Go.emits.some(site=>site.kind==='message'&&site.line===line),`decoded ${destination} must reach its returned/published event`)
+ }
  writeFileSync(tsPath,tsSource.replace("publish({type:'end'})",''))
  assert.throws(()=>eventMatrix(root,kinds),/TypeScript has no emitter for end/)
  writeFileSync(tsPath,tsSource)

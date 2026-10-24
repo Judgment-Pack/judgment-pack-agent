@@ -288,6 +288,8 @@ func main() {
 			// Event constructors count only on an event-return path or in a publication call.
 			var trace func(ast.Node)
 			seen := map[ast.Node]bool{}
+			reachedBindings := map[*ast.Object]bool{}
+			reachedFields := map[string]bool{}
 			trace = func(n ast.Node) {
 				if n == nil || seen[n] {
 					return
@@ -325,11 +327,13 @@ func main() {
 				case *ast.StarExpr:
 					trace(n.X)
 				case *ast.SelectorExpr:
+					reachedFields[inferred(n.X, map[ast.Node]bool{})+"."+n.Sel.Name] = true
 					for _, value := range fieldWrites[inferred(n.X, map[ast.Node]bool{})+"."+n.Sel.Name] {
 						trace(value)
 					}
 				case *ast.Ident:
 					if n.Obj != nil {
+						reachedBindings[n.Obj] = true
 						switch d := n.Obj.Decl.(type) {
 						case *ast.AssignStmt:
 							for _, r := range d.Rhs {
@@ -391,9 +395,65 @@ func main() {
 					}
 				}
 			})
-			// Trace only bytes actually decoded into a returned event. An unrelated
-			// JSON literal in a function that also calls Unmarshal is not an emitter.
-			if returnsEvent {
+			// A decoder is an emitter only when its destination reaches an event
+			// return/publication sink above. Follow pointer aliases, but not a value
+			// copy: decoding &unused must not count merely because unused copied an
+			// event that is separately returned.
+			locationReached := func(n ast.Expr) bool {
+				for {
+					if p, ok := n.(*ast.ParenExpr); ok {
+						n = p.X
+					} else {
+						break
+					}
+				}
+				switch n := n.(type) {
+				case *ast.Ident:
+					return n.Obj != nil && reachedBindings[n.Obj]
+				case *ast.SelectorExpr:
+					return reachedFields[inferred(n.X, map[ast.Node]bool{})+"."+n.Sel.Name]
+				}
+				return false
+			}
+			var decodedReaches func(ast.Expr, map[ast.Node]bool) bool
+			decodedReaches = func(n ast.Expr, visited map[ast.Node]bool) bool {
+				if n == nil || visited[n] {
+					return false
+				}
+				visited[n] = true
+				switch n := n.(type) {
+				case *ast.ParenExpr:
+					return decodedReaches(n.X, visited)
+				case *ast.UnaryExpr:
+					if n.Op == token.AND {
+						return locationReached(n.X)
+					}
+				case *ast.Ident:
+					if locationReached(n) {
+						return true
+					}
+					if n.Obj != nil {
+						switch d := n.Obj.Decl.(type) {
+						case *ast.AssignStmt:
+							for i, left := range d.Lhs {
+								if text(left) == n.Name && i < len(d.Rhs) {
+									return decodedReaches(d.Rhs[i], visited)
+								}
+							}
+						case *ast.ValueSpec:
+							for i, name := range d.Names {
+								if name.Name == n.Name && i < len(d.Values) {
+									return decodedReaches(d.Values[i], visited)
+								}
+							}
+						}
+					}
+				case *ast.SelectorExpr:
+					return locationReached(n)
+				}
+				return false
+			}
+			{
 				rawSeen := map[ast.Node]bool{}
 				var raw func(ast.Expr)
 				raw = func(n ast.Expr) {
@@ -444,7 +504,7 @@ func main() {
 					}
 				}
 				inspect(fn.Body, func(n ast.Node) {
-					if call, ok := n.(*ast.CallExpr); ok && text(call.Fun) == "Unmarshal" && len(call.Args) == 2 && inferred(call.Args[1], map[ast.Node]bool{}) == "RunEvent" {
+					if call, ok := n.(*ast.CallExpr); ok && text(call.Fun) == "Unmarshal" && len(call.Args) == 2 && inferred(call.Args[1], map[ast.Node]bool{}) == "RunEvent" && decodedReaches(call.Args[1], map[ast.Node]bool{}) {
 						raw(call.Args[0])
 					}
 				})
