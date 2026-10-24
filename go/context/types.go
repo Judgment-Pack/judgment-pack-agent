@@ -300,6 +300,8 @@ type SteerInput struct {
 // host names it (host.ts's AITarget, a string here). DelegationReuse (agent#17) is false where
 // this response's delegated tasks reuse no earlier result of the chat.
 type Input struct {
+	// RequestCap is a fixed API request reservation, 1..20; nil preserves ordinary grants.
+	RequestCap        *int
 	AcceptedDocuments []AcceptedDocument
 	CurrentState      string
 	ArtifactProposals *bool

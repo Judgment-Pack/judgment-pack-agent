@@ -1110,12 +1110,13 @@ func (v CapabilityTiers) MarshalJSON() ([]byte, error) {
 // private reasoning. Read from ExecutionCheckpoint (web/src/assistant/execution/state.ts,
 // readExecution). Open: readExecution accepts a member it does not name and keeps it. Rules the
 // reader holds that JSON Schema does not state: the serialized checkpoint is at most 4 MiB
-// (MAX_CHECKPOINT_BYTES); used is at most limit; the grants chain from the first limit (MAX_TURNS
-// for model-requests, 1 for provider-managed), each grant's from is the previous to, and limit
-// equals the last to; operation ids and entry ids are unique; every entry id starts with the
-// context scope and a colon; a completion's request is at most used; the prompts' request numbers
-// increase; at most one plan step is in_progress. The loaded skills (ADR-0009): skills. The
-// critic's decision (ADR-0010): critic.
+// (MAX_CHECKPOINT_BYTES); used is at most limit; a present requestCap is a fixed model-requests
+// limit with no grants and must match trusted resume input; otherwise the grants chain from the
+// first limit (MAX_TURNS for model-requests, 1 for provider-managed), each grant's from is the
+// previous to, and limit equals the last to; operation ids and entry ids are unique; every entry
+// id starts with the context scope and a colon; a completion's request is at most used; the
+// prompts' request numbers increase; at most one plan step is in_progress. The loaded skills
+// (ADR-0009): skills. The critic's decision (ADR-0010): critic.
 type Checkpoint struct {
 	Schema           *string                     `json:"schema,omitzero"`
 	Version          int64                       `json:"version"`
@@ -1155,11 +1156,12 @@ type Checkpoint struct {
 	Usage            *Usage                      `json:"usage,omitzero"`
 	Failover         []CheckpointFailoverItem    `json:"failover,omitzero"`
 	ChildUsage       []CheckpointChildUsageItem  `json:"childUsage,omitzero"`
+	RequestCap       *int64                      `json:"requestCap,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var checkpointMembers = []string{"schema", "version", "digest", "retainUntil", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "compaction", "memories", "draft", "outputGuard", "records", "sourceIdentities", "steers", "usage", "failover", "childUsage"}
+var checkpointMembers = []string{"schema", "version", "digest", "retainUntil", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "compaction", "memories", "draft", "outputGuard", "records", "sourceIdentities", "steers", "usage", "failover", "childUsage", "requestCap"}
 
 // UnmarshalJSON decodes a Checkpoint object and keeps the members the schema does not name.
 func (v *Checkpoint) UnmarshalJSON(data []byte) error {

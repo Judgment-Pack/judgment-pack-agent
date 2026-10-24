@@ -61,6 +61,7 @@ type Execution struct {
 	Unit        string
 	Used        int
 	Limit       int
+	RequestCap  *int
 	Grants      []contract.CheckpointGrant
 	Plan        *Value
 	Explanation string
@@ -130,6 +131,9 @@ func (e *Execution) Value() *Value {
 		"phase", String(e.Phase), "status", String(e.Status), "unit", String(e.Unit),
 		"used", Number(float64(e.Used)), "limit", Number(float64(e.Limit)), "grants", grants,
 		"plan", orArray(e.Plan), "explanation", String(e.Explanation), "operations", operations)
+	if e.RequestCap != nil {
+		out.Set("requestCap", Number(float64(*e.RequestCap)))
+	}
 	if e.Completions != nil {
 		rows := Array()
 		for _, row := range e.Completions {
@@ -301,6 +305,10 @@ func executionOf(saved *contract.Checkpoint) (*Execution, error) {
 		Limit: int(saved.Limit), Grants: saved.Grants, Plan: value.Get("plan"),
 		Explanation: saved.Explanation, Completions: saved.Completions, Context: saved.Context,
 		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, SourceIdentities: saved.SourceIdentities, Approval: saved.Approval, Skills: saved.Skills, Draft: saved.Draft, Memories: saved.Memories, Critic: saved.Critic, CrossProvider: saved.CrossProvider, Compaction: saved.Compaction, OutputGuard: saved.OutputGuard, Policy: saved.Policy, Steers: saved.Steers, Usage: saved.Usage, Failover: saved.Failover, ChildUsage: saved.ChildUsage}
+	if saved.RequestCap != nil {
+		cap := int(*saved.RequestCap)
+		out.RequestCap = &cap
+	}
 	if saved.TestCalls != nil {
 		calls := int(*saved.TestCalls)
 		out.TestCalls = &calls
@@ -400,6 +408,16 @@ func NewExecutionController(session Session, ledger *ContextLedger, members Poli
 // Initialize is initialize: the state a new response starts from, or a saved one resumed, held to
 // the same request, phase and connection type.
 func (c *ExecutionController) Initialize() error {
+	requestCap := 0
+	if c.session.Context != nil && c.session.Context.RequestCap != nil {
+		requestCap = *c.session.Context.RequestCap
+		if requestCap < 1 || requestCap > MaxTurns || c.session.Model == nil {
+			return requestCapRefusal("configuration")
+		}
+	}
+	if err := c.configureRequestCap(requestCap, false); err != nil {
+		return err
+	}
 	var request *Value
 	if c.session.Context != nil && c.session.Context.CurrentRequest != nil {
 		request = c.session.Context.CurrentRequest.Value()
@@ -437,6 +455,9 @@ func (c *ExecutionController) Initialize() error {
 		limit = MaxTurns
 	}
 	if saved != nil {
+		if (saved.RequestCap == nil) != (requestCap == 0) || saved.RequestCap != nil && *saved.RequestCap != int64(requestCap) {
+			return requestCapRefusal("stale-state")
+		}
 		if saved.RetainUntil != nil {
 			if err := RefuseExpired(*saved.RetainUntil, time.Now()); err != nil {
 				return err
@@ -484,7 +505,9 @@ func (c *ExecutionController) Initialize() error {
 				operation.Status = "interrupted"
 			}
 		}
-		_ = c.MutateCheckpoint(checkpointMembers(state))
+		if err := c.MutateCheckpoint(checkpointMembers(state)); err != nil {
+			return err
+		}
 		_ = c.MutateCheckpoint(CheckpointPatch{"Status": "running"})
 		for _, source := range state.Sources {
 			c.usageSources[source.Source] = source
@@ -520,11 +543,19 @@ func (c *ExecutionController) Initialize() error {
 		}
 		return nil
 	}
-	initial := &Execution{Version: 1, ID: randomUUID(), RequestKey: requestKey, Phase: phase,
+	var capPointer *int
+	if requestCap != 0 {
+		capPointer = &requestCap
+		limit = requestCap
+	}
+	initial := &Execution{RequestCap: capPointer, Version: 1, ID: randomUUID(), RequestKey: requestKey, Phase: phase,
 		Status: "running", Unit: unit, Used: 0, Limit: limit, Grants: []contract.CheckpointGrant{},
 		Plan: Array(), Explanation: "", Operations: []*Operation{},
 		Context: contract.CheckpointContext{Scope: c.ledger.Scope(), Entries: []contract.CheckpointRetainedEntry{}}}
-	_ = c.MutateCheckpoint(checkpointMembers(initial))
+
+	if err := c.MutateCheckpoint(checkpointMembers(initial)); err != nil {
+		return err
+	}
 	if c.session.Context != nil && c.session.Context.Plan != nil {
 		plan := c.session.Context.Plan
 		status := plan.Get("status")
@@ -805,6 +836,9 @@ func (c *ExecutionController) Usage() contract.Usage {
 
 // Claim takes one model request, or answers ExecutionPaused at the ceiling.
 func (c *ExecutionController) Claim() error {
+	if err := c.requestCapFailure(); err != nil {
+		return err
+	}
 	c.usageMu.Lock()
 	defer c.usageMu.Unlock()
 	if c.Remaining() <= 0 {
@@ -815,26 +849,15 @@ func (c *ExecutionController) Claim() error {
 		usageLedger = &contract.Usage{}
 	}
 	c.usageRow(usageLedger, "model", c.usageConnection, c.usageRole).Requests++
-	c.MutateCheckpoint(CheckpointPatch{"Used": CheckpointIncrement(1), "Usage": usageLedger})
-	return nil
+	return c.MutateCheckpoint(CheckpointPatch{"Used": CheckpointIncrement(1), "Usage": usageLedger})
 }
 
-// LimitTo is limitTo: a first allowance below MaxTurns, for a delegated child (agent#15) — its
-// profile's request budget, held further to what the response's shared allowance can still give
-// it, so its loop plans its final answer within what it may spend. A restored execution keeps its
-// own.
+// LimitTo fixes a fresh API execution to 1..MaxTurns requests, including delegated children.
+// Prefer Input.RequestCap before initialization. A repeated identical
+// fresh cap is idempotent; invalid, different, native or started/restored calls fail closed.
+// Invalid startup helpers remain refused even when their void result is ignored.
 func (c *ExecutionController) LimitTo(requests int) {
-	if c.restored {
-		return
-	}
-	limit := c.State().Limit
-	if requests < limit {
-		limit = requests
-	}
-	if limit < 1 {
-		limit = 1
-	}
-	c.MutateCheckpoint(CheckpointPatch{"Limit": limit})
+	_ = c.configureRequestCap(requests, true)
 }
 
 // Guidance is the instructions and the state together, as an agent's prompt carries them.
@@ -1285,6 +1308,9 @@ const budgetRefused = "Explain why more requests are needed and the next concret
 // Snapshot is snapshot: the state and the ledger's entries as one checkpoint, under the status
 // given (the state's own where it is empty).
 func (c *ExecutionController) Snapshot(status string) (contract.Checkpoint, error) {
+	if err := c.requestCapFailure(); err != nil {
+		return contract.Checkpoint{}, err
+	}
 	if c.recordError != nil {
 		return contract.Checkpoint{}, c.recordError
 	}
@@ -1306,7 +1332,9 @@ func (c *ExecutionController) Snapshot(status string) (contract.Checkpoint, erro
 	}
 	usage := c.Usage()
 	projection := &ExecutionController{}
-	projection.MutateCheckpoint(checkpointMembers(c.State()))
+	if err := projection.MutateCheckpoint(checkpointMembers(c.State())); err != nil {
+		return contract.Checkpoint{}, err
+	}
 	patch := CheckpointPatch{"Status": status, "Context": c.ledger.Snapshot(), "Usage": &usage}
 	if c.SourceIdentities != nil {
 		patch["SourceIdentities"] = c.SourceIdentities()
@@ -1326,7 +1354,9 @@ func (c *ExecutionController) Snapshot(status string) (contract.Checkpoint, erro
 	if c.SkillLoads != nil {
 		patch["Skills"] = c.SkillLoads()
 	}
-	projection.MutateCheckpoint(patch)
+	if err := projection.MutateCheckpoint(patch); err != nil {
+		return contract.Checkpoint{}, err
+	}
 	held := projection.State()
 	value, err := WriteRecord(CheckpointSchema, held.Value(), c.RecordPolicy, c.recordGuard(), time.Now(), held.RetainUntil)
 	if err != nil {

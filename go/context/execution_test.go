@@ -432,14 +432,10 @@ func TestLimitToHoldsAChildToItsBudget(t *testing.T) {
 	if run.Context.Execution.State().Limit != 4 {
 		t.Errorf("the limit is %d", run.Context.Execution.State().Limit)
 	}
-	run.Context.Execution.LimitTo(0)
-	if run.Context.Execution.State().Limit != 1 {
-		t.Errorf("the floor is %d", run.Context.Execution.State().Limit)
-	}
-	// Claim takes one request, and the ceiling pauses the run.
-	run.Context.Execution.MutateCheckpoint(CheckpointPatch{"Limit": 1})
-	if err := run.Context.Execution.Claim(); err != nil {
-		t.Fatal(err)
+	for i := 0; i < 4; i++ {
+		if err := run.Context.Execution.Claim(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := run.Context.Execution.Claim(); err != ErrExecutionPaused {
 		t.Errorf("the ceiling answered %v", err)

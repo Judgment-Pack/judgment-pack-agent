@@ -62,7 +62,7 @@ export type Compactor=(request:CompactorRequest,signal:AbortSignal)=>Promise<str
  * (`checkpoint.json#/$defs/approvalDecision`), the continuation input beside a request grant. A
  * decision for any other call is refused before anything runs (`stale-state`).
  */
-export interface ContextInput {acceptedDocuments?:AcceptedDocument[];currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatScope;runtime?:RuntimeIdentity;memory?:boolean;objective?:string;link?:ExecutionLink;connection?:AITarget;delegationReuse?:boolean;approval?:import('../execution/state').ApprovalDecision;compactor?:Compactor}
+export interface ContextInput {acceptedDocuments?:AcceptedDocument[];currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;requestCap?:number;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatScope;runtime?:RuntimeIdentity;memory?:boolean;objective?:string;link?:ExecutionLink;connection?:AITarget;delegationReuse?:boolean;approval?:import('../execution/state').ApprovalDecision;compactor?:Compactor}
 /** How the delegation coordinator reaches a run it starts (agent#14): told the run's context once its execution is initialized, before its first request. */
 export interface ExecutionLink {attach(context:SessionContext):void;/** ADR-0006: the delegating run's source gate, which a child's gate shares the report's rows and the changed sources of. */sources?():SourceGate|undefined}
 export interface ContextUsage {inputBytes:number;estimatedInputTokens:number;inputBudgetBytes:number;outputReserveTokens:number;compactions:number;retainedItems:number}
@@ -801,6 +801,8 @@ function fallbackRequest(values:import('../engine').RequestModelValues,suffix:st
  return {suffix,request:{...request,body:JSON.stringify(body)}}
 }
 export async function contextualSession<T extends EngineSession>(session:T,engine?:AssistantEngine):Promise<{session:RequestSessionFor<T>;context:SessionContext}>{
+ // Copy the host's scalar admission input before any asynchronous setup.
+ session={...session,context:session.context?{...session.context,requestCap:session.context.requestCap}:undefined}
  // ADR-0006: the tools with a source, read and named for the wire before anything else sees them.
  const declared=await declareSources(session.hostTools,session.tools.map(t=>t.name))
  // ADR-0009: a skill may name only the host's declared tools, whatever this phase offers of them.
@@ -885,6 +887,8 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  if(session.context?.plan)await context.initialize([{id:'current-plan',kind:'artifact',label:'Current chat plan',value:session.context.plan}])
  if([...session.tools,...session.hostTools].some(t=>t.name==='read_context'||t.name==='list_context'||t.name===READ_TOOL||t.name===SEARCH_TOOL||t.name==='update_plan'||t.name==='request_budget_increase'||t.name===LOAD_TOOL||t.name===LOAD_SKILL||t.name===UNLOAD_SKILL||t.name===REQUEST_REVIEW||t.name===REMEMBER||isEdit(t.name)))throw Error('Context tool names are reserved by Desk.')
  session.context?.link?.attach(context)
+ // Validate a late startup helper before returning a dispatch-capable context.
+ context.execution.mutate({})
  }catch(error){context.close();throw error}
  // The session's own tools that read (agent#8): what a chat-scoped context keeps across its runs.
  const own=new Set(session.hostTools.filter(tool=>readingTool(tool)).map(tool=>tool.name))
@@ -912,7 +916,7 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   context.execution.useConnection(context.provider(role).connection,role,selected.model)
   if(request.method!=='GET'){
    held();context.execution.claim();await context.execution.recordPrompt(request.body)
-   try{await session.context?.checkpoint?.(context.execution.snapshot())}catch(error){if(!(error instanceof RecordsRefused))throw failureError('storage','storage','not-started')}
+   try{await session.context?.checkpoint?.(context.execution.snapshot())}catch(error){if(!(error instanceof RecordsRefused)||context.execution.state.requestCap!==undefined)throw failureError('storage','storage','not-started')}
   }
   return selected.call(suffix,request)
  }}:undefined
