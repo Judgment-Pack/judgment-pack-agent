@@ -30,7 +30,7 @@ it.each(families.flatMap(family=>(['stop','length'] as const).map(reason=>({fami
  const events=await drain(session)
  expect(events.filter(e=>e.type==='error'||e.type==='budget_paused')).toEqual([])
  expect(events.filter(e=>e.type==='response_recovery')).toHaveLength(1)
- expect(events.filter(e=>e.type==='message')).toEqual([{type:'message',text:'The verified task is complete. No additional actions were taken.'}])
+ expect(events.filter(e=>e.type==='message')).toEqual([{ version: 1,type:'message',text:'The verified task is complete. No additional actions were taken.'}])
  expect(execute).toHaveBeenCalledTimes(1);expect(bodies).toHaveLength(3)
  expect(bodies[2]!.tools??[]).toEqual([])
  expect(JSON.stringify(bodies[2])).toContain('VERIFIED CURRENT RESULT')

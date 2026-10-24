@@ -1364,7 +1364,7 @@ describe.each(MODEL_ENGINES)('engine %s', (engineId) => {
           expect(errors).toEqual([])
           expect(proposals(events)).toHaveLength(1)
         }
-        expect(events.at(-1)).toEqual({ type: 'end' })
+        expect(events.at(-1)).toEqual({ version: 1, type: 'end' })
       } finally {
         vi.unstubAllEnvs()
       }
@@ -1396,7 +1396,7 @@ describe.each(MODEL_ENGINES)('engine %s', (engineId) => {
           expect(errors.map((error) => error.failure?.code)).toEqual(['configuration'])
           expect(errors[0]!.message).toContain(`(${variable})`)
           expect(proposals(events)).toEqual([])
-          expect(events.at(-1)).toEqual({ type: 'end' })
+          expect(events.at(-1)).toEqual({ version: 1, type: 'end' })
         } finally {
           vi.unstubAllEnvs()
         }
