@@ -59,7 +59,7 @@ describe('records (ADR #101)',()=>{
   const resumed=readExecution(JSON.parse(JSON.stringify(checkpointVector.items[0])))!
   expect(resumed).toMatchObject({schema:CHECKPOINT_SCHEMA,version:1,digest:checkpointVector.items[0].digest,retainUntil:checkpointVector.items[0].retainUntil,status:'paused'})
   const extended=extendExecution(resumed)
-  expect(extended).toMatchObject({schema:CHECKPOINT_SCHEMA,version:1,retainUntil:resumed.retainUntil,status:'running'})
+  expect(extended).toMatchObject({schema:CHECKPOINT_SCHEMA,version:2,retainUntil:resumed.retainUntil,status:'running'})
   expect(validRecord(extended)).toBe(true)
  })
 
@@ -84,7 +84,7 @@ it('continues after refusing a whole checkpoint and critique at the store bounda
   yield {type:'end' as const}
  }))events.push(event)
  expect(events.filter(e=>e.type==='error'||e.type==='critique'||e.type==='output_guarded')).toEqual([])
- expect(events).toContainEqual({type:'message',text:'Continued.'})
+ expect(events).toContainEqual({version:1,type:'message',text:'Continued.'})
  expect(events.filter(e=>e.type==='execution_checkpoint').every(e=>e.checkpoint.explanation==='')).toBe(true)
  const notices=events.filter(e=>e.type==='guardrail'&&e.tool==='records')
  expect(notices.length).toBeGreaterThanOrEqual(2)

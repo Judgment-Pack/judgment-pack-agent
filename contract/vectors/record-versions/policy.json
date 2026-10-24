@@ -1,0 +1,145 @@
+{
+  "description": "Hand-authored compatibility records. Negative cases are reader inputs, not positive schema items. Historical records retain their version and bytes.",
+  "schema": "policy.json",
+  "items": [
+    {},
+    {
+      "version": 1
+    }
+  ],
+  "cases": [
+    {
+      "name": "historical",
+      "input": {},
+      "outcome": "accepted"
+    },
+    {
+      "name": "current",
+      "input": {
+        "version": 1
+      },
+      "outcome": "accepted"
+    },
+    {
+      "name": "future before unknown body",
+      "input": {
+        "version": 2,
+        "future": true
+      },
+      "outcome": "UnsupportedRecordVersion"
+    },
+    {
+      "name": "unknown envelope",
+      "input": {
+        "version": 1,
+        "future": true
+      },
+      "outcome": "UnknownRecordMember"
+    },
+    {
+      "name": "unknown nested role",
+      "input": {
+        "version": 1,
+        "models": {
+          "author": {
+            "future": true
+          }
+        }
+      },
+      "outcome": "UnknownRecordMember"
+    },
+    {
+      "name": "string version",
+      "input": {
+        "version": "1"
+      },
+      "outcome": "InvalidRecord"
+    },
+    {
+      "name": "negative version",
+      "input": {
+        "version": -1
+      },
+      "outcome": "InvalidRecord"
+    },
+    {
+      "name": "current decimal integer spelling",
+      "input": {
+        "version": 1
+      },
+      "raw": "{\"version\":1.0}",
+      "outcome": "accepted"
+    },
+    {
+      "name": "current exponent integer spelling",
+      "input": {
+        "version": 1
+      },
+      "raw": "{\"version\":1e0}",
+      "outcome": "accepted"
+    },
+    {
+      "name": "fractional numeric version",
+      "input": {
+        "version": 1
+      },
+      "raw": "{\"version\":1.5}",
+      "outcome": "InvalidRecord"
+    },
+    {
+      "name": "unsafe numeric version",
+      "input": {
+        "version": 1
+      },
+      "raw": "{\"version\":9007199254740992}",
+      "outcome": "InvalidRecord"
+    },
+    {
+      "name": "overflow numeric version",
+      "input": {
+        "version": 1
+      },
+      "raw": "{\"version\":1e400}",
+      "outcome": "InvalidRecord"
+    },
+    {
+      "name": "future exponent before unknown body",
+      "input": {
+        "version": 1,
+        "unfamiliar": true
+      },
+      "raw": "{\"version\":3e0,\"unfamiliar\":true}",
+      "outcome": "UnsupportedRecordVersion"
+    },
+    {
+      "name": "parsed near integer rounds to historical one",
+      "input": {
+        "version": 1
+      },
+      "raw": "{\"version\":1.00000000000000001}",
+      "outcome": "accepted"
+    },
+    {
+      "name": "nullable owned integer controls",
+      "input": {
+        "version": 1,
+        "pace": {
+          "requestsPerDay": null,
+          "invocationsPerDay": null,
+          "bytesPerDay": null
+        }
+      },
+      "outcome": "accepted"
+    }
+  ],
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/recordReader.ts",
+      "packages/harness/records.ts"
+    ]
+  }
+}

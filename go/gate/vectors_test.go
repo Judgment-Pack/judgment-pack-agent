@@ -558,7 +558,12 @@ func replayVector(session replay) func(t *testing.T, name string, vector vectorF
 		for i, item := range items {
 			switch kind(item) {
 			case "guardrail":
-				want = append(want, vector.Items[i])
+				var current map[string]json.RawMessage
+				if err := json.Unmarshal(vector.Items[i], &current); err != nil {
+					t.Fatal(err)
+				}
+				current["version"] = json.RawMessage(`1`)
+				want = append(want, encode(t, current))
 				continue
 			case "tool_result":
 				want = append(want, vector.Items[i])

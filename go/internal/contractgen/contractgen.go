@@ -554,7 +554,11 @@ func (g *generator) emitStruct(l loc, name string) {
 	} else {
 		b.WriteString(" and keeps the members the schema does not name.\n")
 	}
-	fmt.Fprintf(&b, "func (v *%s) UnmarshalJSON(data []byte) error {\n\ttype plain %s\n\tvar p plain\n", name, name)
+	fmt.Fprintf(&b, "func (v *%s) UnmarshalJSON(data []byte) error {\n", name)
+	if kind := recordKind(l); kind != "" {
+		fmt.Fprintf(&b, "\tvar recordErr error; data, recordErr = recordDecodeBytes(%q, data); if recordErr != nil { return recordErr }\n", kind)
+	}
+	fmt.Fprintf(&b, "\ttype plain %s\n\tvar p plain\n", name)
 	fmt.Fprintf(&b, "\textra, err := decodeObject(data, &p, %s, %t)\n", known, closed)
 	fmt.Fprintf(&b, "\tif err != nil {\n\t\treturn fmt.Errorf(\"%s: %%w\", err)\n\t}\n\t*v = %s(p)\n", name, name)
 	if len(allowed) > 0 {
@@ -772,6 +776,9 @@ func (g *generator) emitUnion(l loc, name string) {
 	}
 	b.WriteString("}\n\n")
 	fmt.Fprintf(&b, "// UnmarshalJSON sets the one member the value decodes as.\nfunc (v *%s) UnmarshalJSON(data []byte) error {\n", name)
+	if kind := recordKind(l); kind != "" {
+		fmt.Fprintf(&b, "\tvar recordErr error; data, recordErr = recordDecodeBytes(%q, data); if recordErr != nil { return recordErr }\n", kind)
+	}
 	fmt.Fprintf(&b, "\t*v = %s{}\n\tkind := jsonKind(data)\n", name)
 	if discriminator != "" {
 		fmt.Fprintf(&b, "\tif kind == \"object\" {\n\t\ttag, err := memberString(data, %q)\n\t\tif err != nil {\n\t\t\treturn errorf(\"%s: %%w\", err)\n\t\t}\n\t\tswitch tag {\n", discriminator, name)
@@ -1026,4 +1033,20 @@ func wrap(text string, width int) []string {
 		lines = append(lines, line)
 	}
 	return lines
+}
+
+// Only public record roots enforce record-version and structural contracts.
+func recordKind(l loc) string {
+	if l.ptr != "" {
+		return ""
+	}
+	switch l.file {
+	case "checkpoint.json":
+		return "checkpoint"
+	case "run-event.json":
+		return "event"
+	case "policy.json":
+		return "policy"
+	}
+	return ""
 }

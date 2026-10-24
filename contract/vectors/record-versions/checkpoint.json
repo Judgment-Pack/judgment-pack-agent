@@ -1,0 +1,601 @@
+{
+  "description": "Hand-authored compatibility records. Negative cases are reader inputs, not positive schema items. Historical records retain their version and bytes.",
+  "schema": "checkpoint.json",
+  "items": [
+    {
+      "version": 1,
+      "id": "compatibility",
+      "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+      "phase": "work",
+      "status": "running",
+      "unit": "model-requests",
+      "used": 0,
+      "limit": 20,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [],
+      "context": {
+        "scope": "compatibility",
+        "entries": []
+      }
+    },
+    {
+      "version": 2,
+      "id": "compatibility",
+      "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+      "phase": "work",
+      "status": "running",
+      "unit": "model-requests",
+      "used": 0,
+      "limit": 20,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [],
+      "context": {
+        "scope": "compatibility",
+        "entries": []
+      }
+    }
+  ],
+  "cases": [
+    {
+      "name": "historical",
+      "input": {
+        "version": 1,
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        }
+      },
+      "outcome": "accepted"
+    },
+    {
+      "name": "current",
+      "input": {
+        "version": 2,
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        }
+      },
+      "outcome": "accepted"
+    },
+    {
+      "name": "future before unfamiliar body",
+      "input": {
+        "version": 3,
+        "future": true
+      },
+      "outcome": "UnsupportedRecordVersion"
+    },
+    {
+      "name": "unknown envelope",
+      "input": {
+        "version": 1,
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        },
+        "future": true
+      },
+      "outcome": "UnknownRecordMember"
+    },
+    {
+      "name": "unknown current envelope",
+      "input": {
+        "version": 2,
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        },
+        "future": true
+      },
+      "outcome": "UnknownRecordMember"
+    },
+    {
+      "name": "unknown nested plan",
+      "input": {
+        "version": 1,
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [
+          {
+            "step": "Check compatibility",
+            "status": "pending",
+            "future": true
+          }
+        ],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        }
+      },
+      "outcome": "UnknownRecordMember"
+    },
+    {
+      "name": "unknown nested provenance",
+      "input": {
+        "version": 1,
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 1,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        },
+        "completions": [
+          {
+            "request": 1,
+            "phase": "work",
+            "result": {
+              "finishReason": "stop",
+              "future": true
+            }
+          }
+        ]
+      },
+      "outcome": "UnknownRecordMember"
+    },
+    {
+      "name": "missing version",
+      "input": {
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        }
+      },
+      "outcome": "InvalidRecord"
+    },
+    {
+      "name": "fractional version",
+      "input": {
+        "version": 1.5,
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        }
+      },
+      "outcome": "InvalidRecord"
+    },
+    {
+      "name": "zero version",
+      "input": {
+        "version": 0,
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        }
+      },
+      "outcome": "InvalidRecord"
+    },
+    {
+      "name": "null input",
+      "input": null,
+      "outcome": "InvalidRecord"
+    },
+    {
+      "name": "current decimal integer spelling",
+      "input": {
+        "version": 2,
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        }
+      },
+      "raw": "{\"version\":2.0,\"id\":\"compatibility\",\"requestKey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"phase\":\"work\",\"status\":\"running\",\"unit\":\"model-requests\",\"used\":0,\"limit\":20,\"grants\":[],\"plan\":[],\"explanation\":\"\",\"operations\":[],\"context\":{\"scope\":\"compatibility\",\"entries\":[]}}",
+      "outcome": "accepted"
+    },
+    {
+      "name": "current exponent integer spelling",
+      "input": {
+        "version": 2,
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        }
+      },
+      "raw": "{\"version\":2e0,\"id\":\"compatibility\",\"requestKey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"phase\":\"work\",\"status\":\"running\",\"unit\":\"model-requests\",\"used\":0,\"limit\":20,\"grants\":[],\"plan\":[],\"explanation\":\"\",\"operations\":[],\"context\":{\"scope\":\"compatibility\",\"entries\":[]}}",
+      "outcome": "accepted"
+    },
+    {
+      "name": "historical decimal integer spelling",
+      "input": {
+        "version": 2,
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        }
+      },
+      "raw": "{\"version\":1.0,\"id\":\"compatibility\",\"requestKey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"phase\":\"work\",\"status\":\"running\",\"unit\":\"model-requests\",\"used\":0,\"limit\":20,\"grants\":[],\"plan\":[],\"explanation\":\"\",\"operations\":[],\"context\":{\"scope\":\"compatibility\",\"entries\":[]}}",
+      "outcome": "accepted"
+    },
+    {
+      "name": "historical exponent integer spelling",
+      "input": {
+        "version": 2,
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        }
+      },
+      "raw": "{\"version\":1e0,\"id\":\"compatibility\",\"requestKey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"phase\":\"work\",\"status\":\"running\",\"unit\":\"model-requests\",\"used\":0,\"limit\":20,\"grants\":[],\"plan\":[],\"explanation\":\"\",\"operations\":[],\"context\":{\"scope\":\"compatibility\",\"entries\":[]}}",
+      "outcome": "accepted"
+    },
+    {
+      "name": "fractional numeric version",
+      "input": {
+        "version": 2,
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        }
+      },
+      "raw": "{\"version\":1.5,\"id\":\"compatibility\",\"requestKey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"phase\":\"work\",\"status\":\"running\",\"unit\":\"model-requests\",\"used\":0,\"limit\":20,\"grants\":[],\"plan\":[],\"explanation\":\"\",\"operations\":[],\"context\":{\"scope\":\"compatibility\",\"entries\":[]}}",
+      "outcome": "InvalidRecord"
+    },
+    {
+      "name": "unsafe numeric version",
+      "input": {
+        "version": 2,
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        }
+      },
+      "raw": "{\"version\":9007199254740992,\"id\":\"compatibility\",\"requestKey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"phase\":\"work\",\"status\":\"running\",\"unit\":\"model-requests\",\"used\":0,\"limit\":20,\"grants\":[],\"plan\":[],\"explanation\":\"\",\"operations\":[],\"context\":{\"scope\":\"compatibility\",\"entries\":[]}}",
+      "outcome": "InvalidRecord"
+    },
+    {
+      "name": "overflow numeric version",
+      "input": {
+        "version": 2,
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        }
+      },
+      "raw": "{\"version\":1e400,\"id\":\"compatibility\",\"requestKey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"phase\":\"work\",\"status\":\"running\",\"unit\":\"model-requests\",\"used\":0,\"limit\":20,\"grants\":[],\"plan\":[],\"explanation\":\"\",\"operations\":[],\"context\":{\"scope\":\"compatibility\",\"entries\":[]}}",
+      "outcome": "InvalidRecord"
+    },
+    {
+      "name": "future exponent before unknown body",
+      "input": {
+        "version": 2,
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        },
+        "unfamiliar": true
+      },
+      "raw": "{\"version\":3e0,\"id\":\"compatibility\",\"requestKey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"phase\":\"work\",\"status\":\"running\",\"unit\":\"model-requests\",\"used\":0,\"limit\":20,\"grants\":[],\"plan\":[],\"explanation\":\"\",\"operations\":[],\"context\":{\"scope\":\"compatibility\",\"entries\":[]},\"unfamiliar\":true}",
+      "outcome": "UnsupportedRecordVersion"
+    },
+    {
+      "name": "parsed near integer rounds to historical one",
+      "input": {
+        "version": 2,
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        }
+      },
+      "raw": "{\"version\":1.00000000000000001,\"id\":\"compatibility\",\"requestKey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"phase\":\"work\",\"status\":\"running\",\"unit\":\"model-requests\",\"used\":0,\"limit\":20,\"grants\":[],\"plan\":[],\"explanation\":\"\",\"operations\":[],\"context\":{\"scope\":\"compatibility\",\"entries\":[]}}",
+      "outcome": "accepted"
+    },
+    {
+      "name": "owned count 1e0",
+      "input": {
+        "version": 2,
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 1,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        }
+      },
+      "raw": "{\"version\":2,\"id\":\"compatibility\",\"requestKey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"phase\":\"work\",\"status\":\"running\",\"unit\":\"model-requests\",\"used\":1e0,\"limit\":20,\"grants\":[],\"plan\":[],\"explanation\":\"\",\"operations\":[],\"context\":{\"scope\":\"compatibility\",\"entries\":[]}}",
+      "outcome": "accepted"
+    },
+    {
+      "name": "owned count 1.5",
+      "input": {
+        "version": 2,
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 1.5,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        }
+      },
+      "raw": "{\"version\":2,\"id\":\"compatibility\",\"requestKey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"phase\":\"work\",\"status\":\"running\",\"unit\":\"model-requests\",\"used\":1.5,\"limit\":20,\"grants\":[],\"plan\":[],\"explanation\":\"\",\"operations\":[],\"context\":{\"scope\":\"compatibility\",\"entries\":[]}}",
+      "outcome": "InvalidRecord"
+    },
+    {
+      "name": "owned count 9007199254740992",
+      "input": {
+        "version": 2,
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 9007199254740992,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        }
+      },
+      "raw": "{\"version\":2,\"id\":\"compatibility\",\"requestKey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"phase\":\"work\",\"status\":\"running\",\"unit\":\"model-requests\",\"used\":9007199254740992,\"limit\":20,\"grants\":[],\"plan\":[],\"explanation\":\"\",\"operations\":[],\"context\":{\"scope\":\"compatibility\",\"entries\":[]}}",
+      "outcome": "InvalidRecord"
+    },
+    {
+      "name": "opaque numeric tokens preserved",
+      "input": {
+        "version": 2,
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [
+          {
+            "id": "opaque",
+            "name": "test",
+            "args": {
+              "n": 2,
+              "near": 1
+            },
+            "status": "complete",
+            "result": {
+              "content": [],
+              "structuredContent": {
+                "n": 2
+              }
+            }
+          }
+        ],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        },
+        "schema": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/checkpoint.json",
+        "retainUntil": "2099-01-01T00:00:00.000Z",
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "raw": "{\"version\":2,\"id\":\"compatibility\",\"requestKey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"phase\":\"work\",\"status\":\"running\",\"unit\":\"model-requests\",\"used\":0,\"limit\":20,\"grants\":[],\"plan\":[],\"explanation\":\"\",\"operations\":[{\"id\":\"opaque\",\"name\":\"test\",\"args\":{\"n\":2e0,\"near\":1.00000000000000001},\"status\":\"complete\",\"result\":{\"content\":[],\"structuredContent\":{\"n\":2e0}}}],\"context\":{\"scope\":\"compatibility\",\"entries\":[]},\"schema\":\"https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/checkpoint.json\",\"retainUntil\":\"2099-01-01T00:00:00.000Z\",\"digest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
+      "outcome": "accepted"
+    }
+  ],
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/recordReader.ts",
+      "packages/harness/records.ts"
+    ]
+  }
+}

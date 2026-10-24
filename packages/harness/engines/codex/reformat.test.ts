@@ -55,8 +55,8 @@ describe('the Codex adapter’s reformat run (agent#29)', () => {
     expect(reformat!.prompt).toContain(TWO_FENCES)
     expect(events.filter((event) => event.type !== 'execution_checkpoint' && event.type !== 'policy_resolved').map((event) => event.type)).toEqual(['response_recovery', 'message', 'critic_decided', 'proposal', 'end'])
     // What the model said beside the document is the first answer's.
-    expect(ofType(events, 'message')).toEqual([{ type: 'message', text: 'Here are two drafts.' }])
-    expect(ofType(events, 'proposal')[0]).toEqual({ type: 'proposal', digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/), document: { id: 'second' }, unknowns: ['who signs'] })
+    expect(ofType(events, 'message')).toEqual([{ version: 1, type: 'message', text: 'Here are two drafts.' }])
+    expect(ofType(events, 'proposal')[0]).toEqual({ version: 1, type: 'proposal', digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/), document: { id: 'second' }, unknowns: ['who signs'] })
   })
 
   it('recovers a proposal whose fence is not valid JSON', async () => {
@@ -78,7 +78,7 @@ describe('the Codex adapter’s reformat run (agent#29)', () => {
     })
     expect(runs).toHaveLength(2)
     expect(events.filter((event) => event.type !== 'execution_checkpoint' && event.type !== 'policy_resolved').map((event) => event.type)).toEqual(['response_recovery', 'message', 'error', 'end'])
-    expect(ofType(events, 'message')).toEqual([{ type: 'message', text: TWO_FENCES }])
+    expect(ofType(events, 'message')).toEqual([{ version: 1, type: 'message', text: TWO_FENCES }])
     expect(ofType(events, 'error')[0]!.failure).toMatchObject({ code: 'invalid-response', source: 'desk', detail: expect.stringContaining('this one carried 2') })
   })
 
@@ -89,7 +89,7 @@ describe('the Codex adapter’s reformat run (agent#29)', () => {
     })
     expect(runs).toHaveLength(2)
     expect(events.filter((event) => event.type !== 'execution_checkpoint' && event.type !== 'policy_resolved').map((event) => event.type)).toEqual(['response_recovery', 'message', 'error', 'end'])
-    expect(ofType(events, 'message')).toEqual([{ type: 'message', text: TWO_FENCES }])
+    expect(ofType(events, 'message')).toEqual([{ version: 1, type: 'message', text: TWO_FENCES }])
     expect(ofType(events, 'error')[0]!.failure).toMatchObject({ code: 'timeout', source: 'agent' })
   })
 
@@ -98,7 +98,7 @@ describe('the Codex adapter’s reformat run (agent#29)', () => {
       script: answers(TWO_FENCES, (bridge) => { bridge.say('I cannot pick one of the two.'); bridge.end() }),
       session: { allowConversation: true }
     })
-    expect(ofType(events, 'message')).toEqual([{ type: 'message', text: TWO_FENCES }, { type: 'message', text: 'I cannot pick one of the two.' }])
+    expect(ofType(events, 'message')).toEqual([{ version: 1, type: 'message', text: TWO_FENCES }, { version: 1, type: 'message', text: 'I cannot pick one of the two.' }])
     expect(ofType(events, 'error')[0]!.failure).toMatchObject({ code: 'invalid-response' })
     expect(ofType(events, 'proposal')).toEqual([])
   })
@@ -137,7 +137,7 @@ describe('the Codex adapter’s reformat run (agent#29)', () => {
   it('refuses a granted read the session serves but the reformat run was not offered, before any call, through the real gate (review row 5)', async () => {
     const { events, seen, answer } = await reformatCalls('list_examples')
     expect(seen).toEqual([])
-    expect(ofType(events, 'guardrail')).toEqual([{ type: 'guardrail', tool: 'list_examples', action: 'refused', detail: expect.stringContaining('list_examples is served to this session but was not offered to this run') }])
+    expect(ofType(events, 'guardrail')).toEqual([{ version: 1, type: 'guardrail', tool: 'list_examples', action: 'refused', detail: expect.stringContaining('list_examples is served to this session but was not offered to this run') }])
     expect(answer).toMatchObject({ isError: true, text: expect.stringContaining('refused: list_examples is served to this session') })
     expect(ofType(events, 'tool_result')).toEqual([expect.objectContaining({ name: 'list_examples', isError: true })])
     expect(ofType(events, 'proposal')[0]).toMatchObject({ document: { id: 'second' } })
@@ -147,7 +147,7 @@ describe('the Codex adapter’s reformat run (agent#29)', () => {
     // The gate grants list_examples; the session was handed the runtime's tools without it.
     const { events, seen, answer } = await reformatCalls('list_examples', (tools) => tools.filter((tool) => tool.name !== 'list_examples'))
     expect(seen).toEqual([])
-    expect(ofType(events, 'guardrail')).toEqual([{ type: 'guardrail', tool: 'list_examples', action: 'refused', detail: expect.stringContaining('list_examples is not offered to the reformat run, which is offered no tool') }])
+    expect(ofType(events, 'guardrail')).toEqual([{ version: 1, type: 'guardrail', tool: 'list_examples', action: 'refused', detail: expect.stringContaining('list_examples is not offered to the reformat run, which is offered no tool') }])
     expect(answer).toMatchObject({ isError: true })
   })
 

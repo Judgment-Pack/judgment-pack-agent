@@ -14,6 +14,10 @@ See also: [policy.md](policy.md), [checkpoint.md](checkpoint.md), [events.md](ev
 
 The host owns storage and deletion. The package writes self-describing records, refuses expired checkpoints and exports only records the host supplies; it has no store.
 
+ADR-0024: writers use checkpoint version 2 and event/policy version 1. Readers also accept checkpoint 1 and historical events/policy layers with no version. Newer versions and unknown structural members are refused by name. Historical reads and exports preserve the supplied version and lifecycle metadata; a resumed snapshot writes the current checkpoint version without extending retention.
+
+UnknownRecordMember keeps its member pointer and bounded message on the diagnostic error. Public refusal events use fixed input-independent detail, including startup before an output guard exists.
+
 ## The export manifest
 
 ADR records (#101). The closed export.json manifest beside the host-supplied records. The package has no record store.
@@ -41,10 +45,12 @@ Closed: a member the schema does not name is refused.
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
 | `schema` | yes | enum `https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/checkpoint.json`, `https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/provenance.json`, `https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-event.json#/$defs/critique` |  |
-| `version` | yes | const `1` |  |
+| `version` | yes | enum `1`, `2` |  |
 | `digest` | yes | `provenance.json $defs/recordDigest` |  |
 | `retainUntil` | yes | `provenance.json $defs/retainUntil` |  |
 | `bytes` | yes | integer (min 1) |  |
+
+Conditions beyond the members (allOf) are in the schema file.
 
 ### `provenance.json $defs/recordDigest`
 
@@ -70,3 +76,4 @@ Closed: a member the schema does not name is refused.
 | `records` | yes | integer (min 0) |  |
 | `bytes` | yes | integer (min 1) |  |
 | `digest` | yes | `provenance.json $defs/recordDigest` |  |
+| `version` |  | const `1` | Event wire format version. Absent only on historical records; current writers emit 1. |

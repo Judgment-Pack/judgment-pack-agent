@@ -1,0 +1,38 @@
+{
+  "description": "Hand-authored checkpoint version 2 export entry; digests and byte counts follow the canonical JSON arithmetic.",
+  "schema": "export.json",
+  "items": [
+    {
+      "schema": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/export.json",
+      "version": 1,
+      "retainUntil": "2099-01-01T00:00:00.000Z",
+      "createdAt": "2026-10-24T00:00:00.000Z",
+      "packageVersion": "0.10.0",
+      "policy": {
+        "retainDays": 90,
+        "redactOnStore": true,
+        "exportFormat": "json"
+      },
+      "records": [
+        {
+          "schema": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/checkpoint.json",
+          "version": 2,
+          "digest": "sha256:d2269131d48d740419399c0991fe908a8d96c1dbb2e7cec8048ef8997554c2f9",
+          "retainUntil": "2099-01-01T00:00:00.000Z",
+          "bytes": 527
+        }
+      ],
+      "digest": "sha256:1f093344d0fe540211ca177640ad632db165d05e1aa2739cff9803d0893d5d17"
+    }
+  ],
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/recordReader.ts",
+      "packages/harness/records.ts"
+    ]
+  }
+}

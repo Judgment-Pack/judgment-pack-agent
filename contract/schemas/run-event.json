@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-event.json",
   "title": "Run event",
-  "description": "One event of a run, from the adapter to the host, in order, discriminated by type. Every kind of the Desk's AssistantEvent union (web/src/assistant/engine.ts) at the pinned commit, with its members spelled as the Desk spells them. A run ends with exactly one end and nothing follows it; a run the consumer left gets no end. Some events are the host's own, interleaved into the same stream rather than emitted by a loop: the tool gate's guardrail rewrote and refused, the shared context boundary's execution_checkpoint, budget_paused (which also replaces a loop's own budget_paused or request-limit error) and approval_requested (ADR-0008: emitted in place of an act call's tool_call where the host's approval policy answers ask), and the delegation coordinator's delegated_task. critic_decided (ADR-0010) is emitted by the adapter once per run, where the critic would start or where it is skipped. Open: the stream is an in-process TypeScript union with no reader at run time that refuses another member; the type member alone decides the kind.",
+  "description": "One event of a run, from the adapter to the host, in order, discriminated by type. Every kind of the Desk's AssistantEvent union (web/src/assistant/engine.ts) at the pinned commit, with its members spelled as the Desk spells them. A run ends with exactly one end and nothing follows it; a run the consumer left gets no end. Some events are the host's own, interleaved into the same stream rather than emitted by a loop: the tool gate's guardrail rewrote and refused, the shared context boundary's execution_checkpoint, budget_paused (which also replaces a loop's own budget_paused or request-limit error) and approval_requested (ADR-0008: emitted in place of an act call's tool_call where the host's approval policy answers ask), and the delegation coordinator's delegated_task. critic_decided (ADR-0010) is emitted by the adapter once per run, where the critic would start or where it is skipped. The versioned record reader refuses newer versions and unknown structural members. Historical events omit version; current writers emit version 1.",
   "type": "object",
   "required": [
     "type"
@@ -155,11 +155,27 @@
     "steered": {
       "description": "ADR-0021: one steer was placed at a request boundary. On an agent capability atRequest is the invocation number.",
       "type": "object",
-      "required": ["type", "bytes", "atRequest"],
+      "required": [
+        "type",
+        "bytes",
+        "atRequest"
+      ],
       "properties": {
-        "type": {"const": "steered"},
-        "bytes": {"type": "integer", "minimum": 1},
-        "atRequest": {"type": "integer", "minimum": 1}
+        "type": {
+          "const": "steered"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "atRequest": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
       },
       "additionalProperties": false
     },
@@ -193,6 +209,10 @@
             "index",
             "summary"
           ]
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
       "additionalProperties": false
@@ -213,9 +233,13 @@
         },
         "checkpoint": {
           "$ref": "checkpoint.json"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "budget_paused": {
       "description": "Work paused at the request allowance: the allowance ran out, or the model asked for more with request_budget_increase. The checkpoint's status is paused; the run ends with end. Only the person's grant (a new checkpoint grant) continues it. An adapter's error with code request-limit is converted to this by the shared context boundary. On the vercel engine it is also how the turn's wall clock ends a turn (budget.json, turnMilliseconds): what is in flight is stopped, completed work is kept, and the checkpoint's reason says the turn reached its limit. Continuing it takes a request grant like any pause, so a run already at the 100-request cap cannot be continued, which the reason also says. A clock that passes while the critic runs leaves the proposal delivered with a note instead, and the run ends.",
@@ -230,9 +254,13 @@
         },
         "checkpoint": {
           "$ref": "checkpoint.json"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "approval_requested": {
       "description": "An act call paused for the person (ADR-0008): the model called a tool with a source whose effect class is act and whose approval is required, and the host's approval policy answered ask. The shared context boundary emits this in place of the call's tool_call, never runs the call, writes the call into the checkpoint's approval (state asked) with status paused, emits the checkpoint durable, and ends the run with end and no error: a model engine once the step's other calls are answered (its next request is never sent), an agent engine at the call (the invocation is stopped, as at a delegation handoff). The host's stream carries it, unlike delegation_requested: the person has to see the call. The host continues the paused checkpoint with the person's decision (checkpoint.json#/$defs/approvalDecision). callId is the call's id, drawn by the boundary where the run's events carry none; name the wire name the model called; tool the tool's own name at its source; source its record; args the arguments the model sent. Closed.",
@@ -267,6 +295,10 @@
         },
         "args": {
           "type": "object"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
       "additionalProperties": false
@@ -288,9 +320,13 @@
         },
         "bytes": {
           "$ref": "skill.json#/$defs/bytes"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "skill_unloaded": {
       "description": "A skill unloaded (ADR-0009): the model's unload_skill call dropped it, between that call and its result; id is the skill's id. Its block leaves every later request.",
@@ -306,9 +342,13 @@
         "id": {
           "type": "string",
           "pattern": "^[A-Za-z][A-Za-z0-9-]{0,23}$"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "retry": {
       "description": "The adapter is sending again within this turn, attempt n of at most two. The codex engine relays the Codex bridge's recovery notices. The vercel engine emits it before it sends again a model request the provider refused (packages/harness/engines/vercel/retry.ts, retryingCall): only a failure whose outcome is refused and that failures.ts names (canRetryRefusal: the rate-limited class, a 429 or a rate-limit alias, and a 4xx carrying the overload code overloaded_error), never an unknown outcome (a 5xx, 408, 504 or a transport failure) and never a response that answered: a stream that breaks after its first byte is reported, not sent again; at most two retries, each after the longer of the backoff (1 s, then 2 s) and the provider's Retry-After, and none where Retry-After asks for more than 30 s, when the refusal is reported at once with its retryAt, nor where the retry would take the allowance's last request, which is the turn's tool-free final answer. Each attempt is a model request: counted against the allowance and recorded in the checkpoint's completions (provenance.json: attempt, failure, waitMs).",
@@ -325,9 +365,13 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 2
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "response_recovery": {
       "description": "The adapter is spending one tool-free request to finish a response cut short, to stop repeated work, or to ask once, within the allowance, for a proposal that could not be read, in the shape the contract reads (the reformat request). Only the vercel engine emits it.",
@@ -338,9 +382,13 @@
       "properties": {
         "type": {
           "const": "response_recovery"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "delegation_requested": {
       "description": "The model called delegate_tasks on an engine whose run cannot wait for a tool call (codex: the provider account runs one agent run at a time, and the children need it). The adapter emits this instead of a tool_call and ends its run; the host's coordinator runs the batch and starts the response's next run with the call's result (delegated-task.json#/$defs/answer). An engine that awaits the call (vercel, agent#14) emits a tool_call and a tool_result for delegate_tasks instead, in the same run. The coordinator consumes this event: a host reading the coordinator's stream does not see it.",
@@ -364,9 +412,13 @@
         },
         "subagent": {
           "$ref": "subagent.json#/$defs/record"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "delegated_task": {
       "description": "A child task's state, whole, at each transition. Emitted by the host's delegation coordinator; on an engine that awaits the delegate call, between that call's tool_call and its tool_result.",
@@ -387,9 +439,13 @@
         },
         "subagent": {
           "$ref": "subagent.json#/$defs/record"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "user_question": {
       "description": "The model called ask_user. The adapter emits this instead of a tool_call, ends the turn and waits; the answer comes with the next run. id is fresh per question.",
@@ -408,9 +464,13 @@
         },
         "question": {
           "$ref": "question.json"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "reasoning": {
       "description": "The model's reasoning, as the provider streams it: deltas with done false, then the whole passage once with done true. Shown to the person, never sent to the runtime. Only the vercel engine emits it.",
@@ -429,9 +489,13 @@
         },
         "done": {
           "type": "boolean"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "message": {
       "description": "The model's own prose to the person, outside the proposal fence, as it wrote it. Never written by the host; absent where the model wrote nothing but the fence. Where the run's proposal could not be read, the whole final answer, prose and raw fence as written, is one message before the error: nothing the model finished is lost. On the vercel engine that is the answer before its reformat request; where the reformat request comes back as prose with no proposal, which a conversation allows, that prose is a second message, and the first answer's failure follows.",
@@ -446,9 +510,13 @@
         },
         "text": {
           "type": "string"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "message_progress": {
       "description": "The prose so far of the answer being written, whole each time (not a delta), with any proposal fence hidden; an empty text clears it. Only on an interactive session. taskId (agent#16): a delegated child's prose so far, under its task, forwarded by the delegation coordinator as the child writes it, between that task's delegated_task events; an empty text with its taskId clears it when the child ends. An event without taskId is the run's own answer: a host routes one with taskId to the task's view, never to the answer.",
@@ -467,9 +535,13 @@
         "taskId": {
           "description": "The delegated task (delegated-task.json id) whose child is writing this prose.",
           "$ref": "delegated-task.json#/$defs/uuid"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "guardrail": {
       "description": "The host saying what it did. rewrote and refused are the tool gate's, emitted by the host as the call's frame leaves the page, so they arrive between that call's tool_call and tool_result. narrowed is the adapter's notice, before the model is asked anything, that a tool's served schema lost a keyword on this family's wire. Also refused, with tool proposal, where the host withholds a proposal (Plan mode, or a conversation without artifact proposals). reason (ADR-0008), on a refusal of an act call of a tool with a source: approval refused, the host's approval policy answered refuse; approval pending, the call came while another act call of the run waits for the person's decision (at most one approval is pending); approval stale, the gate's own refusal of a call whose decision no longer holds for it (its arguments not those its approval was decided for, a call that reaches its run without an allow, or, on the continued run, its tool no longer offered as the person decided). None of these calls is run. skill withheld (ADR-0009), on a skill the package did not catalogue or restore, tool its name (or, for the catalogue's bounds, its source's id): its tools[] names a tool the host did not declare, its bytes pass skillBytes, its bundle does not hash to the digest the person approved, the catalogue's bounds left it out, or a skill the checkpoint had loaded is no longer declared as it was; skill budget, on a load_skill call refused past skillsPerRun, between that call and its failed result. Nothing of a withheld skill reaches the model. review refused (ADR-0010), on a request_review call refused: a second ask of the run, an ask under off or on, or one outside the author's phase; nothing is recorded and no review is asked.",
@@ -518,11 +590,17 @@
             "approval downgraded",
             "steer refused",
             "failover refused",
-            "record refused"
+            "record refused",
+            "record version unsupported",
+            "record member unsupported"
           ]
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "thinking_unavailable": {
       "description": "The reasoning tier the host asked for could not be expressed on this endpoint, said once. Only the vercel engine emits it; the sentence is the host's thinking table's.",
@@ -537,9 +615,13 @@
         },
         "detail": {
           "type": "string"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "critic_decided": {
       "description": "The critic's decision for the run (ADR-0010; provenance.json#/$defs/criticDecision): emitted once per run, after the proposal exists and before the critic would start (and before its critique), or where the critic is skipped, a run with no proposal included, before the run's last message. mode, ran and reason always; ran means the switch allowed the critic pass (the pass may still report that it could not run, with zero checks); reasoning, the critic's tier, where the run states one; trigger under auto. The checkpoint's critic carries the same members, written durably after it.",
@@ -572,9 +654,13 @@
             "cases",
             "changes-existing"
           ]
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "critique": {
       "description": "The critic pass's report, before the proposal it reviewed: refuted is decided from the runtime's own results and never from the critic's prose, true where a check came back as something other than the runtime's settled word (validate valid, experimental_evaluate evaluated) or, since agent#10, where a compared case's outcome is not the declared one, or a declared case was not compared at all (review row 1: an uncompared case is unsettled, so a critique that did not reach every declared case is never not refuted); checks lists each runtime check it ran with the runtime's status; text is the host's quote of them and of the comparisons. cases and incomplete are present where the host declared cases (session criticCases, $defs/criticCase): each comparison of a declared outcome with the runtime's ($defs/caseComparison), and the ids of the declared cases nothing compared, the harness's own calls for the uncompared included. figures: what the critic cost (provenance.json $defs/criticFigures).",
@@ -620,7 +706,7 @@
                 "type": "string"
               }
             },
-            "additionalProperties": true
+            "additionalProperties": false
           }
         },
         "text": {
@@ -649,7 +735,7 @@
           "$ref": "provenance.json#/$defs/recordFigures"
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "proposal": {
       "description": "The one document the run proposes: from exactly one fenced JSON block shaped {\"proposal\": {\"kind\": \"create\", \"document\": \u2026, \"unknowns\": [\u2026]}} and never from the prose around it, or from the model's call of the host tool propose_pack (tool-offer.json, $defs/proposePack), which the adapter reads itself under the same rules, the fence then being the fallback. A tool proposal beside a fenced one in the same answer is ambiguous and refused, as two fenced proposals are. critique is present only where a critic ran and reached at least one check or compared at least one declared case; note where something that ran after the proposal existed did not finish. Accept and Reject are the host's actions, not the adapter's.",
@@ -697,7 +783,7 @@
               "minItems": 1
             }
           },
-          "additionalProperties": true
+          "additionalProperties": false
         },
         "note": {
           "description": "Something that ran after the proposal existed did not finish, and the proposal, being the finished work, is delivered all the same, with no critique and no error event ahead of it (refutation.ts, proposalNote). kind critic-unfinished: the critic started and did not finish (its provider error, its length cutoff, the allowance or the turn's wall clock). kind turn-unfinished: the proposal was made through propose_pack and a later request of the turn failed (the closing summary refused or cut off, the allowance, the turn's wall clock, or on the codex engine the run's own failure), so nothing after it ran, the critic included, and the run ends with the proposal. message is host-authored: one sentence saying what did not run, then the catalogue's sentence for the failure, or, for the allowance, a sentence saying it was used up (nothing pauses). failure is the failure that stopped it, classified, with source model on the vercel engine and agent on the codex engine, the turn's wall clock included.",
@@ -725,13 +811,17 @@
               "$ref": "provenance.json#/$defs/criticFigures"
             }
           },
-          "additionalProperties": true
+          "additionalProperties": false
         },
         "edits": {
           "$ref": "provenance.json#/$defs/edits"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "error": {
       "description": "The run failed. message is the catalogue's sentence for the class, or the failure's host-authored detail; failure is the classified failure. A failed tool is not an error event (tool_result with isError), and a cancelled run emits none.",
@@ -749,9 +839,13 @@
         },
         "failure": {
           "$ref": "failure.json"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "end": {
       "description": "The run is over. Exactly once, last.",
@@ -762,9 +856,13 @@
       "properties": {
         "type": {
           "const": "end"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "caseOutcome": {
       "description": "An outcome, as a comparison reports it: a \u00a78.3 disposition as the runtime gave it, or a \u00a78.4 evaluation error by its class and, where known, its phase.",
@@ -836,7 +934,7 @@
           "$ref": "#/$defs/caseOutcome"
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "criticCase": {
       "description": "One case whose outcome the host declares for the critic (agent#10; the session's criticCases; packages/harness/refutation.ts, CriticCase, readCriticCases): one of the pack's saved tests (source test) or a case the request declares (source declared), as a row of the runtime's matrix (matrixVersion 3) with its source. The critic is shown the cases stating a whole \u00a78.3 disposition (kind, reasons and handoff) or an error class as that matrix, without source, so experimental_test_cases can run them as they are, and the cases stating part of a disposition apart, for rehearsal only (review row 2). Closed: the reader refuses another member, a repeated id, a case with no facts object, and a case that does not expect exactly one of a disposition (an object with a kind) and an error class; a session carries at most 200, and one the reader refuses ends the run before any request (configuration).",
@@ -942,6 +1040,10 @@
         },
         "members": {
           "$ref": "policy.json#/$defs/resolved"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
       "additionalProperties": false,
@@ -962,6 +1064,10 @@
         },
         "memory": {
           "$ref": "memory.json"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
       "additionalProperties": false
@@ -994,6 +1100,10 @@
         "bytes": {
           "type": "integer",
           "minimum": 0
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
       "additionalProperties": false
@@ -1026,6 +1136,10 @@
         },
         "valid": {
           "const": true
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
       "additionalProperties": false
@@ -1049,6 +1163,10 @@
         "reason": {
           "type": "string",
           "minLength": 1
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
       "additionalProperties": false
@@ -1080,6 +1198,10 @@
             "redact",
             "refuse"
           ]
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
       "required": [
@@ -1113,6 +1235,10 @@
         },
         "digest": {
           "$ref": "provenance.json#/$defs/recordDigest"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
         }
       },
       "additionalProperties": false
@@ -1120,13 +1246,43 @@
     "connection_switched": {
       "description": "ADR-0020. A qualifying provider failure moved this request once to the next same-family fallback, after the ordinary retry rule. The stable prefix is rebuilt for the new connection.",
       "type": "object",
-      "required": ["type", "role", "from", "to", "reason"],
+      "required": [
+        "type",
+        "role",
+        "from",
+        "to",
+        "reason"
+      ],
       "properties": {
-        "type": {"const": "connection_switched"},
-        "role": {"type": "string", "minLength": 1, "maxLength": 128},
-        "from": {"type": "string", "minLength": 1, "maxLength": 128},
-        "to": {"type": "string", "minLength": 1, "maxLength": 128},
-        "reason": {"enum": ["unavailable", "rate-limited", "timeout"]}
+        "type": {
+          "const": "connection_switched"
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "from": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "to": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "reason": {
+          "enum": [
+            "unavailable",
+            "rate-limited",
+            "timeout"
+          ]
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
       },
       "additionalProperties": false
     },
@@ -1134,20 +1290,47 @@
       "description": "ADR-0020. Emitted exactly once for every run, immediately before end.",
       "type": "object",
       "properties": {
-        "type": {"const": "usage"},
-        "usage": {"$ref": "usage.json"}
+        "type": {
+          "const": "usage"
+        },
+        "usage": {
+          "$ref": "usage.json"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
       },
       "additionalProperties": false,
-      "required": ["type", "usage"]
+      "required": [
+        "type",
+        "usage"
+      ]
     },
     "recorded": {
       "description": "ADR-0022: a redacted evaluation corpus entry was written. id names its corpus directory and bytes is the sum of the UTF-8 bytes in its six JSON files.",
       "type": "object",
-      "required": ["type", "id", "bytes"],
+      "required": [
+        "type",
+        "id",
+        "bytes"
+      ],
       "properties": {
-        "type": {"const": "recorded"},
-        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"},
-        "bytes": {"type": "integer", "minimum": 1}
+        "type": {
+          "const": "recorded"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
       },
       "additionalProperties": false
     }

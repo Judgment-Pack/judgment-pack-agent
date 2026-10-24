@@ -214,7 +214,7 @@ func statePlacement(family wire.EndpointKind, tier wire.ThinkingTier, capabiliti
 // emitAll hands events to the host, in order.
 func (r *runState) emitAll(events []contract.RunEvent) {
 	for _, event := range events {
-		r.run.Emit(event)
+		r.run.Emit(contract.StampEvent(event))
 	}
 }
 
@@ -231,7 +231,7 @@ func (r *runState) deliver(event contract.RunEvent) {
 	}
 	out, stop := r.boundary.Event(event)
 	for _, held := range out {
-		r.run.Emit(held)
+		r.run.Emit(contract.StampEvent(held))
 	}
 	if stop {
 		r.ended = true

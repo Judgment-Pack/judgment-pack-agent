@@ -1,4 +1,5 @@
 import {mutateCheckpoint} from './mutation'
+import {checkRecord} from '../recordReader'
 import {validOutputCounts,type OutputCounts} from '../outputGuard'
 import {validDraft,type DraftCheckpoint} from '../edits'
 import { validMemories, type Memories } from '../memories'
@@ -9,7 +10,7 @@ import type {McpToolResult} from '../engine'
 import {MAX_TURNS} from '../engines/contract'
 import {utf8Bytes} from '../context/policy'
 import {validCriticRecord,type CriticRecord} from '../criticSwitch'
-import {CHECKPOINT_SCHEMA,PROVENANCE_SCHEMA,recordDigest,validRecordHeader,type RecordMembers} from '../records'
+import {CHECKPOINT_SCHEMA,PROVENANCE_SCHEMA,recordDigest,validRecordHeader} from '../records'
 
 export const REQUEST_INCREMENT = 10
 export const MAX_REQUEST_ALLOWANCE = 100
@@ -43,7 +44,7 @@ export const MAX_PROMPT_DIGESTS = 300
 /** A local execution record, never permissions, evidence approval or private reasoning. */
 export interface ExecutionCheckpoint {
  schema?:typeof CHECKPOINT_SCHEMA;digest?:string;retainUntil?:string;records?:import("../outputGuard").RecordMarker;
- version:1;id:string;requestKey:string;phase:'plan'|'work';status:'running'|'paused'|'complete'|'stopped';
+ version:1|2;id:string;requestKey:string;phase:'plan'|'work';status:'running'|'paused'|'complete'|'stopped';
  unit:'model-requests'|'provider-managed';used:number;limit:number;requestCap?:number;grants:{from:number;to:number;at:string}[];
  plan:TaskStep[];explanation:string;operations:Operation[];
  completions?:CompletionRecord[];
@@ -183,8 +184,9 @@ export function validTaskSteps(value:unknown):value is TaskStep[] {
 export const validRequestCap=(value:unknown):value is number=>Number.isInteger(value)&&Number(value)>=1&&Number(value)<=MAX_TURNS
 export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value===undefined)return
+ checkRecord('checkpoint',value)
  const fail=():never=>{throw Error('Saved execution progress is invalid. History was left untouched.')}
- if(!object(value)||utf8Bytes(JSON.stringify(value))>MAX_CHECKPOINT_BYTES||value.version!==1||!text(value.id,100)||!value.id||!text(value.requestKey,64)||!/^[a-f0-9]{64}$/.test(value.requestKey)||!['plan','work'].includes(String(value.phase))||!['running','paused','complete','stopped'].includes(String(value.status))||!['model-requests','provider-managed'].includes(String(value.unit)))return fail()
+ if(!object(value)||utf8Bytes(JSON.stringify(value))>MAX_CHECKPOINT_BYTES||![1,2].includes(Number(value.version))||!text(value.id,100)||!value.id||!text(value.requestKey,64)||!/^[a-f0-9]{64}$/.test(value.requestKey)||!['plan','work'].includes(String(value.phase))||!['running','paused','complete','stopped'].includes(String(value.status))||!['model-requests','provider-managed'].includes(String(value.unit)))return fail()
  const metadata=['schema','digest','retainUntil'].some(name=>Object.hasOwn(value,name))
  if(metadata&&!validRecordHeader(value,CHECKPOINT_SCHEMA))return fail()
  if(!Number.isInteger(value.used)||Number(value.used)<0||!Number.isInteger(value.limit)||Number(value.limit)<1||Number(value.limit)>MAX_REQUEST_ALLOWANCE||Number(value.used)>Number(value.limit)||!Array.isArray(value.grants)||value.grants.length>8)return fail()
@@ -214,8 +216,6 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(!object(value.context)||!text(value.context.scope,100)||!Array.isArray(value.context.entries)||value.context.entries.length>800||new Set(value.context.entries.map(e=>e.id)).size!==value.context.entries.length)return fail()
  for(const e of value.context.entries){if(!object(e)||!text(e.id,300)||!e.id.startsWith(value.context.scope+':')||!['history','artifact','request','tool'].includes(String(e.kind))||!text(e.label,1000)||typeof e.digest!=='string'||!/^[a-f0-9]{64}$/.test(e.digest)||e.revision!==undefined&&!text(e.revision,256)||!Number.isInteger(e.bytes)||Number(e.bytes)<0||!Object.hasOwn(e,'value'))return fail()}
  const result=structuredClone(value) as unknown as ExecutionCheckpoint
- if(result.policy){const policy=structuredClone(result.policy);for(const member of Object.values(policy))member.source??='layer';mutateCheckpoint(result,{policy})}
- if(result.completions)mutateCheckpoint(result,{completions:result.completions.map(({schema,version,digest,retainUntil,records,request,phase,result,attempt,failure,waitMs,connection,role})=>({...(schema===undefined?{}:{schema,version,digest,retainUntil,records} as RecordMembers<typeof PROVENANCE_SCHEMA>),request,phase,result:readCompletion(result)!,...(attempt===undefined?{}:{attempt}),...(failure===undefined?{}:{failure:readFailure(failure)!}),...(waitMs===undefined?{}:{waitMs}),...(connection===undefined?{}:{connection}),...(role===undefined?{}:{role})}))})
  return result
 }
 /** A stopped API request can fail exactly at the ceiling; recovery still needs an explicit grant. */
@@ -228,7 +228,7 @@ export function extendExecution(checkpoint:ExecutionCheckpoint,interrupted=false
  if(saved.requestCap!==undefined||(saved.status!=='paused'&&!(interrupted&&canExtendInterruptedExecution(saved)))||saved.unit!=='model-requests'||saved.limit>=MAX_REQUEST_ALLOWANCE)throw Error('This execution cannot receive another request allowance.')
  const limit=Math.min(MAX_REQUEST_ALLOWANCE,saved.limit+REQUEST_INCREMENT)
  const extended=structuredClone(saved)
- mutateCheckpoint(extended,{limit,status:'running',reason:undefined,grants:[...saved.grants,{from:saved.limit,to:limit,at:new Date().toISOString()}]})
+ mutateCheckpoint(extended,{version:2,limit,status:'running',reason:undefined,grants:[...saved.grants,{from:saved.limit,to:limit,at:new Date().toISOString()}]})
  if(extended.schema)mutateCheckpoint(extended,{digest:recordDigest(extended)})
  return extended
 }

@@ -117,13 +117,13 @@ func TestAClosedObjectRefusesAnUnnamedMember(t *testing.T) {
 
 // TestAnOpenObjectKeepsAnUnnamedMember is the other side: an open object writes it back.
 func TestAnOpenObjectKeepsAnUnnamedMember(t *testing.T) {
-	in := []byte(`{"type":"end","later":{"kept":[1,2]}}`)
-	var event RunEvent
+	in := []byte(`{"content":[],"later":{"kept":[1,2]}}`)
+	var event ToolResultMCPToolResult
 	if err := json.Unmarshal(in, &event); err != nil {
 		t.Fatal(err)
 	}
-	if event.End == nil {
-		t.Fatalf("an end event decoded as %+v", event)
+	if event.Content == nil {
+		t.Fatalf("a declared arbitrary MCP payload decoded as %+v", event)
 	}
 	out, err := json.Marshal(event)
 	if err != nil {
@@ -323,11 +323,11 @@ func keptRaw(value reflect.Value) []string {
 }
 
 // TestTheDroppedMemberCheckSeesADroppedMember is the check above on a value built to fail it: a
-// tool_call whose name sits among the unnamed members.
+// declared arbitrary MCP payload whose content sits among the unnamed members.
 func TestTheDroppedMemberCheckSeesADroppedMember(t *testing.T) {
-	call := ToolCall{Type: "tool_call", Args: json.RawMessage(`{}`), AdditionalMembers: map[string]json.RawMessage{"name": json.RawMessage(`"validate"`), "later": json.RawMessage(`1`)}}
+	call := ToolResultMCPToolResult{AdditionalMembers: map[string]json.RawMessage{"content": json.RawMessage(`[]`), "later": json.RawMessage(`1`)}}
 	problems := keptAsUnnamed(reflect.ValueOf(&call), schemaMembers(t), "")
-	if len(problems) != 1 || !strings.Contains(problems[0], `"name"`) {
+	if len(problems) != 1 || !strings.Contains(problems[0], `"content"`) {
 		t.Fatalf("the check reported %v", problems)
 	}
 }

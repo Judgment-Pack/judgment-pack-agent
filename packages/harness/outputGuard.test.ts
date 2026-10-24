@@ -98,7 +98,7 @@ it('guards each model-text notice field under the run mode and exempts tool resu
   }))events.push(event)
   const delivered=events.filter(e=>e.type==='edit_refused'||e.type==='edit_applied'||e.type==='guardrail'&&e.reason!=='output refused')
   if(mode==='refuse')expect(delivered).toEqual([])
-  else expect(delivered).toEqual(mode==='off'?notices:[{type:'edit_refused',document:hole,reason:hole},{type:'edit_applied',document:hole,line:1,bytes:1,valid:true},{type:'guardrail',tool:hole,detail:hole,action:'refused',reason:'edit refused'}])
+  else expect(delivered).toEqual(mode==='off'?notices.map(event=>({...event,version:1})):[{ version: 1,type:'edit_refused',document:hole,reason:hole},{ version: 1,type:'edit_applied',document:hole,line:1,bytes:1,valid:true},{ version: 1,type:'guardrail',tool:hole,detail:hole,action:'refused',reason:'edit refused'}])
   if(mode!=='refuse'||queued)expect(events.find(e=>e.type==='tool_result')).toMatchObject({text:key})
   for(const event of delivered)expect(argumentProblem(eventSchema.$defs[event.type as 'edit_refused'],event)).toBeUndefined()
  }
@@ -108,7 +108,7 @@ it('refuses a notice whose redaction would exceed its document bound',async()=>{
  const events:AssistantEvent[]=[],session={prompt:'Review',testPrompt:'',tools:[],hostTools:[],callTool:async()=>answer({}),signal:new AbortController().signal,allowConversation:true,interactive:true,critic:'off' as const,agent:{model:'fixture',run:async()=>{}}}
  for await(const event of managedContext(session,async function*(ready){contextOf(ready).memoryNotice({type:'edit_refused',document:'AKIAABCDEFGHIJKLMNOP '.repeat(24)+'x'.repeat(8),reason:'No draft.'});yield {type:'end' as const}}))events.push(event)
  expect(events.some(e=>e.type==='edit_refused')).toBe(false)
- expect(events).toContainEqual({type:'output_guarded',where:'draft edit',pattern:'invalid-output',action:'refuse'})
+ expect(events).toContainEqual({ version: 1,type:'output_guarded',where:'draft edit',pattern:'invalid-output',action:'refuse'})
 })
 
 
@@ -126,7 +126,7 @@ it('withholds oversized gate notices with schema-valid refusal labels in both mo
    expect(runtime.seen).toEqual([{name:'experimental_evaluate',args:{rehearsal:true}}])
    expect(events.filter(e=>e.type==='error')).toEqual([])
    const notices=events.filter(e=>e.type==='guardrail'||e.type==='output_guarded')
-   expect(notices).toEqual([{type:'output_guarded',where:'message',pattern:'work-bound',action:'refuse'},{type:'guardrail',tool:'message',action:'refused',reason:'output refused',detail:'Output refused: work-bound.'}])
+   expect(notices).toEqual([{ version: 1,type:'output_guarded',where:'message',pattern:'work-bound',action:'refuse'},{ version: 1,type:'guardrail',tool:'message',action:'refused',reason:'output refused',detail:'Output refused: work-bound.'}])
    for(const event of notices)expect(argumentProblem(eventSchema.$defs[event.type as 'guardrail'],event)).toBeUndefined()
   }finally{await runtime.close()}
  }
@@ -138,7 +138,7 @@ it('guards oversized undeclared names before calls and checkpoints with schema-v
   const session={prompt:'Review',testPrompt:'',tools:[],hostTools:[],callTool:async()=>answer({}),signal:new AbortController().signal,allowConversation:true,interactive:true,critic:'off' as const,policy:{outputGuard:mode},context:{currentRequest:{message:'Review',input:'Review'}},agent:{model:'fixture',run:async()=>{}}}
   for await(const event of managedContext(session,async function*(){yield {type:'tool_call' as const,name,args:{}};yield {type:'end' as const}}))events.push(event)
   expect(events.find(e=>e.type==='tool_call')).toMatchObject({name:'Output refused: invalid-output.'})
-  expect(events).toContainEqual({type:'output_guarded',where:'message',pattern:'invalid-output',action:'refuse'})
+  expect(events).toContainEqual({ version: 1,type:'output_guarded',where:'message',pattern:'invalid-output',action:'refuse'})
   expect(JSON.stringify(events)).not.toContain(name)
   for(const event of events)if(event.type==='guardrail'||event.type==='output_guarded')expect(argumentProblem(eventSchema.$defs[event.type],event)).toBeUndefined()
  }
