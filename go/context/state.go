@@ -262,7 +262,7 @@ func ValidTaskSteps(value *Value) bool {
 	}
 	running := 0
 	for _, step := range value.Items() {
-		if !isObject(step) || !hasOnly(step,"id","step","status","detail","origin","evidence","notNeededReason") || !validRecordedStep(step) || step.Has("id")&&!planStepID(step.Get("id")) || !isText(step.Get("step"), 1000) || strings.TrimSpace(step.Get("step").Str()) == "" {
+		if !isObject(step) || !hasOnly(step, "id", "step", "status", "detail", "origin", "evidence", "notNeededReason") || !validRecordedStep(step) || step.Has("id") && !planStepID(step.Get("id")) || !isText(step.Get("step"), 1000) || strings.TrimSpace(step.Get("step").Str()) == "" {
 			return false
 		}
 		if !oneOf(step.Get("status"), "pending", "in_progress", "completed", "not-needed") {
@@ -299,7 +299,9 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 		!oneOf(value.Get("unit"), "model-requests", "provider-managed") {
 		return nil, errSavedExecution
 	}
-	if !validPlanState(value.Get("plan"),value.Get("planState")){return nil,errSavedExecution}
+	if !validPlanState(value.Get("plan"), value.Get("planState")) {
+		return nil, errSavedExecution
+	}
 	metadata := value.Has("schema") || value.Has("digest") || value.Has("retainUntil")
 	if metadata && !ValidRecordHeader(value, CheckpointSchema) {
 		return nil, errSavedExecution
