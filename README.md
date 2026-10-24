@@ -168,6 +168,15 @@ checkpoint resume, and ride in execution state so the stable prefix is unchanged
 Children and the critic never edit. Hosts supply accepted documents or the first
 `propose_pack` opens the draft; no host file is written.
 
+In v0.10.0, native `propose_pack` requires `documentJson` containing the complete
+JSON document text; the legacy `document` member is refused. Use the exported
+proposal tool schema. Source numbers must retain their mathematical decimal
+value through canonical serialization: decimal/exponent spellings and negative
+zero may normalize, while value-changing rounding refuses. The fenced envelope
+is unchanged. The guarded accepted proposal event remains authoritative; an
+exported reader does not bypass custody. See the wire contract for bounds and
+the limitation on already-rounded historical drafts.
+
 The output boundary (ADR-0017, agent#100) defaults to `outputGuard: redact`.
 Answers, proposals, tool arguments, memory proposals and draft edits receive
 labelled holes for the versioned base patterns and host `outputPatterns`.

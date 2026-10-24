@@ -16,12 +16,10 @@
       "type": "tool_call",
       "name": "propose_pack",
       "args": {
-        "document": {
-          "id": "p"
-        },
         "unknowns": [
           "who signs"
-        ]
+        ],
+        "documentJson": "{\"id\":\"p\"}"
       }
     },
     {

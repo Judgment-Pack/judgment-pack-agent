@@ -16,17 +16,35 @@
     }
   ],
   "turns": [
-    { "call": { "tool": "read_policy", "arguments": { "section": "receipts" } } },
-    { "call": { "tool": "save_pack", "arguments": { "path": "packs/expense.pack.json" } } },
+    {
+      "call": {
+        "tool": "read_policy",
+        "arguments": {
+          "section": "receipts"
+        }
+      }
+    },
+    {
+      "call": {
+        "tool": "save_pack",
+        "arguments": {
+          "path": "packs/expense.pack.json"
+        }
+      }
+    },
     {
       "call": {
         "tool": "propose_pack",
         "arguments": {
-          "document": { "id": "expense-receipts", "title": "Expense receipts" },
-          "unknowns": ["Whether a receipt must be itemized."]
+          "unknowns": [
+            "Whether a receipt must be itemized."
+          ],
+          "documentJson": "{\"id\":\"expense-receipts\",\"title\":\"Expense receipts\"}"
         }
       }
     },
-    { "say": "The policy asks for a receipt above 50 USD. I proposed a pack for your review; nothing is saved." }
+    {
+      "say": "The policy asks for a receipt above 50 USD. I proposed a pack for your review; nothing is saved."
+    }
   ]
 }

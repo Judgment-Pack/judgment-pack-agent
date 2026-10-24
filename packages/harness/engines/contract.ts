@@ -1,3 +1,5 @@
+import {parseProposalJSON,readProposalDocument,ProposalDocumentError} from '../proposalNumbers'
+export {readProposalDocument} from '../proposalNumbers'
 import {AIFailureError,authoredFailure,toolInputFailure} from '../failures'
 /**
  * The contract's own vocabulary, shared by every adapter.
@@ -437,6 +439,11 @@ function missingProposal(text: string): string {
   if (fences.some(block => !block.json && /^\s*(?:\{\s*)?["']?proposal["']?\s*:/.test(block.body))) return 'its proposal is in a fence that is not marked json'
   return ''
 }
+// Internal identity survives the authored public refusal without classifying by message text.
+const terminalProposalSources = new WeakSet<object>()
+export function isTerminalProposalSourceRefusal(cause: unknown): boolean {
+  return typeof cause === 'object' && cause !== null && terminalProposalSources.has(cause)
+}
 /** Exactly one explicit envelope; examples never become candidates. */
 export function extractProposal(text: string): Proposal {
   const blocks = jsonFences(text ?? '').filter(block => explicitProposal(block.body))
@@ -449,7 +456,12 @@ export function extractProposal(text: string): Proposal {
   let parsed: unknown
   // A marked block that is not JSON is the model's answer in the wrong shape,
   // never an unknown failure: the engine keeps it and may ask once for a reformat.
-  try { parsed = JSON.parse(blocks[0]!.body) } catch { throw authoredFailure('invalid-response', 'the fenced proposal block is not valid JSON') }
+  try { parsed = parseProposalJSON(blocks[0]!.body,['proposal','document']) } catch(cause) {
+    const terminal = cause instanceof ProposalDocumentError && (cause.kind === 'number-loss' || cause.kind === 'work-bound')
+    const refused = authoredFailure('invalid-response', terminal ? cause.message : 'the fenced proposal block is not valid JSON')
+    if (terminal) terminalProposalSources.add(refused)
+    throw refused
+  }
   if (!object(parsed) || !object(parsed.proposal) || !object(parsed.proposal.document)) throw authoredFailure('invalid-response','the proposal must contain a document object')
   if (parsed.proposal.kind !== undefined && parsed.proposal.kind !== 'create') throw authoredFailure('invalid-response','the proposal kind is not supported')
   const unknowns = parsed.proposal.unknowns
@@ -529,13 +541,13 @@ export const PROPOSE_PACK_TOOL = 'propose_pack'
 export const PROPOSE_PACK_SCHEMA = {
   type: 'object',
   properties: {
-    document: { type: 'object', description: 'The proposed pack, as a JSON object (not a JSON string).' },
+    documentJson: { type: 'string', description: 'The complete proposed pack as JSON document text. Numeric values that change during canonical serialization are refused; decimal spelling and negative zero may normalize.' },
     unknowns: { type: 'array', items: { type: 'string' }, description: 'What the policy leaves open, one sentence each.' }
   },
-  required: ['document']
+  required: ['documentJson']
 } as const
 export const PROPOSE_PACK_INSTRUCTIONS =
-  `\nDeliver the pack proposal by calling ${PROPOSE_PACK_TOOL} with the document as an object and its unknowns, then end with a short summary. Use the fenced JSON block only if that call is unavailable.`
+  `\nDeliver the pack proposal by calling ${PROPOSE_PACK_TOOL} with documentJson holding the complete document as JSON text and unknowns holding its open questions, then end with a short summary. The legacy document member is refused. Numeric values must survive canonical JSON serialization unchanged; decimal spelling and negative zero may normalize. Use the fenced JSON block only if that call is unavailable.`
 /** What the model is told when its call delivered the proposal. */
 export const PROPOSAL_RECEIVED =
   'The proposal was received and will be shown to the person for review; nothing was written. Do not call propose_pack again unless the proposal changes. End with a short summary.'
@@ -544,13 +556,15 @@ export function offersProposeTool(hostTools: readonly { name: string }[]): boole
 }
 /** The tool's arguments as a proposal, or a failure the model can read and correct. */
 export function readProposedPack(args: unknown): Proposal {
-  if (!object(args)) throw toolInputFailure('Call propose_pack with an object holding document and unknowns.')
-  if (!object(args.document)) throw toolInputFailure('Pass the pack as the document object itself, not as a JSON string, an array or null.')
+  if (!object(args)) throw toolInputFailure('Call propose_pack with an object holding documentJson and unknowns.')
+  if (Object.hasOwn(args,'document') || typeof args.documentJson !== 'string') throw toolInputFailure('propose_pack now requires documentJson containing the complete document as JSON text; omit the legacy document member.')
+  let document:Record<string,unknown>
+  try{document=readProposalDocument(args.documentJson)}catch(cause){throw toolInputFailure(cause instanceof ProposalDocumentError?cause.message:'The proposal document is not valid JSON.')}
   // The fence's rule, held on the tool path too: only a new pack is proposed.
   if (args.kind !== undefined && args.kind !== 'create') throw toolInputFailure('Only a new pack can be proposed: leave kind out, or pass "create".')
   const unknowns = args.unknowns
   if (unknowns !== undefined && (!Array.isArray(unknowns) || unknowns.some(item => typeof item !== 'string'))) throw toolInputFailure('Pass unknowns as an array of strings.')
-  return { document: args.document, unknowns: (unknowns as string[] | undefined) ?? [] }
+  return { document, unknowns: (unknowns as string[] | undefined) ?? [] }
 }
 /**
  * A proposal made through `propose_pack` beside another in a fenced block of

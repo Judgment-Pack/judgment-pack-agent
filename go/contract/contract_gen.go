@@ -5913,12 +5913,14 @@ func (v RunEventPolicyResolved) MarshalJSON() ([]byte, error) {
 // From run-event.json#/$defs/proposal. The one document the run proposes: from exactly one fenced
 // JSON block shaped {"proposal": {"kind": "create", "document": …, "unknowns": […]}} and never
 // from the prose around it, or from the model's call of the host tool propose_pack
-// (tool-offer.json, $defs/proposePack), which the adapter reads itself under the same rules, the
-// fence then being the fallback. A tool proposal beside a fenced one in the same answer is
-// ambiguous and refused, as two fenced proposals are. critique is present only where a critic ran
-// and reached at least one check or compared at least one declared case; note where something that
-// ran after the proposal existed did not finish. Accept and Reject are the host's actions, not the
-// adapter's.
+// (tool-offer.json, $defs/proposePack), which requires documentJson containing the document JSON
+// text (legacy document refused), the fence then being the fallback. Source numeric values must
+// survive canonical JSON serialization unchanged; decimal/exponent spelling and negative zero may
+// normalize. The guarded accepted proposal event remains authoritative. A tool proposal beside a
+// fenced one in the same answer is ambiguous and refused, as two fenced proposals are. critique is
+// present only where a critic ran and reached at least one check or compared at least one declared
+// case; note where something that ran after the proposal existed did not finish. Accept and Reject
+// are the host's actions, not the adapter's.
 type RunEventProposal struct {
 	Type     string                     `json:"type"`
 	Document map[string]json.RawMessage `json:"document"`
@@ -7451,12 +7453,12 @@ func (v ToolOfferProposeInsert) MarshalJSON() ([]byte, error) {
 // proposal (packages/harness/engines/contract.ts: PROPOSE_PACK_TOOL, PROPOSE_PACK_SCHEMA). The
 // host registers it among its hostTools under this name and with this input schema, which is in
 // the subset every family's wire carries. The adapter reads the call's arguments as the proposal
-// under the fence's rules (document an object, unknowns strings, kind absent or create), answers
-// the model that it was received, and never calls the host's execute; arguments of another shape
-// are a failed result naming what to correct (invalid-tool-input). The latest call's document is
-// the one proposed. A fenced proposal in the same answer makes it ambiguous, refused as two fenced
-// proposals are; a later request of the turn that fails leaves it delivered with a note
-// (run-event.json, proposal).
+// under the fence's rules (documentJson required as complete JSON document text, legacy document
+// refused, unknowns strings, kind absent or create), answers the model that it was received, and
+// never calls the host's execute; arguments of another shape are a failed result naming what to
+// correct (invalid-tool-input). The latest call's document is the one proposed. A fenced proposal
+// in the same answer makes it ambiguous, refused as two fenced proposals are; a later request of
+// the turn that fails leaves it delivered with a note (run-event.json, proposal).
 type ToolOfferProposePack struct {
 	Name          string                          `json:"name"`
 	Description   string                          `json:"description"`

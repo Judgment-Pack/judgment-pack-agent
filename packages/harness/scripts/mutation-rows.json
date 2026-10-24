@@ -5805,6 +5805,174 @@
    "status": "caught",
    "origin": "agent#186",
    "note": "Go twin: remove the fixed-cap RecordsRefused refusal in SessionContext.ClaimRequest; the unprojectable capped claim must not admit handoff, while the legacy behavior remains accepted."
+  },
+  {
+   "name": "proposal numeric source comparison",
+   "file": "proposalNumbers.ts",
+   "find": "if(!Number.isFinite(number)||source!==decimal(JSON.stringify(number)))throw loss()",
+   "replace": "if(false)throw loss()",
+   "tests": [
+    "proposalNumbers.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#198",
+   "note": "Go twin: go/proposal/numbers.go; remove the matching safeguard and require TestProposalNumericSources to fail its owning assertion."
+  },
+  {
+   "name": "proposal numeric exponent bound",
+   "file": "proposalNumbers.ts",
+   "find": "if(exponentDigits.length>PROPOSAL_EXPONENT_DIGITS)throw bound()",
+   "replace": "if(false)throw bound()",
+   "tests": [
+    "proposalNumbers.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#198",
+   "note": "Go twin: go/proposal/numbers.go; remove the matching safeguard and require TestProposalNumericSources to fail its owning assertion."
+  },
+  {
+   "name": "proposal numeric byte bound",
+   "file": "proposalNumbers.ts",
+   "find": "if(text.length>PROPOSAL_SOURCE_BYTES||new TextEncoder().encode(text).length>PROPOSAL_SOURCE_BYTES)throw bound()",
+   "replace": "if(false)throw bound()",
+   "tests": [
+    "proposalNumbers.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#198",
+   "note": "Go twin: go/proposal/numbers.go; remove the matching safeguard and require TestProposalNumericFenceSelectionAndBounds to fail its owning assertion."
+  },
+  {
+   "name": "proposal numeric depth bound",
+   "file": "proposalNumbers.ts",
+   "find": "if(depth>=PROPOSAL_SOURCE_DEPTH)throw bound()",
+   "replace": "if(false)throw bound()",
+   "tests": [
+    "proposalNumbers.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#198",
+   "note": "Go twin: go/proposal/numbers.go; remove the matching safeguard and require TestProposalNumericFenceSelectionAndBounds to fail its owning assertion."
+  },
+  {
+   "name": "proposal numeric native source XOR",
+   "file": "engines/contract.ts",
+   "find": "Object.hasOwn(args,'document') || typeof args.documentJson !== 'string'",
+   "replace": "typeof args.documentJson !== 'string'",
+   "tests": [
+    "proposalNumbers.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#198",
+   "note": "Go twin: go/adapter/turn/propose.go; remove the matching safeguard and require TestProposalNumericNativeSourceRequired to fail its owning assertion."
+  },
+  {
+   "name": "proposal numeric legacy native source refusal",
+   "file": "engines/contract.ts",
+   "find": "if (Object.hasOwn(args,'document') || typeof args.documentJson !== 'string') throw toolInputFailure('propose_pack now requires documentJson containing the complete document as JSON text; omit the legacy document member.')\n  let document:Record<string,unknown>\n  try{document=readProposalDocument(args.documentJson)}",
+   "replace": "if (!object(args.document) && typeof args.documentJson !== 'string') throw toolInputFailure('document required')\n  let document:Record<string,unknown>\n  try{document=typeof args.documentJson === 'string'?readProposalDocument(args.documentJson):args.document as Record<string,unknown>}",
+   "tests": [
+    "proposalNumbers.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#198",
+   "note": "Go twin: go/adapter/turn/propose.go; remove the matching safeguard and require TestProposalNumericNativeSourceRequired to fail its owning assertion."
+  },
+  {
+   "name": "proposal numeric edit source admission",
+   "file": "edits.ts",
+   "find": "try{parsed=readProposalDocument(next.text)}",
+   "replace": "try{parsed=JSON.parse(next.text)}",
+   "tests": [
+    "proposalCustody.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#198",
+   "note": "Go twin: go/context/edits.go; remove the matching safeguard and require TestProposalNumericDraftCustody to fail its owning assertion."
+  },
+  {
+   "name": "proposal numeric resumed source admission",
+   "file": "edits.ts",
+   "find": "    try{readProposalDocument(v.text)}catch{throw authoredFailure('stale-state','The saved draft text violates the proposal source numeric or work contract.','context')}\n",
+   "replace": "",
+   "tests": [
+    "proposalCustody.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#198",
+   "note": "Go twin: go/context/edits.go; remove the matching safeguard and require TestProposalNumericStoredTextPredicate to fail its owning assertion."
+  },
+  {
+   "name": "proposal numeric seed source work bound",
+   "file": "edits.ts",
+   "find": "  try{readProposalDocument(text)}catch(cause){throw toolInputFailure(cause instanceof ProposalDocumentError?cause.message:'The proposal document is not valid JSON.')}\n",
+   "replace": "",
+   "tests": [
+    "proposalCustody.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#198",
+   "note": "Go twin: go/context/edits.go; remove the matching safeguard and require TestProposalNumericTypedSeedDepth to fail its owning assertion."
+  },
+  {
+   "name": "proposal numeric decoded seed guarding",
+   "file": "edits.ts",
+   "find": "const clean=this.guard(proposal,'proposal')",
+   "replace": "const clean=proposal",
+   "tests": [
+    "proposalCustody.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#198",
+   "note": "Go twin: go/context/edits.go; remove the matching safeguard and require TestProposalNumericDecodedOutputGuard to fail its owning assertion."
+  },
+  {
+   "name": "proposal numeric terminal source identity",
+   "file": "engines/contract.ts",
+   "find": "terminalProposalSources.has(cause)",
+   "replace": "false",
+   "tests": [
+    "certification/proposal-numbers.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#198",
+   "note": "Go twin: go/adapter/turn/fence.go; remove the matching safeguard and require TestProposalNumericTerminalRecovery to fail its owning assertion."
+  },
+  {
+   "name": "proposal numeric Vercel terminal recovery",
+   "file": "engines/vercel/loop.ts",
+   "find": "!isTerminalProposalSourceRefusal(cause) && ",
+   "replace": "",
+   "tests": [
+    "certification/proposal-numbers.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#198",
+   "note": "Go twin: go/adapter/eino/loop.go; remove the matching safeguard and require TestProposalNumericTerminalRecovery to fail its owning assertion."
+  },
+  {
+   "name": "proposal numeric DeepAgents terminal recovery",
+   "file": "engines/deepagents/loop.ts",
+   "find": "!isTerminalProposalSourceRefusal(cause) && ",
+   "replace": "",
+   "tests": [
+    "certification/proposal-numbers.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#198",
+   "note": "Go twin: go/adapter/eino/loop.go; remove the matching safeguard and require TestProposalNumericTerminalRecovery to fail its owning assertion."
+  },
+  {
+   "name": "proposal numeric Codex terminal recovery",
+   "file": "engines/codex/index.ts",
+   "find": "if (isTerminalProposalSourceRefusal(unread)) { await keep(); throw unread }",
+   "replace": "if (false) { await keep(); throw unread }",
+   "tests": [
+    "certification/proposal-numbers.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#198",
+   "note": "Go twin: go/adapter/eino/loop.go; remove the matching safeguard and require TestProposalNumericTerminalRecovery to fail its owning assertion."
   }
  ]
 }

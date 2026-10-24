@@ -18,9 +18,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "document": {
-            "type": "object",
-            "description": "The proposed pack, as a JSON object (not a JSON string)."
+          "documentJson": {
+            "type": "string",
+            "description": "The complete proposed pack as JSON document text. Numeric values that change during canonical serialization are refused; decimal spelling and negative zero may normalize."
           },
           "unknowns": {
             "type": "array",
@@ -31,7 +31,7 @@
           }
         },
         "required": [
-          "document"
+          "documentJson"
         ]
       }
     }

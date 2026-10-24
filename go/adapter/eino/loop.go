@@ -262,7 +262,7 @@ func (r *runState) runOnce(ctx, caller context.Context) error {
 				}
 				if readErr != nil {
 					// One reformat request, within the allowance: tool-free, shown its own answer.
-					if unread == nil && r.sc.Execution.Remaining() > 0 && answered != nil {
+					if !turn.IsTerminalProposalSourceRefusal(readErr) && unread == nil && r.sc.Execution.Remaining() > 0 && answered != nil {
 						unread = &unreadAnswer{text: t.finalText, cause: readErr}
 						t.reformatting, t.synthesis = true, true
 						r.run.Gate.BeginReformat()

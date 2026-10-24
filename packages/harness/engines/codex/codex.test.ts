@@ -532,7 +532,7 @@ describe('nothing finished is lost, on the agent wire (agent#6)', () => {
     const run: AgentRun = async (request, callbacks) => {
       instructions = request.instructions
       const tool = request.tools.find(offered => offered.description.startsWith(`${PROPOSE_PACK_TOOL}:`))!
-      answered = (await callbacks.tool({ id: 'c1', name: tool.name, arguments: { document: { id: 'p' }, unknowns: ['u'] } }, callbacks.signal)).text
+      answered = (await callbacks.tool({ id: 'c1', name: tool.name, arguments: { documentJson: '{"id":"p"}', unknowns: ['u'] } }, callbacks.signal)).text
       await callbacks.event({ type: 'message', id: 'm', text: 'Proposed.', phase: 'final' })
     }
     const events = await collect(session(run, { hostTools: [{ name: PROPOSE_PACK_TOOL, effect: 'proposal', description: 'Propose', inputSchema: PROPOSE_PACK_SCHEMA, execute }] }))
@@ -546,7 +546,7 @@ describe('nothing finished is lost, on the agent wire (agent#6)', () => {
   const proposeTool = { name: PROPOSE_PACK_TOOL, effect: 'proposal' as const, description: 'Propose', inputSchema: PROPOSE_PACK_SCHEMA, execute: async () => ({ content: [] }) }
   const callPropose = async (request: Parameters<AgentRun>[0], callbacks: Parameters<AgentRun>[1]) => {
     const tool = request.tools.find(offered => offered.description.startsWith(`${PROPOSE_PACK_TOOL}:`))!
-    await callbacks.tool({ id: 'c1', name: tool.name, arguments: { document: { id: 'tool' }, unknowns: ['u'] } }, callbacks.signal)
+    await callbacks.tool({ id: 'c1', name: tool.name, arguments: { documentJson: '{"id":"tool"}', unknowns: ['u'] } }, callbacks.signal)
   }
 
   it('delivers a propose_pack proposal with a note when the bridge times out after the call', async () => {

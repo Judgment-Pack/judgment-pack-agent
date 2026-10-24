@@ -66,7 +66,7 @@ import {
   streamingProse,
   hasProposalFence,
   eventIterator,
-  extractProposal,
+  extractProposal, isTerminalProposalSourceRefusal,
   proseOf,
   guardedCallTool,
   isCancelled,
@@ -1395,7 +1395,7 @@ export function runVercelLoop(
           // **One reformat request, within the allowance**: tool-free, shown
           // its own answer and asked for the same proposal in the shape the
           // contract reads. A second failure is reported, the first answer kept.
-          if (unread === null && context.execution.remaining > 0) {
+          if (!isTerminalProposalSourceRefusal(cause) && unread === null && context.execution.remaining > 0) {
             unread = { text: finalText, cause }
             reformatting = synthesis = true
             messages = [...lastMessages, { role: 'assistant', content: finalText }, { role: 'user', content: reformatRequest(cause) }]
