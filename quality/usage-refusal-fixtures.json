@@ -1,0 +1,16 @@
+{
+  "description": "Hand-authored unsupported or inconsistent API usage details; offline refusal controls, never live evidence.",
+  "cases": [
+    {"name": "unknown cache creation", "usage": {"prompt_tokens": 12, "completion_tokens": 4, "total_tokens": 16, "prompt_tokens_details": {"cached_tokens": 0, "cache_creation_tokens": 1000000}, "completion_tokens_details": {"reasoning_tokens": 1000000}}},
+    {"name": "unknown input video", "usage": {"prompt_tokens": 12, "completion_tokens": 4, "total_tokens": 16, "prompt_tokens_details": {"video_tokens": 1}}},
+    {"name": "unknown zero detail", "usage": {"prompt_tokens": 12, "completion_tokens": 4, "total_tokens": 16, "completion_tokens_details": {"unknown_tokens": 0}}},
+    {"name": "reasoning exceeds total", "usage": {"prompt_tokens": 12, "completion_tokens": 4, "total_tokens": 16, "completion_tokens_details": {"reasoning_tokens": 5}}},
+    {"name": "negative reasoning", "usage": {"prompt_tokens": 12, "completion_tokens": 4, "total_tokens": 16, "completion_tokens_details": {"reasoning_tokens": -1}}},
+    {"name": "fractional reasoning", "usage": {"prompt_tokens": 12, "completion_tokens": 4, "total_tokens": 16, "completion_tokens_details": {"reasoning_tokens": 0.5}}},
+    {"name": "nonnumeric reasoning", "usage": {"prompt_tokens": 12, "completion_tokens": 4, "total_tokens": 16, "completion_tokens_details": {"reasoning_tokens": "0"}}},
+    {"name": "fractional cached", "usage": {"prompt_tokens": 12, "completion_tokens": 4, "total_tokens": 16, "prompt_tokens_details": {"cached_tokens": 0.5}}},
+    {"name": "unsupported prediction", "usage": {"prompt_tokens": 12, "completion_tokens": 4, "total_tokens": 16, "completion_tokens_details": {"accepted_prediction_tokens": 1}}},
+    {"name": "array details", "usage": {"prompt_tokens": 12, "completion_tokens": 4, "total_tokens": 16, "prompt_tokens_details": []}},
+    {"name": "null details", "usage": {"prompt_tokens": 12, "completion_tokens": 4, "total_tokens": 16, "completion_tokens_details": null}}
+  ]
+}

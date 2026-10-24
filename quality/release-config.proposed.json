@@ -1,0 +1,22 @@
+{
+  "kind": "release-quality-config",
+  "authorized": false,
+  "model": "SET_EXACT_MODEL",
+  "endpoint": "https://SET_PROVIDER/v1/chat/completions",
+  "credentialEnv": "QUALITY_REPLAY_API_KEY",
+  "priorRef": "v0.9.1",
+  "priorCommit": "SET_PREVIOUS_RELEASE_COMMIT",
+  "candidateCommit": "SET_FINAL_CANDIDATE_COMMIT",
+  "sliceSha256": "7728e5f53f9539c0343a86d6b4aa9351b1c8aad662acf35cd495dca36c91fe24",
+  "maxCallsPerCase": 4,
+  "maxInputTokens": 32768,
+  "maxOutputTokens": 512,
+  "maxTotalTokens": 532480,
+  "maxNanoUsd": 1000000000,
+  "inputNanoUsdPerToken": "SET_CONFIRMED_RATE",
+  "cachedInputNanoUsdPerToken": "SET_CONFIRMED_RATE",
+  "outputNanoUsdPerToken": "SET_CONFIRMED_RATE",
+  "timeoutMs": 60000,
+  "maxResponseBytes": 1048576,
+  "changeThreshold": 0
+}
