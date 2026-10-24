@@ -326,6 +326,11 @@ func requestSourceViolations(root string, files *token.FileSet, trees []*ast.Fil
 				for _, left := range value.Lhs {
 					target(left)
 				}
+			case *ast.UnaryExpr:
+				// A private field address exposes the same write through pointer aliases.
+				if value.Op == token.AND {
+					target(value.X)
+				}
 			case *ast.IncDecStmt:
 				target(value.X)
 			case *ast.RangeStmt:
@@ -626,6 +631,42 @@ func TestRequestSourceGuardDeclarationOwnership(t *testing.T) {
  func write(v *defined) { v.members["model"]="unadmitted" }
  func projection(v *RequestValues) *defined { copy:=*v; return (*defined)(&copy) }
  func unrelatedWrite(v *unrelated) { v.members["model"]="ordinary" }
+`, []string{"context/request_values.go:members:request-write"}},
+		{"private-pointer-writes", "adapter", "adapter/private_pointer.go", `package guardprobe
+ type RequestSession struct { modelName string; tools []string }
+ type defined RequestSession
+ type projected struct { *RequestSession }
+ type unrelated struct { modelName string }
+ func pointerWrite(s *RequestSession)*RequestSession { forged:=*s;slot:=&forged.modelName;*slot="unadmitted";return &forged }
+ func parenthesized(s *RequestSession) { slot:=&(s.modelName); *slot="unadmitted" }
+ func definition(s *defined) { slot:=&s.modelName; *slot="unadmitted" }
+ func promoted(s projected) { slot:=&s.modelName; *slot="unadmitted" }
+ func element(s *RequestSession) { slot:=&s.tools[0]; *slot="unadmitted" }
+ func set(slot *string) { *slot="unadmitted" }
+ func passed(s *RequestSession) { set(&s.modelName) }
+ func returned(s *RequestSession) *string { return &s.modelName }
+ func indirect(s *RequestSession) { slot:=&s.modelName; ref:=&slot; **ref="unadmitted" }
+ func (s *RequestSession) ModelID() string { return s.modelName }
+ func (s *RequestSession) RuntimeTools() []string { return append([]string{},s.tools...) }
+ func getterProjection(s *RequestSession) *RequestSession { copy:=*s; _=copy.ModelID(); _=copy.RuntimeTools(); return &copy }
+ func unrelatedRef(s *unrelated) *string { return &s.modelName }
+`, []string{"adapter/private_pointer.go:modelName:request-write", "adapter/private_pointer.go:modelName:request-write", "adapter/private_pointer.go:modelName:request-write", "adapter/private_pointer.go:modelName:request-write", "adapter/private_pointer.go:tools:request-write", "adapter/private_pointer.go:modelName:request-write", "adapter/private_pointer.go:modelName:request-write", "adapter/private_pointer.go:modelName:request-write"}},
+		{"private-pointer-conversions", "adapter", "adapter/request_session.go", `package guardprobe
+ type RequestSession struct { modelName string }
+ type unrelated struct{}
+ func NewRequestSession() *RequestSession { var s RequestSession; slot:=&s.modelName; *slot="admitted"; return &s }
+ func (s *RequestSession) PolicyBinding() { slot:=&s.modelName; *slot="admitted projection" }
+ func (unrelated) NewRequestSession(s *RequestSession) { slot:=&s.modelName; *slot="unadmitted" }
+ func (unrelated) PolicyBinding(s *RequestSession) { slot:=&s.modelName; *slot="unadmitted" }
+`, []string{"adapter/request_session.go:modelName:request-write", "adapter/request_session.go:modelName:request-write"}},
+		{"private-pointer-values", "context", "context/request_values.go", `package guardprobe
+ type RequestValues struct { members map[string]string }
+ type defined RequestValues
+ type unrelated struct { members map[string]string }
+ func NewRequestValues() *RequestValues { var v RequestValues; slot:=&v.members; *slot=map[string]string{}; return &v }
+ func pointer(v *defined) { slot:=&v.members; (*slot)["model"]="unadmitted" }
+ func projection(v *RequestValues) *defined { copy:=*v; return (*defined)(&copy) }
+ func unrelatedRef(v *unrelated) *map[string]string { return &v.members }
 `, []string{"context/request_values.go:members:request-write"}},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
