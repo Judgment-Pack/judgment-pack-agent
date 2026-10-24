@@ -15,6 +15,7 @@
 // export, or a list that a schema and the package state differently, stops the run with the name.
 // Header and marker constants are listed by name, never by value, and nothing here is read from a run.
 import { spawnSync } from 'node:child_process'
+import { eventMatrix, locations } from './event-matrix/index.mjs'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -632,6 +633,7 @@ async function criticPage(page) {
 async function eventsPage(page) {
   const root = page.schema('run-event.json')
   const kinds = root.properties.type.enum
+  const matrix = eventMatrix(repo, kinds)
   if (!Array.isArray(root.oneOf) || root.oneOf.length !== kinds.length) throw new Error('events.md: run-event.json oneOf and the type enum differ in length')
   const rows = []
   const sections = []
@@ -664,6 +666,11 @@ async function eventsPage(page) {
     `## The ${kinds.length} kinds`,
     '',
     table(['Kind', 'Defined in', 'Required beyond type'], rows),
+    '## Emitters and package consumers',
+    '',
+    'Source-derived publication/construction sites and explicit event discriminant reads in production package code. TypeScript follows compiler-resolved event arguments, yields, local bindings and returned factories; Go parses event constructors, event-return paths and the JSON-backed event factories. Tests, fixtures, examples, generated declarations and framework message parts do not establish emission. Every schema kind must have an emitter in both languages.',
+    'Consumer entries identify explicit kind reads, not delivery guarantees. Generic event forwarding and storage apply to all kinds and are not repeated in every row. Checkpoint/controller and run-report readers appear only for kinds they inspect; reports also project checkpoint facts and do not consume every kind individually.',
+    table(['Kind', 'TypeScript emitters', 'Go emitters', 'TypeScript consumers', 'Go consumers'], kinds.map(kind => [code(kind), locations(matrix.TypeScript.emits, kind), locations(matrix.Go.emits, kind), locations(matrix.TypeScript.reads, kind), locations(matrix.Go.reads, kind)])),
     '## Every kind with its members',
     '',
     ...sections
