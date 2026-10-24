@@ -55,3 +55,5 @@ requests when raw values disagree with resolved omission. Guard probes must
 compile, exercise the intended assertion and fail when its specific safeguard is
 removed. Deliberate TypeScript `any` and Go reflection/unsafe remain disclosed
 limits; these guards are not language sandboxes.
+
+The corresponding [request-boundary defensive pattern](../defensive-patterns.md#request-builders-read-only-the-resolved-boundary-148-164) records the rule, enforcement and remaining language escapes.

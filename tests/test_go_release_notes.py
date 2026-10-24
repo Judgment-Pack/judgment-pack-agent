@@ -6,6 +6,11 @@ part of the release, so every notes file from v0.3.0 on names it.
 """
 
 import re
+import importlib.util
+import os
+import shutil
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -40,6 +45,98 @@ class GoModuleReleaseTests(unittest.TestCase):
         patterns = [line.strip() for line in trigger.group(1).splitlines() if line.strip().startswith("- ")]
         self.assertEqual(patterns, ['- "v[0-9]+.[0-9]+.[0-9]+"'])
         self.assertIn('go_tag="go/${RELEASE_TAG}"', workflow)
+
+
+SPEC = importlib.util.spec_from_file_location("upgrade_guides", ROOT / "scripts/check-upgrade-guides.py")
+UPGRADE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(UPGRADE)
+
+
+class HostUpgradeGuideTests(unittest.TestCase):
+    def fixture(self, root, tag="v1.2.3"):
+        notes = root / "docs/releases" / f"{tag}.md"
+        guide = root / "docs/upgrade" / f"{tag}.md"
+        notes.parent.mkdir(parents=True, exist_ok=True)
+        guide.parent.mkdir(parents=True, exist_ok=True)
+        notes.write_text(f"# {tag}\n\nRelease scope.\n\n[host upgrade guide](../upgrade/{tag}.md)\n")
+        guide.write_text(f"# {tag}\n\n## Host changes\n\nReplace the retired input with its canonical form.\n")
+        return notes, guide
+
+    def test_all_notes_and_locally_available_release_tags_have_matching_guides(self):
+        # Local refs are additional evidence, never a claim that shallow refs are complete.
+        self.assertEqual(UPGRADE.validate(ROOT, UPGRADE.local_release_tags(ROOT)), [])
+        self.assertEqual(UPGRADE.validate(ROOT, tag="v0.10.0"), [])
+
+    def test_missing_empty_heading_only_mismatched_guide_and_wrong_link_fail(self):
+        with tempfile.TemporaryDirectory(prefix="upgrade-guide-fixture-") as directory:
+            root = Path(directory)
+            notes, guide = self.fixture(root)
+            self.assertEqual(UPGRADE.validate(root), [])
+            good_notes, good_guide = notes.read_text(), guide.read_text()
+            for label, body in [("missing", None), ("empty", ""), ("whitespace", " \n"),
+                                ("headings", "# v1.2.3\n\n## Host changes\n"),
+                                ("mismatch", "# v2.0.0\n\nSome migration.\n")]:
+                with self.subTest(fault=label):
+                    guide.unlink(missing_ok=True)
+                    if body is not None:
+                        guide.write_text(body)
+                    self.assertTrue(UPGRADE.validate(root))
+            guide.write_text(good_guide)
+            for body in [good_notes.replace("../upgrade/v1.2.3.md", "../upgrade/v1.2.4.md"),
+                         "# v1.2.3\n\nNo host guide link.\n"]:
+                notes.write_text(body)
+                self.assertTrue(UPGRADE.validate(root))
+            notes.write_text(good_notes)
+            self.assertEqual(UPGRADE.validate(root), [])
+
+    def test_tag_outside_notes_inventory_is_checked_without_ref_discovery(self):
+        with tempfile.TemporaryDirectory(prefix="upgrade-tag-fixture-") as directory:
+            root = Path(directory)
+            self.fixture(root)
+            problems = UPGRADE.validate(root, tag="v9.8.7")
+            self.assertIn("docs/releases/v9.8.7.md is missing", problems)
+            self.assertIn("docs/upgrade/v9.8.7.md is missing", problems)
+            self.assertTrue(UPGRADE.validate(root, tags=["v9.8.7"]))
+            for invalid in ["../v1.2.3", "v01.2.3", "v1.2.3-rc1", "v1.2.3\n"]:
+                self.assertTrue(UPGRADE.validate(root, tag=invalid))
+
+    def test_actual_release_admission_command_refuses_missing_guidance(self):
+        workflow = (ROOT / ".github/workflows/release.yml").read_text()
+        admit = workflow.split("  verify:", 1)[0]
+        match = re.search(r"      - name: Require matching host upgrade guidance\n        shell: bash\n        run: ([^\n]+)", admit)
+        self.assertIsNotNone(match)
+        command = match.group(1)
+        self.assertEqual(command, 'python3 scripts/check-upgrade-guides.py --tag "${RELEASE_TAG}"')
+        with tempfile.TemporaryDirectory(prefix="upgrade-admission-fixture-") as directory:
+            root = Path(directory)
+            notes, guide = self.fixture(root)
+            (root / "scripts").mkdir()
+            shutil.copyfile(ROOT / "scripts/check-upgrade-guides.py", root / "scripts/check-upgrade-guides.py")
+            env = {**os.environ, "RELEASE_TAG": "v1.2.3", "PYTHONDONTWRITEBYTECODE": "1"}
+            def run():
+                return subprocess.run(["bash", "-eu", "-c", command], cwd=root, env=env,
+                                      capture_output=True, text=True, timeout=20)
+            result = run()
+            self.assertEqual(result.returncode, 0, result.stderr)
+            guide.unlink()
+            result = run()
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("docs/upgrade/v1.2.3.md is missing", result.stderr)
+            # No synthetic Git refs or notes for this actual event tag: still refuse.
+            env["RELEASE_TAG"] = "v9.8.7"
+            result = run()
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("docs/upgrade/v9.8.7.md is missing", result.stderr)
+
+    def test_guide_and_pattern_local_file_links_resolve(self):
+        documents = list((ROOT / "docs/upgrade").glob("*.md"))
+        documents += [ROOT / "docs/defensive-patterns.md", ROOT / "docs/postmortem/README.md",
+                      ROOT / "docs/postmortem/0001-reasoning-omission.md"]
+        for path in documents:
+            for target in re.findall(r"\[[^]\n]+\]\(([^)\s]+)\)", path.read_text()):
+                if "://" not in target and not target.startswith("#"):
+                    with self.subTest(document=path.name, target=target):
+                        self.assertTrue((path.parent / target.split("#", 1)[0]).is_file())
 
 
 if __name__ == "__main__":
