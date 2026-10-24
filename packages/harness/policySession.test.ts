@@ -1,7 +1,7 @@
 import {describe,it,expect,vi} from 'vitest'
 import {join,resolve} from 'node:path'
 import {tmpdir} from 'node:os'
-import {mkdtempSync,readdirSync,rmSync,writeFileSync} from 'node:fs'
+import {mkdtempSync,mkdirSync,readdirSync,rmSync,writeFileSync} from 'node:fs'
 import {API,type Snapshot,type Type} from 'typescript/unstable/sync'
 import * as ts from 'typescript/unstable/ast'
 import {contextualSession,requestSession} from './context/session'
@@ -65,9 +65,20 @@ function rawReasoningReads(harness:string,files:string[],snapshot:Snapshot):stri
   const enclosingFunction=(node:ts.Node):string=>{
    let parent:ts.Node|undefined=node
    while(parent){
-    if(ts.isFunctionDeclaration(parent)&&parent.name)return parent.name.text
-    if(ts.isConstructorDeclaration(parent)){const owner=parent.parent;if(ts.isClassDeclaration(owner))return (owner.name?.text??'')+'.constructor'}
-    if(ts.isMethodDeclaration(parent)&&ts.isIdentifier(parent.name)){const owner=parent.parent;return (ts.isClassDeclaration(owner)?owner.name?.text+'.':'')+parent.name.text}
+    if(ts.isFunctionDeclaration(parent)&&parent.name)return parent.parent===file?parent.name.text:''
+    if(ts.isConstructorDeclaration(parent)){const owner=parent.parent;return ts.isClassDeclaration(owner)&&owner.parent===file?(owner.name?.text??'')+'.constructor':''}
+    if(ts.isMethodDeclaration(parent)&&ts.isIdentifier(parent.name)){
+     const owner=parent.parent
+     if(ts.isClassDeclaration(owner))return owner.parent===file?owner.name?.text+'.'+parent.name.text:''
+     // Only the returned engine's start method belongs to these top-level factories.
+     if(!ts.isObjectLiteralExpression(owner))return ''
+     let returned:ts.Node=owner
+     while(returned.parent&&(ts.isAsExpression(returned.parent)||ts.isParenthesizedExpression(returned.parent)))returned=returned.parent
+     const statement=returned.parent
+     if(!statement||!ts.isReturnStatement(statement))return ''
+     const body=statement.parent,factory=body?.parent
+     return body&&ts.isBlock(body)&&factory&&ts.isFunctionDeclaration(factory)&&factory.parent===file&&factory.name?factory.name.text+'.'+parent.name.text:''
+    }
     parent=parent.parent
    }
    return ''
@@ -99,10 +110,10 @@ function rawReasoningReads(harness:string,files:string[],snapshot:Snapshot):stri
    const admission:Record<string,string[]>={
     'context/session.ts':['resolveSessionPolicy','requestSession','contextualSession','delegatedRoleSession','delegatedProjection','SessionContext.constructor','SessionContext.askHost','SessionContext.connection','SessionContext.models','SessionContext.fallback','SessionContext.family','fallbackRequest'],
     'corpus.ts':['recordSession'],
-    'delegation.ts':['start'],
+    'delegation.ts':['withDelegation.start'],
     'execution/controller.ts':['ExecutionController.constructor','ExecutionController.initialize','ExecutionController.useConnection'],
     'planning/policy.ts':['planningSession'],
-    'testing/afterPolicy.ts':['start']
+    'testing/afterPolicy.ts':['afterPolicy.start']
    }
    const allowed=admission[relative]?.includes(fn)&&(!['effort','thinking','criticReasoning'].includes(name)||relative==='context/session.ts'&&['resolveSessionPolicy','requestSession'].includes(fn))
    if(!allowed)unexpected.push(`${relative}:${file.getLineAndCharacterOfPosition(node.getStart(file)).line+1}:${name}`)
@@ -177,6 +188,72 @@ export function probe(raw:AgentAssistantSession,assistant:AssistantSession,key:'
    expect(rawReasoningReads(directory,[path],snapshot).sort()).toEqual([
     'probe.ts:5:effort','probe.ts:6:effort','probe.ts:7:thinking',
     'probe.ts:8:criticReasoning','probe.ts:8:effort','probe.ts:9:effort','probe.ts:10:thinking','probe.ts:17:effort'
+   ].sort())
+  }finally{snapshot.dispose();api.close();rmSync(directory,{recursive:true,force:true})}
+ })
+ it('binds conversion exemptions to canonical declarations',()=>{
+  const harness=resolve(process.cwd()),directory=mkdtempSync(join(tmpdir(),'request-owner-')),context=join(directory,'context'),path=join(context,'session.ts')
+  mkdirSync(context)
+  writeFileSync(path,`import type {EngineSession,RequestSession} from ${JSON.stringify(join(harness,'engine'))}
+import {RequestValues} from ${JSON.stringify(join(harness,'context/requestValues'))}
+export function requestSession(raw:EngineSession) {
+ void ('model' in raw ? raw.model.model : raw.agent.model)
+ new RequestValues({})
+ return {} as RequestSession
+}
+export function unrelatedReviewWriter(raw:EngineSession) {
+ function requestSession() {
+  void ('model' in raw ? raw.model.model : raw.agent.model)
+  new RequestValues({})
+  return {} as RequestSession
+ }
+ return requestSession()
+}
+export class SessionContext { constructor() { new RequestValues({}) } models(raw:EngineSession) { return 'model' in raw?raw.model.model:raw.agent.model } }
+export function unrelatedClass() {
+ class SessionContext { constructor() { new RequestValues({}) } models(raw:EngineSession) { return 'model' in raw?raw.model.model:raw.agent.model } }
+ return new SessionContext()
+}
+export function unrelated(raw:{model:{model:string}}) { return raw.model.model }
+export function projection(session:RequestSession) { return session as RequestSession }
+`)
+  writeFileSync(join(directory,'tsconfig.json'),JSON.stringify({compilerOptions:{strict:true,skipLibCheck:true,target:'ES2022',module:'ESNext',moduleResolution:'bundler'},files:['context/session.ts']}))
+  const api=new API({cwd:directory}),snapshot=api.updateSnapshot({openProjects:[join(directory,'tsconfig.json')]})
+  try{
+   const project=snapshot.getProjects()[0]!
+   expect(project.program.getSyntacticDiagnostics(path)).toEqual([])
+   expect(project.program.getSemanticDiagnostics(path)).toEqual([])
+   expect(rawReasoningReads(directory,[path],snapshot).sort()).toEqual([
+    'context/session.ts:10:agent',...Array(3).fill('context/session.ts:10:model'),
+    'context/session.ts:11:request-construction','context/session.ts:12:request-construction',
+    'context/session.ts:18:request-construction','context/session.ts:18:agent',...Array(3).fill('context/session.ts:18:model')
+   ].sort())
+  }finally{snapshot.dispose();api.close();rmSync(directory,{recursive:true,force:true})}
+ })
+ it('owns only start methods returned directly by the canonical top-level factory',()=>{
+  const harness=resolve(process.cwd()),directory=mkdtempSync(join(tmpdir(),'request-factory-')),path=join(directory,'delegation.ts')
+  writeFileSync(path,`import type {EngineSession} from ${JSON.stringify(join(harness,'engine'))}
+export function withDelegation() {
+ const unrelated={start(raw:EngineSession){return 'model' in raw?raw.model.model:raw.agent.model}}
+ void unrelated
+ return ({start(raw:EngineSession){return 'model' in raw?raw.model.model:raw.agent.model}} as {start(raw:EngineSession):string})
+}
+export function ordinary() {return {start(raw:EngineSession){return 'model' in raw?raw.model.model:raw.agent.model}}}
+export function nested() {
+ function withDelegation() {return {start(raw:EngineSession){return 'model' in raw?raw.model.model:raw.agent.model}}}
+ return withDelegation()
+}
+`)
+  writeFileSync(join(directory,'tsconfig.json'),JSON.stringify({compilerOptions:{strict:true,skipLibCheck:true,target:'ES2022',module:'ESNext',moduleResolution:'bundler'},files:['delegation.ts']}))
+  const api=new API({cwd:directory}),snapshot=api.updateSnapshot({openProjects:[join(directory,'tsconfig.json')]})
+  try{
+   const project=snapshot.getProjects()[0]!
+   expect(project.program.getSyntacticDiagnostics(path)).toEqual([])
+   expect(project.program.getSemanticDiagnostics(path)).toEqual([])
+   expect(rawReasoningReads(directory,[path],snapshot).sort()).toEqual([
+    'delegation.ts:3:agent',...Array(3).fill('delegation.ts:3:model'),
+    'delegation.ts:7:agent',...Array(3).fill('delegation.ts:7:model'),
+    'delegation.ts:9:agent',...Array(3).fill('delegation.ts:9:model')
    ].sort())
   }finally{snapshot.dispose();api.close();rmSync(directory,{recursive:true,force:true})}
  })
