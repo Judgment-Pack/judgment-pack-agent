@@ -6651,6 +6651,18 @@
    "status": "caught",
    "origin": "agent#181/#182",
    "note": "Matched Go twin in go/context/plan_validation.go replaces `if planText(accepted.Get(\"revision\")) != acceptedPlanDigest(accepted) {` with `if false && planText(accepted.Get(\"revision\")) != acceptedPlanDigest(accepted) {`. Integrated TestPlan controls fail under each individual removal; intended assertion failures verified in both languages, no build-only failure credit."
+  },
+  {
+   "name": "run report supplied bytes remain actual Uint8Array views across realms",
+   "file": "runReport.ts",
+   "find": "!ArrayBuffer.isView(row.bytes)||Object.prototype.toString.call(row.bytes)!=='[object Uint8Array]'",
+   "replace": "false",
+   "tests": [
+    "runReport.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#157",
+   "note": "Removes only the byte-type predicate. The other-view refusal regression fails on an otherwise valid envelope encoded in a Uint8ClampedArray. Restoring constructor-identity validation separately fails the cross-realm acceptance regression. Go RunEventPage bytes are statically []byte and have no constructor-realm predicate to change."
   }
  ]
 }

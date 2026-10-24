@@ -50,13 +50,14 @@
     "failover": "controller",
     "childUsage": "controller",
     "requestCap": "controller",
-    "durable": "controller"
+    "durable": "controller",
+    "planState": "controller"
   },
   "items": [
     {
       "schema": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/checkpoint.json",
       "version": 2,
-      "digest": "sha256:aa3871460a2fd40e49f72800319f0dd1c69f4bc071a820df25d30b4a6ead9221",
+      "digest": "sha256:1f5c8b436a9c1722f9cd154019755a32bfe3bff669d7c6a6d87aa020759b81db",
       "retainUntil": "2099-01-01T00:00:00.000Z",
       "id": "member-run",
       "requestKey": "3b0c960691f0932f5358380767d469d78cfa6929ea224133d29d4903eb966b0a",
@@ -70,7 +71,8 @@
         {
           "step": "Preserve checkpoint members",
           "status": "pending",
-          "detail": "Resume the same work"
+          "detail": "Resume the same work",
+          "id": "step-1"
         }
       ],
       "explanation": "All named members have an explicit probe.",
@@ -334,6 +336,21 @@
         "dispatches": [],
         "observations": [],
         "children": []
+      },
+      "planState": {
+        "revision": "sha256:463e0d569bdd4d3d3d000a6652fa467639dc2975a5d8d18ee38f056429b8d19a",
+        "sequence": 1,
+        "nextId": 2,
+        "discarded": 0,
+        "history": [
+          {
+            "sequence": 1,
+            "previous": "sha256:463e0d569bdd4d3d3d000a6652fa467639dc2975a5d8d18ee38f056429b8d19a",
+            "revision": "sha256:463e0d569bdd4d3d3d000a6652fa467639dc2975a5d8d18ee38f056429b8d19a",
+            "explanation": "Preserve the same checkpoint work across interruption.",
+            "diff": []
+          }
+        ]
       }
     }
   ]

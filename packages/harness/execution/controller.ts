@@ -95,14 +95,13 @@ export class ExecutionController {
    if(restored.planState?.pending){
     const pending=restored.planState.pending,decision=readApprovalDecision(given)
     if(restored.approval?.state==='asked'||!decision||decision.callId!==pending.callId||pending.revision!==restored.planState.revision)throw toolInputFailure('PlanApprovalRequired: continue with the exact pending plan decision.')
-    const planState=structuredClone(restored.planState);delete planState.pending
-    if(decision.approved){const candidate=structuredClone(pending.candidate);restored.plan=candidate.plan;restored.planState=candidate.planState;restored.explanation=pending.explanation}
-    else restored.planState=planState
+    const planState=structuredClone(decision.approved?pending.candidate.planState:restored.planState);delete planState.pending
     const row={callId:pending.callId,revision:pending.revision,candidateRevision:pending.candidate.planState.revision,approved:decision.approved,...(decision.note===undefined?{}:{note:decision.note})}
-    restored.planState.decisions??=[];restored.planState.decisionsDiscarded??=0;restored.planState.decisions.push(row)
-    if(restored.planState.decisions.length>32){restored.planState.decisions.shift();restored.planState.decisionsDiscarded++}
+    planState.decisions??=[];planState.decisionsDiscarded??=0;planState.decisions.push(row)
+    if(planState.decisions.length>32){planState.decisions.shift();planState.decisionsDiscarded++}
+    mutateCheckpoint(restored,{...(decision.approved?{plan:pending.candidate.plan,explanation:pending.explanation}:{}),planState,status:'running'})
     this.planDecisionEvent={type:'plan_drift_decided',execution:restored.id,...row}
-    restored.status='running';given=undefined
+    given=undefined
    }
    const decision=given===undefined?undefined:readApprovalDecision(given)
    if(given!==undefined&&decision===undefined)throw authoredFailure('configuration','The approval decision is not one this package reads: a callId, approved, and an optional note of at most 2,000 characters. Nothing was decided or run.','context')

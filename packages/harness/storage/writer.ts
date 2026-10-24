@@ -44,7 +44,7 @@ function retainedCheckpoint(checkpoint:ExecutionCheckpoint,populate:boolean,poli
    if(child.checkpoint.id!==child.scope.execution||child.checkpoint.schema!==CHECKPOINT_SCHEMA||!validRecord(child.checkpoint))throw new ContinuationNotRecoverable()
    const until=child.checkpoint.retainUntil
    visit(child.checkpoint)
-   if(populate)child.checkpoint=writeRecord(CHECKPOINT_SCHEMA,{...child.checkpoint},policy!,undefined,new Date(),until)
+   if(populate)mutateCheckpoint(child.checkpoint,writeRecord(CHECKPOINT_SCHEMA,{...child.checkpoint},policy!,undefined,new Date(),until))
   }
  }
  try{visit(checkpoint);return canonicalJSON(signatures)}catch{throw new ContinuationNotRecoverable()}

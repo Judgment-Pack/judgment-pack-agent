@@ -53,7 +53,7 @@ export function buildRunReport(checkpoint:ExecutionCheckpoint,head:RunHead,pages
   if(!page||!Array.isArray(page.items)||page.items.length===0||page.items.length>STORAGE_PAGE_LIMIT||page.hasMore!==(at<pages.length-1))return invalid()
   for(const row of page.items){
    if(++count>MAX_RUN_REPORT_EVENTS)throw new RunReportOverflow()
-   if(!row||!storageId(row.cursor)||cursors.has(row.cursor)||!(row.bytes instanceof Uint8Array))return invalid()
+   if(!row||!storageId(row.cursor)||cursors.has(row.cursor)||!ArrayBuffer.isView(row.bytes)||Object.prototype.toString.call(row.bytes)!=='[object Uint8Array]')return invalid()
    cursors.add(row.cursor);last=row.cursor;bytes+=row.bytes.length
    if(bytes>MAX_RUN_REPORT_BYTES)throw new RunReportOverflow()
    let held:ReturnType<typeof readStoredRunEvent>

@@ -1,4 +1,5 @@
 import {describe,it,expect} from 'vitest'
+import {runInNewContext} from 'node:vm'
 import vectors from '../../contract/vectors/report/reports.json'
 import checkpointSchema from '../../contract/schemas/checkpoint.json'
 import reportSchema from '../../contract/schemas/run-report.json'
@@ -45,6 +46,26 @@ describe('canonical recorded run report',()=>{
   expect(canonicalRunReport(buildRunReport(cp,head,pages))).toBe(canonicalRunReport(projectRunReport(cp)))
   head.checkpoint=new TextEncoder().encode(JSON.stringify(cp,null,2))
   expect(buildRunReport(cp,head,pages)).toEqual(projectRunReport(cp))
+ })
+ it('accepts actual Uint8Array bytes across constructor realms',()=>{
+  for(const foreign of [false,true]){
+   const p=prefix()
+   for(const page of p.pages)for(const row of page.items){
+    row.bytes=foreign?runInNewContext('Uint8Array.from(bytes)',{bytes:Array.from(row.bytes)}) as Uint8Array:new Uint8Array(row.bytes)
+    expect(ArrayBuffer.isView(row.bytes)).toBe(true)
+    expect(Object.prototype.toString.call(row.bytes)).toBe('[object Uint8Array]')
+    expect(row.bytes instanceof Uint8Array).toBe(!foreign)
+   }
+   expect(buildRunReport(p.cp,p.head,p.pages)).toEqual(projectRunReport(p.cp))
+  }
+ })
+ it('refuses other byte views and objects claiming the Uint8Array tag',()=>{
+  const bytes=prefix().pages[0]!.items[0]!.bytes
+  const invalid:unknown[]=[Array.from(bytes),new Uint8ClampedArray(bytes),new Int8Array(bytes),new DataView(bytes.slice().buffer),{length:bytes.length,byteLength:bytes.length,[Symbol.toStringTag]:'Uint8Array'}]
+  for(const value of invalid){
+   const p=prefix();p.pages[0]!.items[0]!.bytes=value as Uint8Array
+   expect(()=>buildRunReport(p.cp,p.head,p.pages)).toThrow(RunReportPrefixInvalid)
+  }
  })
  it('treats supplied pages as corroboration without claiming predecessor or child membership proof',()=>{
   const p=prefix()

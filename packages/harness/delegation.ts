@@ -1019,7 +1019,8 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
           try{result=batchAnswer(await runBatch(request,signal));commitReuse()}
           catch(error){if(signal.aborted||fatal!==undefined)throw error;result=toolFailureResult(error)}
           continued='\n\n'+CONTINUATION+'\n'+frameData(DELEGATE_TOOL,JSON.stringify(result.structuredContent??textOf(result)),dataMarker())
-          execution=parentCheckpoint;continue
+          // Children update the closed parent's accounting after its last emitted checkpoint.
+          execution=parentCheckpoint?shared.checkpoint(parentCheckpoint):undefined;continue
         }
         if(!callId&&persistence)throw new ContinuationNotRecoverable()
         handoff={callId:callId??crypto.randomUUID(),batch:(figures.at(-1)?.batch??0)+1,state:'released',request,tasks:[]}

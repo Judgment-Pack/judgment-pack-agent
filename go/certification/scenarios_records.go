@@ -3,6 +3,7 @@ package certification
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -222,6 +223,8 @@ func recordsFindings(ctx context.Context, server *Server, answerAs string, bound
 	if err := json.Unmarshal(checkpointRaw, &legacy); err != nil {
 		return nil, err
 	}
+	// The frozen v1 writer had no v2 plan book. Preserve its actual member inventory.
+	legacy.PlanState = nil
 	legacy.Version, legacy.Status = 1, "stopped"
 	for name, member := range legacy.Policy {
 		if member.Source != nil && *member.Source == "layer" {
@@ -234,6 +237,9 @@ func recordsFindings(ctx context.Context, server *Server, answerAs string, bound
 	legacyDigest := runcontext.RecordDigest(value)
 	legacy.Digest = &legacyDigest
 	beforeLegacy, _ := json.Marshal(legacy)
+	if err := contract.CheckRecord("checkpoint", beforeLegacy); err != nil {
+		return nil, fmt.Errorf("legacy fixture is not a supported v1 record: %w", err)
+	}
 	input = requestInput(file.Request)
 	input.Execution = &legacy
 	resumed, err := host.runOn(ctx, bound, &Run{Prompt: file.Request, AllowConversation: true, Critic: "off", Context: input})
