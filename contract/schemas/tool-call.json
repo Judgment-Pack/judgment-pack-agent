@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/tool-call.json",
   "title": "Tool call",
-  "description": "The tool_call event: the model asked for one tool, with these arguments, and the adapter is about to hand the call to the host (callTool for a runtime tool, execute for a host tool). Emitted before the call is made, so the host can journal it; its arguments are the model's own, before the host's gate rewrites anything. A host tool with an interaction (ask_user, delegate_tasks) gets no tool_call: it gets user_question or delegation_requested instead. An act call of a tool with a source whose approval policy answers ask gets approval_requested instead (ADR-0008). Read from the AssistantEvent union (web/src/assistant/engine.ts). Open: no reader at run time refuses another member.",
+  "description": "The tool_call event: the model asked for one tool, with these arguments, and the adapter is about to hand the call to the host (callTool for a runtime tool, execute for a host tool). Emitted before the call is made, so the host can journal it; its arguments are the model's own, before the host's gate rewrites anything. A host tool with an interaction (ask_user, delegate_tasks) gets no tool_call: it gets user_question or delegation_requested instead. An act call of a tool with a source whose approval policy answers ask gets approval_requested instead (ADR-0008). Read from the AssistantEvent union (web/src/assistant/engine.ts). The versioned record reader refuses unknown structural members.",
   "type": "object",
   "required": [
     "type",
@@ -35,7 +35,7 @@
           "type": "string"
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "origin": {
       "description": "harness: the harness made this call itself, not the model: the critic pass's own run of a declared case nothing compared yet (agent#10 review row 8; refutation.ts, compareTheRest). Absent on every call a model made.",
@@ -44,9 +44,13 @@
     "source": {
       "description": "The tool's source record (ADR-0006), on the call of a tool with a source, with tool, its own name there; name is then the wire name the model called. Absent on the Runtime's tools and the host's own.",
       "$ref": "tool-offer.json#/$defs/sourceRecord"
+    },
+    "version": {
+      "const": 1,
+      "description": "Event wire format version. Absent only on historical records; current writers emit 1."
     }
   },
-  "additionalProperties": true,
+  "additionalProperties": false,
   "$defs": {
     "mcpCall": {
       "description": "The params of the tools/call frame the host's gate inspects before it leaves the page (web/src/assistant/toolGate.ts, inspectOutboundFrame). Open: the gate keeps other members of params. Its rules: the name must be on this session's allow-list, a subset of the ceiling (tool-offer.json $defs/runtimeCeiling: get_schema, list_examples, get_example, validate, experimental_evaluate, experimental_test_cases), or the frame is refused and a guardrail refused event is emitted; arguments, where present, are an object; experimental_test_cases leaves only with arguments $defs/testCasesArguments admits, or the frame is refused the same way; and experimental_evaluate always leaves with an own rehearsal: true, with a guardrail rewrote event where the model's call did not already carry it. The host keeps this rule; an adapter never applies or skips it.",

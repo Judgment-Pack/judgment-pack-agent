@@ -548,7 +548,7 @@ func (c *ExecutionController) Initialize() error {
 		capPointer = &requestCap
 		limit = requestCap
 	}
-	initial := &Execution{RequestCap: capPointer, Version: 1, ID: randomUUID(), RequestKey: requestKey, Phase: phase,
+	initial := &Execution{RequestCap: capPointer, Version: contract.CheckpointVersion, ID: randomUUID(), RequestKey: requestKey, Phase: phase,
 		Status: "running", Unit: unit, Used: 0, Limit: limit, Grants: []contract.CheckpointGrant{},
 		Plan: Array(), Explanation: "", Operations: []*Operation{},
 		Context: contract.CheckpointContext{Scope: c.ledger.Scope(), Entries: []contract.CheckpointRetainedEntry{}}}

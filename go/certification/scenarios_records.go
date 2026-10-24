@@ -77,7 +77,7 @@ func recordsFindings(ctx context.Context, server *Server, answerAs string, bound
 			f.fail("%s was not JSON", schema)
 			return
 		}
-		if !runcontext.ValidRecord(record) || record.Get("schema").Str() == "" || record.Get("version").Num() != 1 || record.Get("digest").Str() == "" || record.Get("retainUntil").Str() == "" {
+		if !runcontext.ValidRecord(record) || record.Get("schema").Str() == "" || (record.Get("schema").Str() == runcontext.CheckpointSchema && record.Get("version").Num() != 2 || record.Get("schema").Str() != runcontext.CheckpointSchema && record.Get("version").Num() != 1) || record.Get("digest").Str() == "" || record.Get("retainUntil").Str() == "" {
 			f.fail("%s did not carry its four record members", schema)
 		}
 		raw = append(raw, bytes)

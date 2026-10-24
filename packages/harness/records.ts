@@ -1,5 +1,6 @@
 import type {RecordMarker} from './outputGuard'
 import {canonicalJSON} from './context/chat'
+import {checkRecord} from './recordReader'
 
 export const CHECKPOINT_SCHEMA='https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/checkpoint.json'
 export const PROVENANCE_SCHEMA='https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/provenance.json'
@@ -8,7 +9,7 @@ export const EXPORT_SCHEMA='https://github.com/Judgment-Pack/judgment-pack-agent
 export const RECORD_SCHEMAS=[CHECKPOINT_SCHEMA,PROVENANCE_SCHEMA,CRITIQUE_SCHEMA] as const
 export type RecordSchema=typeof RECORD_SCHEMAS[number]
 export interface RecordsPolicy {retainDays:number;redactOnStore:boolean;exportFormat:'json'}
-export interface RecordMembers<S extends RecordSchema=RecordSchema> {schema:S;version:1;digest:string;retainUntil:string;records?:RecordMarker}
+export interface RecordMembers<S extends RecordSchema=RecordSchema> {schema:S;version:S extends typeof CHECKPOINT_SCHEMA ? 1|2 : 1;digest:string;retainUntil:string;records?:RecordMarker}
 export interface RecordGuard {declaredNames?:ReadonlySet<string>;value<T>(input:T,where:'message',record?:boolean,marker?:RecordMarker):T}
 export interface ExportEntry extends RecordMembers {bytes:number}
 export interface ExportManifest {
@@ -16,7 +17,7 @@ export interface ExportManifest {
  policy:RecordsPolicy;records:ExportEntry[]
 }
 export interface RecordsExport {manifest:ExportManifest;records:Record<string,unknown>[]}
-export interface ExportWritten {type:'export_written';records:number;bytes:number;digest:string}
+export interface ExportWritten {version?:1;type:'export_written';records:number;bytes:number;digest:string}
 
 export const RECORD_DEFAULTS:RecordsPolicy={retainDays:90,redactOnStore:true,exportFormat:'json'}
 const DIGEST=/^sha256:[a-f0-9]{64}$/
@@ -76,7 +77,7 @@ function guardRecord(record:Record<string,unknown>,guard:RecordGuard,figures:Rec
 }
 
 export function writeRecord<S extends RecordSchema,T extends Record<string,unknown>>(schema:S,value:T,policy:RecordsPolicy,guard?:RecordGuard,now=new Date(),keepRetainUntil?:string):T&RecordMembers<S>{
- let record={...structuredClone(value),schema,version:1 as const,retainUntil:keepRetainUntil??retainUntil(policy,now)} as T&Omit<RecordMembers<S>,'digest'>
+ let record={...structuredClone(value),schema,version:(schema===CHECKPOINT_SCHEMA?2:1),retainUntil:keepRetainUntil??retainUntil(policy,now)} as T&Omit<RecordMembers<S>,'digest'>
  const figures:RecordMarker={redactions:{}}
  if(policy.redactOnStore&&guard)guardRecord(record,guard,figures)
  Object.assign(record,{records:figures})
@@ -85,25 +86,27 @@ export function writeRecord<S extends RecordSchema,T extends Record<string,unkno
 export function validRecord(value:unknown):value is Record<string,unknown>&RecordMembers{
  if(!value||typeof value!=='object'||Array.isArray(value))return false
  const record=value as Record<string,unknown>
- return RECORD_SCHEMAS.includes(record.schema as RecordSchema)&&record.version===1&&typeof record.digest==='string'&&DIGEST.test(record.digest)&&record.digest===recordDigest(record)&&typeof record.retainUntil==='string'&&record.retainUntil.length<=40&&Number.isFinite(Date.parse(record.retainUntil))
+ return RECORD_SCHEMAS.includes(record.schema as RecordSchema)&&(record.schema===CHECKPOINT_SCHEMA?(record.version===1||record.version===2):record.version===1)&&typeof record.digest==='string'&&DIGEST.test(record.digest)&&record.digest===recordDigest(record)&&typeof record.retainUntil==='string'&&record.retainUntil.length<=40&&Number.isFinite(Date.parse(record.retainUntil))
 }
 export function validRecordHeader(value:unknown,schema:RecordSchema):value is Record<string,unknown>&RecordMembers{
  if(!value||typeof value!=='object'||Array.isArray(value))return false
  const record=value as Record<string,unknown>,until=record.retainUntil
- return record.schema===schema&&record.version===1&&typeof record.digest==='string'&&DIGEST.test(record.digest)&&typeof until==='string'&&until.length<=40&&Number.isFinite(Date.parse(until))
+ return record.schema===schema&&(schema===CHECKPOINT_SCHEMA?(record.version===1||record.version===2):record.version===1)&&typeof record.digest==='string'&&DIGEST.test(record.digest)&&typeof until==='string'&&until.length<=40&&Number.isFinite(Date.parse(until))
 }
 export class RecordsExpired extends Error{
  constructor(){super('records expired')}
- event(){return {type:'guardrail' as const,tool:'resume',action:'refused' as const,reason:'records expired' as const,detail:'records expired'} }
+ event(){return {version:1 as const,type:'guardrail' as const,tool:'resume',action:'refused' as const,reason:'records expired' as const,detail:'records expired'} }
 }
 export function refuseExpired(record:{retainUntil:string},now=new Date()):void{if(Date.parse(record.retainUntil)<=now.getTime())throw new RecordsExpired()}
 
 export function exportRecords(records:unknown[],policy:RecordsPolicy,packageVersion:string,now=new Date()):{value:RecordsExport;text:string;event:ExportWritten}{
+ if(!Array.isArray(records)||records.length>10000)throw Error('The host supplied an invalid record for export.')
+ for(const record of records)if(record&&typeof record==='object'&&!Array.isArray(record)&&(record as Record<string,unknown>).schema===CHECKPOINT_SCHEMA)checkRecord('checkpoint',record)
  if(!Array.isArray(records)||records.length>10000||records.some(record=>!validRecord(record)))throw Error('The host supplied an invalid record for export.')
  const copies=structuredClone(records) as (Record<string,unknown>&RecordMembers)[]
  const entries=copies.map(record=>({schema:record.schema,version:record.version,digest:record.digest,retainUntil:record.retainUntil,bytes:new TextEncoder().encode(canonicalJSON(record)).length}))
  const body={schema:EXPORT_SCHEMA as typeof EXPORT_SCHEMA,version:1 as const,retainUntil:retainUntil(policy,now),createdAt:now.toISOString(),packageVersion,policy:structuredClone(policy),records:entries}
  const manifest={...body,digest:recordDigest(body)}
  const value={manifest,records:copies},text=canonicalJSON(value),digest=`sha256:${sha256(text)}`
- return {value,text,event:{type:'export_written',records:copies.length,bytes:new TextEncoder().encode(text).length,digest}}
+ return {value,text,event:{version:1,type:'export_written',records:copies.length,bytes:new TextEncoder().encode(text).length,digest}}
 }

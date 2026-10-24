@@ -321,7 +321,8 @@ export interface AssistantSession {
  * the runner interleaves them. An engine that emitted its own would be
  * reporting on a guard it does not hold.
  */
-export type AssistantEvent =
+export type AssistantEvent = ({version?:1} & AssistantEventBody)
+type AssistantEventBody =
   | {type:'execution_checkpoint'; durable?:boolean; checkpoint:import('./execution/state').ExecutionCheckpoint}
   | {type:'budget_paused'; checkpoint:import('./execution/state').ExecutionCheckpoint}
   | {type:'compacted';turns:number;bytes:number;digest:string;mode:'index'|'summary'}
@@ -379,7 +380,7 @@ export type AssistantEvent =
    * that fired — nothing was stopped — but it is the same kind of sentence: the
    * desk saying what it did rather than leaving it to be discovered.
    */
-  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string; reason?: 'approval refused' | 'approval pending' | 'approval stale' | 'skill withheld' | 'skill budget' | 'review refused' | 'policy refused' | 'pace warning' | 'subagent withheld' | 'memory refused' | 'edit refused' | 'subagent refused' | 'compaction refused' | 'output refused' | 'records expired' | 'identity changed' | 'approval downgraded' | 'steer refused' | 'failover refused' | 'record refused' }
+  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string; reason?: 'approval refused' | 'approval pending' | 'approval stale' | 'skill withheld' | 'skill budget' | 'review refused' | 'policy refused' | 'pace warning' | 'subagent withheld' | 'memory refused' | 'edit refused' | 'subagent refused' | 'compaction refused' | 'output refused' | 'records expired' | 'identity changed' | 'approval downgraded' | 'steer refused' | 'failover refused' | 'record refused' | 'record version unsupported' | 'record member unsupported' }
   | { type: 'thinking_unavailable'; detail: string }
   /**
    * `cases` and `incomplete` where the host declared cases (agent#10): each

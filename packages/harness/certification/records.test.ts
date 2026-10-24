@@ -19,6 +19,7 @@ import eventSchema from '../../../contract/schemas/run-event.json'
 import {argumentProblem} from '../sourceArguments'
 import type {AssistantEvent} from '../engine'
 import {CHECKPOINT_SCHEMA} from '../records'
+import {readRunEvent} from '../recordReader'
 
 // Expand this at run time because the repository's local-paths check forbids the literal.
 const scenarioSecret=scenario.secret.replace('<home>','/'+'home')
@@ -33,10 +34,31 @@ async function play(engine:Engine,context:ContextInput={}){
 afterEach(()=>vi.unstubAllGlobals())
 
 for(const engine of [vercel,deepagents,codex])describe(`${engine.id==='codex'?'agent ':''}engine ${engine.id} · records`,()=>{
+  it('refuses future records before any provider or tool work and emits a current named notice',async()=>{
+    for(const context of [{execution:{version:3}}, {configuration:undefined,execution:{version:3,future:'x'.repeat(10000)}}]){
+      const ran=await play(engine,context as unknown as ContextInput)
+      expect(ran.requests.length+ran.runs.length).toBe(0)
+      expect(ran.events).toContainEqual(expect.objectContaining({type:'guardrail',reason:'record version unsupported',version:1}))
+      for(const event of ran.events)expect(()=>readRunEvent(event)).not.toThrow()
+    }
+  })
+  it('resumes legacy source absence without rewriting its input or extending retention',async()=>{
+    const first=await play(engine)
+    const saved=structuredClone(first.events.filter(e=>e.type==='execution_checkpoint').at(-1)!.checkpoint)
+    saved.version=1;saved.status='stopped'
+    for(const member of Object.values(saved.policy??{}))if(member.source==='layer')delete member.source
+    saved.digest=recordDigest(saved)
+    const before=JSON.stringify(saved),resumed=await play(engine,{execution:saved})
+    expect(JSON.stringify(saved)).toBe(before)
+    expect(resumed.events.filter(e=>e.type==='error')).toEqual([])
+    const next=resumed.events.filter(e=>e.type==='execution_checkpoint').at(-1)!.checkpoint
+    expect(next.version).toBe(2);expect(next.retainUntil).toBe(saved.retainUntil);expect(next.digest).toBe(recordDigest(next))
+  })
   it('18 · records carry identity, lifetime and redaction; export binds their digests; expired resume is refused',async()=>{
     const now=new Date(scenario.now),policy=scenario.policy as RecordsPolicy
     const ran=await play(engine)
     expect(ran.events.filter(event=>event.type==='error')).toEqual([])
+    for(const event of ran.events){expect(event.version).toBe(1);expect(readRunEvent(event)).toEqual(event)}
     const checkpoint=ran.events.filter(event=>event.type==='execution_checkpoint').at(-1)!.checkpoint
     const delivered:Record<string,number>={}
     const notices:AssistantEvent[]=[]
@@ -44,7 +66,7 @@ for(const engine of [vercel,deepagents,codex])describe(`${engine.id==='codex'?'a
     const critique=writeRecord(CRITIQUE_SCHEMA,{type:'critique',refuted:false,checks:[],text:`Read ${scenarioSecret}`},policy,guard,now)
     const records=[checkpoint,...checkpoint.completions??[],critique]
     expect(records.every(validRecord),engine.id).toBe(true)
-    expect(records.every(record=>record.schema&&record.version===1&&record.digest&&record.retainUntil),engine.id).toBe(true)
+    expect(records.every(record=>record.schema&&record.version===(record.schema===CHECKPOINT_SCHEMA?2:1)&&record.digest&&record.retainUntil),engine.id).toBe(true)
     expect(critique).toMatchObject({text:`Read ${scenario.hole}`})
     expect(critique.records).toEqual({redactions:{'local-home-path':1}})
     expect(delivered).toEqual({})
