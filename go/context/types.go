@@ -48,6 +48,7 @@ func (c Content) Value() *Value { return c.value }
 // structured content and its isError, each kept absent where the result does not carry it,
 // because what the budget counts is the bytes of the result's JSON.
 type ToolResult struct {
+	additional map[string]*Value
 	// Content are the result's content parts; nil where it carries no content member.
 	Content []Content
 	// StructuredContent is the result's structured content; nil where it carries none.
@@ -121,6 +122,10 @@ func (r ToolResult) Value() *Value {
 			if r.IsError != nil {
 				out.Set("isError", Bool(*r.IsError))
 			}
+		default:
+			if value := r.additional[name]; value != nil {
+				out.Set(name, value.Clone())
+			}
 		}
 	}
 	return out
@@ -132,7 +137,12 @@ func (r ToolResult) JSON() []byte { return r.Value().JSON() }
 // ReadToolResult is one tool result read from the JSON a tool answered with, its member order
 // kept.
 func ReadToolResult(value *Value) ToolResult {
-	out := ToolResult{order: value.Keys()}
+	out := ToolResult{order: value.Keys(), additional: map[string]*Value{}}
+	for _, name := range value.Keys() {
+		if name != "content" && name != "structuredContent" && name != "isError" {
+			out.additional[name] = value.Get(name).Clone()
+		}
+	}
 	if content := value.Get("content"); content.IsArray() {
 		out.Content = []Content{}
 		for _, part := range content.Items() {

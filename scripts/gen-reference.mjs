@@ -780,6 +780,7 @@ async function recordsPage(page) {
   page.add(
     seeAlso('policy.md', 'checkpoint.md', 'events.md', 'reasons.md'),
     'The host owns storage and deletion. The package writes self-describing records, refuses expired checkpoints and exports only records the host supplies; it has no store.',
+    'ADR-0024: writers use checkpoint version 2 and event/policy version 1. Readers also accept checkpoint 1 and historical events/policy layers with no version. Newer versions and unknown structural members are refused by name. Historical reads and exports preserve the supplied version and lifecycle metadata; a resumed snapshot writes the current checkpoint version without extending retention.',
     page.rootOf('export.json', '## The export manifest'),
     page.nodeOf('export.json', 'record'),
     page.nodeOf('provenance.json', 'recordDigest'),

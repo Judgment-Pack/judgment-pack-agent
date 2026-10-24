@@ -87,7 +87,10 @@
           ]
         },
         "version": {
-          "const": 1
+          "enum": [
+            1,
+            2
+          ]
         },
         "digest": {
           "$ref": "provenance.json#/$defs/recordDigest"
@@ -100,7 +103,35 @@
           "minimum": 1
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "schema": {
+                "const": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/checkpoint.json"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "version": {
+                "enum": [
+                  1,
+                  2
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "version": {
+                "const": 1
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

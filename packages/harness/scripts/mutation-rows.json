@@ -5805,6 +5805,96 @@
    "status": "caught",
    "origin": "agent#186",
    "note": "Go twin: remove the fixed-cap RecordsRefused refusal in SessionContext.ClaimRequest; the unprojectable capped claim must not admit handoff, while the legacy behavior remains accepted."
+  },
+  {
+   "name": "record versions refuse future records before body interpretation",
+   "file": "recordReader.ts",
+   "find": "if(Number(version)>RECORD_VERSIONS[kind])throw new UnsupportedRecordVersion(kind,Number(version))",
+   "replace": "if(false)throw new UnsupportedRecordVersion(kind,Number(version))",
+   "tests": [
+    "recordReader.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#165"
+  },
+  {
+   "name": "record versions refuse unknown structural members",
+   "file": "recordReader.ts",
+   "find": "throw new UnknownRecordMember(pointer(path,name),kind)",
+   "replace": "continue",
+   "tests": [
+    "recordReader.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#165"
+  },
+  {
+   "name": "record versions stamp every final event",
+   "file": "recordReader.ts",
+   "find": "return {...event,version:1}",
+   "replace": "return {...event} as T&{version:1}",
+   "tests": [
+    "recordReader.test.ts",
+    "certification/records.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#165"
+  },
+  {
+   "name": "record versions keep the historical member inventory frozen",
+   "file": "recordReader.ts",
+   "find": "version===0||kind==='checkpoint'&&version===1?shapes.historical:shapes.current",
+   "replace": "version===0?shapes.historical:shapes.current",
+   "tests": [
+    "recordReader.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#165"
+  },
+  {
+   "name": "record versions stamp checkpoints before their digest",
+   "file": "records.ts",
+   "find": "version:(schema===CHECKPOINT_SCHEMA?2:1)",
+   "replace": "version:1",
+   "tests": [
+    "recordReader.test.ts",
+    "certification/records.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#165"
+  },
+  {
+   "name": "record versions bound structural visits",
+   "file": "recordReader.ts",
+   "find": "if(++work>200000||depth>64)return invalid()",
+   "replace": "if(++work<0||depth>64)return invalid()",
+   "tests": [
+    "recordReader.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#165"
+  },
+  {
+   "name": "record versions bound structural depth",
+   "file": "recordReader.ts",
+   "find": "if(++work>200000||depth>64)return invalid()",
+   "replace": "if(++work>200000||depth<0)return invalid()",
+   "tests": [
+    "recordReader.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#165"
+  },
+  {
+   "name": "record versions reject unsafe owned integers",
+   "file": "recordReader.ts",
+   "find": "Number.isSafeInteger(v)",
+   "replace": "Number.isInteger(v)",
+   "tests": [
+    "recordReader.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#165"
   }
  ]
 }

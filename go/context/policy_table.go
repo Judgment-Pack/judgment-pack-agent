@@ -4,6 +4,7 @@ package runcontext
 import (
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"regexp"
@@ -257,6 +258,11 @@ func ResolvePolicy(run, project, table PolicyLayer, host PolicyHost) (ResolvedPo
 				return result, err
 			}
 		}
+		checked, _ := json.Marshal(input)
+		if err := contract.CheckRecord("policy", checked); err != nil && !errors.Is(err, contract.ErrInvalidRecord) {
+			return result, err
+		}
+		delete(input, "version")
 		flat := map[string]any{}
 		if err = policyRead(input, policySchema, "", layer.name, flat); err != nil {
 			return result, err

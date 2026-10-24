@@ -70,7 +70,7 @@
       "maxLength": 128
     }
   },
-  "additionalProperties": true,
+  "additionalProperties": false,
   "$defs": {
     "recordDigest": {
       "description": "sha256: and the lower-case SHA-256 of canonical JSON for the complete record with digest omitted.",
@@ -119,7 +119,7 @@
           "$ref": "#/$defs/tokens"
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "tokens": {
       "description": "A count the provider reported; a safe integer, never negative. Absent where the provider reported none.",
@@ -218,30 +218,63 @@
     "queuedSteer": {
       "description": "ADR-0021: one person's instruction waiting for the next request boundary.",
       "type": "object",
-      "required": ["text", "bytes"],
+      "required": [
+        "text",
+        "bytes"
+      ],
       "properties": {
-        "text": {"type": "string", "minLength": 1},
-        "bytes": {"type": "integer", "minimum": 1}
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1
+        }
       },
       "additionalProperties": false
     },
     "deliveredSteer": {
       "description": "ADR-0021: one steer delivered at a model request or agent invocation boundary.",
       "type": "object",
-      "required": ["bytes", "atRequest"],
+      "required": [
+        "bytes",
+        "atRequest"
+      ],
       "properties": {
-        "bytes": {"type": "integer", "minimum": 1},
-        "atRequest": {"type": "integer", "minimum": 1}
+        "bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "atRequest": {
+          "type": "integer",
+          "minimum": 1
+        }
       },
       "additionalProperties": false
     },
     "steerReport": {
       "description": "ADR-0021's run report: pending instructions and the deliveries already made, both carried through resume.",
       "type": "object",
-      "required": ["queued", "delivered"],
+      "required": [
+        "queued",
+        "delivered"
+      ],
       "properties": {
-        "queued": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/queuedSteer"}},
-        "delivered": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/deliveredSteer"}}
+        "queued": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/queuedSteer"
+          }
+        },
+        "delivered": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/deliveredSteer"
+          }
+        }
       },
       "additionalProperties": false
     },

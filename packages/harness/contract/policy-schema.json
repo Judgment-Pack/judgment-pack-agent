@@ -290,7 +290,7 @@
           "minimum": 0,
           "maximum": 4194304,
           "default": 8000,
-          "description": "UTF-8 bytes of one edit’s new text."
+          "description": "UTF-8 bytes of one edit\u2019s new text."
         },
         "proposalBytes": {
           "type": "integer",
@@ -505,6 +505,10 @@
         }
       },
       "additionalProperties": false
+    },
+    "version": {
+      "const": 1,
+      "description": "Policy layer wire format version. Absent only on historical layers; current policy writers emit 1. Metadata is excluded from policy precedence."
     }
   },
   "additionalProperties": false,
