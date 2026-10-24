@@ -85,6 +85,11 @@ function checkRecordDepth(kind:RecordKind,value:unknown,recordDepth:number):void
   }
  }
  walk(files[kind],graph[files[kind]]!,value,'',0)
+ if(kind==='event'&&object(value)&&value.type==='approval_requested'){
+  if(value.purpose==='plan-drift'){if(!object(value.plan)||['name','tool','source','args'].some(k=>Object.hasOwn(value,k)))invalid()}
+  else if(value.plan!==undefined||!['name','tool','source','args'].every(k=>Object.hasOwn(value,k)))invalid()
+ }
+
  if(kind==='event'&&(!object(value)||typeof value.type!=='string'||!shapes.current['run-event.json'].properties.type.enum.includes(value.type as never)))invalid()
 }
 /** Decode supported wire records without upgrading their bytes, version or metadata. */

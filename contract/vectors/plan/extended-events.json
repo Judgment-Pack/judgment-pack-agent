@@ -1,0 +1,403 @@
+{
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/execution/planActions.ts",
+      "go/context/plan_actions.go"
+    ]
+  },
+  "items": [
+    {
+      "type": "plan_revised",
+      "version": 1,
+      "execution": "extended-plan",
+      "sequence": 1,
+      "previous": "sha256:4bd3bd759ee580fc35f2ed601e4bef8755137f65e2c6b44bbb252106e96364aa",
+      "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+      "explanation": "Inspect current content",
+      "diff": [
+        {
+          "id": "step-1",
+          "kind": "status",
+          "before": {
+            "id": "step-1",
+            "step": "Inspect",
+            "status": "pending",
+            "origin": {
+              "plan": "accepted-plan",
+              "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+              "index": 0
+            }
+          },
+          "after": {
+            "id": "step-1",
+            "step": "Inspect",
+            "status": "in_progress",
+            "origin": {
+              "plan": "accepted-plan",
+              "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+              "index": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "plan_revised",
+      "version": 1,
+      "execution": "extended-plan",
+      "sequence": 2,
+      "previous": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+      "revision": "sha256:b817aba62a36c2a59ba13b54026ef3a7f8d508e47fbfde99c810c42820522015",
+      "explanation": "Active step completed with recorded evidence.",
+      "diff": [
+        {
+          "id": "step-1",
+          "kind": "status",
+          "before": {
+            "id": "step-1",
+            "step": "Inspect",
+            "status": "in_progress",
+            "origin": {
+              "plan": "accepted-plan",
+              "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+              "index": 0
+            }
+          },
+          "after": {
+            "id": "step-1",
+            "step": "Inspect",
+            "status": "completed",
+            "origin": {
+              "plan": "accepted-plan",
+              "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+              "index": 0
+            },
+            "evidence": {
+              "operations": [
+                "dispatch-ok"
+              ],
+              "artifacts": [
+                {
+                  "kind": "artifact",
+                  "id": "artifact-1",
+                  "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "plan_revised",
+      "version": 1,
+      "execution": "extended-plan",
+      "sequence": 3,
+      "previous": "sha256:b817aba62a36c2a59ba13b54026ef3a7f8d508e47fbfde99c810c42820522015",
+      "revision": "sha256:39d36d2ad40b0ef61c7bd92b80ebfe8c76517462d9945c3b07e555f39d684b7e",
+      "explanation": "Prepare report",
+      "diff": [
+        {
+          "id": "step-2",
+          "kind": "status",
+          "before": {
+            "id": "step-2",
+            "step": "Report",
+            "status": "pending",
+            "origin": {
+              "plan": "accepted-plan",
+              "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+              "index": 1
+            }
+          },
+          "after": {
+            "id": "step-2",
+            "step": "Report",
+            "status": "in_progress",
+            "origin": {
+              "plan": "accepted-plan",
+              "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+              "index": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "plan_revised",
+      "version": 1,
+      "execution": "extended-plan",
+      "sequence": 4,
+      "previous": "sha256:39d36d2ad40b0ef61c7bd92b80ebfe8c76517462d9945c3b07e555f39d684b7e",
+      "revision": "sha256:3e138d1554a49ead39a3d0cb41b2f892d77486e13403c507167fb509b562d58f",
+      "explanation": "Active step closed as not-needed.",
+      "diff": [
+        {
+          "id": "step-2",
+          "kind": "status",
+          "before": {
+            "id": "step-2",
+            "step": "Report",
+            "status": "in_progress",
+            "origin": {
+              "plan": "accepted-plan",
+              "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+              "index": 1
+            }
+          },
+          "after": {
+            "id": "step-2",
+            "step": "Report",
+            "status": "not-needed",
+            "origin": {
+              "plan": "accepted-plan",
+              "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+              "index": 1
+            },
+            "notNeededReason": "The recorded inspection already includes the report."
+          }
+        }
+      ]
+    },
+    {
+      "type": "plan_revised",
+      "version": 1,
+      "execution": "extended-plan",
+      "sequence": 2,
+      "previous": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+      "revision": "sha256:a8641e88a3e5c770fe8450659f105ef82b68c4fbffec3b939d8639503d31cac1",
+      "explanation": "Narrow the accepted work",
+      "diff": [
+        {
+          "id": "step-1",
+          "kind": "removed",
+          "before": {
+            "id": "step-1",
+            "step": "Inspect",
+            "status": "in_progress",
+            "origin": {
+              "plan": "accepted-plan",
+              "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+              "index": 0
+            }
+          },
+          "from": 0
+        },
+        {
+          "id": "step-2",
+          "kind": "changed",
+          "before": {
+            "id": "step-2",
+            "step": "Report",
+            "status": "pending",
+            "origin": {
+              "plan": "accepted-plan",
+              "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+              "index": 1
+            }
+          },
+          "after": {
+            "id": "step-2",
+            "step": "Report briefly",
+            "status": "pending",
+            "origin": {
+              "plan": "accepted-plan",
+              "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+              "index": 1
+            }
+          }
+        },
+        {
+          "id": "step-2",
+          "kind": "reordered",
+          "from": 1,
+          "to": 0
+        },
+        {
+          "id": "step-3",
+          "kind": "added",
+          "after": {
+            "id": "step-3",
+            "step": "Summarize",
+            "status": "pending"
+          },
+          "to": 1
+        }
+      ]
+    },
+    {
+      "type": "plan_completion_refused",
+      "version": 1,
+      "execution": "extended-plan",
+      "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+      "reason": "invalid-input",
+      "step": "step-1"
+    },
+    {
+      "type": "plan_completion_refused",
+      "version": 1,
+      "execution": "extended-plan",
+      "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+      "reason": "active-step-required",
+      "step": "step-1"
+    },
+    {
+      "type": "plan_completion_refused",
+      "version": 1,
+      "execution": "extended-plan",
+      "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+      "reason": "revision-changed",
+      "step": "step-1"
+    },
+    {
+      "type": "plan_completion_refused",
+      "version": 1,
+      "execution": "extended-plan",
+      "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+      "reason": "evidence-unavailable",
+      "step": "step-1"
+    },
+    {
+      "type": "plan_completion_refused",
+      "version": 1,
+      "execution": "extended-plan",
+      "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+      "reason": "missing-evidence",
+      "step": "step-1"
+    },
+    {
+      "type": "plan_completion_refused",
+      "version": 1,
+      "execution": "extended-plan",
+      "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+      "reason": "unknown-operation",
+      "step": "step-1"
+    },
+    {
+      "type": "plan_completion_refused",
+      "version": 1,
+      "execution": "extended-plan",
+      "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+      "reason": "unsuccessful-operation",
+      "step": "step-1"
+    },
+    {
+      "type": "plan_completion_refused",
+      "version": 1,
+      "execution": "extended-plan",
+      "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+      "reason": "unobserved-revision",
+      "step": "step-1"
+    },
+    {
+      "type": "plan_completion_refused",
+      "version": 1,
+      "execution": "extended-plan",
+      "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+      "reason": "wrong-scope",
+      "step": "step-1"
+    },
+    {
+      "type": "plan_departed",
+      "version": 1,
+      "execution": "extended-plan",
+      "revision": "sha256:a8641e88a3e5c770fe8450659f105ef82b68c4fbffec3b939d8639503d31cac1",
+      "acceptedRevision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+      "explanation": "Narrow the accepted work",
+      "departures": [
+        {
+          "kind": "removed",
+          "step": "step-1",
+          "index": 0
+        },
+        {
+          "kind": "changed",
+          "step": "step-2",
+          "index": 1
+        },
+        {
+          "kind": "reordered",
+          "step": "step-2",
+          "index": 1
+        },
+        {
+          "kind": "added",
+          "step": "step-3"
+        }
+      ]
+    },
+    {
+      "type": "approval_requested",
+      "version": 1,
+      "purpose": "plan-drift",
+      "callId": "plan-decision-1",
+      "plan": {
+        "execution": "extended-plan",
+        "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+        "candidateRevision": "sha256:a8641e88a3e5c770fe8450659f105ef82b68c4fbffec3b939d8639503d31cac1",
+        "explanation": "Narrow the accepted work",
+        "departures": [
+          {
+            "kind": "removed",
+            "step": "step-1",
+            "index": 0
+          },
+          {
+            "kind": "changed",
+            "step": "step-2",
+            "index": 1
+          },
+          {
+            "kind": "reordered",
+            "step": "step-2",
+            "index": 1
+          },
+          {
+            "kind": "added",
+            "step": "step-3"
+          }
+        ]
+      }
+    },
+    {
+      "type": "plan_drift_decided",
+      "version": 1,
+      "execution": "extended-plan",
+      "callId": "plan-decision-1",
+      "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+      "candidateRevision": "sha256:a8641e88a3e5c770fe8450659f105ef82b68c4fbffec3b939d8639503d31cac1",
+      "approved": true,
+      "note": "Use the focused plan."
+    },
+    {
+      "type": "plan_drift_decided",
+      "version": 1,
+      "execution": "extended-plan",
+      "callId": "plan-decision-1",
+      "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+      "candidateRevision": "sha256:a8641e88a3e5c770fe8450659f105ef82b68c4fbffec3b939d8639503d31cac1",
+      "approved": false,
+      "note": "Keep the accepted work."
+    },
+    {
+      "type": "approval_requested",
+      "version": 1,
+      "purpose": "tool-call",
+      "callId": "host-act-1",
+      "name": "service__save",
+      "tool": "save",
+      "source": {
+        "id": "service",
+        "kind": "gateway",
+        "trust": "connected",
+        "version": "v1"
+      },
+      "args": {}
+    }
+  ]
+}

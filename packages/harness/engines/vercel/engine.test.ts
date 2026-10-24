@@ -2475,7 +2475,7 @@ it.each(['openai-compatible','anthropic','gemini'] as const)('resumes %s after b
  const executionInput={message:'Fix the exception, test it and propose the change.',input:'Current pack revision 4; keep expectations unchanged.'}
  const call:ModelCall=async(_suffix,request)=>{
   calls++;const body=JSON.parse(request.body),text=JSON.stringify(body).replaceAll('\\"','"')
-  const step=calls===1?{tool:{name:'update_plan',args:{explanation:'Inspect then verify the proposed fix',plan:[{step:'Inspect exception',status:'completed'},{step:'Verify fix',status:'in_progress'}]}}}
+  const step=calls===1?{tool:{name:'update_plan',args:{explanation:'Inspect then verify the proposed fix',plan:[{step:'Inspect exception',status:'pending'},{step:'Verify fix',status:'in_progress'}]}}}
    :calls<20?{tool:{name:'get_schema',args:{section:calls}}}
    :calls===20?{text:''}
    :{text:'The saved check result supports the fix. The proposed change still needs review.'}

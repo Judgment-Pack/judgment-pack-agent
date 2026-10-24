@@ -327,6 +327,10 @@ export interface AssistantSession {
 export type AssistantEvent = ({version?:1} & AssistantEventBody)
 type AssistantEventBody =
   | ({type:'plan_revised';execution:string}&import('./execution/plan').PlanRevision)
+  | ({type:'plan_drift_decided';execution:string}&import('./execution/plan').PlanDecision)
+  | {type:'plan_departed';execution:string;revision:string;acceptedRevision:string;explanation:string;departures:import('./execution/plan').Departure[]}
+  | ({type:'plan_completion_refused';execution:string}&import('./execution/plan').PlanRefusal)
+  | {type:'approval_requested';purpose:'plan-drift';callId:string;plan:{execution:string;revision:string;candidateRevision:string;explanation:string;departures:import('./execution/plan').Departure[]}}
   | {type:'execution_checkpoint'; durable?:boolean; checkpoint:import('./execution/state').ExecutionCheckpoint}
   | {type:'budget_paused'; checkpoint:import('./execution/state').ExecutionCheckpoint}
   | {type:'compacted';turns:number;bytes:number;digest:string;mode:'index'|'summary'}
@@ -335,7 +339,7 @@ type AssistantEventBody =
    * ADR-0008: an act call paused for the person's decision, in place of its `tool_call`: never run,
    * written into the checkpoint's `approval`; the run then ends paused. Carried on the host's stream.
    */
-  | { type: 'approval_requested'; callId: string; name: string; tool: string; source: import('./toolSources').SourceRecord; args: Record<string, unknown> }
+  | { type: 'approval_requested'; purpose?:'tool-call'; callId: string; name: string; tool: string; source: import('./toolSources').SourceRecord; args: Record<string, unknown> }
   /**
    * ADR-0009: a skill loaded by the model's `load_skill` call, between that call and its result: the
    * skill as a load names it (never its instructions) and its bytes. Carried on the host's stream.
@@ -384,7 +388,7 @@ type AssistantEventBody =
    * that fired — nothing was stopped — but it is the same kind of sentence: the
    * desk saying what it did rather than leaving it to be discovered.
    */
-  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string; reason?: 'approval refused' | 'approval pending' | 'approval stale' | 'skill withheld' | 'skill budget' | 'review refused' | 'policy refused' | 'pace warning' | 'subagent withheld' | 'memory refused' | 'edit refused' | 'subagent refused' | 'compaction refused' | 'output refused' | 'records expired' | 'identity changed' | 'approval downgraded' | 'steer refused' | 'failover refused' | 'record refused' | 'record version unsupported' | 'record member unsupported' }
+  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string; reason?: 'approval refused' | 'plan update refused' | 'approval pending' | 'approval stale' | 'skill withheld' | 'skill budget' | 'review refused' | 'policy refused' | 'pace warning' | 'subagent withheld' | 'memory refused' | 'edit refused' | 'subagent refused' | 'compaction refused' | 'output refused' | 'records expired' | 'identity changed' | 'approval downgraded' | 'steer refused' | 'failover refused' | 'record refused' | 'record version unsupported' | 'record member unsupported' }
   | { type: 'thinking_unavailable'; detail: string }
   /**
    * `cases` and `incomplete` where the host declared cases (agent#10): each

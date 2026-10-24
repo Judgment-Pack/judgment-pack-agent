@@ -1104,7 +1104,7 @@ func (c *SessionContext) Turn() *ChatTurn { return c.turn }
 var errReserved = &authoredError{"Context tool names are reserved by Desk."}
 
 // reservedNames are the names this package's own tools take, load_tool among them (ADR-0006).
-var reservedNames = []string{"propose_edit", "propose_delete", "propose_insert", "undo_edit", Remember, "read_context", "list_context", ReadTool, SearchTool, "update_plan", "request_budget_increase", LoadTool, LoadSkill, UnloadSkill, RequestReview}
+var reservedNames = []string{"propose_edit", "propose_delete", "propose_insert", "undo_edit", Remember, "read_context", "list_context", ReadTool, SearchTool, "update_plan", "complete_plan_step", "request_budget_increase", LoadTool, LoadSkill, UnloadSkill, RequestReview}
 
 // OpenSources holds the run's tools with a source (ADR-0006, sources.go): the report's rows in the
 // execution state, a guardrail for each declaration the package withheld, and the loaded schemas
@@ -1187,7 +1187,7 @@ func (b approvalBook) Closed() string {
 // policy answers ask, the call then never handed to the host; nil where the call goes on (run, or
 // refused by the gate with its guardrail).
 func (c *SessionContext) Approval(ctx context.Context, name string, args json.RawMessage, callID string) *contract.RunEvent {
-	if c.Sources == nil || !c.Sources.NeedsApproval(name) {
+	if c.Execution.State().PlanState.Has("pending") || c.Sources == nil || !c.Sources.NeedsApproval(name) {
 		return nil
 	}
 	clean := args
@@ -1213,8 +1213,9 @@ func ApprovalRequested(asked contract.CheckpointApproval) *contract.RunEvent {
 	for key, value := range asked.Args {
 		args[key] = append(json.RawMessage(nil), value...)
 	}
+	source := copyRecord(asked.Source)
 	return &contract.RunEvent{ApprovalRequested: &contract.RunEventApprovalRequested{Type: "approval_requested", CallID: asked.CallID,
-		Name: asked.Name, Tool: asked.Tool, Source: copyRecord(asked.Source), Args: args}}
+		Name: &asked.Name, Tool: &asked.Tool, Source: &source, Args: args}}
 }
 
 // ErrApprovalPaused is a request refused because an act call of the run waits for the person's
@@ -1310,7 +1311,7 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		for _, source := range skills.Sources {
 			declared.Sources = append(declared.Sources, ToolSource{Kind: source.Kind, ID: source.ID, Trust: source.Trust, Version: source.Version, ToolListDigest: source.ToolListDigest})
 		}
-		if err := held.Execution.Initialize(); err != nil {
+		if err := held.Execution.Initialize(ctx); err != nil {
 			return err
 		}
 		if session.Context != nil && session.Context.checkpointProfile {
@@ -1577,20 +1578,60 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 	if held.Review.Offered() {
 		tools = append(tools, held.Review.ReviewHost(func() bool { return !held.CriticReading && !held.Reformatting }))
 	}
- held.Execution.PlanRefused=func(){reason:="plan update refused";held.notices=append(held.notices,contract.RunEvent{Guardrail:&contract.RunEventGuardrail{Type:"guardrail",Tool:"update_plan",Action:"refused",Reason:&reason,Detail:"The plan update is invalid or exceeds its bounds. The plan was left untouched."}})}
- held.Execution.PublishPlan=func(ctx context.Context,state contract.Checkpoint,event contract.RunEvent)(contract.RunEvent,error){
-  raw,e:=canonicalRaw(event);if e!=nil{return contract.RunEvent{},e}
-  guarded,e:=held.Output.JSON(raw,"message",false);if e!=nil{return contract.RunEvent{},e}
-  parsed,e:=ParseJSON(guarded);if e!=nil||CanonicalJSON(parsed)!=string(raw){return contract.RunEvent{},&ContinuationNotRecoverable{}}
-  if binding:=held.Persistence("author");binding!=nil{
-   output,e:=binding.Writer.CommitPlan(ctx,*binding,state,event);if e!=nil{return contract.RunEvent{},e}
-   held.notices=append(held.notices,output);return output,nil
-  }
-  if session.Context!=nil&&session.Context.Checkpoint!=nil{if e=session.Context.Checkpoint(ctx,state);e!=nil{return contract.RunEvent{},e}}
-  held.notices=append(held.notices,event);return event,nil
- }
+	held.Execution.PlanRefused = func() {
+		reason := "plan update refused"
+		held.notices = append(held.notices, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: "update_plan", Action: "refused", Reason: &reason, Detail: "The plan update is invalid or exceeds its bounds. The plan was left untouched."}})
+	}
+	held.Execution.PlanProof = func() (*DurableBook, DurableScope) {
+		binding := held.Persistence("author")
+		if binding == nil {
+			return nil, DurableScope{}
+		}
+		cp := binding.Writer.Checkpoint()
+		if cp == nil || cp.Durable == nil {
+			return nil, DurableScope{}
+		}
+		raw, _ := json.Marshal(cp.Durable)
+		var book DurableBook
+		if json.Unmarshal(raw, &book) != nil {
+			return nil, DurableScope{}
+		}
+		return &book, binding.Scope
+	}
+	held.Execution.PublishPlan = func(ctx context.Context, state contract.Checkpoint, event contract.RunEvent) (contract.RunEvent, error) {
+		raw, e := canonicalRaw(event)
+		if e != nil {
+			return contract.RunEvent{}, e
+		}
+		guarded, e := held.Output.JSON(raw, "message", false)
+		if e != nil {
+			return contract.RunEvent{}, e
+		}
+		parsed, e := ParseJSON(guarded)
+		if e != nil || CanonicalJSON(parsed) != string(raw) {
+			return contract.RunEvent{}, &ContinuationNotRecoverable{}
+		}
+		if binding := held.Persistence("author"); binding != nil {
+			output, e := binding.Writer.CommitPlan(ctx, *binding, state, event)
+			if e != nil {
+				return contract.RunEvent{}, e
+			}
+			held.notices = append(held.notices, output)
+			return output, nil
+		}
+		if session.Context != nil && session.Context.Checkpoint != nil {
+			if e = session.Context.Checkpoint(ctx, state); e != nil {
+				return contract.RunEvent{}, e
+			}
+		}
+		held.notices = append(held.notices, event)
+		return event, nil
+	}
+	if err := held.Execution.PublishPlanDecision(ctx); err != nil {
+		return nil, err
+	}
 	if session.AllowConversation {
-		tools = append(tools, held.Execution.Tool(), held.Execution.BudgetTool())
+		tools = append(tools, held.Execution.Tool(), held.Execution.CompletionTool(), held.Execution.BudgetTool())
 	}
 	wrapped := make([]HostTool, 0, len(tools))
 	for _, tool := range tools {
@@ -1607,6 +1648,9 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		run := held.Execution.WrapRead(declared.Name, inner, declared.ContextPolicy, readOnly, kept)
 		name := declared.Name
 		declared.Execute = func(ctx context.Context, args json.RawMessage) (ToolResult, error) {
+			if err := held.PlanApprovalRefusal(name); err != nil {
+				return ToolResult{}, err
+			}
 			if OutputWhere(name) != "draft edit" {
 				var err error
 				args, err = held.Output.JSON(args, OutputWhere(name), true)
@@ -1640,6 +1684,9 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		offered[tool.Name] = true
 	}
 	out.CallTool = func(ctx context.Context, name string, args json.RawMessage) (ToolResult, error) {
+		if err := held.PlanApprovalRefusal(name); err != nil {
+			return ToolResult{}, err
+		}
 		var err error
 		args, err = held.Output.JSON(args, "tool argument", true)
 		if err != nil {

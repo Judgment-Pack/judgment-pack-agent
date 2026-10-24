@@ -462,6 +462,11 @@ func (r *runState) event(invCtx context.Context, phase string, held *invocation)
 // a reading tool, framed.
 func (r *runState) tool(invCtx context.Context, offered map[string]bool, recorder *turn.Recorder, pause context.CancelFunc) func(context.Context, adapter.AgentToolCall) (adapter.AgentToolAnswer, error) {
 	return func(ctx context.Context, call adapter.AgentToolCall) (adapter.AgentToolAnswer, error) {
+		if r.sc.Execution.State().PlanState.Has("pending") {
+			r.sc.PlanApprovalRefusal(call.Name)
+			pause()
+			return adapter.AgentToolAnswer{}, errWaiting
+		}
 		if r.stopping() {
 			return adapter.AgentToolAnswer{}, errWaiting
 		}
@@ -556,6 +561,11 @@ func (r *runState) tool(invCtx context.Context, offered map[string]bool, recorde
 		}
 		if answered && runcontext.ReadingTool(held.host) {
 			text = r.sc.Frame(held.name, text)
+		}
+		if r.sc.Execution.State().PlanState.Has("pending") {
+			r.claimPause(false)
+			pause()
+			return adapter.AgentToolAnswer{}, errWaiting
 		}
 		return adapter.AgentToolAnswer{Text: text, IsError: result.Err()}, nil
 	}

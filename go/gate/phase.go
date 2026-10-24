@@ -25,7 +25,7 @@ var PlanRuntimeReads = func() []string {
 // ContextTools are the names the host keeps for its own context tools (tool-offer.json
 // $defs/reservedName): the boundary adds them to a run in every phase but the critic's (which is
 // offered the two readers) and the reformat run's (which is offered none).
-var ContextTools = []string{"list_context", "read_context", "read_window", "search", "update_plan", "request_budget_increase"}
+var ContextTools = []string{"list_context", "read_context", "read_window", "search", "update_plan", "complete_plan_step", "request_budget_increase"}
 
 // SkillTools are the skill loaders (ADR-0009): load_skill and unload_skill, which the boundary offers
 // where the run catalogues a skill, in every phase but a child's, the critic's included (a skill

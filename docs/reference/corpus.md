@@ -56,5 +56,5 @@ Closed: a member the schema does not name is refused.
 | `tool` | yes | string |  |
 | `action` | yes | enum `rewrote`, `refused`, `narrowed` |  |
 | `detail` | yes | string |  |
-| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused`, `memory refused`, `edit refused`, `compaction refused`, `output refused`, `records expired`, `identity changed`, `approval downgraded`, `steer refused`, `failover refused`, `record refused`, `record version unsupported`, `record member unsupported` |  |
+| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused`, `memory refused`, `edit refused`, `compaction refused`, `output refused`, `records expired`, `identity changed`, `approval downgraded`, `steer refused`, `failover refused`, `record refused`, `record version unsupported`, `record member unsupported`, `plan update refused` |  |
 | `version` |  | const `1` | Event wire format version. Absent only on historical records; current writers emit 1. |

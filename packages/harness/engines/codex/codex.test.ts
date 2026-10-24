@@ -488,13 +488,13 @@ it('preserves the current question and reads searchable context through the subs
 it('uses shared task progress without inventing subscription model-request usage',async()=>{
  const run:AgentRun=async(request,callbacks)=>{
   const tool=request.tools.find(t=>t.description.startsWith('update_plan:'))!
-  const result=await callbacks.tool({id:'plan-progress',name:tool.name,arguments:{explanation:'Inspection complete',plan:[{step:'Inspect the rule',status:'completed'}]}},callbacks.signal)
+  const result=await callbacks.tool({id:'plan-progress',name:tool.name,arguments:{explanation:'Track inspection',plan:[{step:'Inspect the rule',status:'in_progress'}]}},callbacks.signal)
   expect(result.text).toContain('provider-managed')
   expect(result.text).not.toContain('remaining')
   await callbacks.event({type:'message',id:'done',text:'The exception needs a guard.',phase:'final'})
  }
  const events=await collect(session(run,{allowConversation:true,interactive:true,context:{currentRequest:{message:'Inspect the rule',input:'Current pack'}}}))
- expect(events.filter(e=>e.type==='execution_checkpoint').at(-1)).toMatchObject({checkpoint:{unit:'provider-managed',plan:[{step:'Inspect the rule',status:'completed'}]}})
+ expect(events.filter(e=>e.type==='execution_checkpoint').at(-1)).toMatchObject({checkpoint:{unit:'provider-managed',plan:[{step:'Inspect the rule',status:'in_progress'}]}})
  expect(events.filter(e=>e.type==='error')).toEqual([])
 })
 
@@ -575,4 +575,18 @@ describe('nothing finished is lost, on the agent wire (agent#6)', () => {
     expect(events[3]).toEqual({ version: 1, type: 'message', text: answer })
     expect(events[4]).toMatchObject({ failure: { code: 'invalid-response' } })
   })
+})
+
+
+it('stops the provider invocation immediately after an acknowledged plan-drift pause',async()=>{
+ let afterPause=false
+ const run:AgentRun=async(request,callbacks)=>{
+  const update=request.tools.find(t=>t.description.startsWith('update_plan:'))!
+  await expect(callbacks.tool({id:'departure',name:update.name,arguments:{explanation:'Narrow accepted work',plan:[{id:'step-2',step:'Report',status:'pending'}]}},callbacks.signal)).rejects.toThrow()
+  expect(callbacks.signal.aborted).toBe(true);afterPause=true
+ }
+ const plan={id:'accepted-plan',revision:1,objective:'Inspect and report',steps:['Inspect','Report'],questions:[],references:[],status:'accepted' as const,createdAt:'2026-10-01T00:00:00.000Z',acceptedAt:'2026-10-01T00:00:00.000Z'}
+ const events=await collect(session(run,{allowConversation:true,interactive:true,context:{currentRequest:{message:'Inspect and report',input:'Current pack'},plan}}))
+ expect(afterPause).toBe(true);expect(events.filter(e=>e.type==='approval_requested')).toHaveLength(1);expect(events.find(e=>e.type==='approval_requested')).toMatchObject({purpose:'plan-drift'})
+ expect(events.filter(e=>e.type==='execution_checkpoint').at(-1)).toMatchObject({checkpoint:{status:'paused'}});expect(events.filter(e=>e.type==='error')).toEqual([])
 })

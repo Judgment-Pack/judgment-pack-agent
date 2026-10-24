@@ -262,10 +262,10 @@ func ValidTaskSteps(value *Value) bool {
 	}
 	running := 0
 	for _, step := range value.Items() {
-		if !isObject(step) || !hasOnly(step,"id","step","status","detail") || step.Has("id")&&!planStepID(step.Get("id")) || !isText(step.Get("step"), 1000) || strings.TrimSpace(step.Get("step").Str()) == "" {
+		if !isObject(step) || !hasOnly(step,"id","step","status","detail","origin","evidence","notNeededReason") || !validRecordedStep(step) || step.Has("id")&&!planStepID(step.Get("id")) || !isText(step.Get("step"), 1000) || strings.TrimSpace(step.Get("step").Str()) == "" {
 			return false
 		}
-		if !oneOf(step.Get("status"), "pending", "in_progress", "completed") {
+		if !oneOf(step.Get("status"), "pending", "in_progress", "completed", "not-needed") {
 			return false
 		}
 		if detail := step.Get("detail"); detail != nil && !isText(detail, 1500) {

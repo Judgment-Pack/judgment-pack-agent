@@ -119,6 +119,11 @@ func (b *Boundary) notices() []contract.RunEvent {
 		// Only guard-generated labels remain; do not scan replacement holes again.
 		out = append(clean, g.TakeNotices()...)
 	}
+	for _, notice := range out {
+		if notice.ApprovalRequested != nil {
+			b.requested = notice.ApprovalRequested.CallID
+		}
+	}
 	return out
 }
 
@@ -223,9 +228,9 @@ func (b *Boundary) event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 	// refused request's error, or a pause of its own all end it paused, with the checkpoint durable
 	// and no error.
 	if context.Execution.ApprovalAsked() && (event.End != nil || event.Error != nil || event.BudgetPaused != nil) {
-		asked := *context.Execution.State().Approval
-		if b.requested != asked.CallID {
-			out = append(out, *ApprovalRequested(asked))
+		notice, err := context.Execution.ApprovalNotice()
+		if err == nil && notice.ApprovalRequested != nil && b.requested != notice.ApprovalRequested.CallID {
+			out = append(out, notice)
 		}
 		b.paused = true
 		context.Execution.MutateCheckpoint(CheckpointPatch{"Status": "paused"})

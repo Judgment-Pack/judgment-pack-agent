@@ -330,6 +330,8 @@ type Input struct {
 	CurrentRequest    *CurrentRequest
 	Phase             string
 	Plan              *Value
+	PlanResolver      *PlanResolver
+	PlanDrift         []string
 	Configuration     *Configuration
 	Documents         []Document
 	Chat              ChatScope

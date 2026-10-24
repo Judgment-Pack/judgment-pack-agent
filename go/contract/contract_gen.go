@@ -44,6 +44,14 @@ var Registry = map[string]func() any{
 	"checkpoint.json#/$defs/planChange":             func() any { return new(CheckpointPlanChange) },
 	"checkpoint.json#/$defs/planRevision":           func() any { return new(CheckpointPlanRevision) },
 	"checkpoint.json#/$defs/planState":              func() any { return new(CheckpointPlanState) },
+	"checkpoint.json#/$defs/stepEvidence":           func() any { return new(CheckpointStepEvidence) },
+	"checkpoint.json#/$defs/planOrigin":             func() any { return new(CheckpointPlanOrigin) },
+	"checkpoint.json#/$defs/acceptedPlan":           func() any { return new(CheckpointAcceptedPlan) },
+	"checkpoint.json#/$defs/planDeparture":          func() any { return new(CheckpointPlanDeparture) },
+	"checkpoint.json#/$defs/planDepartureRecord":    func() any { return new(CheckpointPlanDepartureRecord) },
+	"checkpoint.json#/$defs/planRefusal":            func() any { return new(CheckpointPlanRefusal) },
+	"checkpoint.json#/$defs/pendingDeparture":       func() any { return new(CheckpointPendingDeparture) },
+	"checkpoint.json#/$defs/planDecision":           func() any { return new(CheckpointPlanDecision) },
 	"corpus-entry.json":                             func() any { return new(CorpusEntry) },
 	"delegated-task.json":                           func() any { return new(DelegatedTask) },
 	"delegated-task.json#/$defs/uuid":               func() any { return new(string) },
@@ -171,6 +179,10 @@ var Registry = map[string]func() any{
 	"run-event.json#/$defs/usage":                   func() any { return new(RunEventUsage) },
 	"run-event.json#/$defs/recorded":                func() any { return new(RunEventRecorded) },
 	"run-event.json#/$defs/plan_revised":            func() any { return new(RunEventPlanRevised) },
+	"run-event.json#/$defs/plan_departed":           func() any { return new(RunEventPlanDeparted) },
+	"run-event.json#/$defs/plan_completion_refused": func() any { return new(RunEventPlanCompletionRefused) },
+	"run-event.json#/$defs/plan_drift_decided":      func() any { return new(RunEventPlanDriftDecided) },
+	"run-report.json":                               func() any { return new(RunReport) },
 	"skill.json":                                    func() any { return new(Skill) },
 	"skill.json#/$defs/name":                        func() any { return new(string) },
 	"skill.json#/$defs/resource":                    func() any { return new(SkillResource) },
@@ -1197,6 +1209,96 @@ func (v Checkpoint) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From checkpoint.json#/$defs/acceptedPlan.
+type CheckpointAcceptedPlan struct {
+	ID                  string                                          `json:"id"`
+	Revision            string                                          `json:"revision"`
+	SourceRevision      int64                                           `json:"sourceRevision"`
+	Objective           string                                          `json:"objective"`
+	Steps               []string                                        `json:"steps"`
+	References          []CheckpointAcceptedPlanReferencesItem          `json:"references"`
+	AcceptedAt          string                                          `json:"acceptedAt"`
+	ValidatedReferences []CheckpointAcceptedPlanValidatedReferencesItem `json:"validatedReferences"`
+}
+
+var checkpointAcceptedPlanMembers = []string{"id", "revision", "sourceRevision", "objective", "steps", "references", "acceptedAt", "validatedReferences"}
+
+// UnmarshalJSON decodes a CheckpointAcceptedPlan object and refuses a member the closed schema does not name.
+func (v *CheckpointAcceptedPlan) UnmarshalJSON(data []byte) error {
+	type plain CheckpointAcceptedPlan
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointAcceptedPlanMembers, true)
+	if err != nil {
+		return errorf("CheckpointAcceptedPlan: %w", err)
+	}
+	*v = CheckpointAcceptedPlan(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointAcceptedPlan object.
+func (v CheckpointAcceptedPlan) MarshalJSON() ([]byte, error) {
+	type plain CheckpointAcceptedPlan
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/acceptedPlan/properties/references/items.
+type CheckpointAcceptedPlanReferencesItem struct {
+	Kind     string  `json:"kind"`
+	ID       string  `json:"id"`
+	Digest   *string `json:"digest,omitzero"`
+	Revision *string `json:"revision,omitzero"`
+}
+
+var checkpointAcceptedPlanReferencesItemMembers = []string{"kind", "id", "digest", "revision"}
+
+// UnmarshalJSON decodes a CheckpointAcceptedPlanReferencesItem object and refuses a member the closed schema does not name.
+func (v *CheckpointAcceptedPlanReferencesItem) UnmarshalJSON(data []byte) error {
+	type plain CheckpointAcceptedPlanReferencesItem
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointAcceptedPlanReferencesItemMembers, true)
+	if err != nil {
+		return errorf("CheckpointAcceptedPlanReferencesItem: %w", err)
+	}
+	*v = CheckpointAcceptedPlanReferencesItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointAcceptedPlanReferencesItem object.
+func (v CheckpointAcceptedPlanReferencesItem) MarshalJSON() ([]byte, error) {
+	type plain CheckpointAcceptedPlanReferencesItem
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/acceptedPlan/properties/validatedReferences/items.
+type CheckpointAcceptedPlanValidatedReferencesItem struct {
+	Kind   string `json:"kind"`
+	ID     string `json:"id"`
+	Digest string `json:"digest"`
+}
+
+var checkpointAcceptedPlanValidatedReferencesItemMembers = []string{"kind", "id", "digest"}
+
+// UnmarshalJSON decodes a CheckpointAcceptedPlanValidatedReferencesItem object and refuses a member the closed schema does not name.
+func (v *CheckpointAcceptedPlanValidatedReferencesItem) UnmarshalJSON(data []byte) error {
+	type plain CheckpointAcceptedPlanValidatedReferencesItem
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointAcceptedPlanValidatedReferencesItemMembers, true)
+	if err != nil {
+		return errorf("CheckpointAcceptedPlanValidatedReferencesItem: %w", err)
+	}
+	*v = CheckpointAcceptedPlanValidatedReferencesItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointAcceptedPlanValidatedReferencesItem object.
+func (v CheckpointAcceptedPlanValidatedReferencesItem) MarshalJSON() ([]byte, error) {
+	type plain CheckpointAcceptedPlanValidatedReferencesItem
+	return encodeObject(plain(v), nil)
+}
+
 // From checkpoint.json#/$defs/approval. One act call paused for the person's decision (ADR-0008).
 // callId: the id of its approval_requested event; name: the wire name the model called; tool: the
 // tool's own name at its source; source: its record; args: the arguments the model sent, the ones
@@ -1799,6 +1901,64 @@ func (v CheckpointOperation) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From checkpoint.json#/$defs/pendingDeparture.
+type CheckpointPendingDeparture struct {
+	Purpose     string                              `json:"purpose"`
+	CallID      string                              `json:"callId"`
+	Revision    string                              `json:"revision"`
+	Candidate   CheckpointPendingDepartureCandidate `json:"candidate"`
+	Explanation string                              `json:"explanation"`
+	Departures  []CheckpointPlanDeparture           `json:"departures"`
+}
+
+var checkpointPendingDepartureMembers = []string{"purpose", "callId", "revision", "candidate", "explanation", "departures"}
+
+// UnmarshalJSON decodes a CheckpointPendingDeparture object and refuses a member the closed schema does not name.
+func (v *CheckpointPendingDeparture) UnmarshalJSON(data []byte) error {
+	type plain CheckpointPendingDeparture
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointPendingDepartureMembers, true)
+	if err != nil {
+		return errorf("CheckpointPendingDeparture: %w", err)
+	}
+	*v = CheckpointPendingDeparture(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointPendingDeparture object.
+func (v CheckpointPendingDeparture) MarshalJSON() ([]byte, error) {
+	type plain CheckpointPendingDeparture
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/pendingDeparture/properties/candidate.
+type CheckpointPendingDepartureCandidate struct {
+	Plan      []CheckpointTaskStep `json:"plan"`
+	PlanState CheckpointPlanState  `json:"planState"`
+}
+
+var checkpointPendingDepartureCandidateMembers = []string{"plan", "planState"}
+
+// UnmarshalJSON decodes a CheckpointPendingDepartureCandidate object and refuses a member the closed schema does not name.
+func (v *CheckpointPendingDepartureCandidate) UnmarshalJSON(data []byte) error {
+	type plain CheckpointPendingDepartureCandidate
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointPendingDepartureCandidateMembers, true)
+	if err != nil {
+		return errorf("CheckpointPendingDepartureCandidate: %w", err)
+	}
+	*v = CheckpointPendingDepartureCandidate(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointPendingDepartureCandidate object.
+func (v CheckpointPendingDepartureCandidate) MarshalJSON() ([]byte, error) {
+	type plain CheckpointPendingDepartureCandidate
+	return encodeObject(plain(v), nil)
+}
+
 // From checkpoint.json#/$defs/planChange.
 type CheckpointPlanChange struct {
 	ID     string              `json:"id"`
@@ -1827,6 +1987,148 @@ func (v *CheckpointPlanChange) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a CheckpointPlanChange object.
 func (v CheckpointPlanChange) MarshalJSON() ([]byte, error) {
 	type plain CheckpointPlanChange
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/planDecision.
+type CheckpointPlanDecision struct {
+	CallID            string  `json:"callId"`
+	Revision          string  `json:"revision"`
+	CandidateRevision string  `json:"candidateRevision"`
+	Approved          bool    `json:"approved"`
+	Note              *string `json:"note,omitzero"`
+}
+
+var checkpointPlanDecisionMembers = []string{"callId", "revision", "candidateRevision", "approved", "note"}
+
+// UnmarshalJSON decodes a CheckpointPlanDecision object and refuses a member the closed schema does not name.
+func (v *CheckpointPlanDecision) UnmarshalJSON(data []byte) error {
+	type plain CheckpointPlanDecision
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointPlanDecisionMembers, true)
+	if err != nil {
+		return errorf("CheckpointPlanDecision: %w", err)
+	}
+	*v = CheckpointPlanDecision(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointPlanDecision object.
+func (v CheckpointPlanDecision) MarshalJSON() ([]byte, error) {
+	type plain CheckpointPlanDecision
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/planDeparture.
+type CheckpointPlanDeparture struct {
+	Kind  string `json:"kind"`
+	Step  string `json:"step"`
+	Index *int64 `json:"index,omitzero"`
+}
+
+var checkpointPlanDepartureMembers = []string{"kind", "step", "index"}
+
+// UnmarshalJSON decodes a CheckpointPlanDeparture object and refuses a member the closed schema does not name.
+func (v *CheckpointPlanDeparture) UnmarshalJSON(data []byte) error {
+	type plain CheckpointPlanDeparture
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointPlanDepartureMembers, true)
+	if err != nil {
+		return errorf("CheckpointPlanDeparture: %w", err)
+	}
+	*v = CheckpointPlanDeparture(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointPlanDeparture object.
+func (v CheckpointPlanDeparture) MarshalJSON() ([]byte, error) {
+	type plain CheckpointPlanDeparture
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/planDepartureRecord.
+type CheckpointPlanDepartureRecord struct {
+	Revision    string                    `json:"revision"`
+	Explanation string                    `json:"explanation"`
+	Changes     []CheckpointPlanDeparture `json:"changes"`
+}
+
+var checkpointPlanDepartureRecordMembers = []string{"revision", "explanation", "changes"}
+
+// UnmarshalJSON decodes a CheckpointPlanDepartureRecord object and refuses a member the closed schema does not name.
+func (v *CheckpointPlanDepartureRecord) UnmarshalJSON(data []byte) error {
+	type plain CheckpointPlanDepartureRecord
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointPlanDepartureRecordMembers, true)
+	if err != nil {
+		return errorf("CheckpointPlanDepartureRecord: %w", err)
+	}
+	*v = CheckpointPlanDepartureRecord(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointPlanDepartureRecord object.
+func (v CheckpointPlanDepartureRecord) MarshalJSON() ([]byte, error) {
+	type plain CheckpointPlanDepartureRecord
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/planOrigin.
+type CheckpointPlanOrigin struct {
+	Plan     string `json:"plan"`
+	Revision string `json:"revision"`
+	Index    int64  `json:"index"`
+}
+
+var checkpointPlanOriginMembers = []string{"plan", "revision", "index"}
+
+// UnmarshalJSON decodes a CheckpointPlanOrigin object and refuses a member the closed schema does not name.
+func (v *CheckpointPlanOrigin) UnmarshalJSON(data []byte) error {
+	type plain CheckpointPlanOrigin
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointPlanOriginMembers, true)
+	if err != nil {
+		return errorf("CheckpointPlanOrigin: %w", err)
+	}
+	*v = CheckpointPlanOrigin(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointPlanOrigin object.
+func (v CheckpointPlanOrigin) MarshalJSON() ([]byte, error) {
+	type plain CheckpointPlanOrigin
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/planRefusal.
+type CheckpointPlanRefusal struct {
+	Revision string  `json:"revision"`
+	Reason   string  `json:"reason"`
+	Step     *string `json:"step,omitzero"`
+}
+
+var checkpointPlanRefusalMembers = []string{"revision", "reason", "step"}
+
+// UnmarshalJSON decodes a CheckpointPlanRefusal object and refuses a member the closed schema does not name.
+func (v *CheckpointPlanRefusal) UnmarshalJSON(data []byte) error {
+	type plain CheckpointPlanRefusal
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointPlanRefusalMembers, true)
+	if err != nil {
+		return errorf("CheckpointPlanRefusal: %w", err)
+	}
+	*v = CheckpointPlanRefusal(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointPlanRefusal object.
+func (v CheckpointPlanRefusal) MarshalJSON() ([]byte, error) {
+	type plain CheckpointPlanRefusal
 	return encodeObject(plain(v), nil)
 }
 
@@ -1862,14 +2164,23 @@ func (v CheckpointPlanRevision) MarshalJSON() ([]byte, error) {
 
 // From checkpoint.json#/$defs/planState.
 type CheckpointPlanState struct {
-	Revision  string                   `json:"revision"`
-	Sequence  int64                    `json:"sequence"`
-	NextID    int64                    `json:"nextId"`
-	Discarded int64                    `json:"discarded"`
-	History   []CheckpointPlanRevision `json:"history"`
+	Revision            string                          `json:"revision"`
+	Sequence            int64                           `json:"sequence"`
+	NextID              int64                           `json:"nextId"`
+	Discarded           int64                           `json:"discarded"`
+	History             []CheckpointPlanRevision        `json:"history"`
+	Accepted            *CheckpointAcceptedPlan         `json:"accepted,omitzero"`
+	DriftPolicy         []string                        `json:"driftPolicy,omitzero"`
+	Departures          []CheckpointPlanDepartureRecord `json:"departures,omitzero"`
+	DeparturesDiscarded *int64                          `json:"departuresDiscarded,omitzero"`
+	Pending             *CheckpointPendingDeparture     `json:"pending,omitzero"`
+	Refusals            []CheckpointPlanRefusal         `json:"refusals,omitzero"`
+	RefusalsDiscarded   *int64                          `json:"refusalsDiscarded,omitzero"`
+	Decisions           []CheckpointPlanDecision        `json:"decisions,omitzero"`
+	DecisionsDiscarded  *int64                          `json:"decisionsDiscarded,omitzero"`
 }
 
-var checkpointPlanStateMembers = []string{"revision", "sequence", "nextId", "discarded", "history"}
+var checkpointPlanStateMembers = []string{"revision", "sequence", "nextId", "discarded", "history", "accepted", "driftPolicy", "departures", "departuresDiscarded", "pending", "refusals", "refusalsDiscarded", "decisions", "decisionsDiscarded"}
 
 // UnmarshalJSON decodes a CheckpointPlanState object and refuses a member the closed schema does not name.
 func (v *CheckpointPlanState) UnmarshalJSON(data []byte) error {
@@ -1893,16 +2204,17 @@ func (v CheckpointPlanState) MarshalJSON() ([]byte, error) {
 // From checkpoint.json#/$defs/retainedEntry. One immutable source copy the context ledger holds
 // (RetainedEntry). value is the copy itself.
 type CheckpointRetainedEntry struct {
-	ID       string          `json:"id"`
-	Kind     string          `json:"kind"`
-	Label    string          `json:"label"`
-	Value    json.RawMessage `json:"value"`
-	Revision *string         `json:"revision,omitzero"`
-	Bytes    int64           `json:"bytes"`
-	Digest   string          `json:"digest"`
+	ID        string          `json:"id"`
+	Kind      string          `json:"kind"`
+	Label     string          `json:"label"`
+	Value     json.RawMessage `json:"value"`
+	ValueJSON *string         `json:"valueJSON,omitzero"`
+	Revision  *string         `json:"revision,omitzero"`
+	Bytes     int64           `json:"bytes"`
+	Digest    string          `json:"digest"`
 }
 
-var checkpointRetainedEntryMembers = []string{"id", "kind", "label", "value", "revision", "bytes", "digest"}
+var checkpointRetainedEntryMembers = []string{"id", "kind", "label", "value", "valueJSON", "revision", "bytes", "digest"}
 
 // UnmarshalJSON decodes a CheckpointRetainedEntry object and refuses a member the closed schema does not name.
 func (v *CheckpointRetainedEntry) UnmarshalJSON(data []byte) error {
@@ -1952,15 +2264,73 @@ func (v CheckpointSourceIdentity) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
-// From checkpoint.json#/$defs/taskStep.
-type CheckpointTaskStep struct {
-	Step   string  `json:"step"`
-	Status string  `json:"status"`
-	Detail *string `json:"detail,omitzero"`
-	ID     *string `json:"id,omitzero"`
+// From checkpoint.json#/$defs/stepEvidence.
+type CheckpointStepEvidence struct {
+	Operations []string                              `json:"operations"`
+	Artifacts  []CheckpointStepEvidenceArtifactsItem `json:"artifacts"`
 }
 
-var checkpointTaskStepMembers = []string{"step", "status", "detail", "id"}
+var checkpointStepEvidenceMembers = []string{"operations", "artifacts"}
+
+// UnmarshalJSON decodes a CheckpointStepEvidence object and refuses a member the closed schema does not name.
+func (v *CheckpointStepEvidence) UnmarshalJSON(data []byte) error {
+	type plain CheckpointStepEvidence
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointStepEvidenceMembers, true)
+	if err != nil {
+		return errorf("CheckpointStepEvidence: %w", err)
+	}
+	*v = CheckpointStepEvidence(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointStepEvidence object.
+func (v CheckpointStepEvidence) MarshalJSON() ([]byte, error) {
+	type plain CheckpointStepEvidence
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/stepEvidence/properties/artifacts/items.
+type CheckpointStepEvidenceArtifactsItem struct {
+	Kind   string `json:"kind"`
+	ID     string `json:"id"`
+	Digest string `json:"digest"`
+}
+
+var checkpointStepEvidenceArtifactsItemMembers = []string{"kind", "id", "digest"}
+
+// UnmarshalJSON decodes a CheckpointStepEvidenceArtifactsItem object and refuses a member the closed schema does not name.
+func (v *CheckpointStepEvidenceArtifactsItem) UnmarshalJSON(data []byte) error {
+	type plain CheckpointStepEvidenceArtifactsItem
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointStepEvidenceArtifactsItemMembers, true)
+	if err != nil {
+		return errorf("CheckpointStepEvidenceArtifactsItem: %w", err)
+	}
+	*v = CheckpointStepEvidenceArtifactsItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointStepEvidenceArtifactsItem object.
+func (v CheckpointStepEvidenceArtifactsItem) MarshalJSON() ([]byte, error) {
+	type plain CheckpointStepEvidenceArtifactsItem
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/taskStep.
+type CheckpointTaskStep struct {
+	Step            string                  `json:"step"`
+	Status          string                  `json:"status"`
+	Detail          *string                 `json:"detail,omitzero"`
+	ID              *string                 `json:"id,omitzero"`
+	Origin          *CheckpointPlanOrigin   `json:"origin,omitzero"`
+	Evidence        *CheckpointStepEvidence `json:"evidence,omitzero"`
+	NotNeededReason *string                 `json:"notNeededReason,omitzero"`
+}
+
+var checkpointTaskStepMembers = []string{"step", "status", "detail", "id", "origin", "evidence", "notNeededReason"}
 
 // UnmarshalJSON decodes a CheckpointTaskStep object and refuses a member the closed schema does not name.
 func (v *CheckpointTaskStep) UnmarshalJSON(data []byte) error {
@@ -4974,6 +5344,12 @@ type RunEvent struct {
 	Recorded *RunEventRecorded
 	// PlanRevised is set where type is "plan_revised".
 	PlanRevised *RunEventPlanRevised
+	// PlanDeparted is set where type is "plan_departed".
+	PlanDeparted *RunEventPlanDeparted
+	// PlanCompletionRefused is set where type is "plan_completion_refused".
+	PlanCompletionRefused *RunEventPlanCompletionRefused
+	// PlanDriftDecided is set where type is "plan_drift_decided".
+	PlanDriftDecided *RunEventPlanDriftDecided
 }
 
 // UnmarshalJSON sets the one member the value decodes as.
@@ -5096,6 +5472,15 @@ func (v *RunEvent) UnmarshalJSON(data []byte) error {
 		case "plan_revised":
 			v.PlanRevised = new(RunEventPlanRevised)
 			return json.Unmarshal(data, v.PlanRevised)
+		case "plan_departed":
+			v.PlanDeparted = new(RunEventPlanDeparted)
+			return json.Unmarshal(data, v.PlanDeparted)
+		case "plan_completion_refused":
+			v.PlanCompletionRefused = new(RunEventPlanCompletionRefused)
+			return json.Unmarshal(data, v.PlanCompletionRefused)
+		case "plan_drift_decided":
+			v.PlanDriftDecided = new(RunEventPlanDriftDecided)
+			return json.Unmarshal(data, v.PlanDriftDecided)
 		}
 		return errorf("RunEvent: no member has type %q", tag)
 	}
@@ -5210,6 +5595,15 @@ func (v RunEvent) MarshalJSON() ([]byte, error) {
 	if v.PlanRevised != nil {
 		set = append(set, v.PlanRevised)
 	}
+	if v.PlanDeparted != nil {
+		set = append(set, v.PlanDeparted)
+	}
+	if v.PlanCompletionRefused != nil {
+		set = append(set, v.PlanCompletionRefused)
+	}
+	if v.PlanDriftDecided != nil {
+		set = append(set, v.PlanDriftDecided)
+	}
 	if len(set) != 1 {
 		return nil, errorf("RunEvent: %d members are set; a union holds exactly one", len(set))
 	}
@@ -5229,16 +5623,18 @@ func (v RunEvent) MarshalJSON() ([]byte, error) {
 // the run's events carry none; name the wire name the model called; tool the tool's own name at
 // its source; source its record; args the arguments the model sent. Closed.
 type RunEventApprovalRequested struct {
-	Type    string                     `json:"type"`
-	CallID  string                     `json:"callId"`
-	Name    string                     `json:"name"`
-	Tool    string                     `json:"tool"`
-	Source  ToolOfferSourceRecord      `json:"source"`
-	Args    map[string]json.RawMessage `json:"args"`
-	Version *int64                     `json:"version,omitzero"`
+	Type    string                         `json:"type"`
+	CallID  string                         `json:"callId"`
+	Name    *string                        `json:"name,omitzero"`
+	Tool    *string                        `json:"tool,omitzero"`
+	Source  *ToolOfferSourceRecord         `json:"source,omitzero"`
+	Args    map[string]json.RawMessage     `json:"args,omitzero"`
+	Version *int64                         `json:"version,omitzero"`
+	Purpose *string                        `json:"purpose,omitzero"`
+	Plan    *RunEventApprovalRequestedPlan `json:"plan,omitzero"`
 }
 
-var runEventApprovalRequestedMembers = []string{"type", "callId", "name", "tool", "source", "args", "version"}
+var runEventApprovalRequestedMembers = []string{"type", "callId", "name", "tool", "source", "args", "version", "purpose", "plan"}
 
 // UnmarshalJSON decodes a RunEventApprovalRequested object and refuses a member the closed schema does not name.
 func (v *RunEventApprovalRequested) UnmarshalJSON(data []byte) error {
@@ -5256,6 +5652,36 @@ func (v *RunEventApprovalRequested) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a RunEventApprovalRequested object.
 func (v RunEventApprovalRequested) MarshalJSON() ([]byte, error) {
 	type plain RunEventApprovalRequested
+	return encodeObject(plain(v), nil)
+}
+
+// From run-event.json#/$defs/approval_requested/properties/plan.
+type RunEventApprovalRequestedPlan struct {
+	Execution         string                    `json:"execution"`
+	Revision          string                    `json:"revision"`
+	CandidateRevision string                    `json:"candidateRevision"`
+	Explanation       string                    `json:"explanation"`
+	Departures        []CheckpointPlanDeparture `json:"departures"`
+}
+
+var runEventApprovalRequestedPlanMembers = []string{"execution", "revision", "candidateRevision", "explanation", "departures"}
+
+// UnmarshalJSON decodes a RunEventApprovalRequestedPlan object and refuses a member the closed schema does not name.
+func (v *RunEventApprovalRequestedPlan) UnmarshalJSON(data []byte) error {
+	type plain RunEventApprovalRequestedPlan
+	var p plain
+	extra, err := decodeObject(data, &p, runEventApprovalRequestedPlanMembers, true)
+	if err != nil {
+		return errorf("RunEventApprovalRequestedPlan: %w", err)
+	}
+	*v = RunEventApprovalRequestedPlan(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunEventApprovalRequestedPlan object.
+func (v RunEventApprovalRequestedPlan) MarshalJSON() ([]byte, error) {
+	type plain RunEventApprovalRequestedPlan
 	return encodeObject(plain(v), nil)
 }
 
@@ -6195,6 +6621,102 @@ func (v RunEventOutputGuarded) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From run-event.json#/$defs/plan_completion_refused.
+type RunEventPlanCompletionRefused struct {
+	Type      string  `json:"type"`
+	Version   *int64  `json:"version,omitzero"`
+	Execution string  `json:"execution"`
+	Revision  string  `json:"revision"`
+	Reason    string  `json:"reason"`
+	Step      *string `json:"step,omitzero"`
+}
+
+var runEventPlanCompletionRefusedMembers = []string{"type", "version", "execution", "revision", "reason", "step"}
+
+// UnmarshalJSON decodes a RunEventPlanCompletionRefused object and refuses a member the closed schema does not name.
+func (v *RunEventPlanCompletionRefused) UnmarshalJSON(data []byte) error {
+	type plain RunEventPlanCompletionRefused
+	var p plain
+	extra, err := decodeObject(data, &p, runEventPlanCompletionRefusedMembers, true)
+	if err != nil {
+		return errorf("RunEventPlanCompletionRefused: %w", err)
+	}
+	*v = RunEventPlanCompletionRefused(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunEventPlanCompletionRefused object.
+func (v RunEventPlanCompletionRefused) MarshalJSON() ([]byte, error) {
+	type plain RunEventPlanCompletionRefused
+	return encodeObject(plain(v), nil)
+}
+
+// From run-event.json#/$defs/plan_departed.
+type RunEventPlanDeparted struct {
+	Type             string                    `json:"type"`
+	Version          *int64                    `json:"version,omitzero"`
+	Execution        string                    `json:"execution"`
+	Revision         string                    `json:"revision"`
+	AcceptedRevision string                    `json:"acceptedRevision"`
+	Explanation      string                    `json:"explanation"`
+	Departures       []CheckpointPlanDeparture `json:"departures"`
+}
+
+var runEventPlanDepartedMembers = []string{"type", "version", "execution", "revision", "acceptedRevision", "explanation", "departures"}
+
+// UnmarshalJSON decodes a RunEventPlanDeparted object and refuses a member the closed schema does not name.
+func (v *RunEventPlanDeparted) UnmarshalJSON(data []byte) error {
+	type plain RunEventPlanDeparted
+	var p plain
+	extra, err := decodeObject(data, &p, runEventPlanDepartedMembers, true)
+	if err != nil {
+		return errorf("RunEventPlanDeparted: %w", err)
+	}
+	*v = RunEventPlanDeparted(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunEventPlanDeparted object.
+func (v RunEventPlanDeparted) MarshalJSON() ([]byte, error) {
+	type plain RunEventPlanDeparted
+	return encodeObject(plain(v), nil)
+}
+
+// From run-event.json#/$defs/plan_drift_decided.
+type RunEventPlanDriftDecided struct {
+	Type              string  `json:"type"`
+	Version           *int64  `json:"version,omitzero"`
+	Execution         string  `json:"execution"`
+	CallID            string  `json:"callId"`
+	Revision          string  `json:"revision"`
+	CandidateRevision string  `json:"candidateRevision"`
+	Approved          bool    `json:"approved"`
+	Note              *string `json:"note,omitzero"`
+}
+
+var runEventPlanDriftDecidedMembers = []string{"type", "version", "execution", "callId", "revision", "candidateRevision", "approved", "note"}
+
+// UnmarshalJSON decodes a RunEventPlanDriftDecided object and refuses a member the closed schema does not name.
+func (v *RunEventPlanDriftDecided) UnmarshalJSON(data []byte) error {
+	type plain RunEventPlanDriftDecided
+	var p plain
+	extra, err := decodeObject(data, &p, runEventPlanDriftDecidedMembers, true)
+	if err != nil {
+		return errorf("RunEventPlanDriftDecided: %w", err)
+	}
+	*v = RunEventPlanDriftDecided(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunEventPlanDriftDecided object.
+func (v RunEventPlanDriftDecided) MarshalJSON() ([]byte, error) {
+	type plain RunEventPlanDriftDecided
+	return encodeObject(plain(v), nil)
+}
+
 // From run-event.json#/$defs/plan_revised.
 type RunEventPlanRevised struct {
 	Type        string                 `json:"type"`
@@ -6674,6 +7196,58 @@ func (v *RunEventUserQuestion) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a RunEventUserQuestion object.
 func (v RunEventUserQuestion) MarshalJSON() ([]byte, error) {
 	type plain RunEventUserQuestion
+	return encodeObject(plain(v), nil)
+}
+
+// From run-report.json. Version 1 canonical presentation of recorded terminal checkpoint facts.
+// Arrays retain their recorded order; absent optional data stays absent. No inferred totals,
+// timings, prices, or provider facts. A pure projector and a bounded validated-prefix builder
+// produce the same report.
+type RunReport struct {
+	Version           int64                       `json:"version"`
+	CheckpointVersion int64                       `json:"checkpointVersion"`
+	ID                string                      `json:"id"`
+	Phase             string                      `json:"phase"`
+	Status            string                      `json:"status"`
+	Unit              string                      `json:"unit"`
+	Used              int64                       `json:"used"`
+	Limit             int64                       `json:"limit"`
+	RequestCap        *int64                      `json:"requestCap,omitzero"`
+	Grants            []CheckpointGrant           `json:"grants"`
+	Reason            *string                     `json:"reason,omitzero"`
+	Explanation       string                      `json:"explanation"`
+	Prompts           []ProvenancePromptDigest    `json:"prompts,omitzero"`
+	Sources           []ProvenanceSourceFigures   `json:"sources,omitzero"`
+	SourceIdentities  []CheckpointSourceIdentity  `json:"sourceIdentities,omitzero"`
+	Skills            []ProvenanceSkillLoad       `json:"skills,omitzero"`
+	Critic            *CheckpointCritic           `json:"critic,omitzero"`
+	Delegation        *ProvenanceDelegationReport `json:"delegation,omitzero"`
+	Usage             *Usage                      `json:"usage,omitzero"`
+	ChildUsage        []CheckpointChildUsageItem  `json:"childUsage,omitzero"`
+	Failover          []CheckpointFailoverItem    `json:"failover,omitzero"`
+	Completions       []Provenance                `json:"completions,omitzero"`
+	Plan              []CheckpointTaskStep        `json:"plan"`
+	PlanState         *CheckpointPlanState        `json:"planState,omitzero"`
+}
+
+var runReportMembers = []string{"version", "checkpointVersion", "id", "phase", "status", "unit", "used", "limit", "requestCap", "grants", "reason", "explanation", "prompts", "sources", "sourceIdentities", "skills", "critic", "delegation", "usage", "childUsage", "failover", "completions", "plan", "planState"}
+
+// UnmarshalJSON decodes a RunReport object and refuses a member the closed schema does not name.
+func (v *RunReport) UnmarshalJSON(data []byte) error {
+	type plain RunReport
+	var p plain
+	extra, err := decodeObject(data, &p, runReportMembers, true)
+	if err != nil {
+		return errorf("RunReport: %w", err)
+	}
+	*v = RunReport(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunReport object.
+func (v RunReport) MarshalJSON() ([]byte, error) {
+	type plain RunReport
 	return encodeObject(plain(v), nil)
 }
 

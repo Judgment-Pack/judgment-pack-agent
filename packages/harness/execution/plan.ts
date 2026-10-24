@@ -2,11 +2,21 @@ import {canonicalJSON} from '../context/chat'
 import {sha256} from '../records'
 import {toolInputFailure} from '../failures'
 import type {TaskStep} from './state'
+import {validRecordedStep,validPlanExtensions} from './planActions'
 
 export const PLAN_HISTORY_LIMIT=32, PLAN_DIFF_LIMIT=40, PLAN_STEP_LIMIT=20
 export interface PlanChange {id:string;kind:'added'|'removed'|'changed'|'status'|'reordered';before?:TaskStep;after?:TaskStep;from?:number;to?:number}
 export interface PlanRevision {sequence:number;previous:string;revision:string;explanation:string;diff:PlanChange[]}
-export interface PlanState {revision:string;sequence:number;nextId:number;discarded:number;history:PlanRevision[]}
+export type DepartureKind='added'|'removed'|'changed'|'reordered'
+export interface PlanOrigin {plan:string;revision:string;index:number}
+export interface StepEvidence {operations:string[];artifacts:{kind:'artifact'|'dialect';id:string;digest:string}[]}
+export interface AcceptedPlan {id:string;revision:string;sourceRevision:number;objective:string;steps:string[];references:import('../planning/model').PlanReference[];validatedReferences:import('../planning/model').CurrentPlanReference[];acceptedAt:string}
+export interface Departure {kind:DepartureKind;step:string;index?:number}
+export type CompletionRefusal='invalid-input'|'active-step-required'|'revision-changed'|'evidence-unavailable'|'missing-evidence'|'unknown-operation'|'unsuccessful-operation'|'unobserved-revision'|'wrong-scope'
+export interface PlanRefusal {revision:string;reason:CompletionRefusal;step?:string}
+export interface PendingDeparture {purpose:'plan-drift';callId:string;revision:string;candidate:IdentifiedPlan;explanation:string;departures:Departure[]}
+export interface PlanDecision {callId:string;revision:string;candidateRevision:string;approved:boolean;note?:string}
+export interface PlanState {decisions?:PlanDecision[];decisionsDiscarded?:number;revision:string;sequence:number;nextId:number;discarded:number;history:PlanRevision[];accepted?:AcceptedPlan;driftPolicy?:DepartureKind[];departures?:{revision:string;explanation:string;changes:Departure[]}[];departuresDiscarded?:number;pending?:PendingDeparture;refusals?:PlanRefusal[];refusalsDiscarded?:number}
 export interface IdentifiedPlan {plan:TaskStep[];planState:PlanState}
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v)
 const count=(v:unknown,min=0):v is number=>Number.isSafeInteger(v)&&Number(v)>=min
@@ -22,11 +32,13 @@ export function identifyPlan(plan:TaskStep[],saved?:PlanState):IdentifiedPlan{
  return {plan:steps,planState:{revision:planDigest(steps),sequence:0,nextId:steps.length+1,discarded:0,history:[]}}
 }
 /** Pure candidate construction: every check finishes before either checkpoint or history changes. */
-export function revisePlan(current:IdentifiedPlan,incoming:TaskStep[],explanation:string):IdentifiedPlan{
+export function revisePlan(current:IdentifiedPlan,incoming:TaskStep[],explanation:string,closure=false):IdentifiedPlan{
  const state=structuredClone(current.planState),old=new Map(current.plan.map((s,i)=>[s.id!,{s,i}]))
- if(state.sequence>=Number.MAX_SAFE_INTEGER||state.nextId>Number.MAX_SAFE_INTEGER-incoming.length)throw refusal()
+ if(state.sequence>=Number.MAX_SAFE_INTEGER||state.nextId>Number.MAX_SAFE_INTEGER-incoming.filter(step=>step.id===undefined).length)throw refusal()
  const seen=new Set<string>(),plan=incoming.map(input=>{
   if(input.id!==undefined&&(!old.has(input.id)||seen.has(input.id)))throw refusal()
+  const prior=input.id===undefined?undefined:old.get(input.id)?.s
+  if(!closure&&(input.status==='completed'||input.status==='not-needed'||prior?.status==='completed'||prior?.status==='not-needed')&&(!prior||input.status!==prior.status||input.step!==prior.step||input.detail!==prior.detail))throw toolInputFailure('PlanCompletionActionRequired: terminal work is closed with complete_plan_step; the plan was left untouched.')
   const id=input.id??`step-${state.nextId++}`;seen.add(id)
   // Existing package-owned members survive. Input is closed by the tool's reader/schema.
   const step={...(old.get(id)?.s??{}),...structuredClone(input),id};if(input.detail===undefined)delete step.detail;return step
@@ -47,11 +59,11 @@ export function revisePlan(current:IdentifiedPlan,incoming:TaskStep[],explanatio
  if(state.history.length>PLAN_HISTORY_LIMIT){state.history.shift();state.discarded++}
  return {plan,planState:{...state,revision,sequence}}
 }
-function validHistoryStep(value:unknown,id:string):boolean{return object(value)&&value.id===id&&typeof value.step==='string'&&!!value.step.trim()&&value.step.length<=1000&&['pending','in_progress','completed'].includes(String(value.status))&&(value.detail===undefined||typeof value.detail==='string'&&value.detail.length<=1500)}
-function validChange(value:unknown,nextId:number):boolean{
+function validHistoryStep(value:unknown,id:string,accepted?:AcceptedPlan):boolean{return object(value)&&value.id===id&&typeof value.step==='string'&&!!value.step.trim()&&value.step.length<=1000&&validRecordedStep(value)&&(value.origin===undefined||accepted!==undefined&&object(value.origin)&&value.origin.plan===accepted.id&&value.origin.revision===accepted.revision&&Number(value.origin.index)<accepted.steps.length)&&['pending','in_progress','completed','not-needed'].includes(String(value.status))&&(value.detail===undefined||typeof value.detail==='string'&&value.detail.length<=1500)}
+function validChange(value:unknown,nextId:number,accepted?:AcceptedPlan):boolean{
  if(!object(value)||!planStepId(value.id)||Number(value.id.slice(5))>=nextId)return false
  const position=(v:unknown)=>count(v)&&v<PLAN_STEP_LIMIT
- const before=value.before===undefined||validHistoryStep(value.before,value.id),after=value.after===undefined||validHistoryStep(value.after,value.id)
+ const before=value.before===undefined||validHistoryStep(value.before,value.id,accepted),after=value.after===undefined||validHistoryStep(value.after,value.id,accepted)
  if(!before||!after)return false
  switch(value.kind){
   case 'added':return value.after!==undefined&&value.before===undefined&&position(value.to)&&value.from===undefined
@@ -63,11 +75,11 @@ function validChange(value:unknown,nextId:number):boolean{
 }
 /** Semantic continuity supplements the closed current record graph and generated schema. */
 export function validPlanState(plan:TaskStep[],value:unknown):value is PlanState{
- if(value===undefined)return plan.every(step=>step.id===undefined)
- if(!object(value)||!digest(value.revision)||!count(value.sequence)||!count(value.nextId,1)||!count(value.discarded)||!Array.isArray(value.history)||value.history.length>PLAN_HISTORY_LIMIT||value.discarded+value.history.length!==value.sequence||value.history.length!==Math.min(value.sequence,PLAN_HISTORY_LIMIT)||value.revision!==planDigest(plan)||new Set(plan.map(s=>s.id)).size!==plan.length||!plan.every(s=>planStepId(s.id)&&Number(s.id.slice(5))<Number(value.nextId)))return false
+ if(value===undefined)return plan.every(step=>step.id===undefined&&step.origin===undefined&&step.evidence===undefined&&step.notNeededReason===undefined&&step.status!=='not-needed')
+ if(!object(value)||!validPlanExtensions(plan,value)||!digest(value.revision)||!count(value.sequence)||!count(value.nextId,1)||!count(value.discarded)||!Array.isArray(value.history)||value.history.length>PLAN_HISTORY_LIMIT||value.discarded+value.history.length!==value.sequence||value.history.length!==Math.min(value.sequence,PLAN_HISTORY_LIMIT)||value.revision!==planDigest(plan)||new Set(plan.map(s=>s.id)).size!==plan.length||!plan.every(s=>planStepId(s.id)&&Number(s.id.slice(5))<Number(value.nextId)))return false
  let previous:string|undefined
  for(const [i,row] of value.history.entries()){
-  if(!object(row)||row.sequence!==value.discarded+i+1||!digest(row.previous)||!digest(row.revision)||previous!==undefined&&row.previous!==previous||typeof row.explanation!=='string'||row.explanation.length>2000||!Array.isArray(row.diff)||row.diff.length>PLAN_DIFF_LIMIT||!row.diff.every(d=>validChange(d,value.nextId as number)))return false
+  if(!object(row)||row.sequence!==value.discarded+i+1||!digest(row.previous)||!digest(row.revision)||previous!==undefined&&row.previous!==previous||typeof row.explanation!=='string'||row.explanation.length>2000||!Array.isArray(row.diff)||row.diff.length>PLAN_DIFF_LIMIT||!row.diff.every(d=>validChange(d,value.nextId as number,value.accepted as AcceptedPlan|undefined)))return false
   previous=row.revision
  }
  return value.history.length===0||previous===value.revision

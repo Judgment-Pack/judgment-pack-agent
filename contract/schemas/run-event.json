@@ -44,7 +44,10 @@
         "connection_switched",
         "usage",
         "recorded",
-        "plan_revised"
+        "plan_revised",
+        "plan_departed",
+        "plan_completion_refused",
+        "plan_drift_decided"
       ]
     }
   },
@@ -153,6 +156,15 @@
     },
     {
       "$ref": "#/$defs/plan_revised"
+    },
+    {
+      "$ref": "#/$defs/plan_departed"
+    },
+    {
+      "$ref": "#/$defs/plan_completion_refused"
+    },
+    {
+      "$ref": "#/$defs/plan_drift_decided"
     }
   ],
   "$defs": {
@@ -271,11 +283,7 @@
       "type": "object",
       "required": [
         "type",
-        "callId",
-        "name",
-        "tool",
-        "source",
-        "args"
+        "callId"
       ],
       "properties": {
         "type": {
@@ -303,9 +311,108 @@
         "version": {
           "const": 1,
           "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        },
+        "purpose": {
+          "enum": [
+            "tool-call",
+            "plan-drift"
+          ]
+        },
+        "plan": {
+          "type": "object",
+          "properties": {
+            "execution": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "revision": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            "candidateRevision": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            "explanation": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "departures": {
+              "type": "array",
+              "maxItems": 40,
+              "items": {
+                "$ref": "checkpoint.json#/$defs/planDeparture"
+              }
+            }
+          },
+          "required": [
+            "execution",
+            "revision",
+            "candidateRevision",
+            "explanation",
+            "departures"
+          ],
+          "additionalProperties": false
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "purpose": {
+                "const": "plan-drift"
+              }
+            },
+            "required": [
+              "purpose"
+            ]
+          },
+          "then": {
+            "required": [
+              "plan"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "name"
+                  ]
+                },
+                {
+                  "required": [
+                    "tool"
+                  ]
+                },
+                {
+                  "required": [
+                    "source"
+                  ]
+                },
+                {
+                  "required": [
+                    "args"
+                  ]
+                }
+              ]
+            }
+          },
+          "else": {
+            "required": [
+              "name",
+              "tool",
+              "source",
+              "args"
+            ],
+            "not": {
+              "required": [
+                "plan"
+              ]
+            }
+          }
+        }
+      ]
     },
     "skill_loaded": {
       "description": "A skill loaded (ADR-0009): the model's load_skill call loaded it, between that call and its result. skill names it (tool-offer.json#/$defs/loadedSkill: id, name, source record, digest; never its instructions); bytes is what it counts against skillBytes (skill.json#/$defs/bytes). The checkpoint's skills carries it from here.",
@@ -596,7 +703,8 @@
             "failover refused",
             "record refused",
             "record version unsupported",
-            "record member unsupported"
+            "record member unsupported",
+            "plan update refused"
           ]
         },
         "version": {
@@ -1385,6 +1493,140 @@
         "revision",
         "explanation",
         "diff"
+      ],
+      "additionalProperties": false
+    },
+    "plan_departed": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "plan_departed"
+        },
+        "version": {
+          "const": 1
+        },
+        "execution": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "acceptedRevision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "explanation": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "departures": {
+          "type": "array",
+          "maxItems": 40,
+          "items": {
+            "$ref": "checkpoint.json#/$defs/planDeparture"
+          }
+        }
+      },
+      "required": [
+        "type",
+        "execution",
+        "revision",
+        "acceptedRevision",
+        "explanation",
+        "departures"
+      ],
+      "additionalProperties": false
+    },
+    "plan_completion_refused": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "plan_completion_refused"
+        },
+        "version": {
+          "const": 1
+        },
+        "execution": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "reason": {
+          "enum": [
+            "invalid-input",
+            "active-step-required",
+            "revision-changed",
+            "evidence-unavailable",
+            "missing-evidence",
+            "unknown-operation",
+            "unsuccessful-operation",
+            "unobserved-revision",
+            "wrong-scope"
+          ]
+        },
+        "step": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "type",
+        "execution",
+        "revision",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "plan_drift_decided": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "plan_drift_decided"
+        },
+        "version": {
+          "const": 1
+        },
+        "execution": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "callId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "candidateRevision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "approved": {
+          "type": "boolean"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "type",
+        "execution",
+        "callId",
+        "revision",
+        "candidateRevision",
+        "approved"
       ],
       "additionalProperties": false
     }

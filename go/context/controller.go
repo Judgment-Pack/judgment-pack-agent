@@ -17,7 +17,7 @@ import (
 )
 
 // ExecutionInstructions is the stable part of the execution guidance (EXECUTION_INSTRUCTIONS).
-const ExecutionInstructions = "TASK EXECUTION: For work requiring several stages, use update_plan to track concrete pending, in_progress and completed steps. Skip planning overhead for simple replies. Use the current accepted plan when present; do not repeatedly re-plan or ask the user to repeat an already authorized request. Update progress at meaningful boundaries, and preserve completed work across continuation. A task list is working state, not approval or proof: mark a step complete only when its required result exists, and distinguish a proposed change from a saved change. Keep a multi-stage task plan current; it estimates work but cannot grant more requests. An unsaved working object remains in the exact arguments of its completed operations. Continue from those retained arguments after validation or evaluation; rereading the saved workspace does not retrieve an unsaved proposal. Recheck the saved revision before applying changes. Use tool results already obtained; do not reread unchanged instructions or schemas or scan the entire conversation. On continuation, inspect the latest completed result and its exact arguments before doing more work. A newer saved workspace object takes precedence over an older chat draft when editing that object; preserve its identity. For a focused change, inspect the relevant contract once, make the smallest proposal, verify the affected behavior and return it. Do not restart discovery after context compaction. Before repeating a failed read, correct its arguments using the current context index. If blocked, state the exact missing information. When requests run low, finish the concrete result or call request_budget_increase with the reason and next concrete step. Desk owns budget extensions; this tool requests but never grants one. Never modify expected tests merely to match actual results. Current user instructions and host permissions remain authoritative."
+const ExecutionInstructions = "TASK EXECUTION: For work requiring several stages, use update_plan to track concrete pending and in_progress steps. Close the active step with complete_plan_step and exact planRevision, using acknowledged operation ids or artifact observations; use not-needed with a reason for unnecessary work. update_plan may carry existing terminal rows unchanged. A plan decision applies only to its proposed task-list change and cannot approve a host action. Skip planning overhead for simple replies. Use the current accepted plan when present; do not repeatedly re-plan or ask the user to repeat an already authorized request. Update progress at meaningful boundaries, and preserve completed work across continuation. A task list is working state, not approval or proof: mark a step complete only when its required result exists, and distinguish a proposed change from a saved change. Keep a multi-stage task plan current; it estimates work but cannot grant more requests. An unsaved working object remains in the exact arguments of its completed operations. Continue from those retained arguments after validation or evaluation; rereading the saved workspace does not retrieve an unsaved proposal. Recheck the saved revision before applying changes. Use tool results already obtained; do not reread unchanged instructions or schemas or scan the entire conversation. On continuation, inspect the latest completed result and its exact arguments before doing more work. A newer saved workspace object takes precedence over an older chat draft when editing that object; preserve its identity. For a focused change, inspect the relevant contract once, make the smallest proposal, verify the affected behavior and return it. Do not restart discovery after context compaction. Before repeating a failed read, correct its arguments using the current context index. If blocked, state the exact missing information. When requests run low, finish the concrete result or call request_budget_increase with the reason and next concrete step. Desk owns budget extensions; this tool requests but never grants one. Never modify expected tests merely to match actual results. Current user instructions and host permissions remain authoritative."
 
 // ToolAllowance is a tool-call cap as the request state states it (agent#13): response, a parent's
 // and its children's together; task, one child's.
@@ -67,7 +67,7 @@ type Execution struct {
 	RequestCap  *int
 	Grants      []contract.CheckpointGrant
 	Plan        *Value
- PlanState *Value
+	PlanState   *Value
 	Explanation string
 	Operations  []*Operation
 	Completions []contract.Provenance
@@ -135,8 +135,10 @@ func (e *Execution) Value() *Value {
 		"phase", String(e.Phase), "status", String(e.Status), "unit", String(e.Unit),
 		"used", Number(float64(e.Used)), "limit", Number(float64(e.Limit)), "grants", grants,
 		"plan", orArray(e.Plan), "explanation", String(e.Explanation), "operations", operations)
-	if e.PlanState != nil { out.Set("planState",e.PlanState) }
- if e.RequestCap != nil {
+	if e.PlanState != nil {
+		out.Set("planState", e.PlanState)
+	}
+	if e.RequestCap != nil {
 		out.Set("requestCap", Number(float64(*e.RequestCap)))
 	}
 	if e.Completions != nil {
@@ -379,13 +381,15 @@ type ExecutionController struct {
 	// state written first; "" for none.
 	ApprovalStep string
 
-	planMu sync.Mutex
- PlanRefused func()
- PublishPlan func(context.Context,contract.Checkpoint,contract.RunEvent)(contract.RunEvent,error)
- session  Session
-	ledger   *ContextLedger
-	restored bool
-	attempt  int
+	planMu            sync.Mutex
+	PlanRefused       func()
+	PlanProof         func() (*DurableBook, DurableScope)
+	planDecisionEvent *contract.RunEvent
+	PublishPlan       func(context.Context, contract.Checkpoint, contract.RunEvent) (contract.RunEvent, error)
+	session           Session
+	ledger            *ContextLedger
+	restored          bool
+	attempt           int
 	// criticMu is the switch's lock: it also guards operation writers and snapshot serialisation.
 	criticMu *sync.Mutex
 
@@ -423,7 +427,11 @@ func NewExecutionController(session Session, ledger *ContextLedger, members Poli
 
 // Initialize is initialize: the state a new response starts from, or a saved one resumed, held to
 // the same request, phase and connection type.
-func (c *ExecutionController) Initialize() error {
+func (c *ExecutionController) Initialize(contexts ...context.Context) error {
+	ctx := context.Background()
+	if len(contexts) > 0 {
+		ctx = contexts[0]
+	}
 	requestCap := 0
 	if c.session.Context != nil && c.session.Context.RequestCap != nil {
 		requestCap = *c.session.Context.RequestCap
@@ -482,6 +490,22 @@ func (c *ExecutionController) Initialize() error {
 		if saved.RequestKey != requestKey || saved.Phase != phase {
 			return failure.ToolInput("The request or execution phase changed. Start a new response with the current context.")
 		}
+		if saved.PlanState != nil {
+			raw, _ := json.Marshal(saved.PlanState)
+			ps, _ := ParseJSON(raw)
+			for _, ref := range ps.Get("accepted").Get("references").Items() {
+				if c.session.Context == nil || c.session.Context.PlanResolver == nil {
+					return failure.ToolInput("PlanResolverRequired: verify accepted references before work.")
+				}
+				var pin PlanReference
+				if err := json.Unmarshal(ref.JSON(), &pin); err != nil {
+					return err
+				}
+				if _, err := ResolvePlanReference(ctx, pin, *c.session.Context.PlanResolver); err != nil {
+					return err
+				}
+			}
+		}
 		// ADR-0008: a paused act call continues only with the person's decision for that call.
 		var decision *contract.CheckpointApprovalDecision
 		if c.session.Context != nil {
@@ -489,6 +513,21 @@ func (c *ExecutionController) Initialize() error {
 		}
 		if decision != nil && (decision.CallID == "" || U16Length(decision.CallID) > 256 || decision.Note != nil && U16Length(*decision.Note) > 2000) {
 			return failure.Authored("configuration", "The approval decision is not one this package reads: a callId, approved, and an optional note of at most 2,000 characters. Nothing was decided or run.", "context")
+		}
+		if c.session.Context != nil && c.session.Context.Plan != nil && saved.PlanState != nil {
+			raw, _ := json.Marshal(saved.PlanState)
+			state, _ := ParseJSON(raw)
+			accepted := state.Get("accepted")
+			if accepted != nil && (planText(c.session.Context.Plan.Get("id")) != planText(accepted.Get("id")) || planNumber(c.session.Context.Plan.Get("revision")) != planNumber(accepted.Get("sourceRevision")) || planText(c.session.Context.Plan.Get("acceptedAt")) != planText(accepted.Get("acceptedAt")) || !oneOf(c.session.Context.Plan.Get("status"), "accepted", "started") || !c.session.Context.Plan.Get("questions").IsArray() || c.session.Context.Plan.Get("questions").Len() != 0 || acceptedPlanDigest(c.session.Context.Plan) != planText(accepted.Get("revision"))) {
+				return failure.ToolInput("PlanAcceptanceChanged: resume with the original accepted plan.")
+			}
+		}
+		handled, err := c.restorePlanDecision(saved, decision)
+		if err != nil {
+			return err
+		}
+		if handled {
+			decision = nil
 		}
 		asked := saved.Approval != nil && saved.Approval.State == "asked"
 		if decision != nil && (saved.Approval == nil || decision.CallID != saved.Approval.CallID) {
@@ -557,8 +596,8 @@ func (c *ExecutionController) Initialize() error {
 			}
 			_ = c.MutateCheckpoint(CheckpointPatch{"Approval": &held})
 		}
-        plan,planState:=identifyPlan(c.State().Plan,c.State().PlanState)
-        return c.MutateCheckpoint(CheckpointPatch{"Version":contract.CheckpointVersion,"Plan":plan,"PlanState":planState})
+		plan, planState := identifyPlan(c.State().Plan, c.State().PlanState)
+		return c.MutateCheckpoint(CheckpointPatch{"Version": contract.CheckpointVersion, "Plan": plan, "PlanState": planState})
 	}
 	var capPointer *int
 	if requestCap != 0 {
@@ -584,14 +623,17 @@ func (c *ExecutionController) Initialize() error {
 			c.MutateCheckpoint(CheckpointPatch{"Plan": steps})
 		}
 	}
- plan,planState:=identifyPlan(c.State().Plan,c.State().PlanState)
- return c.MutateCheckpoint(CheckpointPatch{"Version":contract.CheckpointVersion,"Plan":plan,"PlanState":planState})
+	plan, planState := identifyPlan(c.State().Plan, c.State().PlanState)
+	if err := c.MutateCheckpoint(CheckpointPatch{"Version": contract.CheckpointVersion, "Plan": plan, "PlanState": planState}); err != nil {
+		return err
+	}
+	return c.seedAcceptedPlan(ctx)
 }
 
 // ApprovalAsked reports an act call of this run waiting for the person's decision (ADR-0008): no
 // request is sent while one does.
 func (c *ExecutionController) ApprovalAsked() bool {
-	return c.State().Approval != nil && c.State().Approval.State == "asked"
+	return c.State().PlanState.Has("pending") || c.State().Approval != nil && c.State().Approval.State == "asked"
 }
 
 // QueueSteers accepts the person's input into the checkpointed queue without placing it in a request.
@@ -912,8 +954,15 @@ func (c *ExecutionController) RequestState() string {
 			"limit", Number(float64(tools.Limit)), "remaining", Number(float64(remaining)),
 			"scope", String(tools.Scope), "note", String(note)))
 	}
-	state.Set("tasks", orArray(c.State().Plan))
- if c.State().PlanState!=nil{state.Set("planRevision",c.State().PlanState.Get("revision"));state.Set("planSequence",c.State().PlanState.Get("sequence"))}
+	state.Set("tasks", MustParseJSON(CanonicalJSON(orArray(c.State().Plan))))
+	state.Set("planEvidence", c.availablePlanEvidence())
+	if rows := c.State().PlanState.Get("decisions"); rows.Len() > 0 {
+		state.Set("planDecision", MustParseJSON(CanonicalJSON(rows.Items()[rows.Len()-1])))
+	}
+	if c.State().PlanState != nil {
+		state.Set("planRevision", c.State().PlanState.Get("revision"))
+		state.Set("planSequence", c.State().PlanState.Get("sequence"))
+	}
 	state.Set("explanation", String(c.State().Explanation))
 	if c.operationsReference != nil {
 		state.Set("retainedOperations", c.operationsReference)
@@ -1244,9 +1293,9 @@ func (c *ExecutionController) Tool() HostTool {
 				"plan", ObjectOf("type", String("array"), "minItems", Number(1), "maxItems", Number(20),
 					"items", ObjectOf("type", String("object"),
 						"properties", ObjectOf(
- "id",ObjectOf("type",String("string"),"pattern",String("^step-[1-9][0-9]{0,15}$")),
+							"id", ObjectOf("type", String("string"), "pattern", String("^step-[1-9][0-9]{0,15}$")),
 							"step", ObjectOf("type", String("string"), "maxLength", Number(1000)),
-							"status", ObjectOf("type", String("string"), "enum", Array(String("pending"), String("in_progress"), String("completed"))),
+							"status", ObjectOf("type", String("string"), "enum", Array(String("pending"), String("in_progress"), String("completed"), String("not-needed"))),
 							"detail", ObjectOf("type", String("string"), "maxLength", Number(1500))),
 						"required", Array(String("step"), String("status")),
 						"additionalProperties", Bool(false)))),
@@ -1258,20 +1307,50 @@ func (c *ExecutionController) Tool() HostTool {
 			}
 			args, err := ParseJSON(raw)
 			if err != nil {
-				if c.PlanRefused!=nil{c.PlanRefused()};return ToolResult{}, failure.ToolInput(planRefused)
+				if c.PlanRefused != nil {
+					c.PlanRefused()
+				}
+				return ToolResult{}, failure.ToolInput(planRefused)
 			}
 			explanation := args.Get("explanation")
-			if !ValidTaskSteps(args.Get("plan")) || !explanation.IsString() || U16Length(explanation.Str()) > 2000 {
-				if c.PlanRefused!=nil{c.PlanRefused()};return ToolResult{}, failure.ToolInput(planRefused)
+			if !hasOnly(args, "explanation", "plan") || !validPlanInput(args.Get("plan")) || !explanation.IsString() || U16Length(explanation.Str()) > 2000 {
+				if c.PlanRefused != nil {
+					c.PlanRefused()
+				}
+				return ToolResult{}, failure.ToolInput(planRefused)
 			}
-			c.planMu.Lock();defer c.planMu.Unlock()
-            plan,state:=identifyPlan(c.State().Plan,c.State().PlanState)
-            plan,state,err=revisePlan(plan,state,args.Get("plan"),explanation.Str());if err!=nil{if c.PlanRefused!=nil{c.PlanRefused()};return ToolResult{},err}
-            if err=c.MutateCheckpoint(CheckpointPatch{"Plan":plan,"PlanState":state,"Explanation":explanation.Str()});err!=nil{return ToolResult{},err}
-            row:=state.Get("history").Items()[state.Get("history").Len()-1].Clone();row.Set("type",String("plan_revised"));row.Set("execution",String(c.State().ID));row.Set("version",Number(1))
-            var event contract.RunEvent;if err=json.Unmarshal(row.JSON(),&event);err!=nil{return ToolResult{},err}
-            if c.PublishPlan!=nil{snapshot,e:=c.Snapshot("");if e!=nil{return ToolResult{},e};if _,e=c.PublishPlan(ctx,snapshot,event);e!=nil{return ToolResult{},e}}
-			out := ObjectOf("status", String("progress-recorded"), "plan", c.State().Plan,"planRevision",state.Get("revision"),"planSequence",state.Get("sequence"))
+			c.planMu.Lock()
+			defer c.planMu.Unlock()
+			if c.State().PlanState.Has("pending") {
+				return ToolResult{}, failure.ToolInput("PlanApprovalRequired: this run waits for its plan decision.")
+			}
+			for _, s := range args.Get("plan").Items() {
+				if !hasOnly(s, "id", "step", "status", "detail") {
+					return ToolResult{}, planIdentityRefused()
+				}
+			}
+			plan, state := identifyPlan(c.State().Plan, c.State().PlanState)
+			plan, state, err = revisePlan(plan, state, args.Get("plan"), explanation.Str())
+			if err != nil {
+				if c.PlanRefused != nil {
+					c.PlanRefused()
+				}
+				return ToolResult{}, err
+			}
+			row := state.Get("history").Items()[state.Get("history").Len()-1]
+			event, e := planEvent("plan_revised", c.State().ID, row)
+			if e != nil {
+				return ToolResult{}, e
+			}
+			if e = c.applyPlan(ctx, plan, state, explanation.Str(), event); e != nil {
+				return ToolResult{}, e
+			}
+			status := "progress-recorded"
+			if c.State().PlanState.Has("pending") {
+				status = "approval-required"
+			}
+
+			out := ObjectOf("status", String(status), "plan", c.State().Plan, "planRevision", c.State().PlanState.Get("revision"), "planSequence", c.State().PlanState.Get("sequence"))
 			if c.State().Unit == "model-requests" {
 				out.Set("remaining", Number(float64(c.Remaining())))
 			} else {

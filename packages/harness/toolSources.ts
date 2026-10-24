@@ -147,7 +147,7 @@ const WIRE_LIMIT = 64
 export const HELD_NAMES: ReadonlySet<string> = new Set([
   ...ASSISTANT_TOOLS,
   ...Object.keys(REFUSED_RUNTIME_TOOLS),
-  'list_context', 'read_context', 'read_window', 'search', 'update_plan', 'request_budget_increase',
+  'list_context', 'read_context', 'read_window', 'search', 'update_plan', 'complete_plan_step', 'request_budget_increase',
   LOAD_TOOL,
   'remember', 'propose_edit', 'propose_delete', 'propose_insert', 'undo_edit',
   'load_skill',

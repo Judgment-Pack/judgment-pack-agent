@@ -45,9 +45,31 @@ func (e *Entry) Retained() contract.CheckpointRetainedEntry {
 	return out
 }
 
+// retainedRepresentation validates the explicitly paired v2 JSON source without changing legacy text.
+func retainedRepresentation(value *Value, source *string) (*Value, string, error) {
+	if source == nil {
+		return value, value.Text(), nil
+	}
+	refuse := func() (*Value, string, error) {
+		return nil, "", failure.ToolInput("Saved context no longer matches its recorded digest. Start with current objects.")
+	}
+	if value == nil || UTF8Bytes(*source) > StorageRecordBytes {
+		return refuse()
+	}
+	parsed, err := ParseJSON([]byte(*source))
+	if err != nil || parsed.Text() != *source || CanonicalJSON(parsed) != CanonicalJSON(value) {
+		return refuse()
+	}
+	return parsed, *source, nil
+}
+
 // EntryOf is one entry read back from a checkpoint.
 func EntryOf(held contract.CheckpointRetainedEntry) (*Entry, error) {
 	value, err := ParseJSON(held.Value)
+	if err != nil {
+		return nil, err
+	}
+	value, _, err = retainedRepresentation(value, held.ValueJSON)
 	if err != nil {
 		return nil, err
 	}

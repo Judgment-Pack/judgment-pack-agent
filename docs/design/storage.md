@@ -105,3 +105,19 @@ acknowledged `released` checkpoint, resume refuses `ProviderReleaseUnknown` rath
 the intent. Removing persistence while restoring a durable checkpoint refuses
 `ContinuationNotRecoverable`. Callback compatibility remains single writer and cannot certify
 provider release; hosts needing durable handoff use the RunStore and explicit release seam.
+
+Retained context values bind their original JSON text, including object member order. Strict
+RunStore checkpoint 2 publication adds optional `valueJSON` beside `value` after validating the
+existing SHA-256 and UTF-8 byte count. Resume bounds and parses the companion, verifies canonical
+semantic equality to `value` and the exact original digest/byte count, then restores the original
+representation. Guarding cannot change or remove either side and still publish the old companion.
+Nested child contexts follow the same rule. Companion duplication counts toward the unchanged
+4 MiB checkpoint limit. Legacy records without the field retain their exact prior digest rules;
+already corrupted records cannot be repaired by recomputing a digest. The limited callback adapter
+preserves ordered legacy JSON delivery and does not claim the strict canonical journal contract.
+
+A nested child record is converted only after its original supported shape, complete header digest
+and execution scope validate. The detached publication copy uses the current checkpoint writer,
+which gives the new representation its enclosing checkpoint 2 digest while preserving the original
+`retainUntil` and retained-entry identities. Invalid or unknown-version children are never re-signed.
+No operation, artifact, accepted-plan or opaque payload digest is rewritten by this conversion.

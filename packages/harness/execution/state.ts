@@ -1,3 +1,4 @@
+import {validRecordedStep} from './planActions'
 import {planStepId,validPlanState,type PlanState} from './plan'
 import {validDurable} from '../storage/durable'
 import {validHandoff} from '../storage/handoff'
@@ -18,9 +19,9 @@ import {CHECKPOINT_SCHEMA,PROVENANCE_SCHEMA,recordDigest,validRecordHeader} from
 export const REQUEST_INCREMENT = 10
 export const MAX_REQUEST_ALLOWANCE = 100
 export const MAX_CHECKPOINT_BYTES = 4 * 1024 * 1024
-export interface TaskStep {id?:string;step:string;status:'pending'|'in_progress'|'completed';detail?:string}
+export interface TaskStep {id?:string;step:string;status:'pending'|'in_progress'|'completed'|'not-needed';detail?:string;origin?:import('./plan').PlanOrigin;evidence?:import('./plan').StepEvidence;notNeededReason?:string}
 export interface Operation {id:string;name:string;args:unknown;status:'running'|'complete'|'failed'|'interrupted';result?:McpToolResult}
-export interface RetainedEntry {id:string;kind:'history'|'artifact'|'request'|'tool';label:string;value:unknown;revision?:string;bytes:number;digest:string}
+export interface RetainedEntry {id:string;kind:'history'|'artifact'|'request'|'tool';label:string;value:unknown;valueJSON?:string;revision?:string;bytes:number;digest:string}
 /**
  * One model request's row. `attempt`, `failure` and `waitMs` record a request the provider refused and that was
  * retried (engines/vercel/retry.ts): the refused attempt's row carries its failure and the wait before the next, and
@@ -184,7 +185,7 @@ const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&
 const text=(v:unknown,max:number):v is string=>typeof v==='string'&&v.length<=max
 const validPolicy=(v:unknown):boolean=>object(v)&&Object.keys(v).length<=512&&Object.values(v).every(member=>object(member)&&exact(member,['value','layer','source'])&&['run','project','table'].includes(String(member.layer))&&(member.source===undefined||['layer','model-default','discovered'].includes(String(member.source)))&&(member.source!=='model-default'||!Object.hasOwn(member,'value'))&&(member.source!=='discovered'||Object.hasOwn(member,'value')))
 export function validTaskSteps(value:unknown):value is TaskStep[] {
- return Array.isArray(value)&&value.length>0&&value.length<=20&&value.every(s=>object(s)&&exact(s,['id','step','status','detail'])&&(s.id===undefined||planStepId(s.id))&&text(s.step,1000)&&!!s.step.trim()&&['pending','in_progress','completed'].includes(String(s.status))&&(s.detail===undefined||text(s.detail,1500)))&&value.filter(s=>s.status==='in_progress').length<=1
+ return Array.isArray(value)&&value.length>0&&value.length<=20&&value.every(s=>validRecordedStep(s)&&object(s)&&exact(s,['id','step','status','detail','origin','evidence','notNeededReason'])&&(s.id===undefined||planStepId(s.id))&&text(s.step,1000)&&!!s.step.trim()&&['pending','in_progress','completed','not-needed'].includes(String(s.status))&&(s.detail===undefined||text(s.detail,1500)))&&value.filter(s=>s.status==='in_progress').length<=1
 }
 export const validRequestCap=(value:unknown):value is number=>Number.isInteger(value)&&Number(value)>=1&&Number(value)<=MAX_TURNS
 export function readExecution(value:unknown):ExecutionCheckpoint|undefined {

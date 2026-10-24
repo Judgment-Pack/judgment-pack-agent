@@ -1,0 +1,49 @@
+{
+  "schema": "tool-offer.json#/$defs/hostTool",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/execution/planActions.ts",
+      "go/context/plan_actions.go"
+    ]
+  },
+  "items": [
+    {
+      "name": "complete_plan_step",
+      "effect": "plan",
+      "description": "Close the active step with acknowledged evidence or a reason.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "expectedRevision": {
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "completed",
+              "not-needed"
+            ]
+          },
+          "evidence": {
+            "type": "object"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "expectedRevision",
+          "outcome"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

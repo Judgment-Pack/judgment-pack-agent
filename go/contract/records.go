@@ -311,7 +311,8 @@ func checkRecordDepth(kind string, data []byte, normalized *[]byte, recordDepth 
 			if !safeRecordInteger(v) {
 				return errRecord
 			}
-			if normalized != nil {
+		 if kind=="event"{if obj,ok:=value.(map[string]any);ok&&obj["type"]=="approval_requested"{if obj["purpose"]=="plan-drift"{if _,ok:=obj["plan"].(map[string]any);!ok{return errRecord};for _,key:=range []string{"name","tool","source","args"}{if _,ok:=obj[key];ok{return errRecord}}}else{if _,ok:=obj["plan"];ok{return errRecord};for _,key:=range []string{"name","tool","source","args"}{if _,ok:=obj[key];!ok{return errRecord}}}}}
+	if normalized != nil {
 				f, _ := v.(json.Number).Float64()
 				replacement := strconv.FormatInt(int64(f), 10)
 				if v.(json.Number).String() != replacement {
@@ -432,6 +433,7 @@ func checkRecordDepth(kind string, data []byte, normalized *[]byte, recordDepth 
 	if err := walk(graph, file, shapeObject(graph[file]), value, "", 0, recordDepth); err != nil {
 		return err
 	}
+ if kind=="event"{if obj,ok:=value.(map[string]any);ok&&obj["type"]=="approval_requested"{if obj["purpose"]=="plan-drift"{if _,ok:=obj["plan"].(map[string]any);!ok{return errRecord};for _,key:=range []string{"name","tool","source","args"}{if _,ok:=obj[key];ok{return errRecord}}}else{if _,ok:=obj["plan"];ok{return errRecord};for _,key:=range []string{"name","tool","source","args"}{if _,ok:=obj[key];!ok{return errRecord}}}}}
 	if normalized != nil {
 		out, err := patchRecordIntegers(data, replacements)
 		if err != nil {

@@ -51,3 +51,8 @@ export {legacyChatStoreAdapter} from '../storage/legacyChat'
 
 export {ProviderReleaseUnknown} from '../storage/release'
 export type {ProviderRelease} from '../storage/release'
+
+export type {TaskStep,ExecutionCheckpoint} from '../execution/state'
+export type {PlanState,PlanRevision,PlanChange,PlanOrigin,StepEvidence,AcceptedPlan,Departure,DepartureKind,PlanRefusal,PlanDecision,PendingDeparture} from '../execution/plan'
+
+export * from '../runReport'

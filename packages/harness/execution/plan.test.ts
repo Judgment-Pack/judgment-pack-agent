@@ -1,7 +1,7 @@
 import {describe,it,expect,vi} from 'vitest'
 import checkpoints from '../../../contract/vectors/plan/checkpoints.json'
 import events from '../../../contract/vectors/plan/events.json'
-import {identifyPlan,revisePlan,planDigest,validPlanState} from './plan'
+import {identifyPlan,revisePlan,validPlanState} from './plan'
 import {readExecution,type TaskStep} from './state'
 import {readRunEvent} from '../recordReader'
 import {contextualSession} from '../context/session'
@@ -10,6 +10,7 @@ import {canonicalJSON} from '../context/chat'
 import {MemoryRunStore} from '../storage/run'
 import {durableOwner,durableSession,readStoredRunEvent} from '../storage/writer'
 import type {AssistantSession,AssistantEvent} from '../engine'
+import {writeRecord,recordsPolicy,CHECKPOINT_SCHEMA} from '../records'
 const fixture=checkpoints.items
 const input=(store?:MemoryRunStore,resume=false):AssistantSession=>({prompt:'Work',testPrompt:'',allowConversation:true,interactive:true,tools:[],hostTools:[],callTool:vi.fn(async()=>({content:[]})),model:{family:'openai-compatible',model:'fixture',call:vi.fn(async()=>new Response('{}'))},signal:new AbortController().signal,context:{currentRequest:{message:'Work',input:'Work'},...(store?{runStore:{store,id:'plan-execution',...(resume?{resume:true}:{})}}:{})}})
 const steps=(at:number)=>structuredClone(fixture[at]!.plan) as TaskStep[]
@@ -46,7 +47,7 @@ describe('task plan identity and revision contract',()=>{
   const current=identifyPlan(Array.from({length:20},(_,i)=>({step:`Item ${i}`,status:'pending' as const})))
   const proposed=current.plan.map((s,i)=>({...s,step:'Changed '+i,status:'completed' as const})).reverse()
   const before=canonicalJSON(current)
-  expect(()=>revisePlan(current,proposed,'Too many changes')).toThrow(/PlanRevisionTooLarge/)
+  expect(()=>revisePlan(current,proposed,'Too many changes',true)).toThrow(/PlanRevisionTooLarge/)
   expect(canonicalJSON(current)).toBe(before)
   expect(revisePlan(current,Array.from({length:20},(_,i)=>({step:`New ${i}`,status:'pending' as const})),'Replace all').planState.history[0]!.diff).toHaveLength(40)
  })
@@ -57,7 +58,7 @@ describe('task plan identity and revision contract',()=>{
  })
  it('keeps historical bytes on read and assigns deterministic ids at next controller write',async()=>{
   const first=await contextualSession(input()),saved=first.context.execution.snapshot('stopped')
-  delete saved.planState;saved.plan=[{step:'Legacy',status:'completed'}];saved.version=1;delete saved.schema;delete saved.digest;delete saved.retainUntil;delete saved.records
+  delete saved.planState;saved.plan=[{step:'Legacy',status:'completed'}];saved.version=1;for(const key of ["schema","digest","retainUntil","records"])delete (saved as any)[key]
   const before=canonicalJSON(saved);expect(readExecution(saved)).toEqual(saved)
   const next=await contextualSession({...input(),context:{...input().context,execution:saved}})
   expect(canonicalJSON(saved)).toBe(before)
@@ -83,7 +84,7 @@ describe('task plan identity and revision contract',()=>{
   const store=new MemoryRunStore(),bound=await durableSession(input(store)),ready=await contextualSession(bound),binding=bound.context![durableOwner]!
   const event={...events.items[0],execution:'child-plan'} as AssistantEvent
   const child={...binding,scope:{execution:'child-plan',role:'author',task:'child-plan'},root:false}
-  const state={...ready.context.execution.snapshot(),id:'child-plan',...identified(1)}
+  const state=writeRecord(CHECKPOINT_SCHEMA,{...ready.context.execution.snapshot(),id:'child-plan',...identified(1)},recordsPolicy({}))
   const committed=await binding.writer.commitPlan(child,state,event as any)
   const head=(await store.load('plan-execution'))!,cp=JSON.parse(new TextDecoder().decode(head.checkpoint!))
   expect(cp.durable.children[0].checkpoint.planState.sequence).toBe(1)
@@ -113,4 +114,10 @@ describe('task plan identity and revision contract',()=>{
   const page=await store.readEvents('plan-execution',null,100)
   expect(page.items.map(i=>readStoredRunEvent(i.bytes).event).filter(e=>e.type==='plan_revised')).toHaveLength(1)
  })
+ it('preserves valid no-op content at the allocator ceiling and refuses a new identity before overflow',()=>{
+  const current=identifyPlan([{step:'Inspect',status:'pending'}]);current.planState.nextId=Number.MAX_SAFE_INTEGER
+  const next=revisePlan(current,current.plan,'No identity allocated');expect(next.planState.nextId).toBe(Number.MAX_SAFE_INTEGER);expect(next.planState.revision).toBe(current.planState.revision);expect(validPlanState(next.plan,next.planState)).toBe(true)
+  expect(()=>revisePlan(current,[...current.plan,{step:'New',status:'pending'}],'Overflow')).toThrow(/PlanIdentityInvalid/)
+ })
+
 })

@@ -1,10 +1,11 @@
+import {retainedRepresentation} from '../context/ledger'
 import {ProviderReleaseUnknown} from './release'
 import {canonicalJSON} from '../context/chat'
 import {AIFailureError,failure,normalizeFailure} from '../failures'
 import {readExecution,type ExecutionCheckpoint} from '../execution/state'
 import {mutateCheckpoint} from '../execution/mutation'
 import {writeRunEvent,checkRecord,checkRecordVersion,readRunEvent} from '../recordReader'
-import {CHECKPOINT_SCHEMA,recordDigest,sha256,writeRecord,type RecordGuard,type RecordsPolicy} from '../records'
+import {CHECKPOINT_SCHEMA,recordDigest,sha256,writeRecord,validRecord,type RecordGuard,type RecordsPolicy} from '../records'
 import type {AssistantEvent,EngineSession,McpToolResult} from '../engine'
 import {checkpointCallbackRunStore,type RunStore,type RunHead} from './run'
 import {StorageConflict,requireId,storageId,STORAGE_RECORD_BYTES} from './common'
@@ -27,6 +28,27 @@ const modelClaim=Symbol('private live model claim')
 type PendingModel={readonly [modelClaim]:true;readonly request:string}
 export type ModelOutcome={ok:true}|{ok:false;error:unknown;verifiedRefusal?:true}
 const encoder=new TextEncoder(),digest=(text:string)=>`sha256:${sha256(text)}`
+/** Preserve lexical retained-value evidence before recursively canonicalizing checkpoint bytes. */
+function retainedCheckpoint(checkpoint:ExecutionCheckpoint,populate:boolean,policy?:RecordsPolicy):string{
+ const signatures:unknown[]=[]
+ const visit=(state:ExecutionCheckpoint)=>{
+  for(const entry of state.context.entries){
+   const held=retainedRepresentation(entry)
+   if(sha256(held.text)!==entry.digest||encoder.encode(held.text).length!==entry.bytes||!entry.id.startsWith(state.context.scope+':'))throw new ContinuationNotRecoverable()
+   if(populate)entry.valueJSON=held.text
+   else if(entry.valueJSON===undefined)throw new ContinuationNotRecoverable()
+   signatures.push([entry.id,entry.digest,entry.bytes,entry.valueJSON])
+  }
+  for(const child of state.durable?.children??[]){
+   checkRecord('checkpoint',child.checkpoint)
+   if(child.checkpoint.id!==child.scope.execution||child.checkpoint.schema!==CHECKPOINT_SCHEMA||!validRecord(child.checkpoint))throw new ContinuationNotRecoverable()
+   const until=child.checkpoint.retainUntil
+   visit(child.checkpoint)
+   if(populate)child.checkpoint=writeRecord(CHECKPOINT_SCHEMA,{...child.checkpoint},policy!,undefined,new Date(),until)
+  }
+ }
+ try{visit(checkpoint);return canonicalJSON(signatures)}catch{throw new ContinuationNotRecoverable()}
+}
 const scopeKey=(scope:DurableScope)=>canonicalJSON(scope)
 const checkpointProfiles=new WeakMap<object,string>()
 /** Internal identity of the acknowledged legacy callback profile; never journal authority. */
@@ -68,8 +90,10 @@ export class RunWriter {
  private finalize(state:ExecutionCheckpoint):ExecutionCheckpoint {
   const projected=this.decorate(structuredClone(state));if(projected.handoff)delete this.book.pendingHandoff;if(this.book.pendingHandoff)mutateCheckpoint(projected,{status:'running'});mutateCheckpoint(projected,{durable:structuredClone(this.book)})
   if(!this.policy)throw new ContinuationNotRecoverable()
+  const retained=retainedCheckpoint(projected,true,this.policy)
   const before=canonicalJSON(projected.durable)
   const saved=writeRecord(CHECKPOINT_SCHEMA,{...projected},this.policy,this.guard?.(),new Date(),state.retainUntil)
+  if(retainedCheckpoint(saved,false)!==retained)throw new ContinuationNotRecoverable()
   if(state.planState&&(canonicalJSON(saved.plan)!==canonicalJSON(state.plan)||canonicalJSON(saved.planState)!==canonicalJSON(state.planState)))throw new ContinuationNotRecoverable()
   if(canonicalJSON(saved.durable)!==before||encoder.encode(canonicalJSON(saved)).length>STORAGE_RECORD_BYTES)throw new ContinuationNotRecoverable()
   checkRecord('checkpoint',saved)
@@ -102,14 +126,14 @@ export class RunWriter {
  }
  save(binding:DurableBinding,state:ExecutionCheckpoint,signal?:AbortSignal){return this.enqueue(()=>this.publish(binding,state,undefined,undefined,signal)).then(()=>undefined)}
  /** Commit once, then issue a private writer-owned delivery identity. It is never serialized. */
- commitPlan(binding:DurableBinding,state:ExecutionCheckpoint,event:Extract<AssistantEvent,{type:'plan_revised'}>,signal?:AbortSignal){return this.enqueue(async()=>{
-  if(event.type!=='plan_revised'||event.execution!==binding.scope.execution)throw new ContinuationIdentityChanged()
+ commitPlan(binding:DurableBinding,state:ExecutionCheckpoint,event:import('../execution/controller').PlanEvent,signal?:AbortSignal){return this.enqueue(async()=>{
+  if((event.type==='approval_requested'?(event.purpose==='plan-drift'?event.plan.execution:undefined):event.execution)!==binding.scope.execution)throw new ContinuationIdentityChanged()
   if(this.planDelivery.size>=400)throw new ContinuationNotRecoverable()
   const output=(await this.publish(binding,state,event,undefined,signal))!
   this.planDelivery.set(output,{scope:scopeKey(binding.scope),bytes:canonicalJSON(output)})
   return output
  })}
- event(binding:DurableBinding,event:AssistantEvent,signal?:AbortSignal){return this.enqueue(()=>{const delivery=this.planDelivery.get(event);if(delivery){this.planDelivery.delete(event);if(delivery.scope!==scopeKey(binding.scope)||delivery.bytes!==canonicalJSON(event))throw new ContinuationIdentityChanged();return event}if(binding.root&&event.type==='delegation_requested'){if(!event.callId)throw new ContinuationNotRecoverable();this.book.pendingHandoff={callId:event.callId,request:structuredClone(event.request)}}return this.publish(binding,event.type==='execution_checkpoint'||event.type==='budget_paused'?event.checkpoint:undefined,event,undefined,signal)}).then(result=>result!)}
+ event(binding:DurableBinding,event:AssistantEvent,signal?:AbortSignal){return this.enqueue(async()=>{const delivery=this.planDelivery.get(event);if(delivery){this.planDelivery.delete(event);if(delivery.scope!==scopeKey(binding.scope)||delivery.bytes!==canonicalJSON(event))throw new ContinuationIdentityChanged();return event}if(binding.root&&event.type==='delegation_requested'){if(!event.callId)throw new ContinuationNotRecoverable();this.book.pendingHandoff={callId:event.callId,request:structuredClone(event.request)}}return this.publish(binding,event.type==='execution_checkpoint'||event.type==='budget_paused'?event.checkpoint:undefined,event,undefined,signal)}).then(result=>result!)}
  recovering(binding:DurableBinding,kind:DurableDispatch['kind']):boolean {
   return this.book.dispatches.some(row=>this.recovered.has(row.id)&&row.kind===kind&&scopeKey(row.scope)===scopeKey(binding.scope)&&row.state==='unknown'&&(kind!=='agent'||!this.latest?.handoff||this.latest.handoff.state==='continued'&&!!this.latest.handoff.continuation&&row.request.includes(JSON.stringify(this.latest.handoff.continuation).slice(1,-1))))
  }
@@ -205,7 +229,7 @@ function callbackProfile<T extends EngineSession>(session:T,store:RunStore,id:st
  let revision=head?.revision??null,tail:Promise<unknown>=Promise.resolve(),fatal:unknown
  const checkpoint=(state:ExecutionCheckpoint):Promise<void>=>{
   if(state.durable)return Promise.reject(new ContinuationNotRecoverable())
-  const bytes=encoder.encode(canonicalJSON(state))
+  const bytes=encoder.encode(JSON.stringify(state))
   const next=tail.then(async()=>{
    if(fatal!==undefined)throw fatal
    const commitId=crypto.randomUUID(),receipt=await store.commit({runId:id,expectedRevision:revision,commitId,checkpoint:bytes,events:[]},session.signal)

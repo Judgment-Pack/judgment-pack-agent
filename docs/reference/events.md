@@ -14,13 +14,13 @@ One event of a run, from the adapter to the host, in order, discriminated by typ
 
 See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](critic.md), [skills.md](skills.md), [budget.md](budget.md), [reasons.md](reasons.md), [checkpoint.md](checkpoint.md).
 
-## The 34 kinds
+## The 38 kinds
 
 | Kind | Defined in | Required beyond type |
 | --- | --- | --- |
 | `execution_checkpoint` | `run-event.json $defs/execution_checkpoint` | `checkpoint` |
 | `budget_paused` | `run-event.json $defs/budget_paused` | `checkpoint` |
-| `approval_requested` | `run-event.json $defs/approval_requested` | `callId`, `name`, `tool`, `source`, `args` |
+| `approval_requested` | `run-event.json $defs/approval_requested` | `callId` |
 | `steered` | `run-event.json $defs/steered` | `bytes`, `atRequest` |
 | `compacted` | `run-event.json $defs/compacted` | `turns`, `bytes`, `digest`, `mode` |
 | `skill_loaded` | `run-event.json $defs/skill_loaded` | `skill`, `bytes` |
@@ -52,6 +52,10 @@ See also: [tools.md](tools.md), [delegation.md](delegation.md), [critic.md](crit
 | `connection_switched` | `run-event.json $defs/connection_switched` | `role`, `from`, `to`, `reason` |
 | `usage` | `run-event.json $defs/usage` | `usage` |
 | `recorded` | `run-event.json $defs/recorded` | `id`, `bytes` |
+| `plan_revised` | `run-event.json $defs/plan_revised` | `execution`, `sequence`, `previous`, `revision`, `explanation`, `diff` |
+| `plan_departed` | `run-event.json $defs/plan_departed` | `execution`, `revision`, `acceptedRevision`, `explanation`, `departures` |
+| `plan_completion_refused` | `run-event.json $defs/plan_completion_refused` | `execution`, `revision`, `reason` |
+| `plan_drift_decided` | `run-event.json $defs/plan_drift_decided` | `execution`, `callId`, `revision`, `candidateRevision`, `approved` |
 
 ## Every kind with its members
 
@@ -90,11 +94,20 @@ Closed: a member the schema does not name is refused.
 | --- | --- | --- | --- |
 | `type` | yes | const `approval_requested` |  |
 | `callId` | yes | string (min length 1, max length 256) |  |
-| `name` | yes | `tool-offer.json $defs/wireName` |  |
-| `tool` | yes | string (min length 1, max length 128) |  |
-| `source` | yes | `tool-offer.json $defs/sourceRecord` |  |
-| `args` | yes | object |  |
+| `name` |  | `tool-offer.json $defs/wireName` |  |
+| `tool` |  | string (min length 1, max length 128) |  |
+| `source` |  | `tool-offer.json $defs/sourceRecord` |  |
+| `args` |  | object |  |
 | `version` |  | const `1` | Event wire format version. Absent only on historical records; current writers emit 1. |
+| `purpose` |  | enum `tool-call`, `plan-drift` |  |
+| `plan` |  | object |  |
+| `plan.execution` | yes | string (min length 1, max length 256) |  |
+| `plan.revision` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `plan.candidateRevision` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `plan.explanation` | yes | string (max length 2000) |  |
+| `plan.departures` | yes | array of `checkpoint.json $defs/planDeparture` (max items 40) |  |
+
+Conditions beyond the members (allOf) are in the schema file.
 
 ### `steered`
 
@@ -302,7 +315,7 @@ Closed: a member the schema does not name is refused.
 | `tool` | yes | string |  |
 | `action` | yes | enum `rewrote`, `refused`, `narrowed` |  |
 | `detail` | yes | string |  |
-| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused`, `memory refused`, `edit refused`, `compaction refused`, `output refused`, `records expired`, `identity changed`, `approval downgraded`, `steer refused`, `failover refused`, `record refused`, `record version unsupported`, `record member unsupported` |  |
+| `reason` |  | enum `approval refused`, `approval pending`, `approval stale`, `skill withheld`, `skill budget`, `review refused`, `policy refused`, `pace warning`, `subagent withheld`, `subagent refused`, `memory refused`, `edit refused`, `compaction refused`, `output refused`, `records expired`, `identity changed`, `approval downgraded`, `steer refused`, `failover refused`, `record refused`, `record version unsupported`, `record member unsupported`, `plan update refused` |  |
 | `version` |  | const `1` | Event wire format version. Absent only on historical records; current writers emit 1. |
 
 ### `thinking_unavailable`
@@ -527,3 +540,60 @@ Closed: a member the schema does not name is refused.
 | `id` | yes | string (pattern `^[a-z0-9][a-z0-9-]{0,63}$`) |  |
 | `bytes` | yes | integer (min 1) |  |
 | `version` |  | const `1` | Event wire format version. Absent only on historical records; current writers emit 1. |
+
+### `plan_revised`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `type` | yes | const `plan_revised` |  |
+| `execution` | yes | string (min length 1, max length 100) |  |
+| `sequence` | yes | integer (min 1, max 9007199254740991) |  |
+| `previous` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `revision` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `explanation` | yes | string (max length 2000) |  |
+| `diff` | yes | array of `checkpoint.json $defs/planChange` (max items 40) |  |
+| `version` |  | const `1` |  |
+
+### `plan_departed`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `type` | yes | const `plan_departed` |  |
+| `version` |  | const `1` |  |
+| `execution` | yes | string (min length 1, max length 256) |  |
+| `revision` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `acceptedRevision` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `explanation` | yes | string (max length 2000) |  |
+| `departures` | yes | array of `checkpoint.json $defs/planDeparture` (max items 40) |  |
+
+### `plan_completion_refused`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `type` | yes | const `plan_completion_refused` |  |
+| `version` |  | const `1` |  |
+| `execution` | yes | string (min length 1, max length 256) |  |
+| `revision` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `reason` | yes | enum `invalid-input`, `active-step-required`, `revision-changed`, `evidence-unavailable`, `missing-evidence`, `unknown-operation`, `unsuccessful-operation`, `unobserved-revision`, `wrong-scope` |  |
+| `step` |  | string (min length 1, max length 100) |  |
+
+### `plan_drift_decided`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `type` | yes | const `plan_drift_decided` |  |
+| `version` |  | const `1` |  |
+| `execution` | yes | string (min length 1, max length 256) |  |
+| `callId` | yes | string (min length 1, max length 256) |  |
+| `revision` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `candidateRevision` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `approved` | yes | boolean |  |
+| `note` |  | string (max length 2000) |  |

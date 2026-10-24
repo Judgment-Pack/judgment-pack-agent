@@ -66,7 +66,7 @@ export type Compactor=(request:CompactorRequest,signal:AbortSignal)=>Promise<str
  * (`checkpoint.json#/$defs/approvalDecision`), the continuation input beside a request grant. A
  * decision for any other call is refused before anything runs (`stale-state`).
  */
-export interface ContextInput {[prepareProviderDispatch]?:(kind:'model'|'agent',role:string,recovering:boolean)=>Promise<void>;runStore?:DurableRunInput;[durableOwner]?:DurableBinding;acceptedDocuments?:AcceptedDocument[];currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;requestCap?:number;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatScope;runtime?:RuntimeIdentity;memory?:boolean;objective?:string;link?:ExecutionLink;connection?:AITarget;connectionRevisions?:Readonly<Record<string,string>>;delegationReuse?:boolean;approval?:import('../execution/state').ApprovalDecision;compactor?:Compactor}
+export interface ContextInput {[prepareProviderDispatch]?:(kind:'model'|'agent',role:string,recovering:boolean)=>Promise<void>;runStore?:DurableRunInput;[durableOwner]?:DurableBinding;acceptedDocuments?:AcceptedDocument[];currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;requestCap?:number;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;planResolver?:import('../planning/references').PlanResolver;planDrift?:import('../execution/plan').DepartureKind[];configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatScope;runtime?:RuntimeIdentity;memory?:boolean;objective?:string;link?:ExecutionLink;connection?:AITarget;connectionRevisions?:Readonly<Record<string,string>>;delegationReuse?:boolean;approval?:import('../execution/state').ApprovalDecision;compactor?:Compactor}
 /** How the delegation coordinator reaches a run it starts (agent#14): told the run's context once its execution is initialized, before its first request. */
 export interface ExecutionLink {attach(context:SessionContext):void;/** ADR-0006: the delegating run's source gate, which a child's gate shares the report's rows and the changed sources of. */sources?():SourceGate|undefined}
 export interface ContextUsage {inputBytes:number;estimatedInputTokens:number;inputBudgetBytes:number;outputReserveTokens:number;compactions:number;retainedItems:number}
@@ -482,6 +482,7 @@ this.turn=session.context?.chat?.openTurn();this.objective=session.context?.obje
   * or refused by the gate with its guardrail).
   */
  async approval(name:string,args:Record<string,unknown>,callId?:string):Promise<Extract<AssistantEvent,{type:'approval_requested'}>|undefined>{
+  if(this.execution.state.planState?.pending)throw this.refuse(name,'PlanApprovalRequired: this run waits for its plan decision.','approval pending')
   if(!this.sources?.needsApproval(name))return
   const clean=this.output.value(args,'tool argument',this.output.mode==='refuse')
   if((await this.sources.decide(name,clean,callId)).answer!=='ask')return
@@ -517,6 +518,7 @@ this.turn=session.context?.chat?.openTurn();this.objective=session.context?.obje
   * delegation, `propose_pack`), so no engine path reaches past it.
   */
  admit(name:string,kind:'runtime'|'host',args:Record<string,unknown>={}){
+  if(this.execution.state.planState?.pending)throw this.refuse(name,'PlanApprovalRequired: this run waits for its plan decision.','approval pending')
   if(isEdit(name)&&(this.memoryChild||this.narrowed!==null||kind==='runtime'))throw this.refuseUnoffered(name,args)
   if(name===REMEMBER&&(this.memoryChild||this.narrowed!==null||kind==='runtime'))throw this.refuse(name,'Only the author may propose memory.','memory refused')
   // ADR-0010: request_review reaches the author's run only, where the switch offers it; a call
@@ -899,7 +901,7 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  await context.initialize(session.context?.documents,true)
  await context.execution.retainProgress()
  if(session.context?.plan)await context.initialize([{id:'current-plan',kind:'artifact',label:'Current chat plan',value:session.context.plan}])
- if([...session.tools,...session.hostTools].some(t=>t.name==='read_context'||t.name==='list_context'||t.name===READ_TOOL||t.name===SEARCH_TOOL||t.name==='update_plan'||t.name==='request_budget_increase'||t.name===LOAD_TOOL||t.name===LOAD_SKILL||t.name===UNLOAD_SKILL||t.name===REQUEST_REVIEW||t.name===REMEMBER||isEdit(t.name)))throw Error('Context tool names are reserved by Desk.')
+ if([...session.tools,...session.hostTools].some(t=>t.name==='read_context'||t.name==='list_context'||t.name===READ_TOOL||t.name===SEARCH_TOOL||t.name==='update_plan'||t.name==='complete_plan_step'||t.name==='request_budget_increase'||t.name===LOAD_TOOL||t.name===LOAD_SKILL||t.name===UNLOAD_SKILL||t.name===REQUEST_REVIEW||t.name===REMEMBER||isEdit(t.name)))throw Error('Context tool names are reserved by Desk.')
  session.context?.link?.attach(context)
  // Validate a late startup helper before returning a dispatch-capable context.
  context.execution.mutate({})
@@ -919,6 +921,7 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  }
  // update_plan publishes its exact guarded checkpoint/event before answering the call.
  context.execution.planRefused=()=>context.memoryNotice({type:'guardrail',tool:'update_plan',action:'refused',reason:'plan update refused',detail:'The plan update is invalid or exceeds its bounds. The plan was left untouched.'})
+ context.execution.proof=()=>{const binding=session.context?.[durableOwner],book=binding?.writer.checkpoint?.durable;return binding&&book?{book,scope:scopeFor(binding,context.storageRole).scope}:undefined}
  context.execution.publishPlan=async(state,event)=>{
   const guarded=context.output.value(event,'message')
   if(canonicalJSON(guarded)!==canonicalJSON(event))throw new ContinuationNotRecoverable()
@@ -926,7 +929,8 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   if(binding)context.memoryNotice(await binding.writer.commitPlan(scopeFor(binding,context.storageRole),state,event,session.signal))
   else{await session.context?.checkpoint?.(state);context.memoryNotice(event)}
  }
- const hostTools=[...session.hostTools,...(session.context?.objective||session.childDefinition||session.context?.phase==='plan'||session.context?.artifactProposals===false?[]:context.drafts.tools()),...(session.context?.objective||session.childDefinition?[]:[rememberTool(()=>context.execution.state,context.policy,detail=>context.refuse(REMEMBER,detail,'memory refused'),event=>context.memoryNotice(event),patch=>context.execution.mutate(patch))]),...context.ledger.tools(),...(context.catalogue?[context.sources!.loadTool()]:[]),...(context.skills?.offered?[context.skills.loadTool(),context.skills.unloadTool()]:[]),...(context.review.offered?[context.reviewTool()]:[]),...(session.allowConversation?[context.execution.tool(),context.execution.budgetTool()]:[])].map(tool=>({...tool,execute:async(args:Record<string,unknown>,signal:AbortSignal,callId?:string)=>{context.admit(tool.name,'host',args);if(!isEdit(tool.name))args=context.output.value(args,outputWhere(tool.name));await session.context?.authorize?.(signal);const run=(given:Record<string,unknown>,bounded:AbortSignal)=>context.execution.wrapRead(tool.name,a=>executeHost(tool,a,bounded,callId),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read',own.has(tool.name)?{runtime:false}:undefined)(given);return context.sources?context.sources.call(tool,args,signal,run,callId):run(args,signal)}}))
+ await context.execution.publishPlanDecision()
+ const hostTools=[...session.hostTools,...(session.context?.objective||session.childDefinition||session.context?.phase==='plan'||session.context?.artifactProposals===false?[]:context.drafts.tools()),...(session.context?.objective||session.childDefinition?[]:[rememberTool(()=>context.execution.state,context.policy,detail=>context.refuse(REMEMBER,detail,'memory refused'),event=>context.memoryNotice(event),patch=>context.execution.mutate(patch))]),...context.ledger.tools(),...(context.catalogue?[context.sources!.loadTool()]:[]),...(context.skills?.offered?[context.skills.loadTool(),context.skills.unloadTool()]:[]),...(context.review.offered?[context.reviewTool()]:[]),...(session.allowConversation?[context.execution.tool(),context.execution.completionTool(),context.execution.budgetTool()]:[])].map(tool=>({...tool,execute:async(args:Record<string,unknown>,signal:AbortSignal,callId?:string)=>{context.admit(tool.name,'host',args);if(!isEdit(tool.name))args=context.output.value(args,outputWhere(tool.name));await session.context?.authorize?.(signal);const run=(given:Record<string,unknown>,bounded:AbortSignal)=>context.execution.wrapRead(tool.name,a=>executeHost(tool,a,bounded,callId),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read',own.has(tool.name)?{runtime:false}:undefined)(given);return context.sources?context.sources.call(tool,args,signal,run,callId):run(args,signal)}}))
  // ADR-0008: the act call the person approved runs through the host's own execute, as every call of it would.
  const approval=context.execution.state.approval
  if(context.execution.approvalStep==='execute'&&approval){

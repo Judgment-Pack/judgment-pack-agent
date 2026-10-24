@@ -165,20 +165,85 @@ func (e *HostOutcomeUnknown) Unwrap() error {
 // RunWriter is the sole root transaction/revision owner. Its private book carries child state and
 // trusted acknowledged provenance. Storage receipts do not establish current action authority.
 type RunWriter struct {
-	mu        sync.Mutex
-	Store     RunStore
-	ID        string
-	revision  string
-	latest    *contract.Checkpoint
-	book      DurableBook
-	recovered map[string]bool
-	models    map[*modelCompletion]bool
-	planDelivery map[*contract.RunEventPlanRevised]planDelivery
- fatal     error
-	snapshot  func() (contract.Checkpoint, error)
-	policy    RecordsPolicy
-	guard     func() RecordGuard
-	Decorate  func(contract.Checkpoint) (contract.Checkpoint, error)
+	mu           sync.Mutex
+	Store        RunStore
+	ID           string
+	revision     string
+	latest       *contract.Checkpoint
+	book         DurableBook
+	recovered    map[string]bool
+	models       map[*modelCompletion]bool
+	planDelivery map[any]planDelivery
+	fatal        error
+	snapshot     func() (contract.Checkpoint, error)
+	policy       RecordsPolicy
+	guard        func() RecordGuard
+	Decorate     func(contract.Checkpoint) (contract.Checkpoint, error)
+}
+
+// retainedCheckpoint preserves exact lexical evidence before checkpoint canonicalization.
+func retainedCheckpoint(value *Value, populate bool, policy RecordsPolicy) (string, error) {
+	signatures := Array()
+	var visit func(*Value, int) error
+	visit = func(state *Value, depth int) error {
+		if depth > 64 {
+			return &ContinuationNotRecoverable{}
+		}
+		scope := state.Get("context").Get("scope")
+		entries := state.Get("context").Get("entries")
+		if !scope.IsString() || !entries.IsArray() {
+			return &ContinuationNotRecoverable{}
+		}
+		for _, entry := range entries.Items() {
+			id, digest, size := entry.Get("id"), entry.Get("digest"), entry.Get("bytes")
+			if !id.IsString() || !digest.IsString() || size == nil || size.Kind() != KindNumber || !entry.Has("value") || !strings.HasPrefix(id.Str(), scope.Str()+":") {
+				return &ContinuationNotRecoverable{}
+			}
+			var source *string
+			if entry.Has("valueJSON") {
+				if !entry.Get("valueJSON").IsString() {
+					return &ContinuationNotRecoverable{}
+				}
+				raw := entry.Get("valueJSON").Str()
+				source = &raw
+			}
+			_, text, err := retainedRepresentation(entry.Get("value"), source)
+			if err != nil || ContextDigest(text) != digest.Str() || float64(UTF8Bytes(text)) != size.Num() {
+				return &ContinuationNotRecoverable{}
+			}
+			if populate {
+				entry.Set("valueJSON", String(text))
+			} else if source == nil {
+				return &ContinuationNotRecoverable{}
+			}
+			signatures.Append(Array(id.Clone(), digest.Clone(), size.Clone(), entry.Get("valueJSON").Clone()))
+		}
+		for _, child := range state.Get("durable").Get("children").Items() {
+			checkpoint := child.Get("checkpoint")
+			if err := contract.CheckRecord("checkpoint", checkpoint.JSON()); err != nil {
+				return &ContinuationNotRecoverable{}
+			}
+			if !checkpoint.Get("id").IsString() || !child.Get("scope").Get("execution").IsString() || checkpoint.Get("id").Str() != child.Get("scope").Get("execution").Str() || !checkpoint.Get("schema").IsString() || checkpoint.Get("schema").Str() != CheckpointSchema || !checkpoint.Get("digest").IsString() || !checkpoint.Get("retainUntil").IsString() || !ValidRecord(checkpoint) {
+				return &ContinuationNotRecoverable{}
+			}
+			until := checkpoint.Get("retainUntil").Str()
+			if err := visit(checkpoint, depth+1); err != nil {
+				return err
+			}
+			if populate {
+				written, err := WriteRecord(CheckpointSchema, checkpoint, policy, nil, time.Now(), until)
+				if err != nil {
+					return err
+				}
+				child.Set("checkpoint", written)
+			}
+		}
+		return nil
+	}
+	if err := visit(value, 0); err != nil {
+		return "", err
+	}
+	return CanonicalJSON(signatures), nil
 }
 
 func canonicalRaw(value any) ([]byte, error) {
@@ -352,7 +417,7 @@ func (w *RunWriter) saveLocked(ctx context.Context, binding RunBinding, state *c
 	if w.book.PendingHandoff != nil {
 		value.Set("status", String("running"))
 	}
-	book, err := canonicalRaw(w.book)
+	book, err := json.Marshal(w.book)
 	if err != nil {
 		return fail(err)
 	}
@@ -361,6 +426,11 @@ func (w *RunWriter) saveLocked(ctx context.Context, binding RunBinding, state *c
 		return fail(err)
 	}
 	value.Set("durable", held)
+	retained, err := retainedCheckpoint(value, true, w.policy)
+	if err != nil {
+		return fail(err)
+	}
+	book = []byte(CanonicalJSON(value.Get("durable")))
 	keep := ""
 	if root.RetainUntil != nil {
 		keep = *root.RetainUntil
@@ -372,6 +442,12 @@ func (w *RunWriter) saveLocked(ctx context.Context, binding RunBinding, state *c
 	written, err := WriteRecord(CheckpointSchema, value, w.policy, guard, time.Now(), keep)
 	if err != nil {
 		return fail(err)
+	}
+	if after, e := retainedCheckpoint(written, false, w.policy); e != nil || after != retained {
+		return fail(&ContinuationNotRecoverable{})
+	}
+	if root.PlanState != nil && (CanonicalJSON(written.Get("plan")) != CanonicalJSON(value.Get("plan")) || CanonicalJSON(written.Get("planState")) != CanonicalJSON(value.Get("planState"))) {
+		return fail(&ContinuationNotRecoverable{})
 	}
 	if !bytes.Equal([]byte(CanonicalJSON(written.Get("durable"))), book) || len(written.JSON()) > StorageRecordBytes || root.ID != w.ID {
 		return fail(&ContinuationNotRecoverable{})
@@ -422,17 +498,35 @@ func (w *RunWriter) saveLocked(ctx context.Context, binding RunBinding, state *c
 	}
 	return output, nil
 }
-type planDelivery struct { scope DurableScope; bytes string }
+
+type planDelivery struct {
+	scope DurableScope
+	bytes string
+}
+
 // CommitPlan returns a private pointer identity for this exact acknowledged event delivery.
-func (w *RunWriter) CommitPlan(ctx context.Context,binding RunBinding,state contract.Checkpoint,event contract.RunEvent)(contract.RunEvent,error){
- w.mu.Lock();defer w.mu.Unlock()
- if event.PlanRevised==nil||event.PlanRevised.Execution!=binding.Scope.Execution{return contract.RunEvent{},&ContinuationIdentityChanged{}}
- if len(w.planDelivery)>=400{return contract.RunEvent{},&ContinuationNotRecoverable{}}
- output,err:=w.saveLocked(ctx,binding,&state,&event,nil,nil);if err!=nil{return contract.RunEvent{},err}
- if w.planDelivery==nil{w.planDelivery=map[*contract.RunEventPlanRevised]planDelivery{}}
- raw,err:=canonicalRaw(output);if err!=nil{return contract.RunEvent{},err}
- w.planDelivery[output.PlanRevised]=planDelivery{scope:binding.Scope,bytes:string(raw)}
- return output,nil
+func (w *RunWriter) CommitPlan(ctx context.Context, binding RunBinding, state contract.Checkpoint, event contract.RunEvent) (contract.RunEvent, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if planEventExecution(event) != binding.Scope.Execution || planEventIdentity(event) == nil {
+		return contract.RunEvent{}, &ContinuationIdentityChanged{}
+	}
+	if len(w.planDelivery) >= 400 {
+		return contract.RunEvent{}, &ContinuationNotRecoverable{}
+	}
+	output, err := w.saveLocked(ctx, binding, &state, &event, nil, nil)
+	if err != nil {
+		return contract.RunEvent{}, err
+	}
+	if w.planDelivery == nil {
+		w.planDelivery = map[any]planDelivery{}
+	}
+	raw, err := canonicalRaw(output)
+	if err != nil {
+		return contract.RunEvent{}, err
+	}
+	w.planDelivery[planEventIdentity(output)] = planDelivery{scope: binding.Scope, bytes: string(raw)}
+	return output, nil
 }
 func (w *RunWriter) Save(ctx context.Context, binding RunBinding, state contract.Checkpoint) error {
 	w.mu.Lock()
@@ -443,13 +537,17 @@ func (w *RunWriter) Save(ctx context.Context, binding RunBinding, state contract
 func (w *RunWriter) Event(ctx context.Context, binding RunBinding, event contract.RunEvent) (contract.RunEvent, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
- if delivery,ok:=w.planDelivery[event.PlanRevised];ok{
-  delete(w.planDelivery,event.PlanRevised)
-  raw,err:=canonicalRaw(event)
-  if err!=nil||delivery.scope!=binding.Scope||delivery.bytes!=string(raw){return contract.RunEvent{},&ContinuationIdentityChanged{}}
-  if w.fatal!=nil{return contract.RunEvent{},w.fatal}
-  return event,nil
- }
+	if delivery, ok := w.planDelivery[planEventIdentity(event)]; ok {
+		delete(w.planDelivery, planEventIdentity(event))
+		raw, err := canonicalRaw(event)
+		if err != nil || delivery.scope != binding.Scope || delivery.bytes != string(raw) {
+			return contract.RunEvent{}, &ContinuationIdentityChanged{}
+		}
+		if w.fatal != nil {
+			return contract.RunEvent{}, w.fatal
+		}
+		return event, nil
+	}
 	if binding.Root && event.DelegationRequested != nil {
 		held := event.DelegationRequested
 		if held.CallID == nil {
@@ -1004,7 +1102,7 @@ func legacyCheckpointSave(store RunStore, id string, head *RunHead) func(context
 		if state.Durable != nil {
 			return &ContinuationNotRecoverable{}
 		}
-		raw, err := canonicalRaw(state)
+		raw, err := json.Marshal(state)
 		if err != nil {
 			return err
 		}
@@ -1028,4 +1126,41 @@ func legacyCheckpointSave(store RunStore, id string, head *RunHead) func(context
 		}
 		return err
 	}
+}
+
+func planEventIdentity(event contract.RunEvent) any {
+	if event.PlanRevised != nil {
+		return event.PlanRevised
+	}
+	if event.PlanDeparted != nil {
+		return event.PlanDeparted
+	}
+	if event.PlanCompletionRefused != nil {
+		return event.PlanCompletionRefused
+	}
+	if event.PlanDriftDecided != nil {
+		return event.PlanDriftDecided
+	}
+	if event.ApprovalRequested != nil && event.ApprovalRequested.Purpose != nil && *event.ApprovalRequested.Purpose == "plan-drift" {
+		return event.ApprovalRequested
+	}
+	return nil
+}
+func planEventExecution(event contract.RunEvent) string {
+	if event.PlanRevised != nil {
+		return event.PlanRevised.Execution
+	}
+	if event.PlanDeparted != nil {
+		return event.PlanDeparted.Execution
+	}
+	if event.PlanCompletionRefused != nil {
+		return event.PlanCompletionRefused.Execution
+	}
+	if event.PlanDriftDecided != nil {
+		return event.PlanDriftDecided.Execution
+	}
+	if event.ApprovalRequested != nil && event.ApprovalRequested.Plan != nil {
+		return event.ApprovalRequested.Plan.Execution
+	}
+	return ""
 }

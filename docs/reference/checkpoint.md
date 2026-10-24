@@ -10,6 +10,12 @@ Schemas:
 
 See also: [events.md](events.md), [budget.md](budget.md), [delegation.md](delegation.md), [skills.md](skills.md), [reasons.md](reasons.md).
 
+The recorded projection APIs and omissions are described in [run-report.md](run-report.md).
+
+Active steps close with complete_plan_step and current planRevision, using acknowledged same-run evidence or not-needed with a reason. update_plan carries unchanged terminal rows. Accepted origin, bounded departures and purpose-specific drift decisions survive resume. The complete_plan_step tool name is reserved; hosts must rename conflicting tools.
+
+Task steps use package-issued execution-scoped ids. update_plan retains ids explicitly; an omitted id means a new step. planState.revision is the canonical ordered task-content digest, while sequence orders the newest 32 bounded history entries. Storage compare-and-set revisions remain opaque host tokens. See docs/design/task-plan.md for migration and deterministic diff ordering.
+
 ## The checkpoint
 
 A local record of one execution, carried whole on execution_checkpoint and budget_paused events and handed back to resume: the request allowance and the grants that raised it, the task plan, every operation with its exact arguments and result, the completions, and the retained context the ledger holds. On an agent capability, the delegation handoff (ADR-0007): the call, the batch's task records and the call's result. An act call paused for the person's decision, and what became of it (ADR-0008, approval). Never permissions, evidence approval or private reasoning. Read from ExecutionCheckpoint (web/src/assistant/execution/state.ts, readExecution). Versioned: structural members not named by the selected version are refused. Declared arbitrary payloads are retained whole. Rules the reader holds that JSON Schema does not state: the serialized checkpoint is at most 4 MiB (MAX_CHECKPOINT_BYTES); used is at most limit; a present requestCap is a fixed model-requests limit with no grants and must match trusted resume input; otherwise the grants chain from the first limit (MAX_TURNS for model-requests, 1 for provider-managed), each grant's from is the previous to, and limit equals the last to; operation ids and entry ids are unique; every entry id starts with the context scope and a colon; a completion's request is at most used; the prompts' request numbers increase; at most one plan step is in_progress. The loaded skills (ADR-0009): skills. The critic's decision (ADR-0010): critic.
@@ -74,6 +80,7 @@ Closed: a member the schema does not name is refused.
 | `childUsage[].usage` | yes | `usage.json` |  |
 | `requestCap` |  | integer (min 1, max 20) | Optional fixed host API request cap. When present, unit is model-requests, limit equals this cap, used is at most it, and grants is empty. It must match independently trusted resume input; it cannot be extended. |
 | `durable` |  | `$defs/durableBook` | Current-format acknowledged dispatch/recovery journal. Scope comes from admitted host execution/role/task, never model text. A containing commit proves recorded provenance, not current authority or external success. Credentials and private reasoning are excluded; exact required bytes that cannot be safely retained are refused before dispatch. |
+| `planState` |  | `$defs/planState` | Current ordered task content SHA-256, independent history sequence and step allocator. Only newest 32 revisions retained; discarded is the explicit prefix count. Explanations/history/counters do not affect the content digest. Storage CAS revisions remain opaque host tokens. |
 
 Conditions beyond the members (allOf) are in the schema file.
 
@@ -94,8 +101,12 @@ Closed: a member the schema does not name is refused.
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
 | `step` | yes | string (max length 1000, pattern `\S`) |  |
-| `status` | yes | enum `pending`, `in_progress`, `completed` |  |
+| `status` | yes | enum `pending`, `in_progress`, `completed`, `not-needed` |  |
 | `detail` |  | string (max length 1500) |  |
+| `id` |  | string (pattern `^step-[1-9][0-9]{0,15}$`) | Package-issued execution-scoped identity; absent on legacy records only. |
+| `origin` |  | `$defs/planOrigin` |  |
+| `evidence` |  | `$defs/stepEvidence` |  |
+| `notNeededReason` |  | string (min length 1, max length 1500, pattern `\S`) |  |
 
 ### `checkpoint.json $defs/operation`
 
@@ -123,6 +134,7 @@ Closed: a member the schema does not name is refused.
 | `kind` | yes | enum `history`, `artifact`, `request`, `tool` |  |
 | `label` | yes | string (max length 1000) |  |
 | `value` | yes | any | Any JSON value. |
+| `valueJSON` |  | string (max length 4194304) | Optional checkpoint 2 exact JSON.stringify-compatible source text for value, populated by strict durable publication. Its UTF-8 bytes and SHA-256 must equal bytes and digest, and its parsed value must be canonically equal to value. Restore uses this original representation after validation; absence preserves legacy exact-value digest semantics. |
 | `revision` |  | string (max length 256) |  |
 | `bytes` | yes | integer (min 0) | UTF-8 bytes of the value's JSON text. |
 | `digest` | yes | `provenance.json $defs/sha256` | SHA-256 of the value's JSON text. |
@@ -280,3 +292,150 @@ Closed: a member the schema does not name is refused.
 | `pendingHandoff` |  | object |  |
 | `pendingHandoff.callId` | yes | string (min length 1, max length 256) |  |
 | `pendingHandoff.request` | yes | `delegated-task.json $defs/request` |  |
+
+### `checkpoint.json $defs/planChange`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `id` | yes | string (pattern `^step-[1-9][0-9]{0,15}$`) |  |
+| `kind` | yes | enum `added`, `removed`, `changed`, `status`, `reordered` |  |
+| `before` |  | `$defs/taskStep` |  |
+| `after` |  | `$defs/taskStep` |  |
+| `from` |  | integer (min 0, max 19) |  |
+| `to` |  | integer (min 0, max 19) |  |
+
+### `checkpoint.json $defs/planRevision`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `sequence` | yes | integer (min 1, max 9007199254740991) |  |
+| `previous` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `revision` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `explanation` | yes | string (max length 2000) |  |
+| `diff` | yes | array of `$defs/planChange` (max items 40) |  |
+
+### `checkpoint.json $defs/planState`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `revision` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `sequence` | yes | integer (min 0, max 9007199254740991) |  |
+| `nextId` | yes | integer (min 1, max 9007199254740991) |  |
+| `discarded` | yes | integer (min 0, max 9007199254740991) |  |
+| `history` | yes | array of `$defs/planRevision` (max items 32) |  |
+| `accepted` |  | `$defs/acceptedPlan` |  |
+| `driftPolicy` |  | array of enum `added`, `removed`, `changed`, `reordered` (max items 4) |  |
+| `departures` |  | array of `$defs/planDepartureRecord` (max items 32) |  |
+| `departuresDiscarded` |  | integer (min 0, max 9007199254740991) |  |
+| `pending` |  | `$defs/pendingDeparture` |  |
+| `refusals` |  | array of `$defs/planRefusal` (max items 32) |  |
+| `refusalsDiscarded` |  | integer (min 0, max 9007199254740991) |  |
+| `decisions` |  | array of `$defs/planDecision` (max items 32) |  |
+| `decisionsDiscarded` |  | integer (min 0, max 9007199254740991) |  |
+
+### `checkpoint.json $defs/stepEvidence`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `operations` | yes | array of string (min length 1, max length 256) (max items 20) |  |
+| `artifacts` | yes | array of object (max items 20) |  |
+| `artifacts[].kind` | yes | enum `artifact`, `dialect` |  |
+| `artifacts[].id` | yes | string (min length 1, max length 256) |  |
+| `artifacts[].digest` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+
+### `checkpoint.json $defs/planOrigin`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `plan` | yes | string (min length 1, max length 256) |  |
+| `revision` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `index` | yes | integer (min 0, max 19) |  |
+
+### `checkpoint.json $defs/acceptedPlan`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `id` | yes | string (min length 1, max length 256) |  |
+| `revision` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `sourceRevision` | yes | integer (min 1, max 9007199254740991) |  |
+| `objective` | yes | string (min length 1, max length 2000) |  |
+| `steps` | yes | array of string (max length 1000, pattern `\S`) (min items 1, max items 20) |  |
+| `references` | yes | array of object (max items 8) |  |
+| `references[].kind` | yes | enum `artifact`, `dialect`, `file` |  |
+| `references[].id` | yes | string (min length 1, max length 1024) |  |
+| `references[].digest` |  | string (pattern `^[a-f0-9]{64}$`) |  |
+| `references[].revision` |  | string (pattern `^[a-f0-9]{64}$`) |  |
+| `acceptedAt` | yes | string (min length 1, max length 100) |  |
+| `validatedReferences` | yes | array of object (max items 8) |  |
+| `validatedReferences[].kind` | yes | enum `artifact`, `dialect` |  |
+| `validatedReferences[].id` | yes | string (min length 1, max length 256) |  |
+| `validatedReferences[].digest` | yes | string (pattern `^[a-f0-9]{64}$`) |  |
+
+### `checkpoint.json $defs/planDeparture`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `kind` | yes | enum `added`, `removed`, `changed`, `reordered` |  |
+| `step` | yes | string (min length 1, max length 100) |  |
+| `index` |  | integer (min 0, max 19) |  |
+
+### `checkpoint.json $defs/planDepartureRecord`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `revision` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `explanation` | yes | string (max length 2000) |  |
+| `changes` | yes | array of `$defs/planDeparture` (max items 40) |  |
+
+### `checkpoint.json $defs/planRefusal`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `revision` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `reason` | yes | enum `invalid-input`, `active-step-required`, `revision-changed`, `evidence-unavailable`, `missing-evidence`, `unknown-operation`, `unsuccessful-operation`, `unobserved-revision`, `wrong-scope` |  |
+| `step` |  | string (min length 1, max length 100) |  |
+
+### `checkpoint.json $defs/pendingDeparture`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `purpose` | yes | const `plan-drift` |  |
+| `callId` | yes | string (min length 1, max length 256) |  |
+| `revision` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `candidate` | yes | object |  |
+| `candidate.plan` | yes | array of `$defs/taskStep` (min items 1, max items 20) |  |
+| `candidate.planState` | yes | `$defs/planState` |  |
+| `explanation` | yes | string (max length 2000) |  |
+| `departures` | yes | array of `$defs/planDeparture` (max items 40) |  |
+
+### `checkpoint.json $defs/planDecision`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `callId` | yes | string (min length 1, max length 256) |  |
+| `revision` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `candidateRevision` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `approved` | yes | boolean |  |
+| `note` |  | string (max length 2000) |  |

@@ -1,3 +1,5 @@
+import {closePlan,changedDepartures,appendRefusal,contentDigest,validPlanInput,availablePlanEvidence} from './planActions'
+import {resolvePlanReference} from '../planning/references'
 import {identifyPlan,revisePlan} from './plan'
 import {CheckpointIncrement,CheckpointMutation,mutateCheckpoint,type CheckpointPatch} from './mutation'
 import {ExecutionProgressTracker} from './progress'
@@ -5,14 +7,15 @@ import type {ContextToolPolicy} from '../context/toolPolicy'
 import {authoredFailure,toolInputFailure} from '../failures'
 import type {AssistantEvent,EngineSession,HostTool,McpToolResult} from '../engine'
 import {answer,contextDigest,type ContextLedger} from '../context/ledger'
-import {readCacheKey} from '../context/chat'
+import {readCacheKey,canonicalJSON as importCanonicalPlan} from '../context/chat'
 import {MAX_TURNS} from '../engines/contract'
 import {utf8Bytes} from '../context/policy'
 import {frameBlock} from '../framing'
-import {ExecutionPaused,RequestCapRefusal,MAX_CHECKPOINT_BYTES,MAX_PROMPT_DIGESTS,validRequestCap,readApprovalDecision,readExecution,refusedResult,unknownOutcome,validTaskSteps,type ExecutionCheckpoint} from './state'
+import {ExecutionPaused,RequestCapRefusal,MAX_CHECKPOINT_BYTES,MAX_PROMPT_DIGESTS,validRequestCap,readApprovalDecision,readExecution,refusedResult,unknownOutcome,type ExecutionCheckpoint} from './state'
 import {CHECKPOINT_SCHEMA,CRITIQUE_SCHEMA,PROVENANCE_SCHEMA,recordsPolicy,refuseExpired,writeRecord,type RecordGuard,type RecordsPolicy} from '../records'
 
-export const EXECUTION_INSTRUCTIONS = `TASK EXECUTION: For work requiring several stages, use update_plan to track concrete pending, in_progress and completed steps. Skip planning overhead for simple replies. Use the current accepted plan when present; do not repeatedly re-plan or ask the user to repeat an already authorized request. Update progress at meaningful boundaries, and preserve completed work across continuation. A task list is working state, not approval or proof: mark a step complete only when its required result exists, and distinguish a proposed change from a saved change. Keep a multi-stage task plan current; it estimates work but cannot grant more requests. An unsaved working object remains in the exact arguments of its completed operations. Continue from those retained arguments after validation or evaluation; rereading the saved workspace does not retrieve an unsaved proposal. Recheck the saved revision before applying changes. Use tool results already obtained; do not reread unchanged instructions or schemas or scan the entire conversation. On continuation, inspect the latest completed result and its exact arguments before doing more work. A newer saved workspace object takes precedence over an older chat draft when editing that object; preserve its identity. For a focused change, inspect the relevant contract once, make the smallest proposal, verify the affected behavior and return it. Do not restart discovery after context compaction. Before repeating a failed read, correct its arguments using the current context index. If blocked, state the exact missing information. When requests run low, finish the concrete result or call request_budget_increase with the reason and next concrete step. Desk owns budget extensions; this tool requests but never grants one. Never modify expected tests merely to match actual results. Current user instructions and host permissions remain authoritative.`
+export type PlanEvent=Extract<AssistantEvent,{type:'plan_revised'|'plan_departed'|'plan_completion_refused'|'plan_drift_decided'|'approval_requested'}>
+export const EXECUTION_INSTRUCTIONS = `TASK EXECUTION: For work requiring several stages, use update_plan to track concrete pending and in_progress steps. Close the active step with complete_plan_step and exact planRevision, using acknowledged operation ids or artifact observations; use not-needed with a reason for unnecessary work. update_plan may carry existing terminal rows unchanged. A plan decision applies only to its proposed task-list change and cannot approve a host action. Skip planning overhead for simple replies. Use the current accepted plan when present; do not repeatedly re-plan or ask the user to repeat an already authorized request. Update progress at meaningful boundaries, and preserve completed work across continuation. A task list is working state, not approval or proof: mark a step complete only when its required result exists, and distinguish a proposed change from a saved change. Keep a multi-stage task plan current; it estimates work but cannot grant more requests. An unsaved working object remains in the exact arguments of its completed operations. Continue from those retained arguments after validation or evaluation; rereading the saved workspace does not retrieve an unsaved proposal. Recheck the saved revision before applying changes. Use tool results already obtained; do not reread unchanged instructions or schemas or scan the entire conversation. On continuation, inspect the latest completed result and its exact arguments before doing more work. A newer saved workspace object takes precedence over an older chat draft when editing that object; preserve its identity. For a focused change, inspect the relevant contract once, make the smallest proposal, verify the affected behavior and return it. Do not restart discovery after context compaction. Before repeating a failed read, correct its arguments using the current context index. If blocked, state the exact missing information. When requests run low, finish the concrete result or call request_budget_increase with the reason and next concrete step. Desk owns budget extensions; this tool requests but never grants one. Never modify expected tests merely to match actual results. Current user instructions and host permissions remain authoritative.`
 
 /** A tool-call cap as the request state states it (agent#13): `response`, a parent's and its children's together; `task`, one child's. */
 export interface ToolAllowance {used:number;limit:number;scope:'response'|'task'}
@@ -48,7 +51,10 @@ export class ExecutionController {
  private planQueue:Promise<unknown>=Promise.resolve()
  private serialPlan<T>(run:()=>Promise<T>):Promise<T>{const task=this.planQueue.then(run);this.planQueue=task.catch(()=>{});return task}
  planRefused?:()=>void
- publishPlan?: (state:ExecutionCheckpoint,event:Extract<AssistantEvent,{type:"plan_revised"}>)=>Promise<void>
+ proof?:()=>{book:import('../storage/writer').DurableBook;scope:import('../storage/writer').DurableScope}|undefined
+ publishPlan?: (state:ExecutionCheckpoint,event:PlanEvent)=>Promise<void>
+ private planDecisionEvent?:Extract<AssistantEvent,{type:'plan_drift_decided'}>
+ async publishPlanDecision(){if(this.planDecisionEvent){await this.publishPlan?.(this.snapshot(),this.planDecisionEvent);this.planDecisionEvent=undefined}}
  private restored=false
  /**
   * ADR-0008: what the restored approval asks of this run before its first request: `execute`, the
@@ -83,8 +89,21 @@ export class ExecutionController {
    if(restored.requestCap!==requestCap)throw this.capRefusal('stale-state')
    if(restored.retainUntil)refuseExpired(restored as {retainUntil:string})
    if(restored.requestKey!==requestKey||restored.phase!==(this.session.context?.phase??'work'))throw toolInputFailure('The request or execution phase changed. Start a new response with the current context.')
+   for(const ref of restored.planState?.accepted?.references??[]){if(!this.session.context?.planResolver)throw toolInputFailure('PlanResolverRequired: verify accepted references before work.');await resolvePlanReference(ref,this.session.context.planResolver,this.session.signal)}
    // ADR-0008: a paused act call continues only with the person's decision for that call.
-   const given=this.session.context?.approval
+   let given=this.session.context?.approval
+   if(restored.planState?.pending){
+    const pending=restored.planState.pending,decision=readApprovalDecision(given)
+    if(restored.approval?.state==='asked'||!decision||decision.callId!==pending.callId||pending.revision!==restored.planState.revision)throw toolInputFailure('PlanApprovalRequired: continue with the exact pending plan decision.')
+    const planState=structuredClone(restored.planState);delete planState.pending
+    if(decision.approved){const candidate=structuredClone(pending.candidate);restored.plan=candidate.plan;restored.planState=candidate.planState;restored.explanation=pending.explanation}
+    else restored.planState=planState
+    const row={callId:pending.callId,revision:pending.revision,candidateRevision:pending.candidate.planState.revision,approved:decision.approved,...(decision.note===undefined?{}:{note:decision.note})}
+    restored.planState.decisions??=[];restored.planState.decisionsDiscarded??=0;restored.planState.decisions.push(row)
+    if(restored.planState.decisions.length>32){restored.planState.decisions.shift();restored.planState.decisionsDiscarded++}
+    this.planDecisionEvent={type:'plan_drift_decided',execution:restored.id,...row}
+    restored.status='running';given=undefined
+   }
    const decision=given===undefined?undefined:readApprovalDecision(given)
    if(given!==undefined&&decision===undefined)throw authoredFailure('configuration','The approval decision is not one this package reads: a callId, approved, and an optional note of at most 2,000 characters. Nothing was decided or run.','context')
    const asked=restored.approval?.state==='asked'
@@ -117,6 +136,21 @@ export class ExecutionController {
    if(plan&&['accepted','started'].includes(plan.status))this.mutate({plan:plan.steps.map(step=>({step,status:'pending'}))})
   }
   this.mutate({...identifyPlan(this.state.plan,this.state.planState),version:2})
+  const accepted=this.session.context?.plan
+  if(!restored&&accepted&&['accepted','started'].includes(accepted.status)){
+   if(!accepted.acceptedAt||!Number.isFinite(Date.parse(accepted.acceptedAt))||accepted.questions.length||accepted.steps.length<1||accepted.steps.length>20||!accepted.steps.every(s=>s.trim()&&s.length<=1000))throw toolInputFailure('PlanAcceptanceInvalid: use the host-selected accepted plan.')
+   const policy=this.session.context?.planDrift??['removed']
+   if(policy.length>4||new Set(policy).size!==policy.length||policy.some(k=>!['added','removed','changed','reordered'].includes(k)))throw toolInputFailure('PlanDriftPolicyInvalid: use a bounded departure-kind set.')
+   const validatedReferences:import('../planning/model').CurrentPlanReference[]=[]
+   for(const ref of accepted.references){if(!this.session.context?.planResolver)throw toolInputFailure('PlanResolverRequired: verify accepted references before work.');validatedReferences.push(await resolvePlanReference(ref,this.session.context.planResolver,this.session.signal))}
+   const revision=contentDigest({objective:accepted.objective,steps:accepted.steps,questions:accepted.questions,references:accepted.references})
+   const plan=this.state.plan.map((step,index)=>({...step,origin:{plan:accepted.id,revision,index}}))
+   const identified=identifyPlan(plan)
+   identified.planState.accepted={id:accepted.id,revision,sourceRevision:accepted.revision,objective:accepted.objective,steps:structuredClone(accepted.steps),references:structuredClone(accepted.references),validatedReferences,acceptedAt:accepted.acceptedAt}
+   identified.planState.driftPolicy=[...policy]
+   this.mutate(identified)
+  }
+  if(restored?.planState?.accepted&&accepted&&(accepted.id!==restored.planState.accepted.id||accepted.revision!==restored.planState.accepted.sourceRevision||accepted.acceptedAt!==restored.planState.accepted.acceptedAt||!['accepted','started'].includes(accepted.status)||contentDigest({objective:accepted.objective,steps:accepted.steps,questions:accepted.questions,references:accepted.references})!==restored.planState.accepted.revision))throw toolInputFailure('PlanAcceptanceChanged: resume with the original accepted plan.')
  }
  get remaining(){return this.state.limit-this.state.used}
  useConnection(connection:string,role='author',selectedModel?:string){
@@ -167,7 +201,7 @@ export class ExecutionController {
   return structuredClone(this.state.usage??{rows:[]})
  }
  /** ADR-0008: whether an act call of this run waits for the person's decision; no request is sent while one does. */
- get approvalAsked(){return this.state.approval?.state==='asked'}
+ get approvalAsked(){return !!this.state.planState?.pending||this.state.approval?.state==='asked'}
  /** ADR-0021: accept host input into the checkpointed queue, without placing it in a request. */
  queueSteers(input:import('../engine').EngineInput[]|undefined,bounds:{steerBytes:number;steersPerRun:number}){
   const events:import('../engine').AssistantEvent[]=[]
@@ -217,7 +251,7 @@ export class ExecutionController {
  /** The part of the guidance that changes between requests: the repetition note, the request
   * counters, the plan, the operations index. A model loop sends it after the history, at the end
   * of every request, and EXECUTION_INSTRUCTIONS once in its stable system text. */
- requestState(){const tools=this.toolAllowance?.();return this.progress.guidance+'\n'+JSON.stringify({requests:this.state.unit==='model-requests'?{unit:this.state.unit,used:this.state.used,limit:this.state.limit,remaining:this.remaining}:{unit:this.state.unit,note:'The subscription provider manages its internal model loop; tool calls are not model-request counts.'},...(tools?{toolCalls:{unit:'tool-calls',used:tools.used,limit:tools.limit,remaining:Math.max(0,tools.limit-tools.used),scope:tools.scope,note:tools.scope==='response'?'Tool calls this response may make, yours and your delegated children’s together; the context tools are not counted.':'Tool calls this task may make; the context tools are not counted.'}}:{}),tasks:this.state.plan,planRevision:this.state.planState?.revision,planSequence:this.state.planState?.sequence,explanation:this.state.explanation,retainedOperations:this.operationsReference,...(this.restoredResults.length?{resumeFromCompletedResults:this.restoredResults}:{}),completedOperationCount:this.state.operations.length})+((loaded)=>loaded?'\n'+loaded:'')(this.loadedSchemas?.())+((skills)=>skills?'\n'+skills:'')(this.loadedSkills?.())+((draft)=>draft?'\n'+draft:'')(this.loadedDrafts?.())}
+ requestState(){const tools=this.toolAllowance?.();return this.progress.guidance+'\n'+JSON.stringify({requests:this.state.unit==='model-requests'?{unit:this.state.unit,used:this.state.used,limit:this.state.limit,remaining:this.remaining}:{unit:this.state.unit,note:'The subscription provider manages its internal model loop; tool calls are not model-request counts.'},...(tools?{toolCalls:{unit:'tool-calls',used:tools.used,limit:tools.limit,remaining:Math.max(0,tools.limit-tools.used),scope:tools.scope,note:tools.scope==='response'?'Tool calls this response may make, yours and your delegated children’s together; the context tools are not counted.':'Tool calls this task may make; the context tools are not counted.'}}:{}),tasks:JSON.parse(importCanonicalPlan(this.state.plan)),planDecision:this.state.planState?.decisions?.length?JSON.parse(importCanonicalPlan(this.state.planState.decisions.at(-1))):undefined,planEvidence:availablePlanEvidence(this.proof?.()),planRevision:this.state.planState?.revision,planSequence:this.state.planState?.sequence,explanation:this.state.explanation,retainedOperations:this.operationsReference,...(this.restoredResults.length?{resumeFromCompletedResults:this.restoredResults}:{}),completedOperationCount:this.state.operations.length})+((loaded)=>loaded?'\n'+loaded:'')(this.loadedSchemas?.())+((skills)=>skills?'\n'+skills:'')(this.loadedSkills?.())+((draft)=>draft?'\n'+draft:'')(this.loadedDrafts?.())}
  async retainProgress(includeIndex=true){
   if(!this.state.operations.length)return
   const rows=[]
@@ -311,17 +345,55 @@ export class ExecutionController {
   }
  }
  tool():HostTool {
-  return {name:'update_plan',effect:'plan',description:'Track this task’s execution progress. Use for multi-stage work, not simple answers. This does not approve a plan, increase limits, save artifacts or prove success. Refer to current steps by their package id; omit id only for a new step. Keep completed steps and explain material changes. At most one step is in progress.',inputSchema:{type:'object',properties:{explanation:{type:'string',maxLength:2000},plan:{type:'array',minItems:1,maxItems:20,items:{type:'object',properties:{id:{type:'string',pattern:'^step-[1-9][0-9]{0,15}$'},step:{type:'string',maxLength:1000},status:{type:'string',enum:['pending','in_progress','completed']},detail:{type:'string',maxLength:1500}},required:['step','status'],additionalProperties:false}}},required:['explanation','plan'],additionalProperties:false},execute:async(args,signal)=>this.serialPlan(async()=>{
+  return {name:'update_plan',effect:'plan',description:'Track this task’s execution progress. Use for multi-stage work, not simple answers. This does not approve a plan, increase limits, save artifacts or prove success. Refer to current steps by their package id; omit id only for a new step. Keep completed steps and explain material changes. At most one step is in progress.',inputSchema:{type:'object',properties:{explanation:{type:'string',maxLength:2000},plan:{type:'array',minItems:1,maxItems:20,items:{type:'object',properties:{id:{type:'string',pattern:'^step-[1-9][0-9]{0,15}$'},step:{type:'string',maxLength:1000},status:{type:'string',enum:['pending','in_progress','completed','not-needed']},detail:{type:'string',maxLength:1500}},required:['step','status'],additionalProperties:false}}},required:['explanation','plan'],additionalProperties:false},execute:async(args,signal)=>this.serialPlan(async()=>{
    signal.throwIfAborted()
-   if(!validTaskSteps(args.plan)||typeof args.explanation!=='string'||args.explanation.length>2000){this.planRefused?.();throw toolInputFailure('Provide one to twenty task steps, at most one in progress, and a short explanation.')}
+   if(this.state.planState?.pending)throw toolInputFailure('PlanApprovalRequired: this run waits for its plan decision.')
+   if(Array.isArray(args.plan)&&args.plan.some(s=>s&&typeof s==='object'&&Object.keys(s).some(k=>!['id','step','status','detail'].includes(k)))){this.planRefused?.();throw toolInputFailure('PlanIdentityInvalid: package-owned task fields cannot be supplied.')}
+   if(Object.keys(args).some(k=>!["explanation","plan"].includes(k))||!validPlanInput(args.plan)||typeof args.explanation!=='string'||args.explanation.length>2000){this.planRefused?.();throw toolInputFailure('Provide one to twenty task steps, at most one in progress, and a short explanation.')}
    let next:ReturnType<typeof revisePlan>
    try{next=revisePlan(identifyPlan(this.state.plan,this.state.planState),args.plan,args.explanation)}catch(error){this.planRefused?.();throw error}
    const event:Extract<AssistantEvent,{type:'plan_revised'}>={type:'plan_revised',execution:this.state.id,...next.planState.history.at(-1)!}
-   this.mutate({...next,explanation:args.explanation})
-   await this.publishPlan?.(this.snapshot(),event)
-   return answer({status:'progress-recorded',plan:this.state.plan,planRevision:next.planState.revision,planSequence:next.planState.sequence,...(this.state.unit==='model-requests'?{remaining:this.remaining}:{budget:'provider-managed'}),permissionsUnchanged:true})
+   await this.applyPlan(next,args.explanation,event)
+   return answer({status:this.state.planState?.pending?'approval-required':'progress-recorded',plan:this.state.plan,planRevision:this.state.planState!.revision,planSequence:this.state.planState!.sequence,...(this.state.unit==='model-requests'?{remaining:this.remaining}:{budget:'provider-managed'}),permissionsUnchanged:true})
   })}
  }
+ approvalNotice():Extract<AssistantEvent,{type:'approval_requested'}>|undefined{
+  const pending=this.state.planState?.pending
+  if(pending)return {type:'approval_requested',purpose:'plan-drift',callId:pending.callId,plan:{execution:this.state.id,revision:pending.revision,candidateRevision:pending.candidate.planState.revision,explanation:pending.explanation,departures:structuredClone(pending.departures)}}
+  const asked=this.state.approval
+  if(asked?.state==='asked')return {type:'approval_requested',callId:asked.callId,name:asked.name,tool:asked.tool,source:structuredClone(asked.source),args:structuredClone(asked.args)}
+ }
+ private async applyPlan(next:ReturnType<typeof identifyPlan>,explanation:string,event:PlanEvent){
+  const changes=changedDepartures(identifyPlan(this.state.plan,this.state.planState),next,explanation)
+  if(changes.length){
+   const state=next.planState;state.departures??=[];state.departuresDiscarded??=0
+   state.departures.push({revision:state.revision,explanation,changes});if(state.departures.length>32){state.departures.shift();state.departuresDiscarded++}
+   if(changes.some(change=>(state.driftPolicy??['removed']).includes(change.kind))){
+    const pending={purpose:'plan-drift' as const,callId:crypto.randomUUID(),revision:this.state.planState!.revision,candidate:next,explanation,departures:changes}
+    this.mutate({planState:{...this.state.planState!,pending},status:'paused'})
+    await this.publishPlan?.(this.snapshot(),this.approvalNotice()!)
+    return
+   }
+  }
+  this.mutate({...next,explanation})
+  if(changes.length)await this.publishPlan?.(this.snapshot(),{type:'plan_departed',execution:this.state.id,revision:next.planState.revision,acceptedRevision:next.planState.accepted!.revision,explanation,departures:changes})
+  await this.publishPlan?.(this.snapshot(),event)
+ }
+ completionTool():HostTool{return {name:'complete_plan_step',effect:'plan',description:'Close only the current active step with acknowledged execution evidence, or as not-needed with a reason. Pass its exact id and current planRevision.',inputSchema:{type:'object',properties:{id:{type:'string',maxLength:100},expectedRevision:{type:'string',pattern:'^sha256:[a-f0-9]{64}$'},outcome:{enum:['completed','not-needed']},reason:{type:'string',minLength:1,maxLength:1500},evidence:{type:'object',properties:{operations:{type:'array',maxItems:20,items:{type:'string',maxLength:256}},artifacts:{type:'array',maxItems:20,items:{type:'object',properties:{kind:{enum:['artifact','dialect']},id:{type:'string',maxLength:256},digest:{type:'string',pattern:'^sha256:[a-f0-9]{64}$'}},required:['kind','id','digest'],additionalProperties:false}}},required:['operations','artifacts'],additionalProperties:false}},required:['id','expectedRevision','outcome'],additionalProperties:false,oneOf:[{"properties":{"outcome":{"const":"completed"}},"required":["evidence"],"not":{"required":["reason"]}},{"properties":{"outcome":{"const":"not-needed"}},"required":["reason"],"not":{"required":["evidence"]}}]},execute:async(args,signal)=>this.serialPlan(async()=>{
+  signal.throwIfAborted()
+  if(this.state.planState?.pending)throw toolInputFailure('PlanApprovalRequired: this run waits for its plan decision.')
+  const current=identifyPlan(this.state.plan,this.state.planState),result=closePlan(current,args,this.proof?.())
+  if(result.reason){
+   const next=appendRefusal(current,result.reason,typeof args.id==='string'?args.id:undefined);this.mutate(next)
+   const event={type:'plan_completion_refused' as const,execution:this.state.id,...next.planState.refusals!.at(-1)!}
+   await this.publishPlan?.(this.snapshot(),event)
+   throw toolInputFailure(`${result.reason==='evidence-unavailable'?'PlanEvidenceUnavailable':'PlanEvidenceInvalid'}: completion refused (${result.reason}); the active step remains in progress.`)
+  }
+  const next=result.next!,row=next.planState.history.at(-1)!
+  await this.applyPlan(next,row.explanation,{type:'plan_revised',execution:this.state.id,...row})
+  return answer({status:args.outcome,plan:this.state.plan,planRevision:this.state.planState!.revision})
+ })}}
+
  budgetTool():HostTool {
   return {name:'request_budget_increase',effect:'plan',description:'Pause near the request limit and ask the person for more compute. Explain useful remaining work and the next concrete step. This never grants more requests or action permissions. Use ask_user for missing policy decisions instead.',inputSchema:{type:'object',properties:{reason:{type:'string',maxLength:1000},nextStep:{type:'string',maxLength:900}},required:['reason','nextStep'],additionalProperties:false},execute:async(args,signal)=>{
    signal.throwIfAborted()

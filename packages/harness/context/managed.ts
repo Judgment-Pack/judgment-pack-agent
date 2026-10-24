@@ -100,7 +100,7 @@ async function* execute<T extends EngineSession>(session:T,run:(session:RequestS
   yield {type:'policy_resolved',members:structuredClone(context.resolvedPolicy)}
   function* checkpoint(status=context!.execution.state.status,durable?:boolean,paused=false):Generator<AssistantEvent>{
    try{const saved=context!.execution.snapshot(status);yield paused?{type:'budget_paused',checkpoint:saved}:{type:'execution_checkpoint',...(durable===undefined?{}:{durable}),checkpoint:saved}}
-   catch(error){if(!(error instanceof RecordsRefused))throw error;for(const notice of takeNotices(context!))yield notice}
+   catch(error){if(!(error instanceof RecordsRefused))throw error;for(const notice of takeNotices(context!)){if(notice.type==='approval_requested')requested=notice.callId;yield notice}}
   }
   if(context.paceWarning)yield {type:'guardrail',tool:'pace',action:'refused',reason:'pace warning',detail:context.paceWarning}
   session.signal.throwIfAborted()
@@ -121,7 +121,7 @@ async function* execute<T extends EngineSession>(session:T,run:(session:RequestS
     yield await write()
     const ran=await context.runApproved!(session.signal)
     context.execution.mutate({approval:{...context.execution.state.approval!,state:'executed',result:ran.result}})
-    for(const notice of takeNotices(context))yield notice
+    for(const notice of takeNotices(context)){if(notice.type==='approval_requested')requested=notice.callId;yield notice}
     yield await write()
    }else if(step==='write'){
     yield await write()
@@ -156,7 +156,7 @@ async function* execute<T extends EngineSession>(session:T,run:(session:RequestS
    event=guardNotice(event,context)
    // agent#10: a refusal of the critic's call is the boundary's guardrail, put
    // on the stream before the result the engine reports for that call.
-   for(const notice of takeNotices(context))yield notice
+   for(const notice of takeNotices(context)){if(notice.type==='approval_requested')requested=notice.callId;yield notice}
    const checkpoints=event.type==='tool_call'||event.type==='tool_result'||event.type==='user_question'||event.type==='budget_paused'||event.type==='error'&&(event.failure?.code==='request-limit'||event.message===new ExecutionPaused().message)
    if(context.execution.approvalAsked||checkpoints)for(const notice of context.execution.queueSteers(ready.session.input,context.policy))yield notice
    // ADR-0008: an engine asks the host's approval policy where it hands an act call to the host
@@ -183,8 +183,8 @@ async function* execute<T extends EngineSession>(session:T,run:(session:RequestS
    // refused request's error, or a pause of its own all end it paused, with the checkpoint durable
    // and no error.
    if(context.execution.approvalAsked&&(event.type==='end'||event.type==='error'||event.type==='budget_paused')){
-    const asked=context.execution.state.approval!
-    if(requested!==asked.callId)yield {type:'approval_requested',callId:asked.callId,name:asked.name,tool:asked.tool,source:{...asked.source},args:structuredClone(asked.args)}
+    const asked=context.execution.approvalNotice()!
+    if(requested!==asked.callId)yield asked
     paused=true;context.execution.mutate({status:'paused'})
     context.execution.mutate({usage:context.execution.usage()})
     yield* checkpoint('paused',true)
@@ -193,7 +193,7 @@ async function* execute<T extends EngineSession>(session:T,run:(session:RequestS
    }
    // ADR-0006: a tool with a source's call and result carry its source record.
    if(context.sources)event=context.sources.decorate(event)
-   if(event.type==='critique'){try{event=context.execution.recordCritique(event)}catch(error){if(!(error instanceof RecordsRefused))throw error;for(const notice of takeNotices(context))yield notice;continue}}
+   if(event.type==='critique'){try{event=context.execution.recordCritique(event)}catch(error){if(!(error instanceof RecordsRefused))throw error;for(const notice of takeNotices(context)){if(notice.type==='approval_requested')requested=notice.callId;yield notice};continue}}
    if(event.type==='error')failed=true
    context.execution.observe(event)
    if(event.type==='budget_paused'||event.type==='error'&&(event.failure?.code==='request-limit'||event.message===new ExecutionPaused().message)){
@@ -228,7 +228,7 @@ async function* execute<T extends EngineSession>(session:T,run:(session:RequestS
    if(!notices.some(e=>e.type==='guardrail'&&e.reason==='output refused'))yield {type:'guardrail',tool:'output',action:'refused',reason:'output refused',detail:error.message}
    let usage=context?context.execution.usage():{rows:[]}
    if(context)context.execution.mutate({usage:usage})
-   if(context&&tracked){try{yield {type:'execution_checkpoint',checkpoint:context.execution.snapshot('stopped')}}catch(held){if(!(held instanceof RecordsRefused))throw held;for(const notice of takeNotices(context))yield notice}}
+   if(context&&tracked){try{yield {type:'execution_checkpoint',checkpoint:context.execution.snapshot('stopped')}}catch(held){if(!(held instanceof RecordsRefused))throw held;for(const notice of takeNotices(context)){if(notice.type==='approval_requested')requested=notice.callId;yield notice}}}
    if(context)usage=context.execution.state.usage??usage
    yield {type:'usage',usage}
    yield {type:'end'};return
