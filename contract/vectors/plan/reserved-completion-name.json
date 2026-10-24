@@ -1,0 +1,16 @@
+{
+  "schema": "tool-offer.json#/$defs/reservedName",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/execution/controller.ts",
+      "go/gate/phase.go"
+    ]
+  },
+  "items": [
+    "complete_plan_step"
+  ]
+}

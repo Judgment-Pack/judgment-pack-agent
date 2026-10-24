@@ -505,7 +505,7 @@ func approvalPauseFindings(state *paused, prefix string, agent bool) []Finding {
 			requested = append(requested, event.ApprovalRequested)
 		}
 	}
-	if len(requested) != 1 || requested[0].Name != "tracker__create_issue" || requested[0].Tool != "create_issue" ||
+	if len(requested) != 1 || requested[0].Name == nil || *requested[0].Name != "tracker__create_issue" || requested[0].Tool == nil || *requested[0].Tool != "create_issue" ||
 		!sameJSON([]byte(comparisonJSON(requested[0].Source)), []byte(record)) || !sameJSON([]byte(comparisonJSON(requested[0].Args)), asked) {
 		f.fail("approval_requested was %s", comparisonJSON(requested))
 	} else {

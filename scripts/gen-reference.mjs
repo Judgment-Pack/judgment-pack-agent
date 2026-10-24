@@ -819,6 +819,9 @@ async function memoryPage(page) {
 async function corpusPage(page) {
  page.add('ADR-0022 records a run only after the output guard redacts the complete entry. Replay answers from the recording and compares decisions and outcomes, never model prose or a live provider.',page.rootOf('corpus-entry.json','## Entry manifest'),page.nodeOf('run-event.json','recorded'),page.nodeOf('run-event.json','guardrail'))
 }
+// This API narrative is maintained by hand; its schema-derived checkpoint fields live in checkpoint.md.
+const HAND_AUTHORED_PAGES = new Set(['run-report.md'])
+
 const PAGES = [
  ['records.md','Records',recordsPage],
  ['corpus.md','The evaluation corpus',corpusPage],
@@ -899,7 +902,7 @@ async function main() {
       else if (readFileSync(path, 'utf8') !== text) problems.push(diff(file, readFileSync(path, 'utf8'), text))
     }
     if (existsSync(options.out)) {
-      for (const file of readdirSync(options.out)) if (file.endsWith('.md') && !pages.has(file)) problems.push(`${file} is in docs/reference but no source generates it`)
+      for (const file of readdirSync(options.out)) if (file.endsWith('.md') && !pages.has(file) && !HAND_AUTHORED_PAGES.has(file)) problems.push(`${file} is in docs/reference but no source generates it`)
     }
     if (problems.length) {
       console.error(problems.join('\n\n'))

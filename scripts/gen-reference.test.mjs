@@ -80,3 +80,15 @@ test('a hand-edited provider matrix is rejected', () => {
  assert.notEqual(checked.status,0)
  assert.match(checked.stderr,/providers.md/)
 })
+
+
+test('the named run report narrative is preserved beside generated references', () => {
+  const out = join(scratch, 'report-narrative')
+  assert.equal(run('--out', out).status, 0)
+  const path = join(out, 'run-report.md')
+  const narrative = '# Run report\n\nHost-owned projection guidance.\n'
+  writeFileSync(path, narrative)
+  const checked = run('--check', '--out', out)
+  assert.equal(checked.status, 0, checked.stderr)
+  assert.equal(readFileSync(path, 'utf8'), narrative)
+})

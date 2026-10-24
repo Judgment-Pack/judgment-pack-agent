@@ -6612,6 +6612,45 @@
    "status": "caught",
    "origin": "agent#180/#181/#182",
    "note": "Matched Go twin in go/context/plan_actions.go removes `d.State != \"result\"` using `false && d.State != \"result\"`. Both focused plan test assertions fail under the individual removal; no build-only failure receives credit."
+  },
+  {
+   "name": "task completion requires the acknowledged operation observation",
+   "file": "execution/planActions.ts",
+   "find": "||!proof.book.observations.some(o=>o.kind==='operation'",
+   "replace": "||false&&!proof.book.observations.some(o=>o.kind==='operation'",
+   "tests": [
+    "execution/plan.test.ts",
+    "execution/planActions.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#181/#182",
+   "note": "Matched Go twin in go/context/plan_actions.go replaces `|| !observed {` with `|| observed && false {`. Integrated TestPlan controls fail under each individual removal; intended assertion failures verified in both languages, no build-only failure credit."
+  },
+  {
+   "name": "task completion binds the observed artifact identity",
+   "file": "execution/planActions.ts",
+   "find": "o.artifact.id===artifact.id",
+   "replace": "(true||o.artifact.id===artifact.id)",
+   "tests": [
+    "execution/plan.test.ts",
+    "execution/planActions.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#181/#182",
+   "note": "Matched Go twin in go/context/plan_actions.go replaces `o.Artifact.ID == planText(a.Get(\"id\"))` with `(true || o.Artifact.ID == planText(a.Get(\"id\")))`. Integrated TestPlan controls fail under each individual removal; intended assertion failures verified in both languages, no build-only failure credit."
+  },
+  {
+   "name": "accepted task snapshot verifies its own original content digest",
+   "file": "execution/planActions.ts",
+   "find": "if(accepted.revision!==contentDigest(",
+   "replace": "if(false&&accepted.revision!==contentDigest(",
+   "tests": [
+    "execution/plan.test.ts",
+    "execution/planActions.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#181/#182",
+   "note": "Matched Go twin in go/context/plan_validation.go replaces `if planText(accepted.Get(\"revision\")) != acceptedPlanDigest(accepted) {` with `if false && planText(accepted.Get(\"revision\")) != acceptedPlanDigest(accepted) {`. Integrated TestPlan controls fail under each individual removal; intended assertion failures verified in both languages, no build-only failure credit."
   }
  ]
 }

@@ -187,6 +187,11 @@ func TestPlanDriftStopsProviderInvocation(t *testing.T) {
 		_, _ = callbacks.Tool(ctx, adapter.AgentToolCall{ID: "later-call", Name: aliasOf(request, "write_note"), Arguments: json.RawMessage(`{}`)})
 		return err
 	})
+	// This fixture opens its gate before the boundary adds package execution tools.
+	// Admit the exact package tool exercised here through that gate as well.
+	g := gate.New(gate.Options{Runtime: emptyRuntime, Granted: gate.Ceiling, Emit: run.Emit})
+	g.SetOffer(contract.ToolOffer{Tools: run.Tools, HostTools: []contract.ToolOfferHostTool{note.Declaration(), {Name: "update_plan"}}})
+	run.Gate = g.Calls()
 	run.Context.Plan = runcontext.MustParseJSON(`{"id":"accepted-plan","revision":1,"objective":"Inspect and report","steps":["Inspect","Report"],"questions":[],"references":[],"status":"accepted","createdAt":"2026-10-01T00:00:00.000Z","acceptedAt":"2026-10-01T00:00:00.000Z"}`)
 	if err := agent.New().Run(context.Background(), run); err != nil {
 		t.Fatal(err)
