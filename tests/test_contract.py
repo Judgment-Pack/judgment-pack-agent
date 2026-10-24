@@ -57,6 +57,9 @@ EXPECTED_SCHEMAS = {
 # The $defs added or changed (beyond their descriptions) between v0.1.0 and the v0.2.0 release
 # review, whose members each need a vector (#43): (schema, definition).
 RELEASE_REVIEWED_DEFS = [
+    ("checkpoint.json", "durableBook"), ("checkpoint.json", "durableScope"),
+    ("checkpoint.json", "durableDispatch"), ("checkpoint.json", "durableObservation"),
+    ("checkpoint.json", "artifactObservation"),
     ("checkpoint.json", "sourceIdentity"),
     ("run-event.json", "recorded"),
     ("run-event.json", "compacted"), ("provenance.json", "compactionSummary"), ("provenance.json", "compactionReport"),

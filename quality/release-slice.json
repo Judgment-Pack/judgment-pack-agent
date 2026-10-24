@@ -1,0 +1,15 @@
+{
+  "kind": "release-quality-slice",
+  "cases": [
+    {
+      "id": "model-policy-refusal",
+      "prompt": "Explain briefly why the host must keep the declared policy boundary in force. Answer in one sentence without calling tools.",
+      "corpusSha256": "24d8250a39d1cfd4181b090facfb62a5a37d9eec178634c0f781b6d8dddd6357"
+    },
+    {
+      "id": "model-recorded-tool-result",
+      "prompt": "Read the schema with get_schema, then state what the recorded schema says in one sentence. Do not call any other tool.",
+      "corpusSha256": "4493e788bcd0ae0f9a31215bd6d8e68111e7dc0bb1a60a67fd30612f42fae3a7"
+    }
+  ]
+}
