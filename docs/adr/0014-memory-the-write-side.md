@@ -127,3 +127,9 @@ and recall notices publish only after commit. Lists stay bounded at 256 each; te
 updates use the existing checkpoint/report shape and do not fabricate a text-recall event.
 The once-prepared prompt remains immutable through the run. Checkpoint reload preserves all
 identity metadata and terminal states. The host owns storage, acceptance and deletion throughout.
+
+The browser memory helpers retain validation evidence privately: `nextMemoryRecall` accepts
+only an original, unedited `recallMemory` result and validates lifecycle rows itself.
+`commitMemoryRecall` accepts only the original, unedited preparation for the same prior book.
+Copied or fabricated result objects cannot authorize identity changes or new accepted rows;
+these helpers refuse before calling the checkpoint writer.
