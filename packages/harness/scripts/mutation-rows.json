@@ -5045,6 +5045,90 @@
     "note": "Go twin: remove the integer-overflow condition in MutateCheckpoint; TestCheckpointMutationAtomicRevisionAndDetachedReads fails the invalid-patch assertion for a count above the integer maximum."
   },
   {
+   "name": "public memory recall validation evidence removed",
+   "file": "memories.ts",
+   "find": "if (validated === undefined) lifecycleFailure('does not contain an unedited validated recall')\n  recall = structuredClone(recall)\n  if (validated !== canonicalJSON(recall)) lifecycleFailure('does not contain an unedited validated recall')",
+   "replace": "recall = structuredClone(recall)",
+   "tests": [
+    "memoryLifecycle.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#173 review M2",
+   "note": "Actual exported helpers with canonical contextualSession/controller snapshot and public readExecution; refuses before publication."
+  },
+  {
+   "name": "public memory preparation evidence removed",
+   "file": "memories.ts",
+   "find": "if (!prepared) lifecycleFailure('does not contain an unedited prepared recall')\n  const recalled = structuredClone(next) as MemoryRecall[]\n  if (prepared!.prior !== expectedJSON || prepared!.next !== canonicalJSON(recalled)) lifecycleFailure('does not contain an unedited prepared recall')",
+   "replace": "const recalled = structuredClone(next) as MemoryRecall[]",
+   "tests": [
+    "memoryLifecycle.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#173 review M2",
+   "note": "Actual exported helpers with canonical contextualSession/controller snapshot and public readExecution; refuses before publication."
+  },
+  {
+   "name": "public memory preparation skips lifecycle closure",
+   "file": "memories.ts",
+   "find": "lifecycle = readMemoryLifecycle(lifecycle)",
+   "replace": "// lifecycle validation removed",
+   "tests": [
+    "memoryLifecycle.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#173 review M2",
+   "note": "Actual exported helpers with canonical contextualSession/controller snapshot and public readExecution; refuses before publication."
+  },
+  {
+   "name": "public memory recall content evidence removed",
+   "file": "memories.ts",
+   "find": "if (validated !== canonicalJSON(recall))",
+   "replace": "if (false)",
+   "tests": [
+    "memoryLifecycle.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#173 review M2",
+   "note": "Browser-only private validation custody; actual exported helper controls catch missing evidence or live accessor reads before canonical publication."
+  },
+  {
+   "name": "public memory preparation content evidence removed",
+   "file": "memories.ts",
+   "find": "if (prepared!.prior !== expectedJSON || prepared!.next !== canonicalJSON(recalled))",
+   "replace": "if (false)",
+   "tests": [
+    "memoryLifecycle.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#173 review M2",
+   "note": "Browser-only private validation custody; actual exported helper controls catch missing evidence or live accessor reads before canonical publication."
+  },
+  {
+   "name": "public memory preparation publishes a live array",
+   "file": "memories.ts",
+   "find": "const recalled = structuredClone(next) as MemoryRecall[]",
+   "replace": "const recalled = next as MemoryRecall[]",
+   "tests": [
+    "memoryLifecycle.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#173 review M2",
+   "note": "Browser-only private validation custody; actual exported helper controls catch missing evidence or live accessor reads before canonical publication."
+  },
+  {
+   "name": "public memory preparation reads a live recall",
+   "file": "memories.ts",
+   "find": "recall = structuredClone(recall)",
+   "replace": "// recall clone removed",
+   "tests": [
+    "memoryLifecycle.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#173 review M2",
+   "note": "Browser-only private validation custody; actual exported helper controls catch missing evidence or live accessor reads before canonical publication."
+  },
+  {
    "name": "lifecycle closure removed",
    "file": "memories.ts",
    "find": "Reflect.ownKeys(row).length === 4",
@@ -5054,7 +5138,7 @@
    ],
    "status": "caught",
    "origin": "agent#173",
-   "note": "Go twin: TestMemoryLifecycleSharedAnswers: remove hasOnly for lifecycle rows."
+   "note": "Go twin: TestMemoryLifecycleSharedAnswers: remove both lifecycle hasOnly and the generated MemoryLifecycleUpdate.UnmarshalJSON closed-row check; removing only hasOnly is redundant and survives. The combined twin catches the extra-field assertion (review exactcombined evidence)."
   },
   {
    "name": "lifecycle duplicate identities admitted",
@@ -5107,7 +5191,7 @@
   {
    "name": "lifecycle stale report overwrites owner",
    "file": "memories.ts",
-   "find": "if (canonicalJSON(current.recalled) !== canonicalJSON(expected))",
+   "find": "if (canonicalJSON(current.recalled) !== expectedJSON)",
    "replace": "if (false)",
    "tests": [
     "memoryLifecycle.test.ts"
@@ -5119,8 +5203,8 @@
   {
    "name": "lifecycle overwrites current proposals",
    "file": "memories.ts",
-   "find": "{ proposed: current.proposed, recalled: [...next] }",
-   "replace": "{ proposed: [], recalled: [...next] }",
+   "find": "{ proposed: current.proposed, recalled }",
+   "replace": "{ proposed: [], recalled }",
    "tests": [
     "memoryLifecycle.test.ts"
    ],

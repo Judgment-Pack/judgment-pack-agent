@@ -2,7 +2,7 @@ import {afterEach,describe,expect,it} from 'vitest'
 import {configureHarness} from './host'
 import {contextualSession} from './context/session'
 import {normalize} from './thinking'
-import {recallMemory,readMemoryLifecycle,nextMemoryRecall,commitMemoryRecall,type Memory,type MemoryRecall} from './memories'
+import {recallMemory,readMemoryLifecycle,nextMemoryRecall,commitMemoryRecall,recordRecall,type Memory,type MemoryRecall} from './memories'
 import {CheckpointMutation} from './execution/mutation'
 import {readExecution,type ExecutionCheckpoint} from './execution/state'
 import {readFailure} from './failures'
@@ -13,6 +13,7 @@ import answers from '../../contract/vectors/memory/lifecycle-answer.json'
 import transitions from '../../contract/vectors/memory/lifecycle-transitions.json'
 import aliases from '../../contract/vectors/compatibility/retired-aliases.json'
 import {resolvePolicy} from './policy'
+import {contextDigest} from './context/ledger'
 
 const identity=transitions.identity as Omit<MemoryRecall,'state'>
 const record:Memory={...identity,kind:'preference',text:'Use metric units.',source:{run:'fixture-host',proposedBy:'host'},scope:'project',createdAt:'2026-10-01T00:00:00Z',state:'accepted'}
@@ -61,9 +62,64 @@ describe('metadata-only memory lifecycle',()=>{
   commitMemoryRecall(()=>saved.read(),patch=>{saved.apply(patch)},prior,next)
   expect(saved.read().memories!.proposed).toEqual([proposal])
   const revision=saved.revision
-  commitMemoryRecall(()=>saved.read(),patch=>{saved.apply(patch)},next,next)
+  commitMemoryRecall(()=>saved.read(),patch=>{saved.apply(patch)},next,nextMemoryRecall(next,await recallMemory([],4000,'marker'),[update]))
   expect(saved.revision).toBe(revision)
   expect(()=>commitMemoryRecall(()=>saved.read(),patch=>{saved.apply(patch)},prior,next)).toThrow('stale')
+ })
+ it('refuses unchecked public commits and forged preparation before canonical publication',async()=>{
+  configureHarness({memoryFor:()=>[record]})
+  const first=await contextualSession(session())
+  const checkpoint=readExecution(JSON.parse(JSON.stringify(first.context.execution.snapshot('stopped'))))!;first.context.close()
+  checkpoint.memories!.recalled[0]!.state='revoked'
+  configureHarness({memoryFor:()=>{throw Error('disabled text callback')},memoryLifecycle:()=>undefined})
+  const opened=await contextualSession(session(checkpoint,false)),controller=opened.context.execution
+  try {
+   const before=controller.state,prior=controller.state.memories!.recalled,revision=controller.revision
+   const write=(patch:Parameters<typeof controller.mutate>[0])=>{controller.mutate(patch)}
+   const unchanged=()=>{
+    expect(controller.revision).toBe(revision)
+    expect(controller.state).toEqual(before)
+    expect(opened.context.takeNotices().filter(event=>event.type==='memory_recalled')).toEqual([])
+   }
+   for(const changed of [{...prior[0]!,state:'accepted' as const},{...prior[0]!,digest:'sha256:'+'0'.repeat(64)},{...prior[0]!,id:'rewritten'},{...prior[0]!,kind:'fact' as const}]){
+    expect(()=>commitMemoryRecall(()=>controller.state,write,prior,[changed])).toThrow('prepared recall');unchanged()
+   }
+   expect(()=>commitMemoryRecall(()=>controller.state,write,prior,[...prior,{...row(),id:'new'}])).toThrow('prepared recall');unchanged()
+   const recall=await recallMemory([],4000,'marker')
+   const forged={...recall,rows:[{...row(),id:'new'}],records:[{...record,id:'new'}]}
+   expect(()=>nextMemoryRecall(prior,forged,[])).toThrow('validated recall')
+   expect(()=>recordRecall(controller.state,forged,write)).toThrow('validated recall');unchanged()
+   recall.rows.push({...row(),id:'new'})
+   expect(()=>nextMemoryRecall(prior,recall,[])).toThrow('validated recall');unchanged()
+   const prepared=nextMemoryRecall(prior,await recallMemory([],4000,'marker'),[update])
+   prepared[0]!.state='accepted'
+   expect(()=>commitMemoryRecall(()=>controller.state,write,prior,prepared)).toThrow('prepared recall');unchanged()
+   const wrongPrior=nextMemoryRecall([row()],await recallMemory([],4000,'marker'),[])
+   expect(()=>commitMemoryRecall(()=>controller.state,write,prior,wrongPrior)).toThrow('prepared recall');unchanged()
+   const awaitedRecall=await recallMemory([],4000,'marker')
+   expect(()=>nextMemoryRecall(prior,awaitedRecall,[{...update,extra:true} as never])).toThrow('closed lifecycle');unchanged()
+   const accessorRecall=await recallMemory([],4000,'marker')
+   let recordReads=0
+   Object.defineProperty(accessorRecall,'records',{enumerable:true,get:()=>recordReads++===0?[]:[record]})
+   let detached:MemoryRecall[]=[]
+   expect(()=>{detached=nextMemoryRecall(prior,accessorRecall,[])}).not.toThrow()
+   let stateReads=0
+   Object.defineProperty(detached[0]!,'state',{enumerable:true,get:()=>stateReads++<2?'revoked':'accepted'})
+   commitMemoryRecall(()=>controller.state,write,prior,detached);unchanged()
+   expect(readExecution(JSON.parse(JSON.stringify(controller.snapshot('stopped'))))!.memories).toEqual(before.memories)
+  } finally { opened.context.close() }
+ })
+ it('commits validated full records with changed text under a new identity and terminal replay',async()=>{
+  const saved=store([row('revoked')]),prior=saved.read().memories!.recalled
+  const text='Use Celsius for temperatures.'
+  const fresh={...record,id:'new-text',text,digest:`sha256:${await contextDigest(text)}`}
+  const recall=await recallMemory([fresh],4000,'marker')
+  const next=nextMemoryRecall(prior,recall,[update])
+  commitMemoryRecall(()=>saved.read(),patch=>{saved.apply(patch)},prior,next)
+  expect(saved.read().memories!.recalled).toEqual([row('revoked'),{id:fresh.id,digest:fresh.digest,kind:fresh.kind,state:'accepted'}])
+  const revision=saved.revision
+  commitMemoryRecall(()=>saved.read(),patch=>{saved.apply(patch)},next,nextMemoryRecall(next,recall,[update]))
+  expect(saved.revision).toBe(revision)
  })
  it('resumes through the canonical host hook after text deletion, including disabled recall',async()=>{
   let textCalls=0
