@@ -19,6 +19,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -147,6 +148,215 @@ func isRawRequestSelection(selection *types.Selection) bool {
 	return isRawRequestField(field)
 }
 
+// A method with a conversion's name is not that package's free function.
+func requestFunctionOwner(function *ast.FuncDecl) string {
+	if function.Recv == nil {
+		return function.Name.Name
+	}
+	receiver := function.Recv.List[0].Type
+	prefix := ""
+	if pointer, ok := receiver.(*ast.StarExpr); ok {
+		prefix = "*"
+		receiver = pointer.X
+	}
+	if name, ok := receiver.(*ast.Ident); ok {
+		return prefix + name.Name + "." + function.Name.Name
+	}
+	return ""
+}
+
+// Definitions and conversions retain the canonical struct's field objects.
+// Same-shaped independent structs and structs embedding an admitted view do not.
+func protectedRequestRepresentation(value types.Type) string {
+	structure, ok := value.Underlying().(*types.Struct)
+	if !ok {
+		return ""
+	}
+	for i := 0; i < structure.NumFields(); i++ {
+		field := structure.Field(i)
+		if field.Pkg() == nil {
+			continue
+		}
+		owners := []string{}
+		switch field.Pkg().Path() {
+		case "github.com/Judgment-Pack/judgment-pack-agent/go/adapter":
+			owners = []string{"RequestSession", "RequestPolicyConnection", "RequestAgent", "PreparedRequest"}
+		case "github.com/Judgment-Pack/judgment-pack-agent/go/context":
+			owners = []string{"RequestValues"}
+		}
+		for _, owner := range owners {
+			declaration := field.Pkg().Scope().Lookup(owner)
+			if declaration == nil {
+				continue
+			}
+			canonical, ok := declaration.Type().Underlying().(*types.Struct)
+			if !ok {
+				continue
+			}
+			for j := 0; j < canonical.NumFields(); j++ {
+				if canonical.Field(j) == field {
+					return owner
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func requestSourceViolations(root string, files *token.FileSet, trees []*ast.File, info *types.Info) []string {
+	unexpected := []string{}
+	allowed := map[string][][2]token.Pos{}
+	for _, tree := range trees {
+		path := files.Position(tree.Pos()).Filename
+		relative, _ := filepath.Rel(root, path)
+		admission := map[string][]string{
+			"adapter/request_session.go":      {"requestAgent", "ReadAdmissionReasoning", "AdmissionAgent", "*RequestAgent.Admit", "NewRequestSession", "NewRequestOperations"},
+			"adapter/policy.go":               {"PolicyConnectionIDs", "PolicyBinding", "ApplyPolicy", "PolicyFamilies"},
+			"adapter/agent.go":                {"*Agent.Admit"},
+			"adapter/agent/agent.go":          {"Run"},
+			"adapter/eino/run.go":             {"Run"},
+			"adapter/delegate/coordinator.go": {"With", "criticReserve", "*coordinator.drive", "*coordinator.taskProvider"},
+			"adapter/delegate/policy.go":      {"*coordinator.parentPolicy", "*coordinator.childBinding", "*coordinator.hasRestoredDefinitions"},
+			"adapter/delegate/batch.go":       {"*coordinator.plan", "*coordinator.childModelName", "*coordinator.runChild", "*coordinator.childHostTools"},
+			"adapter/delegate/agent.go":       {"*coordinator.parentAgent", "*coordinator.childAgent", "*coordinator.driveAgent", "*coordinator.restoreAgent", "*coordinator.continueAgent", "*coordinator.parentInvocation"},
+			"adapter/delegate/run.go":         {"*coordinator.drive", "*coordinator.runBatch", "*coordinator.parent", "*coordinator.child", "*coordinator.concurrency"},
+			"adapter/delegate/figures.go":     {"*coordinator.childFigures", "*coordinator.batchFigures", "*coordinator.withFigures"},
+			"context/session.go":              {"NewSessionContext", "ContextualSession", "*SessionContext.ModelName", "*SessionContext.Models", "*SessionContext.AskHost", "*SessionContext.MessagesContext"},
+			"context/policy_table.go":         {"resolveSessionPolicy"},
+			"context/delegation_policy.go":    {"delegatedSessionPolicy", "*DelegatedPolicy.restore"},
+			"context/planning.go":             {"PlanningSession"},
+			"context/types.go":                {"Session.ModelName"},
+			"context/critic.go":               {"OfferedReviewTool"},
+			"context/memories.go":             {"*SessionContext.MemoryAdmitted"},
+			"context/subagents.go":            {"SubagentAdmissionBudget"},
+			"context/managed.go":              {"*Boundary.Event"},
+			"context/output_boundary.go":      {"*Boundary.guardName", "*SessionContext.ValidateOutputProposal"},
+			"context/prompt.go":               {"*SessionContext.AskHost"},
+			"context/controller.go":           {"*ExecutionController.Initialize"},
+			"context/edits.go":                {"OfferedEditTools", "*SessionContext.OpenDrafts", "*Drafts.Edit"},
+		}
+		for _, declaration := range tree.Decls {
+			function, ok := declaration.(*ast.FuncDecl)
+			if !ok {
+				continue
+			}
+			for _, name := range admission[filepath.ToSlash(relative)] {
+				if requestFunctionOwner(function) == name {
+					allowed[path] = append(allowed[path], [2]token.Pos{function.Pos(), function.End()})
+				}
+			}
+		}
+	}
+	for _, tree := range trees {
+		ast.Inspect(tree, func(node ast.Node) bool {
+			entry, ok := node.(*ast.KeyValueExpr)
+			if !ok {
+				return true
+			}
+			key, ok := entry.Key.(*ast.Ident)
+			if !ok {
+				return true
+			}
+			field, _ := info.Uses[key].(*types.Var)
+			if !isRawRequestField(field) {
+				return true
+			}
+			position := files.Position(key.Pos())
+			permitted := false
+			for _, bounds := range allowed[position.Filename] {
+				if key.Pos() >= bounds[0] && key.End() <= bounds[1] {
+					permitted = true
+				}
+			}
+			if !permitted {
+				relative, _ := filepath.Rel(root, position.Filename)
+				unexpected = append(unexpected, filepath.ToSlash(relative)+":"+key.Name+":raw-construction")
+			}
+			return true
+		})
+	}
+	for expression, typed := range info.Types {
+		literal, ok := expression.(*ast.CompositeLit)
+		if !ok {
+			continue
+		}
+		name := protectedRequestRepresentation(typed.Type)
+		if name == "" {
+			continue
+		}
+		position := files.Position(literal.Pos())
+		relative, _ := filepath.Rel(root, position.Filename)
+		permitted := false
+		constructors := map[string][]string{
+			"adapter/request_session.go": {"requestAgent", "*RequestSession.ResolvedCapabilities", "NewRequestOperations", "NewRequestSession", "*RequestSession.PolicyBinding"},
+			"context/request_values.go":  {"NewRequestValues"},
+		}
+		for _, tree := range trees {
+			for _, declaration := range tree.Decls {
+				function, ok := declaration.(*ast.FuncDecl)
+				if !ok || literal.Pos() < function.Pos() || literal.End() > function.End() {
+					continue
+				}
+				for _, allowed := range constructors[filepath.ToSlash(relative)] {
+					if requestFunctionOwner(function) == allowed {
+						permitted = true
+					}
+				}
+			}
+		}
+		if permitted {
+			continue
+		}
+		unexpected = append(unexpected, filepath.ToSlash(relative)+":"+name+":request-construction")
+	}
+	for selector, selection := range info.Selections {
+		raw := isRawRequestSelection(selection)
+		if !raw {
+			continue
+		}
+		position := files.Position(selector.Pos())
+		permitted := false
+		for _, bounds := range allowed[position.Filename] {
+			if selector.Pos() >= bounds[0] && selector.End() <= bounds[1] {
+				permitted = true
+			}
+		}
+		writeOnly := false
+		for _, tree := range trees {
+			ast.Inspect(tree, func(node ast.Node) bool {
+				assignment, ok := node.(*ast.AssignStmt)
+				if ok && assignment.Tok == token.ASSIGN {
+					for _, left := range assignment.Lhs {
+						if left == selector {
+							writeOnly = true
+						}
+					}
+				}
+				return true
+			})
+		}
+		if isRawReasoningSelection(selection) && !writeOnly {
+			relative, _ := filepath.Rel(root, position.Filename)
+			permitted = filepath.ToSlash(relative) == "adapter/request_session.go"
+			if permitted {
+				permitted = false
+				for _, tree := range trees {
+					for _, d := range tree.Decls {
+						if fn, ok := d.(*ast.FuncDecl); ok && requestFunctionOwner(fn) == "ReadAdmissionReasoning" && selector.Pos() >= fn.Pos() && selector.End() <= fn.End() {
+							permitted = true
+						}
+					}
+				}
+			}
+		}
+		if !permitted {
+			relative, _ := filepath.Rel(root, position.Filename)
+			unexpected = append(unexpected, filepath.ToSlash(relative)+":"+selector.Sel.Name)
+		}
+	}
+	return unexpected
+}
+
 func TestRawReasoningReadsStayInTheAdmissionConversion(t *testing.T) {
 	root := os.Getenv("JP_REASONING_GUARD_ROOT")
 	if root == "" {
@@ -244,7 +454,6 @@ func probe(run *adapter.Run, agent *adapter.Agent, admitted adapter.AdmissionRea
 	for _, item := range packages {
 		files := token.NewFileSet()
 		trees := make([]*ast.File, 0, len(item.GoFiles))
-		allowed := map[string][][2]token.Pos{}
 		for _, name := range item.GoFiles {
 			path := filepath.Join(item.Dir, name)
 			file, parseErr := parser.ParseFile(files, path, nil, 0)
@@ -252,44 +461,6 @@ func probe(run *adapter.Run, agent *adapter.Agent, admitted adapter.AdmissionRea
 				t.Fatal(parseErr)
 			}
 			trees = append(trees, file)
-			relative, _ := filepath.Rel(root, path)
-			admission := map[string][]string{
-				"adapter/request_session.go":      {"requestAgent", "ReadAdmissionReasoning", "AdmissionAgent", "Admit", "NewRequestSession", "NewRequestOperations"},
-				"adapter/policy.go":               {"PolicyConnectionIDs", "PolicyBinding", "ApplyPolicy", "PolicyFamilies"},
-				"adapter/agent.go":                {"Admit"},
-				"adapter/agent/agent.go":          {"Run"},
-				"adapter/eino/run.go":             {"Run"},
-				"adapter/delegate/coordinator.go": {"With", "criticReserve", "drive", "taskProvider"},
-				"adapter/delegate/policy.go":      {"parentPolicy", "childBinding", "hasRestoredDefinitions"},
-				"adapter/delegate/batch.go":       {"plan", "childModelName", "runChild", "childHostTools"},
-				"adapter/delegate/agent.go":       {"parentAgent", "childAgent", "driveAgent", "restoreAgent", "continueAgent", "parentInvocation"},
-				"adapter/delegate/run.go":         {"drive", "runBatch", "parent", "child", "concurrency"},
-				"adapter/delegate/figures.go":     {"childFigures", "batchFigures", "withFigures"},
-				"context/session.go":              {"NewSessionContext", "ContextualSession", "ModelName", "Models", "AskHost", "MessagesContext"},
-				"context/policy_table.go":         {"resolveSessionPolicy"},
-				"context/delegation_policy.go":    {"delegatedSessionPolicy", "restore"},
-				"context/planning.go":             {"PlanningSession"},
-				"context/types.go":                {"ModelName"},
-				"context/critic.go":               {"OfferedReviewTool"},
-				"context/memories.go":             {"MemoryAdmitted"},
-				"context/subagents.go":            {"SubagentAdmissionBudget"},
-				"context/managed.go":              {"Event"},
-				"context/output_boundary.go":      {"guardName", "ValidateOutputProposal"},
-				"context/prompt.go":               {"AskHost"},
-				"context/controller.go":           {"Initialize"},
-				"context/edits.go":                {"OfferedEditTools", "OpenDrafts", "Edit"},
-			}
-			for _, declaration := range file.Decls {
-				function, ok := declaration.(*ast.FuncDecl)
-				if !ok {
-					continue
-				}
-				for _, name := range admission[filepath.ToSlash(relative)] {
-					if function.Name.Name == name {
-						allowed[path] = append(allowed[path], [2]token.Pos{function.Pos(), function.End()})
-					}
-				}
-			}
 		}
 
 		info := types.Info{Selections: map[*ast.SelectorExpr]*types.Selection{}, Uses: map[*ast.Ident]types.Object{}, Types: map[ast.Expr]types.TypeAndValue{}}
@@ -297,122 +468,85 @@ func probe(run *adapter.Run, agent *adapter.Agent, admitted adapter.AdmissionRea
 		if _, err := configuration.Check(item.ImportPath, files, trees, &info); err != nil {
 			t.Fatal(err)
 		}
-		for _, tree := range trees {
-			ast.Inspect(tree, func(node ast.Node) bool {
-				entry, ok := node.(*ast.KeyValueExpr)
-				if !ok {
-					return true
-				}
-				key, ok := entry.Key.(*ast.Ident)
-				if !ok {
-					return true
-				}
-				field, _ := info.Uses[key].(*types.Var)
-				if !isRawRequestField(field) {
-					return true
-				}
-				position := files.Position(key.Pos())
-				permitted := false
-				for _, bounds := range allowed[position.Filename] {
-					if key.Pos() >= bounds[0] && key.End() <= bounds[1] {
-						permitted = true
-					}
-				}
-				if !permitted {
-					relative, _ := filepath.Rel(root, position.Filename)
-					unexpected = append(unexpected, filepath.ToSlash(relative)+":"+key.Name+":raw-construction")
-				}
-				return true
-			})
-		}
-		for expression, typed := range info.Types {
-			literal, ok := expression.(*ast.CompositeLit)
-			if !ok {
-				continue
-			}
-			named, ok := typed.Type.(*types.Named)
-			if !ok || named.Obj().Pkg() == nil {
-				continue
-			}
-			name := named.Obj().Name()
-			pkg := named.Obj().Pkg().Path()
-			boundary := pkg == "github.com/Judgment-Pack/judgment-pack-agent/go/adapter" && (name == "RequestSession" || name == "RequestPolicyConnection" || name == "RequestAgent" || name == "PreparedRequest")
-			values := pkg == "github.com/Judgment-Pack/judgment-pack-agent/go/context" && name == "RequestValues"
-			if !boundary && !values {
-				continue
-			}
-			position := files.Position(literal.Pos())
-			relative, _ := filepath.Rel(root, position.Filename)
-			permitted := false
-			constructors := map[string][]string{
-				"adapter/request_session.go": {"requestAgent", "ResolvedCapabilities", "NewRequestOperations", "NewRequestSession", "PolicyBinding"},
-				"context/request_values.go":  {"NewRequestValues"},
-			}
-			for _, tree := range trees {
-				for _, declaration := range tree.Decls {
-					function, ok := declaration.(*ast.FuncDecl)
-					if !ok || literal.Pos() < function.Pos() || literal.End() > function.End() {
-						continue
-					}
-					for _, allowed := range constructors[filepath.ToSlash(relative)] {
-						if function.Name.Name == allowed {
-							permitted = true
-						}
-					}
-				}
-			}
-			if permitted {
-				continue
-			}
-			unexpected = append(unexpected, filepath.ToSlash(relative)+":"+name+":request-construction")
-		}
-		for selector, selection := range info.Selections {
-			raw := isRawRequestSelection(selection)
-			if !raw {
-				continue
-			}
-			position := files.Position(selector.Pos())
-			permitted := false
-			for _, bounds := range allowed[position.Filename] {
-				if selector.Pos() >= bounds[0] && selector.End() <= bounds[1] {
-					permitted = true
-				}
-			}
-			writeOnly := false
-			for _, tree := range trees {
-				ast.Inspect(tree, func(node ast.Node) bool {
-					assignment, ok := node.(*ast.AssignStmt)
-					if ok && assignment.Tok == token.ASSIGN {
-						for _, left := range assignment.Lhs {
-							if left == selector {
-								writeOnly = true
-							}
-						}
-					}
-					return true
-				})
-			}
-			if isRawReasoningSelection(selection) && !writeOnly {
-				permitted = filepath.Base(position.Filename) == "request_session.go"
-				if permitted {
-					permitted = false
-					for _, tree := range trees {
-						for _, d := range tree.Decls {
-							if fn, ok := d.(*ast.FuncDecl); ok && fn.Name.Name == "ReadAdmissionReasoning" && selector.Pos() >= fn.Pos() && selector.End() <= fn.End() {
-								permitted = true
-							}
-						}
-					}
-				}
-			}
-			if !permitted {
-				relative, _ := filepath.Rel(root, position.Filename)
-				unexpected = append(unexpected, filepath.ToSlash(relative)+":"+selector.Sel.Name)
-			}
-		}
+		unexpected = append(unexpected, requestSourceViolations(root, files, trees, &info)...)
 	}
 	if len(unexpected) != 0 {
 		t.Fatalf("raw request values outside admission/conversion: %v", unexpected)
+	}
+}
+
+func TestRequestSourceGuardDeclarationOwnership(t *testing.T) {
+	for _, fixture := range []struct {
+		name, pkg, path, source string
+		want                    []string
+	}{
+		{"same-name-methods", "adapter", "adapter/request_session.go", `package guardprobe
+ type Run struct { ModelName, Thinking string }
+ type RequestSession struct { modelName string }
+ type RequestAgent struct{}
+ type unrelated struct{}
+ func NewRequestSession(run *Run) *RequestSession { return &RequestSession{modelName:run.ModelName} }
+ func ReadAdmissionReasoning(run *Run) string { return run.Thinking }
+ func (unrelated) NewRequestSession(run *Run) *RequestSession { _ = run.ModelName; return &RequestSession{} }
+ func (unrelated) ReadAdmissionReasoning(run *Run) string { return run.Thinking }
+ func (s *RequestSession) PolicyBinding() RequestSession { return RequestSession{} }
+ func (unrelated) PolicyBinding() RequestSession { return RequestSession{} }
+ func unrelatedValue(run struct{ModelName string}) string { return run.ModelName }
+ func projection(session *RequestSession) *RequestSession { return session }
+`, []string{"adapter/request_session.go:ModelName", "adapter/request_session.go:Thinking", "adapter/request_session.go:RequestSession:request-construction", "adapter/request_session.go:RequestSession:request-construction"}},
+		{"defined-request-types", "adapter", "adapter/new_writer.go", `package guardprobe
+ type RequestSession struct { modelName string }
+ type RequestAgent struct { model string }
+ type RequestPolicyConnection struct { wire string }
+ type PreparedRequest struct { tools []string }
+ type reviewConstructed RequestSession
+ type twice reviewConstructed
+ type requestAlias = RequestSession
+ type agentDefinition RequestAgent
+ type bindingDefinition RequestPolicyConnection
+ type preparedDefinition PreparedRequest
+ type unrelated struct { modelName string }
+ type admittedProjection struct { *RequestSession }
+ func namedReviewConstruction() *RequestSession { return (*RequestSession)(&reviewConstructed{modelName:"unadmitted"}) }
+ func definedTwice() RequestSession { return RequestSession(twice{modelName:"unadmitted"}) }
+ func alias() RequestSession { return requestAlias{} }
+ func agent() RequestAgent { return RequestAgent(agentDefinition{}) }
+ func binding() RequestPolicyConnection { return RequestPolicyConnection(bindingDefinition{}) }
+ func prepared() PreparedRequest { return PreparedRequest(preparedDefinition{}) }
+ func direct() *RequestSession { return &RequestSession{modelName:"unadmitted"} }
+ func unrelatedValue() unrelated { return unrelated{modelName:"ordinary"} }
+ func projection(session *RequestSession) admittedProjection { return admittedProjection{session} }
+`, []string{"adapter/new_writer.go:RequestSession:request-construction", "adapter/new_writer.go:RequestSession:request-construction", "adapter/new_writer.go:RequestSession:request-construction", "adapter/new_writer.go:RequestAgent:request-construction", "adapter/new_writer.go:RequestPolicyConnection:request-construction", "adapter/new_writer.go:PreparedRequest:request-construction", "adapter/new_writer.go:RequestSession:request-construction"}},
+		{"defined-request-values", "context", "context/request_values.go", `package guardprobe
+ type RequestValues struct { members map[string]string }
+ type defined RequestValues
+ type twice defined
+ type unrelated struct { members map[string]string }
+ func NewRequestValues() *RequestValues { return &RequestValues{} }
+ func (unrelated) NewRequestValues() *RequestValues { return &RequestValues{} }
+ func construction() *RequestValues { return (*RequestValues)(&twice{}) }
+ func projection(values *RequestValues) *defined { return (*defined)(values) }
+ func unrelatedValue() unrelated { return unrelated{} }
+`, []string{"context/request_values.go:RequestValues:request-construction", "context/request_values.go:RequestValues:request-construction"}},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			root := t.TempDir()
+			files := token.NewFileSet()
+			tree, err := parser.ParseFile(files, filepath.Join(root, filepath.FromSlash(fixture.path)), fixture.source, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			info := types.Info{Selections: map[*ast.SelectorExpr]*types.Selection{}, Uses: map[*ast.Ident]types.Object{}, Types: map[ast.Expr]types.TypeAndValue{}}
+			if _, err := (&types.Config{}).Check("github.com/Judgment-Pack/judgment-pack-agent/go/"+fixture.pkg, files, []*ast.File{tree}, &info); err != nil {
+				t.Fatalf("typed ownership fixture does not compile: %v", err)
+			}
+			got := requestSourceViolations(root, files, []*ast.File{tree}, &info)
+			sort.Strings(got)
+			sort.Strings(fixture.want)
+			if !reflect.DeepEqual(got, fixture.want) {
+				t.Fatalf("declaration ownership: got %v, want %v", got, fixture.want)
+			}
+		})
 	}
 }
 
