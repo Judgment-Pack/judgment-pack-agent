@@ -17,6 +17,7 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
@@ -29,7 +30,7 @@ const StateHeader = "EXECUTION STATE (from the host, current for this request an
 
 // Host is the host's side of the prompt (ADR-0005; brief, memoryFor and projectInstructions in
 // host.ts): brief and project instructions answer text or an error. Recall is supplied by
-// MemoryHost, a record-returning MemoryFor, or the v0.8.0 legacy string-returning MemoryFor.
+// MemoryHost or a record-returning MemoryFor. Retired string callbacks refuse.
 // An error fails the run before its first request. A Go host hands one to an adapter on adapter.Run; nil is a
 // host that supplies no part.
 type Host interface {
@@ -40,9 +41,14 @@ type Host interface {
 	ProjectInstructions(ctx context.Context) (string, error)
 }
 
-// MemoryHost answers records (or the v0.8.0 string alias). A legacy Host with a string-returning MemoryFor remains supported for this release.
+// MemoryHost answers closed records. String answers, including empty text, refuse in v0.9.1.
 type MemoryHost interface {
 	MemoryFor(ctx context.Context, query string) (any, error)
+}
+
+// MemoryLifecycleHost reports metadata even when prompt recall is disabled.
+type MemoryLifecycleHost interface {
+	MemoryLifecycle(ctx context.Context, recalled []contract.ProvenanceMemoryRecall) (any, error)
 }
 type legacyMemoryHost interface {
 	MemoryFor(ctx context.Context, query string) (string, error)
@@ -53,6 +59,7 @@ type recordMemoryHost interface {
 
 // HostFuncs is a Host of functions, each nil for a part the host does not supply.
 type HostFuncs struct {
+	MemoryLifecycleFunc     func(ctx context.Context, recalled []contract.ProvenanceMemoryRecall) (any, error)
 	MemoryRecordsForFunc    func(ctx context.Context, query string) ([]contract.Memory, error)
 	BriefFunc               func(ctx context.Context) (string, error)
 	ProjectInstructionsFunc func(ctx context.Context) (string, error)
@@ -75,15 +82,21 @@ func (h HostFuncs) ProjectInstructions(ctx context.Context) (string, error) {
 	return h.ProjectInstructionsFunc(ctx)
 }
 
-// MemoryFor answers MemoryForFunc, or nothing.
+// MemoryFor answers MemoryRecordsForFunc or nil; a retired MemoryForFunc binding refuses.
+func (h HostFuncs) MemoryLifecycle(ctx context.Context, recalled []contract.ProvenanceMemoryRecall) (any, error) {
+	if h.MemoryLifecycleFunc == nil {
+		return nil, nil
+	}
+	return h.MemoryLifecycleFunc(ctx, recalled)
+}
 func (h HostFuncs) MemoryFor(ctx context.Context, query string) (any, error) {
+	if h.MemoryForFunc != nil {
+		return nil, failure.Authored("configuration", "Unknown MemoryForFunc binding; use MemoryRecordsForFunc; nothing was sent.", "context")
+	}
 	if h.MemoryRecordsForFunc != nil {
 		return h.MemoryRecordsForFunc(ctx, query)
 	}
-	if h.MemoryForFunc == nil {
-		return "", nil
-	}
-	return h.MemoryForFunc(ctx, query)
+	return nil, nil
 }
 
 // HostParts are the host's parts of one run's prompt, as asked once for the run; an empty member
@@ -188,7 +201,7 @@ func readHostParts(ctx context.Context, host Host, query string, policy Policy, 
 		case MemoryHost:
 			answer, err = h.MemoryFor(ctx, query)
 		case legacyMemoryHost:
-			answer, err = h.MemoryFor(ctx, query)
+			return HostParts{}, failure.Authored("configuration", "Unknown string MemoryFor binding; use a list of closed Memory records; nothing was sent.", "context")
 		case recordMemoryHost:
 			answer, err = h.MemoryFor(ctx, query)
 		}
@@ -230,9 +243,33 @@ func (c *SessionContext) AskHost(ctx context.Context) error {
 		query = c.objective
 	}
 	memory := c.session.Context == nil || c.session.Context.Memory == nil || *c.session.Context.Memory
-	parts, err := readHostParts(ctx, c.session.Host, query, *c.Policy, memory, c.Marker, c.Memories.RecordRecall)
+	prior := c.Memories.recalledSnapshot()
+	var lifecycleAnswer any
+	if host, ok := c.session.Host.(MemoryLifecycleHost); ok {
+		var err error
+		lifecycleAnswer, err = host.MemoryLifecycle(ctx, append([]contract.ProvenanceMemoryRecall{}, prior...))
+		if err != nil {
+			return err
+		}
+	}
+	lifecycle, err := ReadMemoryLifecycle(lifecycleAnswer)
 	if err != nil {
 		return err
+	}
+	recall := MemoryRecall{Rows: []contract.ProvenanceMemoryRecall{}, Now: time.Now()}
+	parts, err := readHostParts(ctx, c.session.Host, query, *c.Policy, memory, c.Marker, func(value MemoryRecall) error { recall = value; return nil })
+	if err != nil {
+		return err
+	}
+	next, err := nextMemoryRecall(prior, recall, lifecycle)
+	if err != nil {
+		return err
+	}
+	// Preserve the existing absent live book when disabled recall has no lifecycle updates.
+	if memory || len(lifecycle) > 0 {
+		if err = c.Memories.commitRecall(prior, next, recall); err != nil {
+			return err
+		}
 	}
 	if c.session.ChildDefinition != nil {
 		parts.ProjectInstructions = c.session.ChildDefinition.Instructions

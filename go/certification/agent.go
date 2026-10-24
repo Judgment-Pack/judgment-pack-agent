@@ -557,9 +557,9 @@ func (w *agentWorld) run(ctx context.Context, with func(Adapter) Adapter, inner 
 	if w.gate.Phase().Kind == gate.PhasePlan {
 		input.Phase = "plan"
 	}
-	off := false
+
 	run := &Run{ModelName: parentModel, Gate: w.gate.Calls(), Tools: w.gate.Phase().Offer(w.offer).Tools, Prompt: agentRequest,
-		AllowConversation: true, Interactive: true, Review: &off, Context: input, HostTools: w.hostTools(), Children: w.children(), Emit: w.emit,
+		AllowConversation: true, Interactive: true, Critic: "off", Context: input, HostTools: w.hostTools(), Children: w.children(), Emit: w.emit,
 		Agent: &adapter.Agent{Model: parentModel, Run: w.watch.wrap(w.host.Bind(script)), Enabled: w.admit},
 		Models: func() (runcontext.RunModels, error) {
 			three := 3

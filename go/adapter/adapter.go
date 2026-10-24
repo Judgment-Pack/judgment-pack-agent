@@ -88,8 +88,7 @@ type Run struct {
 	ExistingPack bool
 	// ReviewerAssigned is the host's fact that a human reviewer is assigned: no critic in any mode.
 	ReviewerAssigned bool
-	// Review is the switch before ADR-0010, read for one release as an alias of Critic (true on,
-	// false off); Critic wins where both are set. Nil states none.
+	// Review is retired in v0.9.1 and refused when nonnil (false included); use Critic.
 	Review *bool
 	// Cases are the cases whose outcomes the host declares for the critic (agent#10), each as
 	// run-event.json's $defs/criticCase.

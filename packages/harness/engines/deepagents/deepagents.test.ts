@@ -142,7 +142,7 @@ describe('the critic’s offer', () => {
     }
     const ran = await runOnModelEngine(answer, {
       engine: deepagents,
-      session: { allowConversation: false, adversarialReview: true, testPrompt: 'Test the proposal with the runtime.' }
+      session: { allowConversation: false, critic: 'on', testPrompt: 'Test the proposal with the runtime.' }
     })
     expect(ofType(ran.events, 'error')).toEqual([])
     expect(guardrails(ran.events)).toEqual(['list_examples'])

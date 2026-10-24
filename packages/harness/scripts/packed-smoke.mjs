@@ -6,6 +6,9 @@ import {dirname,extname,isAbsolute,join,relative,resolve,sep} from 'node:path'
 import {fileURLToPath,pathToFileURL} from 'node:url'
 import {build} from 'esbuild'
 import {emittedTarget,moduleImports} from './normalize-esm.mjs'
+import {existingLockZodConsumer,verifyHarnessZod} from './zod-consumer.mjs'
+import {existingLockBodyParserConsumer,verifyBodyParserConsumer} from './body-parser-consumer.mjs'
+import {existingLockUndiciConsumer,verifyUndiciConsumer} from './undici-controls.mjs'
 
 const packageDirectory=fileURLToPath(new URL('..',import.meta.url))
 const repositoryDirectory=fileURLToPath(new URL('../../..',import.meta.url))
@@ -187,6 +190,43 @@ if(failed)process.exitCode=1
  return execFileSync(process.execPath,[consumer],{cwd:projectRoot,encoding:'utf8',env:{...process.env,NODE_OPTIONS:''},stdio:'pipe'})
 }
 
+export function memoryLifecycleConsumer(projectRoot){
+ const native=JSON.parse(execFileSync('go',['run',join(repositoryDirectory,'scripts/memory-lifecycle-probe.go')],{cwd:join(repositoryDirectory,'go'),encoding:'utf8',env:process.env}))
+ const consumer=join(projectRoot,'memory-lifecycle-consumer.mjs')
+ writeFileSync(consumer,`import assert from 'node:assert/strict'
+import {configureHarness} from '@judgment-pack/harness/host'
+import {contextualSession} from '@judgment-pack/harness/context/session'
+import {readExecution} from '@judgment-pack/harness/execution/state'
+import {contextDigest} from '@judgment-pack/harness/context/ledger'
+import {normalize} from '@judgment-pack/harness/thinking'
+const native=${JSON.stringify(native)}
+for(const state of ['accepted','revoked']){
+ const checked=readExecution(native[state]);assert.ok(checked);assert.equal(checked.memories.recalled[0].state,state)
+}
+const digest='sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9'
+assert.equal('sha256:'+await contextDigest('Use metric units.'),digest)
+const record={id:'fixture-metric',digest,kind:'preference',text:'Use metric units.',source:{run:'fixture-host',proposedBy:'host'},scope:'project',createdAt:'2026-10-01T00:00:00Z',state:'accepted'}
+const session=(execution,memory=true)=>({prompt:'Current request',testPrompt:'',tools:[],hostTools:[],callTool:async()=>({}),signal:new AbortController().signal,thinking:normalize('off','openai-compatible'),model:{family:'openai-compatible',model:'fixture',call:async()=>{throw Error('probe sent model request')}},critic:'off',context:{phase:'plan',...(execution?{execution}:{}),memory}})
+configureHarness({memoryFor:()=>[record],memoryLifecycle:()=>undefined})
+const first=await contextualSession(session())
+const saved=readExecution(JSON.parse(JSON.stringify(first.context.execution.snapshot('stopped'))));first.context.close();assert.ok(saved)
+let calls=0
+configureHarness({memoryFor:()=>{throw Error('disabled text read')},memoryLifecycle:rows=>{calls++;assert.equal(rows[0].digest,digest);assert.ok(!JSON.stringify(rows).includes(record.text));return [{id:record.id,digest,kind:'preference',state:'revoked'}]}})
+const resumed=await contextualSession(session(saved,false));assert.equal(calls,1)
+assert.ok(!resumed.context.system('guidance').includes(record.text))
+const terminal=readExecution(JSON.parse(JSON.stringify(resumed.context.execution.snapshot('stopped'))));resumed.context.close()
+assert.equal(terminal.memories.recalled[0].state,'revoked');assert.equal(terminal.memories.recalled[0].digest,digest)
+configureHarness({memoryFor:()=>[record],memoryLifecycle:()=>undefined})
+await assert.rejects(contextualSession(session(terminal)),/invalid transition/)
+configureHarness({memoryFor:()=>[],memoryLifecycle:()=>[{id:'unknown',digest,kind:'preference',state:'revoked'}]})
+await assert.rejects(contextualSession(session(saved,false)),/unknown/)
+configureHarness({memoryFor:()=>[],memoryLifecycle:()=>undefined})
+const omitted=await contextualSession(session(saved));assert.equal(omitted.context.execution.state.memories.recalled[0].state,'accepted');omitted.context.close()
+console.log('packed memory lifecycle: public native/browser resume, deletion, disabled text, canonical digest and refusals passed')
+`)
+ return execFileSync(process.execPath,[consumer],{cwd:projectRoot,encoding:'utf8',env:{...process.env,NODE_OPTIONS:''},stdio:'pipe'})
+}
+
 export function validateDeclarations(projectRoot,packageRoot,entries){
  // Check every local declaration edge ourselves. The consumer uses the package's
  // existing skipLibCheck policy for dependency declaration bodies.
@@ -200,7 +240,7 @@ export function validateDeclarations(projectRoot,packageRoot,entries){
  catch(error){throw Error(`packed declaration resolution failed:\n${error.stdout??''}${error.stderr??''}`,{cause:error})}
 }
 
-export async function packedSmoke(){
+export async function packedSmoke({bodyParserOnly=false,undiciOnly=false}={}){
  const temporary=consumerDirectory()
  try{
   const packed=JSON.parse(execFileSync(npm,['pack','--json','--pack-destination',temporary],{cwd:packageDirectory,encoding:'utf8'}))
@@ -209,15 +249,36 @@ export async function packedSmoke(){
   execFileSync(npm,['install','--ignore-scripts','--no-audit','--no-fund',tarball],{cwd:temporary,stdio:'inherit'})
   const installedRoot=join(temporary,'node_modules','@judgment-pack','harness')
   const entries=validatePackage(installedRoot)
+  await verifyUndiciConsumer(temporary,installedRoot,'fresh consumer')
+  const oldUndici=consumerDirectory()
+  try{await existingLockUndiciConsumer(oldUndici,tarball)}
+  finally{rmSync(oldUndici,{recursive:true,force:true})}
+  if(undiciOnly){
+   const affected=entries.filter(entry=>entry.specifier==='@judgment-pack/harness/vercel')
+   nativeEntrypoints(temporary,affected)
+   await bundleEntrypoints(temporary,installedRoot,affected)
+   validateDeclarations(temporary,installedRoot,affected)
+   console.log('packed Undici: affected native/browser/declaration and fresh/existing-lock consumers passed');return
+  }
+  verifyHarnessZod(temporary,installedRoot,'fresh consumer')
+  await verifyBodyParserConsumer(temporary,installedRoot,'fresh consumer')
+  const oldBodyParser=consumerDirectory()
+  try{await existingLockBodyParserConsumer(oldBodyParser,tarball)}
+  finally{rmSync(oldBodyParser,{recursive:true,force:true})}
+  if(bodyParserOnly){console.log('packed body-parser: fresh and existing-lock SDK/Express paths passed');return}
   nativeEntrypoints(temporary,entries)
+  process.stdout.write(memoryLifecycleConsumer(temporary))
   await bundleEntrypoints(temporary,installedRoot,entries)
   validateDeclarations(temporary,installedRoot,entries)
   const installed=join(installedRoot,'contract','schemas','corpus-entry.json')
   if(!readFileSync(installed).equals(readFileSync(new URL('../../../contract/schemas/corpus-entry.json',import.meta.url))))throw Error('packed corpus schema differs from its repository original')
+  const existing=consumerDirectory()
+  try{existingLockZodConsumer(existing,tarball,JSON.parse(readFileSync(join(packageDirectory,'package.json'),'utf8')))}
+  finally{rmSync(existing,{recursive:true,force:true})}
   console.log(`packed harness: imported ${entries.length} supported entrypoints with native Node ESM, bundled them, and resolved their declarations from an isolated installed tarball`)
  }finally{
   rmSync(temporary,{recursive:true,force:true})
  }
 }
 
-if(process.argv[1]&&realpathSync(process.argv[1])===realpathSync(fileURLToPath(import.meta.url)))await packedSmoke()
+if(process.argv[1]&&realpathSync(process.argv[1])===realpathSync(fileURLToPath(import.meta.url)))await packedSmoke({bodyParserOnly:process.argv.includes('--body-parser-only'),undiciOnly:process.argv.includes('--undici-only')})

@@ -1,6 +1,5 @@
 import rawTable from '../contract/policy.json'
-import { policyAlias } from '../policy'
-const table = policyAlias(rawTable)
+const table = rawTable
 const defaults = {...rawTable.budget,...table.budget,criticDefault:(table.critic?.default??'auto') as string,criticReasoningFloor:table.critic?.reasoningFloor??'author'}
 /**
  * The time bounds the harness adds to the Desk's table (budget.json): one turn's wall clock, after which the run

@@ -2,7 +2,6 @@ import {describe,it,expect} from 'vitest'
 import {resolvePolicy,PolicyRefusal,type PolicyLayer} from './policy'
 import precedence from '../../contract/vectors/policy/precedence.json'
 import reasoningDefault from '../../contract/vectors/policy/reasoning-default.json'
-import alias from '../../contract/vectors/policy/alias.json'
 import schema from './contract/policy-schema.json'
 import canonical from '../../contract/schemas/policy.json'
 import runEventSchema from '../../contract/schemas/run-event.json'
@@ -73,10 +72,9 @@ describe('ADR-0011 policy table',()=>{
    catch(error){expect(error).toBeInstanceOf(PolicyRefusal);expect(argumentProblem(runEventSchema.$defs.guardrail,(error as PolicyRefusal).event())).toBeUndefined()}
   }
  })
- it('reads budget.json as policy.budget for one release',()=>{
-  const result=resolvePolicy({}, {}, {...alias.items[0],readBytes:512,models:table.models},host)
-  expect(result.members['budget.readBytes']).toEqual({value:512,layer:'table',source:'layer'})
-  expect(resolvePolicy({}, {}, {...alias.items[0],models:table.models,budget:{readBytes:512}},host).members['budget.readBytes']).toEqual({value:512,layer:'table',source:'layer'})
+ it('refuses retired flat tables even beside canonical members',()=>{
+  for(const readBytes of [512,0,'',null])expect(()=>resolvePolicy({}, {}, {readBytes,budget:{readBytes:768},models:table.models},host)).toThrow('use budget.readBytes')
+  expect(resolvePolicy({}, {}, {budget:{readBytes:512},models:table.models},host).members['budget.readBytes'].value).toBe(512)
  })
  it('warns at the threshold and refuses past the period budget',()=>{
   const project:PolicyLayer={pace:{requestsPerDay:10,warnAt:0.8}}

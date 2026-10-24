@@ -92,9 +92,8 @@ func TestMemoryRecallFramedAndBounded(t *testing.T) {
 	if _, err := RecallMemory(records, 4000, "marker"); err == nil {
 		t.Fatal("changed digest admitted")
 	}
-	r, err = RecallMemory("legacy", 4000, "marker")
-	if err != nil || !strings.Contains(r.Text, FrameBlock("memory", "kind: fact\nsource: {\"proposedBy\":\"host\",\"run\":\"host\"}\nid: \"legacy-memory\"\nlegacy", "marker")) {
-		t.Fatal("alias not framed")
+	if _, err = RecallMemory("legacy", 4000, "marker"); err == nil {
+		t.Fatal("retired text alias admitted")
 	}
 }
 
@@ -126,7 +125,7 @@ func TestMemoryAliasEquivalence(t *testing.T) {
 		}
 		host := HostFuncs{}
 		if item.IsString() {
-			host.MemoryForFunc = func(context.Context, string) (string, error) { return item.Str(), nil }
+			host.MemoryRecordsForFunc = func(context.Context, string) ([]contract.Memory, error) { return typedMemory(item.Str()), nil }
 		} else {
 			host.MemoryRecordsForFunc = func(context.Context, string) ([]contract.Memory, error) { return records, nil }
 		}

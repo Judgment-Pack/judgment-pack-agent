@@ -832,10 +832,10 @@
         ]
       },
       {
-        "check": "11 \u00b7 budget.json reads as policy.budget, with nested spelling winning",
+        "check": "11 \u00b7 refuses retired flat budgets even beside canonical input",
         "go": [
-          "11 alias",
-          "11 agent alias"
+          "11 retired alias",
+          "11 agent retired alias"
         ]
       },
       {

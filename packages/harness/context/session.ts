@@ -1,7 +1,7 @@
 import {CheckpointIncrement} from '../execution/mutation'
 import {OutputGuard,RecordsRefused,outputWhere} from '../outputGuard'
 import {Drafts,isEdit,editRefusal,type AcceptedDocument} from '../edits'
-import { REMEMBER, rememberTool, recordRecall } from '../memories'
+import { REMEMBER, rememberTool, recallMemory, readMemoryLifecycle, nextMemoryRecall, commitMemoryRecall } from '../memories'
 import {canonicalJSON} from './chat'
 import {normalize,wireFor,dialectFor,TIER_MEMBERS,RESPONSE_TOKENS} from '../thinking'
 import {resolvePolicy,PolicyRefusal,failoverRefusal,type PolicyConnection,type PolicyMembers,type ProviderRecord,type CrossProvider,type FailoverClass} from '../policy'
@@ -24,7 +24,7 @@ import {capabilitiesFor,type ModelCapabilities} from '../capabilities'
 import {contextPolicy,inputBytes,utf8Bytes,prefix,ContextBudgetError,type ContextConfiguration} from './policy'
 import {INDEX_SHARE,partBytes,type ChatScope,type ChatTurn,type RuntimeIdentity} from './chat'
 import {readHostParts,systemText,type HostParts} from '../prompt'
-import {runModels,type AITarget,type AssistantEngine,type RunIdentity,type RunModels} from '../host'
+import {memoryLifecycle,runModels,type AITarget,type AssistantEngine,type RunIdentity,type RunModels} from '../host'
 import {declareSources,offerSources,SourceGate,LOAD_TOOL,type Declared} from '../toolSources'
 import {declareSubagents,catalogueSubagents,subagentOffer,type Subagent} from '../subagents'
 import {catalogueSkills,declareSkills,SkillGate,LOAD_SKILL,UNLOAD_SKILL,type DeclaredSkills,type SkillNotice} from '../skills'
@@ -102,6 +102,7 @@ export function resolveSessionPolicy(session:EngineSession,engine?:AssistantEngi
  const projection=delegatedProjection(session)
  const authorTier=projection?undefined:'model'in session?session.thinking?.tier:session.effort
  const capabilities='model'in session?capabilitiesFor(session.model):undefined
+ if(Object.hasOwn(session,'adversarialReview'))throw new PolicyRefusal('adversarialReview','run','unknown session member; use critic')
  const policy=contextPolicy(session.context?.configuration,identity.model,capabilities)
  const current=identity.connection?.connectionId??identity.model
  const named=(()=>{try{return engine&&!session.context?.objective?runModels({...identity,engine}):{critic:identity.model,child:identity.model}}catch(cause){
@@ -114,9 +115,9 @@ export function resolveSessionPolicy(session:EngineSession,engine?:AssistantEngi
  const bindings:Record<string,PolicyConnection>={[current]:binding,[named.critic]:withName(named.critic),[named.child]:withName(named.child),...session.policyConnections}
 
  const resolved=resolvePolicy(
-  {...session.policy, ...(session.taskClass?{taskClass:session.taskClass}:{}),critic:{...(session.critic!==undefined||session.adversarialReview!==undefined?{default:session.critic??(session.adversarialReview?'on':'off')}:{}),...session.policy?.critic},models:{...session.policy?.models,...(session.criticReasoning?{critic:{reasoning:session.criticReasoning,...session.policy?.models?.critic}}:{})}},
+  {...session.policy, ...(session.taskClass?{taskClass:session.taskClass}:{}),critic:{...(session.critic!==undefined?{default:session.critic}:{}),...session.policy?.critic},models:{...session.policy?.models,...(session.criticReasoning?{critic:{reasoning:session.criticReasoning,...session.policy?.models?.critic}}:{})}},
   {...session.policyProject,critic:{...(session.criticProject?{default:session.criticProject}:{}),...session.policyProject?.critic}},
-  {...policy,concurrency:{children:'agent'in session?1:named.concurrentRequests??2,requests:named.concurrentRequests??2},models:{author:{model:current,...(authorTier===undefined?{}:{reasoning:authorTier}),...delegatedAuthor(projection)},critic:{model:named.critic},compactor:{model:current,reasoning:'low'},...Object.fromEntries((session.subagents??[]).filter(s=>s&&typeof s.id==='string').map(s=>[`subagent.${s.id}`,{model:s.model,...(s.reasoning===undefined?{}:{reasoning:s.reasoning})}]))}},
+  {budget:Object.fromEntries(Object.entries(policy).filter(([key])=>key!=='criticDefault'&&key!=='criticReasoningFloor')),critic:{default:policy.criticDefault as 'off'|'auto'|'on',reasoningFloor:policy.criticReasoningFloor as 'author'},concurrency:{children:'agent'in session?1:named.concurrentRequests??2,requests:named.concurrentRequests??2},models:{author:{model:current,...(authorTier===undefined?{}:{reasoning:authorTier}),...delegatedAuthor(projection)},critic:{model:named.critic},compactor:{model:current,reasoning:'low'},...Object.fromEntries((session.subagents??[]).filter(s=>s&&typeof s.id==='string').map(s=>[`subagent.${s.id}`,{model:s.model,...(s.reasoning===undefined?{}:{reasoning:s.reasoning})}]))}},
   {connections:Object.keys(bindings),authorConnection:current,families:Object.fromEntries(Object.entries(bindings).map(([id,b])=>[id,'model'in b?capabilitiesFor(b.model).family??(b.model.family==='openai-compatible'?'openai':b.model.family):b.agent.family??'codex'])),agent:'agent'in session,requests:session.policyRequests??named.concurrentRequests??2,paceUsed:session.paceUsed})
  for(const [name,member] of Object.entries(resolved.members))if(name.startsWith('models.')&&name.endsWith('.provider')){
   const selected=bindings[String(member.value)]!
@@ -251,7 +252,14 @@ export class SessionContext {
  async askHost(session:EngineSession){
   // An empty objective is no objective, as in Go (AskHost).
   const query=this.objective?this.objective:session.context?.currentRequest?.message??session.prompt
-  this.hostParts=await readHostParts(query,this.policy,session.context?.memory!==false,this.marker,recalled=>{recordRecall(this.execution.state,recalled,patch=>this.execution.mutate(patch));if(recalled.bytes||recalled.rows.length)this.notices.push({type:'memory_recalled',ids:recalled.rows.map(m=>m.id),digests:recalled.rows.map(m=>m.digest),bytes:recalled.bytes})})
+  const prior=structuredClone(this.execution.state.memories?.recalled??[])
+  const lifecycle=readMemoryLifecycle(await memoryLifecycle(structuredClone(prior)))
+  let recall=await recallMemory(undefined,this.policy.memoryBytes,this.marker)
+  const parts=await readHostParts(query,this.policy,session.context?.memory!==false,this.marker,value=>{recall=value})
+  const next=nextMemoryRecall(prior,recall,lifecycle)
+  commitMemoryRecall(()=>this.execution.state,patch=>{this.execution.mutate(patch)},prior,next)
+  this.hostParts=parts
+  if(recall.bytes||recall.rows.length)this.notices.push({type:'memory_recalled',ids:recall.rows.map(m=>m.id),digests:recall.rows.map(m=>m.digest),bytes:recall.bytes})
   if(session.childDefinition)this.hostParts.projectInstructions=session.childDefinition.instructions
  }
  /**
@@ -351,7 +359,7 @@ export class SessionContext {
   this.memoryChild=Boolean(session.context?.objective||session.childDefinition)
   try{this.criticCases=readCriticCases(session.criticCases??[])}catch(cause){throw authoredFailure('configuration',(cause as Error).message,'context')}
   // ADR-0010: the session's critic members, read closed before any request.
-  try{readCriticSettings(session,'agent'in session)}catch(cause){throw authoredFailure('configuration',(cause as Error).message,'context')}
+  try{readCriticSettings(session,'agent'in session)}catch(cause){if(cause instanceof PolicyRefusal)throw cause;throw authoredFailure('configuration',(cause as Error).message,'context')}
   const admission=resolveSessionPolicy(session,engine)
   this.identity=admission.identity
   this.existingPack=session.existingPack===true

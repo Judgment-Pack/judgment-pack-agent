@@ -26,7 +26,7 @@ type Policy struct {
 	MemoryBytes         int `json:"memoryBytes"`
 	// The critic's switch the harness adds (ADR-0010): the mode where neither the run nor the project
 	// states one, and the critic's tier where the host names none; and the switch before it, read as
-	// an alias of CriticDefault for one release (nil states none; the harness's table carries none).
+	// a retired input refused in v0.9.1 (nil states none).
 	CriticDefault        string `json:"criticDefault"`
 	CriticReasoningFloor string `json:"criticReasoningFloor"`
 	AdversarialReview    *bool  `json:"adversarialReview,omitempty"`

@@ -107,7 +107,7 @@ describe('the contract’s open-weight record', () => {
       await runAssistantSession(vercel, {
         prompt: scenario.policy, testPrompt: '', tools: ready.tools, callTool: ready.callTool, hostTools: [],
         model: { family: 'openai-compatible', model: 'scripted-model', call },
-        thinking: normalize('on', 'openai-compatible'), adversarialReview: false, signal: new AbortController().signal
+        thinking: normalize('on', 'openai-compatible'), critic: 'off', signal: new AbortController().signal
       }, (event) => events.push(event))
     } finally {
       await connection.close()

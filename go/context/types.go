@@ -396,8 +396,8 @@ type Session struct {
 	ExistingPack bool
 	// ReviewerAssigned is the host's fact that a human reviewer is assigned: no critic in any mode.
 	ReviewerAssigned bool
-	// AdversarialReview is the switch before ADR-0010, read for one release as an alias of Critic
-	// (true on, false off); Critic wins where both are set. Nil states none.
+	// AdversarialReview is retired in v0.9.1 and refused when nonnil; use Critic
+	// Nil states none; even false alongside Critic is refused.
 	AdversarialReview *bool
 	// ModelsFor is the host's injection point for the models a connection names for its critic
 	// and its delegated children (modelsFor in host.ts), asked once per run through

@@ -1,3 +1,4 @@
+import {typedMemory} from '../testing/memory'
 import {afterEach,describe,expect,it,vi} from 'vitest'
 import {vercel} from '../engines/vercel'
 import {deepagents} from '../engines/deepagents'
@@ -53,7 +54,7 @@ for(const engine of [vercel,deepagents,codex])describe(`${engine.id==='codex'?'a
   expect(critic.events.filter(e=>e.type==='memory_proposed')).toEqual([])
   expect(critic.events).toContainEqual(expect.objectContaining({type:'guardrail',tool:'remember',reason:'memory refused'}))
   expect(systems(critic).every(s=>s.includes('kind: preference'))).toBe(true)
-  configureHarness({memoryFor:()=> 'Legacy memory.'})
+  configureHarness({memoryFor:()=>typedMemory('Legacy memory.')})
   const alias=await play(engine,[{say:'Read the memory.'}])
   expect(systems(alias)[0]).toContain('Legacy memory.\nEND RETRIEVED DATA ')
  })

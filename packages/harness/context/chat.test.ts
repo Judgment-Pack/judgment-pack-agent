@@ -564,7 +564,7 @@ describe('the critic, a failed start and a resume, with a chat', () => {
         return called.includes('get_schema') ? streamed(sseTurn({ text: '```json\n' + JSON.stringify({ proposal: { kind: 'create', document: pack, unknowns: [] } }) + '\n```' })) : streamed(sseTurn({ tool: { name: 'get_schema', args: {}, id: 'call_schema' } }))
       },
       handle: runtimeAnswers,
-      session: { allowConversation: false, adversarialReview: true, testPrompt: 'THE RUNTIME’S TEST_PACK GUIDANCE', context: { currentRequest: { message: 'Write it.', input: 'Write it.' }, chat, runtime: RUNTIME } }
+      session: { allowConversation: false, critic: 'on', testPrompt: 'THE RUNTIME’S TEST_PACK GUIDANCE', context: { currentRequest: { message: 'Write it.', input: 'Write it.' }, chat, runtime: RUNTIME } }
     })
     expect(ofType(turn.events, 'critique')).toHaveLength(1)
     expect(turn.seen.map((call) => call.name)).toEqual(['get_schema', 'validate'])

@@ -27,7 +27,7 @@ Budgets are the `budget` section of the [agent's policy table](../docs/adr/0011-
 The host's run layer wins over its project layer, then table defaults. The same
 resolver covers critic, models, concurrency, pace, and task class, with each member's
 value and layer in `policy_resolved` and `checkpoint.policy`. `budget.json` is a
-read alias for one release. Model-visible text cannot set policy.
+retired input in v0.9.1. Use nested policy.budget. Model-visible text cannot set policy.
 
 `github.com/Judgment-Pack/judgment-pack-agent/go` holds the Go side of the agent harness
 (ADR-0004): the contract's generated types, the tool gate, the Eino adapter on the model capability,
@@ -58,8 +58,7 @@ by digest, in its component lock).
 A Go host hands an adapter its parts of the prompt on `adapter.Run`'s `Host`, a `runcontext.Host`
 (`Brief`, `ProjectInstructions` and `MemoryFor(query)`; `runcontext.HostFuncs` makes one of
 functions). `MemoryRecordsForFunc` answers `[]contract.Memory`; a host may also implement a
-record-returning `MemoryFor`. `MemoryForFunc` and legacy string-returning hosts remain supported
-for v0.8.0. Accepted records are framed as data under the run marker, with kind and source.
+record-returning `MemoryFor`. `MemoryForFunc` and legacy string-returning hosts are refused in v0.9.1; use `MemoryRecordsForFunc`. Accepted records are framed as data under the run marker, with kind and source.
 The adapter asks each once per run, before its first request, holds each to its bound
 in the policy table, and places it in its layer of every request
 ([ADR-0005](../docs/adr/0005-the-prompt-is-the-adapters.md)); the relay adds nothing. The digest of
@@ -139,8 +138,7 @@ author's connection.
 A host passes the critic's switch ([ADR-0010](../docs/adr/0010-the-critics-switch.md)) on `adapter.Run`:
 `Critic` (the run's word, `off`, `auto` or `on`), `CriticProject` (the project's), `CriticReasoning`
 (the critic's tier: a thinking tier on the model capability, an effort on the agent capability; empty
-is the author's) and the facts `ExistingPack` and `ReviewerAssigned`; `Review` is read for one release
-as an alias of `Critic`. The table's default is `runcontext.Defaults.CriticDefault`, `auto`. Each
+is the author's) and the facts `ExistingPack` and `ReviewerAssigned`; `Review` is retired and refused in v0.9.1; use `Critic`. The table's default is `runcontext.Defaults.CriticDefault`, `auto`. Each
 adapter decides through `SessionContext.DecideCritic` (`go/context/critic.go`).
 Runs reaching the critic decision point emit `critic_decided`; tracked runs checkpoint that
 decision. Earlier failures or pauses may omit it; a checkpointed review request survives a resume.
@@ -240,3 +238,21 @@ labelled holes for the versioned base patterns and host `outputPatterns`.
 the decision visible and carry it through checkpoint resume. Redacted proposals
 are validated with their holes. Model input remains unchanged, and incomplete
 fragments wait for the complete guarded answer.
+
+### v0.9.1 typed memory and retired inputs
+
+Hosts may supply `memoryLifecycle(recalled)` in the browser, or optional native
+`MemoryLifecycleHost.MemoryLifecycle(ctx, recalled)` / `HostFuncs.MemoryLifecycleFunc`.
+The argument is a detached prior recalled metadata list, without text. Return up to 256 closed
+`{id,digest,kind,state}` rows with state `revoked` or `expired`, or null/nil/undefined for none.
+Only exact prior canonical identities can change: accepted becomes terminal, identical terminal
+replay is a no-op; terminal switching, resurrection, identity rewrites and contradictions with
+full-record recall refuse atomically. Concurrent proposals survive preparation. The callback
+runs even when prompt memory is disabled, while `memoryFor` / `MemoryRecordsForFunc` does not.
+Omission never revokes. Prompt text stays fixed per run and checkpoint/report shapes stay the same.
+
+Migrate `adversarialReview` (Go `Run.Review`) to `critic` / `Critic` (`on` or `off`), flat policy
+budget fields to `policy.budget`, and `criticDefault` / `criticReasoningFloor` to `policy.critic`.
+Any retired member refuses on presence even beside its replacement. Replace every bare-text
+memory answer, including empty text and `MemoryForFunc`, with closed `Memory[]` /
+`MemoryRecordsForFunc`; null/nil/undefined means no answer. See ADR-0014 for the transition matrix.

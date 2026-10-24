@@ -166,9 +166,9 @@ var Memory = ScenarioCheck{
 		on := true
 		input.Memory = &on
 		var asked []string
-		recall := runcontext.HostFuncs{MemoryForFunc: func(_ context.Context, query string) (string, error) {
+		recall := runcontext.HostFuncs{MemoryRecordsForFunc: func(_ context.Context, query string) ([]contract.Memory, error) {
 			asked = append(asked, query)
-			return file.Memory, nil
+			return typedMemory(file.Memory), nil
 		}}
 		ran, err := host.runOn(ctx, adapter, &Run{Prompt: file.Request, AllowConversation: true, Context: input, Host: recall})
 		if err != nil {

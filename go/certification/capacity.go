@@ -89,12 +89,12 @@ func CapacityAt(with func(adapter.Adapter) adapter.Adapter, capacity int) Scenar
 				}
 				return capacityAnswer(answerAs, "", map[string]any{"tasks": tasks}), nil
 			}
-			off := false
+
 			input := requestInput("Check the expense pack.")
 			input.Chat = runcontext.NewChatContext("")
 			run := &Run{
 				Wire: "openai-compatible", ModelName: "fixture", Model: model, Gate: host.gate.Calls(), Tools: host.offer.Tools, Thinking: "off",
-				Prompt: "Check the expense pack.", AllowConversation: true, Interactive: true, Review: &off, Context: input,
+				Prompt: "Check the expense pack.", AllowConversation: true, Interactive: true, Critic: "off", Context: input,
 				Children: host.children(), Emit: host.emit,
 				Models: func() (runcontext.RunModels, error) {
 					return runcontext.RunModels{ConcurrentRequests: &capacity}, nil

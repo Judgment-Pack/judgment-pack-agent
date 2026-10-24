@@ -100,3 +100,36 @@ Memory proposals become reviewable run records without a package-owned memory st
 can explain what a run recalled and detect revocation after a pause. Existing string callbacks
 have one release to migrate. Framing and metadata consume prompt space; recall keeps its
 existing byte budget, and memory content cannot raise its own rank or acquire a tool.
+
+v0.9.1 amendment (#155): bare-text memory recall, including empty strings and native MemoryForFunc, is retired; use closed Memory records / MemoryRecordsForFunc, or null/nil for no answer.
+
+### v0.9.1 lifecycle correction (#173)
+
+The optional host `memoryLifecycle(recalled)` / `MemoryLifecycle(ctx, recalled)` callback
+receives a detached prior recalled list with only id, digest, kind and state, never remembered
+text or proposals. It answers closed `{id,digest,kind,state}` rows, at most 256, with state
+revoked or expired. It runs once per session even when prompt memory is disabled; text callbacks
+are never read then. Omission, query relevance and disabled recall do not change lifecycle.
+
+An exact existing accepted identity can become revoked or expired. An exact terminal replay is
+idempotent. Switching revoked to expired or expired to revoked, accepting a terminal identity,
+changing id/digest/kind, or targeting an unknown or proposal-only identity refuses configuration.
+Edited text has a fresh id and actual digest. No deleted prose or substitute digest is required.
+A complete record and lifecycle update for one id must agree, including expiry; accepted full
+recall conflicting with a terminal update refuses. Full-record recall cannot resurrect terminal
+identity or replace its digest/kind. Proposed and declined prior rows cannot gain acceptance here.
+
+The canonical session validates both answers and the complete resulting book before one
+checkpoint patch. It compares prior/current recalled metadata after awaiting the host, preserves
+concurrent proposals, and refuses stale or cumulative-overflow reports atomically. Go serializes
+memory owners before its checkpoint lock; no host callback runs under either lock. Success text
+and recall notices publish only after commit. Lists stay bounded at 256 each; terminal-only
+updates use the existing checkpoint/report shape and do not fabricate a text-recall event.
+The once-prepared prompt remains immutable through the run. Checkpoint reload preserves all
+identity metadata and terminal states. The host owns storage, acceptance and deletion throughout.
+
+The browser memory helpers retain validation evidence privately: `nextMemoryRecall` accepts
+only an original, unedited `recallMemory` result and validates lifecycle rows itself.
+`commitMemoryRecall` accepts only the original, unedited preparation for the same prior book.
+Copied or fabricated result objects cannot authorize identity changes or new accepted rows;
+these helpers refuse before calling the checkpoint writer.

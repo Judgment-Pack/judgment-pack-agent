@@ -74,7 +74,9 @@ var Registry = map[string]func() any{
 	"failure.json#/$defs/catalogueEntry":            func() any { return new(FailureCatalogueEntry) },
 	"failure.json#/$defs/toolFailureContent":        func() any { return new(FailureToolFailureContent) },
 	"memory.json":                                   func() any { return new(Memory) },
-	"memory.json#/$defs/answer":                     func() any { return new(MemoryAnswer) },
+	"memory.json#/$defs/answer":                     func() any { return new([]Memory) },
+	"memory.json#/$defs/lifecycleUpdate":            func() any { return new(MemoryLifecycleUpdate) },
+	"memory.json#/$defs/lifecycleAnswer":            func() any { return new([]MemoryLifecycleUpdate) },
 	"policy.json":                                   func() any { return new(Policy) },
 	"policy.json#/$defs/role":                       func() any { return new(PolicyRole) },
 	"policy.json#/$defs/member":                     func() any { return new(PolicyMember) },
@@ -336,34 +338,33 @@ func (v ApprovalRequest) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
-// From budget.json. Read alias for policy.budget for the v0.8.0 release; retired in the next
-// release. Legacy criticDefault, criticReasoningFloor and adversarialReview read into
-// policy.critic. New nested members win where both are stated. The context budget one run works
-// under: the provider-independent byte and token limits both the browser and the Desk server read
-// from one table (internal/aicontext/policy.json, ContextPolicy in
-// web/src/assistant/context/policy.ts, aicontext.Policy in Go). The model's context window and
-// output reserve may be overridden per model by the assistant profile (configuration); everything
-// else is fixed. Input bytes for one request are min(maxInputBytes, max(1024, (contextWindowTokens
-// - outputTokens) * 3)); the request allowance takes no reserve for the host's parts: briefBytes
-// and memoryBytes are the bounds on the brief and the recalled memory (each held to its bound,
-// $defs/hostPart), which the adapter places itself (ADR-0005) and counts once, where they sit in
-// the instructions (until agent#69 the adapter left both out of every request's allowance whether
-// or not the parts were present, a reserve kept from when the server added them behind the
-// adapter), and the server refuses before dispatch, never clipping, a request over the input bytes
-// (context-limit, not-started). Open: the Go reader ignores a member it does not name. The request
-// allowance, the grants and the fixed limits are in $defs. The harness adds two time bounds the
-// Desk's table does not carry (packages/harness/context/policy.ts, TIME_DEFAULTS), each taken from
-// the table where it does: turnMilliseconds and toolCallMilliseconds; and three bounds on the
-// Runtime's test tool (TEST_DEFAULTS), likewise: testCallsPerTurn, testPackBytes and
-// testMatrixBytes; and two image bounds (IMAGE_DEFAULTS), likewise: imagesPerRequest and
-// imageBytesPerRequest; and two bounds on the index of earlier results a chat-scoped run's first
-// message carries (INDEX_DEFAULTS, agent#8), likewise: turnIndexEntries and turnIndexBytes; and
-// the bound on the project's own instructions (PROMPT_DEFAULTS, ADR-0005), likewise:
-// projectInstructionsBytes. The table also states the critic's switch (ADR-0010), which the
-// harness adds to the Desk's table: criticDefault, the mode where neither the run nor the project
-// states one, and criticReasoningFloor, the critic's tier where the host names none;
-// adversarialReview, the switch before ADR-0010, is read as an alias of criticDefault for one
-// release. And the bounds on tools with a source (SOURCE_DEFAULTS, ADR-0006), likewise:
+// From budget.json. The internal context budget values and bound/configuration definitions. The
+// flat budget.json policy-layer alias and adversarialReview were retired in v0.9.1; hosts pass
+// nested policy.budget and policy.critic. The context budget one run works under: the
+// provider-independent byte and token limits both the browser and the Desk server read from one
+// table (internal/aicontext/policy.json, ContextPolicy in web/src/assistant/context/policy.ts,
+// aicontext.Policy in Go). The model's context window and output reserve may be overridden per
+// model by the assistant profile (configuration); everything else is fixed. Input bytes for one
+// request are min(maxInputBytes, max(1024, (contextWindowTokens - outputTokens) * 3)); the request
+// allowance takes no reserve for the host's parts: briefBytes and memoryBytes are the bounds on
+// the brief and the recalled memory (each held to its bound, $defs/hostPart), which the adapter
+// places itself (ADR-0005) and counts once, where they sit in the instructions (until agent#69 the
+// adapter left both out of every request's allowance whether or not the parts were present, a
+// reserve kept from when the server added them behind the adapter), and the server refuses before
+// dispatch, never clipping, a request over the input bytes (context-limit, not-started). Open: the
+// Go reader ignores a member it does not name. The request allowance, the grants and the fixed
+// limits are in $defs. The harness adds two time bounds the Desk's table does not carry
+// (packages/harness/context/policy.ts, TIME_DEFAULTS), each taken from the table where it does:
+// turnMilliseconds and toolCallMilliseconds; and three bounds on the Runtime's test tool
+// (TEST_DEFAULTS), likewise: testCallsPerTurn, testPackBytes and testMatrixBytes; and two image
+// bounds (IMAGE_DEFAULTS), likewise: imagesPerRequest and imageBytesPerRequest; and two bounds on
+// the index of earlier results a chat-scoped run's first message carries (INDEX_DEFAULTS,
+// agent#8), likewise: turnIndexEntries and turnIndexBytes; and the bound on the project's own
+// instructions (PROMPT_DEFAULTS, ADR-0005), likewise: projectInstructionsBytes. The table also
+// states the critic's switch (ADR-0010), which the harness adds to the Desk's table:
+// criticDefault, the mode where neither the run nor the project states one, and
+// criticReasoningFloor, the critic's tier where the host names none. The retired boolean is
+// refused. And the bounds on tools with a source (SOURCE_DEFAULTS, ADR-0006), likewise:
 // toolDescriptionBytes, offeredSchemas, offeredSchemaBytes, cataloguedTools, catalogueBytes,
 // sourceResultBytes, sourceCallsPerTurn and sourceCallMilliseconds. The skills budget (ADR-0009):
 // skillBytes, skillsPerRun, skillsCatalogueBytes and cataloguedSkills.
@@ -387,7 +388,6 @@ type Budget struct {
 	TestCallsPerTurn         *int64  `json:"testCallsPerTurn,omitzero"`
 	TestPackBytes            *int64  `json:"testPackBytes,omitzero"`
 	TestMatrixBytes          *int64  `json:"testMatrixBytes,omitzero"`
-	AdversarialReview        *bool   `json:"adversarialReview,omitzero"`
 	CriticDefault            *string `json:"criticDefault,omitzero"`
 	CriticReasoningFloor     *string `json:"criticReasoningFloor,omitzero"`
 	TurnIndexEntries         *int64  `json:"turnIndexEntries,omitzero"`
@@ -418,7 +418,7 @@ type Budget struct {
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var budgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "summaryBytes", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "adversarialReview", "criticDefault", "criticReasoningFloor", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds", "skillBytes", "skillsPerRun", "skillsCatalogueBytes", "cataloguedSkills", "cataloguedSubagents", "subagentCatalogueBytes", "memoryProposalBytes", "memoryProposalsPerRun", "steerBytes", "steersPerRun", "editsPerTurn", "editBytes", "proposalBytes"}
+var budgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "summaryBytes", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "criticDefault", "criticReasoningFloor", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds", "skillBytes", "skillsPerRun", "skillsCatalogueBytes", "cataloguedSkills", "cataloguedSubagents", "subagentCatalogueBytes", "memoryProposalBytes", "memoryProposalsPerRun", "steerBytes", "steersPerRun", "editsPerTurn", "editBytes", "proposalBytes"}
 
 // UnmarshalJSON decodes a Budget object and keeps the members the schema does not name.
 func (v *Budget) UnmarshalJSON(data []byte) error {
@@ -572,8 +572,9 @@ func (v BudgetDeskLimits) MarshalJSON() ([]byte, error) {
 // guidance, and they cannot grant a tool or change an effect, because the offer and the gate are
 // code. The system text through the last part is the request's stable prefix: the same bytes on
 // every request of the run. ADR-0014: memoryFor answers memory.json#/$defs/answer: accepted
-// records are individually framed as data under the run marker with kind and source inside; the
-// bare-text alias lasts for v0.8.0.
+// records are individually framed as data under the run marker with kind and source inside;
+// bare-text answers are refused in v0.9.1; null or an absent callback supplies nothing. Lifecycle
+// metadata is read separately by the canonical session even when text recall is disabled.
 type BudgetHostPart struct {
 	Name      string `json:"name"`
 	Layer     int64  `json:"layer"`
@@ -3025,78 +3026,36 @@ func (v Memory) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
-// From memory.json#/$defs/answer. memoryFor answers records. For v0.8.0, nonempty bare text
-// normalizes to one accepted project fact record: id legacy-memory, source {run: host, proposedBy:
-// host}, createdAt 1970-01-01T00:00:00Z, digest sha256: plus the SHA-256 of its UTF-8 text, no
-// expiresAt. This compatibility record is not persisted. The alias and that record use identical
-// framing, recall rows and memoryBytes accounting: the sum of accepted records’ canonical JSON
-// UTF-8 bytes before framing. Empty text, null or an absent binding supplies nothing. Only
-// accepted, unexpired records reach the prompt; revoked records can update a restored report.
-//
-// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
-type MemoryAnswer struct {
-	Option1 *[]Memory
-	String  *string
-	// Raw is the value where more than one member decodes it; no member is set then.
-	Raw json.RawMessage
+// From memory.json#/$defs/lifecycleUpdate. Metadata-only explicit terminal reporting for an
+// existing canonical recalled identity. The host owns deletion; omission does not revoke.
+// Identity, digest and kind must match; accepted becomes revoked/expired, identical terminal
+// replay is idempotent and terminal switching refuses.
+type MemoryLifecycleUpdate struct {
+	ID     string `json:"id"`
+	Digest string `json:"digest"`
+	Kind   string `json:"kind"`
+	State  string `json:"state"`
 }
 
-// UnmarshalJSON sets the one member the value decodes as.
-func (v *MemoryAnswer) UnmarshalJSON(data []byte) error {
-	*v = MemoryAnswer{}
-	kind := jsonKind(data)
-	decoded, closed := 0, 0
-	var first, firstClosed func()
-	if kind == "array" {
-		var candidate []Memory
-		if err := json.Unmarshal(data, &candidate); err == nil {
-			set := func() { v.Option1 = &candidate }
-			decoded++
-			if first == nil {
-				first = set
-			}
-		}
+var memoryLifecycleUpdateMembers = []string{"id", "digest", "kind", "state"}
+
+// UnmarshalJSON decodes a MemoryLifecycleUpdate object and refuses a member the closed schema does not name.
+func (v *MemoryLifecycleUpdate) UnmarshalJSON(data []byte) error {
+	type plain MemoryLifecycleUpdate
+	var p plain
+	extra, err := decodeObject(data, &p, memoryLifecycleUpdateMembers, true)
+	if err != nil {
+		return errorf("MemoryLifecycleUpdate: %w", err)
 	}
-	if kind == "string" {
-		var candidate string
-		if err := json.Unmarshal(data, &candidate); err == nil {
-			set := func() { v.String = &candidate }
-			decoded++
-			if first == nil {
-				first = set
-			}
-		}
-	}
-	switch {
-	case decoded == 0:
-		return errorf("MemoryAnswer: the value is none of the union's members")
-	case decoded == 1:
-		first()
-		return nil
-	case closed == 1:
-		firstClosed()
-		return nil
-	}
-	*v = MemoryAnswer{Raw: append(json.RawMessage(nil), data...)}
+	*v = MemoryLifecycleUpdate(p)
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes the one member that is set.
-func (v MemoryAnswer) MarshalJSON() ([]byte, error) {
-	var set []any
-	if v.Option1 != nil {
-		set = append(set, v.Option1)
-	}
-	if v.String != nil {
-		set = append(set, v.String)
-	}
-	if len(set) == 0 && v.Raw != nil {
-		return v.Raw, nil
-	}
-	if len(set) != 1 {
-		return nil, errorf("MemoryAnswer: %d members are set; a union holds exactly one", len(set))
-	}
-	return json.Marshal(set[0])
+// MarshalJSON encodes a MemoryLifecycleUpdate object.
+func (v MemoryLifecycleUpdate) MarshalJSON() ([]byte, error) {
+	type plain MemoryLifecycleUpdate
+	return encodeObject(plain(v), nil)
 }
 
 // From memory.json#/properties/source.
@@ -6923,27 +6882,26 @@ func (v ToolCallTextToolCall) MarshalJSON() ([]byte, error) {
 // and unload_skill beside load_tool ($defs/loadSkill, $defs/unloadSkill) where any is catalogued;
 // a loaded skill ($defs/loadedSkill) rides after the history, and grants no tool. The critic's
 // switch (ADR-0010) rides beside them: critic, criticProject, criticReasoning, existingPack,
-// reviewerAssigned and the alias adversarialReview, each optional.
+// reviewerAssigned, each optional.
 type ToolOffer struct {
-	Tools             []ToolOfferRuntimeTool `json:"tools"`
-	HostTools         []ToolOfferHostTool    `json:"hostTools"`
-	Skills            []json.RawMessage      `json:"skills,omitzero"`
-	Critic            *string                `json:"critic,omitzero"`
-	CriticProject     *string                `json:"criticProject,omitzero"`
-	CriticReasoning   *string                `json:"criticReasoning,omitzero"`
-	ExistingPack      *bool                  `json:"existingPack,omitzero"`
-	ReviewerAssigned  *bool                  `json:"reviewerAssigned,omitzero"`
-	AdversarialReview *bool                  `json:"adversarialReview,omitzero"`
-	Policy            *Policy                `json:"policy,omitzero"`
-	PolicyProject     *Policy                `json:"policyProject,omitzero"`
-	TaskClass         *string                `json:"taskClass,omitzero"`
-	PaceUsed          *PolicyPaceUsed        `json:"paceUsed,omitzero"`
-	Subagents         []json.RawMessage      `json:"subagents,omitzero"`
+	Tools            []ToolOfferRuntimeTool `json:"tools"`
+	HostTools        []ToolOfferHostTool    `json:"hostTools"`
+	Skills           []json.RawMessage      `json:"skills,omitzero"`
+	Critic           *string                `json:"critic,omitzero"`
+	CriticProject    *string                `json:"criticProject,omitzero"`
+	CriticReasoning  *string                `json:"criticReasoning,omitzero"`
+	ExistingPack     *bool                  `json:"existingPack,omitzero"`
+	ReviewerAssigned *bool                  `json:"reviewerAssigned,omitzero"`
+	Policy           *Policy                `json:"policy,omitzero"`
+	PolicyProject    *Policy                `json:"policyProject,omitzero"`
+	TaskClass        *string                `json:"taskClass,omitzero"`
+	PaceUsed         *PolicyPaceUsed        `json:"paceUsed,omitzero"`
+	Subagents        []json.RawMessage      `json:"subagents,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var toolOfferMembers = []string{"tools", "hostTools", "skills", "critic", "criticProject", "criticReasoning", "existingPack", "reviewerAssigned", "adversarialReview", "policy", "policyProject", "taskClass", "paceUsed", "subagents"}
+var toolOfferMembers = []string{"tools", "hostTools", "skills", "critic", "criticProject", "criticReasoning", "existingPack", "reviewerAssigned", "policy", "policyProject", "taskClass", "paceUsed", "subagents"}
 
 // UnmarshalJSON decodes a ToolOffer object and keeps the members the schema does not name.
 func (v *ToolOffer) UnmarshalJSON(data []byte) error {

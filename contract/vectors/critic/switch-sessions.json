@@ -1,5 +1,5 @@
 {
-  "description": "Sessions as a host hands them, with the critic's switch beside the tools (ADR-0010; tool-offer.json): the run's word (critic), the project's (criticProject), the critic's tier (criticReasoning), the host's two facts (existingPack, reviewerAssigned) and the alias before ADR-0010 (adversarialReview). The first is the composer's auto on a project whose default is off, the critic at ultra, on an existing pack; the second a reviewer's run the Desk sends as before, through the alias; the third an agent capability's run at an effort. Written by hand; criticSwitch.test.ts reads each through readCriticSettings, and go/context/critic_test.go through ReadCriticSettings.",
+  "description": "Hand-authored canonical critic controls; the legacy boolean is retired and separate shared refusal vectors cover it.",
   "schema": "tool-offer.json",
   "source": {
     "harness": {
@@ -24,8 +24,8 @@
     {
       "tools": [],
       "hostTools": [],
-      "adversarialReview": false,
-      "reviewerAssigned": true
+      "reviewerAssigned": true,
+      "critic": "off"
     },
     {
       "tools": [],

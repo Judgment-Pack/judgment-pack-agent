@@ -392,7 +392,6 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 		input.Configuration, input.Phase, input.ArtifactProposals, input.Memory, input.Runtime, input.Authorize, input.Connection =
 			parent.Configuration, parent.Phase, parent.ArtifactProposals, parent.Memory, parent.Runtime, parent.Authorize, parent.Connection
 	}
-	no := false
 	child := *c.run
 	if projection != nil {
 		child.Thinking = ""
@@ -450,7 +449,8 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 	child.Purpose = ""
 	child.AllowConversation = true
 	child.Interactive = true
-	child.Review = &no
+	child.Review = nil
+	child.Critic = "off"
 	child.Cases = nil
 	// ADR-0009: a child is handed no skills; it inherits none of the parent's loaded set.
 	child.Skills = nil

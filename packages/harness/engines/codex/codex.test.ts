@@ -1,3 +1,4 @@
+import {typedMemory} from '../../testing/memory'
 import {frameBlock} from '../../framing'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { codex as admittedEngine, type CodexSession } from './index'
@@ -95,7 +96,7 @@ describe.each(AGENT_ENGINES)('agent engine %s', engineId => {
       for (const name of ['fetch', 'WebSocket', 'XMLHttpRequest', 'EventSource']) {
         vi.stubGlobal(name, () => { throw new Error('Adapter touched a network global') })
       }
-      for await (const event of loaded.start(session(run, { ...ready, adversarialReview: true }))) events.push(event)
+      for await (const event of loaded.start(session(run, { ...ready, critic: 'on' as const }))) events.push(event)
       expect(events.filter(event => event.type === 'error')).toEqual([])
       expect(passes).toBe(2)
       expect(events.find(event => event.type === 'proposal')).toMatchObject({ document: scenario.documents.DRAFT_V2 })
@@ -153,7 +154,7 @@ describe.each(AGENT_ENGINES)('agent engine %s', engineId => {
         writeAnswer = await callbacks.tool({ id: 'write', name: write.tool!, arguments: structuredClone(write.arguments) as Record<string, unknown> }, callbacks.signal)
         await callbacks.event({ type: 'message', id: 'p', text: proposal(scenario.documents.DRAFT_V2), phase: 'final' })
       }
-      for await (const event of loaded.start(session(run, { ...ready, adversarialReview: false }))) events.push(event)
+      for await (const event of loaded.start(session(run, { ...ready, critic: 'off' as const }))) events.push(event)
       expect(events.filter(event => event.type === 'error')).toEqual([])
       expect(sent).toHaveLength(1)
       // The block is in the instructions after the package's guidance (its data rule), and nowhere in the prompt.
@@ -199,7 +200,7 @@ describe.each(AGENT_ENGINES)('agent engine %s', engineId => {
       }
       // The recorded rehearsal of FACTS approves; the declared case says decline.
       const criticCases = [{ source: 'declared' as const, id: 'receipted-120', facts: scenario.documents.FACTS as Record<string, unknown>, expectedDisposition: { kind: 'outcome', outcomeId: 'decline' } }]
-      for await (const event of loaded.start(session(run, { ...ready, adversarialReview: true, criticCases }))) events.push(event)
+      for await (const event of loaded.start(session(run, { ...ready, critic: 'on' as const, criticCases }))) events.push(event)
       expect(events.find(event => event.type === 'critique')).toMatchObject({
         refuted: true,
         checks: [{ tool: 'validate', status: 'valid' }, { tool: 'experimental_evaluate', status: 'evaluated' }],
@@ -269,7 +270,7 @@ describe.each(AGENT_ENGINES)('agent engine %s', engineId => {
   })
 
   it('reports an unverified critique when the critic only speaks', async () => {
-    const events = await collect(session(reply(proposal()), { adversarialReview: true }))
+    const events = await collect(session(reply(proposal()), { critic: 'on' as const }))
     expect(events.find(event => event.type === 'critique')).toMatchObject({ checks: [] })
     expect(events.find(event => event.type === 'proposal')).not.toHaveProperty('critique')
   })
@@ -313,7 +314,7 @@ describe.each(AGENT_ENGINES)('agent engine %s', engineId => {
     configureHarness({
       brief: () => 'BRIEF-MARKER the expense team owns this pack.',
       projectInstructions: async () => 'PROJECT-MARKER write unknowns as full sentences.',
-      memoryFor: (query) => { asked.push(query); return 'MEMORY-MARKER the receipt threshold was 50 USD last quarter.' }
+      memoryFor: (query) => { asked.push(query); return typedMemory('MEMORY-MARKER the receipt threshold was 50 USD last quarter.') }
     })
     const run: AgentRun = async (request, callbacks) => {
       requests.push({ prompt: request.prompt, instructions: request.instructions })
@@ -322,9 +323,9 @@ describe.each(AGENT_ENGINES)('agent engine %s', engineId => {
     const loaded = await loadEngine(engineId)
     const events: AssistantEvent[] = []
     // A conversation with a host state: both are appended.
-    for await (const event of loaded.start(session(run, { prompt: policy, allowConversation: true, adversarialReview: false, context: { currentState: 'Draft snapshot: {"pack":"expense-reimbursement"}' } }) as never)) events.push(event)
+    for await (const event of loaded.start(session(run, { prompt: policy, allowConversation: true, critic: 'off' as const, context: { currentState: 'Draft snapshot: {"pack":"expense-reimbursement"}' } }) as never)) events.push(event)
     // Neither a state nor a conversation: nothing is appended and nothing is headed.
-    for await (const event of loaded.start(session(run, { prompt: policy, adversarialReview: false }) as never)) events.push(event)
+    for await (const event of loaded.start(session(run, { prompt: policy, critic: 'off' as const }) as never)) events.push(event)
     expect(events.filter(event => event.type === 'error')).toEqual([])
     expect(requests).toHaveLength(2)
     const [chat, plain] = requests as [{ prompt: string; instructions: string }, { prompt: string; instructions: string }]
@@ -357,11 +358,11 @@ describe.each(AGENT_ENGINES)('agent engine %s', engineId => {
     }
     const loaded = await loadEngine(engineId)
     const events: AssistantEvent[] = []
-    const base = { prompt, adversarialReview: false, allowConversation: true }
+    const base = { prompt, critic: 'off' as const, allowConversation: true }
     // With a state and the person's message named: the message leads, the state ends the prompt.
     for await (const event of loaded.start(session(run, { ...base, context: { currentState: 'Draft snapshot: {"pack":"expense-reimbursement"}', currentRequest: { message, input: message } } }) as never)) events.push(event)
     // Without a state to append, and without a conversation: the message still leads, then the preview, and no header.
-    for await (const event of loaded.start(session(run, { prompt, adversarialReview: false, context: { currentRequest: { message, input: message } } }) as never)) events.push(event)
+    for await (const event of loaded.start(session(run, { prompt, critic: 'off' as const, context: { currentRequest: { message, input: message } } }) as never)) events.push(event)
     // Without the person's message named, the preview is sent alone.
     for await (const event of loaded.start(session(run, base) as never)) events.push(event)
     expect(events.filter(event => event.type === 'error')).toEqual([])
@@ -460,7 +461,7 @@ it('retains full tool results for the UI, sends bounded references to Codex, and
   await callbacks.event({type:'message',id:'answer-'+passes,phase:'final',text:passes===1?proposal({id:'p'}):'No change recommended.'})
  }
  const events:AssistantEvent[]=[]
- for await(const e of codex.start(session(run,{adversarialReview:true,hostTools:[{name:'read_records',description:'Read records',inputSchema:{type:'object'},execute:async()=>({structuredContent:value})}]})))events.push(e)
+ for await(const e of codex.start(session(run,{critic: 'on' as const,hostTools:[{name:'read_records',description:'Read records',inputSchema:{type:'object'},execute:async()=>({structuredContent:value})}]})))events.push(e)
  expect(events.filter(e=>e.type==='error')).toEqual([])
  expect(passes).toBe(2)
  expect(events.find(e=>e.type==='tool_result'&&e.name==='read_records')).toMatchObject({structured:value})
@@ -479,7 +480,7 @@ it('preserves the current question and reads searchable context through the subs
   const result=await callbacks.tool({id:'read',name:tool.name,arguments:{id,path:'/input',query:'EXACT CASE'}},callbacks.signal)
   expect(JSON.stringify(result)).toContain('EXACT CASE: missing size')
   await callbacks.event({type:'message',id:'reply',text:'Explained without changes.',phase:'final'})
- },{prompt:'history '.repeat(40000),context:{currentRequest:{message,input}},allowConversation:true,adversarialReview:false}))
+ },{prompt:'history '.repeat(40000),context:{currentRequest:{message,input}},allowConversation:true,critic: 'off' as const}))
  expect(events.filter(e=>e.type==='error')).toEqual([])
  expect(events.filter(e=>e.type==='message')).toEqual([{type:'message',text:'Explained without changes.'}])
 })
@@ -517,7 +518,7 @@ describe('nothing finished is lost, on the agent wire (agent#6)', () => {
       if (request.phase === 'critic') throw failureError('unavailable', 'agent')
       await callbacks.event({ type: 'message', id: 'm', text: proposal(), phase: 'final' })
     }
-    const events = await collect(session(run, { adversarialReview: true }))
+    const events = await collect(session(run, { critic: 'on' as const }))
     expect(passes).toBe(2)
     expect(events.filter(event => event.type === 'error' || event.type === 'critique')).toEqual([])
     expect(events.find(event => event.type === 'proposal')).toMatchObject({ document: { id: 'pack' }, note: { kind: 'critic-unfinished', failure: { code: 'unavailable', source: 'agent' } } })

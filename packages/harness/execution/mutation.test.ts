@@ -2,7 +2,7 @@ import {describe,it,expect} from 'vitest'
 import {join,resolve} from 'node:path'
 import {readFileSync,readdirSync,mkdtempSync,mkdirSync,writeFileSync} from 'node:fs'
 import {tmpdir} from 'node:os'
-import {API,type Snapshot} from 'typescript/unstable/sync'
+import {API,SymbolFlags,type Snapshot} from 'typescript/unstable/sync'
 import * as ts from 'typescript/unstable/ast'
 import {CHECKPOINT_MEMBERS,CheckpointIncrement,CheckpointMutation,mutateCheckpoint} from './mutation'
 import type {ExecutionCheckpoint} from './state'
@@ -19,14 +19,50 @@ function checkpointWrites(paths:string[],snapshot:Snapshot,root=resolve(process.
    const type=checker.getTypeAtLocation(expression),member=type&&checker.getPropertyOfType(type,'requestKey')
    return member?.declarations.some(d=>d.resolve()?.getSourceFile().fileName.endsWith('/execution/state.ts'))??false
   }
-  // Follow member copies by symbol, retaining the first local book so unrelated reads
-  // or publication under a different member cannot excuse a lost detached edit.
-  type Origin={member:string,book:unknown}
+  // A detached book is published only by its originating controller/aggregate.
+  // Local receiver aliases retain identity; equal member types do not identify an owner.
+  type Origin={member:string,book:unknown,owner:string|undefined}
   const aliases=new Map<unknown,Origin>(),scopes=new Map<ts.Node,ts.Node>()
+  const receiverAliases=new Map<unknown,string>(),aggregateOwners=new Map<unknown,string>(),parameterProperties=new Map<number,string>()
+  const symbolIDs=new Map<unknown,number>(),reassigned=new Set<unknown>()
+  const symbolKey=(symbol:unknown):string|undefined=>{if(!symbol)return undefined;if(!symbolIDs.has(symbol))symbolIDs.set(symbol,symbolIDs.size+1);return String(symbolIDs.get(symbol))}
+  const findReassignments=(node:ts.Node)=>{
+   if(ts.isBinaryExpression(node)&&node.operatorToken.kind>=ts.SyntaxKind.FirstAssignment&&node.operatorToken.kind<=ts.SyntaxKind.LastAssignment&&ts.isIdentifier(node.left))reassigned.add(checker.getSymbolAtLocation(node.left))
+   node.forEachChild(findReassignments)
+  };findReassignments(file)
+  const instances=new Map<ts.Node,string>()
+  const markInstances=(node:ts.Node,instance:string|undefined=undefined)=>{
+   if(ts.isClassDeclaration(node)||ts.isClassExpression(node)){const key=symbolKey(node.name?checker.getSymbolAtLocation(node.name):checker.getTypeAtLocation(node)?.getSymbol());instance=key?'this:'+key:undefined}
+   if(instance)instances.set(node,instance)
+   node.forEachChild(child=>markInstances(child,instance))
+  };markInstances(file)
+  const identity=(expression:ts.Expression):string|undefined=>{
+   if(ts.isIdentifier(expression)){
+    const symbol=checker.getSymbolAtLocation(expression)
+    if(reassigned.has(symbol))return undefined
+    const parameter=symbol?.declarations.map(d=>d.resolve()).find(d=>d&&ts.isParameterDeclaration(d))
+    return receiverAliases.get(symbol)??(parameter&&parameterProperties.get(parameter.getStart(file)))??symbolKey(symbol)
+   }
+   if(ts.isThisExpression(expression))return instances.get(expression)
+   if(ts.isNonNullExpression(expression)||ts.isAsExpression(expression)||ts.isParenthesizedExpression(expression))return identity(expression.expression)
+   if(ts.isPropertyAccessExpression(expression)){const root=identity(expression.expression);return root&&root+'.'+expression.name.text}
+   if(ts.isElementAccessExpression(expression)&&expression.argumentExpression&&ts.isStringLiteral(expression.argumentExpression)){const root=identity(expression.expression);return root&&root+'.'+expression.argumentExpression.text}
+   return undefined
+  }
+  const aggregateOwner=(expression:ts.Expression):string|undefined=>{
+   if(ts.isNonNullExpression(expression)||ts.isAsExpression(expression)||ts.isParenthesizedExpression(expression))return aggregateOwner(expression.expression)
+   if(ts.isIdentifier(expression)){const symbol=checker.getSymbolAtLocation(expression);return reassigned.has(symbol)?undefined:aggregateOwners.get(symbol)??identity(expression)}
+   if(ts.isPropertyAccessExpression(expression)&&expression.name.text==='state'){
+    const member=checker.getSymbolAtLocation(expression.name)
+    if(member?.declarations.some(d=>d.resolve()?.getSourceFile().fileName===join(root,'execution/controller.ts')))return identity(expression.expression)
+   }
+   if(ts.isCallExpression(expression)&&ts.isPropertyAccessExpression(expression.expression)&&['read','state'].includes(expression.expression.name.text))return identity(expression.expression.expression)
+   return identity(expression)
+  }
   const origin=(expression:ts.Expression):Origin|undefined=>{
    if(ts.isIdentifier(expression))return aliases.get(checker.getSymbolAtLocation(expression))
    if(ts.isPropertyAccessExpression(expression)||ts.isElementAccessExpression(expression)){
-    if(aggregate(expression.expression))return {member:ts.isPropertyAccessExpression(expression)?expression.name.text:expression.argumentExpression?.getText(file).replace(/^['"]|['"]$/g,'')??'',book:undefined}
+    if(aggregate(expression.expression))return {member:ts.isPropertyAccessExpression(expression)?expression.name.text:expression.argumentExpression?.getText(file).replace(/^['"]|['"]$/g,'')??'',book:undefined,owner:aggregateOwner(expression.expression)}
     return origin(expression.expression)
    }
    if(ts.isNonNullExpression(expression)||ts.isAsExpression(expression)||ts.isParenthesizedExpression(expression))return origin(expression.expression)
@@ -34,28 +70,59 @@ function checkpointWrites(paths:string[],snapshot:Snapshot,root=resolve(process.
    if(ts.isCallExpression(expression)&&ts.isPropertyAccessExpression(expression.expression))return origin(expression.expression.expression)
    return undefined
   }
-  const collect=(node:ts.Node,scope:ts.Node,immediate=false)=>{
+  const bindParameter=(name:ts.BindingName,held:Origin)=>{
+   if(ts.isIdentifier(name)){const symbol=checker.getSymbolAtLocation(name);if(symbol)aliases.set(symbol,held)}
+   else for(const element of name.elements)if(ts.isBindingElement(element)&&element.name)bindParameter(element.name,held)
+  }
+  const collect=(node:ts.Node,scope:ts.Node,immediate=false,instance:string|undefined=undefined)=>{
+   if(ts.isClassDeclaration(node)||ts.isClassExpression(node)){const key=node.name&&symbolKey(checker.getSymbolAtLocation(node.name));instance=key?'this:'+key:undefined}
    if(ts.isFunctionLikeDeclaration(node)&&!immediate)scope=node
    scopes.set(node,scope)
+   // Parameter properties alias this.run in SkillGate's constructor; other instances
+   // retain their own receiver identity when invoking the exact source-book publisher.
+   if(ts.isConstructorDeclaration(node)&&instance)for(const parameter of node.parameters){
+    if(ts.isIdentifier(parameter.name)&&parameter.modifiers?.some(modifier=>[ts.SyntaxKind.PrivateKeyword,ts.SyntaxKind.PublicKeyword,ts.SyntaxKind.ProtectedKeyword,ts.SyntaxKind.ReadonlyKeyword].includes(modifier.kind))){
+     const symbol=checker.getSymbolAtLocation(parameter.name),owner=instance+'.'+parameter.name.text;if(symbol)receiverAliases.set(symbol,owner);parameterProperties.set(parameter.getStart(file),owner)
+    }
+   }
    if(ts.isVariableDeclaration(node)&&ts.isIdentifier(node.name)&&node.initializer){
-    const held=origin(node.initializer),symbol=checker.getSymbolAtLocation(node.name)
+    const held=origin(node.initializer),symbol=checker.getSymbolAtLocation(node.name),receiver=identity(node.initializer)
+    if(symbol&&receiver)receiverAliases.set(symbol,receiver)
+    if(symbol&&aggregate(node.initializer)){const owner=aggregateOwner(node.initializer);if(owner)aggregateOwners.set(symbol,owner)}
     if(held&&symbol)aliases.set(symbol,{...held,book:held.book??symbol})
    }
-   node.forEachChild(child=>collect(child,scope,ts.isCallExpression(node)&&ts.isPropertyAccessExpression(node.expression)&&checker.isArrayLikeType(checker.getTypeAtLocation(node.expression.expression)!)&&['map','forEach','filter','reduce'].includes(node.expression.name.text)&&node.arguments.includes(child as ts.Expression)))
+   let callback:ts.Expression|undefined
+   if(ts.isCallExpression(node)&&ts.isPropertyAccessExpression(node.expression)&&checker.isArrayLikeType(checker.getTypeAtLocation(node.expression.expression)!)&&['map','forEach','filter','reduce'].includes(node.expression.name.text)){
+    const held=origin(node.expression.expression),candidate=node.arguments[0]
+    if(candidate&&(ts.isArrowFunction(candidate)||ts.isFunctionExpression(candidate))){
+     if(!candidate.modifiers?.some(modifier=>modifier.kind===ts.SyntaxKind.AsyncKeyword))callback=candidate
+     if(held){
+      const collection={...held,book:held.book??candidate},reduce=node.expression.name.text==='reduce'
+      const element=candidate.parameters[reduce?1:0],array=candidate.parameters[reduce?3:2]
+      if(element)bindParameter(element.name,collection)
+      if(array)bindParameter(array.name,collection)
+      if(reduce&&candidate.parameters[0]){const initial=node.arguments[1],accumulator=initial?origin(initial):collection;if(accumulator)bindParameter(candidate.parameters[0].name,accumulator)}
+     }
+    }
+   }
+   node.forEachChild(child=>collect(child,scope,child===callback,instance))
   };collect(file,file)
-  const publications:{scope:ts.Node|undefined,member:string,book:unknown,position:number}[]=[]
+  const publications:{scope:ts.Node|undefined,member:string,book:unknown,owner:string|undefined,position:number}[]=[]
   const publish=(node:ts.Node)=>{
    if(ts.isCallExpression(node)){
-    const name=ts.isPropertyAccessExpression(node.expression)?node.expression.name.text:node.expression.getText(file)
+    const selected=checker.getSymbolAtLocation(node.expression)
+    const symbol=selected&&(selected.flags&SymbolFlags.Alias?checker.getAliasedSymbol(selected):selected)
+    const name=ts.isPropertyAccessExpression(node.expression)?node.expression.name.text:symbol?.name??node.expression.getText(file)
     const patch=node.arguments[name==='mutateCheckpoint'?1:0]
-    const symbol=checker.getSymbolAtLocation(node.expression)
     const owner=symbol?.declarations.some(d=>{const source=d.resolve()?.getSourceFile().fileName;return source===join(root,'execution/mutation.ts')||source===join(root,'execution/controller.ts')||(name==='commitSources'&&source===join(root,'skills.ts'))})
-    if(owner&&name==='commitSources'&&patch){const held=origin(patch);if(held?.book&&held.member==='sources')publications.push({scope:scopes.get(node),member:'sources',book:held.book,position:node.getStart(file)})}
+    const receiver=ts.isPropertyAccessExpression(node.expression)?identity(node.expression.expression):undefined
+    const publishingOwner=name==='mutateCheckpoint'&&node.arguments[0]?identity(node.arguments[0]):name==='commitSources'&&receiver?receiver+'.run':receiver
+    if(owner&&name==='commitSources'&&patch){const held=origin(patch);if(held?.book&&held.member==='sources')publications.push({scope:scopes.get(node),member:'sources',book:held.book,owner:publishingOwner,position:node.getStart(file)})}
     if(owner&&['mutate','apply','mutateCheckpoint'].includes(name)&&patch&&ts.isObjectLiteralExpression(patch))for(const property of patch.properties){
      if(!ts.isShorthandPropertyAssignment(property)&&!ts.isPropertyAssignment(property))continue
      const held=ts.isShorthandPropertyAssignment(property)?aliases.get(checker.getShorthandAssignmentValueSymbol(property)):origin(property.initializer)
      const member=property.name.getText(file).replace(/^['"]|['"]$/g,'')
-     if(held?.book)publications.push({scope:scopes.get(node),member,book:held.book,position:node.getStart(file)})
+     if(held?.book)publications.push({scope:scopes.get(node),member,book:held.book,owner:publishingOwner,position:node.getStart(file)})
     }
    }
    node.forEachChild(publish)
@@ -67,7 +134,7 @@ function checkpointWrites(paths:string[],snapshot:Snapshot,root=resolve(process.
   }
   const record=(expression:ts.Expression)=>{
    const held=origin(expression)
-   const committed=held?.book&&publications.some(p=>p.scope===scopes.get(expression)&&p.member===held.member&&p.book===held.book&&p.position>expression.getStart(file))
+   const committed=held?.book&&held.owner!==undefined&&publications.some(p=>p.scope===scopes.get(expression)&&p.member===held.member&&p.book===held.book&&p.owner===held.owner&&p.position>expression.getStart(file))
    if(rooted(expression)||(held&&!committed))found.push(`${path}:${file.getLineAndCharacterOfPosition(expression.getStart(file)).line+1}`)
   }
   const visit=(node:ts.Node)=>{
@@ -143,6 +210,46 @@ export function committedArray(c:ExecutionController){const operations=c.state.o
 `)
   const api=new API({cwd:process.cwd()}),snapshot=api.updateSnapshot({openFiles:[path]})
   try{expect(checkpointWrites([path],snapshot)).toEqual([3,4,5,6].map(line=>`${path}:${line}`))}finally{snapshot.dispose();api.close()}
+ })
+
+ it('requires publication by the originating controller or raw aggregate',()=>{
+  const directory=mkdtempSync(join(tmpdir(),'checkpoint-owner-')),path=join(directory,'owner.ts')
+  writeFileSync(path,`import {ExecutionController} from ${JSON.stringify(join(resolve(process.cwd()),'execution/controller'))}
+import {CheckpointMutation,mutateCheckpoint} from ${JSON.stringify(join(resolve(process.cwd()),'execution/mutation'))}
+import type {ExecutionCheckpoint} from ${JSON.stringify(join(resolve(process.cwd()),'execution/state'))}
+export function wrongOwner(c:ExecutionController,d:ExecutionController){const approval=c.state.approval!;approval.state='answered';d.mutate({approval})}
+export function receiverAlias(c:ExecutionController){const publisher=c;const state=c.state;const view=state;const approval=view.approval!;approval.state='answered';publisher.mutate({approval})}
+export function wrongAlias(c:ExecutionController,d:ExecutionController){const publisher=d;const approval=c.state.approval!;approval.state='answered';publisher.mutate({approval})}
+export function rawOwner(state:ExecutionCheckpoint){const approval=state.approval!;approval.state='answered';mutateCheckpoint(state,{approval})}
+export function wrongRawOwner(state:ExecutionCheckpoint,other:ExecutionCheckpoint){const approval=state.approval!;approval.state='answered';mutateCheckpoint(other,{approval})}
+export function storeAlias(c:CheckpointMutation){const publisher=c;const state=c.read();const approval=state.approval!;approval.state='answered';publisher.apply({approval})}
+export function wrongStore(c:CheckpointMutation,d:CheckpointMutation){const approval=c.read().approval!;approval.state='answered';d.apply({approval})}
+export function fieldOwner(pair:{first:ExecutionController;second:ExecutionController}){const publisher=pair.first;const approval=publisher.state.approval!;approval.state='answered';pair.first.mutate({approval})}
+export function wrongFieldOwner(pair:{first:ExecutionController;second:ExecutionController}){const approval=pair.first.state.approval!;approval.state='answered';pair.second.mutate({approval})}
+export function reassignedReceiver(c:ExecutionController,d:ExecutionController){let publisher=c;const approval=c.state.approval!;approval.state='answered';publisher=d;publisher.mutate({approval})}
+export function reassignedAggregate(c:ExecutionController,d:ExecutionController){let state=c.state;state=d.state;const approval=state.approval!;approval.state='answered';c.mutate({approval})}
+`)
+  const api=new API({cwd:process.cwd()}),snapshot=api.updateSnapshot({openFiles:[path]})
+  // The reassigned aggregate itself and its later unpublished member edit are separate sites.
+  try{expect(checkpointWrites([path],snapshot)).toEqual([4,6,8,10,12,13,14,14].map(line=>`${path}:${line}`))}finally{snapshot.dispose();api.close()}
+ })
+ it('requires owning publication for synchronous collection callback parameters',()=>{
+  const directory=mkdtempSync(join(tmpdir(),'checkpoint-callback-')),path=join(directory,'callback.ts')
+  writeFileSync(path,`import {ExecutionController} from ${JSON.stringify(join(resolve(process.cwd()),'execution/controller'))}
+export function unpublished(c:ExecutionController){const operations=c.state.operations;operations.forEach(operation=>{operation.status='complete'})}
+export function wrongOwner(c:ExecutionController,d:ExecutionController){const operations=c.state.operations;operations.forEach(operation=>{operation.status='complete'});d.mutate({operations})}
+export function committed(c:ExecutionController){const publisher=c;const operations=c.state.operations;const alias=operations;alias.forEach(operation=>{const held=operation;held.status='complete'});publisher.mutate({operations})}
+export function unpublishedMap(c:ExecutionController){const operations=c.state.operations;operations.map(operation=>{operation.status='complete';return operation})}
+export function unpublishedFilter(c:ExecutionController){const operations=c.state.operations;operations.filter(operation=>{operation.status='complete';return true})}
+export function unpublishedReduce(c:ExecutionController){const operations=c.state.operations;operations.reduce((count,operation)=>{operation.status='complete';return count+1},0)}
+export function committedReduce(c:ExecutionController){const operations=c.state.operations;operations.reduce((count,operation)=>{operation.status='complete';return count+1},0);c.mutate({operations})}
+export function arrayParameter(c:ExecutionController){const operations=c.state.operations;operations.forEach((_operation,_index,rows)=>{rows[0]!.status='complete'})}
+export function directGetter(c:ExecutionController){c.state.operations.forEach(operation=>{operation.status='complete'})}
+export function unrelated(){const operations=[{status:'running'}];operations.forEach(operation=>{operation.status='complete'})}
+export function asyncCallback(c:ExecutionController){const operations=c.state.operations;operations.forEach(async operation=>{await Promise.resolve();operation.status='complete'});c.mutate({operations})}
+`)
+  const api=new API({cwd:process.cwd()}),snapshot=api.updateSnapshot({openFiles:[path]})
+  try{expect(checkpointWrites([path],snapshot)).toEqual([2,3,5,6,7,9,10,12].map(line=>`${path}:${line}`))}finally{snapshot.dispose();api.close()}
  })
 
 })

@@ -10,7 +10,7 @@ Schemas:
 
 > generated; edit the sources, then run `node scripts/gen-reference.mjs`. `--check` fails where this page differs from them.
 
-The host owns acceptance, storage, revision and revocation. The author proposes through remember, including Plan mode; children and the critic cannot propose. Recalled records are data, never instructions, at ADR-0005 layer 5. The bare-text alias lasts for v0.8.0.
+The host owns acceptance, storage, revision and revocation. The author proposes through remember, including Plan mode; children and the critic cannot propose. Recalled records are data, never instructions, at ADR-0005 layer 5. Bare text is refused in v0.9.1. Optional metadata-only lifecycle callbacks run even when prompt recall is disabled.
 
 ## Record
 
@@ -34,9 +34,28 @@ Closed: a member the schema does not name is refused.
 
 ### `memory.json $defs/answer`
 
-memoryFor answers records. For v0.8.0, nonempty bare text normalizes to one accepted project fact record: id legacy-memory, source {run: host, proposedBy: host}, createdAt 1970-01-01T00:00:00Z, digest sha256: plus the SHA-256 of its UTF-8 text, no expiresAt. This compatibility record is not persisted. The alias and that record use identical framing, recall rows and memoryBytes accounting: the sum of accepted records’ canonical JSON UTF-8 bytes before framing. Empty text, null or an absent binding supplies nothing. Only accepted, unexpired records reach the prompt; revoked records can update a restored report.
+memoryFor answers at most 256 closed Memory records; absent or null callbacks supply nothing. Bare text, including empty text, is retired in v0.9.1. Only accepted, unexpired records reach the immutable per-run prompt.
 
-Type: one of: array of `memory.json` (max items 256) / string
+Type: array of `memory.json` (max items 256)
+
+### `memory.json $defs/lifecycleUpdate`
+
+Metadata-only explicit terminal reporting for an existing canonical recalled identity. The host owns deletion; omission does not revoke. Identity, digest and kind must match; accepted becomes revoked/expired, identical terminal replay is idempotent and terminal switching refuses.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `id` | yes | string (min length 1, max length 100, pattern `^[\s\S]{1,100}$`) | 1–100 Unicode code points, including non-ASCII characters; not UTF-8 bytes or UTF-16 code units. |
+| `digest` | yes | string (pattern `^sha256:[0-9a-f]{64}$`) |  |
+| `kind` | yes | enum `fact`, `preference`, `decision`, `reference` |  |
+| `state` | yes | enum `revoked`, `expired` |  |
+
+### `memory.json $defs/lifecycleAnswer`
+
+The optional host memoryLifecycle callback answers up to 256 closed metadata updates; absent or null supplies no updates. It is asked once even when prompt recall is disabled. All updates and full-record recall reconcile atomically against prior canonical metadata.
+
+Type: array of `$defs/lifecycleUpdate` (max items 256)
 
 ### `tool-offer.json $defs/remember`
 

@@ -7,6 +7,7 @@ package runcontext
 import (
 	"context"
 	"errors"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"strconv"
 	"strings"
 	"testing"
@@ -60,8 +61,11 @@ func TestTheHostsPartsAreAskedOnceAndHeldToTheirBounds(t *testing.T) {
 	var asked []string
 	briefs := 0
 	host := HostFuncs{
-		BriefFunc:     func(context.Context) (string, error) { briefs++; return "The brief.", nil },
-		MemoryForFunc: func(_ context.Context, query string) (string, error) { asked = append(asked, query); return "", nil },
+		BriefFunc: func(context.Context) (string, error) { briefs++; return "The brief.", nil },
+		MemoryRecordsForFunc: func(_ context.Context, query string) ([]contract.Memory, error) {
+			asked = append(asked, query)
+			return nil, nil
+		},
 	}
 	parts, err := ReadHostParts(ctx, host, "the person's message", Defaults, true)
 	if err != nil || parts != (HostParts{Brief: "The brief."}) || briefs != 1 || len(asked) != 1 || asked[0] != "the person's message" {
@@ -89,7 +93,7 @@ func TestTheHostsPartsAreAskedOnceAndHeldToTheirBounds(t *testing.T) {
 			case "projectInstructions":
 				held.ProjectInstructionsFunc = func(context.Context) (string, error) { return text, nil }
 			default:
-				held.MemoryForFunc = func(context.Context, string) (string, error) { return text, nil }
+				held.MemoryRecordsForFunc = func(context.Context, string) ([]contract.Memory, error) { return typedMemory(text), nil }
 			}
 			parts, err := ReadHostParts(ctx, held, "q", Defaults, true)
 			expected := text
@@ -115,9 +119,9 @@ func TestTheRunAsksTheHostOnceWithThePersonsMessage(t *testing.T) {
 	var asked []string
 	session := modelSession()
 	session.Context = &Input{CurrentRequest: &CurrentRequest{Message: "Check the pack.", Input: "the pack"}}
-	session.Host = HostFuncs{MemoryForFunc: func(_ context.Context, query string) (string, error) {
+	session.Host = HostFuncs{MemoryRecordsForFunc: func(_ context.Context, query string) ([]contract.Memory, error) {
 		asked = append(asked, query)
-		return "Recalled.", nil
+		return typedMemory("Recalled."), nil
 	}}
 	run, err := ContextualSession(context.Background(), session)
 	if err != nil {

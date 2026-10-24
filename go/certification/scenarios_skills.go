@@ -689,7 +689,7 @@ var Skills = ScenarioCheck{
 			}
 			scenario.gate.SetOffer(contract.ToolOffer{Tools: scenario.offer.Tools, HostTools: offer})
 			review := true
-			ran, err := scenario.runOn(ctx, adapter, &Run{Prompt: file.Request, TestPrompt: file.Critic.TestPrompt, Review: &review, AllowConversation: true, Interactive: true,
+			ran, err := scenario.runOn(ctx, adapter, &Run{Prompt: file.Request, TestPrompt: file.Critic.TestPrompt, Critic: reviewMode(review), AllowConversation: true, Interactive: true,
 				HostTools: tools, Skills: skills, Context: input})
 			if err != nil {
 				return nil, err
@@ -766,7 +766,7 @@ func agentSkillsChecks(ctx context.Context, server *Server, host AgentHost, _ fu
 		scenario.gate.SetOffer(contract.ToolOffer{Tools: scenario.offer.Tools, HostTools: offer})
 		watch := &monitor{}
 		review := true
-		run := &Run{ModelName: parentModel, Gate: scenario.gate.Calls(), Tools: scenario.offer.Tools, Prompt: file.Request, TestPrompt: file.Critic.TestPrompt, Review: &review,
+		run := &Run{ModelName: parentModel, Gate: scenario.gate.Calls(), Tools: scenario.offer.Tools, Prompt: file.Request, TestPrompt: file.Critic.TestPrompt, Critic: reviewMode(review),
 			AllowConversation: true, Interactive: true, HostTools: tools, Skills: skills, Context: input, Emit: scenario.emit,
 			Agent: &adapter.Agent{Model: parentModel, Run: watch.wrap(host.Bind(func(request adapter.AgentRequest, _ int) AgentPlay {
 				if request.Phase == "critic" {

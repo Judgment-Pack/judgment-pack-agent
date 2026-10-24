@@ -241,3 +241,5 @@ Inferring intent from the person's words (a model judgment, kept out of the proo
 critics, or a critic of the critic; the critic's verdict changing the proposal (it reports; the person
 decides); a narrowing of the `auto` triggers by the host; a tier rule derived from the measurement
 (the Desk's default to set once the numbers exist); a floor other than `author`.
+
+v0.9.1 amendment (#155): adversarialReview (native Run.Review) is retired and refused on presence, including false; use critic / Critic, or policy.critic.default.

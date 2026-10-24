@@ -1879,3 +1879,21 @@ The report's `outputGuard` counts by name are carried as `checkpoint.outputGuard
 through resume and closed-parent delegation continuations. Inputs and retained results remain model-readable under the data
 rule. Incomplete fragments are withheld; the complete answer is guarded once.
 See [the ADR](../adr/0017-the-output-boundary.md) for overlap and work-bound rules.
+
+### v0.9.1 typed memory and retired inputs
+
+Hosts may supply `memoryLifecycle(recalled)` in the browser, or optional native
+`MemoryLifecycleHost.MemoryLifecycle(ctx, recalled)` / `HostFuncs.MemoryLifecycleFunc`.
+The argument is a detached prior recalled metadata list, without text. Return up to 256 closed
+`{id,digest,kind,state}` rows with state `revoked` or `expired`, or null/nil/undefined for none.
+Only exact prior canonical identities can change: accepted becomes terminal, identical terminal
+replay is a no-op; terminal switching, resurrection, identity rewrites and contradictions with
+full-record recall refuse atomically. Concurrent proposals survive preparation. The callback
+runs even when prompt memory is disabled, while `memoryFor` / `MemoryRecordsForFunc` does not.
+Omission never revokes. Prompt text stays fixed per run and checkpoint/report shapes stay the same.
+
+Migrate `adversarialReview` (Go `Run.Review`) to `critic` / `Critic` (`on` or `off`), flat policy
+budget fields to `policy.budget`, and `criticDefault` / `criticReasoningFloor` to `policy.critic`.
+Any retired member refuses on presence even beside its replacement. Replace every bare-text
+memory answer, including empty text and `MemoryForFunc`, with closed `Memory[]` /
+`MemoryRecordsForFunc`; null/nil/undefined means no answer. See ADR-0014 for the transition matrix.

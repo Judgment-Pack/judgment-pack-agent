@@ -1,5 +1,5 @@
 {
-  "description": "ADR-0014 review: handwritten alias-equivalence boundaries.",
+  "description": "Hand-authored typed recall framing/accounting controls after v0.9.1 bare-text retirement.",
   "schema": "memory.json#/$defs/answer",
   "source": {
     "harness": {
@@ -11,7 +11,21 @@
     ]
   },
   "items": [
-    "Use metric units.",
+    [
+      {
+        "id": "legacy-memory",
+        "kind": "fact",
+        "text": "Use metric units.",
+        "source": {
+          "run": "host",
+          "proposedBy": "host"
+        },
+        "scope": "project",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "createdAt": "1970-01-01T00:00:00Z",
+        "state": "accepted"
+      }
+    ],
     [
       {
         "id": "legacy-memory",

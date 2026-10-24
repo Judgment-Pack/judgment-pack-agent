@@ -9,8 +9,8 @@ import (
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 )
 
-var policyNames = []string{"11 resolved", "11 model reasoning defaults", "11 pace", "11 ceiling", "11 resume", "11 alias"}
-var AgentPolicyNames = []string{"11 agent resolved", "11 agent reasoning defaults", "11 agent pace", "11 agent ceiling", "11 agent resume", "11 agent alias"}
+var policyNames = []string{"11 resolved", "11 model reasoning defaults", "11 pace", "11 ceiling", "11 resume", "11 retired alias"}
+var AgentPolicyNames = []string{"11 agent resolved", "11 agent reasoning defaults", "11 agent pace", "11 agent ceiling", "11 agent resume", "11 agent retired alias"}
 
 func policyFindings(ctx context.Context, agent bool, play switchPlay) ([]Finding, error) {
 	prefix := "11 "
@@ -248,42 +248,18 @@ func policyFindings(ctx context.Context, agent bool, play switchPlay) ([]Finding
 		f.fail("resume did not dispatch")
 	}
 	out = append(out, f.list...)
-	f = findings{check: prefix + "alias"}
-	var aliasMembers map[string]contract.PolicyMember
-	for _, nested := range []bool{false, true} {
+	f = findings{check: prefix + "retired alias"}
+	for _, layer := range []runcontext.PolicyLayer{{"readBytes": 512}, {"readBytes": 512, "budget": map[string]any{"readBytes": 768}}} {
 		run = base()
-		if nested {
-			run.Policy = runcontext.PolicyLayer{"budget": map[string]any{"readBytes": 512}}
-		} else {
-			run.Policy = runcontext.PolicyAlias(runcontext.PolicyLayer{"readBytes": 512})
-		}
+		run.Policy = layer
 		ran, err = play(ctx, turns, run, low, nil)
 		if err != nil {
 			return nil, err
 		}
-		resolved := ofType(ran.Events, func(e contract.RunEvent) *contract.RunEventPolicyResolved { return e.PolicyResolved })
-		if len(resolved) != 1 {
-			f.fail("alias resolved count %d", len(resolved))
-			continue
+		failures := ofType(ran.Events, func(e contract.RunEvent) *contract.RunEventError { return e.Error })
+		if len(failures) != 1 || len(ran.Requests)+len(ran.Invocations) != 0 {
+			f.fail("retired alias did not refuse before dispatch")
 		}
-		member := resolved[0].Members["budget.readBytes"]
-		if string(member.Value) != "512" || member.Layer != "run" {
-			f.fail("alias not read as policy.budget")
-		}
-		if nested && comparisonJSON(aliasMembers) != comparisonJSON(resolved[0].Members) {
-			f.fail("alias and nested policy differ")
-		}
-		aliasMembers = resolved[0].Members
-	}
-	run = base()
-	run.Policy = runcontext.PolicyAlias(runcontext.PolicyLayer{"readBytes": 512, "budget": map[string]any{"readBytes": 768}})
-	ran, err = play(ctx, turns, run, low, nil)
-	if err != nil {
-		return nil, err
-	}
-	both := ofType(ran.Events, func(e contract.RunEvent) *contract.RunEventPolicyResolved { return e.PolicyResolved })
-	if len(both) != 1 || string(both[0].Members["budget.readBytes"].Value) != "768" {
-		f.fail("nested spelling did not win over alias")
 	}
 	out = append(out, f.list...)
 	f = findings{check: prefix + "pace"}

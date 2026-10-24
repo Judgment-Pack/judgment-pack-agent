@@ -63,7 +63,7 @@ RELEASE_REVIEWED_DEFS = [
     ("run-event.json", "output_guarded"), ("policy.json", "outputPattern"),
     ("tool-offer.json", "propose_edit"), ("tool-offer.json", "propose_delete"), ("tool-offer.json", "propose_insert"), ("tool-offer.json", "undo_edit"),
     ("checkpoint.json", "draft"), ("checkpoint.json", "draftDocument"), ("provenance.json", "edit"), ("run-event.json", "edit_applied"), ("run-event.json", "edit_refused"),
-    ("memory.json", "answer"), ("tool-offer.json", "remember"), ("provenance.json", "memories"), ("provenance.json", "memoryRecall"), ("run-event.json", "memory_proposed"), ("run-event.json", "memory_recalled"),
+    ("memory.json", "answer"), ("memory.json", "lifecycleUpdate"), ("memory.json", "lifecycleAnswer"), ("tool-offer.json", "remember"), ("provenance.json", "memories"), ("provenance.json", "memoryRecall"), ("run-event.json", "memory_proposed"), ("run-event.json", "memory_recalled"),
     ("run-event.json", "delegated_task"), ("subagent.json", "record"), ("tool-offer.json", "subagentCatalogueEntry"),
     ("provenance.json", "provider"), ("provenance.json", "crossProvider"),
     ("policy.json", "role"), ("policy.json", "member"), ("policy.json", "paceUsed"),
@@ -754,7 +754,7 @@ class VectorTests(unittest.TestCase):
             self.assertEqual(len(item["source"]["run"]), 100)
         alias = self.vectors["memory/alias-equivalence.json"]
         record = alias["items"][1][0]
-        self.assertEqual(alias["items"][0], record["text"])
+        self.assertEqual(alias["items"][0][0]["text"], record["text"])
         self.assertEqual(record["digest"], "sha256:" + sha256(record["text"]))
         self.assertEqual(len(canonical(record).encode("utf-8")), alias["expected"]["bytes"])
 

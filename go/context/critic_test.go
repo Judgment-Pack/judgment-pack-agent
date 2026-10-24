@@ -143,7 +143,7 @@ func TestTheSessionMembersAreReadClosed(t *testing.T) {
 	}
 	criticVector(t, "switch-sessions.json", &vector)
 	for at, item := range vector.Items {
-		settings := CriticSettings{AdversarialReview: item.AdversarialReview}
+		settings := CriticSettings{}
 		for _, member := range []struct {
 			from *string
 			into *string

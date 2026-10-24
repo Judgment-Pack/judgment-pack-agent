@@ -1,0 +1,209 @@
+{
+  "description": "Hand-authored transitions; cases use the metric identity and original digest, never a substitute for deleted text.",
+  "schema": "provenance.json#/$defs/memories",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/memories.ts"
+    ]
+  },
+  "identity": {
+    "id": "metric",
+    "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+    "kind": "preference"
+  },
+  "items": [
+    {
+      "proposed": [],
+      "recalled": [
+        {
+          "id": "metric",
+          "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+          "kind": "preference",
+          "state": "accepted"
+        }
+      ]
+    },
+    {
+      "proposed": [],
+      "recalled": [
+        {
+          "id": "metric",
+          "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+          "kind": "preference",
+          "state": "revoked"
+        }
+      ]
+    },
+    {
+      "proposed": [],
+      "recalled": [
+        {
+          "id": "metric",
+          "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+          "kind": "preference",
+          "state": "expired"
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "name": "accepted to revoked",
+      "prior": "accepted",
+      "state": "revoked",
+      "result": "revoked"
+    },
+    {
+      "name": "accepted to expired",
+      "prior": "accepted",
+      "state": "expired",
+      "result": "expired"
+    },
+    {
+      "name": "revoked to revoked",
+      "prior": "revoked",
+      "state": "revoked",
+      "result": "revoked"
+    },
+    {
+      "name": "revoked to expired",
+      "prior": "revoked",
+      "state": "expired",
+      "result": null
+    },
+    {
+      "name": "expired to revoked",
+      "prior": "expired",
+      "state": "revoked",
+      "result": null
+    },
+    {
+      "name": "expired to expired",
+      "prior": "expired",
+      "state": "expired",
+      "result": "expired"
+    },
+    {
+      "name": "proposed to revoked",
+      "prior": "proposed",
+      "state": "revoked",
+      "result": null
+    },
+    {
+      "name": "proposed to expired",
+      "prior": "proposed",
+      "state": "expired",
+      "result": null
+    },
+    {
+      "name": "declined to revoked",
+      "prior": "declined",
+      "state": "revoked",
+      "result": null
+    },
+    {
+      "name": "declined to expired",
+      "prior": "declined",
+      "state": "expired",
+      "result": null
+    },
+    {
+      "name": "unknown identity",
+      "prior": "accepted",
+      "state": "revoked",
+      "id": "unknown",
+      "result": null
+    },
+    {
+      "name": "changed digest",
+      "prior": "accepted",
+      "state": "revoked",
+      "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "result": null
+    },
+    {
+      "name": "changed kind",
+      "prior": "accepted",
+      "state": "revoked",
+      "kind": "fact",
+      "result": null
+    },
+    {
+      "name": "omission",
+      "prior": "accepted",
+      "result": "accepted"
+    },
+    {
+      "name": "accepted recall conflict",
+      "prior": "accepted",
+      "state": "revoked",
+      "full": "accepted",
+      "result": null
+    },
+    {
+      "name": "matching terminal full recall",
+      "prior": "accepted",
+      "state": "revoked",
+      "full": "revoked",
+      "result": "revoked"
+    },
+    {
+      "name": "revoked resurrection",
+      "prior": "revoked",
+      "full": "accepted",
+      "result": null
+    },
+    {
+      "name": "expired resurrection",
+      "prior": "expired",
+      "full": "accepted",
+      "result": null
+    },
+    {
+      "name": "changed full fingerprint",
+      "prior": "accepted",
+      "full": "revoked",
+      "fullKind": "fact",
+      "result": null
+    },
+    {
+      "name": "full terminal switch",
+      "prior": "revoked",
+      "full": "expired",
+      "result": null
+    },
+    {
+      "name": "accepted to proposed reversal",
+      "prior": "accepted",
+      "full": "proposed",
+      "result": null
+    },
+    {
+      "name": "changed full digest with valid edited text",
+      "prior": "accepted",
+      "full": "revoked",
+      "fullText": "A fact.",
+      "fullDigest": "sha256:af8c204b0ea0acf3fa7a286b600a5bc12de0d63c26a63f18f219e33f4baf53ed",
+      "result": null
+    },
+    {
+      "name": "expiry agrees with metadata",
+      "prior": "accepted",
+      "full": "accepted",
+      "expiresAt": "2000-01-01T00:00:00Z",
+      "state": "expired",
+      "result": "expired"
+    },
+    {
+      "name": "terminal expiry replay from expired full record",
+      "prior": "expired",
+      "full": "accepted",
+      "expiresAt": "2000-01-01T00:00:00Z",
+      "result": "expired"
+    }
+  ]
+}

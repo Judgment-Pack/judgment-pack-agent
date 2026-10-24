@@ -66,7 +66,7 @@ export async function scenarioRun(
       hostTools: [],
       model: { family: api, model: 'scripted-model', call },
       thinking: normalize(thinking, api),
-      adversarialReview: false,
+      critic: 'off',
       signal: new AbortController().signal,
       ...changes
     }, (event) => events.push(event))
@@ -325,7 +325,7 @@ describe('the critic’s step note', () => {
       const answer = reviewing ? critic[Math.min(reviews.length - 1, critic.length - 1)]! : turn({ text: PROPOSAL })
       return new Response(answer, { status: 200, headers: { 'content-type': 'text/event-stream' } })
     }
-    const events = await drain(vercel.start(session(call, { adversarialReview: true })))
+    const events = await drain(vercel.start(session(call, { critic: 'on' })))
     expect(events.some((event) => event.type === 'proposal')).toBe(true)
     // The critic's last request is its final one: tools closed, a step note sent.
     expect(reviews.length).toBe(4)
@@ -354,7 +354,7 @@ describe('one model per run', () => {
       sent.push(JSON.parse(request.body) as Json)
       return new Response(answers[Math.min(sent.length - 1, answers.length - 1)], { status: 200, headers: { 'content-type': 'text/event-stream' } })
     }
-    const events = await drain(vercel.start(session(call, { thinking: normalize('on', 'openai-compatible'), adversarialReview: false })))
+    const events = await drain(vercel.start(session(call, { thinking: normalize('on', 'openai-compatible'), critic: 'off' })))
     // The slot concluded after two quiet answers, and said so…
     expect(events.filter((event) => event.type === 'thinking_unavailable')).toHaveLength(1)
     expect(sent).toHaveLength(4)

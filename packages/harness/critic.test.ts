@@ -156,7 +156,7 @@ async function vercelCritic(calls: CriticCall[], options: { hostTools?: HostTool
     handle: options.handle ?? answerWith(options.outcome ?? APPROVE),
     hostTools: options.hostTools ?? [],
     session: {
-      testPrompt: 'Test the pack with the runtime.', adversarialReview: true, ...(options.cases === undefined ? {} : { criticCases: options.cases }),
+      testPrompt: 'Test the pack with the runtime.', critic: 'on', ...(options.cases === undefined ? {} : { criticCases: options.cases }),
       ...(options.window === undefined ? {} : { context: { currentRequest: { message: 'Check the expense pack.', input: 'The expense pack.' }, configuration: windowOf('scripted-model', options.window) } })
     }
   })
@@ -200,7 +200,7 @@ async function codexCritic(calls: { name: string; args: Record<string, unknown> 
       callTool: runtime.callTool,
       hostTools: options.hostTools ?? [],
       allowConversation: true,
-      adversarialReview: true,
+      critic: 'on',
       ...(options.cases === undefined ? {} : { criticCases: options.cases }),
       ...(options.window === undefined ? {} : { context: { configuration: windowOf('agent-model', options.window) } }),
       agent: { model: 'agent-model', run },
@@ -665,7 +665,7 @@ describe('the critic’s model, per connection (agent#10)', () => {
         bridge.say(bridge.request.phase === 'critic' ? 'Done.' : PROPOSAL)
         bridge.end()
       },
-      session: { testPrompt: 'Test the pack.', adversarialReview: true }
+      session: { testPrompt: 'Test the pack.', critic: 'on' }
     })
     expect(runs.map((request) => [request.phase, request.model])).toEqual([['author', 'scripted-agent'], ['critic', 'cheaper-agent']])
     expect(ofType(events, 'critique')[0]!.figures).toEqual({ model: 'cheaper-agent', unit: 'agent-runs', requests: 1 })
@@ -690,7 +690,7 @@ describe('the critic’s model, per connection (agent#10)', () => {
         bridge.say(bridge.request.phase === 'critic' ? 'Done.' : PROPOSAL)
         bridge.end()
       },
-      session: { testPrompt: 'Test the pack.', adversarialReview: true }
+      session: { testPrompt: 'Test the pack.', critic: 'on' }
     })
     // A host whose answer changes between asks is asked once: the run, the
     // transport and the figures all carry its one answer.
@@ -740,7 +740,7 @@ describe('what the critic cost, in the run’s figures (agent#10)', () => {
       await callbacks.event({ type: 'message', id: 'a', text: PROPOSAL, phase: 'final' })
     }
     const events: AssistantEvent[] = []
-    await runAssistantSession(codex, { prompt: 'p', testPrompt: 'Test.', tools: [], callTool: vi.fn(), hostTools: [], adversarialReview: true, agent: { model: 'agent-model', run }, signal: new AbortController().signal }, (event) => events.push(event))
+    await runAssistantSession(codex, { prompt: 'p', testPrompt: 'Test.', tools: [], callTool: vi.fn(), hostTools: [], critic: 'on', agent: { model: 'agent-model', run }, signal: new AbortController().signal }, (event) => events.push(event))
     expect(ofType(events, 'proposal')[0]).toMatchObject({ note: { kind: 'critic-unfinished', figures: { model: 'agent-model', unit: 'agent-runs', requests: 1 } } })
   })
 })
