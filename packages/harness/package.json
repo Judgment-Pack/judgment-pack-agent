@@ -1,6 +1,6 @@
 {
   "name": "@judgment-pack/harness",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "private": false,
   "description": "The Judgment Pack Desk's assistant harness behind the wire contract: the Vercel AI SDK, Codex and Deep Agents adapters, the context budget and ledger, delegation, the tool gate, the failure catalogue and the certification suite.",
   "license": "Apache-2.0",
