@@ -13,6 +13,7 @@ import (
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/proposal"
 )
 
 func editString(v *Value) string {
@@ -133,6 +134,13 @@ func (c *SessionContext) OpenDrafts() error {
 					if json.Unmarshal(entry.Value, &content) != nil || "sha256:"+ContextDigest(content.Text) != row.Digest {
 						return failure.Authored("stale-state", "The saved draft text differs from its digest.", "context")
 					}
+					if err := proposal.Check([]byte(content.Text), nil, jsNumber); err != nil {
+						return failure.Authored("stale-state", "The saved draft text violates the proposal source numeric or work contract.", "context")
+					}
+					parsed, _ := ParseJSON([]byte(content.Text))
+					if !parsed.IsObject() {
+						return failure.Authored("stale-state", "The saved draft must be a document object.", "context")
+					}
 					found = &heldDraft{row, content}
 					break
 				}
@@ -244,6 +252,9 @@ func (g *Drafts) Seed(document json.RawMessage, unknowns []string) error {
 	return g.seed(document, unknowns, "")
 }
 func (g *Drafts) seed(document json.RawMessage, unknowns []string, id string) error {
+	if err := proposal.Check(document, nil, jsNumber); err != nil {
+		return failure.ToolInput(err.Error())
+	}
 	v, err := ParseJSON(document)
 	if err != nil || !v.IsObject() {
 		return failure.ToolInput("The draft must be a document object.")
@@ -428,6 +439,9 @@ func (g *Drafts) Edit(ctx context.Context, name string, raw json.RawMessage) (To
 		return refuse(fmt.Sprintf("The draft exceeds proposalBytes (%d).", g.session.Policy.ProposalBytes))
 	}
 
+	if err := proposal.Check([]byte(next.Text), nil, jsNumber); err != nil {
+		return refuse("Validation failed: " + err.Error())
+	}
 	v, err := ParseJSON([]byte(next.Text))
 	if err != nil || !v.IsObject() {
 		return refuse("Validation failed: the document is not a JSON object.")

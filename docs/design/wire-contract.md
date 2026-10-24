@@ -235,7 +235,7 @@ the call is not made and the model is told why (`tool-call.json#/$defs/textToolC
 offers each tool under an alias (`desk_runtime_N`, `desk_host_N`) and reports the real name in its
 events.
 
-A host may offer `propose_pack`, with the input schema the contract states (`document`, an object;
+A host may offer `propose_pack`, with the input schema the contract states (`documentJson`, complete JSON document text;
 `unknowns`, strings) and effect `proposal`. Where it does, the instructions tell the model to deliver
 the proposal by calling it; the adapter reads the call itself, answers the model that the proposal
 was received and will be shown for review, and never reaches the host's `execute`; arguments of
@@ -1902,3 +1902,44 @@ budget fields to `policy.budget`, and `criticDefault` / `criticReasoningFloor` t
 Any retired member refuses on presence even beside its replacement. Replace every bare-text
 memory answer, including empty text and `MemoryForFunc`, with closed `Memory[]` /
 `MemoryRecordsForFunc`; null/nil/undefined means no answer. See ADR-0014 for the transition matrix.
+
+### Numeric proposal admission (v0.10.0, #198)
+
+`propose_pack` now requires `documentJson`, the complete document as JSON text,
+and optional `unknowns`. The legacy `document` member is refused, including null
+and calls carrying both members. Update host declarations to the exported
+`PROPOSE_PACK_SCHEMA` / `turn.ProposePackSchema`; the model instructions describe
+the same input. Native SDKs can parse numbers before the callback, so an object
+cannot establish its original numeric source. The fenced fallback retains
+`{"proposal":{"kind":"create","document":{...},"unknowns":[]}}`.
+
+Before accepting source text, Agent compares every document number's exact
+mathematical decimal value with the number its existing canonical JSON serializer
+emits. `1.20` to `1.2`, `2.500` to `2.5`, exponent spelling changes and `-0` to `0`
+are permitted normalization. `9007199254740993`, `0.10000000000000001`, overflow
+and underflow refuse when serialization changes their numerical value. This
+is not arbitrary-precision numeric support. Agent never rounds a refused fact
+or changes its JSON type to make it admissible. Duplicate keys retain the
+existing last-member-wins reading; overwritten numeric tokens are checked too.
+
+Source text has the existing proposal hard maximum of 4,194,304 UTF-8 bytes,
+at most 128 nested containers, and at most seven significant exponent digits
+(after leading zeroes). An over-limit exponent refuses as a work bound even
+for zero. Seven digits cover exponent cancellation by any coefficient within
+that byte budget without constructing powers or large integers. Custody also
+enforces the effective lower `proposalBytes` policy.
+
+The exported TypeScript `readProposalDocument` and Go `turn.ReadProposalDocument`
+provide this checked canonical reading. They do not guard output or accept a
+proposal: the actual guarded proposal event remains the custody authority.
+Decoded strings and keys still pass the existing output guard; a redacted
+proposal must validate before custody. Source checks also apply to edits, undo
+and saved draft text after its digest is checked. Invalid source leaves the
+previous revision unchanged. Already-rounded historical text can pass the new
+predicate; its original precision cannot be recovered. For already typed host
+`acceptedDocuments`, the guarantee starts at the supplied value.
+
+Numeric source-value-loss and proposal-source work-bound refusals are terminal for automatic
+reformat recovery: the engine does not ask the model to replace the rejected document. Ordinary
+malformed JSON retains its existing single reformat request. Native tool-input refusals retain
+their existing tool-result behavior.

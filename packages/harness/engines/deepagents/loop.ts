@@ -75,7 +75,7 @@ import {
   streamingProse,
   hasProposalFence,
   eventIterator,
-  extractProposal,
+  extractProposal, isTerminalProposalSourceRefusal,
   proseOf,
   guardedCallTool,
   isCancelled,
@@ -848,7 +848,7 @@ export function runDeepAgentsLoop(session: RequestAssistantSession, id: Assistan
             proposal = toolProposal === null ? extractProposal(finalText) : context.drafts.proposal() ?? toolProposal
           } catch (cause) {
             // One reformat request, within the allowance: tool-free, shown its own answer.
-            if (unread === null && context.execution.remaining > 0 && answered !== null) {
+            if (!isTerminalProposalSourceRefusal(cause) && unread === null && context.execution.remaining > 0 && answered !== null) {
               unread = { text: finalText, cause }
               reformatting = synthesis = true
               messages = [...lastMessages, answered, new HumanMessage(reformatRequest(cause))]

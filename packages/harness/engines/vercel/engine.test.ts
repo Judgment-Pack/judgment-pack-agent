@@ -2581,10 +2581,10 @@ describe('nothing finished is lost (agent#6)', () => {
       tool: { name: PROPOSE_PACK_TOOL, effect: 'proposal' as const, description: 'Propose the pack for review.', inputSchema: PROPOSE_PACK_SCHEMA, execute }
     })
 
-    it('is accepted as the proposal, with the document as an object, and the instructions say to use it', async () => {
+    it('is accepted as the proposal, from documentJson, and the instructions say to use it', async () => {
       const { execute, tool } = offer()
       const { call, seen } = scriptedCall([
-        turn({ tool: { name: PROPOSE_PACK_TOOL, args: { document: { id: 'p' }, unknowns: ['who signs'] } } }),
+        turn({ tool: { name: PROPOSE_PACK_TOOL, args: { documentJson: '{"id":"p"}', unknowns: ['who signs'] } } }),
         turn({ text: 'Proposed for your review.' })
       ])
       const events = await drain(vercel.start(session(call, { hostTools: [tool] })))
@@ -2601,13 +2601,13 @@ describe('nothing finished is lost (agent#6)', () => {
       const { tool } = offer()
       const { call, seen } = scriptedCall([
         turn({ tool: { name: PROPOSE_PACK_TOOL, args: { document: JSON.stringify({ id: 'p' }) } } }),
-        turn({ tool: { name: PROPOSE_PACK_TOOL, args: { document: { id: 'p' } } } }),
+        turn({ tool: { name: PROPOSE_PACK_TOOL, args: { documentJson: '{"id":"p"}' } } }),
         turn({ text: '' })
       ])
       const events = await drain(vercel.start(session(call, { hostTools: [tool] })))
       expect(events.map((event) => event.type)).toEqual(['tool_call', 'tool_result', 'tool_call', 'tool_result', 'critic_decided', 'proposal', 'end'])
       expect(events[1]).toMatchObject({ isError: true, structured: { failure: { code: 'invalid-tool-input' } } })
-      expect((events[1] as { text: string }).text).toContain('not as a JSON string')
+      expect((events[1] as { text: string }).text).toContain('documentJson')
       expect(events[5]).toEqual({ version: 1, type: 'proposal', digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/), edits: [], document: { id: 'p' }, unknowns: [] })
       expect(seen).toHaveLength(3)
     })
@@ -2631,7 +2631,7 @@ describe('nothing finished is lost (agent#6)', () => {
       const { tool } = offer()
       let requests = 0
       const call: ModelCall = async () =>
-        ++requests === 1 ? stream(turn({ tool: { name: PROPOSE_PACK_TOOL, args: { document: { id: 'p' }, unknowns: ['who signs'] } } })) : refusal()
+        ++requests === 1 ? stream(turn({ tool: { name: PROPOSE_PACK_TOOL, args: { documentJson: '{"id":"p"}', unknowns: ['who signs'] } } })) : refusal()
       const events = await drain(vercel.start(session(call, { hostTools: [tool] })))
       expect(requests).toBe(2)
       expect(events.map((event) => event.type)).toEqual(['tool_call', 'tool_result', 'proposal', 'end'])
@@ -2642,8 +2642,8 @@ describe('nothing finished is lost (agent#6)', () => {
     it('refuses a kind other than create, as the fence does', async () => {
       const { tool } = offer()
       const { call } = scriptedCall([
-        turn({ tool: { name: PROPOSE_PACK_TOOL, args: { kind: 'update', document: { id: 'p' } } } }),
-        turn({ tool: { name: PROPOSE_PACK_TOOL, args: { kind: 'create', document: { id: 'p' } } } }),
+        turn({ tool: { name: PROPOSE_PACK_TOOL, args: { kind: 'update', documentJson: '{"id":"p"}' } } }),
+        turn({ tool: { name: PROPOSE_PACK_TOOL, args: { kind: 'create', documentJson: '{"id":"p"}' } } }),
         turn({ text: '' })
       ])
       const events = await drain(vercel.start(session(call, { hostTools: [tool] })))
@@ -2657,7 +2657,7 @@ describe('nothing finished is lost (agent#6)', () => {
       const { tool } = offer()
       const answer = 'Final.\n\n' + fence(JSON.stringify({ proposal: { document: { id: 'fence' }, unknowns: [] } }))
       const { call, seen } = scriptedCall([
-        turn({ tool: { name: PROPOSE_PACK_TOOL, args: { document: { id: 'tool' } } } }),
+        turn({ tool: { name: PROPOSE_PACK_TOOL, args: { documentJson: '{"id":"tool"}' } } }),
         turn({ text: answer }),
         turn({ text: 'I cannot say which one.' })
       ])

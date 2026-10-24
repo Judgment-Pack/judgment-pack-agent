@@ -14,12 +14,7 @@
     {
       "name": "propose_pack",
       "arguments": {
-        "document": {
-          "specVersion": "1",
-          "id": "pack",
-          "title": "Before",
-          "notes": "same same"
-        }
+        "documentJson": "{\"specVersion\":\"1\",\"id\":\"pack\",\"title\":\"Before\",\"notes\":\"same same\"}"
       }
     },
     {

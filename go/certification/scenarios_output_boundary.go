@@ -268,7 +268,7 @@ func outputBoundaryFindings(ctx context.Context, inner Adapter, agent bool) ([]F
 		{name: "validate", args: json.RawMessage(`{"content":"{\"specVersion\":\"1\"}"}`)},
 		{name: "validate", args: json.RawMessage(`{"content":"{\"specVersion\":\"1\",\"title\":\"AKIAABCDEFGHIJKLMNOP\"}"}`)},
 		{name: "remember", args: json.RawMessage(`{"kind":"fact","text":"AKIAABCDEFGHIJKLMNOP"}`)},
-		{name: "propose_pack", args: json.RawMessage(`{"document":{"specVersion":"1","title":"AKIAABCDEFGHIJKLMNOP"}}`)},
+		{name: "propose_pack", args: json.RawMessage(`{"documentJson":"{\"specVersion\":\"1\",\"title\":\"AKIAABCDEFGHIJKLMNOP\"}"}`)},
 		{say: "Held " + key},
 	}
 	ran, err := play(steps, nil, nil)
@@ -363,7 +363,7 @@ func outputBoundaryFindings(ctx context.Context, inner Adapter, agent bool) ([]F
 	if !heldQuestion {
 		f.fail("question arguments bypassed guard")
 	}
-	draft, e := play([]memoryStep{{name: "propose_pack", args: json.RawMessage(`{"document":{"specVersion":"1","title":"before"}}`)}, {name: "propose_edit", args: json.RawMessage(`{"document":"document","old_text":"before","new_text":"AKIAABCDEFGHIJKLMNOP"}`)}, {say: "Edited."}}, nil, nil)
+	draft, e := play([]memoryStep{{name: "propose_pack", args: json.RawMessage(`{"documentJson":"{\"specVersion\":\"1\",\"title\":\"before\"}"}`)}, {name: "propose_edit", args: json.RawMessage(`{"document":"document","old_text":"before","new_text":"AKIAABCDEFGHIJKLMNOP"}`)}, {say: "Edited."}}, nil, nil)
 	if e != nil {
 		return nil, e
 	}

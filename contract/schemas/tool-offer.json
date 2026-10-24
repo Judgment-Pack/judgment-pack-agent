@@ -192,7 +192,7 @@
       "additionalProperties": true
     },
     "proposePack": {
-      "description": "The host tool through which the model delivers its proposal (packages/harness/engines/contract.ts: PROPOSE_PACK_TOOL, PROPOSE_PACK_SCHEMA). The host registers it among its hostTools under this name and with this input schema, which is in the subset every family's wire carries. The adapter reads the call's arguments as the proposal under the fence's rules (document an object, unknowns strings, kind absent or create), answers the model that it was received, and never calls the host's execute; arguments of another shape are a failed result naming what to correct (invalid-tool-input). The latest call's document is the one proposed. A fenced proposal in the same answer makes it ambiguous, refused as two fenced proposals are; a later request of the turn that fails leaves it delivered with a note (run-event.json, proposal).",
+      "description": "The host tool through which the model delivers its proposal (packages/harness/engines/contract.ts: PROPOSE_PACK_TOOL, PROPOSE_PACK_SCHEMA). The host registers it among its hostTools under this name and with this input schema, which is in the subset every family's wire carries. The adapter reads the call's arguments as the proposal under the fence's rules (documentJson required as complete JSON document text, legacy document refused, unknowns strings, kind absent or create), answers the model that it was received, and never calls the host's execute; arguments of another shape are a failed result naming what to correct (invalid-tool-input). The latest call's document is the one proposed. A fenced proposal in the same answer makes it ambiguous, refused as two fenced proposals are; a later request of the turn that fails leaves it delivered with a note (run-event.json, proposal).",
       "allOf": [
         {
           "$ref": "#/$defs/hostTool"
@@ -209,9 +209,9 @@
               "const": {
                 "type": "object",
                 "properties": {
-                  "document": {
-                    "type": "object",
-                    "description": "The proposed pack, as a JSON object (not a JSON string)."
+                  "documentJson": {
+                    "type": "string",
+                    "description": "The complete proposed pack as JSON document text. Numeric values that change during canonical serialization are refused; decimal spelling and negative zero may normalize."
                   },
                   "unknowns": {
                     "type": "array",
@@ -222,7 +222,7 @@
                   }
                 },
                 "required": [
-                  "document"
+                  "documentJson"
                 ]
               }
             }
