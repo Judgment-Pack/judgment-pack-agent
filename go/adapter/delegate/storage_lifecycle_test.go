@@ -63,12 +63,32 @@ func lifecycleExecute(t *testing.T, ctx context.Context, run *adapter.Run) {
 		t.Fatal(err)
 	}
 }
-func lifecycleWait(t *testing.T, ch <-chan struct{}) {
+
+// Race checks run packages concurrently; fixture scheduling is not a lifecycle
+// deadline. Keep bounded channel waits and report the exact missing milestone.
+const lifecycleBarrierTimeout = 30 * time.Second
+
+func lifecycleWait(t *testing.T, ch, done <-chan struct{}, phase string) {
 	t.Helper()
+	timer := time.NewTimer(lifecycleBarrierTimeout)
+	defer timer.Stop()
 	select {
 	case <-ch:
-	case <-time.After(3 * time.Second):
-		t.Fatal("fixture did not reach its lifecycle barrier")
+	case <-done:
+		// The expected milestone may already have closed before engine completion.
+		select {
+		case <-ch:
+			return
+		default:
+		}
+		t.Fatalf("invocation ended before %s", phase)
+	case <-timer.C:
+		select {
+		case <-ch:
+			return
+		default:
+		}
+		t.Fatalf("fixture did not reach %s within %s", phase, lifecycleBarrierTimeout)
 	}
 }
 
@@ -302,7 +322,7 @@ func TestStorageProviderOutcomeWaitsForAdmittedCallback(t *testing.T) {
 			var releaseOnce, outcomeOnce sync.Once
 			unblock := func() { releaseOnce.Do(func() { close(release) }) }
 			defer unblock()
-			var callbackActive atomic.Bool
+			var callbackStarted, callbackActive atomic.Bool
 			var early atomic.Bool
 			store := lifecycleStore{RunStore: memory}
 			store.commit = func(given context.Context, in runcontext.RunCommit) (runcontext.RunReceipt, error) {
@@ -330,6 +350,7 @@ func TestStorageProviderOutcomeWaitsForAdmittedCallback(t *testing.T) {
 				if alias == "" {
 					return errors.New("fixture read not offered")
 				}
+				callbackStarted.Store(true)
 				go func() {
 					defer close(callbackDone)
 					_, _ = cb.Tool(given, adapter.AgentToolCall{ID: "read-wire", Name: alias, Arguments: json.RawMessage(`{}`)})
@@ -339,7 +360,9 @@ func TestStorageProviderOutcomeWaitsForAdmittedCallback(t *testing.T) {
 				case <-callbackDone:
 					return errors.New("fixture callback refused before host execution")
 				}
-				cb.ProviderRelease.Acknowledge(cb.ProviderRelease.Invocation)
+				if !cb.ProviderRelease.Acknowledge(cb.ProviderRelease.Invocation) {
+					return errors.New("fixture provider release was refused")
+				}
 				close(returned)
 				return nil
 			}
@@ -359,21 +382,42 @@ func TestStorageProviderOutcomeWaitsForAdmittedCallback(t *testing.T) {
 			effect := "read"
 			g.SetOffer(contract.ToolOffer{Tools: []contract.ToolOfferRuntimeTool{}, HostTools: []contract.ToolOfferHostTool{turn.DelegationTool(turn.TaskProfiles), {Name: "read_fixture", Description: "Read a fixture", InputSchema: json.RawMessage(`{"type":"object","properties":{}}`), Effect: &effect}}})
 			run.Gate = g.Calls()
-			go func() { defer close(done); lifecycleExecute(t, ctx, run) }()
-			lifecycleWait(t, returned)
+			var runErr error
+			go func() {
+				defer close(done)
+				runErr = delegate.With(agent.New(), delegate.Options{}).Run(ctx, run)
+			}()
+			t.Cleanup(func() {
+				stop()
+				unblock()
+				lifecycleWait(t, done, nil, "cancelled invocation shutdown")
+				if callbackStarted.Load() {
+					lifecycleWait(t, callbackDone, nil, "admitted callback shutdown")
+				}
+			})
+			lifecycleWait(t, returned, done, "provider return after callback admission")
 			if cancelRoot {
 				stop()
 			} else {
-				// The host has returned with a live admitted callback. It may not finalize its outcome.
+				// The host has returned with a live admitted callback. Keep it blocked
+				// for the same bounded phase budget: absence of an outcome during an
+				// arbitrary short scheduler interval is not evidence of callback drain.
+				observation := time.NewTimer(lifecycleBarrierTimeout)
 				select {
 				case <-outcome:
 					t.Error("provider outcome committed while callback was blocked")
-				case <-time.After(100 * time.Millisecond):
+				case <-observation.C:
 				}
+				observation.Stop()
 			}
 			unblock()
-			lifecycleWait(t, callbackDone)
-			lifecycleWait(t, done)
+			// The callback wrapper can release its drain bookkeeping just before
+			// this fixture goroutine closes callbackDone. Neither close orders the other.
+			lifecycleWait(t, callbackDone, nil, "admitted callback completion")
+			lifecycleWait(t, done, nil, "provider outcome completion after callback drain")
+			if runErr != nil {
+				t.Fatal(runErr)
+			}
 			if early.Load() {
 				t.Error("provider outcome preceded callback drain")
 			}
