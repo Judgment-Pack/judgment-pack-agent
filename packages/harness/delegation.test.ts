@@ -76,7 +76,7 @@ describe.each(['model','agent'] as const)('delegated %s request reasoning',capab
    const engine:Engine={id:capability==='model'?'vercel':'codex',async *start(input){
     const opened=await contextualSession(input)
     try{
-     const request='model'in opened.session?opened.session.reasoning?.wire?.members:opened.session.reasoning
+     const request='model'in opened.session.values?opened.session.values.reasoning?.wire?.members:opened.session.values.reasoning
      if(input.context?.objective){
       observed.push({member:opened.context.resolvedPolicy['models.author.reasoning']!,request,discovery:Object.fromEntries(Object.entries(opened.context.resolvedPolicy).filter(([key])=>key.startsWith('models.author.discovered.')))})
       yield {type:'message',text:'Child finding.'};yield {type:'end'};return
@@ -84,11 +84,11 @@ describe.each(['model','agent'] as const)('delegated %s request reasoning',capab
      expect(opened.context.resolvedPolicy['models.author.reasoning'],profile).toEqual(row.parent)
      expect(opened.context.resolvedPolicy[`models.${role}.reasoning`],profile).toEqual(expected)
      const parentRequest=structuredClone(request)
-     const delegate=opened.session.hostTools.find(tool=>tool.name===DELEGATE_TOOL)!
+     const delegate=opened.session.values.hostTools.find(tool=>tool.name===DELEGATE_TOOL)!
      const first=answered(await delegate.execute({tasks:[task('Reasoning',profile)]},input.signal))
      await delegate.execute({tasks:[{...task('Continue reasoning',profile),resume:first.tasks[0]!.id}]},input.signal)
      expect(opened.context.resolvedPolicy['models.author.reasoning'],profile).toEqual(row.parent)
-     expect('model'in opened.session?opened.session.reasoning?.wire?.members:opened.session.reasoning,profile).toEqual(parentRequest)
+     expect('model'in opened.session.values?opened.session.values.reasoning?.wire?.members:opened.session.values.reasoning,profile).toEqual(parentRequest)
      yield {type:'message',text:'Parent answer.'};yield {type:'end'}
     }finally{opened.context.close()}
    }}
@@ -117,7 +117,7 @@ it('refuses a delegated projection whose fresh admission changes its value or bi
   await expect(contextualSession({...child,model:{...child.model,model:'changed'},policy:{models:{author:{model:'changed'}}}})).rejects.toThrow('delegated role differs from child admission')
   await expect(contextualSession({...child,policy:{models:{author:{model:'fixture',discovered:{reasoning:{supported:['low','high']}}}}}})).rejects.toThrow('delegated discovery differs from child admission')
   const admitted=await contextualSession(child)
-  try{expect(admitted.session.reasoning?.wire?.members).toEqual({reasoning_effort:'low'});expect(admitted.context.resolvedPolicy['models.author.reasoning']).toEqual({value:'low',layer:'table',source:'layer'})}finally{admitted.context.close()}
+  try{expect(admitted.session.values.reasoning?.wire?.members).toEqual({reasoning_effort:'low'});expect(admitted.context.resolvedPolicy['models.author.reasoning']).toEqual({value:'low',layer:'table',source:'layer'})}finally{admitted.context.close()}
  }finally{opened.context.close()}
 })
 
@@ -887,7 +887,7 @@ describe('limits after the review of agent#35',()=>{
    try {
     const callbacks={signal:input.signal,event:async()=>{},tool:async()=>({text:'',isError:false})}
     const request={prompt:'p',instructions:'i',tools:[],phase:'author' as const}
-    for(let i=0;i<5;i++)await ready.session.agent.run(request,callbacks)
+    for(let i=0;i<5;i++)await ready.session.values.agent.run(request,callbacks)
     room=ready.context.criticRoom!()
     yield criticDecidedEvent(ready.context.decideCritic(true))
    } finally {ready.context.close()}

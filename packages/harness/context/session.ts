@@ -1,3 +1,4 @@
+import {RequestValues} from './requestValues'
 import {CheckpointIncrement} from '../execution/mutation'
 import {OutputGuard,RecordsRefused,outputWhere} from '../outputGuard'
 import {Drafts,isEdit,editRefusal,type AcceptedDocument} from '../edits'
@@ -136,14 +137,37 @@ export function resolveSessionPolicy(session:EngineSession,engine?:AssistantEngi
  return {identity,capabilities,policy,bindings,named,resolved}
 }
 
+/** Copy data while retaining callable capabilities; never retain writable host aliases. */
+function requestCopy<T>(value:T):T {
+ if(Array.isArray(value))return value.map(item=>requestCopy(item)) as T
+ if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([key,item])=>[key,requestCopy(item)])) as T
+ return value
+}
+const requestViews=new WeakMap<SessionContext,(role:string)=>import('../engine').RequestModelValues|import('../engine').RequestAgentValues>()
 /** The only conversion from host input to the session request builders receive. */
-export function requestSession<T extends EngineSession>(session:T,members:PolicyMembers):RequestSessionFor<T>{
- const {thinking:_thinking,effort:_effort,criticReasoning:_criticReasoning,...safe}=session as T&{thinking?:unknown;effort?:unknown;criticReasoning?:unknown}
- const value=members['models.author.reasoning']?.value
- const reasoning='model'in session
-  ? value===undefined?undefined:normalize(String(value) as import('../host').ThinkingTier,session.model.family)
-  : value as import('../agent').CodexEffort|undefined
- return {...safe,...(reasoning===undefined?{}:{reasoning})} as unknown as RequestSessionFor<T>
+export function requestSession<T extends EngineSession>(session:T,members:PolicyMembers,context?:SessionContext):RequestSessionFor<T>{
+ const admitted=context?.requestValues??new RequestValues(members)
+ const tools=requestCopy(session.tools),hostTools=requestCopy(session.hostTools)
+ const initial:PolicyConnection='model'in session?{model:session.model}:{agent:session.agent}
+ const view=(role:string,override?:string):import('../engine').RequestModelValues|import('../engine').RequestAgentValues=>{
+  const binding=admitted.binding(role)??initial
+  const common={member:(name:string)=>admitted.member(name),allowsTool:(name:string,kind:'runtime'|'host',phase:'author'|'critic'|'reformat')=>{
+   if(phase==='reformat')return false
+   const offered=kind==='runtime'?tools:hostTools
+   return offered.some(tool=>tool.name===name)&&(phase!=='critic'||(kind==='runtime'?criticMayCall(name):criticMayRead(name)))
+  },get tools(){return requestCopy(tools)},get hostTools(){return requestCopy(hostTools)},get provider(){return context?.provider(role)??{connection:String(admitted.value(`models.${role}.provider`)??''),family:'model'in binding?(binding.model.family==='openai-compatible'?'openai':binding.model.family):binding.agent.family??'codex'}},sameBinding:(other:string)=>binding===context?.connection(other)}
+  const value=admitted.reasoning(role)
+  if('model'in binding){
+   const selected=binding.model,call='model'in session?session.model.call:selected.call
+   return Object.freeze(Object.defineProperties({member:common.member,sameBinding:common.sameBinding,allowsTool:common.allowsTool,model:Object.freeze({family:selected.family,model:override??selected.model,call}),get capabilities(){return requestCopy(capabilitiesFor(selected))},...(value===undefined?{}:{reasoning:normalize(value as import('../host').ThinkingTier,selected.family)}),forRole:(next:string)=>view(next) as import('../engine').RequestModelValues,withModel:(name:string)=>view(role,name) as import('../engine').RequestModelValues},Object.getOwnPropertyDescriptors(common))) as unknown as import('../engine').RequestModelValues
+  }
+  return Object.freeze(Object.defineProperties({member:common.member,sameBinding:common.sameBinding,allowsTool:common.allowsTool,agent:Object.freeze({...requestCopy(binding.agent),run:'agent'in session?session.agent.run:binding.agent.run}),...(value===undefined?{}:{reasoning:value as import('../agent').CodexEffort}),forRole:(next:string)=>view(next) as import('../engine').RequestAgentValues},Object.getOwnPropertyDescriptors(common))) as unknown as import('../engine').RequestAgentValues
+ }
+ if(context)requestViews.set(context,view)
+ const {input,prompt,testPrompt,purpose,replyLanguage,allowConversation,interactive,callTool,signal}=session
+ const contextInput=session.context
+ const safeContext=contextInput?{currentRequest:requestCopy(contextInput.currentRequest),currentState:contextInput.currentState,phase:contextInput.phase,objective:contextInput.objective,artifactProposals:contextInput.artifactProposals}:undefined
+ return {input,prompt,testPrompt,purpose,replyLanguage,allowConversation,interactive,callTool,signal,context:safeContext,values:view('author')} as RequestSessionFor<T>
 }
 
 export class SessionContext {
@@ -151,6 +175,7 @@ export class SessionContext {
  drafts!:Drafts
 
  readonly resolvedPolicy:PolicyMembers;readonly paceWarning?:string
+ requestValues:RequestValues
  readonly policy;readonly ledger;readonly execution:ExecutionController;private compactions=0
  /** The model's capability record (agent#4), resolved once for the run; none for an agent session. */
  readonly capabilities?:ModelCapabilities
@@ -365,10 +390,10 @@ export class SessionContext {
   this.existingPack=session.existingPack===true
   this.capabilities=admission.capabilities;this.policy=admission.policy
   const {bindings,named,resolved}=admission
-  this.bindings=bindings
+  this.bindings=requestCopy(bindings)
   this.suppliedConnections=new Set(Object.keys(session.policyConnections??{}))
   if(engine)this.named={models:named}
-  this.resolvedPolicy=resolved.members;this.paceWarning=resolved.warning
+  this.resolvedPolicy=resolved.members;this.requestValues=new RequestValues(resolved.members,role=>this.connection(role));this.paceWarning=resolved.warning
 this.turn=session.context?.chat?.openTurn();this.objective=session.context?.objective;this.ledger=new ContextLedger(this.policy,this.turn);this.execution=new ExecutionController(session,this.ledger,this.resolvedPolicy);this.execution.recordGuard=()=>((this as unknown as {output?:import('../records').RecordGuard}).output);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))
   for(const [name,member] of Object.entries(resolved.members))if(name.startsWith('budget.'))Object.assign(this.policy,{[name.slice(7)]:member.value})
   this.policy.criticDefault=String(resolved.members['critic.default']!.value)
@@ -689,12 +714,12 @@ this.turn=session.context?.chat?.openTurn();this.objective=session.context?.obje
    if(saved){replacement=saved.summary;mode='summary'}
    else try{
     if(!this.compactor)throw Error('No compactor capability was supplied by the host.')
-    const connection=this.connection('compactor');if(!connection)throw Error('The compactor connection is unavailable.')
+    const connection=this.requestValues.binding('compactor');if(!connection)throw Error('The compactor connection is unavailable.')
     this.recordProvider('compactor')
     // Tool calls and results are intentionally absent: their exact retained paths remain in the
     // deterministic index embedded beside the prose summary.
     const prose=choice.block.map(message=>Array.isArray(message.content)?{...message,content:message.content.filter(part=>part.type==='text')}:message).filter(message=>typeof message.content==='string'||message.content.length>0) as ModelMessage[]
-    const reasoning=this.resolvedPolicy['models.compactor.reasoning']!.value
+    const reasoning=this.requestValues.reasoning('compactor')
     const raw=await this.compactor({messages:prose,digests,maxBytes:this.policy.summaryBytes,...(reasoning===undefined?{}:{reasoning:String(reasoning)}),connection},this.signal)
     if(typeof raw!=='string'||utf8Bytes(raw)>this.policy.summaryBytes)throw Error('The compactor returned no bounded summary.')
     const answer=raw.trim()
@@ -760,8 +785,8 @@ function encodePathSegment(value:string){
  return encoded
 }
 /** Rebuild only the model-dependent wire fields after a connection switch. */
-function fallbackRequest(model:import('../engine').AssistantSession['model'],tier:string|undefined,suffix:string,request:import('../engine').ModelRequest){
- const body=JSON.parse(request.body),caps=capabilitiesFor(model)
+function fallbackRequest(values:import('../engine').RequestModelValues,suffix:string,request:import('../engine').ModelRequest){
+ const model=values.model,tier=values.reasoning?.tier,body=JSON.parse(request.body),caps=values.capabilities
  for(const key of TIER_MEMBERS)delete body[key]
  if(body.generationConfig)delete body.generationConfig.thinkingConfig
  const members=tier===undefined||caps.reasoning.kind==='none'?null:wireFor(tier as import('../host').ThinkingTier,dialectFor(caps.reasoning.kind),caps.tiers,caps.fallbackTiers)?.members
@@ -881,7 +906,7 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   const role=context.criticRunning?'critic':'author',binding=context.connection(role)
   const selected=binding&&'model'in binding?binding.model:session.model
   if(context.provider(role).connection!==context.resolvedPolicy[`models.${role}.provider`]!.value&&request.method!=='GET'){
-   const rebuilt=fallbackRequest(selected,context.resolvedPolicy[`models.${role}.reasoning`]!.value as string|undefined,suffix,request)
+   const rebuilt=fallbackRequest(requestViews.get(context)!(role) as import('../engine').RequestModelValues,suffix,request)
    suffix=rebuilt.suffix;request=rebuilt.request
   }
   context.execution.useConnection(context.provider(role).connection,role,selected.model)
@@ -897,9 +922,10 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   let binding=context.connection(role),selected=binding&&'agent'in binding?binding.agent:session.agent
   const prepare=()=>{
    const switched=context.provider(role).connection!==context.resolvedPolicy[`models.${role}.provider`]!.value
-   const effort=switched?context.resolvedPolicy[`models.${role}.reasoning`]!.value as import('../agent').CodexEffort|undefined:original.effort
-   const setting=selected.tiers?.[effort as 'low'|'medium'|'high']
-   request={...original,...(switched?{model:selected.model,...(effort===undefined?{}:{effort})}:{}),...(setting?{effort:setting as import('../agent').CodexEffort}:{})}
+   const values=requestViews.get(context)!(role) as import('../engine').RequestAgentValues
+   const effort=switched?values.reasoning:original.effort
+   const setting=values.agent.tiers?.[effort as 'low'|'medium'|'high']
+   request={...original,...(switched?{model:values.agent.model,...(effort===undefined?{}:{effort})}:{}),...(setting?{effort:setting as import('../agent').CodexEffort}:{})}
    context.execution.useConnection(context.provider(role).connection,role,request.model??selected.model)
    const {delegated:_delegated,...sent}=request
    return JSON.stringify(sent)
@@ -927,5 +953,6 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  }}:undefined
  context.output.declaredNames=new Set([...session.tools,...hostTools].map(tool=>tool.name))
  const prepared={...session,...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{context.admit(name,'runtime',args);await session.context?.authorize?.(session.signal);args=context.output.value(args,'tool argument');context.claimTestCall(name);const call=()=>context.execution.wrapRead(name,a=>session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true,{runtime:true,offered:session.tools.some(t=>t.name===name)})(args);return context.sources?context.sources.runtime(call):call()}} as T
- return {context,session:requestSession(prepared,context.resolvedPolicy)}
+ context.requestValues=new RequestValues(context.resolvedPolicy,role=>context.connection(role))
+ return {context,session:requestSession(prepared,context.resolvedPolicy,context)}
 }

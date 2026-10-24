@@ -321,7 +321,7 @@ func (t *turnState) hostAnswer(ctx context.Context, tool runcontext.HostTool, ar
 // alike.
 func (t *turnState) refuseUnoffered(ctx context.Context, name string, args json.RawMessage) (runcontext.ToolResult, error) {
 	t.r.deliver(t.callEvent("", name, nonEmpty(args), ""))
-	if name == "delegate_tasks" && t.r.run.ChildDefinition != nil {
+	if name == "delegate_tasks" && t.r.run.IsChild() {
 		t.r.deliver(runcontext.SubagentNotice(name, "A child cannot delegate.", "subagent refused"))
 	}
 	refusal := "the call did not leave the page and nothing was written"
@@ -398,7 +398,7 @@ func (t *turnState) dispatch(ctx context.Context, name string, args json.RawMess
 		result, err := t.refuseUnoffered(ctx, name, args)
 		return bare(result), err
 	}
-	for _, tool := range t.r.session.HostTools {
+	for _, tool := range t.r.session.HostTools() {
 		if tool.Name == name {
 			return t.runHost(ctx, tool, args)
 		}

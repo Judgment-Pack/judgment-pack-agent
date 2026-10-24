@@ -38,7 +38,7 @@ type runState struct {
 	capabilities wire.ModelCapabilities
 	opened       *runcontext.Run
 	sc           *runcontext.SessionContext
-	session      runcontext.Session
+	session      *adapter.PreparedRequest
 	boundary     *runcontext.Boundary
 	side         sideTable
 	slot         *wire.ThinkingSlot
@@ -63,7 +63,7 @@ type runState struct {
 
 // Run is the adapter: one run of the contract's turn, its loop on Eino's ChatModelAgent.
 func Run(ctx context.Context, run *adapter.Run) error {
-	r := &runState{run: adapter.NewRequestSession(run, nil), family: wire.EndpointKind(run.Wire)}
+	r := &runState{run: adapter.NewRequestOperations(run), family: wire.EndpointKind(run.Wire)}
 	host := func(wire.EndpointKind, string) *wire.Value {
 		if run.Capabilities == nil {
 			return wire.Obj()
@@ -145,14 +145,9 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		r.emitAll(runcontext.FailedToOpen(err))
 		return nil
 	}
-	r.run = adapter.NewRequestSession(&local, r.sc.ResolvedPolicy)
-	r.family = wire.EndpointKind(r.run.Wire)
-	var override *wire.Value
-	if r.run.Capabilities != nil {
-		raw, _ := json.Marshal(r.run.Capabilities)
-		override, _ = wire.Parse(raw)
-	}
-	capabilities, err = wire.CapabilitiesFor(r.family, r.run.ModelName, nil, override)
+	r.run = adapter.NewRequestSession(&local, r.sc.ResolvedPolicy, opened)
+	r.family = wire.EndpointKind(r.run.Family())
+	capabilities, err = r.run.ResolvedCapabilities()
 	if err != nil {
 		r.sc.Close()
 		r.emitAll(runcontext.FailedToOpen(err))
@@ -160,7 +155,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 	}
 	r.capabilities = capabilities
 	r.nativeTools = capabilities.NativeToolCalls
-	r.session = opened.Session
+	r.session = r.run.Prepared()
 	r.boundary = runcontext.NewBoundary(opened)
 	defer r.boundary.Close()
 	defer r.boundary.GuardGateNotices(run.Gate)()
@@ -258,14 +253,14 @@ func (r *runState) modelCall(phase func() string) wire.ModelCall {
 		if phase() == "review" {
 			role = "critic"
 		}
-		if r.run.Connection != nil {
+		if r.run.HasConnection() {
 			r.sc.Execution.UseConnection(r.run.Connection(role), role)
 		}
 		if request.Method != http.MethodGet {
-			if r.run.Connection != nil && r.run.Connection(role) != r.sc.ResolvedPolicy["models."+role+".provider"].Value {
-				binding := r.run.PolicyConnections[r.run.Connection(role)]
+			if r.run.HasConnection() && r.run.Connection(role) != r.run.Member("models."+role+".provider").Value {
+				binding := r.run.Binding(r.run.Connection(role))
 				var err error
-				tier, _ := r.sc.ResolvedPolicy["models."+role+".reasoning"].Value.(string)
+				tier, _ := r.run.Member("models." + role + ".reasoning").Value.(string)
 				suffix, request, err = fallbackRequest(binding, tier, suffix, request)
 				if err != nil {
 					return nil, err
@@ -275,7 +270,7 @@ func (r *runState) modelCall(phase func() string) wire.ModelCall {
 				return nil, err
 			}
 		}
-		return r.run.Model(ctx, suffix, relay.Request{Method: request.Method, Headers: request.Headers, Body: request.Body})
+		return r.run.CallModel(ctx, suffix, relay.Request{Method: request.Method, Headers: request.Headers, Body: request.Body})
 	}
 	return wire.RetryingCall(claimed, wire.RetryOptions{
 		OnRefused: func(refused wire.RefusedAttempt) error {
@@ -295,7 +290,7 @@ func (r *runState) modelCall(phase func() string) wire.ModelCall {
 		MayRetry: func() bool { return r.sc.Execution.Remaining() > 1 },
 		OnExhausted: func(code string) {
 			allowed := false
-			classes, _ := r.sc.ResolvedPolicy["failover.classes"].Value.([]any)
+			classes, _ := r.run.Member("failover.classes").Value.([]any)
 			for _, held := range classes {
 				if held == code {
 					allowed = true
@@ -312,7 +307,7 @@ func (r *runState) modelCall(phase func() string) wire.ModelCall {
 			r.deliver(contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: "models." + role + ".fallback", Action: "refused", Detail: "The one-switch limit for this request is exhausted.", Reason: &reason}})
 		},
 		Fallback: func(reason string) (string, string, bool) {
-			if r.run.Failover == nil {
+			if !r.run.HasFailover() {
 				return "", "", false
 			}
 			role := "author"
@@ -376,7 +371,7 @@ func (r *runState) schemaRefusal(cause error) error {
 		return nil
 	}
 	var tools []wire.McpTool
-	for _, tool := range r.run.Tools {
+	for _, tool := range r.run.RuntimeTools() {
 		description := ""
 		if tool.Description != nil {
 			description = *tool.Description
@@ -405,22 +400,22 @@ func (r *runState) drive(ctx context.Context) error {
 	if _, err := turn.ReadCriticCases(casesOf(r.run.Cases)); err != nil {
 		return failure.Authored("configuration", err.Error(), "context")
 	}
-	for _, host := range r.run.HostTools {
-		for _, served := range r.run.Tools {
+	for _, host := range r.run.OfferedHostTools() {
+		for _, served := range r.run.RuntimeTools() {
 			if host.Name == served.Name {
 				return failure.Authored("configuration", "host tool "+host.Name+" is named like a tool the runtime serves; nothing was run", "desk")
 			}
 		}
 	}
 	var tools []wire.McpTool
-	for _, tool := range r.run.Tools {
+	for _, tool := range r.run.RuntimeTools() {
 		description := ""
 		if tool.Description != nil {
 			description = *tool.Description
 		}
 		tools = append(tools, mcpTool(tool.Name, description, tool.InputSchema))
 	}
-	for _, host := range r.run.HostTools {
+	for _, host := range r.run.OfferedHostTools() {
 		tools = append(tools, mcpTool(host.Name, host.Description, host.InputSchema))
 	}
 	for _, notice := range wire.NarrowingEvents(ID, r.family, tools) {
@@ -516,15 +511,7 @@ func fallbackRequest(binding adapter.RequestPolicyConnection, tier, suffix strin
 	if err != nil {
 		return suffix, request, err
 	}
-	var overrides *wire.Value
-	if binding.Capabilities != nil {
-		raw, _ := json.Marshal(binding.Capabilities)
-		overrides, err = wire.Parse(raw)
-		if err != nil {
-			return suffix, request, err
-		}
-	}
-	caps, err := wire.CapabilitiesFor(wire.EndpointKind(binding.Wire), binding.ModelName, nil, overrides)
+	caps, err := binding.ResolvedCapabilities()
 	if err != nil {
 		return suffix, request, err
 	}
@@ -553,10 +540,10 @@ func fallbackRequest(binding adapter.RequestPolicyConnection, tier, suffix strin
 	if tier != "" && caps.Reasoning.Kind != "none" {
 		settings = wire.WireFor(wire.ThinkingTier(tier), wire.DialectFor(caps.Reasoning.Kind), caps.Tiers, caps.FallbackTiers)
 	}
-	if binding.Wire == "gemini" {
+	if binding.Family() == "gemini" {
 		if at := strings.Index(suffix, "models/"); at >= 0 {
 			if end := strings.Index(suffix[at:], ":"); end >= 0 {
-				suffix = suffix[:at] + "models/" + encodePathSegment(binding.ModelName) + suffix[at+end:]
+				suffix = suffix[:at] + "models/" + encodePathSegment(binding.ModelID()) + suffix[at+end:]
 			}
 		}
 		if !config.IsObject() {
@@ -569,8 +556,8 @@ func fallbackRequest(binding adapter.RequestPolicyConnection, tier, suffix strin
 			}
 		}
 	} else {
-		body.Set("model", wire.Str(binding.ModelName))
-		if binding.Wire == "anthropic" {
+		body.Set("model", wire.Str(binding.ModelID()))
+		if binding.Family() == "anthropic" {
 			max := wire.ResponseTokens
 			if caps.OutputTokens != nil {
 				max = *caps.OutputTokens

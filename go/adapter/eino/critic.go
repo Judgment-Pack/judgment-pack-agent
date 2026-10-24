@@ -59,7 +59,7 @@ func (t *turnState) finish(ctx context.Context, proposal *turn.Proposal, unread 
 				critique = cannot
 				r.deliver(turn.CritiqueEvent(*cannot, r.sc.RecordProvider("critic")))
 			} else {
-				held, heldNote, err := t.critic(ctx, *proposal, decided.Reasoning)
+				held, heldNote, err := t.critic(ctx, *proposal)
 				if err != nil {
 					return err
 				}
@@ -89,32 +89,24 @@ func planUnfinished(plan *runcontext.Value) bool {
 
 // critic runs the refutation pass (agent#10) and answers its critique, or the note a critic that
 // did not finish leaves on the proposal.
-func (t *turnState) critic(ctx context.Context, proposal turn.Proposal, tier string) (*turn.Critique, *contract.RunEventProposalNote, error) {
+func (t *turnState) critic(ctx context.Context, proposal turn.Proposal) (*turn.Critique, *contract.RunEventProposalNote, error) {
 	r := t.r
 	// The selected critic's capabilities own its slot, including at the author's family and tier.
-	// A decision with no tier leaves the critic's reasoning member omitted.
-	named, err := r.run.Models()
+	// An admitted role with no tier leaves the reasoning member omitted.
+	tier := r.run.Reasoning("critic")
+	binding, err := r.run.PolicyBinding("critic")
 	if err != nil {
 		return nil, nil, err
 	}
-	binding, err := r.run.PolicyBinding(r.sc.ResolvedPolicy, named, "critic")
-	if err != nil {
-		return nil, nil, err
-	}
-	r.family = wire.EndpointKind(binding.Wire)
-	var override *wire.Value
-	if binding.Capabilities != nil {
-		raw, _ := json.Marshal(binding.Capabilities)
-		override, _ = wire.Parse(raw)
-	}
-	r.capabilities, err = wire.CapabilitiesFor(r.family, binding.ModelName, nil, override)
+	r.family = wire.EndpointKind(binding.Family())
+	r.capabilities, err = binding.ResolvedCapabilities()
 	if err != nil {
 		return nil, nil, err
 	}
 	r.nativeTools = r.capabilities.NativeToolCalls
 	r.placement = statePlacement(r.family, wire.ThinkingTier(tier), r.capabilities)
 	// Preserve learned refusals only for the identical binding and tier.
-	bindingChanged := r.sc.Provider("critic").Connection != r.sc.Provider("author").Connection || binding.ModelName != r.run.ModelName
+	bindingChanged := r.sc.Provider("critic").Connection != r.sc.Provider("author").Connection || binding.ModelID() != r.run.ModelID()
 	if tier != r.run.Reasoning("author") || bindingChanged {
 		r.slot = criticThinking(tier, r.family, r.capabilities)
 		r.tier = r.slot.Members()
@@ -143,7 +135,7 @@ func (t *turnState) critic(ctx context.Context, proposal turn.Proposal, tier str
 		r.run.Gate.EndCritic()
 	}()
 	before := turn.CriticStart{Used: r.sc.Execution.State().Used, Rows: len(r.sc.Execution.State().Completions)}
-	criticModel := r.run.ModelName
+	criticModel := r.run.ModelID()
 	harnessCalls := 0
 	figures := func() *contract.ProvenanceCriticFigures {
 		held := turn.ModelCriticFigures(criticModel, before, turn.CriticEnd{Used: r.sc.Execution.State().Used, Completions: r.sc.Execution.State().Completions})
@@ -156,12 +148,12 @@ func (t *turnState) critic(ctx context.Context, proposal turn.Proposal, tier str
 	offered := map[string]bool{}
 	runtimeTools, hostTools := r.offeredTools()
 	for _, tool := range hostTools {
-		if turn.CriticMayRead(tool.Name) {
+		if r.run.AllowsTool(tool.Name, &tool, "critic") {
 			offered[tool.Name] = true
 		}
 	}
 	for _, tool := range runtimeTools {
-		if turn.CriticMayCall(tool.Name) {
+		if r.run.AllowsTool(tool.Name, nil, "critic") {
 			offered[tool.Name] = true
 		}
 	}
@@ -186,7 +178,7 @@ func (t *turnState) critic(ctx context.Context, proposal turn.Proposal, tier str
 		}
 		messages := []*schema.Message{userMessage(message)}
 		held := messages
-		if r.run.Models != nil {
+		if r.run.HasModels() {
 			named, err := r.run.Models()
 			if err != nil {
 				unfinished = err

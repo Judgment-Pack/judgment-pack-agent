@@ -38,7 +38,7 @@ import { sourceMessage } from './host'
  * configures.
  */
 import type { EndpointKind, ThinkingTier } from './host'
-import type { AssistantEvent, RequestAssistantSession } from './engine'
+import type { AssistantEvent } from './engine'
 import type { ReasoningCapability, ReasoningKind } from './capabilities'
 
 /**
@@ -529,7 +529,7 @@ const IGNORED_PARAMETER = sourceMessage('its capability record says the endpoint
  * ignores, sends no member at any tier. Absent, the family's first dialect, as
  * before there was a record.
  */
-export function openThinking(session: Pick<RequestAssistantSession, 'reasoning' | 'model'>, capability?: ReasoningCapability): ThinkingSlot {
+export function openThinking(session: Pick<import('./engine').RequestModelValues, 'reasoning' | 'model'> & {capabilities?:import('./capabilities').ModelCapabilities}, capability?: ReasoningCapability): ThinkingSlot {
   const tier = session.reasoning?.tier
   if (tier === undefined) {
     return {
@@ -577,7 +577,7 @@ export function openThinking(session: Pick<RequestAssistantSession, 'reasoning' 
   // `wireFor` already answers null at `off` on the two families where off is
   // omission, so there is no tier test here: what this adds is the two states
   // in which the desk has stopped asking at all.
-  const wire = () => (silent || unavailable || offRefused ? null : wireFor(tier, dialect, capabilitiesFor(session.model).tiers, capabilitiesFor(session.model).fallbackTiers))
+  const wire = () => (silent || unavailable || offRefused ? null : wireFor(tier, dialect, (session.capabilities??capabilitiesFor(session.model)).tiers, (session.capabilities??capabilitiesFor(session.model)).fallbackTiers))
 
   return {
     tier,
@@ -671,6 +671,6 @@ export function openThinking(session: Pick<RequestAssistantSession, 'reasoning' 
 }
 
 /** Retier one phase without turning an omitted preference into an explicit off request. */
-export function withThinkingTier<T extends Pick<RequestAssistantSession, 'reasoning' | 'model'>>(session: T, tier: ThinkingTier | undefined): T {
+export function withThinkingTier<T extends Pick<import('./engine').RequestModelValues, 'reasoning' | 'model'>>(session: T, tier: ThinkingTier | undefined): T {
   return {...session, reasoning: tier === undefined ? undefined : normalize(tier, session.model.family)}
 }

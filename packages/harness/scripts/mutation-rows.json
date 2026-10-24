@@ -2360,8 +2360,8 @@
   {
    "name": "the refused tier member is sent again after the endpoint refused it",
    "file": "thinking.ts",
-   "find": "  const wire = () => (silent || unavailable || offRefused ? null : wireFor(tier, dialect, capabilitiesFor(session.model).tiers, capabilitiesFor(session.model).fallbackTiers))",
-   "replace": "  const wire = () => wireFor(tier, dialect, capabilitiesFor(session.model).tiers, capabilitiesFor(session.model).fallbackTiers)",
+   "find": "  const wire = () => (silent || unavailable || offRefused ? null : wireFor(tier, dialect, (session.capabilities??capabilitiesFor(session.model)).tiers, (session.capabilities??capabilitiesFor(session.model)).fallbackTiers))",
+   "replace": "  const wire = () => wireFor(tier, dialect, (session.capabilities??capabilitiesFor(session.model)).tiers, (session.capabilities??capabilitiesFor(session.model)).fallbackTiers)",
    "tests": [
     "capabilities.test.ts",
     "certification/conformance.test.ts",
@@ -2398,7 +2398,7 @@
    ],
    "status": "caught",
    "origin": "desk",
-   "note": "needle re-anchored: the wire is also withheld while the tier is silent (agent#4)"
+   "note": "needle re-anchored: the wire is also withheld while the tier is silent (agent#4) #164 re-anchors the same mutation on admitted value views; intended assertion unchanged. Go twin: force ThinkingSlot.wire past its silent/unavailable/offRefused guard; TestTheFiveStates reports that the degrade left the tier asking."
   },
   {
    "name": "a first refusal at off is read as a model that always thinks",
@@ -3123,8 +3123,8 @@
   {
    "name": "memory is recalled per request instead of once",
    "file": "engines/vercel/loop.ts",
-   "find": "            ...placeState(session.model.family,placement,cachedOpening(session.model.family,placement,withImages(lastMessages)),system,state,stated)}",
-   "replace": "            ...placeState(session.model.family,placement,cachedOpening(session.model.family,placement,withImages(lastMessages)),(await context.askHost(session),context.system(instructions+'\\n'+EXECUTION_INSTRUCTIONS,toolSection)),state,stated)}",
+   "find": "            ...placeState(session.values.model.family,placement,cachedOpening(session.values.model.family,placement,withImages(lastMessages)),system,state,stated)}",
+   "replace": "            ...placeState(session.values.model.family,placement,cachedOpening(session.values.model.family,placement,withImages(lastMessages)),(await context.askHost(session),context.system(instructions+'\\n'+EXECUTION_INSTRUCTIONS,toolSection)),state,stated)}",
    "tests": [
     "certification/conformance.test.ts",
     "certification/scenarios.test.ts",
@@ -3132,7 +3132,7 @@
    ],
    "status": "caught",
    "origin": "ADR-0005",
-   "note": "the stable-prefix check: the certification host answers each memoryFor call with its number, so memory recalled per request changes the prefix"
+   "note": "the stable-prefix check: the certification host answers each memoryFor call with its number, so memory recalled per request changes the prefix #164 re-anchors the same mutation on admitted value views; intended assertion unchanged. Go twin: call AskHost from System; TestRequestValuesKeepHostRecallOnceAcrossRequestSystems reports three recalls instead of one."
   },
   {
    "name": "the host's parts sit between the package's instructions and the execution instructions",
@@ -3918,14 +3918,15 @@
   {
    "name": "ADR cross-provider: encoder ignores tier map",
    "file": "thinking.ts",
-   "find": "wireFor(tier, dialect, capabilitiesFor(session.model).tiers, capabilitiesFor(session.model).fallbackTiers)",
+   "find": "wireFor(tier, dialect, (session.capabilities??capabilitiesFor(session.model)).tiers, (session.capabilities??capabilitiesFor(session.model)).fallbackTiers)",
    "replace": "wireFor(tier, dialect)",
    "tests": [
     "providers.test.ts",
     "certification/providers.test.ts"
    ],
    "status": "caught",
-   "origin": "agent#117"
+   "origin": "agent#117",
+   "note": " #164 re-anchors the same mutation on admitted value views; intended assertion unchanged. Go twin: omit the tier maps in ThinkingSlot.wire; TestProviderTierOverride reports tier map ignored."
   },
   {
    "name": "ADR cross-provider: compatibility matrix hand-edited",
@@ -3965,25 +3966,26 @@
   {
    "name": "ADR cross-provider round two: Vercel same-family critic retains author slot",
    "file": "engines/vercel/loop.ts",
-   "find": "criticTier !== session.reasoning?.tier || criticBinding !== context.connection('author')",
-   "replace": "criticTier !== session.reasoning?.tier",
+   "find": "criticTier !== authorValues.reasoning?.tier || criticBinding",
+   "replace": "criticTier !== authorValues.reasoning?.tier",
    "tests": [
     "certification/providers.test.ts"
    ],
    "status": "caught",
    "origin": "agent#117 review round two",
-   "note": "Go twin: remove bindingChanged from the eino critic slot condition; TestTheScenarios/cross-provider catches the same-family connection override."
+   "note": "Go twin: remove bindingChanged from the eino critic slot condition; TestTheScenarios/cross-provider catches the same-family connection override. #164 re-anchors the same mutation on admitted value views; intended assertion unchanged. Verified Go twin: ignore bindingChanged in the Eino critic slot condition; TestTheScenarios/cross-provider reports same-family critic ignored its connection tier override."
   },
   {
    "name": "ADR cross-provider round two: DeepAgents same-family critic retains author slot",
    "file": "engines/deepagents/loop.ts",
-   "find": "criticTier !== session.reasoning?.tier || criticBinding !== context.connection('author')",
-   "replace": "criticTier !== session.reasoning?.tier",
+   "find": "criticTier !== authorValues.reasoning?.tier || criticBinding",
+   "replace": "criticTier !== authorValues.reasoning?.tier",
    "tests": [
     "certification/providers.test.ts"
    ],
    "status": "caught",
-   "origin": "agent#117 review round two"
+   "origin": "agent#117 review round two",
+   "note": " #164 re-anchors the same mutation on admitted value views; intended assertion unchanged. Shares the Vercel row's verified Go twin: ignore bindingChanged in the Eino critic slot condition; TestTheScenarios/cross-provider reports same-family critic ignored its connection tier override."
   },
   {
    "name": "ADR-0013 sub-agents: admission tool check removed",
@@ -4812,14 +4814,17 @@
     "note": "Go twin: give the final model-default PolicyMember a low value and layer source; TestPolicyTable/reasoning_defaults_and_discovery and table_reasoning_defaults_and_explicit_refusals fail on omitted rows."
   },
   {
-    "name": "dropped author table reasoning keeps the raw legacy session value",
-    "file": "context/session.ts",
-    "find": " const value=members['models.author.reasoning']?.value",
-    "replace": " const value=('model'in session?session.thinking?.tier:session.effort)??members['models.author.reasoning']?.value",
-    "tests": ["policySession.test.ts", "providers.test.ts"],
-    "status": "caught",
-    "origin": "agent#142-release-audit-2",
-    "note": "Go twin: let NewRequestSession restore an absent author value from ReadAdmissionReasoning; the request vectors and TestDroppedTableDefaultsStayOmittedAcrossAgentResume fail."
+   "name": "dropped author table reasoning keeps the raw legacy session value",
+   "file": "context/session.ts",
+   "find": " const value=admitted.reasoning(role)",
+   "replace": " const value=role==='author'?('model'in session?session.thinking?.tier:session.effort)??admitted.reasoning(role):admitted.reasoning(role)",
+   "tests": [
+    "policySession.test.ts",
+    "providers.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#142-release-audit-2",
+   "note": "Go twin: let NewRequestSession restore an absent author value from ReadAdmissionReasoning; the request vectors and TestDroppedTableDefaultsStayOmittedAcrossAgentResume fail. #164 re-anchors the same mutation on admitted value views; intended assertion unchanged. Verified Go twin: restore an absent author value from ReadAdmissionReasoning in NewRequestSession; TestDroppedTableDefaultsStayOmittedAcrossAgentResume reports request restored effort."
   },
   {
     "name": "dropped critic table reasoning falls back to the author floor",
@@ -5415,6 +5420,139 @@
    "status": "caught",
    "origin": "agent#154-review-fixes",
    "note": "Go twin: basename-only checkpointMutationOwner; TestCheckpointMutationOwnerExemptionIsExact fails. The reader-materialization exemption has its own exact-path control."
+  },
+  {
+   "name": "request values #164: raw model exposed",
+   "file": "engine.ts",
+   "find": "type RequestBoundary = {readonly [requestSessionBoundary]:'resolved'}",
+   "replace": "type RequestBoundary = {readonly [requestSessionBoundary]:'resolved';model?:AssistantSession['model']}",
+   "tests": [
+    "policySession.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#164",
+   "note": "Go twin: add exported ModelName string to RequestSession; TestRequestSessionRejectsRawResolvedValues fails for ModelName."
+  },
+  {
+   "name": "request values #164: raw tools exposed",
+   "file": "engine.ts",
+   "find": "type RequestBoundary = {readonly [requestSessionBoundary]:'resolved'}",
+   "replace": "type RequestBoundary = {readonly [requestSessionBoundary]:'resolved';tools?:AssistantSession['tools']}",
+   "tests": [
+    "policySession.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#164",
+   "note": "Go twin: add exported Tools []contract.ToolOfferRuntimeTool to RequestSession; the raw resolved-value compile fixture fails for Tools."
+  },
+  {
+   "name": "request values #164: raw provider map exposed",
+   "file": "engine.ts",
+   "find": "type RequestBoundary = {readonly [requestSessionBoundary]:'resolved'}",
+   "replace": "type RequestBoundary = {readonly [requestSessionBoundary]:'resolved';policyConnections?:AssistantSession['policyConnections']}",
+   "tests": [
+    "policySession.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#164",
+   "note": "Go twin: add exported PolicyConnections to RequestSession; the raw resolved-value compile fixture fails for PolicyConnections."
+  },
+  {
+   "name": "request values #164: future member dropped",
+   "file": "context/requestValues.ts",
+   "find": "this.#members=structuredClone(members)",
+   "replace": "this.#members=Object.fromEntries(Object.entries(structuredClone(members)).filter(([key])=>key!=='future.request.option'))",
+   "tests": [
+    "policySession.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#164",
+   "note": "Go twin: skip future.request.option in NewRequestValues; TestRequestValuesSharedCompleteBook fails on that exact member."
+  },
+  {
+   "name": "request values #164: raw fields spread into the boundary",
+   "file": "context/session.ts",
+   "find": " return {input,prompt,testPrompt,purpose,replyLanguage,allowConversation,interactive,callTool,signal,context:safeContext,values:",
+   "replace": " return {...session,input,prompt,testPrompt,purpose,replyLanguage,allowConversation,interactive,callTool,signal,context:safeContext,values:",
+   "tests": [
+    "policySession.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#164",
+   "note": "Go twin: embed Run in RequestSession; raw field compilation fixtures fail for all promoted raw members."
+  },
+  {
+   "name": "request values #164: selected role ignored",
+   "file": "context/session.ts",
+   "find": "const binding=admitted.binding(role)??initial",
+   "replace": "const binding=initial",
+   "tests": [
+    "policySession.test.ts",
+    "certification/providers.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#164",
+   "note": "Go twin: return the author own binding for critic in RequestSession.PolicyBinding; TestRequestValuesSelectAdmittedRoleBindings reports critic lost admitted binding."
+  },
+  {
+   "name": "request values #164: tool aliases retained",
+   "file": "context/session.ts",
+   "find": "const tools=requestCopy(session.tools),hostTools=requestCopy(session.hostTools)",
+   "replace": "const tools=session.tools,hostTools=session.hostTools",
+   "tests": [
+    "policySession.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#164",
+   "note": "Go twin: return tools unchanged from copyHostTools; TestRequestValuesDetachBindingsCapabilitiesAndTools fails for the mutated raw schema."
+  },
+  {
+   "name": "request values #164: new raw writer allowed",
+   "file": "policySession.test.ts",
+   "find": "if(symbol?.declarations.some(declaration=>{",
+   "replace": "if(false&&symbol?.declarations.some(declaration=>{",
+   "tests": [
+    "policySession.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#164",
+   "note": "Go twin: return false from isRawRequestField; TestRequestValuesAddedFieldAndNewWriter catches zero of two reads/writes."
+  },
+  {
+   "name": "request values #164: compactor admitted reasoning ignored",
+   "file": "context/session.ts",
+   "find": "const reasoning=this.requestValues.reasoning('compactor')",
+   "replace": "const reasoning=undefined",
+   "tests": [
+    "certification/scenarios.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#164",
+   "note": "Go twin: replace RequestValues().Reasoning(\"compactor\") with empty string; TestCompactorUsesAdmittedRequestValues fails for the low request."
+  },
+  {
+   "name": "request values #164: phase tool admission widened",
+   "file": "context/session.ts",
+   "find": "return offered.some(tool=>tool.name===name)&&(phase!=='critic'||(kind==='runtime'?criticMayCall(name):criticMayRead(name)))",
+   "replace": "return offered.some(tool=>tool.name===name)",
+   "tests": [
+    "policySession.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#164",
+   "note": "Go twin: return true in the critic branch of RequestSession.AllowsTool; TestRequestValuesDetachBindingsCapabilitiesAndTools fails with phase tool admission widened."
+  },
+  {
+   "name": "request values #164: operational exemption crosses raw owners",
+   "file": "policySession.test.ts",
+   "find": "const type=checker.getTypeAtLocation(base),symbol=type&&checker.getPropertyOfType(type,name)",
+   "replace": "if(Object.values(operational).some(fields=>fields.includes(name)))return true\n   const type=checker.getTypeAtLocation(base),symbol=type&&checker.getPropertyOfType(type,name)",
+   "tests": [
+    "policySession.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#164",
+   "note": "Go twin: let a field use any raw owner operational allowlist instead of its declaring owner in isRawRequestField; TestRequestValuesAddedFieldAndNewWriter catches the Prompt and CurrentRequest collisions."
   },
   {
    "name": "checkpoint guard publication credits another owner",

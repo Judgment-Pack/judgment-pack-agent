@@ -69,7 +69,7 @@ describe('shared execution continuity',()=>{
  it('does not let progress updates grant work permissions or extra requests',async()=>{
   const input=base();input.context={...input.context,phase:'plan'}
   const {session,context}=await contextualSession(input)
-  const tool=session.hostTools.find(t=>t.name==='update_plan')!
+  const tool=session.values.hostTools.find(t=>t.name==='update_plan')!
   await tool.execute({explanation:'Prepare review',plan:[{step:'Inspect',status:'completed'}],limit:999},input.signal)
   expect(context.execution.state.limit).toBe(20)
   await expect(session.callTool('save_pack',{})).rejects.toThrow(/Plan mode/)
@@ -79,7 +79,7 @@ describe('shared execution continuity',()=>{
 
 it('requests an extension only near the ceiling and records a concrete reason without granting it',async()=>{
  const input=base(),{session,context}=await contextualSession(input)
- const request=session.hostTools.find(t=>t.name==='request_budget_increase')!
+ const request=session.values.hostTools.find(t=>t.name==='request_budget_increase')!
  const args={reason:'The proposed guard needs two boundary checks.',nextStep:'Evaluate both boundaries with unchanged expectations.'}
  expect((await request.execute(args,input.signal)).structuredContent).toMatchObject({status:'within-allowance'})
  expect(context.execution.pauseRequested).toBe(false)
@@ -95,7 +95,7 @@ it('persists request usage before dispatch and sends nothing when that checkpoin
  input.context={...input.context,checkpoint:async state=>{order.push('saved-'+state.used)}}
  input.model.call=vi.fn(async()=>{order.push('sent');return new Response('{}')})
  const ready=await contextualSession(input)
- await ready.session.model.call('generate',{body:'{}'})
+ await ready.session.values.model.call('generate',{body:'{}'})
  expect(order).toEqual(['saved-0','saved-1','sent'])
  const unavailable=base();unavailable.context={...unavailable.context,checkpoint:async()=>{throw Error('Storage unavailable')}}
  await expect(contextualSession(unavailable)).rejects.toMatchObject({failure:{code:'storage',outcome:'not-started'}})
@@ -111,12 +111,12 @@ it('uses declared immutable read semantics for future tools and never caches wri
  ]
  const {session}=await contextualSession(input)
  for(const name of ['future_contract','future_current_reference','future_write']){
-  const tool=session.hostTools.find(t=>t.name===name)!
+  const tool=session.values.hostTools.find(t=>t.name===name)!
   await tool.execute({},input.signal);await tool.execute({},input.signal)
  }
  expect(immutable).toHaveBeenCalledTimes(1);expect(mutable).toHaveBeenCalledTimes(2);expect(write).toHaveBeenCalledTimes(2)
  // Changing arguments still performs a distinct read; failures never poison cache.
- await session.hostTools.find(t=>t.name==='future_contract')!.execute({revision:'next'},input.signal)
+ await session.values.hostTools.find(t=>t.name==='future_contract')!.execute({revision:'next'},input.signal)
  expect(immutable).toHaveBeenCalledTimes(2)
 })
 

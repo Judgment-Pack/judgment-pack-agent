@@ -251,18 +251,18 @@ describe('the boundary over skills (ADR-0009)', () => {
     const before = context.system('GUIDANCE', '\n\nTOOLS')
     expect(before.startsWith('GUIDANCE\n\nTOOLS\n\nSKILLS (')).toBe(true)
     expect(before.endsWith('\nEND SKILLS')).toBe(true)
-    const names = ready.hostTools.map((tool) => tool.name)
+    const names = ready.values.hostTools.map((tool) => tool.name)
     expect(names).toContain(LOAD_SKILL)
     expect(names).toContain(UNLOAD_SKILL)
     expect(context.execution.requestState()).not.toContain(SKILL_INSTRUCTIONS_HEADER)
-    const load = ready.hostTools.find((tool) => tool.name === LOAD_SKILL)!
+    const load = ready.values.hostTools.find((tool) => tool.name === LOAD_SKILL)!
     await load.execute({ name: 'issue_style' }, new AbortController().signal)
     expect(ofKind(context.takeNotices(), 'skill_loaded')).toHaveLength(1)
     expect(context.system('GUIDANCE', '\n\nTOOLS')).toBe(before)
     const state = context.execution.requestState()
     expect(state.endsWith(context.skills!.section())).toBe(true)
     expect(state).toContain(`${SKILL_INSTRUCTIONS_HEADER}\nBEGIN SKILL ${context.marker} "issue_style"`)
-    await ready.hostTools.find((tool) => tool.name === UNLOAD_SKILL)!.execute({ name: 'issue_style' }, new AbortController().signal)
+    await ready.values.hostTools.find((tool) => tool.name === UNLOAD_SKILL)!.execute({ name: 'issue_style' }, new AbortController().signal)
     expect(context.system('GUIDANCE', '\n\nTOOLS')).toBe(before)
     expect(context.execution.requestState()).not.toContain(SKILL_INSTRUCTIONS_HEADER)
     expect(context.execution.snapshot().sources!.find((row) => row.source === 'jx-issue-style')).toMatchObject({ kind: 'exchange', skills: 1 })
@@ -272,7 +272,7 @@ describe('the boundary over skills (ADR-0009)', () => {
     const { context, session: ready } = await contextualSession(session({}, [withheldTool.declaration]))
     expect(context.takeNotices()).toEqual(withheldTool.items)
     expect(context.skillCatalogue).toBe('')
-    expect(ready.hostTools.map((tool) => tool.name)).not.toContain(LOAD_SKILL)
+    expect(ready.values.hostTools.map((tool) => tool.name)).not.toContain(LOAD_SKILL)
   })
 
   it('refuses a host tool named load_skill or unload_skill, as every reserved name', async () => {
@@ -285,7 +285,7 @@ describe('the boundary over skills (ADR-0009)', () => {
   it('offers Plan mode the catalogue and the loaders: a skill grants no tool', async () => {
     const { context, session: ready } = await contextualSession(session({ phase: 'plan' }))
     expect(context.system('G')).toContain('\nEND SKILLS')
-    expect(ready.hostTools.map((tool) => tool.name)).toEqual(expect.arrayContaining([LOAD_SKILL, UNLOAD_SKILL]))
+    expect(ready.values.hostTools.map((tool) => tool.name)).toEqual(expect.arrayContaining([LOAD_SKILL, UNLOAD_SKILL]))
   })
 
   it('restores a continued run’s loaded set from its checkpoint, and does not restore a skill the host no longer declares, saying so', async () => {
@@ -322,8 +322,8 @@ describe('the boundary over skills (ADR-0009)', () => {
     const engine: Engine = {
       id: 'vercel',
       start: (given) => managedContext(given, async function* (ready) {
-        seen.push({ system: contextOf(ready).system('GUIDANCE'), tools: ready.hostTools.map((tool) => tool.name) })
-        const delegate = ready.hostTools.find((tool) => tool.name === DELEGATE_TOOL)
+        seen.push({ system: contextOf(ready).system('GUIDANCE'), tools: ready.values.hostTools.map((tool) => tool.name) })
+        const delegate = ready.values.hostTools.find((tool) => tool.name === DELEGATE_TOOL)
         if (delegate !== undefined) await delegate.execute({ tasks: [{ title: 'Look', objective: 'Look the rate up.', profile: 'review' }] }, ready.signal)
         yield { type: 'message', text: 'done' }
         yield { type: 'end' }

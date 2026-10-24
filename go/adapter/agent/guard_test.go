@@ -34,7 +34,7 @@ func TestNoInvocationIsDispatchedWhileAnApprovalIsAsked(t *testing.T) {
 			dispatched++
 			return nil
 		}}}
-	r := &runState{sc: opened.Context, session: opened.Session, run: adapter.NewRequestSession(raw, opened.Context.ResolvedPolicy)}
+	r := &runState{sc: opened.Context, session: adapter.NewRequestSession(raw, opened.Context.ResolvedPolicy, opened).Prepared(), run: adapter.NewRequestSession(raw, opened.Context.ResolvedPolicy, opened)}
 	for _, phase := range []string{"author", "critic"} {
 		if _, err := r.invoke(context.Background(), "Current request", "", phase, nil, "", ""); !errors.Is(err, runcontext.ErrApprovalPaused) {
 			t.Fatalf("%s: the invocation answered %v", phase, err)

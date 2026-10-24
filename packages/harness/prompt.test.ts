@@ -363,7 +363,7 @@ describe('the prompt’s digest', () => {
     const agentSession: AgentAssistantSession = { prompt: 'Check the pack.', testPrompt: '', tools: [], callTool: async () => ({}), hostTools: [], signal: new AbortController().signal, agent: { model: 'scripted-agent', run: async (request) => { handed.push(request) } } }
     const ready = await contextualSession(agentSession)
     const request: AgentRequest = { prompt: 'Check the pack.', instructions: 'GUIDANCE', tools: [], phase: 'author', model: 'child-model', delegated: true }
-    await ready.session.agent.run(request, { signal: new AbortController().signal, event: async () => {}, tool: async () => ({ text: '', isError: false }) })
+    await ready.session.values.agent.run(request, { signal: new AbortController().signal, event: async () => {}, tool: async () => ({ text: '', isError: false }) })
     // The capability is still handed the mark (the transport reads it to admit the child's model); the digest leaves it out.
     expect(handed[0]!.delegated).toBe(true)
     const { delegated: _delegated, ...wire } = request

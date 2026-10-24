@@ -420,16 +420,38 @@ export type AgentAssistantSession = Omit<AssistantSession, 'model' | 'thinking'>
 export type EngineSession = AssistantSession | AgentAssistantSession
 
 /**
- * The session an engine loop receives after policy admission.  It deliberately
- * cannot be passed back to code which accepts a raw EngineSession: the private
- * brand conflicts with the raw session's absent brand, while the raw reasoning
- * inputs themselves are omitted.  `reasoning` is made only from the admitted
- * `models.author.reasoning` member.
+ * Internal request boundary. Operational inputs are explicitly selected; every
+ * resolved value is reached through the incompatible branded value view. Adding
+ * a host member cannot silently extend the request-builder surface.
  */
 type RequestBoundary = {readonly [requestSessionBoundary]:'resolved'}
-type RawRequestMembers = 'thinking'|'effort'|'criticReasoning'
-export type RequestAssistantSession = Omit<AssistantSession,RawRequestMembers|typeof requestSessionBoundary> & RequestBoundary & {reasoning?:NormalizedThinking}
-export type RequestAgentAssistantSession = Omit<AgentAssistantSession,RawRequestMembers|typeof requestSessionBoundary> & RequestBoundary & {reasoning?:import('./agent').CodexEffort}
+/** Only these operational inputs survive admission; future host members stay absent. */
+export type RequestOperations = Pick<AssistantSession,'input'|'prompt'|'testPrompt'|'purpose'|'replyLanguage'|'allowConversation'|'interactive'|'callTool'|'signal'> & {
+ context?:Pick<import('./context/session').ContextInput,'currentRequest'|'currentState'|'phase'|'objective'|'artifactProposals'>
+}
+export interface RequestValueView {
+ readonly [requestSessionBoundary]:'values'
+ readonly member:(name:string)=>import('./policy').PolicyMember|undefined
+ readonly tools:AssistantSession['tools']
+ readonly hostTools:AssistantSession['hostTools']
+ readonly provider:import('./policy').ProviderRecord
+ readonly sameBinding:(role:string)=>boolean
+ readonly allowsTool:(name:string,kind:'runtime'|'host',phase:'author'|'critic'|'reformat')=>boolean
+}
+export interface RequestModelValues extends RequestValueView {
+ readonly model:{family:EndpointKind;model:string;call:ModelCall}
+ readonly capabilities:import('./capabilities').ModelCapabilities
+ readonly reasoning?:NormalizedThinking
+ readonly forRole:(role:string)=>RequestModelValues
+ readonly withModel:(name:string)=>RequestModelValues
+}
+export interface RequestAgentValues extends RequestValueView {
+ readonly agent:{family?:import('./policy').ProviderFamily;tiers?:Record<'low'|'medium'|'high',string>;model:string;run:import('./agent').AgentRun}
+ readonly reasoning?:import('./agent').CodexEffort
+ readonly forRole:(role:string)=>RequestAgentValues
+}
+export type RequestAssistantSession = RequestOperations & RequestBoundary & {readonly values:RequestModelValues}
+export type RequestAgentAssistantSession = RequestOperations & RequestBoundary & {readonly values:RequestAgentValues}
 export type RequestSession = RequestAssistantSession|RequestAgentAssistantSession
 export type RequestSessionFor<T extends EngineSession> = T extends AgentAssistantSession ? RequestAgentAssistantSession : RequestAssistantSession
 

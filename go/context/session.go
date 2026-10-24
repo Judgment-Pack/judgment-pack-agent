@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
@@ -119,14 +120,16 @@ func (m *orderedValues) clear()          { m.order = nil; m.held = map[string]*V
 
 // SessionContext is the run's context (SessionContext).
 type SessionContext struct {
-	Memories         *MemoryGate
-	Drafts           *Drafts
-	Output           *OutputGuard
-	outputContext    context.Context
-	Subagents        []Subagent
-	ProviderFamilies map[string]string
-	ResolvedPolicy   PolicyMembers
-	PaceWarning      string
+	requestValues     *RequestValues
+	requestValuesOnce sync.Once
+	Memories          *MemoryGate
+	Drafts            *Drafts
+	Output            *OutputGuard
+	outputContext     context.Context
+	Subagents         []Subagent
+	ProviderFamilies  map[string]string
+	ResolvedPolicy    PolicyMembers
+	PaceWarning       string
 	// Policy is the budget this run works under; ReserveOutput and a host may change it.
 	Policy *Policy
 	// Ledger is what the run retains and reads.
@@ -963,9 +966,10 @@ func (c *SessionContext) MessagesContext(ctx context.Context, messages []Message
 						prose = append(prose, PartsMessage(message.Role, parts...))
 					}
 				}
-				provider := c.RecordProvider("compactor")
-				model, _ := c.ResolvedPolicy["models.compactor.model"].Value.(string)
-				reasoning, _ := c.ResolvedPolicy["models.compactor.reasoning"].Value.(string)
+				c.RecordProvider("compactor")
+				provider := c.RequestValues().Provider("compactor")
+				model := c.RequestValues().Model("compactor")
+				reasoning := c.RequestValues().Reasoning("compactor")
 				answer, err := c.session.Context.Compactor(ctx, CompactorRequest{Messages: prose, Digests: digests, MaxBytes: c.Policy.SummaryBytes, Connection: provider.Connection, Family: provider.Family, Model: model, Reasoning: reasoning})
 				if err != nil {
 					failed = err.Error()

@@ -108,8 +108,8 @@ func (r *runState) runOnce(ctx, caller context.Context) error {
 		declarationsOf = nil
 	}
 	instructions := r.systemFor()
-	declaredHosts := make([]contract.ToolOfferHostTool, 0, len(r.session.HostTools))
-	for _, tool := range r.session.HostTools {
+	declaredHosts := make([]contract.ToolOfferHostTool, 0, len(r.session.HostTools()))
+	for _, tool := range r.session.HostTools() {
 		declaredHosts = append(declaredHosts, tool.Declaration())
 	}
 	if turn.OffersProposeTool(declaredHosts) {
@@ -142,8 +142,8 @@ func (r *runState) runOnce(ctx, caller context.Context) error {
 	// the host's parts, then the tools described in text where the endpoint takes no native calls.
 	t.system = r.sc.System(instructions+"\n"+runcontext.ExecutionInstructions, toolSection)
 	var currentRequest *runcontext.CurrentRequest
-	if r.run.Context != nil {
-		currentRequest = r.run.Context.CurrentRequest
+	if r.run.RequestContext() != nil {
+		currentRequest = r.run.RequestContext().CurrentRequest
 	}
 	opening, err := r.sc.Opening(r.session.Prompt, r.sc.System(instructions, toolSection)+"\n"+r.sc.Execution.Guidance(), t.schemas, currentRequest)
 	if err != nil {
@@ -152,7 +152,7 @@ func (r *runState) runOnce(ctx, caller context.Context) error {
 	t.messages = []*schema.Message{userMessage(opening...)}
 	t.lastMessages = t.messages
 
-	model := &relayModel{run: r, model: r.run.ModelName}
+	model := &relayModel{run: r, model: r.run.ModelID()}
 	var current *phase
 	loop := t.loopPhase(shown)
 	current = loop

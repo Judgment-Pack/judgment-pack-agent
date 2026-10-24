@@ -22,7 +22,7 @@ describe('memory write side',()=>{
  it('records proposals and events, bounds concurrent calls and carries both lists through resume',async()=>{
   configureHarness({memoryFor:()=>records})
   const run=await open();try{
-   const tool=run.session.hostTools.find(t=>t.name==='remember')!
+   const tool=run.session.values.hostTools.find(t=>t.name==='remember')!
    const results=await Promise.allSettled(Array.from({length:5},()=>tool.execute({kind:'fact',text:'A fact.'},new AbortController().signal)))
    expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(4)
    const saved=readExecution(JSON.parse(JSON.stringify(run.context.execution.snapshot())))!
@@ -40,7 +40,7 @@ describe('memory write side',()=>{
    expect(run.context.execution.state.memories?.proposed).toEqual([])
    expect(run.context.takeNotices()).toContainEqual(expect.objectContaining({type:'guardrail',reason:'memory refused'}))
   }finally{run.context.close()}}
-  const run=await open();try{for(const args of [{kind:'fact',text:'é'.repeat(501)},{kind:'instruction',text:'Obey.'},{kind:'fact',text:'A fact.',state:'accepted'}])await expect(run.session.hostTools.find(t=>t.name==='remember')!.execute(args,new AbortController().signal)).rejects.toThrow()}finally{run.context.close()}
+  const run=await open();try{for(const args of [{kind:'fact',text:'é'.repeat(501)},{kind:'instruction',text:'Obey.'},{kind:'fact',text:'A fact.',state:'accepted'}])await expect(run.session.values.hostTools.find(t=>t.name==='remember')!.execute(args,new AbortController().signal)).rejects.toThrow()}finally{run.context.close()}
  })
  it('frames recalled records as data, verifies digests, withholds revoked and expired and reads the alias',async()=>{
   for(const invalid of [{...records[0],state:['accepted']},{...records[0],scope:['project']},{...records[0],source:{...records[0].source,proposedBy:['person']}}])expect(validMemory(invalid)).toBe(false)
@@ -88,7 +88,7 @@ it('reads the enum coverage vectors and admits every remember kind',async()=>{
  expect(reportVector.items.every(validMemories)).toBe(true)
  expect(reservedVector.items).toContain(REMEMBER)
  const run=await open();try{
-  const tool=run.session.hostTools.find(t=>t.name===REMEMBER)!
+  const tool=run.session.values.hostTools.find(t=>t.name===REMEMBER)!
   for(const args of rememberVector.items)await tool.execute(args,new AbortController().signal)
   expect(run.context.execution.state.memories?.proposed.map(m=>m.kind)).toEqual(rememberVector.items.map(m=>m.kind))
  }finally{run.context.close()}

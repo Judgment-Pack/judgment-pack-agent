@@ -40,7 +40,7 @@ it.each(['gemini','openai-compatible','anthropic'] as const)('cannot reset the s
  const checked:number[]=[]
  await expect(correctArtifact({initial:1,maxCorrections:5,fingerprint:String,check:async()=>false,passed:c=>c,checkpoint:async c=>{checked.push(c)},correct:async c=>{
   const resumed=await contextualSession({...original,context:{...original.context,execution:held}})
-  await resumed.session.model.call('generate',{body:'{}'})
+  await resumed.session.values.model.call('generate',{body:'{}'})
   held=resumed.context.execution.snapshot('complete')
   return c+1
  }},signal())).rejects.toBeInstanceOf(ExecutionPaused)
