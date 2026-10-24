@@ -159,6 +159,7 @@ The package also holds a wider set, `HELD_NAMES`, that a tool with a source may 
 | `read_window` | context tool name |
 | `search` | context tool name |
 | `update_plan` | context tool name |
+| `complete_plan_step` | context tool name |
 | `request_budget_increase` | context tool name |
 | `load_tool` | context tool name |
 | `remember` | context tool name |

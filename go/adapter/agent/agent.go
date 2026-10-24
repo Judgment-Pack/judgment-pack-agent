@@ -86,7 +86,6 @@ type runState struct {
 	handoff       bool
 	toolProposal  *turn.Proposal
 	fatal         error
-	pause         context.CancelFunc
 }
 
 // Run is the adapter: one run on the agent capability.
@@ -302,7 +301,6 @@ func contains(list []string, name string) bool {
 func (r *runState) drive(ctx context.Context) error {
 	execution, pause := context.WithCancel(ctx)
 	defer pause()
-	r.pause = pause
 	if _, err := turn.ReadCriticCases(casesOf(r.run.Cases)); err != nil {
 		return failure.Authored("configuration", err.Error(), "context")
 	}

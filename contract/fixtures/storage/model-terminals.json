@@ -1,0 +1,180 @@
+{
+  "description": "Handwritten original-response terminal evidence. EOF and engine normalization supply no completion proof.",
+  "cases": [
+    {
+      "name": "openai explicit terminal",
+      "family": "openai-compatible",
+      "streamed": true,
+      "body": "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Done.\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+      "accepted": true
+    },
+    {
+      "name": "openai tool terminal",
+      "family": "openai-compatible",
+      "streamed": true,
+      "body": "data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call-fixture\",\"type\":\"function\",\"function\":{\"name\":\"read_fixture\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+      "accepted": true
+    },
+    {
+      "name": "openai completed length",
+      "family": "openai-compatible",
+      "streamed": false,
+      "body": "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"Partial.\"},\"finish_reason\":\"length\"}]}",
+      "accepted": true
+    },
+    {
+      "name": "openai completed filter",
+      "family": "openai-compatible",
+      "streamed": false,
+      "body": "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":\"content_filter\"}]}",
+      "accepted": true
+    },
+    {
+      "name": "openai missing marker",
+      "family": "openai-compatible",
+      "streamed": true,
+      "body": "data: {\"choices\":[{\"delta\":{\"content\":\"Partial.\"},\"finish_reason\":\"stop\"}]}\n\n",
+      "accepted": false
+    },
+    {
+      "name": "openai marker without reason",
+      "family": "openai-compatible",
+      "streamed": true,
+      "body": "data: {\"choices\":[{\"delta\":{\"content\":\"Partial.\"}}]}\n\ndata: [DONE]\n\n",
+      "accepted": false
+    },
+    {
+      "name": "openai EOF only",
+      "family": "openai-compatible",
+      "streamed": true,
+      "body": "data: {\"choices\":[{\"delta\":{\"content\":\"Partial.\"}}]}\n\n",
+      "accepted": false
+    },
+    {
+      "name": "openai invalid terminal",
+      "family": "openai-compatible",
+      "streamed": true,
+      "body": "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"invented\"}]}\n\ndata: [DONE]\n\n",
+      "accepted": false
+    },
+    {
+      "name": "openai in-band error",
+      "family": "openai-compatible",
+      "streamed": true,
+      "body": "data: {\"error\":{\"code\":\"fixture\"}}\n\n",
+      "accepted": false
+    },
+    {
+      "name": "openai trailing error",
+      "family": "openai-compatible",
+      "streamed": true,
+      "body": "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\ndata: {\"error\":{\"code\":\"fixture\"}}\n\n",
+      "accepted": false
+    },
+    {
+      "name": "openai whole terminal",
+      "family": "openai-compatible",
+      "streamed": false,
+      "body": "{\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Done.\"},\"finish_reason\":\"stop\"}]}",
+      "accepted": true
+    },
+    {
+      "name": "openai whole missing terminal",
+      "family": "openai-compatible",
+      "streamed": false,
+      "body": "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"Partial.\"}}]}",
+      "accepted": false
+    },
+    {
+      "name": "openai truncated body",
+      "family": "openai-compatible",
+      "streamed": false,
+      "body": "{\"choices\":[{\"finish_reason\":\"stop\"}",
+      "accepted": false
+    },
+    {
+      "name": "anthropic explicit terminal",
+      "family": "anthropic",
+      "streamed": true,
+      "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"role\":\"assistant\"}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Done.\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+      "accepted": true
+    },
+    {
+      "name": "anthropic missing stop",
+      "family": "anthropic",
+      "streamed": true,
+      "body": "data: {\"type\":\"message_start\",\"message\":{}}\n\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n",
+      "accepted": false
+    },
+    {
+      "name": "anthropic locally unclosed block",
+      "family": "anthropic",
+      "streamed": true,
+      "body": "data: {\"type\":\"message_start\",\"message\":{}}\n\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"call\",\"name\":\"read_fixture\",\"input\":{}}}\n\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"}}\n\ndata: {\"type\":\"message_stop\"}\n\n",
+      "accepted": false
+    },
+    {
+      "name": "anthropic whole terminal",
+      "family": "anthropic",
+      "streamed": false,
+      "body": "{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Done.\"}],\"stop_reason\":\"end_turn\"}",
+      "accepted": true
+    },
+    {
+      "name": "anthropic whole missing terminal",
+      "family": "anthropic",
+      "streamed": false,
+      "body": "{\"type\":\"message\",\"content\":[{\"type\":\"text\",\"text\":\"Partial.\"}]}",
+      "accepted": false
+    },
+    {
+      "name": "gemini explicit terminal",
+      "family": "gemini",
+      "streamed": true,
+      "body": "data: {\"candidates\":[{\"index\":0,\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"Done.\"}]},\"finishReason\":\"STOP\"}]}\n\n",
+      "accepted": true
+    },
+    {
+      "name": "gemini missing terminal tool",
+      "family": "gemini",
+      "streamed": true,
+      "body": "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"name\":\"read_fixture\",\"args\":{}}}]}}]}\n\n",
+      "accepted": false
+    },
+    {
+      "name": "gemini in-band error",
+      "family": "gemini",
+      "streamed": true,
+      "body": "data: {\"error\":{\"code\":503}}\n\n",
+      "accepted": false
+    },
+    {
+      "name": "gemini terminal error",
+      "family": "gemini",
+      "streamed": false,
+      "body": "{\"candidates\":[{\"finishReason\":\"MALFORMED_FUNCTION_CALL\"}]}",
+      "accepted": false
+    },
+    {
+      "name": "gemini explicit block",
+      "family": "gemini",
+      "streamed": false,
+      "body": "{\"promptFeedback\":{\"blockReason\":\"SAFETY\"}}",
+      "accepted": true
+    },
+    {
+      "name": "gemini whole terminal",
+      "family": "gemini",
+      "streamed": false,
+      "body": "{\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"Done.\"}]},\"finishReason\":\"STOP\"}]}",
+      "accepted": true
+    },
+    {
+      "name": "gemini whole missing terminal",
+      "family": "gemini",
+      "streamed": false,
+      "body": "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Partial.\"}]}}]}",
+      "accepted": false
+    }
+  ]
+}

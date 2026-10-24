@@ -25,6 +25,7 @@
  * changed and nothing else.
  */
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
+import type {StoredChat} from './storage/chat'
 import type { ChatPlan } from './planning/model'
 import type { HeldImage } from './images'
 
@@ -74,21 +75,23 @@ export interface AITarget {
 }
 
 /** A chat, as Plan mode reads and writes it: the members `planning/tools.ts` touches. */
-export interface Chat {
+export interface Chat extends StoredChat {
   id: string
   interaction?: 'plan' | 'work'
   plans?: ChatPlan[]
-  pack?: { path: string }
-  graph?: { path: string }
+  pack?: { id:string } | { path: string }
+  graph?: { id:string } | { path: string }
   input?: { id: string }
 }
 
 /** The host's chat store, as Plan mode uses it. */
-export interface ChatStore {
-  getSnapshot(): { chats: Chat[]; drafts: Chat[] }
-  update(id: string, patch: { interaction?: 'plan' | 'work'; plans?: ChatPlan[] }): void
-  checkpoint(signal?: AbortSignal): Promise<unknown>
-  readonly running: string | undefined
+export type {ChatStore} from './storage/chat'
+/** Explicit legacy adapter input only; the current ChatStore is async and revision checked. */
+export interface LegacyChatStore {
+ getSnapshot():{chats:Chat[];drafts:Chat[]}
+ update(id:string,patch:{interaction?:'plan'|'work';plans?:ChatPlan[]}):void
+ checkpoint(signal?:AbortSignal):Promise<unknown>
+ readonly running:string|undefined
 }
 
 /** A saved file's revision, as Plan mode pins it. */

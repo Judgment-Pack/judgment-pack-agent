@@ -293,7 +293,8 @@
         "propose_edit",
         "propose_delete",
         "propose_insert",
-        "undo_edit"
+        "undo_edit",
+        "complete_plan_step"
       ]
     },
     "criticTools": {
@@ -774,7 +775,7 @@
                 "properties": {
                   "reason": {
                     "type": "string",
-                    "description": "Why a review of this run’s proposal is wanted, in one sentence."
+                    "description": "Why a review of this run\u2019s proposal is wanted, in one sentence."
                   }
                 }
               }

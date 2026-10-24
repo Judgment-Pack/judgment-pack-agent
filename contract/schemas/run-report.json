@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-report.json",
+  "title": "Run report",
+  "description": "Version 1 canonical presentation of recorded terminal checkpoint facts. Arrays retain their recorded order; absent optional data stays absent. No inferred totals, timings, prices, or provider facts. A pure projector and a bounded validated-prefix builder produce the same report.",
+  "type": "object",
+  "required": [
+    "version",
+    "checkpointVersion",
+    "id",
+    "phase",
+    "status",
+    "unit",
+    "used",
+    "limit",
+    "grants",
+    "plan",
+    "explanation"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "checkpointVersion": {
+      "$ref": "checkpoint.json#/properties/version"
+    },
+    "id": {
+      "$ref": "checkpoint.json#/properties/id"
+    },
+    "phase": {
+      "$ref": "checkpoint.json#/properties/phase"
+    },
+    "status": {
+      "enum": [
+        "complete",
+        "stopped"
+      ]
+    },
+    "unit": {
+      "$ref": "checkpoint.json#/properties/unit"
+    },
+    "used": {
+      "$ref": "checkpoint.json#/properties/used"
+    },
+    "limit": {
+      "$ref": "checkpoint.json#/properties/limit"
+    },
+    "requestCap": {
+      "$ref": "checkpoint.json#/properties/requestCap"
+    },
+    "grants": {
+      "$ref": "checkpoint.json#/properties/grants"
+    },
+    "reason": {
+      "$ref": "checkpoint.json#/properties/reason"
+    },
+    "explanation": {
+      "$ref": "checkpoint.json#/properties/explanation"
+    },
+    "prompts": {
+      "$ref": "checkpoint.json#/properties/prompts"
+    },
+    "sources": {
+      "$ref": "checkpoint.json#/properties/sources"
+    },
+    "sourceIdentities": {
+      "$ref": "checkpoint.json#/properties/sourceIdentities"
+    },
+    "skills": {
+      "$ref": "checkpoint.json#/properties/skills"
+    },
+    "critic": {
+      "$ref": "checkpoint.json#/properties/critic"
+    },
+    "delegation": {
+      "$ref": "checkpoint.json#/properties/delegation"
+    },
+    "usage": {
+      "$ref": "checkpoint.json#/properties/usage"
+    },
+    "childUsage": {
+      "$ref": "checkpoint.json#/properties/childUsage"
+    },
+    "failover": {
+      "$ref": "checkpoint.json#/properties/failover"
+    },
+    "completions": {
+      "$ref": "checkpoint.json#/properties/completions"
+    },
+    "plan": {
+      "$ref": "checkpoint.json#/properties/plan"
+    },
+    "planState": {
+      "$ref": "checkpoint.json#/properties/planState"
+    }
+  },
+  "additionalProperties": false
+}

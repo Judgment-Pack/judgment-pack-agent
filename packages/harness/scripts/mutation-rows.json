@@ -6350,6 +6350,268 @@
    "status": "caught",
    "origin": "agent#198",
    "note": "Go twin: go/adapter/agent/agent.go; remove the terminal check before response_recovery and require TestProposalNumericAgentTerminalRecovery to fail its owning assertions (R203-1)."
+  },
+  {
+   "name": "storage foundation run CAS",
+   "file": "storage/run.ts",
+   "find": "if((held?.head.revision??null)!==frozen.expectedRevision)throw new StorageConflict(frozen.expectedRevision,held?.head.revision??null)",
+   "replace": "void frozen.expectedRevision",
+   "tests": [
+    "storage/storage.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#159/#179/#158"
+  },
+  {
+   "name": "storage foundation idempotency content",
+   "file": "storage/run.ts",
+   "find": "if(!identical(prior.input,frozen))throw new StorageCommitMismatch();",
+   "replace": "void frozen;",
+   "tests": [
+    "storage/storage.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#159/#179/#158"
+  },
+  {
+   "name": "storage foundation byte copies",
+   "file": "storage/common.ts",
+   "find": "const out=new Uint8Array(value)",
+   "replace": "const out=value",
+   "tests": [
+    "storage/storage.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#159/#179/#158"
+  },
+  {
+   "name": "storage foundation logical scope replay",
+   "file": "storage/writer.ts",
+   "find": "row.kind===kind&&row.fingerprint===fingerprint",
+   "replace": "row.kind===kind",
+   "tests": [
+    "storage/writer.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#159/#179/#158"
+  },
+  {
+   "name": "storage foundation exact prepared bytes",
+   "file": "storage/writer.ts",
+   "find": "safeRequest(pending.request);return pending.request",
+   "replace": "safeRequest(pending.request);return request",
+   "tests": [
+    "storage/writer.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#159/#179/#158"
+  },
+  {
+   "name": "storage foundation receipt acknowledgement",
+   "file": "storage/writer.ts",
+   "find": "if(!receipt||receipt.commitId!==commitId||!storageId(receipt.revision)||receipt.revision===this.revision||receipt.cursor!==null&&!storageId(receipt.cursor)||output&&receipt.cursor===null)throw new StorageAcknowledgementInvalid()",
+   "replace": "void receipt",
+   "tests": [
+    "storage/writer.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#159/#179/#158"
+  },
+  {
+   "name": "storage foundation recursive record bound",
+   "file": "recordReader.ts",
+   "find": "if(recordDepth>4)return invalid()",
+   "replace": "void recordDepth",
+   "tests": [
+    "storage/writer.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#159/#179/#158"
+  },
+  {
+   "name": "storage foundation artifact content pin",
+   "file": "planning/references.ts",
+   "find": "if(pin!==undefined&&pin!==found.digest)throw new PlanReferenceChanged()",
+   "replace": "void pin",
+   "tests": [
+    "storage/planning.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#159/#179/#158"
+  },
+  {
+   "name": "storage foundation invocation release scope",
+   "file": "storage/release.ts",
+   "find": "!live||token!==invocation||acknowledged",
+   "replace": "!live||acknowledged",
+   "tests": [
+    "storage/engines.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#159/#179/#158"
+  },
+  {
+   "name": "run report carries each intended recorded source",
+   "file": "runReport.ts",
+   "find": "if(Object.hasOwn(checkpoint,name))out[name]",
+   "replace": "if(name!=='prompts'&&Object.hasOwn(checkpoint,name))out[name]",
+   "tests": [
+    "runReport.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#157",
+   "note": "Matched Go twin in go/context/run_report.go: ProjectRunReport skips prompts; TestRunReportSharedVectors fails."
+  },
+  {
+   "name": "run report supplied pages match the terminal head cursor",
+   "file": "runReport.ts",
+   "find": "if(last!==head.cursor||root!==expected)",
+   "replace": "if(false&&last!==head.cursor||root!==expected)",
+   "tests": [
+    "runReport.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#157",
+   "note": "Matched Go twin in go/context/run_report.go: BuildRunReport removes last/head cursor equality; TestRunReportPrefixRefusals/5 fails."
+  },
+  {
+   "name": "run report supplied pages refuse repeated opaque cursors",
+   "file": "runReport.ts",
+   "find": "||cursors.has(row.cursor)",
+   "replace": "||false&&cursors.has(row.cursor)",
+   "tests": [
+    "runReport.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#157",
+   "note": "Matched Go twin in go/context/run_report.go: BuildRunReport removes duplicate cursor membership; TestRunReportPrefixRefusals/4 fails."
+  },
+  {
+   "name": "run report supplied pages retain at most 400 events",
+   "file": "runReport.ts",
+   "find": "if(++count>MAX_RUN_REPORT_EVENTS)",
+   "replace": "if(false&&++count>MAX_RUN_REPORT_EVENTS)",
+   "tests": [
+    "runReport.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#157",
+   "note": "Matched Go twin in go/context/run_report.go: BuildRunReport removes count bound; TestRunReportOverflow fails."
+  },
+  {
+   "name": "run report supplied pages refuse retained byte overflow by name",
+   "file": "runReport.ts",
+   "find": "if(bytes>MAX_RUN_REPORT_BYTES)",
+   "replace": "if(false&&bytes>MAX_RUN_REPORT_BYTES)",
+   "tests": [
+    "runReport.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#157",
+   "note": "Matched Go twin in go/context/run_report.go: BuildRunReport removes retained-byte bound; TestRunReportOverflow fails its exact overflow type assertion."
+  },
+  {
+   "name": "run report supplied checkpoint events pass semantic validation",
+   "file": "runReport.ts",
+   "find": "if(!readExecution(event.checkpoint)||event.checkpoint.id!==scope.execution)",
+   "replace": "if(false&&!readExecution(event.checkpoint)||event.checkpoint.id!==scope.execution)",
+   "tests": [
+    "runReport.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#157",
+   "note": "Matched Go twin in go/context/run_report.go: BuildRunReport removes ReadExecution error check; TestRunReportPrefixRefusals/13 fails."
+  },
+  {
+   "name": "task ids remain package allocated and unreused",
+   "file": "execution/plan.ts",
+   "find": "if(input.id!==undefined&&(!old.has(input.id)||seen.has(input.id)))",
+   "replace": "if(false&&input.id!==undefined&&(!old.has(input.id)||seen.has(input.id)))",
+   "tests": [
+    "execution/plan.test.ts",
+    "execution/planActions.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#180/#181/#182",
+   "note": "Matched Go twin in go/context/plan.go removes `if input.Has(\"id\") && (old[id] == nil || seen[id]) {` using `if false && input.Has(\"id\") && (old[id] == nil || seen[id]) {`. Both focused plan test assertions fail under the individual removal; no build-only failure receives credit."
+  },
+  {
+   "name": "task revision diffs retain at most forty changes",
+   "file": "execution/plan.ts",
+   "find": "if(diff.length>PLAN_DIFF_LIMIT)",
+   "replace": "if(false&&diff.length>PLAN_DIFF_LIMIT)",
+   "tests": [
+    "execution/plan.test.ts",
+    "execution/planActions.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#180/#181/#182",
+   "note": "Matched Go twin in go/context/plan.go removes `if diff.Len() > PlanDiffLimit {` using `if false && diff.Len() > PlanDiffLimit {`. Both focused plan test assertions fail under the individual removal; no build-only failure receives credit."
+  },
+  {
+   "name": "task revision history retains at most thirty-two records",
+   "file": "execution/plan.ts",
+   "find": "if(state.history.length>PLAN_HISTORY_LIMIT)",
+   "replace": "if(false&&state.history.length>PLAN_HISTORY_LIMIT)",
+   "tests": [
+    "execution/plan.test.ts",
+    "execution/planActions.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#180/#181/#182",
+   "note": "Matched Go twin in go/context/plan.go removes `if history.Len() > PlanHistoryLimit {` using `if false && history.Len() > PlanHistoryLimit {`. Both focused plan test assertions fail under the individual removal; no build-only failure receives credit."
+  },
+  {
+   "name": "task terminal states require the completion action",
+   "file": "execution/plan.ts",
+   "find": "if(!closure&&",
+   "replace": "if(false&&!closure&&",
+   "tests": [
+    "execution/plan.test.ts",
+    "execution/planActions.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#180/#181/#182",
+   "note": "Matched Go twin in go/context/plan.go removes `if (len(closure) == 0 || !closure[0]) &&` using `if false && (len(closure) == 0 || !closure[0]) &&`. Both focused plan test assertions fail under the individual removal; no build-only failure receives credit."
+  },
+  {
+   "name": "task completion binds the exact current content revision",
+   "file": "execution/planActions.ts",
+   "find": "if(args.expectedRevision!==current.planState.revision)",
+   "replace": "if(false&&args.expectedRevision!==current.planState.revision)",
+   "tests": [
+    "execution/plan.test.ts",
+    "execution/planActions.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#180/#181/#182",
+   "note": "Matched Go twin in go/context/plan_actions.go removes `if planText(args.Get(\"expectedRevision\")) != planText(state.Get(\"revision\")) {` using `if false && planText(args.Get(\"expectedRevision\")) != planText(state.Get(\"revision\")) {`. Both focused plan test assertions fail under the individual removal; no build-only failure receives credit."
+  },
+  {
+   "name": "task completion binds the active step id",
+   "file": "execution/planActions.ts",
+   "find": "if(!active||active.id!==args.id)",
+   "replace": "if(!active)",
+   "tests": [
+    "execution/plan.test.ts",
+    "execution/planActions.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#180/#181/#182",
+   "note": "Matched Go twin in go/context/plan_actions.go removes `if active == nil || planText(active.Get(\"id\")) != planText(args.Get(\"id\")) {` using `if active == nil {`. Both focused plan test assertions fail under the individual removal; no build-only failure receives credit."
+  },
+  {
+   "name": "task completion requires successful acknowledged results",
+   "file": "execution/planActions.ts",
+   "find": "op.state!=='result'",
+   "replace": "false&&op.state!=='result'",
+   "tests": [
+    "execution/plan.test.ts",
+    "execution/planActions.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#180/#181/#182",
+   "note": "Matched Go twin in go/context/plan_actions.go removes `d.State != \"result\"` using `false && d.State != \"result\"`. Both focused plan test assertions fail under the individual removal; no build-only failure receives credit."
   }
  ]
 }

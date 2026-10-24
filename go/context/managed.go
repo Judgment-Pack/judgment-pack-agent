@@ -62,7 +62,7 @@ type Boundary struct {
 func NewBoundary(run *Run) *Boundary {
 	tracked := false
 	if run.Session.Context != nil {
-		tracked = run.Session.Context.CurrentRequest != nil || run.Session.Context.Execution != nil
+		tracked = run.Session.Context.Persistence != nil || run.Session.Context.CurrentRequest != nil || run.Session.Context.Execution != nil
 	}
 	return &Boundary{run: run, tracked: tracked, held: map[string]bool{}, heldByName: map[string]int{}, deliveredNames: map[string]string{}}
 }
@@ -118,6 +118,11 @@ func (b *Boundary) notices() []contract.RunEvent {
 		}
 		// Only guard-generated labels remain; do not scan replacement holes again.
 		out = append(clean, g.TakeNotices()...)
+	}
+	for _, notice := range out {
+		if notice.ApprovalRequested != nil {
+			b.requested = notice.ApprovalRequested.CallID
+		}
 	}
 	return out
 }
@@ -223,9 +228,9 @@ func (b *Boundary) event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 	// refused request's error, or a pause of its own all end it paused, with the checkpoint durable
 	// and no error.
 	if context.Execution.ApprovalAsked() && (event.End != nil || event.Error != nil || event.BudgetPaused != nil) {
-		asked := *context.Execution.State().Approval
-		if b.requested != asked.CallID {
-			out = append(out, *ApprovalRequested(asked))
+		notice, err := context.Execution.ApprovalNotice()
+		if err == nil && notice.ApprovalRequested != nil && b.requested != notice.ApprovalRequested.CallID {
+			out = append(out, notice)
 		}
 		b.paused = true
 		context.Execution.MutateCheckpoint(CheckpointPatch{"Status": "paused"})
@@ -447,12 +452,23 @@ func currentEvents(events []contract.RunEvent) []contract.RunEvent {
 	}
 	return events
 }
-func (b *Boundary) Open() []contract.RunEvent { return currentEvents(b.open()) }
+func (b *Boundary) persist(events []contract.RunEvent) ([]contract.RunEvent, bool) {
+	output, err := b.run.Context.PersistEvents(events)
+	if err != nil {
+		b.failed = true
+		b.ended = true
+		return append(output, currentEvents([]contract.RunEvent{failure.Event(err, "storage"), {End: &contract.RunEventEnd{Type: "end"}}})...), true
+	}
+	return output, false
+}
+func (b *Boundary) Open() []contract.RunEvent { output, _ := b.persist(b.open()); return output }
 func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 	events, stop := b.event(event)
-	return currentEvents(events), stop
+	output, failed := b.persist(events)
+	return output, stop || failed
 }
 func (b *Boundary) Failed(cause error) []contract.RunEvent {
-	return currentEvents(b.failureEvents(cause))
+	output, _ := b.persist(b.failureEvents(cause))
+	return output
 }
 func FailedToOpen(cause error) []contract.RunEvent { return currentEvents(failedToOpen(cause)) }

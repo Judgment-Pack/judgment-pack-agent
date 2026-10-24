@@ -262,10 +262,10 @@ func ValidTaskSteps(value *Value) bool {
 	}
 	running := 0
 	for _, step := range value.Items() {
-		if !isObject(step) || !isText(step.Get("step"), 1000) || strings.TrimSpace(step.Get("step").Str()) == "" {
+		if !isObject(step) || !hasOnly(step,"id","step","status","detail","origin","evidence","notNeededReason") || !validRecordedStep(step) || step.Has("id")&&!planStepID(step.Get("id")) || !isText(step.Get("step"), 1000) || strings.TrimSpace(step.Get("step").Str()) == "" {
 			return false
 		}
-		if !oneOf(step.Get("status"), "pending", "in_progress", "completed") {
+		if !oneOf(step.Get("status"), "pending", "in_progress", "completed", "not-needed") {
 			return false
 		}
 		if detail := step.Get("detail"); detail != nil && !isText(detail, 1500) {
@@ -299,6 +299,7 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 		!oneOf(value.Get("unit"), "model-requests", "provider-managed") {
 		return nil, errSavedExecution
 	}
+	if !validPlanState(value.Get("plan"),value.Get("planState")){return nil,errSavedExecution}
 	metadata := value.Has("schema") || value.Has("digest") || value.Has("retainUntil")
 	if metadata && !ValidRecordHeader(value, CheckpointSchema) {
 		return nil, errSavedExecution
@@ -344,6 +345,9 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 	}
 	if figures := value.Get("delegation"); figures != nil && !ValidDelegationFigures(figures, value.Get("unit").Str()) {
 		return nil, errSavedExecution
+	}
+	if durable := value.Get("durable"); durable != nil && !ValidDurable(durable) {
+		return nil, failure.ToolInput("The saved execution is not valid.")
 	}
 	if handoff := value.Get("handoff"); handoff != nil && !ValidHandoff(handoff) {
 		return nil, errSavedExecution

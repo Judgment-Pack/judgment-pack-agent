@@ -48,16 +48,18 @@ function matches(graph:Graph,file:string,s:Shape,v:unknown):boolean{
  return true
 }
 /** Structural validation is bounded and follows the selected version's frozen member inventory. */
-export function checkRecord(kind:RecordKind,value:unknown):void {
+export function checkRecord(kind:RecordKind,value:unknown):void {checkRecordDepth(kind,value,0)}
+function checkRecordDepth(kind:RecordKind,value:unknown,recordDepth:number):void {
  if(!Object.hasOwn(RECORD_VERSIONS,kind))return invalid()
  if(kind==='checkpoint'&&new TextEncoder().encode(JSON.stringify(value)).length>4*1024*1024)return invalid()
  const version=versionOf(kind,value)
+ if(recordDepth>4)return invalid()
  const graph=(version===0||kind==='checkpoint'&&version===1?shapes.historical:shapes.current) as unknown as Graph
  let work=0
  function walk(file:string,s:Shape,v:unknown,path:string,depth:number):void{
   if(++work>200000||depth>64)return invalid()
   const ref=s.$ref
-  if(ref==='checkpoint.json'&&path){checkRecord('checkpoint',v);return}
+  if(ref==='checkpoint.json'&&path){checkRecordDepth('checkpoint',v,recordDepth+1);return}
   if(ref==='tool-result.json#/$defs/mcpToolResult')return // declared host/provider payload, kept whole
   ;[file,s]=resolve(graph,file,s)
   if(!matches(graph,file,s,v))return invalid()
@@ -83,6 +85,11 @@ export function checkRecord(kind:RecordKind,value:unknown):void {
   }
  }
  walk(files[kind],graph[files[kind]]!,value,'',0)
+ if(kind==='event'&&object(value)&&value.type==='approval_requested'){
+  if(value.purpose==='plan-drift'){if(!object(value.plan)||['name','tool','source','args'].some(k=>Object.hasOwn(value,k)))invalid()}
+  else if(value.plan!==undefined||!['name','tool','source','args'].every(k=>Object.hasOwn(value,k)))invalid()
+ }
+
  if(kind==='event'&&(!object(value)||typeof value.type!=='string'||!shapes.current['run-event.json'].properties.type.enum.includes(value.type as never)))invalid()
 }
 /** Decode supported wire records without upgrading their bytes, version or metadata. */

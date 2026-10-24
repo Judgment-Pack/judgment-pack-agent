@@ -359,6 +359,9 @@ func (t *turnState) refuseReview(name string, args json.RawMessage) runcontext.T
 // dispatch is one call, wherever it was made, through the same dispatch and so the same gate: only
 // a name this phase offered is looked up.
 func (t *turnState) dispatch(ctx context.Context, name string, args json.RawMessage, offered map[string]bool) (ran, error) {
+	if err := t.r.sc.PlanApprovalRefusal(name); err != nil {
+		return bare(failed(err)), nil
+	}
 	if unparsed := unparsedArguments(args); unparsed != "" {
 		// Arguments that were not a JSON object: nothing is run, and the model is told why.
 		result := failed(failure.ToolInput("The call’s arguments are not a JSON object; nothing was run. Call the tool again with an object of its arguments."))

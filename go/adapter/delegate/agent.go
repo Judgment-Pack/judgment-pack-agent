@@ -3,7 +3,9 @@ package delegate
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter"
@@ -153,6 +155,15 @@ func (a *account) released(ctx context.Context) error {
 	}
 }
 
+func (c *coordinator) released(ctx context.Context) error {
+	if err := c.account.released(ctx); err != nil {
+		return err
+	}
+	c.emitMu.Lock()
+	defer c.emitMu.Unlock()
+	return c.releaseFailure
+}
+
 // tracked is the host's function with each call held on the account until it returns, and a
 // child's first event or tool call noted as its first byte.
 func (c *coordinator) tracked(run adapter.AgentRun, m *meter) adapter.AgentRun {
@@ -170,8 +181,53 @@ func (c *coordinator) tracked(run adapter.AgentRun, m *meter) adapter.AgentRun {
 				return tool(ctx, call)
 			}
 		}
-		return run(ctx, request, callbacks)
+		strict := c.run.Context != nil && c.run.Context.Persistence != nil && c.run.Context.Persistence.Writer.Store.Durability() != runcontext.RunStoreSingleWriterCallback
+		capability, finish := adapter.ProviderReleaseAttempt()
+		callbacks.ProviderRelease = capability
+		var delegated atomic.Bool
+		delegates := map[string]bool{}
+		for _, tool := range request.Tools {
+			if strings.HasPrefix(tool.Description, "delegate_tasks:") {
+				delegates[tool.Name] = true
+			}
+		}
+		callback := callbacks.Tool
+		callbacks.Tool = func(ctx context.Context, call adapter.AgentToolCall) (adapter.AgentToolAnswer, error) {
+			if delegates[call.Name] {
+				delegated.Store(true)
+			}
+			return callback(ctx, call)
+		}
+		err := run(ctx, request, callbacks)
+		acknowledged := finish()
+		if strict && !acknowledged && (m != nil || delegated.Load() || ctx.Err() != nil) {
+			problem := &runcontext.ProviderReleaseUnknown{}
+			c.emitMu.Lock()
+			c.releaseFailure = problem
+			if c.fatal == nil {
+				c.fatal = problem
+			}
+			c.emitMu.Unlock()
+			return problem
+		}
+		return err
 	}
+}
+
+func (c *coordinator) admitRecoveredRun(ctx context.Context, task *contract.DelegatedTask) error {
+	if c.run.Context != nil && c.run.Context.Persistence != nil {
+		binding := *c.run.Context.Persistence
+		if task != nil {
+			binding.Scope = runcontext.DurableScope{Execution: task.ID, Role: "author", Task: task.ID}
+		}
+		if scope, ok := runcontext.DurableDispatchScope(ctx); ok && scope.Execution == binding.Scope.Execution && scope.Task == binding.Scope.Task {
+			binding.Scope.Role = scope.Role
+		}
+		if runcontext.RecoveringDurableRequest(&binding, "agent") {
+			return nil
+		}
+	}
+	return c.admitRun(task)
 }
 
 // parentAgent is the parent's capability: the host's function tracked on the account, and each
@@ -180,10 +236,10 @@ func (c *coordinator) parentAgent() *adapter.Agent {
 	held := adapter.AdmissionAgent(c.run.Agent)
 	held.Run = c.tracked(held.Run, nil)
 	held.Begin = func(ctx context.Context, _ adapter.AgentRequest) error {
-		if err := c.account.released(ctx); err != nil {
+		if err := c.released(ctx); err != nil {
 			return err
 		}
-		if err := c.admitRun(nil); err != nil {
+		if err := c.admitRecoveredRun(ctx, nil); err != nil {
 			return err
 		}
 		c.emitMu.Lock()
@@ -202,13 +258,13 @@ func (c *coordinator) parentAgent() *adapter.Agent {
 func (c *coordinator) childAgent(task *contract.DelegatedTask, model string, m *meter, base *adapter.Agent, definition *runcontext.Subagent) *adapter.Agent {
 	return &adapter.Agent{Family: base.Family, Tiers: base.Tiers, Model: base.Model, Enabled: base.Enabled, Delegated: model, Run: c.tracked(base.Run, m),
 		Begin: func(ctx context.Context, _ adapter.AgentRequest) error {
-			if err := c.account.released(ctx); err != nil {
+			if err := c.released(ctx); err != nil {
 				return err
 			}
 			if definition != nil && c.childRuns(task.ID) >= int(definition.Bounds.AgentRuns) {
 				return failure.ToolInput("The declared sub-agent invocation bound was reached.")
 			}
-			if err := c.admitRun(task); err != nil {
+			if err := c.admitRecoveredRun(ctx, task); err != nil {
 				return err
 			}
 			c.edit(func() { task.Attempts++ })
@@ -283,6 +339,11 @@ func (c *coordinator) save(ctx context.Context) error {
 			return failure.Err("storage", "storage", "not-started")
 		}
 	}
+	if c.run.Context != nil && c.run.Context.Persistence != nil {
+		if saved := c.run.Context.Persistence.Writer.Checkpoint(); saved != nil {
+			state = *saved
+		}
+	}
 	c.emitMu.Lock()
 	c.parentCheckpoint = &state
 	c.emitMu.Unlock()
@@ -299,12 +360,13 @@ func (c *coordinator) isTracked() bool {
 // handoff is the delegation handoff in progress (checkpoint.json#/$defs/handoff), its tasks the live
 // records. Guarded by emitMu; the records by taskMu.
 type handoff struct {
-	callID  string
-	batch   int
-	state   string
-	request contract.DelegatedTaskRequest
-	tasks   []*contract.DelegatedTask
-	answer  *contract.DelegatedTaskAnswer
+	callID       string
+	batch        int
+	state        string
+	request      contract.DelegatedTaskRequest
+	tasks        []*contract.DelegatedTask
+	answer       *contract.DelegatedTaskAnswer
+	continuation string
 }
 
 // handoffRecord is the handoff as the checkpoint carries it, or nil.
@@ -315,6 +377,9 @@ func (c *coordinator) handoffRecord() *contract.CheckpointHandoff {
 	if held != nil {
 		out = &contract.CheckpointHandoff{CallID: held.callID, Batch: int64(held.batch), State: held.state, Request: held.request,
 			Tasks: []contract.DelegatedTask{}, Answer: held.answer}
+		if held.continuation != "" {
+			out.Continuation = strPtr(held.continuation)
+		}
 	}
 	tasks := []*contract.DelegatedTask(nil)
 	if held != nil {
@@ -350,11 +415,15 @@ func (c *coordinator) restore(saved *contract.Checkpoint) *handoff {
 	var pending *handoff
 	if record := saved.Handoff; record != nil {
 		pending = &handoff{callID: record.CallID, batch: int(record.Batch), state: record.State, request: record.Request, answer: record.Answer}
+		if record.Continuation != nil {
+			pending.continuation = *record.Continuation
+		}
 		for at := range record.Tasks {
 			task := record.Tasks[at]
 			pending.tasks = append(pending.tasks, &task)
 		}
 	}
+
 	report := saved.Delegation
 	if report == nil {
 		return pending
@@ -443,6 +512,10 @@ func (c *coordinator) driveAgent(ctx context.Context) {
 	}
 	for {
 		if pending != nil && (pending.state == "released" || pending.state == "children") {
+			if err := c.durable(ctx); err != nil {
+				fail(err)
+				return
+			}
 			answer, err := c.agentBatch(ctx, pending)
 			if ctx.Err() != nil {
 				return
@@ -452,21 +525,18 @@ func (c *coordinator) driveAgent(ctx context.Context) {
 				return
 			}
 			if err != nil {
-				// Refused before any child was dispatched: the refusal is the call's result, and the
-				// handoff is over.
-				c.setHandoff(nil)
-				pending = nil
 				text, _ := failure.ToolFailure(err)
-				continued = "\n\n" + turn.Continuation + "\n" + runcontext.FrameData(turn.DelegateTool, string(runcontext.String(text).JSON()), runcontext.DataMarker())
-			} else {
-				c.emitMu.Lock()
-				pending.answer = &answer
-				pending.state = "answered"
-				c.emitMu.Unlock()
-				if err := c.durable(ctx); err != nil {
-					fail(err)
-					return
-				}
+				answer = contract.DelegatedTaskAnswer{Tasks: []contract.DelegatedTaskAnswerTask{}, Note: text}
+			}
+			c.emitMu.Lock()
+			pending.answer = &answer
+			encoded, _ := json.Marshal(answer)
+			pending.continuation = "\n\n" + turn.Continuation + "\n" + runcontext.FrameData(turn.DelegateTool, string(encoded), runcontext.DataMarker())
+			pending.state = "answered"
+			c.emitMu.Unlock()
+			if err := c.durable(ctx); err != nil {
+				fail(err)
+				return
 			}
 			c.emitMu.Lock()
 			last := c.parentCheckpoint
@@ -474,8 +544,11 @@ func (c *coordinator) driveAgent(ctx context.Context) {
 			execution = last
 		}
 		if pending != nil && pending.answer != nil {
-			encoded, _ := json.Marshal(pending.answer)
-			continued = "\n\n" + turn.Continuation + "\n" + runcontext.FrameData(turn.DelegateTool, string(encoded), runcontext.DataMarker())
+			if pending.continuation == "" {
+				fail(&runcontext.ContinuationNotRecoverable{})
+				return
+			}
+			continued = pending.continuation
 		}
 		request, callID, ended := c.parentInvocation(ctx, execution, continued)
 		if ended {

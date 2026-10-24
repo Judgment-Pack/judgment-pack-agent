@@ -123,7 +123,7 @@ const LEGS: AnswerAs[] = ['stream', 'whole']
 
 /** The Runtime's six tools the gate serves, and the six the harness adds to every conversation. */
 const RUNTIME_SIX = ['get_schema', 'list_examples', 'get_example', 'validate', 'experimental_evaluate', 'experimental_test_cases']
-const CONTEXT_SIX = ['list_context', 'read_context', 'read_window', 'search', 'update_plan', 'request_budget_increase']
+const CONTEXT_SIX = ['list_context', 'read_context', 'read_window', 'search', 'update_plan', 'complete_plan_step', 'request_budget_increase']
 /** ADR-0010: the model's ask for a review, which the author's run is offered under auto, the table's default. */
 const REVIEW_ASK = REQUEST_REVIEW
 const sorted = (names: string[]) => [...names].sort()

@@ -1,0 +1,24 @@
+{
+  "schema": "run-report.json",
+  "description": "Handwritten v1 report expectations: absent facts, recorded empty facts, explicit zero counts and every intended source. Checkpoint inputs add only the required internal request/context shell. Nested types are the checkpoint types, never redefined here.",
+  "source": {"harness": {"repository": "Judgment-Pack/judgment-pack-agent", "package": "packages/harness"}, "files": ["packages/harness/runReport.ts", "go/context/run_report.go"]},
+  "items": [
+    {"version":1,"checkpointVersion":1,"id":"report-minimal","phase":"plan","status":"stopped","unit":"provider-managed","used":0,"limit":1,"grants":[],"plan":[],"explanation":""},
+    {
+      "version":1,"checkpointVersion":2,"id":"report-complete","phase":"work","status":"complete","unit":"model-requests","used":2,"limit":20,"requestCap":20,"grants":[],"reason":"","explanation":"Recorded verification complete.",
+      "prompts":[{"request":1,"sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},{"request":2,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],
+      "sources":[{"source":"runtime","kind":"runtime","calls":0,"refused":0,"proposed":0,"bytes":0,"milliseconds":0},{"source":"tracker","kind":"mcp","calls":1,"refused":0,"proposed":1,"bytes":12,"milliseconds":3,"skills":1,"identities":[{"identity":{"kind":"service","label":"Tracker service"},"calls":1}]}],
+      "sourceIdentities":[{"source":"tracker","identityDigest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","withheld":false,"serviceAsked":true}],
+      "skills":[{"id":"review-skill","digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","bytes":0,"loadedAt":"2026-10-01T00:00:00.000Z"},{"id":"first-skill","digest":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","bytes":8,"loadedAt":"2026-10-01T00:00:01.000Z"}],
+      "critic":{"mode":"auto","ran":true,"reason":"model-asked","reasoning":"on","trigger":"model-asked"},
+      "delegation":{"batches":[{"batch":1,"children":[{"task":"00000000-0000-0000-0000-000000000001","batch":1,"profile":"analyze","model":"child-fixture","state":"complete","modelRequests":1,"toolCalls":0,"tokens":{"inputTokens":0},"firstByteMs":0,"durationMs":4}],"total":{"modelRequests":1,"toolCalls":0,"tokens":{"inputTokens":0},"durationMs":4}}],"parent":{"model":"parent-fixture","modelRequests":2,"tokens":{"outputTokens":0}}},
+      "usage":{"rows":[{"source":"model","connection":"backup","role":"author","model":"parent-fixture","requests":2,"invocations":0,"milliseconds":0,"bytes":0,"tokens":{"inputTokens":0,"outputTokens":3}}]},
+      "childUsage":[{"id":"child-one","usage":{"rows":[{"source":"model","connection":"primary","role":"child.analyze","requests":1,"invocations":0,"milliseconds":4,"bytes":0,"tokens":{"inputTokens":0}}]}}],
+      "failover":[{"role":"author","connection":"backup","consumed":1,"history":[{"from":"primary","to":"backup","reason":"timeout"}]}],
+      "completions":[{"request":1,"phase":"work","result":{"finishReason":"stop","inputTokens":0,"outputTokens":3},"attempt":1,"connection":"backup","role":"author"}],
+      "plan":[],
+      "planState":{"revision":"sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945","sequence":0,"nextId":1,"discarded":0,"history":[]}
+    },
+    {"version":1,"checkpointVersion":2,"id":"report-empty","phase":"work","status":"complete","unit":"model-requests","used":0,"limit":20,"grants":[],"plan":[],"explanation":"","prompts":[],"sources":[],"sourceIdentities":[],"skills":[],"usage":{"rows":[]},"childUsage":[],"failover":[],"completions":[]}
+  ]
+}

@@ -130,6 +130,7 @@ const REFUSED_FOR_THE_CRITIC = [
   'list_context',
   'read_context',
   'update_plan',
+  'complete_plan_step',
   'request_budget_increase'
 ]
 

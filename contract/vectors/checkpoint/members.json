@@ -49,13 +49,14 @@
     "usage": "controller",
     "failover": "controller",
     "childUsage": "controller",
-    "requestCap": "controller"
+    "requestCap": "controller",
+    "durable": "controller"
   },
   "items": [
     {
       "schema": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/checkpoint.json",
-      "version": 1,
-      "digest": "sha256:f785f4dde1000035a3ed3d47dbf79ad2cf3357263b87ee74b36e579c17a1829b",
+      "version": 2,
+      "digest": "sha256:aa3871460a2fd40e49f72800319f0dd1c69f4bc071a820df25d30b4a6ead9221",
       "retainUntil": "2099-01-01T00:00:00.000Z",
       "id": "member-run",
       "requestKey": "3b0c960691f0932f5358380767d469d78cfa6929ea224133d29d4903eb966b0a",
@@ -328,7 +329,12 @@
           }
         }
       ],
-      "requestCap": 20
+      "requestCap": 20,
+      "durable": {
+        "dispatches": [],
+        "observations": [],
+        "children": []
+      }
     }
   ]
 }
