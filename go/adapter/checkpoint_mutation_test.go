@@ -52,6 +52,7 @@ func checkpointWriteSites(file *ast.File, info *types.Info, initializationOwner 
 	aliases := map[types.Object]origin{}
 
 	receiverAliases := map[types.Object]string{}
+	receiverIdentities := map[ast.Expr]string{}
 	aggregateOwners := map[types.Object]string{}
 	objectIDs := map[types.Object]int{}
 	objectKey := func(object types.Object) string {
@@ -175,6 +176,10 @@ func checkpointWriteSites(file *ast.File, info *types.Info, initializationOwner 
 			}
 		}
 		scopes[node] = scope
+		// Freeze publication receivers in source order, before later reassignments.
+		if expression, ok := node.(ast.Expr); ok {
+			receiverIdentities[expression] = identity(expression)
+		}
 		if statement, ok := node.(*ast.DeferStmt); ok {
 			if fn, ok := statement.Call.Fun.(*ast.FuncLit); ok {
 				deferred[fn] = scope
@@ -251,6 +256,15 @@ func checkpointWriteSites(file *ast.File, info *types.Info, initializationOwner 
 		})
 	}
 	collect(file, file)
+	// Deferred closures read captured receiver variables when their scope exits.
+	for fn := range deferred {
+		ast.Inspect(fn, func(node ast.Node) bool {
+			if expression, ok := node.(ast.Expr); ok {
+				receiverIdentities[expression] = identity(expression)
+			}
+			return true
+		})
+	}
 	type publication struct {
 		scope    ast.Node
 		origin   origin
@@ -275,15 +289,15 @@ func checkpointWriteSites(file *ast.File, info *types.Info, initializationOwner 
 			if selected, ok := call.Fun.(*ast.SelectorExpr); ok {
 				if selection := info.Selections[selected]; selection != nil && selection.Kind() == types.MethodExpr {
 					if len(arguments) > 0 {
-						publishingOwner = identity(arguments[0])
+						publishingOwner = receiverIdentities[arguments[0]]
 						arguments = arguments[1:]
 					}
 				} else {
-					publishingOwner = identity(selected.X)
+					publishingOwner = receiverIdentities[selected.X]
 				}
 			}
 		} else if len(arguments) > 0 {
-			publishingOwner = identity(arguments[0])
+			publishingOwner = receiverIdentities[arguments[0]]
 			arguments = arguments[1:]
 		}
 
@@ -584,6 +598,19 @@ func unknownReceiver(c,d *runcontext.ExecutionController){publisher:=c;approval:
 func chooseState(c *runcontext.ExecutionController)*runcontext.Execution{return c.State()}
 func unknownAggregate(c,d *runcontext.ExecutionController){state:=c.State();state=chooseState(d);approval:=state.Approval;approval.State="answered";c.MutateCheckpoint(runcontext.CheckpointPatch{"Approval":approval})}
 `, []int{3, 5, 7, 9, 11, 13, 15})
+	checkSource("receiver_order.go", `package probe
+import runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
+func wrongThenReassigned(c,d *runcontext.ExecutionController){publisher:=d;approval:=c.State().Approval;approval.State="answered";publisher.MutateCheckpoint(runcontext.CheckpointPatch{"Approval":approval});publisher=c;_ = publisher}
+func correctThenReassigned(c,d *runcontext.ExecutionController){publisher:=c;approval:=c.State().Approval;approval.State="answered";publisher.MutateCheckpoint(runcontext.CheckpointPatch{"Approval":approval});publisher=d;_ = publisher}
+func assignedBeforePublication(c,d *runcontext.ExecutionController){publisher:=d;approval:=c.State().Approval;approval.State="answered";publisher=c;publisher.MutateCheckpoint(runcontext.CheckpointPatch{"Approval":approval});publisher=d;_ = publisher}
+func aliasChain(c,d *runcontext.ExecutionController){first:=c;publisher:=first;first=d;approval:=c.State().Approval;approval.State="answered";publisher.MutateCheckpoint(runcontext.CheckpointPatch{"Approval":approval});_ = first}
+func wrongRawThenReassigned(state,other *runcontext.Execution){publisher:=other;approval:=state.Approval;approval.State="answered";runcontext.MutateCheckpoint(publisher,runcontext.CheckpointPatch{"Approval":approval});publisher=state;_ = publisher}
+func correctRawThenReassigned(state,other *runcontext.Execution){publisher:=state;approval:=state.Approval;approval.State="answered";runcontext.MutateCheckpoint(publisher,runcontext.CheckpointPatch{"Approval":approval});publisher=other;_ = publisher}
+func wrongMethodThenReassigned(c,d *runcontext.ExecutionController){publisher:=d;approval:=c.State().Approval;approval.State="answered";(*runcontext.ExecutionController).MutateCheckpoint(publisher,runcontext.CheckpointPatch{"Approval":approval});publisher=c;_ = publisher}
+func correctMethodThenReassigned(c,d *runcontext.ExecutionController){publisher:=c;approval:=c.State().Approval;approval.State="answered";(*runcontext.ExecutionController).MutateCheckpoint(publisher,runcontext.CheckpointPatch{"Approval":approval});publisher=d;_ = publisher}
+func deferredWrongOwner(c,d *runcontext.ExecutionController){publisher:=c;approval:=c.State().Approval;defer func(){publisher.MutateCheckpoint(runcontext.CheckpointPatch{"Approval":approval})}();approval.State="answered";publisher=d;_ = publisher}
+func deferredCorrectOwner(c,d *runcontext.ExecutionController){publisher:=d;approval:=c.State().Approval;defer func(){publisher.MutateCheckpoint(runcontext.CheckpointPatch{"Approval":approval})}();approval.State="answered";publisher=c;_ = publisher}
+`, []int{3, 7, 9, 11})
 	checkSource("range.go", `package probe
 import runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
 func unpublished(c *runcontext.ExecutionController){operations:=c.State().Operations;for _,operation:=range operations {operation.Status="complete"}}

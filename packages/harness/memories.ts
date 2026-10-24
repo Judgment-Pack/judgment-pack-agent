@@ -49,10 +49,18 @@ export function validMemory(v: unknown): v is Memory {
 export function validMemories(v: unknown): v is Memories {
   return object(v) && exact(v,['proposed','recalled']) && Array.isArray(v.proposed) && v.proposed.length <= 256 && v.proposed.every(m => validMemory(m) && m.state === 'proposed') && Array.isArray(v.recalled) && v.recalled.length <= 256 && v.recalled.every(m => object(m) && exact(m,['id','digest','kind','state']) && identifier(m.id) && digest(m.digest) && kind(m.kind) && state(m.state)) && new Set(v.proposed.map(m=>m.id)).size === v.proposed.length && new Set(v.recalled.map(m=>m.id)).size === v.recalled.length
 }
-export async function recallMemory(value: unknown, bound: number, marker: string): Promise<{ text?: string; rows: MemoryRecall[]; records: Memory[]; bytes: number; now: number }> {
+type RecalledMemory = { text?: string; rows: MemoryRecall[]; records: Memory[]; bytes: number; now: number }
+// Validation evidence stays in this module; structural copies and edited results cannot mint it.
+const validatedRecalls = new WeakMap<RecalledMemory, string>()
+const preparedRecalls = new WeakMap<readonly MemoryRecall[], { prior: string; next: string }>()
+const validatedRecall = (recall: RecalledMemory): RecalledMemory => {
+  validatedRecalls.set(recall, canonicalJSON(recall))
+  return recall
+}
+export async function recallMemory(value: unknown, bound: number, marker: string): Promise<RecalledMemory> {
   const fail = (detail: string): never => { throw authoredFailure('configuration', `The host's memoryFor answer ${detail}; nothing was sent.`, 'context') }
   const now = Date.now()
-  if (value === undefined || value === null) return { rows: [], records: [], bytes: 0, now }
+  if (value === undefined || value === null) return validatedRecall({ rows: [], records: [], bytes: 0, now })
   if (typeof value === 'string') return fail('has an unknown bare-text alias; use a list of closed Memory records')
   if (!Array.isArray(value) || value.length > 256 || !value.every(validMemory)) return fail('is not a list of closed memory records')
   if (new Set(value.map(m=>m.id)).size !== value.length) fail('has duplicate ids')
@@ -64,7 +72,7 @@ export async function recallMemory(value: unknown, bound: number, marker: string
   const bytes = accepted.reduce((sum,m)=>sum+utf8Bytes(canonicalJSON(m)),0)
   if (bytes > bound) fail(`is over memoryBytes (${bound})`)
   const text = accepted.map(m => frameBlock('memory', `kind: ${m.kind}\nsource: ${canonicalJSON(m.source)}\nid: ${JSON.stringify(m.id)}\n${m.text}`, marker)).join('\n\n')
-  return { ...(text ? { text } : {}), rows: accepted.map(({id,digest,kind,state})=>({id,digest,kind,state})), records, bytes, now }
+  return validatedRecall({ ...(text ? { text } : {}), rows: accepted.map(({id,digest,kind,state})=>({id,digest,kind,state})), records, bytes, now })
 }
 const lifecycleFailure = (detail: string): never => { const error=authoredFailure('configuration', `The host's memoryLifecycle answer ${detail}; nothing was sent.`, 'context'); throw new AIFailureError({...error.failure,outcome:'not-started'}) }
 export function readMemoryLifecycle(value: unknown): MemoryLifecycleUpdate[] {
@@ -77,8 +85,14 @@ export function readMemoryLifecycle(value: unknown): MemoryLifecycleUpdate[] {
   if (new Set(rows.map(row => row.id)).size !== rows.length) return lifecycleFailure('has duplicate ids')
   return rows
 }
-/** Prepare both answers against the prior book, never an intermediate lifecycle state. */
+/** Prepare validated recall against the prior book. Keep the original, unedited result for commit. */
 export function nextMemoryRecall(prior: readonly MemoryRecall[], recall: Awaited<ReturnType<typeof recallMemory>>, lifecycle: readonly MemoryLifecycleUpdate[]): MemoryRecall[] {
+  const validated = validatedRecalls.get(recall)
+  if (validated === undefined) lifecycleFailure('does not contain an unedited validated recall')
+  recall = structuredClone(recall)
+  if (validated !== canonicalJSON(recall)) lifecycleFailure('does not contain an unedited validated recall')
+  prior = structuredClone(prior)
+  lifecycle = readMemoryLifecycle(lifecycle)
   const next = structuredClone(prior) as MemoryRecall[]
   const before = new Map(prior.map(row => [row.id, row]))
   const full = new Map(recall.records.map(record => [record.id, record]))
@@ -104,13 +118,19 @@ export function nextMemoryRecall(prior: readonly MemoryRecall[], recall: Awaited
     next.find(row => row.id === update.id)!.state = update.state
   }
   for (const row of recall.rows) if (!before.has(row.id)) next.push(structuredClone(row))
+  preparedRecalls.set(next, { prior: canonicalJSON(prior), next: canonicalJSON(next) })
   return next
 }
-/** One synchronous owner transaction: retain proposals made while host callbacks awaited. */
+/** Commit only the original prepared result; retain proposals made while host callbacks awaited. */
 export function commitMemoryRecall(read: () => ExecutionCheckpoint, write: (patch: CheckpointPatch) => void, expected: readonly MemoryRecall[], next: readonly MemoryRecall[]): void {
   const current = read().memories ?? { proposed: [], recalled: [] }
-  if (canonicalJSON(current.recalled) !== canonicalJSON(expected)) lifecycleFailure('is stale because the recalled report changed')
-  const candidate = structuredClone({ proposed: current.proposed, recalled: [...next] })
+  const expectedJSON = canonicalJSON(expected)
+  if (canonicalJSON(current.recalled) !== expectedJSON) lifecycleFailure('is stale because the recalled report changed')
+  const prepared = preparedRecalls.get(next)
+  if (!prepared) lifecycleFailure('does not contain an unedited prepared recall')
+  const recalled = structuredClone(next) as MemoryRecall[]
+  if (prepared!.prior !== expectedJSON || prepared!.next !== canonicalJSON(recalled)) lifecycleFailure('does not contain an unedited prepared recall')
+  const candidate = structuredClone({ proposed: current.proposed, recalled })
   if (!validMemories(candidate)) lifecycleFailure('produces an invalid or full memory report')
   write({ memories: candidate })
 }
