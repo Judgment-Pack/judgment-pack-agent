@@ -4,7 +4,7 @@ import {validDraft,type DraftCheckpoint} from '../edits'
 import { validMemories, type Memories } from '../memories'
 import {validSubagentRecord} from '../subagents'
 import {readCompletion,type ModelCompletion} from '../completion'
-import {failure,readFailure,type AIFailure} from '../failures'
+import {AIFailureError,failure,readFailure,type AIFailure} from '../failures'
 import type {McpToolResult} from '../engine'
 import {MAX_TURNS} from '../engines/contract'
 import {utf8Bytes} from '../context/policy'
@@ -44,7 +44,7 @@ export const MAX_PROMPT_DIGESTS = 300
 export interface ExecutionCheckpoint {
  schema?:typeof CHECKPOINT_SCHEMA;digest?:string;retainUntil?:string;records?:import("../outputGuard").RecordMarker;
  version:1;id:string;requestKey:string;phase:'plan'|'work';status:'running'|'paused'|'complete'|'stopped';
- unit:'model-requests'|'provider-managed';used:number;limit:number;grants:{from:number;to:number;at:string}[];
+ unit:'model-requests'|'provider-managed';used:number;limit:number;requestCap?:number;grants:{from:number;to:number;at:string}[];
  plan:TaskStep[];explanation:string;operations:Operation[];
  completions?:CompletionRecord[];
  context:{scope:string;entries:RetainedEntry[]};reason?:string;
@@ -180,6 +180,7 @@ const validPolicy=(v:unknown):boolean=>object(v)&&Object.keys(v).length<=512&&Ob
 export function validTaskSteps(value:unknown):value is TaskStep[] {
  return Array.isArray(value)&&value.length>0&&value.length<=20&&value.every(s=>object(s)&&text(s.step,1000)&&!!s.step.trim()&&['pending','in_progress','completed'].includes(String(s.status))&&(s.detail===undefined||text(s.detail,1500)))&&value.filter(s=>s.status==='in_progress').length<=1
 }
+export const validRequestCap=(value:unknown):value is number=>Number.isInteger(value)&&Number(value)>=1&&Number(value)<=MAX_TURNS
 export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value===undefined)return
  const fail=():never=>{throw Error('Saved execution progress is invalid. History was left untouched.')}
@@ -187,7 +188,9 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  const metadata=['schema','digest','retainUntil'].some(name=>Object.hasOwn(value,name))
  if(metadata&&!validRecordHeader(value,CHECKPOINT_SCHEMA))return fail()
  if(!Number.isInteger(value.used)||Number(value.used)<0||!Number.isInteger(value.limit)||Number(value.limit)<1||Number(value.limit)>MAX_REQUEST_ALLOWANCE||Number(value.used)>Number(value.limit)||!Array.isArray(value.grants)||value.grants.length>8)return fail()
- let limit=value.unit==='model-requests'?MAX_TURNS:1
+ const capped=Object.hasOwn(value,'requestCap')
+ if(capped&&(value.unit!=='model-requests'||!validRequestCap(value.requestCap)||value.limit!==value.requestCap||value.grants.length!==0))return fail()
+ let limit=capped?Number(value.requestCap):value.unit==='model-requests'?MAX_TURNS:1
  for(const grant of value.grants){if(!object(grant)||grant.from!==limit||!Number.isInteger(grant.to)||Number(grant.to)<=limit||Number(grant.to)>MAX_REQUEST_ALLOWANCE||typeof grant.at!=='string'||!Number.isFinite(Date.parse(grant.at)))return fail();limit=Number(grant.to)}
  if(value.limit!==limit||!Array.isArray(value.plan)||(value.plan.length&&!validTaskSteps(value.plan))||!text(value.explanation,2000)||(value.reason!==undefined&&!text(value.reason,2000))||(value.testCalls!==undefined&&(!Number.isInteger(value.testCalls)||Number(value.testCalls)<0||Number(value.testCalls)>400))||(value.delegation!==undefined&&!validDelegationFigures(value.delegation,value.unit as 'model-requests'|'provider-managed')))return fail()
  if(value.completions!==undefined&&(!Array.isArray(value.completions)||value.completions.length>MAX_REQUEST_ALLOWANCE||value.completions.some(row=>!object(row)||!Number.isInteger(row.request)||Number(row.request)<1||Number(row.request)>Number(value.used)||!['work','synthesis','review'].includes(String(row.phase))||!readCompletion(row.result)||row.attempt!==undefined&&(!Number.isInteger(row.attempt)||Number(row.attempt)<1||Number(row.attempt)>3)||row.failure!==undefined&&!readFailure(row.failure)||row.waitMs!==undefined&&(!Number.isInteger(row.waitMs)||Number(row.waitMs)<0||Number(row.waitMs)>86400000)||row.connection!==undefined&&(!text(row.connection,128)||!row.connection)||row.role!==undefined&&(!text(row.role,128)||!row.role)||['schema','digest','retainUntil'].some(name=>Object.hasOwn(row,name))&&!validRecordHeader(row,PROVENANCE_SCHEMA))))return fail()
@@ -217,16 +220,17 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
 }
 /** A stopped API request can fail exactly at the ceiling; recovery still needs an explicit grant. */
 export function canExtendInterruptedExecution(saved:ExecutionCheckpoint|undefined):boolean {
- return !!saved&&saved.unit==='model-requests'&&saved.status==='stopped'&&saved.used===saved.limit&&saved.limit<MAX_REQUEST_ALLOWANCE
+ return !!saved&&saved.requestCap===undefined&&saved.unit==='model-requests'&&saved.status==='stopped'&&saved.used===saved.limit&&saved.limit<MAX_REQUEST_ALLOWANCE
 }
 /** Explicit UI action only. Increasing compute does not alter tool/action consent. */
 export function extendExecution(checkpoint:ExecutionCheckpoint,interrupted=false):ExecutionCheckpoint {
  const saved=readExecution(checkpoint)!
- if((saved.status!=='paused'&&!(interrupted&&canExtendInterruptedExecution(saved)))||saved.unit!=='model-requests'||saved.limit>=MAX_REQUEST_ALLOWANCE)throw Error('This execution cannot receive another request allowance.')
+ if(saved.requestCap!==undefined||(saved.status!=='paused'&&!(interrupted&&canExtendInterruptedExecution(saved)))||saved.unit!=='model-requests'||saved.limit>=MAX_REQUEST_ALLOWANCE)throw Error('This execution cannot receive another request allowance.')
  const limit=Math.min(MAX_REQUEST_ALLOWANCE,saved.limit+REQUEST_INCREMENT)
  const extended=structuredClone(saved)
  mutateCheckpoint(extended,{limit,status:'running',reason:undefined,grants:[...saved.grants,{from:saved.limit,to:limit,at:new Date().toISOString()}]})
  if(extended.schema)mutateCheckpoint(extended,{digest:recordDigest(extended)})
  return extended
 }
+export class RequestCapRefusal extends AIFailureError {constructor(code:'configuration'|'stale-state'='configuration'){super({...failure(code,'context','not-started'),detail:'The fixed request cap must match the admitted API execution and cannot change after initialization.'})}}
 export class ExecutionPaused extends Error {readonly failureCode='request-limit';constructor(){super('Work paused at the approved request limit. Continue with an additional allowance, or keep the completed work.')}}

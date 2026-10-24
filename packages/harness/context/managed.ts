@@ -3,7 +3,7 @@ import {OutputRefused,RecordsRefused,outputWhere} from '../outputGuard'
 import {PolicyRefusal} from '../policy'
 import {RecordsExpired} from '../records'
 import {failureError,failureEvent,toolFailureResult} from '../failures'
-import {ExecutionPaused} from '../execution/state'
+import {ExecutionPaused,RequestCapRefusal} from '../execution/state'
 import type {AssistantEvent,EngineSession,RequestSession,RequestSessionFor} from '../engine'
 import {eventIterator,openRun} from '../engines/contract'
 import {GateViolation} from '../toolGate'
@@ -199,6 +199,11 @@ async function* execute<T extends EngineSession>(session:T,run:(session:RequestS
   }
  } catch(error){
   if(ended)throw error
+  if(error instanceof RequestCapRefusal){
+   if(!session.signal.aborted)yield failureEvent(error,'context')
+   yield {type:'usage',usage:context?.execution.state.usage??{rows:[]}}
+   yield {type:'end'};return
+  }
   if(error instanceof OutputRefused){
    const notices=context?takeNotices(context):[]
    for(const notice of notices)yield notice

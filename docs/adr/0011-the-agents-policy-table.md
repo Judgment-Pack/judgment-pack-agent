@@ -184,3 +184,39 @@ inputs keep their existing shape. Go request builders use `ModelID`, `Family`,
 `OfferedHostTools` in place of exported raw fields. `Reasoning(role)` retains its
 omission behavior. These internal exported source types change; public host Run
 inputs and CompactorRequest DTO fields do not.
+
+### Fixed host request reservations (#186)
+
+An API host may supply `context.requestCap` (Go `context.Input.RequestCap`), an
+integer from 1 through 20, before initialization. This narrows one admitted operation;
+it is independent of policy concurrency capacity. Omission retains the ordinary
+initial 20 requests and explicit grant chain. Explicit 20 is a fixed reservation.
+
+The checkpoint carries the cap with `limit` equal to it, `used` at most it and no
+grants. A resume requires independently trusted input with the same cap presence
+and value alongside the existing request/phase/unit identity. The runtime copies
+the admitted scalar; changing the caller's object or pointer cannot widen it.
+Neither an ordinary extension nor a finishing/retry request can raise this cap.
+Another request requires a newly admitted reservation and must not replay a prior
+unknown dispatch. Provider-managed invocations do not accept an API request cap.
+
+`LimitTo` remains a startup convenience: valid fresh API use fixes the cap, and an
+identical fresh repeat is idempotent. Invalid/native use, a different second cap,
+any claim/grant, or restored state refuses and stays closed even if ignored/caught.
+This replaces its former clamping, flooring and silent no-op behavior. Prefer the
+initialization input, including for delegated children; a zero-request child does
+not run. Old invalid narrowed checkpoints are not repaired or given fresh usage.
+
+The host owns trusted checkpoint selection, the newest durable state and serialized
+admission. A durable claim precedes capability handoff: interruption may consume a
+reservation without physical delivery and never authorizes automatic replay. This
+bounds attempted capability requests; transport retries hidden inside a host call
+must honor the reservation independently. Unkeyed checkpoint hashes do not prove
+human consent or prevent coherent edits to an externally supplied checkpoint.
+Fixed-cap records require compatible readers, especially explicit 20, which an old
+open-record reader could interpret as an extendable legacy record.
+
+This adds optional `checkpoint.requestCap`; it does not change the existing checkpoint
+source member representation. Without a cap, existing records and grant semantics remain.
+A capped request whose claim cannot be persisted, including refused record projection,
+stops before capability handoff. No API promises globally exactly-once delivery.

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
 	"reflect"
 	"sync"
 )
@@ -17,9 +18,12 @@ type CheckpointPatch map[string]any
 type CheckpointIncrement int64
 
 type checkpointMutation struct {
-	mu       sync.RWMutex
-	value    *Execution
-	revision uint64
+	mu            sync.RWMutex
+	value         *Execution
+	revision      uint64
+	requestCap    int
+	capConfigured bool
+	capFailure    error
 }
 
 func cloneCheckpointValue(v reflect.Value) reflect.Value {
@@ -103,6 +107,9 @@ func (c *ExecutionController) CheckpointRevision() uint64 {
 func (c *ExecutionController) MutateCheckpoint(patch CheckpointPatch, validate ...func(*Execution) error) error {
 	c.checkpoint.mu.Lock()
 	defer c.checkpoint.mu.Unlock()
+	if c.checkpoint.capFailure != nil {
+		return c.checkpoint.capFailure
+	}
 	current := c.checkpoint.value
 	if current == nil {
 		current = &Execution{}
@@ -110,6 +117,12 @@ func (c *ExecutionController) MutateCheckpoint(patch CheckpointPatch, validate .
 	next, changed, err := MutateCheckpoint(current, patch, validate...)
 	if err != nil {
 		return err
+	}
+	if c.checkpoint.capConfigured && ((next.RequestCap == nil) != (c.checkpoint.requestCap == 0) || next.RequestCap != nil && *next.RequestCap != c.checkpoint.requestCap) {
+		return requestCapRefusal("configuration")
+	}
+	if next.RequestCap != nil && (*next.RequestCap < 1 || *next.RequestCap > MaxTurns || next.Unit != "model-requests" || next.Limit != *next.RequestCap || next.Used < 0 || next.Used > *next.RequestCap || c.checkpoint.capConfigured && current != nil && next.Used < current.Used || len(next.Grants) != 0) {
+		return requestCapRefusal("configuration")
 	}
 	if !changed && c.checkpoint.value != nil {
 		return nil
@@ -267,4 +280,47 @@ func checkpointEqual(a, b reflect.Value) bool {
 	default:
 		return reflect.DeepEqual(a.Interface(), b.Interface())
 	}
+}
+
+func requestCapRefusal(code string) error {
+	f := failure.New(code, "context", "not-started")
+	detail := "The fixed request cap must match the admitted API execution and cannot change after initialization."
+	f.Detail = &detail
+	return failure.NewError(f)
+}
+func (c *ExecutionController) requestCapFailure() error {
+	c.checkpoint.mu.RLock()
+	defer c.checkpoint.mu.RUnlock()
+	return c.checkpoint.capFailure
+}
+
+// configureRequestCap copies trusted admission; only a fresh helper may establish it later.
+func (c *ExecutionController) configureRequestCap(cap int, helper bool) error {
+	c.checkpoint.mu.Lock()
+	defer c.checkpoint.mu.Unlock()
+	if c.checkpoint.capFailure != nil {
+		return c.checkpoint.capFailure
+	}
+	if !helper && c.checkpoint.capConfigured && (c.checkpoint.requestCap != 0 || cap != 0) {
+		return requestCapRefusal("configuration")
+	}
+	if helper {
+		state := c.checkpoint.value
+		if cap < 1 || cap > MaxTurns || state == nil || state.Unit != "model-requests" || state.Used != 0 || len(state.Grants) != 0 || c.restored || c.checkpoint.requestCap != 0 && c.checkpoint.requestCap != cap {
+			c.checkpoint.capFailure = requestCapRefusal("configuration")
+			return c.checkpoint.capFailure
+		}
+		next, changed, err := MutateCheckpoint(state, CheckpointPatch{"RequestCap": &cap, "Limit": cap})
+		if err != nil {
+			c.checkpoint.capFailure = err
+			return err
+		}
+		if changed {
+			c.checkpoint.value = next
+			c.checkpoint.revision++
+		}
+	}
+	c.checkpoint.requestCap = cap
+	c.checkpoint.capConfigured = true
+	return nil
 }

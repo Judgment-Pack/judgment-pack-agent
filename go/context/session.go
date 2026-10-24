@@ -1075,6 +1075,11 @@ func (c *SessionContext) answered(output Output) *Value {
 
 // Check refuses a prompt the request's budget cannot carry.
 func (c *SessionContext) Check(instructions, prompt string, tools *Value) error {
+	if c.Execution != nil {
+		if err := c.Execution.requestCapFailure(); err != nil {
+			return err
+		}
+	}
 	if UTF8Bytes(prompt) > c.budget(instructions, tools) {
 		return ErrContextBudget
 	}
@@ -1231,6 +1236,14 @@ type Run struct {
 // (gate counts it), and the refusal of a name the session serves but the run was not offered.
 // Plan mode's tool filtering is the gate's too (gate.PlanPhase); PlanningSession gives the prompt.
 func ContextualSession(ctx context.Context, session Session) (*Run, error) {
+	if session.Context != nil {
+		copied := *session.Context
+		if copied.RequestCap != nil {
+			cap := *copied.RequestCap
+			copied.RequestCap = &cap
+		}
+		session.Context = &copied
+	}
 	// ADR-0006: the tools with a source, read and named for the wire before anything else sees them.
 	served := make([]string, 0, len(session.Tools))
 	for _, tool := range session.Tools {
@@ -1512,7 +1525,8 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		if session.Context != nil && session.Context.Link != nil {
 			session.Context.Link.Attach(held)
 		}
-		return nil
+		// A void startup helper may have latched a permanent refusal.
+		return held.Execution.MutateCheckpoint(CheckpointPatch{})
 	}
 	if err := opened(); err != nil {
 		held.Close()
@@ -1742,6 +1756,9 @@ func (c *SessionContext) ClaimRequest(ctx context.Context, body []byte) error {
 	if err != nil {
 		var refused *RecordsRefused
 		if errors.As(err, &refused) {
+			if c.Execution.State().RequestCap != nil {
+				return failure.Err("storage", "storage", "not-started")
+			}
 			return nil
 		}
 		return err

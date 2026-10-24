@@ -154,14 +154,14 @@ it('limits independent API children to two concurrent workers and retains a fail
 
 // agent#14: the parent's last request follows the children in the same run.
 it('uses one model request budget across the parent and its children, and keeps the last request for the parent',async()=>{
- let dispatched=0
+ let dispatched=0,children=0
  const engine:Engine={id:'vercel',async *start(s){if(!('model' in s))throw Error('fixture')
   if(delegateIn(s)){for(let i=0;i<17;i++)await s.model.call('chat/completions',{body:'{}'});await delegateIn(s)!.execute({tasks:[task('A'),task('B'),task('C')]},s.signal);await s.model.call('chat/completions',{body:'{}'});yield {type:'message',text:'Available results only.'}}
-  else {for(let i=0;i<6;i++)await s.model.call('chat/completions',{body:'{}'});yield {type:'message',text:'Done'}}
+  else {children++;expect(s.context?.requestCap).toBe(1);for(let i=0;i<6;i++)await s.model.call('chat/completions',{body:'{}'});yield {type:'message',text:'Done'}}
   yield {type:'end'}
  }}
  const events=await collect(withDelegation(engine),apiSession({model:{family:'openai-compatible',model:'m',call:async()=>{dispatched++;return new Response('{}')}}}))
- expect(dispatched).toBe(20);expect(results(events).every(t=>t.state==='failed')).toBe(true)
+ expect(dispatched).toBe(20);expect(children).toBe(2);expect(results(events).every(t=>t.state==='failed')).toBe(true)
  expect(events.some(e=>e.type==='message'&&e.text==='Available results only.')).toBe(true)
 })
 

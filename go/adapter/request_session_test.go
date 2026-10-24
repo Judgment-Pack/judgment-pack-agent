@@ -173,30 +173,36 @@ func protectedRequestRepresentation(value types.Type) string {
 		return ""
 	}
 	for i := 0; i < structure.NumFields(); i++ {
-		field := structure.Field(i)
-		if field.Pkg() == nil {
+		if owner := protectedRequestField(structure.Field(i)); owner != "" {
+			return owner
+		}
+	}
+	return ""
+}
+
+func protectedRequestField(field *types.Var) string {
+	if field == nil || !field.IsField() || field.Pkg() == nil {
+		return ""
+	}
+	owners := []string{}
+	switch field.Pkg().Path() {
+	case "github.com/Judgment-Pack/judgment-pack-agent/go/adapter":
+		owners = []string{"RequestSession", "RequestPolicyConnection", "RequestAgent", "PreparedRequest"}
+	case "github.com/Judgment-Pack/judgment-pack-agent/go/context":
+		owners = []string{"RequestValues"}
+	}
+	for _, owner := range owners {
+		declaration := field.Pkg().Scope().Lookup(owner)
+		if declaration == nil {
 			continue
 		}
-		owners := []string{}
-		switch field.Pkg().Path() {
-		case "github.com/Judgment-Pack/judgment-pack-agent/go/adapter":
-			owners = []string{"RequestSession", "RequestPolicyConnection", "RequestAgent", "PreparedRequest"}
-		case "github.com/Judgment-Pack/judgment-pack-agent/go/context":
-			owners = []string{"RequestValues"}
+		canonical, ok := declaration.Type().Underlying().(*types.Struct)
+		if !ok {
+			continue
 		}
-		for _, owner := range owners {
-			declaration := field.Pkg().Scope().Lookup(owner)
-			if declaration == nil {
-				continue
-			}
-			canonical, ok := declaration.Type().Underlying().(*types.Struct)
-			if !ok {
-				continue
-			}
-			for j := 0; j < canonical.NumFields(); j++ {
-				if canonical.Field(j) == field {
-					return owner
-				}
+		for j := 0; j < canonical.NumFields(); j++ {
+			if canonical.Field(j) == field {
+				return owner
 			}
 		}
 	}
@@ -275,6 +281,67 @@ func requestSourceViolations(root string, files *token.FileSet, trees []*ast.Fil
 			return true
 		})
 	}
+	// A write through a copied/defined/promoted admitted field is still a conversion.
+	conversionAllowed := func(node ast.Node) bool {
+		position := files.Position(node.Pos())
+		relative, _ := filepath.Rel(root, position.Filename)
+		constructors := map[string][]string{
+			"adapter/request_session.go": {"requestAgent", "*RequestSession.ResolvedCapabilities", "NewRequestOperations", "NewRequestSession", "*RequestSession.PolicyBinding"},
+			"context/request_values.go":  {"NewRequestValues"},
+		}
+		for _, tree := range trees {
+			for _, declaration := range tree.Decls {
+				function, ok := declaration.(*ast.FuncDecl)
+				if !ok || node.Pos() < function.Pos() || node.End() > function.End() {
+					continue
+				}
+				for _, owner := range constructors[filepath.ToSlash(relative)] {
+					if requestFunctionOwner(function) == owner {
+						return true
+					}
+				}
+			}
+		}
+		return false
+	}
+	writes := map[*ast.SelectorExpr]bool{}
+	var target func(ast.Expr)
+	target = func(expression ast.Expr) {
+		switch value := expression.(type) {
+		case *ast.SelectorExpr:
+			writes[value] = true
+			target(value.X)
+		case *ast.ParenExpr:
+			target(value.X)
+		case *ast.StarExpr:
+			target(value.X)
+		case *ast.IndexExpr:
+			target(value.X)
+		}
+	}
+	for _, tree := range trees {
+		ast.Inspect(tree, func(node ast.Node) bool {
+			switch value := node.(type) {
+			case *ast.AssignStmt:
+				for _, left := range value.Lhs {
+					target(left)
+				}
+			case *ast.UnaryExpr:
+				// A private field address exposes the same write through pointer aliases.
+				if value.Op == token.AND {
+					target(value.X)
+				}
+			case *ast.IncDecStmt:
+				target(value.X)
+			case *ast.RangeStmt:
+				if value.Tok == token.ASSIGN {
+					target(value.Key)
+					target(value.Value)
+				}
+			}
+			return true
+		})
+	}
 	for expression, typed := range info.Types {
 		literal, ok := expression.(*ast.CompositeLit)
 		if !ok {
@@ -286,32 +353,16 @@ func requestSourceViolations(root string, files *token.FileSet, trees []*ast.Fil
 		}
 		position := files.Position(literal.Pos())
 		relative, _ := filepath.Rel(root, position.Filename)
-		permitted := false
-		constructors := map[string][]string{
-			"adapter/request_session.go": {"requestAgent", "*RequestSession.ResolvedCapabilities", "NewRequestOperations", "NewRequestSession", "*RequestSession.PolicyBinding"},
-			"context/request_values.go":  {"NewRequestValues"},
-		}
-		for _, tree := range trees {
-			for _, declaration := range tree.Decls {
-				function, ok := declaration.(*ast.FuncDecl)
-				if !ok || literal.Pos() < function.Pos() || literal.End() > function.End() {
-					continue
-				}
-				for _, allowed := range constructors[filepath.ToSlash(relative)] {
-					if requestFunctionOwner(function) == allowed {
-						permitted = true
-					}
-				}
-			}
-		}
-		if permitted {
+		if conversionAllowed(literal) {
 			continue
 		}
 		unexpected = append(unexpected, filepath.ToSlash(relative)+":"+name+":request-construction")
 	}
 	for selector, selection := range info.Selections {
 		raw := isRawRequestSelection(selection)
-		if !raw {
+		field, _ := selection.Obj().(*types.Var)
+		privateWrite := writes[selector] && field != nil && !field.Exported() && protectedRequestField(field) != ""
+		if !raw && !privateWrite {
 			continue
 		}
 		position := files.Position(selector.Pos())
@@ -320,6 +371,9 @@ func requestSourceViolations(root string, files *token.FileSet, trees []*ast.Fil
 			if selector.Pos() >= bounds[0] && selector.End() <= bounds[1] {
 				permitted = true
 			}
+		}
+		if privateWrite {
+			permitted = conversionAllowed(selector)
 		}
 		writeOnly := false
 		for _, tree := range trees {
@@ -351,7 +405,11 @@ func requestSourceViolations(root string, files *token.FileSet, trees []*ast.Fil
 		}
 		if !permitted {
 			relative, _ := filepath.Rel(root, position.Filename)
-			unexpected = append(unexpected, filepath.ToSlash(relative)+":"+selector.Sel.Name)
+			suffix := ""
+			if privateWrite {
+				suffix = ":request-write"
+			}
+			unexpected = append(unexpected, filepath.ToSlash(relative)+":"+selector.Sel.Name+suffix)
 		}
 	}
 	return unexpected
@@ -528,6 +586,88 @@ func TestRequestSourceGuardDeclarationOwnership(t *testing.T) {
  func projection(values *RequestValues) *defined { return (*defined)(values) }
  func unrelatedValue() unrelated { return unrelated{} }
 `, []string{"context/request_values.go:RequestValues:request-construction", "context/request_values.go:RequestValues:request-construction"}},
+		{"private-admitted-writes", "adapter", "adapter/private_writer.go", `package guardprobe
+ type RequestSession struct { modelName string; count int; tools []string; future string }
+ type RequestAgent struct { model string }
+ type RequestPolicyConnection struct { wire string }
+ type PreparedRequest struct { tools []string }
+ type defined RequestSession
+ type alias = RequestSession
+ type projected struct { *RequestSession }
+ type unrelated struct { modelName string }
+ func viewWrite(admitted *RequestSession) *RequestSession {
+  forged := *admitted
+  forged.modelName = "unadmitted"
+  return &forged
+ }
+ func forms(s *RequestSession, d *defined, a *alias, p projected) {
+  s.modelName, d.modelName = "one", "two"
+  a.modelName += "suffix"
+  s.count++
+  (s.modelName) = "three"
+  s.tools[0] = "tool"
+  p.modelName = "four"
+  for _, s.modelName = range []string{"five"} {}
+  s.future = "future"
+ }
+ func others(a *RequestAgent, b *RequestPolicyConnection, p *PreparedRequest) { a.model="x"; b.wire="x"; p.tools[0]="x" }
+ func projection(s *RequestSession) *RequestSession { copied := *s; return &copied }
+ func read(s *RequestSession) string { return s.modelName }
+ func unrelatedWrite(s *unrelated) { s.modelName="ordinary" }
+`, []string{"adapter/private_writer.go:modelName:request-write", "adapter/private_writer.go:modelName:request-write", "adapter/private_writer.go:modelName:request-write", "adapter/private_writer.go:modelName:request-write", "adapter/private_writer.go:count:request-write", "adapter/private_writer.go:modelName:request-write", "adapter/private_writer.go:tools:request-write", "adapter/private_writer.go:modelName:request-write", "adapter/private_writer.go:modelName:request-write", "adapter/private_writer.go:future:request-write", "adapter/private_writer.go:model:request-write", "adapter/private_writer.go:wire:request-write", "adapter/private_writer.go:tools:request-write"}},
+		{"private-conversion-writes", "adapter", "adapter/request_session.go", `package guardprobe
+ type RequestSession struct { modelName string; count int }
+ type unrelated struct{}
+ func NewRequestSession() *RequestSession { var s RequestSession; s.modelName="admitted"; s.count++; return &s }
+ func (unrelated) NewRequestSession(s *RequestSession) { s.modelName="unadmitted" }
+ func (s *RequestSession) PolicyBinding() { s.modelName="admitted projection" }
+ func (unrelated) PolicyBinding(s *RequestSession) { s.modelName="unadmitted" }
+`, []string{"adapter/request_session.go:modelName:request-write", "adapter/request_session.go:modelName:request-write"}},
+		{"private-value-writes", "context", "context/request_values.go", `package guardprobe
+ type RequestValues struct { members map[string]string }
+ type defined RequestValues
+ type unrelated struct { members map[string]string }
+ func NewRequestValues() *RequestValues { var v RequestValues; v.members=map[string]string{}; return &v }
+ func write(v *defined) { v.members["model"]="unadmitted" }
+ func projection(v *RequestValues) *defined { copy:=*v; return (*defined)(&copy) }
+ func unrelatedWrite(v *unrelated) { v.members["model"]="ordinary" }
+`, []string{"context/request_values.go:members:request-write"}},
+		{"private-pointer-writes", "adapter", "adapter/private_pointer.go", `package guardprobe
+ type RequestSession struct { modelName string; tools []string }
+ type defined RequestSession
+ type projected struct { *RequestSession }
+ type unrelated struct { modelName string }
+ func pointerWrite(s *RequestSession)*RequestSession { forged:=*s;slot:=&forged.modelName;*slot="unadmitted";return &forged }
+ func parenthesized(s *RequestSession) { slot:=&(s.modelName); *slot="unadmitted" }
+ func definition(s *defined) { slot:=&s.modelName; *slot="unadmitted" }
+ func promoted(s projected) { slot:=&s.modelName; *slot="unadmitted" }
+ func element(s *RequestSession) { slot:=&s.tools[0]; *slot="unadmitted" }
+ func set(slot *string) { *slot="unadmitted" }
+ func passed(s *RequestSession) { set(&s.modelName) }
+ func returned(s *RequestSession) *string { return &s.modelName }
+ func indirect(s *RequestSession) { slot:=&s.modelName; ref:=&slot; **ref="unadmitted" }
+ func (s *RequestSession) ModelID() string { return s.modelName }
+ func (s *RequestSession) RuntimeTools() []string { return append([]string{},s.tools...) }
+ func getterProjection(s *RequestSession) *RequestSession { copy:=*s; _=copy.ModelID(); _=copy.RuntimeTools(); return &copy }
+ func unrelatedRef(s *unrelated) *string { return &s.modelName }
+`, []string{"adapter/private_pointer.go:modelName:request-write", "adapter/private_pointer.go:modelName:request-write", "adapter/private_pointer.go:modelName:request-write", "adapter/private_pointer.go:modelName:request-write", "adapter/private_pointer.go:tools:request-write", "adapter/private_pointer.go:modelName:request-write", "adapter/private_pointer.go:modelName:request-write", "adapter/private_pointer.go:modelName:request-write"}},
+		{"private-pointer-conversions", "adapter", "adapter/request_session.go", `package guardprobe
+ type RequestSession struct { modelName string }
+ type unrelated struct{}
+ func NewRequestSession() *RequestSession { var s RequestSession; slot:=&s.modelName; *slot="admitted"; return &s }
+ func (s *RequestSession) PolicyBinding() { slot:=&s.modelName; *slot="admitted projection" }
+ func (unrelated) NewRequestSession(s *RequestSession) { slot:=&s.modelName; *slot="unadmitted" }
+ func (unrelated) PolicyBinding(s *RequestSession) { slot:=&s.modelName; *slot="unadmitted" }
+`, []string{"adapter/request_session.go:modelName:request-write", "adapter/request_session.go:modelName:request-write"}},
+		{"private-pointer-values", "context", "context/request_values.go", `package guardprobe
+ type RequestValues struct { members map[string]string }
+ type defined RequestValues
+ type unrelated struct { members map[string]string }
+ func NewRequestValues() *RequestValues { var v RequestValues; slot:=&v.members; *slot=map[string]string{}; return &v }
+ func pointer(v *defined) { slot:=&v.members; (*slot)["model"]="unadmitted" }
+ func projection(v *RequestValues) *defined { copy:=*v; return (*defined)(&copy) }
+ func unrelatedRef(v *unrelated) *map[string]string { return &v.members }
+`, []string{"context/request_values.go:members:request-write"}},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
 			root := t.TempDir()

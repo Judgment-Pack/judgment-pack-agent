@@ -624,7 +624,6 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
       const {tools,hostTools}=planned.subagent?{tools:[],hostTools:offered?named.filter(t=>planned.subagent!.tools.includes(t.name)).map(t=>t.tool):[]}:childOffer(profile,session,offered)
       const runtime = new Set(tools.map(t=>t.name))
       const link: ExecutionLink = {attach:context=>{
-        if ('model' in session) context.execution.limitTo(requestLimit)
         context.execution.toolAllowance=()=>({used:task.toolCalls,limit:planned.budget.toolCalls,scope:'task'})
         meter.contexts.push(context)
       },
@@ -640,7 +639,7 @@ export function withDelegation(engine: Engine, options: DelegationOptions = {}):
         input:[],
         ...(selected&&provider?{policyProject:undefined,policyConnections:shared.context?.connectionBindings()??session.policyConnections,policy:{...session.policy,models:{author:{model:provider.connection,provider:provider.connection,...(fallback?{fallback}:{})}},critic:{default:'off'}},...( 'agent'in selected?{agent:selected.agent}:{})}:{}),
         // agent#11: the objective is the child's request text, the first text part of its first message.
-        context:{configuration:session.context?.configuration,phase:session.context?.phase,authorize:session.context?.authorize,artifactProposals:session.context?.artifactProposals,memory:session.context?.memory,objective,runtime:session.context?.runtime,chat:chat.childScope(planned.visible),link,...(provider?{connection:{...session.context?.connection,connectionId:provider.connection}}:session.context?.connection?{connection:session.context.connection}:{})},
+        context:{...('model'in session?{requestCap:Math.min(MAX_TURNS,requestLimit)}:{}),configuration:session.context?.configuration,phase:session.context?.phase,authorize:session.context?.authorize,artifactProposals:session.context?.artifactProposals,memory:session.context?.memory,objective,runtime:session.context?.runtime,chat:chat.childScope(planned.visible),link,...(provider?{connection:{...session.context?.connection,connectionId:provider.connection}}:session.context?.connection?{connection:session.context.connection}:{})},
         purpose:undefined,prompt,testPrompt:'',allowConversation:true,interactive:true,critic:'off',
         // ADR-0009: a child is handed no skills; it inherits none of the parent's loaded set.
         skills:planned.subagent?session.skills?.filter(s=>planned.subagent!.skills.includes(s.id)):undefined,

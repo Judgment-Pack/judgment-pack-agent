@@ -89,6 +89,9 @@ func TestChildrenUseResolvedBindingsTiersAndConcurrency(t *testing.T) {
 				t.Fatalf("child record model %q", got)
 			}
 			c.inner = adapter.Func(func(ctx context.Context, child *adapter.Run) error {
+				if agent && child.Context.RequestCap != nil || !agent && (child.Context.RequestCap == nil || *child.Context.RequestCap != 2) {
+					t.Fatal("child cap was not initialized before context")
+				}
 				if child.Context.Steer != nil {
 					t.Fatal("delegated child inherited the parent's steering queue")
 				}
@@ -136,6 +139,11 @@ func TestChildrenUseResolvedBindingsTiersAndConcurrency(t *testing.T) {
 			p := &planned{budget: turn.TaskBudget{ModelRequests: 2, ToolCalls: 2}, visible: map[string]bool{}}
 			if err := c.runChild(context.Background(), p, profile, task, "Review.", "Review.", 2, false, &meter{started: time.Now()}, &childRun{}); err != nil {
 				t.Fatal(err)
+			}
+			if !agent {
+				if err := c.runChild(context.Background(), p, profile, task, "Review.", "Review.", 0, false, &meter{started: time.Now()}, &childRun{}); err == nil {
+					t.Fatal("zero request child was launched")
+				}
 			}
 			if calls != 1 {
 				t.Fatalf("selected calls %d", calls)

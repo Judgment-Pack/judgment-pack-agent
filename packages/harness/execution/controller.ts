@@ -8,7 +8,7 @@ import {readCacheKey} from '../context/chat'
 import {MAX_TURNS} from '../engines/contract'
 import {utf8Bytes} from '../context/policy'
 import {frameBlock} from '../framing'
-import {ExecutionPaused,MAX_CHECKPOINT_BYTES,MAX_PROMPT_DIGESTS,readApprovalDecision,readExecution,refusedResult,unknownOutcome,validTaskSteps,type ExecutionCheckpoint} from './state'
+import {ExecutionPaused,RequestCapRefusal,MAX_CHECKPOINT_BYTES,MAX_PROMPT_DIGESTS,validRequestCap,readApprovalDecision,readExecution,refusedResult,unknownOutcome,validTaskSteps,type ExecutionCheckpoint} from './state'
 import {CHECKPOINT_SCHEMA,CRITIQUE_SCHEMA,PROVENANCE_SCHEMA,recordsPolicy,refuseExpired,writeRecord,type RecordGuard,type RecordsPolicy} from '../records'
 
 export const EXECUTION_INSTRUCTIONS = `TASK EXECUTION: For work requiring several stages, use update_plan to track concrete pending, in_progress and completed steps. Skip planning overhead for simple replies. Use the current accepted plan when present; do not repeatedly re-plan or ask the user to repeat an already authorized request. Update progress at meaningful boundaries, and preserve completed work across continuation. A task list is working state, not approval or proof: mark a step complete only when its required result exists, and distinguish a proposed change from a saved change. Keep a multi-stage task plan current; it estimates work but cannot grant more requests. An unsaved working object remains in the exact arguments of its completed operations. Continue from those retained arguments after validation or evaluation; rereading the saved workspace does not retrieve an unsaved proposal. Recheck the saved revision before applying changes. Use tool results already obtained; do not reread unchanged instructions or schemas or scan the entire conversation. On continuation, inspect the latest completed result and its exact arguments before doing more work. A newer saved workspace object takes precedence over an older chat draft when editing that object; preserve its identity. For a focused change, inspect the relevant contract once, make the smallest proposal, verify the affected behavior and return it. Do not restart discovery after context compaction. Before repeating a failed read, correct its arguments using the current context index. If blocked, state the exact missing information. When requests run low, finish the concrete result or call request_budget_increase with the reason and next concrete step. Desk owns budget extensions; this tool requests but never grants one. Never modify expected tests merely to match actual results. Current user instructions and host permissions remain authoritative.`
@@ -21,7 +21,16 @@ export class ExecutionController {
  private checkpoint=new CheckpointMutation()
  get state():ExecutionCheckpoint{return this.checkpoint.read()}
  get revision(){return this.checkpoint.revision}
- mutate(patch:CheckpointPatch){return this.checkpoint.apply(patch)}
+ private requestCap?:number
+ private capFailure?:RequestCapRefusal
+ private initialized=false
+ private capRefusal(code:'configuration'|'stale-state'='configuration'){return new RequestCapRefusal(code)}
+ mutate(patch:CheckpointPatch){
+  if(this.capFailure)throw this.capFailure
+  return this.checkpoint.apply(patch,candidate=>{
+   if(this.initialized&&(candidate.requestCap!==this.requestCap||this.requestCap!==undefined&&(candidate.unit!=='model-requests'||candidate.limit!==this.requestCap||!Number.isSafeInteger(candidate.used)||candidate.used<(this.state.used??0)||candidate.used>this.requestCap||candidate.grants.length!==0)))throw this.capRefusal()
+  })
+ }
  pauseRequested=false
  /**
   * agent#13: the tool-call cap this run works under, where a delegation coordinator holds one (set
@@ -57,9 +66,14 @@ export class ExecutionController {
  recordGuard?:()=>RecordGuard|undefined
  constructor(private session:EngineSession,private ledger:ContextLedger,members?:import('../policy').PolicyMembers){this.recordPolicy=recordsPolicy(members??{})}
  async initialize(){
+  const requestCap=this.session.context?.requestCap
+  if(this.initialized&&(this.requestCap!==undefined||requestCap!==undefined))throw this.capRefusal()
+  if(requestCap!==undefined&&(!validRequestCap(requestCap)||!('model'in this.session)))throw this.capRefusal()
+  this.requestCap=requestCap;this.initialized=true
   const requestKey=await contextDigest(JSON.stringify({request:this.session.context?.currentRequest??this.session.prompt,phase:this.session.context?.phase??'work',purpose:this.session.purpose??null}))
   const restored=readExecution(this.session.context?.execution)
   if(restored){
+   if(restored.requestCap!==requestCap)throw this.capRefusal('stale-state')
    if(restored.retainUntil)refuseExpired(restored as {retainUntil:string})
    if(restored.requestKey!==requestKey||restored.phase!==(this.session.context?.phase??'work'))throw toolInputFailure('The request or execution phase changed. Start a new response with the current context.')
    // ADR-0008: a paused act call continues only with the person's decision for that call.
@@ -91,7 +105,7 @@ export class ExecutionController {
     this.approvalStep='write'
    }else if(approval?.state==='executed'||approval?.state==='refused')this.approvalStep='continue'
   }else{
-   this.mutate({version:1,id:crypto.randomUUID(),requestKey,phase:this.session.context?.phase??'work',status:'running',unit:'model'in this.session?'model-requests':'provider-managed',used:0,limit:'model'in this.session?MAX_TURNS:1,grants:[],plan:[],explanation:'',operations:[],context:{scope:this.ledger.scope,entries:[]}})
+   this.mutate({version:1,id:crypto.randomUUID(),requestKey,phase:this.session.context?.phase??'work',status:'running',unit:'model'in this.session?'model-requests':'provider-managed',used:0,limit:requestCap??('model'in this.session?MAX_TURNS:1),...(requestCap===undefined?{}:{requestCap}),grants:[],plan:[],explanation:'',operations:[],context:{scope:this.ledger.scope,entries:[]}})
    const plan=this.session.context?.plan
    if(plan&&['accepted','started'].includes(plan.status))this.mutate({plan:plan.steps.map(step=>({step,status:'pending'}))})
   }
@@ -178,13 +192,18 @@ export class ExecutionController {
   this.mutate({steers:report})
   return {text:blocks.join('\n\n'),events}
  }
- claim(){if(this.remaining<=0)throw new ExecutionPaused();const usage=this.state.usage??{rows:[]};this.usageRow(usage,'model').requests++;this.mutate({used:new CheckpointIncrement(1),usage})}
+ claim(){if(this.capFailure)throw this.capFailure;if(this.remaining<=0)throw new ExecutionPaused();const usage=this.state.usage??{rows:[]};this.usageRow(usage,'model').requests++;this.mutate({used:new CheckpointIncrement(1),usage})}
  /**
-  * A first allowance below MAX_TURNS, for a delegated child (agent#15): its profile's request budget,
-  * held further to what the response's shared allowance can still give it, so its loop plans its
-  * final answer within what it may spend. A restored execution keeps its own.
+  * Fix a fresh API execution to 1..MAX_TURNS requests, including delegated children.
+  * Prefer context.requestCap before initialization. Only an identical fresh repeat is accepted;
+  * invalid, changed, native or started/restored calls remain refused even if caught.
   */
- limitTo(requests:number){if(!this.restored)this.mutate({limit:Math.max(1,Math.min(this.state.limit,Math.floor(requests)))})}
+ limitTo(requests:number){
+  if(this.capFailure)throw this.capFailure
+  const state=this.state
+  if(!validRequestCap(requests)||state.unit!=='model-requests'||this.restored||state.used!==0||state.grants.length!==0||this.requestCap!==undefined&&this.requestCap!==requests){this.capFailure=this.capRefusal();throw this.capFailure}
+  this.requestCap=requests;this.mutate({requestCap:requests,limit:requests})
+ }
  /** The instructions and the state together, as an agent's prompt carries them. */
  guidance(){return EXECUTION_INSTRUCTIONS+'\n'+this.requestState()}
  /** The part of the guidance that changes between requests: the repetition note, the request
@@ -302,6 +321,7 @@ export class ExecutionController {
   }}
  }
  snapshot(status=this.state.status){
+  if(this.capFailure)throw this.capFailure
   this.mutate({usage:this.usage()})
   const retain=this.state.retainUntil
   const payload=this.state

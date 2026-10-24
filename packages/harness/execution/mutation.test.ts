@@ -270,7 +270,7 @@ function inventory(schema:typeof memberSchema,owners:Record<string,string>,value
  expect([Object.keys(owners).sort(),Object.keys(value).sort()]).toEqual([Object.keys(schema.properties).sort(),Object.keys(schema.properties).sort()])
  expect(new Set(Object.values(owners))).toEqual(new Set(['controller','envelope','delegation']))
 }
-const memberSession=(execution?:ExecutionCheckpoint):EngineSession=>({prompt:'checkpoint request',testPrompt:'',tools:[],hostTools:[],callTool:async()=>({content:[]}),signal:new AbortController().signal,model:{family:'gemini',model:'fixture',call:async()=>new Response('{}')},context:{execution}})
+const memberSession=(execution?:ExecutionCheckpoint):EngineSession=>({prompt:'checkpoint request',testPrompt:'',tools:[],hostTools:[],callTool:async()=>({content:[]}),signal:new AbortController().signal,model:{family:'gemini',model:'fixture',call:async()=>new Response('{}')},context:{execution,...(execution?.requestCap===undefined?{}:{requestCap:execution.requestCap})}})
 async function memberController(execution?:ExecutionCheckpoint){
  const session=memberSession(execution),ledger=new ContextLedger(CONTEXT_DEFAULTS),controller=new ExecutionController(session,ledger)
  await controller.initialize();return controller

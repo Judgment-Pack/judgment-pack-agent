@@ -1,0 +1,91 @@
+{
+  "description": "Handwritten legacy and fixed host request cap records, including interrupted unused and consumed one-request reservations.",
+  "schema": "checkpoint.json",
+  "source": {
+    "issue": 186,
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/execution/requestCap.test.ts (fixed request cap checkpoint records)"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "id": "fixed-cap",
+      "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+      "phase": "work",
+      "status": "stopped",
+      "unit": "model-requests",
+      "used": 0,
+      "limit": 20,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [],
+      "context": {
+        "scope": "fixed-cap",
+        "entries": []
+      }
+    },
+    {
+      "version": 1,
+      "id": "fixed-cap",
+      "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+      "phase": "work",
+      "status": "stopped",
+      "unit": "model-requests",
+      "used": 0,
+      "limit": 1,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [],
+      "context": {
+        "scope": "fixed-cap",
+        "entries": []
+      },
+      "requestCap": 1
+    },
+    {
+      "version": 1,
+      "id": "fixed-cap",
+      "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+      "phase": "work",
+      "status": "stopped",
+      "unit": "model-requests",
+      "used": 1,
+      "limit": 1,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [],
+      "context": {
+        "scope": "fixed-cap",
+        "entries": []
+      },
+      "requestCap": 1
+    },
+    {
+      "version": 1,
+      "id": "fixed-cap",
+      "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+      "phase": "work",
+      "status": "stopped",
+      "unit": "model-requests",
+      "used": 1,
+      "limit": 20,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [],
+      "context": {
+        "scope": "fixed-cap",
+        "entries": []
+      },
+      "requestCap": 20
+    }
+  ]
+}

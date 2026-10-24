@@ -48,7 +48,8 @@
     "steers": "controller",
     "usage": "controller",
     "failover": "controller",
-    "childUsage": "controller"
+    "childUsage": "controller",
+    "requestCap": "controller"
   },
   "items": [
     {
@@ -62,14 +63,8 @@
       "status": "running",
       "unit": "model-requests",
       "used": 2,
-      "limit": 30,
-      "grants": [
-        {
-          "from": 20,
-          "to": 30,
-          "at": "2026-10-01T00:00:00.000Z"
-        }
-      ],
+      "limit": 20,
+      "grants": [],
       "plan": [
         {
           "step": "Preserve checkpoint members",
@@ -332,7 +327,8 @@
             ]
           }
         }
-      ]
+      ],
+      "requestCap": 20
     }
   ]
 }

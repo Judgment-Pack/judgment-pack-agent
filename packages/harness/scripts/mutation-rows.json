@@ -5625,6 +5625,186 @@
    "status": "caught",
    "origin": "agent#177",
    "note": "Go twin: omit clearing aggregateOwners after an unresolved replacement; unknownAggregate must remain a writer."
+  },
+  {
+   "name": "fixed request cap input is admitted before dispatch",
+   "file": "execution/controller.ts",
+   "find": "if(requestCap!==undefined&&(!validRequestCap(requestCap)||!('model'in this.session)))throw this.capRefusal()",
+   "replace": "",
+   "tests": [
+    "execution/requestCap.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#186",
+   "note": "Go twin: remove the matching input, identity, mutation, helper latch, reader, extension, projection or child-initialization safeguard; focused RequestCap controls must fail their owning assertion."
+  },
+  {
+   "name": "fixed request cap presence matches trusted resume input",
+   "file": "execution/controller.ts",
+   "find": "if(restored.requestCap!==requestCap)throw this.capRefusal('stale-state')",
+   "replace": "",
+   "tests": [
+    "execution/requestCap.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#186",
+   "note": "Go twin: remove the matching input, identity, mutation, helper latch, reader, extension, projection or child-initialization safeguard; focused RequestCap controls must fail their owning assertion."
+  },
+  {
+   "name": "fixed request cap mutation cannot widen or rewind usage",
+   "file": "execution/controller.ts",
+   "find": "if(this.initialized&&(candidate.requestCap!==this.requestCap||this.requestCap!==undefined&&(candidate.unit!=='model-requests'||candidate.limit!==this.requestCap||!Number.isSafeInteger(candidate.used)||candidate.used<(this.state.used??0)||candidate.used>this.requestCap||candidate.grants.length!==0)))throw this.capRefusal()",
+   "replace": "",
+   "tests": [
+    "execution/requestCap.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#186",
+   "note": "Go twin: remove the matching input, identity, mutation, helper latch, reader, extension, projection or child-initialization safeguard; focused RequestCap controls must fail their owning assertion."
+  },
+  {
+   "name": "fixed request cap invalid helper remains refused if caught",
+   "file": "execution/controller.ts",
+   "find": "this.capFailure=this.capRefusal();throw this.capFailure",
+   "replace": "throw this.capRefusal()",
+   "tests": [
+    "execution/requestCap.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#186",
+   "note": "Go twin: remove the matching input, identity, mutation, helper latch, reader, extension, projection or child-initialization safeguard; focused RequestCap controls must fail their owning assertion."
+  },
+  {
+   "name": "fixed request cap is copied before asynchronous admission",
+   "file": "context/session.ts",
+   "find": " session={...session,context:session.context?{...session.context,requestCap:session.context.requestCap}:undefined}",
+   "replace": "",
+   "tests": [
+    "execution/requestCap.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#186",
+   "note": "Go twin: remove the matching input, identity, mutation, helper latch, reader, extension, projection or child-initialization safeguard; focused RequestCap controls must fail their owning assertion."
+  },
+  {
+   "name": "fixed request cap canonical reader enforces cap semantics",
+   "file": "execution/state.ts",
+   "find": "if(capped&&(value.unit!=='model-requests'||!validRequestCap(value.requestCap)||value.limit!==value.requestCap||value.grants.length!==0))return fail()",
+   "replace": "",
+   "tests": [
+    "execution/requestCap.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#186",
+   "note": "Go twin: remove the matching input, identity, mutation, helper latch, reader, extension, projection or child-initialization safeguard; focused RequestCap controls must fail their owning assertion."
+  },
+  {
+   "name": "fixed request cap cannot receive an extension",
+   "file": "execution/state.ts",
+   "find": "if(saved.requestCap!==undefined||(saved.status!=='paused'",
+   "replace": "if((saved.status!=='paused'",
+   "tests": [
+    "execution/requestCap.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#186",
+   "note": "Go twin: remove the matching input, identity, mutation, helper latch, reader, extension, projection or child-initialization safeguard; focused RequestCap controls must fail their owning assertion."
+  },
+  {
+   "name": "fixed request cap survives snapshot publication",
+   "file": "execution/controller.ts",
+   "find": "return structuredClone(snapshot)",
+   "replace": "mutateCheckpoint(snapshot,{requestCap:undefined});return structuredClone(snapshot)",
+   "tests": [
+    "execution/requestCap.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#186",
+   "note": "Go twin: remove the matching input, identity, mutation, helper latch, reader, extension, projection or child-initialization safeguard; focused RequestCap controls must fail their owning assertion."
+  },
+  {
+   "name": "fixed request cap child is admitted before initialization",
+   "file": "delegation.ts",
+   "find": "...('model'in session?{requestCap:Math.min(MAX_TURNS,requestLimit)}:{}),",
+   "replace": "",
+   "tests": [
+    "delegation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#186",
+   "note": "Go twin: remove the matching input, identity, mutation, helper latch, reader, extension, projection or child-initialization safeguard; focused RequestCap controls must fail their owning assertion."
+  },
+  {
+   "name": "fixed request cap consumed usage survives partial resume",
+   "file": "execution/controller.ts",
+   "find": "new CheckpointMutation({...restored,operations:",
+   "replace": "new CheckpointMutation({...restored,used:0,operations:",
+   "tests": [
+    "execution/requestCap.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#186",
+   "note": "Go twin: reset executionOf Used during restore, or force Eino final tools open; focused RequestCap partial-resume and dispatch controls must fail their owning assertions."
+  },
+  {
+   "name": "fixed request cap Vercel final tools stay closed",
+   "file": "engines/vercel/loop.ts",
+   "find": "toolsClosed=synthesis||progressStep==='finish'||(nativeTools?stepNumber:steps)>=turnLimit-1||context.execution.remaining<=1",
+   "replace": "toolsClosed=false",
+   "tests": [
+    "engines/requestCap.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#186",
+   "note": "Go twin: reset executionOf Used during restore, or force Eino final tools open; focused RequestCap partial-resume and dispatch controls must fail their owning assertions."
+  },
+  {
+   "name": "fixed request cap DeepAgents final tools stay closed",
+   "file": "engines/deepagents/loop.ts",
+   "find": "toolsClosed = synthesis || progressStep === 'finish' || index >= turnLimit - 1 || context.execution.remaining <= 1",
+   "replace": "toolsClosed = false",
+   "tests": [
+    "engines/requestCap.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#186",
+   "note": "Go twin: reset executionOf Used during restore, or force Eino final tools open; focused RequestCap partial-resume and dispatch controls must fail their owning assertions."
+  },
+  {
+   "name": "fixed request cap native helper refuses without storage",
+   "file": "execution/controller.ts",
+   "find": "mutate(patch:CheckpointPatch){\n  if(this.capFailure)throw this.capFailure",
+   "replace": "mutate(patch:CheckpointPatch){",
+   "tests": [
+    "engines/requestCap.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#186",
+   "note": "Go twin: remove the permanent mutation refusal and pre-invocation context check; a native invocation without a checkpoint sink must not run after an ignored invalid helper."
+  },
+  {
+   "name": "fixed request cap refused state still emits a complete error stream",
+   "file": "context/managed.ts",
+   "find": "  if(error instanceof RequestCapRefusal){\n   if(!session.signal.aborted)yield failureEvent(error,'context')\n   yield {type:'usage',usage:context?.execution.state.usage??{rows:[]}}\n   yield {type:'end'};return\n  }\n",
+   "replace": "",
+   "tests": [
+    "engines/requestCap.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#186",
+   "note": "Go counterpart rejects a latched startup helper before returning its context; late refused mutations never publish a replacement checkpoint. Typed refusal streams must end without mutating refused state."
+  },
+  {
+   "name": "fixed request cap requires projectable durable claim before handoff",
+   "file": "context/session.ts",
+   "find": "if(!(error instanceof RecordsRefused)||context.execution.state.requestCap!==undefined)",
+   "replace": "if(!(error instanceof RecordsRefused))",
+   "tests": [
+    "execution/requestCap.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#186",
+   "note": "Go twin: remove the fixed-cap RecordsRefused refusal in SessionContext.ClaimRequest; the unprojectable capped claim must not admit handoff, while the legacy behavior remains accepted."
   }
  ]
 }

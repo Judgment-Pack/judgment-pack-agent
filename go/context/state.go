@@ -306,7 +306,16 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 		used.Num() > limit.Num() || !grants.IsArray() || grants.Len() > 8 {
 		return nil, errSavedExecution
 	}
+	if value.Has("requestCap") {
+		cap := value.Get("requestCap")
+		if !isInteger(cap) || cap.Num() < 1 || cap.Num() > MaxTurns || value.Get("unit").Str() != "model-requests" || cap.Num() != limit.Num() || grants.Len() != 0 {
+			return nil, errSavedExecution
+		}
+	}
 	chained := float64(MaxTurns)
+	if value.Has("requestCap") {
+		chained = value.Get("requestCap").Num()
+	}
 	if value.Get("unit").Str() != "model-requests" {
 		chained = 1
 	}
@@ -607,7 +616,7 @@ func parsableDate(text string) bool {
 // CanExtendInterruptedExecution is canExtendInterruptedExecution: a stopped API request can fail
 // exactly at the ceiling; recovery still needs an explicit grant.
 func CanExtendInterruptedExecution(saved *contract.Checkpoint) bool {
-	return saved != nil && saved.Unit == "model-requests" && saved.Status == "stopped" &&
+	return saved != nil && saved.RequestCap == nil && saved.Unit == "model-requests" && saved.Status == "stopped" &&
 		saved.Used == saved.Limit && saved.Limit < MaxRequestAllowance
 }
 
@@ -626,7 +635,7 @@ func ExtendExecution(checkpoint contract.Checkpoint, interrupted bool, now time.
 	if err != nil {
 		return nil, err
 	}
-	if (saved.Status != "paused" && !(interrupted && CanExtendInterruptedExecution(saved))) ||
+	if saved.RequestCap != nil || (saved.Status != "paused" && !(interrupted && CanExtendInterruptedExecution(saved))) ||
 		saved.Unit != "model-requests" || saved.Limit >= MaxRequestAllowance {
 		return nil, errNoAllowance
 	}

@@ -74,6 +74,10 @@ func memberCheckpoint(t *testing.T) (*Value, *contract.Checkpoint) {
 func memberController(t *testing.T, saved *contract.Checkpoint) *ExecutionController {
 	t.Helper()
 	session := Session{Prompt: "checkpoint request", Model: &ModelSession{Family: "gemini", Model: "fixture"}, Context: &Input{Execution: saved}}
+	if saved != nil && saved.RequestCap != nil {
+		cap := int(*saved.RequestCap)
+		session.Context.RequestCap = &cap
+	}
 	c := NewExecutionController(session, NewContextLedger(&Defaults, nil), nil)
 	if err := c.Initialize(); err != nil {
 		t.Fatal(err)
