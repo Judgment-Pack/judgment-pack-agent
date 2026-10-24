@@ -42,12 +42,44 @@ func (b *observedModelBody) Read(p []byte) (int, error) {
 	b.once.Do(func() { close(b.read) })
 	return b.ReadCloser.Read(p)
 }
-func waitModelBarrier(t *testing.T, ch <-chan struct{}) {
+
+// The full race lane runs packages concurrently. Await real channel milestones with
+// a bounded budget that leaves room for instrumentation and scheduler contention.
+const modelFixtureBarrierTimeout = 30 * time.Second
+
+func waitModelBarrier(t *testing.T, ch, done, dependent <-chan struct{}, phase string) {
 	t.Helper()
+	if ch == done {
+		done = nil
+	}
+	timer := time.NewTimer(modelFixtureBarrierTimeout)
+	defer timer.Stop()
+	unexpectedDependent := func() { t.Fatalf("unacknowledged result allowed dependent execution before %s", phase) }
 	select {
 	case <-ch:
-	case <-time.After(3 * time.Second):
-		t.Fatal("model fixture did not reach barrier")
+	case <-dependent:
+		unexpectedDependent()
+	case <-done:
+		// A lost acknowledgement can end the engine before this waiter is
+		// scheduled, after the fixture has already signalled its barrier.
+		select {
+		case <-ch:
+			return
+		default:
+		}
+		select {
+		case <-dependent:
+			unexpectedDependent()
+		default:
+		}
+		t.Fatalf("model fixture ended before %s", phase)
+	case <-timer.C:
+		select {
+		case <-ch:
+			return
+		default:
+		}
+		t.Fatalf("model fixture did not reach %s within %s", phase, modelFixtureBarrierTimeout)
 	}
 }
 func TestDurableModelActualEinoWaitsForTerminalAndAcknowledgement(t *testing.T) {
@@ -60,6 +92,9 @@ func TestDurableModelActualEinoWaitsForTerminalAndAcknowledgement(t *testing.T) 
 			var unblock sync.Once
 			defer unblock.Do(func() { close(release) })
 			var calls, tools atomic.Int32
+			dependent := make(chan struct{})
+			var dependentOnce sync.Once
+			markDependent := func() { dependentOnce.Do(func() { close(dependent) }) }
 			var events []contract.RunEvent
 			store := engineModelStore{RunStore: memory}
 			armed := true
@@ -72,7 +107,9 @@ func TestDurableModelActualEinoWaitsForTerminalAndAcknowledgement(t *testing.T) 
 				if err = json.Unmarshal(in.Checkpoint, &cp); err != nil {
 					return receipt, err
 				}
-				if armed && (mode == "acknowledged" || mode == "lost-ack") && len(cp.Durable.Dispatches) > 0 && cp.Durable.Dispatches[0].Kind == "model" && cp.Durable.Dispatches[0].State == "result" {
+				// Only the model-only outcome commit is this acknowledgement. A later
+				// event or tool-claim commit cannot substitute for the model barrier.
+				if armed && (mode == "acknowledged" || mode == "lost-ack") && len(in.Events) == 0 && len(cp.Durable.Dispatches) == 1 && cp.Durable.Dispatches[0].Kind == "model" && cp.Durable.Dispatches[0].State == "result" {
 					armed = false
 					close(ack)
 					if mode == "lost-ack" {
@@ -94,6 +131,7 @@ func TestDurableModelActualEinoWaitsForTerminalAndAcknowledgement(t *testing.T) 
 			run := &adapter.Run{Wire: "openai-compatible", ModelName: "fixture", Thinking: "off", Prompt: "Read the fixture then answer.", AllowConversation: true, Critic: "off", Gate: g.Calls(), Tools: []contract.ToolOfferRuntimeTool{},
 				Context: &runcontext.Input{CurrentRequest: &runcontext.CurrentRequest{Message: "Read fixture", Input: "Read fixture"}, RunStore: &runcontext.DurableRunInput{Store: store, ID: "model-engine"}},
 				HostTools: []runcontext.HostTool{{Name: "read_fixture", Description: "Read fixture", InputSchema: json.RawMessage(`{"type":"object","properties":{}}`), Effect: "read", Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
+					markDependent()
 					tools.Add(1)
 					return runcontext.ResultOf([]runcontext.Content{runcontext.TextContent("fixture result")}, nil), nil
 				}}},
@@ -102,20 +140,35 @@ func TestDurableModelActualEinoWaitsForTerminalAndAcknowledgement(t *testing.T) 
 						close(headers)
 						return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: &observedModelBody{ReadCloser: reader, read: reading}}, nil
 					}
+					markDependent()
 					return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(durableFinalResponse))}, nil
 				}}
+			var runErr error
 			go func() {
 				defer close(done)
-				if err := eino.New().Run(ctx, run); err != nil {
-					t.Error(err)
-				}
+				runErr = eino.New().Run(ctx, run)
 			}()
-			waitModelBarrier(t, headers)
+			t.Cleanup(func() {
+				cancel()
+				bodyWriter.CloseWithError(context.Canceled)
+				reader.CloseWithError(context.Canceled)
+				unblock.Do(func() { close(release) })
+				timer := time.NewTimer(modelFixtureBarrierTimeout)
+				defer timer.Stop()
+				select {
+				case <-done:
+				case <-timer.C:
+					t.Error("model fixture did not drain after cancellation")
+				}
+			})
+			waitModelBarrier(t, headers, done, nil, "response headers")
 			select {
 			case <-reading:
 			case <-ack:
 				t.Fatal("headers promoted a claim before the original body was read")
-			case <-time.After(3 * time.Second):
+			case <-done:
+				t.Fatal("model fixture ended before the original body was read")
+			case <-time.After(modelFixtureBarrierTimeout):
 				t.Fatal("neither body read nor acknowledgement reached")
 			}
 			head, err := memory.Load(context.Background(), "model-engine")
@@ -141,14 +194,17 @@ func TestDurableModelActualEinoWaitsForTerminalAndAcknowledgement(t *testing.T) 
 				}
 				bodyWriter.Close()
 				if mode == "acknowledged" || mode == "lost-ack" {
-					waitModelBarrier(t, ack)
+					waitModelBarrier(t, ack, done, dependent, "result acknowledgement")
 					if tools.Load() != 0 || calls.Load() != 1 {
 						t.Fatal("unacknowledged result allowed dependent execution")
 					}
 					unblock.Do(func() { close(release) })
 				}
 			}
-			waitModelBarrier(t, done)
+			waitModelBarrier(t, done, done, nil, "engine completion after result release")
+			if runErr != nil {
+				t.Error(runErr)
+			}
 			if mode == "acknowledged" {
 				if tools.Load() != 1 || calls.Load() != 2 {
 					t.Fatalf("valid terminal/ack: tools=%d models=%d", tools.Load(), calls.Load())
