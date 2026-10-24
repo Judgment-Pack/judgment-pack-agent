@@ -38,8 +38,21 @@ export function parseCompletion(c,body){
  if(!['stop','tool_calls'].includes(choice.finish_reason)||!choice.message)fail('truncated or incomplete answer')
  const input=u?.prompt_tokens,output=u?.completion_tokens,cached=u?.prompt_tokens_details?.cached_tokens??0
  if(!integer(input,1)||!integer(output,1)||!integer(cached)||cached>input||u.total_tokens!==input+output||input>c.maxInputTokens||output>c.maxOutputTokens)fail('absent, invalid or out-of-bounds usage')
- // Unexpected modality/billing classes cannot silently acquire zero cost.
- if((u.completion_tokens_details?.audio_tokens??0)!==0||(u.prompt_tokens_details?.audio_tokens??0)!==0)fail('unsupported token billing class')
+ // Every admitted detail count is included in an existing headline total. Known
+ // unsupported classes may be explicitly zero; unknown classes never acquire zero cost.
+ const details=(value,allowed)=>{
+  if(value===undefined)return {}
+  if(value===null||typeof value!=='object'||Array.isArray(value))fail('invalid token detail object')
+  for(const [name,count] of Object.entries(value)){
+   if(!allowed.includes(name))fail('unsupported token billing class')
+   if(!integer(count))fail('invalid token detail count')
+  }
+  return value
+ }
+ const prompt=details(u.prompt_tokens_details,['cached_tokens','audio_tokens'])
+ const completion=details(u.completion_tokens_details,['reasoning_tokens','audio_tokens','accepted_prediction_tokens','rejected_prediction_tokens'])
+ if((completion.reasoning_tokens??0)>output)fail('reasoning tokens exceed completion total')
+ if((prompt.audio_tokens??0)!==0||(completion.audio_tokens??0)!==0||(completion.accepted_prediction_tokens??0)!==0||(completion.rejected_prediction_tokens??0)!==0)fail('unsupported token billing class')
  return {input,output,cached}
 }
 export function transport(c,key,{fetchImpl=globalThis.fetch,provenance='live'}={}){

@@ -58,3 +58,21 @@ test('reviewed fixed slice pins all corpus bytes',()=>{
  assert.equal(loadSlice(root,path,digest(readFileSync(path))).cases.length,2)
  assert.throws(()=>loadSlice(root,path,'0'.repeat(64)),/digest/)
 })
+
+test('usage detail classes and counts refuse transport-to-report evidence and retain uncertainty',async()=>{
+ const fixtures=JSON.parse(readFileSync(new URL('../quality/usage-refusal-fixtures.json',import.meta.url))).cases
+ for(const fixture of fixtures){
+  const body={...completion(),usage:fixture.usage}
+  assert.throws(()=>parseCompletion(config(),body),undefined,fixture.name)
+  const wire=transport(config(),key,{provenance:'offline-test',fetchImpl:async()=>response(body)})
+  await assert.rejects(wire.call(request()),/usage may be incomplete/,fixture.name)
+  assert.equal(wire.summary().uncertain,true,fixture.name)
+  assert.deepEqual(wire.rows,[],fixture.name)
+  await assert.rejects(wire.call(request()),/earlier provider attempt is incomplete/,fixture.name)
+  assert.throws(()=>validateReport(config(),{kind:'release-quality-incomplete',usage:wire.rows,summary:wire.summary()}),/live evidence/,fixture.name)
+ }
+ const valid=completion()
+ valid.usage.prompt_tokens_details={cached_tokens:2,audio_tokens:0}
+ valid.usage.completion_tokens_details={reasoning_tokens:4,audio_tokens:0,accepted_prediction_tokens:0,rejected_prediction_tokens:0}
+ assert.deepEqual(parseCompletion(config(),valid),{input:12,output:4,cached:2})
+})

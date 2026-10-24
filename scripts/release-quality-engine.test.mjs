@@ -31,3 +31,15 @@ test('built engine cannot complete evidence by omitting a fixed tool fixture',as
  const slice=loadSlice(root,new URL('../quality/release-slice.json',import.meta.url),c.sliceSha256)
  await assert.rejects(replayRelease(root,c,slice,fixtureWire({omitTool:true}),key),/partial or unsafe engine answer/)
 })
+
+test('built engine refuses unsupported usage details before a complete report can exist',async()=>{
+ const slice=loadSlice(root,new URL('../quality/release-slice.json',import.meta.url),c.sliceSha256)
+ const fixtures=JSON.parse(readFileSync(new URL('../quality/usage-refusal-fixtures.json',import.meta.url))).cases
+ for(const fixture of fixtures){
+  const wire=transport(c,key,{provenance:'offline-test',fetchImpl:async()=>new Response(JSON.stringify({model:c.model,choices:[{message:{role:'assistant',content:'Public fixture answer.'},finish_reason:'stop'}],usage:fixture.usage}),{headers:{'content-type':'application/json'}})})
+  await assert.rejects(replayRelease(root,c,slice,wire,key),/partial or unsafe engine answer/,fixture.name)
+  assert.equal(wire.summary().uncertain,true,fixture.name)
+  assert.deepEqual(wire.rows,[],fixture.name)
+  assert.throws(()=>validateReport(c,{kind:'release-quality-incomplete',usage:wire.rows,summary:wire.summary()}),/live evidence/,fixture.name)
+ }
+})

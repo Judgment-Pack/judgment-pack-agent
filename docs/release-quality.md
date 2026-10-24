@@ -39,7 +39,11 @@ reads or engine errors refuse evidence. Provider errors expose no raw response o
 Rates are integer nanodollars per token: a published price of USD 1 per million tokens
 is 1,000 nanodollars per token. Record separate input, cached input and output rates,
 including all billable completion/reasoning tokens in the provider's completion total.
-Unsupported billing classes are refused. Cost is exact rate-derived USD for provider
+Only cached input and reasoning output detail counts are supported; all detail counts
+must be nonnegative safe integers, with cached input at most prompt tokens and reasoning
+at most completion tokens. Explicit audio and prediction detail counts must be zero.
+Unknown detail names and malformed detail objects are refused, including unknown
+zero-valued classes. Cost is exact rate-derived USD for provider
 reported tokens; invoice credits, discounts, taxes and unrelated provider charges are
 outside this figure. The report states each call's usage and cost, total tokens, total USD,
 model, bounds and threshold. A failed request may have incurred unknown
