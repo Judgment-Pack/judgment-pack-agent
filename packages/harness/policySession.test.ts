@@ -110,7 +110,7 @@ function rawReasoningReads(harness:string,files:string[],snapshot:Snapshot):stri
    const admission:Record<string,string[]>={
     'context/session.ts':['resolveSessionPolicy','requestSession','contextualSession','delegatedRoleSession','delegatedProjection','SessionContext.constructor','SessionContext.askHost','SessionContext.connection','SessionContext.models','SessionContext.fallback','SessionContext.family','fallbackRequest'],
     'corpus.ts':['recordSession'],
-    'delegation.ts':['withDelegation.start'],
+    'delegation.ts':['delegationEngine.start'],
     'execution/controller.ts':['ExecutionController.constructor','ExecutionController.initialize','ExecutionController.useConnection'],
     'planning/policy.ts':['planningSession'],
     'testing/afterPolicy.ts':['afterPolicy.start']
@@ -233,15 +233,15 @@ export function projection(session:RequestSession) { return session as RequestSe
  it('owns only start methods returned directly by the canonical top-level factory',()=>{
   const harness=resolve(process.cwd()),directory=mkdtempSync(join(tmpdir(),'request-factory-')),path=join(directory,'delegation.ts')
   writeFileSync(path,`import type {EngineSession} from ${JSON.stringify(join(harness,'engine'))}
-export function withDelegation() {
+export function delegationEngine() {
  const unrelated={start(raw:EngineSession){return 'model' in raw?raw.model.model:raw.agent.model}}
  void unrelated
  return ({start(raw:EngineSession){return 'model' in raw?raw.model.model:raw.agent.model}} as {start(raw:EngineSession):string})
 }
 export function ordinary() {return {start(raw:EngineSession){return 'model' in raw?raw.model.model:raw.agent.model}}}
 export function nested() {
- function withDelegation() {return {start(raw:EngineSession){return 'model' in raw?raw.model.model:raw.agent.model}}}
- return withDelegation()
+ function delegationEngine() {return {start(raw:EngineSession){return 'model' in raw?raw.model.model:raw.agent.model}}}
+ return delegationEngine()
 }
 `)
   writeFileSync(join(directory,'tsconfig.json'),JSON.stringify({compilerOptions:{strict:true,skipLibCheck:true,target:'ES2022',module:'ESNext',moduleResolution:'bundler'},files:['delegation.ts']}))

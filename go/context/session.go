@@ -1236,11 +1236,6 @@ type Run struct {
 // (gate counts it), and the refusal of a name the session serves but the run was not offered.
 // Plan mode's tool filtering is the gate's too (gate.PlanPhase); PlanningSession gives the prompt.
 func ContextualSession(ctx context.Context, session Session) (*Run, error) {
-	var admissionErr error
-	session.Context, admissionErr = PrepareDurableInput(ctx, session.Context)
-	if admissionErr != nil {
-		return nil, admissionErr
-	}
 	if session.Context != nil {
 		copied := *session.Context
 		if copied.RequestCap != nil {
@@ -1248,6 +1243,11 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 			copied.RequestCap = &cap
 		}
 		session.Context = &copied
+	}
+	var admissionErr error
+	session.Context, admissionErr = PrepareDurableInput(ctx, session.Context)
+	if admissionErr != nil {
+		return nil, admissionErr
 	}
 	// ADR-0006: the tools with a source, read and named for the wire before anything else sees them.
 	served := make([]string, 0, len(session.Tools))
@@ -1312,6 +1312,11 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		}
 		if err := held.Execution.Initialize(); err != nil {
 			return err
+		}
+		if session.Context != nil && session.Context.checkpointProfile {
+			if err := held.Execution.MutateCheckpoint(CheckpointPatch{"ID": session.Context.checkpointRunID}); err != nil {
+				return err
+			}
 		}
 		if session.Context != nil && session.Context.Persistence != nil {
 			binding := session.Context.Persistence

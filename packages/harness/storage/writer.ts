@@ -28,6 +28,9 @@ type PendingModel={readonly [modelClaim]:true;readonly request:string}
 export type ModelOutcome={ok:true}|{ok:false;error:unknown;verifiedRefusal?:true}
 const encoder=new TextEncoder(),digest=(text:string)=>`sha256:${sha256(text)}`
 const scopeKey=(scope:DurableScope)=>canonicalJSON(scope)
+const checkpointProfiles=new WeakMap<object,string>()
+/** Internal identity of the acknowledged legacy callback profile; never journal authority. */
+export const legacyCheckpointIdentity=(save:object|undefined)=>save?checkpointProfiles.get(save):undefined
 function safeRequest(text:string){
  if(encoder.encode(text).length>STORAGE_RECORD_BYTES)throw new ContinuationNotRecoverable()
  // Only prepared bodies, never transport headers. Explicit provider reasoning blocks cannot persist.
@@ -49,6 +52,7 @@ export class RunWriter {
  private recovered:Set<string>
  decorate:(state:ExecutionCheckpoint)=>ExecutionCheckpoint=state=>state
  constructor(readonly store:RunStore,readonly id:string,head?:RunHead,legacy?:ExecutionCheckpoint){
+  if(store.durability==='single-writer-callback')throw new ContinuationNotRecoverable()
   if(head&&(head.runId!==id||!storageId(head.revision)||!storageId(head.commitId)||head.cursor!==null&&!storageId(head.cursor)))throw new StorageAcknowledgementInvalid()
   this.revision=head?.revision??null
   this.latest=head?.checkpoint?readExecution(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(head.checkpoint))):legacy
@@ -193,11 +197,32 @@ export class RunWriter {
   return value
  }
 }
+/** A callback acknowledges legacy checkpoint delivery. It cannot create an exact dispatch journal. */
+function callbackProfile<T extends EngineSession>(session:T,store:RunStore,id:string,execution?:ExecutionCheckpoint,head?:RunHead):T {
+ if(execution?.durable)throw new ContinuationNotRecoverable()
+ if(execution&&execution.id!==id)throw new ContinuationIdentityChanged()
+ if(head&&(head.runId!==id||!storageId(head.revision)||!storageId(head.commitId)||head.cursor!==null&&!storageId(head.cursor)))throw new StorageAcknowledgementInvalid()
+ let revision=head?.revision??null,tail:Promise<unknown>=Promise.resolve(),fatal:unknown
+ const checkpoint=(state:ExecutionCheckpoint):Promise<void>=>{
+  if(state.durable)return Promise.reject(new ContinuationNotRecoverable())
+  const bytes=encoder.encode(canonicalJSON(state))
+  const next=tail.then(async()=>{
+   if(fatal!==undefined)throw fatal
+   const commitId=crypto.randomUUID(),receipt=await store.commit({runId:id,expectedRevision:revision,commitId,checkpoint:bytes,events:[]},session.signal)
+   if(!receipt||receipt.commitId!==commitId||!storageId(receipt.revision)||receipt.revision===revision||receipt.cursor!==null&&!storageId(receipt.cursor))throw new StorageAcknowledgementInvalid()
+   revision=receipt.revision;session.signal.throwIfAborted()
+  })
+  tail=next.catch(error=>{fatal=error});return next
+ }
+ checkpointProfiles.set(checkpoint,id)
+ return {...session,context:{...session.context,runStore:undefined,execution,checkpoint}}
+}
 /** Internal admission used once for a root, then explicitly inherited by trusted child bindings. */
 export async function durableSession<T extends EngineSession>(session:T):Promise<T>{
  const input=session.context
  if(input?.[durableOwner])return session
  const config=input?.runStore
+ if(input?.checkpoint&&checkpointProfiles.has(input.checkpoint)){if(input.execution?.durable)throw new ContinuationNotRecoverable();return session}
  if(!config&&!input?.checkpoint){if(input?.execution){checkRecordVersion('checkpoint',input.execution);if(input.execution.durable)throw new ContinuationNotRecoverable()};return session}
  if(config&&input?.checkpoint)throw new ContinuationIdentityChanged()
  const id=config?.id??input?.execution?.id??crypto.randomUUID();requireId(id)
@@ -207,6 +232,7 @@ export async function durableSession<T extends EngineSession>(session:T):Promise
  if(head&&!head.checkpoint)throw new ContinuationNotRecoverable()
  const execution=head?.checkpoint?readExecution(JSON.parse(new TextDecoder().decode(head.checkpoint))):input?.execution
  if(head&&input?.execution&&canonicalJSON(execution)!==canonicalJSON(input.execution))throw new ContinuationIdentityChanged()
+ if(store.durability==='single-writer-callback')return callbackProfile(session,store,id,execution,head)
  if(execution?.durable?.pendingHandoff&&!execution.handoff)throw new ProviderReleaseUnknown()
  if(execution?.durable?.dispatches.some(row=>row.failure?.detail?.startsWith('ProviderReleaseUnknown:')))throw new ProviderReleaseUnknown()
  const writer=new RunWriter(store,id,head,execution),binding:DurableBinding={writer,scope:{execution:id,role:'author'},root:true}
