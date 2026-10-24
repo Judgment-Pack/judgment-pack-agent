@@ -238,6 +238,7 @@ $pkg/scripts/body-parser-consumer.mjs
 $pkg/scripts/undici-controls.mjs
 $pkg/recordReader.ts
 $pkg/recordReader.test.ts
+$pkg/recordRefusal.test.ts
 $pkg/contract/record-shapes.json
 EOF
 }
