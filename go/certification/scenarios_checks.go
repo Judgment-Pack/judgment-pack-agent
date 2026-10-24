@@ -11,11 +11,11 @@ import (
 	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
 )
 
-// runtimeSix are the Runtime's six the gate serves to a scenario, and contextSix the six the
+// runtimeSix are the Runtime's six the gate serves to a scenario, and contextTools the seven the
 // boundary adds to every conversation.
 var (
-	runtimeSix = []string{"get_schema", "list_examples", "get_example", "validate", "experimental_evaluate", "experimental_test_cases"}
-	contextSix = []string{"list_context", "read_context", "read_window", "search", "update_plan", "request_budget_increase"}
+	runtimeSix   = []string{"get_schema", "list_examples", "get_example", "validate", "experimental_evaluate", "experimental_test_cases"}
+	contextTools = []string{"list_context", "read_context", "read_window", "search", "update_plan", "complete_plan_step", "request_budget_increase"}
 	// reviewAsk is request_review (ADR-0010), which the author's run is offered under auto, the
 	// policy table's default.
 	reviewAsk = runcontext.RequestReview
@@ -78,7 +78,7 @@ var ChatHostTools = ScenarioCheck{
 			f.fail("no request")
 		} else {
 			offered := offeredNames(ran.Requests[0])
-			want := sortedCopy(append(append(append([]string{}, runtimeSix...), contextSix...), "propose_edit", "propose_delete", "propose_insert", "undo_edit", runcontext.Remember, reviewAsk, "read_policy", "propose_pack"))
+			want := sortedCopy(append(append(append([]string{}, runtimeSix...), contextTools...), "propose_edit", "propose_delete", "propose_insert", "undo_edit", runcontext.Remember, reviewAsk, "read_policy", "propose_pack"))
 			if !slices.Equal(sortedCopy(offered), want) || slices.Contains(offered, "save_pack") {
 				f.fail("offered %v", offered)
 			}
@@ -273,7 +273,7 @@ var PlanMode = ScenarioCheck{
 			offered = offeredNames(ran.Requests[0])
 		}
 		f := &findings{check: "4 offer"}
-		want := sortedCopy(append(append(append([]string{}, gate.PlanRuntimeReads...), "read_policy", "propose_plan", runcontext.Remember), contextSix...))
+		want := sortedCopy(append(append(append([]string{}, gate.PlanRuntimeReads...), "read_policy", "propose_plan", runcontext.Remember), contextTools...))
 		if !slices.Equal(sortedCopy(offered), want) {
 			f.fail("offered %v", offered)
 		}

@@ -36,7 +36,19 @@ var SkillTools = []string{"load_skill", "unload_skill"}
 // $defs/reservedName): the context tools, load_tool (ADR-0006), the catalogue loader the boundary
 // offers beside them only where the schema budget makes a tool source a catalogue, the skill
 // loaders (ADR-0009), and request_review (ADR-0010).
-var ReservedNames = append(append(append(append([]string{}, ContextTools...), "load_tool"), SkillTools...), ReviewTool, "remember", "propose_edit", "propose_delete", "propose_insert", "undo_edit")
+var ReservedNames = func() []string {
+	// The completion action was appended to the public enum. Preserve that order
+	// independently of the order in which the context offers its tools.
+	var names []string
+	for _, name := range ContextTools {
+		if name != "complete_plan_step" {
+			names = append(names, name)
+		}
+	}
+	names = append(names, "load_tool")
+	names = append(names, SkillTools...)
+	return append(names, ReviewTool, "remember", "propose_edit", "propose_delete", "propose_insert", "undo_edit", "complete_plan_step")
+}()
 
 // ReviewTool is request_review (ADR-0010): the model's ask for a review, which the boundary offers in
 // the author's phase where the critic's mode is auto; never to the critic, a child, Plan mode or the

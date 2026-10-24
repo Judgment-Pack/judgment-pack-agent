@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
+	"strings"
 	"testing"
 )
 
@@ -65,5 +67,60 @@ func TestCallbackProfileRejectsFullJournalImport(t *testing.T) {
 	s.Context.RunStore = &DurableRunInput{Store: store, ID: "strict-import"}
 	if _, err = PrepareDurableInput(context.Background(), s.Context); !errors.As(err, &refused) {
 		t.Fatal("configured callback adapter accepted a full journal")
+	}
+}
+
+// A host may acknowledge a checkpoint and cancel before that acknowledgement is released.
+// Both cancellation positions must refuse opening; an approved act never escapes the first.
+func TestCallbackApprovalCancellationBeforeAcknowledgementRelease(t *testing.T) {
+	for _, at := range []string{"approved", "executed"} {
+		t.Run(at, func(t *testing.T) {
+			ran := 0
+			session, saved := pausedSession(t, &ran)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			var states []string
+			session.Context = &Input{CurrentRequest: session.Context.CurrentRequest, Execution: &saved, Approval: &contract.CheckpointApprovalDecision{CallID: "call-a", Approved: true}, Checkpoint: func(_ context.Context, state contract.Checkpoint) error {
+				states = append(states, state.Approval.State)
+				if state.Approval.State == at {
+					cancel()
+				}
+				return nil
+			}}
+			opened, err := ContextualSession(ctx, session)
+			if opened != nil {
+				opened.Context.Close()
+			}
+			if opened != nil || !failure.IsCancelled(err) {
+				t.Fatalf("cancelled acknowledgement released an opened run: opened=%v err=%v", opened != nil, err)
+			}
+			want, wantRan := "approved", 0
+			if at == "executed" {
+				want, wantRan = "approved,executed", 1
+			}
+			if strings.Join(states, ",") != want || ran != wantRan {
+				t.Fatalf("cancel at %s: acknowledged %v, executions %d", at, states, ran)
+			}
+		})
+	}
+}
+
+// The writer must also refuse release if a store publishes a valid receipt and the
+// root is cancelled before Commit returns. Later saves retain that cancellation.
+func TestCallbackProfileCancellationAfterCommittedReceiptIsSticky(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	commits := 0
+	store := NewMemoryRunStore(MemoryRunStoreOptions{AfterCommit: func() error { commits++; cancel(); return nil }})
+	save := legacyCheckpointSave(store, "callback-receipt-cancel", nil)
+	cp := writerCheckpoint("callback-receipt-cancel")
+	if err := save(ctx, cp); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled committed receipt released successfully: %v", err)
+	}
+	if err := save(context.Background(), cp); !errors.Is(err, context.Canceled) {
+		t.Fatalf("writer lost sticky receipt cancellation: %v", err)
+	}
+	if commits != 1 {
+		t.Fatalf("cancelled writer committed again: %d", commits)
 	}
 }
