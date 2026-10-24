@@ -8,6 +8,7 @@ import {build} from 'esbuild'
 import {emittedTarget,moduleImports} from './normalize-esm.mjs'
 import {existingLockZodConsumer,verifyHarnessZod} from './zod-consumer.mjs'
 import {existingLockBodyParserConsumer,verifyBodyParserConsumer} from './body-parser-consumer.mjs'
+import {existingLockUndiciConsumer,verifyUndiciConsumer} from './undici-controls.mjs'
 
 const packageDirectory=fileURLToPath(new URL('..',import.meta.url))
 const repositoryDirectory=fileURLToPath(new URL('../../..',import.meta.url))
@@ -239,7 +240,7 @@ export function validateDeclarations(projectRoot,packageRoot,entries){
  catch(error){throw Error(`packed declaration resolution failed:\n${error.stdout??''}${error.stderr??''}`,{cause:error})}
 }
 
-export async function packedSmoke({bodyParserOnly=false}={}){
+export async function packedSmoke({bodyParserOnly=false,undiciOnly=false}={}){
  const temporary=consumerDirectory()
  try{
   const packed=JSON.parse(execFileSync(npm,['pack','--json','--pack-destination',temporary],{cwd:packageDirectory,encoding:'utf8'}))
@@ -248,6 +249,17 @@ export async function packedSmoke({bodyParserOnly=false}={}){
   execFileSync(npm,['install','--ignore-scripts','--no-audit','--no-fund',tarball],{cwd:temporary,stdio:'inherit'})
   const installedRoot=join(temporary,'node_modules','@judgment-pack','harness')
   const entries=validatePackage(installedRoot)
+  await verifyUndiciConsumer(temporary,installedRoot,'fresh consumer')
+  const oldUndici=consumerDirectory()
+  try{await existingLockUndiciConsumer(oldUndici,tarball)}
+  finally{rmSync(oldUndici,{recursive:true,force:true})}
+  if(undiciOnly){
+   const affected=entries.filter(entry=>entry.specifier==='@judgment-pack/harness/vercel')
+   nativeEntrypoints(temporary,affected)
+   await bundleEntrypoints(temporary,installedRoot,affected)
+   validateDeclarations(temporary,installedRoot,affected)
+   console.log('packed Undici: affected native/browser/declaration and fresh/existing-lock consumers passed');return
+  }
   verifyHarnessZod(temporary,installedRoot,'fresh consumer')
   await verifyBodyParserConsumer(temporary,installedRoot,'fresh consumer')
   const oldBodyParser=consumerDirectory()
@@ -269,4 +281,4 @@ export async function packedSmoke({bodyParserOnly=false}={}){
  }
 }
 
-if(process.argv[1]&&realpathSync(process.argv[1])===realpathSync(fileURLToPath(import.meta.url)))await packedSmoke({bodyParserOnly:process.argv.includes('--body-parser-only')})
+if(process.argv[1]&&realpathSync(process.argv[1])===realpathSync(fileURLToPath(import.meta.url)))await packedSmoke({bodyParserOnly:process.argv.includes('--body-parser-only'),undiciOnly:process.argv.includes('--undici-only')})
