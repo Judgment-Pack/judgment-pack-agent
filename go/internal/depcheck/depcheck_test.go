@@ -69,6 +69,8 @@ func TestTheAllowListAdmitsByModuleAndVersion(t *testing.T) {
 		{Module, "", true},
 		{"github.com/cloudwego/eino", "v0.9.21", true},
 		{"github.com/cloudwego/eino", "v0.9.22", false},
+		{"golang.org/x/sys", "v0.48.0", true},
+		{"golang.org/x/sys", "v0.47.0", false},
 		{"github.com/tmc/langchaingo", "v0.1.14", false},
 		{"github.com/cloudwego/eino-ext/components/model/openai", "v0.1.0", false},
 	} {
