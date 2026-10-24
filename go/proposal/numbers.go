@@ -66,11 +66,46 @@ func Check(data []byte, path []string, numberText func(float64) string) error {
 	if len(data) > SourceBytes {
 		return bound()
 	}
+	if sourceDepthExceeded(data) {
+		return bound()
+	}
 	if !json.Valid(data) {
 		return invalid()
 	}
 	p := scanner{data: data, path: path, numberText: numberText}
 	return p.walk(0, 0, len(path) == 0)
+}
+
+// sourceDepthExceeded checks the resource ceiling before encoding/json's own depth limit can
+// classify a deeply nested source as malformed. Strings and escaped quotes contain no containers;
+// json.Valid remains the syntax authority after this nonrecursive, byte-bounded preflight.
+func sourceDepthExceeded(data []byte) bool {
+	depth := 0
+	quoted, escaped := false, false
+	for _, c := range data {
+		if quoted {
+			if escaped {
+				escaped = false
+			} else if c == '\\' {
+				escaped = true
+			} else if c == '"' {
+				quoted = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			quoted = true
+		case '{', '[':
+			depth++
+			if depth > SourceDepth {
+				return true
+			}
+		case '}', ']':
+			depth--
+		}
+	}
+	return false
 }
 
 type scanner struct {

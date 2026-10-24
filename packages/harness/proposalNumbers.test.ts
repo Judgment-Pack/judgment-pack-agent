@@ -40,3 +40,9 @@ describe('proposal numeric source admission',()=>{
   expect(()=>readProposedPack({documentJson:'{}',unknowns:[1]})).toThrow('array of strings')
  })
 })
+
+it('classifies depth beyond a generic JSON parser limit as a source work bound',()=>{
+ const source='{"id":"p","n":'+'['.repeat(10001)+'0'+']'.repeat(10001)+'}'
+ try { readProposalDocument(source); expect.fail('deep source admitted') }
+ catch(cause) { expect(cause).toBeInstanceOf(ProposalDocumentError); expect((cause as ProposalDocumentError).kind).toBe('work-bound') }
+})

@@ -68,7 +68,8 @@ const fence=(document:string)=>'```json\n{"proposal":{"document":'+document+'}}\
 const recoveryCases=[
  ['numeric loss','{"id":"p","n":9007199254740993}','numerical value changes'],
  ['exponent bound','{"id":"p","n":0e10000000}','work bound'],
- ['depth bound','{"id":"p","n":'+'['.repeat(128)+'0'+']'.repeat(128)+'}','work bound']
+ ['depth bound','{"id":"p","n":'+'['.repeat(128)+'0'+']'.repeat(128)+'}','work bound'],
+ ['depth beyond generic parser limit','{"id":"p","n":'+'['.repeat(10001)+'0'+']'.repeat(10001)+'}','work bound']
 ] as const
 for(const engine of [vercel,deepagents])for(const family of ['openai-compatible','anthropic','gemini'] as const){
  for(const [name,document,detail] of recoveryCases)it(engine.id+' '+family+' terminal source refusal prevents replacement: '+name,async()=>{

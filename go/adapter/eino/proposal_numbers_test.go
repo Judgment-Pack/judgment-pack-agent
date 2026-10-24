@@ -177,6 +177,7 @@ func TestProposalNumericTerminalRecovery(t *testing.T) {
 			{"numeric loss", `{"id":"p","n":9007199254740993}`, "numerical value changes"},
 			{"exponent bound", `{"id":"p","n":0e10000000}`, "work bound"},
 			{"depth bound", `{"id":"p","n":` + strings.Repeat("[", 128) + "0" + strings.Repeat("]", 128) + "}", "work bound"},
+			{"depth beyond generic parser limit", `{"id":"p","n":` + strings.Repeat("[", 10001) + "0" + strings.Repeat("]", 10001) + "}", "work bound"},
 		} {
 			t.Run(family+"/"+test.name, func(t *testing.T) {
 				events, calls := numericRunReplies(t, family, "", func(at int) string {

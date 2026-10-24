@@ -387,6 +387,10 @@ func (r *runState) drive(ctx context.Context) error {
 				r.deliver(messageEvent(kept))
 			}
 		}
+		if turn.IsTerminalProposalSourceRefusal(unread) {
+			keep()
+			return unread
+		}
 		r.deliver(contract.RunEvent{ResponseRecovery: &contract.RunEventResponseRecovery{Type: "response_recovery"}})
 		reformatted, err := r.invoke(execution, ReformatPrompt(final, unread), instructions, "reformat", nil, "", "")
 		if err != nil {

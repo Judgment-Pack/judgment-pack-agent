@@ -76,3 +76,27 @@ func TestProposalNumericFenceSelectionAndBounds(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestProposalNumericDepthBeforeSyntaxLimit(t *testing.T) {
+	source := `{"id":"p","n":` + strings.Repeat("[", 10001) + "0" + strings.Repeat("]", 10001) + "}"
+	if _, err := ReadProposalDocument(json.RawMessage(source)); err == nil {
+		t.Fatal("deep source admitted")
+	} else if issue, ok := err.(*proposal.Error); !ok || issue.Kind != "work-bound" {
+		t.Fatalf("deep source classification: got %v; want work-bound", err)
+	}
+	if _, err := ExtractProposal("```json\n" + `{"proposal":{"document":` + source + "}}\n```"); !IsTerminalProposalSourceRefusal(err) {
+		t.Fatalf("deep source lost terminal classification: %v", err)
+	}
+	// Delimiters and escaped quotes inside strings must not consume the nesting allowance.
+	quoted := `{"text":"` + strings.Repeat("[{]}", 10001) + `","escaped":"\\\"[{}]","n":1}`
+	if _, err := ReadProposalDocument(json.RawMessage(quoted)); err != nil {
+		t.Fatalf("quoted containers: %v", err)
+	}
+	for _, malformed := range []string{"", `{`, `{"n":oops}`, `{"text":"unterminated\`} {
+		if _, err := ReadProposalDocument(json.RawMessage(malformed)); err == nil {
+			t.Fatal("malformed source admitted")
+		} else if issue, ok := err.(*proposal.Error); !ok || issue.Kind != "invalid-json" {
+			t.Fatalf("ordinary malformed classification: %v", err)
+		}
+	}
+}

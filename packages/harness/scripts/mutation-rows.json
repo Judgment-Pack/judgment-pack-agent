@@ -5965,7 +5965,7 @@
    ],
    "status": "caught",
    "origin": "agent#198",
-   "note": "Go twin: go/proposal/numbers.go; remove the matching safeguard and require TestProposalNumericFenceSelectionAndBounds to fail its owning assertion."
+   "note": "Go twins: bypass both depth guards for TestProposalNumericFenceSelectionAndBounds; separately remove only the sourceDepthExceeded preflight before json.Valid for TestProposalNumericDepthBeforeSyntaxLimit and actual TestProposalNumericTerminalRecovery deep-source cases (R203-2)."
   },
   {
    "name": "proposal numeric native source XOR",
@@ -6085,7 +6085,7 @@
    ],
    "status": "caught",
    "origin": "agent#198",
-   "note": "Go twin: go/adapter/eino/loop.go; remove the matching safeguard and require TestProposalNumericTerminalRecovery to fail its owning assertion."
+   "note": "Go twin: go/adapter/agent/agent.go; remove the terminal check before response_recovery and require TestProposalNumericAgentTerminalRecovery to fail its owning assertions (R203-1)."
   }
  ]
 }
