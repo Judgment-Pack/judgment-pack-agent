@@ -18,7 +18,7 @@ const Module = "github.com/Judgment-Pack/judgment-pack-agent/go"
 var Allowed = map[string]string{
 	"github.com/cloudwego/eino":             "v0.9.21",
 	"github.com/bahlo/generic-list-go":      "v0.2.0",
-	"github.com/buger/jsonparser":           "v1.1.1",
+	"github.com/buger/jsonparser":           "v1.1.2",
 	"github.com/bytedance/gopkg":            "v0.1.3",
 	"github.com/bytedance/sonic":            "v1.15.0",
 	"github.com/bytedance/sonic/loader":     "v0.5.0",
@@ -42,7 +42,7 @@ var Allowed = map[string]string{
 	"github.com/yargevad/filepathx":         "v1.0.0",
 	"golang.org/x/arch":                     "v0.11.0",
 	"golang.org/x/exp":                      "v0.0.0-20230713183714-613f0c0eb8a1",
-	"golang.org/x/sys":                      "v0.29.0",
+	"golang.org/x/sys":                      "v0.47.0",
 	"gopkg.in/yaml.v3":                      "v3.0.1",
 }
 
