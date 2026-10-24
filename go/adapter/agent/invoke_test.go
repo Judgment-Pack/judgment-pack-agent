@@ -170,3 +170,49 @@ func TestRetiredReviewRefusesPresence(t *testing.T) {
 		}
 	}
 }
+
+func TestPlanDriftStopsProviderInvocation(t *testing.T) {
+	var effects atomic.Int32
+	note := runcontext.HostTool{Name: "write_note", Effect: "write", Description: "Writes a note.", InputSchema: json.RawMessage(`{"type":"object"}`), Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
+		effects.Add(1)
+		return runcontext.ResultOf(nil, nil), nil
+	}}
+	afterPause := false
+	run, events := oneTool(t, note, func(ctx context.Context, request adapter.AgentRequest, callbacks adapter.AgentCallbacks) error {
+		_, err := callbacks.Tool(ctx, adapter.AgentToolCall{ID: "departure", Name: aliasOf(request, "update_plan"), Arguments: json.RawMessage(`{"explanation":"Narrow accepted work","plan":[{"id":"step-2","step":"Report","status":"pending"}]}`)})
+		if err == nil || ctx.Err() == nil {
+			t.Error("provider invocation continued after plan pause")
+		}
+		afterPause = true
+		_, _ = callbacks.Tool(ctx, adapter.AgentToolCall{ID: "later-call", Name: aliasOf(request, "write_note"), Arguments: json.RawMessage(`{}`)})
+		return err
+	})
+	// This fixture opens its gate before the boundary adds package execution tools.
+	// Admit the exact package tool exercised here through that gate as well.
+	g := gate.New(gate.Options{Runtime: emptyRuntime, Granted: gate.Ceiling, Emit: run.Emit})
+	g.SetOffer(contract.ToolOffer{Tools: run.Tools, HostTools: []contract.ToolOfferHostTool{note.Declaration(), {Name: "update_plan"}}})
+	run.Gate = g.Calls()
+	run.Context.Plan = runcontext.MustParseJSON(`{"id":"accepted-plan","revision":1,"objective":"Inspect and report","steps":["Inspect","Report"],"questions":[],"references":[],"status":"accepted","createdAt":"2026-10-01T00:00:00.000Z","acceptedAt":"2026-10-01T00:00:00.000Z"}`)
+	if err := agent.New().Run(context.Background(), run); err != nil {
+		t.Fatal(err)
+	}
+	approvals := 0
+	paused := false
+	for _, event := range *events {
+		if event.ApprovalRequested != nil {
+			approvals++
+			if event.ApprovalRequested.Purpose == nil || *event.ApprovalRequested.Purpose != "plan-drift" {
+				t.Fatal("plan departure used tool authority")
+			}
+		}
+		if event.ExecutionCheckpoint != nil && event.ExecutionCheckpoint.Checkpoint.Status == "paused" {
+			paused = true
+		}
+		if event.Error != nil {
+			t.Fatal(event.Error.Message)
+		}
+	}
+	if approvals != 1 || !paused || !afterPause || effects.Load() != 0 {
+		t.Fatalf("approvals %d paused %v callback %v effects %d", approvals, paused, afterPause, effects.Load())
+	}
+}

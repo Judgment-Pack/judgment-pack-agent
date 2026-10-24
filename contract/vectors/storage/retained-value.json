@@ -1,0 +1,50 @@
+{
+  "schema": "checkpoint.json",
+  "description": "Handwritten checkpoint 2 exact retained JSON source paired with a canonicalized value. Both languages restore the original key order without changing its digest or byte count.",
+  "items": [
+    {
+      "version": 2,
+      "id": "retained-order",
+      "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "phase": "work",
+      "status": "stopped",
+      "unit": "model-requests",
+      "used": 0,
+      "limit": 20,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [],
+      "context": {
+        "scope": "retained-order",
+        "entries": [
+          {
+            "id": "retained-order:item:b324e84c8deba4d4",
+            "kind": "artifact",
+            "label": "Ordered source",
+            "value": {
+              "a": {
+                "first": 0,
+                "last": 1
+              },
+              "z": 2
+            },
+            "valueJSON": "{\"z\":2,\"a\":{\"last\":1,\"first\":0}}",
+            "bytes": 32,
+            "digest": "b324e84c8deba4d45ea7ce585ece3262906f3b5f53cc891f400ff526bbc558bf"
+          }
+        ]
+      }
+    }
+  ],
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/context/ledger.ts",
+      "packages/harness/storage/writer.ts"
+    ]
+  }
+}

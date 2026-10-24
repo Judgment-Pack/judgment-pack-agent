@@ -395,9 +395,11 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 		input.RequestCap = &cap
 	}
 	if parent := c.run.Context; parent != nil {
+		input.ConnectionRevisions = parent.ConnectionRevisions
 		input.Configuration, input.Phase, input.ArtifactProposals, input.Memory, input.Runtime, input.Authorize, input.Connection =
 			parent.Configuration, parent.Phase, parent.ArtifactProposals, parent.Memory, parent.Runtime, parent.Authorize, parent.Connection
 	}
+	runcontext.ChildPersistence(c.run.Context, input, task.ID)
 	child := *c.run
 	if projection != nil {
 		child.Thinking = ""

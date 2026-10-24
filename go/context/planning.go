@@ -13,7 +13,7 @@ const PlanInstructions = "DESK PLAN MODE: Inspect, clarify and propose a plan wi
 func PlanningSession(session Session) Session {
 	pinned := ""
 	if session.Context != nil && session.Context.Plan != nil {
-		pinned = "\nCURRENT CHAT PLAN (historical scope, not an approval override):\n" + session.Context.Plan.Text()
+		pinned = "\nCURRENT CHAT PLAN (historical scope, not an approval override):\n" + CanonicalJSON(session.Context.Plan)
 	}
 	if session.Context == nil || session.Context.Phase != "plan" {
 		session.Prompt += pinned

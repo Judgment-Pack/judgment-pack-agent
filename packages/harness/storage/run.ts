@@ -1,0 +1,95 @@
+import {bytesCopy,requireId,requireLimit,sameBytes,StorageCommitMismatch,StorageConflict,StorageCursorInvalid,StorageInputError,STORAGE_EVENT_LIMIT,STORAGE_TRANSACTION_BYTES} from './common'
+import type {StorageRevision,StorageCursor} from './common'
+export type RunStoreDurability = 'host'|'memory'|'single-writer-callback'
+export interface RunCommit {
+ runId:string;expectedRevision:StorageRevision|null;commitId:string
+ /** Exact canonical record bytes, already validated/guarded by the Agent writer. null leaves it unchanged. */
+ checkpoint:Uint8Array|null;events:Uint8Array[]
+}
+export interface RunReceipt {revision:StorageRevision;cursor:StorageCursor|null;commitId:string}
+export interface RunHead extends RunReceipt {runId:string;checkpoint:Uint8Array|null}
+export interface StoredRunEvent {cursor:StorageCursor;bytes:Uint8Array}
+export interface RunEventPage {items:StoredRunEvent[];nextCursor:StorageCursor|null;hasMore:boolean}
+/** One injected store is already bound to an authorized host resource scope. load/read never resume.
+ * A commit atomically publishes checkpoint + ordered events + idempotent receipt. A receipt proves
+ * a past storage transaction, not current authority or external success. An uncertain acknowledgement
+ * grants no dispatch. Repeat commit ids require identical bytes AND the original expected revision.
+ */
+export interface RunStore {
+ readonly durability:RunStoreDurability
+ load(runId:string,signal?:AbortSignal):Promise<RunHead|undefined>
+ commit(input:RunCommit,signal?:AbortSignal):Promise<RunReceipt>
+ readEvents(runId:string,after:StorageCursor|null,limit:number,signal?:AbortSignal):Promise<RunEventPage>
+}
+interface HeldRun {head:RunHead;events:StoredRunEvent[];commits:Map<string,{input:RunCommit;receipt:RunReceipt}>}
+export interface MemoryRunStoreOptions {
+ /** Fault injection only. Hooks must not call this store recursively. */
+ beforeCommit?:()=>void|Promise<void>;afterCommit?:()=>void|Promise<void>
+}
+function copyCommit(input:RunCommit):RunCommit {
+ if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!['runId','expectedRevision','commitId','checkpoint','events'].includes(k)))throw new StorageInputError()
+ requireId(input.runId);requireId(input.commitId)
+ if(input.expectedRevision!==null)requireId(input.expectedRevision)
+ if(!Array.isArray(input.events)||input.events.length>STORAGE_EVENT_LIMIT||input.checkpoint===null&&input.events.length===0)throw new StorageInputError()
+ const checkpoint=input.checkpoint===null?null:bytesCopy(input.checkpoint),events:Uint8Array[]=[]
+ let total=checkpoint?.length??0
+ for(const raw of input.events){const event=bytesCopy(raw);total+=event.length;if(total>STORAGE_TRANSACTION_BYTES)throw new StorageInputError();events.push(event)}
+ return {...input,checkpoint,events}
+}
+const identical=(a:RunCommit,b:RunCommit)=>a.expectedRevision===b.expectedRevision&&sameBytes(a.checkpoint,b.checkpoint)&&a.events.length===b.events.length&&a.events.every((e,i)=>sameBytes(e,b.events[i]!))
+const copyHead=(head:RunHead):RunHead=>({...head,checkpoint:head.checkpoint===null?null:new Uint8Array(head.checkpoint)})
+/** Conforms to the atomic port in one process; all data is ephemeral. Tokens are unique per instance. */
+export class MemoryRunStore implements RunStore {
+ readonly durability:RunStoreDurability='memory'
+ private runs=new Map<string,HeldRun>()
+ private tail:Promise<unknown>=Promise.resolve()
+ constructor(private options:MemoryRunStoreOptions={},private acknowledge?:(checkpoint:Uint8Array,signal?:AbortSignal)=>Promise<void>){}
+ async load(runId:string,signal?:AbortSignal){signal?.throwIfAborted();requireId(runId);const held=this.runs.get(runId);return held?copyHead(held.head):undefined}
+ commit(input:RunCommit,signal?:AbortSignal):Promise<RunReceipt> {
+  // Detach before the first asynchronous boundary, including while another commit owns the queue.
+  let frozen:RunCommit
+  try{signal?.throwIfAborted();frozen=copyCommit(input)}catch(error){return Promise.reject(error)}
+  const result=this.tail.then(async()=>{
+   signal?.throwIfAborted()
+   const held=this.runs.get(frozen.runId),prior=held?.commits.get(frozen.commitId)
+   if(prior){if(!identical(prior.input,frozen))throw new StorageCommitMismatch();return {...prior.receipt}}
+   if((held?.head.revision??null)!==frozen.expectedRevision)throw new StorageConflict(frozen.expectedRevision,held?.head.revision??null)
+   await this.options.beforeCommit?.()
+   signal?.throwIfAborted()
+   if(frozen.checkpoint!==null)await this.acknowledge?.(new Uint8Array(frozen.checkpoint),signal)
+   signal?.throwIfAborted()
+   const events=frozen.events.map(bytes=>({cursor:crypto.randomUUID(),bytes})),cursor=events.at(-1)?.cursor??held?.head.cursor??null
+   const receipt:RunReceipt={revision:crypto.randomUUID(),cursor,commitId:frozen.commitId}
+   const head:RunHead={...receipt,runId:frozen.runId,checkpoint:frozen.checkpoint??held?.head.checkpoint??null}
+   const commits=new Map(held?.commits);commits.set(frozen.commitId,{input:frozen,receipt})
+   // Publish only after all validation/acknowledgement. No externally visible partial state.
+   this.runs.set(frozen.runId,{head,events:[...(held?.events??[]),...events],commits})
+   await this.options.afterCommit?.()
+   return {...receipt}
+  })
+  this.tail=result.catch(()=>undefined)
+  return result
+ }
+ async readEvents(runId:string,after:StorageCursor|null,limit:number,signal?:AbortSignal):Promise<RunEventPage>{
+  signal?.throwIfAborted();requireId(runId);requireLimit(limit)
+  if(after!==null){try{requireId(after)}catch{throw new StorageCursorInvalid()}}
+  const events=this.runs.get(runId)?.events??[]
+  const at=after===null?-1:events.findIndex(e=>e.cursor===after)
+  if(after!==null&&at<0)throw new StorageCursorInvalid()
+  const items:StoredRunEvent[]=[];let bytes=0,index=at+1
+  for(;index<events.length&&items.length<limit;index++){
+   const item=events[index]!
+   if(bytes+item.bytes.length>STORAGE_TRANSACTION_BYTES)break
+   items.push({cursor:item.cursor,bytes:new Uint8Array(item.bytes)});bytes+=item.bytes.length
+  }
+  return {items,nextCursor:items.at(-1)?.cursor??after,hasMore:index<events.length}
+ }
+}
+/** Compatibility only: callback persistence has NO cross-process CAS or durable event log.
+ * The decoder is explicit so a legacy codec, version or object projection is never guessed.
+ * Restart/import is an explicit null-revision commit into a fresh adapter, not recovered log state.
+ */
+export function checkpointCallbackRunStore<T>(callback:(state:T)=>Promise<void>,decode:(bytes:Uint8Array)=>T):RunStore {
+ const store=new MemoryRunStore({},async bytes=>callback(decode(bytes)))
+ return {durability:'single-writer-callback',load:store.load.bind(store),commit:store.commit.bind(store),readEvents:store.readEvents.bind(store)}
+}

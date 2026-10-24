@@ -179,13 +179,13 @@ func TestUpdatePlanGrantsNoWorkOrRequests(t *testing.T) {
 	session.Context = &held
 	run := openRun(t, session)
 	plan := hostTool(t, run, "update_plan")
-	// A limit the model writes into its arguments grants nothing: the tool records progress only.
+	// Unknown model-written limit arguments are refused without granting work.
 	if _, err := plan.Execute(context.Background(),
-		json.RawMessage(`{"explanation":"Prepare review","plan":[{"step":"Inspect","status":"completed"}],"limit":999}`)); err != nil {
-		t.Fatal(err)
+		json.RawMessage(`{"explanation":"Prepare review","plan":[{"step":"Inspect","status":"in_progress"}],"limit":999}`)); err == nil {
+		t.Fatal("model limit argument accepted")
 	}
 	answered, err := plan.Execute(context.Background(),
-		json.RawMessage(`{"explanation":"Prepare review","plan":[{"step":"Inspect","status":"completed"}]}`))
+		json.RawMessage(`{"explanation":"Prepare review","plan":[{"step":"Inspect","status":"in_progress"}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}

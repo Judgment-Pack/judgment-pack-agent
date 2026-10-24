@@ -12,6 +12,7 @@ Package files (`packages/harness`), with the symbols read:
 - `host.ts`: `ASSISTANT_TOOLS`
 - `toolGate.ts`: `REFUSED_RUNTIME_TOOLS`, `TEST_TOOL`, `REHEARSAL_TOOL`, `REHEARSAL_MEMBER`, `TEST_ARGUMENTS`
 - `toolSources.ts`: `HELD_NAMES`, `LOAD_TOOL`, `DECLARED_SOURCE_KINDS`, `TRUST_CLASSES`, `EFFECT_CLASSES`, `APPROVAL_DEFAULT`, `SOURCE_ID`, `NAME_BYTES`
+- `descriptorSnapshot.ts`: `DESCRIPTOR_SNAPSHOT_BYTES`
 - `engines/contract.ts`: `PROPOSE_PACK_TOOL`
 - `delegationContract.ts`: `DELEGATE_TOOL`, `TASK_PROFILES`
 - `context/reader.ts`: `READ_TOOL`
@@ -158,6 +159,7 @@ The package also holds a wider set, `HELD_NAMES`, that a tool with a source may 
 | `read_window` | context tool name |
 | `search` | context tool name |
 | `update_plan` | context tool name |
+| `complete_plan_step` | context tool name |
 | `request_budget_increase` | context tool name |
 | `load_tool` | context tool name |
 | `remember` | context tool name |
@@ -230,7 +232,7 @@ Kinds a host declares: `gateway`, `mcp`, `custom`; the record also carries `runt
 
 ### The source record
 
-Where a host tool comes from (ADR-0006). Declared by the host on each host tool a source outside the host serves; the package adds tool (the tool's own name at its source) on the offer, carries the record on the tool's tool_call and tool_result events (with receipt on a result where the host's answer gave one), and counts the source in the run report (provenance.json#/$defs/sourceFigures). gateway: a gateway connection the person configured (Databricks, Azure DevOps, Drive), which may give a receipt for each call; mcp: a public MCP server the host connected, whose tool list is pinned by digest at connection time; custom: a tool the person created; exchange (ADR-0009): a skill whose bytes the host fetched from a Judgment Exchange entry, the entry's id and version the record's id and version, which a host tool may not declare. runtime is the Runtime's own row in the run report: its tools come through tools/list behind the gate, carry no declaration, and a host tool declared with kind runtime is refused. Either version or toolListDigest is present; mcp carries toolListDigest. Closed: the package refuses another member before any request (configuration).
+Where a host tool comes from (ADR-0006). Declared by the host on each host tool a source outside the host serves; the package adds tool (the tool's own name at its source) on the offer, carries the record on the tool's tool_call and tool_result events (with receipt on a result where the host's answer gave one), and counts the source in the run report (provenance.json#/$defs/sourceFigures). gateway: a gateway connection the person configured (Databricks, Azure DevOps, Drive), which may give a receipt for each call; mcp: a public MCP server the host connected, whose approved descriptor snapshot (or explicit legacy tool list) is pinned by digest at connection time; custom: a tool the person created; exchange (ADR-0009): a skill whose bytes the host fetched from a Judgment Exchange entry, the entry's id and version the record's id and version, which a host tool may not declare. runtime is the Runtime's own row in the run report: its tools come through tools/list behind the gate, carry no declaration, and a host tool declared with kind runtime is refused. Either version or toolListDigest is present; mcp carries toolListDigest. Closed: the package refuses another member before any request (configuration).
 
 Closed: a member the schema does not name is refused.
 
@@ -247,3 +249,13 @@ Closed: a member the schema does not name is refused.
 | `receipt` |  | string (min length 1, max length 128) | On a tool_result only: the receipt id the host's answer gave for this call (HostToolResult.receipt; a gateway connection's), at most 128 characters. |
 
 Conditions beyond the members (if, anyOf) are in the schema file.
+
+### Gateway descriptor snapshot pins
+
+New MCP registrations supply approved raw UTF-8 descriptorSnapshot bytes (Go DescriptorSnapshot), their complete sha256 pin as toolListDigest, and required currentDescriptorSnapshot (Go CurrentDescriptorSnapshot). readDescriptorSnapshot and descriptorSnapshotDigest are public helpers. A snapshot is at most 327680 bytes and must match Gateway SPEC 1.1 canonical bytes: Unicode code-point key order, strict UTF-8, no lone surrogate, duplicate member, noninteger numeric spelling or trailing text. Agent record canonicalization is unchanged. inputSchemaText stays opaque original text in the pin.
+
+Only host-declared captured tool names are admitted; an uncaptured name or wrong digest withholds that source whole. Offered descriptors derive from captured candidates; absent schema projects open while the original host schema is independently checked in the package-supported subset. The host executor retains every other validation and authorization rule. Snapshot platform/server metadata does not replace the local source id or execution identity.
+
+The observer reports current server descriptor content under the approved metadata before ordinary calls, approval decisions and approved continuations. Binding, endpoint, capturedAt, policy and server identity are pinned: a fresh capture timestamp requires re-approval. Agent does not independently verify the host observer. Observers may overlap and run outside observation locks; they must not recursively invoke source tools. A changed, malformed or failed observation latches refusal for the source within the run; an older overlapping observation cannot clear it.
+
+Absent descriptorSnapshot explicitly selects legacy list-pin behavior with toolListDigest/ToolListDigest and currentDigest/CurrentDigest. Snapshot mode cannot also supply the legacy observer; malformed supplied snapshots never fall back. Migrate through a newly person-approved snapshot declaration, and re-supply its observer on resume. Historical checkpoint and event bytes stay unchanged; this change adds no persisted record member. See ADR-0006 and contract/vectors/tool-offer/descriptor-snapshot.json.

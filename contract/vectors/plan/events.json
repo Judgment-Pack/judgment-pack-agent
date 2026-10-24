@@ -1,0 +1,123 @@
+{
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/execution/plan.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "plan_revised",
+      "version": 1,
+      "execution": "plan-execution",
+      "sequence": 1,
+      "previous": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "revision": "sha256:2a2c83a4b95b8eb50b6fc3d82a4bf883c021c01da0e48fd6750e943cb92babb1",
+      "explanation": "Track the work",
+      "diff": [
+        {
+          "id": "step-1",
+          "kind": "added",
+          "after": {
+            "id": "step-1",
+            "step": "Inspect",
+            "status": "pending",
+            "detail": "Read current content"
+          },
+          "to": 0
+        },
+        {
+          "id": "step-2",
+          "kind": "added",
+          "after": {
+            "id": "step-2",
+            "step": "Verify",
+            "status": "pending"
+          },
+          "to": 1
+        }
+      ]
+    },
+    {
+      "type": "plan_revised",
+      "version": 1,
+      "execution": "plan-execution",
+      "sequence": 2,
+      "previous": "sha256:2a2c83a4b95b8eb50b6fc3d82a4bf883c021c01da0e48fd6750e943cb92babb1",
+      "revision": "sha256:ff6cf55091ba79df44092b3418d7123e8cd44e336cd243e3fbdb5f48b83a2251",
+      "explanation": "Narrow verification and report",
+      "diff": [
+        {
+          "id": "step-1",
+          "kind": "removed",
+          "before": {
+            "id": "step-1",
+            "step": "Inspect",
+            "status": "pending",
+            "detail": "Read current content"
+          },
+          "from": 0
+        },
+        {
+          "id": "step-2",
+          "kind": "changed",
+          "before": {
+            "id": "step-2",
+            "step": "Verify",
+            "status": "pending"
+          },
+          "after": {
+            "id": "step-2",
+            "step": "Verify changed content",
+            "status": "in_progress"
+          }
+        },
+        {
+          "id": "step-2",
+          "kind": "status",
+          "before": {
+            "id": "step-2",
+            "step": "Verify",
+            "status": "pending"
+          },
+          "after": {
+            "id": "step-2",
+            "step": "Verify changed content",
+            "status": "in_progress"
+          }
+        },
+        {
+          "id": "step-2",
+          "kind": "reordered",
+          "from": 1,
+          "to": 0
+        },
+        {
+          "id": "step-3",
+          "kind": "added",
+          "after": {
+            "id": "step-3",
+            "step": "Report",
+            "status": "pending"
+          },
+          "to": 1
+        }
+      ]
+    },
+    {
+      "type": "plan_revised",
+      "version": 1,
+      "execution": "plan-execution",
+      "sequence": 3,
+      "previous": "sha256:ff6cf55091ba79df44092b3418d7123e8cd44e336cd243e3fbdb5f48b83a2251",
+      "revision": "sha256:ff6cf55091ba79df44092b3418d7123e8cd44e336cd243e3fbdb5f48b83a2251",
+      "explanation": "Content unchanged",
+      "diff": []
+    }
+  ],
+  "description": "Hand-authored task plan revision notices; no-op content revision is unchanged."
+}

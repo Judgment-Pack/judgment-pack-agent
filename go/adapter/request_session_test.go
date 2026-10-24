@@ -114,10 +114,12 @@ func isRawRequestField(field *types.Var) bool {
 	if field == nil || !field.IsField() || field.Pkg() == nil {
 		return false
 	}
+	// Persistence and callback-profile identity are trusted coordinator bookkeeping,
+	// like Checkpoint/Link; they carry no raw model or reasoning preference.
 	operational := map[string]map[string]bool{
 		"Run":     {"Prompt": true, "TestPrompt": true, "Purpose": true, "AllowConversation": true, "Interactive": true, "Cases": true, "Gate": true, "Emit": true, "BeforeRuntimeCall": true, "LanguageInstructions": true, "Context": true},
 		"Session": {"Prompt": true, "TestPrompt": true, "Purpose": true, "AllowConversation": true, "Interactive": true, "CallTool": true, "Context": true},
-		"Input":   {"AcceptedDocuments": true, "CurrentState": true, "ArtifactProposals": true, "Authorize": true, "Checkpoint": true, "Execution": true, "CurrentRequest": true, "Phase": true, "Plan": true, "Documents": true, "Chat": true, "Runtime": true, "Memory": true, "Objective": true, "Link": true, "DelegationReuse": true, "Approval": true, "Steer": true},
+		"Input":   {"AcceptedDocuments": true, "CurrentState": true, "ArtifactProposals": true, "Authorize": true, "Checkpoint": true, "Execution": true, "CurrentRequest": true, "Phase": true, "Plan": true, "Documents": true, "Chat": true, "Runtime": true, "Memory": true, "Objective": true, "Link": true, "DelegationReuse": true, "Approval": true, "Steer": true, "Persistence": true, "checkpointProfile": true, "checkpointRunID": true},
 	}
 	owners := []string{}
 	switch field.Pkg().Path() {
@@ -212,6 +214,17 @@ func protectedRequestField(field *types.Var) string {
 func requestSourceViolations(root string, files *token.FileSet, trees []*ast.File, info *types.Info) []string {
 	unexpected := []string{}
 	allowed := map[string][][2]token.Pos{}
+	// Storage and accepted-plan admission consume only these new raw input members.
+	// Their functions do not gain permission to read unrelated current or future fields.
+	type fieldAdmission struct {
+		bounds [2]token.Pos
+		fields []string
+	}
+	admittedFields := map[string][]fieldAdmission{}
+	fieldConversions := map[string]map[string][]string{
+		"context/run_writer.go":      {"PrepareDurableInput": {"RunStore", "RequestCap"}, "*SessionContext.ProviderStorageIdentity": {"ConnectionRevisions"}},
+		"context/plan_validation.go": {"*ExecutionController.seedAcceptedPlan": {"PlanResolver", "PlanDrift"}},
+	}
 	for _, tree := range trees {
 		path := files.Position(tree.Pos()).Filename
 		relative, _ := filepath.Rel(root, path)
@@ -245,6 +258,9 @@ func requestSourceViolations(root string, files *token.FileSet, trees []*ast.Fil
 			function, ok := declaration.(*ast.FuncDecl)
 			if !ok {
 				continue
+			}
+			if fields := fieldConversions[filepath.ToSlash(relative)][requestFunctionOwner(function)]; fields != nil {
+				admittedFields[path] = append(admittedFields[path], fieldAdmission{[2]token.Pos{function.Pos(), function.End()}, fields})
 			}
 			for _, name := range admission[filepath.ToSlash(relative)] {
 				if requestFunctionOwner(function) == name {
@@ -370,6 +386,15 @@ func requestSourceViolations(root string, files *token.FileSet, trees []*ast.Fil
 		for _, bounds := range allowed[position.Filename] {
 			if selector.Pos() >= bounds[0] && selector.End() <= bounds[1] {
 				permitted = true
+			}
+		}
+		for _, admission := range admittedFields[position.Filename] {
+			if selector.Pos() >= admission.bounds[0] && selector.End() <= admission.bounds[1] {
+				for _, name := range admission.fields {
+					if field != nil && field.Name() == name {
+						permitted = true
+					}
+				}
 			}
 		}
 		if privateWrite {
@@ -552,6 +577,23 @@ func TestRequestSourceGuardDeclarationOwnership(t *testing.T) {
  func unrelatedValue(run struct{ModelName string}) string { return run.ModelName }
  func projection(session *RequestSession) *RequestSession { return session }
 `, []string{"adapter/request_session.go:ModelName", "adapter/request_session.go:Thinking", "adapter/request_session.go:RequestSession:request-construction", "adapter/request_session.go:RequestSession:request-construction"}},
+		{"storage-field-admission", "context", "context/run_writer.go", `package guardprobe
+ type Input struct { RunStore, RequestCap, ConnectionRevisions, Configuration, Future string; Persistence string; checkpointProfile bool; checkpointRunID string }
+ type SessionContext struct{}
+ type unrelated struct{}
+ func PrepareDurableInput(input *Input) { _=input.RunStore; _=input.RequestCap; _=input.Configuration }
+ func (unrelated) PrepareDurableInput(input *Input) { _=input.RunStore; _=input.RequestCap }
+ func (*SessionContext) ProviderStorageIdentity(input *Input) { _=input.ConnectionRevisions; _=input.Future }
+ func other(input *Input) { _=input.RunStore; _=input.RequestCap; _=input.ConnectionRevisions; _=input.Persistence; _=input.checkpointProfile; _=input.checkpointRunID }
+`, []string{"context/run_writer.go:Configuration", "context/run_writer.go:RunStore", "context/run_writer.go:RequestCap", "context/run_writer.go:Future", "context/run_writer.go:RunStore", "context/run_writer.go:RequestCap", "context/run_writer.go:ConnectionRevisions"}},
+		{"plan-field-admission", "context", "context/plan_validation.go", `package guardprobe
+ type Input struct { PlanResolver, PlanDrift, Future string }
+ type ExecutionController struct{}
+ type unrelated struct{}
+ func (*ExecutionController) seedAcceptedPlan(input *Input) { _=input.PlanResolver; _=input.PlanDrift; _=input.Future }
+ func (unrelated) seedAcceptedPlan(input *Input) { _=input.PlanResolver; _=input.PlanDrift }
+ func other(input *Input) { _=input.PlanResolver; _=input.PlanDrift }
+`, []string{"context/plan_validation.go:Future", "context/plan_validation.go:PlanResolver", "context/plan_validation.go:PlanDrift", "context/plan_validation.go:PlanResolver", "context/plan_validation.go:PlanDrift"}},
 		{"defined-request-types", "adapter", "adapter/new_writer.go", `package guardprobe
  type RequestSession struct { modelName string }
  type RequestAgent struct { model string }

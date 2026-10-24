@@ -4,7 +4,7 @@ import {ContextBudgetError,prefix,utf8Bytes,type ContextPolicy} from './policy'
 import {READ_DESCRIPTION,READ_TOOL,readArguments,readInputSchema,readUnits,readable,type ReadResult} from './reader'
 import {SEARCH_DESCRIPTION,SEARCH_TOOL,search,searchArguments,searchInputSchema,type SearchResult} from './search'
 import {decodedBytes,readImagePart,resolveImage,type HeldImage} from '../images'
-import type {ChatTurn} from './chat'
+import {canonicalJSON,type ChatTurn} from './chat'
 export interface ContextDocument {id:string;kind:'history'|'artifact'|'request'|'tool';label:string;value:unknown;revision?:string}
 export interface Entry extends ContextDocument {bytes:number;digest:string}
 const snapshot=(value:unknown):unknown=>{const text=JSON.stringify(value);return JSON.parse(text)}
@@ -54,6 +54,17 @@ export class EntryStore implements LedgerStore {
  missing():string|undefined{return undefined}
  clear(){this.entries.clear();this.size=0}
  release(){this.clear()}
+}
+/** Recover exact source spelling only from an explicitly paired, bounded v2 representation. */
+export function retainedRepresentation(entry:{value:unknown;valueJSON?:string}):{value:unknown;text:string}{
+ try{
+  if(entry.valueJSON===undefined)return {value:entry.value,text:JSON.stringify(entry.value)}
+  if(typeof entry.valueJSON!=='string'||utf8Bytes(entry.valueJSON)>4*1024*1024||!Object.hasOwn(entry,'value'))throw Error()
+  const value=JSON.parse(entry.valueJSON)
+  // Retain snapshots already use JSON.stringify spelling. This rejects duplicate keys/alternate texts.
+  if(JSON.stringify(value)!==entry.valueJSON||canonicalJSON(value)!==canonicalJSON(entry.value))throw Error()
+  return {value,text:entry.valueJSON}
+ }catch{throw toolInputFailure('Saved context no longer matches its recorded digest. Start with current objects.')}
 }
 const UNAVAILABLE='This context reference is unavailable in the current execution. Read the current object or history again.'
 /** A retained value's image, where the value is an image part with its bytes. */
@@ -217,7 +228,7 @@ export class ContextLedger {
   const chat=this.store.chat!==undefined&&saved.scope===this.scope
   if(!this.store.chat&&this.store.entries.size)throw toolInputFailure('Cannot restore over active retained context.')
   const checked:Entry[]=[];let size=0
-  for(const e of saved.entries){const encoded=JSON.stringify(e.value);if(await contextDigest(encoded)!==e.digest||utf8Bytes(encoded)!==e.bytes||!e.id.startsWith(saved.scope+':'))throw toolInputFailure('Saved context no longer matches its recorded digest. Start with current objects.');size+=e.bytes;checked.push(structuredClone(e))}
+  for(const e of saved.entries){const restored=retainedRepresentation(e);if(await contextDigest(restored.text)!==e.digest||utf8Bytes(restored.text)!==e.bytes||!e.id.startsWith(saved.scope+':'))throw toolInputFailure('Saved context no longer matches its recorded digest. Start with current objects.');size+=e.bytes;const {valueJSON:_,...entry}=e as Entry&{valueJSON?:string};checked.push(structuredClone({...entry,value:restored.value}))}
   if(chat){for(const e of checked)if(!this.store.use(e.id)){this.store.room(e.bytes,this.policy.retainedBytes);this.store.add(e)}return}
   if(size>this.policy.retainedBytes)throw new ContextBudgetError()
   this.store.release()

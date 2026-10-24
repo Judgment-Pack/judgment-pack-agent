@@ -148,7 +148,7 @@
       "$ref": "provenance.json#/$defs/delegationReport"
     },
     "handoff": {
-      "description": "The delegation handoff on an agent capability (ADR-0007): written by the Go coordinator (go/adapter/delegate) on every checkpoint from the parent's delegate_tasks call until the response's next run has been dispatched with the call's result, and on every checkpoint after it in that response; read closed by the Go reader (ReadExecution). Each such checkpoint is acknowledged by the host's save before the next invocation is dispatched. Not written by the TypeScript coordinator, whose handoff lives in memory; its reader keeps the member as it keeps any it does not name.",
+      "description": "The durable delegation handoff, written and restored in both languages. Each transition is acknowledged before the next invocation. Current writers retain exact continuation framing; historical formats remain frozen.",
       "$ref": "#/$defs/handoff"
     },
     "approval": {
@@ -349,6 +349,14 @@
       "minimum": 1,
       "maximum": 20,
       "description": "Optional fixed host API request cap. When present, unit is model-requests, limit equals this cap, used is at most it, and grants is empty. It must match independently trusted resume input; it cannot be extended."
+    },
+    "durable": {
+      "$ref": "#/$defs/durableBook",
+      "description": "Current-format acknowledged dispatch/recovery journal. Scope comes from admitted host execution/role/task, never model text. A containing commit proves recorded provenance, not current authority or external success. Credentials and private reasoning are excluded; exact required bytes that cannot be safely retained are refused before dispatch."
+    },
+    "planState": {
+      "$ref": "#/$defs/planState",
+      "description": "Current ordered task content SHA-256, independent history sequence and step allocator. Only newest 32 revisions retained; discarded is the explicit prefix count. Explanations/history/counters do not affect the content digest. Storage CAS revisions remain opaque host tokens."
     }
   },
   "additionalProperties": false,
@@ -437,12 +445,30 @@
           "enum": [
             "pending",
             "in_progress",
-            "completed"
+            "completed",
+            "not-needed"
           ]
         },
         "detail": {
           "type": "string",
           "maxLength": 1500
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^step-[1-9][0-9]{0,15}$",
+          "description": "Package-issued execution-scoped identity; absent on legacy records only."
+        },
+        "origin": {
+          "$ref": "#/$defs/planOrigin"
+        },
+        "evidence": {
+          "$ref": "#/$defs/stepEvidence"
+        },
+        "notNeededReason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1500,
+          "pattern": "\\S"
         }
       },
       "additionalProperties": false
@@ -513,6 +539,11 @@
         "value": {
           "description": "Any JSON value."
         },
+        "valueJSON": {
+          "description": "Optional checkpoint 2 exact JSON.stringify-compatible source text for value, populated by strict durable publication. Its UTF-8 bytes and SHA-256 must equal bytes and digest, and its parsed value must be canonically equal to value. Restore uses this original representation after validation; absence preserves legacy exact-value digest semantics.",
+          "type": "string",
+          "maxLength": 4194304
+        },
         "revision": {
           "type": "string",
           "maxLength": 256
@@ -530,7 +561,7 @@
       "additionalProperties": false
     },
     "handoff": {
-      "description": "One delegation handoff on an agent capability (ADR-0007). callId: the agent wire's id of the parent's delegate_tasks call. batch: the batch's number in the response. state: released, the parent's invocation returned (the account it ran on released) and no child has been dispatched; children, the batch's task records are written and its children are dispatched one at a time, each record in its state (a task running in a restored checkpoint is an admitted invocation whose outcome is unknown, never dispatched again); answered, every child finished and answer is the call's exact result, given to no run yet; continued, the response's next run has been dispatched with answer. request: the call's arguments. tasks: the batch's task records, each child's result and report among them. A restored checkpoint is continued only when the host hands it back, the person's explicit continuation. A child a checkpoint shows running is never dispatched again; a restored answered or continued handoff starts the parent's continuation again with answer, as any restored parent run starts again, and the operations a checkpoint shows committed are not repeated.",
+      "description": "One delegation handoff on an agent capability (ADR-0007). callId: the agent wire's id of the parent's delegate_tasks call. batch: the batch's number in the response. state: released, the parent's invocation returned (the account it ran on released) and no child has been dispatched; children, the batch's task records are written and its children are dispatched one at a time, each record in its state (a task running in a restored checkpoint is an admitted invocation whose outcome is unknown, never dispatched again); answered, every child finished and answer is the call's exact result, given to no run yet; continued, the response's next run has been dispatched with answer. request: the call's arguments. tasks: the batch's task records, each child's result and report among them. A restored checkpoint is continued only when the host hands it back, the person's explicit continuation. A child a checkpoint shows running is never dispatched again; a restored answered or continued handoff starts the parent's continuation again with answer, as any restored parent run starts again, and the operations a checkpoint shows committed are not repeated. Current-format continuation holds the exact safe framed answer bytes; resumed answered/continued records without reconstructible safe bytes refuse by name.",
       "type": "object",
       "required": [
         "callId",
@@ -570,6 +601,10 @@
         },
         "answer": {
           "$ref": "delegated-task.json#/$defs/answer"
+        },
+        "continuation": {
+          "type": "string",
+          "maxLength": 4194304
         }
       },
       "additionalProperties": false
@@ -720,6 +755,786 @@
           "type": "boolean"
         }
       },
+      "additionalProperties": false
+    },
+    "durableScope": {
+      "type": "object",
+      "properties": {
+        "execution": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "task": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "execution",
+        "role"
+      ],
+      "additionalProperties": false
+    },
+    "artifactObservation": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "artifact",
+            "dialect"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "access": {
+          "enum": [
+            "read",
+            "produced"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "digest"
+      ],
+      "additionalProperties": false
+    },
+    "durableDispatch": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "scope": {
+          "$ref": "#/$defs/durableScope"
+        },
+        "kind": {
+          "enum": [
+            "model",
+            "agent",
+            "host",
+            "runtime"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "tool": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "request": {
+          "type": "string",
+          "maxLength": 4194304
+        },
+        "requestDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "state": {
+          "enum": [
+            "claimed",
+            "result",
+            "unknown"
+          ]
+        },
+        "read": {
+          "type": "boolean"
+        },
+        "result": {},
+        "failure": {
+          "$ref": "failure.json"
+        },
+        "artifacts": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/artifactObservation"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "scope",
+        "kind",
+        "source",
+        "tool",
+        "fingerprint",
+        "request",
+        "requestDigest",
+        "state",
+        "read"
+      ],
+      "additionalProperties": false
+    },
+    "durableObservation": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "scope": {
+          "$ref": "#/$defs/durableScope"
+        },
+        "kind": {
+          "enum": [
+            "operation",
+            "artifact-read",
+            "artifact-produced"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "dispatchId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "commitId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "artifact": {
+          "$ref": "#/$defs/artifactObservation"
+        }
+      },
+      "required": [
+        "id",
+        "scope",
+        "kind",
+        "source",
+        "dispatchId",
+        "commitId"
+      ],
+      "additionalProperties": false
+    },
+    "durableBook": {
+      "type": "object",
+      "properties": {
+        "dispatches": {
+          "type": "array",
+          "maxItems": 400,
+          "items": {
+            "$ref": "#/$defs/durableDispatch"
+          }
+        },
+        "observations": {
+          "type": "array",
+          "maxItems": 400,
+          "items": {
+            "$ref": "#/$defs/durableObservation"
+          }
+        },
+        "children": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "properties": {
+              "scope": {
+                "$ref": "#/$defs/durableScope"
+              },
+              "checkpoint": {
+                "$ref": "checkpoint.json"
+              }
+            },
+            "required": [
+              "scope",
+              "checkpoint"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "pendingHandoff": {
+          "type": "object",
+          "properties": {
+            "callId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "request": {
+              "$ref": "delegated-task.json#/$defs/request"
+            }
+          },
+          "required": [
+            "callId",
+            "request"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "dispatches",
+        "observations",
+        "children"
+      ],
+      "additionalProperties": false
+    },
+    "planChange": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^step-[1-9][0-9]{0,15}$"
+        },
+        "kind": {
+          "enum": [
+            "added",
+            "removed",
+            "changed",
+            "status",
+            "reordered"
+          ]
+        },
+        "before": {
+          "$ref": "#/$defs/taskStep"
+        },
+        "after": {
+          "$ref": "#/$defs/taskStep"
+        },
+        "from": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 19
+        },
+        "to": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 19
+        }
+      },
+      "required": [
+        "id",
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "planRevision": {
+      "type": "object",
+      "properties": {
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "previous": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "explanation": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "diff": {
+          "type": "array",
+          "maxItems": 40,
+          "items": {
+            "$ref": "#/$defs/planChange"
+          }
+        }
+      },
+      "required": [
+        "sequence",
+        "previous",
+        "revision",
+        "explanation",
+        "diff"
+      ],
+      "additionalProperties": false
+    },
+    "planState": {
+      "type": "object",
+      "properties": {
+        "revision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "nextId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "discarded": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "history": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/planRevision"
+          }
+        },
+        "accepted": {
+          "$ref": "#/$defs/acceptedPlan"
+        },
+        "driftPolicy": {
+          "type": "array",
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "added",
+              "removed",
+              "changed",
+              "reordered"
+            ]
+          }
+        },
+        "departures": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/planDepartureRecord"
+          }
+        },
+        "departuresDiscarded": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "pending": {
+          "$ref": "#/$defs/pendingDeparture"
+        },
+        "refusals": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/planRefusal"
+          }
+        },
+        "refusalsDiscarded": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "decisions": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/planDecision"
+          }
+        },
+        "decisionsDiscarded": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "revision",
+        "sequence",
+        "nextId",
+        "discarded",
+        "history"
+      ],
+      "additionalProperties": false
+    },
+    "stepEvidence": {
+      "type": "object",
+      "properties": {
+        "operations": {
+          "type": "array",
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "artifacts": {
+          "type": "array",
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "artifact",
+                  "dialect"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "digest": {
+                "type": "string",
+                "pattern": "^sha256:[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "kind",
+              "id",
+              "digest"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "operations",
+        "artifacts"
+      ],
+      "additionalProperties": false
+    },
+    "planOrigin": {
+      "type": "object",
+      "properties": {
+        "plan": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 19
+        }
+      },
+      "required": [
+        "plan",
+        "revision",
+        "index"
+      ],
+      "additionalProperties": false
+    },
+    "acceptedPlan": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "sourceRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "objective": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "type": "string",
+            "maxLength": 1000,
+            "pattern": "\\S"
+          }
+        },
+        "references": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "artifact",
+                  "dialect",
+                  "file"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024
+              },
+              "digest": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "revision": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "acceptedAt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "validatedReferences": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "artifact",
+                  "dialect"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "digest": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "kind",
+              "id",
+              "digest"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "id",
+        "revision",
+        "sourceRevision",
+        "objective",
+        "steps",
+        "references",
+        "acceptedAt",
+        "validatedReferences"
+      ],
+      "additionalProperties": false
+    },
+    "planDeparture": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "added",
+            "removed",
+            "changed",
+            "reordered"
+          ]
+        },
+        "step": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 19
+        }
+      },
+      "required": [
+        "kind",
+        "step"
+      ],
+      "additionalProperties": false
+    },
+    "planDepartureRecord": {
+      "type": "object",
+      "properties": {
+        "revision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "explanation": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "changes": {
+          "type": "array",
+          "maxItems": 40,
+          "items": {
+            "$ref": "#/$defs/planDeparture"
+          }
+        }
+      },
+      "required": [
+        "revision",
+        "explanation",
+        "changes"
+      ],
+      "additionalProperties": false
+    },
+    "planRefusal": {
+      "type": "object",
+      "properties": {
+        "revision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "reason": {
+          "enum": [
+            "invalid-input",
+            "active-step-required",
+            "revision-changed",
+            "evidence-unavailable",
+            "missing-evidence",
+            "unknown-operation",
+            "unsuccessful-operation",
+            "unobserved-revision",
+            "wrong-scope"
+          ]
+        },
+        "step": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "revision",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "pendingDeparture": {
+      "type": "object",
+      "properties": {
+        "purpose": {
+          "const": "plan-drift"
+        },
+        "callId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "candidate": {
+          "type": "object",
+          "properties": {
+            "plan": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 20,
+              "items": {
+                "$ref": "#/$defs/taskStep"
+              }
+            },
+            "planState": {
+              "$ref": "#/$defs/planState"
+            }
+          },
+          "required": [
+            "plan",
+            "planState"
+          ],
+          "additionalProperties": false
+        },
+        "explanation": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "departures": {
+          "type": "array",
+          "maxItems": 40,
+          "items": {
+            "$ref": "#/$defs/planDeparture"
+          }
+        }
+      },
+      "required": [
+        "purpose",
+        "callId",
+        "revision",
+        "candidate",
+        "explanation",
+        "departures"
+      ],
+      "additionalProperties": false
+    },
+    "planDecision": {
+      "type": "object",
+      "properties": {
+        "callId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "candidateRevision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "approved": {
+          "type": "boolean"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "callId",
+        "revision",
+        "candidateRevision",
+        "approved"
+      ],
       "additionalProperties": false
     }
   }

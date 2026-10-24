@@ -2,8 +2,9 @@
 // changes without the regenerated pages. Run with `node --test scripts/gen-reference.test.mjs`
 // after `npm run build` (the generator reads packages/harness/dist).
 import assert from 'node:assert/strict'
+import {eventMatrix,requireCoverage} from './event-matrix/index.mjs'
 import { spawnSync } from 'node:child_process'
-import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { after, before, test } from 'node:test'
@@ -79,4 +80,110 @@ test('a hand-edited provider matrix is rejected', () => {
  const checked=run('--check','--out',out)
  assert.notEqual(checked.status,0)
  assert.match(checked.stderr,/providers.md/)
+})
+
+
+test('the named run report narrative is preserved beside generated references', () => {
+  const out = join(scratch, 'report-narrative')
+  assert.equal(run('--out', out).status, 0)
+  const path = join(out, 'run-report.md')
+  const narrative = '# Run report\n\nHost-owned projection guidance.\n'
+  writeFileSync(path, narrative)
+  const checked = run('--check', '--out', out)
+  assert.equal(checked.status, 0, checked.stderr)
+  assert.equal(readFileSync(path, 'utf8'), narrative)
+})
+
+
+test('event coverage rejects loss of the last emitter in either language', () => {
+ const kinds=JSON.parse(readFileSync(join(schemasDir,'run-event.json'))).properties.type.enum
+ const matrix=eventMatrix(repo,kinds)
+ for(const language of Object.keys(matrix))for(const kind of kinds){
+  const without={...matrix,[language]:{...matrix[language],emits:matrix[language].emits.filter(site=>site.kind!==kind)}}
+  assert.throws(()=>requireCoverage(kinds,without),new RegExp(`${language} has no emitter for ${kind}`))
+ }
+ assert.ok(matrix.TypeScript.emits.some(s=>s.kind==='thinking_unavailable'&&s.file==='packages/harness/thinking.ts'))
+ assert.ok(matrix.TypeScript.emits.some(s=>s.kind==='plan_drift_decided'&&s.file==='packages/harness/execution/controller.ts'))
+ assert.ok(matrix.Go.emits.some(s=>s.kind==='plan_drift_decided'&&s.file==='go/context/plan_validation.go'))
+ for(const language of Object.keys(matrix))for(const site of [...matrix[language].emits,...matrix[language].reads]){
+  assert.ok(site.line>0)
+  assert.doesNotMatch(site.file,/\.test\.ts$|_test\.go$|certification|examples|_gen\.go$/)
+ }
+ assert.ok(matrix.Go.reads.some(s=>s.kind==='execution_checkpoint'&&s.file==='go/context/run_report.go'))
+})
+
+test('event reference rejects stale emitter locations', () => {
+ const out=join(scratch,'event-drift')
+ assert.equal(run('--out',out).status,0)
+ const path=join(out,'events.md')
+ const original=readFileSync(path,'utf8')
+ assert.match(original,/TypeScript emitters/)
+ writeFileSync(path,original.replace(/packages\/harness\/[^`]+:[0-9]+/,'packages/harness/stale.ts:1'))
+ const checked=run('--check','--out',out)
+ assert.equal(checked.status,1,checked.stdout+checked.stderr)
+ assert.match(checked.stderr,/events.md/)
+})
+
+
+test('syntax tracing ignores comments, unused literals and fixtures, and source removal fails coverage', () => {
+ const root=join(scratch,'event-source')
+ for(const dir of ['packages/harness','go','contract/schemas'])mkdirSync(join(root,dir),{recursive:true})
+ const kinds=['message','end']
+ writeFileSync(join(root,'contract/schemas/run-event.json'),JSON.stringify({properties:{type:{enum:kinds}}}))
+ writeFileSync(join(root,'packages/harness/tsconfig.json'),JSON.stringify({compilerOptions:{target:'ES2022',strict:true},include:['*.ts']}))
+ const tsSource=`type FixtureEvent = {type:'message';text:string}|{type:'end'}
+function publish(event:FixtureEvent):void {}
+// type: 'end' is a comment, not an emitter.
+const unused = {type:'end'}
+function factory():FixtureEvent { return {type:'message',text:'hello'} }
+publish(factory())
+publish({type:'end'})
+`
+ const tsPath=join(root,'packages/harness/source.ts')
+ writeFileSync(tsPath,tsSource)
+ writeFileSync(join(root,'packages/harness/unused.test.ts'),"publish({type:'end'})")
+ const goSource=`package fixture
+import "encoding/json"
+type RunEvent struct { Message *RunEventMessage; End *RunEventEnd }
+type RunEventMessage struct { Type string }
+type RunEventEnd struct { Type string }
+func emit(event RunEvent) {}
+func unrelatedJSON() RunEvent {
+ unused := "{\\\"type\\\":\\\"end\\\"}"
+ _ = unused
+ var unusedDecoded RunEvent
+ _ = json.Unmarshal([]byte("{\\\"type\\\":\\\"end\\\"}"), &unusedDecoded)
+ var event RunEvent
+ _ = json.Unmarshal([]byte("{\\\"type\\\":\\\"message\\\"}"), &event)
+ return event
+}
+func publishedJSON() {
+ var published RunEvent
+ alias := &published
+ _ = json.Unmarshal([]byte("{\\\"type\\\":\\\"message\\\"}"), alias)
+ emit(published)
+}
+func source() {
+ unused := RunEvent{End:&RunEventEnd{Type:"end"}}
+ _ = unused
+ emit(RunEvent{Message:&RunEventMessage{Type:"message"}})
+ emit(RunEvent{End:&RunEventEnd{Type:"end"}})
+}
+`
+ const goPath=join(root,'go/source.go')
+ writeFileSync(goPath,goSource)
+ const matrix=eventMatrix(root,kinds)
+ requireCoverage(kinds,matrix)
+ assert.equal(matrix.TypeScript.emits.filter(s=>s.kind==='end').length,1)
+ assert.equal(matrix.Go.emits.filter(s=>s.kind==='end').length,1)
+ for(const destination of ['&event','alias']){
+  const line=goSource.split('\n').findIndex(row=>row.includes('json.Unmarshal')&&row.endsWith(', '+destination+')'))+1
+  assert.ok(line>0)
+  assert.ok(matrix.Go.emits.some(site=>site.kind==='message'&&site.line===line),`decoded ${destination} must reach its returned/published event`)
+ }
+ writeFileSync(tsPath,tsSource.replace("publish({type:'end'})",''))
+ assert.throws(()=>eventMatrix(root,kinds),/TypeScript has no emitter for end/)
+ writeFileSync(tsPath,tsSource)
+ writeFileSync(goPath,goSource.replace(' emit(RunEvent{End:&RunEventEnd{Type:"end"}})',''))
+ assert.throws(()=>eventMatrix(root,kinds),/Go has no emitter for end/)
 })

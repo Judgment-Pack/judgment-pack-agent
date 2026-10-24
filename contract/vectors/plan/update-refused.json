@@ -1,0 +1,23 @@
+{
+  "description": "Handwritten refusal for a malformed, empty or over-bound task plan update. The current plan is left untouched and the shared session boundary emits this named guardrail.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/context/session.ts"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "type": "guardrail",
+      "tool": "update_plan",
+      "action": "refused",
+      "reason": "plan update refused",
+      "detail": "The plan update is invalid or exceeds its bounds. The plan was left untouched."
+    }
+  ]
+}

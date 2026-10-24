@@ -266,11 +266,47 @@ func (r *runState) modelCall(phase func() string) wire.ModelCall {
 					return nil, err
 				}
 			}
-			if err := r.sc.ClaimRequest(ctx, request.Body); err != nil {
+		}
+		descriptor, _ := json.Marshal(struct {
+			Suffix string `json:"suffix"`
+			Method string `json:"method"`
+			Body   string `json:"body"`
+		}{suffix, request.Method, string(request.Body)})
+		connection := r.sc.ProviderStorageIdentity(role)
+		descriptor, err := runcontext.PrepareDurableRequest(r.sc.Persistence(role), "model", connection, r.run.ModelID(), descriptor)
+		if err != nil {
+			return nil, err
+		}
+		var admitted struct {
+			Suffix string `json:"suffix"`
+			Method string `json:"method"`
+			Body   string `json:"body"`
+		}
+		if err = json.Unmarshal(descriptor, &admitted); err != nil {
+			return nil, err
+		}
+		if admitted.Method != http.MethodGet && !runcontext.RecoveringDurableRequest(r.sc.Persistence(role), "model") {
+			if err = r.sc.ClaimRequest(ctx, []byte(admitted.Body)); err != nil {
 				return nil, err
 			}
 		}
-		return r.run.CallModel(ctx, suffix, relay.Request{Method: request.Method, Headers: request.Headers, Body: request.Body})
+		return runcontext.InvokeDurableModel(ctx, r.sc.Persistence(role), connection, r.run.ModelID(), descriptor, func(raw []byte) (*http.Response, error) {
+			var prepared struct {
+				Suffix string `json:"suffix"`
+				Method string `json:"method"`
+				Body   string `json:"body"`
+			}
+			if err := json.Unmarshal(raw, &prepared); err != nil {
+				return nil, err
+			}
+			if err := r.sc.Authorize(ctx); err != nil {
+				return nil, err
+			}
+			if ctx.Err() != nil {
+				return nil, failure.Cancelled
+			}
+			return r.run.CallModel(runcontext.WithDurableDispatchScope(ctx, r.sc.Persistence(role)), prepared.Suffix, relay.Request{Method: prepared.Method, Headers: request.Headers, Body: []byte(prepared.Body)})
+		}, func(response *http.Response) error { return wire.QuarantineDurableResponse(ctx, r.family, response) })
 	}
 	return wire.RetryingCall(claimed, wire.RetryOptions{
 		OnRefused: func(refused wire.RefusedAttempt) error {

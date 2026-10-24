@@ -1,3 +1,4 @@
+import {canonicalJSON} from '../context/chat'
 import {toolInputFailure} from '../failures'
 import {ASSISTANT_TOOLS} from '../host'
 import {REHEARSAL_TOOL,TEST_TOOL} from '../toolGate'
@@ -17,7 +18,7 @@ export const PLAN_INSTRUCTIONS='DESK PLAN MODE: Inspect, clarify and propose a p
 /** Applied inside every certified adapter, including direct invocation and children. */
 export function planningSession<T extends EngineSession>(session:T):T {
  const plan=session.context?.plan
- const pinned=plan?'\nCURRENT CHAT PLAN (historical scope, not an approval override):\n'+JSON.stringify(plan):''
+ const pinned=plan?'\nCURRENT CHAT PLAN (historical scope, not an approval override):\n'+canonicalJSON(plan):''
  if(session.context?.phase!=='plan')return pinned?{...session,prompt:session.prompt+pinned}:session
  const call=session.callTool
  return {...session,prompt:session.prompt+pinned+'\n\n'+PLAN_INSTRUCTIONS,allowConversation:true,testPrompt:'',

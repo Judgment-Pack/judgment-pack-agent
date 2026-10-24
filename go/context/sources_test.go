@@ -314,7 +314,7 @@ func TestTheFirstServiceActIsAlwaysAskedAndCountedByIdentity(t *testing.T) {
 	notices := gate.TakeNotices()
 	items := vectorItems(t, "identity/service-act.json")
 	sameAsCurrent(t, "the downgrade", notices[0].Guardrail, items[0])
-	event := contract.RunEventApprovalRequested{Type: "approval_requested", CallID: book.approval.CallID, Name: book.approval.Name, Tool: book.approval.Tool, Source: book.approval.Source, Args: book.approval.Args}
+	event := contract.RunEventApprovalRequested{Type: "approval_requested", CallID: book.approval.CallID, Name: &book.approval.Name, Tool: &book.approval.Tool, Source: &book.approval.Source, Args: book.approval.Args}
 	sameAsCurrent(t, "the service approval", event, items[1])
 	book.approval.State = "approved"
 	if _, ran, err := gate.Approved(context.Background(), *book.approval, tools["expenses__submit"].Execute); err != nil || !ran {

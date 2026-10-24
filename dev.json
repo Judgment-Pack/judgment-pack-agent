@@ -33,6 +33,7 @@
     {"name": "certify-vercel", "run": "npm run certify -- --adapter vercel", "toolchain": "node", "summary": "^certify [a-z]+: (passed|failed)", "timeout": 900},
     {"name": "certify-codex", "run": "npm run certify -- --adapter codex", "toolchain": "node", "summary": "^certify [a-z]+: (passed|failed)", "timeout": 900},
     {"name": "certify-deepagents", "run": "npm run certify -- --adapter deepagents", "toolchain": "node", "summary": "^certify [a-z]+: (passed|failed)", "timeout": 900},
+    {"name": "differential", "run": "node --test scripts/differential.test.mjs", "toolchain": "node", "summary": "^(# differential:|# pass|# fail)", "timeout": 300},
     {"name": "go-module-path", "run": "path=$(awk '$1 == \"module\" { print $2 }' go/go.mod); if [ \"$path\" != \"github.com/Judgment-Pack/judgment-pack-agent/go\" ]; then echo \"go/go.mod declares module '$path'; it must be github.com/Judgment-Pack/judgment-pack-agent/go\"; exit 1; fi", "toolchain": "shell"},
     {"name": "gofmt", "run": "unformatted=$(gofmt -l go); if [ -n \"$unformatted\" ]; then echo 'not gofmt-formatted:'; echo \"$unformatted\"; exit 1; fi", "toolchain": "shell"},
     {"name": "go-vet", "run": "go vet ./...", "cwd": "go", "toolchain": "go", "timeout": 3000},

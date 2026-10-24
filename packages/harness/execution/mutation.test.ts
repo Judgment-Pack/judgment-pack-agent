@@ -212,6 +212,19 @@ export function committedArray(c:ExecutionController){const operations=c.state.o
   try{expect(checkpointWrites([path],snapshot)).toEqual([3,4,5,6].map(line=>`${path}:${line}`))}finally{snapshot.dispose();api.close()}
  })
 
+ it('requires plan member publication by its own aggregate',()=>{
+  const directory=mkdtempSync(join(tmpdir(),'checkpoint-plan-owner-')),path=join(directory,'plan-owner.ts')
+  writeFileSync(path,`import type {ExecutionCheckpoint} from ${JSON.stringify(join(resolve(process.cwd()),'execution/state'))}
+import {mutateCheckpoint} from ${JSON.stringify(join(resolve(process.cwd()),'execution/mutation'))}
+export function committed(state:ExecutionCheckpoint){const planState=state.planState!;planState.sequence++;mutateCheckpoint(state,{planState})}
+export function wrongOwner(state:ExecutionCheckpoint,other:ExecutionCheckpoint){const planState=state.planState!;planState.sequence++;mutateCheckpoint(other,{planState})}
+export function unpublished(state:ExecutionCheckpoint){const planState=state.planState!;planState.sequence++}
+export function direct(state:ExecutionCheckpoint){state.planState!.sequence++}
+`)
+  const api=new API({cwd:process.cwd()}),snapshot=api.updateSnapshot({openFiles:[path]})
+  try{expect(checkpointWrites([path],snapshot)).toEqual([4,5,6].map(line=>`${path}:${line}`))}finally{snapshot.dispose();api.close()}
+ })
+
  it('requires publication by the originating controller or raw aggregate',()=>{
   const directory=mkdtempSync(join(tmpdir(),'checkpoint-owner-')),path=join(directory,'owner.ts')
   writeFileSync(path,`import {ExecutionController} from ${JSON.stringify(join(resolve(process.cwd()),'execution/controller'))}
@@ -289,7 +302,7 @@ describe('checkpoint member omission and interruption/resume',()=>{
   const continued=resumed.snapshot('running')
   for(const key of Object.keys(memberVector.probeOwners)){
    if(memberVector.probeOwners[key]!=='controller'||key==='status')continue
-   if(key==='version'){expect(fixture.version).toBe(1);expect(interrupted.version).toBe(2);expect(continued.version).toBe(2);continue}
+   if(key==='version'){expect(fixture.version).toBe(2);expect(interrupted.version).toBe(2);expect(continued.version).toBe(2);continue}
    expect(canonicalJSON((continued as any)[key]),key).toBe(canonicalJSON((fixture as any)[key]))
   }
   // Interruption and initialization deliberately project status; its running value resumes exactly.
@@ -300,6 +313,18 @@ describe('checkpoint member omission and interruption/resume',()=>{
  it('keeps optional omissions distinct from allowed empty/zero defaults through resume',async()=>{
   for(const key of Object.keys(memberSchema.properties).filter(key=>!memberSchema.required.includes(key)&&memberVector.probeOwners[key]==='controller')){
    const fixture=memberSeed();delete (fixture as any)[key]
+   if(key==='planState'){
+    fixture.plan=fixture.plan.map(({id,...step})=>step)
+    const original=canonicalJSON(fixture)
+    expect(Object.hasOwn(readExecution(fixture)!,'planState')).toBe(false)
+    const migrated=await memberController(fixture)
+    expect(canonicalJSON(fixture)).toBe(original)
+    expect(migrated.state.plan).toEqual(memberSeed().plan)
+    expect(migrated.state.planState).toEqual({...memberSeed().planState,sequence:0,history:[]})
+    const interrupted=migrated.snapshot('stopped'),continued=await memberController(interrupted)
+    expect(continued.state.planState).toEqual(migrated.state.planState)
+    continue
+   }
    const resumed=await memberController(fixture)
    expect(Object.hasOwn(resumed.state,key),key).toBe(false)
   }

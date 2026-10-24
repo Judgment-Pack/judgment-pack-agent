@@ -1,0 +1,16 @@
+{
+  "schema": "tool-offer.json#/$defs/reservedName",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/execution/controller.ts"
+    ]
+  },
+  "description": "The package-reserved completion action name, carried directly by the reservedName contract enum.",
+  "items": [
+    "complete_plan_step"
+  ]
+}

@@ -55,11 +55,25 @@ func (b markedBody) Read(p []byte) (int, error) {
 	return n, err
 }
 
+func (c *coordinator) recoveringProvider(ctx context.Context, task *contract.DelegatedTask, kind string) bool {
+	if c.run.Context == nil || c.run.Context.Persistence == nil {
+		return false
+	}
+	binding := *c.run.Context.Persistence
+	if task != nil {
+		binding.Scope = runcontext.DurableScope{Execution: task.ID, Role: "author", Task: task.ID}
+	}
+	if scope, ok := runcontext.DurableDispatchScope(ctx); ok && scope.Execution == binding.Scope.Execution && scope.Task == binding.Scope.Task {
+		binding.Scope.Role = scope.Role
+	}
+	return runcontext.RecoveringDurableRequest(&binding, kind)
+}
+
 // parentModel is the parent's relay capability, its own requests counted (agent#18); its execution
 // claims them where it is attached.
 func (c *coordinator) parentModel(call relay.Call) relay.Call {
 	return func(ctx context.Context, suffix string, request relay.Request) (*http.Response, error) {
-		if request.Method != http.MethodGet {
+		if request.Method != http.MethodGet && !c.recoveringProvider(ctx, nil, "model") {
 			c.batchMu.Lock()
 			c.parentCount++
 			c.batchMu.Unlock()
@@ -180,7 +194,7 @@ func (e *statusError) ResponseHeader() http.Header { return e.header }
 func (c *coordinator) childModel(task *contract.DelegatedTask, budget turn.TaskBudget, m *meter, call relay.Call) relay.Call {
 	return func(ctx context.Context, suffix string, request relay.Request) (*http.Response, error) {
 		posted := request.Method != http.MethodGet
-		if posted {
+		if posted && !c.recoveringProvider(ctx, task, "model") {
 			if err := c.chargeChild(task, budget); err != nil {
 				return nil, err
 			}
