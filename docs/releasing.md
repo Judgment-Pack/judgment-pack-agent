@@ -254,7 +254,11 @@ published says.
 
 ## Live answer-quality evidence
 
-Before accepting a release candidate, follow [the live answer comparison](release-quality.md).
+For v0.10.0, follow the [scoped maintainer deferral](release-quality.md#v0100-scope-decision)
+and explicitly record that live answer quality was not evaluated. Issue #169 remains
+open for the Desk handoff; this deferral changes no other release requirement.
+
+For other releases, before accepting a release candidate, follow [the live answer comparison](release-quality.md).
 Attach its validated candidate-versus-previous-release report and any threshold decision
 to release review, and state actual model, tokens and rate-derived USD cost in release notes.
 The separate ADR-0022 offline replay and fixture tests do not meet this live prerequisite.
