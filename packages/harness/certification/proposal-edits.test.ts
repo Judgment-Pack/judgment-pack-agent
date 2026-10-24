@@ -17,7 +17,7 @@ import insert from '../../../contract/vectors/edits/propose_insert-provenance.js
 import deletion from '../../../contract/vectors/edits/propose_delete-provenance.json'
 import deleteInsert from '../../../contract/vectors/edits/delete-insert.json'
 const turns:Turn[]=sequence.items.map(call=>({call:{tool:call.name,arguments:call.arguments}}))
-const document=sequence.items[0]!.arguments.document as Record<string,unknown>
+const document=JSON.parse(sequence.items[0]!.arguments.documentJson!) as Record<string,unknown>
 const edit=sequence.items[3]!.arguments
 
 const saved=(r:Ran)=>r.events.filter(e=>e.type==='execution_checkpoint').at(-1)!.checkpoint
@@ -70,7 +70,7 @@ for(const engine of [vercel,deepagents,codex])describe(`${engine.id==='codex'?'a
   expect(saved(continued).draft?.documents[0]?.edits).toHaveLength(4)
   const child=await play(engine,[{call:{tool:'propose_edit',arguments:edit}},{say:'Data only.'}],{objective:'Read the draft.'})
   expect(child.events).toContainEqual(expect.objectContaining({type:'guardrail',tool:'propose_edit',reason:'edit refused'}))
-  const review=await play(engine,[{call:{tool:'propose_pack',arguments:{document}}},{say:'Review this.'}],{},true)
+  const review=await play(engine,[{call:{tool:'propose_pack',arguments:{documentJson:JSON.stringify(document)}}},{say:'Review this.'}],{},true)
   expect(review.events).toContainEqual(expect.objectContaining({type:'guardrail',tool:'propose_edit',reason:'edit refused'}))
   expect(review.events.filter(e=>e.type==='edit_applied')).toEqual([])
  })

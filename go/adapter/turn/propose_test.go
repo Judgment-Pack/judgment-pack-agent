@@ -14,25 +14,25 @@ import (
 // critic.test.ts offers propose_pack among the host tools a critic may not reach; the arguments
 // the adapter reads are the fence's rules, held on the tool path too.
 func TestReadProposedPack(t *testing.T) {
-	read, err := ReadProposedPack(json.RawMessage(`{"document":{"id":"p"},"unknowns":["who signs"]}`))
+	read, err := ReadProposedPack(json.RawMessage(`{"documentJson":"{\"id\":\"p\"}","unknowns":["who signs"]}`))
 	if err != nil {
 		t.Fatalf("the call's arguments are a proposal: %v", err)
 	}
 	same(t, "the document", read.Document, json.RawMessage(`{"id":"p"}`))
 	same(t, "the unknowns", read.Unknowns, json.RawMessage(`["who signs"]`))
-	read, err = ReadProposedPack(json.RawMessage(`{"document":{"id":"p"},"kind":"create"}`))
+	read, err = ReadProposedPack(json.RawMessage(`{"documentJson":"{\"id\":\"p\"}","kind":"create"}`))
 	if err != nil {
 		t.Fatalf("a call that names the kind create is a proposal: %v", err)
 	}
 	same(t, "the unknowns a call left out", read.Unknowns, json.RawMessage(`[]`))
 	for _, held := range []struct{ args, why string }{
-		{`[]`, "Call propose_pack with an object holding document and unknowns."},
-		{`{"unknowns":[]}`, "Pass the pack as the document object itself, not as a JSON string, an array or null."},
-		{`{"document":"{\"id\":\"p\"}"}`, "Pass the pack as the document object itself, not as a JSON string, an array or null."},
-		{`{"document":null}`, "Pass the pack as the document object itself, not as a JSON string, an array or null."},
-		{`{"document":{},"kind":"replace"}`, `Only a new pack can be proposed: leave kind out, or pass "create".`},
-		{`{"document":{},"unknowns":"one"}`, "Pass unknowns as an array of strings."},
-		{`{"document":{},"unknowns":[1]}`, "Pass unknowns as an array of strings."},
+		{`[]`, "Call propose_pack with an object holding documentJson and unknowns."},
+		{`{"unknowns":[]}`, "propose_pack now requires documentJson containing the complete document as JSON text; omit the legacy document member."},
+		{`{"document":"{\"id\":\"p\"}"}`, "propose_pack now requires documentJson containing the complete document as JSON text; omit the legacy document member."},
+		{`{"document":null}`, "propose_pack now requires documentJson containing the complete document as JSON text; omit the legacy document member."},
+		{`{"documentJson":"{}","kind":"replace"}`, `Only a new pack can be proposed: leave kind out, or pass "create".`},
+		{`{"documentJson":"{}","unknowns":"one"}`, "Pass unknowns as an array of strings."},
+		{`{"documentJson":"{}","unknowns":[1]}`, "Pass unknowns as an array of strings."},
 	} {
 		_, err := ReadProposedPack(json.RawMessage(held.args))
 		if err == nil {

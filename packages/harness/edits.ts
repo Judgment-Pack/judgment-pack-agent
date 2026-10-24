@@ -1,3 +1,4 @@
+import {readProposalDocument,ProposalDocumentError} from './proposalNumbers'
 import {mutateCheckpoint,type CheckpointPatch} from './execution/mutation'
 import {OutputRefused} from './outputGuard'
 /** ADR-0015: the package's draft, never a host file or an approval. */
@@ -47,6 +48,7 @@ export class Drafts {
     const entry=this.ledger.snapshot().entries.find(e=>e.label===label(row))
     const v=entry?.value
     if(!object(v)||typeof v.text!=='string'||!Array.isArray(v.unknowns)||v.unknowns.some(x=>typeof x!=='string')||!Array.isArray(v.undo)||v.undo.some(u=>!object(u)||typeof u.reference!=='string'||!Number.isSafeInteger(u.line)||Number(u.line)<1)||'sha256:'+await contextDigest(v.text)!==row.digest)throw authoredFailure('stale-state','The saved draft text or undo history is unavailable or differs from its digest.','context')
+    try{readProposalDocument(v.text)}catch{throw authoredFailure('stale-state','The saved draft text violates the proposal source numeric or work contract.','context')}
     this.documents.set(row.id,{id:row.id,text:v.text,unknowns:v.unknowns as string[],undo:v.undo as Held['undo'],edits:structuredClone(row.edits),digest:row.digest})
    }
   }else for(const doc of accepted){
@@ -79,6 +81,7 @@ export class Drafts {
   if([...key].length>518)throw toolInputFailure('The draft document id exceeds 512 characters.')
   const old=this.documents.get(key)
   const text=JSON.stringify(doc,null,2)
+  try{readProposalDocument(text)}catch(cause){throw toolInputFailure(cause instanceof ProposalDocumentError?cause.message:'The proposal document is not valid JSON.')}
   if(old&&JSON.stringify(JSON.parse(old.text))===JSON.stringify(doc))return this.proposal(key)!
   if(old)throw toolInputFailure('This document already has a draft; use the edit tools to change it.')
   await this.save({id:key,text,unknowns:[...proposal.unknowns],undo:[],edits:[],digest:''})
@@ -127,7 +130,7 @@ export class Drafts {
   }
   if([...this.documents.values()].filter(d=>d.id!==next.id).reduce((n,d)=>n+utf8Bytes(d.text),utf8Bytes(next.text))>this.policy.proposalBytes)return refuse(`The draft exceeds proposalBytes (${this.policy.proposalBytes}).`)
   let parsed:unknown
-  try{parsed=JSON.parse(next.text)}catch{return refuse('Validation failed: the document is not valid JSON.')}
+  try{parsed=readProposalDocument(next.text)}catch(cause){return refuse('Validation failed: '+(cause instanceof ProposalDocumentError?cause.message:'the document is not valid JSON.'))}
   if(!object(parsed))return refuse('Validation failed: the document must be a JSON object.')
   const guarded=this.guard(parsed,'draft edit')
   const redacted=JSON.stringify(guarded)!==JSON.stringify(parsed)

@@ -5,11 +5,13 @@ package turn
 
 import (
 	"encoding/json"
+	"errors"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"regexp"
 	"strings"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/proposal"
 )
 
 // fence is one fenced block of an answer (MarkdownFence in engines/contract.ts). The offsets are
@@ -264,6 +266,16 @@ func missingProposal(text string) string {
 	return ""
 }
 
+// proposalSourceRefusal preserves the public failure while stopping automatic source replacement.
+type proposalSourceRefusal struct{ cause error }
+
+func (e *proposalSourceRefusal) Error() string { return e.cause.Error() }
+func (e *proposalSourceRefusal) Unwrap() error { return e.cause }
+func IsTerminalProposalSourceRefusal(cause error) bool {
+	var held *proposalSourceRefusal
+	return errors.As(cause, &held)
+}
+
 // ExtractProposal is extractProposal: exactly one explicit envelope; examples never become
 // candidates. A marked block that is not JSON is the model's answer in the wrong shape, never an
 // unknown failure: the adapter keeps it (WholeAnswer) and may ask once for a reformat.
@@ -285,6 +297,17 @@ func ExtractProposal(text string) (Proposal, error) {
 		return Proposal{}, failure.Authored("invalid-response",
 			"the final message must carry exactly one fenced JSON block holding the proposal; this one carried "+
 				jsNumber(float64(len(blocks)))+why, "")
+	}
+	if err := proposal.Check([]byte(blocks[0].body), []string{"proposal", "document"}, jsNumber); err != nil {
+		detail := "the fenced proposal block is not valid JSON"
+		if issue, ok := err.(*proposal.Error); ok && issue.Kind != "invalid-json" {
+			detail = issue.Detail
+		}
+		refused := failure.Authored("invalid-response", detail, "")
+		if issue, ok := err.(*proposal.Error); ok && (issue.Kind == "number-loss" || issue.Kind == "work-bound") {
+			return Proposal{}, &proposalSourceRefusal{cause: refused}
+		}
+		return Proposal{}, refused
 	}
 	parsed, err := parseJSON([]byte(blocks[0].body))
 	if err != nil {

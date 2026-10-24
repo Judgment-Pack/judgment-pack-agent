@@ -49,7 +49,7 @@ func proposalEditFindings(ctx context.Context, inner Adapter, agent bool) ([]Fin
 		return nil, err
 	}
 	var initial struct {
-		Document json.RawMessage `json:"document"`
+		DocumentJson string `json:"documentJson"`
 	}
 	if err := json.Unmarshal(steps[0].args, &initial); err != nil {
 		return nil, err
@@ -175,7 +175,7 @@ func proposalEditFindings(ctx context.Context, inner Adapter, agent bool) ([]Fin
 		return out, err
 	}
 	accepted, err := play([]memoryStep{steps[3], {say: "Two documents."}}, &runcontext.Input{AcceptedDocuments: []runcontext.AcceptedDocument{
-		{ID: "pack", Document: initial.Document},
+		{ID: "pack", Document: json.RawMessage(initial.DocumentJson)},
 		{ID: "second", Document: json.RawMessage(`{"specVersion":"1","id":"second","title":"Second"}`)},
 	}}, false)
 	if err != nil {
@@ -200,7 +200,7 @@ func proposalEditFindings(ctx context.Context, inner Adapter, agent bool) ([]Fin
 		if ending == "waiting" {
 			interruptedSteps = append(interruptedSteps, memoryStep{name: "ask_user", args: json.RawMessage(`{"title":"Continue","question":"What next?","selection":"single","options":[],"recommendedOptionId":null,"recommendation":null}`)})
 		}
-		interrupted, err := play(interruptedSteps, &runcontext.Input{AcceptedDocuments: []runcontext.AcceptedDocument{{ID: "pack", Document: initial.Document}, {ID: "second", Document: json.RawMessage(`{"specVersion":"1","id":"second","title":"Second"}`)}}}, false, ending)
+		interrupted, err := play(interruptedSteps, &runcontext.Input{AcceptedDocuments: []runcontext.AcceptedDocument{{ID: "pack", Document: json.RawMessage(initial.DocumentJson)}, {ID: "second", Document: json.RawMessage(`{"specVersion":"1","id":"second","title":"Second"}`)}}}, false, ending)
 		if err != nil {
 			return nil, err
 		}
@@ -228,7 +228,7 @@ func proposalEditFindings(ctx context.Context, inner Adapter, agent bool) ([]Fin
 	if err != nil {
 		return nil, err
 	}
-	changed, err := play(append(deleteInsert, memoryStep{say: "Edited."}), &runcontext.Input{AcceptedDocuments: []runcontext.AcceptedDocument{{ID: "pack", Document: initial.Document}}}, false)
+	changed, err := play(append(deleteInsert, memoryStep{say: "Edited."}), &runcontext.Input{AcceptedDocuments: []runcontext.AcceptedDocument{{ID: "pack", Document: json.RawMessage(initial.DocumentJson)}}}, false)
 	if err != nil {
 		return nil, err
 	}

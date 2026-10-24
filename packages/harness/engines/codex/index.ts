@@ -13,7 +13,7 @@ import type { AgentTool, AgentEvent } from '../../agent'
 import {
   SYSTEM, CONVERSATION_SYSTEM, TEST_DESIGN_SYSTEM, BRIEF_SYSTEM, GRAPH_SYSTEM,
   openRun, eventIterator, guardedCallTool, withAbort, isCancelled,
-  servedSchema, textOf, streamingProse, proseOf, hasProposalFence, extractProposal,
+  servedSchema, textOf, streamingProse, proseOf, hasProposalFence, extractProposal, isTerminalProposalSourceRefusal,
   wholeAnswer, withDeadline, toolTimeout, PROPOSE_PACK_TOOL, PROPOSE_PACK_INSTRUCTIONS, PROPOSAL_RECEIVED,
   offersProposeTool, readProposedPack, twoProposals, reformatRequest, refusedUnoffered, unofferedRefusal, STATE_HEADER, type Proposal
 } from '../contract'
@@ -312,6 +312,7 @@ function runCodexLoop(session: RequestAgentAssistantSession): AsyncIterable<Assi
         const kept = wholeAnswer(final)
         if (kept && !gate.isClosed()) await deliver({ type: 'message', text: kept })
       }
+      if (isTerminalProposalSourceRefusal(unread)) { await keep(); throw unread }
       await deliver({ type: 'response_recovery' })
       let reformatted: string
       try {

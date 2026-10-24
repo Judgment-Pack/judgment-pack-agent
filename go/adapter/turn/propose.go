@@ -5,6 +5,7 @@ import (
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/proposal"
 )
 
 // ProposePackTool is PROPOSE_PACK_TOOL: the proposal as a host tool call. The host registers
@@ -15,10 +16,10 @@ const ProposePackTool = "propose_pack"
 // ProposePackSchema is PROPOSE_PACK_SCHEMA, as JSON.stringify writes the TypeScript literal: the
 // schema is in the subset every family's wire carries, so a Gemini session earns no narrowing
 // notice for it. contract/vectors/tool-offer/propose-pack.json.
-var ProposePackSchema = json.RawMessage(`{"type":"object","properties":{"document":{"type":"object","description":"The proposed pack, as a JSON object (not a JSON string)."},"unknowns":{"type":"array","items":{"type":"string"},"description":"What the policy leaves open, one sentence each."}},"required":["document"]}`)
+var ProposePackSchema = json.RawMessage(`{"type":"object","properties":{"documentJson":{"type":"string","description":"The complete proposed pack as JSON document text. Numeric values that change during canonical serialization are refused; decimal spelling and negative zero may normalize."},"unknowns":{"type":"array","items":{"type":"string"},"description":"What the policy leaves open, one sentence each."}},"required":["documentJson"]}`)
 
 // ProposePackInstructions is PROPOSE_PACK_INSTRUCTIONS.
-const ProposePackInstructions = "\nDeliver the pack proposal by calling " + ProposePackTool + " with the document as an object and its unknowns, then end with a short summary. Use the fenced JSON block only if that call is unavailable."
+const ProposePackInstructions = "\nDeliver the pack proposal by calling " + ProposePackTool + " with documentJson holding the complete document as JSON text and unknowns holding its open questions, then end with a short summary. The legacy document member is refused. Numeric values must survive canonical JSON serialization unchanged; decimal spelling and negative zero may normalize. Use the fenced JSON block only if that call is unavailable."
 
 // ProposalReceived is PROPOSAL_RECEIVED: what the model is told when its call delivered the
 // proposal.
@@ -39,10 +40,14 @@ func OffersProposeTool(hostTools []contract.ToolOfferHostTool) bool {
 func ReadProposedPack(args json.RawMessage) (Proposal, error) {
 	parsed := value(args)
 	if !parsed.isObject() {
-		return Proposal{}, failure.ToolInput("Call propose_pack with an object holding document and unknowns.")
+		return Proposal{}, failure.ToolInput("Call propose_pack with an object holding documentJson and unknowns.")
 	}
-	if !parsed.get("document").isObject() {
-		return Proposal{}, failure.ToolInput("Pass the pack as the document object itself, not as a JSON string, an array or null.")
+	if parsed.has("document") || parsed.get("documentJson") == nil || parsed.get("documentJson").kind != jstring {
+		return Proposal{}, failure.ToolInput("propose_pack now requires documentJson containing the complete document as JSON text; omit the legacy document member.")
+	}
+	document, err := ReadProposalDocument(json.RawMessage(parsed.get("documentJson").s))
+	if err != nil {
+		return Proposal{}, failure.ToolInput(err.Error())
 	}
 	// The fence's rule, held on the tool path too: only a new pack is proposed.
 	if kind := parsed.get("kind"); kind != nil && !(kind.kind == jstring && kind.s == "create") {
@@ -59,7 +64,7 @@ func ReadProposedPack(args json.RawMessage) (Proposal, error) {
 			}
 		}
 	}
-	out := Proposal{Document: raw(parsed.get("document")), Unknowns: []string{}}
+	out := Proposal{Document: document, Unknowns: []string{}}
 	if unknowns != nil {
 		for _, item := range unknowns.a {
 			out.Unknowns = append(out.Unknowns, item.s)
@@ -90,4 +95,21 @@ func RecoverableProposal(text string) *Proposal {
 		}
 	}
 	return &proposal
+}
+
+// ReadProposalDocument reads source text only when canonical JSON preserves its numeric values.
+// Decimal spelling and negative zero may normalize. This is neither output guarding nor accepted
+// proposal custody; the actual guarded proposal event is authoritative.
+func ReadProposalDocument(source json.RawMessage) (json.RawMessage, error) {
+	if err := proposal.Check(source, nil, jsNumber); err != nil {
+		return nil, err
+	}
+	value, err := parseJSON(source)
+	if err != nil {
+		return nil, err
+	}
+	if !value.isObject() {
+		return nil, &proposal.Error{Kind: "not-object", Detail: "The proposal must contain a document object."}
+	}
+	return raw(value), nil
 }

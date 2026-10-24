@@ -88,3 +88,43 @@ follow-up work. Critic rounds and severity classes remain outside this decision.
 Both certifications execute the shared call vectors in `contract/vectors/edits/`.
 Go hosts register `OfferedEditTools(session)` through the existing offer mechanism;
 the gate admits only names in the phase offer and has no edit exception.
+
+## Numeric proposal admission (v0.10.0, #198)
+
+`propose_pack` now requires `documentJson`, the complete document as JSON text,
+and optional `unknowns`. The legacy `document` member is refused, including null
+and calls carrying both members. Update host declarations to the exported
+`PROPOSE_PACK_SCHEMA` / `turn.ProposePackSchema`; the model instructions describe
+the same input. Native SDKs can parse numbers before the callback, so an object
+cannot establish its original numeric source. The fenced fallback retains
+`{"proposal":{"kind":"create","document":{...},"unknowns":[]}}`.
+
+Before accepting source text, Agent compares every document number's exact
+mathematical decimal value with the number its existing canonical JSON serializer
+emits. `1.20` to `1.2`, `2.500` to `2.5`, exponent spelling changes and `-0` to `0`
+are permitted normalization. `9007199254740993`, `0.10000000000000001`, overflow
+and underflow refuse when serialization changes their numerical value. This
+is not arbitrary-precision numeric support. Agent never rounds a refused fact
+or changes its JSON type to make it admissible. Duplicate keys retain the
+existing last-member-wins reading; overwritten numeric tokens are checked too.
+
+Source text has the existing proposal hard maximum of 4,194,304 UTF-8 bytes,
+at most 128 nested containers, and at most seven significant exponent digits
+(after leading zeroes). An over-limit exponent refuses as a work bound even
+for zero. Seven digits cover exponent cancellation by any coefficient within
+that byte budget without constructing powers or large integers. Custody also
+enforces the effective lower `proposalBytes` policy.
+
+The exported TypeScript `readProposalDocument` and Go `turn.ReadProposalDocument`
+provide this checked canonical reading. They do not guard output or accept a
+proposal: the actual guarded proposal event remains the custody authority.
+Decoded strings and keys still pass the existing output guard; a redacted
+proposal must validate before custody. Source checks also apply to edits, undo
+and saved draft text after its digest is checked. Invalid source leaves the
+previous revision unchanged. Already-rounded historical text can pass the new
+predicate; its original precision cannot be recovered. For already typed host
+`acceptedDocuments`, the guarantee starts at the supplied value.
+
+Numeric value-loss and source work-bound refusals end automatic reformat recovery, so a
+second model request cannot replace the rejected facts. Ordinary malformed JSON keeps its
+existing single reformat request. Native tool-input refusals keep their tool-result behavior.
