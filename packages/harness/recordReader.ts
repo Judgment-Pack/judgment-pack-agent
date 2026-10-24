@@ -16,7 +16,7 @@ export class UnsupportedRecordVersion extends Error {
 export class UnknownRecordMember extends Error {
  get failureCode(){return this.kind==='policy'?'configuration':'stale-state'}
  constructor(readonly member:string,readonly kind:RecordKind='checkpoint'){super(`Unknown record member: ${member.slice(0,256)}.`);this.name='UnknownRecordMember'}
- event(){return {version:1 as const,type:'guardrail' as const,tool:'records',action:'refused' as const,reason:'record member unsupported' as const,detail:this.message}}
+ event(){return {version:1 as const,type:'guardrail' as const,tool:'records',action:'refused' as const,reason:'record member unsupported' as const,detail:'Record contains an unsupported member.'}}
 }
 export class InvalidRecord extends Error {constructor(){super('Record is invalid.');this.name='InvalidRecord'}}
 const invalid=():never=>{throw new InvalidRecord()} // fixed text, independent of supplied values

@@ -66,7 +66,7 @@ func (e *UnknownRecordMember) FailureCode() string {
 	return "stale-state"
 }
 func (e *UnknownRecordMember) Event() RunEvent {
-	return recordRefusal("records", "record member unsupported", e.Error())
+	return recordRefusal("records", "record member unsupported", "Record contains an unsupported member.")
 }
 func recordRefusal(tool, reason, detail string) RunEvent {
 	return StampEvent(RunEvent{Guardrail: &RunEventGuardrail{Type: "guardrail", Tool: tool, Action: "refused", Reason: &reason, Detail: detail}})

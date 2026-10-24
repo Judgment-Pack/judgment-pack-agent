@@ -5906,6 +5906,18 @@
    ],
    "status": "caught",
    "origin": "agent#165"
+  },
+  {
+   "name": "record member startup refusal never publishes diagnostic input",
+   "file": "recordReader.ts",
+   "find": "reason:'record member unsupported' as const,detail:'Record contains an unsupported member.'",
+   "replace": "reason:'record member unsupported' as const,detail:this.message",
+   "tests": [
+    "recordRefusal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#165",
+   "note": "R200-1: actual managedContext checkpoint/policy startup under redact/refuse, including invalid guard configuration, plus public event readers. Go twin restores e.Error() in UnknownRecordMember.Event and fails TestRecordRefusalStartupDoesNotPublishMember."
   }
  ]
 }
