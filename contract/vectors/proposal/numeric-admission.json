@@ -1,6 +1,16 @@
 {
   "description": "Handwritten numeric proposal source and canonical text. Lexical normalization is permitted; mathematical decimal value changes are refused.",
   "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/proposalNumbers.ts (source numeric admission)",
+      "packages/harness/engines/contract.ts (proposal readers)"
+    ]
+  },
   "items": [
     {
       "type": "proposal",
