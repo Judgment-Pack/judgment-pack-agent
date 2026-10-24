@@ -36,6 +36,11 @@ contract. The first adapters are TypeScript and run in the browser, as the Desk'
 Go adapters run in the Desk's server when the loop moves there. A host such as the Desk consumes
 the harness through the contract and pins it like any other component.
 
+The Go module requires **Go 1.26.0 or newer** for consumers. Repository builds and CI
+use the separately pinned Go 1.26.10 toolchain in `dev.json`. The minimum rises from
+Go 1.25.0 for the draft v0.10.0 dependency remediation; see
+[the compatibility assessment](docs/security/v0.10.0-go.md).
+
 ## What stays the host's
 
 Three things never move into an adapter: the keyless model relay and its custody of keys, the tool

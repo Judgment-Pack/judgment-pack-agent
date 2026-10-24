@@ -17,7 +17,8 @@ run_probe() {
   legacy=$2
   output=$3
   mkdir -p "$scratch/$legacy"
-  printf 'module reasoning-compat-probe\n\ngo 1.25\n\nrequire github.com/Judgment-Pack/judgment-pack-agent/go v0.0.0\nreplace github.com/Judgment-Pack/judgment-pack-agent/go => %s/go\n' "$target" > "$scratch/$legacy/go.mod"
+  minimum=$(awk '$1 == "go" { print $2 }' "$target/go/go.mod")
+  printf 'module reasoning-compat-probe\n\ngo %s\n\nrequire github.com/Judgment-Pack/judgment-pack-agent/go v0.0.0\nreplace github.com/Judgment-Pack/judgment-pack-agent/go => %s/go\n' "$minimum" "$target" > "$scratch/$legacy/go.mod"
   if [ "$legacy" = --legacy ]; then
     (cd "$scratch/$legacy" && GOFLAGS='-mod=mod -buildvcs=false' go run "$probe" --legacy) > "$output"
   else
