@@ -292,7 +292,7 @@ describe('the model’s ask on the vercel engine’s stream (ADR-0010)', () => {
       },
       session: { testPrompt: 'Test the pack.' }
     })
-    expect(askEvents(events)).toEqual([reviewAsked.items[0], reviewAsked.items[1], ...refused.items.slice(0, 3), reviewAsked.items[2]])
+    expect(askEvents(events)).toEqual([reviewAsked.items[0], reviewAsked.items[1], ...refused.items.slice(0, 3), reviewAsked.items[2]].map(event=>({...event,version:1})))
   })
 
   it('critic/review-refused.json: an ask under off, refused before anything runs, and no critic', async () => {
@@ -305,7 +305,7 @@ describe('the model’s ask on the vercel engine’s stream (ADR-0010)', () => {
       },
       session: { testPrompt: 'Test the pack.', critic: 'off' }
     })
-    expect(askEvents(events)).toEqual(refused.items.slice(3))
+    expect(askEvents(events)).toEqual(refused.items.slice(3).map(event=>({...event,version:1})))
     expect(requests.some(reviewing)).toBe(false)
   })
 })

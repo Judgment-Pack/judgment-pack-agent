@@ -92,6 +92,7 @@ Closed: a member the schema does not name is refused.
 | `outputAllow` |  | array of string (min length 1, max length 64, pattern `^[a-z][a-z0-9-]{0,63}$`) (max items 64) | Default: `[]`. |
 | `failover` |  | object | ADR-0020. Provider failures that may move one request to the next same-family fallback after the ordinary retry rule. The package never switches for any other class. |
 | `failover.classes` |  | array of enum `unavailable`, `rate-limited`, `timeout` | Default: `["unavailable","rate-limited","timeout"]`. |
+| `version` |  | const `1` | Policy layer wire format version. Absent only on historical layers; current policy writers emit 1. Metadata is excluded from policy precedence. |
 
 ### `policy.json $defs/discovered`
 

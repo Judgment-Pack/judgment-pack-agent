@@ -1,6 +1,7 @@
 import {readOutputPatterns,readOutputAllow,type OutputPattern} from './outputGuard'
 /** Host-only policy admission (ADR-0011). No prompt, result or model tool can supply a layer. */
 import schema from './contract/policy-schema.json'
+import {readPolicyLayer,checkRecordVersion,InvalidRecord} from './recordReader'
 import { AIFailureError } from './failures'
 
 export type PolicyConnection = {model: import('./engine').AssistantSession['model']} | {agent: import('./engine').AgentAssistantSession['agent']}
@@ -14,6 +15,7 @@ export type ReasoningValue = 'off' | 'on' | 'ultra' | 'none' | 'minimal' | 'low'
 export interface DiscoveredReasoning { default?: ReasoningValue; supported: ReasoningValue[] }
 export interface PolicyRole { model?: string; reasoning?: string; discovered?: {reasoning: DiscoveredReasoning}; provider?: string; fallback?: string[] }
 export interface PolicyLayer {
+  version?:1
   compaction?: 'index' | 'summary'
   outputGuard?: 'off' | 'redact' | 'refuse'
   outputPatterns?: OutputPattern[]
@@ -85,7 +87,9 @@ function defaults(shape: Shape, path = '', out: Record<string, unknown> = {}) {
 }
 /** Retired aliases refuse even when a canonical member is also present. */
 export function policyAlias(value: PolicyLayer | Record<string, unknown>): PolicyLayer {
+  checkRecordVersion('policy',value)
   for (const key of Object.keys(value)) {
+    if(key==='version')continue
     const replacement = key === 'adversarialReview' || key === 'criticDefault' ? 'critic.default' : key === 'criticReasoningFloor' ? 'critic.reasoningFloor' : Object.hasOwn(schema.properties.budget.properties,key) ? `budget.${key}` : undefined
     if (replacement) throw new PolicyRefusal(key,'table',`unknown policy member; use ${replacement}`)
   }
@@ -97,7 +101,11 @@ export function resolvePolicy(run: PolicyLayer, project: PolicyLayer, table: Pol
   const members: PolicyMembers = Object.fromEntries(Object.entries(defaults(schema as Shape)).map(([key, value]) => [key, {value, layer: 'table', source: 'layer'}]))
   for (const [layer, input] of layers) {
     const flat: Record<string, unknown> = {}
-    read(input, schema as Shape, '', layer, flat)
+    let body:PolicyLayer
+    checkRecordVersion('policy',input)
+    try{body=readPolicyLayer(input)}catch(error){if(!(error instanceof InvalidRecord))throw error;body=structuredClone(input)}
+    delete body.version
+    read(body, schema as Shape, '', layer, flat)
     for (const [name, value] of Object.entries(flat)) members[name] = {value, layer, source: 'layer'}
   }
   const need = (name: string) => {

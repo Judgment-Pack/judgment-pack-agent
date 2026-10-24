@@ -223,7 +223,7 @@ describe('whether to offer tools reads the record', () => {
     const { call } = scripted([text(textCall(PROPOSE_PACK_TOOL, { documentJson: '{"id":"p"}', unknowns: ['who signs'] })), text('Proposed.')])
     const events = await drain(vercel.start(session('openai-compatible', call, { nativeToolCalls: false }, { hostTools: [propose] })))
     expect(executed).toBe(0)
-    expect(of(events, 'proposal')).toEqual([{ type: 'proposal', digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/), edits: [], document: { id: 'p' }, unknowns: ['who signs'] }])
+    expect(of(events, 'proposal')).toEqual([{ version: 1, type: 'proposal', digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/), edits: [], document: { id: 'p' }, unknowns: ['who signs'] }])
   })
 
   it('refuses a text call on the request reserved for the final answer, however many the model makes', async () => {

@@ -66,7 +66,7 @@ function failureOf(events: AssistantEvent[]): AIFailure {
   const errors = ofType(events, 'error')
   expect(errors).toHaveLength(1)
   expect(ofType(events, 'end')).toHaveLength(1)
-  expect(events.at(-1)).toEqual({ type: 'end' })
+  expect(events.at(-1)).toEqual({ version: 1, type: 'end' })
   return errors[0]!.failure!
 }
 

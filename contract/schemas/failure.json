@@ -48,7 +48,7 @@
       "$ref": "provenance.json#/$defs/completion"
     }
   },
-  "additionalProperties": true,
+  "additionalProperties": false,
   "$defs": {
     "code": {
       "description": "The catalogue's classes, the keys of failures in contract/desk/catalog.json, spelled as the Desk spells them.",

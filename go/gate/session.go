@@ -79,7 +79,7 @@ func (g *Gate) emitNotice(event contract.RunEvent) {
 			return
 		}
 	}
-	g.emit(event)
+	g.emit(contract.StampEvent(event))
 }
 
 // turnCount is a turn's test calls, one count shared by the turn's gate and its children's.

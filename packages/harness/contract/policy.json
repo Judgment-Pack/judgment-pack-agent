@@ -43,5 +43,6 @@
     "bytesPerDay": null,
     "warnAt": 0.8
   },
-  "taskClass": "routine"
+  "taskClass": "routine",
+  "version": 1
 }

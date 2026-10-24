@@ -287,8 +287,11 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 	if !isObject(value) || UTF8Bytes(value.Text()) > MaxCheckpointBytes {
 		return nil, errSavedExecution
 	}
+	if err := contract.CheckRecord("checkpoint", value.JSON()); err != nil {
+		return nil, err
+	}
 	version := value.Get("version")
-	if version == nil || version.Kind() != KindNumber || version.Num() != 1 ||
+	if version == nil || version.Kind() != KindNumber || (version.Num() != 1 && version.Num() != 2) ||
 		!isText(value.Get("id"), 100) || value.Get("id").Str() == "" ||
 		!isText(value.Get("requestKey"), 64) || !digest64.MatchString(value.Get("requestKey").Str()) ||
 		!oneOf(value.Get("phase"), "plan", "work") ||
@@ -537,31 +540,6 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 	if err := json.Unmarshal(value.JSON(), &out); err != nil {
 		return nil, errSavedExecution
 	}
-	policy := out.Policy
-	for name, member := range policy {
-		if member.Source == nil {
-			source := "layer"
-			member.Source = &source
-			policy[name] = member
-		}
-	}
-	// The completions are rebuilt from the members the reader names, each checked.
-	completions := out.Completions
-	for at, row := range completions {
-		completion, _ := failure.ReadCompletion(row.Result)
-		rebuilt := contract.Provenance{Request: row.Request, Phase: row.Phase, Result: completion,
-			Schema: row.Schema, Version: row.Version, Digest: row.Digest, RetainUntil: row.RetainUntil, Records: row.Records,
-			Attempt: row.Attempt, WaitMs: row.WaitMs}
-		if row.Failure != nil {
-			checked, _ := failure.Read(*row.Failure)
-			rebuilt.Failure = &checked
-		}
-		completions[at] = rebuilt
-	}
-	out, _, err := MutateCheckpoint(out, CheckpointPatch{"Policy": policy, "Completions": completions})
-	if err != nil {
-		return nil, err
-	}
 	return &out, nil
 }
 
@@ -643,7 +621,7 @@ func ExtendExecution(checkpoint contract.Checkpoint, interrupted bool, now time.
 	if limit > MaxRequestAllowance {
 		limit = MaxRequestAllowance
 	}
-	out, _, err := MutateCheckpoint(*saved, CheckpointPatch{"Limit": limit, "Status": "running", "Reason": nil, "Grants": append(append([]contract.CheckpointGrant{}, saved.Grants...), contract.CheckpointGrant{From: saved.Limit, To: limit, At: now.UTC().Format("2006-01-02T15:04:05.000Z")})})
+	out, _, err := MutateCheckpoint(*saved, CheckpointPatch{"Version": int64(contract.CheckpointVersion), "Limit": limit, "Status": "running", "Reason": nil, "Grants": append(append([]contract.CheckpointGrant{}, saved.Grants...), contract.CheckpointGrant{From: saved.Limit, To: limit, At: now.UTC().Format("2006-01-02T15:04:05.000Z")})})
 	if err != nil {
 		return nil, err
 	}

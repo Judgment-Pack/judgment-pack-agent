@@ -10,6 +10,7 @@
     {"name": "python-deps", "run": "python3 -m pip install --disable-pip-version-check -q -r requirements-dev.txt", "toolchain": "python", "timeout": 600}
   ],
   "checks": [
+    {"name": "record-shapes", "run": "node scripts/record-shapes.mjs --check", "toolchain": "node", "timeout": 120},
     {"name": "contract", "run": "python3 -I -c 'import json, pathlib; files = sorted(pathlib.Path(\"contract\").rglob(\"*.json\")); [json.load(open(f, encoding=\"utf-8\")) for f in files]; print(\"checked %d JSON documents\" % len(files))'",
      "toolchain": "shell", "summary": "^checked ", "timeout": 120},
     {"name": "local-paths", "run": "if git grep -nE '(^|[^A-Za-z0-9_])/(home|tmp)/[A-Za-z0-9_.-]+' -- ':!*.png' ':!*.jpg'; then echo 'a machine-local path is in tracked text'; exit 1; fi", "toolchain": "shell"},
@@ -47,6 +48,6 @@
   "parity": {"run": "scripts/parity.sh \"$JPDEV_DESK\"", "toolchain": "shell", "requires_env": "JPDEV_DESK", "summary": "^parity:|every difference", "timeout": 600},
   "handover": {
     "boundary_paths": ["go/gate", "packages/harness/toolGate.ts", "packages/harness/refutation.ts", "go/adapter/turn/refutation.go"],
-    "shared_paths": ["contract/schemas", "contract/vectors", "packages/harness/scripts/mutation-rows.json", "packages/harness/parity.json", "docs/reference", "docs/design/wire-contract.md"]
+    "shared_paths": ["contract/schemas", "contract/vectors", "packages/harness/scripts/mutation-rows.json", "packages/harness/parity.json", "docs/reference", "docs/design/wire-contract.md", "contract/records"]
   }
 }

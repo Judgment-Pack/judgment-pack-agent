@@ -105,7 +105,7 @@ export class ExecutionController {
     this.approvalStep='write'
    }else if(approval?.state==='executed'||approval?.state==='refused')this.approvalStep='continue'
   }else{
-   this.mutate({version:1,id:crypto.randomUUID(),requestKey,phase:this.session.context?.phase??'work',status:'running',unit:'model'in this.session?'model-requests':'provider-managed',used:0,limit:requestCap??('model'in this.session?MAX_TURNS:1),...(requestCap===undefined?{}:{requestCap}),grants:[],plan:[],explanation:'',operations:[],context:{scope:this.ledger.scope,entries:[]}})
+   this.mutate({version:2,id:crypto.randomUUID(),requestKey,phase:this.session.context?.phase??'work',status:'running',unit:'model'in this.session?'model-requests':'provider-managed',used:0,limit:requestCap??('model'in this.session?MAX_TURNS:1),...(requestCap===undefined?{}:{requestCap}),grants:[],plan:[],explanation:'',operations:[],context:{scope:this.ledger.scope,entries:[]}})
    const plan=this.session.context?.plan
    if(plan&&['accepted','started'].includes(plan.status))this.mutate({plan:plan.steps.map(step=>({step,status:'pending'}))})
   }

@@ -1396,7 +1396,7 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 			}
 		}
 		record := held.ResolvedPolicy.Record()
-		if saved := held.Execution.State().Policy; saved != nil {
+		if saved := policyComparisonRecord(held.Execution.State().Policy); saved != nil {
 			for name, member := range saved {
 				if strings.HasPrefix(name, "models.subagent.") {
 					if _, exists := record[name]; !exists {
@@ -1411,10 +1411,7 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 					}
 				}
 			}
-			comparable := make(map[string]contract.PolicyMember)
-			for name, member := range saved {
-				comparable[name] = member
-			}
+			comparable := policyComparisonRecord(saved)
 			for role := range changedRoles {
 				for name := range comparable {
 					if strings.HasPrefix(name, role) {

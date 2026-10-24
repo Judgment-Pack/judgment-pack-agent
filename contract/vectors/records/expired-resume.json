@@ -2,5 +2,5 @@
   "description": "A resume past retainUntil is refused and records the decided reason. Handwritten for ADR records (#101).",
   "schema": "run-event.json",
   "source": {"harness": {"repository": "Judgment-Pack/judgment-pack-agent", "package": "packages/harness"}, "files": ["packages/harness/records.ts"]},
-  "items": [{"type": "guardrail", "tool": "resume", "action": "refused", "reason": "records expired", "detail": "records expired"}]
+  "items": [{"version": 1, "type": "guardrail", "tool": "resume", "action": "refused", "reason": "records expired", "detail": "records expired"}]
 }

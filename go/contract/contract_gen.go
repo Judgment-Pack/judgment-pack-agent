@@ -1108,15 +1108,16 @@ func (v CapabilityTiers) MarshalJSON() ([]byte, error) {
 // the call, the batch's task records and the call's result. An act call paused for the person's
 // decision, and what became of it (ADR-0008, approval). Never permissions, evidence approval or
 // private reasoning. Read from ExecutionCheckpoint (web/src/assistant/execution/state.ts,
-// readExecution). Open: readExecution accepts a member it does not name and keeps it. Rules the
-// reader holds that JSON Schema does not state: the serialized checkpoint is at most 4 MiB
-// (MAX_CHECKPOINT_BYTES); used is at most limit; a present requestCap is a fixed model-requests
-// limit with no grants and must match trusted resume input; otherwise the grants chain from the
-// first limit (MAX_TURNS for model-requests, 1 for provider-managed), each grant's from is the
-// previous to, and limit equals the last to; operation ids and entry ids are unique; every entry
-// id starts with the context scope and a colon; a completion's request is at most used; the
-// prompts' request numbers increase; at most one plan step is in_progress. The loaded skills
-// (ADR-0009): skills. The critic's decision (ADR-0010): critic.
+// readExecution). Versioned: structural members not named by the selected version are refused.
+// Declared arbitrary payloads are retained whole. Rules the reader holds that JSON Schema does not
+// state: the serialized checkpoint is at most 4 MiB (MAX_CHECKPOINT_BYTES); used is at most limit;
+// a present requestCap is a fixed model-requests limit with no grants and must match trusted
+// resume input; otherwise the grants chain from the first limit (MAX_TURNS for model-requests, 1
+// for provider-managed), each grant's from is the previous to, and limit equals the last to;
+// operation ids and entry ids are unique; every entry id starts with the context scope and a
+// colon; a completion's request is at most used; the prompts' request numbers increase; at most
+// one plan step is in_progress. The loaded skills (ADR-0009): skills. The critic's decision
+// (ADR-0010): critic.
 type Checkpoint struct {
 	Schema           *string                     `json:"schema,omitzero"`
 	Version          int64                       `json:"version"`
@@ -1157,29 +1158,32 @@ type Checkpoint struct {
 	Failover         []CheckpointFailoverItem    `json:"failover,omitzero"`
 	ChildUsage       []CheckpointChildUsageItem  `json:"childUsage,omitzero"`
 	RequestCap       *int64                      `json:"requestCap,omitzero"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
 var checkpointMembers = []string{"schema", "version", "digest", "retainUntil", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "compaction", "memories", "draft", "outputGuard", "records", "sourceIdentities", "steers", "usage", "failover", "childUsage", "requestCap"}
 
-// UnmarshalJSON decodes a Checkpoint object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a Checkpoint object and refuses a member the closed schema does not name.
 func (v *Checkpoint) UnmarshalJSON(data []byte) error {
+	var recordErr error
+	data, recordErr = recordDecodeBytes("checkpoint", data)
+	if recordErr != nil {
+		return recordErr
+	}
 	type plain Checkpoint
 	var p plain
-	extra, err := decodeObject(data, &p, checkpointMembers, false)
+	extra, err := decodeObject(data, &p, checkpointMembers, true)
 	if err != nil {
 		return errorf("Checkpoint: %w", err)
 	}
 	*v = Checkpoint(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a Checkpoint object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a Checkpoint object.
 func (v Checkpoint) MarshalJSON() ([]byte, error) {
 	type plain Checkpoint
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From checkpoint.json#/$defs/approval. One act call paused for the person's decision (ADR-0008).
@@ -1297,29 +1301,27 @@ func (v CheckpointChildUsageItem) MarshalJSON() ([]byte, error) {
 type CheckpointContext struct {
 	Scope   string                    `json:"scope"`
 	Entries []CheckpointRetainedEntry `json:"entries"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
 var checkpointContextMembers = []string{"scope", "entries"}
 
-// UnmarshalJSON decodes a CheckpointContext object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a CheckpointContext object and refuses a member the closed schema does not name.
 func (v *CheckpointContext) UnmarshalJSON(data []byte) error {
 	type plain CheckpointContext
 	var p plain
-	extra, err := decodeObject(data, &p, checkpointContextMembers, false)
+	extra, err := decodeObject(data, &p, checkpointContextMembers, true)
 	if err != nil {
 		return errorf("CheckpointContext: %w", err)
 	}
 	*v = CheckpointContext(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a CheckpointContext object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a CheckpointContext object.
 func (v CheckpointContext) MarshalJSON() ([]byte, error) {
 	type plain CheckpointContext
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From checkpoint.json#/properties/critic. The critic's switch for the run (ADR-0010;
@@ -1476,29 +1478,27 @@ type CheckpointGrant struct {
 	From int64  `json:"from"`
 	To   int64  `json:"to"`
 	At   string `json:"at"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
 var checkpointGrantMembers = []string{"from", "to", "at"}
 
-// UnmarshalJSON decodes a CheckpointGrant object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a CheckpointGrant object and refuses a member the closed schema does not name.
 func (v *CheckpointGrant) UnmarshalJSON(data []byte) error {
 	type plain CheckpointGrant
 	var p plain
-	extra, err := decodeObject(data, &p, checkpointGrantMembers, false)
+	extra, err := decodeObject(data, &p, checkpointGrantMembers, true)
 	if err != nil {
 		return errorf("CheckpointGrant: %w", err)
 	}
 	*v = CheckpointGrant(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a CheckpointGrant object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a CheckpointGrant object.
 func (v CheckpointGrant) MarshalJSON() ([]byte, error) {
 	type plain CheckpointGrant
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From checkpoint.json#/$defs/handoff. One delegation handoff on an agent capability (ADR-0007).
@@ -1552,29 +1552,27 @@ type CheckpointOperation struct {
 	Args   json.RawMessage          `json:"args"`
 	Status string                   `json:"status"`
 	Result *ToolResultMCPToolResult `json:"result,omitzero"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
 var checkpointOperationMembers = []string{"id", "name", "args", "status", "result"}
 
-// UnmarshalJSON decodes a CheckpointOperation object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a CheckpointOperation object and refuses a member the closed schema does not name.
 func (v *CheckpointOperation) UnmarshalJSON(data []byte) error {
 	type plain CheckpointOperation
 	var p plain
-	extra, err := decodeObject(data, &p, checkpointOperationMembers, false)
+	extra, err := decodeObject(data, &p, checkpointOperationMembers, true)
 	if err != nil {
 		return errorf("CheckpointOperation: %w", err)
 	}
 	*v = CheckpointOperation(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a CheckpointOperation object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a CheckpointOperation object.
 func (v CheckpointOperation) MarshalJSON() ([]byte, error) {
 	type plain CheckpointOperation
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From checkpoint.json#/$defs/retainedEntry. One immutable source copy the context ledger holds
@@ -1587,29 +1585,27 @@ type CheckpointRetainedEntry struct {
 	Revision *string         `json:"revision,omitzero"`
 	Bytes    int64           `json:"bytes"`
 	Digest   string          `json:"digest"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
 var checkpointRetainedEntryMembers = []string{"id", "kind", "label", "value", "revision", "bytes", "digest"}
 
-// UnmarshalJSON decodes a CheckpointRetainedEntry object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a CheckpointRetainedEntry object and refuses a member the closed schema does not name.
 func (v *CheckpointRetainedEntry) UnmarshalJSON(data []byte) error {
 	type plain CheckpointRetainedEntry
 	var p plain
-	extra, err := decodeObject(data, &p, checkpointRetainedEntryMembers, false)
+	extra, err := decodeObject(data, &p, checkpointRetainedEntryMembers, true)
 	if err != nil {
 		return errorf("CheckpointRetainedEntry: %w", err)
 	}
 	*v = CheckpointRetainedEntry(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a CheckpointRetainedEntry object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a CheckpointRetainedEntry object.
 func (v CheckpointRetainedEntry) MarshalJSON() ([]byte, error) {
 	type plain CheckpointRetainedEntry
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From checkpoint.json#/$defs/sourceIdentity.
@@ -1646,29 +1642,27 @@ type CheckpointTaskStep struct {
 	Step   string  `json:"step"`
 	Status string  `json:"status"`
 	Detail *string `json:"detail,omitzero"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
 var checkpointTaskStepMembers = []string{"step", "status", "detail"}
 
-// UnmarshalJSON decodes a CheckpointTaskStep object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a CheckpointTaskStep object and refuses a member the closed schema does not name.
 func (v *CheckpointTaskStep) UnmarshalJSON(data []byte) error {
 	type plain CheckpointTaskStep
 	var p plain
-	extra, err := decodeObject(data, &p, checkpointTaskStepMembers, false)
+	extra, err := decodeObject(data, &p, checkpointTaskStepMembers, true)
 	if err != nil {
 		return errorf("CheckpointTaskStep: %w", err)
 	}
 	*v = CheckpointTaskStep(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a CheckpointTaskStep object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a CheckpointTaskStep object.
 func (v CheckpointTaskStep) MarshalJSON() ([]byte, error) {
 	type plain CheckpointTaskStep
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From corpus-entry.json. ADR-0022. The closed manifest for one redacted recorded run. The named
@@ -1814,29 +1808,27 @@ type DelegatedTask struct {
 	FirstByteMs   *int64                     `json:"firstByteMs,omitzero"`
 	DurationMs    *int64                     `json:"durationMs,omitzero"`
 	Subagent      *SubagentRecord            `json:"subagent,omitzero"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
 var delegatedTaskMembers = []string{"id", "parentRunId", "title", "objective", "profile", "state", "createdAt", "finishedAt", "modelRequests", "toolCalls", "attempts", "steps", "result", "problem", "failure", "budget", "model", "references", "resumes", "more", "summarized", "report", "partial", "reused", "retried", "tokens", "firstByteMs", "durationMs", "subagent"}
 
-// UnmarshalJSON decodes a DelegatedTask object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a DelegatedTask object and refuses a member the closed schema does not name.
 func (v *DelegatedTask) UnmarshalJSON(data []byte) error {
 	type plain DelegatedTask
 	var p plain
-	extra, err := decodeObject(data, &p, delegatedTaskMembers, false)
+	extra, err := decodeObject(data, &p, delegatedTaskMembers, true)
 	if err != nil {
 		return errorf("DelegatedTask: %w", err)
 	}
 	*v = DelegatedTask(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a DelegatedTask object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a DelegatedTask object.
 func (v DelegatedTask) MarshalJSON() ([]byte, error) {
 	type plain DelegatedTask
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // ReportFor decodes Report in the shape key's report member names (DecodeDelegatedTaskReport): the value alone
@@ -2742,29 +2734,27 @@ func (v DelegatedTaskReviewReport) MarshalJSON() ([]byte, error) {
 type DelegatedTaskStepsItem struct {
 	Name  string `json:"name"`
 	State string `json:"state"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
 var delegatedTaskStepsItemMembers = []string{"name", "state"}
 
-// UnmarshalJSON decodes a DelegatedTaskStepsItem object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a DelegatedTaskStepsItem object and refuses a member the closed schema does not name.
 func (v *DelegatedTaskStepsItem) UnmarshalJSON(data []byte) error {
 	type plain DelegatedTaskStepsItem
 	var p plain
-	extra, err := decodeObject(data, &p, delegatedTaskStepsItemMembers, false)
+	extra, err := decodeObject(data, &p, delegatedTaskStepsItemMembers, true)
 	if err != nil {
 		return errorf("DelegatedTaskStepsItem: %w", err)
 	}
 	*v = DelegatedTaskStepsItem(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a DelegatedTaskStepsItem object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a DelegatedTaskStepsItem object.
 func (v DelegatedTaskStepsItem) MarshalJSON() ([]byte, error) {
 	type plain DelegatedTaskStepsItem
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From delegated-task.json#/$defs/taskRequest. One task, as the model asks for it. Closed. Since
@@ -2908,29 +2898,27 @@ type Failure struct {
 	RetryAt    *string               `json:"retryAt,omitzero"`
 	Detail     *string               `json:"detail,omitzero"`
 	Completion *ProvenanceCompletion `json:"completion,omitzero"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
 var failureMembers = []string{"version", "code", "source", "outcome", "status", "requestId", "retryAt", "detail", "completion"}
 
-// UnmarshalJSON decodes a Failure object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a Failure object and refuses a member the closed schema does not name.
 func (v *Failure) UnmarshalJSON(data []byte) error {
 	type plain Failure
 	var p plain
-	extra, err := decodeObject(data, &p, failureMembers, false)
+	extra, err := decodeObject(data, &p, failureMembers, true)
 	if err != nil {
 		return errorf("Failure: %w", err)
 	}
 	*v = Failure(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a Failure object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a Failure object.
 func (v Failure) MarshalJSON() ([]byte, error) {
 	type plain Failure
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From failure.json#/$defs/catalogueEntry. One entry of the catalogue's failures map.
@@ -3105,12 +3093,18 @@ type Policy struct {
 	OutputPatterns []PolicyOutputPattern `json:"outputPatterns,omitzero"`
 	OutputAllow    []string              `json:"outputAllow,omitzero"`
 	Failover       *PolicyFailover       `json:"failover,omitzero"`
+	Version        *int64                `json:"version,omitzero"`
 }
 
-var policyMembers = []string{"compaction", "records", "budget", "critic", "models", "concurrency", "pace", "taskClass", "outputGuard", "outputPatterns", "outputAllow", "failover"}
+var policyMembers = []string{"compaction", "records", "budget", "critic", "models", "concurrency", "pace", "taskClass", "outputGuard", "outputPatterns", "outputAllow", "failover", "version"}
 
 // UnmarshalJSON decodes a Policy object and refuses a member the closed schema does not name.
 func (v *Policy) UnmarshalJSON(data []byte) error {
+	var recordErr error
+	data, recordErr = recordDecodeBytes("policy", data)
+	if recordErr != nil {
+		return recordErr
+	}
 	type plain Policy
 	var p plain
 	extra, err := decodeObject(data, &p, policyMembers, true)
@@ -3598,29 +3592,27 @@ type Provenance struct {
 	Records     *ProvenanceRecordFigures `json:"records,omitzero"`
 	Connection  *string                  `json:"connection,omitzero"`
 	Role        *string                  `json:"role,omitzero"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
 var provenanceMembers = []string{"schema", "version", "digest", "retainUntil", "request", "phase", "result", "attempt", "failure", "waitMs", "records", "connection", "role"}
 
-// UnmarshalJSON decodes a Provenance object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a Provenance object and refuses a member the closed schema does not name.
 func (v *Provenance) UnmarshalJSON(data []byte) error {
 	type plain Provenance
 	var p plain
-	extra, err := decodeObject(data, &p, provenanceMembers, false)
+	extra, err := decodeObject(data, &p, provenanceMembers, true)
 	if err != nil {
 		return errorf("Provenance: %w", err)
 	}
 	*v = Provenance(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a Provenance object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a Provenance object.
 func (v Provenance) MarshalJSON() ([]byte, error) {
 	type plain Provenance
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From provenance.json#/$defs/batchFigures.
@@ -3769,29 +3761,27 @@ type ProvenanceCompletion struct {
 	ReasoningTokens  *int64 `json:"reasoningTokens,omitzero"`
 	CacheReadTokens  *int64 `json:"cacheReadTokens,omitzero"`
 	CacheWriteTokens *int64 `json:"cacheWriteTokens,omitzero"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
 var provenanceCompletionMembers = []string{"finishReason", "inputTokens", "outputTokens", "reasoningTokens", "cacheReadTokens", "cacheWriteTokens"}
 
-// UnmarshalJSON decodes a ProvenanceCompletion object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a ProvenanceCompletion object and refuses a member the closed schema does not name.
 func (v *ProvenanceCompletion) UnmarshalJSON(data []byte) error {
 	type plain ProvenanceCompletion
 	var p plain
-	extra, err := decodeObject(data, &p, provenanceCompletionMembers, false)
+	extra, err := decodeObject(data, &p, provenanceCompletionMembers, true)
 	if err != nil {
 		return errorf("ProvenanceCompletion: %w", err)
 	}
 	*v = ProvenanceCompletion(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a ProvenanceCompletion object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a ProvenanceCompletion object.
 func (v ProvenanceCompletion) MarshalJSON() ([]byte, error) {
 	type plain ProvenanceCompletion
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From provenance.json#/$defs/criticDecision. The critic's decision for one run, the report's row
@@ -4592,9 +4582,9 @@ func (v QuestionSavedResolution) MarshalJSON() ([]byte, error) {
 // also replaces a loop's own budget_paused or request-limit error) and approval_requested
 // (ADR-0008: emitted in place of an act call's tool_call where the host's approval policy answers
 // ask), and the delegation coordinator's delegated_task. critic_decided (ADR-0010) is emitted by
-// the adapter once per run, where the critic would start or where it is skipped. Open: the stream
-// is an in-process TypeScript union with no reader at run time that refuses another member; the
-// type member alone decides the kind.
+// the adapter once per run, where the critic would start or where it is skipped. The versioned
+// record reader refuses newer versions and unknown structural members. Historical events omit
+// version; current writers emit version 1.
 //
 // A union: exactly one member is set. An object is decoded by its "type" member.
 type RunEvent struct {
@@ -4670,6 +4660,11 @@ type RunEvent struct {
 
 // UnmarshalJSON sets the one member the value decodes as.
 func (v *RunEvent) UnmarshalJSON(data []byte) error {
+	var recordErr error
+	data, recordErr = recordDecodeBytes("event", data)
+	if recordErr != nil {
+		return recordErr
+	}
 	*v = RunEvent{}
 	kind := jsonKind(data)
 	if kind == "object" {
@@ -4910,15 +4905,16 @@ func (v RunEvent) MarshalJSON() ([]byte, error) {
 // the run's events carry none; name the wire name the model called; tool the tool's own name at
 // its source; source its record; args the arguments the model sent. Closed.
 type RunEventApprovalRequested struct {
-	Type   string                     `json:"type"`
-	CallID string                     `json:"callId"`
-	Name   string                     `json:"name"`
-	Tool   string                     `json:"tool"`
-	Source ToolOfferSourceRecord      `json:"source"`
-	Args   map[string]json.RawMessage `json:"args"`
+	Type    string                     `json:"type"`
+	CallID  string                     `json:"callId"`
+	Name    string                     `json:"name"`
+	Tool    string                     `json:"tool"`
+	Source  ToolOfferSourceRecord      `json:"source"`
+	Args    map[string]json.RawMessage `json:"args"`
+	Version *int64                     `json:"version,omitzero"`
 }
 
-var runEventApprovalRequestedMembers = []string{"type", "callId", "name", "tool", "source", "args"}
+var runEventApprovalRequestedMembers = []string{"type", "callId", "name", "tool", "source", "args", "version"}
 
 // UnmarshalJSON decodes a RunEventApprovalRequested object and refuses a member the closed schema does not name.
 func (v *RunEventApprovalRequested) UnmarshalJSON(data []byte) error {
@@ -4952,29 +4948,28 @@ func (v RunEventApprovalRequested) MarshalJSON() ([]byte, error) {
 type RunEventBudgetPaused struct {
 	Type       string     `json:"type"`
 	Checkpoint Checkpoint `json:"checkpoint"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
+	Version    *int64     `json:"version,omitzero"`
 }
 
-var runEventBudgetPausedMembers = []string{"type", "checkpoint"}
+var runEventBudgetPausedMembers = []string{"type", "checkpoint", "version"}
 
-// UnmarshalJSON decodes a RunEventBudgetPaused object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a RunEventBudgetPaused object and refuses a member the closed schema does not name.
 func (v *RunEventBudgetPaused) UnmarshalJSON(data []byte) error {
 	type plain RunEventBudgetPaused
 	var p plain
-	extra, err := decodeObject(data, &p, runEventBudgetPausedMembers, false)
+	extra, err := decodeObject(data, &p, runEventBudgetPausedMembers, true)
 	if err != nil {
 		return errorf("RunEventBudgetPaused: %w", err)
 	}
 	*v = RunEventBudgetPaused(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a RunEventBudgetPaused object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a RunEventBudgetPaused object.
 func (v RunEventBudgetPaused) MarshalJSON() ([]byte, error) {
 	type plain RunEventBudgetPaused
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/caseComparison. One comparison of a declared case's outcome with the
@@ -5003,29 +4998,27 @@ type RunEventCaseComparison struct {
 	Agrees   bool                 `json:"agrees"`
 	Expected RunEventCaseOutcome  `json:"expected"`
 	Actual   *RunEventCaseOutcome `json:"actual,omitzero"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
 var runEventCaseComparisonMembers = []string{"case", "source", "tool", "agrees", "expected", "actual"}
 
-// UnmarshalJSON decodes a RunEventCaseComparison object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a RunEventCaseComparison object and refuses a member the closed schema does not name.
 func (v *RunEventCaseComparison) UnmarshalJSON(data []byte) error {
 	type plain RunEventCaseComparison
 	var p plain
-	extra, err := decodeObject(data, &p, runEventCaseComparisonMembers, false)
+	extra, err := decodeObject(data, &p, runEventCaseComparisonMembers, true)
 	if err != nil {
 		return errorf("RunEventCaseComparison: %w", err)
 	}
 	*v = RunEventCaseComparison(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a RunEventCaseComparison object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a RunEventCaseComparison object.
 func (v RunEventCaseComparison) MarshalJSON() ([]byte, error) {
 	type plain RunEventCaseComparison
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/caseOutcome. An outcome, as a comparison reports it: a §8.3
@@ -5163,14 +5156,15 @@ func (v RunEventCaseOutcomeOption2) MarshalJSON() ([]byte, error) {
 // replaced complete turns. digest is the digest of the framed replacement; mode says whether the
 // deterministic index or a model-authored summary was used.
 type RunEventCompacted struct {
-	Type   string `json:"type"`
-	Turns  int64  `json:"turns"`
-	Bytes  int64  `json:"bytes"`
-	Digest string `json:"digest"`
-	Mode   string `json:"mode"`
+	Type    string `json:"type"`
+	Turns   int64  `json:"turns"`
+	Bytes   int64  `json:"bytes"`
+	Digest  string `json:"digest"`
+	Mode    string `json:"mode"`
+	Version *int64 `json:"version,omitzero"`
 }
 
-var runEventCompactedMembers = []string{"type", "turns", "bytes", "digest", "mode"}
+var runEventCompactedMembers = []string{"type", "turns", "bytes", "digest", "mode", "version"}
 
 // UnmarshalJSON decodes a RunEventCompacted object and refuses a member the closed schema does not name.
 func (v *RunEventCompacted) UnmarshalJSON(data []byte) error {
@@ -5195,14 +5189,15 @@ func (v RunEventCompacted) MarshalJSON() ([]byte, error) {
 // this request once to the next same-family fallback, after the ordinary retry rule. The stable
 // prefix is rebuilt for the new connection.
 type RunEventConnectionSwitched struct {
-	Type   string `json:"type"`
-	Role   string `json:"role"`
-	From   string `json:"from"`
-	To     string `json:"to"`
-	Reason string `json:"reason"`
+	Type    string `json:"type"`
+	Role    string `json:"role"`
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Reason  string `json:"reason"`
+	Version *int64 `json:"version,omitzero"`
 }
 
-var runEventConnectionSwitchedMembers = []string{"type", "role", "from", "to", "reason"}
+var runEventConnectionSwitchedMembers = []string{"type", "role", "from", "to", "reason", "version"}
 
 // UnmarshalJSON decodes a RunEventConnectionSwitched object and refuses a member the closed schema does not name.
 func (v *RunEventConnectionSwitched) UnmarshalJSON(data []byte) error {
@@ -5318,29 +5313,28 @@ type RunEventCriticDecided struct {
 	Reason    string  `json:"reason"`
 	Reasoning *string `json:"reasoning,omitzero"`
 	Trigger   *string `json:"trigger,omitzero"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
+	Version   *int64  `json:"version,omitzero"`
 }
 
-var runEventCriticDecidedMembers = []string{"type", "mode", "ran", "reason", "reasoning", "trigger"}
+var runEventCriticDecidedMembers = []string{"type", "mode", "ran", "reason", "reasoning", "trigger", "version"}
 
-// UnmarshalJSON decodes a RunEventCriticDecided object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a RunEventCriticDecided object and refuses a member the closed schema does not name.
 func (v *RunEventCriticDecided) UnmarshalJSON(data []byte) error {
 	type plain RunEventCriticDecided
 	var p plain
-	extra, err := decodeObject(data, &p, runEventCriticDecidedMembers, false)
+	extra, err := decodeObject(data, &p, runEventCriticDecidedMembers, true)
 	if err != nil {
 		return errorf("RunEventCriticDecided: %w", err)
 	}
 	*v = RunEventCriticDecided(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a RunEventCriticDecided object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a RunEventCriticDecided object.
 func (v RunEventCriticDecided) MarshalJSON() ([]byte, error) {
 	type plain RunEventCriticDecided
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/critique. The critic pass's report, before the proposal it reviewed:
@@ -5369,58 +5363,54 @@ type RunEventCritique struct {
 	Figures     *ProvenanceCriticFigures     `json:"figures,omitzero"`
 	Provider    *ProvenanceProvider          `json:"provider,omitzero"`
 	Records     *ProvenanceRecordFigures     `json:"records,omitzero"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
 var runEventCritiqueMembers = []string{"type", "schema", "version", "digest", "retainUntil", "refuted", "checks", "text", "cases", "incomplete", "figures", "provider", "records"}
 
-// UnmarshalJSON decodes a RunEventCritique object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a RunEventCritique object and refuses a member the closed schema does not name.
 func (v *RunEventCritique) UnmarshalJSON(data []byte) error {
 	type plain RunEventCritique
 	var p plain
-	extra, err := decodeObject(data, &p, runEventCritiqueMembers, false)
+	extra, err := decodeObject(data, &p, runEventCritiqueMembers, true)
 	if err != nil {
 		return errorf("RunEventCritique: %w", err)
 	}
 	*v = RunEventCritique(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a RunEventCritique object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a RunEventCritique object.
 func (v RunEventCritique) MarshalJSON() ([]byte, error) {
 	type plain RunEventCritique
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/critique/properties/checks/items.
 type RunEventCritiqueChecksItem struct {
 	Tool   string `json:"tool"`
 	Status string `json:"status"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
 var runEventCritiqueChecksItemMembers = []string{"tool", "status"}
 
-// UnmarshalJSON decodes a RunEventCritiqueChecksItem object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a RunEventCritiqueChecksItem object and refuses a member the closed schema does not name.
 func (v *RunEventCritiqueChecksItem) UnmarshalJSON(data []byte) error {
 	type plain RunEventCritiqueChecksItem
 	var p plain
-	extra, err := decodeObject(data, &p, runEventCritiqueChecksItemMembers, false)
+	extra, err := decodeObject(data, &p, runEventCritiqueChecksItemMembers, true)
 	if err != nil {
 		return errorf("RunEventCritiqueChecksItem: %w", err)
 	}
 	*v = RunEventCritiqueChecksItem(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a RunEventCritiqueChecksItem object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a RunEventCritiqueChecksItem object.
 func (v RunEventCritiqueChecksItem) MarshalJSON() ([]byte, error) {
 	type plain RunEventCritiqueChecksItem
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/delegated_task. A child task's state, whole, at each transition.
@@ -5431,29 +5421,28 @@ type RunEventDelegatedTask struct {
 	Task     DelegatedTask       `json:"task"`
 	Provider *ProvenanceProvider `json:"provider,omitzero"`
 	Subagent *SubagentRecord     `json:"subagent,omitzero"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
+	Version  *int64              `json:"version,omitzero"`
 }
 
-var runEventDelegatedTaskMembers = []string{"type", "task", "provider", "subagent"}
+var runEventDelegatedTaskMembers = []string{"type", "task", "provider", "subagent", "version"}
 
-// UnmarshalJSON decodes a RunEventDelegatedTask object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a RunEventDelegatedTask object and refuses a member the closed schema does not name.
 func (v *RunEventDelegatedTask) UnmarshalJSON(data []byte) error {
 	type plain RunEventDelegatedTask
 	var p plain
-	extra, err := decodeObject(data, &p, runEventDelegatedTaskMembers, false)
+	extra, err := decodeObject(data, &p, runEventDelegatedTaskMembers, true)
 	if err != nil {
 		return errorf("RunEventDelegatedTask: %w", err)
 	}
 	*v = RunEventDelegatedTask(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a RunEventDelegatedTask object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a RunEventDelegatedTask object.
 func (v RunEventDelegatedTask) MarshalJSON() ([]byte, error) {
 	type plain RunEventDelegatedTask
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/delegation_requested. The model called delegate_tasks on an engine
@@ -5468,29 +5457,28 @@ type RunEventDelegationRequested struct {
 	Request  DelegatedTaskRequest `json:"request"`
 	CallID   *string              `json:"callId,omitzero"`
 	Subagent *SubagentRecord      `json:"subagent,omitzero"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
+	Version  *int64               `json:"version,omitzero"`
 }
 
-var runEventDelegationRequestedMembers = []string{"type", "request", "callId", "subagent"}
+var runEventDelegationRequestedMembers = []string{"type", "request", "callId", "subagent", "version"}
 
-// UnmarshalJSON decodes a RunEventDelegationRequested object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a RunEventDelegationRequested object and refuses a member the closed schema does not name.
 func (v *RunEventDelegationRequested) UnmarshalJSON(data []byte) error {
 	type plain RunEventDelegationRequested
 	var p plain
-	extra, err := decodeObject(data, &p, runEventDelegationRequestedMembers, false)
+	extra, err := decodeObject(data, &p, runEventDelegationRequestedMembers, true)
 	if err != nil {
 		return errorf("RunEventDelegationRequested: %w", err)
 	}
 	*v = RunEventDelegationRequested(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a RunEventDelegationRequested object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a RunEventDelegationRequested object.
 func (v RunEventDelegationRequested) MarshalJSON() ([]byte, error) {
 	type plain RunEventDelegationRequested
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/edit_applied.
@@ -5500,9 +5488,10 @@ type RunEventEditApplied struct {
 	Line     int64  `json:"line"`
 	Bytes    int64  `json:"bytes"`
 	Valid    bool   `json:"valid"`
+	Version  *int64 `json:"version,omitzero"`
 }
 
-var runEventEditAppliedMembers = []string{"type", "document", "line", "bytes", "valid"}
+var runEventEditAppliedMembers = []string{"type", "document", "line", "bytes", "valid", "version"}
 
 // UnmarshalJSON decodes a RunEventEditApplied object and refuses a member the closed schema does not name.
 func (v *RunEventEditApplied) UnmarshalJSON(data []byte) error {
@@ -5528,9 +5517,10 @@ type RunEventEditRefused struct {
 	Type     string  `json:"type"`
 	Document *string `json:"document,omitzero"`
 	Reason   string  `json:"reason"`
+	Version  *int64  `json:"version,omitzero"`
 }
 
-var runEventEditRefusedMembers = []string{"type", "document", "reason"}
+var runEventEditRefusedMembers = []string{"type", "document", "reason", "version"}
 
 // UnmarshalJSON decodes a RunEventEditRefused object and refuses a member the closed schema does not name.
 func (v *RunEventEditRefused) UnmarshalJSON(data []byte) error {
@@ -5553,30 +5543,29 @@ func (v RunEventEditRefused) MarshalJSON() ([]byte, error) {
 
 // From run-event.json#/$defs/end. The run is over. Exactly once, last.
 type RunEventEnd struct {
-	Type string `json:"type"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
+	Type    string `json:"type"`
+	Version *int64 `json:"version,omitzero"`
 }
 
-var runEventEndMembers = []string{"type"}
+var runEventEndMembers = []string{"type", "version"}
 
-// UnmarshalJSON decodes a RunEventEnd object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a RunEventEnd object and refuses a member the closed schema does not name.
 func (v *RunEventEnd) UnmarshalJSON(data []byte) error {
 	type plain RunEventEnd
 	var p plain
-	extra, err := decodeObject(data, &p, runEventEndMembers, false)
+	extra, err := decodeObject(data, &p, runEventEndMembers, true)
 	if err != nil {
 		return errorf("RunEventEnd: %w", err)
 	}
 	*v = RunEventEnd(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a RunEventEnd object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a RunEventEnd object.
 func (v RunEventEnd) MarshalJSON() ([]byte, error) {
 	type plain RunEventEnd
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/error. The run failed. message is the catalogue's sentence for the
@@ -5586,29 +5575,28 @@ type RunEventError struct {
 	Type    string   `json:"type"`
 	Message string   `json:"message"`
 	Failure *Failure `json:"failure,omitzero"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
+	Version *int64   `json:"version,omitzero"`
 }
 
-var runEventErrorMembers = []string{"type", "message", "failure"}
+var runEventErrorMembers = []string{"type", "message", "failure", "version"}
 
-// UnmarshalJSON decodes a RunEventError object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a RunEventError object and refuses a member the closed schema does not name.
 func (v *RunEventError) UnmarshalJSON(data []byte) error {
 	type plain RunEventError
 	var p plain
-	extra, err := decodeObject(data, &p, runEventErrorMembers, false)
+	extra, err := decodeObject(data, &p, runEventErrorMembers, true)
 	if err != nil {
 		return errorf("RunEventError: %w", err)
 	}
 	*v = RunEventError(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a RunEventError object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a RunEventError object.
 func (v RunEventError) MarshalJSON() ([]byte, error) {
 	type plain RunEventError
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/execution_checkpoint. The execution's state, for the host to save: at
@@ -5621,29 +5609,28 @@ type RunEventExecutionCheckpoint struct {
 	Type       string     `json:"type"`
 	Durable    *bool      `json:"durable,omitzero"`
 	Checkpoint Checkpoint `json:"checkpoint"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
+	Version    *int64     `json:"version,omitzero"`
 }
 
-var runEventExecutionCheckpointMembers = []string{"type", "durable", "checkpoint"}
+var runEventExecutionCheckpointMembers = []string{"type", "durable", "checkpoint", "version"}
 
-// UnmarshalJSON decodes a RunEventExecutionCheckpoint object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a RunEventExecutionCheckpoint object and refuses a member the closed schema does not name.
 func (v *RunEventExecutionCheckpoint) UnmarshalJSON(data []byte) error {
 	type plain RunEventExecutionCheckpoint
 	var p plain
-	extra, err := decodeObject(data, &p, runEventExecutionCheckpointMembers, false)
+	extra, err := decodeObject(data, &p, runEventExecutionCheckpointMembers, true)
 	if err != nil {
 		return errorf("RunEventExecutionCheckpoint: %w", err)
 	}
 	*v = RunEventExecutionCheckpoint(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a RunEventExecutionCheckpoint object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a RunEventExecutionCheckpoint object.
 func (v RunEventExecutionCheckpoint) MarshalJSON() ([]byte, error) {
 	type plain RunEventExecutionCheckpoint
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/export_written. The host asked the package to produce a JSON export
@@ -5653,9 +5640,10 @@ type RunEventExportWritten struct {
 	Records int64  `json:"records"`
 	Bytes   int64  `json:"bytes"`
 	Digest  string `json:"digest"`
+	Version *int64 `json:"version,omitzero"`
 }
 
-var runEventExportWrittenMembers = []string{"type", "records", "bytes", "digest"}
+var runEventExportWrittenMembers = []string{"type", "records", "bytes", "digest", "version"}
 
 // UnmarshalJSON decodes a RunEventExportWritten object and refuses a member the closed schema does not name.
 func (v *RunEventExportWritten) UnmarshalJSON(data []byte) error {
@@ -5696,43 +5684,43 @@ func (v RunEventExportWritten) MarshalJSON() ([]byte, error) {
 // refused (ADR-0010), on a request_review call refused: a second ask of the run, an ask under off
 // or on, or one outside the author's phase; nothing is recorded and no review is asked.
 type RunEventGuardrail struct {
-	Type   string  `json:"type"`
-	Tool   string  `json:"tool"`
-	Action string  `json:"action"`
-	Detail string  `json:"detail"`
-	Reason *string `json:"reason,omitzero"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
+	Type    string  `json:"type"`
+	Tool    string  `json:"tool"`
+	Action  string  `json:"action"`
+	Detail  string  `json:"detail"`
+	Reason  *string `json:"reason,omitzero"`
+	Version *int64  `json:"version,omitzero"`
 }
 
-var runEventGuardrailMembers = []string{"type", "tool", "action", "detail", "reason"}
+var runEventGuardrailMembers = []string{"type", "tool", "action", "detail", "reason", "version"}
 
-// UnmarshalJSON decodes a RunEventGuardrail object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a RunEventGuardrail object and refuses a member the closed schema does not name.
 func (v *RunEventGuardrail) UnmarshalJSON(data []byte) error {
 	type plain RunEventGuardrail
 	var p plain
-	extra, err := decodeObject(data, &p, runEventGuardrailMembers, false)
+	extra, err := decodeObject(data, &p, runEventGuardrailMembers, true)
 	if err != nil {
 		return errorf("RunEventGuardrail: %w", err)
 	}
 	*v = RunEventGuardrail(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a RunEventGuardrail object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a RunEventGuardrail object.
 func (v RunEventGuardrail) MarshalJSON() ([]byte, error) {
 	type plain RunEventGuardrail
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/memory_proposed.
 type RunEventMemoryProposed struct {
-	Type   string `json:"type"`
-	Memory Memory `json:"memory"`
+	Type    string `json:"type"`
+	Memory  Memory `json:"memory"`
+	Version *int64 `json:"version,omitzero"`
 }
 
-var runEventMemoryProposedMembers = []string{"type", "memory"}
+var runEventMemoryProposedMembers = []string{"type", "memory", "version"}
 
 // UnmarshalJSON decodes a RunEventMemoryProposed object and refuses a member the closed schema does not name.
 func (v *RunEventMemoryProposed) UnmarshalJSON(data []byte) error {
@@ -5759,9 +5747,10 @@ type RunEventMemoryRecalled struct {
 	Ids     []string `json:"ids"`
 	Digests []string `json:"digests"`
 	Bytes   int64    `json:"bytes"`
+	Version *int64   `json:"version,omitzero"`
 }
 
-var runEventMemoryRecalledMembers = []string{"type", "ids", "digests", "bytes"}
+var runEventMemoryRecalledMembers = []string{"type", "ids", "digests", "bytes", "version"}
 
 // UnmarshalJSON decodes a RunEventMemoryRecalled object and refuses a member the closed schema does not name.
 func (v *RunEventMemoryRecalled) UnmarshalJSON(data []byte) error {
@@ -5790,31 +5779,30 @@ func (v RunEventMemoryRecalled) MarshalJSON() ([]byte, error) {
 // prose with no proposal, which a conversation allows, that prose is a second message, and the
 // first answer's failure follows.
 type RunEventMessage struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
+	Type    string `json:"type"`
+	Text    string `json:"text"`
+	Version *int64 `json:"version,omitzero"`
 }
 
-var runEventMessageMembers = []string{"type", "text"}
+var runEventMessageMembers = []string{"type", "text", "version"}
 
-// UnmarshalJSON decodes a RunEventMessage object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a RunEventMessage object and refuses a member the closed schema does not name.
 func (v *RunEventMessage) UnmarshalJSON(data []byte) error {
 	type plain RunEventMessage
 	var p plain
-	extra, err := decodeObject(data, &p, runEventMessageMembers, false)
+	extra, err := decodeObject(data, &p, runEventMessageMembers, true)
 	if err != nil {
 		return errorf("RunEventMessage: %w", err)
 	}
 	*v = RunEventMessage(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a RunEventMessage object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a RunEventMessage object.
 func (v RunEventMessage) MarshalJSON() ([]byte, error) {
 	type plain RunEventMessage
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/message_progress. The prose so far of the answer being written, whole
@@ -5825,32 +5813,31 @@ func (v RunEventMessage) MarshalJSON() ([]byte, error) {
 // without taskId is the run's own answer: a host routes one with taskId to the task's view, never
 // to the answer.
 type RunEventMessageProgress struct {
-	Type   string  `json:"type"`
-	Text   string  `json:"text"`
-	TaskID *string `json:"taskId,omitzero"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
+	Type    string  `json:"type"`
+	Text    string  `json:"text"`
+	TaskID  *string `json:"taskId,omitzero"`
+	Version *int64  `json:"version,omitzero"`
 }
 
-var runEventMessageProgressMembers = []string{"type", "text", "taskId"}
+var runEventMessageProgressMembers = []string{"type", "text", "taskId", "version"}
 
-// UnmarshalJSON decodes a RunEventMessageProgress object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a RunEventMessageProgress object and refuses a member the closed schema does not name.
 func (v *RunEventMessageProgress) UnmarshalJSON(data []byte) error {
 	type plain RunEventMessageProgress
 	var p plain
-	extra, err := decodeObject(data, &p, runEventMessageProgressMembers, false)
+	extra, err := decodeObject(data, &p, runEventMessageProgressMembers, true)
 	if err != nil {
 		return errorf("RunEventMessageProgress: %w", err)
 	}
 	*v = RunEventMessageProgress(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a RunEventMessageProgress object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a RunEventMessageProgress object.
 func (v RunEventMessageProgress) MarshalJSON() ([]byte, error) {
 	type plain RunEventMessageProgress
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/output_guarded. ADR-0017: outbound text held by a named pattern,
@@ -5860,9 +5847,10 @@ type RunEventOutputGuarded struct {
 	Where   string `json:"where"`
 	Pattern string `json:"pattern"`
 	Action  string `json:"action"`
+	Version *int64 `json:"version,omitzero"`
 }
 
-var runEventOutputGuardedMembers = []string{"type", "where", "pattern", "action"}
+var runEventOutputGuardedMembers = []string{"type", "where", "pattern", "action", "version"}
 
 // UnmarshalJSON decodes a RunEventOutputGuarded object and refuses a member the closed schema does not name.
 func (v *RunEventOutputGuarded) UnmarshalJSON(data []byte) error {
@@ -5887,9 +5875,10 @@ func (v RunEventOutputGuarded) MarshalJSON() ([]byte, error) {
 type RunEventPolicyResolved struct {
 	Type    string                  `json:"type"`
 	Members map[string]PolicyMember `json:"members"`
+	Version *int64                  `json:"version,omitzero"`
 }
 
-var runEventPolicyResolvedMembers = []string{"type", "members"}
+var runEventPolicyResolvedMembers = []string{"type", "members", "version"}
 
 // UnmarshalJSON decodes a RunEventPolicyResolved object and refuses a member the closed schema does not name.
 func (v *RunEventPolicyResolved) UnmarshalJSON(data []byte) error {
@@ -5929,58 +5918,55 @@ type RunEventProposal struct {
 	Critique *RunEventProposalCritique  `json:"critique,omitzero"`
 	Note     *RunEventProposalNote      `json:"note,omitzero"`
 	Edits    []ProvenanceEdit           `json:"edits,omitzero"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
+	Version  *int64                     `json:"version,omitzero"`
 }
 
-var runEventProposalMembers = []string{"type", "document", "unknowns", "digest", "critique", "note", "edits"}
+var runEventProposalMembers = []string{"type", "document", "unknowns", "digest", "critique", "note", "edits", "version"}
 
-// UnmarshalJSON decodes a RunEventProposal object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a RunEventProposal object and refuses a member the closed schema does not name.
 func (v *RunEventProposal) UnmarshalJSON(data []byte) error {
 	type plain RunEventProposal
 	var p plain
-	extra, err := decodeObject(data, &p, runEventProposalMembers, false)
+	extra, err := decodeObject(data, &p, runEventProposalMembers, true)
 	if err != nil {
 		return errorf("RunEventProposal: %w", err)
 	}
 	*v = RunEventProposal(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a RunEventProposal object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a RunEventProposal object.
 func (v RunEventProposal) MarshalJSON() ([]byte, error) {
 	type plain RunEventProposal
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/proposal/properties/critique.
 type RunEventProposalCritique struct {
 	Refuted    bool     `json:"refuted"`
 	Incomplete []string `json:"incomplete,omitzero"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
 var runEventProposalCritiqueMembers = []string{"refuted", "incomplete"}
 
-// UnmarshalJSON decodes a RunEventProposalCritique object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a RunEventProposalCritique object and refuses a member the closed schema does not name.
 func (v *RunEventProposalCritique) UnmarshalJSON(data []byte) error {
 	type plain RunEventProposalCritique
 	var p plain
-	extra, err := decodeObject(data, &p, runEventProposalCritiqueMembers, false)
+	extra, err := decodeObject(data, &p, runEventProposalCritiqueMembers, true)
 	if err != nil {
 		return errorf("RunEventProposalCritique: %w", err)
 	}
 	*v = RunEventProposalCritique(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a RunEventProposalCritique object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a RunEventProposalCritique object.
 func (v RunEventProposalCritique) MarshalJSON() ([]byte, error) {
 	type plain RunEventProposalCritique
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/proposal/properties/note. Something that ran after the proposal
@@ -6000,72 +5986,70 @@ type RunEventProposalNote struct {
 	Message string                   `json:"message"`
 	Failure Failure                  `json:"failure"`
 	Figures *ProvenanceCriticFigures `json:"figures,omitzero"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
 var runEventProposalNoteMembers = []string{"kind", "message", "failure", "figures"}
 
-// UnmarshalJSON decodes a RunEventProposalNote object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a RunEventProposalNote object and refuses a member the closed schema does not name.
 func (v *RunEventProposalNote) UnmarshalJSON(data []byte) error {
 	type plain RunEventProposalNote
 	var p plain
-	extra, err := decodeObject(data, &p, runEventProposalNoteMembers, false)
+	extra, err := decodeObject(data, &p, runEventProposalNoteMembers, true)
 	if err != nil {
 		return errorf("RunEventProposalNote: %w", err)
 	}
 	*v = RunEventProposalNote(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a RunEventProposalNote object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a RunEventProposalNote object.
 func (v RunEventProposalNote) MarshalJSON() ([]byte, error) {
 	type plain RunEventProposalNote
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/reasoning. The model's reasoning, as the provider streams it: deltas
 // with done false, then the whole passage once with done true. Shown to the person, never sent to
 // the runtime. Only the vercel engine emits it.
 type RunEventReasoning struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-	Done bool   `json:"done"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
+	Type    string `json:"type"`
+	Text    string `json:"text"`
+	Done    bool   `json:"done"`
+	Version *int64 `json:"version,omitzero"`
 }
 
-var runEventReasoningMembers = []string{"type", "text", "done"}
+var runEventReasoningMembers = []string{"type", "text", "done", "version"}
 
-// UnmarshalJSON decodes a RunEventReasoning object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a RunEventReasoning object and refuses a member the closed schema does not name.
 func (v *RunEventReasoning) UnmarshalJSON(data []byte) error {
 	type plain RunEventReasoning
 	var p plain
-	extra, err := decodeObject(data, &p, runEventReasoningMembers, false)
+	extra, err := decodeObject(data, &p, runEventReasoningMembers, true)
 	if err != nil {
 		return errorf("RunEventReasoning: %w", err)
 	}
 	*v = RunEventReasoning(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a RunEventReasoning object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a RunEventReasoning object.
 func (v RunEventReasoning) MarshalJSON() ([]byte, error) {
 	type plain RunEventReasoning
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/recorded. ADR-0022: a redacted evaluation corpus entry was written.
 // id names its corpus directory and bytes is the sum of the UTF-8 bytes in its six JSON files.
 type RunEventRecorded struct {
-	Type  string `json:"type"`
-	ID    string `json:"id"`
-	Bytes int64  `json:"bytes"`
+	Type    string `json:"type"`
+	ID      string `json:"id"`
+	Bytes   int64  `json:"bytes"`
+	Version *int64 `json:"version,omitzero"`
 }
 
-var runEventRecordedMembers = []string{"type", "id", "bytes"}
+var runEventRecordedMembers = []string{"type", "id", "bytes", "version"}
 
 // UnmarshalJSON decodes a RunEventRecorded object and refuses a member the closed schema does not name.
 func (v *RunEventRecorded) UnmarshalJSON(data []byte) error {
@@ -6091,30 +6075,29 @@ func (v RunEventRecorded) MarshalJSON() ([]byte, error) {
 // proposal that could not be read, in the shape the contract reads (the reformat request). Only
 // the vercel engine emits it.
 type RunEventResponseRecovery struct {
-	Type string `json:"type"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
+	Type    string `json:"type"`
+	Version *int64 `json:"version,omitzero"`
 }
 
-var runEventResponseRecoveryMembers = []string{"type"}
+var runEventResponseRecoveryMembers = []string{"type", "version"}
 
-// UnmarshalJSON decodes a RunEventResponseRecovery object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a RunEventResponseRecovery object and refuses a member the closed schema does not name.
 func (v *RunEventResponseRecovery) UnmarshalJSON(data []byte) error {
 	type plain RunEventResponseRecovery
 	var p plain
-	extra, err := decodeObject(data, &p, runEventResponseRecoveryMembers, false)
+	extra, err := decodeObject(data, &p, runEventResponseRecoveryMembers, true)
 	if err != nil {
 		return errorf("RunEventResponseRecovery: %w", err)
 	}
 	*v = RunEventResponseRecovery(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a RunEventResponseRecovery object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a RunEventResponseRecovery object.
 func (v RunEventResponseRecovery) MarshalJSON() ([]byte, error) {
 	type plain RunEventResponseRecovery
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/retry. The adapter is sending again within this turn, attempt n of at
@@ -6133,29 +6116,28 @@ func (v RunEventResponseRecovery) MarshalJSON() ([]byte, error) {
 type RunEventRetry struct {
 	Type    string `json:"type"`
 	Attempt int64  `json:"attempt"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
+	Version *int64 `json:"version,omitzero"`
 }
 
-var runEventRetryMembers = []string{"type", "attempt"}
+var runEventRetryMembers = []string{"type", "attempt", "version"}
 
-// UnmarshalJSON decodes a RunEventRetry object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a RunEventRetry object and refuses a member the closed schema does not name.
 func (v *RunEventRetry) UnmarshalJSON(data []byte) error {
 	type plain RunEventRetry
 	var p plain
-	extra, err := decodeObject(data, &p, runEventRetryMembers, false)
+	extra, err := decodeObject(data, &p, runEventRetryMembers, true)
 	if err != nil {
 		return errorf("RunEventRetry: %w", err)
 	}
 	*v = RunEventRetry(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a RunEventRetry object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a RunEventRetry object.
 func (v RunEventRetry) MarshalJSON() ([]byte, error) {
 	type plain RunEventRetry
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/skill_loaded. A skill loaded (ADR-0009): the model's load_skill call
@@ -6163,63 +6145,61 @@ func (v RunEventRetry) MarshalJSON() ([]byte, error) {
 // id, name, source record, digest; never its instructions); bytes is what it counts against
 // skillBytes (skill.json#/$defs/bytes). The checkpoint's skills carries it from here.
 type RunEventSkillLoaded struct {
-	Type  string               `json:"type"`
-	Skill ToolOfferLoadedSkill `json:"skill"`
-	Bytes int64                `json:"bytes"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
+	Type    string               `json:"type"`
+	Skill   ToolOfferLoadedSkill `json:"skill"`
+	Bytes   int64                `json:"bytes"`
+	Version *int64               `json:"version,omitzero"`
 }
 
-var runEventSkillLoadedMembers = []string{"type", "skill", "bytes"}
+var runEventSkillLoadedMembers = []string{"type", "skill", "bytes", "version"}
 
-// UnmarshalJSON decodes a RunEventSkillLoaded object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a RunEventSkillLoaded object and refuses a member the closed schema does not name.
 func (v *RunEventSkillLoaded) UnmarshalJSON(data []byte) error {
 	type plain RunEventSkillLoaded
 	var p plain
-	extra, err := decodeObject(data, &p, runEventSkillLoadedMembers, false)
+	extra, err := decodeObject(data, &p, runEventSkillLoadedMembers, true)
 	if err != nil {
 		return errorf("RunEventSkillLoaded: %w", err)
 	}
 	*v = RunEventSkillLoaded(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a RunEventSkillLoaded object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a RunEventSkillLoaded object.
 func (v RunEventSkillLoaded) MarshalJSON() ([]byte, error) {
 	type plain RunEventSkillLoaded
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/skill_unloaded. A skill unloaded (ADR-0009): the model's unload_skill
 // call dropped it, between that call and its result; id is the skill's id. Its block leaves every
 // later request.
 type RunEventSkillUnloaded struct {
-	Type string `json:"type"`
-	ID   string `json:"id"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
+	Type    string `json:"type"`
+	ID      string `json:"id"`
+	Version *int64 `json:"version,omitzero"`
 }
 
-var runEventSkillUnloadedMembers = []string{"type", "id"}
+var runEventSkillUnloadedMembers = []string{"type", "id", "version"}
 
-// UnmarshalJSON decodes a RunEventSkillUnloaded object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a RunEventSkillUnloaded object and refuses a member the closed schema does not name.
 func (v *RunEventSkillUnloaded) UnmarshalJSON(data []byte) error {
 	type plain RunEventSkillUnloaded
 	var p plain
-	extra, err := decodeObject(data, &p, runEventSkillUnloadedMembers, false)
+	extra, err := decodeObject(data, &p, runEventSkillUnloadedMembers, true)
 	if err != nil {
 		return errorf("RunEventSkillUnloaded: %w", err)
 	}
 	*v = RunEventSkillUnloaded(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a RunEventSkillUnloaded object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a RunEventSkillUnloaded object.
 func (v RunEventSkillUnloaded) MarshalJSON() ([]byte, error) {
 	type plain RunEventSkillUnloaded
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/steered. ADR-0021: one steer was placed at a request boundary. On an
@@ -6228,9 +6208,10 @@ type RunEventSteered struct {
 	Type      string `json:"type"`
 	Bytes     int64  `json:"bytes"`
 	AtRequest int64  `json:"atRequest"`
+	Version   *int64 `json:"version,omitzero"`
 }
 
-var runEventSteeredMembers = []string{"type", "bytes", "atRequest"}
+var runEventSteeredMembers = []string{"type", "bytes", "atRequest", "version"}
 
 // UnmarshalJSON decodes a RunEventSteered object and refuses a member the closed schema does not name.
 func (v *RunEventSteered) UnmarshalJSON(data []byte) error {
@@ -6255,41 +6236,41 @@ func (v RunEventSteered) MarshalJSON() ([]byte, error) {
 // be expressed on this endpoint, said once. Only the vercel engine emits it; the sentence is the
 // host's thinking table's.
 type RunEventThinkingUnavailable struct {
-	Type   string `json:"type"`
-	Detail string `json:"detail"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
+	Type    string `json:"type"`
+	Detail  string `json:"detail"`
+	Version *int64 `json:"version,omitzero"`
 }
 
-var runEventThinkingUnavailableMembers = []string{"type", "detail"}
+var runEventThinkingUnavailableMembers = []string{"type", "detail", "version"}
 
-// UnmarshalJSON decodes a RunEventThinkingUnavailable object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a RunEventThinkingUnavailable object and refuses a member the closed schema does not name.
 func (v *RunEventThinkingUnavailable) UnmarshalJSON(data []byte) error {
 	type plain RunEventThinkingUnavailable
 	var p plain
-	extra, err := decodeObject(data, &p, runEventThinkingUnavailableMembers, false)
+	extra, err := decodeObject(data, &p, runEventThinkingUnavailableMembers, true)
 	if err != nil {
 		return errorf("RunEventThinkingUnavailable: %w", err)
 	}
 	*v = RunEventThinkingUnavailable(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a RunEventThinkingUnavailable object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a RunEventThinkingUnavailable object.
 func (v RunEventThinkingUnavailable) MarshalJSON() ([]byte, error) {
 	type plain RunEventThinkingUnavailable
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From run-event.json#/$defs/usage. ADR-0020. Emitted exactly once for every run, immediately
 // before end.
 type RunEventUsage struct {
-	Type  string `json:"type"`
-	Usage Usage  `json:"usage"`
+	Type    string `json:"type"`
+	Usage   Usage  `json:"usage"`
+	Version *int64 `json:"version,omitzero"`
 }
 
-var runEventUsageMembers = []string{"type", "usage"}
+var runEventUsageMembers = []string{"type", "usage", "version"}
 
 // UnmarshalJSON decodes a RunEventUsage object and refuses a member the closed schema does not name.
 func (v *RunEventUsage) UnmarshalJSON(data []byte) error {
@@ -6317,29 +6298,28 @@ type RunEventUserQuestion struct {
 	Type     string   `json:"type"`
 	ID       string   `json:"id"`
 	Question Question `json:"question"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
+	Version  *int64   `json:"version,omitzero"`
 }
 
-var runEventUserQuestionMembers = []string{"type", "id", "question"}
+var runEventUserQuestionMembers = []string{"type", "id", "question", "version"}
 
-// UnmarshalJSON decodes a RunEventUserQuestion object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a RunEventUserQuestion object and refuses a member the closed schema does not name.
 func (v *RunEventUserQuestion) UnmarshalJSON(data []byte) error {
 	type plain RunEventUserQuestion
 	var p plain
-	extra, err := decodeObject(data, &p, runEventUserQuestionMembers, false)
+	extra, err := decodeObject(data, &p, runEventUserQuestionMembers, true)
 	if err != nil {
 		return errorf("RunEventUserQuestion: %w", err)
 	}
 	*v = RunEventUserQuestion(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a RunEventUserQuestion object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a RunEventUserQuestion object.
 func (v RunEventUserQuestion) MarshalJSON() ([]byte, error) {
 	type plain RunEventUserQuestion
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From skill.json. A skill (ADR-0009): a named, versioned bundle the host declares and supplies
@@ -6647,7 +6627,7 @@ func (v SubagentSource) MarshalJSON() ([]byte, error) {
 // (ask_user, delegate_tasks) gets no tool_call: it gets user_question or delegation_requested
 // instead. An act call of a tool with a source whose approval policy answers ask gets
 // approval_requested instead (ADR-0008). Read from the AssistantEvent union
-// (web/src/assistant/engine.ts). Open: no reader at run time refuses another member.
+// (web/src/assistant/engine.ts). The versioned record reader refuses unknown structural members.
 type ToolCall struct {
 	Type         string                 `json:"type"`
 	CallID       *string                `json:"callId,omitzero"`
@@ -6656,29 +6636,28 @@ type ToolCall struct {
 	Presentation *ToolCallPresentation  `json:"presentation,omitzero"`
 	Origin       *string                `json:"origin,omitzero"`
 	Source       *ToolOfferSourceRecord `json:"source,omitzero"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
+	Version      *int64                 `json:"version,omitzero"`
 }
 
-var toolCallMembers = []string{"type", "callId", "name", "args", "presentation", "origin", "source"}
+var toolCallMembers = []string{"type", "callId", "name", "args", "presentation", "origin", "source", "version"}
 
-// UnmarshalJSON decodes a ToolCall object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a ToolCall object and refuses a member the closed schema does not name.
 func (v *ToolCall) UnmarshalJSON(data []byte) error {
 	type plain ToolCall
 	var p plain
-	extra, err := decodeObject(data, &p, toolCallMembers, false)
+	extra, err := decodeObject(data, &p, toolCallMembers, true)
 	if err != nil {
 		return errorf("ToolCall: %w", err)
 	}
 	*v = ToolCall(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a ToolCall object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a ToolCall object.
 func (v ToolCall) MarshalJSON() ([]byte, error) {
 	type plain ToolCall
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From tool-call.json#/$defs/agentWireCall. One tool-call frame's call on the agent wire, from the
@@ -6758,29 +6737,27 @@ func (v ToolCallMCPCall) MarshalJSON() ([]byte, error) {
 // engine and never from model arguments.
 type ToolCallPresentation struct {
 	Provider string `json:"provider"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
 var toolCallPresentationMembers = []string{"provider"}
 
-// UnmarshalJSON decodes a ToolCallPresentation object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a ToolCallPresentation object and refuses a member the closed schema does not name.
 func (v *ToolCallPresentation) UnmarshalJSON(data []byte) error {
 	type plain ToolCallPresentation
 	var p plain
-	extra, err := decodeObject(data, &p, toolCallPresentationMembers, false)
+	extra, err := decodeObject(data, &p, toolCallPresentationMembers, true)
 	if err != nil {
 		return errorf("ToolCallPresentation: %w", err)
 	}
 	*v = ToolCallPresentation(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a ToolCallPresentation object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a ToolCallPresentation object.
 func (v ToolCallPresentation) MarshalJSON() ([]byte, error) {
 	type plain ToolCallPresentation
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From tool-call.json#/$defs/testCasesArguments. The arguments experimental_test_cases may leave
@@ -7829,12 +7806,12 @@ func (v ToolOfferUnloadSkill) MarshalJSON() ([]byte, error) {
 // From tool-result.json. The tool_result event: what a tool answered, as the adapter reports it to
 // the host after a tool_call. The model is shown the same answer, bounded (see $defs/reference).
 // Read from the AssistantEvent union (web/src/assistant/engine.ts) as both engines emit it
-// (engines/vercel/loop.ts, engines/codex/index.ts). Open: no reader at run time refuses another
-// member. A failed tool is a result with isError true and the failure in structured, never an
-// error event (toolFailureResult). The bound: a result whose JSON text, after an exact JSON text
-// block is folded into structuredContent, is at most toolResultBytes (budget.json, 12000 by
-// default) reaches the model whole. A larger one is retained in the execution's context ledger and
-// the model is shown a reference envelope instead, which it reads back with the host tool the
+// (engines/vercel/loop.ts, engines/codex/index.ts). The versioned record reader refuses unknown
+// structural members. A failed tool is a result with isError true and the failure in structured,
+// never an error event (toolFailureResult). The bound: a result whose JSON text, after an exact
+// JSON text block is folded into structuredContent, is at most toolResultBytes (budget.json, 12000
+// by default) reaches the model whole. A larger one is retained in the execution's context ledger
+// and the model is shown a reference envelope instead, which it reads back with the host tool the
 // envelope names (readWith: read_window, by line or page in windows of readWindowBytes), or in
 // sections with read_context (at most readBytes, 6000 by default, per read). A reading tool holds
 // its window to the result limit less the envelope (readWindowBytes: toolResultBytes less 1024
@@ -7873,29 +7850,28 @@ type ToolResult struct {
 	Origin     *string                `json:"origin,omitzero"`
 	Source     *ToolOfferSourceRecord `json:"source,omitzero"`
 	Proposed   *bool                  `json:"proposed,omitzero"`
-	// AdditionalMembers holds the members the schema does not name; the object is open.
-	AdditionalMembers map[string]json.RawMessage `json:"-"`
+	Version    *int64                 `json:"version,omitzero"`
 }
 
-var toolResultMembers = []string{"type", "callId", "name", "isError", "text", "structured", "origin", "source", "proposed"}
+var toolResultMembers = []string{"type", "callId", "name", "isError", "text", "structured", "origin", "source", "proposed", "version"}
 
-// UnmarshalJSON decodes a ToolResult object and keeps the members the schema does not name.
+// UnmarshalJSON decodes a ToolResult object and refuses a member the closed schema does not name.
 func (v *ToolResult) UnmarshalJSON(data []byte) error {
 	type plain ToolResult
 	var p plain
-	extra, err := decodeObject(data, &p, toolResultMembers, false)
+	extra, err := decodeObject(data, &p, toolResultMembers, true)
 	if err != nil {
 		return errorf("ToolResult: %w", err)
 	}
 	*v = ToolResult(p)
-	v.AdditionalMembers = extra
+	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a ToolResult object, with the members the schema does not name after the ones it does.
+// MarshalJSON encodes a ToolResult object.
 func (v ToolResult) MarshalJSON() ([]byte, error) {
 	type plain ToolResult
-	return encodeObject(plain(v), v.AdditionalMembers)
+	return encodeObject(plain(v), nil)
 }
 
 // From tool-result.json#/$defs/agentWireAnswer. The answer the browser returns to the Desk server

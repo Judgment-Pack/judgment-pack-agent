@@ -216,7 +216,7 @@ describe.each(AGENT_ENGINES)('agent engine %s', engineId => {
 
   it('streams prose while keeping proposal JSON hidden and uses the shared parser', async () => {
     const events = await collect(session(reply(proposal()), { interactive: true }))
-    expect(events.find(event => event.type === 'message_progress')).toEqual({ type: 'message_progress', text: 'Ready.' })
+    expect(events.find(event => event.type === 'message_progress')).toEqual({ version: 1, type: 'message_progress', text: 'Ready.' })
     expect(events.find(event => event.type === 'proposal')).toMatchObject({ document: { id: 'pack' }, unknowns: ['Who reviews?'] })
     expect(events.at(-1)?.type).toBe('end')
   })
@@ -235,7 +235,7 @@ describe.each(AGENT_ENGINES)('agent engine %s', engineId => {
   it('does not manufacture proposals or claim verification for an ordinary chat reply', async () => {
     const events = await collect(session(reply('Hello.'), { allowConversation: true }))
     // ADR-0010: the decision says no critic ran, nothing having been proposed; no tier, since the session states no effort.
-    expect(events).toEqual([{ type: 'critic_decided', mode: 'auto', ran: false, reason: 'no-proposal' }, { type: 'message', text: 'Hello.' }, { type: 'end' }])
+    expect(events).toEqual([{ version: 1, type: 'critic_decided', mode: 'auto', ran: false, reason: 'no-proposal' }, { version: 1, type: 'message', text: 'Hello.' }, { version: 1, type: 'end' }])
   })
 
   it('executes a host tool with cancellation and returns structured content without treating it as a runtime check', async () => {
@@ -395,7 +395,7 @@ it('releases the agent connection at a question without returning a fabricated u
   answered=true
  },{allowConversation:true,interactive:true,hostTools:[questionTool]}))
  expect(aborted).toBe(true);expect(answered).toBe(false)
- expect(events.filter(e=>e.type==='user_question')).toEqual([{type:'user_question',id:expect.any(String),question:interviewQuestion}])
+ expect(events.filter(e=>e.type==='user_question')).toEqual([{ version: 1,type:'user_question',id:expect.any(String),question:interviewQuestion}])
  expect(events.filter(e=>e.type==='error'||e.type==='tool_result'||e.type==='proposal')).toEqual([])
  expect(events.filter(e=>e.type==='end')).toHaveLength(1)
 })
@@ -407,8 +407,8 @@ it('keeps native recovery as progress without fabricating assistant text or anot
  })
  const events=await collect(session(run,{allowConversation:true}))
  expect(run).toHaveBeenCalledOnce()
- expect(events).toContainEqual({type:'retry',attempt:1})
- expect(events.filter(e=>e.type==='message')).toEqual([{type:'message',text:'Recovered answer'}])
+ expect(events).toContainEqual({ version: 1,type:'retry',attempt:1})
+ expect(events.filter(e=>e.type==='message')).toEqual([{version:1,type:'message',text:'Recovered answer'}])
  expect(events.some(e=>e.type==='error')).toBe(false)
 })
 
@@ -467,7 +467,7 @@ it('retains full tool results for the UI, sends bounded references to Codex, and
  expect(events.find(e=>e.type==='tool_result'&&e.name==='read_records')).toMatchObject({structured:value})
  expect(critic.offered).toEqual(['read_window','search'])
  expect(critic.refused).toMatchObject({isError:true,text:expect.stringContaining('list_context is served to this session but was not offered to this run')})
- expect(events.filter(e=>e.type==='guardrail')).toEqual([{type:'guardrail',tool:'list_context',action:'refused',detail:expect.stringContaining('was not offered to this run')}])
+ expect(events.filter(e=>e.type==='guardrail')).toEqual([{ version: 1,type:'guardrail',tool:'list_context',action:'refused',detail:expect.stringContaining('was not offered to this run')}])
 })
 
 it('preserves the current question and reads searchable context through the subscription adapter',async()=>{
@@ -482,7 +482,7 @@ it('preserves the current question and reads searchable context through the subs
   await callbacks.event({type:'message',id:'reply',text:'Explained without changes.',phase:'final'})
  },{prompt:'history '.repeat(40000),context:{currentRequest:{message,input}},allowConversation:true,critic: 'off' as const}))
  expect(events.filter(e=>e.type==='error')).toEqual([])
- expect(events.filter(e=>e.type==='message')).toEqual([{type:'message',text:'Explained without changes.'}])
+ expect(events.filter(e=>e.type==='message')).toEqual([{ version: 1,type:'message',text:'Explained without changes.'}])
 })
 
 it('uses shared task progress without inventing subscription model-request usage',async()=>{
@@ -507,7 +507,7 @@ describe('nothing finished is lost, on the agent wire (agent#6)', () => {
     // delivered whole, then the first answer's failure.
     expect(run).toHaveBeenCalledTimes(2)
     expect(events.map(event => event.type)).toEqual(['response_recovery', 'message', 'error', 'end'])
-    expect(events[1]).toEqual({ type: 'message', text: answer })
+    expect(events[1]).toEqual({ version: 1, type: 'message', text: answer })
     expect(events[2]).toMatchObject({ failure: { code: 'invalid-response', detail: 'the fenced proposal block is not valid JSON' } })
   })
 
@@ -539,7 +539,7 @@ describe('nothing finished is lost, on the agent wire (agent#6)', () => {
     expect(execute).not.toHaveBeenCalled()
     expect(answered).toBe(PROPOSAL_RECEIVED)
     expect(instructions).toContain(`calling ${PROPOSE_PACK_TOOL}`)
-    expect(events.find(event => event.type === 'proposal')).toEqual({ type: 'proposal', digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/), edits: [], document: { id: 'p' }, unknowns: ['u'] })
+    expect(events.find(event => event.type === 'proposal')).toEqual({ version: 1, type: 'proposal', digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/), edits: [], document: { id: 'p' }, unknowns: ['u'] })
     expect(events.filter(event => event.type === 'error')).toEqual([])
   })
 
@@ -572,7 +572,7 @@ describe('nothing finished is lost, on the agent wire (agent#6)', () => {
     }
     const events = await collect(session(run, { hostTools: [proposeTool] }))
     expect(events.map(event => event.type)).toEqual(['tool_call', 'tool_result', 'response_recovery', 'message', 'error', 'end'])
-    expect(events[3]).toEqual({ type: 'message', text: answer })
+    expect(events[3]).toEqual({ version: 1, type: 'message', text: answer })
     expect(events[4]).toMatchObject({ failure: { code: 'invalid-response' } })
   })
 })

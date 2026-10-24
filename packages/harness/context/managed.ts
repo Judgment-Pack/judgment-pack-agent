@@ -2,6 +2,7 @@ import {guardConnectionNotices} from '../session'
 import {OutputRefused,RecordsRefused,outputWhere} from '../outputGuard'
 import {PolicyRefusal} from '../policy'
 import {RecordsExpired} from '../records'
+import {versionEvents,writeRunEvent,UnsupportedRecordVersion,UnknownRecordMember} from '../recordReader'
 import {failureError,failureEvent,toolFailureResult} from '../failures'
 import {ExecutionPaused,RequestCapRefusal} from '../execution/state'
 import type {AssistantEvent,EngineSession,RequestSession,RequestSessionFor} from '../engine'
@@ -23,7 +24,7 @@ export function contextOf(session:RequestSession):SessionContext {
 export function managedContext<T extends EngineSession>(session:T,run:(session:RequestSessionFor<T>)=>AsyncIterable<AssistantEvent>,engine?:import('../host').AssistantEngine):AsyncIterable<AssistantEvent>{
  const recording=recordSession(session)
  const gate=openRun(recording.session,()=>{})
- return recording.stream(eventIterator({gate,open:()=>execute({...recording.session,signal:gate.signal} as T,run,engine)}))
+ return versionEvents(recording.stream(versionEvents(eventIterator({gate,open:()=>execute({...recording.session,signal:gate.signal} as T,run,engine)}))))
 }
 /** Notices carry model-derived identifiers and refusal details, independently of tool results.
  * Guard-generated labels are trusted metadata and must not be scanned again. */
@@ -65,7 +66,7 @@ async function* execute<T extends EngineSession>(session:T,run:(session:RequestS
   session.signal.throwIfAborted()
   const ready=await contextualSession(session,engine);context=ready.context
   releaseNotices=guardConnectionNotices(session.callTool,notice=>{
-   try{return guardNotice(notice,ready.context)}catch(error){if(!(error instanceof OutputRefused))throw error;return undefined}
+   try{return writeRunEvent(guardNotice(notice,ready.context))}catch(error){if(!(error instanceof OutputRefused))throw error;return undefined}
   })
   // Only names declared by the host, Runtime or reserved harness offer are trusted.
   // Keep dispatch on the original name: an unknown call still earns the gate's refusal.
@@ -219,7 +220,7 @@ async function* execute<T extends EngineSession>(session:T,run:(session:RequestS
    yield error.event()
    if(error.checkpoint)yield {type:'execution_checkpoint',checkpoint:error.checkpoint}
   }
-  if(error instanceof RecordsExpired)yield error.event()
+  if(error instanceof RecordsExpired||error instanceof UnsupportedRecordVersion||error instanceof UnknownRecordMember)yield error.event()
   if(!session.signal.aborted)yield failureEvent(error,'context')
   const usage=context?.execution.state?context.execution.usage():{rows:[]}
   if(context?.execution.state)context.execution.mutate({usage:usage})

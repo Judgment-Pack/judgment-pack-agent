@@ -849,8 +849,9 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  }
  const carried=context.execution.state.policy
  if(carried) {
-  for(const [name,member] of Object.entries(carried))if(name.startsWith('models.subagent.')&&!Object.hasOwn(context.resolvedPolicy,name))context.resolvedPolicy[name]=structuredClone(member)
+  for(const [name,member] of Object.entries(carried))if(name.startsWith('models.subagent.')&&!Object.hasOwn(context.resolvedPolicy,name))context.resolvedPolicy[name]={...structuredClone(member),source:member.source??'layer'}
   const comparable=structuredClone(carried)
+  for(const member of Object.values(comparable))member.source??='layer'
   for(const name of new Set([...Object.keys(carried),...Object.keys(context.resolvedPolicy)]))if([...changedRoles].some(role=>name.startsWith(role))){
    if(Object.hasOwn(context.resolvedPolicy,name))comparable[name]=structuredClone(context.resolvedPolicy[name]!)
    else delete comparable[name]

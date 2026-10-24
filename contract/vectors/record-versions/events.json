@@ -1,0 +1,724 @@
+{
+  "description": "Hand-authored compatibility records. Negative cases are reader inputs, not positive schema items. Historical records retain their version and bytes.",
+  "schema": "run-event.json",
+  "items": [
+    {
+      "type": "message",
+      "text": "Kept exactly."
+    },
+    {
+      "type": "execution_checkpoint",
+      "durable": true,
+      "checkpoint": {
+        "version": 1,
+        "id": "3c9e1a7b-5d2f-4e8a-9b6c-0d1e2f3a4b5c",
+        "requestKey": "7e4f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5061728394a5b6c7d",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 2,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [
+          {
+            "id": "0f1e2d3c-4b5a-4968-8778-695a4b3c2d1e",
+            "name": "load_tool",
+            "args": {
+              "name": "tracker__create_issue"
+            },
+            "status": "complete",
+            "result": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\"name\":\"tracker__create_issue\"}"
+                }
+              ]
+            }
+          },
+          {
+            "id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+            "name": "tracker__create_issue",
+            "args": {
+              "repository": "expense",
+              "title": "Mileage rate for the UK"
+            },
+            "status": "failed",
+            "result": {
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "tracker__create_issue acts on tracker, and another act call of this run waits for the person's decision; one call waits at a time, so this call was not run and nothing was changed. Call it again once the person has decided."
+                }
+              ]
+            }
+          }
+        ],
+        "context": {
+          "scope": "run-8",
+          "entries": []
+        },
+        "sources": [
+          {
+            "source": "runtime",
+            "kind": "runtime",
+            "calls": 0,
+            "refused": 0,
+            "proposed": 0,
+            "bytes": 0,
+            "milliseconds": 0
+          },
+          {
+            "source": "tracker",
+            "kind": "mcp",
+            "calls": 0,
+            "refused": 1,
+            "proposed": 0,
+            "bytes": 0,
+            "milliseconds": 0
+          }
+        ],
+        "approval": {
+          "callId": "call_2_1",
+          "name": "tracker__create_issue",
+          "tool": "create_issue",
+          "source": {
+            "kind": "mcp",
+            "id": "tracker",
+            "trust": "public",
+            "toolListDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820",
+            "tool": "create_issue"
+          },
+          "args": {
+            "repository": "expense",
+            "title": "Missing mileage rate"
+          },
+          "state": "approved",
+          "decidedAt": "2026-10-20T10:05:00.000Z",
+          "marker": "5b0e7a94c1d3482fa6e90b17d2c83f4e"
+        }
+      },
+      "version": 1
+    },
+    {
+      "type": "budget_paused",
+      "checkpoint": {
+        "version": 1,
+        "id": "ac27bccf-d080-4343-bda3-abed1a723d54",
+        "requestKey": "786f40a5d619b12d3bbea0ec90793b56499679201a3fd2d9420ffddec151abb1",
+        "phase": "work",
+        "status": "paused",
+        "unit": "model-requests",
+        "used": 1,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "c8cb5fa6-5a94-4d93-beaa-cda8ea59f350",
+          "entries": []
+        },
+        "reason": "The turn reached its wall-clock limit of 1 second. Completed work is kept. Continuing takes a grant of more requests, so a run already at the 100-request limit cannot be continued; start a new response instead."
+      },
+      "version": 1
+    },
+    {
+      "type": "approval_requested",
+      "callId": "call_2_1",
+      "name": "tracker__create_issue",
+      "tool": "create_issue",
+      "source": {
+        "kind": "mcp",
+        "id": "tracker",
+        "trust": "public",
+        "toolListDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820",
+        "tool": "create_issue"
+      },
+      "args": {
+        "repository": "expense",
+        "title": "Missing mileage rate"
+      },
+      "version": 1
+    },
+    {
+      "type": "compacted",
+      "turns": 4,
+      "bytes": 612,
+      "digest": "1111111111111111111111111111111111111111111111111111111111111111",
+      "mode": "index",
+      "version": 1
+    },
+    {
+      "type": "skill_loaded",
+      "skill": {
+        "id": "expense-policy",
+        "name": "expense_policy",
+        "source": {
+          "kind": "custom",
+          "id": "policies",
+          "trust": "person",
+          "version": "4"
+        },
+        "digest": "sha256:f6a93d485c5702705a0730234f301d4f474743e918b0926de73b1d05067c25a9"
+      },
+      "bytes": 240,
+      "version": 1
+    },
+    {
+      "type": "skill_unloaded",
+      "id": "expense-policy",
+      "version": 1
+    },
+    {
+      "type": "retry",
+      "attempt": 1,
+      "version": 1
+    },
+    {
+      "type": "response_recovery",
+      "version": 1
+    },
+    {
+      "type": "delegation_requested",
+      "callId": "call-7f3a",
+      "request": {
+        "tasks": [
+          {
+            "title": "Receipts",
+            "objective": "Check the receipts of every trip.",
+            "profile": "analyze"
+          }
+        ]
+      },
+      "version": 1
+    },
+    {
+      "type": "delegated_task",
+      "task": {
+        "id": "9a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9",
+        "parentRunId": "0b6f3c1e-7d2a-4c8e-9f10-2a3b4c5d6e7f",
+        "title": "Receipts",
+        "objective": "Check the receipts of every trip.",
+        "profile": "analyze",
+        "state": "queued",
+        "createdAt": "2026-10-19T09:00:00.000Z",
+        "modelRequests": 0,
+        "toolCalls": 0,
+        "attempts": 0,
+        "steps": [],
+        "budget": {
+          "modelRequests": 6,
+          "toolCalls": 6,
+          "milliseconds": 120000
+        },
+        "model": "fixture-small"
+      },
+      "version": 1
+    },
+    {
+      "type": "user_question",
+      "id": "question",
+      "question": {
+        "title": "Continue",
+        "question": "Continue?",
+        "selection": "single",
+        "options": [],
+        "recommendedOptionId": null,
+        "recommendation": null
+      },
+      "version": 1
+    },
+    {
+      "type": "reasoning",
+      "text": "Checking.",
+      "done": true,
+      "version": 1
+    },
+    {
+      "type": "message",
+      "text": "The person approved it, and the issue is open in the expense repository.",
+      "version": 1
+    },
+    {
+      "type": "message_progress",
+      "text": "",
+      "version": 1
+    },
+    {
+      "type": "tool_call",
+      "callId": "call_2_2",
+      "name": "tracker__create_issue",
+      "args": {
+        "repository": "expense",
+        "title": "Mileage rate for the UK"
+      },
+      "source": {
+        "kind": "mcp",
+        "id": "tracker",
+        "trust": "public",
+        "toolListDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820",
+        "tool": "create_issue"
+      },
+      "version": 1
+    },
+    {
+      "type": "tool_result",
+      "callId": "call_2_2",
+      "name": "tracker__create_issue",
+      "isError": true,
+      "text": "tracker__create_issue acts on tracker, and another act call of this run waits for the person's decision; one call waits at a time, so this call was not run and nothing was changed. Call it again once the person has decided.",
+      "structured": {
+        "failure": {
+          "version": 1,
+          "code": "permission",
+          "source": "tool",
+          "outcome": "not-started",
+          "detail": "tracker__create_issue acts on tracker, and another act call of this run waits for the person's decision; one call waits at a time, so this call was not run and nothing was changed. Call it again once the person has decided."
+        }
+      },
+      "source": {
+        "kind": "mcp",
+        "id": "tracker",
+        "trust": "public",
+        "toolListDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820",
+        "tool": "create_issue"
+      },
+      "version": 1
+    },
+    {
+      "type": "guardrail",
+      "tool": "tracker__create_issue",
+      "action": "refused",
+      "detail": "The person refused this call of tracker__create_issue; it was not run and nothing was changed.",
+      "reason": "approval refused",
+      "version": 1
+    },
+    {
+      "type": "thinking_unavailable",
+      "detail": "Unavailable.",
+      "version": 1
+    },
+    {
+      "type": "critic_decided",
+      "mode": "on",
+      "ran": true,
+      "reason": "person",
+      "reasoning": "on",
+      "version": 1
+    },
+    {
+      "type": "critique",
+      "refuted": false,
+      "checks": [],
+      "text": "compared with the declared outcomes: case malformed-amount (test) agrees; 1 declared case(s) agree",
+      "cases": [
+        {
+          "case": "malformed-amount",
+          "source": "test",
+          "tool": "experimental_test_cases",
+          "agrees": true,
+          "expected": {
+            "errorClass": "malformed-input",
+            "phase": "preflight"
+          },
+          "actual": {
+            "errorClass": "malformed-input",
+            "phase": "preflight"
+          }
+        }
+      ],
+      "incomplete": [],
+      "figures": {
+        "model": "agent-model",
+        "unit": "agent-runs",
+        "requests": 1
+      },
+      "version": 1
+    },
+    {
+      "type": "proposal",
+      "digest": "sha256:681f94562c65706b6b99916c65ad1a90bf2f8a90cd3067f3326ca514502042fa",
+      "document": {
+        "id": "p"
+      },
+      "unknowns": [
+        "who signs"
+      ],
+      "version": 1
+    },
+    {
+      "type": "error",
+      "message": "The fixed request cap must match the admitted API execution and cannot change after initialization.",
+      "failure": {
+        "version": 1,
+        "code": "configuration",
+        "source": "context",
+        "outcome": "not-started",
+        "detail": "The fixed request cap must match the admitted API execution and cannot change after initialization."
+      },
+      "version": 1
+    },
+    {
+      "type": "policy_resolved",
+      "members": {
+        "compaction": {
+          "value": "summary",
+          "layer": "run"
+        },
+        "budget.summaryBytes": {
+          "value": 4000,
+          "layer": "run"
+        },
+        "budget.readBytes": {
+          "value": 1024,
+          "layer": "run"
+        },
+        "critic.default": {
+          "value": "on",
+          "layer": "run"
+        },
+        "models.author.reasoning": {
+          "value": "ultra",
+          "layer": "run",
+          "source": "layer"
+        },
+        "models.compactor.reasoning": {
+          "value": "low",
+          "layer": "run",
+          "source": "layer"
+        },
+        "models.compactor.provider": {
+          "value": "author-connection",
+          "layer": "run"
+        },
+        "concurrency.requests": {
+          "value": 3,
+          "layer": "run"
+        },
+        "pace.requestsPerDay": {
+          "value": 60,
+          "layer": "run"
+        },
+        "taskClass": {
+          "value": "boundary",
+          "layer": "run"
+        }
+      },
+      "version": 1
+    },
+    {
+      "type": "memory_proposed",
+      "memory": {
+        "id": "proposal-1",
+        "kind": "preference",
+        "text": "Use metric units.",
+        "source": {
+          "run": "earlier-run",
+          "proposedBy": "model"
+        },
+        "scope": "project",
+        "digest": "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "createdAt": "2026-10-20T12:00:00Z",
+        "state": "proposed"
+      },
+      "version": 1
+    },
+    {
+      "type": "memory_recalled",
+      "ids": [
+        "metric",
+        "poison"
+      ],
+      "digests": [
+        "sha256:dd407b2b50d5735761059db743e2d628f0f6b17585ec025089e82380986dcff9",
+        "sha256:6858e28cc07cb8f1f6d5a1de41291f02fe6c78559fc5fbd96f41cf9152117a03"
+      ],
+      "bytes": 558,
+      "version": 1
+    },
+    {
+      "type": "edit_applied",
+      "document": "pack",
+      "line": 4,
+      "bytes": 5,
+      "valid": true,
+      "version": 1
+    },
+    {
+      "type": "edit_refused",
+      "document": "pack",
+      "reason": "The anchor occurs 2 times; it must occur exactly once.",
+      "version": 1
+    },
+    {
+      "type": "output_guarded",
+      "where": "draft edit",
+      "pattern": "aws-access-key",
+      "action": "redact",
+      "version": 1
+    },
+    {
+      "type": "export_written",
+      "records": 3,
+      "bytes": 2048,
+      "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "version": 1
+    },
+    {
+      "type": "steered",
+      "bytes": 18,
+      "atRequest": 2,
+      "version": 1
+    },
+    {
+      "type": "connection_switched",
+      "role": "author",
+      "from": "primary",
+      "to": "secondary",
+      "reason": "unavailable",
+      "version": 1
+    },
+    {
+      "type": "usage",
+      "usage": {
+        "rows": [
+          {
+            "source": "agent",
+            "connection": "subscription",
+            "role": "author",
+            "requests": 0,
+            "invocations": 1,
+            "milliseconds": 412,
+            "bytes": 0
+          }
+        ]
+      },
+      "version": 1
+    },
+    {
+      "type": "recorded",
+      "id": "model-policy-refusal",
+      "bytes": 2048,
+      "version": 1
+    },
+    {
+      "version": 1,
+      "type": "guardrail",
+      "tool": "checkpoint",
+      "action": "refused",
+      "reason": "record version unsupported",
+      "detail": "Unsupported record version: checkpoint."
+    },
+    {
+      "version": 1,
+      "type": "guardrail",
+      "tool": "checkpoint",
+      "action": "refused",
+      "reason": "record member unsupported",
+      "detail": "Unknown record member: /future."
+    },
+    {
+      "version": 1,
+      "type": "end"
+    }
+  ],
+  "cases": [
+    {
+      "name": "historical",
+      "input": {
+        "type": "message",
+        "text": "Kept exactly."
+      },
+      "outcome": "accepted"
+    },
+    {
+      "name": "current",
+      "input": {
+        "type": "message",
+        "text": "Kept exactly.",
+        "version": 1
+      },
+      "outcome": "accepted"
+    },
+    {
+      "name": "future before unfamiliar type",
+      "input": {
+        "version": 2,
+        "type": "future",
+        "payload": true
+      },
+      "outcome": "UnsupportedRecordVersion"
+    },
+    {
+      "name": "unknown envelope",
+      "input": {
+        "type": "message",
+        "text": "Kept exactly.",
+        "unexpected": true
+      },
+      "outcome": "UnknownRecordMember"
+    },
+    {
+      "name": "unknown source",
+      "input": {
+        "version": 1,
+        "type": "tool_call",
+        "name": "read",
+        "args": {},
+        "source": {
+          "kind": "mcp",
+          "id": "source",
+          "trust": "public",
+          "unexpected": true
+        }
+      },
+      "outcome": "UnknownRecordMember"
+    },
+    {
+      "name": "arbitrary arguments",
+      "input": {
+        "version": 1,
+        "type": "tool_call",
+        "name": "read",
+        "args": {
+          "future": {
+            "deep": [
+              null,
+              false,
+              0
+            ]
+          }
+        }
+      },
+      "outcome": "accepted"
+    },
+    {
+      "name": "missing type",
+      "input": {
+        "version": 1
+      },
+      "outcome": "InvalidRecord"
+    },
+    {
+      "name": "oversized version",
+      "input": {
+        "version": 9007199254740992,
+        "type": "end"
+      },
+      "outcome": "InvalidRecord"
+    },
+    {
+      "name": "current decimal integer spelling",
+      "input": {
+        "version": 1,
+        "type": "message",
+        "text": "Kept exactly."
+      },
+      "raw": "{\"version\":1.0,\"type\":\"message\",\"text\":\"Kept exactly.\"}",
+      "outcome": "accepted"
+    },
+    {
+      "name": "current exponent integer spelling",
+      "input": {
+        "version": 1,
+        "type": "message",
+        "text": "Kept exactly."
+      },
+      "raw": "{\"version\":1e0,\"type\":\"message\",\"text\":\"Kept exactly.\"}",
+      "outcome": "accepted"
+    },
+    {
+      "name": "fractional numeric version",
+      "input": {
+        "version": 1,
+        "type": "message",
+        "text": "Kept exactly."
+      },
+      "raw": "{\"version\":1.5,\"type\":\"message\",\"text\":\"Kept exactly.\"}",
+      "outcome": "InvalidRecord"
+    },
+    {
+      "name": "unsafe numeric version",
+      "input": {
+        "version": 1,
+        "type": "message",
+        "text": "Kept exactly."
+      },
+      "raw": "{\"version\":9007199254740992,\"type\":\"message\",\"text\":\"Kept exactly.\"}",
+      "outcome": "InvalidRecord"
+    },
+    {
+      "name": "overflow numeric version",
+      "input": {
+        "version": 1,
+        "type": "message",
+        "text": "Kept exactly."
+      },
+      "raw": "{\"version\":1e400,\"type\":\"message\",\"text\":\"Kept exactly.\"}",
+      "outcome": "InvalidRecord"
+    },
+    {
+      "name": "future exponent before unknown body",
+      "input": {
+        "version": 1,
+        "type": "message",
+        "text": "Kept exactly.",
+        "unfamiliar": true
+      },
+      "raw": "{\"version\":3e0,\"type\":\"message\",\"text\":\"Kept exactly.\",\"unfamiliar\":true}",
+      "outcome": "UnsupportedRecordVersion"
+    },
+    {
+      "name": "parsed near integer rounds to historical one",
+      "input": {
+        "version": 1,
+        "type": "message",
+        "text": "Kept exactly."
+      },
+      "raw": "{\"version\":1.00000000000000001,\"type\":\"message\",\"text\":\"Kept exactly.\"}",
+      "outcome": "accepted"
+    },
+    {
+      "name": "nested checkpoint integer spellings",
+      "input": {
+        "version": 1,
+        "type": "execution_checkpoint",
+        "durable": true,
+        "checkpoint": {
+          "version": 2,
+          "id": "compatibility",
+          "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+          "phase": "work",
+          "status": "running",
+          "unit": "model-requests",
+          "used": 0,
+          "limit": 20,
+          "grants": [],
+          "plan": [],
+          "explanation": "",
+          "operations": [],
+          "context": {
+            "scope": "compatibility",
+            "entries": []
+          }
+        }
+      },
+      "raw": "{\"version\":1,\"type\":\"execution_checkpoint\",\"durable\":true,\"checkpoint\":{\"version\":2e0,\"id\":\"compatibility\",\"requestKey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"phase\":\"work\",\"status\":\"running\",\"unit\":\"model-requests\",\"used\":0.0,\"limit\":20,\"grants\":[],\"plan\":[],\"explanation\":\"\",\"operations\":[],\"context\":{\"scope\":\"compatibility\",\"entries\":[]}}}",
+      "outcome": "accepted"
+    }
+  ],
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/recordReader.ts",
+      "packages/harness/records.ts"
+    ]
+  }
+}
