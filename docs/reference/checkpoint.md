@@ -12,14 +12,14 @@ See also: [events.md](events.md), [budget.md](budget.md), [delegation.md](delega
 
 ## The checkpoint
 
-A local record of one execution, carried whole on execution_checkpoint and budget_paused events and handed back to resume: the request allowance and the grants that raised it, the task plan, every operation with its exact arguments and result, the completions, and the retained context the ledger holds. On an agent capability, the delegation handoff (ADR-0007): the call, the batch's task records and the call's result. An act call paused for the person's decision, and what became of it (ADR-0008, approval). Never permissions, evidence approval or private reasoning. Read from ExecutionCheckpoint (web/src/assistant/execution/state.ts, readExecution). Open: readExecution accepts a member it does not name and keeps it. Rules the reader holds that JSON Schema does not state: the serialized checkpoint is at most 4 MiB (MAX_CHECKPOINT_BYTES); used is at most limit; a present requestCap is a fixed model-requests limit with no grants and must match trusted resume input; otherwise the grants chain from the first limit (MAX_TURNS for model-requests, 1 for provider-managed), each grant's from is the previous to, and limit equals the last to; operation ids and entry ids are unique; every entry id starts with the context scope and a colon; a completion's request is at most used; the prompts' request numbers increase; at most one plan step is in_progress. The loaded skills (ADR-0009): skills. The critic's decision (ADR-0010): critic.
+A local record of one execution, carried whole on execution_checkpoint and budget_paused events and handed back to resume: the request allowance and the grants that raised it, the task plan, every operation with its exact arguments and result, the completions, and the retained context the ledger holds. On an agent capability, the delegation handoff (ADR-0007): the call, the batch's task records and the call's result. An act call paused for the person's decision, and what became of it (ADR-0008, approval). Never permissions, evidence approval or private reasoning. Read from ExecutionCheckpoint (web/src/assistant/execution/state.ts, readExecution). Versioned: structural members not named by the selected version are refused. Declared arbitrary payloads are retained whole. Rules the reader holds that JSON Schema does not state: the serialized checkpoint is at most 4 MiB (MAX_CHECKPOINT_BYTES); used is at most limit; a present requestCap is a fixed model-requests limit with no grants and must match trusted resume input; otherwise the grants chain from the first limit (MAX_TURNS for model-requests, 1 for provider-managed), each grant's from is the previous to, and limit equals the last to; operation ids and entry ids are unique; every entry id starts with the context scope and a colon; a completion's request is at most used; the prompts' request numbers increase; at most one plan step is in_progress. The loaded skills (ADR-0009): skills. The critic's decision (ADR-0010): critic.
 
-Open: a member the schema does not name is accepted.
+Closed: a member the schema does not name is refused.
 
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
 | `schema` |  | const (see schema) |  |
-| `version` | yes | const `1` |  |
+| `version` | yes | enum `1`, `2` | Wire format version: writers use 2; readers also accept the frozen historical version 1. |
 | `digest` |  | `provenance.json $defs/recordDigest` |  |
 | `retainUntil` |  | `provenance.json $defs/retainUntil` |  |
 | `id` | yes | string (min length 1, max length 100) |  |
@@ -78,7 +78,7 @@ Conditions beyond the members (allOf) are in the schema file.
 
 ### `checkpoint.json $defs/grant`
 
-Open: a member the schema does not name is accepted.
+Closed: a member the schema does not name is refused.
 
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
@@ -88,7 +88,7 @@ Open: a member the schema does not name is accepted.
 
 ### `checkpoint.json $defs/taskStep`
 
-Open: a member the schema does not name is accepted.
+Closed: a member the schema does not name is refused.
 
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
@@ -100,7 +100,7 @@ Open: a member the schema does not name is accepted.
 
 One tool call as the host journaled it from the tool_call and tool_result events.
 
-Open: a member the schema does not name is accepted.
+Closed: a member the schema does not name is refused.
 
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
@@ -114,7 +114,7 @@ Open: a member the schema does not name is accepted.
 
 One immutable source copy the context ledger holds (RetainedEntry). value is the copy itself.
 
-Open: a member the schema does not name is accepted.
+Closed: a member the schema does not name is refused.
 
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |

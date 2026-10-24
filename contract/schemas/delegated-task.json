@@ -86,7 +86,7 @@
             "$ref": "#/$defs/state"
           }
         },
-        "additionalProperties": true
+        "additionalProperties": false
       }
     },
     "result": {
@@ -185,7 +185,7 @@
       "$ref": "subagent.json#/$defs/record"
     }
   },
-  "additionalProperties": true,
+  "additionalProperties": false,
   "$defs": {
     "uuid": {
       "type": "string",

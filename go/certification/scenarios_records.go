@@ -77,7 +77,7 @@ func recordsFindings(ctx context.Context, server *Server, answerAs string, bound
 			f.fail("%s was not JSON", schema)
 			return
 		}
-		if !runcontext.ValidRecord(record) || record.Get("schema").Str() == "" || record.Get("version").Num() != 1 || record.Get("digest").Str() == "" || record.Get("retainUntil").Str() == "" {
+		if !runcontext.ValidRecord(record) || record.Get("schema").Str() == "" || (record.Get("schema").Str() == runcontext.CheckpointSchema && record.Get("version").Num() != 2 || record.Get("schema").Str() != runcontext.CheckpointSchema && record.Get("version").Num() != 1) || record.Get("digest").Str() == "" || record.Get("retainUntil").Str() == "" {
 			f.fail("%s did not carry its four record members", schema)
 		}
 		raw = append(raw, bytes)
@@ -190,6 +190,66 @@ func recordsFindings(ctx context.Context, server *Server, answerAs string, bound
 	}
 	if dispatches != before || len(refused.Requests) != len(ran.Requests) || !hasExpiredRefusal(refused.Events) {
 		f.fail("the expired resume was not refused before dispatch with records expired")
+	}
+	// Future versions refuse before either adapter dispatches or calls a tool.
+	for _, future := range []contract.Checkpoint{{Version: 3}, *checkpoint} {
+		future.Version = 3
+		input := requestInput(file.Request)
+		input.Execution = &future
+		before := dispatches
+		newer, err := host.runOn(ctx, bound, &Run{Prompt: file.Request, AllowConversation: true, Critic: "off", Context: input})
+		if err != nil {
+			return nil, err
+		}
+		named := false
+		for _, event := range newer.Events {
+			encoded, _ := json.Marshal(event)
+			var header struct{ Version int }
+			_ = json.Unmarshal(encoded, &header)
+			if header.Version != 1 || contract.CheckRecord("event", encoded) != nil {
+				f.fail("future refusal emitted an invalid current event")
+			}
+			if event.Guardrail != nil && event.Guardrail.Reason != nil && *event.Guardrail.Reason == "record version unsupported" {
+				named = true
+			}
+		}
+		if !named || dispatches != before || len(newer.Requests) != len(refused.Requests) || len(newer.Seen) != len(refused.Seen) {
+			f.fail("future record reached dispatch/tool work or lacked named refusal")
+		}
+	}
+	// A legacy body is not upgraded during admission; its next write upgrades without extending retention.
+	var legacy contract.Checkpoint
+	if err := json.Unmarshal(checkpointRaw, &legacy); err != nil {
+		return nil, err
+	}
+	legacy.Version, legacy.Status = 1, "stopped"
+	for name, member := range legacy.Policy {
+		if member.Source != nil && *member.Source == "layer" {
+			member.Source = nil
+			legacy.Policy[name] = member
+		}
+	}
+	rawLegacy, _ := json.Marshal(legacy)
+	value, _ := runcontext.ParseJSON(rawLegacy)
+	legacyDigest := runcontext.RecordDigest(value)
+	legacy.Digest = &legacyDigest
+	beforeLegacy, _ := json.Marshal(legacy)
+	input = requestInput(file.Request)
+	input.Execution = &legacy
+	resumed, err := host.runOn(ctx, bound, &Run{Prompt: file.Request, AllowConversation: true, Critic: "off", Context: input})
+	if err != nil {
+		return nil, err
+	}
+	afterLegacy, _ := json.Marshal(legacy)
+	next := lastCheckpointOf(resumed.Events)
+	if string(beforeLegacy) != string(afterLegacy) || resumed.RunError != nil || len(errorsOf(resumed.Events)) != 0 || next == nil {
+		f.fail("legacy resume rewrote supplied state or failed")
+	} else {
+		encoded, _ := json.Marshal(next)
+		value, _ := runcontext.ParseJSON(encoded)
+		if next.Version != 2 || next.RetainUntil == nil || legacy.RetainUntil == nil || *next.RetainUntil != *legacy.RetainUntil || !runcontext.ValidRecord(value) {
+			f.fail("legacy next write lost current version, original retention or digest")
+		}
 	}
 	return f.list, nil
 }

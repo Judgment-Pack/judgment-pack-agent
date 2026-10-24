@@ -72,7 +72,7 @@ func NewBoundary(run *Run) *Boundary {
 func (b *Boundary) Stopped() { b.stopped = true }
 
 // Open reports policy admission, then the opening checkpoint of a tracked run.
-func (b *Boundary) Open() []contract.RunEvent {
+func (b *Boundary) open() []contract.RunEvent {
 	// ADR-0008: the checkpoints the continuation of an approval wrote, acknowledged, before the
 	// run's first request.
 	continued := b.run.Context.TakeContinued()
@@ -145,7 +145,7 @@ var readNames = []string{"get_schema", "get_authoring_instructions", "list_conte
 
 // Event is one of the adapter's events put through the boundary: the events to deliver in its
 // place, and whether the run is over.
-func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
+func (b *Boundary) event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 	if b.run.Context.Output != nil && b.run.Context.Output.Mode != "off" && (event.MessageProgress != nil || event.Reasoning != nil && !event.Reasoning.Done) {
 		return b.notices(), false
 	}
@@ -387,7 +387,7 @@ func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 // that cannot open, or of a run that stopped part way. Nothing once the adapter's own end has
 // been delivered, where the TypeScript rethrows instead, and nothing for a run its caller
 // stopped, which is no error event.
-func (b *Boundary) Failed(cause error) []contract.RunEvent {
+func (b *Boundary) failureEvents(cause error) []contract.RunEvent {
 	if b.ended || cause == nil {
 		return nil
 	}
@@ -400,8 +400,16 @@ func (b *Boundary) Failed(cause error) []contract.RunEvent {
 // FailedToOpen is the events a run whose context could not open carries: the failure, then the
 // end. ContextualSession's error reaches an adapter before a boundary exists, so this is a
 // function of its own.
-func FailedToOpen(cause error) []contract.RunEvent {
+func failedToOpen(cause error) []contract.RunEvent {
 	empty := contract.RunEvent{Usage: &contract.RunEventUsage{Type: "usage", Usage: contract.Usage{Rows: []contract.UsageRow{}}}}
+	var version *contract.UnsupportedRecordVersion
+	var member *contract.UnknownRecordMember
+	if errors.As(cause, &version) {
+		return []contract.RunEvent{version.Event(), failure.Event(cause, "context"), empty, {End: &contract.RunEventEnd{Type: "end"}}}
+	}
+	if errors.As(cause, &member) {
+		return []contract.RunEvent{member.Event(), failure.Event(cause, "context"), empty, {End: &contract.RunEventEnd{Type: "end"}}}
+	}
 	var expired *RecordsExpired
 	if errors.As(cause, &expired) {
 		return []contract.RunEvent{expired.Event(), failure.Event(cause, "context"), empty, {End: &contract.RunEventEnd{Type: "end"}}}
@@ -432,3 +440,19 @@ func contains(list []string, name string) bool {
 	}
 	return false
 }
+
+func currentEvents(events []contract.RunEvent) []contract.RunEvent {
+	for i := range events {
+		events[i] = contract.StampEvent(events[i])
+	}
+	return events
+}
+func (b *Boundary) Open() []contract.RunEvent { return currentEvents(b.open()) }
+func (b *Boundary) Event(event contract.RunEvent) ([]contract.RunEvent, bool) {
+	events, stop := b.event(event)
+	return currentEvents(events), stop
+}
+func (b *Boundary) Failed(cause error) []contract.RunEvent {
+	return currentEvents(b.failureEvents(cause))
+}
+func FailedToOpen(cause error) []contract.RunEvent { return currentEvents(failedToOpen(cause)) }

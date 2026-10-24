@@ -83,7 +83,7 @@ A check counts only when the Runtime answers with its settled word for the tool.
 
 The critic pass's report, before the proposal it reviewed: refuted is decided from the runtime's own results and never from the critic's prose, true where a check came back as something other than the runtime's settled word (validate valid, experimental_evaluate evaluated) or, since agent#10, where a compared case's outcome is not the declared one, or a declared case was not compared at all (review row 1: an uncompared case is unsettled, so a critique that did not reach every declared case is never not refuted); checks lists each runtime check it ran with the runtime's status; text is the host's quote of them and of the comparisons. cases and incomplete are present where the host declared cases (session criticCases, $defs/criticCase): each comparison of a declared outcome with the runtime's ($defs/caseComparison), and the ids of the declared cases nothing compared, the harness's own calls for the uncompared included. figures: what the critic cost (provenance.json $defs/criticFigures).
 
-Open: a member the schema does not name is accepted.
+Closed: a member the schema does not name is refused.
 
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
@@ -139,7 +139,7 @@ Type: one of: object / object
 
 One comparison of a declared case's outcome with the runtime's, the critic's structured note (agent#10; packages/harness/refutation.ts, CaseComparison). tool experimental_evaluate: a rehearsal the critic ran over the proposed document (its pack argument, read as JSON, is the proposal's document; a pack_id never is) with the case's facts, evidence (an omitted document and an empty one both leave every requirement unknown) and supported extensions; agrees where each member the declared disposition states equals the rehearsal's, the §8.3 sets reasons and handoff.triggeredBy compared in any order (review row 3), or the error class (and phase, where stated) is the declared one. tool experimental_test_cases: a row of a test run over the proposed document whose matrix carried the case exactly as declared, for a case stating the whole §8.3 disposition (kind, reasons and handoff) or an error class (review row 2: the runtime compares a disposition byte for byte, so a case stating part of one is compared by rehearsal only); the runtime compared the row, and agrees is its status passed. The call may be the critic's own or one the harness makes after the critic's turns for a declared case nothing compared yet (refutation.ts, compareTheRest: one experimental_test_cases call over those stating a whole disposition or an error class where the critic is offered it, then one rehearsal each of the rest, at most CRITIC_REHEARSALS, 8, where it is offered experimental_evaluate); both go through the same gate and appear as tool_call and tool_result events, the harness's marked origin harness. expected is the declared outcome; actual what the runtime gave, absent where it reported none.
 
-Open: a member the schema does not name is accepted.
+Closed: a member the schema does not name is refused.
 
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
@@ -202,7 +202,7 @@ Type: enum `person`, `project`, `table`, `model-asked`, `cases`, `changes-existi
 
 The critic's decision for the run (ADR-0010; provenance.json#/$defs/criticDecision): emitted once per run, after the proposal exists and before the critic would start (and before its critique), or where the critic is skipped, a run with no proposal included, before the run's last message. mode, ran and reason always; ran means the switch allowed the critic pass (the pass may still report that it could not run, with zero checks); reasoning, the critic's tier, where the run states one; trigger under auto. The checkpoint's critic carries the same members, written durably after it.
 
-Open: a member the schema does not name is accepted.
+Closed: a member the schema does not name is refused.
 
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
@@ -212,6 +212,7 @@ Open: a member the schema does not name is accepted.
 | `reason` | yes | `provenance.json $defs/criticReason` |  |
 | `reasoning` |  | `tool-offer.json $defs/criticReasoning` |  |
 | `trigger` |  | enum `model-asked`, `cases`, `changes-existing` |  |
+| `version` |  | const `1` | Event wire format version. Absent only on historical records; current writers emit 1. |
 
 ### The tool `request_review`
 

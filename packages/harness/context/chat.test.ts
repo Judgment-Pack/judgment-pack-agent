@@ -207,7 +207,7 @@ describe('a two-turn chat', () => {
     const refused = await turn({ chat, message: 'Add a rule.', hostTools })
     expect(refused.requests).toHaveLength(0)
     expect(ofType(refused.events, 'error')[0]!.message).toMatch(/disposed|could not complete/)
-    expect(refused.events.at(-1)).toEqual({ type: 'end' })
+    expect(refused.events.at(-1)).toEqual({ version: 1, type: 'end' })
   })
 
   it('carries the chat index on the agent wire too, and serves the schema from the cache there', async () => {

@@ -19,10 +19,16 @@ class RequestCapSchemaTests(unittest.TestCase):
         documents = schemas()
         vector = json.loads((ROOT / "contract/vectors/checkpoint/request-cap.json").read_text())
         check = validator(documents, "checkpoint.json")
+        self.assertEqual(list(check.iter_errors(vector["items"][1])), [])
         for cap in (None, 0, -1, 21, 1.5, "1", True, [], {}):
             item = {**vector["items"][1], "requestCap": cap}
             with self.subTest(cap=cap):
                 self.assertTrue(list(check.iter_errors(item)))
         removed = copy.deepcopy(documents)
         removed["checkpoint.json"]["properties"].pop("requestCap", None)
-        self.assertEqual(list(validator(removed, "checkpoint.json").iter_errors({**vector["items"][1], "requestCap": 0})), [])
+        # A closed checkpoint detects member removal through a valid capped record.
+        self.assertTrue(list(validator(removed, "checkpoint.json").iter_errors(vector["items"][1])))
+        # Keep the member declared to isolate relaxation of its value constraints.
+        relaxed = copy.deepcopy(documents)
+        relaxed["checkpoint.json"]["properties"]["requestCap"] = {}
+        self.assertEqual(list(validator(relaxed, "checkpoint.json").iter_errors({**vector["items"][1], "requestCap": 0})), [])

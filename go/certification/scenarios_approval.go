@@ -427,6 +427,28 @@ func legacyIdentityJSON(value any) []byte {
 	return out
 }
 
+// expectedCurrentEvent keeps a historical fixture's body and expects the current header literally.
+func expectedCurrentEvent(raw json.RawMessage) []byte {
+	var event map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &event); err != nil {
+		return nil
+	}
+	event["version"] = json.RawMessage(`1`)
+	out, _ := json.Marshal(event)
+	return out
+}
+func expectedCurrentEvents(raw json.RawMessage) []byte {
+	var events []json.RawMessage
+	if err := json.Unmarshal(raw, &events); err != nil {
+		return nil
+	}
+	for i, event := range events {
+		events[i] = expectedCurrentEvent(event)
+	}
+	out, _ := json.Marshal(events)
+	return out
+}
+
 // pauseAgainstVector compares the pausing run's last three events with approval/pause.json's items:
 // the same approval_requested, the checkpoint durable and paused with the same approval, then end,
 // the call id and the framing marker being the run's own; the checkpoint's other members (its id, operations, figures) are
@@ -451,13 +473,13 @@ func pauseAgainstVector(requested *contract.RunEventApprovalRequested, emitted *
 		return err.Error()
 	}
 	switch {
-	case !sameJSON(legacyIdentityJSON(requested), withCallID(items[0], requested.CallID)):
+	case !sameJSON(legacyIdentityJSON(requested), withCallID(expectedCurrentEvent(items[0]), requested.CallID)):
 		return "approval_requested was " + comparisonJSON(requested)
 	case emitted.Durable == nil || *emitted.Durable != checkpoint.Durable || emitted.Checkpoint.Status != checkpoint.Checkpoint.Status:
 		return "the checkpoint was " + comparisonJSON(emitted)
 	case !sameJSON(legacyIdentityJSON(emitted.Checkpoint.Approval), withMarker(withCallID(checkpoint.Checkpoint.Approval, requested.CallID), markerOf(emitted.Checkpoint.Approval))):
 		return "the checkpoint's approval was " + comparisonJSON(emitted.Checkpoint.Approval)
-	case !sameJSON([]byte(comparisonJSON(end)), items[2]):
+	case !sameJSON([]byte(comparisonJSON(end)), expectedCurrentEvent(items[2])):
 		return "the last event was " + comparisonJSON(end)
 	}
 	return ""
@@ -557,7 +579,7 @@ func approvalPauseFindings(state *paused, prefix string, agent bool) []Finding {
 	// The contract's vector (approval/wrong-call-id.json): the run's events are its events, word for word.
 	if vector, err := approvalVector("wrong-call-id.json"); err != nil {
 		f.fail("approval/wrong-call-id.json: %v", err)
-	} else if got := comparisonJSON(withoutCheckpoints(state.wrong.Events)); !sameJSON([]byte(got), vector["events"]) {
+	} else if got := comparisonJSON(withoutCheckpoints(state.wrong.Events)); !sameJSON([]byte(got), expectedCurrentEvents(vector["events"])) {
 		f.fail("the events were %s, not approval/wrong-call-id.json's", got)
 	}
 	out = append(out, f.list...)

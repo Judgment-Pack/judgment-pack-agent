@@ -43,8 +43,8 @@ describe('a canonical policy table with critic on', () => {
     expect(critic > 0).toBe(review === undefined)
     expect(ofType(events, 'critique')).toHaveLength(review === undefined ? 1 : 0)
     expect(ofType(events, 'critic_decided')).toEqual([review === undefined
-      ? { type: 'critic_decided', mode: 'on', ran: true, reason: 'table', reasoning: 'off' }
-      : { type: 'critic_decided', mode: 'off', ran: false, reason: 'off', reasoning: 'off' }])
+      ? { version: 1, type: 'critic_decided', mode: 'on', ran: true, reason: 'table', reasoning: 'off' }
+      : { version: 1, type: 'critic_decided', mode: 'off', ran: false, reason: 'off', reasoning: 'off' }])
   })
 
   it.each([undefined, false] as const)('codex: a session that says %s runs the critic only where it leaves it unset', async (review) => {

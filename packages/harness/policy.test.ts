@@ -11,6 +11,7 @@ import reasoningTableDefaults from '../../contract/vectors/policy/reasoning-tabl
 import reasoningTableResume from '../../contract/vectors/policy/reasoning-table-resume.json'
 import discovery from '../../contract/vectors/policy/discovery.json'
 import {readExecution} from './execution/state'
+import {UnknownRecordMember} from './recordReader'
 
 const table:PolicyLayer={models:{author:{model:'connected',reasoning:'off'}}}
 const host={connections:['connected'],agent:false,requests:16}
@@ -113,7 +114,7 @@ describe('ADR-0011 policy table',()=>{
  it('refuses missing defaults, unconnected models, unknown members and invalid tiers',()=>{
   expect(()=>resolvePolicy({},{},{},host)).toThrow('no default')
   expect(()=>resolvePolicy({models:{critic:{model:'missing'}}},{},table,host)).toThrow('models.critic.model (run)')
-  expect(()=>resolvePolicy({budget:{unlimited:1}},{},table,host)).toThrow('unknown policy member')
+  expect(()=>resolvePolicy({budget:{unlimited:1}},{},table,host)).toThrow(UnknownRecordMember)
   expect(()=>resolvePolicy({models:{author:{reasoning:'max'}}},{},table,host)).toThrow('tier is not supported')
   expect(()=>resolvePolicy({concurrency:{children:2}},{},{models:{author:{model:'connected',reasoning:'low'}}},{...host,agent:true})).toThrow('agent children are sequential')
  })

@@ -147,7 +147,11 @@ func guardRecord(out *Value, guard RecordGuard, figures *RecordMarker) error {
 
 func WriteRecord(schema string, value *Value, policy RecordsPolicy, guard RecordGuard, now time.Time, keep string) (*Value, error) {
 	out := value.Clone()
-	out.Set("schema", String(schema)).Set("version", Number(1))
+	version := 1
+	if schema == CheckpointSchema {
+		version = contract.CheckpointVersion
+	}
+	out.Set("schema", String(schema)).Set("version", Number(float64(version)))
 	if keep == "" {
 		keep = RecordRetainUntil(policy, now)
 	}
@@ -186,7 +190,7 @@ func WriteCritique(critique *contract.RunEventCritique, policy RecordsPolicy, gu
 }
 
 func ValidRecord(value *Value) bool {
-	if !value.IsObject() || value.Get("version").Num() != 1 || !recordDigestPattern.MatchString(value.Get("digest").Str()) || value.Get("digest").Str() != RecordDigest(value) {
+	if !value.IsObject() || !supportedRecordVersion(value) || !recordDigestPattern.MatchString(value.Get("digest").Str()) || value.Get("digest").Str() != RecordDigest(value) {
 		return false
 	}
 	schema := value.Get("schema").Str()
@@ -202,7 +206,7 @@ func ValidRecord(value *Value) bool {
 }
 
 func ValidRecordHeader(value *Value, schema string) bool {
-	if !value.IsObject() || value.Get("schema").Str() != schema || value.Get("version").Num() != 1 || !recordDigestPattern.MatchString(value.Get("digest").Str()) {
+	if !value.IsObject() || value.Get("schema").Str() != schema || !supportedRecordVersion(value) || !recordDigestPattern.MatchString(value.Get("digest").Str()) {
 		return false
 	}
 	until := value.Get("retainUntil").Str()
@@ -219,7 +223,7 @@ func (e *RecordsExpired) Error() string       { return "records expired" }
 func (e *RecordsExpired) FailureCode() string { return "stale-state" }
 func (e *RecordsExpired) Event() contract.RunEvent {
 	reason := "records expired"
-	return contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: "resume", Action: "refused", Reason: &reason, Detail: "records expired"}}
+	return contract.StampEvent(contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: "resume", Action: "refused", Reason: &reason, Detail: "records expired"}})
 }
 
 func RefuseExpired(until string, now time.Time) error {
@@ -246,10 +250,15 @@ func ExportRecords(records []json.RawMessage, policy RecordsPolicy, packageVersi
 	kept := make([]json.RawMessage, 0, len(records))
 	for _, raw := range records {
 		value, err := ParseJSON(raw)
+		if err == nil && value.Get("schema").Str() == CheckpointSchema {
+			if e := contract.CheckRecord("checkpoint", raw); e != nil {
+				return RecordsExport{}, "", contract.RunEvent{}, e
+			}
+		}
 		if err != nil || !ValidRecord(value) {
 			return RecordsExport{}, "", contract.RunEvent{}, errors.New("the host supplied an invalid record for export")
 		}
-		entries = append(entries, contract.ExportRecord{Schema: value.Get("schema").Str(), Version: 1, Digest: value.Get("digest").Str(), RetainUntil: value.Get("retainUntil").Str(), Bytes: int64(UTF8Bytes(CanonicalJSON(value)))})
+		entries = append(entries, contract.ExportRecord{Schema: value.Get("schema").Str(), Version: int64(value.Get("version").Num()), Digest: value.Get("digest").Str(), RetainUntil: value.Get("retainUntil").Str(), Bytes: int64(UTF8Bytes(CanonicalJSON(value)))})
 		kept = append(kept, append(json.RawMessage(nil), raw...))
 	}
 	manifest := contract.Export{Schema: ExportSchema, Version: 1, RetainUntil: RecordRetainUntil(policy, now), CreatedAt: now.UTC().Format("2006-01-02T15:04:05.000Z"), PackageVersion: packageVersion, Policy: contract.ExportPolicy{RetainDays: int64(policy.RetainDays), RedactOnStore: policy.RedactOnStore, ExportFormat: policy.ExportFormat}, Records: entries}
@@ -271,5 +280,13 @@ func ExportRecords(records []json.RawMessage, policy RecordsPolicy, packageVersi
 	text := CanonicalJSON(value)
 	digest := "sha256:" + ContextDigest(text)
 	event := contract.RunEvent{ExportWritten: &contract.RunEventExportWritten{Type: "export_written", Records: int64(len(records)), Bytes: int64(UTF8Bytes(text)), Digest: digest}}
-	return out, text, event, nil
+	return out, text, contract.StampEvent(event), nil
+}
+
+func supportedRecordVersion(v *Value) bool {
+	n := v.Get("version")
+	if n == nil || n.Kind() != KindNumber {
+		return false
+	}
+	return n.Num() == 1 || v.Get("schema").Str() == CheckpointSchema && n.Num() == 2
 }

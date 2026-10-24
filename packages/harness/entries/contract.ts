@@ -31,3 +31,5 @@ export type { Memory, MemoryAnswer, MemoryRecall, Memories } from '../memories'
 export { MEMORY_KINDS, REMEMBER, REMEMBER_SCHEMA } from '../memories'
 export type { Edit, EditType, DraftCheckpoint, AcceptedDocument } from '../edits'
 export { EDIT_TOOLS, editSchema } from '../edits'
+
+export {readRunEvent,readPolicyLayer,RECORD_VERSIONS,UnsupportedRecordVersion,UnknownRecordMember} from '../recordReader'

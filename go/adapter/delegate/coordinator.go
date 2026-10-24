@@ -273,7 +273,7 @@ func (c *coordinator) deliver(event contract.RunEvent) {
 	if c.ended {
 		return
 	}
-	c.run.Emit(event)
+	c.run.Emit(contract.StampEvent(event))
 }
 
 // publish is one task's record as its delegated_task event.

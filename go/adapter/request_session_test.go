@@ -235,7 +235,7 @@ func requestSourceViolations(root string, files *token.FileSet, trees []*ast.Fil
 			"context/critic.go":               {"OfferedReviewTool"},
 			"context/memories.go":             {"*SessionContext.MemoryAdmitted"},
 			"context/subagents.go":            {"SubagentAdmissionBudget"},
-			"context/managed.go":              {"*Boundary.Event"},
+			"context/managed.go":              {"*Boundary.event"},
 			"context/output_boundary.go":      {"*Boundary.guardName", "*SessionContext.ValidateOutputProposal"},
 			"context/prompt.go":               {"*SessionContext.AskHost"},
 			"context/controller.go":           {"*ExecutionController.Initialize"},
