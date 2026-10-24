@@ -13,7 +13,7 @@ import (
 )
 
 func TestDurableModelSharedTerminalEvidence(t *testing.T) {
-	raw, err := os.ReadFile("../../../contract/vectors/storage/model-terminals.json")
+	raw, err := os.ReadFile("../../../contract/fixtures/storage/model-terminals.json")
 	if err != nil {
 		t.Fatal(err)
 	}

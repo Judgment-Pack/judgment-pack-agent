@@ -1,5 +1,5 @@
 import {describe,it,expect,vi} from 'vitest'
-import fixtures from '../../../contract/vectors/storage/model-terminals.json'
+import fixtures from '../../../contract/fixtures/storage/model-terminals.json'
 import type {EndpointKind} from '../host'
 import {quarantineModelResponse,verifyModelTerminal,DURABLE_MODEL_BYTES} from './model'
 import {MemoryRunStore,type RunStore} from './run'
