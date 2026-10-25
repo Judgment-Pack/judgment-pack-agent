@@ -187,3 +187,44 @@ func source() {
  writeFileSync(goPath,goSource.replace(' emit(RunEvent{End:&RunEventEnd{Type:"end"}})',''))
  assert.throws(()=>eventMatrix(root,kinds),/Go has no emitter for end/)
 })
+
+
+test('Go decoded event provenance distinguishes value snapshots and field instances', async (t) => {
+ const root=join(scratch,'go-decoder-provenance')
+ for(const dir of ['packages/harness','go','contract/schemas'])mkdirSync(join(root,dir),{recursive:true})
+ const kinds=['message','end']
+ writeFileSync(join(root,'contract/schemas/run-event.json'),JSON.stringify({properties:{type:{enum:kinds}}}))
+ writeFileSync(join(root,'packages/harness/tsconfig.json'),JSON.stringify({compilerOptions:{target:'ES2022',strict:true},include:['*.ts']}))
+ writeFileSync(join(root,'packages/harness/source.ts'),"type FixtureEvent={type:'message';text:string}|{type:'end'};function publish(event:FixtureEvent):void{};publish({type:'message',text:'x'});publish({type:'end'});")
+ const endJSON='json.Unmarshal([]byte("{\\\"type\\\":\\\"end\\\"}"), '
+ const cases=[
+  ['copy-before-decode',`func decoded() RunEvent {var unused RunEvent;copied:=unused;_ = ${endJSON}&unused);return copied}`,false],
+  ['other-field-instance',`type box struct {Event RunEvent}
+func decoded() RunEvent {var unused, returned box;_ = ${endJSON}&unused.Event);return returned.Event}`,false],
+  ['returned-after-decode',`func decoded() RunEvent {var event RunEvent;_ = ${endJSON}&event);copied:=event;return copied}`,true],
+  ['returned-field',`type box struct {Event RunEvent}
+func decoded() RunEvent {var returned box;_ = ${endJSON}&returned.Event);return returned.Event}`,true],
+  ['published-pointer',`func decoded() {var event RunEvent;alias:=&event;second:=alias;_ = ${endJSON}second);emit(event)}`,true]
+ ]
+ for(const [name,body,decodedPublishes] of cases)await t.test(name,()=>{
+  const prelude=`package fixture
+import "encoding/json"
+type RunEvent struct {Message *RunEventMessage;End *RunEventEnd}
+type RunEventMessage struct {Type string}
+type RunEventEnd struct {Type string}
+func emit(event RunEvent) {}
+func source(){emit(RunEvent{Message:&RunEventMessage{Type:"message"}})
+ emit(RunEvent{End:&RunEventEnd{Type:"end"}})
+}
+`
+  const path=join(root,'go/source.go'),source=prelude+body+'\n'
+  writeFileSync(path,source)
+  const compiled=spawnSync('go',['test',path],{encoding:'utf8',timeout:30000})
+  assert.equal(compiled.status,0,`${name} must compile: ${compiled.stderr}`)
+  const matrix=eventMatrix(root,kinds)
+  assert.equal(matrix.Go.emits.filter(site=>site.kind==='end').length,decodedPublishes?2:1,`${name}: only a decoded value that reaches its sink may count`)
+  writeFileSync(path,source.replace(' emit(RunEvent{End:&RunEventEnd{Type:"end"}})',''))
+  if(decodedPublishes)requireCoverage(kinds,eventMatrix(root,kinds))
+  else assert.throws(()=>eventMatrix(root,kinds),/Go has no emitter for end/,`${name}: removing the real emitter must refuse coverage`)
+ })
+})

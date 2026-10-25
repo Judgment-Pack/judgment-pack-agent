@@ -49,6 +49,181 @@ func inspect(n ast.Node, f func(ast.Node)) {
 		return true
 	})
 }
+
+// decodedEventSinks follows local values at the point they are copied or
+// published. A binding and its member path identify storage; a type/field name
+// does not identify an instance. Pointer aliases retain storage identity, while
+// value copies take a snapshot at their assignment position.
+func decodedEventSinks(fn *ast.FuncDecl, sinks []ast.Expr, inferred func(ast.Expr, map[ast.Node]bool) string) map[*ast.CallExpr]bool {
+	type write struct {
+		left, value ast.Expr
+		at          token.Pos
+	}
+	type storage struct {
+		root   *ast.Object
+		fields string
+	}
+	writes := []write{}
+	decoders := []*ast.CallExpr{}
+	own := map[ast.Node]bool{}
+	ast.Inspect(fn.Body, func(n ast.Node) bool {
+		if n == nil {
+			return false
+		}
+		if _, nested := n.(*ast.FuncLit); nested {
+			return false
+		}
+		own[n] = true
+		switch n := n.(type) {
+		case *ast.AssignStmt:
+			for i, left := range n.Lhs {
+				var value ast.Expr
+				if i < len(n.Rhs) {
+					value = n.Rhs[i]
+				}
+				writes = append(writes, write{left, value, n.Pos()})
+			}
+		case *ast.ValueSpec:
+			for i, left := range n.Names {
+				var value ast.Expr
+				if i < len(n.Values) {
+					value = n.Values[i]
+				}
+				writes = append(writes, write{left, value, n.Pos()})
+			}
+		case *ast.CallExpr:
+			if text(n.Fun) == "Unmarshal" && len(n.Args) == 2 && inferred(n.Args[1], map[ast.Node]bool{}) == "RunEvent" {
+				decoders = append(decoders, n)
+			}
+		}
+		return true
+	})
+	binding := func(object *ast.Object, at token.Pos) (ast.Expr, token.Pos) {
+		var value ast.Expr
+		var pos token.Pos
+		for _, w := range writes {
+			if id, ok := w.left.(*ast.Ident); ok && id.Obj == object && w.at < at && w.at > pos {
+				value, pos = w.value, w.at
+			}
+		}
+		return value, pos
+	}
+	var location, pointer func(ast.Expr, token.Pos) storage
+	pointer = func(n ast.Expr, at token.Pos) storage {
+		switch n := n.(type) {
+		case *ast.ParenExpr:
+			return pointer(n.X, at)
+		case *ast.UnaryExpr:
+			if n.Op == token.AND {
+				return location(n.X, at)
+			}
+		case *ast.Ident:
+			if n.Obj != nil {
+				if value, pos := binding(n.Obj, at); pos.IsValid() {
+					return pointer(value, pos)
+				}
+				if field, ok := n.Obj.Decl.(*ast.Field); ok {
+					if _, ok := field.Type.(*ast.StarExpr); ok {
+						return storage{n.Obj, "*"}
+					}
+				}
+			}
+		}
+		return storage{}
+	}
+	location = func(n ast.Expr, at token.Pos) storage {
+		switch n := n.(type) {
+		case *ast.ParenExpr:
+			return location(n.X, at)
+		case *ast.Ident:
+			return storage{n.Obj, ""}
+		case *ast.StarExpr:
+			return pointer(n.X, at)
+		case *ast.SelectorExpr:
+			base := pointer(n.X, at)
+			if base.root == nil {
+				base = location(n.X, at)
+			}
+			if base.root != nil {
+				base.fields += "." + n.Sel.Name
+			}
+			return base
+		}
+		return storage{}
+	}
+	contains := func(parent, child storage) bool {
+		return parent.root != nil && parent.root == child.root && (parent.fields == child.fields || strings.HasPrefix(child.fields, parent.fields+"."))
+	}
+	targets := map[*ast.CallExpr]storage{}
+	for _, decoder := range decoders {
+		targets[decoder] = pointer(decoder.Args[1], decoder.Pos())
+	}
+	accepted := map[*ast.CallExpr]bool{}
+	for _, candidate := range decoders {
+		type visit struct {
+			source ast.Expr
+			at     token.Pos
+		}
+		seen := map[visit]bool{}
+		var reaches func(ast.Expr, token.Pos) bool
+		reaches = func(n ast.Expr, at token.Pos) bool {
+			if n == nil || seen[visit{n, at}] {
+				return false
+			}
+			seen[visit{n, at}] = true
+			if call, ok := n.(*ast.CallExpr); ok && (text(call.Fun) == "StampEvent" || text(call.Fun) == "append") {
+				for _, arg := range call.Args {
+					if reaches(arg, at) {
+						return true
+					}
+				}
+				return false
+			}
+			source := location(n, at)
+			if source.root == nil {
+				return false
+			}
+			var latest *write
+			var last token.Pos
+			for i := range writes {
+				w := &writes[i]
+				if w.at < at && w.at > last && contains(location(w.left, w.at), source) {
+					latest, last = w, w.at
+				}
+			}
+			var decoded *ast.CallExpr
+			for _, call := range decoders {
+				if call.Pos() < at && call.Pos() > last && contains(targets[call], source) {
+					decoded, last = call, call.Pos()
+				}
+			}
+			if decoded != nil {
+				return decoded == candidate
+			}
+			if latest == nil || latest.value == nil {
+				return false
+			}
+			// Copy a selected member from the source aggregate at copy time, never at
+			// the later return time. Decoding the original after a copy cannot change it.
+			value := latest.value
+			suffix := strings.TrimPrefix(source.fields, location(latest.left, latest.at).fields)
+			for _, member := range strings.Split(strings.TrimPrefix(suffix, "."), ".") {
+				if member != "" {
+					value = &ast.SelectorExpr{X: value, Sel: ast.NewIdent(member)}
+				}
+			}
+			return reaches(value, latest.at)
+		}
+		for _, sink := range sinks {
+			if own[sink] && reaches(sink, sink.Pos()) {
+				accepted[candidate] = true
+				break
+			}
+		}
+	}
+	return accepted
+}
+
 func main() {
 	root := os.Args[1]
 	fset := token.NewFileSet()
@@ -288,8 +463,7 @@ func main() {
 			// Event constructors count only on an event-return path or in a publication call.
 			var trace func(ast.Node)
 			seen := map[ast.Node]bool{}
-			reachedBindings := map[*ast.Object]bool{}
-			reachedFields := map[string]bool{}
+			sinks := []ast.Expr{}
 			trace = func(n ast.Node) {
 				if n == nil || seen[n] {
 					return
@@ -327,13 +501,11 @@ func main() {
 				case *ast.StarExpr:
 					trace(n.X)
 				case *ast.SelectorExpr:
-					reachedFields[inferred(n.X, map[ast.Node]bool{})+"."+n.Sel.Name] = true
 					for _, value := range fieldWrites[inferred(n.X, map[ast.Node]bool{})+"."+n.Sel.Name] {
 						trace(value)
 					}
 				case *ast.Ident:
 					if n.Obj != nil {
-						reachedBindings[n.Obj] = true
 						switch d := n.Obj.Decl.(type) {
 						case *ast.AssignStmt:
 							for _, r := range d.Rhs {
@@ -357,12 +529,18 @@ func main() {
 					}
 				}
 			}
+			publish := func(n ast.Expr) {
+				if n != nil {
+					sinks = append(sinks, n)
+				}
+				trace(n)
+			}
 			inspect(fn.Body, func(n ast.Node) {
 				switch n := n.(type) {
 				case *ast.ReturnStmt:
 					if returnsEvent {
 						for _, r := range n.Results {
-							trace(r)
+							publish(r)
 						}
 					}
 				case *ast.CallExpr:
@@ -375,7 +553,7 @@ func main() {
 							}
 							for j := 0; j < count; j++ {
 								if text(p.Type) == "RunEvent" && i < len(n.Args) {
-									trace(n.Args[i])
+									publish(n.Args[i])
 								}
 								i++
 							}
@@ -384,7 +562,7 @@ func main() {
 					switch text(n.Fun) {
 					case "Emit", "emit", "deliver", "notify", "Notify", "publishPlan", "PublishPlan", "append":
 						for _, a := range n.Args {
-							trace(a)
+							publish(a)
 						}
 					}
 				case *ast.SelectorExpr:
@@ -395,64 +573,7 @@ func main() {
 					}
 				}
 			})
-			// A decoder is an emitter only when its destination reaches an event
-			// return/publication sink above. Follow pointer aliases, but not a value
-			// copy: decoding &unused must not count merely because unused copied an
-			// event that is separately returned.
-			locationReached := func(n ast.Expr) bool {
-				for {
-					if p, ok := n.(*ast.ParenExpr); ok {
-						n = p.X
-					} else {
-						break
-					}
-				}
-				switch n := n.(type) {
-				case *ast.Ident:
-					return n.Obj != nil && reachedBindings[n.Obj]
-				case *ast.SelectorExpr:
-					return reachedFields[inferred(n.X, map[ast.Node]bool{})+"."+n.Sel.Name]
-				}
-				return false
-			}
-			var decodedReaches func(ast.Expr, map[ast.Node]bool) bool
-			decodedReaches = func(n ast.Expr, visited map[ast.Node]bool) bool {
-				if n == nil || visited[n] {
-					return false
-				}
-				visited[n] = true
-				switch n := n.(type) {
-				case *ast.ParenExpr:
-					return decodedReaches(n.X, visited)
-				case *ast.UnaryExpr:
-					if n.Op == token.AND {
-						return locationReached(n.X)
-					}
-				case *ast.Ident:
-					if locationReached(n) {
-						return true
-					}
-					if n.Obj != nil {
-						switch d := n.Obj.Decl.(type) {
-						case *ast.AssignStmt:
-							for i, left := range d.Lhs {
-								if text(left) == n.Name && i < len(d.Rhs) {
-									return decodedReaches(d.Rhs[i], visited)
-								}
-							}
-						case *ast.ValueSpec:
-							for i, name := range d.Names {
-								if name.Name == n.Name && i < len(d.Values) {
-									return decodedReaches(d.Values[i], visited)
-								}
-							}
-						}
-					}
-				case *ast.SelectorExpr:
-					return locationReached(n)
-				}
-				return false
-			}
+			decoded := decodedEventSinks(fn, sinks, inferred)
 			{
 				rawSeen := map[ast.Node]bool{}
 				var raw func(ast.Expr)
@@ -504,7 +625,7 @@ func main() {
 					}
 				}
 				inspect(fn.Body, func(n ast.Node) {
-					if call, ok := n.(*ast.CallExpr); ok && text(call.Fun) == "Unmarshal" && len(call.Args) == 2 && inferred(call.Args[1], map[ast.Node]bool{}) == "RunEvent" && decodedReaches(call.Args[1], map[ast.Node]bool{}) {
+					if call, ok := n.(*ast.CallExpr); ok && text(call.Fun) == "Unmarshal" && len(call.Args) == 2 && inferred(call.Args[1], map[ast.Node]bool{}) == "RunEvent" && decoded[call] {
 						raw(call.Args[0])
 					}
 				})
