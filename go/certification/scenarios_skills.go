@@ -422,7 +422,7 @@ func skillsFindings(state *skilled, prefix string, agent bool) []Finding {
 			f.fail("a withheld skill's %q reached the model", text)
 		}
 	}
-	want := sortedCopy(append(append(append([]string{}, runtimeSix...), contextSix...), "propose_edit", "propose_delete", "propose_insert", "undo_edit", runcontext.Remember, reviewAsk, ratesTool, runcontext.LoadSkill, runcontext.UnloadSkill))
+	want := sortedCopy(append(append(append([]string{}, runtimeSix...), contextTools...), "propose_edit", "propose_delete", "propose_insert", "undo_edit", runcontext.Remember, reviewAsk, ratesTool, runcontext.LoadSkill, runcontext.UnloadSkill))
 	if len(first.Offered) == 0 || !slices.Equal(sortedCopy(first.Offered[0]), want) {
 		f.fail("offered %v", first.Offered)
 	}

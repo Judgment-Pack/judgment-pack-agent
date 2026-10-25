@@ -134,8 +134,8 @@ func TestCheckpointMembersInterruptResume(t *testing.T) {
 			continue
 		}
 		if name == "version" {
-			if value.Get(name).Num() != 1 || interrupted.Version != 2 || continued.Version != 2 {
-				t.Fatal("historical checkpoint did not migrate to current version")
+			if value.Get(name).Num() != 2 || interrupted.Version != 2 || continued.Version != 2 {
+				t.Fatal("current checkpoint version changed across interruption/resume")
 			}
 			continue
 		}
@@ -193,12 +193,32 @@ func TestCheckpointMembersOmissionVersusDefaults(t *testing.T) {
 					without.Set(key, value.Get(key).Clone())
 				}
 			}
+			if name == "planState" {
+				step := value.Get("plan").Items()[0]
+				without.Set("plan", Array(ObjectOf("step", step.Get("step"), "status", step.Get("status"), "detail", step.Get("detail"))))
+			}
 			value = without
+			original := CanonicalJSON(value)
 			saved, err := ReadExecution(value)
 			if err != nil {
 				t.Fatal(err)
 			}
 			c := memberController(t, saved)
+			if name == "planState" {
+				state := c.State().Value()
+				if CanonicalJSON(value) != original || saved.PlanState != nil || state.Get("planState").Get("sequence").Num() != 0 || state.Get("planState").Get("history").Len() != 0 || state.Get("planState").Get("revision").Str() != readJSON(t, "contract/vectors/checkpoint/members.json").Get("items").Items()[0].Get("planState").Get("revision").Str() || state.Get("plan").Items()[0].Get("id").Str() != "step-1" {
+					t.Fatal("legacy plan read changed or current-write migration was not deterministic")
+				}
+				interrupted, err := c.Snapshot("stopped")
+				if err != nil {
+					t.Fatal(err)
+				}
+				continued := memberController(t, &interrupted)
+				if CanonicalJSON(continued.State().PlanState) != CanonicalJSON(c.State().PlanState) {
+					t.Fatal("migrated plan state changed on second resume")
+				}
+				return
+			}
 			if c.State().Value().Get(name) != nil {
 				t.Fatalf("omitted %s synthesized on resume", name)
 			}

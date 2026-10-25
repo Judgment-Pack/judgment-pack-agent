@@ -55,6 +55,11 @@ rule.
      release page will carry. It names the Go module, `github.com/Judgment-Pack/judgment-pack-agent/go`,
      and the tag `go/<tag>` that the workflow makes (a test holds every notes file from v0.3.0 on to
      this). Remove the coordinator placeholder comment from it before tagging.
+   - writes `docs/upgrade/<tag>.md`, headed with the exact tag. State renamed or
+     retired inputs, new required inputs, record-version changes and new refusals,
+     and the host migration for each. Link it from the notes with
+     `[host upgrade guide](../upgrade/<tag>.md)`. Initial releases describe initial
+     adoption; a candidate guide must not assert publication.
 2. Run the check list once locally, as `ci.yml` does:
 
    ```sh
@@ -92,6 +97,10 @@ with an unsigned one. Signing is the maintainer's practice; the workflow does no
 The tag must be annotated (`-s` makes it so): the workflow refuses a lightweight tag, reading the
 tag's object type. The notes file `docs/releases/<tag>.md` must name the tag, for example `v0.1.0`,
 on its first line (an optional heading marker is allowed), or the workflow refuses it.
+The matching nonempty `docs/upgrade/<tag>.md` must name that same tag on its first
+line, contain guidance beyond headings and be linked from those notes. The offline
+`scripts/check-upgrade-guides.py --tag <tag>` admission check uses the actual tag,
+even when it has no entry in the tracked notes inventory.
 
 A tag is `vMAJOR.MINOR.PATCH`, in ASCII digits with no leading zeroes, and nothing after: no
 prerelease and no build metadata. A tag is never moved or reused. A fix is a new release.
@@ -104,7 +113,8 @@ Every job works on the commit the run was started for, by its digest, not on the
    commit is on `main`; the latest completed run of
    [`mutation.yml`](../.github/workflows/mutation.yml) on that commit, not counting pull request runs,
    concluded `success` (the full mutation table: see below); `docs/releases/<tag>.md` exists, is not empty and names the tag on its first line; and the `release`
-   environment has a reviewer rule. If a `go/<tag>` tag already exists it must name that same commit, or the
+   environment has a reviewer rule. Matching host upgrade guidance and its notes
+   link are also required before draft/publication. If a `go/<tag>` tag already exists it must name that same commit, or the
    run is refused: a `go/` tag never points anywhere but at a `v` release commit.
 2. **Runs CI at that commit.** The release calls the commit's own
    [`ci.yml`](../.github/workflows/ci.yml): `contract`, and `check`, which runs every step of
@@ -254,7 +264,23 @@ published says.
 
 ## Live answer-quality evidence
 
-Before accepting a release candidate, follow [the live answer comparison](release-quality.md).
+For v0.10.0, follow the [scoped maintainer deferral](release-quality.md#v0100-scope-decision)
+and explicitly record that live answer quality was not evaluated. Issue #169 remains
+open for the Desk handoff; this deferral changes no other release requirement.
+
+For other releases, before accepting a release candidate, follow [the live answer comparison](release-quality.md).
 Attach its validated candidate-versus-previous-release report and any threshold decision
 to release review, and state actual model, tokens and rate-derived USD cost in release notes.
 The separate ADR-0022 offline replay and fixture tests do not meet this live prerequisite.
+
+## Upgrade-guide coverage
+
+The existing Python CI step validates every tracked release-notes version and
+locally available `v` / `go/v` tag using `scripts/check-upgrade-guides.py`. Missing,
+empty, heading-only or mismatched guides and missing/wrong notes links fail.
+No network is needed, and missing refs in a shallow checkout are not treated as
+complete historical tag evidence. The release workflow separately passes its
+actual `RELEASE_TAG` to the same validator before any draft is created, including
+a newly named version outside the notes inventory. Historical guides are later
+backfills over their cited release notes/tagged source; they do not modify prior
+release artifacts or imply these new checks ran on old tags.

@@ -340,3 +340,29 @@ func TestRequestCapUnprojectableClaimStopsHandoff(t *testing.T) {
 		}
 	}
 }
+
+type capLoadStore struct {
+	RunStore
+	load func(context.Context, string) (*RunHead, error)
+}
+
+func (s capLoadStore) Load(ctx context.Context, id string) (*RunHead, error) { return s.load(ctx, id) }
+func TestRequestCapCapturedBeforeDurableLoad(t *testing.T) {
+	cap := 1
+	memory := NewMemoryRunStore(MemoryRunStoreOptions{})
+	s := capSession(t, &cap, nil)
+	s.Context.RunStore = &DurableRunInput{ID: "cap-load", Store: capLoadStore{RunStore: memory, load: func(ctx context.Context, id string) (*RunHead, error) { cap = 20; return memory.Load(ctx, id) }}}
+	prepared, err := PrepareDurableInput(context.Background(), s.Context)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared.RequestCap == nil || *prepared.RequestCap != 1 {
+		t.Fatal("durable load widened the prepared cap")
+	}
+	s.Context = prepared
+	opened := openRun(t, s)
+	defer opened.Context.Close()
+	if opened.Context.Execution.State().RequestCap == nil || *opened.Context.Execution.State().RequestCap != 1 {
+		t.Fatal("durable load widened the admitted cap")
+	}
+}

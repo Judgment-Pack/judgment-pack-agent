@@ -1,0 +1,1770 @@
+{
+  "schema": "checkpoint.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/execution/planActions.ts"
+    ]
+  },
+  "description": "Handwritten shared TS/Go checkpoints covering accepted task lineage, successful evidence closure, not-needed work, drift proposals, decisions, refusal journals and original pin validation.",
+  "items": [
+    {
+      "version": 2,
+      "id": "extended-plan",
+      "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "phase": "work",
+      "status": "stopped",
+      "unit": "model-requests",
+      "used": 0,
+      "limit": 20,
+      "grants": [],
+      "plan": [
+        {
+          "id": "step-1",
+          "step": "Inspect",
+          "status": "pending",
+          "origin": {
+            "plan": "accepted-plan",
+            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+            "index": 0
+          }
+        },
+        {
+          "id": "step-2",
+          "step": "Report",
+          "status": "pending",
+          "origin": {
+            "plan": "accepted-plan",
+            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+            "index": 1
+          }
+        }
+      ],
+      "explanation": "",
+      "operations": [],
+      "context": {
+        "scope": "plan-fixture",
+        "entries": []
+      },
+      "planState": {
+        "revision": "sha256:4bd3bd759ee580fc35f2ed601e4bef8755137f65e2c6b44bbb252106e96364aa",
+        "sequence": 0,
+        "nextId": 3,
+        "discarded": 0,
+        "history": [],
+        "accepted": {
+          "id": "accepted-plan",
+          "sourceRevision": 1,
+          "objective": "Inspect and report",
+          "steps": [
+            "Inspect",
+            "Report"
+          ],
+          "references": [],
+          "acceptedAt": "2026-10-01T00:00:00.000Z",
+          "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+          "validatedReferences": []
+        },
+        "driftPolicy": [
+          "removed"
+        ]
+      }
+    },
+    {
+      "version": 2,
+      "id": "extended-plan",
+      "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "phase": "work",
+      "status": "stopped",
+      "unit": "model-requests",
+      "used": 0,
+      "limit": 20,
+      "grants": [],
+      "plan": [
+        {
+          "id": "step-1",
+          "step": "Inspect",
+          "status": "in_progress",
+          "origin": {
+            "plan": "accepted-plan",
+            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+            "index": 0
+          }
+        },
+        {
+          "id": "step-2",
+          "step": "Report",
+          "status": "pending",
+          "origin": {
+            "plan": "accepted-plan",
+            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+            "index": 1
+          }
+        }
+      ],
+      "explanation": "Inspect current content",
+      "operations": [],
+      "context": {
+        "scope": "plan-fixture",
+        "entries": []
+      },
+      "planState": {
+        "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+        "sequence": 1,
+        "nextId": 3,
+        "discarded": 0,
+        "history": [
+          {
+            "sequence": 1,
+            "previous": "sha256:4bd3bd759ee580fc35f2ed601e4bef8755137f65e2c6b44bbb252106e96364aa",
+            "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "explanation": "Inspect current content",
+            "diff": [
+              {
+                "id": "step-1",
+                "kind": "status",
+                "before": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "pending",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  }
+                },
+                "after": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "in_progress",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "accepted": {
+          "id": "accepted-plan",
+          "sourceRevision": 1,
+          "objective": "Inspect and report",
+          "steps": [
+            "Inspect",
+            "Report"
+          ],
+          "references": [],
+          "acceptedAt": "2026-10-01T00:00:00.000Z",
+          "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+          "validatedReferences": []
+        },
+        "driftPolicy": [
+          "removed"
+        ]
+      }
+    },
+    {
+      "version": 2,
+      "id": "extended-plan",
+      "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "phase": "work",
+      "status": "stopped",
+      "unit": "model-requests",
+      "used": 0,
+      "limit": 20,
+      "grants": [],
+      "plan": [
+        {
+          "id": "step-1",
+          "step": "Inspect",
+          "status": "completed",
+          "origin": {
+            "plan": "accepted-plan",
+            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+            "index": 0
+          },
+          "evidence": {
+            "operations": [
+              "dispatch-ok"
+            ],
+            "artifacts": [
+              {
+                "kind": "artifact",
+                "id": "artifact-1",
+                "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              }
+            ]
+          }
+        },
+        {
+          "id": "step-2",
+          "step": "Report",
+          "status": "pending",
+          "origin": {
+            "plan": "accepted-plan",
+            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+            "index": 1
+          }
+        }
+      ],
+      "explanation": "Active step completed with recorded evidence.",
+      "operations": [],
+      "context": {
+        "scope": "plan-fixture",
+        "entries": []
+      },
+      "planState": {
+        "revision": "sha256:b817aba62a36c2a59ba13b54026ef3a7f8d508e47fbfde99c810c42820522015",
+        "sequence": 2,
+        "nextId": 3,
+        "discarded": 0,
+        "history": [
+          {
+            "sequence": 1,
+            "previous": "sha256:4bd3bd759ee580fc35f2ed601e4bef8755137f65e2c6b44bbb252106e96364aa",
+            "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "explanation": "Inspect current content",
+            "diff": [
+              {
+                "id": "step-1",
+                "kind": "status",
+                "before": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "pending",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  }
+                },
+                "after": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "in_progress",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "sequence": 2,
+            "previous": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "revision": "sha256:b817aba62a36c2a59ba13b54026ef3a7f8d508e47fbfde99c810c42820522015",
+            "explanation": "Active step completed with recorded evidence.",
+            "diff": [
+              {
+                "id": "step-1",
+                "kind": "status",
+                "before": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "in_progress",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  }
+                },
+                "after": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "completed",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  },
+                  "evidence": {
+                    "operations": [
+                      "dispatch-ok"
+                    ],
+                    "artifacts": [
+                      {
+                        "kind": "artifact",
+                        "id": "artifact-1",
+                        "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "accepted": {
+          "id": "accepted-plan",
+          "sourceRevision": 1,
+          "objective": "Inspect and report",
+          "steps": [
+            "Inspect",
+            "Report"
+          ],
+          "references": [],
+          "acceptedAt": "2026-10-01T00:00:00.000Z",
+          "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+          "validatedReferences": []
+        },
+        "driftPolicy": [
+          "removed"
+        ]
+      }
+    },
+    {
+      "version": 2,
+      "id": "extended-plan",
+      "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "phase": "work",
+      "status": "stopped",
+      "unit": "model-requests",
+      "used": 0,
+      "limit": 20,
+      "grants": [],
+      "plan": [
+        {
+          "id": "step-1",
+          "step": "Inspect",
+          "status": "completed",
+          "origin": {
+            "plan": "accepted-plan",
+            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+            "index": 0
+          },
+          "evidence": {
+            "operations": [
+              "dispatch-ok"
+            ],
+            "artifacts": [
+              {
+                "kind": "artifact",
+                "id": "artifact-1",
+                "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              }
+            ]
+          }
+        },
+        {
+          "id": "step-2",
+          "step": "Report",
+          "status": "in_progress",
+          "origin": {
+            "plan": "accepted-plan",
+            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+            "index": 1
+          }
+        }
+      ],
+      "explanation": "Prepare report",
+      "operations": [],
+      "context": {
+        "scope": "plan-fixture",
+        "entries": []
+      },
+      "planState": {
+        "revision": "sha256:39d36d2ad40b0ef61c7bd92b80ebfe8c76517462d9945c3b07e555f39d684b7e",
+        "sequence": 3,
+        "nextId": 3,
+        "discarded": 0,
+        "history": [
+          {
+            "sequence": 1,
+            "previous": "sha256:4bd3bd759ee580fc35f2ed601e4bef8755137f65e2c6b44bbb252106e96364aa",
+            "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "explanation": "Inspect current content",
+            "diff": [
+              {
+                "id": "step-1",
+                "kind": "status",
+                "before": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "pending",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  }
+                },
+                "after": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "in_progress",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "sequence": 2,
+            "previous": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "revision": "sha256:b817aba62a36c2a59ba13b54026ef3a7f8d508e47fbfde99c810c42820522015",
+            "explanation": "Active step completed with recorded evidence.",
+            "diff": [
+              {
+                "id": "step-1",
+                "kind": "status",
+                "before": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "in_progress",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  }
+                },
+                "after": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "completed",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  },
+                  "evidence": {
+                    "operations": [
+                      "dispatch-ok"
+                    ],
+                    "artifacts": [
+                      {
+                        "kind": "artifact",
+                        "id": "artifact-1",
+                        "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "sequence": 3,
+            "previous": "sha256:b817aba62a36c2a59ba13b54026ef3a7f8d508e47fbfde99c810c42820522015",
+            "revision": "sha256:39d36d2ad40b0ef61c7bd92b80ebfe8c76517462d9945c3b07e555f39d684b7e",
+            "explanation": "Prepare report",
+            "diff": [
+              {
+                "id": "step-2",
+                "kind": "status",
+                "before": {
+                  "id": "step-2",
+                  "step": "Report",
+                  "status": "pending",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 1
+                  }
+                },
+                "after": {
+                  "id": "step-2",
+                  "step": "Report",
+                  "status": "in_progress",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 1
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "accepted": {
+          "id": "accepted-plan",
+          "sourceRevision": 1,
+          "objective": "Inspect and report",
+          "steps": [
+            "Inspect",
+            "Report"
+          ],
+          "references": [],
+          "acceptedAt": "2026-10-01T00:00:00.000Z",
+          "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+          "validatedReferences": []
+        },
+        "driftPolicy": [
+          "removed"
+        ]
+      }
+    },
+    {
+      "version": 2,
+      "id": "extended-plan",
+      "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "phase": "work",
+      "status": "stopped",
+      "unit": "model-requests",
+      "used": 0,
+      "limit": 20,
+      "grants": [],
+      "plan": [
+        {
+          "id": "step-1",
+          "step": "Inspect",
+          "status": "completed",
+          "origin": {
+            "plan": "accepted-plan",
+            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+            "index": 0
+          },
+          "evidence": {
+            "operations": [
+              "dispatch-ok"
+            ],
+            "artifacts": [
+              {
+                "kind": "artifact",
+                "id": "artifact-1",
+                "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              }
+            ]
+          }
+        },
+        {
+          "id": "step-2",
+          "step": "Report",
+          "status": "not-needed",
+          "origin": {
+            "plan": "accepted-plan",
+            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+            "index": 1
+          },
+          "notNeededReason": "The recorded inspection already includes the report."
+        }
+      ],
+      "explanation": "Active step closed as not-needed.",
+      "operations": [],
+      "context": {
+        "scope": "plan-fixture",
+        "entries": []
+      },
+      "planState": {
+        "revision": "sha256:3e138d1554a49ead39a3d0cb41b2f892d77486e13403c507167fb509b562d58f",
+        "sequence": 4,
+        "nextId": 3,
+        "discarded": 0,
+        "history": [
+          {
+            "sequence": 1,
+            "previous": "sha256:4bd3bd759ee580fc35f2ed601e4bef8755137f65e2c6b44bbb252106e96364aa",
+            "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "explanation": "Inspect current content",
+            "diff": [
+              {
+                "id": "step-1",
+                "kind": "status",
+                "before": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "pending",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  }
+                },
+                "after": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "in_progress",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "sequence": 2,
+            "previous": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "revision": "sha256:b817aba62a36c2a59ba13b54026ef3a7f8d508e47fbfde99c810c42820522015",
+            "explanation": "Active step completed with recorded evidence.",
+            "diff": [
+              {
+                "id": "step-1",
+                "kind": "status",
+                "before": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "in_progress",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  }
+                },
+                "after": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "completed",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  },
+                  "evidence": {
+                    "operations": [
+                      "dispatch-ok"
+                    ],
+                    "artifacts": [
+                      {
+                        "kind": "artifact",
+                        "id": "artifact-1",
+                        "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "sequence": 3,
+            "previous": "sha256:b817aba62a36c2a59ba13b54026ef3a7f8d508e47fbfde99c810c42820522015",
+            "revision": "sha256:39d36d2ad40b0ef61c7bd92b80ebfe8c76517462d9945c3b07e555f39d684b7e",
+            "explanation": "Prepare report",
+            "diff": [
+              {
+                "id": "step-2",
+                "kind": "status",
+                "before": {
+                  "id": "step-2",
+                  "step": "Report",
+                  "status": "pending",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 1
+                  }
+                },
+                "after": {
+                  "id": "step-2",
+                  "step": "Report",
+                  "status": "in_progress",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 1
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "sequence": 4,
+            "previous": "sha256:39d36d2ad40b0ef61c7bd92b80ebfe8c76517462d9945c3b07e555f39d684b7e",
+            "revision": "sha256:3e138d1554a49ead39a3d0cb41b2f892d77486e13403c507167fb509b562d58f",
+            "explanation": "Active step closed as not-needed.",
+            "diff": [
+              {
+                "id": "step-2",
+                "kind": "status",
+                "before": {
+                  "id": "step-2",
+                  "step": "Report",
+                  "status": "in_progress",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 1
+                  }
+                },
+                "after": {
+                  "id": "step-2",
+                  "step": "Report",
+                  "status": "not-needed",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 1
+                  },
+                  "notNeededReason": "The recorded inspection already includes the report."
+                }
+              }
+            ]
+          }
+        ],
+        "accepted": {
+          "id": "accepted-plan",
+          "sourceRevision": 1,
+          "objective": "Inspect and report",
+          "steps": [
+            "Inspect",
+            "Report"
+          ],
+          "references": [],
+          "acceptedAt": "2026-10-01T00:00:00.000Z",
+          "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+          "validatedReferences": []
+        },
+        "driftPolicy": [
+          "removed"
+        ]
+      }
+    },
+    {
+      "version": 2,
+      "id": "extended-plan",
+      "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "phase": "work",
+      "status": "paused",
+      "unit": "model-requests",
+      "used": 0,
+      "limit": 20,
+      "grants": [],
+      "plan": [
+        {
+          "id": "step-1",
+          "step": "Inspect",
+          "status": "in_progress",
+          "origin": {
+            "plan": "accepted-plan",
+            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+            "index": 0
+          }
+        },
+        {
+          "id": "step-2",
+          "step": "Report",
+          "status": "pending",
+          "origin": {
+            "plan": "accepted-plan",
+            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+            "index": 1
+          }
+        }
+      ],
+      "explanation": "Inspect current content",
+      "operations": [],
+      "context": {
+        "scope": "plan-fixture",
+        "entries": []
+      },
+      "planState": {
+        "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+        "sequence": 1,
+        "nextId": 3,
+        "discarded": 0,
+        "history": [
+          {
+            "sequence": 1,
+            "previous": "sha256:4bd3bd759ee580fc35f2ed601e4bef8755137f65e2c6b44bbb252106e96364aa",
+            "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "explanation": "Inspect current content",
+            "diff": [
+              {
+                "id": "step-1",
+                "kind": "status",
+                "before": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "pending",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  }
+                },
+                "after": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "in_progress",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "accepted": {
+          "id": "accepted-plan",
+          "sourceRevision": 1,
+          "objective": "Inspect and report",
+          "steps": [
+            "Inspect",
+            "Report"
+          ],
+          "references": [],
+          "acceptedAt": "2026-10-01T00:00:00.000Z",
+          "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+          "validatedReferences": []
+        },
+        "driftPolicy": [
+          "removed"
+        ],
+        "pending": {
+          "purpose": "plan-drift",
+          "callId": "plan-decision-1",
+          "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+          "candidate": {
+            "plan": [
+              {
+                "id": "step-2",
+                "step": "Report briefly",
+                "status": "pending",
+                "origin": {
+                  "plan": "accepted-plan",
+                  "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                  "index": 1
+                }
+              },
+              {
+                "id": "step-3",
+                "step": "Summarize",
+                "status": "pending"
+              }
+            ],
+            "planState": {
+              "revision": "sha256:a8641e88a3e5c770fe8450659f105ef82b68c4fbffec3b939d8639503d31cac1",
+              "sequence": 2,
+              "nextId": 4,
+              "discarded": 0,
+              "history": [
+                {
+                  "sequence": 1,
+                  "previous": "sha256:4bd3bd759ee580fc35f2ed601e4bef8755137f65e2c6b44bbb252106e96364aa",
+                  "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+                  "explanation": "Inspect current content",
+                  "diff": [
+                    {
+                      "id": "step-1",
+                      "kind": "status",
+                      "before": {
+                        "id": "step-1",
+                        "step": "Inspect",
+                        "status": "pending",
+                        "origin": {
+                          "plan": "accepted-plan",
+                          "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                          "index": 0
+                        }
+                      },
+                      "after": {
+                        "id": "step-1",
+                        "step": "Inspect",
+                        "status": "in_progress",
+                        "origin": {
+                          "plan": "accepted-plan",
+                          "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                          "index": 0
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "sequence": 2,
+                  "previous": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+                  "revision": "sha256:a8641e88a3e5c770fe8450659f105ef82b68c4fbffec3b939d8639503d31cac1",
+                  "explanation": "Narrow the accepted work",
+                  "diff": [
+                    {
+                      "id": "step-1",
+                      "kind": "removed",
+                      "before": {
+                        "id": "step-1",
+                        "step": "Inspect",
+                        "status": "in_progress",
+                        "origin": {
+                          "plan": "accepted-plan",
+                          "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                          "index": 0
+                        }
+                      },
+                      "from": 0
+                    },
+                    {
+                      "id": "step-2",
+                      "kind": "changed",
+                      "before": {
+                        "id": "step-2",
+                        "step": "Report",
+                        "status": "pending",
+                        "origin": {
+                          "plan": "accepted-plan",
+                          "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                          "index": 1
+                        }
+                      },
+                      "after": {
+                        "id": "step-2",
+                        "step": "Report briefly",
+                        "status": "pending",
+                        "origin": {
+                          "plan": "accepted-plan",
+                          "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                          "index": 1
+                        }
+                      }
+                    },
+                    {
+                      "id": "step-2",
+                      "kind": "reordered",
+                      "from": 1,
+                      "to": 0
+                    },
+                    {
+                      "id": "step-3",
+                      "kind": "added",
+                      "after": {
+                        "id": "step-3",
+                        "step": "Summarize",
+                        "status": "pending"
+                      },
+                      "to": 1
+                    }
+                  ]
+                }
+              ],
+              "accepted": {
+                "id": "accepted-plan",
+                "sourceRevision": 1,
+                "objective": "Inspect and report",
+                "steps": [
+                  "Inspect",
+                  "Report"
+                ],
+                "references": [],
+                "acceptedAt": "2026-10-01T00:00:00.000Z",
+                "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                "validatedReferences": []
+              },
+              "driftPolicy": [
+                "removed"
+              ],
+              "departures": [
+                {
+                  "revision": "sha256:a8641e88a3e5c770fe8450659f105ef82b68c4fbffec3b939d8639503d31cac1",
+                  "explanation": "Narrow the accepted work",
+                  "changes": [
+                    {
+                      "kind": "removed",
+                      "step": "step-1",
+                      "index": 0
+                    },
+                    {
+                      "kind": "changed",
+                      "step": "step-2",
+                      "index": 1
+                    },
+                    {
+                      "kind": "reordered",
+                      "step": "step-2",
+                      "index": 1
+                    },
+                    {
+                      "kind": "added",
+                      "step": "step-3"
+                    }
+                  ]
+                }
+              ],
+              "departuresDiscarded": 0
+            }
+          },
+          "explanation": "Narrow the accepted work",
+          "departures": [
+            {
+              "kind": "removed",
+              "step": "step-1",
+              "index": 0
+            },
+            {
+              "kind": "changed",
+              "step": "step-2",
+              "index": 1
+            },
+            {
+              "kind": "reordered",
+              "step": "step-2",
+              "index": 1
+            },
+            {
+              "kind": "added",
+              "step": "step-3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "version": 2,
+      "id": "extended-plan",
+      "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "phase": "work",
+      "status": "stopped",
+      "unit": "model-requests",
+      "used": 0,
+      "limit": 20,
+      "grants": [],
+      "plan": [
+        {
+          "id": "step-2",
+          "step": "Report briefly",
+          "status": "pending",
+          "origin": {
+            "plan": "accepted-plan",
+            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+            "index": 1
+          }
+        },
+        {
+          "id": "step-3",
+          "step": "Summarize",
+          "status": "pending"
+        }
+      ],
+      "explanation": "Narrow the accepted work",
+      "operations": [],
+      "context": {
+        "scope": "plan-fixture",
+        "entries": []
+      },
+      "planState": {
+        "revision": "sha256:a8641e88a3e5c770fe8450659f105ef82b68c4fbffec3b939d8639503d31cac1",
+        "sequence": 2,
+        "nextId": 4,
+        "discarded": 0,
+        "history": [
+          {
+            "sequence": 1,
+            "previous": "sha256:4bd3bd759ee580fc35f2ed601e4bef8755137f65e2c6b44bbb252106e96364aa",
+            "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "explanation": "Inspect current content",
+            "diff": [
+              {
+                "id": "step-1",
+                "kind": "status",
+                "before": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "pending",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  }
+                },
+                "after": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "in_progress",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "sequence": 2,
+            "previous": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "revision": "sha256:a8641e88a3e5c770fe8450659f105ef82b68c4fbffec3b939d8639503d31cac1",
+            "explanation": "Narrow the accepted work",
+            "diff": [
+              {
+                "id": "step-1",
+                "kind": "removed",
+                "before": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "in_progress",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  }
+                },
+                "from": 0
+              },
+              {
+                "id": "step-2",
+                "kind": "changed",
+                "before": {
+                  "id": "step-2",
+                  "step": "Report",
+                  "status": "pending",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 1
+                  }
+                },
+                "after": {
+                  "id": "step-2",
+                  "step": "Report briefly",
+                  "status": "pending",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 1
+                  }
+                }
+              },
+              {
+                "id": "step-2",
+                "kind": "reordered",
+                "from": 1,
+                "to": 0
+              },
+              {
+                "id": "step-3",
+                "kind": "added",
+                "after": {
+                  "id": "step-3",
+                  "step": "Summarize",
+                  "status": "pending"
+                },
+                "to": 1
+              }
+            ]
+          }
+        ],
+        "accepted": {
+          "id": "accepted-plan",
+          "sourceRevision": 1,
+          "objective": "Inspect and report",
+          "steps": [
+            "Inspect",
+            "Report"
+          ],
+          "references": [],
+          "acceptedAt": "2026-10-01T00:00:00.000Z",
+          "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+          "validatedReferences": []
+        },
+        "driftPolicy": [
+          "removed"
+        ],
+        "departures": [
+          {
+            "revision": "sha256:a8641e88a3e5c770fe8450659f105ef82b68c4fbffec3b939d8639503d31cac1",
+            "explanation": "Narrow the accepted work",
+            "changes": [
+              {
+                "kind": "removed",
+                "step": "step-1",
+                "index": 0
+              },
+              {
+                "kind": "changed",
+                "step": "step-2",
+                "index": 1
+              },
+              {
+                "kind": "reordered",
+                "step": "step-2",
+                "index": 1
+              },
+              {
+                "kind": "added",
+                "step": "step-3"
+              }
+            ]
+          }
+        ],
+        "departuresDiscarded": 0,
+        "decisions": [
+          {
+            "callId": "plan-decision-1",
+            "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "candidateRevision": "sha256:a8641e88a3e5c770fe8450659f105ef82b68c4fbffec3b939d8639503d31cac1",
+            "approved": true,
+            "note": "Use the focused plan."
+          }
+        ],
+        "decisionsDiscarded": 0
+      }
+    },
+    {
+      "version": 2,
+      "id": "extended-plan",
+      "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "phase": "work",
+      "status": "stopped",
+      "unit": "model-requests",
+      "used": 0,
+      "limit": 20,
+      "grants": [],
+      "plan": [
+        {
+          "id": "step-1",
+          "step": "Inspect",
+          "status": "in_progress",
+          "origin": {
+            "plan": "accepted-plan",
+            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+            "index": 0
+          }
+        },
+        {
+          "id": "step-2",
+          "step": "Report",
+          "status": "pending",
+          "origin": {
+            "plan": "accepted-plan",
+            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+            "index": 1
+          }
+        }
+      ],
+      "explanation": "Inspect current content",
+      "operations": [],
+      "context": {
+        "scope": "plan-fixture",
+        "entries": []
+      },
+      "planState": {
+        "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+        "sequence": 1,
+        "nextId": 3,
+        "discarded": 0,
+        "history": [
+          {
+            "sequence": 1,
+            "previous": "sha256:4bd3bd759ee580fc35f2ed601e4bef8755137f65e2c6b44bbb252106e96364aa",
+            "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "explanation": "Inspect current content",
+            "diff": [
+              {
+                "id": "step-1",
+                "kind": "status",
+                "before": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "pending",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  }
+                },
+                "after": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "in_progress",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "accepted": {
+          "id": "accepted-plan",
+          "sourceRevision": 1,
+          "objective": "Inspect and report",
+          "steps": [
+            "Inspect",
+            "Report"
+          ],
+          "references": [],
+          "acceptedAt": "2026-10-01T00:00:00.000Z",
+          "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+          "validatedReferences": []
+        },
+        "driftPolicy": [
+          "removed"
+        ],
+        "decisions": [
+          {
+            "callId": "plan-decision-1",
+            "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "candidateRevision": "sha256:a8641e88a3e5c770fe8450659f105ef82b68c4fbffec3b939d8639503d31cac1",
+            "approved": false,
+            "note": "Keep the accepted work."
+          }
+        ],
+        "decisionsDiscarded": 0
+      }
+    },
+    {
+      "version": 2,
+      "id": "extended-plan",
+      "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "phase": "work",
+      "status": "stopped",
+      "unit": "model-requests",
+      "used": 0,
+      "limit": 20,
+      "grants": [],
+      "plan": [
+        {
+          "id": "step-1",
+          "step": "Inspect",
+          "status": "in_progress",
+          "origin": {
+            "plan": "accepted-plan",
+            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+            "index": 0
+          }
+        },
+        {
+          "id": "step-2",
+          "step": "Report",
+          "status": "pending",
+          "origin": {
+            "plan": "accepted-plan",
+            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+            "index": 1
+          }
+        }
+      ],
+      "explanation": "Inspect current content",
+      "operations": [],
+      "context": {
+        "scope": "plan-fixture",
+        "entries": []
+      },
+      "planState": {
+        "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+        "sequence": 1,
+        "nextId": 3,
+        "discarded": 0,
+        "history": [
+          {
+            "sequence": 1,
+            "previous": "sha256:4bd3bd759ee580fc35f2ed601e4bef8755137f65e2c6b44bbb252106e96364aa",
+            "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "explanation": "Inspect current content",
+            "diff": [
+              {
+                "id": "step-1",
+                "kind": "status",
+                "before": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "pending",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  }
+                },
+                "after": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "in_progress",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "accepted": {
+          "id": "accepted-plan",
+          "sourceRevision": 1,
+          "objective": "Inspect and report",
+          "steps": [
+            "Inspect",
+            "Report"
+          ],
+          "references": [],
+          "acceptedAt": "2026-10-01T00:00:00.000Z",
+          "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+          "validatedReferences": []
+        },
+        "driftPolicy": [
+          "removed"
+        ],
+        "refusals": [
+          {
+            "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "reason": "invalid-input",
+            "step": "step-1"
+          },
+          {
+            "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "reason": "active-step-required",
+            "step": "step-1"
+          },
+          {
+            "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "reason": "revision-changed",
+            "step": "step-1"
+          },
+          {
+            "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "reason": "evidence-unavailable",
+            "step": "step-1"
+          },
+          {
+            "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "reason": "missing-evidence",
+            "step": "step-1"
+          },
+          {
+            "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "reason": "unknown-operation",
+            "step": "step-1"
+          },
+          {
+            "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "reason": "unsuccessful-operation",
+            "step": "step-1"
+          },
+          {
+            "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "reason": "unobserved-revision",
+            "step": "step-1"
+          },
+          {
+            "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "reason": "wrong-scope",
+            "step": "step-1"
+          }
+        ],
+        "refusalsDiscarded": 0
+      }
+    },
+    {
+      "version": 2,
+      "id": "extended-plan",
+      "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "phase": "work",
+      "status": "stopped",
+      "unit": "model-requests",
+      "used": 0,
+      "limit": 20,
+      "grants": [],
+      "plan": [
+        {
+          "id": "step-1",
+          "step": "Inspect",
+          "status": "pending",
+          "origin": {
+            "plan": "accepted-plan",
+            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+            "index": 0
+          }
+        },
+        {
+          "id": "step-2",
+          "step": "Report",
+          "status": "pending",
+          "origin": {
+            "plan": "accepted-plan",
+            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+            "index": 1
+          }
+        }
+      ],
+      "explanation": "",
+      "operations": [],
+      "context": {
+        "scope": "plan-fixture",
+        "entries": []
+      },
+      "planState": {
+        "revision": "sha256:4bd3bd759ee580fc35f2ed601e4bef8755137f65e2c6b44bbb252106e96364aa",
+        "sequence": 0,
+        "nextId": 3,
+        "discarded": 0,
+        "history": [],
+        "accepted": {
+          "id": "accepted-plan",
+          "sourceRevision": 1,
+          "objective": "Inspect and report",
+          "steps": [
+            "Inspect",
+            "Report"
+          ],
+          "references": [],
+          "acceptedAt": "2026-10-01T00:00:00.000Z",
+          "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+          "validatedReferences": []
+        },
+        "driftPolicy": [
+          "added",
+          "removed",
+          "changed",
+          "reordered"
+        ]
+      }
+    },
+    {
+      "version": 2,
+      "id": "extended-plan",
+      "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "phase": "work",
+      "status": "stopped",
+      "unit": "model-requests",
+      "used": 0,
+      "limit": 20,
+      "grants": [],
+      "plan": [
+        {
+          "id": "step-1",
+          "step": "Inspect",
+          "status": "pending",
+          "origin": {
+            "plan": "accepted-plan",
+            "revision": "sha256:f467cd3b2bd4a875fbb3c6750bfbdc81ba76abeda52abcafa0de8f4a907ce8ba",
+            "index": 0
+          }
+        },
+        {
+          "id": "step-2",
+          "step": "Report",
+          "status": "pending",
+          "origin": {
+            "plan": "accepted-plan",
+            "revision": "sha256:f467cd3b2bd4a875fbb3c6750bfbdc81ba76abeda52abcafa0de8f4a907ce8ba",
+            "index": 1
+          }
+        }
+      ],
+      "explanation": "",
+      "operations": [],
+      "context": {
+        "scope": "plan-fixture",
+        "entries": []
+      },
+      "planState": {
+        "revision": "sha256:0b251b36d3b779be651c4cdd19553fffa8aade7d004df9316508d056c2570781",
+        "sequence": 0,
+        "nextId": 3,
+        "discarded": 0,
+        "history": [],
+        "accepted": {
+          "id": "accepted-plan",
+          "sourceRevision": 1,
+          "objective": "Inspect and report",
+          "steps": [
+            "Inspect",
+            "Report"
+          ],
+          "references": [
+            {
+              "kind": "artifact",
+              "id": "artifact-pin",
+              "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            {
+              "kind": "dialect",
+              "id": "dialect-pin",
+              "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            },
+            {
+              "kind": "file",
+              "id": "legacy-file",
+              "revision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+            }
+          ],
+          "acceptedAt": "2026-10-01T00:00:00.000Z",
+          "revision": "sha256:f467cd3b2bd4a875fbb3c6750bfbdc81ba76abeda52abcafa0de8f4a907ce8ba",
+          "validatedReferences": [
+            {
+              "kind": "artifact",
+              "id": "artifact-pin",
+              "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            {
+              "kind": "dialect",
+              "id": "dialect-pin",
+              "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            },
+            {
+              "kind": "artifact",
+              "id": "legacy-file",
+              "digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+            }
+          ]
+        },
+        "driftPolicy": [
+          "removed"
+        ]
+      }
+    },
+    {
+      "version": 2,
+      "id": "extended-plan",
+      "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "phase": "work",
+      "status": "stopped",
+      "unit": "model-requests",
+      "used": 0,
+      "limit": 20,
+      "grants": [],
+      "plan": [
+        {
+          "id": "step-1",
+          "step": "Inspect",
+          "status": "completed",
+          "origin": {
+            "plan": "accepted-plan",
+            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+            "index": 0
+          },
+          "evidence": {
+            "operations": [
+              "dispatch-ok"
+            ],
+            "artifacts": [
+              {
+                "kind": "artifact",
+                "id": "artifact-1",
+                "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              },
+              {
+                "kind": "dialect",
+                "id": "dialect-1",
+                "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+              }
+            ]
+          }
+        },
+        {
+          "id": "step-2",
+          "step": "Report",
+          "status": "pending",
+          "origin": {
+            "plan": "accepted-plan",
+            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+            "index": 1
+          }
+        }
+      ],
+      "explanation": "Active step completed with recorded evidence.",
+      "operations": [],
+      "context": {
+        "scope": "plan-fixture",
+        "entries": []
+      },
+      "planState": {
+        "revision": "sha256:5e7ab917f90c8d3971e83635cd627decbc767888e7d54aab34a6b0cb9df133c4",
+        "sequence": 2,
+        "nextId": 3,
+        "discarded": 0,
+        "history": [
+          {
+            "sequence": 1,
+            "previous": "sha256:4bd3bd759ee580fc35f2ed601e4bef8755137f65e2c6b44bbb252106e96364aa",
+            "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "explanation": "Inspect current content",
+            "diff": [
+              {
+                "id": "step-1",
+                "kind": "status",
+                "before": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "pending",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  }
+                },
+                "after": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "in_progress",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "sequence": 2,
+            "previous": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "revision": "sha256:5e7ab917f90c8d3971e83635cd627decbc767888e7d54aab34a6b0cb9df133c4",
+            "explanation": "Active step completed with recorded evidence.",
+            "diff": [
+              {
+                "id": "step-1",
+                "kind": "status",
+                "before": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "in_progress",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  }
+                },
+                "after": {
+                  "id": "step-1",
+                  "step": "Inspect",
+                  "status": "completed",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 0
+                  },
+                  "evidence": {
+                    "operations": [
+                      "dispatch-ok"
+                    ],
+                    "artifacts": [
+                      {
+                        "kind": "artifact",
+                        "id": "artifact-1",
+                        "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                      },
+                      {
+                        "kind": "dialect",
+                        "id": "dialect-1",
+                        "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "accepted": {
+          "id": "accepted-plan",
+          "sourceRevision": 1,
+          "objective": "Inspect and report",
+          "steps": [
+            "Inspect",
+            "Report"
+          ],
+          "references": [],
+          "acceptedAt": "2026-10-01T00:00:00.000Z",
+          "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+          "validatedReferences": []
+        },
+        "driftPolicy": [
+          "removed"
+        ]
+      }
+    }
+  ]
+}

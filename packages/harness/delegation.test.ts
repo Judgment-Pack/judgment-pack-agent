@@ -599,7 +599,7 @@ describe('context by reference and profiles (agent#15)',()=>{
      :done===1?sse(undefined,{name:DELEGATE_TOOL,args:{tasks:[{title:'author-test',objective:'author-test',profile:'author-test'}]},id:'call_tests'}):sse('Done.')
    })
    const events=await collect(withDelegation(vercel),apiSession({tools:runtime.tools,callTool:runtime.callTool,hostTools,model:{family:'openai-compatible',model:'fixture',call}}))
-   const CONTEXT=['list_context','read_context','read_window','request_budget_increase','search','update_plan']
+   const CONTEXT=['complete_plan_step','list_context','read_context','read_window','request_budget_increase','search','update_plan']
    const offer=(profile:string)=>(sent.find(one=>isChild(one)&&briefOf(one).objective===profile)!.body.tools??[]).map(t=>t.function.name).filter(name=>!CONTEXT.includes(name)).sort()
    expect(offer('analyze')).toEqual([])
    expect(offer('review')).toEqual(['read_pack'])
@@ -689,7 +689,7 @@ describe('context by reference and profiles (agent#15)',()=>{
    const offered=(child[0]!.body.tools??[]).map(t=>t.function.name)
    // The gate's ceiling, as the runtime served it through the gate, beside the context tools every run has; no host tool.
    expect(offered.filter(name=>(ASSISTANT_TOOLS as readonly string[]).includes(name)).sort()).toEqual([...AUTHOR_TEST_TOOLS].sort())
-   expect(offered.filter(name=>!(ASSISTANT_TOOLS as readonly string[]).includes(name)).sort()).toEqual(['list_context','read_context','read_window','request_budget_increase','search','update_plan'])
+   expect(offered.filter(name=>!(ASSISTANT_TOOLS as readonly string[]).includes(name)).sort()).toEqual(['complete_plan_step','list_context','read_context','read_window','request_budget_increase','search','update_plan'])
    // The test call went through the gate to the runtime; get_schema reached it once, for the parent: the child was served it from the chat's read cache.
    expect(runtime.seen.map(c=>c.name)).toEqual(['get_schema','experimental_test_cases'])
    expect(toolMessages(child.at(-1)!)[1]).toContain('expected decided, got refused')

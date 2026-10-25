@@ -1,3 +1,7 @@
+import {validRecordedStep} from './planActions'
+import {planStepId,validPlanState,type PlanState} from './plan'
+import {validDurable} from '../storage/durable'
+import {validHandoff} from '../storage/handoff'
 import {mutateCheckpoint} from './mutation'
 import {checkRecord} from '../recordReader'
 import {validOutputCounts,type OutputCounts} from '../outputGuard'
@@ -15,9 +19,9 @@ import {CHECKPOINT_SCHEMA,PROVENANCE_SCHEMA,recordDigest,validRecordHeader} from
 export const REQUEST_INCREMENT = 10
 export const MAX_REQUEST_ALLOWANCE = 100
 export const MAX_CHECKPOINT_BYTES = 4 * 1024 * 1024
-export interface TaskStep {step:string;status:'pending'|'in_progress'|'completed';detail?:string}
+export interface TaskStep {id?:string;step:string;status:'pending'|'in_progress'|'completed'|'not-needed';detail?:string;origin?:import('./plan').PlanOrigin;evidence?:import('./plan').StepEvidence;notNeededReason?:string}
 export interface Operation {id:string;name:string;args:unknown;status:'running'|'complete'|'failed'|'interrupted';result?:McpToolResult}
-export interface RetainedEntry {id:string;kind:'history'|'artifact'|'request'|'tool';label:string;value:unknown;revision?:string;bytes:number;digest:string}
+export interface RetainedEntry {id:string;kind:'history'|'artifact'|'request'|'tool';label:string;value:unknown;valueJSON?:string;revision?:string;bytes:number;digest:string}
 /**
  * One model request's row. `attempt`, `failure` and `waitMs` record a request the provider refused and that was
  * retried (engines/vercel/retry.ts): the refused attempt's row carries its failure and the wait before the next, and
@@ -44,9 +48,11 @@ export const MAX_PROMPT_DIGESTS = 300
 /** A local execution record, never permissions, evidence approval or private reasoning. */
 export interface ExecutionCheckpoint {
  schema?:typeof CHECKPOINT_SCHEMA;digest?:string;retainUntil?:string;records?:import("../outputGuard").RecordMarker;
+ durable?:import('../storage/writer').DurableBook;
+ handoff?:import('../storage/handoff').DurableHandoff;
  version:1|2;id:string;requestKey:string;phase:'plan'|'work';status:'running'|'paused'|'complete'|'stopped';
  unit:'model-requests'|'provider-managed';used:number;limit:number;requestCap?:number;grants:{from:number;to:number;at:string}[];
- plan:TaskStep[];explanation:string;operations:Operation[];
+ plan:TaskStep[];planState?:PlanState;explanation:string;operations:Operation[];
  completions?:CompletionRecord[];
  context:{scope:string;entries:RetainedEntry[]};reason?:string;
  /** agent#7: the turn's experimental_test_cases calls so far, carried as `used` is. */
@@ -179,7 +185,7 @@ const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&
 const text=(v:unknown,max:number):v is string=>typeof v==='string'&&v.length<=max
 const validPolicy=(v:unknown):boolean=>object(v)&&Object.keys(v).length<=512&&Object.values(v).every(member=>object(member)&&exact(member,['value','layer','source'])&&['run','project','table'].includes(String(member.layer))&&(member.source===undefined||['layer','model-default','discovered'].includes(String(member.source)))&&(member.source!=='model-default'||!Object.hasOwn(member,'value'))&&(member.source!=='discovered'||Object.hasOwn(member,'value')))
 export function validTaskSteps(value:unknown):value is TaskStep[] {
- return Array.isArray(value)&&value.length>0&&value.length<=20&&value.every(s=>object(s)&&text(s.step,1000)&&!!s.step.trim()&&['pending','in_progress','completed'].includes(String(s.status))&&(s.detail===undefined||text(s.detail,1500)))&&value.filter(s=>s.status==='in_progress').length<=1
+ return Array.isArray(value)&&value.length>0&&value.length<=20&&value.every(s=>validRecordedStep(s)&&object(s)&&exact(s,['id','step','status','detail','origin','evidence','notNeededReason'])&&(s.id===undefined||planStepId(s.id))&&text(s.step,1000)&&!!s.step.trim()&&['pending','in_progress','completed','not-needed'].includes(String(s.status))&&(s.detail===undefined||text(s.detail,1500)))&&value.filter(s=>s.status==='in_progress').length<=1
 }
 export const validRequestCap=(value:unknown):value is number=>Number.isInteger(value)&&Number(value)>=1&&Number(value)<=MAX_TURNS
 export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
@@ -195,6 +201,7 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  let limit=capped?Number(value.requestCap):value.unit==='model-requests'?MAX_TURNS:1
  for(const grant of value.grants){if(!object(grant)||grant.from!==limit||!Number.isInteger(grant.to)||Number(grant.to)<=limit||Number(grant.to)>MAX_REQUEST_ALLOWANCE||typeof grant.at!=='string'||!Number.isFinite(Date.parse(grant.at)))return fail();limit=Number(grant.to)}
  if(value.limit!==limit||!Array.isArray(value.plan)||(value.plan.length&&!validTaskSteps(value.plan))||!text(value.explanation,2000)||(value.reason!==undefined&&!text(value.reason,2000))||(value.testCalls!==undefined&&(!Number.isInteger(value.testCalls)||Number(value.testCalls)<0||Number(value.testCalls)>400))||(value.delegation!==undefined&&!validDelegationFigures(value.delegation,value.unit as 'model-requests'|'provider-managed')))return fail()
+ if(!validPlanState(value.plan as TaskStep[],value.planState))return fail()
  if(value.completions!==undefined&&(!Array.isArray(value.completions)||value.completions.length>MAX_REQUEST_ALLOWANCE||value.completions.some(row=>!object(row)||!Number.isInteger(row.request)||Number(row.request)<1||Number(row.request)>Number(value.used)||!['work','synthesis','review'].includes(String(row.phase))||!readCompletion(row.result)||row.attempt!==undefined&&(!Number.isInteger(row.attempt)||Number(row.attempt)<1||Number(row.attempt)>3)||row.failure!==undefined&&!readFailure(row.failure)||row.waitMs!==undefined&&(!Number.isInteger(row.waitMs)||Number(row.waitMs)<0||Number(row.waitMs)>86400000)||row.connection!==undefined&&(!text(row.connection,128)||!row.connection)||row.role!==undefined&&(!text(row.role,128)||!row.role)||['schema','digest','retainUntil'].some(name=>Object.hasOwn(row,name))&&!validRecordHeader(row,PROVENANCE_SCHEMA))))return fail()
  if(value.prompts!==undefined&&(!Array.isArray(value.prompts)||value.prompts.length>MAX_PROMPT_DIGESTS||value.prompts.some((row,at,rows)=>!object(row)||!exact(row,['request','sha256'])||!Number.isSafeInteger(row.request)||Number(row.request)<1||at>0&&Number(row.request)<=Number((rows[at-1] as Record<string,unknown>).request)||typeof row.sha256!=='string'||!/^[a-f0-9]{64}$/.test(row.sha256))))return fail()
  if(value.sourceIdentities!==undefined&&!validSourceIdentities(value.sourceIdentities))return fail()
@@ -211,6 +218,7 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value.childUsage!==undefined&&(!Array.isArray(value.childUsage)||value.childUsage.length>256||new Set(value.childUsage.map(r=>object(r)?r.id:undefined)).size!==value.childUsage.length||value.childUsage.some(r=>!object(r)||!exact(r,['id','usage'])||!text(r.id,128)||!r.id||!validUsage(r.usage))))return fail()
  if(value.usage!==undefined&&!validUsage(value.usage))return fail()
  if(value.policy!==undefined&&!validPolicy(value.policy))return fail()
+ if(value.durable!==undefined&&!validDurable(value.durable)||value.handoff!==undefined&&!validHandoff(value.handoff))return fail()
  if(!Array.isArray(value.operations)||value.operations.length>400||new Set(value.operations.map(o=>o.id)).size!==value.operations.length)return fail()
  for(const op of value.operations){if(!object(op)||!text(op.id,100)||!text(op.name,150)||!['running','complete','failed','interrupted'].includes(String(op.status))||op.result!==undefined&&(!object(op.result)||(op.result.content!==undefined&&(!Array.isArray(op.result.content)||op.result.content.some(p=>!object(p)||p.type!==undefined&&typeof p.type!=='string'||p.text!==undefined&&typeof p.text!=='string')))))return fail()}
  if(!object(value.context)||!text(value.context.scope,100)||!Array.isArray(value.context.entries)||value.context.entries.length>800||new Set(value.context.entries.map(e=>e.id)).size!==value.context.entries.length)return fail()

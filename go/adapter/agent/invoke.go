@@ -62,8 +62,8 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 		defer func() { r.sc.Reformatting = false }()
 	}
 	// ADR-0008: while an act call waits for the person's decision, no invocation is dispatched.
-	// Defence in depth: drive does not call invoke in that state (the pause cancels the run's
-	// execution before a reformat or a critic, and a continuation of an asked approval without a
+	// Defence in depth: drive does not call invoke in that state (the pause ends the run's
+	// invocation before a reformat or a critic, and a continuation of an asked approval without a
 	// decision is refused before the run opens); guard_test.go holds the line directly.
 	if r.sc.Execution.ApprovalAsked() {
 		return "", runcontext.ErrApprovalPaused
@@ -143,33 +143,74 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 		return "", err
 	}
 	body, marshalErr := json.Marshal(request)
-	if marshalErr == nil {
-		r.sc.Execution.RecordPrompt(body)
+	if marshalErr != nil {
+		return "", marshalErr
 	}
+	body, err = runcontext.PrepareDurableRequest(r.sc.Persistence(role), "agent", r.sc.ProviderStorageIdentity(role), request.Model, body)
+	if err != nil {
+		return "", err
+	}
+	if err = json.Unmarshal(body, &request); err != nil {
+		return "", err
+	}
+	r.sc.Execution.RecordPrompt(body)
 	// Durable before dispatch: the coordinator counts the invocation and writes the checkpoint; a run
 	// it did not start writes its own. A checkpoint not acknowledged dispatches nothing.
 	if agent.HasBegin() {
-		err = agent.Begin(ctx, request)
+		err = agent.Begin(runcontext.WithDurableDispatchScope(ctx, r.sc.Persistence(role)), request)
 	} else {
 		err = r.save(ctx)
 	}
 	if err != nil {
 		return "", err
 	}
-	invCtx, stop := context.WithCancel(ctx)
-	defer stop()
 	held := &invocation{partial: map[string]string{}}
-	// Every callback of the invocation is held: whether one ran (the invocation was admitted), and
-	// that none is still running when invoke returns, so a host tool cannot overlap what follows.
-	watched := &callbacksHeld{}
-	watched.idle = sync.NewCond(&watched.mu)
-	defer watched.closeAndWait()
-	callbacks := watched.wrap(adapter.AgentCallbacks{Event: r.event(invCtx, phase, held), Tool: r.tool(invCtx, offered, recorder)})
 	var runErr error
 	switched := false
 	for attempt := 1; ; attempt++ {
-		runErr = agent.Run(invCtx, request, callbacks)
-		watched.wait()
+		if ctx.Err() != nil {
+			runErr = failure.Cancelled
+			break
+		}
+		if runErr = r.pauseError(); runErr != nil {
+			break
+		}
+		// A pause belongs to this physical provider attempt. It stops the provider and its
+		// tools, while the caller's context still governs dispatch and durable acknowledgements.
+		invCtx, pause := context.WithCancel(ctx)
+		watched := &callbacksHeld{}
+		watched.idle = sync.NewCond(&watched.mu)
+		callbacks := watched.wrap(adapter.AgentCallbacks{Event: r.event(invCtx, phase, held), Tool: r.tool(invCtx, offered, recorder, pause)})
+		_, runErr = runcontext.InvokeDurable(ctx, r.sc.Persistence(role), "agent", r.sc.ProviderStorageIdentity(role), request.Model, body, true, func(raw []byte) (struct{}, error) {
+			// Close callback admission and drain admitted callbacks before the writer freezes the
+			// outcome. Each retry gets a new window; an old host cannot call into the next attempt.
+			defer watched.closeAndWait()
+			var prepared adapter.AgentRequest
+			if err := json.Unmarshal(raw, &prepared); err != nil {
+				return struct{}{}, err
+			}
+			if err := r.sc.Authorize(ctx); err != nil {
+				return struct{}{}, err
+			}
+			if ctx.Err() != nil {
+				return struct{}{}, failure.Cancelled
+			}
+			if err := r.pauseError(); err != nil {
+				return struct{}{}, err
+			}
+			err := agent.Run(runcontext.WithDurableDispatchScope(invCtx, r.sc.Persistence(role)), prepared, callbacks)
+			watched.closeAndWait()
+			if err == nil {
+				// A host may return nil after an intentional pause. The pause is still an
+				// unknown provider outcome, never a successful dispatch result.
+				err = r.pauseError()
+			}
+			return struct{}{}, err
+		}, func(struct{}) bool { return false }, nil)
+		// A claim can fail before execute is entered, so close that unused window as well.
+		watched.closeAndWait()
+		cancelled := invCtx.Err() != nil
+		pause()
 		classified := failure.Normalize(runErr, "agent", time.Now())
 		if runErr != nil && !watched.reached() && !switched && r.run.HasFailover() && (classified.Code == "unavailable" || classified.Code == "rate-limited" || classified.Code == "timeout") {
 			if from, to, ok := r.run.Failover(role, classified.Code); ok {
@@ -218,23 +259,26 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 		}
 		// An attempt that reached any callback was admitted: whatever its error says, it is an
 		// outcome and is never sent again.
-		if runErr == nil || watched.reached() || r.stopping() || invCtx.Err() != nil ||
+		if runErr == nil || watched.reached() || r.stopping() || cancelled ||
 			!failure.CanRetryAdmission(failure.Normalize(runErr, "agent", time.Now()), attempt, MaxAdmissionAttempts) {
 			break
 		}
 		// Busy, and no callback ran: admission refused the invocation, nothing ran, nothing is replayed.
 		select {
 		case <-time.After(time.Duration(attempt) * 250 * time.Millisecond):
-		case <-invCtx.Done():
+		case <-ctx.Done():
 		}
-		if invCtx.Err() != nil {
+		if ctx.Err() != nil {
 			break
 		}
 	}
 	r.held.Lock()
 	fatal, handoff, waiting := r.fatal, r.handoff, r.awaitingInput
 	r.held.Unlock()
+	var storageUnknown *runcontext.StorageOutcomeUnknown
 	switch {
+	case errors.As(runErr, &storageUnknown):
+		return "", runErr
 	case fatal != nil:
 		return "", fatal
 	case handoff:
@@ -244,9 +288,6 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 	case ctx.Err() != nil:
 		return "", failure.Cancelled
 	case runErr != nil:
-		if failure.IsCancelled(runErr) && invCtx.Err() != nil {
-			return "", failure.Cancelled
-		}
 		return "", runErr
 	}
 	held.mu.Lock()
@@ -336,10 +377,21 @@ func (h *callbacksHeld) wrap(callbacks adapter.AgentCallbacks) adapter.AgentCall
 }
 
 // stopping is whether a tool call ended the invocation: a handoff, a question or a failed save.
-func (r *runState) stopping() bool {
+func (r *runState) stopping() bool { return r.pauseError() != nil }
+
+func (r *runState) pauseError() error {
 	r.held.Lock()
 	defer r.held.Unlock()
-	return r.handoff || r.awaitingInput || r.fatal != nil
+	switch {
+	case r.fatal != nil:
+		return r.fatal
+	case r.handoff:
+		return errHandoff
+	case r.awaitingInput:
+		return errWaiting
+	default:
+		return nil
+	}
 }
 
 // save writes the run's checkpoint through the host's durable callback, where it gave one, and
@@ -408,8 +460,13 @@ func (r *runState) event(invCtx context.Context, phase string, held *invocation)
 // phase by the gate first, a delegation a handoff, a question a pause, propose_pack read by the
 // contract's reader, and every other call under the policy's deadline, its answer bounded and, from
 // a reading tool, framed.
-func (r *runState) tool(invCtx context.Context, offered map[string]bool, recorder *turn.Recorder) func(context.Context, adapter.AgentToolCall) (adapter.AgentToolAnswer, error) {
+func (r *runState) tool(invCtx context.Context, offered map[string]bool, recorder *turn.Recorder, pause context.CancelFunc) func(context.Context, adapter.AgentToolCall) (adapter.AgentToolAnswer, error) {
 	return func(ctx context.Context, call adapter.AgentToolCall) (adapter.AgentToolAnswer, error) {
+		if r.sc.Execution.State().PlanState.Has("pending") {
+			r.sc.PlanApprovalRefusal(call.Name)
+			pause()
+			return adapter.AgentToolAnswer{}, errWaiting
+		}
 		if r.stopping() {
 			return adapter.AgentToolAnswer{}, errWaiting
 		}
@@ -456,14 +513,14 @@ func (r *runState) tool(invCtx context.Context, offered map[string]bool, recorde
 			// The pause is claimed before the approval is written asked (SessionContext.PauseClaim).
 			if asked := r.sc.Approval(ctx, held.name, args, call.ID); asked != nil {
 				r.deliver(*asked)
-				r.pause()
+				pause()
 				return adapter.AgentToolAnswer{}, errWaiting
 			}
 		}
 		if held.host == nil || held.host.Interaction == "" {
 			r.deliver(callEvent(call.ID, held.name, args, ""))
 		}
-		result, answered, err := r.answer(ctx, call, held, args)
+		result, answered, err := r.answer(ctx, call, held, args, pause)
 		if err != nil {
 			if errors.Is(err, errWaiting) || errors.Is(err, errHandoff) || r.fatalError() != nil {
 				return adapter.AgentToolAnswer{}, err
@@ -504,6 +561,11 @@ func (r *runState) tool(invCtx context.Context, offered map[string]bool, recorde
 		}
 		if answered && runcontext.ReadingTool(held.host) {
 			text = r.sc.Frame(held.name, text)
+		}
+		if r.sc.Execution.State().PlanState.Has("pending") {
+			r.claimPause(false)
+			pause()
+			return adapter.AgentToolAnswer{}, errWaiting
 		}
 		return adapter.AgentToolAnswer{Text: text, IsError: result.Err()}, nil
 	}
@@ -555,7 +617,7 @@ func (r *runState) refuseUnoffered(ctx context.Context, call adapter.AgentToolCa
 }
 
 // answer is what one offered call answers, and whether the tool itself answered it.
-func (r *runState) answer(ctx context.Context, call adapter.AgentToolCall, held route, args json.RawMessage) (runcontext.ToolResult, bool, error) {
+func (r *runState) answer(ctx context.Context, call adapter.AgentToolCall, held route, args json.RawMessage, pause context.CancelFunc) (runcontext.ToolResult, bool, error) {
 	limit := time.Duration(r.sc.Policy.ToolCallMilliseconds) * time.Millisecond
 	late := func() error { return turn.ToolTimeout(limit) }
 	host := held.host
@@ -586,7 +648,7 @@ func (r *runState) answer(ctx context.Context, call adapter.AgentToolCall, held 
 		}
 		id := call.ID
 		r.deliver(contract.RunEvent{DelegationRequested: &contract.RunEventDelegationRequested{Type: "delegation_requested", Request: request, Subagent: record, CallID: &id}})
-		r.pause()
+		pause()
 		return runcontext.ToolResult{}, false, errHandoff
 	case host.Interaction == "question":
 		question, err := turn.ReadModelQuestion(args)
@@ -597,7 +659,7 @@ func (r *runState) answer(ctx context.Context, call adapter.AgentToolCall, held 
 			return runcontext.ToolResult{}, false, errWaiting
 		}
 		r.deliver(contract.RunEvent{UserQuestion: &contract.RunEventUserQuestion{Type: "user_question", ID: wire.RandomUUID(), Question: question}})
-		r.pause()
+		pause()
 		return runcontext.ToolResult{}, false, errWaiting
 	case host.Name == turn.ProposePackTool:
 		proposal, err := turn.ReadProposedPack(args)
@@ -620,7 +682,7 @@ func (r *runState) answer(ctx context.Context, call adapter.AgentToolCall, held 
 				r.held.Lock()
 				r.fatal = err
 				r.held.Unlock()
-				r.pause()
+				pause()
 			}
 			return runcontext.ToolResult{}, false, err
 		}

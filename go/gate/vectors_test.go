@@ -49,6 +49,7 @@ var notTheGates = map[string]string{
 	"tool-offer/load-tool.json":           "load_tool, a host tool the boundary adds (go/context, SourceGate.LoadToolHost)",
 	"tool-offer/source-names.json":        "wire names of tools with a source: the boundary's (go/context, WireName)",
 	"tool-offer/tool-list-digest.json":    "a source's pinned tool list: the boundary's (go/context, ToolListDigest)",
+	"tool-offer/descriptor-snapshot.json": "complete Gateway descriptor byte pins and malformed descriptors: the source boundary (go/context, ReadDescriptorSnapshot, DescriptorSnapshotDigest, SourceGate), held by descriptor_snapshot_test.go and descriptor_sources_test.go rather than Runtime call admission",
 	"tool-call/source-calls.json":         "the source record on a tool_call event: the boundary's (go/context, SourceGate.Decorate)",
 	"tool-result/loaded-schema.json":      "load_tool's answer: the boundary's (go/context, SourceGate.LoadToolHost)",
 	"tool-result/source-results.json":     "the source record on a tool_result event: the boundary's (go/context, SourceGate.Decorate)",

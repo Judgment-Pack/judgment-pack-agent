@@ -176,7 +176,7 @@ function runCodexLoop(session: RequestAgentAssistantSession): AsyncIterable<Assi
               const request = readDelegationRequest(call.arguments)
               recordSubagents(request,context.subagents)
               awaitingInput = true
-              await deliver({type:'delegation_requested',request,...(request.tasks.length===1&&request.tasks[0]?.subagent?{subagent:request.tasks[0].subagent}:{})})
+              await deliver({type:'delegation_requested',callId:call.id,request,...(request.tasks.length===1&&request.tasks[0]?.subagent?{subagent:request.tasks[0].subagent}:{})})
               inputPause.abort()
               throw new DOMException('Delegation handoff', 'AbortError')
             }
@@ -210,6 +210,7 @@ function runCodexLoop(session: RequestAgentAssistantSession): AsyncIterable<Assi
           const text = textOf(result)
           await deliver({ type: 'tool_result', callId: call.id, name: route.name, isError: result.isError === true, text,
             ...(result.structuredContent === undefined ? {} : { structured: result.structuredContent }) })
+          if(context.execution.state.planState?.pending){awaitingInput=true;inputPause.abort();throw new DOMException('Waiting for the person’s plan decision','AbortError')}
           // agent#10: the arguments and the structured answer, which the outcome comparison reads.
           if (runtimeAnswered) recorder?.saw(route.name, text, call.arguments, result.structuredContent)
           // Text-only host callback wire, including structured results in a

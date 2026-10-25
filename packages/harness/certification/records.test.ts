@@ -19,7 +19,7 @@ import eventSchema from '../../../contract/schemas/run-event.json'
 import {argumentProblem} from '../sourceArguments'
 import type {AssistantEvent} from '../engine'
 import {CHECKPOINT_SCHEMA} from '../records'
-import {readRunEvent} from '../recordReader'
+import {checkRecord,UnknownRecordMember,readRunEvent} from '../recordReader'
 
 // Expand this at run time because the repository's local-paths check forbids the literal.
 const scenarioSecret=scenario.secret.replace('<home>','/'+'home')
@@ -45,9 +45,13 @@ for(const engine of [vercel,deepagents,codex])describe(`${engine.id==='codex'?'a
   it('resumes legacy source absence without rewriting its input or extending retention',async()=>{
     const first=await play(engine)
     const saved=structuredClone(first.events.filter(e=>e.type==='execution_checkpoint').at(-1)!.checkpoint)
+    // A real v1 writer had no version 2 plan book. Its frozen reader must still reject one.
+    expect(()=>checkRecord('checkpoint',{...saved,version:1})).toThrow(UnknownRecordMember)
+    delete saved.planState
     saved.version=1;saved.status='stopped'
     for(const member of Object.values(saved.policy??{}))if(member.source==='layer')delete member.source
     saved.digest=recordDigest(saved)
+    expect(()=>checkRecord('checkpoint',saved)).not.toThrow()
     const before=JSON.stringify(saved),resumed=await play(engine,{execution:saved})
     expect(JSON.stringify(saved)).toBe(before)
     expect(resumed.events.filter(e=>e.type==='error')).toEqual([])

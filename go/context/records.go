@@ -76,6 +76,7 @@ func RecordRetainUntil(policy RecordsPolicy, now time.Time) string {
 
 // recordTextPaths names only model-derived members. Each member gets its own work budget.
 var recordTextPaths = []string{
+	"durable.dispatches.*.request", "durable.dispatches.*.result", "durable.children.*.checkpoint", "handoff.continuation",
 	"text", "explanation", "reason", "plan.*.step", "plan.*.detail",
 	"operations.*.name", "operations.*.args", "approval.name", "approval.tool", "approval.args",
 	"memories.proposed.*.text", "compaction.summaries.*.summary",

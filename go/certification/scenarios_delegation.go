@@ -311,10 +311,10 @@ func Delegation(with func(adapter.Adapter) adapter.Adapter) ScenarioCheck {
 					offers[brief.Objective] = sortedCopy(offeredNames(request))
 				}
 			}
-			if want := sortedCopy(append([]string{"read_policy"}, contextSix...)); !slices.Equal(offers["Review the mileage section of the policy for gaps."], want) {
+			if want := sortedCopy(append([]string{"read_policy"}, contextTools...)); !slices.Equal(offers["Review the mileage section of the policy for gaps."], want) {
 				f.fail("the review child was offered %v", offers["Review the mileage section of the policy for gaps."])
 			}
-			if want := sortedCopy(append([]string{"read_policy", "read_rates"}, contextSix...)); !slices.Equal(offers["Find the published mileage rate for 2026."], want) {
+			if want := sortedCopy(append([]string{"read_policy", "read_rates"}, contextTools...)); !slices.Equal(offers["Find the published mileage rate for 2026."], want) {
 				f.fail("the research child was offered %v", offers["Find the published mileage rate for 2026."])
 			}
 			for _, names := range offers {

@@ -15,6 +15,7 @@
 // export, or a list that a schema and the package state differently, stops the run with the name.
 // Header and marker constants are listed by name, never by value, and nothing here is read from a run.
 import { spawnSync } from 'node:child_process'
+import { eventMatrix, locations } from './event-matrix/index.mjs'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -322,6 +323,7 @@ async function toolsPage(page) {
   const EFFECT_CLASSES = await page.use('toolSources', 'EFFECT_CLASSES')
   const APPROVAL_DEFAULT = await page.use('toolSources', 'APPROVAL_DEFAULT')
   const SOURCE_ID = await page.use('toolSources', 'SOURCE_ID')
+  const SNAPSHOT_BYTES = await page.use('descriptorSnapshot', 'DESCRIPTOR_SNAPSHOT_BYTES')
   const NAME_BYTES = await page.use('toolSources', 'NAME_BYTES')
   const PROPOSE_PACK_TOOL = await page.use('engines/contract', 'PROPOSE_PACK_TOOL')
   const DELEGATE_TOOL = await page.use('delegationContract', 'DELEGATE_TOOL')
@@ -409,7 +411,16 @@ async function toolsPage(page) {
     '## Tool sources',
     '',
     `Kinds a host declares: ${DECLARED_SOURCE_KINDS.map((k) => code(k)).join(', ')}; the record also carries ${code('runtime')} (the Runtime's own row) and ${code('exchange')} (a skill from a Judgment Exchange entry, see [skills.md](skills.md)). Trust classes: ${TRUST_CLASSES.map((k) => code(k)).join(', ')}. A source's id matches ${code(SOURCE_ID.source)}; a wire name is at most ${NAME_BYTES} characters.`,
-    nodeSection('### The source record', sourceRecord, 'tool-offer.json')
+    nodeSection('### The source record', sourceRecord, 'tool-offer.json'),
+    '### Gateway descriptor snapshot pins',
+    '',
+    `New MCP registrations supply approved raw UTF-8 descriptorSnapshot bytes (Go DescriptorSnapshot), their complete sha256 pin as toolListDigest, and required currentDescriptorSnapshot (Go CurrentDescriptorSnapshot). readDescriptorSnapshot and descriptorSnapshotDigest are public helpers. A snapshot is at most ${SNAPSHOT_BYTES} bytes and must match Gateway SPEC 1.1 canonical bytes: Unicode code-point key order, strict UTF-8, no lone surrogate, duplicate member, noninteger numeric spelling or trailing text. Agent record canonicalization is unchanged. inputSchemaText stays opaque original text in the pin.`,
+    '',
+    'Only host-declared captured tool names are admitted; an uncaptured name or wrong digest withholds that source whole. Offered descriptors derive from captured candidates; absent schema projects open while the original host schema is independently checked in the package-supported subset. The host executor retains every other validation and authorization rule. Snapshot platform/server metadata does not replace the local source id or execution identity.',
+    '',
+    'The observer reports current server descriptor content under the approved metadata before ordinary calls, approval decisions and approved continuations. Binding, endpoint, capturedAt, policy and server identity are pinned: a fresh capture timestamp requires re-approval. Agent does not independently verify the host observer. Observers may overlap and run outside observation locks; they must not recursively invoke source tools. A changed, malformed or failed observation latches refusal for the source within the run; an older overlapping observation cannot clear it.',
+    '',
+    'Absent descriptorSnapshot explicitly selects legacy list-pin behavior with toolListDigest/ToolListDigest and currentDigest/CurrentDigest. Snapshot mode cannot also supply the legacy observer; malformed supplied snapshots never fall back. Migrate through a newly person-approved snapshot declaration, and re-supply its observer on resume. Historical checkpoint and event bytes stay unchanged; this change adds no persisted record member. See ADR-0006 and contract/vectors/tool-offer/descriptor-snapshot.json.'
   )
 }
 
@@ -622,6 +633,7 @@ async function criticPage(page) {
 async function eventsPage(page) {
   const root = page.schema('run-event.json')
   const kinds = root.properties.type.enum
+  const matrix = eventMatrix(repo, kinds)
   if (!Array.isArray(root.oneOf) || root.oneOf.length !== kinds.length) throw new Error('events.md: run-event.json oneOf and the type enum differ in length')
   const rows = []
   const sections = []
@@ -654,6 +666,11 @@ async function eventsPage(page) {
     `## The ${kinds.length} kinds`,
     '',
     table(['Kind', 'Defined in', 'Required beyond type'], rows),
+    '## Emitters and package consumers',
+    '',
+    'Source-derived publication/construction sites and explicit event discriminant reads in production package code. TypeScript follows compiler-resolved event arguments, yields, local bindings and returned factories; Go parses event constructors, event-return paths and the JSON-backed event factories. Tests, fixtures, examples, generated declarations and framework message parts do not establish emission. Every schema kind must have an emitter in both languages.',
+    'Consumer entries identify explicit kind reads, not delivery guarantees. Generic event forwarding and storage apply to all kinds and are not repeated in every row. Checkpoint/controller and run-report readers appear only for kinds they inspect; reports also project checkpoint facts and do not consume every kind individually.',
+    table(['Kind', 'TypeScript emitters', 'Go emitters', 'TypeScript consumers', 'Go consumers'], kinds.map(kind => [code(kind), locations(matrix.TypeScript.emits, kind), locations(matrix.Go.emits, kind), locations(matrix.TypeScript.reads, kind), locations(matrix.Go.reads, kind)])),
     '## Every kind with its members',
     '',
     ...sections
@@ -763,6 +780,9 @@ async function reasonsPage(page) {
 async function checkpointPage(page) {
   page.add(
     seeAlso('events.md', 'budget.md', 'delegation.md', 'skills.md', 'reasons.md'),
+    'The recorded projection APIs and omissions are described in [run-report.md](run-report.md).',
+    'Active steps close with complete_plan_step and current planRevision, using acknowledged same-run evidence or not-needed with a reason. update_plan carries unchanged terminal rows. Accepted origin, bounded departures and purpose-specific drift decisions survive resume. The complete_plan_step tool name is reserved; hosts must rename conflicting tools.',
+    'Task steps use package-issued execution-scoped ids. update_plan retains ids explicitly; an omitted id means a new step. planState.revision is the canonical ordered task-content digest, while sequence orders the newest 32 bounded history entries. Storage compare-and-set revisions remain opaque host tokens. See docs/design/task-plan.md for migration and deterministic diff ordering.',
     page.rootOf('checkpoint.json', '## The checkpoint')
   )
   for (const name of Object.keys(page.schema('checkpoint.json').$defs)) {
@@ -806,6 +826,9 @@ async function memoryPage(page) {
 async function corpusPage(page) {
  page.add('ADR-0022 records a run only after the output guard redacts the complete entry. Replay answers from the recording and compares decisions and outcomes, never model prose or a live provider.',page.rootOf('corpus-entry.json','## Entry manifest'),page.nodeOf('run-event.json','recorded'),page.nodeOf('run-event.json','guardrail'))
 }
+// This API narrative is maintained by hand; its schema-derived checkpoint fields live in checkpoint.md.
+const HAND_AUTHORED_PAGES = new Set(['run-report.md'])
+
 const PAGES = [
  ['records.md','Records',recordsPage],
  ['corpus.md','The evaluation corpus',corpusPage],
@@ -886,7 +909,7 @@ async function main() {
       else if (readFileSync(path, 'utf8') !== text) problems.push(diff(file, readFileSync(path, 'utf8'), text))
     }
     if (existsSync(options.out)) {
-      for (const file of readdirSync(options.out)) if (file.endsWith('.md') && !pages.has(file)) problems.push(`${file} is in docs/reference but no source generates it`)
+      for (const file of readdirSync(options.out)) if (file.endsWith('.md') && !pages.has(file) && !HAND_AUTHORED_PAGES.has(file)) problems.push(`${file} is in docs/reference but no source generates it`)
     }
     if (problems.length) {
       console.error(problems.join('\n\n'))

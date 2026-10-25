@@ -136,7 +136,18 @@ type pauseRun struct {
 
 // pausePlay is one run of the scenario on one capability: the turns, fresh host tools, the input,
 // and whether to break the run off once the call's result was written and acknowledged.
-type pausePlay func(ctx context.Context, turns []sourcesTurn, tools []runcontext.HostTool, input *runcontext.Input) (*pauseRun, error)
+type pausePlay func(ctx context.Context, turns []sourcesTurn, tools []runcontext.HostTool, input *runcontext.Input, stop func()) (*pauseRun, error)
+
+// Stop after the host observes the acknowledged result event, as the TS scenario does.
+// Cancelling inside the save callback instead tests cancellation before response release.
+func pauseEmitter(emit func(contract.RunEvent), stop func()) func(contract.RunEvent) {
+	return func(event contract.RunEvent) {
+		emit(event)
+		if held := event.ExecutionCheckpoint; stop != nil && held != nil && held.Durable != nil && *held.Durable && held.Checkpoint.Approval != nil && held.Checkpoint.Approval.State == "executed" {
+			stop()
+		}
+	}
+}
 
 // paused is what scenario 8 left on one capability.
 type paused struct {
@@ -202,7 +213,7 @@ func approvalScenario(ctx context.Context, play pausePlay, choreograph bool) (*p
 	request := func() *runcontext.Input { return requestInput(out.file.Request) }
 	tools := func() []runcontext.HostTool { return pauseTools(out.sources, out.file.Asked.Tool, out.server) }
 	var err error
-	if out.pausing, err = play(ctx, out.file.Pausing, tools(), request()); err != nil {
+	if out.pausing, err = play(ctx, out.file.Pausing, tools(), request(), nil); err != nil {
 		return nil, err
 	}
 	out.server.choreograph = false
@@ -230,7 +241,7 @@ func approvalScenario(ctx context.Context, play pausePlay, choreograph bool) (*p
 		input.Execution = execution
 		input.Approval = decision
 		input.Checkpoint = save
-		return play(ctx, out.file.Continued, tools(), input)
+		return play(ctx, out.file.Continued, tools(), input, nil)
 	}
 	if out.wrong, err = continued(&contract.CheckpointApprovalDecision{CallID: out.file.WrongCallID, Approved: true}, out.saved, nil); err != nil {
 		return nil, err
@@ -262,8 +273,6 @@ func approvalScenario(ctx context.Context, play pausePlay, choreograph bool) (*p
 		if approval == "executed" {
 			held := state
 			written = &held
-			stopped.Store(true)
-			cancel()
 		}
 		return nil
 	}
@@ -275,7 +284,7 @@ func approvalScenario(ctx context.Context, play pausePlay, choreograph bool) (*p
 	input.Execution = execution
 	input.Approval = &contract.CheckpointApprovalDecision{CallID: callID, Approved: true}
 	input.Checkpoint = save
-	if out.approved, err = play(breakOff, out.file.Continued, tools(), input); err != nil {
+	if out.approved, err = play(breakOff, out.file.Continued, tools(), input, func() { stopped.Store(true); cancel() }); err != nil {
 		return nil, err
 	}
 	out.server.mu.Lock()
@@ -505,7 +514,7 @@ func approvalPauseFindings(state *paused, prefix string, agent bool) []Finding {
 			requested = append(requested, event.ApprovalRequested)
 		}
 	}
-	if len(requested) != 1 || requested[0].Name != "tracker__create_issue" || requested[0].Tool != "create_issue" ||
+	if len(requested) != 1 || requested[0].Name == nil || *requested[0].Name != "tracker__create_issue" || requested[0].Tool == nil || *requested[0].Tool != "create_issue" ||
 		!sameJSON([]byte(comparisonJSON(requested[0].Source)), []byte(record)) || !sameJSON([]byte(comparisonJSON(requested[0].Args)), asked) {
 		f.fail("approval_requested was %s", comparisonJSON(requested))
 	} else {
@@ -761,7 +770,7 @@ func ApprovalPauseWith(with func(Adapter) Adapter) ScenarioCheck {
 			}
 			sent := 0
 			first := true
-			play := func(ctx context.Context, _ []sourcesTurn, tools []runcontext.HostTool, input *runcontext.Input) (*pauseRun, error) {
+			play := func(ctx context.Context, _ []sourcesTurn, tools []runcontext.HostTool, input *runcontext.Input, stop func()) (*pauseRun, error) {
 				// Each continued run is answered with the continuation's turns.
 				if !first {
 					if err := scenario.session.Advance(context.WithoutCancel(ctx)); err != nil {
@@ -769,7 +778,11 @@ func ApprovalPauseWith(with func(Adapter) Adapter) ScenarioCheck {
 					}
 				}
 				first = false
-				ran, err := scenario.runOn(ctx, adapter, &Run{Prompt: file.Request, AllowConversation: true, Interactive: true, HostTools: tools, Context: input,
+				bound := AdapterFunc(func(ctx context.Context, run *Run) error {
+					run.Emit = pauseEmitter(run.Emit, stop)
+					return adapter.Run(ctx, run)
+				})
+				ran, err := scenario.runOn(ctx, bound, &Run{Prompt: file.Request, AllowConversation: true, Interactive: true, HostTools: tools, Context: input,
 					Children: scenarioChildren(scenario)})
 				if err != nil {
 					return nil, err
@@ -862,11 +875,11 @@ func agentApprovalChecks(ctx context.Context, server *Server, host AgentHost, wi
 	// The host's capability to start a child, so the coordinator drives the response and counts its
 	// invocations; the scenario delegates nothing.
 	children := scenarioChildren(scenario)
-	play := func(ctx context.Context, turns []sourcesTurn, tools []runcontext.HostTool, input *runcontext.Input) (*pauseRun, error) {
+	play := func(ctx context.Context, turns []sourcesTurn, tools []runcontext.HostTool, input *runcontext.Input, stop func()) (*pauseRun, error) {
 		steps := sourcesSteps(turns)
 		watch := &monitor{}
 		run := &Run{ModelName: parentModel, Gate: scenario.gate.Calls(), Tools: scenario.offer.Tools, Prompt: file.Request, AllowConversation: true, Interactive: true,
-			HostTools: tools, Context: input, Emit: scenario.emit, Children: children,
+			HostTools: tools, Context: input, Emit: pauseEmitter(scenario.emit, stop), Children: children,
 			Agent: &adapter.Agent{Model: parentModel, Run: watch.wrap(host.Bind(func(adapter.AgentRequest, int) AgentPlay { return AgentPlay{Steps: steps} }))}}
 		seal := sealNetwork()
 		_ = runner.Run(ctx, run)

@@ -819,7 +819,7 @@ describe('the contract’s gate vectors', () => {
     // The boundary's own context tools, which it adds to a run after a phase's filter of the
     // session's host tools (contextualSession), in every phase but the critic's and the reformat run's:
     // the ledger's readers, read off a real ledger, and the execution's two tools.
-    const context = new Set([...new ContextLedger(CONTEXT_DEFAULTS).tools().map((tool) => tool.name), 'update_plan', 'request_budget_increase'])
+    const context = new Set([...new ContextLedger(CONTEXT_DEFAULTS).tools().map((tool) => tool.name), 'update_plan', 'complete_plan_step', 'request_budget_increase'])
     const offered = (phase: { phase: string; profile?: string; within?: string }): { tools: McpTool[]; hostTools: HostTool[] } => {
       switch (phase.phase) {
         case 'loop':

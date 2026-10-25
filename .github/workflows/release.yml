@@ -145,6 +145,10 @@ jobs:
           first="$(head -n 1 "${notes}" | sed -E 's/^#+ +//; s/ +$//')"
           [ "${first}" = "${RELEASE_TAG}" ] || { echo "${notes} must name ${RELEASE_TAG} on its first line (found: ${first})" >&2; exit 1; }
 
+      - name: Require matching host upgrade guidance
+        shell: bash
+        run: python3 scripts/check-upgrade-guides.py --tag "${RELEASE_TAG}"
+
       # GitHub creates a missing environment on first use, without protection.
       # Read the rule before anything is written so the publish gate cannot be
       # a bare name.

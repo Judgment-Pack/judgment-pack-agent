@@ -331,7 +331,7 @@ func Normalize(cause error, source string, now time.Time) contract.Failure {
 			if inner == nil {
 				continue
 			}
-			if found := classify(inner, depth+1); found.Code != "unknown" {
+			if found := classify(inner, depth+1); found.Code != "unknown" || found.Detail != nil {
 				return found
 			}
 		}

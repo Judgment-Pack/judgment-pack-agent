@@ -83,9 +83,8 @@ A host declares each external tool with `source` (`tool-offer.json#/$defs/source
 - `id`: the source's name as the host names it, a letter then letters, digits and hyphens, at most 24
   characters. It begins every wire name of the source's tools.
 - `version` or `toolListDigest` (`sha256:` and 64 hex digits), at least one; an `mcp` source carries
-  `toolListDigest`, the digest of the tool list the person approved, pinned when the host connected
-  the server (`$defs/toolListDigest`: the canonical JSON of `{name, description, inputSchema}` per
-  tool, ordered by name).
+  `toolListDigest`, the approved full Gateway descriptor-snapshot byte digest in snapshot mode, or
+  the explicitly legacy tool-list digest for a digest-only declaration (agent#168, below).
 - `trust`: `first-party`, `connected`, `public` or `person`. Reported, never a grant.
 - On the offer and the events the package adds `tool`, the tool's own name at its source; on a
   `tool_result` it adds `receipt` where the host's answer gave one (`McpToolResult.receipt`, a gateway
@@ -153,12 +152,47 @@ holds a string over 64 bytes or a line break, or an `enum` that is no list, is d
 such drop earns a `guardrail` naming where, at the start of the run, since the host still validates
 what it executes. A branch deeper than sixteen levels is offered empty. A schema `load_tool` loads is
 treated the same, its descriptions cut and unframed, for it rides inside a block framed as a whole.
-Its results are framed the same way whatever its effect class. An MCP source's declared tools must hash to the pinned digest,
-or none of its tools is offered (one guardrail names the source). Before each call of an MCP
-source's tool the host's `source.currentDigest()`, where it gives one, is asked for the digest of
-the list the server serves now; a different digest refuses that call and every later call of the
-source in the run, before the host's `execute`, with a guardrail. Only a new declaration with the new
-digest, which the person's re-approval gives the host, lifts it.
+Its results are framed the same way whatever its effect class.
+
+**Gateway snapshot pins (agent#168).** New MCP registrations supply the approved canonical UTF-8
+snapshot bytes as `source.descriptorSnapshot` (Go `DescriptorSnapshot`), their full SHA-256 as
+`toolListDigest`, and a required `currentDescriptorSnapshot()` (Go `CurrentDescriptorSnapshot`).
+The reader matches [Gateway's snapshot reader at 17168fc](https://github.com/Judgment-Pack/judgment-pack-gateway/blob/17168fc11cac3a9f4947564dfb65b2f239827681/go/descriptors.go)
+and SPEC §1.1: exact canonical bytes, Unicode code-point key ordering, strict UTF-8, no solitary
+surrogate, duplicate key, fractional/exponent numeric spelling or trailing text, and at most
+327680 bytes. This canonical form is separate from Agent record canonicalization. Both readers
+pin Unicode 15.0.0 platform-name graphic ranges. `inputSchemaText` is opaque original JSON text
+inside a string: whitespace and number spellings inside it remain in the pin. Its offering
+projection is parsed separately with strict JSON, an object root and finite decoded numbers.
+
+A declaration may expose only a host-authorized subset of the snapshot's captured tool names.
+A wrong digest or any uncaptured name withholds that source whole; a malformed snapshot or mixed
+same-source pin modes is a named configuration refusal, with no legacy fallback. This is stricter
+than Gateway bindings that may allow tools whose descriptors all fell back. Descriptions and
+schemas offered to the model come from captured candidates: absent description is empty; absent
+schema projects an open object. The original host schema remains an independent argument check
+for the subset the package understands, and the original host executor retains validation of the
+rest. Effect class, approval policy, connection identity and external authorization still apply.
+The local source id and execution identity are distinct from snapshot platform/server metadata.
+
+Admission copies the approved bytes and captures the observer. Each ordinary call, approval
+decision and approved continuation checks the observer's current full snapshot bytes under the
+approved metadata. Binding, endpoint, capture time, policy and server identity are all pinned;
+recapturing with a fresh `capturedAt` requires a newly approved registration even if tools did not
+change. The host must observe current server descriptors; Agent neither connects to that server
+nor independently verifies the host's observation. Callbacks may overlap, run outside the
+package's observation locks, and must observe without invoking source tools recursively. A
+changed, malformed or failed observation latches refusal for every tool of that snapshot source
+in the run, before execution. An older overlapping observation cannot clear the latch. The
+changed-source guardrail and failure remain bounded and carry no observer-supplied error text.
+
+**Legacy pins and migration.** A declaration without `descriptorSnapshot` remains explicitly the
+legacy tool-list mode, retaining `toolListDigest`/`ToolListDigest` and optional `currentDigest`/
+`CurrentDigest` behavior. New snapshot mode cannot also declare the legacy observer. Migrate by
+obtaining the person's approval for a new snapshot declaration; re-supply that declaration and
+its observer when resuming a run. Existing checkpoint and event bytes are read unchanged; no
+historical digest or record is rewritten. No new checkpoint/event member or record version is
+introduced by this amendment.
 
 ### 5. The schema budget and catalogue-then-load
 

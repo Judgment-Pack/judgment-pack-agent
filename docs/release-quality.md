@@ -1,5 +1,30 @@
 # Live release answer comparison
 
+## v0.10.0 scope decision
+
+For v0.10.0 only, the maintainer deferred the live comparison on 2026-10-24 to
+an application-level comparison in the Desk lane. [Issue #169](https://github.com/Judgment-Pack/judgment-pack-agent/issues/169)
+remains open for the handoff and outstanding evidence; Desk acceptance and scheduling
+are pending. Further Codex CLI replay work in this Agent release is paused.
+
+The v0.10.0 release review and notes must state that **live answer quality was not
+evaluated**. No completed live baseline/candidate comparison or attributable replay
+cost is available. Offline tests and CLI feasibility diagnostics do not satisfy the
+live comparison. All deterministic checks, dependency dispositions, independent
+reviews and protected release requirements remain in force. This decision does not
+waive the live prerequisite for later Agent releases.
+
+A future Desk comparison must exercise the actual baseline and candidate application
+harnesses with identical fixed inputs, explicitly selected model and effort, recorded
+source/build identities, enforceable limits, final answers, provider-reported usage
+and a maintainer answer-change decision. If it uses supported Codex CLI sign-in,
+Codex manages authentication; session credentials must not be extracted or repurposed.
+Subscription monetary cost is unavailable without attributable billing evidence.
+The API runner described below retains its existing validation requirements; it does
+not implement a Codex CLI transport or accept missing API cost evidence.
+
+## API runner and general release requirement
+
 Issue #169 adds a release-review tool separate from ADR-0022's deterministic offline
 replay. It compares public final answer text from two real release builds through the
 Vercel engine, using the same explicitly named OpenAI-compatible model and a fixed

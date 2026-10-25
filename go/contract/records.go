@@ -235,6 +235,12 @@ func recordDecodeBytes(kind string, data []byte) ([]byte, error) {
 	return normalized, nil
 }
 func checkRecord(kind string, data []byte, normalized *[]byte) error {
+	return checkRecordDepth(kind, data, normalized, 0)
+}
+func checkRecordDepth(kind string, data []byte, normalized *[]byte, recordDepth int) error {
+	if recordDepth > 4 {
+		return errRecord
+	}
 	if kind == "checkpoint" && len(data) > 4*1024*1024 {
 		return errRecord
 	}
@@ -263,18 +269,18 @@ func checkRecord(kind string, data []byte, normalized *[]byte) error {
 	}
 	work := 0
 	replacements := map[string]string{}
-	var walk func(map[string]any, string, map[string]any, any, string, int) error
+	var walk func(map[string]any, string, map[string]any, any, string, int, int) error
 	pointer := func(path, key string) string {
 		return path + "/" + strings.ReplaceAll(strings.ReplaceAll(key, "~", "~0"), "/", "~1")
 	}
-	walk = func(graph map[string]any, file string, s map[string]any, v any, path string, depth int) error {
+	walk = func(graph map[string]any, file string, s map[string]any, v any, path string, depth, recordDepth int) error {
 		work++
 		if work > 200000 || depth > 64 {
 			return errRecord
 		}
 		if s["$ref"] == "checkpoint.json" && path != "" {
 			raw, _ := json.Marshal(v)
-			if len(raw) > 4*1024*1024 {
+			if recordDepth >= 4 || len(raw) > 4*1024*1024 {
 				return errRecord
 			}
 			version, err := recordVersion("checkpoint", v)
@@ -287,9 +293,10 @@ func checkRecord(kind string, data []byte, normalized *[]byte) error {
 			}
 			nested := recordShapes[generation]
 			// A nested record keeps its own traversal budget, as the TypeScript root reader does.
+			// The separate record depth remains bounded across those fresh budgets.
 			outerWork := work
 			work = 0
-			err = walk(nested, "checkpoint.json", shapeObject(nested["checkpoint.json"]), v, path, 0)
+			err = walk(nested, "checkpoint.json", shapeObject(nested["checkpoint.json"]), v, path, 0, recordDepth+1)
 			work = outerWork
 			return err
 		}
@@ -303,6 +310,29 @@ func checkRecord(kind string, data []byte, normalized *[]byte) error {
 		if _, numeric := v.(json.Number); numeric && integerShape(s) {
 			if !safeRecordInteger(v) {
 				return errRecord
+			}
+			if kind == "event" {
+				if obj, ok := value.(map[string]any); ok && obj["type"] == "approval_requested" {
+					if obj["purpose"] == "plan-drift" {
+						if _, ok := obj["plan"].(map[string]any); !ok {
+							return errRecord
+						}
+						for _, key := range []string{"name", "tool", "source", "args"} {
+							if _, ok := obj[key]; ok {
+								return errRecord
+							}
+						}
+					} else {
+						if _, ok := obj["plan"]; ok {
+							return errRecord
+						}
+						for _, key := range []string{"name", "tool", "source", "args"} {
+							if _, ok := obj[key]; !ok {
+								return errRecord
+							}
+						}
+					}
+				}
 			}
 			if normalized != nil {
 				f, _ := v.(json.Number).Float64()
@@ -332,7 +362,7 @@ func checkRecord(kind string, data []byte, normalized *[]byte) error {
 				if !shapeMatches(graph, file, shapeObject(b), v) {
 					continue
 				}
-				e := walk(graph, file, shapeObject(b), v, path, depth+1)
+				e := walk(graph, file, shapeObject(b), v, path, depth+1, recordDepth)
 				if e == nil {
 					return nil
 				}
@@ -352,7 +382,7 @@ func checkRecord(kind string, data []byte, normalized *[]byte) error {
 		if list, ok := v.([]any); ok {
 			if child := shapeObject(s["items"]); child != nil {
 				for i, x := range list {
-					if e := walk(graph, file, child, x, pointer(path, fmt.Sprint(i)), depth+1); e != nil {
+					if e := walk(graph, file, child, x, pointer(path, fmt.Sprint(i)), depth+1, recordDepth); e != nil {
 						return e
 					}
 				}
@@ -407,13 +437,13 @@ func checkRecord(kind string, data []byte, normalized *[]byte) error {
 				}
 			}
 			if found {
-				if e := walk(graph, child.file, child.shape, obj[key], pointer(path, key), depth+1); e != nil {
+				if e := walk(graph, child.file, child.shape, obj[key], pointer(path, key), depth+1, recordDepth); e != nil {
 					return e
 				}
 				continue
 			}
 			if mapped != nil {
-				if e := walk(graph, file, mapped, obj[key], pointer(path, key), depth+1); e != nil {
+				if e := walk(graph, file, mapped, obj[key], pointer(path, key), depth+1, recordDepth); e != nil {
 					return e
 				}
 				continue
@@ -422,8 +452,31 @@ func checkRecord(kind string, data []byte, normalized *[]byte) error {
 		}
 		return nil
 	}
-	if err := walk(graph, file, shapeObject(graph[file]), value, "", 0); err != nil {
+	if err := walk(graph, file, shapeObject(graph[file]), value, "", 0, recordDepth); err != nil {
 		return err
+	}
+	if kind == "event" {
+		if obj, ok := value.(map[string]any); ok && obj["type"] == "approval_requested" {
+			if obj["purpose"] == "plan-drift" {
+				if _, ok := obj["plan"].(map[string]any); !ok {
+					return errRecord
+				}
+				for _, key := range []string{"name", "tool", "source", "args"} {
+					if _, ok := obj[key]; ok {
+						return errRecord
+					}
+				}
+			} else {
+				if _, ok := obj["plan"]; ok {
+					return errRecord
+				}
+				for _, key := range []string{"name", "tool", "source", "args"} {
+					if _, ok := obj[key]; !ok {
+						return errRecord
+					}
+				}
+			}
+		}
 	}
 	if normalized != nil {
 		out, err := patchRecordIntegers(data, replacements)

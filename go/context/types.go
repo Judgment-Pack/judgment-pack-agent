@@ -167,6 +167,9 @@ func (r ToolResult) Clone() ToolResult {
 // HostTool is a host tool's declaration and its implementation (HostTool in engine.ts). Effect,
 // Interaction and Delegation are "" where the host declares none.
 type HostTool struct {
+	// Artifacts authenticates artifact observations from an actual host result, never narration.
+	Artifacts func(ToolResult, json.RawMessage) []ArtifactObservation
+
 	Name          string
 	Description   string
 	InputSchema   json.RawMessage
@@ -310,6 +313,12 @@ type SteerInput struct {
 // host names it (host.ts's AITarget, a string here). DelegationReuse (agent#17) is false where
 // this response's delegated tasks reuse no earlier result of the chat.
 type Input struct {
+	checkpointProfile bool
+	checkpointRunID   string
+	RunStore          *DurableRunInput
+	// Persistence is inherited only by the trusted coordinator, never decoded from a checkpoint.
+	Persistence *RunBinding
+
 	// RequestCap is a fixed API request reservation, 1..20; nil preserves ordinary grants.
 	RequestCap        *int
 	AcceptedDocuments []AcceptedDocument
@@ -321,6 +330,8 @@ type Input struct {
 	CurrentRequest    *CurrentRequest
 	Phase             string
 	Plan              *Value
+	PlanResolver      *PlanResolver
+	PlanDrift         []string
 	Configuration     *Configuration
 	Documents         []Document
 	Chat              ChatScope
@@ -329,8 +340,10 @@ type Input struct {
 	Objective         string
 	Link              ExecutionLink
 	Connection        string
-	DelegationReuse   *bool
-	Compactor         func(ctx context.Context, request CompactorRequest) (string, error)
+	// ConnectionRevisions binds durable provider continuation to current host connection metadata.
+	ConnectionRevisions map[string]string
+	DelegationReuse     *bool
+	Compactor           func(ctx context.Context, request CompactorRequest) (string, error)
 	// Approval is the person's decision on the act call a paused Execution waits for (ADR-0008;
 	// checkpoint.json#/$defs/approvalDecision), the continuation input beside a request grant. A
 	// decision for any other call is refused before anything runs (stale-state).

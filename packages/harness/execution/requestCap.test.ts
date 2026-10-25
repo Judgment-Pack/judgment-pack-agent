@@ -1,5 +1,7 @@
 import {describe,it,expect,vi} from 'vitest'
 import {contextualSession} from '../context/session'
+import {managedContext,contextOf} from '../context/managed'
+import {withDelegation} from '../delegation'
 import type {AssistantSession} from '../engine'
 import {normalize} from '../thinking'
 import {canExtendInterruptedExecution,extendExecution,readExecution,ExecutionPaused,type ExecutionCheckpoint} from './state'
@@ -92,4 +94,13 @@ describe('fixed request caps',()=>{
   await expect(opened.session.values.model.call('chat/completions',{body:'{}'})).rejects.toBeInstanceOf(ExecutionPaused)
   expect(input.model.call).toHaveBeenCalledTimes(1)
  })
+})
+
+for(const delegated of [false,true])it(`captures host cap when the public ${delegated?'delegation':'managed'} iterator is created`,async()=>{
+ const input=cappedSession(1),captured:number[]=[]
+ const engine={id:'vercel' as const,start:(given:AssistantSession)=>managedContext(given,async function*(ready){captured.push(contextOf(ready).execution.state.requestCap!);yield {type:'end'}})}
+ const output=delegated?withDelegation(engine).start(input):engine.start(input)
+ input.context!.requestCap=20
+ const events=[];for await(const event of output)events.push(event)
+ expect(events.filter(event=>event.type==='error')).toEqual([]);expect(captured).toEqual([1])
 })

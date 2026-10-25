@@ -70,7 +70,8 @@ describe('shared execution continuity',()=>{
   const input=base();input.context={...input.context,phase:'plan'}
   const {session,context}=await contextualSession(input)
   const tool=session.values.hostTools.find(t=>t.name==='update_plan')!
-  await tool.execute({explanation:'Prepare review',plan:[{step:'Inspect',status:'completed'}],limit:999},input.signal)
+  await expect(tool.execute({explanation:'Prepare review',plan:[{step:'Inspect',status:'in_progress'}],limit:999},input.signal)).rejects.toThrow()
+  await tool.execute({explanation:'Prepare review',plan:[{step:'Inspect',status:'in_progress'}]},input.signal)
   expect(context.execution.state.limit).toBe(20)
   await expect(session.callTool('save_pack',{})).rejects.toThrow(/Plan mode/)
   await expect(tool.execute({explanation:'',plan:[{step:'a',status:'in_progress'},{step:'b',status:'in_progress'}]},input.signal)).rejects.toThrow(/at most one/)
