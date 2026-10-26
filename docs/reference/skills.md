@@ -5,6 +5,7 @@
 Schemas:
 
 - `contract/schemas/skill.json`
+- `contract/schemas/admitted-skill-v1.json`
 - `contract/schemas/tool-offer.json`
 - `contract/schemas/tool-taxonomy.json`
 - `contract/schemas/provenance.json`
@@ -39,6 +40,30 @@ Closed: a member the schema does not name is refused.
 | `digest` |  | `$defs/digest` | On admission: the digest of the bundle as declared ($defs/digest), which is the pinned one. The skill_loaded event and the checkpoint's loaded set carry it. |
 | `kind` |  | enum `method`, `knowledge`, `procedure`, `review` | Optional author/host classification, untrusted and digest-bound. Absent is unclassified. |
 | `tags` |  | array of string (max length 32) (max items 8) | Optional untrusted search tags, never authority; part of the pin. |
+
+## Current admitted result
+
+Current in-process admission result: the declared skill, its approved bundle digest, computed dependency capability profile, and optional measured bytes. The schema name versions this result; it introduces no version member into declarations. Legacy skill.json remains closed and unchanged. Profile is derived from admitted tool taxonomy and grants no authority.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `id` | yes | `skill.json properties/id` |  |
+| `name` | yes | `skill.json properties/name` |  |
+| `description` | yes | `skill.json properties/description` |  |
+| `source` | yes | `skill.json properties/source` |  |
+| `instructions` | yes | `skill.json properties/instructions` |  |
+| `tools` |  | `skill.json properties/tools` |  |
+| `resources` |  | `skill.json properties/resources` |  |
+| `pinnedDigest` | yes | `skill.json properties/pinnedDigest` |  |
+| `digest` | yes | `skill.json properties/digest` |  |
+| `kind` |  | `skill.json properties/kind` |  |
+| `tags` |  | `skill.json properties/tags` |  |
+| `profile` | yes | `tool-taxonomy.json $defs/profile` |  |
+| `bytes` |  | `skill.json $defs/bytes` |  |
+
+The host declaration retains the closed skill.json shape. Current admission results add the computed profile and optional measured bytes under admitted-skill-v1.json. The schema name versions this in-process result; declarations gain no version field. Historical admitted values remain readable under skill.json.
 
 ### `skill.json $defs/name`
 
