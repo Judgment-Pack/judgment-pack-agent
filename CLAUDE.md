@@ -62,8 +62,21 @@ summary block, and anything you stopped on or chose not to do.
 
 ## This repository
 
-- The checks are `dev.json`, run by `scripts/dev/check.sh`; CI runs the same list. Edit `dev.json`
-  when a check is added, not the workflow.
+- The checks are `dev.json`, run by `scripts/dev/check.sh`; CI runs the same list (scoped on a pull
+  request, see below). Edit `dev.json` when a check is added, not the workflow.
+- A pull request's `check` job runs `scripts/dev/check.sh --all --changed origin/<base>`: only the
+  steps that `jpdev.json` maps its changed paths to, and the whole list when a changed path matches
+  no rule (the workflows, `.gitignore`, `.gitattributes`, the root `package.json` and
+  `package-lock.json`, a file in a new place) or when `jpdev.json`, `dev.json` or the runner
+  changed. A push to `main` and the release's call run the whole list, and only that run is what a
+  release is held to; the `contract` job keeps its fixed `--only` list. Run the same selection
+  locally with `scripts/dev/check.sh --changed origin/main` (or `jpdev check --changed`). The rules
+  follow what each step reads, not its name: the Go certification steps (`go-test`, `go-race`,
+  `harness-check`) start the TypeScript scripted server, so a harness change selects them; the
+  generated reference reads the Go sources and `packages/harness/dist`, so a Go change selects
+  `reference` and `unit-tests`, and every rule with `reference`, `unit-tests`, `packed-smoke` or
+  `release-quality-engine` also selects `build`. A new step, a new input of a step or a file in a
+  new place is mapped in `jpdev.json`; when unsure, map it broader.
 - `scripts/parity.sh` needs the Desk checkout at the commit it pins (`desk_pin`); set `JPDEV_DESK`
   to it. After an intended change to a moved file, put the digest the failure prints in that file's row.
 - The full mutation table runs on every push to `main` and the release job requires it green on the
