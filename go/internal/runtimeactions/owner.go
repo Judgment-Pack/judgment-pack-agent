@@ -281,7 +281,7 @@ func Prepare(ctx context.Context, key any, name string, args, admission json.Raw
 	if err != nil {
 		return nil, err
 	}
-	binding := Binding{owner, digest(preimage)}
+	binding := Binding{Owner: owner, AdmissionDigest: digest(preimage)}
 	if restored != nil && !same(binding, *restored) {
 		return nil, ErrStale
 	}

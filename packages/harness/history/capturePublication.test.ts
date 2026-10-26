@@ -1,5 +1,7 @@
 import {expect,it,vi} from 'vitest'
-import vectors from '../../../contract/fixtures/history/capture.json'
+import {vercel} from '../engines/vercel'
+import {answerWith} from '../testing/scenarioDriver'
+import type {AssistantSession} from '../engine'
 import taskIdentity from '../../../contract/fixtures/history/task-identity.json'
 import repeatRecords from '../../../contract/testdata/repeat-tools/records.json'
 import {MemoryRunStore} from '../storage/run'
@@ -7,23 +9,36 @@ import {StorageConflict} from '../storage/common'
 import type {HistoryRunStore} from '../storage/history'
 import {CaptureCollector,sealedCapture,type CaptureAdmission,type CaptureSeal} from './captureCollector'
 import {prepareCapturePublication,commitCapturePublication,readCapturedCorpus,readArchiveCapturedCorpus,readCapturedCorpusView,readArchiveCapturedCorpusView,ReplayUnavailable} from './capture'
-import {historyBytesDigest,historyJSONBytes,historyObject,readCanonicalHistoryJSON,HISTORY_TOTAL_BYTES,HISTORY_OBJECT_BYTES} from './codec'
+import {historyBytesDigest,historyJSONBytes,historyObject,readCanonicalHistoryJSON,HISTORY_OBJECT_BYTES} from './codec'
 import {readRetainedRunHistory} from './view'
 import {readRunArchive,exportRunArchive} from './archive'
 import type {CorpusManifest} from '../corpus'
 import {readExecution} from '../execution/state'
 import {readCorpusCheckpointView} from './corpusCheckpointView'
-const originalObjects=()=>new Map(Object.entries(vectors.source.objects).map(([digest,body])=>[digest,new Uint8Array(Buffer.from(body,'base64'))]))
-function manifest():CorpusManifest{const objects=originalObjects(),file=vectors.capture.files.find(f=>f.name==='manifest.json')!,m=readCanonicalHistoryJSON(objects.get(file.manifest.digest)!) as {parts:{digest:string}[]};return readCanonicalHistoryJSON(new Uint8Array(m.parts.flatMap(p=>Array.from(objects.get(p.digest)!))),HISTORY_TOTAL_BYTES) as unknown as CorpusManifest}
+function manifest():CorpusManifest{return {id:'publication-controls',packageVersion:'0.11.0',policy:{},files:{requests:'requests.json',toolResults:'tool-results.json',events:'events.json',checkpoint:'checkpoint.json'},expected:{file:'expected.json'},tolerance:[]}}
+const originalMaterial=new WeakMap<HistoryRunStore,ReturnType<typeof sealedCapture>>()
 async function fixture(){
- const store=new MemoryRunStore(),objects=originalObjects();await store.stageHistoryObjects({kind:'run',id:'r'},await Promise.all([...objects.values()].map(historyObject)))
- for(const c of vectors.source.commits){const prior=await store.load('r');await store.commitHistory({run:{runId:'r',expectedRevision:prior?.revision??null,commitId:c.commitId,checkpoint:objects.get(c.checkpoint!.digest)!,events:c.events.map(ref=>objects.get(ref.digest)!)},observations:c.observations})}
- return store
+ // Exercise the original writer and keep its actual acknowledged admissions. These HTTP
+ // publication controls require no native source evidence and never retrofit historical bytes.
+ const source=new MemoryRunStore(),originalSeal=CaptureCollector.prototype.seal;let material:ReturnType<typeof sealedCapture>|undefined,calls=0
+ const spy=vi.spyOn(CaptureCollector.prototype,'seal').mockImplementation(function(this:CaptureCollector,...args:Parameters<CaptureCollector['seal']>){const result=originalSeal.apply(this,args);material=sealedCapture(result);return result})
+ const input:AssistantSession={prompt:'Read.',testPrompt:'',allowConversation:true,critic:'off',tools:[],hostTools:[],callTool:vi.fn(),signal:new AbortController().signal,record:true,corpus:{manifest:manifest(),guard:{value:<T>(v:T)=>v},sink:{write:vi.fn()}},context:{runStore:{store:source,id:'r'}},model:{family:'openai-compatible',model:'fixture',call:async()=>{calls++;return answerWith({say:'Done.'},'stream',0)}}}
+ const observed=[];try{for await(const event of vercel.start(input)){observed.push(event);expect(event.type).not.toBe('error')}}finally{spy.mockRestore()}
+ expect(observed.some(event=>event.type==='recorded'),JSON.stringify(observed.filter(event=>event.type==='guardrail'))).toBe(true)
+ expect(calls).toBe(1);expect(material?.rows).toHaveLength(1)
+ const retained=await readRetainedRunHistory(source,'r'),store=new MemoryRunStore(),objects=new Map<string,Uint8Array>()
+ // Copy only original transaction objects, leaving metadata unpublished for the controls.
+ const read=(ref:{digest:string;bytes:number})=>{const bytes=retained.readObject(ref);objects.set(ref.digest,bytes);return bytes}
+ for(const commit of retained.commits){if(commit.checkpoint)read(commit.checkpoint);for(const ref of [...commit.events,...commit.observations]){const raw=read(ref);if(commit.observations.includes(ref)){const row=readCanonicalHistoryJSON(raw) as any;if(row.kind==='request'){const chunks=readCanonicalHistoryJSON(read(row.request)) as any;for(const part of chunks.parts)read(part)}else if(row.kind==='original'||row.kind==='compaction'){const chunks=readCanonicalHistoryJSON(read(row.value??row.replacement)) as any;for(const part of chunks.parts)read(part)}}}}
+ await store.stageHistoryObjects({kind:'run',id:'r'},await Promise.all([...objects.values()].map(historyObject)))
+ for(const commit of retained.commits){const prior=await store.load('r');await store.commitHistory({run:{runId:'r',expectedRevision:prior?.revision??null,commitId:commit.commitId,checkpoint:commit.checkpoint?read(commit.checkpoint):null,events:commit.events.map(read)},observations:commit.observations})}
+ const copied=await readRetainedRunHistory(store,'r');for(const {admission} of material!.rows){const commit=copied.commits[admission.sequence-1]!;expect(commit.commitId).toBe(admission.commitId);expect(commit.observations[admission.ordinal]).toEqual(admission.expectation);const checkpoint=readExecution(readCanonicalHistoryJSON(copied.readObject(commit.checkpoint!),HISTORY_OBJECT_BYTES,'finite'))!;expect(checkpoint.durable!.dispatches.find(row=>row.id===admission.identity.dispatchId)?.request).toBe(admission.request)}
+ originalMaterial.set(store,material!);return store
 }
 function seal(store:HistoryRunStore,head:Awaited<ReturnType<HistoryRunStore['readHistoryHead']>>,change?:(a:CaptureAdmission[],frames:unknown[])=>void,bind=true):CaptureSeal{
- const owner={},collector=new CaptureCollector(owner,'r',vectors.root);if(bind)collector.bindPublisher(owner,store)
- const admissions=structuredClone(vectors.admissions) as CaptureAdmission[],frames=structuredClone(vectors.frames) as unknown[];change?.(admissions,frames);const tokens=admissions.map(a=>collector.admit(owner,a))
- for(const i of [1,0]){collector.record(owner,tokens[i]!,frames[i]);collector.acknowledge(owner,tokens[i]!)}
+ const owner={},collector=new CaptureCollector(owner,'r',{execution:'r',role:'author'});if(bind)collector.bindPublisher(owner,store)
+ const material=originalMaterial.get(store)!;const admissions=material.rows.map(row=>structuredClone(row.admission)),frames=material.rows.map(row=>structuredClone(row.frame));change?.(admissions,frames);const tokens=admissions.map(a=>collector.admit(owner,a))
+ for(const i of [...tokens.keys()].reverse()){collector.record(owner,tokens[i]!,frames[i]);collector.acknowledge(owner,tokens[i]!)}
  return collector.seal(owner,collector.rootToken(owner),{runId:'r',executionRevision:head!.executionRevision,checkpoint:head!.checkpoint!,status:'complete'})
 }
 const options=()=>({commitId:'capture-publication',manifest:manifest()})
@@ -31,9 +46,9 @@ it('publishes only metadata from an opaque store-bound seal and round-trips actu
  const store=await fixture(),before=await store.load('r'),head=(await store.readHistoryHead('r'))!,prepared=await prepareCapturePublication(store,seal(store,head),options())
  expect((await store.readHistoryHead('r'))!.metadata).toBeUndefined();expect(await store.load('r')).toEqual(before)
  const result=await commitCapturePublication(store,prepared);expect(result.capture).toBe('committed');expect(result.delivery).toBe('not-requested');expect(await store.load('r')).toEqual(before);expect((await store.readHistoryHead('r'))!.metadata!.count).toBe(1)
- const entry=readCapturedCorpus(await readRetainedRunHistory(store,'r'));expect(entry.requests).toEqual(vectors.frames)
+ const entry=readCapturedCorpus(await readRetainedRunHistory(store,'r'));expect(entry.requests).toEqual(originalMaterial.get(store)!.rows.map(row=>row.frame))
  const again=await commitCapturePublication(store,prepared);expect(again).toEqual(result);expect((await store.readHistoryHead('r'))!.metadata!.count).toBe(1)
- const exported=await exportRunArchive(store,'r'),archive=readRunArchive(exported.bytes,exported.digest);expect(Array.from(archive.canonicalBytes())).toEqual(Array.from(exported.bytes));expect(readArchiveCapturedCorpus(archive).requests).toEqual(vectors.frames)
+ const exported=await exportRunArchive(store,'r'),archive=readRunArchive(exported.bytes,exported.digest);expect(Array.from(archive.canonicalBytes())).toEqual(Array.from(exported.bytes));expect(readArchiveCapturedCorpus(archive).requests).toEqual(originalMaterial.get(store)!.rows.map(row=>row.frame))
  await expect(commitCapturePublication(store,{...prepared})).rejects.toThrow(ReplayUnavailable)
 })
 it('refuses wrong original store identity even with identical delegated read capabilities',async()=>{
@@ -49,7 +64,7 @@ it('consumes publication seal once and refuses unbound or snapshot authority',as
  await expect(prepareCapturePublication(store,seal(store,head,undefined,false),options())).rejects.toThrow(ReplayUnavailable)
 })
 for(const fault of ['ordinal','commit-id','expectation','frame-hidden-by-redaction'])it(`refuses publication source association ${fault}`,async()=>{
- const store=await fixture(),head=await store.readHistoryHead('r'),staging=vi.spyOn(store,'stageHistoryObjects'),s=seal(store,head,(rows,frames)=>{if(fault==='ordinal')rows[0]!.ordinal=0;else if(fault==='commit-id')rows[0]!.commitId='different';else if(fault==='expectation')rows[0]!.expectation=rows[1]!.expectation;else (frames[0] as any).request.body='WRONG-PRIVATE'})
+ const store=await fixture(),head=await store.readHistoryHead('r'),staging=vi.spyOn(store,'stageHistoryObjects'),s=seal(store,head,(rows,frames)=>{if(fault==='ordinal')rows[0]!.ordinal++;else if(fault==='commit-id')rows[0]!.commitId='different';else if(fault==='expectation')rows[0]!.expectation={digest:'sha256:'+'0'.repeat(64),bytes:2};else (frames[0] as any).request.body='WRONG-PRIVATE'})
  await expect(prepareCapturePublication(store,s,{...options(),members:{outputPatterns:{value:[{name:'mismatch',pattern:'WRONG-PRIVATE'}]}} as never})).rejects.toThrow(ReplayUnavailable)
  expect(staging).not.toHaveBeenCalled();expect((await store.readHistoryHead('r'))!.metadata).toBeUndefined()
 })

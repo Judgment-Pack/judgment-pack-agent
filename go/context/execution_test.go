@@ -144,11 +144,11 @@ func TestTheReadCacheFollowsTheHostsDeclaration(t *testing.T) {
 		}
 	}
 	session.HostTools = []HostTool{
-		{Name: "future_contract", Effect: "read", ContextPolicy: &ToolContextPolicy{Immutable: true, Reference: true},
+		{Name: "future_contract", Taxonomy:&ToolTaxonomy{Operation:"read",Effect:"read"}, Effect: "read", ContextPolicy: &ToolContextPolicy{Immutable: true, Reference: true},
 			Description: "Contract", InputSchema: json.RawMessage(`{}`), Execute: count(&immutable, "stable")},
-		{Name: "future_current_reference", Effect: "read", ContextPolicy: &ToolContextPolicy{Reference: true},
+		{Name: "future_current_reference", Taxonomy:&ToolTaxonomy{Operation:"read",Effect:"read"}, Effect: "read", ContextPolicy: &ToolContextPolicy{Reference: true},
 			Description: "Current reference", InputSchema: json.RawMessage(`{}`), Execute: count(&mutable, "current")},
-		{Name: "future_write", Effect: "workflow", Delegation: "read", ContextPolicy: &ToolContextPolicy{Immutable: true},
+		{Name: "future_write", Taxonomy:&ToolTaxonomy{Operation:"own-state",Effect:"pure"}, Effect: "workflow", Delegation: "read", ContextPolicy: &ToolContextPolicy{Immutable: true},
 			Description: "Write", InputSchema: json.RawMessage(`{}`), Execute: count(&write, "")},
 	}
 	run := openRun(t, session)

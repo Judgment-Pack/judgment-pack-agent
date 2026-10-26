@@ -48,8 +48,9 @@ type captureClaim struct {
 	first int
 }
 type captureExpectation struct {
-	identity HistoryCaptureIdentity
-	sequence int
+	nativeBindings *HistoryObjectRef
+	identity       HistoryCaptureIdentity
+	sequence       int
 }
 type captureRequest struct {
 	scope                    DurableScope
@@ -118,7 +119,7 @@ func nativeCaptureBindings(request, headers *Value) (*Value, error) {
 	aliases, names := map[string]bool{}, map[string]bool{}
 	for _, tool := range request.Get("tools").Items() {
 		alias := tool.Get("name")
-		if !alias.IsString() || aliases[alias.Str()] || !bindings.Has(alias.Str()) {
+		if !alias.IsString() || alias.Str() == "" || aliases[alias.Str()] || !bindings.Has(alias.Str()) {
 			return nil, &ReplayUnavailable{}
 		}
 		name := bindings.Get(alias.Str())
@@ -303,7 +304,13 @@ func readCapturedCorpus(view CaptureReadView, original, display bool, port *capt
 				var identity HistoryCaptureIdentity
 				json.Unmarshal(o.JSON(), &identity)
 				identity.Kind = o.Get("captureKind").Str()
-				expectations = append(expectations, captureExpectation{identity, c.Sequence})
+				expectations = append(expectations, captureExpectation{identity: identity, sequence: c.Sequence, nativeBindings: func() *HistoryObjectRef {
+					if !o.Has("nativeBindings") {
+						return nil
+					}
+					ref := archiveRef(o.Get("nativeBindings"))
+					return &ref
+				}()})
 			} else if o.Get("kind").Str() == "request" {
 				ref := archiveRef(o.Get("request"))
 				raw, e := get(ref, "request-manifest")
@@ -460,7 +467,13 @@ func readCapturedCorpus(view CaptureReadView, original, display bool, port *capt
 				return unavailable()
 			}
 			aliases, e := nativeCaptureBindings(request, r.Get("response").Get("headers"))
-			if e != nil {
+			if e != nil || aliases == nil || expectations[i].nativeBindings == nil {
+				return unavailable()
+			}
+			sourceRef := *expectations[i].nativeBindings
+			sourceRaw, e := get(sourceRef, "evidence")
+			sourceValue, parseErr := readHistoryJSON(sourceRaw, HistoryObjectBytes, true, true)
+			if e != nil || parseErr != nil || changed[archiveRoleKey(sourceRef.Digest, "evidence")] || !archiveEqual(aliases, sourceValue) {
 				return unavailable()
 			}
 			body, _ := readHistoryRequestJSON([]byte(r.Get("response").Get("body").Str()))

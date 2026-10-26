@@ -44,7 +44,7 @@ import { codex } from './engines/codex'
 import { PROPOSE_PACK_SCHEMA } from './engines/contract'
 import { questionTool } from './questions'
 import { TASK_PROFILES, delegationTool } from './delegationContract'
-import { RECORDED_TOOLS } from './certification/scriptedServer'
+import { currentContractReplayTools } from './certification/scriptedServer'
 import {
   TEST_CASES_TOOL,
   codexTurn,
@@ -93,7 +93,7 @@ const isCritic = (request: EndpointRequest) => JSON.stringify(request.body).incl
 /** Host tools a critic must never reach, each with its own spy. */
 function actionTools() {
   const execute = vi.fn(async (): Promise<McpToolResult> => ({ content: [{ type: 'text', text: 'done' }] }))
-  const tool = (name: string, extra: Partial<HostTool> = {}): HostTool => ({ name, description: `${name} for the test`, inputSchema: { type: 'object' }, execute, ...extra })
+  const tool = (name: string, extra: Partial<HostTool> = {}): HostTool => ({ name, taxonomy: name === 'read_page' ? {operation:'read',effect:'read'} : name === 'remember_memory' ? {operation:'own-state',effect:'pure'} : {operation:'propose',effect:'propose'}, description: `${name} for the test`, inputSchema: { type: 'object' }, execute, ...extra })
   return {
     execute,
     tools: [
@@ -174,7 +174,7 @@ async function codexCritic(calls: { name: string; args: Record<string, unknown> 
   const requests: AgentRequest[] = []
   const answers: { text: string; isError: boolean }[] = []
   const runtime = await gatedRuntime({
-    tools: [...RECORDED_TOOLS, TEST_CASES_TOOL],
+    tools: [...currentContractReplayTools(), TEST_CASES_TOOL],
     allowed: [...ASSISTANT_TOOLS],
     handle: options.handle ?? answerWith(options.outcome ?? APPROVE),
     onEvent: (event) => events.push(event)
@@ -246,7 +246,7 @@ describe('the critic’s tools are an allow-list of reads (agent#10)', () => {
     // Offered: the allow-list of what the runtime serves, and no host tool.
     const critic = requests.filter(isCritic)
     expect(critic.length).toBeGreaterThan(0)
-    for (const request of critic) expect(offeredIn(request)).toEqual(['read_window', 'search', 'get_schema', 'validate', 'experimental_evaluate', 'experimental_test_cases'])
+    for (const request of critic) expect(offeredIn(request)).toEqual(['read_window', 'search', 'load_skill', 'unload_skill', 'get_schema', 'validate', 'experimental_evaluate', 'experimental_test_cases'])
     // Nothing reached the runtime or a host tool, and nothing paused the run.
     expect(seen).toEqual([])
     expect(execute).not.toHaveBeenCalled()
@@ -264,7 +264,7 @@ describe('the critic’s tools are an allow-list of reads (agent#10)', () => {
     const { execute, tools } = actionTools()
     const { events, seen, requests, answers } = await codexCritic([{ name, args: {} }], { hostTools: tools })
     const critic = requests.find((request) => request.phase === 'critic')!
-    expect(critic.tools.map((tool) => tool.description.split(':')[0])).toEqual(['get_schema', 'validate', 'experimental_evaluate', 'experimental_test_cases', 'read_window', 'search'])
+    expect(critic.tools.map((tool) => tool.description.split(':')[0])).toEqual(['get_schema', 'validate', 'experimental_evaluate', 'experimental_test_cases', 'read_window', 'search', 'load_skill', 'unload_skill'])
     expect(seen).toEqual([])
     expect(execute).not.toHaveBeenCalled()
     expect(events.filter((event) => ['user_question', 'delegation_requested', 'error'].includes(event.type))).toEqual([])

@@ -926,7 +926,12 @@ export class SourceGate {
       try { served = (await check()) === entry.record.toolListDigest } catch { served = false }
       if (!served && entry.declared.source?.descriptorSnapshot !== undefined) this.alteredSources.add(id)
     }
-    if (closed !== '') {
+    if (claimed === false) {
+      answer = 'pending'
+      detail = closed
+      row.refused++;this.publish()
+      this.mark(name, callId, {})
+    } else if (closed !== '') {
       answer = 'closed'
       detail = closed
     } else if (changedIdentity || !served || this.alteredSources.has(id) || row.calls + row.proposed >= this.bounds.sourceCallsPerTurn || entry.catalogued && (!this.loaded.has(name) || argumentProblem(this.loaded.get(name), args) !== undefined)) {

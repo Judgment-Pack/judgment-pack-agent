@@ -42,15 +42,10 @@ func captureFixture(t *testing.T) (capturePort, map[string][]byte, *Value) {
 		return append([]byte(nil), b...), nil
 	}}, objects, v
 }
-func TestHistoryCaptureIndependentNativeCorpusAndReplay(t *testing.T) {
+func TestHistoryCaptureHistoricalMetadataWithoutOriginalBindings(t *testing.T) {
 	port, _, v := captureFixture(t)
-	entry, e := ReadCapturedCorpus(port)
-	if e != nil {
-		t.Fatal(e)
-	}
-	requests, e := ParseJSON(entry.Requests)
-	if e != nil || requests.Len() != 2 {
-		t.Fatal("request count", e)
+	if _, e := ReadCapturedCorpus(port); e == nil {
+		t.Fatal("historical native capture without original binding evidence became replayable")
 	}
 	expectedBytes := []byte(CanonicalJSON(v.Get("capture")))
 	capture, e := ReadRunCapture(expectedBytes)
@@ -60,9 +55,6 @@ func TestHistoryCaptureIndependentNativeCorpusAndReplay(t *testing.T) {
 	actualBytes, e := canonicalBytes(capture)
 	if e != nil || !bytes.Equal(actualBytes, expectedBytes) {
 		t.Fatal("capture canonical byte roundtrip", e)
-	}
-	if e = ReplayCorpus(*entry); e != nil {
-		t.Fatal(e)
 	}
 }
 func TestHistoryCaptureRefusesMissingOrContradictoryClosure(t *testing.T) {

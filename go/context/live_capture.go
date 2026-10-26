@@ -26,6 +26,7 @@ type liveCapture struct {
 	rootAuthority         *captureRootAuthority
 	collector             *historycapture.Collector
 	root                  *historycapture.Root
+	bindings              map[string]map[string]string
 	tokens                map[string]*historycapture.Token
 	pending               []liveCapturePending
 	config                LiveCaptureConfig
@@ -55,7 +56,7 @@ func (w *RunWriter) enrollCapture(config *LiveCaptureConfig) error {
 	if e = c.BindPublisher(w, store); e != nil {
 		return e
 	}
-	held := &liveCapture{collector: c, root: root, tokens: map[string]*historycapture.Token{}, config: LiveCaptureConfig{Manifest: manifest, Sink: config.Sink}}
+	held := &liveCapture{collector: c, root: root, bindings: map[string]map[string]string{}, tokens: map[string]*historycapture.Token{}, config: LiveCaptureConfig{Manifest: manifest, Sink: config.Sink}}
 	for _, claim := range w.book.Dispatches {
 		if claim.Kind == "model" || claim.Kind == "agent" {
 			held.unavailable = true
@@ -97,7 +98,16 @@ func (w *RunWriter) prepareCaptureLocked(ctx context.Context, state contract.Che
 			c.unavailable = true
 			return
 		}
-		prepared, e := PrepareCaptureExpectation(liveCaptureIdentity(claim))
+		var bindings []map[string]string
+		if claim.Kind == "agent" {
+			held, ok := c.bindings[claim.ID]
+			if !ok {
+				c.unavailable = true
+				return
+			}
+			bindings = append(bindings, held)
+		}
+		prepared, e := PrepareCaptureExpectation(liveCaptureIdentity(claim), bindings...)
 		if e != nil {
 			c.unavailable = true
 			return
@@ -224,11 +234,18 @@ func (w *RunWriter) finishCapture(ctx context.Context, binding RunBinding, membe
 // actual callback sequence; only InvokeDurable binds that slot to an acknowledged claim.
 type nativeCaptureKey struct{}
 type nativeCaptureSlot struct {
+	bindings map[string]string
 	writer   *RunWriter
 	scope    DurableScope
 	id       string
 	request  string
 	recorded bool
+}
+
+// NativeCaptureRequested is admission configuration only, never a live token or resume proof.
+func (c *SessionContext) NativeCaptureRequested(role string) bool {
+	binding := c.Persistence(role)
+	return binding != nil && binding.Writer.capture != nil
 }
 
 func NativeCaptureEnabled(ctx context.Context) bool {

@@ -892,7 +892,7 @@ export function runVercelLoop(
       const refusal=await rejectToolStep(name,args)
       if(refusal)return bare(refusal)
       // A call the harness made itself is marked on both its events (agent#10 review row 8).
-      const correlation = { ...(session.interactive||context.runtimeNeedsApproval(name) ? { callId: crypto.randomUUID() } : {}), ...(origin === undefined ? {} : { origin }) }
+      const correlation = { ...(session.interactive||context.capturesToolFrames||context.runtimeNeedsApproval(name) ? { callId: crypto.randomUUID() } : {}), ...(origin === undefined ? {} : { origin }) }
       const runtime=await context.prepareRuntimeCall(name,args,correlation.callId??crypto.randomUUID())
       if(runtime?.requested){await deliver(runtime.requested);return bare({content:[{type:'text',text:APPROVAL_HELD}],isError:true})}
       if(runtime)args=runtime.args
@@ -946,7 +946,7 @@ export function runVercelLoop(
       if(refusal)return bare(refusal)
       // ADR-0008: an act call of a tool with a source always carries an id, whether or not the run's
       // events carry one, so the decision taken before its call is its own, never another call's.
-      const correlation = session.interactive || context.sources?.needsApproval(tool.name) ? { callId: crypto.randomUUID() } : {}
+      const correlation = session.interactive || context.capturesToolFrames || context.sources?.needsApproval(tool.name) ? { callId: crypto.randomUUID() } : {}
       // ADR-0008: an act call the host's policy asks about is held for the person, never run: its
       // approval_requested in place of the call, and the run's next request is refused.
       const held = await context.approval(tool.name, args, correlation.callId)

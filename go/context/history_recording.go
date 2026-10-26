@@ -76,8 +76,25 @@ func PrepareHistoryRequest(scope DurableScope, dispatchID, source, tool, sourceJ
 	objects = append(objects, manifest)
 	return prepareHistoryObservation(ObjectOf("version", Number(1), "kind", String("request"), "scope", historyScopeJSON(scope), "dispatchId", String(dispatchID), "source", String(source), "tool", String(tool), "request", historyRefJSON(manifest.HistoryObjectRef), "compactions", historyRefsJSON(compactions), "originals", historyRefsJSON(originals)), objects)
 }
-func PrepareCaptureExpectation(identity HistoryCaptureIdentity) (PreparedHistoryObservation, error) {
-	return prepareHistoryObservation(ObjectOf("version", Number(1), "kind", String("capture-request"), "scope", historyScopeJSON(identity.Scope), "dispatchId", String(identity.DispatchID), "captureKind", String(identity.Kind), "source", String(identity.Source), "tool", String(identity.Tool), "requestDigest", String(identity.RequestDigest), "surface", String(identity.Surface)), nil)
+func PrepareCaptureExpectation(identity HistoryCaptureIdentity, bindings ...map[string]string) (PreparedHistoryObservation, error) {
+	value := ObjectOf("version", Number(1), "kind", String("capture-request"), "scope", historyScopeJSON(identity.Scope), "dispatchId", String(identity.DispatchID), "captureKind", String(identity.Kind), "source", String(identity.Source), "tool", String(identity.Tool), "requestDigest", String(identity.RequestDigest), "surface", String(identity.Surface))
+	objects := []HistoryObject{}
+	if len(bindings) > 0 {
+		if identity.Kind != "agent" {
+			return PreparedHistoryObservation{}, &HistoryInputInvalid{}
+		}
+		raw, err := canonicalRaw(bindings[0])
+		if err != nil {
+			return PreparedHistoryObservation{}, err
+		}
+		object, err := NewHistoryObject(raw)
+		if err != nil {
+			return PreparedHistoryObservation{}, err
+		}
+		objects = append(objects, object)
+		value.Set("nativeBindings", historyRefJSON(object.HistoryObjectRef))
+	}
+	return prepareHistoryObservation(value, objects)
 }
 
 // Staging is private. Only the original writer's atomic commit can publish this ref before dispatch/eviction.

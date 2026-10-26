@@ -222,7 +222,10 @@ func requestSourceViolations(root string, files *token.FileSet, trees []*ast.Fil
 	}
 	admittedFields := map[string][]fieldAdmission{}
 	fieldConversions := map[string]map[string][]string{
-		"context/run_writer.go":         {"PrepareDurableInput": {"RunStore", "RequestCap"}, "*SessionContext.ProviderStorageIdentity": {"ConnectionRevisions"}},
+		"context/run_writer.go":         {"PrepareDurableInput": {"RunStore", "RequestCap", "Capture", "UsageBudget"}, "*SessionContext.ProviderStorageIdentity": {"ConnectionRevisions"}, "ChildPersistence": {"UsageBudget"}},
+		"context/turn_route_owner.go":   {"*SessionContext.initializeTurnRoute": {"ChildDefinition", "Agent", "Tools", "HostTools", "Route", "RouteFacts"}},
+		"adapter/physical_model.go":     {"BindPhysicalModel": {"physicalModel", "Model"}, "BindPolicyPhysicalModel": {"physicalModel", "Model"}},
+		"context/controller.go":         {"NewExecutionController": {"TaskSteps"}},
 		"context/plan_validation.go":    {"*ExecutionController.seedAcceptedPlan": {"PlanResolver", "PlanDrift"}},
 		"context/plan_preparation.go":   {"PreparePlanDecision": {"PlanResolver", "RunStore"}, "validateOriginalPlan": {"PlanResolver"}},
 		"adapter/context_enrollment.go": {"EnrollContext": {"EnrollContext"}},
@@ -306,7 +309,7 @@ func requestSourceViolations(root string, files *token.FileSet, trees []*ast.Fil
 		relative, _ := filepath.Rel(root, position.Filename)
 		constructors := map[string][]string{
 			"adapter/request_session.go": {"requestAgent", "*RequestSession.ResolvedCapabilities", "NewRequestOperations", "NewRequestSession", "*RequestSession.PolicyBinding"},
-			"context/request_values.go":  {"NewRequestValues"},
+			"context/request_values.go":  {"NewRequestValues", "*SessionContext.RequestValues"},
 		}
 		for _, tree := range trees {
 			for _, declaration := range tree.Decls {

@@ -9,7 +9,7 @@ import type {EndpointKind} from '../host'
 import type {AssistantEvent} from '../engine'
 const source='{"id":"p","facts":{"amount":1.20,"zero":-0,"nested":{"amount":2.500},"exponent":1e2}}'
 const canonical='{"id":"p","facts":{"amount":1.2,"zero":0,"nested":{"amount":2.5},"exponent":100}}'
-const host={name:'propose_pack',effect:'proposal' as const,description:'Propose.',inputSchema:PROPOSE_PACK_SCHEMA,execute:async()=>{throw Error('host proposal execute reached')}}
+const host={name:'propose_pack',taxonomy:{operation:'propose',effect:'propose'} as const,effect:'proposal' as const,description:'Propose.',inputSchema:PROPOSE_PACK_SCHEMA,execute:async()=>{throw Error('host proposal execute reached')}}
 function reply(family:EndpointKind,args?:string,text='Done.'):Response{
  let body:string
  if(family==='anthropic')body='{"id":"a","type":"message","role":"assistant","model":"fixture","content":['+(args?' {"type":"tool_use","id":"p1","name":"propose_pack","input":'+args+'}':'{"type":"text","text":'+JSON.stringify(text)+'}')+'],"stop_reason":"'+(args?'tool_use':'end_turn')+'","usage":{"input_tokens":1,"output_tokens":1}}'

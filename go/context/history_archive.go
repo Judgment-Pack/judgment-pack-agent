@@ -621,6 +621,10 @@ func ExportRunArchive(ctx context.Context, store HistoryRunStore, runID string, 
 				err = payload(archiveRef(o.Get("replacement")), "source")
 			case "request":
 				err = payload(archiveRef(o.Get("request")), "request")
+			case "capture-request":
+				if o.Has("nativeBindings") {
+					err = addRef(archiveRef(o.Get("nativeBindings")), "evidence")
+				}
 			case "relation":
 				err = addRef(archiveRef(o.Get("evidence")), "evidence")
 			}
@@ -1105,6 +1109,10 @@ func ReadRunArchive(raw []byte, expectedDigest string) (result *ImportedRunHisto
 						return e
 					}
 				}
+			}
+		case "capture-request":
+			if o.Has("nativeBindings") {
+				_, e = get(archiveRef(o.Get("nativeBindings")), "evidence")
 			}
 		case "relation":
 			_, e = get(archiveRef(o.Get("evidence")), "evidence")

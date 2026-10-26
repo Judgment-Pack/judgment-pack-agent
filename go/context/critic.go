@@ -439,6 +439,5 @@ func OfferedReviewTool(session Session, policy Policy) []contract.ToolOfferHostT
 	if !held.Offered() {
 		return nil
 	}
-	plan := "plan"
-	return []contract.ToolOfferHostTool{{Name: RequestReview, Taxonomy: contract.ToolTaxonomy{Operation: "own-state", Effect: "pure"}, Description: RequestReviewDescription, InputSchema: json.RawMessage(RequestReviewSchema), Effect: &plan}}
+	return []contract.ToolOfferHostTool{held.ReviewHost(func() bool { return true }).Declaration()}
 }

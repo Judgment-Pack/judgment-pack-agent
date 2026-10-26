@@ -16,6 +16,7 @@ import {
 } from '../records'
 import scenario from './scenarios/records.json'
 import eventSchema from '../../../contract/schemas/run-event.json'
+import checkpointSchema from '../../../contract/schemas/checkpoint.json'
 import {argumentProblem} from '../sourceArguments'
 import type {AssistantEvent} from '../engine'
 import {CHECKPOINT_SCHEMA} from '../records'
@@ -35,7 +36,8 @@ afterEach(()=>vi.unstubAllGlobals())
 
 for(const engine of [vercel,deepagents,codex])describe(`${engine.id==='codex'?'agent ':''}engine ${engine.id} · records`,()=>{
   it('refuses future records before any provider or tool work and emits a current named notice',async()=>{
-    for(const context of [{execution:{version:3}}, {configuration:undefined,execution:{version:3,future:'x'.repeat(10000)}}]){
+    const futureVersion=Math.max(...checkpointSchema.properties.version.enum)+1
+    for(const context of [{execution:{version:futureVersion}}, {configuration:undefined,execution:{version:futureVersion,future:'x'.repeat(10000)}}]){
       const ran=await play(engine,context as unknown as ContextInput)
       expect(ran.requests.length+ran.runs.length).toBe(0)
       expect(ran.events).toContainEqual(expect.objectContaining({type:'guardrail',reason:'record version unsupported',version:1}))

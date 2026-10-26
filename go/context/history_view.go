@@ -32,7 +32,7 @@ func ReadHistoryObservation(raw []byte) (*Value, error) {
 			valid = valid && profile.Get(key).Kind() == KindBool && profile.Get(key).Truth()
 		}
 	case "capture-request":
-		valid = snapshotObject(v, []string{"version", "kind", "scope", "dispatchId", "captureKind", "source", "tool", "requestDigest", "surface"}) && historyID(v.Get("dispatchId")) && oneOf(v.Get("captureKind"), "model", "agent") && historyID(v.Get("source")) && historyID(v.Get("tool")) && historySHA256.MatchString(v.Get("requestDigest").Str()) && (v.Get("captureKind").Str() == "model" && v.Get("surface").Str() == "session-model" || v.Get("captureKind").Str() == "agent" && v.Get("surface").Str() == "native-aggregate")
+		valid = snapshotObject(v, []string{"version", "kind", "scope", "dispatchId", "captureKind", "source", "tool", "requestDigest", "surface"}, "nativeBindings") && (!v.Has("nativeBindings") || v.Get("captureKind").Str() == "agent" && historyRefValue(v.Get("nativeBindings"))) && historyID(v.Get("dispatchId")) && oneOf(v.Get("captureKind"), "model", "agent") && historyID(v.Get("source")) && historyID(v.Get("tool")) && historySHA256.MatchString(v.Get("requestDigest").Str()) && (v.Get("captureKind").Str() == "model" && v.Get("surface").Str() == "session-model" || v.Get("captureKind").Str() == "agent" && v.Get("surface").Str() == "native-aggregate")
 	case "original":
 		valid = snapshotObject(v, []string{"version", "kind", "scope", "boundary", "value", "format", "ordinal"}) && historyID(v.Get("boundary")) && historyRefValue(v.Get("value")) && oneOf(v.Get("format"), "messages", "context") && snapshotCount(v.Get("ordinal"), 0)
 	case "compaction":
@@ -331,6 +331,10 @@ func ReadRetainedRunHistory(ctx context.Context, store HistoryRunStore, runID st
 					keys = []string{"originals", "replacement", "prior"}
 				case "request":
 					keys = []string{"request", "compactions", "originals"}
+				case "capture-request":
+					if v.Has("nativeBindings") {
+						keys = []string{"nativeBindings"}
+					}
 				case "relation":
 					keys = []string{"evidence"}
 				}

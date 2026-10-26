@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
-	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/internal/runtimeactions"
 )
 
@@ -20,7 +19,7 @@ type RuntimeCall struct {
 }
 
 func (c *SessionContext) RuntimeNeedsApproval(name string) bool {
-	for _, t := range c.session.Tools {
+	for _, t := range c.runtimeTools {
 		if t.Name == name {
 			return t.Meta != nil && t.Meta.Effect == "act"
 		}
@@ -45,7 +44,7 @@ func (c *SessionContext) runtimeAdmission() json.RawMessage {
 		task = b.Scope.Task
 	}
 	offer := []any{}
-	for _, tool := range c.session.Tools {
+	for _, tool := range c.runtimeTools {
 		row := map[string]any{"name": tool.Name, "taxonomy": tool.Meta}
 		if tool.Offer != nil {
 			if tool.Offer.Description != nil {
@@ -57,11 +56,11 @@ func (c *SessionContext) runtimeAdmission() json.RawMessage {
 		}
 		offer = append(offer, row)
 	}
-	raw, _ := json.Marshal(map[string]any{"execution": state.ID, "turn": turn, "role": role, "task": task, "phase": state.Phase, "effectivePermissions": map[string]any{"policy": c.ResolvedPolicy, "child": c.objective != "" || c.session.ChildDefinition != nil}, "finalRuntimeOffer": offer})
+	raw, _ := json.Marshal(map[string]any{"execution": state.ID, "turn": turn, "role": role, "task": task, "phase": state.Phase, "effectivePermissions": map[string]any{"policy": c.ResolvedPolicy, "child": c.objective != "" || c.admittedChild}, "finalRuntimeOffer": offer})
 	return raw
 }
 func (c *SessionContext) runtimeCheck(name string) error {
-	if !c.RuntimeNeedsApproval(name) || c.CriticReading || c.Reformatting || c.objective != "" || c.session.ChildDefinition != nil || c.Execution.State().Phase == "plan" {
+	if !c.RuntimeNeedsApproval(name) || c.CriticReading || c.Reformatting || c.objective != "" || c.admittedChild || c.Execution.State().Phase == "plan" {
 		return c.runtimeRefuse(name, "This phase admits no Runtime action. Nothing was sent.")
 	}
 	if c.Execution.State().PlanState.Has("pending") {
@@ -102,7 +101,7 @@ func (c *SessionContext) PrepareRuntimeCall(ctx context.Context, name string, ar
 	if err = c.Authorize(ctx); err != nil {
 		return nil, err
 	}
-	attempt, err := runtimeactions.Prepare(ctx, gate.RuntimeActionOwner(c.session.RuntimeCalls), name, clean, c.runtimeAdmission(), nil)
+	attempt, err := runtimeactions.Prepare(ctx, c.runtimeOwner, name, clean, c.runtimeAdmission(), nil)
 	if err != nil {
 		return nil, c.runtimeRefuse(name, err.Error())
 	}
@@ -201,7 +200,7 @@ func (c *SessionContext) resumeRuntimeCall(ctx context.Context, record contract.
 		return ToolResult{}, err
 	}
 	args, _ := json.Marshal(record.Args)
-	attempt, err := runtimeactions.Prepare(ctx, gate.RuntimeActionOwner(c.session.RuntimeCalls), record.Name, args, c.runtimeAdmission(), record.Runtime)
+	attempt, err := runtimeactions.Prepare(ctx, c.runtimeOwner, record.Name, args, c.runtimeAdmission(), record.Runtime)
 	if err != nil {
 		return ToolResult{}, c.runtimeRefuse(record.Name, err.Error())
 	}

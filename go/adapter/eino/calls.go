@@ -152,9 +152,9 @@ func nonEmpty(args json.RawMessage) json.RawMessage {
 	return args
 }
 
-// correlation is the call id an interactive run's events carry, or none.
+// correlation is required for interactive events and original-writer capture frames.
 func (t *turnState) correlation() string {
-	if t.r.run.Interactive {
+	if t.r.run.Interactive || t.r.sc.NativeCaptureRequested("author") {
 		return wire.RandomUUID()
 	}
 	return ""

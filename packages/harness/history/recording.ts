@@ -27,7 +27,7 @@ export async function prepareHistoryRequest(scope:DurableScope,dispatchId:string
  const {manifest,objects}=await chunkHistoryValue(new TextEncoder().encode(sourceJSON))
  return prepared({version:1,kind:'request',scope,dispatchId,source,tool,request:{digest:manifest.digest,bytes:manifest.bytes},compactions,originals},[...objects,manifest])
 }
-export function prepareCaptureExpectation(identity:Omit<HistoryCaptureIdentity,'captureIndex'>){const {kind:captureKind,...fields}=identity;return prepared({version:1,kind:'capture-request',captureKind,...fields})}
+export async function prepareCaptureExpectation(identity:Omit<HistoryCaptureIdentity,'captureIndex'>,bindings?:Record<string,string>){const {kind:captureKind,...fields}=identity;if(bindings!==undefined&&captureKind!=='agent')throw new HistoryInputInvalid();const source=bindings===undefined?undefined:await historyObject(historyJSONBytes(bindings));return prepared({version:1,kind:'capture-request',captureKind,...fields,...(source?{nativeBindings:{digest:source.digest,bytes:source.bytes}}:{})},source?[source]:[])}
 /** Staging is private. The original writer must atomically publish the returned ref before dispatch or eviction. */
 export async function stageHistoryObservation(store:HistoryRunStore,runId:string,value:PreparedHistoryObservation,signal?:AbortSignal){
  if(store.historyVersion!==1)throw new HistoryInputInvalid()

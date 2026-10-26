@@ -247,14 +247,14 @@ describe.each(AGENT_ENGINES)('agent engine %s', engineId => {
       const answer = await callbacks.tool({ id: 'call', name: request.tools[0]!.name, arguments: {} }, callbacks.signal)
       expect(JSON.parse(answer.text)).toMatchObject({ structuredContent: { source: 'verified-document' } })
       await reply(proposal())(request, callbacks)
-    }, { hostTools: [{ name: 'read_source', description: 'Read', inputSchema: { type: 'object' }, execute }] }))
+    }, { hostTools: [{ name: 'read_source',taxonomy:{operation:'read',effect:'read'} as const, description: 'Read', inputSchema: { type: 'object' }, execute }] }))
     expect(execute).toHaveBeenCalledOnce()
     expect(events.find(event => event.type === 'tool_result')).toMatchObject({ structured: { source: 'verified-document' } })
   })
 
   it('refuses colliding or unoffered tools and never falls back to another engine', async () => {
     const run = vi.fn(reply(proposal()))
-    const tool = { name: 'validate', inputSchema: { type: 'object' } }
+    const tool = { name: 'validate',_meta:{operation:'check',effect:'pure',checkKind:'validate'} as const, inputSchema: { type: 'object' } }
     const events = await collect(session(run, { tools: [tool], hostTools: [{ ...tool, description: '', execute: vi.fn() }] }))
     expect(run).not.toHaveBeenCalled()
     expect(events[0]?.type).toBe('error')
@@ -282,7 +282,7 @@ describe.each(AGENT_ENGINES)('agent engine %s', engineId => {
     const callTool = vi.fn()
     const iterator = codex.start(session(async (request, c) => {
       await c.tool({ id: 'call', name: request.tools[0]!.name, arguments: {} }, c.signal)
-    }, { tools: [{ name: 'validate', inputSchema: { type: 'object' } }], callTool }))[Symbol.asyncIterator]()
+    }, { tools: [{ name: 'validate',_meta:{operation:'check',effect:'pure',checkKind:'validate'} as const, inputSchema: { type: 'object' } }], callTool }))[Symbol.asyncIterator]()
     expect((await iterator.next()).value?.type).toBe('tool_call')
     await iterator.return?.()
     await Promise.resolve()

@@ -91,7 +91,8 @@ func TestUsageBudgetActualEinoAdmissionAndFeatureReport(t *testing.T) {
 
 type usageLostRunStore struct {
 	*runcontext.MemoryRunStore
-	armed bool
+	armed  bool
+	faults int
 }
 
 func (s *usageLostRunStore) Commit(ctx context.Context, input runcontext.RunCommit) (runcontext.RunReceipt, error) {
@@ -99,17 +100,34 @@ func (s *usageLostRunStore) Commit(ctx context.Context, input runcontext.RunComm
 	if err != nil {
 		return receipt, err
 	}
+	if s.loseAcknowledgment(input.Checkpoint) {
+		return runcontext.RunReceipt{}, errors.New("fixture lost journal acknowledgment")
+	}
+	return receipt, nil
+}
+func (s *usageLostRunStore) CommitHistory(ctx context.Context, input runcontext.RunHistoryCommit) (runcontext.RunHistoryReceipt, error) {
+	receipt, err := s.MemoryRunStore.CommitHistory(ctx, input)
+	if err != nil {
+		return receipt, err
+	}
+	if s.loseAcknowledgment(input.Run.Checkpoint) {
+		return runcontext.RunHistoryReceipt{}, errors.New("fixture lost history journal acknowledgment")
+	}
+	return receipt, nil
+}
+func (s *usageLostRunStore) loseAcknowledgment(checkpoint []byte) bool {
 	var value struct {
 		UsageBudget *struct {
 			Entries []json.RawMessage `json:"entries"`
 		} `json:"usageBudget"`
 	}
-	_ = json.Unmarshal(input.Checkpoint, &value)
+	_ = json.Unmarshal(checkpoint, &value)
 	if s.armed && value.UsageBudget != nil && len(value.UsageBudget.Entries) > 0 {
 		s.armed = false
-		return runcontext.RunReceipt{}, errors.New("fixture lost journal acknowledgment")
+		s.faults++
+		return true
 	}
-	return receipt, nil
+	return false
 }
 func TestUsageBudgetActualEinoLostAcknowledgmentNeverDispatches(t *testing.T) {
 	for _, fault := range []string{"reserve", "journal"} {
@@ -125,7 +143,7 @@ func TestUsageBudgetActualEinoLostAcknowledgmentNeverDispatches(t *testing.T) {
 			}})
 			var store runcontext.RunStore = memory
 			if fault == "journal" {
-				store = &usageLostRunStore{memory, true}
+				store = &usageLostRunStore{MemoryRunStore: memory, armed: true}
 			}
 			calls := 0
 			dispatch := func(context.Context, string, relay.Request) (*http.Response, error) {
@@ -134,7 +152,13 @@ func TestUsageBudgetActualEinoLostAcknowledgmentNeverDispatches(t *testing.T) {
 			}
 			run := usageRun(store, "lost-"+fault, budget, runcontext.UsageAmounts{"modelRequests": 1})
 			run.Model = dispatch
-			_ = eino.New().Run(context.Background(), run)
+			runErr := eino.New().Run(context.Background(), run)
+			if fault == "journal" && store.(*usageLostRunStore).faults != 1 {
+				t.Fatal("journal acknowledgment fault was not exercised", runErr)
+			}
+			if fault == "reserve" && armed {
+				t.Fatal("reservation acknowledgment fault was not exercised", runErr)
+			}
 			if calls != 0 {
 				t.Fatal("unknown acknowledgment physically dispatched")
 			}

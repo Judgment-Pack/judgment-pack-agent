@@ -4,7 +4,7 @@ import type {HistoryObjectRef} from './codec'
 /** Sidecar data is host evidence only. It is never prompt input or execution authority. */
 export type HistoryObservation=
  | {version:1;kind:'genesis';scope:DurableScope;profile:HistoryCompleteness}
- | ({version:1;kind:'capture-request';captureKind:'model'|'agent'}&Omit<HistoryCaptureIdentity,'captureIndex'|'kind'>)
+ | ({version:1;kind:'capture-request';captureKind:'model'|'agent';nativeBindings?:HistoryObjectRef}&Omit<HistoryCaptureIdentity,'captureIndex'|'kind'>)
  | {version:1;kind:'original';scope:DurableScope;boundary:string;value:HistoryObjectRef;format:'messages'|'context';ordinal:number}
  | {version:1;kind:'compaction';scope:DurableScope;boundary:string;mode:'index'|'summary';originals:HistoryObjectRef[];replacement:HistoryObjectRef;prior:HistoryObjectRef[];legacyDigest:string}
  | {version:1;kind:'request';scope:DurableScope;dispatchId:string;source:string;tool:string;request:HistoryObjectRef;compactions:HistoryObjectRef[];originals:HistoryObjectRef[]}

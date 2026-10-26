@@ -1,6 +1,6 @@
 {
   "description": "The skills of declarations.json as the package admits them (ADR-0009, skill.json): each declaration with its digest, the digest of its bundle, which is the pinned one. Written by hand; skills.test.ts holds declareSkills to each digest.",
-  "schema": "skill.json",
+  "schema": "admitted-skill-v1.json",
   "source": {
     "harness": {
       "repository": "Judgment-Pack/judgment-pack-agent",
@@ -31,8 +31,15 @@
           "text": "Meals: 60 EUR a day. Lodging: a receipt is required."
         }
       ],
-      "pinnedDigest": "sha256:f6a93d485c5702705a0730234f301d4f474743e918b0926de73b1d05067c25a9",
-      "digest": "sha256:f6a93d485c5702705a0730234f301d4f474743e918b0926de73b1d05067c25a9"
+      "pinnedDigest": "sha256:1358ca4ca758a6287102f3d1d7198417f19eefe66209ffd7817286ac6cea27aa",
+      "digest": "sha256:1358ca4ca758a6287102f3d1d7198417f19eefe66209ffd7817286ac6cea27aa",
+      "profile": {
+        "effect": "read",
+        "operations": [
+          "read"
+        ]
+      },
+      "bytes": 240
     },
     {
       "id": "issue-style",
@@ -46,7 +53,12 @@
       },
       "instructions": "An issue's title is one line in the imperative. Its body says what was expected, what happened, and how to see it.",
       "pinnedDigest": "sha256:dee1273431aac3e04266abaeeb4522d6d9857366c9d501fda20758dbb14e7c34",
-      "digest": "sha256:dee1273431aac3e04266abaeeb4522d6d9857366c9d501fda20758dbb14e7c34"
+      "digest": "sha256:dee1273431aac3e04266abaeeb4522d6d9857366c9d501fda20758dbb14e7c34",
+      "profile": {
+        "effect": "pure",
+        "operations": []
+      },
+      "bytes": 114
     },
     {
       "id": "review-checklist",
@@ -60,7 +72,12 @@
       },
       "instructions": "Before proposing a change, list what it touches and how it was tested.",
       "pinnedDigest": "sha256:c1d1cb7f7b5c046c9dc67e9e2df4f4c1950d463ee87ae5782812ee91dbdcb148",
-      "digest": "sha256:c1d1cb7f7b5c046c9dc67e9e2df4f4c1950d463ee87ae5782812ee91dbdcb148"
+      "digest": "sha256:c1d1cb7f7b5c046c9dc67e9e2df4f4c1950d463ee87ae5782812ee91dbdcb148",
+      "profile": {
+        "effect": "pure",
+        "operations": []
+      },
+      "bytes": 70
     }
   ]
 }

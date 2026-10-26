@@ -1,3 +1,4 @@
+import {admittedNativeCaptureBindings,type NativeCaptureBindings} from './physicalDispatch'
 import {argumentProblem} from '../sourceArguments'
 import manifestSchema from '../contract/schemas/corpus-entry.json'
 import type {AssistantEvent} from '../engine'
@@ -15,6 +16,8 @@ import type {LiveHistoryRecorder,PreparedLiveHistory} from '../history/live'
 export class WriterCapture {
  private readonly collector:CaptureCollector
  private readonly tokens=new Map<string,CaptureToken>()
+ private readonly bindings=new Map<string,Record<string,string>>()
+ enroll(claim:DurableDispatch,proof?:NativeCaptureBindings){if(claim.kind!=='agent')return;const bindings=admittedNativeCaptureBindings(proof,claim.request);if(!bindings){this.unavailable=true;return}this.bindings.set(claim.id,bindings)}
  private pending:{claim:DurableDispatch;ref:{digest:string;bytes:number}}[]=[]
  private unavailable=false
  private finished=false
@@ -30,7 +33,7 @@ export class WriterCapture {
    for(const claim of state.durable?.dispatches??[]){
     if(!['model','agent'].includes(claim.kind)||this.tokens.has(claim.id)||this.pending.some(row=>row.claim.id===claim.id))continue
     if(claim.state!=='claimed'||!claim.read)throw new ReplayUnavailable()
-    const identity=this.identity(claim),prepared=await prepareCaptureExpectation(identity),ref=await history.add(prepared,signal)
+    const identity=this.identity(claim),prepared=await prepareCaptureExpectation(identity,this.bindings.get(claim.id)),ref=await history.add(prepared,signal)
     this.pending.push({claim:structuredClone(claim),ref})
    }
   }catch{this.unavailable=true}
@@ -44,7 +47,7 @@ export class WriterCapture {
   if(this.unavailable||this.finished)return
   try{const request=JSON.parse(claim.request),{suffix,...plain}=request,body=await response.clone().text();this.record(claim.id,{suffix,request:plain,response:{status:response.status,headers:Object.fromEntries(response.headers.entries()),body}})}catch{this.unavailable=true}
  }
- agent(claim:DurableDispatch,body:string,aliases?:Record<string,string>){this.record(claim.id,{suffix:'agent.run',request:JSON.parse(claim.request),response:{status:200,headers:aliases?{'x-jp-native-tool-bindings':JSON.stringify(Object.fromEntries(Object.entries(aliases).sort()))}:{},body}})}
+ agent(claim:DurableDispatch,body:string){const aliases=this.bindings.get(claim.id);this.record(claim.id,{suffix:'agent.run',request:JSON.parse(claim.request),response:{status:200,headers:aliases?{'x-jp-native-tool-bindings':JSON.stringify(Object.fromEntries(Object.entries(aliases).sort()))}:{},body}})}
  private record(id:string,frame:unknown){if(this.unavailable||this.finished)return;try{const token=this.tokens.get(id);if(!token)throw new ReplayUnavailable();this.collector.record(this.owner,token,frame)}catch{this.unavailable=true}}
  acknowledge(claim:DurableDispatch){if(this.unavailable||this.finished)return;try{const token=this.tokens.get(claim.id);if(!token||claim.state!=='result')throw new ReplayUnavailable();this.collector.acknowledge(this.owner,token)}catch{this.unavailable=true}}
  async finish(checkpoint:ExecutionCheckpoint|undefined,revision:string|null,raw:Uint8Array|undefined,members:PolicyMembers|undefined,signal?:AbortSignal):Promise<AssistantEvent>{

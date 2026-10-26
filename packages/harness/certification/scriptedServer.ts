@@ -40,7 +40,7 @@ import type { McpTool } from '../engine'
 export const RECORDED_TOOLS = runtime.tools as McpTool[]
 
 /** Explicit synthetic current-contract metadata for the rehearsal-only correction replay.
- * This is not recorded owner metadata and never changes the historical default offer.
+ * This is not recorded owner metadata and preserves the historical recording when explicitly requested.
  */
 export function currentContractReplayTools(): McpTool[] {
   const declarations = currentContract.tools as Record<string, ToolTaxonomy>
@@ -88,7 +88,7 @@ export interface RecordedRuntime {
 }
 
 /** A supplied offer is an explicit test declaration; omitted keeps exact historical tools. */
-export function recordedRuntime(tools: readonly McpTool[] = RECORDED_TOOLS): RecordedRuntime {
+export function recordedRuntime(tools: readonly McpTool[] = currentContractReplayTools()): RecordedRuntime {
   const seen: ServerObservation[] = []
   return {
     seen,

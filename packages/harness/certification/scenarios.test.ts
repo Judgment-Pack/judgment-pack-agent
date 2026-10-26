@@ -105,7 +105,7 @@ import toolSourcesScenario from './scenarios/tool-sources.json'
 import identityScenario from './scenarios/identity.json'
 import { APPROVAL_CONTINUATION, CATALOGUE_SCHEMA, LOAD_TOOL, toolListDigest, type ApprovalRequest, type SourceIdentity } from '../toolSources'
 import approvalPause from './scenarios/approval-pause.json'
-import pauseVector from '../../../contract/vectors/approval/pause.json'
+import pauseVector from '../../../contract/vectors/approval/pause-current.json'
 import wrongCallVector from '../../../contract/vectors/approval/wrong-call-id.json'
 import type { ContextInput } from '../context/session'
 import skillsScenario from './scenarios/skills.json'
@@ -446,12 +446,12 @@ function planModeChecks(run: () => Ran, received: () => { tool: string; argument
 // ---------------------------------------------------------------------------------------------
 
 describe('current-contract correction replay declarations',()=>{
-  it('serves explicit synthetic taxonomy while preserving historical recording and default replay',async()=>{
+  it('serves explicit synthetic taxonomy while preserving the explicitly selected historical recording',async()=>{
     const bytes=readFileSync('certification/runtime.json')
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(currentRuntimeContract.historicalRecordingSha256)
     expect(currentRuntimeContract.kind).toBe('handwritten-current-contract-test-declarations')
     const list=(core:ReturnType<typeof recordedRuntime>)=>(core.answer({jsonrpc:'2.0',id:1,method:'tools/list'} as never) as unknown as {result:{tools:McpTool[]}}).result.tools
-    const historical=list(recordedRuntime())
+    const historical=list(recordedRuntime(RECORDED_TOOLS))
     expect(historical).toEqual(RECORDED_TOOLS)
     expect(historical.every(tool=>!Object.hasOwn(tool,'_meta'))).toBe(true)
     const tools=currentContractReplayTools(),served=list(recordedRuntime(tools))
@@ -789,12 +789,17 @@ interface SourceHost {
  * changing to `changeTo` once one of its tools has run; and the person's custom read. The host's
  * approval reader approves every call it is asked about and remembers it.
  */
-function sourceTools(list: readonly { name: string; description: string; inputSchema: unknown }[], pinned: string, host: SourceHost, changeTo?: string): HostTool[] {
+// Bounded scripted receipt evidence, not a claim about a Gateway signature.
+const trackerReceipt = (name:string,pinned:string) => (e:{source:string;tool:string;args:string;result:string;receipt:string}) =>
+ e.source===JSON.stringify({id:'tracker',identity:{kind:'connection',label:'tracker'},identityDigest:'sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2',kind:'mcp',tool:name,toolListDigest:pinned,trust:'public'}) && e.tool===name && e.args==='{}' && e.receipt==='scripted-tracker-read' && e.result===JSON.stringify({content:[{text:toolSourcesScenario.issue,type:'text'}]})
+
+function sourceTools(list: readonly { name: string; description: string; inputSchema: unknown; taxonomy: unknown }[], pinned: string, host: SourceHost, changeTo?: string): HostTool[] {
   const tracker: HostTool[] = list.map((tool) => ({
     name: tool.name,
+    taxonomy: tool.taxonomy as HostTool['taxonomy'],
     description: tool.description,
     inputSchema: tool.inputSchema,
-    source: { kind: 'mcp', id: 'tracker', trust: 'public', toolListDigest: pinned, currentDigest: () => host.served },
+    source: { kind: 'mcp', id: 'tracker', trust: 'public', toolListDigest: pinned, currentDigest: () => host.served, verifyReceipt: trackerReceipt(tool.name,pinned) },
     approve: (call) => {
       host.approvals.push(tool.name)
       host.requests.push(structuredClone(call))
@@ -811,6 +816,7 @@ function sourceTools(list: readonly { name: string; description: string; inputSc
     ...tracker,
     {
       name: custom.name,
+      taxonomy: custom.taxonomy as HostTool['taxonomy'],
       description: custom.description,
       inputSchema: custom.inputSchema,
       source: custom.source as HostTool['source'],
@@ -874,8 +880,8 @@ function onlyFramed(whole: string, text: string): boolean {
 /** The checks every adapter makes of scenario 7. */
 function toolSourcesChecks(get: () => Sourced, adapter: 'model' | 'agent') {
   it('7 · the server’s list is the one the person approved: the declared tools hash to the pinned digest, the new list to the changed one', async () => {
-    expect(await toolListDigest(toolSourcesScenario.server)).toBe(toolSourcesScenario.tracker.pinned)
-    expect(await toolListDigest([...toolSourcesScenario.server, toolSourcesScenario.added])).toBe(toolSourcesScenario.tracker.changed)
+    expect(await toolListDigest(toolSourcesScenario.server as import('../toolSources').ListedTool[])).toBe(toolSourcesScenario.tracker.pinned)
+    expect(await toolListDigest([...toolSourcesScenario.server, toolSourcesScenario.added] as import('../toolSources').ListedTool[])).toBe(toolSourcesScenario.tracker.changed)
   })
 
   it('7 · the schema budget trips: the server’s seventeen tools are a catalogue offered with load_tool, beside the Runtime’s six, the harness’s six, request_review and the custom read, and no write_file', () => {
@@ -1019,9 +1025,10 @@ function pauseTools(server: PauseServer): HostTool[] {
   const { pinned } = toolSourcesScenario.tracker
   return toolSourcesScenario.server.map((tool) => ({
     name: tool.name,
+    taxonomy: tool.taxonomy as HostTool['taxonomy'],
     description: tool.description,
     inputSchema: tool.inputSchema,
-    source: { kind: 'mcp', id: 'tracker', trust: 'public', toolListDigest: pinned, currentDigest: () => pinned },
+    source: { kind: 'mcp', id: 'tracker', trust: 'public', toolListDigest: pinned, currentDigest: () => pinned, verifyReceipt: trackerReceipt(tool.name,pinned) },
     approve: (call) => {
       server.asked.push(structuredClone(call))
       return tool.name === approvalPause.asked.tool ? 'ask' : 'allow'
@@ -1275,6 +1282,7 @@ function skillsHostTools(executed: Record<string, number>): HostTool[] {
   const rates = skillsScenario.rates
   return [{
     name: rates.name,
+    taxonomy: rates.taxonomy as HostTool['taxonomy'],
     description: rates.description,
     inputSchema: rates.inputSchema,
     source: rates.source as HostTool['source'],
@@ -1378,7 +1386,7 @@ function catalogued(system: string): string[] {
   const at = system.indexOf(`\n${SKILLS_HEADER}\n`)
   if (at < 0) return []
   const section = system.slice(at, system.indexOf('\nEND SKILLS', at))
-  return [...section.matchAll(/^- ([A-Za-z0-9_-]+)\nBEGIN RETRIEVED DATA [0-9a-f]{32} from the description of skill "/gm)].map((match) => match[1]!)
+  return [...section.matchAll(/^- ([A-Za-z0-9_-]+) \(unclassified; (?:pure|reads local data)\)\nBEGIN RETRIEVED DATA [0-9a-f]{32} from the description of skill "/gm)].map((match) => match[1]!)
 }
 
 /** The checks every adapter makes of scenario 9. */
@@ -1392,6 +1400,7 @@ function skillsChecks(get: () => Skilled, adapter: 'model' | 'agent') {
     const { first } = get()
     expect(admissible).toHaveLength(40)
     expect(catalogued(systemOf(first))).toEqual(admissible.slice(0, 32))
+    for(const name of admissible.slice(0,32))expect(systemOf(first)).toContain(`- ${name} (unclassified; ${name==='expense_policy'?'reads local data':'pure'})\n`)
     const before = first.events.slice(0, first.events.findIndex((event) => event.type === 'tool_call'))
     expect(ofType(before, 'guardrail').map((event) => [event.tool, event.reason])).toEqual([['issue_draft', 'skill withheld'], ['file_helper', 'skill withheld'], ['library', 'skill withheld']])
     expect(ofType(before, 'guardrail')[2]!.detail).toContain('so 8 of library\'s skills are not offered; 32 are offered across the catalogue')
@@ -2291,10 +2300,10 @@ async function identityRuns(engineId: import('../host').AssistantEngine, agent: 
   configureHarness(testHost())
   const engine = await loadEngine(engineId)
   const executed = { read: 0, act: 0 }
-  const source = (current: () => SourceIdentity) => ({ kind: 'gateway' as const, id: 'expenses', trust: 'connected' as const, version: '4', identity: identityScenario.identity as SourceIdentity, currentIdentity: current })
+  const source = (current: () => SourceIdentity) => ({ kind: 'custom' as const, id: 'expenses', trust: 'connected' as const, version: '4', toolListDigest:'sha256:0ac0f98e7d5460fa755143ee87a3f61ece0c95be89252beb352b86fa09d663ff', identity: identityScenario.identity as SourceIdentity, currentIdentity: current })
   const tools = (current: () => SourceIdentity): HostTool[] => [
-    { name: identityScenario.read.name, description: identityScenario.read.description, inputSchema: { type: 'object' }, effectClass: 'read', source: source(current), execute: async () => { executed.read++; return { content: [{ type: 'text', text: identityScenario.read.result }] } } },
-    { name: identityScenario.act.name, description: identityScenario.act.description, inputSchema: { type: 'object' }, effectClass: 'act', source: source(current), approve: () => 'allow', execute: async () => { executed.act++; return { content: [{ type: 'text', text: 'submitted' }] } } }
+    { name: identityScenario.read.name, taxonomy:{operation:'read',effect:'read'}, description: identityScenario.read.description, inputSchema: { type: 'object' }, effectClass: 'read', source: source(current), execute: async () => { executed.read++; return { content: [{ type: 'text', text: identityScenario.read.result }] } } },
+    { name: identityScenario.act.name, taxonomy:{operation:'act',effect:'act'}, description: identityScenario.act.description, inputSchema: { type: 'object' }, effectClass: 'act', source: source(current), approve: () => 'allow', execute: async () => { executed.act++; return { content: [{ type: 'text', text: 'submitted' }] } } }
   ]
   const play = (turns: Turn[], hostTools: HostTool[]) => agent
     ? runOnAgentEngine(agentRunFrom(turns), { engine, hostTools, session: { prompt: identityScenario.request, interactive: true, context: request(identityScenario.request) } })

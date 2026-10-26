@@ -442,6 +442,54 @@ func (g *generator) nameOf(l loc) string {
 type field struct {
 	member, goName, expr string
 	required             bool
+	nullableUnion        bool
+}
+
+// nullableUnion identifies a named union that admits null. Optional occurrences
+// use the existing Nullable presence wrapper, so JSON null does not become an
+// absent outer pointer before the union's decoder can see it.
+func (g *generator) nullableUnion(l loc) bool {
+	l = g.resolve(l)
+	if g.kind(l) != "union" {
+		return false
+	}
+	seen := map[string]bool{}
+	var admits func(loc) bool
+	admits = func(at loc) bool {
+		at = g.resolve(at)
+		if seen[at.key()] {
+			return false
+		}
+		seen[at.key()] = true
+		n := g.node(at)
+		if n["type"] == "null" {
+			return true
+		}
+		if kinds, ok := n["type"].([]any); ok {
+			for _, kind := range kinds {
+				if kind == "null" {
+					return true
+				}
+			}
+		}
+		if value, ok := n["const"]; ok && value == nil {
+			return true
+		}
+		if values, ok := n["enum"].([]any); ok {
+			for _, value := range values {
+				if value == nil {
+					return true
+				}
+			}
+		}
+		for _, branch := range g.unionBranches(at) {
+			if admits(branch) {
+				return true
+			}
+		}
+		return false
+	}
+	return admits(l)
 }
 
 // structFields collects a struct's members, merging allOf branches, in document order.
@@ -472,7 +520,8 @@ func (g *generator) structFields(l loc, seen map[string]bool) ([]field, map[stri
 			continue
 		}
 		seen[member] = true
-		fields = append(fields, field{member: member, expr: g.typeExpr(loc{l.file, l.ptr + "/properties/" + escape(member)})})
+		property := loc{l.file, l.ptr + "/properties/" + escape(member)}
+		fields = append(fields, field{member: member, expr: g.typeExpr(property), nullableUnion: g.nullableUnion(property)})
 	}
 	for i := range fields {
 		fields[i].required = required[fields[i].member]
@@ -533,7 +582,9 @@ func (g *generator) emitStruct(l loc, name string) {
 		expr := f.expr
 		tag := f.member
 		if !f.required {
-			if !(strings.HasPrefix(expr, "[]") || strings.HasPrefix(expr, "map[") || expr == "json.RawMessage" || strings.HasPrefix(expr, "Nullable[")) {
+			if f.nullableUnion {
+				expr = "Nullable[" + expr + "]"
+			} else if !(strings.HasPrefix(expr, "[]") || strings.HasPrefix(expr, "map[") || expr == "json.RawMessage" || strings.HasPrefix(expr, "Nullable[")) {
 				expr = "*" + expr
 			}
 			tag += ",omitzero"
@@ -595,7 +646,11 @@ func (g *generator) emitStruct(l loc, name string) {
 			fmt.Fprintf(&b, "\n// %sFor decodes %s in the shape key's %s member names (Decode%s): the value alone\n// cannot say which (%s).\n", goName, goName, keyed.member, union, keyed.union)
 			fmt.Fprintf(&b, "func (v %s) %sFor(key %s) (*%s, error) {\n", name, goName, key, union)
 			if !f.required {
-				fmt.Fprintf(&b, "\tif v.%s == nil {\n\t\treturn nil, nil\n\t}\n", goName)
+				if f.nullableUnion {
+					fmt.Fprintf(&b, "\tif !v.%s.Set {\n\t\treturn nil, nil\n\t}\n", goName)
+				} else {
+					fmt.Fprintf(&b, "\tif v.%s == nil {\n\t\treturn nil, nil\n\t}\n", goName)
+				}
 			}
 			fmt.Fprintf(&b, "\tdata, err := json.Marshal(v.%s)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tdecoded, err := Decode%s(key, data)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\treturn &decoded, nil\n}\n", goName, union)
 		}

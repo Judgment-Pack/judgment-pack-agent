@@ -114,6 +114,14 @@ func historyObservationClosure(roots []HistoryObjectRef, resolve func(HistoryObj
 					}
 				}
 			}
+		case "capture-request":
+			if row.Has("nativeBindings") {
+				var evidence HistoryObject
+				evidence, err = object(refValue(row.Get("nativeBindings")))
+				if err == nil {
+					_, err = readHistoryJSON(evidence.Value, HistoryObjectBytes, true, true)
+				}
+			}
 		case "relation":
 			var evidence HistoryObject
 			evidence, err = object(refValue(row.Get("evidence")))

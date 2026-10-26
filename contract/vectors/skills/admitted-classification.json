@@ -1,0 +1,29 @@
+{
+  "schema": "admitted-skill-v1.json",
+  "description": "Handwritten current admitted review bundle with untrusted classification and tags. Its pin is independently calculated from the documented canonical bundle; profile is the empty dependency union.",
+  "items": [
+    {
+      "id": "classified-guide",
+      "name": "classified_guide",
+      "description": "Review the record.",
+      "source": {
+        "kind": "custom",
+        "id": "guides",
+        "trust": "person",
+        "version": "1"
+      },
+      "instructions": "Check the recorded evidence.",
+      "kind": "review",
+      "tags": [
+        "evidence"
+      ],
+      "profile": {
+        "effect": "pure",
+        "operations": []
+      },
+      "bytes": 28,
+      "pinnedDigest": "sha256:731c3d8fe0372212456d6002db2405bb35785eadb3ac0d58017a37cd1801fd17",
+      "digest": "sha256:731c3d8fe0372212456d6002db2405bb35785eadb3ac0d58017a37cd1801fd17"
+    }
+  ]
+}

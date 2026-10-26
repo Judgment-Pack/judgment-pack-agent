@@ -22,7 +22,13 @@ const filesUnder=(directory,accept)=>{
  return files
 }
 
-const exportTarget=value=>typeof value==='string'?value:value?.default
+const exportTarget=value=>value===null?null:typeof value==='string'?value:value?.default
+// Node gives exact subpaths precedence, then the longest matching pattern prefix
+// and pattern. A null winner excludes a file even when a broader pattern finds it.
+function exportKey(exports,subpath){
+ if(Object.hasOwn(exports,subpath))return subpath
+ return Object.keys(exports).filter(key=>{const at=key.indexOf('*');return at>=0&&subpath.startsWith(key.slice(0,at))&&subpath.endsWith(key.slice(at+1))&&subpath.length>=key.length-1}).sort((a,b)=>b.indexOf('*')-a.indexOf('*')||b.length-a.length)[0]
+}
 const inside=(root,target)=>{const path=relative(root,target);return path===''||(!isAbsolute(path)&&path!=='..'&&!path.startsWith(`..${sep}`))}
 const displayed=(root,path)=>inside(root,path)?relative(root,path):path
 
@@ -82,13 +88,13 @@ export function packageEntrypoints(packageRoot){
  const entries=[]
  for(const key of namedExports)if(!manifest.exports?.[key])throw Error(`package export ${key} is missing its runtime target`)
  for(const [key,value] of Object.entries(manifest.exports??{})){
-  if(key.includes('*'))continue
+  if(key.includes('*')||exportTarget(value)===null)continue
   const target=exportTarget(value)
   if(typeof target!=='string')throw Error(`package export ${key} is missing its runtime target`)
   entries.push({specifier:`${manifest.name}${key.slice(1)}`,target:resolveLocalImport(root,join(root,'package.json'),target)})
  }
  for(const [key,value] of Object.entries(manifest.exports??{})){
-  if(!key.includes('*'))continue
+  if(!key.includes('*')||exportTarget(value)===null)continue
   const target=exportTarget(value)
   if(typeof target!=='string'||!target.includes('*'))throw Error(`package export ${key} has no wildcard runtime target`)
   const [prefix,suffix]=target.split('*')
@@ -96,7 +102,9 @@ export function packageEntrypoints(packageRoot){
    const packaged=`./${relative(root,file).split(sep).join('/')}`
    if(!packaged.startsWith(prefix)||!packaged.endsWith(suffix))continue
    const wildcard=packaged.slice(prefix.length,packaged.length-suffix.length)
-   entries.push({specifier:`${manifest.name}${key.slice(1).replace('*',wildcard)}`,target:realpathSync(file)})
+   const subpath=key.replace('*',wildcard)
+   if(exportKey(manifest.exports,subpath)!==key)continue
+   entries.push({specifier:`${manifest.name}${subpath.slice(1)}`,target:realpathSync(file)})
   }
  }
  return entries

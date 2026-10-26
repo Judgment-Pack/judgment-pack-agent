@@ -35,6 +35,7 @@ func ScenarioFile(name string, into any) error {
 
 // ScenarioHostTool is a host tool as a scenario lists it (ScenarioHostTool in scenarioDriver.ts).
 type ScenarioHostTool struct {
+	Taxonomy      *runcontext.ToolTaxonomy      `json:"taxonomy"`
 	Name          string                        `json:"name"`
 	Effect        string                        `json:"effect"`
 	Delegation    string                        `json:"delegation"`
@@ -76,7 +77,7 @@ func HostToolsOf(listed []ScenarioHostTool, ledger *HostLedger) []runcontext.Hos
 			schema = json.RawMessage(turn.ProposePackSchema)
 		}
 		out = append(out, runcontext.HostTool{
-			Name: held.Name, Effect: held.Effect, Delegation: held.Delegation, ContextPolicy: held.ContextPolicy,
+			Name: held.Name, Taxonomy: held.Taxonomy, Effect: held.Effect, Delegation: held.Delegation, ContextPolicy: held.ContextPolicy,
 			Description: held.Description, InputSchema: schema,
 			Execute: func(_ context.Context, args json.RawMessage) (runcontext.ToolResult, error) {
 				ledger.mu.Lock()

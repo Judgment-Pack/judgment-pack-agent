@@ -8,7 +8,7 @@ import {TASK_PROFILES,readDelegationRequest} from './delegationContract'
 import declaration from '../../contract/vectors/subagents/declaration.json'
 import request from '../../contract/vectors/subagents/delegation.json'
 import type {HostTool} from './engine'
-const tool:HostTool={name:'lookup',effect:'read',description:'Read evidence.',inputSchema:{type:'object'},execute:async()=>({content:[]})}
+const tool:HostTool={name:'lookup',taxonomy:{operation:'read',effect:'read'} as const,effect:'read',description:'Read evidence.',inputSchema:{type:'object'},execute:async()=>({content:[]})}
 const definition=()=>structuredClone(declaration.items[0]) as SubagentDeclaration
 async function admit(s=definition(),tools=[tool],policy=CONTEXT_DEFAULTS){return declareSubagents([s],tools,[],policy)}
 describe('declared sub-agents',()=>{

@@ -134,7 +134,7 @@ func TestCheckpointMembersInterruptResume(t *testing.T) {
 			continue
 		}
 		if name == "version" {
-			if value.Get(name).Num() != 2 || interrupted.Version != 2 || continued.Version != 2 {
+			if value.Get(name).Num() != 3 || interrupted.Version != 3 || continued.Version != 3 {
 				t.Fatal("current checkpoint version changed across interruption/resume")
 			}
 			continue

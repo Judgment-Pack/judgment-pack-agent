@@ -41,7 +41,7 @@ function sources() {
   const counts = { instructions: 0, tests: 0 }
   const hostTools: HostTool[] = [
     {
-      name: 'get_authoring_instructions',
+      name: 'get_authoring_instructions',taxonomy:{operation:'read',effect:'read'} as const,
       effect: 'read',
       // The Runtime's authoring prompt: immutable for one Runtime, so keyed by it.
       contextPolicy: { immutable: true, reference: true, runtime: true },
@@ -53,7 +53,7 @@ function sources() {
       }
     },
     {
-      name: 'read_pack_tests',
+      name: 'read_pack_tests',taxonomy:{operation:'read',effect:'read'} as const,
       effect: 'read',
       // Saved cases change between turns: a mutable read.
       description: 'Read a pack and its saved cases.',

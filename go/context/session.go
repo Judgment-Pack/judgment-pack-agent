@@ -18,6 +18,8 @@ import (
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/wire"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/internal/runtimeactions"
 )
 
 // Usage is what one request cost and what it was allowed (ContextUsage).
@@ -121,6 +123,10 @@ func (m *orderedValues) clear()          { m.order = nil; m.held = map[string]*V
 
 // SessionContext is the run's context (SessionContext).
 type SessionContext struct {
+	runtimeTools        []RuntimeTool
+	runtimeOwner        *runtimeactions.Handle
+	admittedChild       bool
+	connectionRevisions map[string]string
 	// TaskDispatchCharge is a package coordinator charge hook, never an availability grant.
 	TaskDispatchCharge func(context.Context, string, string) error
 	turnRoute          *turnRouteOwner
@@ -238,10 +244,11 @@ func NewSessionContext(session Session) (*SessionContext, error) {
 	if err := json.Unmarshal(encoded, &policy); err != nil {
 		return nil, err
 	}
-	out := &SessionContext{ProviderFamilies: session.PolicyFamilies, ResolvedPolicy: resolved.Members, PaceWarning: resolved.Warning, Policy: &policy, Marker: DataMarker(), session: session,
+	out := &SessionContext{runtimeTools: usageCopy(session.Tools), runtimeOwner: gate.RuntimeActionOwner(session.RuntimeCalls), admittedChild: session.ChildDefinition != nil, ProviderFamilies: session.PolicyFamilies, ResolvedPolicy: resolved.Members, PaceWarning: resolved.Warning, Policy: &policy, Marker: DataMarker(), session: session,
 		compactedSteps: newOrderedValues(), summaries: map[string]bool{}, contracts: newOrderedValues(),
 		referenceTools: map[string]bool{}, identity: identity}
 	if session.Context != nil {
+		out.connectionRevisions = usageCopy(session.Context.ConnectionRevisions)
 		if source, ok := session.Context.Chat.(*StoredChatScope); ok {
 			out.storedChat = source
 		} else if session.Context.RunStore != nil {

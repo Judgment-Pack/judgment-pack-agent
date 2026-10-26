@@ -17,7 +17,7 @@ import { bindModelCall, runAssistantSession } from '../session'
 import { normalize } from '../thinking'
 import { vercel } from '../engines/vercel'
 import { codex } from '../engines/codex'
-import { RECORDED_TOOLS } from '../certification/scriptedServer'
+import { RECORDED_TOOLS, currentContractReplayTools } from '../certification/scriptedServer'
 import {
   TEST_CASES_TOOL,
   gatedRuntime,
@@ -49,6 +49,7 @@ export interface Usage {
 /** A host tool as a scenario lists it: its name, its effect and what it answers. */
 export interface ScenarioHostTool {
   name: string
+  taxonomy: import('../toolTaxonomy').ToolTaxonomy
   effect?: 'read' | 'proposal' | 'workflow' | 'memory' | 'plan'
   delegation?: 'read' | 'research'
   /** How the chat's context may keep and reuse a result of this tool. */
@@ -62,6 +63,7 @@ export interface ScenarioHostTool {
 export function hostToolsOf(listed: readonly ScenarioHostTool[], executed: Record<string, number>, received: { tool: string; arguments: Record<string, unknown> }[] = []): HostTool[] {
   return listed.map((tool) => ({
     name: tool.name,
+    taxonomy: structuredClone(tool.taxonomy),
     ...(tool.effect === undefined ? {} : { effect: tool.effect }),
     ...(tool.delegation === undefined ? {} : { delegation: tool.delegation }),
     ...(tool.contextPolicy === undefined ? {} : { contextPolicy: tool.contextPolicy }),
@@ -322,7 +324,7 @@ export async function runOnModelEngine(answer: (request: EndpointRequest) => Res
   const override = options.session?.model?.call
   const call: import('../engine').ModelCall = override ? (...args) => captureGlobal('fetch', endpoint.fetch, () => override(...args)) : boundCall
   const runtime = await gatedRuntime({
-    tools: [...(options.tools ?? RECORDED_TOOLS), TEST_CASES_TOOL],
+    tools: [...(options.tools ?? currentContractReplayTools()), TEST_CASES_TOOL],
     allowed: [...ASSISTANT_TOOLS],
     handle: options.handle ?? (() => runtimeAnswer({ status: 'ok' })),
     onEvent: (event) => events.push(event)
@@ -355,7 +357,7 @@ export async function runOnAgentEngine(run: AgentRun, options: Options = {}): Pr
   const events: AssistantEvent[] = []
   const runs: Ran['runs'] = []
   const runtime = await gatedRuntime({
-    tools: [...(options.tools ?? RECORDED_TOOLS), TEST_CASES_TOOL],
+    tools: [...(options.tools ?? currentContractReplayTools()), TEST_CASES_TOOL],
     allowed: [...ASSISTANT_TOOLS],
     handle: options.handle ?? (() => runtimeAnswer({ status: 'ok' })),
     onEvent: (event) => events.push(event)

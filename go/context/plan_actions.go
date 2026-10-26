@@ -438,7 +438,7 @@ func (c *ExecutionController) CompletionTool() HostTool {
 		}
 		return Answer(ObjectOf("status", args.Get("outcome"), "plan", c.State().Plan, "planRevision", c.State().PlanState.Get("revision"))), nil
 	}}
-	if c.session.Context != nil && c.session.Context.TaskSteps {
+	if c.taskSteps {
 		schema := MustParseJSON(string(tool.InputSchema))
 		schema.Get("properties").Get("evidence").Get("properties").Set("child", MustParseJSON(`{"type":"object","properties":{"task":{"type":"string","minLength":1,"maxLength":100},"checkpointDigest":{"type":"string","pattern":"^sha256:[a-f0-9]{64}$"},"resultDigest":{"type":"string","pattern":"^sha256:[a-f0-9]{64}$"},"eventDigest":{"type":"string","pattern":"^sha256:[a-f0-9]{64}$"},"commitId":{"type":"string","minLength":1,"maxLength":100}},"required":["task","checkpointDigest","resultDigest","eventDigest","commitId"],"additionalProperties":false}`))
 		tool.InputSchema = schema.JSON()

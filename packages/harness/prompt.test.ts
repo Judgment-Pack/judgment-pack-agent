@@ -211,7 +211,7 @@ async function truncatedRun(answers: string[], overrides: Partial<AssistantSessi
     return new Response(answer, { status: 200, headers: { 'content-type': 'text/event-stream' } })
   }
   const events: AssistantEvent[] = []
-  for await (const event of vercel.start({ ...bare(), prompt: 'Check the expense pack.', tools: [{ name: 'validate', description: 'check a document', inputSchema: { type: 'object' } }], callTool: async () => ({ content: [{ type: 'text', text: '{"status":"ok"}' }] }), model: { family: 'anthropic', model: 'a-model', call }, thinking: normalize('on', 'anthropic'), critic: 'off', ...overrides })) {
+  for await (const event of vercel.start({ ...bare(), prompt: 'Check the expense pack.', tools: [{ name: 'validate',_meta:{operation:'check',effect:'pure',checkKind:'validate'} as const, description: 'check a document', inputSchema: { type: 'object' } }], callTool: async () => ({ content: [{ type: 'text', text: '{"status":"ok"}' }] }), model: { family: 'anthropic', model: 'a-model', call }, thinking: normalize('on', 'anthropic'), critic: 'off', ...overrides })) {
     events.push(event)
     if (event.type === 'thinking_unavailable') {
       await new Promise((resolve) => setTimeout(resolve, 50))

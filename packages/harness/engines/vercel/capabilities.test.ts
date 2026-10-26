@@ -21,7 +21,7 @@ const SERVED = {
   properties: { pack: { type: 'object' }, mode: { const: 'strict' } },
   additionalProperties: false
 }
-const TOOLS: McpTool[] = [{ name: 'validate', description: 'check a document', inputSchema: SERVED }]
+const TOOLS: McpTool[] = [{ name: 'validate',_meta:{operation:'check',effect:'pure',checkKind:'validate'} as const, description: 'check a document', inputSchema: SERVED }]
 const PROPOSAL = 'Here it is.\n\n```json\n' + JSON.stringify({ proposal: { kind: 'create', document: { id: 'p' }, unknowns: [] } }) + '\n```\n'
 const textCall = (tool: string, args: unknown = {}) => '```json\n' + JSON.stringify({ tool, arguments: args }) + '\n```'
 
@@ -203,7 +203,7 @@ describe('whether to offer tools reads the record', () => {
   it('refuses a host tool the critic was not offered, named in its text, without running it', async () => {
     // A memory tool: the loop is offered it, a review never is.
     let saved = 0
-    const remember: HostTool = { name: 'host_memory', effect: 'memory', description: 'save a memory', inputSchema: { type: 'object' }, execute: async () => { saved += 1; return { content: [{ type: 'text', text: 'saved' }] } } }
+    const remember: HostTool = { name: 'host_memory',taxonomy:{operation:'own-state',effect:'pure'} as const, effect: 'memory', description: 'save a memory', inputSchema: { type: 'object' }, execute: async () => { saved += 1; return { content: [{ type: 'text', text: 'saved' }] } } }
     const turns = [text(PROPOSAL), text('Noting it first.\n' + textCall('host_memory', { note: 'the pack is fine' })), text('REFUTATION: none found.')]
     const { call, sent } = scripted(turns)
     const events = await drain(vercel.start(session('openai-compatible', call, { nativeToolCalls: false }, { hostTools: [remember], critic: 'on', testPrompt: 'the runtime’s test_pack guidance' })))
@@ -219,7 +219,7 @@ describe('whether to offer tools reads the record', () => {
 
   it('takes a proposal made through propose_pack in text, as natively', async () => {
     let executed = 0
-    const propose: HostTool = { name: PROPOSE_PACK_TOOL, effect: 'proposal', description: 'Propose the pack for review.', inputSchema: PROPOSE_PACK_SCHEMA, execute: async () => { executed += 1; return { content: [] } } }
+    const propose: HostTool = { name: PROPOSE_PACK_TOOL,taxonomy:{operation:'propose',effect:'propose'} as const, effect: 'proposal', description: 'Propose the pack for review.', inputSchema: PROPOSE_PACK_SCHEMA, execute: async () => { executed += 1; return { content: [] } } }
     const { call } = scripted([text(textCall(PROPOSE_PACK_TOOL, { documentJson: '{"id":"p"}', unknowns: ['who signs'] })), text('Proposed.')])
     const events = await drain(vercel.start(session('openai-compatible', call, { nativeToolCalls: false }, { hostTools: [propose] })))
     expect(executed).toBe(0)

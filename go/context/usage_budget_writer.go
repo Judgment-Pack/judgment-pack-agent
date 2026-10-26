@@ -71,7 +71,7 @@ func (c *SessionContext) PrepareUsageRequest(ctx context.Context, role, kind, so
 	}
 	revision := ""
 	if c.session.Context != nil {
-		revision = c.session.Context.ConnectionRevisions[connection]
+		revision = c.connectionRevisions[connection]
 	}
 	f := usageDispatchFacts{DurableScope: binding.Scope, Source: source, Tool: tool, Descriptor: string(descriptor), UsageBoundRequest: UsageBoundRequest{Kind: kind, Family: family, Connection: connection, ConnectionRevision: revision, Model: model, Request: append([]byte(nil), body...)}}
 	ticket, err := w.budget.reserve(ctx, newStorageIdentity(), f)

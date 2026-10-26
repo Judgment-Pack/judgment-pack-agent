@@ -38,7 +38,7 @@ const PAGE = Array.from({ length: 900 }, (_, i) =>
  */
 function pageReader(page: string, window: (text: string) => string): HostTool {
   return {
-    name: 'read_page', effect: 'read', description: 'Read the fetched page', inputSchema: { type: 'object' },
+    name: 'read_page',taxonomy:{operation:'read',effect:'read'} as const, effect: 'read', description: 'Read the fetched page', inputSchema: { type: 'object' },
     execute: async (args) => {
       const offset = Number(args.offset ?? 0)
       const text = window(page.slice(offset))

@@ -127,7 +127,7 @@ describe('one block', () => {
 })
 
 const readPage = (page: string, executed: { count: number } = { count: 0 }): HostTool => ({
-  name: 'read_page',
+  name: 'read_page',taxonomy:{operation:'read',effect:'read'} as const,
   effect: 'read',
   description: 'Read one web page the person named.',
   inputSchema: { type: 'object', properties: { url: { type: 'string' } }, additionalProperties: false },
@@ -137,7 +137,7 @@ const readPage = (page: string, executed: { count: number } = { count: 0 }): Hos
   }
 })
 const saveNote = (executed: { count: number }): HostTool => ({
-  name: 'save_note',
+  name: 'save_note',taxonomy:{operation:'own-state',effect:'pure'} as const,
   effect: 'workflow',
   description: 'Save a note for the person to review.',
   inputSchema: { type: 'object', properties: { text: { type: 'string' } }, additionalProperties: false },

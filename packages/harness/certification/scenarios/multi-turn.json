@@ -108,13 +108,21 @@
         "runtime": true
       },
       "description": "Read the runtime contract before creating or changing a pack.",
-      "result": "Read the pack schema before you write a pack, and keep every amount a decimal string."
+      "result": "Read the pack schema before you write a pack, and keep every amount a decimal string.",
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read"
+      }
     },
     {
       "name": "read_pack_tests",
       "effect": "read",
       "description": "Read a pack and its saved cases.",
-      "result": "{\"cases\": [{\"id\": \"small-claim\", \"facts\": {\"claim\": {\"amount\": \"40\"}}, \"expected\": \"approve\"}]}"
+      "result": "{\"cases\": [{\"id\": \"small-claim\", \"facts\": {\"claim\": {\"amount\": \"40\"}}, \"expected\": \"approve\"}]}",
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read"
+      }
     }
   ]
 }

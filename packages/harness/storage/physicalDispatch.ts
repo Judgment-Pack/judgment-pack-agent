@@ -29,12 +29,17 @@ export function observeNativeWitness(token:object|undefined):void{if(token){cons
 export function closeNativeWitness(token:object|undefined):void{if(token){const held=nativeWitnesses.get(token);if(held)held.live=false}}
 export function admittedNativeWitness(token:object|undefined,binding:DurableBinding,ticket:object|undefined):boolean{const held=token?nativeWitnesses.get(token):undefined;return !!held&&!held.live&&held.admitted&&held.ticket===ticket&&held.binding.writer===binding.writer&&held.binding.root===binding.root&&held.binding.scope.execution===binding.scope.execution&&held.binding.scope.role===binding.scope.role&&held.binding.scope.task===binding.scope.task}
 
-const captureAliases=new WeakMap<AgentRequest,{tools:string;bindings:Record<string,string>}>()
+const nativeCaptureBrand:unique symbol=Symbol('original native capture bindings')
+export type NativeCaptureBindings={readonly [nativeCaptureBrand]:true}
+const nativeCaptureProofs=new WeakMap<object,{tools:string;bindings:Record<string,string>}>()
+const captureAliases=new WeakMap<AgentRequest,NativeCaptureBindings>()
 /** The original native engine alone supplies its private route table. No description parsing. */
 export function nativeCaptureRequest(request:AgentRequest,routes:ReadonlyMap<string,string>):AgentRequest{
  const bindings:Record<string,string>=Object.create(null),names=new Set<string>()
  if(routes.size!==request.tools.length)throw Error('Invalid native capture routes')
  for(const tool of request.tools){const name=routes.get(tool.name);if(typeof name!=='string'||!name||Object.hasOwn(bindings,tool.name)||names.has(name))throw Error('Invalid native capture routes');bindings[tool.name]=name;names.add(name)}
- captureAliases.set(request,{tools:JSON.stringify(request.tools),bindings});return request
+ const proof=Object.freeze({[nativeCaptureBrand]:true as const});nativeCaptureProofs.set(proof,{tools:JSON.stringify(request.tools),bindings});captureAliases.set(request,proof);return request
 }
-export function originalNativeCaptureAliases(request:AgentRequest):Record<string,string>|undefined{const held=captureAliases.get(request);return held&&held.tools===JSON.stringify(request.tools)?structuredClone(held.bindings):undefined}
+export function originalNativeCaptureAliases(request:AgentRequest):NativeCaptureBindings|undefined{const proof=captureAliases.get(request),held=proof&&nativeCaptureProofs.get(proof);return held&&held.tools===JSON.stringify(request.tools)?proof:undefined}
+/** Only original engine-issued proof matching the exact offered tools can enroll durable evidence. */
+export function admittedNativeCaptureBindings(proof:NativeCaptureBindings|undefined,request:string):Record<string,string>|undefined{const held=proof&&nativeCaptureProofs.get(proof);return held&&held.tools===JSON.stringify(JSON.parse(request).tools)?structuredClone(held.bindings):undefined}

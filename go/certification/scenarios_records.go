@@ -30,7 +30,49 @@ func agentRecordsChecks(ctx context.Context, server *Server, host AgentHost, _ f
 	return recordsFindings(ctx, server, "whole", bound, &host)
 }
 
+// Fixture expectations follow the published current schema registry, independently of writer defaults.
+func recordFixtureMaxVersion(file string) (int64, error) {
+	root, err := RepositoryRoot()
+	if err != nil {
+		return 0, err
+	}
+	raw, err := os.ReadFile(filepath.Join(root, "contract", "schemas", file))
+	if err != nil {
+		return 0, err
+	}
+	var schema struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+	}
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		return 0, err
+	}
+	var registry struct {
+		Enum []int64 `json:"enum"`
+	}
+	if err := json.Unmarshal(schema.Properties["version"], &registry); err != nil {
+		return 0, err
+	}
+	var max int64
+	for _, version := range registry.Enum {
+		if version > max {
+			max = version
+		}
+	}
+	if max == 0 {
+		return 0, fmt.Errorf("fixture schema has no version registry: %s", file)
+	}
+	return max, nil
+}
+
 func recordsFindings(ctx context.Context, server *Server, answerAs string, bound Adapter, agentHost *AgentHost) ([]Finding, error) {
+	maxCheckpointVersion, err := recordFixtureMaxVersion("checkpoint.json")
+	if err != nil {
+		return nil, err
+	}
+	maxEventVersion, err := recordFixtureMaxVersion("run-event.json")
+	if err != nil {
+		return nil, err
+	}
 	dispatches := 0
 	if agentHost != nil {
 		inner := bound
@@ -193,8 +235,8 @@ func recordsFindings(ctx context.Context, server *Server, answerAs string, bound
 		f.fail("the expired resume was not refused before dispatch with records expired")
 	}
 	// Future versions refuse before either adapter dispatches or calls a tool.
-	for _, future := range []contract.Checkpoint{{Version: 3}, *checkpoint} {
-		future.Version = 3
+	for _, future := range []contract.Checkpoint{{Version: maxCheckpointVersion + 1}, *checkpoint} {
+		future.Version = maxCheckpointVersion + 1
 		input := requestInput(file.Request)
 		input.Execution = &future
 		before := dispatches
@@ -207,7 +249,7 @@ func recordsFindings(ctx context.Context, server *Server, answerAs string, bound
 			encoded, _ := json.Marshal(event)
 			var header struct{ Version int }
 			_ = json.Unmarshal(encoded, &header)
-			if header.Version != 1 || contract.CheckRecord("event", encoded) != nil {
+			if header.Version < 1 || int64(header.Version) > maxEventVersion || contract.CheckRecord("event", encoded) != nil {
 				f.fail("future refusal emitted an invalid current event")
 			}
 			if event.Guardrail != nil && event.Guardrail.Reason != nil && *event.Guardrail.Reason == "record version unsupported" {

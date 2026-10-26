@@ -354,7 +354,7 @@ func TestTheApprovalPausesWordsAreTheVectors(t *testing.T) {
 	}
 	var tools []HostTool
 	for _, listed := range sources.Server {
-		tools = append(tools, HostTool{Name: listed.Name, Description: listed.Description, InputSchema: listed.InputSchema,
+		tools = append(tools, HostTool{Name: listed.Name, Taxonomy: listed.Taxonomy, Description: listed.Description, InputSchema: listed.InputSchema,
 			Source:  &ToolSource{Kind: "mcp", ID: "tracker", Trust: "public", ToolListDigest: sources.Tracker.Pinned},
 			Approve: func(call ApprovalRequest) string { asked = append(asked, call.Name); return "ask" }})
 	}
@@ -381,6 +381,7 @@ type sourcesFile struct {
 		Name        string          `json:"name"`
 		Description string          `json:"description"`
 		InputSchema json.RawMessage `json:"inputSchema"`
+		Taxonomy    *ToolTaxonomy   `json:"taxonomy"`
 	} `json:"server"`
 }
 

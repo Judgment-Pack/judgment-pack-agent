@@ -567,28 +567,32 @@ func (w *RunWriter) saveLocked(ctx context.Context, binding RunBinding, state *c
 			return fail(err)
 		}
 	}
+	patch := CheckpointPatch{}
 	if w.repeatTools != nil {
-		root.Version = 3
+		patch["Version"] = int64(3)
 		raw, _ := json.Marshal(w.repeatTools)
-		if err := json.Unmarshal(raw, &root.RepeatTools); err != nil {
+		var repeated contract.CheckpointRepeatTools
+		if err := json.Unmarshal(raw, &repeated); err != nil {
 			return fail(err)
 		}
+		patch["RepeatTools"] = &repeated
 		if current := w.repeatStateLocked(root.ID); current != nil && current.Stopped {
 			reason := "RepeatedToolLimit"
-			root.Status = "stopped"
-			root.Reason = &reason
+			patch["Status"], patch["Reason"] = "stopped", &reason
 		}
 		for i := range w.book.Children {
 			child := &w.book.Children[i]
 			if current := w.repeatStateLocked(child.Scope.Execution); current != nil && current.Stopped {
 				reason := "RepeatedToolLimit"
-				child.Checkpoint.Status = "stopped"
-				child.Checkpoint.Reason = &reason
+				child.Checkpoint, _, err = MutateCheckpoint(child.Checkpoint, CheckpointPatch{"Status": "stopped", "Reason": &reason})
+				if err != nil {
+					return fail(err)
+				}
 			}
 		}
 	}
 	if w.budget != nil {
-		root.Version = 3
+		patch["Version"] = int64(3)
 		raw, err := json.Marshal(w.budget.journal)
 		if err != nil {
 			return fail(err)
@@ -597,7 +601,11 @@ func (w *RunWriter) saveLocked(ctx context.Context, binding RunBinding, state *c
 		if err = json.Unmarshal(raw, &held); err != nil {
 			return fail(err)
 		}
-		root.UsageBudget = &held
+		patch["UsageBudget"] = &held
+	}
+	root, _, err = MutateCheckpoint(root, patch)
+	if err != nil {
+		return fail(err)
 	}
 	if root.Handoff != nil {
 		w.book.PendingHandoff = nil
@@ -792,7 +800,8 @@ func (w *RunWriter) commitLocked(ctx context.Context, commitID string, checkpoin
 	}
 	if w.contextSource != nil {
 		var value ContextSnapshotUpdate
-		value, err = w.contextSource.prepareForCheckpoint(ctx, checkpoint.Status == "complete" || checkpoint.Status == "stopped", &checkpoint.Context.Scope)
+		scope := checkpoint.Context.Scope
+		value, err = w.contextSource.prepareForCheckpoint(ctx, checkpoint.Status == "complete" || checkpoint.Status == "stopped", &scope)
 		update = &value
 	}
 	if err == nil && w.history != nil {
@@ -902,7 +911,13 @@ func (w *RunWriter) CommitRoute(ctx context.Context, binding RunBinding, state c
 			if state.TurnRoute == nil {
 				return contract.RunEvent{}, &ContinuationIdentityChanged{}
 			}
-			state.TurnRoute.WidenedInvocation = usageCopy(marker)
+			route := usageCopy(state.TurnRoute)
+			route.WidenedInvocation = usageCopy(marker)
+			var err error
+			state, _, err = MutateCheckpoint(state, CheckpointPatch{"TurnRoute": route})
+			if err != nil {
+				return contract.RunEvent{}, err
+			}
 		}
 	}
 	var route *contract.TurnRoute
@@ -1292,6 +1307,13 @@ func InvokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 	}
 	if state := w.repeatStateLocked(binding.Scope.Execution); state != nil && state.Reminded && !state.ReminderDelivered && (kind == "model" || kind == "agent") && strings.Contains(claim.Request, RepeatReminder) {
 		state.ReminderDelivered = true
+	}
+	if kind == "agent" && w.capture != nil {
+		if slot, _ := ctx.Value(nativeCaptureKey{}).(*nativeCaptureSlot); slot != nil && slot.writer == w && slot.scope == binding.Scope && slot.bindings != nil {
+			w.capture.bindings[claim.ID] = usageCopy(slot.bindings)
+		} else {
+			w.capture.unavailable = true
+		}
 	}
 	w.book.Dispatches = append(w.book.Dispatches, claim)
 	_, err := w.saveLocked(ctx, *binding, nil, nil, nil, nil)

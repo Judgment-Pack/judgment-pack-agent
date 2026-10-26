@@ -93,7 +93,7 @@
         "id": "rates",
         "trust": "person",
         "version": "3",
-        "toolListDigest": "sha256:f7f20dc1a3ac25f53356425044ba85e28f2d1db99d6c75bd62ad55e3fdc662c0"
+        "toolListDigest": "sha256:055a857bea79e66cf9ed7026b3617ee7ada87c8d158b4d3422d7ae138f8fdb71"
       },
       "effectClass": "read",
       "delegation": "read",
@@ -102,7 +102,7 @@
       },
       "taxonomy": {
         "operation": "read",
-        "effect": "read-external"
+        "effect": "read"
       }
     },
     {
@@ -128,7 +128,7 @@
         "id": "rates",
         "trust": "person",
         "version": "3",
-        "toolListDigest": "sha256:f7f20dc1a3ac25f53356425044ba85e28f2d1db99d6c75bd62ad55e3fdc662c0"
+        "toolListDigest": "sha256:055a857bea79e66cf9ed7026b3617ee7ada87c8d158b4d3422d7ae138f8fdb71"
       },
       "effectClass": "propose",
       "taxonomy": {

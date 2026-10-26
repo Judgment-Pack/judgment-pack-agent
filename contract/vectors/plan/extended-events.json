@@ -9,7 +9,7 @@
       "packages/harness/execution/planActions.ts"
     ]
   },
-  "description": "Handwritten shared TS/Go plan revision, departure, completion refusal, purpose-bound approval and plan decision events.",
+  "description": "Handwritten shared TS/Go plan revision, departure, completion refusal, purpose-bound approval and plan decision events. Appended current-version counterparts preserve the handwritten historical event bodies while exercising version 2 for each current Plan event; historical version-1 items are unchanged.",
   "items": [
     {
       "type": "plan_revised",
@@ -398,6 +398,88 @@
         "version": "v1"
       },
       "args": {}
+    },
+    {
+      "type": "plan_revised",
+      "version": 2,
+      "execution": "extended-plan",
+      "sequence": 1,
+      "previous": "sha256:4bd3bd759ee580fc35f2ed601e4bef8755137f65e2c6b44bbb252106e96364aa",
+      "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+      "explanation": "Inspect current content",
+      "diff": [
+        {
+          "id": "step-1",
+          "kind": "status",
+          "before": {
+            "id": "step-1",
+            "step": "Inspect",
+            "status": "pending",
+            "origin": {
+              "plan": "accepted-plan",
+              "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+              "index": 0
+            }
+          },
+          "after": {
+            "id": "step-1",
+            "step": "Inspect",
+            "status": "in_progress",
+            "origin": {
+              "plan": "accepted-plan",
+              "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+              "index": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "plan_departed",
+      "version": 2,
+      "execution": "extended-plan",
+      "revision": "sha256:a8641e88a3e5c770fe8450659f105ef82b68c4fbffec3b939d8639503d31cac1",
+      "acceptedRevision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+      "explanation": "Narrow the accepted work",
+      "departures": [
+        {
+          "kind": "removed",
+          "step": "step-1",
+          "index": 0
+        },
+        {
+          "kind": "changed",
+          "step": "step-2",
+          "index": 1
+        },
+        {
+          "kind": "reordered",
+          "step": "step-2",
+          "index": 1
+        },
+        {
+          "kind": "added",
+          "step": "step-3"
+        }
+      ]
+    },
+    {
+      "type": "plan_completion_refused",
+      "version": 2,
+      "execution": "extended-plan",
+      "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+      "reason": "invalid-input",
+      "step": "step-1"
+    },
+    {
+      "type": "plan_drift_decided",
+      "version": 2,
+      "execution": "extended-plan",
+      "callId": "plan-decision-1",
+      "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+      "candidateRevision": "sha256:a8641e88a3e5c770fe8450659f105ef82b68c4fbffec3b939d8639503d31cac1",
+      "approved": true,
+      "note": "Use the focused plan."
     }
   ]
 }

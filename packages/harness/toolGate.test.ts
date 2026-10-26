@@ -705,7 +705,7 @@ describe('an ordinary session, every frame of it', () => {
       }
       if (frame.method === 'notifications/initialized') return
       if (frame.method === 'tools/list') {
-        reply({ tools: [{ name: 'validate', description: 'check', inputSchema: { type: 'object' } }] })
+        reply({ tools: [{ name: 'validate',_meta:{operation:'check',effect:'pure',checkKind:'validate'} as const, description: 'check', inputSchema: { type: 'object' } }] })
         return
       }
       if (frame.method === 'prompts/get') {

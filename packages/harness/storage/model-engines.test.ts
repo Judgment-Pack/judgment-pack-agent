@@ -10,7 +10,7 @@ const finalBody='data: {"id":"fixture","object":"chat.completion.chunk","model":
 const latch=()=>{let resolve!:()=>void;return {promise:new Promise<void>(done=>{resolve=done}),resolve:()=>resolve()}}
 const checkpoint=async(store:MemoryRunStore,id:string)=>JSON.parse(new TextDecoder().decode((await store.load(id))!.checkpoint!))
 const input=(store:RunStore,id:string,family:EndpointKind,call:AssistantSession['model']['call'],signal:AbortSignal,execute=vi.fn(async()=>({content:[{type:'text',text:'fixture result'}]}))):AssistantSession=>({
- prompt:'Read the fixture then answer.',testPrompt:'',tools:[],hostTools:[{name:'read_fixture',description:'Read fixture',inputSchema:{type:'object',properties:{}},effect:'read',execute}],callTool:vi.fn(),
+ prompt:'Read the fixture then answer.',testPrompt:'',tools:[],hostTools:[{name:'read_fixture',taxonomy:{operation:'read',effect:'read'} as const,description:'Read fixture',inputSchema:{type:'object',properties:{}},effect:'read',execute}],callTool:vi.fn(),
  model:{family,model:'fixture',call},signal,allowConversation:true,interactive:false,critic:'off',context:{currentRequest:{message:'Read fixture',input:'Read fixture'},runStore:{store,id}}
 })
 const consume=async(iterator:AsyncIterator<AssistantEvent>)=>{const events:AssistantEvent[]=[];for(;;){const next=await iterator.next();if(next.done)return events;events.push(next.value)}}

@@ -1223,6 +1223,7 @@ func (g *SourceGate) Decide(ctx context.Context, name string, args json.RawMessa
 		drawn = randomUUID()
 	}
 	closed := ""
+	claimPending := false
 	if g.book != nil {
 		closed = g.book.Closed()
 	}
@@ -1233,6 +1234,7 @@ func (g *SourceGate) Decide(ctx context.Context, name string, args json.RawMessa
 		if claim.ClaimApproval() {
 			defer claim.ReleaseApproval()
 		} else {
+			claimPending = true
 			closed = "Another act call is being prepared or waits for approval; nothing was run."
 		}
 	}
@@ -1260,6 +1262,10 @@ func (g *SourceGate) Decide(ctx context.Context, name string, args json.RawMessa
 	row := g.row(id)
 	given, _ := ParseJSON(nonEmptyArgs(args))
 	switch {
+	case claimPending:
+		held = decision{answer: "pending", detail: closed}
+		row.Refused++
+		g.mark(name, callID, mark{})
 	case closed != "":
 		held = decision{answer: "closed", detail: closed}
 	case identityChanged || !served || g.changed[id] || int(row.Calls+row.Proposed) >= g.policy.SourceCallsPerTurn ||

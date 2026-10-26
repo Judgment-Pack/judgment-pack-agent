@@ -434,6 +434,7 @@ async function skillsPage(page) {
     markers.push(await page.nameOnly('skills', name))
   }
   page.schema('skill.json')
+  page.schema('admitted-skill-v1.json')
   const sourceKinds = page.def('tool-offer.json', 'sourceRecord').properties.kind.enum
   agree(page, 'the skill source kinds', sourceKinds.filter((k) => k !== 'runtime'), SKILL_SOURCE_KINDS)
 
@@ -441,6 +442,8 @@ async function skillsPage(page) {
     'The skill record, how a host declares one and how the run offers it, the skill bounds and the names of the headers and markers.',
     seeAlso('tools.md', 'budget.md', 'reasons.md', 'events.md', 'checkpoint.md', 'critic.md'),
     page.rootOf('skill.json', '## A skill'),
+    page.rootOf('admitted-skill-v1.json', '## Current admitted result'),
+    'The host declaration retains the closed skill.json shape. Current admission results add the computed profile and optional measured bytes under admitted-skill-v1.json. The schema name versions this in-process result; declarations gain no version field. Historical admitted values remain readable under skill.json.',
     ...['name', 'resource', 'digest', 'bytes'].map((n) => page.nodeOf('skill.json', n)),
     '## Derived capability profile',
     page.nodeOf('tool-taxonomy.json','profile'),

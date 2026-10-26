@@ -298,7 +298,7 @@ describe('the iterator every engine is wrapped in', () => {
 
 describe('the schema an engine may show the model', () => {
   it('is the served one, and a refusal where the runtime served none', () => {
-    expect(servedSchema({ name: 'validate', inputSchema: { type: 'object' } })).toEqual({
+    expect(servedSchema({ name: 'validate',_meta:{operation:'check',effect:'pure',checkKind:'validate'} as const, inputSchema: { type: 'object' } })).toEqual({
       type: 'object'
     })
     expect(() => servedSchema({ name: 'a_new_tool' })).toThrow('a_new_tool')

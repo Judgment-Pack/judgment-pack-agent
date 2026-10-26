@@ -31,7 +31,7 @@ func subagentFindings(ctx context.Context, server *Server, inner Adapter, agent 
 	skill.PinnedDigest = runcontext.SkillDigest(skill)
 	definition.PinnedDigest = runcontext.SubagentDigest(definition)
 	declaration := turn.DelegationTool(turn.TaskProfiles)
-	host, err := openScenario(ctx, server, ScenarioEndpoint{Scenario: "policy-table", AnswerAs: "whole"}, []runcontext.HostTool{{Name: declaration.Name, Description: declaration.Description, InputSchema: declaration.InputSchema}, {Name: "lookup", Effect: "read"}, {Name: "load_skill", Effect: "plan"}, {Name: "unload_skill", Effect: "plan"}}, true)
+	host, err := openScenario(ctx, server, ScenarioEndpoint{Scenario: "policy-table", AnswerAs: "whole"}, []runcontext.HostTool{{Name: declaration.Name, Taxonomy: &runcontext.ToolTaxonomy{Operation: "propose", Effect: "propose"}, Description: declaration.Description, InputSchema: declaration.InputSchema}, {Name: "lookup", Taxonomy: &runcontext.ToolTaxonomy{Operation: "read", Effect: "read"}, Effect: "read"}, {Name: "load_skill", Taxonomy: &runcontext.ToolTaxonomy{Operation: "own-state", Effect: "pure"}, Effect: "plan"}, {Name: "unload_skill", Taxonomy: &runcontext.ToolTaxonomy{Operation: "own-state", Effect: "pure"}, Effect: "plan"}}, true)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func subagentFindings(ctx context.Context, server *Server, inner Adapter, agent 
 		args json.RawMessage
 	}{{"load_skill", json.RawMessage(`{"name":"evidence"}`)}, {"lookup", json.RawMessage(`{}`)}, {"delegate_tasks", task}}
 	run := Run{ModelName: "fixture", Wire: "openai-compatible", Thinking: "low", Prompt: "Delegate the evidence check.", AllowConversation: true, Interactive: true, Critic: "off", Gate: host.gate.Calls(), Tools: nil, Subagents: []runcontext.Subagent{definition}, Skills: []runcontext.Skill{skill}, Context: &runcontext.Input{CurrentRequest: &runcontext.CurrentRequest{Message: "Delegate the evidence check.", Input: "Delegate the evidence check."}}, Emit: emit}
-	run.HostTools = []runcontext.HostTool{{Name: "lookup", Effect: "read", Description: "Read evidence.", InputSchema: json.RawMessage(`{"type":"object","properties":{}}`), Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
+	run.HostTools = []runcontext.HostTool{{Name: "lookup", Taxonomy: &runcontext.ToolTaxonomy{Operation: "read", Effect: "read"}, Effect: "read", Description: "Read evidence.", InputSchema: json.RawMessage(`{"type":"object","properties":{}}`), Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
 		reads++
 		return runcontext.ToolResult{Content: []runcontext.Content{runcontext.TextContent("EVIDENCE: supplied facts.")}}, nil
 	}}}

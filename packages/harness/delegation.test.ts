@@ -12,7 +12,7 @@ import { vercel } from './engines/vercel'
 import { normalize } from './thinking'
 import { gatedRuntime, runtimeAnswer, scriptedBridge, TEST_CASES_TOOL, TEST_CONFORMANCE_TOOL, type RuntimeCall } from './testing/scripted'
 import { bindAgentRun } from './agentTransport'
-import { RECORDED_TOOLS } from './certification/scriptedServer'
+import { currentContractReplayTools } from './certification/scriptedServer'
 import taskSchema from '../../contract/schemas/delegated-task.json'
 import budgetSchema from '../../contract/schemas/budget.json'
 import profilesVector from '../../contract/vectors/delegation/profiles.json'
@@ -29,8 +29,8 @@ const collect=async(engine:Engine,session:EngineSession)=>{const events:Assistan
 // The delegated tasks a finished run left, as the host reads them: the last state of each task, and a
 // task still queued or running read as interrupted (the Desk's chat history, chat/responseHistory.ts).
 const results=(events:AssistantEvent[])=>{const tasks=new Map<string,DelegatedTask>();for(const event of events)if(event.type==='delegated_task'){const task=structuredClone(event.task);if(task.state==='running'||task.state==='queued'){task.state='interrupted';task.problem='This task was interrupted. Nothing restarted automatically.';task.steps=task.steps.map(step=>step.state==='running'||step.state==='queued'?{...step,state:'interrupted' as const}:step)}tasks.set(task.id,task)}return [...tasks.values()]}
-const readTool:HostTool={name:'read_context',delegation:'read',description:'Read context',inputSchema:{type:'object'},execute:vi.fn(async()=>({content:[{type:'text',text:'Saved source'}]}))}
-const writeTool:HostTool={name:'save_recipe',description:'Save',inputSchema:{type:'object'},execute:vi.fn()}
+const readTool:HostTool={name:'read_context',taxonomy:{operation:'read',effect:'read'} as const,delegation:'read',description:'Read context',inputSchema:{type:'object'},execute:vi.fn(async()=>({content:[{type:'text',text:'Saved source'}]}))}
+const writeTool:HostTool={name:'save_recipe',taxonomy:{operation:'own-state',effect:'pure'} as const,description:'Save',inputSchema:{type:'object'},execute:vi.fn()}
 /** The delegation tool a parent run is offered, or undefined in a child's. */
 const delegateIn=(s:EngineSession)=>s.hostTools.find(t=>t.name===DELEGATE_TOOL)
 /** What a batch answered the parent: its tasks. */
@@ -241,7 +241,7 @@ it('carries the Codex parent’s earlier reads to its next run by reference, and
  const prompts:string[]=[]
  // The index shows a result's first line; the rest is read by reference.
  const SOURCE='Mileage policy, page 1\nSOURCE-TEXT-7: the policy pays 0.58 per mile.'
- const readSource:HostTool={name:'read_source',delegation:'read',description:'Read the source',inputSchema:{type:'object'},execute:vi.fn(async()=>({content:[{type:'text' as const,text:SOURCE}]}))}
+ const readSource:HostTool={name:'read_source',taxonomy:{operation:'read',effect:'read'} as const,delegation:'read',description:'Read the source',inputSchema:{type:'object'},execute:vi.fn(async()=>({content:[{type:'text' as const,text:SOURCE}]}))}
  let parents=0
  const run=vi.fn<AgentRun>(async(r,cb)=>{prompts.push(r.prompt)
   const tool=(name:string)=>r.tools.find((t:{description:string})=>t.description.startsWith(name+':'))
@@ -584,8 +584,8 @@ describe('context by reference and profiles (agent#15)',()=>{
 
  // Review row 3: every profile's offer, with Runtime tools served; an unoffered Runtime name never reaches the runtime.
  it('offers each profile exactly its tools where the session serves Runtime tools, and refuses the rest before the runtime',async()=>{
-  const runtime=await gatedRuntime({tools:[...RECORDED_TOOLS,TEST_CASES_TOOL],allowed:[...ASSISTANT_TOOLS],handle:()=>runtimeAnswer({status:'ok'}),onEvent:()=>{}})
-  const host=(name:string,extra:Partial<HostTool>):HostTool=>({name,description:name,inputSchema:{type:'object'},execute:vi.fn(async()=>({content:[{type:'text' as const,text:name}]})),...extra})
+  const runtime=await gatedRuntime({tools:[...currentContractReplayTools(),TEST_CASES_TOOL],allowed:[...ASSISTANT_TOOLS],handle:()=>runtimeAnswer({status:'ok'}),onEvent:()=>{}})
+  const host=(name:string,extra:Partial<HostTool>):HostTool=>({name,taxonomy:name==='read_pack'?{operation:'read',effect:'read'}:name==='read_page'?{operation:'read',effect:'read'}:{operation:'own-state',effect:'pure'},description:name,inputSchema:{type:'object'},execute:vi.fn(async()=>({content:[{type:'text' as const,text:name}]})),...extra})
   const hostTools=[host('read_pack',{delegation:'read'}),host('read_page',{delegation:'research'}),host('save_pack',{effect:'workflow'})]
   try {
    const {sent,call}=scripted(one=>{
@@ -640,7 +640,7 @@ describe('context by reference and profiles (agent#15)',()=>{
  // Review row 3: the child's first message carries no index of the parent chat's earlier results.
  it('sends a child no index of what earlier runs of the chat read, where the parent’s run is sent one',async()=>{
   const chat=new ChatContext()
-  const readSource:HostTool={name:'read_source',delegation:'read',contextPolicy:{immutable:true},description:'Read the source',inputSchema:{type:'object'},execute:vi.fn(async()=>({content:[{type:'text' as const,text:'FIRST-LINE-OF-THE-PARENT-READ\nthe rest of the page'}]}))}
+  const readSource:HostTool={name:'read_source',taxonomy:{operation:'read',effect:'read'} as const,delegation:'read',contextPolicy:{immutable:true},description:'Read the source',inputSchema:{type:'object'},execute:vi.fn(async()=>({content:[{type:'text' as const,text:'FIRST-LINE-OF-THE-PARENT-READ\nthe rest of the page'}]}))}
   // An earlier run of the chat read the source.
   const one=scripted(sent=>toolMessages(sent).length===0?sse(undefined,{name:'read_source',args:{},id:'call_read'}):sse('Read.'))
   await collect(withDelegation(vercel),apiSession({hostTools:[readSource],context:{chat},model:{family:'openai-compatible',model:'fixture',call:one.call}}))
@@ -660,7 +660,7 @@ describe('context by reference and profiles (agent#15)',()=>{
   // The read moves the clock on by its thirty seconds, so every timer the run holds (the child's time
   // limit, the batch's, the call's deadline) sees the time the reads take, and nothing else moves it.
   const pages=vi.fn(async(args:Record<string,unknown>)=>{await vi.advanceTimersByTimeAsync(30_000);return {content:[{type:'text' as const,text:`Page ${String(args.url)}: the rate is 0.58.`}]}})
-  const readPage:HostTool={name:'read_page',delegation:'research',description:'Read one page.',inputSchema:{type:'object',properties:{url:{type:'string'}},required:['url']},execute:pages}
+  const readPage:HostTool={name:'read_page',taxonomy:{operation:'read',effect:'read'} as const,delegation:'research',description:'Read one page.',inputSchema:{type:'object',properties:{url:{type:'string'}},required:['url']},execute:pages}
   const {call}=scripted(one=>{
    if(isChild(one)){const done=toolMessages(one).length;return done<6?sse(undefined,{name:'read_page',args:{url:`https://example.test/${done}`},id:`call_page_${done}`}):sse('Six pages agree: 0.58 per mile.')}
    return toolMessages(one).length===0?sse(undefined,{name:DELEGATE_TOOL,args:{tasks:[{title:'Rate',objective:'Read the six pages.',profile:'research'}]}}):sse('0.58.')
@@ -674,10 +674,10 @@ describe('context by reference and profiles (agent#15)',()=>{
 
  it('offers an author-and-test child the gate’s Runtime tools and nothing else, runs the pack’s tests through the gate, and shares the parent’s read cache',async()=>{
   const gateEvents:AssistantEvent[]=[]
-  const runtime=await gatedRuntime({tools:[...RECORDED_TOOLS,TEST_CASES_TOOL,TEST_CONFORMANCE_TOOL],allowed:[...ASSISTANT_TOOLS],
+  const runtime=await gatedRuntime({tools:[...currentContractReplayTools(),TEST_CASES_TOOL,TEST_CONFORMANCE_TOOL],allowed:[...ASSISTANT_TOOLS],
    handle:(c:RuntimeCall)=>c.name==='experimental_test_cases'?runtimeAnswer({status:'failed',cases:[{id:'c1',passed:false,why:'expected decided, got refused'}]}):runtimeAnswer({schema:'judgment-pack',version:'0.4'}),onEvent:e=>gateEvents.push(e)})
   const PACK=JSON.stringify({specVersion:'0.4',id:'expense'}),MATRIX=JSON.stringify({matrixVersion:'3',cases:[{id:'c1'}]})
-  const readPack:HostTool={name:'read_pack',delegation:'read',description:'Read the saved pack.',inputSchema:{type:'object'},execute:vi.fn(async()=>({content:[{type:'text' as const,text:'saved'}]}))}
+  const readPack:HostTool={name:'read_pack',taxonomy:{operation:'read',effect:'read'} as const,delegation:'read',description:'Read the saved pack.',inputSchema:{type:'object'},execute:vi.fn(async()=>({content:[{type:'text' as const,text:'saved'}]}))}
   try {
    const {sent,call}=scripted(one=>{
     const done=toolMessages(one).length
@@ -702,7 +702,7 @@ describe('context by reference and profiles (agent#15)',()=>{
  it('refuses an analyze child the parent’s cached get_schema read: nothing is served, listed or readable, and the parent’s row stays',async()=>{
   const RUNTIME={identity:'sha256:runtime',version:'0.4.0'}
   const run=async(parentReads:boolean)=>{
-   const runtime=await gatedRuntime({tools:[...RECORDED_TOOLS,TEST_CASES_TOOL],allowed:[...ASSISTANT_TOOLS],handle:()=>runtimeAnswer({schema:'judgment-pack',version:'0.4'}),onEvent:()=>{}})
+   const runtime=await gatedRuntime({tools:[...currentContractReplayTools(),TEST_CASES_TOOL],allowed:[...ASSISTANT_TOOLS],handle:()=>runtimeAnswer({schema:'judgment-pack',version:'0.4'}),onEvent:()=>{}})
    const chat=new ChatContext()
    const schemaId=()=>[...chat.entries.keys()].find(id=>id.includes(':result-get_schema-'))
    try {
@@ -747,7 +747,7 @@ describe('context by reference and profiles (agent#15)',()=>{
  it('refuses a Codex analyze child the parent’s cached get_schema read: nothing is served, listed or readable, and the parent’s row stays',async()=>{
   const RUNTIME={identity:'sha256:runtime',version:'0.4.0'}
   const run=async(parentReads:boolean)=>{
-   const runtime=await gatedRuntime({tools:[...RECORDED_TOOLS,TEST_CASES_TOOL],allowed:[...ASSISTANT_TOOLS],handle:()=>runtimeAnswer({schema:'judgment-pack',version:'0.4'}),onEvent:()=>{}})
+   const runtime=await gatedRuntime({tools:[...currentContractReplayTools(),TEST_CASES_TOOL],allowed:[...ASSISTANT_TOOLS],handle:()=>runtimeAnswer({schema:'judgment-pack',version:'0.4'}),onEvent:()=>{}})
    const chat=new ChatContext()
    const schemaId=()=>[...chat.entries.keys()].find(id=>id.includes(':result-get_schema-'))
    const answers:string[]=[]
@@ -919,7 +919,7 @@ describe('limits after the review of agent#35',()=>{
   const codexRuns=greedyCodex(batch=>[task(`Batch ${batch}`,'analyze')])
   const offered:string[][]=[]
   const run:AgentRun=async(r,cb)=>{if(!r.prompt.includes('Complete this read-only task'))offered.push(r.tools.map((t:{description:string})=>t.description.slice(0,t.description.indexOf(':'))));return codexRuns.run(r,cb)}
-  const act:HostTool={name:'create_issue',description:'Open an issue.',inputSchema:{type:'object'},source:{kind:'custom',id:'tracker',trust:'person',version:'1'},effectClass:'act',approve:()=>'allow',execute:vi.fn()}
+  const act:HostTool={name:'create_issue',taxonomy:{operation:'act',effect:'act'} as const,description:'Open an issue.',inputSchema:{type:'object'},source:{kind:'custom',id:'tracker',trust:'person',version:'1',toolListDigest:'sha256:b729f6bf93c19bbaa20451b9a2d52d95978de500efd1cb1df928b285fd1a7cd6'},effectClass:'act',approve:()=>'allow',execute:vi.fn()}
   const {model:_model,thinking:_thinking,...base}=apiSession()
   await collect(withDelegation(codex),{...base,hostTools:[act],agent:{model:'fixture',run}})
   // Parent runs after none, two and four of the response's five runs: the third has no run left to continue a pause.
@@ -1023,7 +1023,7 @@ describe('limits after the review of agent#35',()=>{
    return toolMessages(one).length===0?sse(undefined,{name:DELEGATE_TOOL,args:{tasks:[task('Probe','analyze')]}}):sse('Done.')
   })
   const runtime=vi.fn(async()=>({content:[{type:'text' as const,text:'unexpected'}]}))
-  const events=await collect(withDelegation(vercel),apiSession({tools:[{name:'get_schema',inputSchema:{type:'object'}}],callTool:runtime,model:{family:'openai-compatible',model:'fixture',call}}))
+  const events=await collect(withDelegation(vercel),apiSession({tools:[{name:'get_schema',_meta:{operation:'read',effect:'read'} as const,inputSchema:{type:'object'}}],callTool:runtime,model:{family:'openai-compatible',model:'fixture',call}}))
   expect(results(events)[0]).toMatchObject({state:'complete',toolCalls:0,steps:[]})
   expect(runtime).not.toHaveBeenCalled()
  })

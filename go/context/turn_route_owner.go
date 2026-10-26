@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/internal/historycapture"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/internal/providerrelease"
 	"slices"
 	"sort"
@@ -186,7 +187,7 @@ func (c *SessionContext) initializeTurnRoute(ctx context.Context, session Sessio
 		}
 	}
 	if needsClassifier {
-		identity := RouteDigest(map[string]any{"provider": c.Provider("author"), "revision": c.session.Context.ConnectionRevisions[c.Provider("author").Connection]})
+		identity := RouteDigest(map[string]any{"provider": c.Provider("author"), "revision": c.connectionRevisions[c.Provider("author").Connection]})
 		route.Classifier = &RouteClassifierRecord{Binding: identity, PromptDigest: RouteDigest("not-dispatched"), Status: "unsupported"}
 		if !native && c.Execution.Remaining() > 1 {
 			route.Reason = "classifier-pending"
@@ -454,10 +455,18 @@ func (w *RunWriter) supersededNativeLocked(binding *RunBinding, row DurableDispa
 }
 
 // InvokeNativeRoute uses the original writer and a private slot. The host receives only release capability.
-func (c *SessionContext) InvokeNativeRoute(ctx context.Context, role, source, tool string, request []byte, run func(context.Context, []byte, *providerrelease.Capability) error) error {
+func (c *SessionContext) InvokeNativeRoute(ctx context.Context, role, source, tool string, request []byte, run func(context.Context, []byte, *providerrelease.Capability) error, proofs ...*historycapture.NativeBindings) error {
 	binding := c.Persistence(role)
 	if binding != nil && binding.Writer.capture != nil {
-		ctx = context.WithValue(ctx, nativeCaptureKey{}, &nativeCaptureSlot{writer: binding.Writer, scope: binding.Scope})
+		var aliases map[string]string
+		if len(proofs) > 0 {
+			var err error
+			aliases, err = proofs[0].ForRequest(request)
+			if err != nil {
+				return err
+			}
+		}
+		ctx = context.WithValue(ctx, nativeCaptureKey{}, &nativeCaptureSlot{writer: binding.Writer, scope: binding.Scope, bindings: aliases})
 	}
 	invoke := func(given context.Context, execute func([]byte) error) error {
 		_, err := InvokeDurable(given, binding, "agent", source, tool, request, true, func(raw []byte) (struct{}, error) { return struct{}{}, execute(raw) }, func(struct{}) bool { return false }, nil)

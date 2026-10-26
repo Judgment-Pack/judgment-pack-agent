@@ -1168,7 +1168,7 @@ describe('the runtime tool ceiling', () => {
   it('refuses test_conformance at the wire, where a runtime serves it and a file grants it', async () => {
     const events: AssistantEvent[] = []
     const runtime = await gatedRuntime({
-      tools: [...RECORDED_TOOLS, TEST_CONFORMANCE_TOOL],
+      tools: [...currentContractReplayTools(), TEST_CONFORMANCE_TOOL],
       allowed: [...ASSISTANT_TOOLS, 'test_conformance'],
       handle: () => runtimeAnswer({ status: 'passed' }),
       onEvent: (event) => events.push(event)

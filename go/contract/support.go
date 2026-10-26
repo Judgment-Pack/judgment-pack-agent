@@ -19,7 +19,7 @@ import (
 
 var errorf = fmt.Errorf
 
-// Nullable is a member whose schema admits one type and null. Set is false where the member is
+// Nullable is a member whose schema admits a value type (including a union) and null. Set is false where the member is
 // absent, and Null is true where it is present as null.
 type Nullable[T any] struct {
 	Set   bool

@@ -295,7 +295,7 @@ function anthropicTurn(text: string, usage: Json): string {
 }
 
 const PROPOSAL = 'Here it is.\n\n```json\n' + JSON.stringify({ proposal: { kind: 'create', document: { id: 'p' }, unknowns: [] } }) + '\n```\n'
-const TOOLS: McpTool[] = [{ name: 'validate', description: 'check a document', inputSchema: { type: 'object' } }]
+const TOOLS: McpTool[] = [{ name: 'validate',_meta:{operation:'check',effect:'pure',checkKind:'validate'} as const, description: 'check a document', inputSchema: { type: 'object' } }]
 
 function session(call: ModelCall, changes: Partial<AssistantSession> = {}): AssistantSession {
   return {

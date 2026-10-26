@@ -46,7 +46,7 @@ func TestScenariosThreeSevenEightNineAndTenHoldOnTheAgentCapability(t *testing.T
 func naive(inner adapter.Adapter) adapter.Adapter {
 	return adapter.Func(func(ctx context.Context, run *adapter.Run) error {
 		declared := turn.DelegationTool(turn.TaskProfiles)
-		tool := runcontext.HostTool{Name: declared.Name, Description: declared.Description, InputSchema: declared.InputSchema,
+		tool := runcontext.HostTool{Name: declared.Name, Taxonomy: &runcontext.ToolTaxonomy{Operation: "propose", Effect: "propose"}, Description: declared.Description, InputSchema: declared.InputSchema,
 			Execute: func(ctx context.Context, args json.RawMessage) (runcontext.ToolResult, error) {
 				request, err := turn.ReadDelegationRequest(args)
 				if err != nil {

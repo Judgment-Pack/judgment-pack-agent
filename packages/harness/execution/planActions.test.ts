@@ -50,7 +50,7 @@ describe('active completion and accepted-plan drift',()=>{
  it('rejects altered lineage, nested candidates, stale pending binding and mismatched candidate digest',()=>{
   for(const mutate of [(s:any)=>s.plan[0].origin.index=19,(s:any)=>s.planState.accepted.steps[0]='Changed',(s:any)=>s.planState.history[0].diff[0].before.origin.plan='other-accepted-plan',(s:any)=>s.planState.pending.revision=held(0).planState.revision,(s:any)=>s.planState.pending.candidate.planState.pending=s.planState.pending,(s:any)=>s.planState.pending.candidate.planState.revision=held(0).planState.revision,(s:any)=>s.planState.pending.candidate.planState.nextId=9,(s:any)=>s.planState.pending.candidate.planState.history.at(-1).explanation='Another explanation']){const value=structuredClone(rows[5]) as any;mutate(value);expect(()=>readExecution(value)).toThrow()}
   expect(changedDepartures(held(1),held(6),'Narrow the accepted work')).toEqual(rows[5]!.planState.pending!.departures)
-  expect(contentDigest({objective:accepted().objective,steps:accepted().steps,questions:[],references:[]})).toBe(rows[0]!.planState.accepted.revision)
+  expect(contentDigest({objective:accepted().objective,steps:accepted().steps,questions:[],references:[]})).toBe(rows[0]!.planState.accepted!.revision)
  })
  it('seeds accepted work, pauses removed work, consumes exact approve/reject once and persists decisions before dispatch',async()=>{
   for(const approved of [true,false]){
@@ -84,7 +84,7 @@ describe('active completion and accepted-plan drift',()=>{
  })
  it('uses actual acknowledged host evidence, exposes exact scoped ids and preserves proof through resume',async()=>{
   const store=new MemoryRunStore(),raw=input(store)
-  raw.hostTools=[{name:'inspect',effect:'read',description:'Inspect',inputSchema:{type:'object'},execute:async()=>({content:[{type:'text',text:'Inspected'}]}),artifacts:()=>[{kind:'artifact',id:'artifact-1',digest:'sha256:'+'b'.repeat(64)}]}]
+  raw.hostTools=[{name:'inspect',taxonomy:{operation:'read',effect:'read'} as const,effect:'read',description:'Inspect',inputSchema:{type:'object'},execute:async()=>({content:[{type:'text',text:'Inspected'}]}),artifacts:()=>[{kind:'artifact',id:'artifact-1',digest:'sha256:'+'b'.repeat(64)}]}]
   const ready=await contextualSession(raw),controller=ready.context.execution,signal=ready.session.signal
   await ready.session.values.hostTools.find(t=>t.name==='update_plan')!.execute({explanation:'Inspect',plan:[{step:'Inspect',status:'in_progress'}]},signal)
   await ready.session.values.hostTools.find(t=>t.name==='inspect')!.execute({},signal)
@@ -150,7 +150,7 @@ describe('active completion and accepted-plan drift',()=>{
 
  it('delivers one purpose-specific plan approval through the real managed boundary and blocks later dispatch',async()=>{
   const store=new MemoryRunStore(),raw=input(store),delivered:AssistantEvent[]=[];raw.context={...raw.context,plan:accepted()}
-  const effect=vi.fn(async()=>({content:[]}));raw.hostTools=[{name:'effect',description:'Effect',inputSchema:{type:'object'},execute:effect}]
+  const effect=vi.fn(async()=>({content:[]}));raw.hostTools=[{name:'effect',taxonomy:{operation:'own-state',effect:'pure'} as const,description:'Effect',inputSchema:{type:'object'},execute:effect}]
   for await(const event of managedContext(raw,async function*(prepared){
    const c=prepared.values.hostTools.find(t=>t.name==='update_plan')!
    await c.execute({explanation:'Narrow accepted work',plan:[{id:'step-2',step:'Report',status:'pending'}]},prepared.signal)
@@ -179,7 +179,7 @@ describe('active completion and accepted-plan drift',()=>{
  })
 
  it('checks accepted content independently of pending candidates and requires operation-only acknowledgements',()=>{
-  const altered=structuredClone(rows[0]);altered.planState.accepted.steps[0]='Changed acceptance';expect(()=>readExecution(altered)).toThrow()
+  const altered=structuredClone(rows[0]);altered.planState.accepted!.steps[0]='Changed acceptance';expect(()=>readExecution(altered)).toThrow()
   for(const mutate of [(p:ReturnType<typeof proof>)=>{p.book.observations=[]},(p:ReturnType<typeof proof>)=>{p.book.dispatches[0]!.state='unknown'}]){const p=proof();mutate(p);expect(closePlan(held(1),{...args(),evidence:{operations:['dispatch-ok'],artifacts:[]}},p).reason).toBe('unsuccessful-operation')}
  })
 

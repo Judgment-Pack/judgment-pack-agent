@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/internal/historycapture"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/internal/usagewitness"
 	"strings"
 	"sync"
@@ -188,6 +189,20 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 		if runErr = r.pauseError(); runErr != nil {
 			break
 		}
+		var captureProof *historycapture.NativeBindings
+		var aliases map[string]string
+		if r.sc.NativeCaptureRequested(role) {
+			aliases = map[string]string{}
+			for _, tool := range request.Tools {
+				if route, ok := r.routes[tool.Name]; ok {
+					aliases[tool.Name] = route.name
+				}
+			}
+			captureProof, err = historycapture.NewNativeBindings(body, aliases)
+			if err != nil {
+				return "", err
+			}
+		}
 		budgetConnection := r.sc.Provider(role).Connection
 		if r.run.HasConnection() {
 			budgetConnection = r.run.Connection(role)
@@ -245,12 +260,6 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 					watched.closeAndWait()
 					return err
 				}, func(_ adapter.AgentRequest, body json.RawMessage) {
-					aliases := map[string]string{}
-					for _, tool := range prepared.Tools {
-						if route, ok := r.routes[tool.Name]; ok {
-							aliases[tool.Name] = route.name
-						}
-					}
 					runcontext.RecordNativeCapture(privateCtx, body, aliases)
 				})
 			}
@@ -260,7 +269,7 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 				err = r.pauseError()
 			}
 			return err
-		})
+		}, captureProof)
 		// A claim can fail before execute is entered, so close that unused window as well.
 		watched.closeAndWait()
 		cancelled := invCtx.Err() != nil

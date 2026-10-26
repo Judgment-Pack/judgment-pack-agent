@@ -18,6 +18,7 @@ export function historyObservationClosure(roots:HistoryObjectRef[],resolve:(ref:
   if(row.kind==='original')payload(row.value)
   else if(row.kind==='compaction'){if(row.originals.length<1)return invalid();for(const original of row.originals)visit(original,depth+1,'original',row.scope,sequence);payload(row.replacement);for(const prior of row.prior)visit(prior,depth+1,'compaction',row.scope,sequence)}
   else if(row.kind==='request'){payload(row.request,true);for(const compaction of row.compactions)visit(compaction,depth+1,'compaction',row.scope,sequence+1);for(const original of row.originals)visit(original,depth+1,'original',row.scope,sequence+1)}
+  else if(row.kind==='capture-request'&&row.nativeBindings)readCanonicalHistoryJSON(object(row.nativeBindings).value,HISTORY_OBJECT_BYTES,'finite')
   else if(row.kind==='relation')readCanonicalHistoryJSON(object(row.evidence).value,HISTORY_OBJECT_BYTES,'finite')
   active.delete(ref.digest);observations.set(ref.digest,row)
  }

@@ -91,22 +91,22 @@ func outputBoundaryFindings(ctx context.Context, inner Adapter, agent bool) ([]F
 			}
 			return json.Marshal(map[string]any{"jsonrpc": "2.0", "id": request.ID, "result": result})
 		}
-		propose := runcontext.HostTool{Name: "propose_pack", Description: "Propose a pack.", Effect: "proposal", InputSchema: turn.ProposePackSchema, Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
+		propose := runcontext.HostTool{Name: "propose_pack", Taxonomy: &runcontext.ToolTaxonomy{Operation: "propose", Effect: "propose"}, Description: "Propose a pack.", Effect: "proposal", InputSchema: turn.ProposePackSchema, Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
 			return runcontext.ToolResult{}, fmt.Errorf("host proposal executed")
 		}}
 		g := gate.New(gate.Options{Runtime: runtime, Granted: gate.Ceiling, Emit: emit})
-		hostOffer := []contract.ToolOfferHostTool{{Name: "propose_pack", Description: "Propose a pack.", InputSchema: turn.ProposePackSchema}, {Name: "ask_user", InputSchema: json.RawMessage(`{"type":"object"}`)}}
+		hostOffer := []contract.ToolOfferHostTool{{Name: "propose_pack", Taxonomy: contract.ToolTaxonomy{Operation: "propose", Effect: "propose"}, Description: "Propose a pack.", InputSchema: turn.ProposePackSchema}, {Name: "ask_user", Taxonomy: contract.ToolTaxonomy{Operation: "ask", Effect: "pure"}, InputSchema: json.RawMessage(`{"type":"object"}`)}}
 		if len(options) > 1 && options[1] {
-			hostOffer = append(hostOffer, contract.ToolOfferHostTool{Name: key, InputSchema: json.RawMessage(`{"type":"object"}`)})
+			hostOffer = append(hostOffer, contract.ToolOfferHostTool{Name: key, Taxonomy: contract.ToolTaxonomy{Operation: "own-state", Effect: "pure"}, InputSchema: json.RawMessage(`{"type":"object"}`)})
 		}
 		offer, err := g.Open(ctx, append(hostOffer, append(boundaryTools(true), runcontext.OfferedEditTools(runcontext.Session{Context: input})...)...))
 		if err != nil {
 			return memoryRun{}, err
 		}
-		run := Run{ModelName: "fixture", Wire: "openai-compatible", Thinking: "off", Prompt: "Revise the draft.", TestPrompt: "Review the entire proposal.", AllowConversation: true, Interactive: true, Critic: "off", Gate: g.Calls(), Tools: offer.Tools, HostTools: []runcontext.HostTool{propose, {Name: "ask_user", Description: "Ask the person.", Interaction: "question", InputSchema: json.RawMessage(`{"type":"object"}`)}}, Context: input, Emit: emit}
+		run := Run{ModelName: "fixture", Wire: "openai-compatible", Thinking: "off", Prompt: "Revise the draft.", TestPrompt: "Review the entire proposal.", AllowConversation: true, Interactive: true, Critic: "off", Gate: g.Calls(), Tools: offer.Tools, HostTools: []runcontext.HostTool{propose, {Name: "ask_user", Taxonomy: &runcontext.ToolTaxonomy{Operation: "ask", Effect: "pure"}, Description: "Ask the person.", Interaction: "question", InputSchema: json.RawMessage(`{"type":"object"}`)}}, Context: input, Emit: emit}
 
 		if len(options) > 1 && options[1] {
-			run.HostTools = append(run.HostTools, runcontext.HostTool{Name: key, Description: "Declared host tool.", InputSchema: json.RawMessage(`{"type":"object"}`), Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
+			run.HostTools = append(run.HostTools, runcontext.HostTool{Name: key, Taxonomy: &runcontext.ToolTaxonomy{Operation: "own-state", Effect: "pure"}, Description: "Declared host tool.", InputSchema: json.RawMessage(`{"type":"object"}`), Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
 				return runcontext.ToolResult{}, nil
 			}})
 		}

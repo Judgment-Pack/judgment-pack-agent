@@ -235,6 +235,8 @@ export class SessionContext {
   */
  private narrowed:'critic'|'reformat'|null=null
  get storageRole(){return this.narrowed==='reformat'?'reformat':this.criticRunning?'critic':'author'}
+ /** Original writer enrollment only: retained tool frames require call/result correlation. */
+ get capturesToolFrames(){return this.storedBinding?.writer.hasLiveCapture??false}
  /** Normalize only an exact registered source tool against this context's private writer binding. */
  taskDelegationRequest(tool:HostTool,args:Record<string,unknown>,signal:AbortSignal){return normalizeTaskDelegation(tool,this.storedBinding?scopeFor(this.storedBinding,this.storageRole):undefined,args,signal)}
  /** agent#10: the guardrail events the critic's refusals earned, for the boundary to put on the stream. */
@@ -1109,7 +1111,7 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
    const track=<T>(operation:()=>Promise<T>)=>{if(!live){captureFrame('');return operation()}const work=operation();pending.add(work);void work.then(()=>pending.delete(work),()=>{failed=true;pending.delete(work)});return work}
    const observe=(step:(typeof steps)[number])=>{try{steps.push(copyHistoryEnvelope(step) as (typeof steps)[number])}catch{failed=true}}
    const observed={...supplied,event:(event:import('../agent').AgentEvent)=>track(()=>{observe({event});return supplied.event(event)}),tool:(call:import('../agent').AgentToolCall,signal:AbortSignal)=>track(()=>{observe({tool:call});return supplied.tool(call,signal)})}
-   try{await (context.turnRoute?context.turnRoute.nativeAttempt(JSON.parse(raw),observed,run,witness,claim):run(JSON.parse(raw),observed));live=false;await Promise.allSettled([...pending]);if(!failed)captureFrame(canonicalJSON({steps}),captureAliases)}finally{live=false}},()=>false,()=>[],session.signal,ticket):run(request,watched)};return persistence&&(persistence.writer.hasUsageBudget||persistence.writer.hasTaskSteps)?dispatchPhysicalAgent(selected.run,request,watched,attempt,scopeFor(persistence,context.storageRole)):attempt(selected.run)}
+   try{await (context.turnRoute?context.turnRoute.nativeAttempt(JSON.parse(raw),observed,run,witness,claim):run(JSON.parse(raw),observed));live=false;await Promise.allSettled([...pending]);if(!failed)captureFrame(canonicalJSON({steps}))}finally{live=false}},()=>false,()=>[],session.signal,ticket,captureAliases):run(request,watched)};return persistence&&(persistence.writer.hasUsageBudget||persistence.writer.hasTaskSteps)?dispatchPhysicalAgent(selected.run,request,watched,attempt,scopeFor(persistence,context.storageRole)):attempt(selected.run)}
   try{return await send()}catch(cause){
    const failure=normalizeFailure(cause,'agent')
    if(reached||!(['unavailable','rate-limited','timeout'] as const).includes(failure.code as FailoverClass))throw cause

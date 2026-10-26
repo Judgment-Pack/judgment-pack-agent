@@ -22,6 +22,7 @@
         "id": "expenses",
         "trust": "connected",
         "version": "4",
+        "toolListDigest": "sha256:93e07ba1f319937f7952ae4d52e7da95769c9fcaa544d801423063ea981637c4",
         "identity": {
           "kind": "service",
           "label": "expense-bot"
@@ -31,6 +32,7 @@
       },
       "effectClass": "act",
       "approval": "required",
+      "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": true},
       "taxonomy": {
         "operation": "act",
         "effect": "act"

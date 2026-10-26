@@ -6,6 +6,7 @@ import "encoding/json"
 
 // Registry maps the address a vector names its schema by to a new value of its Go type.
 var Registry = map[string]func() any{
+	"admitted-skill-v1.json":                                    func() any { return new(AdmittedSkillV1) },
 	"approval.json":                                             func() any { return new(Approval) },
 	"approval.json#/$defs/grant":                                func() any { return new(ApprovalGrant) },
 	"approval.json#/$defs/request":                              func() any { return new(ApprovalRequest) },
@@ -353,6 +354,48 @@ var Registry = map[string]func() any{
 	"usage.json":                                                func() any { return new(Usage) },
 	"usage.json#/$defs/tokens":                                  func() any { return new(UsageTokens) },
 	"usage.json#/$defs/row":                                     func() any { return new(UsageRow) },
+}
+
+// From admitted-skill-v1.json. Current in-process admission result: the declared skill, its
+// approved bundle digest, computed dependency capability profile, and optional measured bytes. The
+// schema name versions this result; it introduces no version member into declarations. Legacy
+// skill.json remains closed and unchanged. Profile is derived from admitted tool taxonomy and
+// grants no authority.
+type AdmittedSkillV1 struct {
+	ID           string              `json:"id"`
+	Name         string              `json:"name"`
+	Description  string              `json:"description"`
+	Source       SkillSource         `json:"source"`
+	Instructions string              `json:"instructions"`
+	Tools        []string            `json:"tools,omitzero"`
+	Resources    []SkillResource     `json:"resources,omitzero"`
+	PinnedDigest string              `json:"pinnedDigest"`
+	Digest       string              `json:"digest"`
+	Kind         *string             `json:"kind,omitzero"`
+	Tags         []string            `json:"tags,omitzero"`
+	Profile      ToolTaxonomyProfile `json:"profile"`
+	Bytes        *int64              `json:"bytes,omitzero"`
+}
+
+var admittedSkillV1Members = []string{"id", "name", "description", "source", "instructions", "tools", "resources", "pinnedDigest", "digest", "kind", "tags", "profile", "bytes"}
+
+// UnmarshalJSON decodes a AdmittedSkillV1 object and refuses a member the closed schema does not name.
+func (v *AdmittedSkillV1) UnmarshalJSON(data []byte) error {
+	type plain AdmittedSkillV1
+	var p plain
+	extra, err := decodeObject(data, &p, admittedSkillV1Members, true)
+	if err != nil {
+		return errorf("AdmittedSkillV1: %w", err)
+	}
+	*v = AdmittedSkillV1(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a AdmittedSkillV1 object.
+func (v AdmittedSkillV1) MarshalJSON() ([]byte, error) {
+	type plain AdmittedSkillV1
+	return encodeObject(plain(v), nil)
 }
 
 // From approval.json. The approval state the host holds for one chat: Ask me (manual) or Auto
@@ -12075,21 +12118,21 @@ func (v DialectDraftAck) MarshalJSON() ([]byte, error) {
 
 // From dialect-draft.json#/$defs/candidate.
 type DialectDraftCandidate struct {
-	ID                   string                                     `json:"id"`
-	Revision             string                                     `json:"revision"`
-	PackKey              string                                     `json:"packKey"`
-	PackDigest           string                                     `json:"packDigest"`
-	DialectDigest        DialectDraftCandidateDialectDigest         `json:"dialectDigest"`
-	DocumentJSON         string                                     `json:"documentJson"`
-	PackJSON             string                                     `json:"packJson"`
-	Conversions          map[string]DialectDraftConversion          `json:"conversions"`
-	Facts                []DialectDraftFact                         `json:"facts"`
-	Evidence             []DialectDraftEvidence                     `json:"evidence"`
-	Summary              string                                     `json:"summary"`
-	Columns              []DialectDraftColumn                       `json:"columns"`
-	ResearchDeclarations *DialectDraftCandidateResearchDeclarations `json:"researchDeclarations,omitzero"`
-	ConversionContract   *DialectDraftConversionContract            `json:"conversionContract,omitzero"`
-	RetainedRead         *DialectDraftCandidateRetainedRead         `json:"retainedRead,omitzero"`
+	ID                   string                                              `json:"id"`
+	Revision             string                                              `json:"revision"`
+	PackKey              string                                              `json:"packKey"`
+	PackDigest           string                                              `json:"packDigest"`
+	DialectDigest        DialectDraftCandidateDialectDigest                  `json:"dialectDigest"`
+	DocumentJSON         string                                              `json:"documentJson"`
+	PackJSON             string                                              `json:"packJson"`
+	Conversions          map[string]DialectDraftConversion                   `json:"conversions"`
+	Facts                []DialectDraftFact                                  `json:"facts"`
+	Evidence             []DialectDraftEvidence                              `json:"evidence"`
+	Summary              string                                              `json:"summary"`
+	Columns              []DialectDraftColumn                                `json:"columns"`
+	ResearchDeclarations Nullable[DialectDraftCandidateResearchDeclarations] `json:"researchDeclarations,omitzero"`
+	ConversionContract   *DialectDraftConversionContract                     `json:"conversionContract,omitzero"`
+	RetainedRead         Nullable[DialectDraftCandidateRetainedRead]         `json:"retainedRead,omitzero"`
 }
 
 var dialectDraftCandidateMembers = []string{"id", "revision", "packKey", "packDigest", "dialectDigest", "documentJson", "packJson", "conversions", "facts", "evidence", "summary", "columns", "researchDeclarations", "conversionContract", "retainedRead"}

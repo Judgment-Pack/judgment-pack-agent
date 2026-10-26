@@ -390,7 +390,22 @@ func (rt *agentRuntime) call(_ context.Context, frame json.RawMessage) (json.Raw
 	case "tools/list":
 		var tools []map[string]any
 		for _, name := range gate.Ceiling {
-			tools = append(tools, map[string]any{"name": name, "description": name + " of the checks' runtime", "inputSchema": map[string]any{"type": "object"}})
+			taxonomy := map[string]any{}
+			switch name {
+			case "get_schema", "get_example":
+				taxonomy = map[string]any{"operation": "read", "effect": "read"}
+			case "list_examples":
+				taxonomy = map[string]any{"operation": "discover", "effect": "read"}
+			case "validate":
+				taxonomy = map[string]any{"operation": "check", "effect": "pure", "checkKind": "validate"}
+			case "experimental_test_cases":
+				taxonomy = map[string]any{"operation": "check", "effect": "pure", "checkKind": "test", "experimental": true}
+			case "experimental_evaluate":
+				taxonomy = map[string]any{"operation": "evaluate", "effect": "pure", "experimental": true}
+			default:
+				return nil, fmt.Errorf("undeclared stand-in runtime tool %q", name)
+			}
+			tools = append(tools, map[string]any{"_meta": taxonomy, "name": name, "description": name + " of the checks' runtime", "inputSchema": map[string]any{"type": "object"}})
 		}
 		return answer(map[string]any{"tools": tools})
 	case "tools/call":
@@ -483,7 +498,11 @@ func (w *agentWorld) take() []contract.RunEvent {
 
 func (w *agentWorld) hostTools() []runcontext.HostTool {
 	tool := func(name, effect, delegation string) runcontext.HostTool {
-		return runcontext.HostTool{Name: name, Effect: effect, Delegation: delegation, Description: name + " of the checks' host.",
+		taxonomy := &runcontext.ToolTaxonomy{Operation: "own-state", Effect: "pure"}
+		if name == readTool || name == researchTool {
+			taxonomy = &runcontext.ToolTaxonomy{Operation: "read", Effect: "read"}
+		}
+		return runcontext.HostTool{Name: name, Taxonomy: taxonomy, Effect: effect, Delegation: delegation, Description: name + " of the checks' host.",
 			InputSchema: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":true}`),
 			Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
 				w.mu.Lock()

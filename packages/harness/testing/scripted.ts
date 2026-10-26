@@ -24,7 +24,7 @@ import { ASSISTANT_TOOLS } from '../host'
 import { normalize } from '../thinking'
 import { vercel } from '../engines/vercel'
 import { codex } from '../engines/codex'
-import { RECORDED_TOOLS } from '../certification/scriptedServer'
+import { currentContractReplayTools } from '../certification/scriptedServer'
 import type { AgentRequest, AgentRun } from '../agent'
 import type { AgentAssistantSession, AssistantEvent, AssistantSession, Engine, HostTool, McpTool, McpToolResult, ModelCall } from '../engine'
 
@@ -34,6 +34,7 @@ import type { AgentAssistantSession, AssistantEvent, AssistantSession, Engine, H
  */
 export const TEST_CASES_TOOL: McpTool = {
   name: 'experimental_test_cases',
+  _meta: { operation: 'check', effect: 'pure', checkKind: 'test', experimental: true },
   description:
     'Rehearse a matrix against exact supplied pack bytes. Uses the same canonical comparison and coverage as ' +
     'experimental_test_packs. Reads no project files, writes nothing, and appends no audit record. This ' +
@@ -57,6 +58,7 @@ export const TEST_CASES_TOOL: McpTool = {
 /** `test_conformance` as `jpack mcp` serves it: the one whose `suite` is a path. */
 export const TEST_CONFORMANCE_TOOL: McpTool = {
   name: 'test_conformance',
+  _meta: { operation: 'check', effect: 'pure', checkKind: 'test' },
   description: 'Run a version-pinned JPS conformance corpus; the bundled corpus by default.',
   inputSchema: {
     type: 'object',
@@ -369,7 +371,7 @@ export async function vercelTurn(options: {
   // Existing overrides may synchronously bind their own recording/decorating transport.
   const call: ModelCall = override ? (...args) => captureGlobal('fetch', endpoint.fetch, () => override(...args)) : boundCall
   const runtime = await gatedRuntime({
-    tools: [...RECORDED_TOOLS, TEST_CASES_TOOL],
+    tools: [...currentContractReplayTools(), TEST_CASES_TOOL],
     allowed: [...ASSISTANT_TOOLS],
     handle: options.handle ?? (() => runtimeAnswer({ status: 'ok' })),
     onEvent: (event) => events.push(event)
@@ -414,7 +416,7 @@ export async function codexTurn(options: {
   const override = options.session?.agent?.run
   const run: AgentRun = override ? (...args) => captureGlobal('WebSocket', bridge.WebSocket, () => override(...args)) : boundRun
   const runtime = await gatedRuntime({
-    tools: [...RECORDED_TOOLS, TEST_CASES_TOOL],
+    tools: [...currentContractReplayTools(), TEST_CASES_TOOL],
     allowed: [...ASSISTANT_TOOLS],
     handle: options.handle ?? (() => runtimeAnswer({ status: 'ok' })),
     onEvent: (event) => events.push(event)

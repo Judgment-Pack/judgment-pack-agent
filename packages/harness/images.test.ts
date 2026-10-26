@@ -95,7 +95,7 @@ function scripted(turns: string[]): { call: ModelCall; sent: Sent[] } {
   }
 }
 const screenshot = (bytes: string): HostTool => ({
-  name: 'screenshot', effect: 'read', description: 'take a screenshot', inputSchema: { type: 'object' },
+  name: 'screenshot',taxonomy:{operation:'read',effect:'read'} as const, effect: 'read', description: 'take a screenshot', inputSchema: { type: 'object' },
   execute: async () => ({ content: [{ type: 'text', text: 'the form as it is now' }, { kind: 'image', mediaType: 'image/png', bytes }] })
 })
 function session(call: ModelCall, capabilities: Partial<ModelCapabilities>, changes: Partial<AssistantSession> = {}, family: EndpointKind = 'openai-compatible'): AssistantSession {
@@ -120,7 +120,7 @@ const partsOf = (message: Message) => (message.content as { type: string; text?:
 
 describe('a model with vision', () => {
   it('is shown the image as an image part, in the message right after the result, and on every request after', async () => {
-    const note: HostTool = { name: 'note', effect: 'read', description: 'take a note', inputSchema: { type: 'object' }, execute: async () => ({ content: [{ type: 'text', text: 'noted' }] }) }
+    const note: HostTool = { name: 'note',taxonomy:{operation:'read',effect:'read'} as const, effect: 'read', description: 'take a note', inputSchema: { type: 'object' }, execute: async () => ({ content: [{ type: 'text', text: 'noted' }] }) }
     const callNote = streamed({ tool_calls: [{ index: 0, id: 'call_note', type: 'function', function: { name: 'note', arguments: '{}' } }] }, 'tool_calls')
     const { call, sent } = scripted([callShot, callNote, answer(PROPOSAL)])
     // Two requests after the call: another call, then the proposal.
@@ -262,7 +262,7 @@ describe('an attached image', () => {
   it('is read whole as the image by read, and a result may name it by reference', async () => {
     const attachment = { id: 'scan', kind: 'artifact' as const, label: 'A scanned receipt', value: { kind: 'image', mediaType: 'image/png', bytes: PNG } satisfies ImagePart }
     const pointing: HostTool = {
-      name: 'which_receipt', effect: 'read', description: 'the receipt in question', inputSchema: { type: 'object' },
+      name: 'which_receipt',taxonomy:{operation:'read',effect:'read'} as const, effect: 'read', description: 'the receipt in question', inputSchema: { type: 'object' },
       execute: async () => ({ content: [{ type: 'text', text: 'this one' }, { kind: 'image', mediaType: 'image/png', reference: 'scan' }] })
     }
     const callPointing = streamed({ tool_calls: [{ index: 0, id: 'call_which', type: 'function', function: { name: 'which_receipt', arguments: '{}' } }] }, 'tool_calls')

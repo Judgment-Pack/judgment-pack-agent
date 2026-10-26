@@ -50,6 +50,7 @@ func (o *Operation) Value() *Value {
 // (ExecutionCheckpoint in execution/state.ts). Its values are ordered JSON values, so what the
 // checkpoint weighs is what the TypeScript's weighs.
 type Execution struct {
+	RepeatTools *contract.CheckpointRepeatTools
 	TurnRoute   *contract.TurnRoute
 	UsageBudget *contract.UsageBudget
 	Durable     *Value
@@ -273,6 +274,11 @@ func (e *Execution) Value() *Value {
 			out.Set(key, value)
 		}
 	}
+	if e.RepeatTools != nil {
+		data, _ := json.Marshal(e.RepeatTools)
+		value, _ := ParseJSON(data)
+		out.Set("repeatTools", value)
+	}
 	if e.TurnRoute != nil {
 		data, _ := json.Marshal(e.TurnRoute)
 		value, _ := ParseJSON(data)
@@ -331,7 +337,7 @@ func executionOf(saved *contract.Checkpoint) (*Execution, error) {
 		Phase: saved.Phase, Status: saved.Status, Unit: saved.Unit, Used: int(saved.Used),
 		Limit: int(saved.Limit), Grants: saved.Grants, Plan: value.Get("plan"), PlanState: value.Get("planState"),
 		Explanation: saved.Explanation, Completions: saved.Completions, Context: saved.Context,
-		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, SourceIdentities: saved.SourceIdentities, Approval: saved.Approval, Skills: saved.Skills, Draft: saved.Draft, Memories: saved.Memories, Critic: saved.Critic, CrossProvider: saved.CrossProvider, Compaction: saved.Compaction, OutputGuard: saved.OutputGuard, Policy: saved.Policy, Steers: saved.Steers, Usage: saved.Usage, UsageBudget: saved.UsageBudget, TurnRoute: saved.TurnRoute, Failover: saved.Failover, ChildUsage: saved.ChildUsage}
+		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, SourceIdentities: saved.SourceIdentities, Approval: saved.Approval, Skills: saved.Skills, Draft: saved.Draft, Memories: saved.Memories, Critic: saved.Critic, CrossProvider: saved.CrossProvider, Compaction: saved.Compaction, OutputGuard: saved.OutputGuard, Policy: saved.Policy, Steers: saved.Steers, Usage: saved.Usage, UsageBudget: saved.UsageBudget, RepeatTools: saved.RepeatTools, TurnRoute: saved.TurnRoute, Failover: saved.Failover, ChildUsage: saved.ChildUsage}
 	if saved.RequestCap != nil {
 		cap := int(*saved.RequestCap)
 		out.RequestCap = &cap
@@ -355,6 +361,7 @@ func executionOf(saved *contract.Checkpoint) (*Execution, error) {
 // ExecutionController is ExecutionController: one response's request allowance, journal, read
 // cache and plan tools.
 type ExecutionController struct {
+	taskSteps    bool
 	TaskProfiles func() []*contract.SubagentRecord
 	// Progress is the repeated-work tracker.
 	Progress       *ProgressTracker
@@ -436,7 +443,7 @@ func (c *ExecutionController) takeRecordError() error {
 // NewExecutionController is a controller for one run.
 func NewExecutionController(session Session, ledger *ContextLedger, members PolicyMembers) *ExecutionController {
 	policy, _ := ReadRecordsPolicy(members)
-	return &ExecutionController{Progress: NewProgressTracker(), session: session, ledger: ledger, RecordPolicy: policy,
+	return &ExecutionController{taskSteps: session.Context != nil && session.Context.TaskSteps, Progress: NewProgressTracker(), session: session, ledger: ledger, RecordPolicy: policy,
 		attempt: 1, inFlight: map[string]string{}, cache: map[string]ToolResult{}, usageRole: "author", usageStarted: time.Now(), usageSources: map[string]contract.ProvenanceSourceFigures{}}
 }
 
@@ -1289,7 +1296,7 @@ func (c *ExecutionController) WrapRead(name string, execute func(ctx context.Con
 
 // Tool is update_plan: the host tool that tracks this task's execution progress.
 func (c *ExecutionController) Tool() HostTool {
-	configured := c.session.Context != nil && c.session.Context.TaskSteps
+	configured := c.taskSteps
 	tool := HostTool{
 		Name: "update_plan", Taxonomy: &ToolTaxonomy{Operation: "own-state", Effect: "pure"},
 		Effect:      "plan",

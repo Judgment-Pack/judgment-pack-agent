@@ -247,7 +247,7 @@ func TestPlanActualHostEvidenceAndResume(t *testing.T) {
 	session, _ := trackedSession(t)
 	store := NewMemoryRunStore(MemoryRunStoreOptions{})
 	session.Context.RunStore = &DurableRunInput{Store: store, ID: "extended-plan"}
-	session.HostTools = []HostTool{{Name: "inspect", Effect: "read", Description: "Inspect", InputSchema: json.RawMessage(`{"type":"object"}`), Execute: func(context.Context, json.RawMessage) (ToolResult, error) {
+	session.HostTools = []HostTool{{Name: "inspect", Taxonomy:&ToolTaxonomy{Operation:"read",Effect:"read"}, Effect: "read", Description: "Inspect", InputSchema: json.RawMessage(`{"type":"object"}`), Execute: func(context.Context, json.RawMessage) (ToolResult, error) {
 		return ResultOf([]Content{TextContent("Inspected")}, nil), nil
 	}, Artifacts: func(ToolResult, json.RawMessage) []ArtifactObservation {
 		return []ArtifactObservation{{Kind: "artifact", ID: "artifact-1", Digest: "sha256:" + strings.Repeat("b", 64)}}
@@ -499,7 +499,7 @@ func TestPlanManagedApprovalDeliveredOnce(t *testing.T) {
 	a := extendedPlanRows(t)[0].Get("planState").Get("accepted")
 	session.Context.Plan = ObjectOf("id", a.Get("id"), "revision", a.Get("sourceRevision"), "objective", a.Get("objective"), "steps", a.Get("steps"), "questions", Array(), "references", Array(), "status", String("accepted"), "createdAt", a.Get("acceptedAt"), "acceptedAt", a.Get("acceptedAt"))
 	effects := 0
-	session.HostTools = []HostTool{{Name: "effect", Description: "Effect", InputSchema: json.RawMessage(`{"type":"object"}`), Execute: func(context.Context, json.RawMessage) (ToolResult, error) {
+	session.HostTools = []HostTool{{Name: "effect", Taxonomy:&ToolTaxonomy{Operation:"own-state",Effect:"pure"}, Description: "Effect", InputSchema: json.RawMessage(`{"type":"object"}`), Execute: func(context.Context, json.RawMessage) (ToolResult, error) {
 		effects++
 		return ResultOf([]Content{}, nil), nil
 	}}}

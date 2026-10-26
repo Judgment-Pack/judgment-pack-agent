@@ -256,7 +256,7 @@ func TestTheCompactionKeepsExactTypedDataAndDropsSignatures(t *testing.T) {
 
 func TestTheCompactionKeepsAFlatIndexAcrossRepeatedCompactions(t *testing.T) {
 	session := smallWindowSession()
-	session.HostTools = []HostTool{{Name: "future_reference_tool", Effect: "read",
+	session.HostTools = []HostTool{{Name: "future_reference_tool", Taxonomy:&ToolTaxonomy{Operation:"read",Effect:"read"}, Effect: "read",
 		ContextPolicy: &ToolContextPolicy{Reference: true}, Description: "Reference",
 		InputSchema: json.RawMessage(`{}`),
 		Execute: func(ctx context.Context, args json.RawMessage) (ToolResult, error) {
@@ -362,7 +362,7 @@ func TestSummaryCompactionRefusesMalformedAnswersAndUsesTheIndex(t *testing.T) {
 
 func TestAnIsolatedPhaseStartsWithNoAuthorMaterial(t *testing.T) {
 	session := smallWindowSession()
-	session.HostTools = []HostTool{{Name: "future_reference", Effect: "read",
+	session.HostTools = []HostTool{{Name: "future_reference", Taxonomy:&ToolTaxonomy{Operation:"read",Effect:"read"}, Effect: "read",
 		ContextPolicy: &ToolContextPolicy{Reference: true}, Description: "Read task reference",
 		InputSchema: json.RawMessage(`{}`),
 		Execute: func(ctx context.Context, args json.RawMessage) (ToolResult, error) {

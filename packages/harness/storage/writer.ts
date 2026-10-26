@@ -1,3 +1,4 @@
+import type {NativeCaptureBindings} from './physicalDispatch'
 import {WriterCapture} from './writerCapture'
 import {observeRepeat,repeatKey,canonicalRepeatArgs,validRepeatTools,RepeatedToolLimit,type RepeatTools,type RepeatExecution,type RepeatPolicy,type RepeatDetected} from '../repeatTools'
 import {REPEAT_REMINDER} from '../prompt'
@@ -663,7 +664,7 @@ export class RunWriter {
   signal.throwIfAborted()
   return response!
  }
- async invoke<T>(binding:DurableBinding,kind:DurableDispatch['kind'],source:string,tool:string,request:string,read:boolean,execute:(request:string,nativeWitness?:object,nativeClaim?:object,captureFrame?:(body:string,aliases?:Record<string,string>)=>void)=>Promise<T>,successful:(value:T)=>boolean=()=>true,artifacts:(value:T)=>ArtifactObservation[]=()=>[],signal?:AbortSignal,ticket?:object):Promise<T>{
+ async invoke<T>(binding:DurableBinding,kind:DurableDispatch['kind'],source:string,tool:string,request:string,read:boolean,execute:(request:string,nativeWitness?:object,nativeClaim?:object,captureFrame?:(body:string)=>void)=>Promise<T>,successful:(value:T)=>boolean=()=>true,artifacts:(value:T)=>ArtifactObservation[]=()=>[],signal?:AbortSignal,ticket?:object,captureBindings?:NativeCaptureBindings):Promise<T>{
   safeRequest(request);requireId(source);requireId(tool)
   request=this.prepared(binding,kind,source,tool,request,true)
   const scope=structuredClone(binding.scope),fingerprint=digest(canonicalJSON({kind,scope,source,tool,request:JSON.parse(request)}))
@@ -685,7 +686,7 @@ export class RunWriter {
    }
    await this.claimTaskDispatch(binding,claim)
    this.claimRepeatReminder(binding,claim)
-   this.book.dispatches.push(claim);await this.publish(binding,undefined,undefined,undefined,signal)
+   this.capture?.enroll(claim,captureBindings);this.book.dispatches.push(claim);await this.publish(binding,undefined,undefined,undefined,signal)
   })
   if(reused){if(reused.state!=='result'||reused.result===undefined)throw new HostOutcomeUnknown();return structuredClone(reused.result) as T}
   signal?.throwIfAborted();if(this.fatal!==undefined)throw this.fatal;if(this.dispatchClosed)throw new DOMException('The operation was aborted','AbortError')
@@ -695,7 +696,7 @@ export class RunWriter {
   if(nativeClaim)this.nativeClaims.set(nativeClaim,{scope:structuredClone(scope),id:claim.id,requestDigest:claim.requestDigest,request,source,tool,route:this.latest!.turnRoute!.bindingDigest,live:true,released:false,consumed:false})
   const finishRecovery=()=>{if(kind==='model'||kind==='agent')for(const row of this.book.dispatches)if(row.kind===kind&&scopeKey(row.scope)===scopeKey(binding.scope)&&row.state==='unknown')this.recovered.delete(row.id)}
   try{
-   try{value=await execute(request,nativeWitness,nativeClaim,this.capture&&kind==='agent'?(body,aliases)=>this.capture!.agent(claim,body,aliases):undefined)}finally{closeNativeWitness(nativeWitness);const held=nativeClaim?this.nativeClaims.get(nativeClaim):undefined;if(held)held.live=false}
+   try{value=await execute(request,nativeWitness,nativeClaim,this.capture&&kind==='agent'?body=>this.capture!.agent(claim,body):undefined)}finally{closeNativeWitness(nativeWitness);const held=nativeClaim?this.nativeClaims.get(nativeClaim):undefined;if(held)held.live=false}
    if(this.dispatchClosed)throw new DOMException('The operation was aborted','AbortError')
    if(kind==='model'){
     if(!value||typeof value!=='object'||!(value as unknown as PendingModel)[modelClaim]||this.models.has(value))throw new AIFailureError(failure('invalid-response','model','unknown'))

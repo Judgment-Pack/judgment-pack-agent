@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/admitted-skill-v1.json",
+  "title": "Admitted skill v1",
+  "description": "Current in-process admission result: the declared skill, its approved bundle digest, computed dependency capability profile, and optional measured bytes. The schema name versions this result; it introduces no version member into declarations. Legacy skill.json remains closed and unchanged. Profile is derived from admitted tool taxonomy and grants no authority.",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "description",
+    "source",
+    "instructions",
+    "pinnedDigest",
+    "digest",
+    "profile"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "skill.json#/properties/id"
+    },
+    "name": {
+      "$ref": "skill.json#/properties/name"
+    },
+    "description": {
+      "$ref": "skill.json#/properties/description"
+    },
+    "source": {
+      "$ref": "skill.json#/properties/source"
+    },
+    "instructions": {
+      "$ref": "skill.json#/properties/instructions"
+    },
+    "tools": {
+      "$ref": "skill.json#/properties/tools"
+    },
+    "resources": {
+      "$ref": "skill.json#/properties/resources"
+    },
+    "pinnedDigest": {
+      "$ref": "skill.json#/properties/pinnedDigest"
+    },
+    "digest": {
+      "$ref": "skill.json#/properties/digest"
+    },
+    "kind": {
+      "$ref": "skill.json#/properties/kind"
+    },
+    "tags": {
+      "$ref": "skill.json#/properties/tags"
+    },
+    "profile": {
+      "$ref": "tool-taxonomy.json#/$defs/profile"
+    },
+    "bytes": {
+      "$ref": "skill.json#/$defs/bytes"
+    }
+  },
+  "additionalProperties": false
+}

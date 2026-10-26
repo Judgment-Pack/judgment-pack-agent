@@ -7,6 +7,7 @@ import (
 	runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/relay"
 	"net/http"
+	"sort"
 	"testing"
 )
 
@@ -15,10 +16,16 @@ type alteredCaptureView struct {
 	head     runcontext.RunHistoryHead
 	metadata []runcontext.HistoryMetadataEntry
 	objects  map[string][]byte
+	commits  []runcontext.RunHistoryEntry
 }
 
-func (v alteredCaptureView) Head() runcontext.RunHistoryHead             { return v.head }
-func (v alteredCaptureView) Commits() []runcontext.RunHistoryEntry       { return v.source.Commits() }
+func (v alteredCaptureView) Head() runcontext.RunHistoryHead { return v.head }
+func (v alteredCaptureView) Commits() []runcontext.RunHistoryEntry {
+	if v.commits != nil {
+		return v.commits
+	}
+	return v.source.Commits()
+}
 func (v alteredCaptureView) Metadata() []runcontext.HistoryMetadataEntry { return v.metadata }
 func (v alteredCaptureView) ReadObject(ref runcontext.HistoryObjectRef) ([]byte, error) {
 	if raw, ok := v.objects[ref.Digest]; ok {
@@ -97,13 +104,38 @@ func alterOriginalCapture(t *testing.T, source *runcontext.RetainedRunHistory, f
 				} else {
 					var mapping map[string]string
 					_ = json.Unmarshal([]byte(headers["x-jp-native-tool-bindings"].(string)), &mapping)
+					keys := []string{}
 					for key := range mapping {
-						if fault == "alias-tampered" {
-							mapping[key] = "different-source"
-						} else {
-							delete(mapping, key)
+						keys = append(keys, key)
+					}
+					sort.Strings(keys)
+					key := keys[0]
+					switch fault {
+					case "alias-tampered":
+						for _, alias := range keys {
+							mapping[alias] = "different-source-" + alias
 						}
-						break
+					case "alias-called-tampered", "alias-unused-tampered":
+						found := false
+						for _, alias := range keys {
+							if (mapping[alias] == "lookup") == (fault == "alias-called-tampered") {
+								mapping[alias] = "different-source"
+								found = true
+								break
+							}
+						}
+						if !found {
+							t.Fatal("required called/unused alias absent", fault)
+						}
+					case "alias-empty":
+						mapping[key] = ""
+					case "alias-duplicate":
+						if len(keys) < 2 {
+							t.Fatal("two aliases required")
+						}
+						mapping[key] = mapping[keys[1]]
+					default:
+						delete(mapping, key)
 					}
 					headers["x-jp-native-tool-bindings"] = string(captureFixtureCanonical(mapping))
 				}
@@ -135,11 +167,84 @@ func alterOriginalCapture(t *testing.T, source *runcontext.RetainedRunHistory, f
 }
 func TestOriginalProjectedCaptureTamperRefusals(t *testing.T) {
 	_, source := originalNativeToolCapture(t)
-	for _, fault := range []string{"extra-event", "missing-event", "reordered-events", "projection-absent", "projection-invalid", "alias-absent", "alias-tampered", "alias-partial", "request-digest"} {
+	for _, fault := range []string{"extra-event", "missing-event", "reordered-events", "projection-absent", "projection-invalid", "alias-absent", "alias-tampered", "alias-called-tampered", "alias-unused-tampered", "alias-empty", "alias-duplicate", "alias-partial", "request-digest"} {
 		t.Run(fault, func(t *testing.T) {
 			v := alterOriginalCapture(t, source, fault)
 			if _, e := runcontext.ReadCapturedCorpusView(v); e == nil {
 				t.Fatal("altered original projected capture accepted", fault)
+			}
+		})
+	}
+}
+func TestOriginalAcknowledgedNativeSourceRefusals(t *testing.T) {
+	_, source := originalNativeToolCapture(t)
+	for _, fault := range []string{"missing", "partial", "empty", "duplicate", "ref-mismatch", "missing-object"} {
+		t.Run(fault, func(t *testing.T) {
+			v := alteredCaptureView{source: source, head: source.Head(), metadata: source.Metadata(), objects: map[string][]byte{}}
+			if e := json.Unmarshal(captureFixtureCanonical(source.Commits()), &v.commits); e != nil {
+				t.Fatal(e)
+			}
+			put := func(value any) runcontext.HistoryObjectRef {
+				item, e := runcontext.NewHistoryObject(captureFixtureCanonical(value))
+				if e != nil {
+					t.Fatal(e)
+				}
+				v.objects[item.Digest] = item.Value
+				return item.HistoryObjectRef
+			}
+			for i := range v.commits {
+				for j, ref := range v.commits[i].Observations {
+					raw, e := source.ReadObject(ref)
+					if e != nil {
+						t.Fatal(e)
+					}
+					var row map[string]any
+					if e = json.Unmarshal(raw, &row); e != nil {
+						t.Fatal(e)
+					}
+					if row["kind"] != "capture-request" {
+						continue
+					}
+					var binding runcontext.HistoryObjectRef
+					if e = json.Unmarshal(captureFixtureCanonical(row["nativeBindings"]), &binding); e != nil {
+						t.Fatal(e)
+					}
+					switch fault {
+					case "missing":
+						delete(row, "nativeBindings")
+					case "ref-mismatch":
+						binding.Bytes++
+						row["nativeBindings"] = binding
+					case "missing-object":
+						v.objects[binding.Digest] = []byte{}
+					default:
+						expected := map[string]string{"desk_host_0": "lookup", "desk_host_1": "unused"}
+						if fault == "partial" {
+							delete(expected, "desk_host_1")
+						} else if fault == "empty" {
+							expected = map[string]string{}
+						} else {
+							expected["desk_host_1"] = "lookup"
+						}
+						row["nativeBindings"] = put(expected)
+					}
+					v.commits[i].Observations[j] = put(row)
+				}
+			}
+			var previous *string
+			for i := range v.commits {
+				c := &v.commits[i]
+				c.PreviousDigest = previous
+				var body map[string]any
+				_ = json.Unmarshal(captureFixtureCanonical(c), &body)
+				delete(body, "digest")
+				c.Digest = runcontext.HistoryBytesDigest(captureFixtureCanonical(body))
+				next := c.Digest
+				previous = &next
+			}
+			v.head.Root = *previous
+			if _, e := runcontext.ReadCapturedCorpusView(v); e == nil {
+				t.Fatal("altered acknowledged native source accepted", fault)
 			}
 		})
 	}

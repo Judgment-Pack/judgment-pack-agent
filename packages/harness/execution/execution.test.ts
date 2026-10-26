@@ -106,9 +106,9 @@ it('persists request usage before dispatch and sends nothing when that checkpoin
 it('uses declared immutable read semantics for future tools and never caches writes or mutable references',async()=>{
  const input=base(),immutable=vi.fn(async()=>({content:[{type:'text',text:'stable'}]})),mutable=vi.fn(async()=>({content:[{type:'text',text:'current'}]})),write=vi.fn(async()=>({content:[]}))
  input.hostTools=[
-  {name:'future_contract',effect:'read',contextPolicy:{immutable:true,reference:true},description:'Contract',inputSchema:{},execute:immutable},
-  {name:'future_current_reference',effect:'read',contextPolicy:{reference:true},description:'Current reference',inputSchema:{},execute:mutable},
-  {name:'future_write',effect:'workflow',delegation:'read',contextPolicy:{immutable:true},description:'Write',inputSchema:{},execute:write}
+  {name:'future_contract',taxonomy:{operation:'read',effect:'read'} as const,effect:'read',contextPolicy:{immutable:true,reference:true},description:'Contract',inputSchema:{},execute:immutable},
+  {name:'future_current_reference',taxonomy:{operation:'read',effect:'read'} as const,effect:'read',contextPolicy:{reference:true},description:'Current reference',inputSchema:{},execute:mutable},
+  {name:'future_write',taxonomy:{operation:'own-state',effect:'pure'} as const,effect:'workflow',delegation:'read',contextPolicy:{immutable:true},description:'Write',inputSchema:{},execute:write}
  ]
  const {session}=await contextualSession(input)
  for(const name of ['future_contract','future_current_reference','future_write']){

@@ -7,6 +7,6 @@ export function nativeBindings(request:Record<string,unknown>,headers:Record<str
  const raw=headers[nativeBindingsHeader];if(raw===undefined){if(Array.isArray(request.tools)&&request.tools.some(tool=>object(tool)&&typeof tool.name==='string'&&/^desk_(host|runtime)_/.test(tool.name)))return fail();return}
  const bindings=readCanonicalHistoryJSON(new TextEncoder().encode(raw),HISTORY_OBJECT_BYTES)
  if(!object(bindings)||Object.values(bindings).some(v=>typeof v!=='string'||!v)||new Set(Object.values(bindings)).size!==Object.keys(bindings).length||!Array.isArray(request.tools)||request.tools.length!==Object.keys(bindings).length) return fail()
- const seen=new Set<string>();for(const tool of request.tools){if(!object(tool)||typeof tool.name!=='string'||seen.has(tool.name)||!Object.hasOwn(bindings,tool.name))return fail();seen.add(tool.name)}
+ const seen=new Set<string>();for(const tool of request.tools){if(!object(tool)||typeof tool.name!=='string'||!tool.name||seen.has(tool.name)||!Object.hasOwn(bindings,tool.name))return fail();seen.add(tool.name)}
  return bindings as Record<string,string>
 }

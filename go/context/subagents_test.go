@@ -23,7 +23,7 @@ func subagentFixture(t *testing.T) Subagent {
 }
 func TestSubagentAdmission(t *testing.T) {
 	s := subagentFixture(t)
-	tool := HostTool{Name: "lookup", Effect: "read"}
+	tool := HostTool{Name: "lookup", Taxonomy: &ToolTaxonomy{Operation: "read", Effect: "read"}, Effect: "read"}
 	if SubagentDigest(s) != s.PinnedDigest {
 		t.Fatal("canonical digest differs")
 	}

@@ -257,13 +257,22 @@ func originalNativeToolCapture(t *testing.T) (*runcontext.MemoryRunStore, *runco
 	sink := &originalCaptureSink{}
 	run := originalCaptureRun(store, sink)
 	run.Context.Objective = ""
+	tier := "low"
+	run.Policy = runcontext.PolicyLayer{"version": 2, "routing": map[string]any{"mode": "rules", "tiers": []string{"low"}}}
+	run.Route = &runcontext.RouteSelection{Route: "agent", Tier: &tier, Skills: []string{}, Tools: []string{"lookup", "unused"}, Operations: "all", Planning: "withheld"}
 	tool := runcontext.HostTool{Name: "lookup", Description: "Read.", Effect: "read", Taxonomy: &runcontext.ToolTaxonomy{Operation: "read", Effect: "read"}, InputSchema: json.RawMessage(`{"type":"object","properties":{}}`), Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
 		return runcontext.ReadToolResult(runcontext.MustParseJSON(`{"content":[{"type":"text","text":"Value."}]}`)), nil
 	}}
+	unused := tool
+	unused.Name, unused.Description = "unused", "Unused source."
+	unused.Execute = func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
+		t.Fatal("unused source called")
+		return runcontext.ToolResult{}, nil
+	}
 	g := gate.New(gate.Options{})
-	g.SetOffer(contract.ToolOffer{Tools: []contract.ToolOfferRuntimeTool{}, HostTools: []contract.ToolOfferHostTool{tool.Declaration()}})
+	g.SetOffer(contract.ToolOffer{Tools: []contract.ToolOfferRuntimeTool{}, HostTools: []contract.ToolOfferHostTool{tool.Declaration(), unused.Declaration()}})
 	run.Gate = g.Calls()
-	run.HostTools = []runcontext.HostTool{tool}
+	run.HostTools = []runcontext.HostTool{tool, unused}
 	run.Agent = &adapter.Agent{Model: "fixture", Run: func(ctx context.Context, request adapter.AgentRequest, cb adapter.AgentCallbacks) error {
 		alias := ""
 		for _, offered := range request.Tools {
@@ -292,10 +301,125 @@ func originalNativeToolCapture(t *testing.T) (*runcontext.MemoryRunStore, *runco
 	return store, retained
 }
 func TestOriginalLiveCaptureNativeToolAndFreshReplay(t *testing.T) {
-	_, retained := originalNativeToolCapture(t)
+	store, retained := originalNativeToolCapture(t)
 	captured, e := runcontext.ReadCapturedCorpusView(retained)
 	if e != nil {
 		t.Fatal(e)
 	}
+	expected := `{"desk_host_0":"lookup","desk_host_1":"unused"}`
+	var frames []struct {
+		Response struct {
+			Headers map[string]string `json:"headers"`
+		} `json:"response"`
+	}
+	if e = json.Unmarshal(captured.Entry.Requests, &frames); e != nil || len(frames) != 1 || frames[0].Response.Headers["x-jp-native-tool-bindings"] != expected {
+		t.Fatal("original native header differs from handwritten complete route table", e)
+	}
+	var source runcontext.HistoryObjectRef
+	for _, commit := range retained.Commits() {
+		for _, ref := range commit.Observations {
+			raw, err := retained.ReadObject(ref)
+			if err != nil {
+				t.Fatal(err)
+			}
+			row := runcontext.MustParseJSON(string(raw))
+			if row.Get("kind").Str() == "capture-request" {
+				if err = json.Unmarshal(row.Get("nativeBindings").JSON(), &source); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+	}
+	raw, e := retained.ReadObject(source)
+	if e != nil || string(raw) != expected {
+		t.Fatal("acknowledged native source table differs from handwritten routes", e)
+	}
+	archive, e := runcontext.ExportRunArchive(context.Background(), store, "original-live", runcontext.ArchiveExportOptions{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	imported, e := runcontext.ReadRunArchive(archive.Bytes, archive.Digest)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = imported.ReadDisplay(source, "evidence"); e != nil {
+		t.Fatal("archive lost native source dependency", e)
+	}
+	if _, e = runcontext.ReadArchiveCapturedCorpusView(imported); e != nil {
+		t.Fatal("archive native proof unavailable", e)
+	}
+	restarted, e := runcontext.ReadRetainedRunHistory(context.Background(), store, "original-live")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = runcontext.ReadCapturedCorpusView(restarted); e != nil {
+		t.Fatal("restart lost native source dependency", e)
+	}
 	replayOriginalCapture(t, captured.Entry, true, true)
+}
+
+func TestOriginalHTTPToolCaptureCorrelatesOnlyEnrolledWriter(t *testing.T) {
+	for _, capture := range []bool{false, true} {
+		t.Run(fmt.Sprint(capture), func(t *testing.T) {
+			store := runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})
+			sink := &originalCaptureSink{}
+			run := originalCaptureRun(store, sink)
+			run.Context.Objective = ""
+			if !capture {
+				run.Context.Capture = nil
+			}
+			tool := runcontext.HostTool{Name: "lookup", Description: "Read.", Effect: "read", Taxonomy: &runcontext.ToolTaxonomy{Operation: "read", Effect: "read"}, InputSchema: json.RawMessage(`{"type":"object","properties":{}}`), Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
+				return runcontext.ReadToolResult(runcontext.MustParseJSON(`{"content":[{"type":"text","text":"Value."}]}`)), nil
+			}}
+			g := gate.New(gate.Options{})
+			g.SetOffer(contract.ToolOffer{Tools: []contract.ToolOfferRuntimeTool{}, HostTools: []contract.ToolOfferHostTool{tool.Declaration()}})
+			run.Gate = g.Calls()
+			run.HostTools = []runcontext.HostTool{tool}
+			calls := 0
+			run.Model = func(context.Context, string, relay.Request) (*http.Response, error) {
+				calls++
+				if calls == 1 {
+					return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"read","object":"chat.completion","model":"fixture","choices":[{"index":0,"message":{"role":"assistant","content":null,"tool_calls":[{"id":"lookup-wire","type":"function","function":{"name":"lookup","arguments":"{}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":2,"completion_tokens":1}}`))}, nil
+				}
+				return usageReply(), nil
+			}
+			var callID, resultID *string
+			callCount, resultCount := 0, 0
+			run.Emit = func(event contract.RunEvent) {
+				if event.ToolCall != nil {
+					callCount++
+					callID = event.ToolCall.CallID
+				}
+				if event.ToolResult != nil {
+					resultCount++
+					resultID = event.ToolResult.CallID
+				}
+			}
+			if e := eino.New().Run(context.Background(), run); e != nil {
+				t.Fatal(e)
+			}
+			if calls != 2 || callCount != 1 || resultCount != 1 {
+				t.Fatalf("actual HTTP tool path calls=%d events=%d/%d", calls, callCount, resultCount)
+			}
+			if capture {
+				if callID == nil || *callID == "" || resultID == nil || *resultID != *callID || sink.calls != 1 {
+					t.Fatal("original HTTP capture lost exact call/result correlation", sink.calls)
+				}
+				retained, e := runcontext.ReadRetainedRunHistory(context.Background(), store, "original-live")
+				if e != nil {
+					t.Fatal(e)
+				}
+				view, e := runcontext.ReadCapturedCorpusView(retained)
+				if e != nil {
+					t.Fatal(e)
+				}
+				var requests []any
+				if e = json.Unmarshal(view.Entry.Requests, &requests); e != nil || len(requests) != 2 {
+					t.Fatal("actual HTTP requests absent", e)
+				}
+			} else if callID != nil || resultID != nil || sink.calls != 0 {
+				t.Fatal("capture-off event shape changed")
+			}
+		})
+	}
 }

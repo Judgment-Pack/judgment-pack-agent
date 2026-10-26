@@ -60,14 +60,16 @@ func (l skillsListed) skill() runcontext.Skill {
 type skillsFile struct {
 	Request string `json:"request"`
 	Rates   struct {
-		Name        string          `json:"name"`
-		Description string          `json:"description"`
-		InputSchema json.RawMessage `json:"inputSchema"`
+		Name        string                   `json:"name"`
+		Description string                   `json:"description"`
+		InputSchema json.RawMessage          `json:"inputSchema"`
+		Taxonomy    *runcontext.ToolTaxonomy `json:"taxonomy"`
 		Source      struct {
-			Kind    string `json:"kind"`
-			ID      string `json:"id"`
-			Trust   string `json:"trust"`
-			Version string `json:"version"`
+			Kind           string `json:"kind"`
+			ID             string `json:"id"`
+			Trust          string `json:"trust"`
+			Version        string `json:"version"`
+			ToolListDigest string `json:"toolListDigest"`
 		} `json:"source"`
 		Result string `json:"result"`
 	} `json:"rates"`
@@ -110,8 +112,8 @@ type skillsHost struct {
 func skillsHostTools(file skillsFile, host *skillsHost) []runcontext.HostTool {
 	rates := file.Rates
 	return []runcontext.HostTool{{
-		Name: rates.Name, Description: rates.Description, InputSchema: rates.InputSchema, EffectClass: "read",
-		Source: &runcontext.ToolSource{Kind: rates.Source.Kind, ID: rates.Source.ID, Trust: rates.Source.Trust, Version: rates.Source.Version},
+		Name: rates.Name, Taxonomy: rates.Taxonomy, Description: rates.Description, InputSchema: rates.InputSchema, EffectClass: "read",
+		Source: &runcontext.ToolSource{Kind: rates.Source.Kind, ID: rates.Source.ID, Trust: rates.Source.Trust, Version: rates.Source.Version, ToolListDigest: rates.Source.ToolListDigest},
 		Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
 			host.mu.Lock()
 			host.runs++
@@ -203,7 +205,7 @@ func requestParts(request EndpointRequest) (system, after, whole string) {
 }
 
 var blockSkill = regexp.MustCompile(`(?m)^` + runcontext.SkillOpening + ` [0-9a-f]{32} "([A-Za-z0-9_-]+)" from source `)
-var catalogueEntry = regexp.MustCompile(`(?m)^- ([A-Za-z0-9_-]+)\n` + runcontext.Opening + ` [0-9a-f]{32} from the description of skill "`)
+var catalogueEntry = regexp.MustCompile(`(?m)^- ([A-Za-z0-9_-]+) \(unclassified; (?:pure|reads local data)\)\n` + runcontext.Opening + ` [0-9a-f]{32} from the description of skill "`)
 
 var skillClosingLine = regexp.MustCompile(`^` + runcontext.SkillClosing + ` [0-9a-f]{32}$`)
 
@@ -400,6 +402,17 @@ func skillsFindings(state *skilled, prefix string, agent bool) []Finding {
 		f.fail("the run sent nothing")
 	} else if got := cataloguedNames(first.System[0]); len(admissible) != 40 || !slices.Equal(got, admissible[:32]) {
 		f.fail("the catalogue listed %v", got)
+	}
+	if len(first.System) > 0 {
+		for _, name := range admissible[:32] {
+			label := "pure"
+			if name == "expense_policy" {
+				label = "reads local data"
+			}
+			if !strings.Contains(first.System[0], "- "+name+" (unclassified; "+label+")\n") {
+				f.fail("profile label for %s", name)
+			}
+		}
 	}
 	var before []string
 	for _, event := range first.Events {

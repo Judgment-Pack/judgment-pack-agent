@@ -49,6 +49,7 @@ import type { AssistantEvent, AssistantSession, Engine, EngineSession, HostTool,
 const SKILLS = declarations.items as unknown as SkillDeclaration[]
 const MARKER = catalogueVector.marker
 /** The host tools the skills of the vectors name, declared. */
+const HOST_TAXONOMIES = new Map<string, import('./toolTaxonomy').ToolTaxonomy>([["ask_user", {"operation": "ask", "effect": "pure"}], ["propose_pack", {"operation": "propose", "effect": "propose"}], ["rates__lookup_rate", {"operation": "read", "effect": "read"}], ["tracker__create_issue", {"operation": "act", "effect": "act"}]])
 const HOST_TOOLS = ['ask_user', 'propose_pack', 'rates__lookup_rate', 'tracker__create_issue']
 const crossing = (tool: HostTool) => JSON.parse(JSON.stringify(tool)) as unknown
 
@@ -58,7 +59,7 @@ function runState(rows: { source: string; kind: string }[] = [{ source: 'policie
 }
 
 async function admittedSkills(): Promise<Skill[]> {
-  return (await declareSkills(SKILLS, HOST_TOOLS, CONTEXT_DEFAULTS)).skills
+  return (await declareSkills(SKILLS, HOST_TOOLS, CONTEXT_DEFAULTS, [], HOST_TAXONOMIES)).skills
 }
 
 function gateOf(skills: Skill[], state: ExecutionCheckpoint, options: { agentWire?: boolean; skillsPerRun?: number; marker?: string } = {}) {
@@ -72,25 +73,25 @@ function gateOf(skills: Skill[], state: ExecutionCheckpoint, options: { agentWir
 
 describe('the declaration (ADR-0009)', () => {
   it('computes each skill’s digest and size and admits the three of the vector with them, the contract’s vectors', async () => {
-    for (const skill of SKILLS) expect(await skillDigest(skill)).toBe(skill.pinnedDigest)
-    const out = await declareSkills(SKILLS, HOST_TOOLS, CONTEXT_DEFAULTS)
+    for (const skill of SKILLS) expect(await skillDigest(skill, HOST_TAXONOMIES)).toBe(skill.pinnedDigest)
+    const out = await declareSkills(SKILLS, HOST_TOOLS, CONTEXT_DEFAULTS, [], HOST_TAXONOMIES)
     expect(out.withheld).toEqual([])
-    expect(out.skills.map(({ bytes: _bytes, ...skill }) => skill)).toEqual(admitted.items)
+    expect(out.skills).toEqual(admitted.items)
     expect(out.skills.map((skill) => skill.bytes)).toEqual(SKILLS.map((skill) => skillBytes(skill)))
     expect(out.sources.map((source) => source.id)).toEqual(['policies', 'jx-issue-style', 'tracker'])
   })
 
   it('refuses before any request a declaration it cannot read, naming the problem: the contract’s refused declarations', async () => {
     for (const refused of declarations.refused) {
-      await expect(declareSkills([refused.declaration], HOST_TOOLS, CONTEXT_DEFAULTS)).rejects.toThrow(refused.problem)
+      await expect(declareSkills([refused.declaration], HOST_TOOLS, CONTEXT_DEFAULTS, [], HOST_TAXONOMIES)).rejects.toThrow(refused.problem)
     }
-    await expect(declareSkills([SKILLS[0], { ...SKILLS[1]!, name: SKILLS[0]!.name }], HOST_TOOLS, CONTEXT_DEFAULTS)).rejects.toThrow(/Two skills/)
+    await expect(declareSkills([SKILLS[0], { ...SKILLS[1]!, name: SKILLS[0]!.name }], HOST_TOOLS, CONTEXT_DEFAULTS, [], HOST_TAXONOMIES)).rejects.toThrow(/Two skills/)
     // A source a tool declares with one record and a skill with another.
     await expect(declareSkills([SKILLS[2]], HOST_TOOLS, CONTEXT_DEFAULTS, [{ kind: 'mcp', id: 'tracker', trust: 'public', toolListDigest: `sha256:${'1'.repeat(64)}` }])).rejects.toThrow(/declared twice/)
   })
 
   it('withholds a skill whose bundle changed after the person approved it, with the guardrail of the contract’s vector', async () => {
-    const out = await declareSkills([withheldDigest.declaration as unknown as SkillDeclaration], HOST_TOOLS, CONTEXT_DEFAULTS)
+    const out = await declareSkills([withheldDigest.declaration as unknown as SkillDeclaration], HOST_TOOLS, CONTEXT_DEFAULTS, [], HOST_TAXONOMIES)
     expect(out.skills).toEqual([])
     expect(out.withheld.map((held) => ({ type: 'guardrail', tool: held.tool, action: 'refused', detail: held.detail, reason: held.reason }))).toEqual(withheldDigest.items)
   })
@@ -102,7 +103,7 @@ describe('the declaration (ADR-0009)', () => {
   })
 
   it('withholds a skill past skillBytes', async () => {
-    const out = await declareSkills(SKILLS, HOST_TOOLS, { skillBytes: 100 })
+    const out = await declareSkills(SKILLS, HOST_TOOLS, { skillBytes: 100 }, [], HOST_TAXONOMIES)
     expect(out.skills.map((skill) => skill.name)).toEqual(['review_checklist'])
     expect(out.withheld.map((held) => held.detail)).toEqual([
       'the skill expense_policy is 240 bytes, over skillBytes (100); it is not offered',
@@ -131,7 +132,7 @@ describe('the catalogue (ADR-0009)', () => {
     const forty: SkillDeclaration[] = []
     for (let n = 0; n < 40; n++) {
       const skill = { id: `s-${n}`, name: `skill_${n}`, description: `Skill ${n}.`, source: { kind: n < 30 ? 'custom' : 'exchange', id: n < 30 ? 'policies' : 'jx-more', trust: 'person', version: '1' }, instructions: `Do step ${n}.` } as unknown as SkillDeclaration
-      forty.push({ ...skill, pinnedDigest: await skillDigest(skill) })
+      forty.push({ ...skill, pinnedDigest: await skillDigest(skill, HOST_TAXONOMIES) })
     }
     const admittedForty = (await declareSkills(forty, [], CONTEXT_DEFAULTS)).skills
     expect(admittedForty).toHaveLength(40)
@@ -238,7 +239,7 @@ describe('the load and the unload (ADR-0009)', () => {
 
 /** A session on a model capability with the vectors' skills and their host tools. */
 function session(context: ContextInput = {}, skills: unknown[] = SKILLS, extra: Partial<AssistantSession> = {}): AssistantSession {
-  const hostTools: HostTool[] = ['ask_user', 'rates__lookup_rate'].map((name) => ({ name, description: name, effect: 'read', inputSchema: { type: 'object' }, execute: async () => ({ content: [{ type: 'text', text: 'ok' }] }) }))
+  const hostTools: HostTool[] = ['ask_user', 'rates__lookup_rate'].map((name) => ({ name, taxonomy:name==='ask_user'?{operation:'ask',effect:'pure'}:{operation:'read',effect:'read'}, description: name, effect: 'read', inputSchema: { type: 'object' }, execute: async () => ({ content: [{ type: 'text', text: 'ok' }] }) }))
   return { prompt: 'Current request', testPrompt: '', tools: [], hostTools, callTool: async () => ({ content: [] }), model: { family: 'openai-compatible', model: 'small', call: async () => { throw Error('no model call here') } }, thinking: normalize('off', 'openai-compatible'), signal: new AbortController().signal, skills: skills as SkillDeclaration[], context, ...extra }
 }
 
@@ -277,7 +278,7 @@ describe('the boundary over skills (ADR-0009)', () => {
 
   it('refuses a host tool named load_skill or unload_skill, as every reserved name', async () => {
     for (const name of [LOAD_SKILL, UNLOAD_SKILL]) {
-      const tool: HostTool = { name, description: 'd', inputSchema: { type: 'object' }, execute: async () => ({ content: [] }) }
+      const tool: HostTool = { name, taxonomy:{operation:'own-state',effect:'pure'}, description: 'd', inputSchema: { type: 'object' }, execute: async () => ({ content: [] }) }
       await expect(contextualSession(session({}, [], { hostTools: [tool] }))).rejects.toThrow(/reserved/)
     }
   })
@@ -293,7 +294,7 @@ describe('the boundary over skills (ADR-0009)', () => {
     saved.requestKey = await contextDigest(JSON.stringify({ request: 'Current request', phase: 'work', purpose: null }))
     expect(readExecution(saved)).toBeDefined()
     // issue_style is no longer declared: only expense_policy is restored.
-    const { context } = await contextualSession(session({ execution: JSON.parse(JSON.stringify(saved)) }, [SKILLS[0], SKILLS[2]], { hostTools: ['rates__lookup_rate', 'tracker__create_issue'].map((name) => ({ name, description: name, effect: 'read', inputSchema: { type: 'object' }, execute: async () => ({ content: [] }) })) }))
+    const { context } = await contextualSession(session({ execution: JSON.parse(JSON.stringify(saved)) }, [SKILLS[0], SKILLS[2]], { hostTools: ['rates__lookup_rate', 'tracker__create_issue'].map((name) => ({ name, taxonomy:name==='ask_user'?{operation:'ask',effect:'pure'}:{operation:'read',effect:'read'}, description: name, effect: 'read', inputSchema: { type: 'object' }, execute: async () => ({ content: [] }) })) }))
     const notices = context.takeNotices()
     expect(notices).toEqual([{ type: 'guardrail', tool: 'issue-style', action: 'refused', reason: 'skill withheld', detail: `the skill issue-style loaded earlier in this response is no longer declared as it was loaded (${SKILLS[1]!.pinnedDigest}); it was not restored, and its instructions are not in this run` }])
     expect(context.skills!.current().map((skill) => skill.id)).toEqual(['expense-policy'])
@@ -308,7 +309,7 @@ describe('the boundary over skills (ADR-0009)', () => {
     saved.requestKey = await contextDigest(JSON.stringify({ request: 'Current request', phase: 'work', purpose: null }))
     // The person re-approved expense_policy with changed instructions: the same id, a new pinned digest.
     const changed = { ...SKILLS[0]!, instructions: `${SKILLS[0]!.instructions} Round each amount to the cent.` }
-    const repinned = { ...changed, pinnedDigest: await skillDigest(changed) }
+    const repinned = { ...changed, pinnedDigest: await skillDigest(changed, HOST_TAXONOMIES) }
     expect(repinned.pinnedDigest).not.toBe(SKILLS[0]!.pinnedDigest)
     const { context } = await contextualSession(session({ execution: JSON.parse(JSON.stringify(saved)) }, [repinned, SKILLS[1], SKILLS[2]]))
     expect(context.takeNotices()).toEqual([{ type: 'guardrail', tool: 'expense-policy', action: 'refused', reason: 'skill withheld', detail: `the skill expense-policy loaded earlier in this response is no longer declared as it was loaded (${SKILLS[0]!.pinnedDigest}); it was not restored, and its instructions are not in this run` }])

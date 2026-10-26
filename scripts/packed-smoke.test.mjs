@@ -6,6 +6,7 @@ import assert from 'node:assert/strict'
 import {mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs'
 import {tmpdir} from 'node:os'
 import {dirname,join,resolve} from 'node:path'
+import {createRequire} from 'node:module'
 import test from 'node:test'
 import {bundleEntrypoints,consumerDirectory,inspectEmittedModules,nativeEntrypoints,packageEntrypoints,validateDeclarations,validatePackage,validateRuntimeDependencies} from '../packages/harness/scripts/packed-smoke.mjs'
 
@@ -42,6 +43,29 @@ test('rejects a missing dependency of a wildcard-exported module',t=>{
  const root=fixture({'package.json':JSON.stringify({name:'fixture',exports}),'dist/good.js':'export const good=true\n','dist/broken.js':"import './missing.js'\n"});t.after(()=>rmSync(root,{recursive:true,force:true}))
  assert(packageEntrypoints(root).some(entry=>entry.specifier==='fixture/broken'))
  assert.throws(()=>validatePackage(root),/imports a missing package file|missing emitted import/)
+})
+
+test('honors exact and pattern null export exclusions in an installed Node consumer',t=>{
+ const exports={...Object.fromEntries(['contract','vercel','codex','deepagents','certification'].map(name=>[`./${name}`,'./dist/public.js'])),'./*':'./dist/*.js','./private':null,'./hidden/*':null,'./hidden/public':'./dist/public.js','./hidden/nested/*':'./dist/hidden/nested/*.js'}
+ const project=fixture({'package.json':'{"private":true,"type":"module"}',
+  'node_modules/fixture/package.json':JSON.stringify({name:'fixture',type:'module',exports}),
+  'node_modules/fixture/dist/public.js':'export const ok=true',
+  'node_modules/fixture/dist/private.js':'export const privateOwner=true',
+  'node_modules/fixture/dist/hidden/owner.js':'export const hiddenOwner=true',
+  'node_modules/fixture/dist/hidden/nested/public.js':'export const ok=true'})
+ t.after(()=>rmSync(project,{recursive:true,force:true}))
+ const root=join(project,'node_modules','fixture'),entries=packageEntrypoints(root),require=createRequire(join(project,'consumer.cjs'))
+ for(const name of ['private','hidden/owner']){
+  assert(!entries.some(entry=>entry.specifier===`fixture/${name}`),`${name} must remain private`)
+  assert.throws(()=>require.resolve(`fixture/${name}`),{code:'ERR_PACKAGE_PATH_NOT_EXPORTED'})
+ }
+ for(const name of ['public','hidden/public','hidden/nested/public']){
+  assert(entries.some(entry=>entry.specifier===`fixture/${name}`),`${name} must remain public`)
+  assert(require.resolve(`fixture/${name}`).endsWith('.js'))
+ }
+ delete exports['./private'];delete exports['./hidden/*']
+ writeFileSync(join(root,'package.json'),JSON.stringify({name:'fixture',type:'module',exports}))
+ assert(packageEntrypoints(root).some(entry=>entry.specifier==='fixture/private'),'removing an exclusion must expose its wildcard entry')
 })
 
 test('accepts the built harness and all of its exported modules',()=>{

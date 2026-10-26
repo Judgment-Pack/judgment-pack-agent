@@ -96,11 +96,11 @@ func proposalEditFindings(ctx context.Context, inner Adapter, agent bool) ([]Fin
 			}
 			return json.Marshal(map[string]any{"jsonrpc": "2.0", "id": request.ID, "result": result})
 		}
-		propose := runcontext.HostTool{Name: "propose_pack", Description: "Propose a pack.", Effect: "proposal", InputSchema: turn.ProposePackSchema, Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
+		propose := runcontext.HostTool{Name: "propose_pack", Taxonomy: &runcontext.ToolTaxonomy{Operation: "propose", Effect: "propose"}, Description: "Propose a pack.", Effect: "proposal", InputSchema: turn.ProposePackSchema, Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
 			return runcontext.ToolResult{}, fmt.Errorf("host proposal executed")
 		}}
 		g := gate.New(gate.Options{Runtime: runtime, Granted: gate.Ceiling, Emit: emit})
-		offer, err := g.Open(ctx, append([]contract.ToolOfferHostTool{{Name: "propose_pack", Description: "Propose a pack.", InputSchema: turn.ProposePackSchema}, {Name: "ask_user", InputSchema: json.RawMessage(`{"type":"object"}`)}}, append(boundaryTools(true), runcontext.OfferedEditTools(runcontext.Session{Context: input})...)...))
+		offer, err := g.Open(ctx, append([]contract.ToolOfferHostTool{{Name: "propose_pack", Taxonomy: contract.ToolTaxonomy{Operation: "propose", Effect: "propose"}, Description: "Propose a pack.", InputSchema: turn.ProposePackSchema}, {Name: "ask_user", Taxonomy: contract.ToolTaxonomy{Operation: "ask", Effect: "pure"}, InputSchema: json.RawMessage(`{"type":"object"}`)}}, append(boundaryTools(true), runcontext.OfferedEditTools(runcontext.Session{Context: input})...)...))
 		if err != nil {
 			return memoryRun{}, err
 		}
