@@ -1,0 +1,27 @@
+{
+  "id": "auditor",
+  "name": "Auditor",
+  "purpose": "Check supplied evidence.",
+  "instructions": "Use only the supplied evidence and cite it.",
+  "source": {
+    "kind": "custom",
+    "id": "project",
+    "version": "1",
+    "trust": "person"
+  },
+  "tools": [
+    "lookup"
+  ],
+  "skills": [],
+  "model": "fixture",
+  "reasoning": "low",
+  "bounds": {
+    "modelRequests": 3,
+    "agentRuns": 1,
+    "toolCalls": 2,
+    "bytes": 64000,
+    "milliseconds": 30000,
+    "resultBytes": 3000
+  },
+  "pinnedDigest": "sha256:7754d70b28b7a8a420ba33b2bf3e76faae360b26ddfa6b85494b8ef24f71a800"
+}

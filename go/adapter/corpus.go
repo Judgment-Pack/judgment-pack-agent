@@ -17,30 +17,38 @@ type AgentRecordingStep struct {
 // The capture is in memory; the caller passes it through WriteCorpusEntry before storage.
 func RecordAgentRun(run AgentRun, capture func(AgentRequest, json.RawMessage)) AgentRun {
 	return func(ctx context.Context, request AgentRequest, callbacks AgentCallbacks) error {
+		capturedRequest := request
+		if request.Tools != nil {
+			capturedRequest.Tools = append([]AgentTool{}, request.Tools...)
+			for i := range capturedRequest.Tools {
+				capturedRequest.Tools[i].InputSchema = append(json.RawMessage(nil), request.Tools[i].InputSchema...)
+			}
+		}
 		steps := []AgentRecordingStep{}
 		var mu sync.Mutex
-		err := run(ctx, request, AgentCallbacks{
-			Event: func(ctx context.Context, event AgentEvent) error {
-				mu.Lock()
-				steps = append(steps, AgentRecordingStep{Event: &event})
-				mu.Unlock()
-				return callbacks.Event(ctx, event)
-			},
-			Tool: func(ctx context.Context, call AgentToolCall) (AgentToolAnswer, error) {
-				held := call
-				held.Arguments = append(json.RawMessage(nil), call.Arguments...)
-				mu.Lock()
-				steps = append(steps, AgentRecordingStep{Tool: &held})
-				mu.Unlock()
-				return callbacks.Tool(ctx, call)
-			},
-		})
+		watched := callbacks
+		watched.Event = func(ctx context.Context, event AgentEvent) error {
+			held := event
+			mu.Lock()
+			steps = append(steps, AgentRecordingStep{Event: &held})
+			mu.Unlock()
+			return callbacks.Event(ctx, event)
+		}
+		watched.Tool = func(ctx context.Context, call AgentToolCall) (AgentToolAnswer, error) {
+			held := call
+			held.Arguments = append(json.RawMessage(nil), call.Arguments...)
+			mu.Lock()
+			steps = append(steps, AgentRecordingStep{Tool: &held})
+			mu.Unlock()
+			return callbacks.Tool(ctx, call)
+		}
+		err := run(ctx, request, watched)
 		mu.Lock()
 		body, _ := json.Marshal(struct {
 			Steps []AgentRecordingStep `json:"steps"`
 		}{steps})
 		mu.Unlock()
-		capture(request, body)
+		capture(capturedRequest, body)
 		return err
 	}
 }

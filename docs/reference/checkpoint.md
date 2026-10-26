@@ -12,6 +12,8 @@ See also: [events.md](events.md), [budget.md](budget.md), [delegation.md](delega
 
 The recorded projection APIs and omissions are described in [run-report.md](run-report.md).
 
+Current feature state uses checkpoint 3: task schedules/envelopes, usage budgets, per-turn routing, repeated-tool observations and runtime action approval. Feature-free writers keep checkpoint 2. Retained history, archives and captures are read-only data and cannot grant native resume, dispatch or approval authority. See [task-steps.md](task-steps.md), [repeated-tools.md](repeated-tools.md), [history-archive.md](history-archive.md), [history-capture.md](history-capture.md) and [feedback.md](feedback.md).
+
 Active steps close with complete_plan_step and current planRevision, using acknowledged same-run evidence or not-needed with a reason. update_plan carries unchanged terminal rows. Accepted origin, bounded departures and purpose-specific drift decisions survive resume. The complete_plan_step tool name is reserved; hosts must rename conflicting tools.
 
 Task steps use package-issued execution-scoped ids. update_plan retains ids explicitly; an omitted id means a new step. planState.revision is the canonical ordered task-content digest, while sequence orders the newest 32 bounded history entries. Storage compare-and-set revisions remain opaque host tokens. See docs/design/task-plan.md for migration and deterministic diff ordering.
@@ -25,7 +27,7 @@ Closed: a member the schema does not name is refused.
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
 | `schema` |  | const (see schema) |  |
-| `version` | yes | enum `1`, `2` | Wire format version: writers use 2; readers also accept the frozen historical version 1. |
+| `version` | yes | enum `1`, `2`, `3` | Feature-free producers retain published defaults; feature-bearing usage budget records select checkpoint 3 / event 2. |
 | `digest` |  | `provenance.json $defs/recordDigest` |  |
 | `retainUntil` |  | `provenance.json $defs/retainUntil` |  |
 | `id` | yes | string (min length 1, max length 100) |  |
@@ -81,6 +83,9 @@ Closed: a member the schema does not name is refused.
 | `requestCap` |  | integer (min 1, max 20) | Optional fixed host API request cap. When present, unit is model-requests, limit equals this cap, used is at most it, and grants is empty. It must match independently trusted resume input; it cannot be extended. |
 | `durable` |  | `$defs/durableBook` | Current-format acknowledged dispatch/recovery journal. Scope comes from admitted host execution/role/task, never model text. A containing commit proves recorded provenance, not current authority or external success. Credentials and private reasoning are excluded; exact required bytes that cannot be safely retained are refused before dispatch. |
 | `planState` |  | `$defs/planState` | Current ordered task content SHA-256, independent history sequence and step allocator. Only newest 32 revisions retained; discarded is the explicit prefix count. Explanations/history/counters do not affect the content digest. Storage CAS revisions remain opaque host tokens. |
+| `usageBudget` |  | `usage-budget.json` |  |
+| `turnRoute` |  | `turn-route.json` |  |
+| `repeatTools` |  | `$defs/repeatTools` |  |
 
 Conditions beyond the members (allOf) are in the schema file.
 
@@ -107,6 +112,9 @@ Closed: a member the schema does not name is refused.
 | `origin` |  | `$defs/planOrigin` |  |
 | `evidence` |  | `$defs/stepEvidence` |  |
 | `notNeededReason` |  | string (min length 1, max length 1500, pattern `\S`) |  |
+| `dependsOn` |  | array of string (pattern `^step-[1-9][0-9]{0,15}$`) (max items 19) |  |
+| `budget` |  | `$defs/taskStepShare` |  |
+| `delegation` |  | `subagent.json $defs/record` |  |
 
 ### `checkpoint.json $defs/operation`
 
@@ -173,6 +181,7 @@ Closed: a member the schema does not name is refused.
 | `note` |  | string (max length 2000) |  |
 | `result` |  | `tool-result.json $defs/mcpToolResult` |  |
 | `marker` |  | string (pattern `^[0-9a-f]{32}$`) |  |
+| `runtime` |  | `$defs/runtimeApprovalBinding` |  |
 
 ### `checkpoint.json $defs/approvalDecision`
 
@@ -263,6 +272,7 @@ Closed: a member the schema does not name is refused.
 | `result` |  | any |  |
 | `failure` |  | `failure.json` |  |
 | `artifacts` |  | array of `$defs/artifactObservation` (max items 32) |  |
+| `repeatResultJson` |  | string (min length 1, max length 4194304) | Enabled repeat detection only: exact original acknowledged result encoding, retained by its original writer before legacy result projection. |
 
 ### `checkpoint.json $defs/durableObservation`
 
@@ -338,6 +348,8 @@ Closed: a member the schema does not name is refused.
 | `refusalsDiscarded` |  | integer (min 0, max 9007199254740991) |  |
 | `decisions` |  | array of `$defs/planDecision` (max items 32) |  |
 | `decisionsDiscarded` |  | integer (min 0, max 9007199254740991) |  |
+| `taskSchedule` |  | `$defs/taskSchedule` |  |
+| `taskEnvelope` |  | `$defs/taskEnvelopeBinding` |  |
 
 ### `checkpoint.json $defs/stepEvidence`
 
@@ -350,6 +362,7 @@ Closed: a member the schema does not name is refused.
 | `artifacts[].kind` | yes | enum `artifact`, `dialect` |  |
 | `artifacts[].id` | yes | string (min length 1, max length 256) |  |
 | `artifacts[].digest` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `child` |  | `$defs/taskCompletionEvidence` |  |
 
 ### `checkpoint.json $defs/planOrigin`
 
@@ -439,3 +452,190 @@ Closed: a member the schema does not name is refused.
 | `candidateRevision` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
 | `approved` | yes | boolean |  |
 | `note` |  | string (max length 2000) |  |
+
+### `checkpoint.json $defs/runtimeExecutionOwner`
+
+The trusted host observation of the actual immutable Runtime execution. Labels are descriptive and never grant authority. Closed.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `artifactDigest` | yes | string (pattern `^sha256:[0-9a-f]{64}$`) |  |
+| `processId` | yes | string (min length 1, max length 128, pattern `^[^\u0000-\u001f\u007f]+$`) |  |
+| `projectId` | yes | string (min length 1, max length 128, pattern `^[^\u0000-\u001f\u007f]+$`) |  |
+| `projectLabel` | yes | string (min length 1, max length 128, pattern `^[^\u0000-\u001f\u007f]+$`) |  |
+| `sessionId` | yes | string (min length 1, max length 128, pattern `^[^\u0000-\u001f\u007f]+$`) |  |
+| `principalDigest` | yes | string (pattern `^sha256:[0-9a-f]{64}$`) |  |
+| `principalLabel` | yes | string (min length 1, max length 128, pattern `^[^\u0000-\u001f\u007f]+$`) |  |
+| `scopeDigest` | yes | string (pattern `^sha256:[0-9a-f]{64}$`) |  |
+| `scopeLabel` | yes | string (min length 1, max length 128, pattern `^[^\u0000-\u001f\u007f]+$`) |  |
+
+### `checkpoint.json $defs/runtimeApprovalBinding`
+
+Runtime-specific exact admission binding carried only by current checkpoint3/event2. A record is not a dispatch grant. Closed.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `owner` | yes | `$defs/runtimeExecutionOwner` |  |
+| `admissionDigest` | yes | string (pattern `^sha256:[0-9a-f]{64}$`) |  |
+
+### `checkpoint.json $defs/taskStepShare`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `requests` | yes | integer (min 1, max 100) |  |
+
+### `checkpoint.json $defs/taskScheduleBinding`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `run` | yes | string (min length 1, max length 100, pattern `^[^\u0000-\u001f]+$`) |  |
+| `execution` | yes | string (min length 1, max length 100, pattern `^[^\u0000-\u001f]+$`) |  |
+| `planRevision` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `scopeDigest` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `unit` | yes | enum `model-requests`, `provider-managed` |  |
+
+### `checkpoint.json $defs/taskStepClaim`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `id` | yes | string (min length 1, max length 100, pattern `^[^\u0000-\u001f]+$`) |  |
+| `requestDigest` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `state` | yes | enum `held`, `admitted`, `unknown` |  |
+
+### `checkpoint.json $defs/taskChildResult`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `checkpointDigest` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `resultDigest` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `eventDigest` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `commitId` | yes | string (min length 1, max length 100, pattern `^[^\u0000-\u001f]+$`) |  |
+
+### `checkpoint.json $defs/taskChildBinding`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `task` | yes | string (min length 1, max length 100, pattern `^[^\u0000-\u001f]+$`) |  |
+| `execution` | yes | string (min length 1, max length 100, pattern `^[^\u0000-\u001f]+$`) |  |
+| `planRevision` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `profile` | yes | `subagent.json $defs/record` |  |
+| `result` |  | `$defs/taskChildResult` |  |
+
+### `checkpoint.json $defs/taskStepRow`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `id` | yes | string (pattern `^step-[1-9][0-9]{0,15}$`) |  |
+| `limit` |  | integer (min 1, max 100) |  |
+| `claims` | yes | array of `$defs/taskStepClaim` (max items 100) |  |
+| `child` |  | `$defs/taskChildBinding` |  |
+
+### `checkpoint.json $defs/taskSchedule`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `version` | yes | const `1` |  |
+| `binding` | yes | `$defs/taskScheduleBinding` |  |
+| `definitionDigest` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `rows` | yes | array of `$defs/taskStepRow` (min items 1, max items 20) |  |
+| `pending` |  | `$defs/taskPendingDelegation` |  |
+
+### `checkpoint.json $defs/taskExecutionEnvelope`
+
+Explicit immutable host-configured provider invocation ceiling. No available or spent balance is accepted.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `id` | yes | string (min length 1, max length 100) |  |
+| `revision` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `unit` | yes | const `provider-invocations` |  |
+| `limit` | yes | integer (min 1, max 100) |  |
+
+### `checkpoint.json $defs/taskEnvelopeBinding`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `run` | yes | string (min length 1, max length 100) |  |
+| `execution` | yes | string (min length 1, max length 100) |  |
+| `scopeDigest` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `configuration` | yes | `$defs/taskExecutionEnvelope` |  |
+
+### `checkpoint.json $defs/taskPendingDelegation`
+
+Original-writer association acknowledged before native release or model child admission. An interrupted association never grants redispatch.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `planRevision` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `requestDigest` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `steps` | yes | array of string (pattern `^step-[1-9][0-9]{0,15}$`) (min items 1, max items 3) |  |
+
+### `checkpoint.json $defs/taskCompletionEvidence`
+
+Exact acknowledged successful child evidence; caller strings alone cannot establish completion.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `task` | yes | string (min length 1, max length 100) |  |
+| `checkpointDigest` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `resultDigest` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `eventDigest` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `commitId` | yes | string (min length 1, max length 100) |  |
+
+### `checkpoint.json $defs/repeatObservation`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `dispatchId` | yes | string (min length 1, max length 100) |  |
+| `keyDigest` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+
+### `checkpoint.json $defs/repeatExecution`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `execution` | yes | string (min length 1, max length 100) |  |
+| `remindAt` | yes | integer (min 1, max 400) |  |
+| `stopAt` | yes | integer (min 1, max 400) |  |
+| `count` | yes | integer (min 0, max 399) |  |
+| `reminded` | yes | boolean |  |
+| `stopped` | yes | boolean |  |
+| `seen` | yes | array of `$defs/repeatObservation` (max items 400) |  |
+| `reminderDelivered` | yes | boolean |  |
+
+### `checkpoint.json $defs/repeatTools`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `executions` | yes | array of `$defs/repeatExecution` (min items 1, max items 33) |  |

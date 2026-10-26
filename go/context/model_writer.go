@@ -40,7 +40,21 @@ func finishDurableModel(ctx context.Context, binding *RunBinding, handle *modelC
 			return w.fatal
 		}
 	}
+	// Verification alone is not acknowledgement. Cancellation before the result
+	// commit must not promote even a verified response to a durable result.
+	if ctx.Err() != nil {
+		verifiedRefusal = false
+		if outcome == nil {
+			outcome = ctx.Err()
+		}
+	}
 	delete(w.models, handle)
+	if w.stopped {
+		return nil
+	}
+	if w.dispatchClosed.Load() && outcome == nil {
+		outcome = failure.Cancelled
+	}
 	found := false
 	for i, row := range w.book.Dispatches {
 		if row.ID == handle.id && row.Kind == "model" && row.Scope == binding.Scope && row.Read && row.State == "claimed" {
@@ -48,6 +62,9 @@ func finishDurableModel(ctx context.Context, binding *RunBinding, handle *modelC
 				w.book.Dispatches[i].State = "result"
 			} else {
 				w.book.Dispatches[i].State = "unknown"
+				if w.budget != nil {
+					w.budget.unknown(handle.id)
+				}
 			}
 			if outcome != nil {
 				f := failure.Normalize(outcome, "model", time.Now())
@@ -61,18 +78,25 @@ func finishDurableModel(ctx context.Context, binding *RunBinding, handle *modelC
 		w.fatal = &ContinuationIdentityChanged{}
 		return w.fatal
 	}
+	// A canceled dispatch context cannot acknowledge storage. Keep its already admitted
+	// claim unknown in this writer; the host's bounded FinalizeStop persists it.
+	if ctx.Err() != nil {
+		w.dispatchClosed.Store(true)
+		return nil
+	}
 	if _, err := w.saveLocked(ctx, *binding, nil, nil, nil, nil); err != nil {
 		w.fatal = &StorageOutcomeUnknown{cause: err}
 		return w.fatal
 	}
 	if outcome == nil || verifiedRefusal {
+		w.ackCaptureLocked(handle.id)
 		for _, row := range w.book.Dispatches {
 			if row.Kind == "model" && row.Read && row.Scope == binding.Scope && row.State == "unknown" {
 				delete(w.recovered, row.ID)
 			}
 		}
 	} else {
-		w.fatal = outcome
+		w.dispatchClosed.Store(true)
 	}
 	return nil
 }
@@ -91,13 +115,21 @@ func InvokeDurableModel(ctx context.Context, binding *RunBinding, source, tool s
 	}
 	var response *http.Response
 	verifiedRefusal := false
+	var captured *modelCaptureBody
 	if err = ctx.Err(); err == nil {
 		if binding.Writer.Failed() {
 			return nil, &ContinuationNotRecoverable{}
 		}
 		response, err = execute(handle.request)
 		if err == nil {
+			if binding.Writer.capture != nil && response != nil && response.Body != nil {
+				captured = &modelCaptureBody{ReadCloser: response.Body}
+				response.Body = captured
+			}
 			err = verify(response)
+			if binding.Writer.capture != nil {
+				binding.Writer.observeCaptureModel(handle, response, captured)
+			}
 			verifiedRefusal = err != nil && response != nil && response.StatusCode >= 400 && response.StatusCode < 500 && response.StatusCode != 408 && failure.Normalize(err, "model", time.Now()).Outcome == "refused"
 		}
 	}
@@ -113,7 +145,13 @@ func InvokeDurableModel(ctx context.Context, binding *RunBinding, source, tool s
 		}
 		return nil, err
 	}
-	if ctx.Err() != nil {
+	if err = finishUsageResponse(ctx, binding, handle, response); err != nil {
+		if response != nil && response.Body != nil {
+			response.Body.Close()
+		}
+		return nil, err
+	}
+	if ctx.Err() != nil || binding.Writer.Failed() {
 		if response != nil && response.Body != nil {
 			response.Body.Close()
 		}

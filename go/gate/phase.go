@@ -76,6 +76,8 @@ type Phase struct {
 	Profile string
 	Runtime []string
 	Host    []string
+	child   *contract.DelegatedTaskProfile
+	parent  *Phase
 }
 
 // Offer is the phase's share of an offer: the tools it names, as offered, in the offer's order.
@@ -175,7 +177,13 @@ func ChildPhase(profile contract.DelegatedTaskProfile, offer contract.ToolOffer,
 			}
 			return tool.Interaction == nil && tool.Delegation != nil && contains(profile.Capabilities, *tool.Delegation)
 		})
-	return Phase{Kind: PhaseChild, Profile: profile.ID, Runtime: r, Host: h}
+	rawProfile := profile
+	rawProfile.RuntimeTools = append([]string{}, profile.RuntimeTools...)
+	rawProfile.Capabilities = append([]string{}, profile.Capabilities...)
+	rawParent := parent
+	rawParent.Runtime = append([]string{}, parent.Runtime...)
+	rawParent.Host = append([]string{}, parent.Host...)
+	return Phase{Kind: PhaseChild, Profile: profile.ID, Runtime: r, Host: h, child: &rawProfile, parent: &rawParent}
 }
 
 // CriticRefusalDetail is why the critic's call of name did not leave (criticRefusalDetail).

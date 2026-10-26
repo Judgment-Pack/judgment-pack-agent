@@ -25,7 +25,7 @@ after(() => {
   rmSync(scratch, { recursive: true, force: true })
 })
 
-test('two runs write the same twelve pages, byte for byte', () => {
+test('two runs write the same thirteen pages, byte for byte', () => {
   const a = join(scratch, 'first')
   const b = join(scratch, 'second')
   for (const out of [a, b]) {
@@ -83,17 +83,33 @@ test('a hand-edited provider matrix is rejected', () => {
 })
 
 
-test('the named run report narrative is preserved beside generated references', () => {
+test('approved API narratives are preserved beside generated references', () => {
   const out = join(scratch, 'report-narrative')
   assert.equal(run('--out', out).status, 0)
-  const path = join(out, 'run-report.md')
-  const narrative = '# Run report\n\nHost-owned projection guidance.\n'
-  writeFileSync(path, narrative)
+  const names = ['run-report.md', 'feedback.md', 'history-archive.md', 'history-capture.md', 'repeated-tools.md', 'task-steps.md']
+  const narrative = '# Host API guidance\n\nHost-owned projection guidance.\n'
+  for (const name of names) writeFileSync(join(out, name), narrative)
   const checked = run('--check', '--out', out)
   assert.equal(checked.status, 0, checked.stderr)
-  assert.equal(readFileSync(path, 'utf8'), narrative)
+  for (const name of names) assert.equal(readFileSync(join(out, name), 'utf8'), narrative)
 })
 
+
+test('current record and feature guidance preserves published defaults and authority boundaries', () => {
+  const out = join(scratch, 'current-records')
+  const result = run('--out', out)
+  assert.equal(result.status, 0, result.stderr)
+  const records = readFileSync(join(out, 'records.md'), 'utf8')
+  for (const row of ['| checkpoint | `2` | `3` |', '| event | `1` | `2` |', '| policy | `1` | `2` |']) assert.ok(records.includes(row), row)
+  assert.match(records, /Report 2/)
+  assert.match(records, /Report 1 remains frozen/)
+  assert.match(records, /preserving the source checkpointVersion/)
+  assert.match(records, /Neither report grants execution authority/)
+  const checkpoint = readFileSync(join(out, 'checkpoint.md'), 'utf8')
+  assert.match(checkpoint, /task schedules\/envelopes, usage budgets, per-turn routing, repeated-tool observations and runtime action approval/)
+  assert.match(checkpoint, /cannot grant native resume, dispatch or approval authority/)
+  assert.match(readFileSync(join(out, 'policy.md'), 'utf8'), /Current policy layers use version 2/)
+})
 
 test('event coverage rejects loss of the last emitter in either language', () => {
  const kinds=JSON.parse(readFileSync(join(schemasDir,'run-event.json'))).properties.type.enum
@@ -201,6 +217,10 @@ test('Go decoded event provenance distinguishes value snapshots and field instan
   ['copy-before-decode',`func decoded() RunEvent {var unused RunEvent;copied:=unused;_ = ${endJSON}&unused);return copied}`,false],
   ['other-field-instance',`type box struct {Event RunEvent}
 func decoded() RunEvent {var unused, returned box;_ = ${endJSON}&unused.Event);return returned.Event}`,false],
+  ['overwritten-after-decode',`func decoded() RunEvent {var event RunEvent;_ = ${endJSON}&event);event=RunEvent{};return event}`,false],
+  ['dropped-decoded-return',`func decoded() RunEvent {var event RunEvent;_ = ${endJSON}&event);_ = event;return RunEvent{}}`,false],
+  ['feature-stamped-decoded-return',`func StampFeatureEvent(event RunEvent) RunEvent {return event}
+func decoded() RunEvent {var event RunEvent;_ = ${endJSON}&event);return StampFeatureEvent(event)}`,true],
   ['returned-after-decode',`func decoded() RunEvent {var event RunEvent;_ = ${endJSON}&event);copied:=event;return copied}`,true],
   ['returned-field',`type box struct {Event RunEvent}
 func decoded() RunEvent {var returned box;_ = ${endJSON}&returned.Event);return returned.Event}`,true],
@@ -226,5 +246,59 @@ func source(){emit(RunEvent{Message:&RunEventMessage{Type:"message"}})
   writeFileSync(path,source.replace(' emit(RunEvent{End:&RunEventEnd{Type:"end"}})',''))
   if(decodedPublishes)requireCoverage(kinds,eventMatrix(root,kinds))
   else assert.throws(()=>eventMatrix(root,kinds),/Go has no emitter for end/,`${name}: removing the real emitter must refuse coverage`)
+ })
+})
+
+// Handwritten versions of conditional route construction and the repeat writer's
+// second-result payload flow. Each negative retains a real fallback emitter so
+// its exact count, followed by removal of that fallback, checks the refusal gate.
+test('Go constructed event flow follows conditional members and selected payload results', async (t) => {
+ const root=join(scratch,'go-constructed-flow')
+ for(const dir of ['packages/harness','go','contract/schemas'])mkdirSync(join(root,dir),{recursive:true})
+ const kinds=['message','end']
+ writeFileSync(join(root,'contract/schemas/run-event.json'),JSON.stringify({properties:{type:{enum:kinds}}}))
+ writeFileSync(join(root,'packages/harness/tsconfig.json'),JSON.stringify({compilerOptions:{target:'ES2022',strict:true},include:['*.ts']}))
+ writeFileSync(join(root,'packages/harness/source.ts'),"type FixtureEvent={type:'message';text:string}|{type:'end'};function publish(event:FixtureEvent):void{};publish({type:'message',text:'x'});publish({type:'end'});")
+ const cases=[
+  ['conditional-member',`func route(kind string) {var event RunEvent
+ if kind == "end" {event.End=&RunEventEnd{Type:kind}} else {event.Message=&RunEventMessage{Type:kind}}
+ _,_ = commit(event)
+}
+func invoke(){route("end");route("message")}`,true],
+  ['second-result-payload',`func observe() (int,*RunEventEnd,error) {return 1,&RunEventEnd{Type:"end"},nil}
+func repeat(){_,payload,_:=observe();_,_=commit(StampFeatureEvent(RunEvent{End:payload}))}`,true],
+  ['unused-payload-factory',`func observe() (int,*RunEventEnd,error) {return 1,&RunEventEnd{Type:"end"},nil}
+func repeat(){_,_=commit(RunEvent{})}`,false],
+  ['dropped-payload-result',`func observe() (int,*RunEventEnd,error) {return 1,&RunEventEnd{Type:"end"},nil}
+func repeat(){_,_,_=observe();_,_=commit(RunEvent{})}`,false],
+  ['selected-empty-result',`func observe() (*RunEventEnd,*RunEventEnd) {return &RunEventEnd{Type:"end"},nil}
+func repeat(){_,payload:=observe();_,_=commit(RunEvent{End:payload})}`,false],
+  ['overwritten-member',`func route(){var event RunEvent;event.End=&RunEventEnd{Type:"end"};event.End=nil;_,_=commit(event)}`,false],
+  ['overwritten-aggregate',`func route(){var event RunEvent;event.End=&RunEventEnd{Type:"end"};event=RunEvent{};_,_=commit(event)}`,false],
+  ['other-instance',`func route(){var unused,event RunEvent;unused.End=&RunEventEnd{Type:"end"};_ = unused;_,_=commit(event)}`,false],
+  ['copy-before-construction',`func route(){var original RunEvent;copied:=original;original.End=&RunEventEnd{Type:"end"};_,_=commit(copied)}`,false],
+  ['publication-before-result-assignment',`func route(){var event RunEvent;event.End=&RunEventEnd{Type:"end"};event,_=commit(event)}`,true],
+  ['copy-after-construction',`func route(){var original RunEvent;original.End=&RunEventEnd{Type:"end"};copied:=original;_,_=commit(copied)}`,true]
+ ]
+ const prelude=`package fixture
+ type RunEvent struct {Message *RunEventMessage;End *RunEventEnd}
+ type RunEventMessage struct {Type string}
+ type RunEventEnd struct {Type string}
+ func commit(event RunEvent) (RunEvent,error) {return event,nil}
+ func StampFeatureEvent(event RunEvent) RunEvent {return event}
+ func source(){_,_=commit(RunEvent{Message:&RunEventMessage{Type:"message"}})
+ _,_=commit(RunEvent{End:&RunEventEnd{Type:"end"}})
+ }
+ `
+ for(const [name,body,publishes] of cases)await t.test(name,()=>{
+  const path=join(root,'go/source.go'),source=prelude+body+'\n'
+  writeFileSync(path,source)
+  const compiled=spawnSync('go',['test',path],{encoding:'utf8',timeout:30000})
+  assert.equal(compiled.status,0,`${name} must compile: ${compiled.stderr}`)
+  const matrix=eventMatrix(root,kinds)
+  assert.equal(matrix.Go.emits.filter(site=>site.kind==='end').length,publishes?2:1,`${name}: only the constructed value at the publication point may count`)
+  writeFileSync(path,source.replace(' _,_=commit(RunEvent{End:&RunEventEnd{Type:"end"}})',''))
+  if(publishes)requireCoverage(kinds,eventMatrix(root,kinds))
+  else assert.throws(()=>eventMatrix(root,kinds),/Go has no emitter for end/,`${name}: removing the fallback emitter must refuse coverage`)
  })
 })

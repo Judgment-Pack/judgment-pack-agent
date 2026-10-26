@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/wire"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
 )
@@ -120,16 +121,23 @@ func (m *orderedValues) clear()          { m.order = nil; m.held = map[string]*V
 
 // SessionContext is the run's context (SessionContext).
 type SessionContext struct {
-	requestValues     *RequestValues
-	requestValuesOnce sync.Once
-	Memories          *MemoryGate
-	Drafts            *Drafts
-	Output            *OutputGuard
-	outputContext     context.Context
-	Subagents         []Subagent
-	ProviderFamilies  map[string]string
-	ResolvedPolicy    PolicyMembers
-	PaceWarning       string
+	// TaskDispatchCharge is a package coordinator charge hook, never an availability grant.
+	TaskDispatchCharge func(context.Context, string, string) error
+	turnRoute          *turnRouteOwner
+	runtimeApprovalMu  sync.Mutex
+	runtimePreparing   bool
+	storedChat         *StoredChatScope
+	privateResumeUsed  bool
+	requestValues      *RequestValues
+	requestValuesOnce  sync.Once
+	Memories           *MemoryGate
+	Drafts             *Drafts
+	Output             *OutputGuard
+	outputContext      context.Context
+	Subagents          []Subagent
+	ProviderFamilies   map[string]string
+	ResolvedPolicy     PolicyMembers
+	PaceWarning        string
 	// Policy is the budget this run works under; ReserveOutput and a host may change it.
 	Policy *Policy
 	// Ledger is what the run retains and reads.
@@ -233,6 +241,18 @@ func NewSessionContext(session Session) (*SessionContext, error) {
 	out := &SessionContext{ProviderFamilies: session.PolicyFamilies, ResolvedPolicy: resolved.Members, PaceWarning: resolved.Warning, Policy: &policy, Marker: DataMarker(), session: session,
 		compactedSteps: newOrderedValues(), summaries: map[string]bool{}, contracts: newOrderedValues(),
 		referenceTools: map[string]bool{}, identity: identity}
+	if session.Context != nil {
+		if source, ok := session.Context.Chat.(*StoredChatScope); ok {
+			out.storedChat = source
+		} else if session.Context.RunStore != nil {
+			out.storedChat = session.Context.RunStore.Context
+		}
+		if out.storedChat != nil && out.storedChat.LedgerScope() != "" {
+			if err := out.storedChat.attachPrivate(); err != nil {
+				return nil, err
+			}
+		}
+	}
 	if session.Context != nil && session.Context.Chat != nil {
 		turn, err := session.Context.Chat.OpenTurn()
 		if err != nil {
@@ -365,14 +385,44 @@ func (c *SessionContext) indexWithin(allowance, room int) string {
 
 // Close says the run ended: a ledger of its own is cleared, a chat's turn closes and the chat
 // keeps what it holds.
-func (c *SessionContext) Close() { c.Ledger.Release() }
+func (c *SessionContext) Close() {
+	if c.storedChat != nil && c.storedChat.suspend(c.turn) && c.turn != nil && c.Ledger.detachChatTurn(c.turn) {
+		return
+	}
+	c.Ledger.Release()
+}
 
 // BeginIsolatedPhase starts an independent phase (the critic): independent reviewers get a new
 // retrieval scope and no author's working summaries or cached reads. Request accounting and
 // original journals stay. The narrowing of the calls the phase may make is the gate's
 // (gate.Calls.BeginCritic and the critic's allow-list), not this package's.
 func (c *SessionContext) BeginIsolatedPhase() {
+	if source := c.storedChat; source != nil && source.LedgerScope() != "" && c.Execution.restored && !c.privateResumeUsed {
+		root := c.Persistence("author")
+		if root == nil || !root.Root || c.Ledger.Scope() != source.LedgerScope() {
+			source.rejectPhase()
+			return
+		}
+		recovering := func(role string) bool {
+			binding := root.WithRole(role)
+			return RecoveringDurableRequest(binding, "model") || RecoveringDurableRequest(binding, "agent")
+		}
+		if recovering("author") || recovering("reformat") {
+			source.rejectPhase()
+			return
+		}
+		if recovering("critic") {
+			c.privateResumeUsed = true
+			return
+		}
+	}
 	c.Ledger.Isolate()
+	if c.storedChat != nil {
+		if err := c.storedChat.enterPrivate(c.Ledger.Scope(), c.turn); err != nil {
+			c.storedChat.rejectPhase()
+			return
+		}
+	}
 	c.compactedSteps.clear()
 	c.summaries = map[string]bool{}
 	c.contracts.clear()
@@ -907,6 +957,53 @@ func (c *SessionContext) MessagesContext(ctx context.Context, messages []Message
 	if chosen == nil {
 		return nil, ErrContextBudget
 	}
+	historyBinding := c.Persistence("author")
+	if c.CriticReading {
+		historyBinding = c.Persistence("critic")
+	}
+	recording := false
+	if historyBinding != nil {
+		var err error
+		recording, err = historyBinding.Writer.historyRecording(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+	var original HistoryObjectRef
+	if recording {
+		if historyBinding.Writer.Checkpoint() == nil {
+			state, err := c.Snapshot("")
+			if err != nil {
+				return nil, err
+			}
+			if err = historyBinding.Writer.Save(ctx, *historyBinding, state); err != nil {
+				return nil, err
+			}
+		}
+		// Preserve the entire consumed public span. Matching summary text is not
+		// evidence of a source-owned occurrence, so it cannot justify dropping input.
+		consumed := make([]Message, 0, chosen.end-1)
+		for _, message := range messages[1:chosen.end] {
+			if message.IsText() {
+				consumed = append(consumed, message)
+				continue
+			}
+			parts := []Part{}
+			for _, part := range message.Parts {
+				if part.Type == "reasoning" {
+					continue
+				}
+				part.ProviderOptions = nil
+				parts = append(parts, part)
+			}
+			consumed = append(consumed, PartsMessage(message.Role, parts...))
+		}
+		var err error
+		original, err = historyBinding.Writer.HistoryOriginal(ctx, *historyBinding, c.Ledger.Scope(), MessagesValue(consumed).Text(), "messages", 0)
+		if err != nil {
+			return nil, err
+		}
+	}
 	e, err := c.Ledger.Retain(Document{ID: "completed-steps", Kind: "history",
 		Label: "Earlier completed model steps", Value: MessagesValue(chosen.block)}, false)
 	if err != nil {
@@ -1025,6 +1122,15 @@ func (c *SessionContext) MessagesContext(ctx context.Context, messages []Message
 				reason := "compaction refused"
 				c.notices = append(c.notices, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: "models.compactor", Action: "refused", Reason: &reason, Detail: "The compactor request failed; the deterministic index was used and the run continued. " + failed}})
 			}
+		}
+	}
+	// Keep storage publication outside ordinary compactor failure fallback. No
+	// occurrence identity is carried here: old chains remain in the journal and
+	// their public replacement bytes remain in the new original, without guessed edges.
+	if recording {
+		_, err := historyBinding.Writer.HistoryCompaction(ctx, *historyBinding, c.Ledger.Scope(), []HistoryObjectRef{original}, TextMessage("user", summary).Value().Text(), mode, nil, e.Digest)
+		if err != nil {
+			return nil, err
 		}
 	}
 	if mode == "index" && c.Execution != nil && c.Execution.State() != nil {
@@ -1158,6 +1264,20 @@ type approvalBook struct {
 }
 
 func (b approvalBook) Current() *contract.CheckpointApproval { return b.c.Execution.State().Approval }
+func (b approvalBook) ClaimApproval() bool {
+	b.c.runtimeApprovalMu.Lock()
+	defer b.c.runtimeApprovalMu.Unlock()
+	if b.c.runtimePreparing {
+		return false
+	}
+	b.c.runtimePreparing = true
+	return true
+}
+func (b approvalBook) ReleaseApproval() {
+	b.c.runtimeApprovalMu.Lock()
+	b.c.runtimePreparing = false
+	b.c.runtimeApprovalMu.Unlock()
+}
 
 func (b approvalBook) Ask(record contract.CheckpointApproval) bool {
 	if b.c.PauseClaim != nil && !b.c.PauseClaim() {
@@ -1215,7 +1335,7 @@ func ApprovalRequested(asked contract.CheckpointApproval) *contract.RunEvent {
 	}
 	source := copyRecord(asked.Source)
 	return &contract.RunEvent{ApprovalRequested: &contract.RunEventApprovalRequested{Type: "approval_requested", CallID: asked.CallID,
-		Name: &asked.Name, Tool: &asked.Tool, Source: &source, Args: args}}
+		Name: &asked.Name, Tool: &asked.Tool, Source: &source, Args: args, Runtime: asked.Runtime}}
 }
 
 // ErrApprovalPaused is a request refused because an act call of the run waits for the person's
@@ -1237,6 +1357,18 @@ type Run struct {
 // (gate counts it), and the refusal of a name the session serves but the run was not offered.
 // Plan mode's tool filtering is the gate's too (gate.PlanPhase); PlanningSession gives the prompt.
 func ContextualSession(ctx context.Context, session Session) (*Run, error) {
+	return ContextualSessionWithEnrollment(ctx, session, nil)
+}
+
+// ContextualSessionWithEnrollment opens the one actual contextual session. The optional
+// trusted-host callback receives detached final declarations before approval continuation
+// can dispatch a host action. It carries no executable registry or new authority.
+func ContextualSessionWithEnrollment(ctx context.Context, session Session, enroll func(context.Context, string, []contract.ToolOfferHostTool) error) (*Run, error) {
+	for _, tool := range session.Tools {
+		if wire.RuntimeTaxonomyProblem(tool.Meta, tool.Name) != "" {
+			return nil, failure.Authored("configuration", "Runtime tool taxonomy refused. Nothing was sent.", "context")
+		}
+	}
 	if session.Context != nil {
 		copied := *session.Context
 		if copied.RequestCap != nil {
@@ -1260,7 +1392,10 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		return nil, err
 	}
 	// ADR-0009: a skill may name only the host's declared tools, whatever this phase offers of them.
-	declaredNames := make([]string, 0, len(declared.HostTools))
+	declaredNames := make([]string, 0, len(declared.HostTools)+len(session.Tools))
+	for _, tool := range session.Tools {
+		declaredNames = append(declaredNames, tool.Name)
+	}
 	for _, tool := range declared.HostTools {
 		declaredNames = append(declaredNames, tool.Name)
 	}
@@ -1283,7 +1418,7 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		if err != nil {
 			return nil, err
 		}
-		skills, err := DeclareSkills(session.Skills, declaredNames, policy, declared.Sources)
+		skills, err := DeclareSkills(session.Skills, declaredNames, policy, declared.Sources, ToolTaxonomies(declared.HostTools, session.Tools))
 		if err != nil {
 			return nil, err
 		}
@@ -1304,13 +1439,6 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 	// A chat's turn is open from here: a run that cannot start closes it again.
 	opened := func() error {
 		// ADR-0009: the skills, read and admitted before any request; their sources report beside the tools'.
-		skills, err := DeclareSkills(session.Skills, declaredNames, *held.Policy, declared.Sources)
-		if err != nil {
-			return err
-		}
-		for _, source := range skills.Sources {
-			declared.Sources = append(declared.Sources, ToolSource{Kind: source.Kind, ID: source.ID, Trust: source.Trust, Version: source.Version, ToolListDigest: source.ToolListDigest})
-		}
 		if err := held.Execution.Initialize(ctx); err != nil {
 			return err
 		}
@@ -1452,6 +1580,32 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		}
 		freshPolicy := held.Execution.State().Policy == nil
 		held.Execution.MutateCheckpoint(CheckpointPatch{"Policy": record})
+		if err := held.attachRepeatScope(); err != nil {
+			return err
+		}
+		if binding := held.Persistence("author"); binding != nil {
+			binding.Writer.mu.Lock()
+			if binding.Writer.repeatStateLocked(binding.Scope.Execution) != nil {
+				if binding.Writer.repeatRequestCharges == nil {
+					binding.Writer.repeatRequestCharges = map[string]func(string) error{}
+				}
+				if binding.Writer.repeatRequestCharges[binding.Scope.Execution] != nil {
+					binding.Writer.mu.Unlock()
+					return &ContinuationIdentityChanged{}
+				}
+				binding.Writer.repeatRequestCharges[binding.Scope.Execution] = func(body string) error {
+					if held.Execution.ApprovalAsked() {
+						return ErrApprovalPaused
+					}
+					if err := held.Execution.Claim(); err != nil {
+						return err
+					}
+					held.Execution.RecordPrompt([]byte(body))
+					return nil
+				}
+			}
+			binding.Writer.mu.Unlock()
+		}
 		if freshPolicy && session.Context != nil && session.Context.Checkpoint != nil {
 			state, err := held.Snapshot("")
 			if err != nil {
@@ -1466,9 +1620,29 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		if err := held.OpenDrafts(); err != nil {
 			return err
 		}
+		catalogue := false
 		if len(declared.Sources) > 0 || hasSubagents {
-			// How a loaded schema is shown: by the capability record's toolSchemas where the adapter carries
-			// it, else by the family's default record.
+			offered, keptCatalogue, withheld := OfferSources(session.HostTools, declared.Entries, *held.Policy, held.Marker)
+			session.HostTools = offered
+			catalogue = keptCatalogue
+			declared.Withheld = append(declared.Withheld, withheld...)
+		}
+		// Select from the retained question offer after phase and source projection.
+		selectedSkills, err := SelectAskingWell(session.Skills, session.HostTools)
+		if err != nil {
+			return err
+		}
+		skills, err := DeclareSkills(selectedSkills, declaredNames, *held.Policy, declared.Sources, ToolTaxonomies(declared.HostTools, session.Tools))
+		if err != nil {
+			return err
+		}
+		if err := RequireAskingWell(skills, session.HostTools, *held.Policy, held.Marker); err != nil {
+			return err
+		}
+		for _, source := range skills.Sources {
+			declared.Sources = append(declared.Sources, ToolSource{Kind: source.Kind, ID: source.ID, Trust: source.Trust, Version: source.Version, ToolListDigest: source.ToolListDigest})
+		}
+		if len(declared.Sources) > 0 || hasSubagents {
 			toolSchemas := ""
 			if session.Model != nil {
 				toolSchemas = session.Model.ToolSchemas
@@ -1476,9 +1650,6 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 					toolSchemas = "gemini-subset"
 				}
 			}
-			offered, catalogue, withheld := OfferSources(session.HostTools, declared.Entries, *held.Policy, held.Marker)
-			session.HostTools = offered
-			declared.Withheld = append(declared.Withheld, withheld...)
 			var parent *SourceGate
 			if session.Context != nil {
 				if linked, ok := session.Context.Link.(SourceLinked); ok {
@@ -1487,7 +1658,7 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 			}
 			held.OpenSources(declared, catalogue, toolSchemas, parent)
 		}
-		if len(session.Skills) > 0 {
+		if len(selectedSkills) > 0 {
 			held.OpenSkills(skills, session.Agent != nil)
 		}
 		if hasSubagents {
@@ -1582,6 +1753,67 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		reason := "plan update refused"
 		held.notices = append(held.notices, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: "update_plan", Action: "refused", Reason: &reason, Detail: "The plan update is invalid or exceeds its bounds. The plan was left untouched."}})
 	}
+	held.Execution.TaskProfiles = func() []*contract.SubagentRecord {
+		pins := []*contract.SubagentRecord{}
+		for _, definition := range held.Subagents {
+			pins = append(pins, SubagentRecord(definition))
+		}
+		return pins
+	}
+	if binding := held.Persistence("author"); binding != nil && (session.Context != nil && session.Context.TaskSteps || !binding.Root && binding.Writer.TaskStepsEnabled()) {
+		if binding.Root {
+			if err := held.Execution.MutateCheckpoint(CheckpointPatch{"Version": 3}); err != nil {
+				return nil, err
+			}
+		}
+		if err := binding.Writer.attachTaskScope(*binding, taskDispatchSource{snapshot: func() (contract.Checkpoint, error) { return held.Snapshot("") }, profiles: func() []*contract.SubagentRecord {
+			pins := []*contract.SubagentRecord{}
+			for _, definition := range held.Subagents {
+				pins = append(pins, SubagentRecord(definition))
+			}
+			return pins
+		}, accept: func(state contract.Checkpoint) error {
+			return held.Execution.MutateCheckpoint(CheckpointPatch{"PlanState": taskCheckpointValue(state).Get("planState")})
+		}, charge: func(ctx context.Context, kind, role, request string) error {
+			if held.Execution.ApprovalAsked() {
+				return ErrApprovalPaused
+			}
+			if held.TaskDispatchCharge != nil {
+				if err := held.TaskDispatchCharge(ctx, kind, role); err != nil {
+					return err
+				}
+			}
+			if kind == "model" {
+				if err := held.Execution.Claim(); err != nil {
+					return err
+				}
+				descriptor := MustParseJSON(request)
+				body := request
+				if descriptor.Get("body").IsString() {
+					body = descriptor.Get("body").Str()
+				}
+				held.Execution.RecordPrompt([]byte(body))
+			} else {
+				held.Execution.RecordPrompt([]byte(request))
+			}
+			return nil
+		}}, func() *TaskStepEnvelope {
+			if binding.Root && session.Context != nil {
+				return session.Context.TaskStepEnvelope
+			}
+			return nil
+		}()); err != nil {
+			return nil, err
+		}
+	} else if session.Context != nil && (session.Context.TaskSteps || session.Context.TaskStepEnvelope != nil || binding != nil && binding.Writer.TaskStepsEnabled() || session.Context.Execution != nil && (taskCheckpointValue(*session.Context.Execution).Get("planState").Has("taskSchedule") || taskCheckpointValue(*session.Context.Execution).Get("planState").Has("taskEnvelope"))) {
+		return nil, &ContinuationNotRecoverable{}
+	}
+	if binding := held.Persistence("author"); binding != nil && binding.Root && binding.Writer.TaskStepsEnabled() {
+		if err := binding.Writer.restoreTaskEvidence(ctx, *binding); err != nil {
+			return nil, err
+		}
+		held.Execution.TaskCompletionProof = func() []TaskCompletionEvidence { return binding.Writer.TaskCompletionProof(*binding) }
+	}
 	held.Execution.PlanProof = func() (*DurableBook, DurableScope) {
 		binding := held.Persistence("author")
 		if binding == nil {
@@ -1615,6 +1847,12 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 			output, e := binding.Writer.CommitPlan(ctx, *binding, state, event)
 			if e != nil {
 				return contract.RunEvent{}, e
+			}
+			if binding.Root && binding.Writer.TaskStepsEnabled() {
+				saved := binding.Writer.Checkpoint()
+				if err := held.Execution.MutateCheckpoint(CheckpointPatch{"PlanState": taskCheckpointValue(*saved).Get("planState")}); err != nil {
+					return contract.RunEvent{}, err
+				}
 			}
 			held.notices = append(held.notices, output)
 			return output, nil
@@ -1684,6 +1922,9 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 		offered[tool.Name] = true
 	}
 	out.CallTool = func(ctx context.Context, name string, args json.RawMessage) (ToolResult, error) {
+		if held.RuntimeNeedsApproval(name) {
+			return ToolResult{}, held.runtimeRefuse(name, "Runtime action requires an exact approved attempt. Nothing was sent.")
+		}
 		if err := held.PlanApprovalRefusal(name); err != nil {
 			return ToolResult{}, err
 		}
@@ -1707,6 +1948,34 @@ func ContextualSession(ctx context.Context, session Session) (*Run, error) {
 			return held.Sources.Runtime(call)
 		}
 		return call()
+	}
+	if err := held.initializeTurnRoute(ctx, out); err != nil {
+		held.Close()
+		return nil, err
+	}
+	if enroll != nil {
+		declarations := []contract.ToolOfferHostTool{}
+		for _, tool := range out.HostTools {
+			declarations = append(declarations, tool.Declaration())
+		}
+		raw, err := json.Marshal(declarations)
+		if err != nil {
+			held.Close()
+			return nil, err
+		}
+		var detached []contract.ToolOfferHostTool
+		if err = json.Unmarshal(raw, &detached); err != nil {
+			held.Close()
+			return nil, err
+		}
+		if err = enroll(ctx, held.Execution.State().ID, detached); err != nil {
+			held.Close()
+			return nil, err
+		}
+		if err = ctx.Err(); err != nil {
+			held.Close()
+			return nil, err
+		}
 	}
 	// ADR-0008: a paused act call the person decided on. Approved: the decision is written and
 	// acknowledged through the host's durable callback, the call runs once under its bounds through
@@ -1770,7 +2039,9 @@ func (c *SessionContext) continueApproval(ctx context.Context, step string, tool
 		}
 		var result ToolResult
 		var err error
-		if c.Sources != nil {
+		if approval.Source.Kind == "runtime" {
+			result, err = c.resumeRuntimeCall(ctx, approval)
+		} else if c.Sources != nil {
 			result, _, err = c.Sources.Approved(ctx, approval, run)
 		} else {
 			result = textFailure(approval.Name + " is no longer offered; the call was not run and nothing was changed.")
@@ -1822,6 +2093,17 @@ func (c *SessionContext) ClaimRequest(ctx context.Context, body []byte) error {
 	// ADR-0008: while an act call waits for the person's decision, no request is sent.
 	if c.Execution.ApprovalAsked() {
 		return ErrApprovalPaused
+	}
+	if binding := c.Persistence("author"); binding != nil && binding.Writer.TaskStepsEnabled() {
+		return nil
+	}
+	if binding := c.Persistence("author"); binding != nil {
+		binding.Writer.mu.Lock()
+		installed := binding.Writer.repeatRequestCharges[binding.Scope.Execution] != nil && binding.Writer.repeatStateLocked(binding.Scope.Execution) != nil
+		binding.Writer.mu.Unlock()
+		if installed {
+			return nil
+		}
 	}
 	if err := c.Execution.Claim(); err != nil {
 		return err

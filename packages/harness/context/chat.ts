@@ -1,3 +1,4 @@
+import {readChatContextSnapshot,supportsTypeScriptChatSnapshot,canonicalChatContextSnapshot,ContextTurnBindingInvalid,ContextSnapshotInvalid,type ChatContextSnapshot,type SnapshotEviction} from './chatSnapshot'
 /**
  * The chat-scoped context (agent#8): the context ledger and the read cache kept across the runs of
  * one chat, so a later run reads what an earlier one read without asking the source again.
@@ -159,10 +160,48 @@ export class ChatContext {
  private gone=new Set<string>()
  private turns=0
  private disposed=false
+ private restoredTurns=new Set<number>()
  private tasks=new Map<string,TaskThread>()
  private reusableResults=new Map<string,ReusableResult>()
  /** `scope`: for a test that needs fixed ids; a host leaves it out. */
  constructor(options:{scope?:string}={}){this.scope=options.scope??crypto.randomUUID()}
+ /** Complete portable state, including shared tables and every active turn. */
+ snapshot():Uint8Array{
+  const visibility:Set<string>[]=[],set=(value:Set<string>)=>{let at=visibility.indexOf(value);if(at<0){at=visibility.length;visibility.push(value)}return at}
+  const evictions:EvictedResult[]=[],eviction=(value:EvictedResult)=>{let at=evictions.indexOf(value);if(at<0){at=evictions.length;evictions.push(value)}return at}
+  const threads:TaskThread[]=[],thread=(value:TaskThread)=>{let at=threads.indexOf(value);if(at<0){at=threads.length;threads.push(value)}return at}
+  const evicted=this.evicted.map(eviction),tasks=[...this.tasks].map(([id,value])=>({id,thread:thread(value)}))
+  const savedThreads=threads.map(value=>({profile:value.profile,title:value.title,exchangesJSON:JSON.stringify(value.exchanges),visible:set(value.visible)}))
+  const open=[...this.open].sort((a,b)=>a.number-b.number).map(turn=>turn.snapshotState(set,eviction))
+  const snapshot:ChatContextSnapshot={version:1,scope:this.scope,turns:this.turns,disposed:this.disposed,size:this.size,
+   entries:[...this.entries.values()].map(({value,...entry})=>({...entry,valueJSON:JSON.stringify(value)})),
+   ages:[...this.ages].sort(([a],[b])=>a<b?-1:a>b?1:0).map(([id,turn])=>({id,turn})),results:structuredClone([...this.results.values()]),
+   cache:[...this.cache].sort(([a],[b])=>a<b?-1:a>b?1:0).map(([key,entry])=>({key,entry})),gone:[...this.gone],
+   visibility:visibility.map(value=>[...value].sort()),evictions:structuredClone(evictions),evicted,threads:savedThreads,tasks,
+   reusable:[...this.reusableResults].map(([key,value])=>({key,value:{task:value.task,model:value.model,text:value.text,questionsJSON:JSON.stringify(value.questions)}})),open}
+  const bytes=canonicalChatContextSnapshot(snapshot);readChatContextSnapshot(bytes);return bytes
+ }
+ /** Validate everything before constructing any live context; no authority to resume is inferred. */
+ static restore(bytes:Uint8Array):ChatContext{
+  const saved=readChatContextSnapshot(bytes)
+  if(!supportsTypeScriptChatSnapshot(saved))throw new ContextSnapshotInvalid()
+  const context=new ChatContext({scope:saved.scope}),visibility=saved.visibility.map(ids=>new Set(ids)),evictions=saved.evictions.map(row=>({...row}))
+  context.turns=saved.turns;context.disposed=saved.disposed;context.size=saved.size
+  for(const {valueJSON,...entry} of saved.entries)context.entries.set(entry.id,{...entry,value:JSON.parse(valueJSON)})
+  context.ages=new Map(saved.ages.map(row=>[row.id,row.turn]));context.results=new Map(saved.results.map(row=>[row.tool+'\n'+row.arguments,{...row}]))
+  context.cache=new Map(saved.cache.map(row=>[row.key,row.entry]));context.gone=new Set(saved.gone);context.evicted=saved.evicted.map(ref=>evictions[ref]!)
+  const threads=saved.threads.map(row=>({profile:row.profile,title:row.title,exchanges:JSON.parse(row.exchangesJSON),visible:visibility[row.visible!]!}))
+  context.tasks=new Map(saved.tasks.map(row=>[row.id,threads[row.thread]!]));context.reusableResults=new Map(saved.reusable.map(row=>[row.key,{task:row.value.task,model:row.value.model,text:row.value.text,questions:JSON.parse(row.value.questionsJSON)}]))
+  for(const row of saved.open){const turn=new ChatTurn(context,row.number,row.visible===undefined?undefined:visibility[row.visible]);turn.restoreState(row.referenced,row.offered.map(ref=>evictions[ref]!));context.open.add(turn);context.restoredTurns.add(row.number)}
+  return context
+ }
+ /** A host attaches the exact persisted active turn once. It never opens/increments a new turn. */
+ resumeTurn(number:number):ChatScope{
+  if(!this.restoredTurns.has(number)||this.disposed)throw new ContextTurnBindingInvalid()
+  return {openTurn:()=>{if(!this.restoredTurns.delete(number))throw new ContextTurnBindingInvalid();const turn=[...this.open].find(turn=>turn.number===number);if(!turn)throw new ContextTurnBindingInvalid();return turn}}
+ }
+ /** @internal Observation of an exact logical turn, never permission to attach. */
+ hasActiveTurn(number:number){return [...this.open].some(turn=>turn.number===number)}
  /** Whether `dispose` has been called. */
  get isDisposed(){return this.disposed}
  /** How many runs have opened a turn on this chat. */
@@ -288,6 +327,10 @@ export class ChatTurn implements LedgerStore {
   catch(error){if(error instanceof ContextBudgetError)return;throw error}
   this.context.record({tool,arguments:await contextDigest(canonicalJSON(args)),entry:entry.id,bytes:entry.bytes,firstLine:firstLine(result),turn:this.number},key)
  }
+ /** @internal Shared-table snapshot preserves pending eviction acknowledgment identities. */
+ snapshotState(visible:(set:Set<string>)=>number,eviction:(row:SnapshotEviction)=>number){return {number:this.number,referenced:[...this.referenced],...(this.visible===undefined?{}:{visible:visible(this.visible)}),offered:this.offered.map(eviction)}}
+ /** @internal Restore only on a newly validated context. */
+ restoreState(referenced:string[],offered:SnapshotEviction[]){for(const id of referenced)this.referenced.add(id);this.offered=offered}
  /** The evictions the last index this turn made listed or counted, until it is sent. */
  private offered:EvictedResult[]=[]
  /**

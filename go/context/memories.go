@@ -336,7 +336,7 @@ func (c *SessionContext) RefuseMemory() string {
 	return detail
 }
 func (g *MemoryGate) Tool() HostTool {
-	return HostTool{Name: Remember, Description: "Propose a memory for the person to accept or decline. This records a proposal only; nothing is stored or accepted.", InputSchema: json.RawMessage(RememberSchema), Effect: "plan", Execute: func(ctx context.Context, raw json.RawMessage) (ToolResult, error) {
+	return HostTool{Name: Remember, Taxonomy: &ToolTaxonomy{Operation: "propose", Effect: "propose"}, Description: "Propose a memory for the person to accept or decline. This records a proposal only; nothing is stored or accepted.", InputSchema: json.RawMessage(RememberSchema), Effect: "plan", Execute: func(ctx context.Context, raw json.RawMessage) (ToolResult, error) {
 		g.mu.Lock()
 		defer func() { g.session.Execution.MutateCheckpoint(CheckpointPatch{"Memories": &g.book}); g.mu.Unlock() }()
 		if !g.session.MemoryAdmitted() {

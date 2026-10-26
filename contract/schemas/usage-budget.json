@@ -1,0 +1,305 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/usage-budget.json",
+  "title": "Usage budget journal",
+  "description": "Version 1 root-owned bounded reservation and acknowledged actual usage facts. Reservations and receipts never grant execution authority. Unknown outcomes are not replayable. Missing provider usage remains absent, never zero.",
+  "type": "object",
+  "required": [
+    "version",
+    "scope",
+    "entries",
+    "refusals"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "scope": {
+      "$ref": "#/$defs/scope"
+    },
+    "entries": {
+      "type": "array",
+      "maxItems": 400,
+      "items": {
+        "$ref": "#/$defs/entry"
+      }
+    },
+    "refusals": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "$ref": "#/$defs/refusal"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "amounts": {
+      "type": "object",
+      "required": [],
+      "properties": {
+        "modelRequests": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "providerInvocations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "inputTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "outputTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "additionalProperties": false
+    },
+    "scope": {
+      "type": "object",
+      "required": [
+        "resource",
+        "id",
+        "revision",
+        "limits"
+      ],
+      "properties": {
+        "resource": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "limits": {
+          "$ref": "#/$defs/amounts"
+        }
+      },
+      "additionalProperties": false
+    },
+    "reservation": {
+      "type": "object",
+      "required": [
+        "scope",
+        "id",
+        "root",
+        "execution",
+        "role",
+        "kind",
+        "requestDigest",
+        "connection",
+        "connectionRevision",
+        "model",
+        "upper"
+      ],
+      "properties": {
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "root": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "execution": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "task": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "kind": {
+          "enum": [
+            "model",
+            "agent"
+          ]
+        },
+        "requestDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "connection": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "connectionRevision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "upper": {
+          "$ref": "#/$defs/amounts"
+        }
+      },
+      "additionalProperties": false
+    },
+    "receipt": {
+      "type": "object",
+      "required": [
+        "resource",
+        "scope",
+        "reservation",
+        "reservationDigest",
+        "revision",
+        "state",
+        "observed"
+      ],
+      "properties": {
+        "resource": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "reservation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "reservationDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "state": {
+          "enum": [
+            "reserved",
+            "partial",
+            "settled",
+            "never-admitted"
+          ]
+        },
+        "observed": {
+          "$ref": "#/$defs/amounts"
+        }
+      },
+      "additionalProperties": false
+    },
+    "entry": {
+      "type": "object",
+      "required": [
+        "reservation",
+        "state"
+      ],
+      "properties": {
+        "reservation": {
+          "$ref": "#/$defs/reservation"
+        },
+        "receipt": {
+          "$ref": "#/$defs/receipt"
+        },
+        "settlement": {
+          "$ref": "#/$defs/receipt"
+        },
+        "state": {
+          "enum": [
+            "reserved",
+            "claimed",
+            "reported",
+            "unknown",
+            "never-admitted"
+          ]
+        },
+        "observed": {
+          "$ref": "#/$defs/amounts"
+        }
+      },
+      "additionalProperties": false
+    },
+    "refusal": {
+      "type": "object",
+      "required": [
+        "id",
+        "execution",
+        "role",
+        "requestDigest",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "execution": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "task": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "requestDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "name": {
+          "enum": [
+            "UsageBudgetExceeded",
+            "UsageBudgetUnknown",
+            "UsageBudgetUnsupported",
+            "UsageBudgetIdentityChanged",
+            "UsageBudgetCapacity"
+          ]
+        },
+        "dimension": {
+          "enum": [
+            "modelRequests",
+            "providerInvocations",
+            "inputTokens",
+            "outputTokens"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

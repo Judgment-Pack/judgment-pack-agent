@@ -1,0 +1,203 @@
+{
+  "version": 1,
+  "request": {
+    "id": "collection:opaque/one",
+    "packKey": "declared:pack"
+  },
+  "snapshot": {
+    "id": "collection:opaque/one",
+    "revision": "revision:one",
+    "packKey": "declared:pack",
+    "name": "Example collection",
+    "recordCount": 1,
+    "packJson": "{\"specVersion\":\"0.2.0-draft\",\"id\":\"https://example.com/packs/dialect-authoring\",\"version\":\"0.1.0\",\"title\":\"Dialect authoring fixture\",\"decision\":{\"intent\":\"Check declared mappings.\",\"question\":\"Is the declared amount present?\"},\"outcomes\":[{\"id\":\"accept\",\"label\":\"Accept\"},{\"id\":\"reject\",\"label\":\"Reject\"}],\"rules\":[{\"id\":\"amount\",\"description\":\"Read the structured amount.\",\"when\":{\"op\":\"fact\",\"path\":\"/amount\",\"operator\":\"equals\",\"value\":9007199254740993},\"outcome\":\"accept\",\"onUnknown\":\"ignore\"}],\"evidenceRequirements\":[{\"id\":\"receipt\",\"description\":\"Receipt\",\"required\":true,\"kind\":\"document\"}]}",
+    "dialectJson": "{ \"version\":2,\"case\":{\"facts\":[],\"evidence\":[]}}",
+    "columns": [
+      {
+        "name": "amount/raw~value",
+        "samples": [
+          {
+            "valueJson": "9007199254740993",
+            "origin": "asserted"
+          },
+          {
+            "valueJson": "1.2300",
+            "origin": "asserted"
+          },
+          {
+            "valueJson": "-0",
+            "origin": "asserted"
+          }
+        ]
+      },
+      {
+        "name": "availability",
+        "samples": [
+          {
+            "valueJson": "\"present\"",
+            "origin": "asserted"
+          }
+        ]
+      },
+      {
+        "name": "typed",
+        "samples": [
+          {
+            "valueJson": "false",
+            "origin": "generated"
+          },
+          {
+            "valueJson": "\"\"",
+            "origin": "generated"
+          },
+          {
+            "valueJson": "null",
+            "origin": "generated"
+          }
+        ],
+        "research": {
+          "revision": "original-recipe:one",
+          "fieldJson": "{\"name\":\"typed\",\"type\":\"boolean\",\"required\":false,\"description\":\"A retained typed field.\"}"
+        }
+      },
+      {
+        "name": "missing",
+        "samples": []
+      }
+    ],
+    "factTargets": [
+      "/amount"
+    ],
+    "evidenceRequirements": [
+      "receipt"
+    ],
+    "conversions": {},
+    "researchDeclarations": [
+      {
+        "revision": "original-recipe:one",
+        "fields": [
+          {
+            "name": "typed",
+            "fieldJson": "{\"name\":\"typed\",\"type\":\"boolean\",\"required\":false,\"description\":\"A retained typed field.\"}"
+          }
+        ]
+      }
+    ]
+  },
+  "bindings": {
+    "facts": [
+      {
+        "target": "/amount",
+        "column": "amount/raw~value",
+        "conversion": {
+          "kind": "decimal"
+        }
+      }
+    ],
+    "evidence": [
+      {
+        "requirement": "receipt",
+        "column": "availability"
+      }
+    ],
+    "summary": "Map structured amount and explicit evidence availability."
+  },
+  "expectedFingerprint": "sha256:d01085ce7793929e2a9dcb3c963f4d63d9feca310eccbd5e58fbccf02b21ce95",
+  "expectedMappingDigest": "sha256:ceb61c4b35b5c6895c13d0b723cc096dc39d723014677f3e8237ea4e31c8e203",
+  "expectedDocument": "{\"case\":{\"evidence\":[{\"availability\":{\"column\":\"availability\",\"contractVersion\":\"1\"},\"requirement\":\"receipt\",\"source\":\"/retained\"}],\"facts\":[{\"conversion\":{\"column\":\"amount/raw~value\",\"contractVersion\":\"1\",\"kind\":\"decimal\"},\"source\":\"/retained\",\"target\":\"/amount\"}]},\"evidence\":null,\"facts\":null,\"provider\":\"\",\"unmapped\":[],\"unmappedEvidence\":[],\"version\":2}",
+  "conversions": [
+    {
+      "kind": "text"
+    },
+    {
+      "kind": "decimal"
+    },
+    {
+      "kind": "number"
+    },
+    {
+      "kind": "boolean",
+      "trueValue": "yes",
+      "falseValue": "no"
+    },
+    {
+      "kind": "research-value"
+    }
+  ],
+  "refusals": [
+    {
+      "name": "unknown-conversion",
+      "fact": {
+        "target": "/amount",
+        "column": "typed",
+        "conversion": {
+          "kind": "unknown"
+        }
+      }
+    },
+    {
+      "name": "unknown-column",
+      "fact": {
+        "target": "/amount",
+        "column": "invented",
+        "conversion": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "name": "unknown-target",
+      "fact": {
+        "target": "/invented",
+        "column": "typed",
+        "conversion": {
+          "kind": "research-value"
+        }
+      }
+    },
+    {
+      "name": "boolean-spellings-equal",
+      "fact": {
+        "target": "/amount",
+        "column": "typed",
+        "conversion": {
+          "kind": "boolean",
+          "trueValue": "yes",
+          "falseValue": "yes"
+        }
+      }
+    },
+    {
+      "name": "irrelevant-boolean-spelling",
+      "fact": {
+        "target": "/amount",
+        "column": "typed",
+        "conversion": {
+          "kind": "text",
+          "trueValue": "yes"
+        }
+      }
+    },
+    {
+      "name": "null-boolean-spelling",
+      "fact": {
+        "target": "/amount",
+        "column": "typed",
+        "conversion": {
+          "kind": "text",
+          "trueValue": null
+        }
+      }
+    }
+  ],
+  "conversionContract": {
+    "contract": "retained-column/1",
+    "profile": "base",
+    "spec": {
+      "version": "Draft RFC0029",
+      "revision": "ade3914b0b81ef299e5b9a8d6147f37ff3f0976c",
+      "schemaSha256": "sha256:996cec17473987eebf1aa553536df0ce5a740971532567f411282ee70036879f",
+      "corpusSha256": "sha256:e2ac53f56cd5ab779e032d2847b49fa04438ffb9df57d456f75f2ba058dc12d2"
+    }
+  }
+}

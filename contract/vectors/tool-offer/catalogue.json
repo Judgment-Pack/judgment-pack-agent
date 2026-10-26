@@ -23,11 +23,22 @@
         "id": "databricks",
         "trust": "connected",
         "version": "rev-7",
-        "tool": "query_table"
+        "tool": "query_table",
+        "toolListDigest": "sha256:7bbab1d7db7d654c47673af2bb8102bf6cb50ae94bd9af8c2fc5d15c18bf5c37"
       },
       "effectClass": "read",
       "approval": "none",
-      "effect": "read"
+      "effect": "read",
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read-external"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
     },
     {
       "name": "tracker__create_issue",
@@ -39,11 +50,21 @@
         "kind": "mcp",
         "id": "tracker",
         "trust": "public",
-        "toolListDigest": "sha256:895126e92b1c3eda6597de4263b32e07b712e1ffb6b59a308dd53f18de6f9d22",
+        "toolListDigest": "sha256:75f93593e43883a9866be0c7af493e23c6e6561190d3161f8ee6263a43d22916",
         "tool": "create_issue"
       },
       "effectClass": "act",
-      "approval": "required"
+      "approval": "required",
+      "taxonomy": {
+        "operation": "act",
+        "effect": "act"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
     },
     {
       "name": "rates__lookup_rate",
@@ -60,11 +81,22 @@
         "id": "rates",
         "trust": "person",
         "version": "3",
-        "tool": "lookup_rate"
+        "tool": "lookup_rate",
+        "toolListDigest": "sha256:f7f20dc1a3ac25f53356425044ba85e28f2d1db99d6c75bd62ad55e3fdc662c0"
       },
       "effectClass": "read",
       "approval": "none",
-      "effect": "read"
+      "effect": "read",
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read-external"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
     },
     {
       "name": "rates__submit_expense",
@@ -77,11 +109,22 @@
         "id": "rates",
         "trust": "person",
         "version": "3",
-        "tool": "submit_expense"
+        "tool": "submit_expense",
+        "toolListDigest": "sha256:f7f20dc1a3ac25f53356425044ba85e28f2d1db99d6c75bd62ad55e3fdc662c0"
       },
       "effectClass": "propose",
       "approval": "none",
-      "effect": "proposal"
+      "effect": "proposal",
+      "taxonomy": {
+        "operation": "propose",
+        "effect": "propose"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
     },
     {
       "name": "ado__update_work_item",
@@ -94,10 +137,21 @@
         "id": "ado",
         "trust": "connected",
         "version": "2026-10",
-        "tool": "update_work_item"
+        "tool": "update_work_item",
+        "toolListDigest": "sha256:dedd8c488f05f82066927e597e9f02c1cd6ca869bcb3ea4d4fa2adc0cca8b8fe"
       },
       "effectClass": "act",
-      "approval": "required"
+      "approval": "required",
+      "taxonomy": {
+        "operation": "act",
+        "effect": "act"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
     }
   ]
 }

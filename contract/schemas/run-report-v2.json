@@ -1,0 +1,342 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-report-v2.json",
+  "title": "Run report v2",
+  "description": "Version 2 closed presentation of current terminal checkpoint facts. Attributable acknowledged usage totals are present only when the source checkpoint contains an actual usage budget journal; completeness is explicit. Absence never invents zero usage.",
+  "type": "object",
+  "required": [
+    "version",
+    "checkpointVersion",
+    "id",
+    "phase",
+    "status",
+    "unit",
+    "used",
+    "limit",
+    "grants",
+    "plan",
+    "explanation"
+  ],
+  "properties": {
+    "version": {
+      "const": 2
+    },
+    "checkpointVersion": {
+      "enum": [
+        1,
+        2,
+        3
+      ]
+    },
+    "id": {
+      "$ref": "checkpoint.json#/properties/id"
+    },
+    "phase": {
+      "$ref": "checkpoint.json#/properties/phase"
+    },
+    "status": {
+      "enum": [
+        "complete",
+        "stopped"
+      ]
+    },
+    "unit": {
+      "$ref": "checkpoint.json#/properties/unit"
+    },
+    "used": {
+      "$ref": "checkpoint.json#/properties/used"
+    },
+    "limit": {
+      "$ref": "checkpoint.json#/properties/limit"
+    },
+    "requestCap": {
+      "$ref": "checkpoint.json#/properties/requestCap"
+    },
+    "grants": {
+      "$ref": "checkpoint.json#/properties/grants"
+    },
+    "reason": {
+      "$ref": "checkpoint.json#/properties/reason"
+    },
+    "explanation": {
+      "$ref": "checkpoint.json#/properties/explanation"
+    },
+    "prompts": {
+      "$ref": "checkpoint.json#/properties/prompts"
+    },
+    "sources": {
+      "$ref": "checkpoint.json#/properties/sources"
+    },
+    "sourceIdentities": {
+      "$ref": "checkpoint.json#/properties/sourceIdentities"
+    },
+    "skills": {
+      "$ref": "checkpoint.json#/properties/skills"
+    },
+    "critic": {
+      "$ref": "checkpoint.json#/properties/critic"
+    },
+    "delegation": {
+      "$ref": "checkpoint.json#/properties/delegation"
+    },
+    "usage": {
+      "$ref": "checkpoint.json#/properties/usage"
+    },
+    "childUsage": {
+      "$ref": "checkpoint.json#/properties/childUsage"
+    },
+    "failover": {
+      "$ref": "checkpoint.json#/properties/failover"
+    },
+    "completions": {
+      "$ref": "checkpoint.json#/properties/completions"
+    },
+    "plan": {
+      "$ref": "checkpoint.json#/properties/plan"
+    },
+    "planState": {
+      "$ref": "checkpoint.json#/properties/planState"
+    },
+    "usageTotals": {
+      "$ref": "#/$defs/totals"
+    },
+    "route": {
+      "$ref": "turn-route.json"
+    },
+    "feedback": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20000,
+      "items": {
+        "$ref": "feedback.json#/$defs/view"
+      }
+    },
+    "repeatTools": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "executions",
+        "policy"
+      ],
+      "properties": {
+        "executions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 33,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "execution",
+              "remindAt",
+              "stopAt",
+              "count",
+              "reminded",
+              "reminderDelivered",
+              "stopped"
+            ],
+            "properties": {
+              "execution": {
+                "$ref": "checkpoint.json#/$defs/repeatExecution/properties/execution"
+              },
+              "remindAt": {
+                "$ref": "checkpoint.json#/$defs/repeatExecution/properties/remindAt"
+              },
+              "stopAt": {
+                "$ref": "checkpoint.json#/$defs/repeatExecution/properties/stopAt"
+              },
+              "count": {
+                "$ref": "checkpoint.json#/$defs/repeatExecution/properties/count"
+              },
+              "reminded": {
+                "$ref": "checkpoint.json#/$defs/repeatExecution/properties/reminded"
+              },
+              "reminderDelivered": {
+                "$ref": "checkpoint.json#/$defs/repeatExecution/properties/reminderDelivered"
+              },
+              "stopped": {
+                "$ref": "checkpoint.json#/$defs/repeatExecution/properties/stopped"
+              }
+            }
+          }
+        },
+        "policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "repeatTools.mode",
+            "repeatTools.remindAt",
+            "repeatTools.stopAt"
+          ],
+          "properties": {
+            "repeatTools.mode": {
+              "$ref": "policy.json#/$defs/member"
+            },
+            "repeatTools.remindAt": {
+              "$ref": "policy.json#/$defs/member"
+            },
+            "repeatTools.stopAt": {
+              "$ref": "policy.json#/$defs/member"
+            }
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "total": {
+      "type": "object",
+      "required": [
+        "known",
+        "complete"
+      ],
+      "properties": {
+        "known": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "complete": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "totals": {
+      "type": "object",
+      "required": [
+        "modelRequests",
+        "providerInvocations",
+        "inputTokens",
+        "outputTokens"
+      ],
+      "properties": {
+        "modelRequests": {
+          "$ref": "#/$defs/total"
+        },
+        "providerInvocations": {
+          "$ref": "#/$defs/total"
+        },
+        "inputTokens": {
+          "$ref": "#/$defs/total"
+        },
+        "outputTokens": {
+          "$ref": "#/$defs/total"
+        }
+      },
+      "additionalProperties": false
+    },
+    "oldSourceTaskStep": {
+      "allOf": [
+        {
+          "not": {
+            "required": [
+              "dependsOn"
+            ]
+          }
+        },
+        {
+          "not": {
+            "required": [
+              "budget"
+            ]
+          }
+        },
+        {
+          "not": {
+            "required": [
+              "delegation"
+            ]
+          }
+        },
+        {
+          "properties": {
+            "evidence": {
+              "not": {
+                "required": [
+                  "child"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "oldSourcePlanState": {
+      "allOf": [
+        {
+          "not": {
+            "required": [
+              "taskSchedule"
+            ]
+          }
+        },
+        {
+          "not": {
+            "required": [
+              "taskEnvelope"
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "history": {
+          "items": {
+            "properties": {
+              "diff": {
+                "items": {
+                  "properties": {
+                    "before": {
+                      "$ref": "#/$defs/oldSourceTaskStep"
+                    },
+                    "after": {
+                      "$ref": "#/$defs/oldSourceTaskStep"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "pending": {
+          "properties": {
+            "candidate": {
+              "properties": {
+                "plan": {
+                  "items": {
+                    "$ref": "#/$defs/oldSourceTaskStep"
+                  }
+                },
+                "planState": {
+                  "$ref": "#/$defs/oldSourcePlanState"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "checkpointVersion": {
+            "enum": [
+              1,
+              2
+            ]
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "repeatTools"
+          ]
+        }
+      }
+    }
+  ]
+}

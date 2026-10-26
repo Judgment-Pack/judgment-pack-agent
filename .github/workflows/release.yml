@@ -113,27 +113,6 @@ jobs:
             exit 1
           fi
 
-      # The full mutation table (mutation.yml, every row) runs on every push to main. A tag on a
-      # commit whose latest completed run is not a success is refused, and so is one with no
-      # completed run yet.
-      - name: Require the full mutation table green on the tagged commit
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          set -eu
-          latest="$(gh api "repos/${GH_REPO}/actions/workflows/mutation.yml/runs?head_sha=${GITHUB_SHA}&status=completed&per_page=100" \
-            --jq '[.workflow_runs[] | select(.event != "pull_request")] | sort_by(.created_at) | last | (.conclusion // "none") + " " + (.html_url // "")')" \
-            || { echo "The runs of mutation.yml could not be read" >&2; exit 1; }
-          conclusion="${latest%% *}"
-          if [ "${conclusion}" != "success" ]; then
-            echo "The latest completed run of mutation.yml on ${GITHUB_SHA} is: ${latest}" >&2
-            echo "The full mutation table must be green on the tagged commit. It runs on every push to main: wait for that run, or run mutation.yml on main (Actions, Mutation check, Run workflow), then tag again (docs/releasing.md)." >&2
-            exit 1
-          fi
-          echo "mutation.yml: ${latest}"
-
       - name: Require release notes
         shell: bash
         run: |
@@ -162,15 +141,45 @@ jobs:
             || { echo "The release environment could not be read; create it with a required reviewer (docs/releasing.md)" >&2; exit 1; }
           [ "${reviewers}" -ge 1 ] || { echo "The release environment requires no reviewer" >&2; exit 1; }
 
-  # The tagged commit's own ci.yml, called, so release.yml carries no second
-  # copy of the `contract` and `check` jobs. A check main
-  # has gained since that commit is not run.
+  # Reuse only complete trusted-main evidence; tag-sensitive/package/publication gates stay fresh.
   verify:
     name: CI at the tag
     needs: admit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
-    uses: ./.github/workflows/ci.yml
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Read current toolchain requirements from source
+        id: dev
+        run: |
+          python3 - >> "$GITHUB_OUTPUT" <<'PYTOOLS'
+          import json
+          m = json.load(open('dev.json'))['toolchains']
+          for key in ('node', 'go', 'python'):
+              print(key + '=' + m[key]['version'])
+          PYTOOLS
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ steps.dev.outputs.node }}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ steps.dev.outputs.go }}
+          cache: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ steps.dev.outputs.python }}
+      - name: Resolve current Python dependency identities
+        run: scripts/dev/check.sh --setup --only python-deps
+      - name: Require complete exact-source CI evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/dev/ci_evidence.py verify
 
   package:
     name: Package
@@ -318,7 +327,7 @@ jobs:
           # The listing can lag the creation by a few seconds: read it again
           # until the draft appears, at most twelve times.
           release_id=""
-          for attempt in $(seq 1 12); do
+          for _attempt in $(seq 1 12); do
             release_id="$(gh api "repos/${GH_REPO}/releases" --paginate --jq '.[] | select(.tag_name == env.RELEASE_TAG and .draft) | .id')"
             [[ "${release_id}" =~ ^[0-9]+$ ]] && break
             sleep 5

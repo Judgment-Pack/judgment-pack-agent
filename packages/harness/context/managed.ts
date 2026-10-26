@@ -53,10 +53,25 @@ async function* persistedExecute<T extends EngineSession>(session:T,run:(session
    const step=await withAbort(()=>events!.next(),session.signal)
    if(step.done)return
    const event=step.value,binding=session.context?.[durableOwner]
-   yield binding&&!binding.writer.failed?await withAbort(()=>binding.writer.event(binding,event,session.signal),session.signal):writeRunEvent(event)
+   const output=binding&&!binding.writer.failed?await withAbort(()=>binding.writer.event(binding,event,session.signal),session.signal):writeRunEvent(event)
+   if(event.type==='end'&&binding&&!binding.writer.failed){const recorded=await binding.writer.finishCapture(binding,session.signal);if(recorded)yield writeRunEvent(recorded)}
+   yield output
   }
  }catch(error){if(!session.signal.aborted){if(error instanceof UnsupportedRecordVersion||error instanceof UnknownRecordMember||error instanceof RecordsExpired)yield writeRunEvent(error.event());yield writeRunEvent(failureEvent(error,'storage'));yield writeRunEvent({type:'end'})}}
  finally{void events?.return(undefined).catch(()=>undefined)}
+}
+/** A withheld call never executes: close the previous physical loop, acknowledge the one
+ * catalogue widening, then build the next request against the same admitted context. */
+async function* routedEvents<T extends EngineSession>(session:RequestSessionFor<T>,run:(session:RequestSessionFor<T>)=>AsyncIterable<AssistantEvent>,context:SessionContext):AsyncGenerator<AssistantEvent>{
+ for(;;){
+  let widen=false
+  for await(const event of run(session)){
+   if(context.turnRoute?.pending){widen=true;continue}
+   yield event
+  }
+  if(!widen)return
+  await context.turnRoute!.widen()
+ }
 }
 async function* execute<T extends EngineSession>(session:T,run:(session:RequestSessionFor<T>)=>AsyncIterable<AssistantEvent>,engine?:import('../host').AssistantEngine):AsyncGenerator<AssistantEvent>{
  let releaseNotices:(()=>void)|undefined
@@ -132,7 +147,7 @@ async function* execute<T extends EngineSession>(session:T,run:(session:RequestS
    }
    ready.session.prompt=ready.session.prompt+'\n\n'+approvalContinuation(context.execution.state.approval!)
   }
-  for await (let event of run(ready.session)){
+  for await (let event of routedEvents(ready.session,run,context)){
    // Output is held before host delivery; dispatch independently guards tool arguments.
    if(context.output.mode!=='off'&&(event.type==='message_progress'||event.type==='reasoning'&&!event.done))continue
    if(event.type==='reasoning')event={...event,text:context.output.value(event.text,'message')}

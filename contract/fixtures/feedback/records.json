@@ -1,0 +1,618 @@
+{
+  "records": [
+    {
+      "version": 1,
+      "id": "rating",
+      "runId": "r",
+      "sequence": 1,
+      "previous": null,
+      "target": {
+        "kind": "run"
+      },
+      "rating": "good",
+      "actor": "reviewer",
+      "recordedAt": "2026-10-25T01:02:03.000Z"
+    },
+    {
+      "version": 1,
+      "id": "empty",
+      "runId": "r",
+      "sequence": 1,
+      "previous": null,
+      "target": {
+        "kind": "run"
+      },
+      "rating": "good",
+      "actor": "reviewer",
+      "recordedAt": "2026-10-25T01:02:03.000Z",
+      "remark": ""
+    },
+    {
+      "version": 1,
+      "id": "message",
+      "runId": "r",
+      "sequence": 1,
+      "previous": null,
+      "target": {
+        "kind": "assistant-message",
+        "eventSequence": 1,
+        "eventDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "rating": "good",
+      "actor": "reviewer",
+      "recordedAt": "2026-10-25T01:02:03.000Z"
+    },
+    {
+      "version": 1,
+      "id": "rating",
+      "runId": "r",
+      "sequence": 2,
+      "previous": "sha256:d3058227cab9b03d50263a3b8054b4c79ed45ce5dd68dfd0cef6c5e6f9992fd5",
+      "target": {
+        "kind": "run"
+      },
+      "rating": "bad",
+      "actor": "second-reviewer",
+      "recordedAt": "2026-10-25T02:02:03.000Z",
+      "remark": "Please recheck"
+    }
+  ],
+  "reports": [
+    {
+      "name": "checkpoint1",
+      "checkpoint": {
+        "id": "r",
+        "phase": "work",
+        "status": "complete",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "Finished",
+        "version": 1,
+        "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "operations": [],
+        "context": {
+          "scope": "fixture",
+          "entries": []
+        }
+      },
+      "report": {
+        "id": "r",
+        "phase": "work",
+        "status": "complete",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "Finished",
+        "version": 2,
+        "checkpointVersion": 1,
+        "feedback": [
+          {
+            "sourceDigest": "sha256:d3058227cab9b03d50263a3b8054b4c79ed45ce5dd68dfd0cef6c5e6f9992fd5",
+            "record": {
+              "version": 1,
+              "id": "rating",
+              "runId": "r",
+              "sequence": 1,
+              "previous": null,
+              "target": {
+                "kind": "run"
+              },
+              "rating": "good",
+              "actor": "reviewer",
+              "recordedAt": "2026-10-25T01:02:03.000Z"
+            }
+          }
+        ]
+      },
+      "feedback": {
+        "version": 1,
+        "id": "rating",
+        "runId": "r",
+        "sequence": 1,
+        "previous": null,
+        "target": {
+          "kind": "run"
+        },
+        "rating": "good",
+        "actor": "reviewer",
+        "recordedAt": "2026-10-25T01:02:03.000Z"
+      }
+    },
+    {
+      "name": "checkpoint2",
+      "checkpoint": {
+        "id": "r",
+        "phase": "work",
+        "status": "complete",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "Finished",
+        "version": 2,
+        "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "operations": [],
+        "context": {
+          "scope": "fixture",
+          "entries": []
+        }
+      },
+      "report": {
+        "id": "r",
+        "phase": "work",
+        "status": "complete",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "Finished",
+        "version": 2,
+        "checkpointVersion": 2,
+        "feedback": [
+          {
+            "sourceDigest": "sha256:d3058227cab9b03d50263a3b8054b4c79ed45ce5dd68dfd0cef6c5e6f9992fd5",
+            "record": {
+              "version": 1,
+              "id": "rating",
+              "runId": "r",
+              "sequence": 1,
+              "previous": null,
+              "target": {
+                "kind": "run"
+              },
+              "rating": "good",
+              "actor": "reviewer",
+              "recordedAt": "2026-10-25T01:02:03.000Z"
+            }
+          }
+        ]
+      },
+      "feedback": {
+        "version": 1,
+        "id": "rating",
+        "runId": "r",
+        "sequence": 1,
+        "previous": null,
+        "target": {
+          "kind": "run"
+        },
+        "rating": "good",
+        "actor": "reviewer",
+        "recordedAt": "2026-10-25T01:02:03.000Z"
+      }
+    },
+    {
+      "name": "checkpoint3",
+      "checkpoint": {
+        "id": "r",
+        "phase": "work",
+        "status": "complete",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "Finished",
+        "version": 3,
+        "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "operations": [],
+        "context": {
+          "scope": "fixture",
+          "entries": []
+        }
+      },
+      "report": {
+        "id": "r",
+        "phase": "work",
+        "status": "complete",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "Finished",
+        "version": 2,
+        "checkpointVersion": 3,
+        "feedback": [
+          {
+            "sourceDigest": "sha256:d3058227cab9b03d50263a3b8054b4c79ed45ce5dd68dfd0cef6c5e6f9992fd5",
+            "record": {
+              "version": 1,
+              "id": "rating",
+              "runId": "r",
+              "sequence": 1,
+              "previous": null,
+              "target": {
+                "kind": "run"
+              },
+              "rating": "good",
+              "actor": "reviewer",
+              "recordedAt": "2026-10-25T01:02:03.000Z"
+            }
+          }
+        ]
+      },
+      "feedback": {
+        "version": 1,
+        "id": "rating",
+        "runId": "r",
+        "sequence": 1,
+        "previous": null,
+        "target": {
+          "kind": "run"
+        },
+        "rating": "good",
+        "actor": "reviewer",
+        "recordedAt": "2026-10-25T01:02:03.000Z"
+      }
+    },
+    {
+      "name": "checkpoint3-features",
+      "checkpoint": {
+        "id": "r",
+        "phase": "work",
+        "status": "complete",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "Finished",
+        "version": 3,
+        "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "operations": [],
+        "context": {
+          "scope": "fixture",
+          "entries": []
+        },
+        "usageBudget": {
+          "version": 1,
+          "scope": {
+            "resource": "project",
+            "id": "budget",
+            "revision": "budget-1",
+            "limits": {
+              "modelRequests": 10
+            }
+          },
+          "entries": [],
+          "refusals": []
+        },
+        "turnRoute": {
+          "version": 1,
+          "route": "direct",
+          "skills": [],
+          "tools": [],
+          "operations": [],
+          "planning": "withheld",
+          "decidedBy": "host",
+          "reason": "host",
+          "bindingDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "catalogueDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "widened": false,
+          "refusals": []
+        }
+      },
+      "report": {
+        "id": "r",
+        "phase": "work",
+        "status": "complete",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "Finished",
+        "version": 2,
+        "checkpointVersion": 3,
+        "feedback": [
+          {
+            "sourceDigest": "sha256:d3058227cab9b03d50263a3b8054b4c79ed45ce5dd68dfd0cef6c5e6f9992fd5",
+            "record": {
+              "version": 1,
+              "id": "rating",
+              "runId": "r",
+              "sequence": 1,
+              "previous": null,
+              "target": {
+                "kind": "run"
+              },
+              "rating": "good",
+              "actor": "reviewer",
+              "recordedAt": "2026-10-25T01:02:03.000Z"
+            }
+          }
+        ],
+        "usageTotals": {
+          "modelRequests": {
+            "known": 0,
+            "complete": true
+          },
+          "providerInvocations": {
+            "known": 0,
+            "complete": true
+          },
+          "inputTokens": {
+            "known": 0,
+            "complete": true
+          },
+          "outputTokens": {
+            "known": 0,
+            "complete": true
+          }
+        },
+        "route": {
+          "version": 1,
+          "route": "direct",
+          "skills": [],
+          "tools": [],
+          "operations": [],
+          "planning": "withheld",
+          "decidedBy": "host",
+          "reason": "host",
+          "bindingDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "catalogueDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "widened": false,
+          "refusals": []
+        }
+      },
+      "feedback": {
+        "version": 1,
+        "id": "rating",
+        "runId": "r",
+        "sequence": 1,
+        "previous": null,
+        "target": {
+          "kind": "run"
+        },
+        "rating": "good",
+        "actor": "reviewer",
+        "recordedAt": "2026-10-25T01:02:03.000Z"
+      }
+    }
+  ],
+  "invalidReports": [
+    {
+      "name": "old-without-feedback",
+      "report": {
+        "id": "r",
+        "phase": "work",
+        "status": "complete",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "Finished",
+        "version": 2,
+        "checkpointVersion": 2
+      }
+    },
+    {
+      "name": "old-with-usage",
+      "report": {
+        "id": "r",
+        "phase": "work",
+        "status": "complete",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "Finished",
+        "version": 2,
+        "checkpointVersion": 2,
+        "feedback": [
+          {
+            "sourceDigest": "sha256:d3058227cab9b03d50263a3b8054b4c79ed45ce5dd68dfd0cef6c5e6f9992fd5",
+            "record": {
+              "version": 1,
+              "id": "rating",
+              "runId": "r",
+              "sequence": 1,
+              "previous": null,
+              "target": {
+                "kind": "run"
+              },
+              "rating": "good",
+              "actor": "reviewer",
+              "recordedAt": "2026-10-25T01:02:03.000Z"
+            }
+          }
+        ],
+        "usageTotals": {
+          "modelRequests": {
+            "known": 0,
+            "complete": true
+          },
+          "providerInvocations": {
+            "known": 0,
+            "complete": true
+          },
+          "inputTokens": {
+            "known": 0,
+            "complete": true
+          },
+          "outputTokens": {
+            "known": 0,
+            "complete": true
+          }
+        }
+      }
+    },
+    {
+      "name": "old-with-route",
+      "report": {
+        "id": "r",
+        "phase": "work",
+        "status": "complete",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "Finished",
+        "version": 2,
+        "checkpointVersion": 2,
+        "feedback": [
+          {
+            "sourceDigest": "sha256:d3058227cab9b03d50263a3b8054b4c79ed45ce5dd68dfd0cef6c5e6f9992fd5",
+            "record": {
+              "version": 1,
+              "id": "rating",
+              "runId": "r",
+              "sequence": 1,
+              "previous": null,
+              "target": {
+                "kind": "run"
+              },
+              "rating": "good",
+              "actor": "reviewer",
+              "recordedAt": "2026-10-25T01:02:03.000Z"
+            }
+          }
+        ],
+        "route": {
+          "version": 1,
+          "route": "direct",
+          "skills": [],
+          "tools": [],
+          "operations": [],
+          "planning": "withheld",
+          "decidedBy": "host",
+          "reason": "host",
+          "bindingDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "catalogueDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "widened": false,
+          "refusals": []
+        }
+      }
+    },
+    {
+      "name": "future-checkpoint",
+      "report": {
+        "id": "r",
+        "phase": "work",
+        "status": "complete",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "Finished",
+        "version": 2,
+        "checkpointVersion": 4,
+        "feedback": [
+          {
+            "sourceDigest": "sha256:d3058227cab9b03d50263a3b8054b4c79ed45ce5dd68dfd0cef6c5e6f9992fd5",
+            "record": {
+              "version": 1,
+              "id": "rating",
+              "runId": "r",
+              "sequence": 1,
+              "previous": null,
+              "target": {
+                "kind": "run"
+              },
+              "rating": "good",
+              "actor": "reviewer",
+              "recordedAt": "2026-10-25T01:02:03.000Z"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty-feedback",
+      "report": {
+        "id": "r",
+        "phase": "work",
+        "status": "complete",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "Finished",
+        "version": 2,
+        "checkpointVersion": 2,
+        "feedback": []
+      }
+    },
+    {
+      "name": "wrong-run",
+      "report": {
+        "id": "r",
+        "phase": "work",
+        "status": "complete",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "Finished",
+        "version": 2,
+        "checkpointVersion": 2,
+        "feedback": [
+          {
+            "sourceDigest": "sha256:d3058227cab9b03d50263a3b8054b4c79ed45ce5dd68dfd0cef6c5e6f9992fd5",
+            "record": {
+              "version": 1,
+              "id": "rating",
+              "runId": "foreign",
+              "sequence": 1,
+              "previous": null,
+              "target": {
+                "kind": "run"
+              },
+              "rating": "good",
+              "actor": "reviewer",
+              "recordedAt": "2026-10-25T01:02:03.000Z"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "stale-previous",
+      "report": {
+        "id": "r",
+        "phase": "work",
+        "status": "complete",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "Finished",
+        "version": 2,
+        "checkpointVersion": 2,
+        "feedback": [
+          {
+            "sourceDigest": "sha256:d3058227cab9b03d50263a3b8054b4c79ed45ce5dd68dfd0cef6c5e6f9992fd5",
+            "record": {
+              "version": 1,
+              "id": "rating",
+              "runId": "r",
+              "sequence": 1,
+              "previous": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "target": {
+                "kind": "run"
+              },
+              "rating": "good",
+              "actor": "reviewer",
+              "recordedAt": "2026-10-25T01:02:03.000Z"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

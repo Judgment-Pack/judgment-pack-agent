@@ -1,0 +1,356 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/chat-context-snapshot.json",
+  "title": "Chat context snapshot",
+  "description": "Complete canonical v1 chat state. Ordered opaque JSON source strings preserve request bytes. Native readers additionally enforce digests, table aliases/reachability, scope, sums, ordering and active-turn relationships.",
+  "type": "object",
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "scope": {
+      "type": "string"
+    },
+    "turns": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "disposed": {
+      "type": "boolean"
+    },
+    "size": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "history",
+              "artifact",
+              "request",
+              "tool"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "valueJSON": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "digest": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "label",
+          "valueJSON",
+          "bytes",
+          "digest"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "ages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "turn": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "id",
+          "turn"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "tool": {
+            "type": "string"
+          },
+          "arguments": {
+            "type": "string"
+          },
+          "entry": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "firstLine": {
+            "type": "string"
+          },
+          "turn": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "tool",
+          "arguments",
+          "entry",
+          "bytes",
+          "firstLine",
+          "turn"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "cache": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "entry": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "entry"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "gone": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 4096,
+      "uniqueItems": true
+    },
+    "visibility": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "uniqueItems": true
+      }
+    },
+    "evictions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "tool": {
+            "type": "string"
+          },
+          "arguments": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "tool",
+          "arguments",
+          "bytes"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "evicted": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      },
+      "uniqueItems": true
+    },
+    "threads": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "profile": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "exchangesJSON": {
+            "type": "string"
+          },
+          "visible": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "profile",
+          "title",
+          "exchangesJSON"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "thread": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "id",
+          "thread"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 64
+    },
+    "reusable": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": "object",
+            "properties": {
+              "task": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "questionsJSON": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "task",
+              "model",
+              "text",
+              "questionsJSON"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 64
+    },
+    "open": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "referenced": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true
+          },
+          "visible": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "offered": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "number",
+          "referenced",
+          "offered"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "version",
+    "scope",
+    "turns",
+    "disposed",
+    "size",
+    "entries",
+    "ages",
+    "results",
+    "cache",
+    "gone",
+    "visibility",
+    "evictions",
+    "evicted",
+    "threads",
+    "tasks",
+    "reusable",
+    "open"
+  ],
+  "additionalProperties": false
+}

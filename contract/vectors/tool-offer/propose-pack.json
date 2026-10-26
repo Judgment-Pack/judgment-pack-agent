@@ -33,6 +33,10 @@
         "required": [
           "documentJson"
         ]
+      },
+      "taxonomy": {
+        "operation": "propose",
+        "effect": "propose"
       }
     }
   ]

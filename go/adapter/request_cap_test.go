@@ -28,12 +28,12 @@ func TestRequestCapEinoDispatchAndInterruptedResume(t *testing.T) {
 			calls, tools := 0, 0
 			var saved []contract.Checkpoint
 			var bodies []map[string]any
-			host := runcontext.HostTool{Name: "read_policy", Description: "Read policy", Effect: "read", InputSchema: json.RawMessage(`{"type":"object","properties":{}}`), Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
+			host := runcontext.HostTool{Name: "read_policy", Description: "Read policy", Effect: "read", Taxonomy: &runcontext.ToolTaxonomy{Operation: "read", Effect: "read"}, InputSchema: json.RawMessage(`{"type":"object","properties":{}}`), Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
 				tools++
 				return runcontext.ResultOf([]runcontext.Content{runcontext.TextContent("Observed policy.")}, nil), nil
 			}}
 			g := gate.New(gate.Options{})
-			g.SetOffer(contract.ToolOffer{Tools: []contract.ToolOfferRuntimeTool{}, HostTools: []contract.ToolOfferHostTool{{Name: host.Name, Description: host.Description, InputSchema: host.InputSchema}}})
+			g.SetOffer(contract.ToolOffer{Tools: []contract.ToolOfferRuntimeTool{}, HostTools: []contract.ToolOfferHostTool{host.Declaration()}})
 			input := &runcontext.Input{RequestCap: &cap, CurrentRequest: &runcontext.CurrentRequest{Message: "One admitted operation", Input: "Trusted reservation"}, Checkpoint: func(_ context.Context, cp contract.Checkpoint) error {
 				saved = append(saved, cp)
 				if kind == "storage" && cp.Used == 1 {

@@ -1,0 +1,325 @@
+{
+  "description": "Handwritten exact and redacted archives shared with fixtures/history/archive.json.",
+  "schema": "run-archive.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/history/archive.ts"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "manifest": {
+        "version": 1,
+        "runId": "fixture-run",
+        "source": {
+          "version": 1,
+          "runId": "fixture-run",
+          "revision": "fixture-view",
+          "executionRevision": "fixture-execution",
+          "commitCount": 1,
+          "eventCount": 1,
+          "root": "sha256:213e2a70a6f11b73cfc9e8c10987c2342d80dd401d47f838f86cd1d8a0a2b142",
+          "coverage": "legacy-incomplete",
+          "checkpoint": {
+            "digest": "sha256:449001dcce930d6b64e96d6b99024275f60f0cb029e537bed5d949cfd5c92b54",
+            "bytes": 305
+          }
+        },
+        "coverage": "legacy-incomplete",
+        "commits": [
+          {
+            "version": 1,
+            "sequence": 1,
+            "eventStart": 1,
+            "eventCount": 1,
+            "commitId": "fixture-commit",
+            "executionRevision": "fixture-execution",
+            "recordedAt": "2026-10-25T00:00:00.000Z",
+            "previousDigest": null,
+            "checkpoint": {
+              "digest": "sha256:449001dcce930d6b64e96d6b99024275f60f0cb029e537bed5d949cfd5c92b54",
+              "bytes": 305
+            },
+            "events": [
+              {
+                "digest": "sha256:1c434693422f8d98e62a2c306249d0ef9418d29ea7ba238b5c8870df6f0f3e8c",
+                "bytes": 121
+              }
+            ],
+            "observations": [],
+            "digest": "sha256:213e2a70a6f11b73cfc9e8c10987c2342d80dd401d47f838f86cd1d8a0a2b142"
+          }
+        ],
+        "metadata": [],
+        "mappings": [
+          {
+            "source": {
+              "digest": "sha256:1c434693422f8d98e62a2c306249d0ef9418d29ea7ba238b5c8870df6f0f3e8c",
+              "bytes": 121
+            },
+            "exported": {
+              "digest": "sha256:1c434693422f8d98e62a2c306249d0ef9418d29ea7ba238b5c8870df6f0f3e8c",
+              "bytes": 121
+            },
+            "kind": "event",
+            "representation": {
+              "kind": "exact"
+            }
+          },
+          {
+            "source": {
+              "digest": "sha256:449001dcce930d6b64e96d6b99024275f60f0cb029e537bed5d949cfd5c92b54",
+              "bytes": 305
+            },
+            "exported": {
+              "digest": "sha256:449001dcce930d6b64e96d6b99024275f60f0cb029e537bed5d949cfd5c92b54",
+              "bytes": 305
+            },
+            "kind": "checkpoint",
+            "representation": {
+              "kind": "exact"
+            }
+          },
+          {
+            "source": {
+              "digest": "sha256:e77d204dc6aa49406e78b3e749c7f95c4f77542997ace02000b2c8c038066212",
+              "bytes": 180
+            },
+            "exported": {
+              "digest": "sha256:e77d204dc6aa49406e78b3e749c7f95c4f77542997ace02000b2c8c038066212",
+              "bytes": 180
+            },
+            "kind": "report",
+            "representation": {
+              "kind": "exact"
+            }
+          }
+        ],
+        "members": [
+          {
+            "digest": "sha256:1c434693422f8d98e62a2c306249d0ef9418d29ea7ba238b5c8870df6f0f3e8c",
+            "bytes": 121,
+            "kind": "event",
+            "representation": {
+              "kind": "exact"
+            },
+            "source": {
+              "digest": "sha256:1c434693422f8d98e62a2c306249d0ef9418d29ea7ba238b5c8870df6f0f3e8c",
+              "bytes": 121
+            }
+          },
+          {
+            "digest": "sha256:449001dcce930d6b64e96d6b99024275f60f0cb029e537bed5d949cfd5c92b54",
+            "bytes": 305,
+            "kind": "checkpoint",
+            "representation": {
+              "kind": "exact"
+            },
+            "source": {
+              "digest": "sha256:449001dcce930d6b64e96d6b99024275f60f0cb029e537bed5d949cfd5c92b54",
+              "bytes": 305
+            }
+          },
+          {
+            "digest": "sha256:e77d204dc6aa49406e78b3e749c7f95c4f77542997ace02000b2c8c038066212",
+            "bytes": 180,
+            "kind": "report",
+            "representation": {
+              "kind": "exact"
+            },
+            "source": {
+              "digest": "sha256:e77d204dc6aa49406e78b3e749c7f95c4f77542997ace02000b2c8c038066212",
+              "bytes": 180
+            }
+          }
+        ],
+        "report": {
+          "digest": "sha256:e77d204dc6aa49406e78b3e749c7f95c4f77542997ace02000b2c8c038066212",
+          "bytes": 180
+        },
+        "digest": "sha256:3c36ab27fe653b8db8c8e12e1b79478e104e6d347616aab4cdf42d0e72436a47"
+      },
+      "objects": [
+        {
+          "digest": "sha256:1c434693422f8d98e62a2c306249d0ef9418d29ea7ba238b5c8870df6f0f3e8c",
+          "bytes": "eyJldmVudCI6eyJ0ZXh0IjoiVmlzaWJsZSBwdWJsaWMgZmFjdCIsInR5cGUiOiJtZXNzYWdlIn0sInNjb3BlIjp7ImV4ZWN1dGlvbiI6ImZpeHR1cmUtcnVuIiwicm9sZSI6ImF1dGhvciJ9LCJ2ZXJzaW9uIjoxfQ=="
+        },
+        {
+          "digest": "sha256:449001dcce930d6b64e96d6b99024275f60f0cb029e537bed5d949cfd5c92b54",
+          "bytes": "eyJjb250ZXh0Ijp7ImVudHJpZXMiOltdLCJzY29wZSI6ImZpeHR1cmUtY29udGV4dCJ9LCJleHBsYW5hdGlvbiI6IkZpbmlzaGVkIiwiZ3JhbnRzIjpbXSwiaWQiOiJmaXh0dXJlLXJ1biIsImxpbWl0IjoyMCwib3BlcmF0aW9ucyI6W10sInBoYXNlIjoid29yayIsInBsYW4iOltdLCJyZXF1ZXN0S2V5IjoiYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYSIsInN0YXR1cyI6ImNvbXBsZXRlIiwidW5pdCI6Im1vZGVsLXJlcXVlc3RzIiwidXNlZCI6MCwidmVyc2lvbiI6Mn0="
+        },
+        {
+          "digest": "sha256:e77d204dc6aa49406e78b3e749c7f95c4f77542997ace02000b2c8c038066212",
+          "bytes": "eyJjaGVja3BvaW50VmVyc2lvbiI6MiwiZXhwbGFuYXRpb24iOiJGaW5pc2hlZCIsImdyYW50cyI6W10sImlkIjoiZml4dHVyZS1ydW4iLCJsaW1pdCI6MjAsInBoYXNlIjoid29yayIsInBsYW4iOltdLCJzdGF0dXMiOiJjb21wbGV0ZSIsInVuaXQiOiJtb2RlbC1yZXF1ZXN0cyIsInVzZWQiOjAsInZlcnNpb24iOjF9"
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "manifest": {
+        "version": 1,
+        "runId": "fixture-run",
+        "source": {
+          "version": 1,
+          "runId": "fixture-run",
+          "revision": "fixture-view",
+          "executionRevision": "fixture-execution",
+          "commitCount": 1,
+          "eventCount": 1,
+          "root": "sha256:f3960abc5638591fd145ff09fbba6f7bb771e0807935ab6d20a1468d562a1740",
+          "coverage": "legacy-incomplete",
+          "checkpoint": {
+            "digest": "sha256:449001dcce930d6b64e96d6b99024275f60f0cb029e537bed5d949cfd5c92b54",
+            "bytes": 305
+          }
+        },
+        "coverage": "legacy-incomplete",
+        "commits": [
+          {
+            "version": 1,
+            "sequence": 1,
+            "eventStart": 1,
+            "eventCount": 1,
+            "commitId": "fixture-commit",
+            "executionRevision": "fixture-execution",
+            "recordedAt": "2026-10-25T00:00:00.000Z",
+            "previousDigest": null,
+            "checkpoint": {
+              "digest": "sha256:449001dcce930d6b64e96d6b99024275f60f0cb029e537bed5d949cfd5c92b54",
+              "bytes": 305
+            },
+            "events": [
+              {
+                "digest": "sha256:7c6e5e0f01bf716d5328ba3aa46268baa162e3f936ee7dc1dd93e38ca50436a8",
+                "bytes": 120
+              }
+            ],
+            "observations": [],
+            "digest": "sha256:f3960abc5638591fd145ff09fbba6f7bb771e0807935ab6d20a1468d562a1740"
+          }
+        ],
+        "metadata": [],
+        "mappings": [
+          {
+            "source": {
+              "digest": "sha256:449001dcce930d6b64e96d6b99024275f60f0cb029e537bed5d949cfd5c92b54",
+              "bytes": 305
+            },
+            "exported": {
+              "digest": "sha256:449001dcce930d6b64e96d6b99024275f60f0cb029e537bed5d949cfd5c92b54",
+              "bytes": 305
+            },
+            "kind": "checkpoint",
+            "representation": {
+              "kind": "exact"
+            }
+          },
+          {
+            "source": {
+              "digest": "sha256:7c6e5e0f01bf716d5328ba3aa46268baa162e3f936ee7dc1dd93e38ca50436a8",
+              "bytes": 120
+            },
+            "exported": {
+              "digest": "sha256:e754873d4cccf8d0ebf6c192ad2706df3766893b31545f1c9312601b4ab383e0",
+              "bytes": 333
+            },
+            "kind": "event",
+            "representation": {
+              "kind": "redacted-view",
+              "source": {
+                "digest": "sha256:7c6e5e0f01bf716d5328ba3aa46268baa162e3f936ee7dc1dd93e38ca50436a8",
+                "bytes": 120
+              },
+              "redactions": [
+                "/event/text"
+              ]
+            }
+          },
+          {
+            "source": {
+              "digest": "sha256:e77d204dc6aa49406e78b3e749c7f95c4f77542997ace02000b2c8c038066212",
+              "bytes": 180
+            },
+            "exported": {
+              "digest": "sha256:e77d204dc6aa49406e78b3e749c7f95c4f77542997ace02000b2c8c038066212",
+              "bytes": 180
+            },
+            "kind": "report",
+            "representation": {
+              "kind": "exact"
+            }
+          }
+        ],
+        "members": [
+          {
+            "digest": "sha256:449001dcce930d6b64e96d6b99024275f60f0cb029e537bed5d949cfd5c92b54",
+            "bytes": 305,
+            "kind": "checkpoint",
+            "representation": {
+              "kind": "exact"
+            },
+            "source": {
+              "digest": "sha256:449001dcce930d6b64e96d6b99024275f60f0cb029e537bed5d949cfd5c92b54",
+              "bytes": 305
+            }
+          },
+          {
+            "digest": "sha256:e754873d4cccf8d0ebf6c192ad2706df3766893b31545f1c9312601b4ab383e0",
+            "bytes": 333,
+            "kind": "event",
+            "representation": {
+              "kind": "redacted-view",
+              "source": {
+                "digest": "sha256:7c6e5e0f01bf716d5328ba3aa46268baa162e3f936ee7dc1dd93e38ca50436a8",
+                "bytes": 120
+              },
+              "redactions": [
+                "/event/text"
+              ]
+            },
+            "source": {
+              "digest": "sha256:7c6e5e0f01bf716d5328ba3aa46268baa162e3f936ee7dc1dd93e38ca50436a8",
+              "bytes": 120
+            }
+          },
+          {
+            "digest": "sha256:e77d204dc6aa49406e78b3e749c7f95c4f77542997ace02000b2c8c038066212",
+            "bytes": 180,
+            "kind": "report",
+            "representation": {
+              "kind": "exact"
+            },
+            "source": {
+              "digest": "sha256:e77d204dc6aa49406e78b3e749c7f95c4f77542997ace02000b2c8c038066212",
+              "bytes": 180
+            }
+          }
+        ],
+        "report": {
+          "digest": "sha256:e77d204dc6aa49406e78b3e749c7f95c4f77542997ace02000b2c8c038066212",
+          "bytes": 180
+        },
+        "digest": "sha256:ba2b658fe2ed81176e3cd13a7dc81fbc2bdda512855e7c3fccb8b3ab7eb3586f"
+      },
+      "objects": [
+        {
+          "digest": "sha256:449001dcce930d6b64e96d6b99024275f60f0cb029e537bed5d949cfd5c92b54",
+          "bytes": "eyJjb250ZXh0Ijp7ImVudHJpZXMiOltdLCJzY29wZSI6ImZpeHR1cmUtY29udGV4dCJ9LCJleHBsYW5hdGlvbiI6IkZpbmlzaGVkIiwiZ3JhbnRzIjpbXSwiaWQiOiJmaXh0dXJlLXJ1biIsImxpbWl0IjoyMCwib3BlcmF0aW9ucyI6W10sInBoYXNlIjoid29yayIsInBsYW4iOltdLCJyZXF1ZXN0S2V5IjoiYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYSIsInN0YXR1cyI6ImNvbXBsZXRlIiwidW5pdCI6Im1vZGVsLXJlcXVlc3RzIiwidXNlZCI6MCwidmVyc2lvbiI6Mn0="
+        },
+        {
+          "digest": "sha256:e754873d4cccf8d0ebf6c192ad2706df3766893b31545f1c9312601b4ab383e0",
+          "bytes": "eyJkb2N1bWVudCI6eyJldmVudCI6eyJ0ZXh0IjoiVmlzaWJsZSBbcmVkYWN0ZWQ6IGFjY291bnQtY29kZV0iLCJ0eXBlIjoibWVzc2FnZSJ9LCJzY29wZSI6eyJleGVjdXRpb24iOiJmaXh0dXJlLXJ1biIsInJvbGUiOiJhdXRob3IifSwidmVyc2lvbiI6MX0sInJlZGFjdGlvbnMiOlsiL2V2ZW50L3RleHQiXSwic291cmNlIjp7ImJ5dGVzIjoxMjAsImRpZ2VzdCI6InNoYTI1Njo3YzZlNWUwZjAxYmY3MTZkNTMyOGJhM2FhNDYyNjhiYWExNjJlM2Y5MzZlZTdkYzFkZDkzZTM4Y2E1MDQzNmE4In0sInNvdXJjZUtpbmQiOiJldmVudCIsInNvdXJjZVZlcnNpb24iOjEsInZlcnNpb24iOjF9"
+        },
+        {
+          "digest": "sha256:e77d204dc6aa49406e78b3e749c7f95c4f77542997ace02000b2c8c038066212",
+          "bytes": "eyJjaGVja3BvaW50VmVyc2lvbiI6MiwiZXhwbGFuYXRpb24iOiJGaW5pc2hlZCIsImdyYW50cyI6W10sImlkIjoiZml4dHVyZS1ydW4iLCJsaW1pdCI6MjAsInBoYXNlIjoid29yayIsInBsYW4iOltdLCJzdGF0dXMiOiJjb21wbGV0ZSIsInVuaXQiOiJtb2RlbC1yZXF1ZXN0cyIsInVzZWQiOjAsInZlcnNpb24iOjF9"
+        }
+      ]
+    }
+  ]
+}

@@ -53,6 +53,23 @@ EXPECTED_SCHEMAS = {
     "usage.json",
     "corpus-entry.json",
     "run-report.json",
+    "run-report-v2.json",
+    "usage-budget.json",
+    "chat-context-snapshot.json",
+    "history-chunk.json",
+    "history-entry.json",
+    "corpus-checkpoint-view.json",
+    "dialect-authoring.json",
+    "dialect-draft.json",
+    "tool-taxonomy.json",
+    "corpus-candidate.json",
+    "feedback.json",
+    "history-metadata.json",
+    "history-relation-evidence.json",
+    "run-archive-view.json",
+    "run-archive.json",
+    "run-capture.json",
+    "turn-route.json",
 }
 
 # The $defs added or changed (beyond their descriptions) between v0.1.0 and the v0.2.0 release
@@ -235,6 +252,82 @@ class SchemaTests(unittest.TestCase):
                 self.assertEqual(schema["$id"], BASE + name)
                 Draft202012Validator.check_schema(schema)
 
+    def test_corpus_checkpoint_view_preserves_frozen_named_properties(self):
+        documents = schemas()
+        view = documents["corpus-checkpoint-view.json"]
+        task = {
+            "id": "legacy-task", "parentRunId": "legacy-run", "title": "Legacy title",
+            "objective": "Public objective", "profile": "research", "state": "complete",
+            "createdAt": "2026-10-26T00:00:00.000Z", "modelRequests": 0,
+            "toolCalls": 0, "attempts": 0, "steps": [],
+        }
+        for version, frozen in [(1, "historical-shapes.json"), (2, "published-v010-shapes.json")]:
+            with self.subTest(version=version):
+                prefix = "v" + str(version) + "."
+                check = validator(documents, "corpus-checkpoint-view.json#/$defs/" + prefix + "delegated-task.json")
+                self.assertTrue(check.is_valid(task), "valid frozen legacy task refused")
+                self.assertFalse(check.is_valid({**task, "newMember": True}))
+                original = load(CONTRACT / "records" / frozen)
+                original = original.get("graph", original)
+                self.assertEqual(view["$defs"][prefix + "skill.json"]["properties"]["description"],
+                                 original["skill.json"]["properties"]["description"])
+                self.assertEqual(view["$defs"][prefix + "tool-offer.json"]["$defs"]["loadTool"]["allOf"][1]["properties"]["inputSchema"]["const"],
+                                 original["tool-offer.json"]["$defs"]["loadTool"]["allOf"][1]["properties"]["inputSchema"]["const"])
+
+    def test_corpus_checkpoint_view_namespaces_frozen_schema_references(self):
+        documents = schemas()
+        view = documents["corpus-checkpoint-view.json"]
+        # Walk schema positions explicitly: a property named default is a schema, while
+        # a schema's default (or const/enum/examples) is data whose $ref stays literal.
+        maps = ("$defs", "properties", "patternProperties", "dependentSchemas")
+        singles = ("additionalProperties", "unevaluatedProperties", "propertyNames", "items",
+                   "contains", "not", "if", "then", "else", "unevaluatedItems", "contentSchema")
+        arrays = ("allOf", "anyOf", "oneOf", "prefixItems")
+
+        def compare(source, derived, filename, prefix, path):
+            if not isinstance(source, dict):
+                self.assertEqual(derived, source, path)
+                return
+            if "$ref" in source:
+                target, _, fragment = source["$ref"].partition("#")
+                expected = "#/$defs/" + prefix + (target or filename) + fragment
+                # Historical child checkpoints share the read-only document union;
+                # this existing display edge does not grant native resume authority.
+                if prefix == "v2." and path == "checkpoint.json/$defs/durableBook/properties/children/items/properties/checkpoint":
+                    expected = "#/$defs/document"
+                self.assertEqual(derived.get("$ref"), expected, path + "/$ref")
+            for keyword in ("const", "enum", "default", "examples"):
+                if keyword in source:
+                    self.assertEqual(derived.get(keyword), source[keyword], path + "/" + keyword)
+            for keyword in maps:
+                for name, child in source.get(keyword, {}).items():
+                    self.assertIn(name, derived.get(keyword, {}), path + "/" + keyword)
+                    compare(child, derived[keyword][name], filename, prefix, path + "/" + keyword + "/" + name)
+            for keyword in singles:
+                if isinstance(source.get(keyword), dict):
+                    compare(source[keyword], derived[keyword], filename, prefix, path + "/" + keyword)
+            for keyword in arrays:
+                if keyword in source:
+                    self.assertEqual(len(derived[keyword]), len(source[keyword]), path + "/" + keyword)
+                    for index, child in enumerate(source[keyword]):
+                        compare(child, derived[keyword][index], filename, prefix, path + "/" + keyword + "/" + str(index))
+
+        for version, frozen in [(1, "historical-shapes.json"), (2, "published-v010-shapes.json")]:
+            with self.subTest(version=version):
+                original = load(CONTRACT / "records" / frozen)
+                original = original.get("graph", original)
+                prefix = "v" + str(version) + "."
+                # Only the reachable display documents are embedded from each graph.
+                for name, derived in view["$defs"].items():
+                    if name.startswith(prefix):
+                        filename = name[len(prefix):]
+                        compare(original[filename], derived, filename, prefix, filename)
+                reasoning = "corpus-checkpoint-view.json#/$defs/" + prefix + "policy.json/$defs/discovered/properties/reasoning"
+                check = validator(documents, reasoning)
+                self.assertTrue(check.is_valid({"default": "medium", "supported": ["low", "medium"]}))
+                self.assertFalse(check.is_valid({"default": "future", "supported": ["medium"]}))
+                self.assertFalse(check.is_valid({"default": "medium", "supported": ["future"]}))
+
     def test_every_reference_resolves(self):
         documents = schemas()
         known = registry(documents)
@@ -247,9 +340,9 @@ class SchemaTests(unittest.TestCase):
     def test_the_readme_table_lists_every_schema_with_its_closedness(self):
         table = {}
         for line in (CONTRACT / "README.md").read_text(encoding="utf-8").splitlines():
-            row = re.match(r"^\| `([a-z-]+\.json)` \|[^|]*\| (closed|open) \|([^|]*)\|", line)
+            row = re.match(r"^\| `([a-z0-9-]+\.json)` \|[^|]*\| (closed|open) \|([^|]*)\|", line)
             if row:
-                table[row.group(1)] = (row.group(2), set(re.findall(r"`\$defs/([A-Za-z_]+)`", row.group(3))))
+                table[row.group(1)] = (row.group(2), set(re.findall(r"`\$defs/([A-Za-z0-9_.-]+)`", row.group(3))))
         self.assertEqual(set(table), EXPECTED_SCHEMAS)
         for name, schema in schemas().items():
             with self.subTest(schema=name):
@@ -1202,6 +1295,20 @@ class VectorTests(unittest.TestCase):
             + ["message", "critic_decided", "proposal", "end"],
         )
         self.assertEqual(len(vector["steps"]), len(vector["items"]))
+
+
+class LiveCaptureProjectionTests(unittest.TestCase):
+    def test_projection_vector_and_closed_marker(self):
+        documents = schemas()
+        vector = load(VECTORS / "history" / "event-projection.json")
+        self.assertEqual(problems(validator(documents, vector["schema"]), vector["items"]), [])
+        for value in ["", None, True, 0, {}, [], "transcript-v2"]:
+            bad = copy.deepcopy(vector["items"][0])
+            bad["eventProjection"] = value
+            self.assertTrue(problems(validator(documents, vector["schema"]), [bad]))
+        removed = copy.deepcopy(documents)
+        del removed["run-capture.json"]["properties"]["eventProjection"]
+        self.assertTrue(problems(validator(removed, vector["schema"]), vector["items"]))
 
 
 if __name__ == "__main__":

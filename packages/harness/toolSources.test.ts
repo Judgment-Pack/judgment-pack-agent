@@ -1,3 +1,5 @@
+import {canonicalJSON} from './context/chat'
+import {sha256} from './records'
 /**
  * Tool sources (ADR-0006): the declaration, the wire names, the digest, the offer and the catalogue,
  * held to the contract's hand-written vectors; and the boundary's hold on each call (SourceGate):
@@ -76,8 +78,19 @@ import { argumentProblem } from './sourceArguments'
 
 const MARKER = sourceOffer.marker
 beforeEach(() => configureHarness(testHost()))
-const declared = (tools: unknown[]): HostTool[] =>
-  tools.map((tool) => ({ ...(tool as HostTool), execute: async () => ({ content: [{ type: 'text', text: 'ran' }] }) }))
+// Older local test declarations describe a fixed in-memory function. Supply their explicit
+// owner class and full group pin as host setup; shared fixed vectors test digest bytes separately.
+const declared = (tools: unknown[]): HostTool[] => {
+ const authored=tools.map(value=>{const tool=value as HostTool;const read=tool.effectClass==='read'||tool.effect==='read';return {...tool,taxonomy:tool.taxonomy??{operation:read?'read':tool.effectClass==='propose'?'propose':'act',effect:read?'read':tool.effectClass==='propose'?'propose':'act'},...(tool.source?{source:{...tool.source}}:{})} as HostTool})
+ for(const tool of authored){
+  const original=tools[authored.indexOf(tool)] as HostTool
+  if(tool.source&&!tool.source.toolListDigest&&!tool.source.descriptorSnapshot&&original.taxonomy===undefined){
+   const group=authored.filter(t=>t.source?.id===tool.source!.id).map(t=>({name:t.name,description:t.description??'',inputSchema:t.inputSchema,taxonomy:t.taxonomy})).sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0)
+   tool.source.toolListDigest='sha256:'+sha256(canonicalJSON(group))
+  }
+ }
+ return authored.map(tool=>{const external=tool.taxonomy?.effect==='read-external'&&tool.source!==undefined;return {...tool,...(external?{source:{...tool.source!,verifyReceipt:(e:{receipt:string;result:string})=>e.receipt==='fixture-read'&&e.result==='{"content":[{"text":"ran","type":"text"}]}'}}:{}),execute:async()=>({...(external?{receipt:'fixture-read'}:{}),content:[{type:'text',text:'ran'}]})}})
+}
 /** A tool as the contract states it: its members that cross, without its functions. */
 const legacy = <T>(value: T): T => {
   const copied = JSON.parse(JSON.stringify(value)) as unknown
@@ -119,12 +132,12 @@ describe('the declaration (ADR-0006)', () => {
 
   it('withholds an MCP source whole where its declared tools are not the list the person approved', async () => {
     const [approved, changed] = listDigests.lists
-    const pinned = listDigests.items[0]!.toolListDigest
-    const tools = declared(changed!.tools.map((tool) => ({ ...tool, description: tool.description ?? '', source: { kind: 'mcp', id: 'notes', trust: 'public', toolListDigest: pinned } })))
+    const pinned = 'sha256:46c7d2cd776c64452c9bb1a5debed1bae45848c94e2c7fc3495264c3194199ab'
+    const tools = declared(changed!.tools.map((tool) => ({ ...tool,taxonomy:{operation:'read',effect:'read-external'}, description: tool.description ?? '', source: { kind: 'mcp', id: 'notes', trust: 'public', toolListDigest: pinned } })))
     const out = await declareSources(tools, [])
     expect(out.hostTools).toEqual([])
     expect(out.withheld).toEqual([{ tool: 'notes', detail: expect.stringContaining('not the list the person approved') }])
-    const same = await declareSources(declared(approved!.tools.map((tool) => ({ ...tool, description: tool.description ?? '', source: { kind: 'mcp', id: 'notes', trust: 'public', toolListDigest: pinned } }))), [])
+    const same = await declareSources(declared(approved!.tools.map((tool) => ({ ...tool,taxonomy:{operation:'read',effect:'read-external'}, description: tool.description ?? '', source: { kind: 'mcp', id: 'notes', trust: 'public', toolListDigest: pinned } }))), [])
     expect(same.withheld).toEqual([])
     expect(same.hostTools.map((tool) => tool.name).sort()).toEqual(['notes__Read-Note', 'notes__search_notes'])
   })
@@ -242,7 +255,8 @@ describe('the declaration (ADR-0006)', () => {
   })
 
   it('says a dropped enum at run time: a guardrail naming the property, before any request', async () => {
-    const tool: HostTool = { name: 'find_notes', description: 'd', inputSchema: { type: 'object', properties: { scope: { enum: ['all', 'x'.repeat(80)] } } }, source: { kind: 'custom', id: 'mine', trust: 'person', version: '1' }, effectClass: 'read', execute: async () => ({ content: [] }) }
+    const tool: HostTool = { taxonomy:{operation:'discover',effect:'read'},name: 'find_notes', description: 'd', inputSchema: { type: 'object', properties: { scope: { enum: ['all', 'x'.repeat(80)] } } }, source: { kind: 'custom', id: 'mine', trust: 'person', version: '1' }, effectClass: 'read', execute: async () => ({ content: [] }) }
+    tool.source!.toolListDigest=await toolListDigest([tool])
     const { context } = await contextualSession({ prompt: 'Current request', testPrompt: '', tools: [], hostTools: [tool], callTool: async () => ({ content: [] }), model: { family: 'openai-compatible', model: 'small', call: async () => { throw Error('no model call here') } }, thinking: normalize('off', 'openai-compatible'), signal: new AbortController().signal })
     const guardrails = context.takeNotices().filter((event) => event.type === 'guardrail')
     expect(guardrails).toEqual([{ type: 'guardrail', tool: 'mine__find_notes', action: 'refused', detail: expect.stringContaining('at /properties/scope: its enum holds a string over 64 bytes') }])
@@ -250,7 +264,7 @@ describe('the declaration (ADR-0006)', () => {
   })
 
   it('bounds the catalogue by count and by bytes and withholds the rest with a guardrail: four hundred declared tools', async () => {
-    const wide = (): HostTool[] => declared(Array.from({ length: 400 }, (_, at) => ({ name: `tool_${at}`, description: `Tool number ${at}. ${'It does one thing.'.repeat(30)}`, inputSchema: { type: 'object', properties: { id: { type: 'string' } } }, source: { kind: 'gateway', id: 'wide', trust: 'connected', version: '1' }, effectClass: 'read' })))
+    const wide = (): HostTool[] => {const tools=declared(Array.from({ length: 400 }, (_, at) => ({ taxonomy:{operation:'read',effect:'read-external'},name: `tool_${at}`, description: `Tool number ${at}. ${'It does one thing.'.repeat(30)}`, inputSchema: { type: 'object', properties: { id: { type: 'string' } } }, source: { kind: 'gateway', id: 'wide', trust: 'connected', version: '1' }, effectClass: 'read' })));const pin='sha256:'+sha256(canonicalJSON(tools.map(t=>({name:t.name,description:t.description??'',inputSchema:t.inputSchema,taxonomy:t.taxonomy})).sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0)));for(const tool of tools)tool.source!.toolListDigest=pin;return tools}
     const size = (tools: readonly HostTool[]) => tools.reduce((sum, tool) => sum + utf8(JSON.stringify({ name: tool.name, description: tool.description, inputSchema: tool.inputSchema })), 0)
     const utf8 = (text: string) => new TextEncoder().encode(text).length
     const count = async (bounds: Partial<SourceBounds>) => {
@@ -781,7 +795,7 @@ describe('the boundary over tools with a source (ADR-0006)', () => {
     const plain = await contextualSession(session(declared(declarations.items)))
     expect(plain.session.values.hostTools.map((tool) => tool.name)).not.toContain(LOAD_TOOL)
     plain.context.close()
-    const many = declared(Array.from({ length: 17 }, (_, at) => ({ name: `tool_${at}`, description: 'd', inputSchema: { type: 'object' }, source: { kind: 'gateway', id: 'wide', trust: 'connected', version: '1' }, effectClass: 'read' })))
+    const many = declared(Array.from({ length: 17 }, (_, at) => ({ taxonomy:{operation:'read',effect:'read-external'},name: `tool_${at}`, description: 'd', inputSchema: { type: 'object' }, source: { kind: 'gateway', id: 'wide', trust: 'connected', version: '1' }, effectClass: 'read' })))
     const catalogue = await contextualSession(session(many))
     expect(catalogue.session.values.hostTools.map((tool) => tool.name)).toContain(LOAD_TOOL)
     catalogue.context.close()
@@ -1159,13 +1173,24 @@ describe('Gateway descriptor snapshot source pins (agent#168)', () => {
   it('freezes the declaration and observer, retaining independent host validation even when capture has no schema', async () => {
     let ran = 0, changed = false
     const schema = { type: 'object', required: ['ticket'] }
-    const tool = snapshotTool({ name: '�', inputSchema: schema, source: { ...snapshotTool().source!, currentDescriptorSnapshot: () => bytes(changed ? descriptorVector.changedText : descriptorVector.snapshotText) }, execute: async () => { ran++; return { content: [] } } })
+    const taxonomy = { operation: 'read', effect: 'read-external' } as const
+    // Handwritten V2 candidates deliberately omit inputSchemaText; host validation still applies.
+    const binding = 'tickets@sha256:' + 'a'.repeat(64)
+    const snapshotText = canonicalJSON({ snapshotVersion: '2', operation: 'live', platform: 'tickets', binding, capturedAt: '2026-10-25T00:00:00Z', policy: 1, server: { name: 'fixture', version: '1' }, tools: { '�': { description: 'Read ticket', taxonomy } } })
+    const changedText = snapshotText.replace('Read ticket', 'Changed ticket')
+    const digest = 'sha256:' + sha256(snapshotText)
+    const tool = snapshotTool({ name: '�', taxonomy, inputSchema: schema, source: {
+      kind: 'mcp', id: 'tickets', trust: 'public', toolListDigest: digest,
+      descriptorSnapshot: bytes(snapshotText), currentDescriptorSnapshot: () => bytes(changed ? changedText : snapshotText),
+      descriptorApproval: { platform: 'tickets', binding, operation: 'live', toolTaxonomies: { '�': { operation: 'read', effect: 'read-external' } } },
+      verifyReceipt: evidence => evidence.receipt === 'fixture-read' && evidence.result === '{"content":[]}'
+    }, execute: async () => { ran++; return { content: [], receipt: 'fixture-read' } } })
     const { call, offered } = await gateFor([tool])
     expect(offered.hostTools[0]!.inputSchema).toEqual({ type: 'object' })
     schema.required.length = 0
     tool.source!.descriptorSnapshot!.fill(0)
-    tool.source!.currentDescriptorSnapshot = () => bytes(descriptorVector.snapshotText)
-    tool.source!.currentDigest = () => descriptorVector.digest
+    tool.source!.currentDescriptorSnapshot = () => bytes(snapshotText)
+    tool.source!.currentDigest = () => digest
     await expect(call(offered.hostTools[0]!.name, {})).rejects.toMatchObject({ failure: { code: 'invalid-tool-input', outcome: 'unknown' } })
     await call(offered.hostTools[0]!.name, { ticket: 'T-1' })
     changed = true

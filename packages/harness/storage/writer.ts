@@ -1,3 +1,20 @@
+import {WriterCapture} from './writerCapture'
+import {observeRepeat,repeatKey,canonicalRepeatArgs,validRepeatTools,RepeatedToolLimit,type RepeatTools,type RepeatExecution,type RepeatPolicy,type RepeatDetected} from '../repeatTools'
+import {REPEAT_REMINDER} from '../prompt'
+import {TaskStepRefused,taskDefinitions,taskStatuses,validateTaskPlan,requireTaskProfiles,reconcileTaskSchedule,reserveTaskStep,readyTaskSteps,bindTaskChildren,type TaskSchedule,type TaskStepEnvelope,type TaskEnvelopeBinding,type TaskCompletionEvidence,readTaskStepEnvelope} from '../taskSteps'
+import {readDelegationRequest,type DelegationRequest,type DelegatedTask} from '../delegationContract'
+import type {SubagentRecord} from '../subagents'
+import {ExecutionPaused} from '../execution/state'
+import {openNativeWitness,closeNativeWitness,admittedNativeWitness} from './physicalDispatch'
+import {UsageJournalOwner,type UsageBudgetInput,type UsageDispatchFacts} from './usageJournal'
+import {UsageBudgetIdentityChanged,UsageBudgetUnknown,UsageBudgetUnsupported,type UsageAmounts} from './usageBudget'
+import type {StoredChatScope} from '../context/storedChat'
+import type {HistoryRunStore,RunHistoryReceipt} from './history'
+import {LiveHistoryRecorder} from '../history/live'
+import {prepareHistoryOriginal,prepareHistoryCompaction,type PreparedHistoryObservation} from '../history/recording'
+import {historyBytesDigest,historyText,validHistoryRef,HISTORY_MAX_ROWS,HISTORY_MAX_EVENTS,HISTORY_TOTAL_BYTES,type HistoryObjectRef} from '../history/codec'
+import {readHistoryHead,readHistoryEntry,copyCorpusManifestEnvelope} from '../history/view'
+import type {TurnRoute} from '../turnRoute'
 import {retainedRepresentation} from '../context/ledger'
 import {ProviderReleaseUnknown} from './release'
 import {canonicalJSON} from '../context/chat'
@@ -6,15 +23,15 @@ import {readExecution,type ExecutionCheckpoint} from '../execution/state'
 import {mutateCheckpoint} from '../execution/mutation'
 import {writeRunEvent,checkRecord,checkRecordVersion,readRunEvent} from '../recordReader'
 import {CHECKPOINT_SCHEMA,recordDigest,sha256,writeRecord,validRecord,type RecordGuard,type RecordsPolicy} from '../records'
-import type {AssistantEvent,EngineSession,McpToolResult} from '../engine'
+import type {AssistantEvent,EngineSession,McpToolResult,HostTool} from '../engine'
 import {checkpointCallbackRunStore,type RunStore,type RunHead} from './run'
 import {StorageConflict,requireId,storageId,STORAGE_RECORD_BYTES} from './common'
 export interface DurableScope {execution:string;role:string;task?:string}
 export interface ArtifactObservation {kind:'artifact'|'dialect';id:string;digest:string;access?:'read'|'produced'}
-export interface DurableDispatch {id:string;scope:DurableScope;kind:'model'|'agent'|'host'|'runtime';source:string;tool:string;fingerprint:string;request:string;requestDigest:string;state:'claimed'|'result'|'unknown';read:boolean;result?:unknown;failure?:import('../failures').AIFailure;artifacts?:ArtifactObservation[]}
+export interface DurableDispatch {id:string;scope:DurableScope;kind:'model'|'agent'|'host'|'runtime';source:string;tool:string;fingerprint:string;request:string;requestDigest:string;state:'claimed'|'result'|'unknown';read:boolean;result?:unknown;repeatResultJson?:string;failure?:import('../failures').AIFailure;artifacts?:ArtifactObservation[]}
 export interface DurableObservation {id:string;scope:DurableScope;kind:'operation'|'artifact-read'|'artifact-produced';source:string;dispatchId:string;commitId:string;artifact?:ArtifactObservation}
 export interface DurableBook {dispatches:DurableDispatch[];observations:DurableObservation[];children:{scope:DurableScope;checkpoint:ExecutionCheckpoint}[];pendingHandoff?:{callId:string;request:import('../delegationContract').DelegationRequest}}
-export interface DurableRunInput {store:RunStore;id:string;/** Explicit host action. load/get/reload never resume. */resume?:boolean}
+export interface DurableRunInput {store:RunStore;id:string;/** Explicit host action. load/get/reload never resume. */resume?:boolean;context?:StoredChatScope}
 export class ContinuationNotRecoverable extends AIFailureError {constructor(){super({...failure('storage','storage','not-started'),detail:'ContinuationNotRecoverable: exact safe continuation bytes cannot be retained.'});this.name='ContinuationNotRecoverable'}}
 export class StorageOutcomeUnknown extends AIFailureError {constructor(cause?:unknown){super({...failure('storage','storage','unknown'),detail:'StorageOutcomeUnknown: the dispatched operation result was not acknowledged.'});this.name='StorageOutcomeUnknown';if(cause!==undefined)Object.defineProperty(this,'cause',{value:cause})}}
 export class StorageAcknowledgementInvalid extends AIFailureError {constructor(){super({...failure('storage','storage','unknown'),detail:'StorageAcknowledgementInvalid: the host did not acknowledge this exact transaction.'});this.name='StorageAcknowledgementInvalid'}}
@@ -23,10 +40,30 @@ export class ContinuationIdentityChanged extends AIFailureError {constructor(){s
 export const durableOwner=Symbol('Agent durable writer')
 /** Trusted coordinator accounting, before the root dispatch claim is frozen. */
 export const prepareProviderDispatch=Symbol('Agent coordinator provider preparation')
+interface NativeTaskEnvelopeSource {limit:number;counts:()=>{execution:string;count:number}[];reserve:(scope:DurableScope)=>number}
 export interface DurableBinding {writer:RunWriter;scope:DurableScope;root:boolean}
+// Registration is keyed by source-created tool identity. No name, symbol or wire member grants it.
+const taskDelegationTools=new WeakMap<HostTool,{binding:DurableBinding;schema:string}>()
+export function copyTaskDelegationTool(original:HostTool,wrapped:HostTool):HostTool{
+ const held=taskDelegationTools.get(original)
+ if(held){if(wrapped.name!==original.name||canonicalJSON(wrapped.inputSchema)!==held.schema)throw new ContinuationIdentityChanged();taskDelegationTools.set(wrapped,held)}
+ return wrapped
+}
+export function registeredTaskDelegationTool(tool:HostTool):boolean{
+ const held=taskDelegationTools.get(tool)
+ return !!held&&tool.name==='delegate_plan_steps'&&canonicalJSON(tool.inputSchema)===held.schema
+}
+export function normalizeTaskDelegation(tool:HostTool,binding:DurableBinding|undefined,args:Record<string,unknown>,signal?:AbortSignal):Promise<DelegationRequest>|undefined{
+ const held=taskDelegationTools.get(tool)
+ if(!held)return undefined
+ if(!binding||held.binding.writer!==binding.writer||held.binding.root!==binding.root||scopeKey(held.binding.scope)!==scopeKey(binding.scope)||tool.name!=='delegate_plan_steps'||canonicalJSON(tool.inputSchema)!==held.schema)throw new ContinuationIdentityChanged()
+ return binding.writer.prepareTaskDelegation(binding,args,signal)
+}
 const modelClaim=Symbol('private live model claim')
 type PendingModel={readonly [modelClaim]:true;readonly request:string}
 export type ModelOutcome={ok:true}|{ok:false;error:unknown;verifiedRefusal?:true}
+type NativeRouteClaim={scope:DurableScope;id:string;requestDigest:string;request:string;source:string;tool:string;route:string;live:boolean;released:boolean;needed?:string;consumed:boolean}
+class DispatchCanceled {constructor(readonly reason:unknown){}}
 const encoder=new TextEncoder(),digest=(text:string)=>`sha256:${sha256(text)}`
 /** Preserve lexical retained-value evidence before recursively canonicalizing checkpoint bytes. */
 function retainedCheckpoint(checkpoint:ExecutionCheckpoint,populate:boolean,policy?:RecordsPolicy):string{
@@ -61,9 +98,46 @@ function safeRequest(text:string){
  visit(value)
 }
 export class RunWriter {
+ private readonly repeatRequestCharges=new Map<string,(body:string)=>Promise<void>>()
+ attachRepeatRequestCharge(binding:DurableBinding,charge:(body:string)=>Promise<void>){if(binding.writer!==this||!this.repeatState(binding)||this.repeatRequestCharges.has(binding.scope.execution))throw new ContinuationIdentityChanged();this.repeatRequestCharges.set(binding.scope.execution,charge)}
+ repeatRequestChargeInstalled(binding:DurableBinding){return binding.writer===this&&this.repeatRequestCharges.has(binding.scope.execution)&&this.repeatState(binding)!==undefined}
+ private repeatTools?:RepeatTools
+ private repeatScopes=new Map<string,{accept:(state:RepeatExecution)=>void;event:(event:AssistantEvent)=>void}>()
+ /** Original source-owned admission; a retained counter is never a new host policy grant. */
+ attachRepeatScope(binding:DurableBinding,configuration:RepeatPolicy|undefined,source:{accept:(state:RepeatExecution)=>void;event:(event:AssistantEvent)=>void}){
+  if(binding.writer!==this)throw new ContinuationIdentityChanged()
+  const prior=this.repeatTools?.executions.find(row=>row.execution===binding.scope.execution)
+  if(!configuration){if(prior)throw new ContinuationIdentityChanged();return}
+  if(prior&&(prior.remindAt!==configuration.remindAt||prior.stopAt!==configuration.stopAt)||!prior&&this.restoredTaskHead&&(binding.root||this.book.children.some(child=>child.scope.execution===binding.scope.execution)))throw new ContinuationIdentityChanged()
+  if(!prior){this.repeatTools??={executions:[]};if(this.repeatTools.executions.length>=33)throw new ContinuationNotRecoverable();this.repeatTools.executions.push({execution:binding.scope.execution,...configuration,count:0,reminded:false,reminderDelivered:false,stopped:false,seen:[]})}
+  this.repeatScopes.set(binding.scope.execution,source);source.accept(this.repeatState(binding)!)
+ }
+ repeatState(binding:DurableBinding):RepeatExecution|undefined{if(binding.writer!==this)throw new ContinuationIdentityChanged();return structuredClone(this.repeatTools?.executions.find(row=>row.execution===binding.scope.execution))}
+ private assertRepeatAdmission(binding:DurableBinding){if(this.repeatTools?.executions.find(row=>row.execution===binding.scope.execution)?.stopped)throw new DispatchCanceled(new RepeatedToolLimit())}
+ private claimRepeatReminder(binding:DurableBinding,claim:DurableDispatch){const row=this.repeatTools?.executions.find(row=>row.execution===binding.scope.execution);if(row?.reminded&&!row.reminderDelivered&&(claim.kind==='model'||claim.kind==='agent')&&claim.request.includes(REPEAT_REMINDER))row.reminderDelivered=true}
+
+ private readonly restoredTaskHead:boolean
+ private configuredTaskEnvelope?:TaskEnvelopeBinding
+ private nativeTaskEnvelope?:NativeTaskEnvelopeSource
+ private taskSchedule?:TaskSchedule
+ private taskScopes=new Map<string,{snapshot:()=>ExecutionCheckpoint;profiles:()=>SubagentRecord[];accept:(state:ExecutionCheckpoint)=>void;charge:(kind:'model'|'agent',role:string,request:string)=>Promise<void>}>()
+ private taskRoot?:string
+ private liveTaskPending?:string
+ private readonly taskResults=new Map<string,TaskCompletionEvidence>()
+ private budget?:UsageJournalOwner
+ private contextSource?:StoredChatScope
+ private nativeClaims=new WeakMap<object,NativeRouteClaim>()
+ private nativeSuperseded=new Map<string,{id:string;requestDigest:string;route:string}>()
+ get hasLiveCapture(){return this.capture!==undefined}
+ private captureRootBinding?:DurableBinding
+ private capture?:WriterCapture
+ private history?:LiveHistoryRecorder
+ private acknowledgedCheckpoint?:Uint8Array
  private revision:string|null
  private tail:Promise<unknown>=Promise.resolve()
  private fatal:unknown
+ private dispatchClosed=false
+ private stopped=false
  private book:DurableBook
  private root?:()=>ExecutionCheckpoint
  private policy?:RecordsPolicy
@@ -76,31 +150,338 @@ export class RunWriter {
  constructor(readonly store:RunStore,readonly id:string,head?:RunHead,legacy?:ExecutionCheckpoint){
   if(store.durability==='single-writer-callback')throw new ContinuationNotRecoverable()
   if(head&&(head.runId!==id||!storageId(head.revision)||!storageId(head.commitId)||head.cursor!==null&&!storageId(head.cursor)))throw new StorageAcknowledgementInvalid()
+  this.restoredTaskHead=head!==undefined||legacy!==undefined
   this.revision=head?.revision??null
+  if((store as Partial<HistoryRunStore>).historyVersion===1)this.history=new LiveHistoryRecorder(store as HistoryRunStore,id,this.revision,legacy!==undefined&&!head,head?.checkpoint)
+  if(head?.checkpoint)this.acknowledgedCheckpoint=new Uint8Array(head.checkpoint)
   this.latest=head?.checkpoint?readExecution(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(head.checkpoint))):legacy
   if(this.latest&&this.latest.id!==id)throw new ContinuationIdentityChanged()
+  if(this.latest?.status==='stopped'){this.dispatchClosed=true;this.stopped=true}
+  this.repeatTools=structuredClone(this.latest?.repeatTools)
+  if(this.repeatTools){
+   if(!validRepeatTools(this.repeatTools))throw new ContinuationIdentityChanged()
+   for(const execution of this.repeatTools.executions){
+    for(const item of execution.seen){const row=this.latest?.durable?.dispatches.find(row=>row.id===item.dispatchId);if(!row||row.scope.execution!==execution.execution||repeatKey(row)!==item.keyDigest)throw new ContinuationIdentityChanged()}
+    for(const row of this.latest?.durable?.dispatches??[])if(row.scope.execution===execution.execution&&['host','runtime'].includes(row.kind)&&row.state==='result'&&!row.failure&&!execution.seen.some(item=>item.dispatchId===row.id))throw new ContinuationIdentityChanged()
+   }
+  }
+  for(const row of this.latest?.durable?.dispatches??[])if(row.repeatResultJson!==undefined&&(!this.repeatTools?.executions.some(state=>state.execution===row.scope.execution&&state.seen.some(item=>item.dispatchId===row.id))||!repeatKey(row)))throw new ContinuationIdentityChanged()
+  this.taskSchedule=structuredClone(this.latest?.planState?.taskSchedule)
   this.book=structuredClone(this.latest?.durable??{dispatches:[],observations:[],children:[]})
   this.recovered=new Set(this.book.dispatches.map(row=>row.id))
   this.book.dispatches=this.book.dispatches.map(row=>row.state==='claimed'?{...row,state:'unknown'}:row)
  }
+ /** Enrolled once by durableSession before any physical admission. */
+ enrollCapture(binding:DurableBinding,manifest:import('../corpus').CorpusManifest,sink:import('../corpus').CorpusSink){
+  if(binding.writer!==this||!binding.root||binding.scope.execution!==this.id||binding.scope.task!==undefined||binding.scope.role!=='author'||this.capture||!this.history||this.book.dispatches.some(row=>row.kind==='model'||row.kind==='agent')&&this.revision===null)throw new ContinuationIdentityChanged()
+  this.captureRootBinding=binding
+  this.capture=new WriterCapture(this,this.store as HistoryRunStore,this.id,copyCorpusManifestEnvelope(manifest) as import('../corpus').CorpusManifest,sink,this.book.dispatches.some(row=>row.kind==='model'||row.kind==='agent'))
+ }
+ async finishCapture(binding:DurableBinding,signal?:AbortSignal){
+  if(binding!==this.captureRootBinding||!binding.root||binding.writer!==this||binding.scope.execution!==this.id||binding.scope.role!=='author'||binding.scope.task!==undefined)return undefined
+  return this.enqueue(async()=>this.capture?.finish(this.latest,this.revision,this.acknowledgedCheckpoint,this.latest?.policy,signal))
+ }
+ /** @internal Bind one explicit shared host capability; retained receipts never recreate a live ticket. */
+ async attachUsage(binding:DurableBinding,input?:UsageBudgetInput,signal?:AbortSignal){
+  if(binding.writer!==this)throw new UsageBudgetIdentityChanged()
+  if(this.budget){if(!input||!this.budget.matches(input))throw new UsageBudgetIdentityChanged();return}
+  if(!input){if(this.latest?.usageBudget)throw new UsageBudgetIdentityChanged();return}
+  if(!binding.root||this.latest&&!this.latest.usageBudget)throw new UsageBudgetIdentityChanged()
+  this.budget=new UsageJournalOwner(input,this.id,this.latest?.usageBudget)
+  await this.budget.reconcile(signal)
+ }
+ /** @internal Source-owned controllers register charging, never a caller-provided available balance. */
+ attachTaskScope(binding:DurableBinding,source:{snapshot:()=>ExecutionCheckpoint;profiles:()=>SubagentRecord[];accept:(state:ExecutionCheckpoint)=>void;charge:(kind:'model'|'agent',role:string,request:string)=>Promise<void>},configuration?:TaskStepEnvelope){
+  if(binding.writer!==this||binding.root&&!this.rootBinding(binding)||!binding.root&&!this.taskRoot)throw new ContinuationIdentityChanged()
+  if(binding.root){
+   const saved=this.latest?.planState?.taskEnvelope
+   const expected=configuration===undefined?undefined:{run:this.id,execution:binding.scope.execution,scopeDigest:digest(scopeKey(binding.scope)),configuration:readTaskStepEnvelope(configuration)}
+   const retained=saved??this.configuredTaskEnvelope
+   if(expected&&source.snapshot().unit!=='provider-managed'||(retained!==undefined||this.restoredTaskHead)&&canonicalJSON(retained??null)!==canonicalJSON(expected??null))throw new ContinuationIdentityChanged()
+   this.configuredTaskEnvelope=expected;this.taskRoot=binding.scope.execution
+   if(this.taskSchedule){
+    if(this.taskSchedule.binding.run!==this.id||this.taskSchedule.binding.execution!==this.id||this.taskSchedule.binding.scopeDigest!==digest(scopeKey(binding.scope)))throw new ContinuationIdentityChanged()
+    for(const row of this.taskSchedule.rows)for(const claim of row.claims){const physical=this.book.dispatches.find(dispatch=>dispatch.id===claim.id);if(!physical||physical.requestDigest!==claim.requestDigest||physical.scope.execution!==(row.child?.execution??this.id)||physical.scope.task!==(row.child?.task)||!['model','agent'].includes(physical.kind))throw new ContinuationIdentityChanged()}
+   }
+  }
+  if(this.taskScopes.size>=33&&!this.taskScopes.has(binding.scope.execution))throw new ContinuationNotRecoverable()
+  this.taskScopes.set(binding.scope.execution,source)
+ }
+ /** @internal Create the sole registered plan action; a copied public declaration is not authority. */
+ taskDelegationTool(binding:DurableBinding,execute:(request:DelegationRequest,signal:AbortSignal)=>Promise<McpToolResult>):HostTool{
+  if(!this.rootBinding(binding))throw new ContinuationIdentityChanged()
+  const tool:HostTool={name:'delegate_plan_steps',taxonomy:{operation:'run',effect:'read'},description:'Delegate one to three distinct ready package steps from the exact current plan revision. Existing child and response limits remain in force. Completion requires a separate complete_plan_step call with acknowledged child evidence.',interaction:'delegation',inputSchema:{type:'object',properties:{planRevision:{type:'string',pattern:'^sha256:[a-f0-9]{64}$'},steps:{type:'array',minItems:1,maxItems:3,uniqueItems:true,items:{type:'string',pattern:'^step-[1-9][0-9]{0,15}$'}}},required:['planRevision','steps'],additionalProperties:false},execute:async(args,signal)=>execute(await normalizeTaskDelegation(tool,binding,args,signal)!,signal)}
+  taskDelegationTools.set(tool,{binding:{...binding,scope:structuredClone(binding.scope)},schema:canonicalJSON(tool.inputSchema)})
+  return tool
+ }
+ private taskDelegationRequest(root:ExecutionCheckpoint,steps:string[]):DelegationRequest{
+  const ready=readyTaskSteps(taskDefinitions(root.plan),taskStatuses(root.plan))
+  const tasks=steps.map(id=>{
+   const step=root.plan.find(step=>step.id===id),row=this.taskSchedule?.rows.find(row=>row.id===id)
+   if(!step?.delegation||!row||row.child||!ready.includes(id))throw new TaskStepRefused('child-not-admitted')
+   const objective=step.step+(step.detail?'\n\n'+step.detail:'')
+   if(objective.length>2000)throw new TaskStepRefused('delegation-objective-too-large')
+   return {title:'Plan '+id,objective,profile:step.delegation.id}
+  })
+  const request=readDelegationRequest({tasks})
+  request.tasks.forEach((task,index)=>task.subagent=structuredClone(root.plan.find(step=>step.id===steps[index])!.delegation!))
+  requireTaskProfiles(taskDefinitions(root.plan),this.taskScopes.get(this.taskRoot!)!.profiles())
+  return request
+ }
+ /** Persist the whole exact association before handoff release or any child's physical claim. */
+ prepareTaskDelegation(binding:DurableBinding,args:Record<string,unknown>,signal?:AbortSignal):Promise<DelegationRequest>{return this.enqueue(async()=>{
+  try{
+   if(!this.rootBinding(binding)||!this.hasTaskSteps||!this.taskSchedule)throw new TaskStepRefused('task-plan-required')
+   if(Object.keys(args).some(key=>!['planRevision','steps'].includes(key))||args.planRevision!==this.taskSchedule.binding.planRevision||!Array.isArray(args.steps)||args.steps.length<1||args.steps.length>3||!args.steps.every(step=>typeof step==='string')||new Set(args.steps).size!==args.steps.length)throw new TaskStepRefused('invalid-delegation-selection')
+   if(this.taskSchedule.pending)throw new TaskStepRefused('delegation-outcome-unknown')
+   const root=this.taskState(),request=this.taskDelegationRequest(root,args.steps as string[]),next=structuredClone(this.taskSchedule)
+   next.pending={planRevision:next.binding.planRevision,requestDigest:digest(canonicalJSON(request)),steps:[...args.steps] as string[]}
+   this.taskSchedule=next
+   await this.publish(binding,root,{type:'execution_checkpoint',checkpoint:root},undefined,signal)
+   this.liveTaskPending=next.pending.requestDigest
+   this.taskScopes.get(this.taskRoot!)!.accept(this.latest!)
+   return request
+  }catch(error){if(error instanceof TaskStepRefused)throw new DispatchCanceled(error);throw error}
+ })}
+ /** Bind the actual legacy task IDs in the original CAS before publication or start. */
+ bindTaskDelegation(binding:DurableBinding,request:DelegationRequest,tasks:readonly DelegatedTask[],signal?:AbortSignal):Promise<void>{return this.enqueue(async()=>{
+  if(!this.hasTaskSteps)return
+  const selected=this.taskSchedule?.pending,requestDigest=digest(canonicalJSON(request))
+  if(!selected){
+   const handoff=this.latest?.handoff
+   if(handoff?.state==='children'&&canonicalJSON(handoff.request)===canonicalJSON(request)&&canonicalJSON(handoff.tasks.map(task=>task.id))!==canonicalJSON(tasks.map(task=>task.id)))throw new ContinuationIdentityChanged()
+   if(tasks.some(task=>this.taskSchedule?.rows.some(row=>row.child?.task===task.id)))for(const [index,task]of tasks.entries()){
+    const row=this.taskSchedule!.rows.find(row=>row.child?.task===task.id),expected=request.tasks[index]
+    if(!row||!expected||canonicalJSON(row.child!.profile)!==canonicalJSON(task.subagent)||task.profile!==expected.profile||task.objective!==expected.objective||task.title!==expected.title)throw new ContinuationIdentityChanged()
+    if(task.state==='queued'&&this.book.dispatches.some(claim=>claim.scope.execution===task.id&&claim.scope.task===task.id&&(claim.kind==='model'||claim.kind==='agent')))throw new HostOutcomeUnknown()
+   }
+   return
+  }
+  try{
+   const handoff=this.latest?.handoff?.request??this.book.pendingHandoff?.request
+   if(!this.rootBinding(binding)||selected.planRevision!==this.taskSchedule!.binding.planRevision||selected.requestDigest!==requestDigest||this.liveTaskPending!==requestDigest&&(!handoff||digest(canonicalJSON(handoff))!==requestDigest)||tasks.length!==selected.steps.length)throw new TaskStepRefused('delegation-identity-changed')
+   const root=this.taskState(),derived=this.taskDelegationRequest(root,selected.steps)
+   if(canonicalJSON(derived)!==canonicalJSON(request))throw new TaskStepRefused('delegation-identity-changed')
+   for(const [index,task] of tasks.entries()){const expected=request.tasks[index]!;if(task.state!=='queued'||task.title!==expected.title||task.objective!==expected.objective||task.profile!==expected.profile||canonicalJSON(task.subagent)!==canonicalJSON(expected.subagent)||task.resumes||task.reused)throw new TaskStepRefused('delegation-identity-changed')}
+   const current=structuredClone(this.taskSchedule!);delete current.pending
+   const next=bindTaskChildren(current,taskDefinitions(root.plan),taskStatuses(root.plan),tasks.map((task,index)=>({step:selected.steps[index]!,task:task.id,profile:task.subagent!})))
+   delete next.pending;this.taskSchedule=next
+   await this.publish(binding,root,{type:'execution_checkpoint',checkpoint:root},undefined,signal)
+   this.liveTaskPending=undefined;this.taskScopes.get(this.taskRoot!)!.accept(this.latest!)
+  }catch(error){if(error instanceof TaskStepRefused)throw new DispatchCanceled(error);throw error}
+ })}
+ get hasTaskSteps(){return this.taskRoot!==undefined}
+ private taskState(){const root=this.taskRoot?this.taskScopes.get(this.taskRoot)?.snapshot():undefined;if(!root)throw new ContinuationIdentityChanged();return this.decorate(root)}
+ private successfulTaskChild(state:ExecutionCheckpoint,child:import('../taskSteps').TaskChildBinding,task:DelegatedTask):boolean{
+  if(task.id!==child.task||task.state!=='complete'||task.failure||task.problem||task.partial||task.reused||!task.report||canonicalJSON(task.subagent)!==canonicalJSON(child.profile))return false
+  const checkpoints=state.durable?.children.filter(row=>row.scope.execution===child.execution&&row.scope.task===child.task)??[]
+  const physical=state.durable?.dispatches.filter(row=>row.scope.execution===child.execution&&row.scope.task===child.task&&(row.kind==='model'||row.kind==='agent'))??[]
+  return checkpoints.length===1&&checkpoints[0]!.checkpoint.status==='complete'&&physical.some(row=>row.state==='result'&&!row.failure)&&physical.every(row=>row.state==='result'&&(!row.failure||row.failure.outcome==='refused'))
+ }
+ /** Only the coordinator's terminal task publisher invokes this path, after physical results. */
+ commitTaskResult(binding:DurableBinding,event:Extract<AssistantEvent,{type:'delegated_task'}>,signal?:AbortSignal):Promise<AssistantEvent>{return this.enqueue(async()=>{
+  const row=this.taskSchedule?.rows.find(row=>row.child?.task===event.task.id)
+  if(!row||event.task.state!=='complete'||event.task.failure||event.task.partial||event.task.reused||event.task.problem)return (await this.publish(binding,undefined,event,undefined,signal))!
+  if(!this.successfulTaskChild({...this.taskState(),durable:this.book},row.child!,event.task))return (await this.publish(binding,undefined,event,undefined,signal))!
+  return (await this.publish(binding,undefined,event,undefined,signal,[],row.id))!
+ })}
+ taskCompletionProof(binding:DurableBinding):TaskCompletionEvidence[]{if(!this.rootBinding(binding))return [];return structuredClone([...this.taskResults.values()])}
+ /** A retained tuple never grants proof. Restore it only from the exact original history CAS. */
+ restoreTaskEvidence(binding:DurableBinding,signal?:AbortSignal){return this.enqueue(async()=>{
+  if(!this.rootBinding(binding)||!this.hasTaskSteps)throw new ContinuationIdentityChanged()
+  const saved=this.taskSchedule?.rows.filter(row=>row.child?.result)??[]
+  if(!saved.length)return
+  const store=this.store as Partial<HistoryRunStore>;if(store.historyVersion!==1)return
+  const invalid=():never=>{throw new ContinuationIdentityChanged()},port=store as HistoryRunStore,head=readHistoryHead(await port.readHistoryHead(this.id,signal))
+  if(head.runId!==this.id||head.executionRevision!==this.revision||!this.acknowledgedCheckpoint||canonicalJSON(head.checkpoint)!==canonicalJSON({digest:historyBytesDigest(this.acknowledgedCheckpoint),bytes:this.acknowledgedCheckpoint.length}))return invalid()
+  let bytes=0,sequence=0,eventCount=0,previous:string|null=null
+  const verified=new Map<string,TaskCompletionEvidence>()
+  const object=async(ref:HistoryObjectRef)=>{if(!validHistoryRef(ref)||(bytes+=ref.bytes)>HISTORY_TOTAL_BYTES)return invalid();const page=await port.readHistoryObject({kind:'run',id:this.id},head.revision,ref.digest,0,ref.bytes,signal);if(page.digest!==ref.digest||page.offset!==0||page.total!==ref.bytes||page.value.length!==ref.bytes||page.nextOffset!==ref.bytes||page.hasMore||historyBytesDigest(page.value)!==ref.digest)return invalid();return page.value}
+  while(sequence<head.commitCount){
+   if(sequence>=HISTORY_MAX_ROWS)return invalid()
+   const page=await port.readHistoryPage(this.id,head.revision,sequence,100,signal)
+   if(Object.keys(page).sort().join(',')!=='afterSequence,hasMore,items,nextSequence,revision,total'||page.revision!==head.revision||page.afterSequence!==sequence||!Array.isArray(page.items)||!page.items.length||page.items.length>100||page.total!==head.commitCount||page.nextSequence!==sequence+page.items.length||page.hasMore!==(page.nextSequence<head.commitCount))return invalid()
+   for(const input of page.items){
+    const transaction=readHistoryEntry(input);if(transaction.sequence!==++sequence||transaction.previousDigest!==previous||transaction.eventStart!==eventCount+1||(eventCount+=transaction.eventCount)>HISTORY_MAX_EVENTS)return invalid();previous=transaction.digest
+    for(const row of saved){const child=row.child!,result=child.result!;if(transaction.commitId!==result.commitId)continue
+     if(verified.has(row.id)||!transaction.checkpoint)return invalid()
+     const state=readExecution(JSON.parse(historyText(await object(transaction.checkpoint))))
+     if(!state||state.id!==this.id||canonicalJSON(state.planState?.taskSchedule?.rows.find(item=>item.id===row.id)?.child)!==canonicalJSON(child))return invalid()
+     let matched=false
+     for(const ref of transaction.events){const raw=await object(ref);if(historyBytesDigest(raw)!==result.eventDigest)continue;const envelope=readStoredRunEvent(raw),event=envelope.event
+      if(matched||scopeKey(envelope.scope)!==scopeKey(binding.scope)||event.type!=='delegated_task'||digest(canonicalJSON(event.task))!==result.resultDigest||!this.successfulTaskChild(state,child,event.task)||state.durable!.children.find(item=>item.scope.execution===child.execution&&item.scope.task===child.task)?.checkpoint.digest!==result.checkpointDigest)return invalid()
+      matched=true
+     }
+     if(!matched)return invalid()
+     verified.set(row.id,{step:row.id,task:child.task,planRevision:child.planRevision,...result})
+    }
+   }
+  }
+  const again=readHistoryHead(await port.readHistoryHead(this.id,signal)),identity=(value:typeof head)=>canonicalJSON([value.runId,value.executionRevision,value.commitCount,value.eventCount,value.root,value.checkpoint])
+  if(verified.size!==saved.length||previous!==head.root||eventCount!==head.eventCount||identity(again)!==identity(head))return invalid()
+  for(const [step,result]of verified)this.taskResults.set(step,result)
+ })}
+ /** @internal The existing native coordinator supplies its own policy and per-execution counters. */
+ attachNativeTaskEnvelope(binding:DurableBinding,source:NativeTaskEnvelopeSource){if(!this.rootBinding(binding)||!Number.isInteger(source.limit)||source.limit<1||source.limit>100)throw new ContinuationIdentityChanged();this.nativeTaskEnvelope=source}
+ private taskRemaining(root:ExecutionCheckpoint,scope?:DurableScope):number|undefined{
+  if(root.unit==='model-requests')return root.limit-root.used-(scope?.task?1:0)
+  const physical=new Map<string,number>()
+  for(const row of this.book.dispatches)if(row.kind==='agent')physical.set(row.scope.execution,(physical.get(row.scope.execution)??0)+1)
+  let remaining:number|undefined
+  if(this.nativeTaskEnvelope){
+   const rows=this.nativeTaskEnvelope.counts(),counts=new Map<string,number>()
+   for(const row of rows){if(counts.has(row.execution)||!Number.isInteger(row.count)||row.count<0)throw new ContinuationIdentityChanged();counts.set(row.execution,row.count)}
+   // Exact original scopes corroborate counters; equal grand totals alone are insufficient.
+   for(const execution of new Set([...counts.keys(),...physical.keys()]))if((counts.get(execution)??0)!==(physical.get(execution)??0))throw new ContinuationIdentityChanged()
+   const reserve=scope?this.nativeTaskEnvelope.reserve(scope):0
+   if(!Number.isInteger(reserve)||reserve<0||reserve>this.nativeTaskEnvelope.limit)throw new ContinuationIdentityChanged()
+   remaining=this.nativeTaskEnvelope.limit-[...counts.values()].reduce((n,count)=>n+count,0)-reserve
+  }
+  if(this.configuredTaskEnvelope){const configured=this.configuredTaskEnvelope.configuration.limit-[...physical.values()].reduce((n,count)=>n+count,0);remaining=remaining===undefined?configured:Math.min(remaining,configured)}
+  return remaining===undefined?undefined:Math.max(0,remaining)
+ }
+ private prepareTaskPlan(binding:DurableBinding,state:ExecutionCheckpoint){
+  if(!this.hasTaskSteps)return state
+  if(!binding.root)return state
+  if(binding.scope.execution!==this.taskRoot)throw new ContinuationIdentityChanged()
+  const next=structuredClone(state),previous=this.latest,definitions=taskDefinitions(next.plan)
+  if(!next.planState)throw new ContinuationIdentityChanged()
+  if(!next.plan.length)return next
+  validateTaskPlan(next.plan);requireTaskProfiles(definitions,this.taskScopes.get(this.taskRoot!)!.profiles())
+  if(this.configuredTaskEnvelope)next.planState.taskEnvelope=structuredClone(this.configuredTaskEnvelope)
+  const available=this.taskRemaining(this.taskState())
+  if(available===undefined&&definitions.some(step=>step.budget))throw new TaskStepRefused('native-envelope-required')
+  const bindingFacts={run:this.id,execution:next.id,planRevision:next.planState.revision,scopeDigest:digest(scopeKey(binding.scope)),unit:next.unit}
+  next.planState.taskSchedule=reconcileTaskSchedule(this.taskSchedule,taskDefinitions(previous?.plan??[]),taskStatuses(previous?.plan??[]),bindingFacts,definitions,taskStatuses(next.plan),available??0)
+  return next
+ }
+ private async claimTaskDispatch(binding:DurableBinding,claim:DurableDispatch){
+  if(!this.hasTaskSteps||claim.kind!=='model'&&claim.kind!=='agent'||claim.kind==='model'&&JSON.parse(claim.request).method==='GET')return
+  const root=this.taskState(),source=this.taskScopes.get(binding.scope.execution),available=this.taskRemaining(root,binding.scope)
+  if(!source)throw new ContinuationIdentityChanged()
+  if(available!==undefined&&available<=0)throw new DispatchCanceled(new ExecutionPaused())
+  let next=this.taskSchedule
+  if(next){
+   const definitions=taskDefinitions(root.plan),statuses=taskStatuses(root.plan)
+   const row=binding.scope.task?next.rows.find(row=>row.child?.task===binding.scope.task):next.rows.find(row=>statuses[row.id]==='in_progress')
+   try{
+    if(row)next=reserveTaskStep(next,definitions,statuses,row.id,{id:claim.id,requestDigest:claim.requestDigest},available)
+    else {const held=next.rows.reduce((sum,row)=>sum+(['completed','not-needed'].includes(statuses[row.id]??'')?0:Math.max(0,(row.limit??0)-row.claims.length)),0);if(available!==undefined&&available<=held)throw new TaskStepRefused('step-budget-pause')}
+   }catch(error){if(error instanceof TaskStepRefused&&error.reason==='step-budget-pause')throw new DispatchCanceled(new ExecutionPaused());throw new DispatchCanceled(error)}
+  }
+  await source.charge(claim.kind,binding.scope.role,claim.request)
+  if(!binding.root){this.book.children=this.book.children.filter(row=>scopeKey(row.scope)!==scopeKey(binding.scope));this.book.children.push({scope:structuredClone(binding.scope),checkpoint:source.snapshot()})}
+  this.taskSchedule=next
+ }
+ get hasUsageBudget(){return this.budget!==undefined}
+ /** Allocate, reserve and acknowledge this exact future dispatch through the original writer queue. */
+ prepareUsage(binding:DurableBinding,facts:UsageDispatchFacts,signal?:AbortSignal):Promise<object|undefined>{return this.enqueue(async()=>{
+  if(binding.writer!==this||binding.scope.execution!==facts.execution||binding.scope.role!==facts.role||binding.scope.task!==facts.task)throw new UsageBudgetIdentityChanged()
+  if(!this.budget)return undefined
+  if(this.dispatchClosed||signal?.aborted)throw new DispatchCanceled(signal?.reason??new DOMException('The operation was aborted','AbortError'))
+  let ticket:object
+  try{ticket=await this.budget.reserve(crypto.randomUUID(),facts,signal)}
+  catch(error){this.budget.refusal(facts,error);await this.publish(binding,undefined,undefined,undefined,signal);throw error}
+  await this.publish(binding,undefined,undefined,undefined,signal);return ticket
+ })}
+ private async observeUsage(binding:DurableBinding,id:string,observed:UsageAmounts,evidence:string,signal?:AbortSignal){
+  if(!this.budget)return
+  await this.enqueue(async()=>{let uncertain:unknown;try{await this.budget!.observe(id,observed,evidence,signal)}catch(error){uncertain=error}await this.publish(binding,undefined,undefined,undefined,signal);if(uncertain)throw uncertain})
+ }
+ /** @internal Root admission binds one host-owned exact chat scope. */
+ attachContext(source:StoredChatScope){if(source.store!==this.store||this.contextSource)throw new ContinuationIdentityChanged();this.contextSource=source}
  get checkpoint(){return this.latest?structuredClone(this.latest):undefined}
- get failed(){return this.fatal!==undefined}
+ get failed(){return this.fatal!==undefined||this.dispatchClosed}
  bind(snapshot:()=>ExecutionCheckpoint,policy:RecordsPolicy,guard:()=>RecordGuard|undefined){this.root=snapshot;this.policy=policy;this.guard=guard}
- private enqueue<T>(run:()=>Promise<T>):Promise<T>{const next=this.tail.then(async()=>{if(this.fatal!==undefined)throw this.fatal;try{return await run()}catch(error){this.fatal=error;throw error}});this.tail=next.catch(()=>undefined);return next}
+ private async commitWithContext(input:import('./run').RunCommit,signal?:AbortSignal,terminal=false,checkpointScope?:string,state=this.latest,scope:DurableScope={execution:this.id,role:'author'}){
+  input={...input,checkpoint:input.checkpoint===null?null:new Uint8Array(input.checkpoint),events:input.events.map(bytes=>new Uint8Array(bytes))}
+  const detached={...input,checkpoint:input.checkpoint===null?null:new Uint8Array(input.checkpoint),events:input.events.map(bytes=>new Uint8Array(bytes))}
+  const context=this.contextSource?await this.contextSource.prepare(signal,terminal,checkpointScope):undefined
+  if(this.capture&&this.history&&state)await this.capture.prepare(this.history,state,signal)
+  const prepared=this.history&&state?await this.history.prepare(state,scope,signal,context!==undefined):undefined
+  const receipt=context||prepared?await (this.store as HistoryRunStore).commitHistory({run:detached,observations:prepared?.observations??[],...(prepared?.genesis?{genesis:true}:{}),...(context?{context:structuredClone(context)}:{})},signal):await this.store.commit(detached,signal)
+  if(!receipt||receipt.commitId!==input.commitId||!storageId(receipt.revision)||receipt.revision===this.revision||receipt.cursor!==null&&!storageId(receipt.cursor)||input.events.length>0&&receipt.cursor===null)throw new StorageAcknowledgementInvalid()
+  const history=(receipt as RunHistoryReceipt).history,c=history?.context
+  if(context&&(!c||history.runId!==this.id||history.executionRevision!==receipt.revision||c.chatId!==context.chatId||c.turn!==context.turn||c.closed!==context.closed||c.privateScope!==context.privateScope||c.manifest.digest!==context.manifest.digest||c.manifest.bytes!==context.manifest.bytes||!storageId(c.revision)||c.revision===context.expectedRevision))throw new StorageAcknowledgementInvalid()
+  if(prepared){try{await prepared.acknowledge(history,input,receipt.revision,signal)}catch{throw new StorageAcknowledgementInvalid()}}
+  if(this.capture&&prepared)this.capture.admitted(receipt as RunHistoryReceipt,input.commitId,prepared)
+  if(context)this.contextSource!.acknowledge(c!)
+  if(input.checkpoint!==null)this.acknowledgedCheckpoint=new Uint8Array(input.checkpoint)
+  return receipt
+ }
+ /** Private source-owned publication: use the original queue and return references only after acknowledgement. */
+ private publishHistory(binding:DurableBinding,prepare:(scope:DurableScope)=>Promise<PreparedHistoryObservation>,signal?:AbortSignal):Promise<HistoryObjectRef>{binding={...binding,scope:structuredClone(binding.scope)};return this.enqueue(async()=>{
+  if(binding.writer!==this||binding.scope.execution!==this.id&&!this.book.children.some(child=>scopeKey(child.scope)===scopeKey(binding.scope))||binding.scope.execution===this.id&&binding.scope.task!==undefined)throw new ContinuationIdentityChanged()
+  if(this.dispatchClosed||this.stopped||signal?.aborted)throw new DispatchCanceled(signal?.reason??new DOMException('The operation was aborted','AbortError'))
+  if(!this.latest||!this.acknowledgedCheckpoint||!this.history||!await this.history.recording(signal))throw new ContinuationNotRecoverable()
+  const prepared=await prepare(binding.scope)
+  if(scopeKey(prepared.observation.scope)!==scopeKey(binding.scope))throw new ContinuationIdentityChanged()
+  const ref=await this.history.add(prepared,signal),receipt=await this.commitWithContext({runId:this.id,expectedRevision:this.revision,commitId:crypto.randomUUID(),checkpoint:new Uint8Array(this.acknowledgedCheckpoint),events:[]},signal,false,this.latest.context.scope,this.latest,binding.scope)
+  this.revision=receipt.revision
+  return ref
+ })}
+ /** @internal Optional recorder capability, inspected through the original writer queue. */
+ historyRecording(signal?:AbortSignal){return this.enqueue(async()=>this.history?this.history.recording(signal):false)}
+ /** @internal Retain public original inputs before a later compaction discards them. */
+ historyOriginal(binding:DurableBinding,boundary:string,sourceJSON:string,format:'messages'|'context',ordinal:number,signal?:AbortSignal){return this.publishHistory(binding,scope=>prepareHistoryOriginal(scope,boundary,sourceJSON,format,ordinal),signal)}
+ /** @internal Publish a replacement with already acknowledged exact-scope originals. */
+ historyCompaction(binding:DurableBinding,boundary:string,originals:HistoryObjectRef[],replacementJSON:string,mode:'index'|'summary',prior:HistoryObjectRef[],legacyDigest:string,signal?:AbortSignal){const held=structuredClone({originals,prior});return this.publishHistory(binding,scope=>prepareHistoryCompaction(scope,boundary,held.originals,replacementJSON,mode,held.prior,legacyDigest),signal)}
+ /** @internal Explicit host resume claims both revisions before exposing an attached writer. */
+ async claimContext(checkpoint:Uint8Array,signal?:AbortSignal){const receipt=await this.commitWithContext({runId:this.id,expectedRevision:this.revision,commitId:crypto.randomUUID(),checkpoint,events:[]},signal,false,this.latest?.context.scope);this.revision=receipt.revision}
+ private rootBinding(binding:DurableBinding){return binding.writer===this&&binding.root&&binding.scope.execution===this.id&&binding.scope.role==='author'&&binding.scope.task===undefined}
+ /** Transfer returned parent snapshot ownership to its coordinator until the next root bind. */
+ useAcknowledgedRoot(binding:DurableBinding){if(!this.rootBinding(binding)||!this.latest)throw new ContinuationIdentityChanged();this.root=undefined}
+ /** Close admission synchronously before canceling provider work. */
+ closeDispatch(binding:DurableBinding){if(!this.rootBinding(binding))throw new ContinuationIdentityChanged();this.dispatchClosed=true}
+ /** Original writer/CAS, host-owned signal, at most five seconds. No physical work is retried. */
+ async finalizeStop(binding:DurableBinding,signal:AbortSignal):Promise<AssistantEvent[]>{
+  this.closeDispatch(binding)
+  const bounded=AbortSignal.any([signal,AbortSignal.timeout(5000)])
+  let attempted=false,abort:()=>void=()=>undefined
+  const expired=new Promise<never>((_,reject)=>{
+   abort=()=>{const error=attempted?new StorageOutcomeUnknown(bounded.reason):bounded.reason;if(attempted)this.fatal=error;reject(error)}
+   bounded.addEventListener('abort',abort,{once:true});if(bounded.aborted)abort()
+  })
+  const saved=this.enqueue(async()=>{
+   if(bounded.aborted)throw new DispatchCanceled(bounded.reason)
+   if(this.stopped||!this.latest||!['running','paused'].includes(this.latest.status))throw new ContinuationIdentityChanged()
+   const state=structuredClone(this.latest);mutateCheckpoint(state,{status:'stopped'})
+   for(const row of this.book.dispatches)if(row.state==='claimed')row.state='unknown'
+   const end=writeRunEvent({type:'end'})
+   let checkpoint:AssistantEvent
+   attempted=true
+   try{checkpoint=(await this.publish(binding,state,{type:'execution_checkpoint',checkpoint:state},undefined,bounded,[end]))!}catch(cause){if(cause instanceof StorageConflict)throw cause;throw this.fatal??new StorageOutcomeUnknown(cause)}
+   if(this.fatal!==undefined)throw this.fatal
+   this.stopped=true;this.root=undefined
+   return [checkpoint,end]
+  })
+  try{return await Promise.race([saved,expired])}finally{bounded.removeEventListener('abort',abort)}
+ }
+
+ private enqueue<T>(run:()=>Promise<T>):Promise<T>{const next=this.tail.then(async()=>{if(this.fatal!==undefined)throw this.fatal;try{return await run()}catch(error){if(!(error instanceof DispatchCanceled))this.fatal=error;throw error instanceof DispatchCanceled?error.reason:error}});this.tail=next.catch(()=>undefined);return next}
  private finalize(state:ExecutionCheckpoint):ExecutionCheckpoint {
-  const projected=this.decorate(structuredClone(state));if(projected.handoff)delete this.book.pendingHandoff;if(this.book.pendingHandoff)mutateCheckpoint(projected,{status:'running'});mutateCheckpoint(projected,{durable:structuredClone(this.book)})
+  const owned=structuredClone(state)
+  if(this.repeatTools){owned.repeatTools=structuredClone(this.repeatTools);owned.version=3;const current=this.repeatTools.executions.find(row=>row.execution===owned.id);if(current?.stopped){owned.status='stopped';owned.reason='RepeatedToolLimit'}}
+  for(const child of this.book.children){const current=this.repeatTools?.executions.find(row=>row.execution===child.scope.execution);if(current?.stopped){child.checkpoint.status='stopped';child.checkpoint.reason='RepeatedToolLimit'}}
+  if(this.configuredTaskEnvelope){if(!owned.planState)throw new ContinuationIdentityChanged();owned.planState.taskEnvelope=structuredClone(this.configuredTaskEnvelope);owned.version=3}
+  if(this.taskSchedule){if(owned.planState?.revision!==this.taskSchedule.binding.planRevision)throw new ContinuationIdentityChanged();owned.planState.taskSchedule=structuredClone(this.taskSchedule);owned.version=3}
+  const projected=this.decorate(owned);if(this.budget)mutateCheckpoint(projected,{version:3,usageBudget:this.budget.snapshot()});if(projected.handoff)delete this.book.pendingHandoff;if(this.book.pendingHandoff&&!this.dispatchClosed&&!this.repeatTools?.executions.find(row=>row.execution===projected.id)?.stopped)mutateCheckpoint(projected,{status:'running'});mutateCheckpoint(projected,{durable:structuredClone(this.book)})
   if(!this.policy)throw new ContinuationNotRecoverable()
   const retained=retainedCheckpoint(projected,true,this.policy)
   const before=canonicalJSON(projected.durable)
   const saved=writeRecord(CHECKPOINT_SCHEMA,{...projected},this.policy,this.guard?.(),new Date(),state.retainUntil)
   if(retainedCheckpoint(saved,false)!==retained)throw new ContinuationNotRecoverable()
-  if(state.planState&&(canonicalJSON(saved.plan)!==canonicalJSON(state.plan)||canonicalJSON(saved.planState)!==canonicalJSON(state.planState)))throw new ContinuationNotRecoverable()
+  if(state.planState&&(canonicalJSON(saved.plan)!==canonicalJSON(state.plan)||canonicalJSON(saved.planState)!==canonicalJSON(projected.planState)))throw new ContinuationNotRecoverable()
+  if(this.budget&&canonicalJSON(saved.usageBudget)!==canonicalJSON(projected.usageBudget))throw new ContinuationNotRecoverable()
+  if(this.repeatTools&&canonicalJSON(saved.repeatTools)!==canonicalJSON(projected.repeatTools))throw new ContinuationNotRecoverable()
+  if(projected.turnRoute&&canonicalJSON(saved.turnRoute)!==canonicalJSON(projected.turnRoute))throw new ContinuationNotRecoverable()
   if(canonicalJSON(saved.durable)!==before||encoder.encode(canonicalJSON(saved)).length>STORAGE_RECORD_BYTES)throw new ContinuationNotRecoverable()
   checkRecord('checkpoint',saved)
   if(saved.id!==this.id||saved.digest!==recordDigest(saved))throw new ContinuationIdentityChanged()
   return saved
  }
- private async publish(binding:DurableBinding,state?:ExecutionCheckpoint,event?:AssistantEvent,observe?:{dispatch:DurableDispatch;artifacts:ArtifactObservation[]},signal?:AbortSignal){
+ private async publish(binding:DurableBinding,state?:ExecutionCheckpoint,event?:AssistantEvent,observe?:{dispatch:DurableDispatch;artifacts:ArtifactObservation[]},signal?:AbortSignal,extra:AssistantEvent[]=[],taskResult?:string){
+  if(this.stopped||signal?.aborted){this.dispatchClosed=true;throw new DispatchCanceled(signal?.reason??new DOMException('The operation was aborted','AbortError'))}
   const commitId=crypto.randomUUID()
   if(state&&!binding.root){
    const children=this.book.children.filter(row=>scopeKey(row.scope)!==scopeKey(binding.scope));children.push({scope:structuredClone(binding.scope),checkpoint:structuredClone(state)});this.book.children=children
@@ -112,36 +493,126 @@ export class RunWriter {
    for(const artifact of artifacts)rows.push({id:crypto.randomUUID(),scope:structuredClone(dispatch.scope),kind:artifact.access==='read'||artifact.access===undefined&&dispatch.read?'artifact-read':'artifact-produced',source:dispatch.source,dispatchId:dispatch.id,commitId,artifact:structuredClone(artifact)})
    this.book.observations.push(...rows)
   }
-  const root=binding.root&&state?state:this.root?.()??this.latest
+  const root=binding.root&&state?state:this.hasTaskSteps?this.taskState():!binding.root&&this.latest?this.latest:this.root?.()??this.latest
   if(!root)throw new ContinuationNotRecoverable()
   const checkpoint=this.finalize(root)
-  let output=event?writeRunEvent(event):undefined
+  let candidate=event
+  if(this.taskSchedule&&event&&(event.type==='plan_revised'||event.type==='plan_departed'||event.type==='plan_completion_refused'||event.type==='plan_drift_decided'||event.type==='approval_requested'))candidate={...event,version:2}
+  else if((this.budget||checkpoint.turnRoute)&&event&&(event.type==='execution_checkpoint'||event.type==='budget_paused'))candidate={...event,version:2}
+  let output=candidate?writeRunEvent(candidate):undefined
   if(output&&(output.type==='execution_checkpoint'||output.type==='budget_paused'))output={...output,checkpoint:binding.root?checkpoint:state??output.checkpoint,...(output.type==='execution_checkpoint'?{durable:true}:{})}
   if(output)checkRecord('event',output)
-  const receipt=await this.store.commit({runId:this.id,expectedRevision:this.revision,commitId,checkpoint:encoder.encode(canonicalJSON(checkpoint)),events:output?[encoder.encode(canonicalJSON({version:1,scope:binding.scope,event:output}))]:[]},signal)
-  if(!receipt||receipt.commitId!==commitId||!storageId(receipt.revision)||receipt.revision===this.revision||receipt.cursor!==null&&!storageId(receipt.cursor)||output&&receipt.cursor===null)throw new StorageAcknowledgementInvalid()
+  let verified:TaskCompletionEvidence|undefined
+  if(taskResult){
+   if(!output||output.type!=='delegated_task'||!this.rootBinding(binding))throw new ContinuationIdentityChanged()
+   const row=checkpoint.planState?.taskSchedule?.rows.find(row=>row.id===taskResult),task=output.task
+   if(!row?.child||!this.successfulTaskChild(checkpoint,row.child,task))throw new ContinuationIdentityChanged()
+   const child=checkpoint.durable!.children.find(child=>child.scope.execution===task.id&&child.scope.task===task.id)!
+   if(typeof child.checkpoint.digest!=='string')throw new ContinuationIdentityChanged()
+   const result={checkpointDigest:child.checkpoint.digest,resultDigest:digest(canonicalJSON(task)),eventDigest:digest(canonicalJSON({version:1,scope:binding.scope,event:output})),commitId}
+   row.child.result=result;checkpoint.digest=recordDigest(checkpoint);checkRecord('checkpoint',checkpoint)
+   verified={step:row.id,task:task.id,planRevision:row.child.planRevision,...result}
+  }
+  const input={runId:this.id,expectedRevision:this.revision,commitId,checkpoint:encoder.encode(canonicalJSON(checkpoint)),events:[...(output?[output]:[]),...extra].map(event=>encoder.encode(canonicalJSON({version:1,scope:binding.scope,event})))}
+  const receipt=await this.commitWithContext(input,signal,checkpoint.status==='complete'||checkpoint.status==='stopped',checkpoint.context.scope,checkpoint,binding.scope)
   this.revision=receipt.revision;this.latest=checkpoint
-  signal?.throwIfAborted()
+  if(verified){this.taskSchedule=structuredClone(checkpoint.planState!.taskSchedule!);this.taskResults.set(verified.step,verified);this.taskScopes.get(this.taskRoot!)!.accept(checkpoint)}
+  if(signal?.aborted)this.dispatchClosed=true
   return output
  }
- save(binding:DurableBinding,state:ExecutionCheckpoint,signal?:AbortSignal){return this.enqueue(()=>this.publish(binding,state,undefined,undefined,signal)).then(()=>undefined)}
+ save(binding:DurableBinding,state:ExecutionCheckpoint,signal?:AbortSignal){return this.enqueue(()=>{if(this.dispatchClosed)throw new DispatchCanceled(new DOMException('The operation was aborted','AbortError'));return this.publish(binding,state,undefined,undefined,signal)}).then(()=>undefined)}
  /** Commit once, then issue a private writer-owned delivery identity. It is never serialized. */
- commitPlan(binding:DurableBinding,state:ExecutionCheckpoint,event:import('../execution/controller').PlanEvent,signal?:AbortSignal){return this.enqueue(async()=>{
-  if((event.type==='approval_requested'?(event.purpose==='plan-drift'?event.plan.execution:undefined):event.execution)!==binding.scope.execution)throw new ContinuationIdentityChanged()
+ /** A claim handle is private to one acknowledged native execution, never a host marker. */
+ acknowledgeNativeRouteRelease(binding:DurableBinding,token:object|undefined,request:string,route:string,needed:string){
+  const claim=token?this.nativeClaims.get(token):undefined
+  if(!claim||binding.writer!==this||scopeKey(binding.scope)!==scopeKey(claim.scope)||!claim.live||claim.released||claim.consumed||canonicalJSON(JSON.parse(claim.request))!==request||claim.requestDigest!==digest(claim.request)||claim.route!==route||this.latest?.turnRoute?.bindingDigest!==route||this.latest.turnRoute.widened||!needed)throw new ContinuationIdentityChanged()
+  claim.released=true;claim.needed=needed
+ }
+ private supersededNative(binding:DurableBinding,row:DurableDispatch){
+  if(row.kind!=='agent'||scopeKey(row.scope)!==scopeKey(binding.scope)||!this.latest?.turnRoute?.widened)return false
+  const marker=this.latest.turnRoute.widenedInvocation,proof=this.nativeSuperseded.get(scopeKey(binding.scope))
+  if(!marker||!proof||proof.route!==canonicalJSON(this.latest.turnRoute))throw new ContinuationIdentityChanged()
+  if(row.id!==marker.dispatchId)throw new HostOutcomeUnknown()
+  if(proof.id!==row.id||proof.requestDigest!==row.requestDigest||marker.requestDigest!==row.requestDigest||digest(row.request)!==row.requestDigest||row.state!=='unknown'||!row.read)throw new ContinuationIdentityChanged()
+  return true
+ }
+ /** Corroborate only execution transactions; archive/feedback metadata is not authority. */
+ restoreNativeRoute(binding:DurableBinding,route:TurnRoute,signal?:AbortSignal){return this.enqueue(async()=>{
+  const invalid=():never=>{throw new ContinuationIdentityChanged()},marker=route.widenedInvocation,store=this.store as Partial<HistoryRunStore>
+  if(binding.writer!==this||!route.widened||!marker||store.historyVersion!==1||canonicalJSON(this.latest?.turnRoute)!==canonicalJSON(route))return invalid()
+  const old=this.book.dispatches.find(row=>row.id===marker.dispatchId)
+  if(!old||old.kind!=='agent'||!old.read||old.state!=='unknown'||scopeKey(old.scope)!==scopeKey(binding.scope)||old.requestDigest!==marker.requestDigest||digest(old.request)!==marker.requestDigest)return invalid()
+  const port=store as HistoryRunStore,head=readHistoryHead(await port.readHistoryHead(this.id,signal))
+  if(head.runId!==this.id||head.executionRevision!==this.revision||!this.acknowledgedCheckpoint||canonicalJSON(head.checkpoint)!==canonicalJSON({digest:historyBytesDigest(this.acknowledgedCheckpoint),bytes:this.acknowledgedCheckpoint.length}))return invalid()
+  let bytes=0,sequence=0,eventCount=0,previous:string|null=null,claimed=0,widened=false
+  const object=async(ref:HistoryObjectRef)=>{
+   if(!validHistoryRef(ref)||(bytes+=ref.bytes)>HISTORY_TOTAL_BYTES)return invalid()
+   const page=await port.readHistoryObject({kind:'run',id:this.id},head.revision,ref.digest,0,ref.bytes,signal)
+   if(page.digest!==ref.digest||page.offset!==0||page.total!==ref.bytes||page.value.length!==ref.bytes||page.nextOffset!==ref.bytes||page.hasMore||historyBytesDigest(page.value)!==ref.digest)return invalid()
+   return page.value
+  }
+  const matches=(state:ExecutionCheckpoint,status:'claimed'|'unknown')=>{const row=state.durable?.dispatches.find(row=>row.id===old.id);return state.id===this.id&&row&&row.state===status&&row.kind==='agent'&&row.read&&scopeKey(row.scope)===scopeKey(old.scope)&&row.request===old.request&&row.requestDigest===old.requestDigest&&row.source===old.source&&row.tool===old.tool}
+  while(sequence<head.commitCount){
+   if(sequence>=HISTORY_MAX_ROWS)return invalid()
+   const page=await port.readHistoryPage(this.id,head.revision,sequence,100,signal)
+   if(Object.keys(page).sort().join(',')!=='afterSequence,hasMore,items,nextSequence,revision,total'||page.revision!==head.revision||page.afterSequence!==sequence||!Array.isArray(page.items)||!page.items.length||page.items.length>100||page.total!==head.commitCount||page.nextSequence!==sequence+page.items.length||page.hasMore!==(page.nextSequence<head.commitCount))return invalid()
+   for(const input of page.items){
+    const row=readHistoryEntry(input);if(row.sequence!==++sequence||row.previousDigest!==previous||row.eventStart!==eventCount+1||(eventCount+=row.eventCount)>HISTORY_MAX_EVENTS)return invalid();previous=row.digest
+    let state:ExecutionCheckpoint|undefined
+    if(!claimed&&row.checkpoint){state=readExecution(JSON.parse(historyText(await object(row.checkpoint))));if(state&&matches(state,'claimed')&&state.turnRoute?.bindingDigest===route.bindingDigest&&!state.turnRoute.widened)claimed=sequence}
+    if(!widened)for(const ref of row.events){
+     const event=readStoredRunEvent(await object(ref))
+     if(event.event.type==='route_widened'&&scopeKey(event.scope)===scopeKey(binding.scope)&&canonicalJSON(event.event.route)===canonicalJSON(route)){
+      if(!claimed||claimed>=sequence||!row.checkpoint)return invalid()
+      state??=readExecution(JSON.parse(historyText(await object(row.checkpoint))))
+      if(!state||!matches(state,'unknown')||canonicalJSON(state.turnRoute)!==canonicalJSON(route))return invalid()
+      widened=true
+     }
+    }
+   }
+  }
+  const again=readHistoryHead(await port.readHistoryHead(this.id,signal)),executionHead=(value:typeof head)=>canonicalJSON([value.runId,value.executionRevision,value.commitCount,value.eventCount,value.root,value.checkpoint])
+  if(!widened||previous!==head.root||eventCount!==head.eventCount||executionHead(again)!==executionHead(head))return invalid()
+  this.nativeSuperseded.set(scopeKey(binding.scope),{id:old.id,requestDigest:old.requestDigest,route:canonicalJSON(route)})
+ })}
+ /** Publish the exact route and event together through this original writer's existing CAS. */
+ commitRoute(binding:DurableBinding,state:ExecutionCheckpoint,event:Extract<AssistantEvent,{type:'route_decided'|'route_widened'}>,signal?:AbortSignal,nativeClaim?:object){return this.enqueue(async()=>{
+  state=structuredClone(state);event=structuredClone(event)
+  let proof:NativeRouteClaim|undefined
+  if(event.type==='route_widened'){
+   if(event.route.widenedInvocation||state.turnRoute?.widenedInvocation)throw new ContinuationIdentityChanged()
+   if(nativeClaim){proof=this.nativeClaims.get(nativeClaim);const row=proof?this.book.dispatches.find(row=>row.id===proof!.id):undefined
+    if(!proof||proof.live||!proof.released||proof.consumed||!row||row.state!=='unknown'||row.kind!=='agent'||!row.read||scopeKey(row.scope)!==scopeKey(binding.scope)||proof.route!==this.latest?.turnRoute?.bindingDigest||this.latest.turnRoute.widened||event.route.bindingDigest!==proof.route||event.route.widenedFor!==proof.needed||row.requestDigest!==proof.requestDigest||digest(row.request)!==proof.requestDigest)throw new ContinuationIdentityChanged()
+    const marker={dispatchId:proof.id,requestDigest:proof.requestDigest};event.route.widenedInvocation=marker;state.turnRoute!.widenedInvocation={...marker}
+   }
+  }
+  if(binding.writer!==this||state.id!==binding.scope.execution||state.version!==3||canonicalJSON(state.turnRoute)!==canonicalJSON(event.route))throw new ContinuationIdentityChanged()
   if(this.planDelivery.size>=400)throw new ContinuationNotRecoverable()
   const output=(await this.publish(binding,state,event,undefined,signal))!
+  if(proof){proof.consumed=true;this.nativeSuperseded.set(scopeKey(binding.scope),{id:proof.id,requestDigest:proof.requestDigest,route:canonicalJSON(state.turnRoute)})}
+  this.planDelivery.set(output,{scope:scopeKey(binding.scope),bytes:canonicalJSON(output)});return output
+ })}
+ commitPlan(binding:DurableBinding,state:ExecutionCheckpoint,event:import('../execution/controller').PlanEvent,signal?:AbortSignal){return this.enqueue(async()=>{
+  if(this.dispatchClosed)throw new DispatchCanceled(new DOMException('The operation was aborted','AbortError'))
+  if((event.type==='approval_requested'?(event.purpose==='plan-drift'?event.plan.execution:undefined):event.execution)!==binding.scope.execution)throw new ContinuationIdentityChanged()
+  if(this.planDelivery.size>=400)throw new ContinuationNotRecoverable()
+  try{state=this.prepareTaskPlan(binding,state)}catch(error){throw new DispatchCanceled(error)}
+  const previous=this.taskSchedule
+  this.taskSchedule=state.planState?.taskSchedule??this.taskSchedule
+  let output:AssistantEvent
+  try{output=(await this.publish(binding,state,event,undefined,signal))!}catch(error){this.taskSchedule=previous;throw error}
   this.planDelivery.set(output,{scope:scopeKey(binding.scope),bytes:canonicalJSON(output)})
   return output
  })}
- event(binding:DurableBinding,event:AssistantEvent,signal?:AbortSignal){return this.enqueue(async()=>{const delivery=this.planDelivery.get(event);if(delivery){this.planDelivery.delete(event);if(delivery.scope!==scopeKey(binding.scope)||delivery.bytes!==canonicalJSON(event))throw new ContinuationIdentityChanged();return event}if(binding.root&&event.type==='delegation_requested'){if(!event.callId)throw new ContinuationNotRecoverable();this.book.pendingHandoff={callId:event.callId,request:structuredClone(event.request)}}return this.publish(binding,event.type==='execution_checkpoint'||event.type==='budget_paused'?event.checkpoint:undefined,event,undefined,signal)}).then(result=>result!)}
+ event(binding:DurableBinding,event:AssistantEvent,signal?:AbortSignal){return this.enqueue(async()=>{if(this.dispatchClosed)throw new DispatchCanceled(new DOMException('The operation was aborted','AbortError'));const delivery=this.planDelivery.get(event);if(delivery){this.planDelivery.delete(event);if(delivery.scope!==scopeKey(binding.scope)||delivery.bytes!==canonicalJSON(event))throw new ContinuationIdentityChanged();return event}if(binding.root&&event.type==='delegation_requested'){if(!event.callId)throw new ContinuationNotRecoverable();this.book.pendingHandoff={callId:event.callId,request:structuredClone(event.request)}}return this.publish(binding,event.type==='execution_checkpoint'||event.type==='budget_paused'?event.checkpoint:undefined,event,undefined,signal)}).then(result=>result!)}
  recovering(binding:DurableBinding,kind:DurableDispatch['kind']):boolean {
-  return this.book.dispatches.some(row=>this.recovered.has(row.id)&&row.kind===kind&&scopeKey(row.scope)===scopeKey(binding.scope)&&row.state==='unknown'&&(kind!=='agent'||!this.latest?.handoff||this.latest.handoff.state==='continued'&&!!this.latest.handoff.continuation&&row.request.includes(JSON.stringify(this.latest.handoff.continuation).slice(1,-1))))
+  return this.book.dispatches.some(row=>this.recovered.has(row.id)&&row.kind===kind&&scopeKey(row.scope)===scopeKey(binding.scope)&&row.state==='unknown'&&!this.supersededNative(binding,row)&&(kind!=='agent'||!this.latest?.handoff||this.latest.handoff.state==='continued'&&!!this.latest.handoff.continuation&&row.request.includes(JSON.stringify(this.latest.handoff.continuation).slice(1,-1))))
  }
  prepared(binding:DurableBinding,kind:DurableDispatch['kind'],source:string,tool:string,request:string,consume=false):string {
   if(kind!=='model'&&kind!=='agent')return request
-  const pending=[...this.book.dispatches].reverse().find(row=>this.recovered.has(row.id)&&row.kind===kind&&scopeKey(row.scope)===scopeKey(binding.scope)&&row.state==='unknown')
+  const pending=[...this.book.dispatches].reverse().find(row=>this.recovered.has(row.id)&&row.kind===kind&&scopeKey(row.scope)===scopeKey(binding.scope)&&row.state==='unknown'&&!this.supersededNative(binding,row))
   if(pending&&(kind!=='agent'||!this.latest?.handoff||this.latest.handoff.state==='continued'&&!!this.latest.handoff.continuation&&pending.request.includes(JSON.stringify(this.latest.handoff.continuation).slice(1,-1)))){
-   if(kind==='model'&&!pending.read)throw new HostOutcomeUnknown()
+   if(this.hasTaskSteps||this.taskSchedule||kind==='model'&&!pending.read)throw new HostOutcomeUnknown()
    if(pending.source!==source||pending.tool!==tool)throw new ContinuationIdentityChanged()
    // The original admitted claim stays visible to coordinator accounting until this invocation returns.
    void consume
@@ -149,55 +620,83 @@ export class RunWriter {
   }
   return request
  }
- startModel(binding:DurableBinding,source:string,tool:string,request:string,signal?:AbortSignal):Promise<PendingModel>{
-  return this.invoke(binding,'model',source,tool,request,true,async raw=>Object.freeze({[modelClaim]:true as const,request:raw}),()=>false,()=>[],signal)
+ startModel(binding:DurableBinding,source:string,tool:string,request:string,signal?:AbortSignal,ticket?:object):Promise<PendingModel>{
+  return this.invoke(binding,'model',source,tool,request,true,async raw=>Object.freeze({[modelClaim]:true as const,request:raw}),()=>false,()=>[],signal,ticket)
  }
  async finishModel(binding:DurableBinding,handle:object,outcome:ModelOutcome,signal?:AbortSignal):Promise<void>{
   await this.enqueue(async()=>{
    const held=this.models.get(handle)
-   if(!held||held.binding.writer!==this||binding.writer!==this||held.binding.root!==binding.root||scopeKey(held.binding.scope)!==scopeKey(binding.scope)||!held.claim.read||held.claim.state!=='claimed')throw new ContinuationIdentityChanged()
+   if(!held||held.binding.writer!==this||binding.writer!==this||held.binding.root!==binding.root||scopeKey(held.binding.scope)!==scopeKey(binding.scope)||!held.claim.read||!this.stopped&&held.claim.state!=='claimed')throw new ContinuationIdentityChanged()
    if(!outcome.ok&&outcome.verifiedRefusal){const f=normalizeFailure(outcome.error,'model');if(f.source!=='model'||f.outcome!=='refused'||f.status===undefined||f.status<400||f.status>=500||f.status===408)throw new ContinuationIdentityChanged()}
+   // Verified response bytes cannot become a result before storage acknowledgement.
+   if(signal?.aborted)outcome={ok:false,error:outcome.ok?signal.reason:outcome.error}
    this.models.delete(handle)
+   if(this.stopped)return
+   if(this.dispatchClosed&&outcome.ok)outcome={ok:false,error:new DOMException('The operation was aborted','AbortError')}
    held.claim.state=outcome.ok||outcome.verifiedRefusal?'result':'unknown'
+   if(this.budget&&!outcome.ok&&!outcome.verifiedRefusal)this.budget.unknown(held.claim.id)
    if(!outcome.ok)held.claim.failure=normalizeFailure(outcome.error,'model')
+   if(signal?.aborted){this.dispatchClosed=true;return}
    try{await this.publish(binding,undefined,undefined,undefined,signal)}catch(cause){throw new StorageOutcomeUnknown(cause)}
    if(outcome.ok||outcome.verifiedRefusal){
+    this.capture?.acknowledge(held.claim)
     for(const row of this.book.dispatches)if(row.kind==='model'&&row.read&&scopeKey(row.scope)===scopeKey(binding.scope)&&row.state==='unknown')this.recovered.delete(row.id)
-   }else this.fatal=outcome.error??new AIFailureError(failure('unknown','model','unknown'))
+   }else this.dispatchClosed=true
   })
  }
- async invokeModel(binding:DurableBinding,source:string,tool:string,request:string,execute:(request:string)=>Promise<Response>,verify:(response:Response)=>Promise<{response:Response;refusal?:unknown}>,signal:AbortSignal):Promise<Response>{
-  const handle=await this.startModel(binding,source,tool,request,signal)
+ async invokeModel(binding:DurableBinding,source:string,tool:string,request:string,execute:(request:string)=>Promise<Response>,verify:(response:Response)=>Promise<{response:Response;refusal?:unknown;usage?:UsageAmounts}>,signal:AbortSignal,ticket?:object):Promise<Response>{
+  const handle=await this.startModel(binding,source,tool,request,signal,ticket)
+  let reported:UsageAmounts|undefined
   let response:Response|undefined,outcome:ModelOutcome={ok:false,error:new ContinuationNotRecoverable()}
   try{
    signal.throwIfAborted();if(this.fatal!==undefined)throw this.fatal
    response=await execute(handle.request)
-   const verified=await verify(response);response=verified.response
+   const verified=await verify(response);response=verified.response;reported=verified.usage
+   const claim=this.models.get(handle)?.claim;if(claim)await this.capture?.model(claim,response)
    outcome=verified.refusal===undefined?{ok:true}:{ok:false,error:verified.refusal,...(response.status>=400&&response.status<500&&response.status!==408&&normalizeFailure(verified.refusal,'model').outcome==='refused'?{verifiedRefusal:true as const}:{})}
   }catch(error){outcome={ok:false,error}}
+  const dispatch=this.models.get(handle)?.claim.id
   await this.finishModel(binding,handle,outcome,signal)
+  if(this.budget&&dispatch&&(outcome.ok||outcome.verifiedRefusal))await this.observeUsage(binding,dispatch,{...reported,modelRequests:1},digest(canonicalJSON({id:dispatch,status:response!.status,usage:reported??{}})),signal)
   if(!outcome.ok&&!outcome.verifiedRefusal)throw outcome.error
+  if(this.dispatchClosed)throw new DOMException('The operation was aborted','AbortError')
   signal.throwIfAborted()
   return response!
  }
- async invoke<T>(binding:DurableBinding,kind:DurableDispatch['kind'],source:string,tool:string,request:string,read:boolean,execute:(request:string)=>Promise<T>,successful:(value:T)=>boolean=()=>true,artifacts:(value:T)=>ArtifactObservation[]=()=>[],signal?:AbortSignal):Promise<T>{
+ async invoke<T>(binding:DurableBinding,kind:DurableDispatch['kind'],source:string,tool:string,request:string,read:boolean,execute:(request:string,nativeWitness?:object,nativeClaim?:object,captureFrame?:(body:string,aliases?:Record<string,string>)=>void)=>Promise<T>,successful:(value:T)=>boolean=()=>true,artifacts:(value:T)=>ArtifactObservation[]=()=>[],signal?:AbortSignal,ticket?:object):Promise<T>{
   safeRequest(request);requireId(source);requireId(tool)
   request=this.prepared(binding,kind,source,tool,request,true)
   const scope=structuredClone(binding.scope),fingerprint=digest(canonicalJSON({kind,scope,source,tool,request:JSON.parse(request)}))
+  if(binding.writer!==this)throw new ContinuationIdentityChanged()
   let reused:DurableDispatch|undefined,claim!:DurableDispatch
   await this.enqueue(async()=>{
+   this.assertRepeatAdmission(binding)
+   if(this.repeatTools?.executions.some(row=>row.execution===binding.scope.execution))canonicalRepeatArgs(request)
+   if(this.dispatchClosed)throw new DispatchCanceled(new DOMException('The operation was aborted','AbortError'))
    reused=this.book.dispatches.find(row=>!read&&!row.read&&row.kind===kind&&row.fingerprint===fingerprint)
    if(reused)return
    if(this.book.dispatches.length>=400)throw new ContinuationNotRecoverable()
-   claim={id:crypto.randomUUID(),scope,kind,source,tool,fingerprint,request,requestDigest:digest(request),state:'claimed',read}
+   const budgeted=this.budget&&(kind==='model'||kind==='agent')
+   const id=budgeted?ticket?this.budget!.consume(ticket,{...scope,source,tool,descriptor:request,kind:kind as 'model'|'agent'}):(()=>{throw new UsageBudgetUnknown()})():crypto.randomUUID()
+   claim={id,scope,kind,source,tool,fingerprint,request,requestDigest:digest(request),state:'claimed',read}
+   if(!this.hasTaskSteps&&kind==='model'&&this.repeatState(binding)&&JSON.parse(request).method!=='GET'){
+    const charge=this.repeatRequestCharges.get(binding.scope.execution);if(!charge)throw new ContinuationIdentityChanged()
+    if(!this.recovering(binding,'model'))await charge(JSON.parse(request).body??request)
+   }
+   await this.claimTaskDispatch(binding,claim)
+   this.claimRepeatReminder(binding,claim)
    this.book.dispatches.push(claim);await this.publish(binding,undefined,undefined,undefined,signal)
   })
   if(reused){if(reused.state!=='result'||reused.result===undefined)throw new HostOutcomeUnknown();return structuredClone(reused.result) as T}
-  signal?.throwIfAborted();if(this.fatal!==undefined)throw this.fatal
+  signal?.throwIfAborted();if(this.fatal!==undefined)throw this.fatal;if(this.dispatchClosed)throw new DOMException('The operation was aborted','AbortError')
   let value:T
+  const nativeWitness=this.budget&&kind==='agent'&&ticket?openNativeWitness(binding,ticket):undefined
+  const nativeClaim=kind==='agent'&&this.latest?.turnRoute&&!this.latest.turnRoute.widened?Object.freeze({}):undefined
+  if(nativeClaim)this.nativeClaims.set(nativeClaim,{scope:structuredClone(scope),id:claim.id,requestDigest:claim.requestDigest,request,source,tool,route:this.latest!.turnRoute!.bindingDigest,live:true,released:false,consumed:false})
   const finishRecovery=()=>{if(kind==='model'||kind==='agent')for(const row of this.book.dispatches)if(row.kind===kind&&scopeKey(row.scope)===scopeKey(binding.scope)&&row.state==='unknown')this.recovered.delete(row.id)}
   try{
-   value=await execute(request)
+   try{value=await execute(request,nativeWitness,nativeClaim,this.capture&&kind==='agent'?(body,aliases)=>this.capture!.agent(claim,body,aliases):undefined)}finally{closeNativeWitness(nativeWitness);const held=nativeClaim?this.nativeClaims.get(nativeClaim):undefined;if(held)held.live=false}
+   if(this.dispatchClosed)throw new DOMException('The operation was aborted','AbortError')
    if(kind==='model'){
     if(!value||typeof value!=='object'||!(value as unknown as PendingModel)[modelClaim]||this.models.has(value))throw new AIFailureError(failure('invalid-response','model','unknown'))
     this.models.set(value,{binding:{...binding,scope:{...binding.scope}},claim});return value
@@ -205,19 +704,28 @@ export class RunWriter {
    finishRecovery()
   }catch(error){
    if(kind!=='model')finishRecovery()
-   try{await this.enqueue(async()=>{claim.state='unknown';claim.failure=normalizeFailure(error,kind==='host'||kind==='runtime'?'tool':'agent');await this.publish(binding,undefined,undefined,undefined,signal)})}catch{throw new StorageOutcomeUnknown()}
-   if(kind==='model')this.fatal=error
+   const admitted=kind==='agent'&&admittedNativeWitness(nativeWitness,binding,ticket)&&!signal?.aborted&&!this.dispatchClosed
+   try{await this.enqueue(async()=>{if(this.stopped)return;claim.state='unknown';if(this.budget&&(kind==='model'||kind==='agent')&&!admitted)this.budget.unknown(claim.id);claim.failure=normalizeFailure(error,kind==='host'||kind==='runtime'?'tool':'agent');if(signal?.aborted||this.dispatchClosed){this.dispatchClosed=true;return}await this.publish(binding,undefined,undefined,undefined,signal)})}catch{throw new StorageOutcomeUnknown()}
+   if(this.budget&&admitted)await this.observeUsage(binding,claim.id,{providerInvocations:1},digest(canonicalJSON({id:claim.id,kind:'agent',state:'unknown',callback:true})),signal)
+   if(kind==='model')this.dispatchClosed=true
    throw error
   }
+  if(signal?.aborted||this.dispatchClosed){this.dispatchClosed=true;if(!this.stopped)claim.state='unknown';throw signal?.reason??new DOMException('The operation was aborted','AbortError')}
   // Provider responses/transports/private reasoning are not stored. Exact tool results are guarded.
   try{await this.enqueue(async()=>{
    claim.state='result'
-   if(kind==='host'||kind==='runtime')claim.result=structuredClone(value)
+   if(kind==='host'||kind==='runtime'){if(this.repeatTools?.executions.some(row=>row.execution===binding.scope.execution)){const text=JSON.stringify(value);if(typeof text!=='string'||encoder.encode(text).length>STORAGE_RECORD_BYTES)throw new ContinuationNotRecoverable();claim.repeatResultJson=text}claim.result=structuredClone(value)}
    const observed=successful(value)?artifacts(value):[]
    claim.artifacts=structuredClone(observed)
    for(const item of observed){requireId(item.id);if(!['artifact','dialect'].includes(item.kind)||!/^sha256:[a-f0-9]{64}$/.test(item.digest))throw new ContinuationNotRecoverable()}
-   await this.publish(binding,undefined,undefined,successful(value)&&['host','runtime'].includes(kind)?{dispatch:claim,artifacts:observed}:undefined,signal)
+   const current=this.repeatTools?.executions.find(row=>row.execution===binding.scope.execution)
+   let repeat:RepeatDetected|undefined
+   if(current&&(kind==='host'||kind==='runtime')){const next=observeRepeat(current,claim);this.repeatTools!.executions[this.repeatTools!.executions.indexOf(current)]=next.state;repeat=next.event}
+   await this.publish(binding,undefined,undefined,successful(value)&&['host','runtime'].includes(kind)?{dispatch:claim,artifacts:observed}:undefined,signal,repeat?[writeRunEvent(repeat)]:[])
+   if(kind==='agent')this.capture?.acknowledge(claim)
+   if(current){const source=this.repeatScopes.get(binding.scope.execution);source?.accept(this.repeatState(binding)!);if(repeat){const output=writeRunEvent(repeat);this.planDelivery.set(output,{scope:scopeKey(binding.scope),bytes:canonicalJSON(output)});source?.event(output)}}
   })}catch{throw new StorageOutcomeUnknown()}
+  if(this.budget&&kind==='agent')await this.observeUsage(binding,claim.id,{providerInvocations:1},digest(canonicalJSON({id:claim.id,kind:'agent',state:'result'})),signal)
   return value
  }
 }
@@ -246,6 +754,7 @@ export async function durableSession<T extends EngineSession>(session:T):Promise
  const input=session.context
  if(input?.[durableOwner])return session
  const config=input?.runStore
+ if(input?.usageBudget&&(!config||config.store.durability==='single-writer-callback'))throw new UsageBudgetUnsupported()
  if(input?.checkpoint&&checkpointProfiles.has(input.checkpoint)){if(input.execution?.durable)throw new ContinuationNotRecoverable();return session}
  if(!config&&!input?.checkpoint){if(input?.execution){checkRecordVersion('checkpoint',input.execution);if(input.execution.durable)throw new ContinuationNotRecoverable()};return session}
  if(config&&input?.checkpoint)throw new ContinuationIdentityChanged()
@@ -259,13 +768,16 @@ export async function durableSession<T extends EngineSession>(session:T):Promise
  if(store.durability==='single-writer-callback')return callbackProfile(session,store,id,execution,head)
  if(execution?.durable?.pendingHandoff&&!execution.handoff)throw new ProviderReleaseUnknown()
  if(execution?.durable?.dispatches.some(row=>row.failure?.detail?.startsWith('ProviderReleaseUnknown:')))throw new ProviderReleaseUnknown()
+ if(config?.context){if(config.context.store!==store||(input?.chat!==config.context&&!(config.context.ledgerScope&&input?.chat===undefined)))throw new ContinuationIdentityChanged();if(head){const history=await config.context.store.readHistoryHead(id,session.signal);if(!history?.context||history.executionRevision!==head.revision||!config.context.matches(history.context))throw new ContinuationIdentityChanged()}if(config.context.ledgerScope&&(!execution||execution.context.scope!==config.context.ledgerScope||execution.status==='complete'||execution.status==='stopped'))throw new ContinuationIdentityChanged()}
  const writer=new RunWriter(store,id,head,execution),binding:DurableBinding={writer,scope:{execution:id,role:'author'},root:true}
- return {...session,context:{...input,execution,[durableOwner]:binding,checkpoint:state=>writer.save(binding,state,session.signal)}}
+ if(session.record===true&&session.corpus&&(store as Partial<HistoryRunStore>).historyVersion===1)writer.enrollCapture(binding,session.corpus.manifest,session.corpus.sink)
+ if(config?.context){writer.attachContext(config.context);if(head?.checkpoint)await writer.claimContext(head.checkpoint,session.signal)}
+ return {...session,context:{...input,...(config?.context?.ledgerScope?{chat:undefined}:{}),execution,[durableOwner]:binding,checkpoint:state=>writer.save(binding,state,session.signal)}}
 }
 export function childDurability<T extends EngineSession>(session:T,parent:EngineSession,task:string):T{
  const binding=parent.context?.[durableOwner];if(!binding)return session
  const child:DurableBinding={writer:binding.writer,scope:{execution:task,role:'author',task},root:false}
- return {...session,context:{...session.context,runStore:undefined,[durableOwner]:child,execution:binding.writer.checkpoint?.durable?.children.find(row=>row.scope.task===task)?.checkpoint,checkpoint:state=>binding.writer.save(child,state,session.signal)}}
+ return {...session,context:{...session.context,runStore:undefined,usageBudget:parent.context?.usageBudget,[durableOwner]:child,execution:binding.writer.checkpoint?.durable?.children.find(row=>row.scope.task===task)?.checkpoint,checkpoint:state=>binding.writer.save(child,state,session.signal)}}
 }
 export function scopeFor(binding:DurableBinding,role:string):DurableBinding{return {...binding,scope:{...binding.scope,role}}}
 export const hostSucceeded=(result:McpToolResult)=>result.isError!==true

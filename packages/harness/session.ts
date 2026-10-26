@@ -1,4 +1,7 @@
-import {failureError} from './failures'
+import {registerRuntimeConnector,runtimeJSON} from './storage/runtimeActionOwner'
+import type {RuntimeActionPort} from './runtimeActions'
+import {runtimeTaxonomyProblem,taxonomyAnnotations} from './toolTaxonomy'
+import {authoredFailure,failureError} from './failures'
 import { aiHeaders, type AITarget } from './host'
 import { deskHeaders } from './host'
 import { currentLanguage } from './host'
@@ -36,7 +39,7 @@ import {
   sessionEnded,
   whenSessionEnds
 } from './host'
-import { allowedTools, gateTransport, type GuardrailNotice } from './toolGate'
+import { allowedTools, gateTransport, inspectOutboundFrame, type GuardrailNotice } from './toolGate'
 import type { EndpointKind } from './host'
 import type {
   AssistantEvent,
@@ -457,8 +460,10 @@ export function openAssistantConnection(options: {
    * conformance suite drives this path without a socket.
    */
   sessionId?: string
+  runtimeActions?:RuntimeActionPort
   signal?: AbortSignal
 }): AssistantConnection {
+  const actionPort=options.runtimeActions?{...options.runtimeActions,owner:runtimeJSON(options.runtimeActions.owner)}:undefined
   const allowed = allowedTools(options.allowed)
   const raw = options.transport ?? assistantTransport(options.sessionId ?? '')
   let callTool: CallTool
@@ -549,12 +554,52 @@ export function openAssistantConnection(options: {
       await Promise.race([client.connect(gated), stopped])
       connected = true
       if (options.signal?.aborted) throw aborted()
-      const listed = ((await Promise.race([client.listTools(), stopped])).tools ?? []) as McpTool[]
+      const listRuntime=async(signal?:AbortSignal):Promise<McpTool[]>=>{
+        const tools:McpTool[]=[],cursors=new Set<string>(),names=new Set<string>();let cursor:string|undefined
+        for(let page=0;page<64;page++){
+          signal?.throwIfAborted()
+          const result=await Promise.race([client.listTools(cursor?{cursor}:undefined),stopped])
+          for(const tool of result.tools){
+            if(names.has(tool.name)||tools.length>=4096)throw authoredFailure('configuration','Runtime tool list is duplicate or exceeds its bound. Nothing was sent.','context')
+            names.add(tool.name);tools.push(tool as McpTool)
+          }
+          if(!result.nextCursor)return tools
+          if(cursors.has(result.nextCursor))throw authoredFailure('configuration','Runtime tool list cursor repeated. Nothing was sent.','context')
+          cursors.add(result.nextCursor);cursor=result.nextCursor
+        }
+        throw authoredFailure('configuration','Runtime tool list exceeds its page bound. Nothing was sent.','context')
+      }
+      const listed=await listRuntime(options.signal)
       if (options.signal?.aborted) throw aborted()
       // The tools the model is offered are the ones the runtime served,
       // filtered to what this desk's file granted — never a definition written
       // here.
-      const tools = listed.filter((tool) => allowed.has(tool.name))
+      const tools = listed.filter((tool) => allowed.has(tool.name)).map(tool=>{
+        if(runtimeTaxonomyProblem(tool._meta,tool.name)) throw authoredFailure('configuration','Runtime tool taxonomy refused. Nothing was sent.','context')
+        return {...tool,_meta:structuredClone(tool._meta!),taxonomy:structuredClone(tool._meta!),annotations:taxonomyAnnotations(tool._meta!.effect)}
+      })
+      const dispatch:CallTool=async(name,args)=>{
+        if(ended!==null||shutting!==null)throw new NoSession(ended??NO_SESSION_MESSAGE)
+        const answered=await client.callTool({name,arguments:args}) as McpToolResult
+        if(ended!==null)throw new NoSession(ended)
+        return answered
+      }
+      const acting=new Set(tools.filter(t=>t._meta?.effect==='act').map(t=>t.name))
+      const guarded:CallTool=async(name,args)=>{
+        if(acting.has(name)||actionPort&&name==='experimental_evaluate'&&(await listRuntime()).find(t=>t.name===name)?._meta?.effect==='act')throw authoredFailure('permission','Runtime action requires an exact approved attempt. Nothing was sent.','tool')
+        return dispatch(name,args)
+      }
+      if(actionPort)registerRuntimeConnector(guarded,{
+        port:actionPort,
+        initialTools:listed,
+        list:listRuntime,
+        prepare:(name,args)=>{
+          const verdict=inspectOutboundFrame({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}},allowed)
+          if(verdict.verdict==='refused')throw verdict.violation
+          return (verdict.frame as unknown as {params:{arguments:Record<string,unknown>}}).params.arguments
+        },
+        dispatch,open:()=>ended===null&&shutting===null
+      })
       return {
         tools,
         // The SDK's own result type is wider than the contract's — it carries
@@ -565,19 +610,7 @@ export function openAssistantConnection(options: {
         // socket is not on its own enough: a call already queued would reach a
         // closed transport and fail with whatever the SDK says about that,
         // which tells an engine nothing about why. This is the gate saying so.
-        callTool: callTool = async (name, args) => {
-          // **Checked twice, and the second one is the point.** A call that
-          // was already in flight when the session ended resolves afterwards,
-          // and delivering that result would be this desk handing an engine
-          // the answer to a question it asked on a session the chassis had
-          // refused. Nothing is delivered after the end — not a result that
-          // arrived a moment too late, and not one that was queued a moment
-          // too early.
-          if (ended !== null) throw new NoSession(ended)
-          const answered = (await client.callTool({ name, arguments: args })) as McpToolResult
-          if (ended !== null) throw new NoSession(ended)
-          return answered
-        }
+        callTool:callTool=guarded
       }
     } catch (cause) {
       // **Nothing is left open on a failure.** A `tools/list` that answered

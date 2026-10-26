@@ -68,7 +68,7 @@ import {
   type RecordedRequest,
   type ThinkingMode
 } from './scriptedModel'
-import { RECORDED_TOOLS, scriptedRuntime, type ServerObservation } from './scriptedServer'
+import { RECORDED_TOOLS, scriptedRuntime, currentContractReplayTools, type ServerObservation } from './scriptedServer'
 import { strictAlternation } from './strictAlternation'
 import { CRITIC_SYSTEM, REFUTATION_MARKER } from '../refutation'
 import { DATA_RULE, OPENING } from '../framing'
@@ -729,13 +729,16 @@ async function runLeg(
       return how.host?.memory === undefined ? undefined : typedMemory(`${how.host.memory} (recall ${asked.length})`)
     }
   })
-  const runtime = await scriptedRuntime()
+  const runtime = await scriptedRuntime({tools:currentContractReplayTools()})
   const events: AssistantEvent[] = []
   const connection = openAssistantConnection({
     allowed: how.allowed ?? FIVE,
     onEvent: (event) => events.push(event),
     transport: runtime.transport
   })
+  // Assert current test-offer readiness before the leg's intentional run-error capture.
+  try { await expect(connection.ready).resolves.toHaveProperty('tools') }
+  catch(error) { await connection.close();await runtime.close();throw error }
   // **The desk's half is bound outside the seal, and must be**: the model
   // capability captures `fetch` when it is bound, which is the property that
   // lets an engine be sealed off from every network global while its own calls

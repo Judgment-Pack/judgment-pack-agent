@@ -10,6 +10,7 @@ import (
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/turn"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/wire"
 	runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
@@ -182,7 +183,13 @@ func (c *coordinator) tracked(run adapter.AgentRun, m *meter) adapter.AgentRun {
 			}
 		}
 		strict := c.run.Context != nil && c.run.Context.Persistence != nil && c.run.Context.Persistence.Writer.Store.Durability() != runcontext.RunStoreSingleWriterCallback
-		capability, finish := adapter.ProviderReleaseAttempt()
+		capability, finish := adapter.ProviderDispositionAttempt()
+		var reached atomic.Bool
+		eventCallback := callbacks.Event
+		callbacks.Event = func(ctx context.Context, event adapter.AgentEvent) error {
+			reached.Store(true)
+			return eventCallback(ctx, event)
+		}
 		callbacks.ProviderRelease = capability
 		var delegated atomic.Bool
 		delegates := map[string]bool{}
@@ -193,14 +200,15 @@ func (c *coordinator) tracked(run adapter.AgentRun, m *meter) adapter.AgentRun {
 		}
 		callback := callbacks.Tool
 		callbacks.Tool = func(ctx context.Context, call adapter.AgentToolCall) (adapter.AgentToolAnswer, error) {
+			reached.Store(true)
 			if delegates[call.Name] {
 				delegated.Store(true)
 			}
 			return callback(ctx, call)
 		}
 		err := run(ctx, request, callbacks)
-		acknowledged := finish()
-		if strict && !acknowledged && (m != nil || delegated.Load() || ctx.Err() != nil) {
+		disposition := finish(err, reached.Load())
+		if strict && disposition == adapter.ProviderDispositionUnknown && (m != nil || delegated.Load() || ctx.Err() != nil) {
 			problem := &runcontext.ProviderReleaseUnknown{}
 			c.emitMu.Lock()
 			c.releaseFailure = problem
@@ -236,6 +244,9 @@ func (c *coordinator) parentAgent() *adapter.Agent {
 	held := adapter.AdmissionAgent(c.run.Agent)
 	held.Run = c.tracked(held.Run, nil)
 	held.Begin = func(ctx context.Context, _ adapter.AgentRequest) error {
+		if c.taskStepsEnabled() {
+			return nil
+		}
 		if err := c.released(ctx); err != nil {
 			return err
 		}
@@ -258,6 +269,9 @@ func (c *coordinator) parentAgent() *adapter.Agent {
 func (c *coordinator) childAgent(task *contract.DelegatedTask, model string, m *meter, base *adapter.Agent, definition *runcontext.Subagent) *adapter.Agent {
 	return &adapter.Agent{Family: base.Family, Tiers: base.Tiers, Model: base.Model, Enabled: base.Enabled, Delegated: model, Run: c.tracked(base.Run, m),
 		Begin: func(ctx context.Context, _ adapter.AgentRequest) error {
+			if c.taskStepsEnabled() {
+				return nil
+			}
 			if err := c.released(ctx); err != nil {
 				return err
 			}
@@ -342,6 +356,11 @@ func (c *coordinator) save(ctx context.Context) error {
 	if c.run.Context != nil && c.run.Context.Persistence != nil {
 		if saved := c.run.Context.Persistence.Writer.Checkpoint(); saved != nil {
 			state = *saved
+		}
+		if !open {
+			if err := c.run.Context.Persistence.Writer.UseAcknowledgedRoot(*c.run.Context.Persistence); err != nil {
+				return err
+			}
 		}
 	}
 	c.emitMu.Lock()
@@ -510,6 +529,47 @@ func (c *coordinator) driveAgent(ctx context.Context) {
 			c.deliver(failure.Event(err, "desk"))
 		}
 	}
+	// Restored children can run before the next provider invocation. Open the normal
+	// source-owned parent controller now; its writer owns every root/step charge.
+	var restoredParent *runcontext.SessionContext
+	defer func() {
+		if restoredParent != nil {
+			restoredParent.Close()
+		}
+	}()
+	if run.Context != nil && run.Context.TaskSteps && pending != nil && (pending.state == "released" || pending.state == "children") {
+		input := *run.Context
+		input.Chat = c.chat
+		input.Link = agentLink{c: c}
+		named := runcontext.RunModels{}
+		if run.Models != nil {
+			var err error
+			named, err = run.Models()
+			if err != nil {
+				fail(err)
+				return
+			}
+		}
+		if named.Child == "" {
+			named.Child = run.Agent.Model
+		}
+		if named.Critic == "" {
+			named.Critic = run.Agent.Model
+		}
+		raw := adapter.ReadAdmissionReasoning(run)
+		session := runcontext.Session{Prompt: run.Prompt, TestPrompt: run.TestPrompt, HostTools: run.HostTools, Context: &input, Purpose: run.Purpose, AllowConversation: run.AllowConversation, Interactive: run.Interactive, RuntimeCalls: run.Gate, Agent: &runcontext.AgentSession{Model: run.Agent.Model, Effort: raw.Effort}, Host: run.Host, Skills: run.Skills, Subagents: run.Subagents, ChildDefinition: run.ChildDefinition, Critic: run.Critic, Policy: run.Policy, PolicyProject: run.PolicyProject, TaskClass: run.TaskClass, PaceUsed: run.PaceUsed, PolicyLegacyModels: &named, PolicyFamilies: adapter.PolicyFamilies(run, named), PolicyConnections: append(adapter.PolicyConnectionIDs(run), named.Critic, named.Child), PolicyRequests: run.PolicyRequests, CriticProject: run.CriticProject, CriticReasoning: raw.Critic, ExistingPack: run.ExistingPack, ReviewerAssigned: run.ReviewerAssigned, AdversarialReview: run.Review, Route: run.Route, RouteFacts: run.RouteFacts}
+		for _, tool := range run.Tools {
+			session.Tools = append(session.Tools, runcontext.RuntimeTool{Name: tool.Name, Meta: wire.TaxonomyFromContract(tool.Meta), Offer: &tool})
+		}
+		opened, err := runcontext.ContextualSessionWithEnrollment(ctx, session, func(ctx context.Context, execution string, declarations []contract.ToolOfferHostTool) error {
+			return adapter.EnrollContext(ctx, run, execution, declarations)
+		})
+		if err != nil {
+			fail(err)
+			return
+		}
+		restoredParent = opened.Context
+	}
 	for {
 		if pending != nil && (pending.state == "released" || pending.state == "children") {
 			if err := c.durable(ctx); err != nil {
@@ -522,6 +582,10 @@ func (c *coordinator) driveAgent(ctx context.Context) {
 			}
 			if fatal := c.fatalError(); fatal != nil {
 				fail(fatal)
+				return
+			}
+			if err != nil && c.taskStepsEnabled() {
+				fail(err)
 				return
 			}
 			if err != nil {
@@ -549,6 +613,10 @@ func (c *coordinator) driveAgent(ctx context.Context) {
 				return
 			}
 			continued = pending.continuation
+		}
+		if restoredParent != nil {
+			restoredParent.Close()
+			restoredParent = nil
 		}
 		request, callID, ended := c.parentInvocation(ctx, execution, continued)
 		if ended {
@@ -584,6 +652,14 @@ func (c *coordinator) parentInvocation(ctx context.Context, execution *contract.
 	if offered {
 		parent.Prompt = run.Prompt + "\n\n" + turn.DelegationInstructions + " " + turn.AgentDelegationInstructions + continued
 		parent.HostTools = append(append([]runcontext.HostTool{}, c.wrapHostTools(hostTools, nil, nil)...), c.handoffTool())
+		if run.Context != nil && run.Context.TaskSteps && run.Context.Persistence != nil {
+			tool, err := c.taskDelegationTool(true)
+			if err != nil {
+				c.failAndEnd(err)
+				return contract.DelegatedTaskRequest{}, "", false
+			}
+			parent.HostTools = append(parent.HostTools, tool)
+		}
 	} else {
 		parent.Prompt = run.Prompt + "\n\n" + turn.DelegationSpent + continued
 		parent.HostTools = c.wrapHostTools(hostTools, nil, nil)
@@ -660,7 +736,8 @@ func (l agentLink) Attach(context *runcontext.SessionContext) {
 // the account the parent holds, so it is refused.
 func (c *coordinator) handoffTool() runcontext.HostTool {
 	declared := turn.DelegationTool(c.profiles)
-	tool := runcontext.HostTool{Name: declared.Name, Description: declared.Description, InputSchema: declared.InputSchema, Interaction: "delegation"}
+	taxonomy := wire.CloneTaxonomy(wire.TaxonomyFromContract(declared.Taxonomy))
+	tool := runcontext.HostTool{Name: declared.Name, Taxonomy: taxonomy, Description: declared.Description, InputSchema: declared.InputSchema, Interaction: "delegation"}
 	tool.Execute = func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
 		return runcontext.ToolResult{}, failure.Authored("configuration", "delegate_tasks ends the parent's invocation on an agent capability; it is never awaited inside it. No task was started.", "desk")
 	}
@@ -711,6 +788,14 @@ func (c *coordinator) agentBatch(ctx context.Context, pending *handoff) (contrac
 			return contract.DelegatedTaskAnswer{}, err
 		}
 		tasks = c.recordTasks(plans)
+		if c.run.Context != nil && c.run.Context.Persistence != nil && c.run.Context.Persistence.Writer.TaskStepsEnabled() {
+			c.emitMu.Lock()
+			pending.tasks, pending.state = tasks, "children"
+			c.emitMu.Unlock()
+		}
+		if err := c.bindTaskDelegation(ctx, pending.request, tasks); err != nil {
+			return contract.DelegatedTaskAnswer{}, err
+		}
 		c.emitMu.Lock()
 		pending.tasks, pending.state = tasks, "children"
 		c.emitMu.Unlock()
@@ -760,6 +845,9 @@ func (c *coordinator) agentBatch(ctx context.Context, pending *handoff) (contrac
 		if err := c.durable(ctx); err != nil {
 			return contract.DelegatedTaskAnswer{}, err
 		}
+	}
+	if err := c.bindTaskDelegation(ctx, pending.request, tasks); err != nil {
+		return contract.DelegatedTaskAnswer{}, err
 	}
 	number := pending.batch
 	started := time.Now()

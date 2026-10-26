@@ -23,6 +23,26 @@ Subscription monetary cost is unavailable without attributable billing evidence.
 The API runner described below retains its existing validation requirements; it does
 not implement a Codex CLI transport or accept missing API cost evidence.
 
+## v0.11.0 scope decision
+
+For Agent v0.11.0 only, the maintainer [deferred the live comparison on 2026-10-26](https://github.com/Judgment-Pack/judgment-pack-agent/issues/169#issuecomment-6421140155).
+Issue #169 remains open without a milestone as an outstanding follow-up, not a blocking
+Agent v0.11.0 release gate. Desk has [accepted the application-level comparison for its
+v0.14.0 release](https://github.com/Judgment-Pack/judgment-pack-agent/issues/169#issuecomment-6392626743),
+tracked by [Desk #599](https://github.com/Judgment-Pack/judgment-pack-desk/issues/599);
+its accepted requirements are unchanged.
+
+This also defers the dependent live routed/unrouted comparison report in #172 from the
+Agent v0.11.0 gate. Routing remains off by default, with no evidence-based recommendation
+to enable auto routing. Release review and notes must disclose the maintainer's deferral:
+no live comparison has passed, and no answer-quality, token-saving or monetary-cost result
+is claimed.
+
+All other implementation, privacy/security, regression, cross-language parity,
+safeguard-removal, required CI, independent review and artifact-verification gates remain.
+In particular, #207's actual capture/export correctness remains required. This decision
+does not waive requirements for future Agent releases or change Desk's release gates.
+
 ## API runner and general release requirement
 
 Issue #169 adds a release-review tool separate from ADR-0022's deterministic offline

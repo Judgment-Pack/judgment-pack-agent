@@ -10,6 +10,8 @@ Schemas:
 
 See also: [budget.md](budget.md), [critic.md](critic.md), [events.md](events.md), [checkpoint.md](checkpoint.md).
 
+Current policy layers use version 2 for feature members. Published policy 1 and historical unversioned layers remain readable under their frozen member graphs; absence does not enable a feature. Repeat policy and routing narrow the existing admitted execution and do not grant authority.
+
 ## The policy table
 
 ADR-0011. Closed partial host layers: run > project > table, resolved per member. Models default to the connected author; an omitted reasoning preference stays absent unless authenticated discovery supplies the selected model's default. Critic and dynamic roles inherit the author unless explicitly set. Other unset required members without a table or host-derived default are refused at admission. Model-visible text never supplies a layer.
@@ -92,7 +94,22 @@ Closed: a member the schema does not name is refused.
 | `outputAllow` |  | array of string (min length 1, max length 64, pattern `^[a-z][a-z0-9-]{0,63}$`) (max items 64) | Default: `[]`. |
 | `failover` |  | object | ADR-0020. Provider failures that may move one request to the next same-family fallback after the ordinary retry rule. The package never switches for any other class. |
 | `failover.classes` |  | array of enum `unavailable`, `rate-limited`, `timeout` | Default: `["unavailable","rate-limited","timeout"]`. |
-| `version` |  | const `1` | Policy layer wire format version. Absent only on historical layers; current policy writers emit 1. Metadata is excluded from policy precedence. |
+| `version` |  | const `2` | Current policy layer format is 2; published policy1 is frozen. Metadata is excluded from precedence. |
+| `routing` |  | object |  |
+| `routing.mode` |  | enum `off`, `rules`, `auto` |  |
+| `routing.tiers` |  | array of string (min length 1, max length 100, pattern `^[^\u0000-\u001f]+$`) (min items 1, max items 128) |  |
+| `routing.rules` |  | array of object (max items 64) |  |
+| `routing.rules[].id` | yes | string (min length 1, max length 100, pattern `^[^\u0000-\u001f]+$`) |  |
+| `routing.rules[].when` | yes | object |  |
+| `routing.rules[].route` | yes | `$defs/routeSelection` |  |
+| `routing.classifier` |  | object |  |
+| `routing.classifier.labels` | yes | object (max members 32) |  |
+| `routing.classifier.maxOutputTokens` | yes | integer (min 1, max 64) |  |
+| `routing.classifier.timeoutMilliseconds` | yes | integer (min 1, max 5000) |  |
+| `repeatTools` |  | object |  |
+| `repeatTools.mode` |  | enum `off`, `on` | Default: `"off"`. |
+| `repeatTools.remindAt` |  | integer (min 1, max 400) | Default: `1`. |
+| `repeatTools.stopAt` |  | integer (min 1, max 400) | Default: `5`. |
 
 ### `policy.json $defs/discovered`
 
@@ -156,3 +173,16 @@ Closed: a member the schema does not name is refused.
 | `discovered` |  | `$defs/discovered` |  |
 | `provider` |  | string (min length 1, max length 128) | same selects the author's connection; other selects a host connection of another family; otherwise a connected ID. Run > project > table. Default: `"same"`. |
 | `fallback` |  | array of string (min length 1, max length 128) (max items 16) | ADR-0020. Ordered host connection IDs tried after this role's selected connection. Every entry must be connected and in the selected connection's family. Default: `[]`. |
+
+### `policy.json $defs/routeSelection`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `route` | yes | enum `direct`, `agent` |  |
+| `tier` |  | string (min length 1, max length 100, pattern `^[^\u0000-\u001f]+$`) |  |
+| `skills` | yes | array of string (min length 1, max length 100, pattern `^[^\u0000-\u001f]+$`) (max items 128) |  |
+| `tools` | yes | one of: const `all` / array of string (min length 1, max length 100, pattern `^[^\u0000-\u001f]+$`) (max items 128) |  |
+| `operations` | yes | one of: const `all` / array of enum `discover`, `read`, `answer`, `check`, `transform`, `evaluate`, `propose`, `act`, `run`, `own-state`, `ask` (max items 128) |  |
+| `planning` | yes | enum `offered`, `withheld` |  |

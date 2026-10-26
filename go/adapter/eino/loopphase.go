@@ -80,7 +80,31 @@ func (t *turnState) loopPhase(shown []wire.WireTool) *phase {
 			r.emitAll(notices)
 			state := stateText(r.sc.Execution.RequestState(), currentState, instruction)
 			// Budgeted as one request: the system text and the state together.
-			held, err := r.budgeted(input, t.system+"\n"+state+"\n"+steers, t.schemas)
+			var held []*schema.Message
+			var err error
+			if t.steps == 1 && r.run.OpeningProjection() != nil {
+				actualSchemas := t.schemas
+				if t.toolsClosed && r.nativeTools {
+					actualSchemas = runcontext.Array()
+				}
+				var current *runcontext.CurrentRequest
+				if r.run.RequestContext() != nil {
+					current = r.run.RequestContext().CurrentRequest
+				}
+				parts, projectErr := r.sc.OpeningProjected(ctx, r.session.Prompt, t.system+"\n"+state+"\n"+steers, actualSchemas, current, r.run.OpeningProjection())
+				if projectErr != nil {
+					return nil, projectErr
+				}
+				held = []*schema.Message{userMessage(parts...)}
+			} else {
+				// Eino retains its original input history. Keep the admitted protected opening
+				// while retaining every subsequent actual message, tool call and result.
+				if r.run.OpeningProjection() != nil && len(input) > 0 && len(t.lastMessages) > 0 {
+					input = append([]*schema.Message{}, input...)
+					input[0] = t.lastMessages[0]
+				}
+				held, err = r.budgeted(input, t.system+"\n"+state+"\n"+steers, t.schemas)
+			}
 			if err != nil {
 				return nil, err
 			}

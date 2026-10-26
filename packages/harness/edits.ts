@@ -147,5 +147,5 @@ export class Drafts {
   this.notify({type:'edit_applied',document,line,bytes,valid:true})
   return answer({type:'edit_applied',document,line,bytes,valid:true})
  })}
- tools():HostTool[]{return EDIT_TOOLS.map(type=>({name:type,effect:'proposal',description:'Edit only the package draft; the anchor must occur exactly once. Every candidate is validated; refusal leaves the draft unchanged. The person accepts the whole document.',inputSchema:editSchema(type),execute:(args,signal)=>this.edit(type,args,signal)}))}
+ tools():HostTool[]{return EDIT_TOOLS.map(type=>({name:type,taxonomy:{operation:'propose',effect:'propose'},effect:'proposal',description:'Edit only the package draft; the anchor must occur exactly once. Every candidate is validated; refusal leaves the draft unchanged. The person accepts the whole document.',inputSchema:editSchema(type),execute:(args,signal)=>this.edit(type,args,signal)}))}
 }

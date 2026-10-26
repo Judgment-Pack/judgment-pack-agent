@@ -10,6 +10,7 @@
     {"name": "python-deps", "run": "python3 -m pip install --disable-pip-version-check -q -r requirements-dev.txt", "toolchain": "python", "timeout": 600}
   ],
   "checks": [
+    {"name": "generated-docs", "run": "python3 scripts/dev/generated_docs.py", "toolchain": "go", "summary": "^generated-docs:", "timeout": 300},
     {"name": "record-shapes", "run": "node scripts/record-shapes.mjs --check", "toolchain": "node", "timeout": 120},
     {"name": "contract", "run": "python3 -I -c 'import json, pathlib; files = sorted(pathlib.Path(\"contract\").rglob(\"*.json\")); [json.load(open(f, encoding=\"utf-8\")) for f in files]; print(\"checked %d JSON documents\" % len(files))'",
      "toolchain": "shell", "summary": "^checked ", "timeout": 120},
@@ -34,6 +35,8 @@
     {"name": "certify-codex", "run": "npm run certify -- --adapter codex", "toolchain": "node", "summary": "^certify [a-z]+: (passed|failed)", "timeout": 900},
     {"name": "certify-deepagents", "run": "npm run certify -- --adapter deepagents", "toolchain": "node", "summary": "^certify [a-z]+: (passed|failed)", "timeout": 900},
     {"name": "differential", "run": "node --test scripts/differential.test.mjs", "toolchain": "node", "summary": "^(# differential:|# pass|# fail)", "timeout": 300},
+    {"name": "gateway-receipt-process", "run": "node --test scripts/gateway-receipt-process.test.mjs", "toolchain": "node", "summary": "^# (pass|fail)", "timeout": 30},
+    {"name": "gateway-receipts", "run": "node scripts/gateway-receipt-check.mjs", "toolchain": "go", "summary": "^gateway receipts:", "timeout": 900},
     {"name": "go-module-path", "run": "path=$(awk '$1 == \"module\" { print $2 }' go/go.mod); if [ \"$path\" != \"github.com/Judgment-Pack/judgment-pack-agent/go\" ]; then echo \"go/go.mod declares module '$path'; it must be github.com/Judgment-Pack/judgment-pack-agent/go\"; exit 1; fi", "toolchain": "shell"},
     {"name": "gofmt", "run": "unformatted=$(gofmt -l go); if [ -n \"$unformatted\" ]; then echo 'not gofmt-formatted:'; echo \"$unformatted\"; exit 1; fi", "toolchain": "shell"},
     {"name": "go-vet", "run": "go vet ./...", "cwd": "go", "toolchain": "go", "timeout": 3000},

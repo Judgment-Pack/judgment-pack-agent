@@ -105,7 +105,9 @@ func (r *runState) toolList(names map[string]bool) ([]wire.McpTool, error) {
 	var out []wire.McpTool
 	for _, tool := range hosts {
 		if names == nil || names[tool.Name] {
-			out = append(out, mcpTool(tool.Name, tool.Description, tool.InputSchema))
+			shown := mcpTool(tool.Name, tool.Description, tool.InputSchema)
+			shown.Taxonomy = tool.Taxonomy
+			out = append(out, shown)
 		}
 	}
 	for _, tool := range runtime {
@@ -117,7 +119,9 @@ func (r *runState) toolList(names map[string]bool) ([]wire.McpTool, error) {
 		if served.Description != nil {
 			description = *served.Description
 		}
-		out = append(out, mcpTool(tool.Name, description, served.InputSchema))
+		shown := mcpTool(tool.Name, description, served.InputSchema)
+		shown.Meta = wire.TaxonomyFromContract(served.Meta)
+		out = append(out, shown)
 	}
 	return out, nil
 }

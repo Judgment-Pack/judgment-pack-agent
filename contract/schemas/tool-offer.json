@@ -87,10 +87,11 @@
   "additionalProperties": true,
   "$defs": {
     "runtimeTool": {
-      "description": "A runtime tool (McpTool). No effect class is carried: the host decides what is read-only by name (runtimeToolContextPolicy and the read list in context/managed.ts).",
+      "description": "Runtime MCP tool. Mandatory _meta carries owner operation, effect and optional checkKind/experimental. The gate maps it to internal taxonomy; only the served runtime path can evaluate.",
       "type": "object",
       "required": [
-        "name"
+        "name",
+        "_meta"
       ],
       "properties": {
         "name": {
@@ -101,6 +102,9 @@
         },
         "inputSchema": {
           "description": "The runtime's own JSON Schema for the arguments, passed through untouched."
+        },
+        "_meta": {
+          "$ref": "tool-taxonomy.json"
         }
       },
       "additionalProperties": true
@@ -111,7 +115,8 @@
       "required": [
         "name",
         "description",
-        "inputSchema"
+        "inputSchema",
+        "taxonomy"
       ],
       "properties": {
         "name": {
@@ -182,11 +187,74 @@
           "$ref": "#/$defs/effectClass"
         },
         "approval": {
-          "description": "Whether a call needs the person's approval before the host runs it (ADR-0006, ADR-0008): the host's approval policy (HostTool.approve, Go ApprovalPolicy) answers each call at once, $defs/approvalPolicy: allow runs it, refuse refuses it (the model reads a refused result and a guardrail says why), ask pauses the run (run-event.json#/$defs/approval_requested) until the person decides. A required tool without a policy answers ask. none: the call runs without asking, the host's declared decision. Default by effect class: none for read and propose (a proposal's approval is its review card), required for act. Read on a tool with a source; the host's own tools keep their own rules.",
+          "description": "Whether a call needs the person's approval before the host runs it (ADR-0006, ADR-0008): the host's approval policy (HostTool.approve, Go ApprovalPolicy) answers each call at once, $defs/approvalPolicy: allow runs it, refuse refuses it (the model reads a refused result and a guardrail says why), ask pauses the run (run-event.json#/$defs/approval_requested) until the person decides. A required tool without a policy answers ask. none: the call runs without asking, the host's declared decision. Default by effect class: none for read and propose (a proposal's approval is its review card), required for act. Read on a tool with a source; the host's own tools keep their own rules. ADR-0027 forbids lowering act approval to none; taxonomy determines the default.",
           "enum": [
             "none",
             "required"
           ]
+        },
+        "taxonomy": {
+          "$ref": "tool-taxonomy.json"
+        },
+        "taxonomyLimit": {
+          "type": "object",
+          "properties": {
+            "operations": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "discover",
+                  "read",
+                  "answer",
+                  "check",
+                  "transform",
+                  "evaluate",
+                  "propose",
+                  "act",
+                  "run",
+                  "own-state",
+                  "ask"
+                ]
+              }
+            },
+            "effects": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "pure",
+                  "read",
+                  "read-external",
+                  "propose",
+                  "act"
+                ]
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "annotations": {
+          "type": "object",
+          "required": [
+            "readOnlyHint",
+            "destructiveHint",
+            "idempotentHint",
+            "openWorldHint"
+          ],
+          "properties": {
+            "readOnlyHint": {
+              "type": "boolean"
+            },
+            "destructiveHint": {
+              "type": "boolean"
+            },
+            "idempotentHint": {
+              "type": "boolean"
+            },
+            "openWorldHint": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": true
@@ -309,7 +377,7 @@
       ]
     },
     "effectClass": {
-      "description": "What a call of a tool with a source may do (ADR-0006): read (it only reads; its result is data), propose (it is never run during the run: the call is held as a proposal for the person's review card, as propose_pack's is, and the host runs it on acceptance, after the run, under its grants) or act (it changes something outside the run, and by default needs the person's approval before each call). A tool with a source is act, with approval required, unless the host declares it a read or a proposal; the model's arguments never change it. On the offer the package sets the host tool's effect from it: read is effect read, propose is effect proposal, act is no effect, so Plan mode and a delegated child, which admit reads only, never offer an act.",
+      "description": "Legacy execution compatibility projection read/propose/act; if supplied it must agree with mandatory owner taxonomy. Never a fallback or authority.",
       "enum": [
         "read",
         "propose",
@@ -473,7 +541,7 @@
       "additionalProperties": false
     },
     "sourceDeclaration": {
-      "description": "A host tool with a source, as the host declares it (ADR-0006): its own name at the source (name, 1 to 128 characters), its description and schema as the source serves them, its source record, and optionally its effect class and approval. A declaration whose record or members are not these, or which carries effect or interaction (the package sets effect from effectClass; a source's tool is never a question or a delegation), or delegation on anything but a read, is refused before any request (configuration). A declaration whose name is a Runtime tool's (runtimeCeiling, and the Runtime tools kept off it), a reserved name, load_tool or propose_pack is withheld from the offer with a guardrail refused event: a Runtime's tools reach the model only through the gate. Snapshot mode (agent#168) supplies descriptorSnapshot and currentDescriptorSnapshot on the in-process ToolSource, not on the recorded sourceRecord; neither raw bytes nor callbacks are recorded. These members are MCP-only and must appear together; legacy currentDigest cannot be combined with snapshot mode. Offered descriptions and schemas come from captured candidates, with absent descriptions empty and absent schemas projecting an open object. Uncaptured tool names are refused, a stricter admission boundary than a Gateway binding whose tool descriptors all fell back. The original host schema remains an independent argument constraint in the package-supported subset, and the original host execute and approval functions retain all other validation and grants. Local source id and execution identity remain host records, distinct from the snapshot platform/server metadata.",
+      "description": "A host tool with a source, as the host declares it (ADR-0006): its own name at the source (name, 1 to 128 characters), its description and schema as the source serves them, its source record, and optionally its effect class and approval. A declaration whose record or members are not these, or which carries effect or interaction (the package sets effect from effectClass; a source's tool is never a question or a delegation), or delegation on anything but a read, is refused before any request (configuration). A declaration whose name is a Runtime tool's (runtimeCeiling, and the Runtime tools kept off it), a reserved name, load_tool or propose_pack is withheld from the offer with a guardrail refused event: a Runtime's tools reach the model only through the gate. Snapshot mode (agent#168) supplies descriptorSnapshot and currentDescriptorSnapshot on the in-process ToolSource, not on the recorded sourceRecord; neither raw bytes nor callbacks are recorded. These members are MCP-only and must appear together; legacy currentDigest cannot be combined with snapshot mode. Offered descriptions and schemas come from captured candidates, with absent descriptions empty and absent schemas projecting an open object. Uncaptured tool names are refused, a stricter admission boundary than a Gateway binding whose tool descriptors all fell back. The original host schema remains an independent argument constraint in the package-supported subset, and the original host execute and approval functions retain all other validation and grants. Local source id and execution identity remain host records, distinct from the snapshot platform/server metadata. ADR-0027 supersedes admission defaults: mandatory owner taxonomy and an approved taxonomy-bound list digest are required for every source, including gateway/custom. Current historical Gateway descriptor snapshots are not admitted until owner taxonomy is captured upstream; public historical snapshot readers remain unchanged.",
       "allOf": [
         {
           "$ref": "#/$defs/hostTool"
@@ -497,7 +565,10 @@
                     "custom"
                   ]
                 }
-              }
+              },
+              "required": [
+                "toolListDigest"
+              ]
             }
           },
           "not": {

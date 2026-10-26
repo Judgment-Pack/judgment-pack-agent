@@ -1,5 +1,7 @@
+import {gatewayTrustProblem,beginGatewayInvocation,verifyGatewayResult,GATEWAY_RECEIPT_ENVELOPE_BYTES,type GatewayReceiptTrust,type GatewayExecutionContext} from './gatewayReceipt'
+import {taxonomyProblem, taxonomyLimitProblem, taxonomyFits, taxonomyAnnotations, defaultApproval, type ToolTaxonomy} from './toolTaxonomy'
 import outputPatterns from './contract/output-patterns.json'
-import { descriptorSnapshotDigest, readDescriptorJSON, readDescriptorSnapshot, type DescriptorSnapshot } from './descriptorSnapshot'
+import { descriptorSnapshotDigest, readDescriptorJSON, readDescriptorSnapshot, type DescriptorSnapshot, type DescriptorApproval, descriptorApprovalProblem } from './descriptorSnapshot'
 /**
  * Tool sources (ADR-0006): tools from outside the Runtime, held at the boundary.
  *
@@ -118,11 +120,16 @@ export interface SourceRecord {
 export interface ToolSource extends Omit<SourceRecord, 'tool' | 'receipt' | 'identity' | 'identityDigest'> {
   identity?: SourceIdentity
   /** The identity the connection uses now, checked before each call where the host can report it. */
+  /** Host verifies signed receipt binding to the exact immutable call evidence. */
+  gatewayReceipt?: GatewayReceiptTrust
+  verifyReceipt?: (evidence: Readonly<{source: string; tool: string; args: string; result: string; receipt: string}>, signal: AbortSignal) => boolean | Promise<boolean>
   currentIdentity?: () => SourceIdentity | Promise<SourceIdentity>
   /** Legacy list-pin observation; snapshot declarations use currentDescriptorSnapshot instead. */
   currentDigest?: () => string | Promise<string>
   /** Complete approved canonical Gateway snapshot bytes; absent selects explicit legacy list-pin mode. */
   descriptorSnapshot?: Uint8Array
+  /** Trusted engine11/bindingV2 identity and complete owner projection, independent of snapshot bytes. */
+  descriptorApproval?: DescriptorApproval
   /** Current descriptors under the approved snapshot metadata; a fresh capture timestamp changes the pin. */
   currentDescriptorSnapshot?: () => Uint8Array | Promise<Uint8Array>
 }
@@ -184,6 +191,7 @@ export async function wireName(source: string, tool: string): Promise<string> {
 
 /** One tool of a source as its list's digest reads it. */
 export interface ListedTool {
+  taxonomy?: ToolTaxonomy
   name: string
   description?: string
   inputSchema?: unknown
@@ -198,7 +206,7 @@ export interface ListedTool {
  */
 export async function toolListDigest(tools: readonly ListedTool[]): Promise<string> {
   const list = tools
-    .map((tool) => ({ name: tool.name, description: tool.description ?? '', inputSchema: tool.inputSchema }))
+    .map((tool) => ({ name: tool.name, description: tool.description ?? '', inputSchema: tool.inputSchema, ...(tool.taxonomy === undefined ? {} : {taxonomy: tool.taxonomy}) }))
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
   return `sha256:${await contextDigest(canonicalJSON(list))}`
 }
@@ -254,11 +262,32 @@ const CREDENTIAL_LABEL_PATTERNS = [
 const credentialLabel = (label: unknown): boolean =>
   typeof label === 'string' && CREDENTIAL_LABEL_PATTERNS.some((pattern) => pattern.test(label))
 
+/** Compatibility projection only; never an owner declaration or fallback. */
+export function legacyClass(t: ToolTaxonomy): EffectClass { return t.effect === 'act' ? 'act' : t.effect === 'propose' ? 'propose' : 'read' }
+export function hostTaxonomyProblem(tool: HostTool): string {
+  const problem = taxonomyProblem(tool.taxonomy)
+  if (problem) return problem
+  if (taxonomyLimitProblem(tool.taxonomyLimit)) return taxonomyLimitProblem(tool.taxonomyLimit)
+  const t = tool.taxonomy!
+  if (tool.effectClass !== undefined && tool.effectClass !== legacyClass(t)) return 'legacy effectClass contradicts owner taxonomy'
+  if (t.effect === 'act' && tool.approval === 'none') return 'host approval cannot widen the declared act effect'
+  if (tool.source === undefined && (t.effect === 'act' || t.effect === 'read-external')) return 'external effects require source provenance'
+  if (tool.source !== undefined) {
+    if (t.operation === 'ask' || t.operation === 'own-state') return 'source provenance contradicts an internal operation'
+    if (tool.source.kind !== 'custom' && (t.effect === 'pure' || t.effect === 'read')) return 'external source contradicts local effect'
+    if (tool.source.gatewayReceipt !== undefined && t.effect !== 'read-external') return 'Gateway acquisition verification requires read-external taxonomy'
+    if (tool.source.gatewayReceipt !== undefined && (gatewayTrustProblem(tool.source.gatewayReceipt) || tool.source.descriptorSnapshot === undefined || tool.source.descriptorApproval === undefined)) return 'Gateway receipt trust requires valid pins and independently approved V2 descriptors'
+    if (t.effect === 'read-external' && typeof tool.source.verifyReceipt !== 'function' && tool.source.gatewayReceipt === undefined) return 'external read requires a host receipt verifier'
+  }
+  if (tool.interaction === 'question' && t.operation !== 'ask') return 'question interaction contradicts owner taxonomy'
+  return ''
+}
+
 /** Why a declaration cannot be read, or `''`. */
 function declarationProblem(tool: HostTool): string {
   const source = tool.source as unknown
   if (!object(source)) return 'its source is not an object'
-  const known = ['kind', 'id', 'trust', 'version', 'toolListDigest', 'identity', 'currentIdentity', 'currentDigest', 'descriptorSnapshot', 'currentDescriptorSnapshot']
+  const known = ['kind', 'id', 'trust', 'version', 'toolListDigest', 'identity', 'currentIdentity', 'currentDigest', 'descriptorSnapshot', 'descriptorApproval', 'currentDescriptorSnapshot', 'gatewayReceipt', 'verifyReceipt']
   const extra = Object.keys(source).filter((member) => !known.includes(member))
   if (extra.length > 0) return `its source carries ${JSON.stringify(extra[0]!.slice(0, 64))}, which a source record does not name`
   if (source.kind === 'runtime') return "its source is the Runtime, whose tools come through tools/list behind the gate and are never declared"
@@ -268,15 +297,14 @@ function declarationProblem(tool: HostTool): string {
   if (source.version !== undefined && (typeof source.version !== 'string' || source.version.length < 1 || source.version.length > 64)) return 'its source version is not 1 to 64 characters'
   if (source.toolListDigest !== undefined && (typeof source.toolListDigest !== 'string' || !DIGEST.test(source.toolListDigest))) return 'its tool list digest is not sha256: and 64 lower-case hex digits'
   if (source.version === undefined && source.toolListDigest === undefined) return 'its source names neither a version nor a tool list digest'
-  if (source.kind === 'mcp' && source.toolListDigest === undefined) return 'its source is an MCP server whose tool list is not pinned by digest'
+  if (source.toolListDigest === undefined) return 'its source has no approved taxonomy-bound tool-list digest'
   if (source.identity !== undefined && (!object(source.identity) || !exactIdentity(source.identity))) return 'its identity is not a person, service or connection with a label of 1 to 128 characters'
   if (source.currentIdentity !== undefined && typeof source.currentIdentity !== 'function') return "its source's currentIdentity is not a function"
   if (source.currentDigest !== undefined && typeof source.currentDigest !== 'function') return "its source's currentDigest is not a function"
-  if (source.descriptorSnapshot !== undefined) {
-    if (source.kind !== 'mcp' || !(source.descriptorSnapshot instanceof Uint8Array)) return 'its descriptor snapshot is not MCP snapshot bytes'
-    if (typeof source.currentDescriptorSnapshot !== 'function') return 'its descriptor snapshot has no current snapshot observer'
-    if (source.currentDigest !== undefined) return 'its snapshot declaration also carries the legacy currentDigest observer'
-  } else if (source.currentDescriptorSnapshot !== undefined) return 'its current snapshot observer has no approved snapshot'
+  if (source.descriptorSnapshot !== undefined && source.kind !== 'mcp' && source.kind !== 'gateway') return 'its descriptor snapshot is not an MCP/Gateway snapshot'
+  if (source.descriptorSnapshot !== undefined && (source.currentDescriptorSnapshot === undefined || source.descriptorApproval === undefined)) return 'its V2 descriptor snapshot requires an observer and independent approval context'
+  if (source.descriptorSnapshot !== undefined && source.currentDigest !== undefined) return 'its snapshot declaration also carries the legacy currentDigest observer'
+  if (source.descriptorSnapshot === undefined && (source.currentDescriptorSnapshot !== undefined || source.descriptorApproval !== undefined)) return 'its current snapshot observer or approval has no approved snapshot'
   if (typeof tool.name !== 'string' || tool.name.length < 1 || tool.name.length > 128) return 'its name is not 1 to 128 characters'
   if (typeof tool.description !== 'string') return 'its description is not text'
   if (!object(tool.inputSchema)) return 'its input schema is not a JSON object'
@@ -284,7 +312,7 @@ function declarationProblem(tool: HostTool): string {
   if (tool.interaction !== undefined) return 'it declares an interaction, and a tool with a source is never a question or a delegation'
   if (tool.effectClass !== undefined && !(EFFECT_CLASSES as readonly unknown[]).includes(tool.effectClass)) return 'its effect class is not read, propose or act'
   if (tool.approval !== undefined && tool.approval !== 'none' && tool.approval !== 'required') return 'its approval is not none or required'
-  if (tool.delegation !== undefined && tool.effectClass !== 'read') return 'it is offered to delegated children without being declared a read'
+  if (tool.delegation !== undefined && legacyClass(tool.taxonomy!) !== 'read') return 'it is offered to delegated children without being declared a read'
   if (tool.approve !== undefined && typeof tool.approve !== 'function') return 'its approval policy is not a function'
   return ''
 }
@@ -295,9 +323,9 @@ function declarationProblem(tool: HostTool): string {
  * delegation coordinator offers such a tool on an agent capability only while the invocation that
  * continues after its pause remains.
  */
-export function asksApproval(tool: Pick<HostTool, 'source' | 'effectClass' | 'approval'>): boolean {
-  const effectClass = tool.effectClass ?? 'act'
-  return tool.source !== undefined && effectClass === 'act' && ((tool.approval ?? APPROVAL_DEFAULT[effectClass]) === 'required' || tool.source?.identity?.kind === 'service')
+export function asksApproval(tool: Pick<HostTool, 'source' | 'effectClass' | 'approval' | 'taxonomy'>): boolean {
+  const effectClass = tool.taxonomy ? legacyClass(tool.taxonomy) : 'act'
+  return tool.source !== undefined && effectClass === 'act' && ((tool.approval ?? defaultApproval(tool.taxonomy?.effect ?? 'act')) === 'required' || tool.source?.identity?.kind === 'service')
 }
 
 /** The effect a tool of each class has on the offer: Plan mode and a child admit reads only. */
@@ -321,8 +349,10 @@ export async function declareSources(hostTools: readonly HostTool[], served: rea
   const prepared: HostTool[] = []
   const declared: { tool: HostTool; wire: string }[] = []
   for (const original of hostTools) {
-    let tool = original
-    if (tool.source === undefined) { prepared.push(tool); continue }
+    const taxonomyError = hostTaxonomyProblem(original)
+    if (taxonomyError) throw authoredFailure('configuration', `Tool taxonomy refused: ${taxonomyError}. Nothing was sent.`, 'context')
+    let tool = {...original, taxonomy: structuredClone(original.taxonomy!), annotations: taxonomyAnnotations(original.taxonomy!.effect)}
+    if (tool.source === undefined) { if(taxonomyFits(tool.taxonomy!,tool.taxonomyLimit)) prepared.push(tool); else withheld.push({tool:'taxonomy',detail:'The host taxonomy limit withholds this tool.'}); continue }
     if (credentialLabel(tool.source?.identity?.label)) {
       withheld.push({ tool: 'source', detail: 'A source identity label carries a credential; its declaration was withheld before publication.' })
       continue
@@ -340,6 +370,7 @@ export async function declareSources(hostTools: readonly HostTool[], served: rea
         const bytes = Uint8Array.from(source.descriptorSnapshot!)
         const snapshot = readDescriptorSnapshot(bytes)
         const digest = await descriptorSnapshotDigest(bytes)
+        if (descriptorApprovalProblem(snapshot, source.descriptorApproval, tool.name, tool.taxonomy)) throw Error('descriptor approval differs')
         const earlier = snapshots.get(source.id)
         if (earlier !== undefined && (earlier.bytes.length !== bytes.length || !bytes.every((b, at) => b === earlier.bytes[at]))) throw Error('different snapshots')
         const admitted = earlier ?? { bytes, digest, snapshot, changed: false }
@@ -353,7 +384,7 @@ export async function declareSources(hostTools: readonly HostTool[], served: rea
         const schema = candidate?.inputSchemaText === undefined ? { type: 'object' } : readDescriptorJSON(candidate.inputSchemaText)
         if (!object(schema)) throw Error('schema is not an object')
         tool = { ...tool, description: candidate?.description ?? '', inputSchema: schema, approve,
-          source: Object.freeze({ ...source, descriptorSnapshot: bytes, identity: source.identity === undefined ? undefined : { ...source.identity }, currentDigest: async () => {
+          source: Object.freeze({ ...source, descriptorSnapshot: bytes, descriptorApproval: structuredClone(source.descriptorApproval!), gatewayReceipt: source.gatewayReceipt === undefined ? undefined : structuredClone(source.gatewayReceipt), identity: source.identity === undefined ? undefined : { ...source.identity }, currentDigest: async () => {
             if (admitted.changed) return ''
             try {
               const now = await descriptorSnapshotDigest(await observe())
@@ -384,7 +415,6 @@ export async function declareSources(hostTools: readonly HostTool[], served: rea
   // The person approved the list, not each tool: an MCP source whose declared tools hash to another digest is withheld whole.
   const unapproved = new Set<string>()
   for (const [id, record] of sources) {
-    if (record.kind !== 'mcp') continue
     const snapshot = snapshots.get(id)
     if (snapshot !== undefined && bySource.get(id)!.some(tool => !Object.hasOwn(snapshot.snapshot.tools, tool.name))) {
       unapproved.add(id)
@@ -405,6 +435,7 @@ export async function declareSources(hostTools: readonly HostTool[], served: rea
   for (const { tool, wire } of declared) {
     const id = tool.source!.id
     if (unapproved.has(id)) continue
+    if(!taxonomyFits(tool.taxonomy!,tool.taxonomyLimit)){withheld.push({tool:'taxonomy',detail:'The host taxonomy limit withholds this tool.'});continue}
     if (HELD_NAMES.has(tool.name)) {
       withheld.push({ tool: wire, detail: `${id} serves a tool named ${tool.name}, a name the Runtime or the harness keeps; it is not offered, and a Runtime's tools reach the model only through the gate` })
       continue
@@ -413,10 +444,10 @@ export async function declareSources(hostTools: readonly HostTool[], served: rea
       withheld.push({ tool: wire, detail: `the wire name ${wire} of ${id}'s ${JSON.stringify(tool.name.slice(0, 64))} is also another offered tool's; neither is offered` })
       continue
     }
-    const effectClass = tool.effectClass ?? 'act'
+    const effectClass = tool.taxonomy ? legacyClass(tool.taxonomy) : 'act'
     const record: SourceRecord = { ...sources.get(id)!, tool: tool.name }
     const { effectClass: _class, approval: _approval, approve: _approve, source: _source, ...rest } = tool
-    const shown: HostTool = { ...rest, name: wire, source: { ...record }, effectClass, approval: tool.approval ?? APPROVAL_DEFAULT[effectClass], ...(EFFECT_OF[effectClass] === undefined ? {} : { effect: EFFECT_OF[effectClass] }) }
+    const shown: HostTool = { ...rest, name: wire, source: { ...record }, effectClass, approval: tool.approval ?? defaultApproval(tool.taxonomy?.effect ?? 'act'), ...(EFFECT_OF[effectClass] === undefined ? {} : { effect: EFFECT_OF[effectClass] }) }
     offered.set(tool, shown)
     entries.set(wire, { wire, record: record as SourceEntry['record'], effectClass, approval: shown.approval!, declared: tool, description: tool.description, catalogued: false })
   }
@@ -678,6 +709,8 @@ export class ApprovalHeld extends Error {
  * child, Plan mode, the critic), or `''`.
  */
 export interface ApprovalBook {
+  claim?():boolean
+  release?():void
   current(): ApprovalRecord | undefined
   ask(record: ApprovalRecord): void
   closed(): string
@@ -882,12 +915,14 @@ export class SourceGate {
     const drawn = callId ?? crypto.randomUUID()
     let answer: ApprovalDecided
     let detail = ''
-    const closed = this.book?.closed() ?? ''
+    const claimed=this.book?.claim?.()
+    try{
+    const closed = claimed===false?'Another act call is being prepared or waits for approval; nothing was run.':this.book?.closed() ?? ''
     const row = this.row(id)
     let served = true
     const changedIdentity = closed === '' && (entry.declared.source?.currentIdentity !== undefined || this.alteredIdentities.has(id)) && await this.identityChanged(entry)
     const check = entry.declared.source?.currentDigest
-    if (closed === '' && check !== undefined && entry.record.kind === 'mcp' && !this.alteredSources.has(id)) {
+    if (closed === '' && check !== undefined && (entry.record.kind === 'mcp' || entry.declared.source?.descriptorSnapshot !== undefined) && !this.alteredSources.has(id)) {
       try { served = (await check()) === entry.record.toolListDigest } catch { served = false }
       if (!served && entry.declared.source?.descriptorSnapshot !== undefined) this.alteredSources.add(id)
     }
@@ -932,6 +967,7 @@ export class SourceGate {
       else this.queuedDecisions.set(name, [...(this.queuedDecisions.get(name) ?? []), held])
     }
     return { answer, detail, callId: drawn }
+    }finally{if(claimed)this.book?.release?.()}
   }
 
   /**
@@ -969,6 +1005,7 @@ export class SourceGate {
     if (entry === undefined || run === undefined || !this.needsApproval(record.name) || canonicalJSON(entry.record) !== canonicalJSON(record.source)) {
       return refusedWith(this.refuse(record.name, `${record.name} is no longer offered as it was when the person decided; the call was not run and nothing was changed`, 'approval stale'))
     }
+    if (entry.declared.source?.gatewayReceipt !== undefined) return refusedWith(this.refused(entry,this.refuse(record.name,'Gateway acquisition verification cannot execute an approved action; this call was not run'),record.callId))
     const id = entry.record.id
     const row = this.row(id)
     if (this.alteredSources.has(id)) return refusedWith(this.refused(entry, this.refuse(record.name, this.changedDetail(entry), this.alteredIdentities.has(id) ? 'identity changed' : undefined), record.callId))
@@ -986,7 +1023,7 @@ export class SourceGate {
       return refusedWith(this.refused(entry, this.refuse(record.name, this.changedDetail(entry), 'identity changed'), record.callId))
     }
     const check = entry.declared.source?.currentDigest
-    if (check !== undefined && entry.record.kind === 'mcp') {
+    if (check !== undefined && (entry.record.kind === 'mcp' || entry.declared.source?.descriptorSnapshot !== undefined)) {
       let now: unknown
       try { now = await check() } catch { now = undefined }
       const unchanged = now === entry.record.toolListDigest
@@ -1024,6 +1061,7 @@ export class SourceGate {
   async call(tool: HostTool, args: Record<string, unknown>, signal: AbortSignal, run: (args: Record<string, unknown>, signal: AbortSignal) => Promise<McpToolResult>, callId?: string): Promise<McpToolResult> {
     const entry = this.entries.get(tool.name)
     if (entry === undefined) return run(args, signal)
+    if (entry.declared.source?.gatewayReceipt !== undefined && (entry.effectClass !== 'read' || entry.declared.taxonomy?.effect !== 'read-external')) throw this.refused(entry,this.refuse(tool.name,'Gateway acquisition verification requires read-external taxonomy; this call was not run'),callId)
     const id = entry.record.id
     const row = this.row(id)
     // ADR-0008: an act call is answered by the decision taken before its tool_call, or by one taken now;
@@ -1067,7 +1105,7 @@ export class SourceGate {
       throw this.refused(entry, this.refuse(tool.name, this.changedDetail(entry), 'identity changed'), callId)
     }
     const check = entry.declared.source?.currentDigest
-    if (check !== undefined && entry.record.kind === 'mcp') {
+    if (check !== undefined && (entry.record.kind === 'mcp' || entry.declared.source?.descriptorSnapshot !== undefined)) {
       let now: unknown
       try { now = await check() } catch { now = undefined }
       if (now !== entry.record.toolListDigest) {
@@ -1092,19 +1130,49 @@ export class SourceGate {
     }
     const limit = Math.min(this.bounds.sourceCallMilliseconds, this.bounds.toolCallMilliseconds)
     const started = Date.now()
+    const argsEvidence = canonicalJSON(args)
     let result: McpToolResult
+    let gatewayInvocation: Readonly<GatewayExecutionContext> | undefined
     try {
-      result = await withDeadline((bounded) => run(args, bounded), signal, limit, () => toolTimeout(limit))
+      result = await withDeadline((bounded) => {
+        if(entry.declared.source!.gatewayReceipt!==undefined) gatewayInvocation=beginGatewayInvocation(bounded)
+        return run(args,bounded)
+      }, signal, limit, () => toolTimeout(limit))
     } catch (error) {
       row.milliseconds += Date.now() - started;this.publish()
       this.mark(tool.name, callId, {})
       throw error
     }
-    row.milliseconds += Date.now() - started;this.publish()
-    const { receipt, ...shown } = result as McpToolResult & { receipt?: unknown }
-    row.bytes += utf8Bytes(JSON.stringify(shown) ?? '');this.publish()
-    this.mark(tool.name, callId, typeof receipt === 'string' && receipt.length >= 1 && receipt.length <= 128 ? { receipt } : {})
-    return shown
+    try {
+      let gatewayReceipt: string | undefined
+      let gatewayVerified = false
+      if(entry.declared.source!.gatewayReceipt!==undefined) {
+        try {
+          const source=entry.declared.source!
+          const remaining=limit-(Date.now()-started)
+          if(remaining<=0)throw Error('Gateway verification deadline exceeded')
+          const verified=await withDeadline(bounded=>verifyGatewayResult(result,source.gatewayReceipt!,source.descriptorApproval!,source.descriptorSnapshot!,entry.record.tool!,JSON.parse(argsEvidence),gatewayInvocation!,GATEWAY_RECEIPT_ENVELOPE_BYTES,bounded),signal,remaining,()=>toolTimeout(limit))
+          result=verified.result;gatewayReceipt=verified.receipt;gatewayVerified=true
+        } catch { /* No custom-verifier fallback after Gateway verification failure. */ }
+      }
+      const { receipt: hostReceipt, ...body } = result as McpToolResult & { receipt?: unknown }
+      const receipt=gatewayReceipt??hostReceipt
+      const shown = structuredClone(body)
+      if (entry.declared.taxonomy!.effect === 'read-external') {
+        let verified = gatewayVerified
+        try {
+          if (entry.declared.source!.gatewayReceipt===undefined && typeof receipt === 'string' && receipt.length >= 1 && receipt.length <= 128) verified = await withDeadline(bounded => Promise.resolve(entry.declared.source!.verifyReceipt!(Object.freeze({source: canonicalJSON(entry.record), tool: entry.record.tool!, args: argsEvidence, result: canonicalJSON(shown), receipt}), bounded)), signal, Math.max(1, limit - (Date.now() - started)), () => toolTimeout(limit)) === true
+        } catch { /* Verification fails closed; verifier text is not published. */ }
+        if (!verified) {
+          const detail = 'External read receipt verification failed; its result was withheld. The call ran; do not retry automatically.'
+          this.refuse(tool.name, detail)
+          throw this.refused(entry, new AIFailureError({version: 1, code: 'tool-failed', source: 'tool', outcome: 'unknown', detail}), callId)
+        }
+      }
+      row.bytes += utf8Bytes(JSON.stringify(shown) ?? '');this.publish()
+      this.mark(tool.name, callId, typeof receipt === 'string' && receipt.length >= 1 && receipt.length <= 128 ? { receipt } : {})
+      return shown
+    } finally { row.milliseconds += Date.now() - started;this.publish() }
   }
 
   /** One Runtime call, in the Runtime's row. */
@@ -1134,7 +1202,7 @@ export class SourceGate {
   /** `load_tool`, offered where the schema budget tripped: one catalogued tool's schema per call. */
   loadTool(): HostTool {
     return {
-      name: LOAD_TOOL,
+      name: LOAD_TOOL,taxonomy:{operation:'own-state',effect:'pure'},
       effect: 'read',
       description: `Load the input schema of one catalogued tool before calling it. Pass its name as the tools list shows it; only a catalogued tool's schema loads. A loaded schema stays in the execution state for the rest of this response.`,
       inputSchema: LOAD_TOOL_SCHEMA,

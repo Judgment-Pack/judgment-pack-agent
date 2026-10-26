@@ -1,0 +1,267 @@
+{
+  "version": 1,
+  "changed": [
+    {
+      "paths": [
+        "packages/harness/**"
+      ],
+      "checks": [
+        "record-shapes",
+        "local-paths",
+        "agent-docs",
+        "diff-check",
+        "python-tests",
+        "mutation-rows",
+        "build",
+        "release-quality-engine",
+        "packed-smoke",
+        "reference",
+        "unit-tests",
+        "certify-vercel",
+        "certify-codex",
+        "certify-deepagents",
+        "differential",
+        "go-test",
+        "go-race",
+        "harness-check",
+        "parity"
+      ]
+    },
+    {
+      "paths": [
+        "packages/harness/package.json"
+      ],
+      "checks": [
+        "local-paths",
+        "agent-docs",
+        "diff-check",
+        "dependency-audit",
+        "dependency-audit-live"
+      ]
+    },
+    {
+      "paths": [
+        "contract/**"
+      ],
+      "checks": [
+        "record-shapes",
+        "contract",
+        "local-paths",
+        "agent-docs",
+        "diff-check",
+        "python-tests",
+        "build",
+        "release-quality-engine",
+        "packed-smoke",
+        "reference",
+        "unit-tests",
+        "certify-vercel",
+        "certify-codex",
+        "certify-deepagents",
+        "go-generate",
+        "go-test",
+        "go-race",
+        "harness-check"
+      ]
+    },
+    {
+      "paths": [
+        "go/**"
+      ],
+      "checks": [
+        "record-shapes",
+        "local-paths",
+        "agent-docs",
+        "diff-check",
+        "python-tests",
+        "build",
+        "packed-smoke",
+        "reference",
+        "unit-tests",
+        "differential",
+        "go-module-path",
+        "gofmt",
+        "go-vet",
+        "go-generate",
+        "go-test",
+        "go-race",
+        "harness-check"
+      ]
+    },
+    {
+      "paths": [
+        "corpus/**"
+      ],
+      "checks": [
+        "local-paths",
+        "agent-docs",
+        "diff-check",
+        "release-quality",
+        "build",
+        "release-quality-engine",
+        "unit-tests",
+        "certify-vercel",
+        "certify-codex",
+        "certify-deepagents",
+        "go-test",
+        "go-race",
+        "harness-check"
+      ]
+    },
+    {
+      "paths": [
+        "quality/**",
+        "scripts/release-quality.mjs",
+        "scripts/release-quality.test.mjs",
+        "scripts/release-quality-engine.test.mjs"
+      ],
+      "checks": [
+        "local-paths",
+        "agent-docs",
+        "diff-check",
+        "release-quality",
+        "build",
+        "release-quality-engine"
+      ]
+    },
+    {
+      "paths": [
+        "docs/reference/**"
+      ],
+      "checks": [
+        "local-paths",
+        "agent-docs",
+        "diff-check",
+        "mutation-rows",
+        "build",
+        "reference",
+        "unit-tests"
+      ]
+    },
+    {
+      "paths": [
+        "docs/**",
+        "*.md"
+      ],
+      "checks": [
+        "local-paths",
+        "agent-docs",
+        "diff-check",
+        "python-tests"
+      ]
+    },
+    {
+      "paths": [
+        "tests/**",
+        "scripts/check-upgrade-guides.py",
+        "requirements-dev.txt"
+      ],
+      "checks": [
+        "contract",
+        "local-paths",
+        "agent-docs",
+        "diff-check",
+        "python-tests"
+      ]
+    },
+    {
+      "paths": [
+        "scripts/record-shapes.mjs"
+      ],
+      "checks": [
+        "record-shapes",
+        "local-paths",
+        "agent-docs",
+        "diff-check"
+      ]
+    },
+    {
+      "paths": [
+        "scripts/dependency-audit.mjs",
+        "scripts/dependency-audit.test.mjs"
+      ],
+      "checks": [
+        "local-paths",
+        "agent-docs",
+        "diff-check",
+        "dependency-audit",
+        "dependency-audit-live"
+      ]
+    },
+    {
+      "paths": [
+        "scripts/packed-smoke.test.mjs",
+        "scripts/body-parser.test.mjs",
+        "scripts/undici.test.mjs",
+        "scripts/zod-size.test.mjs",
+        "scripts/memory-lifecycle-probe.go"
+      ],
+      "checks": [
+        "local-paths",
+        "agent-docs",
+        "diff-check",
+        "build",
+        "packed-smoke"
+      ]
+    },
+    {
+      "paths": [
+        "scripts/gen-reference.mjs",
+        "scripts/gen-reference.test.mjs",
+        "scripts/event-matrix/**"
+      ],
+      "checks": [
+        "local-paths",
+        "agent-docs",
+        "diff-check",
+        "build",
+        "reference",
+        "unit-tests"
+      ]
+    },
+    {
+      "paths": [
+        "scripts/differential.test.mjs",
+        "scripts/differential/**"
+      ],
+      "checks": [
+        "local-paths",
+        "agent-docs",
+        "diff-check",
+        "differential"
+      ]
+    },
+    {
+      "paths": [
+        "scripts/parity.sh"
+      ],
+      "checks": [
+        "local-paths",
+        "agent-docs",
+        "diff-check",
+        "parity"
+      ]
+    },
+    {
+      "paths": [
+        "scripts/sync-agent-docs.sh"
+      ],
+      "checks": [
+        "local-paths",
+        "agent-docs",
+        "diff-check"
+      ]
+    }
+  ],
+  "generators": [
+    {
+      "name": "dependencies",
+      "run": "python3 scripts/gen-dependencies.py",
+      "outputs": [
+        "docs/dependencies.md"
+      ],
+      "timeout": 240,
+      "dependencies": []
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+# ADR-0023: Per-turn routing over an admitted offer
+
+Status: accepted design, 2026-10-25. Issue agent#172. Implementation and bounded focused acceptance are verified; integrated CI, independent review and final release evidence remain pending.
+
+## Decision
+
+Routing is an optional cost and focus projection of the existing resolved author boundary. Its default is off. Policy version 2 introduces `routing`; the published policy version 1 graph remains immutable. A routing-off resolved policy omits routing members, and ordinary feature-free records retain their existing versions and bytes.
+
+For one turn the package selects, in order: the explicit host route, the first matching deterministic rule, an optional closed-label classifier under `auto`, then the full eligible default. An invalid selected route records a refusal and uses the full eligible default; it never creates missing authority. Tiers are an explicit host cost/preference order within the admitted author allowance. The package does not infer monetary prices or substitute an unavailable model binding.
+
+A route names `direct` or `agent`, an optional admitted reasoning tier, skill IDs to preload, tool names or `all`, operation families or `all`, and whether the admitted planner is presented. The complete admitted catalogue remains pinned separately from the narrowed request presentation. The request builder receives the final tier and tool offer through the resolved RequestSession boundary. Exact admitted ask/pure tools whose interaction is `question` remain offered through every route; when ask_user is retained, its selected, normally admitted asking-well method remains catalogued and loadable. This exception grants no missing tool, source, method or permission.
+
+The classifier uses the same prompt assembler, source boundary, original writer and physical budget admission as an author call, with its own classifier ledger role. It selects from a bounded label set using one physical attempt below package retry wrappers, at the first explicit tier. Its final encoded output ceiling is at most 64 tokens and its deadline at most five seconds. The cap is rechecked after canonical request rewrites. Unsupported physical routes record refusal rather than claim a cap they cannot enforce. Provider-reported token figures are retained; reservations are never reported as usage. A known refusal or unknown label may select the default. Cancellation, missing release, unknown outcome or lost store acknowledgement cannot authorize that next execution.
+
+A current checkpoint version 3 stores the closed `turnRoute` decision, including binding and full catalogue digests. Current event version 2 records `route_decided` and `route_widened`. RunReport version 2 projects the validated route; the historical RunReport version 1 schema is unchanged. A retained classifier-pending record cannot authorize automatic classification replay. Resume validates and reuses the pinned route and request bytes.
+
+## One widening
+
+Only a private signal from an exact current admitted but withheld capability can request widening. The package does not infer capability need from prose or an error string. It drains the current execution before a fresh request is admitted, then acknowledges one `route_widened` transition through the original writer. Widening restores the existing full eligible offer and can change direct to agent; it cannot change source approval, effect ceilings, permission presets, critic isolation, delegation allowance or Runtime owner/currentness.
+
+A native capability whose request semantics cannot prove bounded direct execution uses the eligible agent default with a recorded refusal. Native widening additionally requires actual release acknowledgement. An acknowledged widened-invocation disposition must bind the original writer/run/execution/scope, exact claim/request and route binding, retain the old unknown audit/budget row, and exclude only that exact superseded row from recovery. The shared claim-identity hook and actual restart proof are a tracked integration dependency; validation of the marker alone is not execution authority.
+
+## Critic and release boundaries
+
+Routing selects the author presentation and tier. It does not decide whether the critic runs, and it does not lower the critic's independent policy or read-only gate. ADR-0010 continues to own that decision. Child routes retain the existing narrower parent/profile ceilings.
+
+The feature remains off by default. Deterministic fixture results are not a live release comparison. The routed/unrouted fixed corpus replay, exact source/build/model identities, answer-change decision and attributable usage/cost basis remain release gates owned by the integrating host, subject to the [Agent v0.11.0-only maintainer deferral](../release-quality.md#v0110-scope-decision). That decision defers the dependent live routed/unrouted report together with #169 for Agent v0.11.0 only. The comparison remains open and unscheduled. Desk can test the published release and report bugs; this decision sets or waives no Desk release gate. All other Agent gates remain unchanged. No live answer-quality, token-saving or monetary-cost result is claimed, and there is no evidence-based recommendation to enable auto routing. Opaque native model-request and token dimensions remain incomplete; a provider invocation is not evidence of a known number of internal generations.

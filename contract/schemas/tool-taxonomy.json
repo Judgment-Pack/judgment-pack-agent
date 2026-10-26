@@ -1,0 +1,325 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/tool-taxonomy.json",
+  "title": "Tool taxonomy",
+  "description": "ADR-0027 owner-declared operation and effect. In-process taxonomy is separate from legacy HostTool.effect. Runtime publishes these members in MCP _meta; no metadata or trust label grants authority.",
+  "type": "object",
+  "required": [
+    "operation",
+    "effect"
+  ],
+  "properties": {
+    "operation": {
+      "enum": [
+        "discover",
+        "read",
+        "answer",
+        "check",
+        "transform",
+        "evaluate",
+        "propose",
+        "act",
+        "run",
+        "own-state",
+        "ask"
+      ]
+    },
+    "effect": {
+      "enum": [
+        "pure",
+        "read",
+        "read-external",
+        "propose",
+        "act"
+      ]
+    },
+    "checkKind": {
+      "enum": [
+        "validate",
+        "check",
+        "verify",
+        "test",
+        "analyze",
+        "advise"
+      ]
+    },
+    "experimental": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "check"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "checkKind"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "checkKind"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "discover"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "effect": {
+            "enum": [
+              "pure",
+              "read",
+              "read-external"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "read"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "effect": {
+            "enum": [
+              "read",
+              "read-external"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "answer"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "effect": {
+            "enum": [
+              "pure",
+              "read",
+              "read-external"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "check"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "effect": {
+            "enum": [
+              "pure",
+              "read",
+              "read-external"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "transform"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "effect": {
+            "enum": [
+              "pure"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "evaluate"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "effect": {
+            "enum": [
+              "pure",
+              "read",
+              "act"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "propose"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "effect": {
+            "enum": [
+              "propose"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "act"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "effect": {
+            "enum": [
+              "act"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "run"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "effect": {
+            "enum": [
+              "read",
+              "read-external",
+              "propose",
+              "act"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "own-state"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "effect": {
+            "enum": [
+              "pure",
+              "read"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "ask"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "effect": {
+            "enum": [
+              "pure"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "required": [
+        "effect",
+        "operations"
+      ],
+      "properties": {
+        "effect": {
+          "enum": [
+            "pure",
+            "read",
+            "read-external",
+            "propose",
+            "act"
+          ]
+        },
+        "operations": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "discover",
+              "read",
+              "answer",
+              "check",
+              "transform",
+              "evaluate",
+              "propose",
+              "act",
+              "run",
+              "own-state",
+              "ask"
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

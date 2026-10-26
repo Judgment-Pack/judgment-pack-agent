@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
+	"strings"
 )
 
 var errorf = fmt.Errorf
@@ -143,6 +145,59 @@ func memberString(data []byte, name string) (string, error) {
 		return "", errorf("member %q is not a string", name)
 	}
 	return value, nil
+}
+
+// memberInteger selects an exact safe-integer tag and patches only that leaf for
+// typed decoding. It follows the retained report byte reader's exact decimal model,
+// rather than rounding a fractional token through float64. Caller and payload bytes stay whole.
+func memberInteger(data []byte, name string) (int64, []byte, error) {
+	var members map[string]json.RawMessage
+	if err := json.Unmarshal(data, &members); err != nil {
+		return 0, nil, err
+	}
+	raw, found := members[name]
+	if !found {
+		return 0, nil, errorf("no %q member", name)
+	}
+	raw = bytes.TrimSpace(raw)
+	if jsonKind(raw) != "number" {
+		return 0, nil, errorf("member %q is not an exact safe integer", name)
+	}
+	token := string(raw)
+	negative := strings.HasPrefix(token, "-")
+	unsigned := strings.TrimPrefix(token, "-")
+	mantissa, exponentText, exponential := strings.Cut(strings.ToLower(unsigned), "e")
+	integer, fraction, _ := strings.Cut(mantissa, ".")
+	digits := strings.TrimLeft(integer+fraction, "0")
+	var value int64
+	if digits != "" {
+		exponent := 0
+		if exponential {
+			var err error
+			exponent, err = strconv.Atoi(exponentText)
+			// A nonzero safe integer cannot need an exponent larger than its token
+			// plus the 16-digit safe domain. Check before any scale arithmetic.
+			if err != nil || exponent > len(token)+16 || exponent < -len(token)-16 {
+				return 0, nil, errorf("member %q is not an exact safe integer", name)
+			}
+		}
+		trimmed := strings.TrimRight(digits, "0")
+		scale := exponent - len(fraction) + len(digits) - len(trimmed)
+		if scale < 0 || len(trimmed)+scale > 16 {
+			return 0, nil, errorf("member %q is not an exact safe integer", name)
+		}
+		n, err := strconv.ParseInt(trimmed+strings.Repeat("0", scale), 10, 64)
+		if err != nil || n > 9007199254740991 {
+			return 0, nil, errorf("member %q is not an exact safe integer", name)
+		}
+		value = n
+		if negative {
+			value = -value
+		}
+	}
+	path := "/" + strings.ReplaceAll(strings.ReplaceAll(name, "~", "~0"), "/", "~1")
+	view, err := patchRecordIntegers(data, map[string]string{path: strconv.FormatInt(value, 10)})
+	return value, view, err
 }
 
 // hasMembers reports whether an object has every one of the named members.

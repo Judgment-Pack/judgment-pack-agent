@@ -4,10 +4,13 @@
  * matching Gateway commit 17168fc11cac3a9f4947564dfb65b2f239827681.
  */
 import graphicRanges from './descriptorGraphicRanges.json'
+import {taxonomyProblem, type ToolTaxonomy} from './toolTaxonomy'
 
 export const DESCRIPTOR_SNAPSHOT_BYTES = 320 << 10
-export interface DescriptorTool { description?: string; inputSchemaText?: string }
+export interface DescriptorTool { description?: string; inputSchemaText?: string; taxonomy?: ToolTaxonomy; serverAnnotations?: Record<string, boolean> }
 export interface DescriptorSnapshot {
+  snapshotVersion?: '2'
+  operation?: 'live' | 'write'
   binding: string
   capturedAt: string
   endpoint?: string
@@ -143,7 +146,9 @@ export function readDescriptorSnapshot(bytes: Uint8Array): DescriptorSnapshot {
   const v = readDescriptorJSON(text, true)
   if (canonical(v) !== text) fail('not in canonical form')
   if (!object(v)) return fail('not an object')
-  exact(v, ['binding', 'capturedAt', 'platform', 'policy', 'tools'], ['endpoint', 'server'])
+  const v2 = Object.hasOwn(v, 'snapshotVersion')
+  if (v2 && (v.snapshotVersion !== '2' || !['live','write'].includes(String(v.operation)))) fail('unsupported snapshot version or operation')
+  exact(v, ['binding', 'capturedAt', 'platform', 'policy', 'tools', ...(v2 ? ['snapshotVersion','operation','server'] : [])], ['endpoint', ...(v2 ? [] : ['server'])])
   if (!platform(v.platform)) fail('platform is not a platform name')
   if (!binding(v.binding)) fail('binding is not name@sha256:<64 hex>')
   if (Object.hasOwn(v, 'endpoint') && !endpoint(v.endpoint)) fail('invalid remote endpoint')
@@ -157,8 +162,15 @@ export function readDescriptorSnapshot(bytes: Uint8Array): DescriptorSnapshot {
   if (!object(v.tools)) fail('tools is not an object')
   for (const entry of Object.values(v.tools)) {
     if (!object(entry) || Object.keys(entry).length === 0) fail('tool has no captured candidates')
-    exact(entry, [], ['description', 'inputSchemaText'])
-    if (Object.values(entry).some(field => typeof field !== 'string')) fail('tool candidate is not a string')
+    exact(entry, v2 ? ['taxonomy'] : [], ['description', 'inputSchemaText', ...(v2 ? ['serverAnnotations'] : [])])
+    for (const key of ['description','inputSchemaText']) if (Object.hasOwn(entry,key) && typeof entry[key] !== 'string') fail('tool candidate is not a string')
+    if (v2) {
+      if (taxonomyProblem(entry.taxonomy) || !['read-external','propose','act'].includes((entry.taxonomy as ToolTaxonomy).effect)) fail('missing or invalid owner taxonomy')
+      if (Object.hasOwn(entry,'serverAnnotations')) {
+        if (!object(entry.serverAnnotations) || Object.keys(entry.serverAnnotations).some(k=>!['readOnlyHint','destructiveHint','idempotentHint','openWorldHint'].includes(k)) || Object.values(entry.serverAnnotations).some(v=>typeof v!=='boolean')) fail('invalid server constraints')
+        if ((entry.taxonomy as ToolTaxonomy).effect !== 'act' && (entry.serverAnnotations.destructiveHint === true || entry.serverAnnotations.readOnlyHint === false)) fail('server constraints contradict owner taxonomy')
+      }
+    }
   }
   return v as unknown as DescriptorSnapshot
 }
@@ -168,4 +180,25 @@ export async function descriptorSnapshotDigest(bytes: Uint8Array): Promise<strin
   readDescriptorSnapshot(bytes)
   const digest = await crypto.subtle.digest('SHA-256', Uint8Array.from(bytes))
   return `sha256:${Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('')}`
+}
+
+/** Independently approved engine11/bindingV2 context; never copied from the snapshot being checked. */
+export interface DescriptorApproval {
+  platform: string
+  binding: string
+  operation: 'live' | 'write'
+  endpoint?: string
+  toolTaxonomies: Record<string, ToolTaxonomy>
+}
+export function descriptorApprovalProblem(snapshot: DescriptorSnapshot, approval: DescriptorApproval | undefined, tool?: string, owner?: ToolTaxonomy): string {
+  if (!object(approval) || Object.keys(approval).some(k=>!['platform','binding','operation','endpoint','toolTaxonomies'].includes(k)) || !platform(approval.platform) || !binding(approval.binding) || !['live','write'].includes(String(approval.operation)) || !object(approval.toolTaxonomies)) return 'missing independently approved V2 descriptor context'
+  if (snapshot.snapshotVersion !== '2' || snapshot.platform !== approval.platform || snapshot.binding !== approval.binding || snapshot.operation !== approval.operation || snapshot.endpoint !== approval.endpoint) return 'descriptor operation or source differs from approval'
+  const names = Object.keys(approval.toolTaxonomies)
+  if (!names.length || names.length !== Object.keys(snapshot.tools).length) return 'descriptor owner projection differs from approval'
+  for (const name of names) {
+    const t=approval.toolTaxonomies[name]!, entry=snapshot.tools[name]
+    if (!name || taxonomyProblem(t) || !['read-external','propose','act'].includes(t.effect) || entry === undefined || canonical(entry.taxonomy) !== canonical(t)) return 'descriptor owner projection differs from approval'
+  }
+  if (tool !== undefined && (snapshot.tools[tool] === undefined || owner === undefined || canonical(snapshot.tools[tool]!.taxonomy) !== canonical(owner))) return 'selected tool taxonomy differs from approval'
+  return ''
 }

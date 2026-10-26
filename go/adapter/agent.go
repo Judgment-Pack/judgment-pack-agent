@@ -67,11 +67,20 @@ type AgentToolAnswer struct {
 // AgentCallbacks are the adapter's half of one invocation: each event and each tool call, in the
 // order the provider makes them. An error from Tool ends the invocation: the host's function stops
 // the provider's run and returns.
+type RouteCapabilityNeed struct {
+	Kind string
+	Name string
+}
+
 type AgentCallbacks struct {
+	// Requests widening only; it never executes or grants a withheld capability.
+	CapabilityNeeded func(context.Context, RouteCapabilityNeed) error
 	// Live invocation-scoped release acknowledgement; never serialized into AgentRequest.
 	ProviderRelease *ProviderRelease
-	Event           func(ctx context.Context, event AgentEvent) error
-	Tool            func(ctx context.Context, call AgentToolCall) (AgentToolAnswer, error)
+	// NativeTermination is supplied only by an explicit native-protocol certification attempt.
+	NativeTermination *NativeTermination
+	Event             func(ctx context.Context, event AgentEvent) error
+	Tool              func(ctx context.Context, call AgentToolCall) (AgentToolAnswer, error)
 }
 
 // AgentRun is the host's provider-run function: one invocation, from admission on its account to

@@ -22,6 +22,10 @@ export type AgentEvent = { type: 'text' | 'message'; id: string; text: string; p
 export interface AgentToolCall { id: string; name: string; arguments: Record<string, unknown> }
 export interface AgentToolAnswer { text: string; isError: boolean }
 export interface AgentCallbacks {
+  /** Exact actual provider request for an admitted capability omitted by the current route.
+   * This live invocation callback grants no tool execution; stop and acknowledge release. */
+  capabilityNeeded?:(need:{kind:'tool'|'skill'|'planning';name:string})=>Promise<void>
+
   /** Live invocation-scoped host release acknowledgement; never serialized or inferred from a settled promise. */
   providerRelease?:import('./storage/release').ProviderRelease
   signal: AbortSignal

@@ -59,6 +59,9 @@ class HostUpgradeGuideTests(unittest.TestCase):
         notes.parent.mkdir(parents=True, exist_ok=True)
         guide.parent.mkdir(parents=True, exist_ok=True)
         notes.write_text(f"# {tag}\n\nRelease scope.\n\n[host upgrade guide](../upgrade/{tag}.md)\n")
+        if tuple(map(int, tag[1:].split('.'))) >= (0, 11, 0):
+            notes.write_text(notes.read_text() + f"\n[dependency inventory](https://github.com/Judgment-Pack/judgment-pack-agent/blob/{tag}/docs/dependencies.md)\n")
+            (root / "docs/dependencies.md").write_text("# Dependency inventory\n\nFixture dependencies.\n")
         guide.write_text(f"# {tag}\n\n## Host changes\n\nReplace the retired input with its canonical form.\n")
         return notes, guide
 
@@ -88,6 +91,23 @@ class HostUpgradeGuideTests(unittest.TestCase):
                 self.assertTrue(UPGRADE.validate(root))
             notes.write_text(good_notes)
             self.assertEqual(UPGRADE.validate(root), [])
+
+    def test_dependency_inventory_link_uses_actual_tag_and_preserves_historical_notes(self):
+        with tempfile.TemporaryDirectory(prefix="inventory-link-fixture-") as directory:
+            root = Path(directory)
+            notes, _ = self.fixture(root, "v0.11.0")
+            self.assertEqual(UPGRADE.validate(root, tag="v0.11.0"), [])
+            good = notes.read_text()
+            for target in ("main", "v0.10.0"):
+                notes.write_text(good.replace("blob/v0.11.0/", f"blob/{target}/"))
+                self.assertTrue(any("must link to https://" in p for p in UPGRADE.validate(root, tag="v0.11.0")))
+            notes.write_text(good)
+            (root / "docs/dependencies.md").unlink()
+            self.assertIn("docs/dependencies.md is missing", UPGRADE.validate(root, tag="v0.11.0"))
+        with tempfile.TemporaryDirectory(prefix="inventory-historical-fixture-") as directory:
+            root = Path(directory)
+            self.fixture(root, "v0.10.0")
+            self.assertEqual(UPGRADE.validate(root, tag="v0.10.0"), [])
 
     def test_tag_outside_notes_inventory_is_checked_without_ref_discovery(self):
         with tempfile.TemporaryDirectory(prefix="upgrade-tag-fixture-") as directory:

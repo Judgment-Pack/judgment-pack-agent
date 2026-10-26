@@ -1,0 +1,1634 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-event.json",
+  "title": "Run event",
+  "description": "One event of a run, from the adapter to the host, in order, discriminated by type. Every kind of the Desk's AssistantEvent union (web/src/assistant/engine.ts) at the pinned commit, with its members spelled as the Desk spells them. A run ends with exactly one end and nothing follows it; a run the consumer left gets no end. Some events are the host's own, interleaved into the same stream rather than emitted by a loop: the tool gate's guardrail rewrote and refused, the shared context boundary's execution_checkpoint, budget_paused (which also replaces a loop's own budget_paused or request-limit error) and approval_requested (ADR-0008: emitted in place of an act call's tool_call where the host's approval policy answers ask), and the delegation coordinator's delegated_task. critic_decided (ADR-0010) is emitted by the adapter once per run, where the critic would start or where it is skipped. The versioned record reader refuses newer versions and unknown structural members. Historical events omit version; current writers emit version 1.",
+  "type": "object",
+  "required": [
+    "type"
+  ],
+  "properties": {
+    "type": {
+      "enum": [
+        "execution_checkpoint",
+        "budget_paused",
+        "approval_requested",
+        "compacted",
+        "skill_loaded",
+        "skill_unloaded",
+        "retry",
+        "response_recovery",
+        "delegation_requested",
+        "delegated_task",
+        "user_question",
+        "reasoning",
+        "message",
+        "message_progress",
+        "tool_call",
+        "tool_result",
+        "guardrail",
+        "thinking_unavailable",
+        "critic_decided",
+        "critique",
+        "proposal",
+        "error",
+        "end",
+        "policy_resolved",
+        "memory_proposed",
+        "memory_recalled",
+        "edit_applied",
+        "edit_refused",
+        "output_guarded",
+        "export_written",
+        "steered",
+        "connection_switched",
+        "usage",
+        "recorded",
+        "plan_revised",
+        "plan_departed",
+        "plan_completion_refused",
+        "plan_drift_decided"
+      ]
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/execution_checkpoint"
+    },
+    {
+      "$ref": "#/$defs/budget_paused"
+    },
+    {
+      "$ref": "#/$defs/approval_requested"
+    },
+    {
+      "$ref": "#/$defs/steered"
+    },
+    {
+      "$ref": "#/$defs/compacted"
+    },
+    {
+      "$ref": "#/$defs/skill_loaded"
+    },
+    {
+      "$ref": "#/$defs/skill_unloaded"
+    },
+    {
+      "$ref": "#/$defs/retry"
+    },
+    {
+      "$ref": "#/$defs/response_recovery"
+    },
+    {
+      "$ref": "#/$defs/delegation_requested"
+    },
+    {
+      "$ref": "#/$defs/delegated_task"
+    },
+    {
+      "$ref": "#/$defs/user_question"
+    },
+    {
+      "$ref": "#/$defs/reasoning"
+    },
+    {
+      "$ref": "#/$defs/message"
+    },
+    {
+      "$ref": "#/$defs/message_progress"
+    },
+    {
+      "$ref": "tool-call.json"
+    },
+    {
+      "$ref": "tool-result.json"
+    },
+    {
+      "$ref": "#/$defs/guardrail"
+    },
+    {
+      "$ref": "#/$defs/thinking_unavailable"
+    },
+    {
+      "$ref": "#/$defs/critic_decided"
+    },
+    {
+      "$ref": "#/$defs/critique"
+    },
+    {
+      "$ref": "#/$defs/proposal"
+    },
+    {
+      "$ref": "#/$defs/error"
+    },
+    {
+      "$ref": "#/$defs/end"
+    },
+    {
+      "$ref": "#/$defs/policy_resolved"
+    },
+    {
+      "$ref": "#/$defs/memory_proposed"
+    },
+    {
+      "$ref": "#/$defs/memory_recalled"
+    },
+    {
+      "$ref": "#/$defs/edit_applied"
+    },
+    {
+      "$ref": "#/$defs/edit_refused"
+    },
+    {
+      "$ref": "#/$defs/output_guarded"
+    },
+    {
+      "$ref": "#/$defs/export_written"
+    },
+    {
+      "$ref": "#/$defs/connection_switched"
+    },
+    {
+      "$ref": "#/$defs/usage"
+    },
+    {
+      "$ref": "#/$defs/recorded"
+    },
+    {
+      "$ref": "#/$defs/plan_revised"
+    },
+    {
+      "$ref": "#/$defs/plan_departed"
+    },
+    {
+      "$ref": "#/$defs/plan_completion_refused"
+    },
+    {
+      "$ref": "#/$defs/plan_drift_decided"
+    }
+  ],
+  "$defs": {
+    "steered": {
+      "description": "ADR-0021: one steer was placed at a request boundary. On an agent capability atRequest is the invocation number.",
+      "type": "object",
+      "required": [
+        "type",
+        "bytes",
+        "atRequest"
+      ],
+      "properties": {
+        "type": {
+          "const": "steered"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "atRequest": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "compacted": {
+      "description": "ADR-0016: the visible marker that one context compaction replaced complete turns. digest is the digest of the framed replacement; mode says whether the deterministic index or a model-authored summary was used.",
+      "type": "object",
+      "required": [
+        "type",
+        "turns",
+        "bytes",
+        "digest",
+        "mode"
+      ],
+      "properties": {
+        "type": {
+          "const": "compacted"
+        },
+        "turns": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "digest": {
+          "$ref": "provenance.json#/$defs/sha256"
+        },
+        "mode": {
+          "enum": [
+            "index",
+            "summary"
+          ]
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "execution_checkpoint": {
+      "description": "The execution's state, for the host to save: at the start of a tracked run, after each tool call, tool result and question, and at the end. durable true asks the host to save before the next operation (anything but a read); absent or false means the save may be lazy. Emitted by the shared context boundary (context/managed.ts) and by the delegation coordinator, only where the session carries a current request or a saved execution.",
+      "type": "object",
+      "required": [
+        "type",
+        "checkpoint"
+      ],
+      "properties": {
+        "type": {
+          "const": "execution_checkpoint"
+        },
+        "durable": {
+          "type": "boolean"
+        },
+        "checkpoint": {
+          "$ref": "checkpoint.json"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "budget_paused": {
+      "description": "Work paused at the request allowance: the allowance ran out, or the model asked for more with request_budget_increase. The checkpoint's status is paused; the run ends with end. Only the person's grant (a new checkpoint grant) continues it. An adapter's error with code request-limit is converted to this by the shared context boundary. On the vercel engine it is also how the turn's wall clock ends a turn (budget.json, turnMilliseconds): what is in flight is stopped, completed work is kept, and the checkpoint's reason says the turn reached its limit. Continuing it takes a request grant like any pause, so a run already at the 100-request cap cannot be continued, which the reason also says. A clock that passes while the critic runs leaves the proposal delivered with a note instead, and the run ends.",
+      "type": "object",
+      "required": [
+        "type",
+        "checkpoint"
+      ],
+      "properties": {
+        "type": {
+          "const": "budget_paused"
+        },
+        "checkpoint": {
+          "$ref": "checkpoint.json"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "approval_requested": {
+      "description": "An act call paused for the person (ADR-0008): the model called a tool with a source whose effect class is act and whose approval is required, and the host's approval policy answered ask. The shared context boundary emits this in place of the call's tool_call, never runs the call, writes the call into the checkpoint's approval (state asked) with status paused, emits the checkpoint durable, and ends the run with end and no error: a model engine once the step's other calls are answered (its next request is never sent), an agent engine at the call (the invocation is stopped, as at a delegation handoff). The host's stream carries it, unlike delegation_requested: the person has to see the call. The host continues the paused checkpoint with the person's decision (checkpoint.json#/$defs/approvalDecision). callId is the call's id, drawn by the boundary where the run's events carry none; name the wire name the model called; tool the tool's own name at its source; source its record; args the arguments the model sent. Closed.",
+      "type": "object",
+      "required": [
+        "type",
+        "callId"
+      ],
+      "properties": {
+        "type": {
+          "const": "approval_requested"
+        },
+        "callId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "name": {
+          "$ref": "tool-offer.json#/$defs/wireName"
+        },
+        "tool": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "source": {
+          "$ref": "tool-offer.json#/$defs/sourceRecord"
+        },
+        "args": {
+          "type": "object"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        },
+        "purpose": {
+          "enum": [
+            "tool-call",
+            "plan-drift"
+          ]
+        },
+        "plan": {
+          "type": "object",
+          "properties": {
+            "execution": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "revision": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            "candidateRevision": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            "explanation": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "departures": {
+              "type": "array",
+              "maxItems": 40,
+              "items": {
+                "$ref": "checkpoint.json#/$defs/planDeparture"
+              }
+            }
+          },
+          "required": [
+            "execution",
+            "revision",
+            "candidateRevision",
+            "explanation",
+            "departures"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "purpose": {
+                "const": "plan-drift"
+              }
+            },
+            "required": [
+              "purpose"
+            ]
+          },
+          "then": {
+            "required": [
+              "plan"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "name"
+                  ]
+                },
+                {
+                  "required": [
+                    "tool"
+                  ]
+                },
+                {
+                  "required": [
+                    "source"
+                  ]
+                },
+                {
+                  "required": [
+                    "args"
+                  ]
+                }
+              ]
+            }
+          },
+          "else": {
+            "required": [
+              "name",
+              "tool",
+              "source",
+              "args"
+            ],
+            "not": {
+              "required": [
+                "plan"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "skill_loaded": {
+      "description": "A skill loaded (ADR-0009): the model's load_skill call loaded it, between that call and its result. skill names it (tool-offer.json#/$defs/loadedSkill: id, name, source record, digest; never its instructions); bytes is what it counts against skillBytes (skill.json#/$defs/bytes). The checkpoint's skills carries it from here.",
+      "type": "object",
+      "required": [
+        "type",
+        "skill",
+        "bytes"
+      ],
+      "properties": {
+        "type": {
+          "const": "skill_loaded"
+        },
+        "skill": {
+          "$ref": "tool-offer.json#/$defs/loadedSkill"
+        },
+        "bytes": {
+          "$ref": "skill.json#/$defs/bytes"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "skill_unloaded": {
+      "description": "A skill unloaded (ADR-0009): the model's unload_skill call dropped it, between that call and its result; id is the skill's id. Its block leaves every later request.",
+      "type": "object",
+      "required": [
+        "type",
+        "id"
+      ],
+      "properties": {
+        "type": {
+          "const": "skill_unloaded"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9-]{0,23}$"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "retry": {
+      "description": "The adapter is sending again within this turn, attempt n of at most two. The codex engine relays the Codex bridge's recovery notices. The vercel engine emits it before it sends again a model request the provider refused (packages/harness/engines/vercel/retry.ts, retryingCall): only a failure whose outcome is refused and that failures.ts names (canRetryRefusal: the rate-limited class, a 429 or a rate-limit alias, and a 4xx carrying the overload code overloaded_error), never an unknown outcome (a 5xx, 408, 504 or a transport failure) and never a response that answered: a stream that breaks after its first byte is reported, not sent again; at most two retries, each after the longer of the backoff (1 s, then 2 s) and the provider's Retry-After, and none where Retry-After asks for more than 30 s, when the refusal is reported at once with its retryAt, nor where the retry would take the allowance's last request, which is the turn's tool-free final answer. Each attempt is a model request: counted against the allowance and recorded in the checkpoint's completions (provenance.json: attempt, failure, waitMs).",
+      "type": "object",
+      "required": [
+        "type",
+        "attempt"
+      ],
+      "properties": {
+        "type": {
+          "const": "retry"
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "response_recovery": {
+      "description": "The adapter is spending one tool-free request to finish a response cut short, to stop repeated work, or to ask once, within the allowance, for a proposal that could not be read, in the shape the contract reads (the reformat request). Only the vercel engine emits it.",
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "response_recovery"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "delegation_requested": {
+      "description": "The model called delegate_tasks on an engine whose run cannot wait for a tool call (codex: the provider account runs one agent run at a time, and the children need it). The adapter emits this instead of a tool_call and ends its run; the host's coordinator runs the batch and starts the response's next run with the call's result (delegated-task.json#/$defs/answer). An engine that awaits the call (vercel, agent#14) emits a tool_call and a tool_result for delegate_tasks instead, in the same run. The coordinator consumes this event: a host reading the coordinator's stream does not see it.",
+      "type": "object",
+      "required": [
+        "type",
+        "request"
+      ],
+      "properties": {
+        "type": {
+          "const": "delegation_requested"
+        },
+        "request": {
+          "$ref": "delegated-task.json#/$defs/request"
+        },
+        "callId": {
+          "description": "The agent wire's id of the delegate_tasks call (ADR-0007), where the engine has one: the Go agent engine sends it, and the coordinator keeps it in the checkpoint's handoff. The TypeScript codex engine sends none.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "subagent": {
+          "$ref": "subagent.json#/$defs/record"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "delegated_task": {
+      "description": "A child task's state, whole, at each transition. Emitted by the host's delegation coordinator; on an engine that awaits the delegate call, between that call's tool_call and its tool_result.",
+      "type": "object",
+      "required": [
+        "type",
+        "task"
+      ],
+      "properties": {
+        "type": {
+          "const": "delegated_task"
+        },
+        "task": {
+          "$ref": "delegated-task.json"
+        },
+        "provider": {
+          "$ref": "provenance.json#/$defs/provider"
+        },
+        "subagent": {
+          "$ref": "subagent.json#/$defs/record"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "user_question": {
+      "description": "The model called ask_user. The adapter emits this instead of a tool_call, ends the turn and waits; the answer comes with the next run. id is fresh per question.",
+      "type": "object",
+      "required": [
+        "type",
+        "id",
+        "question"
+      ],
+      "properties": {
+        "type": {
+          "const": "user_question"
+        },
+        "id": {
+          "type": "string"
+        },
+        "question": {
+          "$ref": "question.json"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "reasoning": {
+      "description": "The model's reasoning, as the provider streams it: deltas with done false, then the whole passage once with done true. Shown to the person, never sent to the runtime. Only the vercel engine emits it.",
+      "type": "object",
+      "required": [
+        "type",
+        "text",
+        "done"
+      ],
+      "properties": {
+        "type": {
+          "const": "reasoning"
+        },
+        "text": {
+          "type": "string"
+        },
+        "done": {
+          "type": "boolean"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "message": {
+      "description": "The model's own prose to the person, outside the proposal fence, as it wrote it. Never written by the host; absent where the model wrote nothing but the fence. Where the run's proposal could not be read, the whole final answer, prose and raw fence as written, is one message before the error: nothing the model finished is lost. On the vercel engine that is the answer before its reformat request; where the reformat request comes back as prose with no proposal, which a conversation allows, that prose is a second message, and the first answer's failure follows.",
+      "type": "object",
+      "required": [
+        "type",
+        "text"
+      ],
+      "properties": {
+        "type": {
+          "const": "message"
+        },
+        "text": {
+          "type": "string"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "message_progress": {
+      "description": "The prose so far of the answer being written, whole each time (not a delta), with any proposal fence hidden; an empty text clears it. Only on an interactive session. taskId (agent#16): a delegated child's prose so far, under its task, forwarded by the delegation coordinator as the child writes it, between that task's delegated_task events; an empty text with its taskId clears it when the child ends. An event without taskId is the run's own answer: a host routes one with taskId to the task's view, never to the answer.",
+      "type": "object",
+      "required": [
+        "type",
+        "text"
+      ],
+      "properties": {
+        "type": {
+          "const": "message_progress"
+        },
+        "text": {
+          "type": "string"
+        },
+        "taskId": {
+          "description": "The delegated task (delegated-task.json id) whose child is writing this prose.",
+          "$ref": "delegated-task.json#/$defs/uuid"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "guardrail": {
+      "description": "The host saying what it did. rewrote and refused are the tool gate's, emitted by the host as the call's frame leaves the page, so they arrive between that call's tool_call and tool_result. narrowed is the adapter's notice, before the model is asked anything, that a tool's served schema lost a keyword on this family's wire. Also refused, with tool proposal, where the host withholds a proposal (Plan mode, or a conversation without artifact proposals). reason (ADR-0008), on a refusal of an act call of a tool with a source: approval refused, the host's approval policy answered refuse; approval pending, the call came while another act call of the run waits for the person's decision (at most one approval is pending); approval stale, the gate's own refusal of a call whose decision no longer holds for it (its arguments not those its approval was decided for, a call that reaches its run without an allow, or, on the continued run, its tool no longer offered as the person decided). None of these calls is run. skill withheld (ADR-0009), on a skill the package did not catalogue or restore, tool its name (or, for the catalogue's bounds, its source's id): its tools[] names a tool the host did not declare, its bytes pass skillBytes, its bundle does not hash to the digest the person approved, the catalogue's bounds left it out, or a skill the checkpoint had loaded is no longer declared as it was; skill budget, on a load_skill call refused past skillsPerRun, between that call and its failed result. Nothing of a withheld skill reaches the model. review refused (ADR-0010), on a request_review call refused: a second ask of the run, an ask under off or on, or one outside the author's phase; nothing is recorded and no review is asked.",
+      "type": "object",
+      "required": [
+        "type",
+        "tool",
+        "action",
+        "detail"
+      ],
+      "properties": {
+        "type": {
+          "const": "guardrail"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "action": {
+          "enum": [
+            "rewrote",
+            "refused",
+            "narrowed"
+          ]
+        },
+        "detail": {
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "approval refused",
+            "approval pending",
+            "approval stale",
+            "skill withheld",
+            "skill budget",
+            "review refused",
+            "policy refused",
+            "pace warning",
+            "subagent withheld",
+            "subagent refused",
+            "memory refused",
+            "edit refused",
+            "compaction refused",
+            "output refused",
+            "records expired",
+            "identity changed",
+            "approval downgraded",
+            "steer refused",
+            "failover refused",
+            "record refused",
+            "record version unsupported",
+            "record member unsupported",
+            "plan update refused"
+          ]
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "thinking_unavailable": {
+      "description": "The reasoning tier the host asked for could not be expressed on this endpoint, said once. Only the vercel engine emits it; the sentence is the host's thinking table's.",
+      "type": "object",
+      "required": [
+        "type",
+        "detail"
+      ],
+      "properties": {
+        "type": {
+          "const": "thinking_unavailable"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "critic_decided": {
+      "description": "The critic's decision for the run (ADR-0010; provenance.json#/$defs/criticDecision): emitted once per run, after the proposal exists and before the critic would start (and before its critique), or where the critic is skipped, a run with no proposal included, before the run's last message. mode, ran and reason always; ran means the switch allowed the critic pass (the pass may still report that it could not run, with zero checks); reasoning, the critic's tier, where the run states one; trigger under auto. The checkpoint's critic carries the same members, written durably after it.",
+      "type": "object",
+      "required": [
+        "type",
+        "mode",
+        "ran",
+        "reason"
+      ],
+      "properties": {
+        "type": {
+          "const": "critic_decided"
+        },
+        "mode": {
+          "$ref": "tool-offer.json#/$defs/criticMode"
+        },
+        "ran": {
+          "type": "boolean"
+        },
+        "reason": {
+          "$ref": "provenance.json#/$defs/criticReason"
+        },
+        "reasoning": {
+          "$ref": "tool-offer.json#/$defs/criticReasoning"
+        },
+        "trigger": {
+          "enum": [
+            "model-asked",
+            "cases",
+            "changes-existing"
+          ]
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "critique": {
+      "description": "The critic pass's report, before the proposal it reviewed: refuted is decided from the runtime's own results and never from the critic's prose, true where a check came back as something other than the runtime's settled word (validate valid, experimental_evaluate evaluated) or, since agent#10, where a compared case's outcome is not the declared one, or a declared case was not compared at all (review row 1: an uncompared case is unsettled, so a critique that did not reach every declared case is never not refuted); checks lists each runtime check it ran with the runtime's status; text is the host's quote of them and of the comparisons. cases and incomplete are present where the host declared cases (session criticCases, $defs/criticCase): each comparison of a declared outcome with the runtime's ($defs/caseComparison), and the ids of the declared cases nothing compared, the harness's own calls for the uncompared included. figures: what the critic cost (provenance.json $defs/criticFigures).",
+      "type": "object",
+      "required": [
+        "type",
+        "refuted",
+        "checks",
+        "text"
+      ],
+      "properties": {
+        "type": {
+          "const": "critique"
+        },
+        "schema": {
+          "const": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-event.json#/$defs/critique"
+        },
+        "version": {
+          "const": 1
+        },
+        "digest": {
+          "$ref": "provenance.json#/$defs/recordDigest"
+        },
+        "retainUntil": {
+          "$ref": "provenance.json#/$defs/retainUntil"
+        },
+        "refuted": {
+          "type": "boolean"
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "tool",
+              "status"
+            ],
+            "properties": {
+              "tool": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "text": {
+          "type": "string"
+        },
+        "cases": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/caseComparison"
+          }
+        },
+        "incomplete": {
+          "description": "The declared cases nothing compared, by id. Any makes refuted true and is named on the proposal's critique.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "figures": {
+          "$ref": "provenance.json#/$defs/criticFigures"
+        },
+        "provider": {
+          "$ref": "provenance.json#/$defs/provider"
+        },
+        "records": {
+          "$ref": "provenance.json#/$defs/recordFigures"
+        }
+      },
+      "additionalProperties": false
+    },
+    "proposal": {
+      "description": "The one document the run proposes: from exactly one fenced JSON block shaped {\"proposal\": {\"kind\": \"create\", \"document\": \u2026, \"unknowns\": [\u2026]}} and never from the prose around it, or from the model's call of the host tool propose_pack (tool-offer.json, $defs/proposePack), which requires documentJson containing the document JSON text (legacy document refused), the fence then being the fallback. Source numeric values must survive canonical JSON serialization unchanged; decimal/exponent spelling and negative zero may normalize. The guarded accepted proposal event remains authoritative. A tool proposal beside a fenced one in the same answer is ambiguous and refused, as two fenced proposals are. critique is present only where a critic ran and reached at least one check or compared at least one declared case; note where something that ran after the proposal existed did not finish. Accept and Reject are the host's actions, not the adapter's.",
+      "type": "object",
+      "required": [
+        "type",
+        "document",
+        "unknowns",
+        "digest"
+      ],
+      "properties": {
+        "type": {
+          "const": "proposal"
+        },
+        "document": {
+          "description": "A JSON object.",
+          "type": "object"
+        },
+        "unknowns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "digest": {
+          "description": "ADR-0022: sha256: and the SHA-256 of the canonical JSON of this proposal with digest omitted.",
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "critique": {
+          "type": "object",
+          "required": [
+            "refuted"
+          ],
+          "properties": {
+            "refuted": {
+              "type": "boolean"
+            },
+            "incomplete": {
+              "description": "The declared cases the critic's pass did not compare, by id (review row 1): present where any is, with refuted true, so the proposal's critique is never a plain not-refuted while a declared case is uncompared.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "note": {
+          "description": "Something that ran after the proposal existed did not finish, and the proposal, being the finished work, is delivered all the same, with no critique and no error event ahead of it (refutation.ts, proposalNote). kind critic-unfinished: the critic started and did not finish (its provider error, its length cutoff, the allowance or the turn's wall clock). kind turn-unfinished: the proposal was made through propose_pack and a later request of the turn failed (the closing summary refused or cut off, the allowance, the turn's wall clock, or on the codex engine the run's own failure), so nothing after it ran, the critic included, and the run ends with the proposal. message is host-authored: one sentence saying what did not run, then the catalogue's sentence for the failure, or, for the allowance, a sentence saying it was used up (nothing pauses). failure is the failure that stopped it, classified, with source model on the vercel engine and agent on the codex engine, the turn's wall clock included.",
+          "type": "object",
+          "required": [
+            "kind",
+            "message",
+            "failure"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "critic-unfinished",
+                "turn-unfinished"
+              ]
+            },
+            "message": {
+              "type": "string"
+            },
+            "failure": {
+              "$ref": "failure.json"
+            },
+            "figures": {
+              "description": "On critic-unfinished: what the critic cost before it stopped (agent#10).",
+              "$ref": "provenance.json#/$defs/criticFigures"
+            }
+          },
+          "additionalProperties": false
+        },
+        "edits": {
+          "$ref": "provenance.json#/$defs/edits"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "error": {
+      "description": "The run failed. message is the catalogue's sentence for the class, or the failure's host-authored detail; failure is the classified failure. A failed tool is not an error event (tool_result with isError), and a cancelled run emits none.",
+      "type": "object",
+      "required": [
+        "type",
+        "message"
+      ],
+      "properties": {
+        "type": {
+          "const": "error"
+        },
+        "message": {
+          "type": "string"
+        },
+        "failure": {
+          "$ref": "failure.json"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "end": {
+      "description": "The run is over. Exactly once, last.",
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "end"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "caseOutcome": {
+      "description": "An outcome, as a comparison reports it: a \u00a78.3 disposition as the runtime gave it, or a \u00a78.4 evaluation error by its class and, where known, its phase.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "disposition"
+          ],
+          "properties": {
+            "disposition": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "errorClass"
+          ],
+          "properties": {
+            "errorClass": {
+              "type": "string",
+              "minLength": 1
+            },
+            "phase": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "caseComparison": {
+      "description": "One comparison of a declared case's outcome with the runtime's, the critic's structured note (agent#10; packages/harness/refutation.ts, CaseComparison). tool experimental_evaluate: a rehearsal the critic ran over the proposed document (its pack argument, read as JSON, is the proposal's document; a pack_id never is) with the case's facts, evidence (an omitted document and an empty one both leave every requirement unknown) and supported extensions; agrees where each member the declared disposition states equals the rehearsal's, the \u00a78.3 sets reasons and handoff.triggeredBy compared in any order (review row 3), or the error class (and phase, where stated) is the declared one. tool experimental_test_cases: a row of a test run over the proposed document whose matrix carried the case exactly as declared, for a case stating the whole \u00a78.3 disposition (kind, reasons and handoff) or an error class (review row 2: the runtime compares a disposition byte for byte, so a case stating part of one is compared by rehearsal only); the runtime compared the row, and agrees is its status passed. The call may be the critic's own or one the harness makes after the critic's turns for a declared case nothing compared yet (refutation.ts, compareTheRest: one experimental_test_cases call over those stating a whole disposition or an error class where the critic is offered it, then one rehearsal each of the rest, at most CRITIC_REHEARSALS, 8, where it is offered experimental_evaluate); both go through the same gate and appear as tool_call and tool_result events, the harness's marked origin harness. expected is the declared outcome; actual what the runtime gave, absent where it reported none.",
+      "type": "object",
+      "required": [
+        "case",
+        "source",
+        "tool",
+        "agrees",
+        "expected"
+      ],
+      "properties": {
+        "case": {
+          "description": "The declared case's id.",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "declared",
+            "test"
+          ]
+        },
+        "tool": {
+          "enum": [
+            "experimental_evaluate",
+            "experimental_test_cases"
+          ]
+        },
+        "agrees": {
+          "type": "boolean"
+        },
+        "expected": {
+          "$ref": "#/$defs/caseOutcome"
+        },
+        "actual": {
+          "$ref": "#/$defs/caseOutcome"
+        }
+      },
+      "additionalProperties": false
+    },
+    "criticCase": {
+      "description": "One case whose outcome the host declares for the critic (agent#10; the session's criticCases; packages/harness/refutation.ts, CriticCase, readCriticCases): one of the pack's saved tests (source test) or a case the request declares (source declared), as a row of the runtime's matrix (matrixVersion 3) with its source. The critic is shown the cases stating a whole \u00a78.3 disposition (kind, reasons and handoff) or an error class as that matrix, without source, so experimental_test_cases can run them as they are, and the cases stating part of a disposition apart, for rehearsal only (review row 2). Closed: the reader refuses another member, a repeated id, a case with no facts object, and a case that does not expect exactly one of a disposition (an object with a kind) and an error class; a session carries at most 200, and one the reader refuses ends the run before any request (configuration).",
+      "type": "object",
+      "required": [
+        "source",
+        "id",
+        "facts"
+      ],
+      "properties": {
+        "source": {
+          "enum": [
+            "declared",
+            "test"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "facts": {
+          "type": "object"
+        },
+        "evidenceAvailability": {
+          "type": "object"
+        },
+        "supportedExtensions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "expectedDisposition": {
+          "description": "The \u00a78.3 disposition the case expects. Each member it states must equal the outcome's: a matrix row states the whole disposition, a case a request declares may state kind and outcomeId alone.",
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string"
+            },
+            "outcomeId": {
+              "type": "string"
+            },
+            "reasons": {
+              "type": "array"
+            },
+            "handoff": {
+              "type": "object"
+            }
+          }
+        },
+        "expectedErrorClass": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expectedErrorPhase": {
+          "type": "string"
+        },
+        "expectedHandoffTarget": {},
+        "origin": {
+          "type": "string"
+        },
+        "focus": {
+          "type": "string"
+        },
+        "specSection": {
+          "type": "string"
+        },
+        "cites": {}
+      },
+      "oneOf": [
+        {
+          "required": [
+            "expectedDisposition"
+          ],
+          "not": {
+            "required": [
+              "expectedErrorClass"
+            ]
+          }
+        },
+        {
+          "required": [
+            "expectedErrorClass"
+          ],
+          "not": {
+            "required": [
+              "expectedDisposition"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "policy_resolved": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "policy_resolved"
+        },
+        "members": {
+          "$ref": "policy.json#/$defs/resolved"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "members"
+      ]
+    },
+    "memory_proposed": {
+      "type": "object",
+      "required": [
+        "type",
+        "memory"
+      ],
+      "properties": {
+        "type": {
+          "const": "memory_proposed"
+        },
+        "memory": {
+          "$ref": "memory.json"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "memory_recalled": {
+      "type": "object",
+      "required": [
+        "type",
+        "ids",
+        "digests",
+        "bytes"
+      ],
+      "properties": {
+        "type": {
+          "const": "memory_recalled"
+        },
+        "ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "digests": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "edit_applied": {
+      "type": "object",
+      "required": [
+        "type",
+        "document",
+        "line",
+        "bytes",
+        "valid"
+      ],
+      "properties": {
+        "type": {
+          "const": "edit_applied"
+        },
+        "document": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "valid": {
+          "const": true
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "edit_refused": {
+      "type": "object",
+      "required": [
+        "type",
+        "reason"
+      ],
+      "properties": {
+        "type": {
+          "const": "edit_refused"
+        },
+        "document": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "description": "Offending document identifier, truncated to 512 Unicode characters. Omitted when missing, non-string or empty; reason names the invalid document identifier."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "output_guarded": {
+      "description": "ADR-0017: outbound text held by a named pattern, without the matched text.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "output_guarded"
+        },
+        "where": {
+          "enum": [
+            "message",
+            "proposal",
+            "tool argument",
+            "memory proposal",
+            "draft edit"
+          ]
+        },
+        "pattern": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,63}$",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "action": {
+          "enum": [
+            "redact",
+            "refuse"
+          ]
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "required": [
+        "type",
+        "where",
+        "pattern",
+        "action"
+      ],
+      "additionalProperties": false
+    },
+    "export_written": {
+      "description": "The host asked the package to produce a JSON export from records it supplied. No package store was read.",
+      "type": "object",
+      "required": [
+        "type",
+        "records",
+        "bytes",
+        "digest"
+      ],
+      "properties": {
+        "type": {
+          "const": "export_written"
+        },
+        "records": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "digest": {
+          "$ref": "provenance.json#/$defs/recordDigest"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "connection_switched": {
+      "description": "ADR-0020. A qualifying provider failure moved this request once to the next same-family fallback, after the ordinary retry rule. The stable prefix is rebuilt for the new connection.",
+      "type": "object",
+      "required": [
+        "type",
+        "role",
+        "from",
+        "to",
+        "reason"
+      ],
+      "properties": {
+        "type": {
+          "const": "connection_switched"
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "from": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "to": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "reason": {
+          "enum": [
+            "unavailable",
+            "rate-limited",
+            "timeout"
+          ]
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "usage": {
+      "description": "ADR-0020. Emitted exactly once for every run, immediately before end.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "usage"
+        },
+        "usage": {
+          "$ref": "usage.json"
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "usage"
+      ]
+    },
+    "recorded": {
+      "description": "ADR-0022: a redacted evaluation corpus entry was written. id names its corpus directory and bytes is the sum of the UTF-8 bytes in its six JSON files.",
+      "type": "object",
+      "required": [
+        "type",
+        "id",
+        "bytes"
+      ],
+      "properties": {
+        "type": {
+          "const": "recorded"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "version": {
+          "const": 1,
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+        }
+      },
+      "additionalProperties": false
+    },
+    "plan_revised": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "plan_revised"
+        },
+        "execution": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "previous": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "explanation": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "diff": {
+          "type": "array",
+          "maxItems": 40,
+          "items": {
+            "$ref": "checkpoint.json#/$defs/planChange"
+          }
+        },
+        "version": {
+          "const": 1
+        }
+      },
+      "required": [
+        "type",
+        "execution",
+        "sequence",
+        "previous",
+        "revision",
+        "explanation",
+        "diff"
+      ],
+      "additionalProperties": false
+    },
+    "plan_departed": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "plan_departed"
+        },
+        "version": {
+          "const": 1
+        },
+        "execution": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "acceptedRevision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "explanation": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "departures": {
+          "type": "array",
+          "maxItems": 40,
+          "items": {
+            "$ref": "checkpoint.json#/$defs/planDeparture"
+          }
+        }
+      },
+      "required": [
+        "type",
+        "execution",
+        "revision",
+        "acceptedRevision",
+        "explanation",
+        "departures"
+      ],
+      "additionalProperties": false
+    },
+    "plan_completion_refused": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "plan_completion_refused"
+        },
+        "version": {
+          "const": 1
+        },
+        "execution": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "reason": {
+          "enum": [
+            "invalid-input",
+            "active-step-required",
+            "revision-changed",
+            "evidence-unavailable",
+            "missing-evidence",
+            "unknown-operation",
+            "unsuccessful-operation",
+            "unobserved-revision",
+            "wrong-scope"
+          ]
+        },
+        "step": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "type",
+        "execution",
+        "revision",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "plan_drift_decided": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "plan_drift_decided"
+        },
+        "version": {
+          "const": 1
+        },
+        "execution": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "callId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "candidateRevision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "approved": {
+          "type": "boolean"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "type",
+        "execution",
+        "callId",
+        "revision",
+        "candidateRevision",
+        "approved"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,463 @@
+{
+  "description": "Handwritten complete state with ordered source JSON, shared aliases, overlapping turns, and already reported offered eviction. Go-only items explicitly cover unrestricted visibility and arbitrary public Go Value arrays; TS shape decoding accepts both but live restore refuses unsupported row domains.",
+  "items": [
+    {
+      "version": 1,
+      "scope": "shared",
+      "turns": 3,
+      "disposed": false,
+      "size": 33,
+      "entries": [
+        {
+          "id": "shared:entry",
+          "kind": "tool",
+          "label": "read",
+          "valueJSON": "{\"z\":false,\"a\":null,\"number\":0.1}",
+          "bytes": 33,
+          "digest": "ab8e24fd45efe779dcb80f8e02e1960686b103741527e0eb5f49bd69dbd25e77",
+          "revision": ""
+        }
+      ],
+      "ages": [
+        {
+          "id": "shared:entry",
+          "turn": 1
+        }
+      ],
+      "results": [
+        {
+          "tool": "lookup",
+          "arguments": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "entry": "shared:entry",
+          "bytes": 33,
+          "firstLine": "first",
+          "turn": 1
+        }
+      ],
+      "cache": [
+        {
+          "key": "cache",
+          "entry": "shared:entry"
+        }
+      ],
+      "gone": [
+        "shared:gone"
+      ],
+      "visibility": [
+        [
+          "shared:entry"
+        ]
+      ],
+      "evictions": [
+        {
+          "tool": "lookup",
+          "arguments": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "bytes": 10
+        }
+      ],
+      "evicted": [
+        0
+      ],
+      "threads": [
+        {
+          "profile": "research",
+          "title": "title",
+          "exchangesJSON": "[{\"result\":\"answer\",\"objective\":\"ask\"}]",
+          "visible": 0
+        }
+      ],
+      "tasks": [
+        {
+          "id": "one",
+          "thread": 0
+        },
+        {
+          "id": "two",
+          "thread": 0
+        }
+      ],
+      "reusable": [
+        {
+          "key": "reuse",
+          "value": {
+            "task": "one",
+            "model": "fixture",
+            "text": "answer",
+            "questionsJSON": "[{\"text\":\"why\",\"kind\":\"question\",\"ref\":\"\"}]"
+          }
+        }
+      ],
+      "open": [
+        {
+          "number": 1,
+          "referenced": [
+            "shared:entry"
+          ],
+          "offered": [
+            0
+          ]
+        },
+        {
+          "number": 2,
+          "referenced": [],
+          "visible": 0,
+          "offered": [
+            0
+          ]
+        },
+        {
+          "number": 3,
+          "referenced": [],
+          "visible": 0,
+          "offered": []
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "scope": "shared",
+      "turns": 3,
+      "disposed": false,
+      "size": 33,
+      "entries": [
+        {
+          "id": "shared:entry",
+          "kind": "tool",
+          "label": "read",
+          "valueJSON": "{\"z\":false,\"a\":null,\"number\":0.1}",
+          "bytes": 33,
+          "digest": "ab8e24fd45efe779dcb80f8e02e1960686b103741527e0eb5f49bd69dbd25e77",
+          "revision": ""
+        }
+      ],
+      "ages": [
+        {
+          "id": "shared:entry",
+          "turn": 1
+        }
+      ],
+      "results": [
+        {
+          "tool": "lookup",
+          "arguments": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "entry": "shared:entry",
+          "bytes": 33,
+          "firstLine": "first",
+          "turn": 1
+        }
+      ],
+      "cache": [
+        {
+          "key": "cache",
+          "entry": "shared:entry"
+        }
+      ],
+      "gone": [
+        "shared:gone"
+      ],
+      "visibility": [
+        [
+          "shared:entry"
+        ]
+      ],
+      "evictions": [
+        {
+          "tool": "lookup",
+          "arguments": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "bytes": 10
+        }
+      ],
+      "evicted": [],
+      "threads": [
+        {
+          "profile": "research",
+          "title": "title",
+          "exchangesJSON": "[{\"result\":\"answer\",\"objective\":\"ask\"}]",
+          "visible": 0
+        }
+      ],
+      "tasks": [
+        {
+          "id": "one",
+          "thread": 0
+        },
+        {
+          "id": "two",
+          "thread": 0
+        }
+      ],
+      "reusable": [
+        {
+          "key": "reuse",
+          "value": {
+            "task": "one",
+            "model": "fixture",
+            "text": "answer",
+            "questionsJSON": "[{\"text\":\"why\",\"kind\":\"question\",\"ref\":\"\"}]"
+          }
+        }
+      ],
+      "open": [
+        {
+          "number": 1,
+          "referenced": [
+            "shared:entry"
+          ],
+          "offered": [
+            0
+          ]
+        },
+        {
+          "number": 2,
+          "referenced": [],
+          "visible": 0,
+          "offered": [
+            0
+          ]
+        },
+        {
+          "number": 3,
+          "referenced": [],
+          "visible": 0,
+          "offered": []
+        }
+      ]
+    }
+  ],
+  "goOnly": [
+    {
+      "version": 1,
+      "scope": "shared",
+      "turns": 3,
+      "disposed": false,
+      "size": 33,
+      "entries": [
+        {
+          "id": "shared:entry",
+          "kind": "tool",
+          "label": "read",
+          "valueJSON": "{\"z\":false,\"a\":null,\"number\":0.1}",
+          "bytes": 33,
+          "digest": "ab8e24fd45efe779dcb80f8e02e1960686b103741527e0eb5f49bd69dbd25e77",
+          "revision": ""
+        }
+      ],
+      "ages": [
+        {
+          "id": "shared:entry",
+          "turn": 1
+        }
+      ],
+      "results": [
+        {
+          "tool": "lookup",
+          "arguments": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "entry": "shared:entry",
+          "bytes": 33,
+          "firstLine": "first",
+          "turn": 1
+        }
+      ],
+      "cache": [
+        {
+          "key": "cache",
+          "entry": "shared:entry"
+        }
+      ],
+      "gone": [
+        "shared:gone"
+      ],
+      "visibility": [
+        [
+          "shared:entry"
+        ]
+      ],
+      "evictions": [
+        {
+          "tool": "lookup",
+          "arguments": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "bytes": 10
+        }
+      ],
+      "evicted": [
+        0
+      ],
+      "threads": [
+        {
+          "profile": "research",
+          "title": "title",
+          "exchangesJSON": "[{\"result\":\"answer\",\"objective\":\"ask\"}]"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "one",
+          "thread": 0
+        },
+        {
+          "id": "two",
+          "thread": 0
+        }
+      ],
+      "reusable": [
+        {
+          "key": "reuse",
+          "value": {
+            "task": "one",
+            "model": "fixture",
+            "text": "answer",
+            "questionsJSON": "[{\"text\":\"why\",\"kind\":\"question\",\"ref\":\"\"}]"
+          }
+        }
+      ],
+      "open": [
+        {
+          "number": 1,
+          "referenced": [
+            "shared:entry"
+          ],
+          "offered": [
+            0
+          ]
+        },
+        {
+          "number": 2,
+          "referenced": [],
+          "visible": 0,
+          "offered": [
+            0
+          ]
+        },
+        {
+          "number": 3,
+          "referenced": [],
+          "visible": 0,
+          "offered": []
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "scope": "shared",
+      "turns": 3,
+      "disposed": false,
+      "size": 33,
+      "entries": [
+        {
+          "id": "shared:entry",
+          "kind": "tool",
+          "label": "read",
+          "valueJSON": "{\"z\":false,\"a\":null,\"number\":0.1}",
+          "bytes": 33,
+          "digest": "ab8e24fd45efe779dcb80f8e02e1960686b103741527e0eb5f49bd69dbd25e77",
+          "revision": ""
+        }
+      ],
+      "ages": [
+        {
+          "id": "shared:entry",
+          "turn": 1
+        }
+      ],
+      "results": [
+        {
+          "tool": "lookup",
+          "arguments": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "entry": "shared:entry",
+          "bytes": 33,
+          "firstLine": "first",
+          "turn": 1
+        }
+      ],
+      "cache": [
+        {
+          "key": "cache",
+          "entry": "shared:entry"
+        }
+      ],
+      "gone": [
+        "shared:gone"
+      ],
+      "visibility": [
+        [
+          "shared:entry"
+        ]
+      ],
+      "evictions": [
+        {
+          "tool": "lookup",
+          "arguments": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "bytes": 10
+        }
+      ],
+      "evicted": [
+        0
+      ],
+      "threads": [
+        {
+          "profile": "research",
+          "title": "title",
+          "exchangesJSON": "[{\"objective\":\"Ask\",\"result\":\"Old\",\"hostExtra\":{\"z\":false,\"a\":null}},7,null]",
+          "visible": 0
+        }
+      ],
+      "tasks": [
+        {
+          "id": "one",
+          "thread": 0
+        },
+        {
+          "id": "two",
+          "thread": 0
+        }
+      ],
+      "reusable": [
+        {
+          "key": "reuse",
+          "value": {
+            "task": "one",
+            "model": "fixture",
+            "text": "answer",
+            "questionsJSON": "[\"raw host question\",{\"kind\":\"question\",\"text\":\"Typed\",\"hostExtra\":false}]"
+          }
+        }
+      ],
+      "open": [
+        {
+          "number": 1,
+          "referenced": [
+            "shared:entry"
+          ],
+          "offered": [
+            0
+          ]
+        },
+        {
+          "number": 2,
+          "referenced": [],
+          "visible": 0,
+          "offered": [
+            0
+          ]
+        },
+        {
+          "number": 3,
+          "referenced": [],
+          "visible": 0,
+          "offered": []
+        }
+      ]
+    }
+  ],
+  "schema": "chat-context-snapshot.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/context/chat.ts",
+      "packages/harness/context/chatSnapshot.test.ts"
+    ]
+  }
+}

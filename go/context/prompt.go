@@ -23,6 +23,15 @@ import (
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
 )
 
+const RepeatReminder = "Repeated identical tool results detected. Reuse the acknowledged results, change approach, or finish with the concrete remaining blocker. Existing permissions and approvals still apply."
+
+func repeatReminder(state *contract.CheckpointRepeatExecution, marker string) string {
+	if state != nil && state.Reminded && !state.ReminderDelivered {
+		return "\n" + FrameBlock("package repeat reminder", RepeatReminder, marker)
+	}
+	return ""
+}
+
 // StateHeader heads the execution state on a request (STATE_HEADER in
 // packages/harness/engines/contract.ts; layer 8). The turn package ports that file; a test holds
 // the two equal.

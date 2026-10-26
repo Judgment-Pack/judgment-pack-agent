@@ -1,0 +1,71 @@
+{
+  "schema": "run-capture.json",
+  "items": [
+    {
+      "version": 1,
+      "runId": "projection",
+      "executionRevision": "terminal",
+      "checkpoint": {
+        "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "bytes": 1
+      },
+      "requests": [],
+      "files": [
+        {
+          "name": "checkpoint.json",
+          "manifest": {
+            "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "bytes": 1
+          }
+        },
+        {
+          "name": "events.json",
+          "manifest": {
+            "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "bytes": 1
+          }
+        },
+        {
+          "name": "expected.json",
+          "manifest": {
+            "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "bytes": 1
+          }
+        },
+        {
+          "name": "manifest.json",
+          "manifest": {
+            "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "bytes": 1
+          }
+        },
+        {
+          "name": "requests.json",
+          "manifest": {
+            "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "bytes": 1
+          }
+        },
+        {
+          "name": "tool-results.json",
+          "manifest": {
+            "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "bytes": 1
+          }
+        }
+      ],
+      "redacted": true,
+      "eventProjection": "transcript-v1"
+    }
+  ],
+  "description": "Handwritten explicit transcript projection marker on a run capture; referenced chunks are fixture labels, not replay authority.",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/history/metadata.ts"
+    ]
+  }
+}

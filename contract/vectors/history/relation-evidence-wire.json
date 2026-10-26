@@ -1,0 +1,76 @@
+{
+  "description": "Handwritten observed relations shared with fixtures/feedback/candidates.json.",
+  "schema": "history-relation-evidence.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/history/relations.ts"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "kind": "observed-relation",
+      "scope": {
+        "execution": "r",
+        "role": "author"
+      },
+      "dispatchId": "dispatch-1",
+      "checkpoint": {
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bytes": 100
+      },
+      "observationId": "observation-1",
+      "requestDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "resultDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "target": {
+        "kind": "job",
+        "id": "observed-job"
+      }
+    },
+    {
+      "version": 1,
+      "kind": "observed-relation",
+      "scope": {
+        "execution": "r",
+        "role": "author"
+      },
+      "dispatchId": "dispatch-1",
+      "checkpoint": {
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bytes": 100
+      },
+      "observationId": "observation-1",
+      "requestDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "resultDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "target": {
+        "kind": "artifact",
+        "id": "observed-artifact"
+      }
+    },
+    {
+      "version": 1,
+      "kind": "observed-relation",
+      "scope": {
+        "execution": "r",
+        "role": "author",
+        "task": "task-1"
+      },
+      "dispatchId": "dispatch-1",
+      "checkpoint": {
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bytes": 100
+      },
+      "observationId": "observation-1",
+      "requestDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "resultDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "target": {
+        "kind": "dialect",
+        "id": "observed-dialect"
+      }
+    }
+  ]
+}

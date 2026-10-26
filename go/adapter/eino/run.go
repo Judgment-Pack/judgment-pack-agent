@@ -50,6 +50,7 @@ type runState struct {
 
 	// currentPhase is the phase a request's record names: work, synthesis or review.
 	currentPhase string
+	observation  *observationState
 
 	mu       sync.Mutex
 	produced int
@@ -62,8 +63,10 @@ type runState struct {
 }
 
 // Run is the adapter: one run of the contract's turn, its loop on Eino's ChatModelAgent.
-func Run(ctx context.Context, run *adapter.Run) error {
-	r := &runState{run: adapter.NewRequestOperations(run), family: wire.EndpointKind(run.Wire)}
+func Run(ctx context.Context, run *adapter.Run) error { _ = execute(ctx, run, nil); return nil }
+
+func execute(ctx context.Context, run *adapter.Run, observation *observationState) error {
+	r := &runState{run: adapter.NewRequestOperations(run), family: wire.EndpointKind(run.Wire), observation: observation}
 	host := func(wire.EndpointKind, string) *wire.Value {
 		if run.Capabilities == nil {
 			return wire.Obj()
@@ -81,7 +84,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 	capabilities, err := wire.CapabilitiesFor(r.family, run.ModelName, host, nil)
 	if err != nil {
 		r.emitAll(runcontext.FailedToOpen(err))
-		return nil
+		return err
 	}
 	r.capabilities = capabilities
 	r.nativeTools = capabilities.NativeToolCalls
@@ -107,6 +110,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 	}
 	rawReasoning := adapter.ReadAdmissionReasoning(run)
 	session := runcontext.Session{
+		Route: run.Route, RouteFacts: run.RouteFacts,
 		Prompt:            run.Prompt,
 		TestPrompt:        run.TestPrompt,
 		HostTools:         append([]runcontext.HostTool{}, run.HostTools...),
@@ -115,6 +119,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		AllowConversation: run.AllowConversation,
 		Interactive:       run.Interactive,
 		CallTool:          r.gatedCall,
+		RuntimeCalls:      run.Gate,
 		Model:             &runcontext.ModelSession{Family: run.Wire, Model: run.ModelName, Budget: budgetOf(capabilities), ToolSchemas: string(capabilities.ToolSchemas), Thinking: rawReasoning.Thinking},
 		Host:              run.Host,
 		Skills:            run.Skills,
@@ -129,12 +134,14 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		AdversarialReview: run.Review,
 	}
 	for _, tool := range run.Tools {
-		session.Tools = append(session.Tools, runcontext.RuntimeTool{Name: tool.Name})
+		session.Tools = append(session.Tools, runcontext.RuntimeTool{Name: tool.Name, Meta: wire.TaxonomyFromContract(tool.Meta), Offer: &tool})
 	}
-	opened, err := runcontext.ContextualSession(ctx, session)
+	opened, err := runcontext.ContextualSessionWithEnrollment(ctx, session, func(ctx context.Context, execution string, declarations []contract.ToolOfferHostTool) error {
+		return adapter.EnrollContext(ctx, run, execution, declarations)
+	})
 	if err != nil {
 		r.emitAll(runcontext.FailedToOpen(err))
-		return nil
+		return err
 	}
 	r.opened = opened
 	r.sc = opened.Context
@@ -143,7 +150,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 	if err := adapter.ApplyPolicy(&local, r.sc, named); err != nil {
 		r.sc.Close()
 		r.emitAll(runcontext.FailedToOpen(err))
-		return nil
+		return err
 	}
 	r.run = adapter.NewRequestSession(&local, r.sc.ResolvedPolicy, opened)
 	r.family = wire.EndpointKind(r.run.Family())
@@ -151,7 +158,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 	if err != nil {
 		r.sc.Close()
 		r.emitAll(runcontext.FailedToOpen(err))
-		return nil
+		return err
 	}
 	r.capabilities = capabilities
 	r.nativeTools = capabilities.NativeToolCalls
@@ -163,12 +170,32 @@ func Run(ctx context.Context, run *adapter.Run) error {
 	r.sc.Execution.UseConnection(r.run.Connection("author"), "author")
 	r.emitAll(r.boundary.Open())
 
+	routeErr := r.sc.ResolveTurnRouteClassifier(ctx, r.classifyTurnRoute)
 	tier := r.run.Reasoning("author")
 	r.slot = wire.OpenThinking(wire.ThinkingTier(tier), r.family, &capabilities.Reasoning, capabilities.Tiers, capabilities.FallbackTiers)
 	r.placement = statePlacement(r.family, wire.ThinkingTier(tier), capabilities)
 	r.listener = &listener{r: r}
 
-	err = r.drive(ctx)
+	if routeErr != nil {
+		err = routeErr
+	} else if r.run.OutputCeiling() < 0 || r.run.OutputCeiling() > r.sc.Policy.OutputTokens {
+		err = failure.Authored("configuration", "The physical output ceiling is outside the admitted output reserve.", "context")
+	} else if observation != nil {
+		err = r.observeOnce(ctx, observation)
+	} else {
+		for {
+			err = r.drive(ctx)
+			if !r.sc.RoutePending() || ctx.Err() != nil || r.sc.Persistence("author").Writer.Failed() {
+				break
+			}
+			if err = r.sc.WidenTurnRoute(ctx); err != nil {
+				break
+			}
+			tier = r.run.Reasoning("author")
+			r.slot = wire.OpenThinking(wire.ThinkingTier(tier), r.family, &capabilities.Reasoning, capabilities.Tiers, capabilities.FallbackTiers)
+			r.placement = statePlacement(r.family, wire.ThinkingTier(tier), capabilities)
+		}
+	}
 	if err != nil {
 		cause := err
 		switch {
@@ -183,7 +210,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		}
 	}
 	r.deliver(contract.RunEvent{End: &contract.RunEventEnd{Type: "end"}})
-	return nil
+	return err
 }
 
 // budgetOf is the capability record's window and output cap, where it carries both.
@@ -253,60 +280,110 @@ func (r *runState) modelCall(phase func() string) wire.ModelCall {
 		if phase() == "review" {
 			role = "critic"
 		}
-		if r.run.HasConnection() {
-			r.sc.Execution.UseConnection(r.run.Connection(role), role)
+		if r.sc.RoutePending() {
+			return nil, r.sc.AssertRouteDispatch()
 		}
-		if request.Method != http.MethodGet {
-			if r.run.HasConnection() && r.run.Connection(role) != r.run.Member("models."+role+".provider").Value {
-				binding := r.run.Binding(r.run.Connection(role))
-				var err error
-				tier, _ := r.run.Member("models." + role + ".reasoning").Value.(string)
-				suffix, request, err = fallbackRequest(binding, tier, suffix, request)
-				if err != nil {
-					return nil, err
+		dispatchRole := role
+		if r.sc.RouteClassifying() {
+			dispatchRole = "classifier"
+		}
+		physical := func(send relay.Call) (*http.Response, error) {
+			if r.run.HasConnection() {
+				r.sc.Execution.UseConnection(r.run.Connection(role), dispatchRole)
+			}
+			if request.Method != http.MethodGet {
+				if r.run.HasConnection() && r.run.Connection(role) != r.run.Member("models."+role+".provider").Value {
+					binding := r.run.Binding(r.run.Connection(role))
+					var err error
+					tier, _ := r.run.Member("models." + role + ".reasoning").Value.(string)
+					suffix, request, err = fallbackRequest(binding, tier, suffix, request)
+					if err != nil {
+						return nil, err
+					}
 				}
 			}
-		}
-		descriptor, _ := json.Marshal(struct {
-			Suffix string `json:"suffix"`
-			Method string `json:"method"`
-			Body   string `json:"body"`
-		}{suffix, request.Method, string(request.Body)})
-		connection := r.sc.ProviderStorageIdentity(role)
-		descriptor, err := runcontext.PrepareDurableRequest(r.sc.Persistence(role), "model", connection, r.run.ModelID(), descriptor)
-		if err != nil {
-			return nil, err
-		}
-		var admitted struct {
-			Suffix string `json:"suffix"`
-			Method string `json:"method"`
-			Body   string `json:"body"`
-		}
-		if err = json.Unmarshal(descriptor, &admitted); err != nil {
-			return nil, err
-		}
-		if admitted.Method != http.MethodGet && !runcontext.RecoveringDurableRequest(r.sc.Persistence(role), "model") {
-			if err = r.sc.ClaimRequest(ctx, []byte(admitted.Body)); err != nil {
+			family := r.family
+			if r.run.HasConnection() {
+				if bound := r.run.Binding(r.run.Connection(role)).Family(); bound != "" {
+					family = wire.EndpointKind(bound)
+				}
+			}
+			var err error
+			request.Body, err = wire.EnforceOutputCeiling(family, request.Body, func() int {
+				if n := r.sc.RouteClassifierCeiling(); n > 0 {
+					return n
+				}
+				return r.run.OutputCeiling()
+			}())
+			if err != nil {
 				return nil, err
 			}
-		}
-		return runcontext.InvokeDurableModel(ctx, r.sc.Persistence(role), connection, r.run.ModelID(), descriptor, func(raw []byte) (*http.Response, error) {
-			var prepared struct {
+			if err = r.sc.CheckPhysicalRequest(request.Body); err != nil {
+				return nil, err
+			}
+			descriptor, _ := json.Marshal(struct {
+				Suffix string `json:"suffix"`
+				Method string `json:"method"`
+				Body   string `json:"body"`
+			}{suffix, request.Method, string(request.Body)})
+			connection := r.sc.ProviderStorageIdentity(dispatchRole)
+			descriptor, err = runcontext.PrepareDurableRequest(r.sc.Persistence(dispatchRole), "model", connection, r.run.ModelID(), descriptor)
+			if err != nil {
+				return nil, err
+			}
+			var admitted struct {
 				Suffix string `json:"suffix"`
 				Method string `json:"method"`
 				Body   string `json:"body"`
 			}
-			if err := json.Unmarshal(raw, &prepared); err != nil {
+			if err = json.Unmarshal(descriptor, &admitted); err != nil {
 				return nil, err
 			}
-			if err := r.sc.Authorize(ctx); err != nil {
+			budgetConnection, budgetModel := r.sc.Provider(role).Connection, r.run.ModelID()
+			if r.run.HasConnection() {
+				budgetConnection = r.run.Connection(role)
+				if selected := r.run.Binding(budgetConnection).ModelID(); selected != "" {
+					budgetModel = selected
+				}
+			}
+			ctx, err = r.sc.PrepareUsageRequest(ctx, dispatchRole, "model", connection, r.run.ModelID(), budgetConnection, budgetModel, descriptor, []byte(admitted.Body), string(family))
+			if err != nil {
 				return nil, err
 			}
-			if ctx.Err() != nil {
-				return nil, failure.Cancelled
+			if admitted.Method != http.MethodGet && !runcontext.RecoveringDurableRequest(r.sc.Persistence(dispatchRole), "model") {
+				if err = r.sc.ClaimRequest(ctx, []byte(admitted.Body)); err != nil {
+					return nil, err
+				}
 			}
-			return r.run.CallModel(runcontext.WithDurableDispatchScope(ctx, r.sc.Persistence(role)), prepared.Suffix, relay.Request{Method: prepared.Method, Headers: request.Headers, Body: []byte(prepared.Body)})
-		}, func(response *http.Response) error { return wire.QuarantineDurableResponse(ctx, r.family, response) })
+			return runcontext.InvokeDurableModel(ctx, r.sc.Persistence(dispatchRole), connection, r.run.ModelID(), descriptor, func(raw []byte) (*http.Response, error) {
+				var prepared struct {
+					Suffix string `json:"suffix"`
+					Method string `json:"method"`
+					Body   string `json:"body"`
+				}
+				if err := json.Unmarshal(raw, &prepared); err != nil {
+					return nil, err
+				}
+				if err := r.sc.Authorize(ctx); err != nil {
+					return nil, err
+				}
+				if ctx.Err() != nil {
+					return nil, failure.Cancelled
+				}
+				return send(runcontext.WithDurableDispatchScope(ctx, r.sc.Persistence(dispatchRole)), prepared.Suffix, relay.Request{Method: prepared.Method, Headers: request.Headers, Body: []byte(prepared.Body)})
+			}, func(response *http.Response) error { return wire.QuarantineDurableResponse(ctx, r.family, response) })
+		}
+		if r.sc.RouteClassifying() {
+			return r.run.DispatchSinglePhysicalModel(ctx, r.sc.Persistence(dispatchRole), role, physical)
+		}
+		binding := r.sc.Persistence(dispatchRole)
+		if r.sc.UsageBudgetEnabled() || binding != nil && binding.Writer.TaskStepsEnabled() {
+			return r.run.DispatchPhysicalModel(ctx, r.sc.Persistence(dispatchRole), role, suffix, relay.Request{Method: request.Method, Headers: request.Headers, Body: request.Body}, physical)
+		}
+		return physical(r.run.CallModel)
+	}
+	if r.observation != nil || r.sc.RouteClassifying() {
+		return claimed
 	}
 	return wire.RetryingCall(claimed, wire.RetryOptions{
 		OnRefused: func(refused wire.RefusedAttempt) error {
@@ -507,7 +584,12 @@ func (r *runState) drive(ctx context.Context) error {
 func heldRow(result ran) held { return held{isError: result.result.Err(), images: result.images} }
 
 // outputTokens is the output reserve the budget table states, read on each request.
-func (r *runState) outputTokens() int { return r.sc.Policy.OutputTokens }
+func (r *runState) outputTokens() int {
+	if ceiling := r.run.OutputCeiling(); ceiling > 0 && ceiling < r.sc.Policy.OutputTokens {
+		return ceiling
+	}
+	return r.sc.Policy.OutputTokens
+}
 
 // reasoningField is the member reasoning streams in on the OpenAI-compatible wire, where the record
 // pins one.

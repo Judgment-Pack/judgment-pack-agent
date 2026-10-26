@@ -676,6 +676,35 @@ func (g *generator) constOf(l loc, member string) string {
 	return ""
 }
 
+// integerConstOf finds a required, exact safe-integer discriminator. Optional members
+// cannot select a branch because their absence may still be valid for that branch.
+func (g *generator) integerConstOf(l loc, member string) (int64, bool) {
+	target := g.resolve(l)
+	_, required := g.structFields(target, map[string]bool{})
+	if !required[member] {
+		return 0, false
+	}
+	var value int64
+	found, valid := false, false
+	g.walkProperties(target, func(owner loc, name string) {
+		if name != member || found {
+			return
+		}
+		found = true
+		n := g.node(g.resolve(loc{owner.file, owner.ptr + "/properties/" + escape(name)}))
+		constant, exists := n["const"]
+		if !exists {
+			if values, ok := n["enum"].([]any); ok && len(values) == 1 {
+				constant = values[0]
+			}
+		}
+		if number, ok := constant.(float64); ok && number >= -9007199254740991 && number <= 9007199254740991 && number == float64(int64(number)) {
+			value, valid = int64(number), true
+		}
+	})
+	return value, valid
+}
+
 func (g *generator) walkProperties(l loc, visit func(owner loc, name string)) {
 	n := g.node(l)
 	if all, ok := n["allOf"].([]any); ok && g.mergeable(l) {
@@ -740,6 +769,32 @@ func (g *generator) emitUnion(l loc, name string) {
 		}
 	}
 
+	// Preserve string/keyed unions; integer tags only add a discriminator where none exists.
+	integerDiscriminator := false
+	if discriminator == "" && len(objects) > 1 {
+		first, _ := g.structFields(g.resolve(branches[objects[0]].l), map[string]bool{})
+		for _, candidate := range first {
+			values := map[int64]bool{}
+			ok := true
+			for _, i := range objects {
+				value, fixed := g.integerConstOf(branches[i].l, candidate.member)
+				if !fixed || values[value] {
+					ok = false
+					break
+				}
+				values[value] = true
+			}
+			if ok {
+				discriminator, integerDiscriminator = candidate.member, true
+				for _, i := range objects {
+					value, _ := g.integerConstOf(branches[i].l, candidate.member)
+					branches[i].tag = strconv.FormatInt(value, 10)
+				}
+				break
+			}
+		}
+	}
+
 	keyed, isKeyed := keyedUnionAt(l)
 	untagged := 0
 	for _, br := range branches {
@@ -767,7 +822,11 @@ func (g *generator) emitUnion(l loc, name string) {
 	fmt.Fprintf(&b, "type %s struct {\n", name)
 	for _, br := range branches {
 		if br.tag != "" {
-			fmt.Fprintf(&b, "\t// %s is set where %s is %q.\n", br.goName, discriminator, br.tag)
+			if integerDiscriminator {
+				fmt.Fprintf(&b, "\t// %s is set where %s is %s.\n", br.goName, discriminator, br.tag)
+			} else {
+				fmt.Fprintf(&b, "\t// %s is set where %s is %q.\n", br.goName, discriminator, br.tag)
+			}
 		}
 		fmt.Fprintf(&b, "\t%s *%s\n", br.goName, br.expr)
 	}
@@ -780,7 +839,16 @@ func (g *generator) emitUnion(l loc, name string) {
 		fmt.Fprintf(&b, "\tvar recordErr error; data, recordErr = recordDecodeBytes(%q, data); if recordErr != nil { return recordErr }\n", kind)
 	}
 	fmt.Fprintf(&b, "\t*v = %s{}\n\tkind := jsonKind(data)\n", name)
-	if discriminator != "" {
+	if integerDiscriminator {
+		fmt.Fprintf(&b, "\tif kind == \"object\" {\n\t\ttag, view, err := memberInteger(data, %q)\n\t\tif err != nil {\n\t\t\treturn errorf(\"%s: %%w\", err)\n\t\t}\n\t\tswitch tag {\n", discriminator, name)
+		for _, br := range branches {
+			if br.tag == "" {
+				continue
+			}
+			fmt.Fprintf(&b, "\t\tcase %s:\n\t\t\tv.%s = new(%s)\n\t\t\treturn json.Unmarshal(view, v.%s)\n", br.tag, br.goName, br.expr, br.goName)
+		}
+		fmt.Fprintf(&b, "\t\t}\n\t\treturn errorf(\"%s: no member has %s %%d\", tag)\n\t}\n", name, discriminator)
+	} else if discriminator != "" {
 		fmt.Fprintf(&b, "\tif kind == \"object\" {\n\t\ttag, err := memberString(data, %q)\n\t\tif err != nil {\n\t\t\treturn errorf(\"%s: %%w\", err)\n\t\t}\n\t\tswitch tag {\n", discriminator, name)
 		for _, br := range branches {
 			if br.tag == "" {

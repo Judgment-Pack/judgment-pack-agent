@@ -33,9 +33,14 @@
         "kind": "gateway",
         "id": "databricks",
         "trust": "connected",
-        "version": "rev-7"
+        "version": "rev-7",
+        "toolListDigest": "sha256:7bbab1d7db7d654c47673af2bb8102bf6cb50ae94bd9af8c2fc5d15c18bf5c37"
       },
-      "effectClass": "read"
+      "effectClass": "read",
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read-external"
+      }
     },
     {
       "name": "create_issue",
@@ -62,7 +67,11 @@
         "kind": "mcp",
         "id": "tracker",
         "trust": "public",
-        "toolListDigest": "sha256:895126e92b1c3eda6597de4263b32e07b712e1ffb6b59a308dd53f18de6f9d22"
+        "toolListDigest": "sha256:75f93593e43883a9866be0c7af493e23c6e6561190d3161f8ee6263a43d22916"
+      },
+      "taxonomy": {
+        "operation": "act",
+        "effect": "act"
       }
     },
     {
@@ -83,12 +92,17 @@
         "kind": "custom",
         "id": "rates",
         "trust": "person",
-        "version": "3"
+        "version": "3",
+        "toolListDigest": "sha256:f7f20dc1a3ac25f53356425044ba85e28f2d1db99d6c75bd62ad55e3fdc662c0"
       },
       "effectClass": "read",
       "delegation": "read",
       "contextPolicy": {
         "immutable": true
+      },
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read-external"
       }
     },
     {
@@ -113,9 +127,14 @@
         "kind": "custom",
         "id": "rates",
         "trust": "person",
-        "version": "3"
+        "version": "3",
+        "toolListDigest": "sha256:f7f20dc1a3ac25f53356425044ba85e28f2d1db99d6c75bd62ad55e3fdc662c0"
       },
-      "effectClass": "propose"
+      "effectClass": "propose",
+      "taxonomy": {
+        "operation": "propose",
+        "effect": "propose"
+      }
     },
     {
       "name": "update_work_item",
@@ -139,10 +158,15 @@
         "kind": "gateway",
         "id": "ado",
         "trust": "connected",
-        "version": "2026-10"
+        "version": "2026-10",
+        "toolListDigest": "sha256:dedd8c488f05f82066927e597e9f02c1cd6ca869bcb3ea4d4fa2adc0cca8b8fe"
       },
       "effectClass": "act",
-      "approval": "required"
+      "approval": "required",
+      "taxonomy": {
+        "operation": "act",
+        "effect": "act"
+      }
     }
   ],
   "refused": [
@@ -170,7 +194,11 @@
           "trust": "first-party",
           "version": "0.35.0"
         },
-        "effectClass": "read"
+        "effectClass": "read",
+        "taxonomy": {
+          "operation": "read",
+          "effect": "read-external"
+        }
       },
       "problem": "its source is the Runtime"
     },
@@ -201,9 +229,13 @@
           "id": "tracker",
           "trust": "public",
           "version": "1.2.0"
+        },
+        "taxonomy": {
+          "operation": "act",
+          "effect": "act"
         }
       },
-      "problem": "not pinned by digest"
+      "problem": "no approved taxonomy-bound tool-list digest"
     },
     {
       "declaration": {
@@ -227,10 +259,15 @@
           "kind": "gateway",
           "id": "databricks",
           "trust": "connected",
-          "version": "rev-7"
+          "version": "rev-7",
+          "toolListDigest": "sha256:7bbab1d7db7d654c47673af2bb8102bf6cb50ae94bd9af8c2fc5d15c18bf5c37"
         },
         "effectClass": "read",
-        "effect": "read"
+        "effect": "read",
+        "taxonomy": {
+          "operation": "read",
+          "effect": "read-external"
+        }
       },
       "problem": "it declares effect"
     },
@@ -257,11 +294,16 @@
           "kind": "gateway",
           "id": "ado",
           "trust": "connected",
-          "version": "2026-10"
+          "version": "2026-10",
+          "toolListDigest": "sha256:dedd8c488f05f82066927e597e9f02c1cd6ca869bcb3ea4d4fa2adc0cca8b8fe"
         },
         "effectClass": "act",
         "approval": "required",
-        "delegation": "read"
+        "delegation": "read",
+        "taxonomy": {
+          "operation": "act",
+          "effect": "act"
+        }
       },
       "problem": "without being declared a read"
     },
@@ -289,7 +331,11 @@
           "trust": "connected",
           "version": "rev-7"
         },
-        "effectClass": "read"
+        "effectClass": "read",
+        "taxonomy": {
+          "operation": "read",
+          "effect": "read-external"
+        }
       },
       "problem": "its source id"
     },
@@ -317,7 +363,11 @@
           "trust": "trusted",
           "version": "rev-7"
         },
-        "effectClass": "read"
+        "effectClass": "read",
+        "taxonomy": {
+          "operation": "read",
+          "effect": "read-external"
+        }
       },
       "problem": "its trust class"
     }

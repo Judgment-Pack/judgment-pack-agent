@@ -26,9 +26,10 @@
     "version": {
       "enum": [
         1,
-        2
+        2,
+        3
       ],
-      "description": "Wire format version: writers use 2; readers also accept the frozen historical version 1."
+      "description": "Feature-free producers retain published defaults; feature-bearing usage budget records select checkpoint 3 / event 2."
     },
     "digest": {
       "$ref": "provenance.json#/$defs/recordDigest"
@@ -357,6 +358,15 @@
     "planState": {
       "$ref": "#/$defs/planState",
       "description": "Current ordered task content SHA-256, independent history sequence and step allocator. Only newest 32 revisions retained; discarded is the explicit prefix count. Explanations/history/counters do not affect the content digest. Storage CAS revisions remain opaque host tokens."
+    },
+    "usageBudget": {
+      "$ref": "usage-budget.json"
+    },
+    "turnRoute": {
+      "$ref": "turn-route.json"
+    },
+    "repeatTools": {
+      "$ref": "#/$defs/repeatTools"
     }
   },
   "additionalProperties": false,
@@ -469,6 +479,21 @@
           "minLength": 1,
           "maxLength": 1500,
           "pattern": "\\S"
+        },
+        "dependsOn": {
+          "type": "array",
+          "maxItems": 19,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^step-[1-9][0-9]{0,15}$"
+          }
+        },
+        "budget": {
+          "$ref": "#/$defs/taskStepShare"
+        },
+        "delegation": {
+          "$ref": "subagent.json#/$defs/record"
         }
       },
       "additionalProperties": false
@@ -662,6 +687,9 @@
         "marker": {
           "type": "string",
           "pattern": "^[0-9a-f]{32}$"
+        },
+        "runtime": {
+          "$ref": "#/$defs/runtimeApprovalBinding"
         }
       },
       "additionalProperties": false
@@ -875,6 +903,12 @@
           "items": {
             "$ref": "#/$defs/artifactObservation"
           }
+        },
+        "repeatResultJson": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4194304,
+          "description": "Enabled repeat detection only: exact original acknowledged result encoding, retained by its original writer before legacy result projection."
         }
       },
       "required": [
@@ -1160,6 +1194,12 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 9007199254740991
+        },
+        "taskSchedule": {
+          "$ref": "#/$defs/taskSchedule"
+        },
+        "taskEnvelope": {
+          "$ref": "#/$defs/taskEnvelopeBinding"
         }
       },
       "required": [
@@ -1214,6 +1254,9 @@
             ],
             "additionalProperties": false
           }
+        },
+        "child": {
+          "$ref": "#/$defs/taskCompletionEvidence"
         }
       },
       "required": [
@@ -1536,6 +1579,510 @@
         "approved"
       ],
       "additionalProperties": false
+    },
+    "runtimeExecutionOwner": {
+      "description": "The trusted host observation of the actual immutable Runtime execution. Labels are descriptive and never grant authority. Closed.",
+      "type": "object",
+      "required": [
+        "artifactDigest",
+        "processId",
+        "projectId",
+        "projectLabel",
+        "sessionId",
+        "principalDigest",
+        "principalLabel",
+        "scopeDigest",
+        "scopeLabel"
+      ],
+      "properties": {
+        "artifactDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "processId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+        },
+        "projectLabel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+        },
+        "principalDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "principalLabel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+        },
+        "scopeDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "scopeLabel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "runtimeApprovalBinding": {
+      "description": "Runtime-specific exact admission binding carried only by current checkpoint3/event2. A record is not a dispatch grant. Closed.",
+      "type": "object",
+      "required": [
+        "owner",
+        "admissionDigest"
+      ],
+      "properties": {
+        "owner": {
+          "$ref": "#/$defs/runtimeExecutionOwner"
+        },
+        "admissionDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "taskStepShare": {
+      "type": "object",
+      "properties": {
+        "requests": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "required": [
+        "requests"
+      ],
+      "additionalProperties": false
+    },
+    "taskScheduleBinding": {
+      "type": "object",
+      "properties": {
+        "run": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[^\\u0000-\\u001f]+$"
+        },
+        "execution": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[^\\u0000-\\u001f]+$"
+        },
+        "planRevision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "scopeDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "unit": {
+          "enum": [
+            "model-requests",
+            "provider-managed"
+          ]
+        }
+      },
+      "required": [
+        "run",
+        "execution",
+        "planRevision",
+        "scopeDigest",
+        "unit"
+      ],
+      "additionalProperties": false
+    },
+    "taskStepClaim": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[^\\u0000-\\u001f]+$"
+        },
+        "requestDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "state": {
+          "enum": [
+            "held",
+            "admitted",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "requestDigest",
+        "state"
+      ],
+      "additionalProperties": false
+    },
+    "taskChildResult": {
+      "type": "object",
+      "properties": {
+        "checkpointDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "resultDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "eventDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "commitId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[^\\u0000-\\u001f]+$"
+        }
+      },
+      "required": [
+        "checkpointDigest",
+        "resultDigest",
+        "eventDigest",
+        "commitId"
+      ],
+      "additionalProperties": false
+    },
+    "taskChildBinding": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[^\\u0000-\\u001f]+$"
+        },
+        "execution": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[^\\u0000-\\u001f]+$"
+        },
+        "planRevision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "profile": {
+          "$ref": "subagent.json#/$defs/record"
+        },
+        "result": {
+          "$ref": "#/$defs/taskChildResult"
+        }
+      },
+      "required": [
+        "task",
+        "execution",
+        "planRevision",
+        "profile"
+      ],
+      "additionalProperties": false
+    },
+    "taskStepRow": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^step-[1-9][0-9]{0,15}$"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "claims": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/$defs/taskStepClaim"
+          }
+        },
+        "child": {
+          "$ref": "#/$defs/taskChildBinding"
+        }
+      },
+      "required": [
+        "id",
+        "claims"
+      ],
+      "additionalProperties": false
+    },
+    "taskSchedule": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "binding": {
+          "$ref": "#/$defs/taskScheduleBinding"
+        },
+        "definitionDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "rows": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/taskStepRow"
+          }
+        },
+        "pending": {
+          "$ref": "#/$defs/taskPendingDelegation"
+        }
+      },
+      "required": [
+        "version",
+        "binding",
+        "definitionDigest",
+        "rows"
+      ],
+      "additionalProperties": false
+    },
+    "taskExecutionEnvelope": {
+      "description": "Explicit immutable host-configured provider invocation ceiling. No available or spent balance is accepted.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "unit": {
+          "const": "provider-invocations"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "required": [
+        "id",
+        "revision",
+        "unit",
+        "limit"
+      ],
+      "additionalProperties": false
+    },
+    "taskEnvelopeBinding": {
+      "type": "object",
+      "properties": {
+        "run": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "execution": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "scopeDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "configuration": {
+          "$ref": "#/$defs/taskExecutionEnvelope"
+        }
+      },
+      "required": [
+        "run",
+        "execution",
+        "scopeDigest",
+        "configuration"
+      ],
+      "additionalProperties": false
+    },
+    "taskPendingDelegation": {
+      "description": "Original-writer association acknowledged before native release or model child admission. An interrupted association never grants redispatch.",
+      "type": "object",
+      "properties": {
+        "planRevision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "requestDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^step-[1-9][0-9]{0,15}$"
+          }
+        }
+      },
+      "required": [
+        "planRevision",
+        "requestDigest",
+        "steps"
+      ],
+      "additionalProperties": false
+    },
+    "taskCompletionEvidence": {
+      "description": "Exact acknowledged successful child evidence; caller strings alone cannot establish completion.",
+      "type": "object",
+      "properties": {
+        "task": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "checkpointDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "resultDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "eventDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "commitId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "task",
+        "checkpointDigest",
+        "resultDigest",
+        "eventDigest",
+        "commitId"
+      ],
+      "additionalProperties": false
+    },
+    "repeatObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dispatchId",
+        "keyDigest"
+      ],
+      "properties": {
+        "dispatchId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "keyDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    },
+    "repeatExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "execution",
+        "remindAt",
+        "stopAt",
+        "count",
+        "reminded",
+        "stopped",
+        "seen",
+        "reminderDelivered"
+      ],
+      "properties": {
+        "execution": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "remindAt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 400
+        },
+        "stopAt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 400
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 399
+        },
+        "reminded": {
+          "type": "boolean"
+        },
+        "stopped": {
+          "type": "boolean"
+        },
+        "seen": {
+          "type": "array",
+          "maxItems": 400,
+          "items": {
+            "$ref": "#/$defs/repeatObservation"
+          }
+        },
+        "reminderDelivered": {
+          "type": "boolean"
+        }
+      }
+    },
+    "repeatTools": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "executions"
+      ],
+      "properties": {
+        "executions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 33,
+          "items": {
+            "$ref": "#/$defs/repeatExecution"
+          }
+        }
+      }
     }
   }
 }

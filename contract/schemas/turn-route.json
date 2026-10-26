@@ -1,0 +1,492 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/turn-route.json",
+  "title": "One acknowledged turn route; presentation never authority",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "route": {
+      "enum": [
+        "direct",
+        "agent"
+      ]
+    },
+    "tier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "pattern": "^[^\\x00-\\x1f]+$"
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100,
+        "pattern": "^[^\\x00-\\x1f]+$"
+      },
+      "uniqueItems": true,
+      "maxItems": 128
+    },
+    "tools": {
+      "oneOf": [
+        {
+          "const": "all"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[^\\x00-\\x1f]+$"
+          },
+          "uniqueItems": true,
+          "maxItems": 128
+        }
+      ]
+    },
+    "operations": {
+      "oneOf": [
+        {
+          "const": "all"
+        },
+        {
+          "type": "array",
+          "items": {
+            "enum": [
+              "discover",
+              "read",
+              "answer",
+              "check",
+              "transform",
+              "evaluate",
+              "propose",
+              "act",
+              "run",
+              "own-state",
+              "ask"
+            ]
+          },
+          "uniqueItems": true,
+          "maxItems": 128
+        }
+      ]
+    },
+    "planning": {
+      "enum": [
+        "offered",
+        "withheld"
+      ]
+    },
+    "version": {
+      "const": 1
+    },
+    "decidedBy": {
+      "enum": [
+        "host",
+        "rule",
+        "classifier",
+        "default"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "pattern": "^[^\\x00-\\x1f]+$"
+    },
+    "bindingDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "catalogueDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "widened": {
+      "type": "boolean"
+    },
+    "widenedFor": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "pattern": "^[^\\x00-\\x1f]+$"
+    },
+    "refusals": {
+      "type": "array",
+      "maxItems": 66,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "stage": {
+            "enum": [
+              "host",
+              "rule",
+              "classifier"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[^\\x00-\\x1f]+$"
+          }
+        },
+        "required": [
+          "stage",
+          "reason"
+        ]
+      }
+    },
+    "classifier": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "binding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[^\\x00-\\x1f]+$"
+        },
+        "promptDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "status": {
+          "enum": [
+            "label",
+            "refused",
+            "timeout",
+            "unknown-label",
+            "unsupported",
+            "pending"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[^\\x00-\\x1f]+$"
+        },
+        "usage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "inputTokens": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "outputTokens": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          }
+        }
+      },
+      "required": [
+        "binding",
+        "promptDigest",
+        "status"
+      ]
+    },
+    "widenedInvocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dispatchId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[^\\x00-\\x1f]+$"
+        },
+        "requestDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "dispatchId",
+        "requestDigest"
+      ]
+    }
+  },
+  "required": [
+    "route",
+    "skills",
+    "tools",
+    "operations",
+    "planning",
+    "version",
+    "decidedBy",
+    "reason",
+    "bindingDigest",
+    "catalogueDigest",
+    "widened",
+    "refusals"
+  ],
+  "$defs": {
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "route": {
+          "enum": [
+            "direct",
+            "agent"
+          ]
+        },
+        "tier": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[^\\x00-\\x1f]+$"
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[^\\x00-\\x1f]+$"
+          },
+          "uniqueItems": true,
+          "maxItems": 128
+        },
+        "tools": {
+          "oneOf": [
+            {
+              "const": "all"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "pattern": "^[^\\x00-\\x1f]+$"
+              },
+              "uniqueItems": true,
+              "maxItems": 128
+            }
+          ]
+        },
+        "operations": {
+          "oneOf": [
+            {
+              "const": "all"
+            },
+            {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "discover",
+                  "read",
+                  "answer",
+                  "check",
+                  "transform",
+                  "evaluate",
+                  "propose",
+                  "act",
+                  "run",
+                  "own-state",
+                  "ask"
+                ]
+              },
+              "uniqueItems": true,
+              "maxItems": 128
+            }
+          ]
+        },
+        "planning": {
+          "enum": [
+            "offered",
+            "withheld"
+          ]
+        }
+      },
+      "required": [
+        "route",
+        "skills",
+        "tools",
+        "operations",
+        "planning"
+      ]
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "off",
+            "rules",
+            "auto"
+          ]
+        },
+        "tiers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[^\\x00-\\x1f]+$"
+          },
+          "uniqueItems": true,
+          "maxItems": 128,
+          "minItems": 1
+        },
+        "rules": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "pattern": "^[^\\x00-\\x1f]+$"
+              },
+              "when": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "pattern": "^[^\\x00-\\x1f]+$"
+                  },
+                  "attachments": {
+                    "type": "boolean"
+                  },
+                  "artifact": {
+                    "type": "boolean"
+                  },
+                  "turnBytes": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1048576
+                  },
+                  "maxTurnBytes": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1048576
+                  },
+                  "slash": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "pattern": "^[^\\x00-\\x1f]+$"
+                  }
+                }
+              },
+              "route": {
+                "$ref": "#/$defs/selection"
+              }
+            },
+            "required": [
+              "id",
+              "when",
+              "route"
+            ]
+          }
+        },
+        "classifier": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "labels": {
+              "type": "object",
+              "minProperties": 1,
+              "maxProperties": 32,
+              "patternProperties": {
+                "^[a-z][a-z0-9_-]{0,31}$": {
+                  "$ref": "#/$defs/selection"
+                }
+              },
+              "additionalProperties": false
+            },
+            "maxOutputTokens": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64
+            },
+            "timeoutMilliseconds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5000
+            }
+          },
+          "required": [
+            "labels",
+            "maxOutputTokens",
+            "timeoutMilliseconds"
+          ]
+        }
+      },
+      "required": [
+        "mode",
+        "tiers"
+      ]
+    },
+    "classifier": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "binding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[^\\x00-\\x1f]+$"
+        },
+        "promptDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "status": {
+          "enum": [
+            "label",
+            "refused",
+            "timeout",
+            "unknown-label",
+            "unsupported",
+            "pending"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[^\\x00-\\x1f]+$"
+        },
+        "usage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "inputTokens": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "outputTokens": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          }
+        }
+      },
+      "required": [
+        "binding",
+        "promptDigest",
+        "status"
+      ]
+    }
+  }
+}

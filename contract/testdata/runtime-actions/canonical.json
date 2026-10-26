@@ -1,0 +1,23 @@
+{
+  "description": "Handwritten canonical preimages; digest bytes independently calculated over the stated UTF-8 strings, not product output.",
+  "rows": [
+    {
+      "name": "UTF-16 keys preserve non-ASCII identifiers",
+      "input": "{\"\\ue000\":1,\"😀\":2,\"é\":3,\"a\":null}",
+      "canonical": "{\"a\":null,\"é\":3,\"😀\":2,\"\":1}",
+      "digest": "sha256:17594aa49b5abe8d1429414cd8fd13d389f24179547b3719a7d70546a0d53dd2"
+    },
+    {
+      "name": "exact numbers at portable boundary",
+      "input": "{\"small\":1e-7,\"millionth\":0.000001,\"negativeZero\":-0,\"fraction\":0.1,\"max\":9007199254740991}",
+      "canonical": "{\"fraction\":0.1,\"max\":9007199254740991,\"millionth\":0.000001,\"negativeZero\":0,\"small\":1e-7}",
+      "digest": "sha256:88e74410e08803b672b73880cdf23f357b0da9b2b123b1880d41016e030beaab"
+    },
+    {
+      "name": "omission and significant array ordering",
+      "input": "{\"owner\":{\"sessionId\":\"S é\",\"projectId\":\"P\"},\"list\":[null,0,false]}",
+      "canonical": "{\"list\":[null,0,false],\"owner\":{\"projectId\":\"P\",\"sessionId\":\"S é\"}}",
+      "digest": "sha256:a5e13d8ea068657301b162ec57d2d70590c5643fad7557391d19f2247d29174f"
+    }
+  ]
+}

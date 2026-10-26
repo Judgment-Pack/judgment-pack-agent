@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/history-chunk.json",
+  "title": "Retained history chunk manifest",
+  "description": "Canonical v1 content-addressed object chunks. Native readers verify exact byte lengths, full preceding chunks, aggregate digest and resource-scoped publication.",
+  "type": "object",
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "bytes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 67108864
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "parts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "digest": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4194304
+          }
+        },
+        "required": [
+          "digest",
+          "bytes"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 16,
+      "minItems": 1
+    }
+  },
+  "required": [
+    "version",
+    "bytes",
+    "digest",
+    "parts"
+  ],
+  "additionalProperties": false
+}

@@ -3,7 +3,7 @@ import type {ExecutionCheckpoint} from './state'
 
 /** A patch replaces named members atomically. Undefined removes an optional member. */
 export class CheckpointIncrement {constructor(readonly amount:number){if(!Number.isSafeInteger(amount))throw Error('Invalid checkpoint increment')}}
-export const CHECKPOINT_MEMBERS=["schema","version","digest","retainUntil","id","requestKey","phase","status","unit","used","limit","requestCap","grants","plan","explanation","operations","completions","context","reason","testCalls","delegation","handoff","approval","prompts","sources","skills","critic","policy","crossProvider","compaction","memories","draft","outputGuard","records","sourceIdentities","steers","usage","failover","childUsage","durable","planState"] as const
+export const CHECKPOINT_MEMBERS=["schema","version","digest","retainUntil","id","requestKey","phase","status","unit","used","limit","requestCap","grants","plan","explanation","operations","completions","context","reason","testCalls","delegation","handoff","approval","prompts","sources","skills","critic","policy","crossProvider","compaction","memories","draft","outputGuard","records","sourceIdentities","steers","usage","failover","childUsage","durable","planState","usageBudget","turnRoute"] as const
 const members=new Set<string>(CHECKPOINT_MEMBERS),counters=new Set(['used','limit','testCalls'])
 export type CheckpointPatch = {[K in keyof ExecutionCheckpoint]?: ExecutionCheckpoint[K] | (K extends 'used'|'limit'|'testCalls' ? CheckpointIncrement : never)}
 const revisions=new WeakMap<ExecutionCheckpoint,number>()

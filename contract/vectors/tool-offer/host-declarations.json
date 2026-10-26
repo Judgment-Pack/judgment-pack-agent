@@ -27,7 +27,11 @@
           "question"
         ]
       },
-      "interaction": "question"
+      "interaction": "question",
+      "taxonomy": {
+        "operation": "ask",
+        "effect": "pure"
+      }
     },
     {
       "name": "delegate_tasks",
@@ -43,7 +47,11 @@
           "tasks"
         ]
       },
-      "interaction": "delegation"
+      "interaction": "delegation",
+      "taxonomy": {
+        "operation": "run",
+        "effect": "read"
+      }
     },
     {
       "name": "read_pack",
@@ -68,6 +76,10 @@
       },
       "presentation": {
         "provider": "Judgment Pack workspace"
+      },
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read"
       }
     },
     {
@@ -85,7 +97,11 @@
         ]
       },
       "effect": "read",
-      "delegation": "research"
+      "delegation": "research",
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read-external"
+      }
     }
   ]
 }

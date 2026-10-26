@@ -289,8 +289,19 @@ export function probe(raw:AgentAssistantSession,assistant:RequestAssistantSessio
  it('carries the complete shared request book, including compactor and a future member',()=>{
   for(const members of requestValuesVector.items){const view=new RequestValues(members as PolicyMembers);for(const [name,member]of Object.entries(members))expect(view.member(name),name).toEqual(member);expect(view.reasoning('author')).toBeUndefined();expect(view.reasoning('compactor')).toBeUndefined()}
  })
+ it('checks runtime critic admission in the prepared consumer wrapper',async()=>{
+  const callTool=vi.fn(async()=>({content:[]}))
+  const opened=await contextualSession({...base(),tools:[{name:'validate',inputSchema:{type:'object'},_meta:{operation:'check',effect:'pure',checkKind:'validate'}}],callTool},'codex')
+  try{
+   opened.context.beginCriticPhase()
+   await expect(opened.session.callTool('write_file',{})).rejects.toThrow('not one of the tools the critic may call')
+   expect(callTool).not.toHaveBeenCalled()
+   await opened.session.callTool('validate',{})
+   expect(callTool).toHaveBeenCalledExactlyOnceWith('validate',{})
+  }finally{opened.context.close()}
+ })
  it('keeps admitted binding and tool data detached',async()=>{
-  const original=base(),selected={model:'admitted',run:vi.fn()},host={name:'read_evidence',description:'Read evidence.',inputSchema:{type:'object'},execute:vi.fn(async()=>({}))}
+  const original=base(),selected={model:'admitted',run:vi.fn()},host={name:'read_evidence',description:'Read evidence.',taxonomy:{operation:'read' as const,effect:'read' as const},inputSchema:{type:'object'},execute:vi.fn(async()=>({}))}
   const session:AgentAssistantSession={...original,hostTools:[host],policy:{models:{author:{provider:'selected',model:'selected'}}},policyConnections:{selected:{agent:selected}}}
   const opened=await contextualSession(session,'codex')
   try{expect(opened.session.values.allowsTool('read_evidence','host','critic')).toBe(false);expect(opened.session.values.allowsTool('read_evidence','host','reformat')).toBe(false);selected.model='changed raw';host.inputSchema.type='array';expect(opened.session.values.agent.model).toBe('admitted');const tools=opened.session.values.hostTools;expect(tools.find(t=>t.name==='read_evidence')!.inputSchema).toEqual({type:'object'});tools[0]!.name='changed copy';expect(opened.session.values.hostTools[0]!.name).toBe('read_evidence')}finally{opened.context.close()}

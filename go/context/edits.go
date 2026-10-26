@@ -513,7 +513,7 @@ func (g *Drafts) Tools() []HostTool {
 	out := []HostTool{}
 	for _, n := range EditTools {
 		name := n
-		out = append(out, HostTool{Name: name, Effect: "proposal", Description: "Edit only the package draft; the anchor must occur exactly once. Every candidate is validated; refusal leaves the draft unchanged. The person accepts the whole document.", InputSchema: EditSchema(name), Execute: func(ctx context.Context, args json.RawMessage) (ToolResult, error) { return g.Edit(ctx, name, args) }})
+		out = append(out, HostTool{Name: name, Taxonomy: &ToolTaxonomy{Operation: "propose", Effect: "propose"}, Effect: "proposal", Description: "Edit only the package draft; the anchor must occur exactly once. Every candidate is validated; refusal leaves the draft unchanged. The person accepts the whole document.", InputSchema: EditSchema(name), Execute: func(ctx context.Context, args json.RawMessage) (ToolResult, error) { return g.Edit(ctx, name, args) }})
 	}
 	return out
 }
@@ -537,7 +537,7 @@ func OfferedEditTools(session Session) []contract.ToolOfferHostTool {
 	effect := "proposal"
 	out := []contract.ToolOfferHostTool{}
 	for _, name := range EditTools {
-		out = append(out, contract.ToolOfferHostTool{Name: name, Description: "Edit the package proposal draft.", InputSchema: EditSchema(name), Effect: &effect})
+		out = append(out, contract.ToolOfferHostTool{Name: name, Taxonomy: contract.ToolTaxonomy{Operation: "propose", Effect: "propose"}, Description: "Edit the package proposal draft.", InputSchema: EditSchema(name), Effect: &effect})
 	}
 	return out
 }

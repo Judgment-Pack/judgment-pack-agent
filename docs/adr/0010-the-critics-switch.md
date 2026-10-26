@@ -237,9 +237,14 @@ a run works on an existing pack.
 
 ## Not decided here
 
-Inferring intent from the person's words (a model judgment, kept out of the proof path); several
+Inferring intent from the person's words to decide whether the critic runs (a model judgment, kept
+out of the proof path; author cost and focus routing is decided by [ADR-0023](0023-per-turn-routing.md)); several
 critics, or a critic of the critic; the critic's verdict changing the proposal (it reports; the person
 decides); a narrowing of the `auto` triggers by the host; a tier rule derived from the measurement
 (the Desk's default to set once the numbers exist); a floor other than `author`.
 
 v0.9.1 amendment (#155): adversarialReview (native Run.Review) is retired and refused on presence, including false; use critic / Critic, or policy.critic.default.
+
+## Per-turn routing
+
+[ADR-0023](0023-per-turn-routing.md) narrows the author's presented capabilities and selects an admitted author tier before execution. It does not replace this critic decision, alter the critic's independent resolved tier, or widen its read-only gate. A route classifier is separately accounted author-boundary work, never a critic verdict or evidence that review ran.

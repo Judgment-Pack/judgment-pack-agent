@@ -1,0 +1,38 @@
+{
+  "description": "Handwritten redacted event view preserved in the encoded object at fixtures/history/archive.json cases[1].archive.objects[1].",
+  "schema": "run-archive-view.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/history/archive.ts"
+    ]
+  },
+  "items": [
+    {
+      "document": {
+        "event": {
+          "text": "Visible [redacted: account-code]",
+          "type": "message"
+        },
+        "scope": {
+          "execution": "fixture-run",
+          "role": "author"
+        },
+        "version": 1
+      },
+      "redactions": [
+        "/event/text"
+      ],
+      "source": {
+        "bytes": 120,
+        "digest": "sha256:7c6e5e0f01bf716d5328ba3aa46268baa162e3f936ee7dc1dd93e38ca50436a8"
+      },
+      "sourceKind": "event",
+      "sourceVersion": 1,
+      "version": 1
+    }
+  ]
+}

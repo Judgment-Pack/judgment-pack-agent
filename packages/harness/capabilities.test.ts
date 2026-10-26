@@ -14,6 +14,7 @@ import { CAPABILITY_MEMBERS, FAMILY_CAPABILITIES, WIRE_REASONING, capabilitiesFo
 import { configureHarness } from './host'
 import { vercel } from './engines/vercel/index'
 import { scenario, scriptedModel, scriptedRuntime } from './certification'
+import {currentContractReplayTools} from './certification/scriptedServer'
 import { bindModelCall, openAssistantConnection, runAssistantSession } from './session'
 import { normalize } from './thinking'
 import type { AssistantEvent, ModelCall } from './engine'
@@ -96,11 +97,12 @@ describe('the contract’s open-weight record', () => {
     configureHarness({ endpointCapabilities: () => record })
     const model = scriptedModel({ api: 'openai-compatible', answerAs: 'stream', thinking: 'off', refuted: false, signatures: 'thought', toolCalls: 'text' })
     vi.stubGlobal('fetch', model.fetch)
-    const runtime = await scriptedRuntime()
+    const runtime = await scriptedRuntime({tools:currentContractReplayTools()})
     const events: AssistantEvent[] = []
     const bodies: Record<string, unknown>[] = []
     const connection = openAssistantConnection({ allowed: scenario.scenarioTools, onEvent: (event) => events.push(event), transport: runtime.transport })
     try {
+      await expect(connection.ready).resolves.toHaveProperty('tools')
       const ready = await connection.ready
       const bound = bindModelCall('openai-compatible')
       const call: ModelCall = async (suffix, request) => { bodies.push(JSON.parse(request.body) as Record<string, unknown>); return bound(suffix, request) }

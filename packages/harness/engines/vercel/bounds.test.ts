@@ -19,7 +19,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { bindModelCall, openAssistantConnection, runAssistantSession } from '../../session'
 import { scriptedModel, type ScriptedModel } from '../../certification/scriptedModel'
-import { scriptedRuntime, type ServerObservation } from '../../certification/scriptedServer'
+import { scriptedRuntime, currentContractReplayTools, type ServerObservation } from '../../certification/scriptedServer'
 import scenario from '../../certification/scenario.json'
 import { normalize } from '../../thinking'
 import { vercel } from './index'
@@ -78,7 +78,7 @@ async function runScenario(options: {
     arrivals.push(arrival)
     return endpoint(arrival, () => model.fetch(input as RequestInfo, init))
   })
-  const runtime = await scriptedRuntime()
+  const runtime = await scriptedRuntime({tools:currentContractReplayTools()})
   const events: AssistantEvent[] = []
   const connection = openAssistantConnection({
     allowed: scenario.scenarioTools,
@@ -87,6 +87,7 @@ async function runScenario(options: {
   })
   const started = Date.now()
   try {
+    await expect(connection.ready).resolves.toHaveProperty('tools')
     const ready = await connection.ready
     const callTool = options.callTool
     await runAssistantSession(

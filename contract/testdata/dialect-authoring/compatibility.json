@@ -1,0 +1,9 @@
+{
+ "cases":[
+  {"mode":"complete","draftStages":["candidate","checked"],"finals":1,"report":true,"preview":true},
+  {"mode":"failed-validation","draftStages":["candidate","checked"],"finals":0,"report":true,"preview":false},
+  {"mode":"transport-failed","draftStages":["candidate"],"finals":0,"report":false,"preview":false},
+  {"mode":"preview-failed","draftStages":["candidate","checked"],"finals":0,"report":true,"preview":true},
+  {"mode":"changed-preview","draftStages":["candidate","checked"],"finals":0,"report":true,"preview":true}
+ ]
+}

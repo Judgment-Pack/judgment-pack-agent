@@ -33,9 +33,19 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
 import runtime from './runtime.json'
+import currentContract from './runtime-current-contract.json'
+import type {ToolTaxonomy} from '../toolTaxonomy'
 import type { McpTool } from '../engine'
 
 export const RECORDED_TOOLS = runtime.tools as McpTool[]
+
+/** Explicit synthetic current-contract metadata for the rehearsal-only correction replay.
+ * This is not recorded owner metadata and never changes the historical default offer.
+ */
+export function currentContractReplayTools(): McpTool[] {
+  const declarations = currentContract.tools as Record<string, ToolTaxonomy>
+  return RECORDED_TOOLS.map(tool => ({...structuredClone(tool), _meta: structuredClone(declarations[tool.name])}))
+}
 
 interface RecordedCall {
   step: string
@@ -77,7 +87,8 @@ export interface RecordedRuntime {
   answer(message: JSONRPCMessage): JSONRPCMessage | null
 }
 
-export function recordedRuntime(): RecordedRuntime {
+/** A supplied offer is an explicit test declaration; omitted keeps exact historical tools. */
+export function recordedRuntime(tools: readonly McpTool[] = RECORDED_TOOLS): RecordedRuntime {
   const seen: ServerObservation[] = []
   return {
     seen,
@@ -100,7 +111,7 @@ export function recordedRuntime(): RecordedRuntime {
           serverInfo: runtime.runtime.serverInfo
         })
       }
-      if (frame.method === 'tools/list') return reply({ tools: RECORDED_TOOLS })
+      if (frame.method === 'tools/list') return reply({ tools })
       if (frame.method !== 'tools/call') {
         return fail(-32601, `the scripted runtime does not serve ${frame.method}`)
       }
@@ -153,9 +164,9 @@ export interface ScriptedRuntime {
  * the suite has to run in CI, keyless and offline, or it is not the desk's
  * conformance session.
  */
-export async function scriptedRuntime(): Promise<ScriptedRuntime> {
+export async function scriptedRuntime(options: {tools?: readonly McpTool[]} = {}): Promise<ScriptedRuntime> {
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()
-  const core = recordedRuntime()
+  const core = recordedRuntime(options.tools)
   serverSide.onmessage = (message: JSONRPCMessage) => {
     const reply = core.answer(message)
     if (reply !== null) void serverSide.send(reply)

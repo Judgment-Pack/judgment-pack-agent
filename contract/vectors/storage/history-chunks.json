@@ -1,0 +1,28 @@
+{
+  "description": "Handwritten single opaque chunk with independently derived SHA256.",
+  "schema": "history-chunk.json",
+  "items": [
+    {
+      "version": 1,
+      "bytes": 5,
+      "digest": "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+      "parts": [
+        {
+          "digest": "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+          "bytes": 5
+        }
+      ]
+    }
+  ],
+  "sourceText": "hello",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/history/codec.ts",
+      "packages/harness/context/chatSnapshot.test.ts"
+    ]
+  }
+}

@@ -28,6 +28,11 @@ func declaredTool(t *testing.T, item *Value) HostTool {
 		Execute: func(context.Context, json.RawMessage) (ToolResult, error) {
 			return ResultOf([]Content{TextContent("ran")}, nil), nil
 		}}
+	if taxonomy := item.Get("taxonomy"); taxonomy != nil {
+		if err := json.Unmarshal(taxonomy.JSON(), &tool.Taxonomy); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if source := item.Get("source"); source != nil {
 		tool.Source = &ToolSource{Kind: source.Get("kind").Str(), ID: source.Get("id").Str(), Trust: source.Get("trust").Str()}
 		if version := source.Get("version"); version != nil {
@@ -47,6 +52,16 @@ func declaredTool(t *testing.T, item *Value) HostTool {
 	}
 	if policy := item.Get("contextPolicy"); policy != nil {
 		tool.ContextPolicy = &ToolContextPolicy{Immutable: policy.Get("immutable").Truth()}
+	}
+	if tool.Taxonomy != nil && tool.Taxonomy.Effect == "read-external" && tool.Source != nil {
+		tool.Source.VerifyReceipt = func(_ context.Context, evidence ReceiptEvidence) (bool, error) {
+			return evidence.Receipt == "fixture-read" && evidence.Result == `{"content":[{"text":"ran","type":"text"}]}`, nil
+		}
+		tool.Execute = func(context.Context, json.RawMessage) (ToolResult, error) {
+			result := ResultOf([]Content{TextContent("ran")}, nil)
+			result.Receipt = "fixture-read"
+			return result, nil
+		}
 	}
 	return tool
 }

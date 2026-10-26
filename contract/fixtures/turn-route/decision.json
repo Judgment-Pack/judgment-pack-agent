@@ -1,0 +1,697 @@
+{
+  "schema": "turn-route.json#/$defs/selection",
+  "items": "selections",
+  "source": "Handwritten #172 precedence/narrow-only/planner/operation-family/once-widen cases; no model authority.",
+  "selections": [
+    {
+      "route": "agent",
+      "tier": "off",
+      "skills": [],
+      "tools": [],
+      "operations": [
+        "read"
+      ],
+      "planning": "withheld"
+    },
+    {
+      "route": "agent",
+      "tier": "on",
+      "skills": [],
+      "tools": "all",
+      "operations": "all",
+      "planning": "offered"
+    }
+  ],
+  "cases": [
+    {
+      "id": "host-first",
+      "input": {
+        "catalogue": {
+          "tools": [
+            {
+              "name": "lookup",
+              "operation": "read"
+            },
+            {
+              "name": "mutate",
+              "operation": "act"
+            },
+            {
+              "name": "update_plan",
+              "operation": "own-state"
+            }
+          ],
+          "skills": [
+            "declared"
+          ],
+          "tiers": [
+            "off",
+            "on"
+          ],
+          "tier": "on",
+          "planning": true,
+          "native": false
+        },
+        "facts": {
+          "mode": "work",
+          "attachments": false,
+          "artifact": false,
+          "turnBytes": 5
+        },
+        "binding": {
+          "execution": "one",
+          "scope": "turn-one"
+        },
+        "policy": {
+          "mode": "auto",
+          "tiers": [
+            "off",
+            "on"
+          ],
+          "rules": [
+            {
+              "id": "short",
+              "when": {
+                "maxTurnBytes": 10
+              },
+              "route": {
+                "route": "agent",
+                "tier": "off",
+                "skills": [],
+                "tools": [],
+                "operations": [
+                  "read"
+                ],
+                "planning": "withheld"
+              }
+            }
+          ],
+          "classifier": {
+            "labels": {
+              "small": {
+                "route": "agent",
+                "tier": "off",
+                "skills": [],
+                "tools": [],
+                "operations": [
+                  "read"
+                ],
+                "planning": "withheld"
+              }
+            },
+            "maxOutputTokens": 32,
+            "timeoutMilliseconds": 1000
+          }
+        },
+        "host": {
+          "route": "direct",
+          "tier": "off",
+          "skills": [],
+          "tools": [],
+          "operations": [
+            "read"
+          ],
+          "planning": "withheld"
+        }
+      },
+      "expected": {
+        "decidedBy": "host",
+        "reason": "host",
+        "route": "direct",
+        "widen": "lookup"
+      }
+    },
+    {
+      "id": "rule-first",
+      "input": {
+        "catalogue": {
+          "tools": [
+            {
+              "name": "lookup",
+              "operation": "read"
+            },
+            {
+              "name": "mutate",
+              "operation": "act"
+            },
+            {
+              "name": "update_plan",
+              "operation": "own-state"
+            }
+          ],
+          "skills": [
+            "declared"
+          ],
+          "tiers": [
+            "off",
+            "on"
+          ],
+          "tier": "on",
+          "planning": true,
+          "native": false
+        },
+        "facts": {
+          "mode": "work",
+          "attachments": false,
+          "artifact": false,
+          "turnBytes": 5
+        },
+        "binding": {
+          "execution": "one",
+          "scope": "turn-one"
+        },
+        "policy": {
+          "mode": "auto",
+          "tiers": [
+            "off",
+            "on"
+          ],
+          "rules": [
+            {
+              "id": "short",
+              "when": {
+                "maxTurnBytes": 10
+              },
+              "route": {
+                "route": "agent",
+                "tier": "off",
+                "skills": [],
+                "tools": [],
+                "operations": [
+                  "read"
+                ],
+                "planning": "withheld"
+              }
+            }
+          ],
+          "classifier": {
+            "labels": {
+              "small": {
+                "route": "agent",
+                "tier": "off",
+                "skills": [],
+                "tools": [],
+                "operations": [
+                  "read"
+                ],
+                "planning": "withheld"
+              }
+            },
+            "maxOutputTokens": 32,
+            "timeoutMilliseconds": 1000
+          }
+        },
+        "classifier": {
+          "binding": "connection",
+          "promptDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "status": "label",
+          "label": "small"
+        }
+      },
+      "expected": {
+        "decidedBy": "rule",
+        "reason": "short",
+        "route": "agent",
+        "widen": "update_plan"
+      }
+    },
+    {
+      "id": "classifier-third",
+      "input": {
+        "catalogue": {
+          "tools": [
+            {
+              "name": "lookup",
+              "operation": "read"
+            },
+            {
+              "name": "mutate",
+              "operation": "act"
+            },
+            {
+              "name": "update_plan",
+              "operation": "own-state"
+            }
+          ],
+          "skills": [
+            "declared"
+          ],
+          "tiers": [
+            "off",
+            "on"
+          ],
+          "tier": "on",
+          "planning": true,
+          "native": false
+        },
+        "facts": {
+          "mode": "work",
+          "attachments": false,
+          "artifact": false,
+          "turnBytes": 20
+        },
+        "binding": {
+          "execution": "one",
+          "scope": "turn-one"
+        },
+        "policy": {
+          "mode": "auto",
+          "tiers": [
+            "off",
+            "on"
+          ],
+          "rules": [
+            {
+              "id": "short",
+              "when": {
+                "maxTurnBytes": 10
+              },
+              "route": {
+                "route": "agent",
+                "tier": "off",
+                "skills": [],
+                "tools": [],
+                "operations": [
+                  "read"
+                ],
+                "planning": "withheld"
+              }
+            }
+          ],
+          "classifier": {
+            "labels": {
+              "small": {
+                "route": "agent",
+                "tier": "off",
+                "skills": [],
+                "tools": [],
+                "operations": [
+                  "read"
+                ],
+                "planning": "withheld"
+              }
+            },
+            "maxOutputTokens": 32,
+            "timeoutMilliseconds": 1000
+          }
+        },
+        "classifier": {
+          "binding": "connection",
+          "promptDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "status": "label",
+          "label": "small"
+        }
+      },
+      "expected": {
+        "decidedBy": "classifier",
+        "reason": "small",
+        "route": "agent"
+      }
+    },
+    {
+      "id": "unknown-label-default",
+      "input": {
+        "catalogue": {
+          "tools": [
+            {
+              "name": "lookup",
+              "operation": "read"
+            },
+            {
+              "name": "mutate",
+              "operation": "act"
+            },
+            {
+              "name": "update_plan",
+              "operation": "own-state"
+            }
+          ],
+          "skills": [
+            "declared"
+          ],
+          "tiers": [
+            "off",
+            "on"
+          ],
+          "tier": "on",
+          "planning": true,
+          "native": false
+        },
+        "facts": {
+          "mode": "work",
+          "attachments": false,
+          "artifact": false,
+          "turnBytes": 20
+        },
+        "binding": {
+          "execution": "one",
+          "scope": "turn-one"
+        },
+        "policy": {
+          "mode": "auto",
+          "tiers": [
+            "off",
+            "on"
+          ],
+          "rules": [
+            {
+              "id": "short",
+              "when": {
+                "maxTurnBytes": 10
+              },
+              "route": {
+                "route": "agent",
+                "tier": "off",
+                "skills": [],
+                "tools": [],
+                "operations": [
+                  "read"
+                ],
+                "planning": "withheld"
+              }
+            }
+          ],
+          "classifier": {
+            "labels": {
+              "small": {
+                "route": "agent",
+                "tier": "off",
+                "skills": [],
+                "tools": [],
+                "operations": [
+                  "read"
+                ],
+                "planning": "withheld"
+              }
+            },
+            "maxOutputTokens": 32,
+            "timeoutMilliseconds": 1000
+          }
+        },
+        "classifier": {
+          "binding": "connection",
+          "promptDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "status": "unknown-label"
+        }
+      },
+      "expected": {
+        "decidedBy": "default",
+        "reason": "selection-refused",
+        "route": "agent"
+      }
+    },
+    {
+      "id": "invalid-host-default",
+      "input": {
+        "catalogue": {
+          "tools": [
+            {
+              "name": "lookup",
+              "operation": "read"
+            },
+            {
+              "name": "mutate",
+              "operation": "act"
+            },
+            {
+              "name": "update_plan",
+              "operation": "own-state"
+            }
+          ],
+          "skills": [
+            "declared"
+          ],
+          "tiers": [
+            "off",
+            "on"
+          ],
+          "tier": "on",
+          "planning": true,
+          "native": false
+        },
+        "facts": {
+          "mode": "work",
+          "attachments": false,
+          "artifact": false,
+          "turnBytes": 5
+        },
+        "binding": {
+          "execution": "one",
+          "scope": "turn-one"
+        },
+        "policy": {
+          "mode": "auto",
+          "tiers": [
+            "off",
+            "on"
+          ],
+          "rules": [
+            {
+              "id": "short",
+              "when": {
+                "maxTurnBytes": 10
+              },
+              "route": {
+                "route": "agent",
+                "tier": "off",
+                "skills": [],
+                "tools": [],
+                "operations": [
+                  "read"
+                ],
+                "planning": "withheld"
+              }
+            }
+          ],
+          "classifier": {
+            "labels": {
+              "small": {
+                "route": "agent",
+                "tier": "off",
+                "skills": [],
+                "tools": [],
+                "operations": [
+                  "read"
+                ],
+                "planning": "withheld"
+              }
+            },
+            "maxOutputTokens": 32,
+            "timeoutMilliseconds": 1000
+          }
+        },
+        "host": {
+          "route": "agent",
+          "tier": "off",
+          "skills": [],
+          "tools": [
+            "undeclared"
+          ],
+          "operations": [
+            "read"
+          ],
+          "planning": "withheld"
+        }
+      },
+      "expected": {
+        "decidedBy": "default",
+        "reason": "selection-refused",
+        "route": "agent"
+      }
+    },
+    {
+      "id": "native-direct-default",
+      "input": {
+        "catalogue": {
+          "tools": [
+            {
+              "name": "lookup",
+              "operation": "read"
+            },
+            {
+              "name": "mutate",
+              "operation": "act"
+            },
+            {
+              "name": "update_plan",
+              "operation": "own-state"
+            }
+          ],
+          "skills": [
+            "declared"
+          ],
+          "tiers": [
+            "off",
+            "on"
+          ],
+          "tier": "on",
+          "planning": true,
+          "native": true
+        },
+        "facts": {
+          "mode": "work",
+          "attachments": false,
+          "artifact": false,
+          "turnBytes": 5
+        },
+        "binding": {
+          "execution": "one",
+          "scope": "turn-one"
+        },
+        "policy": {
+          "mode": "auto",
+          "tiers": [
+            "off",
+            "on"
+          ],
+          "rules": [
+            {
+              "id": "short",
+              "when": {
+                "maxTurnBytes": 10
+              },
+              "route": {
+                "route": "agent",
+                "tier": "off",
+                "skills": [],
+                "tools": [],
+                "operations": [
+                  "read"
+                ],
+                "planning": "withheld"
+              }
+            }
+          ],
+          "classifier": {
+            "labels": {
+              "small": {
+                "route": "agent",
+                "tier": "off",
+                "skills": [],
+                "tools": [],
+                "operations": [
+                  "read"
+                ],
+                "planning": "withheld"
+              }
+            },
+            "maxOutputTokens": 32,
+            "timeoutMilliseconds": 1000
+          }
+        },
+        "host": {
+          "route": "direct",
+          "tier": "off",
+          "skills": [],
+          "tools": [],
+          "operations": [
+            "read"
+          ],
+          "planning": "withheld"
+        }
+      },
+      "expected": {
+        "decidedBy": "default",
+        "reason": "selection-refused",
+        "route": "agent"
+      }
+    },
+    {
+      "id": "off-no-intent",
+      "input": {
+        "catalogue": {
+          "tools": [
+            {
+              "name": "lookup",
+              "operation": "read"
+            },
+            {
+              "name": "mutate",
+              "operation": "act"
+            },
+            {
+              "name": "update_plan",
+              "operation": "own-state"
+            }
+          ],
+          "skills": [
+            "declared"
+          ],
+          "tiers": [
+            "off",
+            "on"
+          ],
+          "tier": "on",
+          "planning": true,
+          "native": false
+        },
+        "facts": {
+          "mode": "work",
+          "attachments": false,
+          "artifact": false,
+          "turnBytes": 5
+        },
+        "binding": {
+          "execution": "one",
+          "scope": "turn-one"
+        },
+        "policy": {
+          "mode": "off",
+          "tiers": [
+            "off",
+            "on"
+          ],
+          "rules": [
+            {
+              "id": "short",
+              "when": {
+                "maxTurnBytes": 10
+              },
+              "route": {
+                "route": "agent",
+                "tier": "off",
+                "skills": [],
+                "tools": [],
+                "operations": [
+                  "read"
+                ],
+                "planning": "withheld"
+              }
+            }
+          ],
+          "classifier": {
+            "labels": {
+              "small": {
+                "route": "agent",
+                "tier": "off",
+                "skills": [],
+                "tools": [],
+                "operations": [
+                  "read"
+                ],
+                "planning": "withheld"
+              }
+            },
+            "maxOutputTokens": 32,
+            "timeoutMilliseconds": 1000
+          }
+        },
+        "host": {
+          "route": "direct",
+          "tier": "off",
+          "skills": [],
+          "tools": [],
+          "operations": [
+            "read"
+          ],
+          "planning": "withheld"
+        }
+      },
+      "expected": {
+        "decidedBy": "default",
+        "reason": "off",
+        "route": "agent"
+      }
+    }
+  ]
+}

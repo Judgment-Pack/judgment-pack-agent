@@ -95,11 +95,24 @@ func TestHistoricalRecordMembersAreFrozen(t *testing.T) {
 		raw := []byte(fmt.Sprintf(`{"version":%d,"id":"compatibility","requestKey":"%s","phase":"work","status":"running","unit":"model-requests","used":0,"limit":20,"grants":[],"plan":[],"explanation":"","operations":[],"context":{"scope":"compatibility","entries":[]},"unreleased":true}`, version, "0000000000000000000000000000000000000000000000000000000000000000"))
 		err := CheckRecord("checkpoint", raw)
 		var unknown *UnknownRecordMember
-		if version == 1 && !errors.As(err, &unknown) {
+		if !errors.As(err, &unknown) {
 			t.Fatalf("historical reader guessed new member: %v", err)
 		}
+	}
+}
+func TestHistoricalCheckpointUsesFrozenGeneration(t *testing.T) {
+	properties := shapeObject(shapeObject(recordShapes["published"]["checkpoint.json"])["properties"])
+	properties["unreleased"] = map[string]any{}
+	defer delete(properties, "unreleased")
+	for _, version := range []int{1, 2} {
+		raw := []byte(fmt.Sprintf(`{"version":%d,"id":"compatibility","requestKey":"%s","phase":"work","status":"running","unit":"model-requests","used":0,"limit":20,"grants":[],"plan":[],"explanation":"","operations":[],"context":{"scope":"compatibility","entries":[]},"unreleased":true}`, version, strings.Repeat("0", 64)))
+		err := CheckRecord("checkpoint", raw)
+		var unknown *UnknownRecordMember
+		if version == 1 && !errors.As(err, &unknown) {
+			t.Fatalf("historical checkpoint inherited published member: %v", err)
+		}
 		if version == 2 && err != nil {
-			t.Fatal(err)
+			t.Fatalf("published checkpoint did not use published graph: %v", err)
 		}
 	}
 }
@@ -237,6 +250,30 @@ func TestRecordIntegerSpellingKeepsOpaqueMemberOrder(t *testing.T) {
 		}
 		if string(decoded.ExecutionCheckpoint.Checkpoint.Context.Entries[0].Value) != payload {
 			t.Fatal("nested root rewrote retained value")
+		}
+	}
+}
+
+func TestPublishedRecordGraphFrozen(t *testing.T) {
+	raw, err := os.ReadFile("../../contract/records/published-v010-shapes.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprintf("%x", sha256.Sum256(raw)) != "bc2c49c0340af12c3f016b772ab90c5a0c834a2667605027d70ef7ac6c438df0" {
+		t.Fatal("published v0.10 graph changed")
+	}
+	for kind, file := range map[string]string{"event": "run-event.json", "policy": "policy.json"} {
+		properties := shapeObject(shapeObject(recordShapes["current"][file])["properties"])
+		properties["unreleased"] = map[string]any{}
+		raw := []byte(`{"version":1,"unreleased":true}`)
+		if kind == "event" {
+			raw = []byte(`{"version":1,"type":"end","unreleased":true}`)
+		}
+		err := CheckRecord(kind, raw)
+		delete(properties, "unreleased")
+		var unknown *UnknownRecordMember
+		if !errors.As(err, &unknown) {
+			t.Fatalf("%s reader widened published graph: %v", kind, err)
 		}
 	}
 }

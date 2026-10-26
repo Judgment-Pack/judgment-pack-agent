@@ -1,0 +1,456 @@
+{
+  "valid": [
+    {
+      "taxonomy": {
+        "operation": "discover",
+        "effect": "pure"
+      },
+      "approval": "none",
+      "review": true,
+      "work": true
+    },
+    {
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read"
+      },
+      "approval": "none",
+      "review": true,
+      "work": true
+    },
+    {
+      "taxonomy": {
+        "operation": "answer",
+        "effect": "read-external"
+      },
+      "approval": "none",
+      "review": false,
+      "work": false
+    },
+    {
+      "taxonomy": {
+        "operation": "check",
+        "effect": "pure",
+        "checkKind": "validate"
+      },
+      "approval": "none",
+      "review": true,
+      "work": true
+    },
+    {
+      "taxonomy": {
+        "operation": "check",
+        "effect": "pure",
+        "checkKind": "check"
+      },
+      "approval": "none",
+      "review": true,
+      "work": true
+    },
+    {
+      "taxonomy": {
+        "operation": "check",
+        "effect": "pure",
+        "checkKind": "verify"
+      },
+      "approval": "none",
+      "review": true,
+      "work": true
+    },
+    {
+      "taxonomy": {
+        "operation": "check",
+        "effect": "pure",
+        "checkKind": "test"
+      },
+      "approval": "none",
+      "review": true,
+      "work": true
+    },
+    {
+      "taxonomy": {
+        "operation": "check",
+        "effect": "pure",
+        "checkKind": "analyze"
+      },
+      "approval": "none",
+      "review": true,
+      "work": true
+    },
+    {
+      "taxonomy": {
+        "operation": "check",
+        "effect": "pure",
+        "checkKind": "advise"
+      },
+      "approval": "none",
+      "review": true,
+      "work": true
+    },
+    {
+      "taxonomy": {
+        "operation": "transform",
+        "effect": "pure"
+      },
+      "approval": "none",
+      "review": false,
+      "work": false
+    },
+    {
+      "taxonomy": {
+        "operation": "evaluate",
+        "effect": "pure",
+        "experimental": true
+      },
+      "runtime": true,
+      "approval": "none",
+      "review": false,
+      "work": false
+    },
+    {
+      "taxonomy": {
+        "operation": "propose",
+        "effect": "propose"
+      },
+      "approval": "none",
+      "review": false,
+      "work": true
+    },
+    {
+      "taxonomy": {
+        "operation": "act",
+        "effect": "act"
+      },
+      "approval": "required",
+      "review": false,
+      "work": true
+    },
+    {
+      "taxonomy": {
+        "operation": "run",
+        "effect": "act",
+        "experimental": false
+      },
+      "approval": "required",
+      "review": false,
+      "work": false
+    },
+    {
+      "taxonomy": {
+        "operation": "own-state",
+        "effect": "pure"
+      },
+      "approval": "none",
+      "review": false,
+      "work": false
+    },
+    {
+      "taxonomy": {
+        "operation": "ask",
+        "effect": "pure"
+      },
+      "approval": "none",
+      "review": true,
+      "work": true
+    },
+    {
+      "taxonomy": {
+        "operation": "evaluate",
+        "effect": "read"
+      },
+      "runtime": true,
+      "approval": "none",
+      "review": false,
+      "work": false
+    },
+    {
+      "taxonomy": {
+        "operation": "evaluate",
+        "effect": "act"
+      },
+      "runtime": true,
+      "approval": "required",
+      "review": false,
+      "work": false
+    },
+    {
+      "taxonomy": {
+        "operation": "discover",
+        "effect": "read"
+      },
+      "approval": "none",
+      "review": true,
+      "work": true
+    },
+    {
+      "taxonomy": {
+        "operation": "discover",
+        "effect": "read-external"
+      },
+      "approval": "none",
+      "review": true,
+      "work": true
+    },
+    {
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read-external"
+      },
+      "approval": "none",
+      "review": true,
+      "work": true
+    },
+    {
+      "taxonomy": {
+        "operation": "answer",
+        "effect": "pure"
+      },
+      "approval": "none",
+      "review": false,
+      "work": false
+    },
+    {
+      "taxonomy": {
+        "operation": "answer",
+        "effect": "read"
+      },
+      "approval": "none",
+      "review": false,
+      "work": false
+    },
+    {
+      "taxonomy": {
+        "operation": "check",
+        "effect": "read",
+        "checkKind": "check"
+      },
+      "approval": "none",
+      "review": true,
+      "work": true
+    },
+    {
+      "taxonomy": {
+        "operation": "check",
+        "effect": "read-external",
+        "checkKind": "check"
+      },
+      "approval": "none",
+      "review": true,
+      "work": true
+    },
+    {
+      "taxonomy": {
+        "operation": "run",
+        "effect": "read"
+      },
+      "approval": "none",
+      "review": false,
+      "work": false
+    },
+    {
+      "taxonomy": {
+        "operation": "run",
+        "effect": "read-external"
+      },
+      "approval": "none",
+      "review": false,
+      "work": false
+    },
+    {
+      "taxonomy": {
+        "operation": "own-state",
+        "effect": "read"
+      },
+      "approval": "none",
+      "review": false,
+      "work": false
+    },
+    {
+      "taxonomy": {
+        "operation": "run",
+        "effect": "propose"
+      },
+      "approval": "none",
+      "review": false,
+      "work": false
+    }
+  ],
+  "invalid": [
+    null,
+    {},
+    {
+      "effect": "pure"
+    },
+    {
+      "operation": "read"
+    },
+    {
+      "operation": "read",
+      "effect": "act"
+    },
+    {
+      "operation": "check",
+      "effect": "pure"
+    },
+    {
+      "operation": "read",
+      "effect": "read",
+      "checkKind": "check"
+    },
+    {
+      "operation": "check",
+      "effect": "pure",
+      "checkKind": "unknown"
+    },
+    {
+      "operation": "ask",
+      "effect": "act"
+    },
+    {
+      "operation": "evaluate",
+      "effect": "pure"
+    },
+    {
+      "operation": "act",
+      "effect": "act",
+      "experimental": "yes"
+    },
+    {
+      "operation": "read",
+      "effect": "read",
+      "owner": "runtime"
+    }
+  ],
+  "hints": [
+    {
+      "effect": "pure",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "effect": "read",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "effect": "read-external",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "effect": "propose",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "effect": "act",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    }
+  ],
+  "limits": [
+    {
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read"
+      },
+      "limit": {
+        "operations": [],
+        "effects": []
+      },
+      "allowed": false
+    },
+    {
+      "taxonomy": {
+        "operation": "ask",
+        "effect": "pure"
+      },
+      "limit": {
+        "operations": [],
+        "effects": []
+      },
+      "allowed": true
+    },
+    {
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read"
+      },
+      "limit": {
+        "operations": [
+          "read",
+          "unknown"
+        ],
+        "effects": [
+          "read"
+        ]
+      },
+      "allowed": false
+    },
+    {
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read"
+      },
+      "limit": {
+        "operations": [
+          "read"
+        ],
+        "effects": [
+          "read",
+          "unknown"
+        ]
+      },
+      "allowed": false
+    },
+    {
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read"
+      },
+      "limit": {
+        "operations": [
+          "discover",
+          "read",
+          "answer",
+          "check",
+          "transform",
+          "evaluate",
+          "propose",
+          "act",
+          "run",
+          "own-state",
+          "ask"
+        ],
+        "effects": [
+          "pure",
+          "read",
+          "read-external",
+          "propose",
+          "act"
+        ]
+      },
+      "allowed": true
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "description": "Handwritten run and assistant-message ratings shared with fixtures/feedback/records.json.",
+  "schema": "feedback.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/history/metadata.ts"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "id": "rating",
+      "runId": "r",
+      "sequence": 1,
+      "previous": null,
+      "target": {
+        "kind": "run"
+      },
+      "rating": "good",
+      "actor": "reviewer",
+      "recordedAt": "2026-10-25T01:02:03.000Z"
+    },
+    {
+      "version": 1,
+      "id": "empty",
+      "runId": "r",
+      "sequence": 1,
+      "previous": null,
+      "target": {
+        "kind": "run"
+      },
+      "rating": "good",
+      "actor": "reviewer",
+      "recordedAt": "2026-10-25T01:02:03.000Z",
+      "remark": ""
+    },
+    {
+      "version": 1,
+      "id": "message",
+      "runId": "r",
+      "sequence": 1,
+      "previous": null,
+      "target": {
+        "kind": "assistant-message",
+        "eventSequence": 1,
+        "eventDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "rating": "good",
+      "actor": "reviewer",
+      "recordedAt": "2026-10-25T01:02:03.000Z"
+    },
+    {
+      "version": 1,
+      "id": "rating",
+      "runId": "r",
+      "sequence": 2,
+      "previous": "sha256:d3058227cab9b03d50263a3b8054b4c79ed45ce5dd68dfd0cef6c5e6f9992fd5",
+      "target": {
+        "kind": "run"
+      },
+      "rating": "bad",
+      "actor": "second-reviewer",
+      "recordedAt": "2026-10-25T02:02:03.000Z",
+      "remark": "Please recheck"
+    }
+  ]
+}

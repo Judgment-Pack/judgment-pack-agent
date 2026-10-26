@@ -1,0 +1,110 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "id",
+    "status",
+    "runId",
+    "feedbackDigest",
+    "archiveDigest",
+    "sourceView",
+    "feedback",
+    "review",
+    "replay"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "status": {
+      "const": "pending-review"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "feedbackDigest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "archiveDigest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "sourceView": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "feedback": {
+      "$ref": "feedback.json"
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "report",
+        "messages"
+      ],
+      "properties": {
+        "report": {
+          "oneOf": [
+            {
+              "$ref": "run-report.json"
+            },
+            {
+              "$ref": "run-report-v2.json"
+            }
+          ]
+        },
+        "messages": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "sequence",
+              "text"
+            ],
+            "properties": {
+              "sequence": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 2000
+              }
+            }
+          }
+        }
+      }
+    },
+    "replay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "reason"
+      ],
+      "properties": {
+        "kind": {
+          "const": "unavailable"
+        },
+        "reason": {
+          "const": "not-recorded"
+        }
+      }
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/corpus-candidate.json"
+}

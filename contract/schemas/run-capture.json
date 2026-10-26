@@ -1,0 +1,361 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-capture.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "runId",
+    "executionRevision",
+    "checkpoint",
+    "requests",
+    "files",
+    "redacted"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "executionRevision": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "digest",
+        "bytes"
+      ],
+      "properties": {
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4194304
+        }
+      }
+    },
+    "requests": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "scope",
+          "dispatchId",
+          "kind",
+          "source",
+          "tool",
+          "requestDigest",
+          "surface",
+          "captureIndex"
+        ],
+        "properties": {
+          "scope": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "execution",
+              "role"
+            ],
+            "properties": {
+              "execution": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "role": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "task": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              }
+            }
+          },
+          "dispatchId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "kind": {
+            "enum": [
+              "model",
+              "agent"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "tool": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "requestDigest": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "surface": {
+            "enum": [
+              "session-model",
+              "native-aggregate"
+            ]
+          },
+          "captureIndex": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9999
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "model"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "surface": {
+                  "const": "session-model"
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "surface": {
+                  "const": "native-aggregate"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "files": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "prefixItems": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "manifest"
+          ],
+          "properties": {
+            "name": {
+              "const": "checkpoint.json"
+            },
+            "manifest": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "digest",
+                "bytes"
+              ],
+              "properties": {
+                "digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[a-f0-9]{64}$"
+                },
+                "bytes": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4194304
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "manifest"
+          ],
+          "properties": {
+            "name": {
+              "const": "events.json"
+            },
+            "manifest": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "digest",
+                "bytes"
+              ],
+              "properties": {
+                "digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[a-f0-9]{64}$"
+                },
+                "bytes": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4194304
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "manifest"
+          ],
+          "properties": {
+            "name": {
+              "const": "expected.json"
+            },
+            "manifest": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "digest",
+                "bytes"
+              ],
+              "properties": {
+                "digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[a-f0-9]{64}$"
+                },
+                "bytes": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4194304
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "manifest"
+          ],
+          "properties": {
+            "name": {
+              "const": "manifest.json"
+            },
+            "manifest": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "digest",
+                "bytes"
+              ],
+              "properties": {
+                "digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[a-f0-9]{64}$"
+                },
+                "bytes": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4194304
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "manifest"
+          ],
+          "properties": {
+            "name": {
+              "const": "requests.json"
+            },
+            "manifest": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "digest",
+                "bytes"
+              ],
+              "properties": {
+                "digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[a-f0-9]{64}$"
+                },
+                "bytes": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4194304
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "manifest"
+          ],
+          "properties": {
+            "name": {
+              "const": "tool-results.json"
+            },
+            "manifest": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "digest",
+                "bytes"
+              ],
+              "properties": {
+                "digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[a-f0-9]{64}$"
+                },
+                "bytes": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4194304
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "redacted": {
+      "const": true
+    },
+    "eventProjection": {
+      "const": "transcript-v1",
+      "description": "Replay transcript omits execution_checkpoint events only; all original events remain in retained history. Absence preserves the exact legacy transcript."
+    }
+  }
+}

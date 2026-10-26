@@ -43,6 +43,10 @@
           "outcome"
         ],
         "additionalProperties": false
+      },
+      "taxonomy": {
+        "operation": "own-state",
+        "effect": "pure"
       }
     }
   ]

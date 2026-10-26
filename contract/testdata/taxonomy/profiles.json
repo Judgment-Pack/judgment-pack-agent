@@ -1,0 +1,185 @@
+{
+  "tools": {
+    "read_notes": {
+      "operation": "read",
+      "effect": "read-external"
+    },
+    "check_notes": {
+      "operation": "check",
+      "effect": "pure",
+      "checkKind": "verify"
+    },
+    "send_notes": {
+      "operation": "act",
+      "effect": "act"
+    },
+    "ask_user": {
+      "operation": "ask",
+      "effect": "pure"
+    },
+    "discover_notes": {
+      "operation": "discover",
+      "effect": "read"
+    },
+    "answer_notes": {
+      "operation": "answer",
+      "effect": "pure"
+    },
+    "transform_notes": {
+      "operation": "transform",
+      "effect": "pure"
+    },
+    "evaluate_notes": {
+      "operation": "evaluate",
+      "effect": "pure"
+    },
+    "draft_notes": {
+      "operation": "propose",
+      "effect": "propose"
+    },
+    "run_notes": {
+      "operation": "run",
+      "effect": "read"
+    },
+    "state_notes": {
+      "operation": "own-state",
+      "effect": "pure"
+    },
+    "read_local_notes": {
+      "operation": "read",
+      "effect": "read"
+    }
+  },
+  "profiles": [
+    {
+      "tools": [],
+      "profile": {
+        "effect": "pure",
+        "operations": []
+      },
+      "review": true,
+      "work": true
+    },
+    {
+      "tools": [
+        "read_notes"
+      ],
+      "profile": {
+        "effect": "read-external",
+        "operations": [
+          "read"
+        ]
+      },
+      "review": true,
+      "work": true
+    },
+    {
+      "tools": [
+        "send_notes",
+        "read_notes",
+        "check_notes"
+      ],
+      "profile": {
+        "effect": "act",
+        "operations": [
+          "read",
+          "check",
+          "act"
+        ]
+      },
+      "review": false,
+      "work": true
+    },
+    {
+      "tools": [
+        "ask_user"
+      ],
+      "profile": {
+        "effect": "pure",
+        "operations": [
+          "ask"
+        ]
+      },
+      "review": true,
+      "work": true
+    },
+    {
+      "tools": [
+        "draft_notes"
+      ],
+      "profile": {
+        "effect": "propose",
+        "operations": [
+          "propose"
+        ]
+      },
+      "review": false,
+      "work": true
+    },
+    {
+      "tools": [
+        "read_local_notes"
+      ],
+      "profile": {
+        "effect": "read",
+        "operations": [
+          "read"
+        ]
+      },
+      "review": true,
+      "work": true
+    },
+    {
+      "tools": [
+        "discover_notes",
+        "read_notes",
+        "answer_notes",
+        "check_notes",
+        "transform_notes",
+        "evaluate_notes",
+        "draft_notes",
+        "send_notes",
+        "run_notes",
+        "state_notes",
+        "ask_user"
+      ],
+      "profile": {
+        "effect": "act",
+        "operations": [
+          "discover",
+          "read",
+          "answer",
+          "check",
+          "transform",
+          "evaluate",
+          "propose",
+          "act",
+          "run",
+          "own-state",
+          "ask"
+        ]
+      },
+      "review": false,
+      "work": false
+    }
+  ],
+  "unknown": [
+    "unadmitted"
+  ],
+  "kinds": [
+    "method",
+    "knowledge",
+    "procedure",
+    "review"
+  ],
+  "tags": [
+    "finance",
+    "01234567890123456789012345678901",
+    "a",
+    "b",
+    "c",
+    "d",
+    "e",
+    "f"
+  ]
+}

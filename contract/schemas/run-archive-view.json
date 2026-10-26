@@ -1,0 +1,58 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "sourceKind",
+    "sourceVersion",
+    "source",
+    "redactions",
+    "document"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "sourceKind": {
+      "enum": [
+        "checkpoint",
+        "event",
+        "observation",
+        "report",
+        "metadata",
+        "candidate",
+        "capture",
+        "evidence",
+        "source-manifest",
+        "source-chunk",
+        "request-manifest",
+        "request-chunk",
+        "chat-manifest",
+        "chat-chunk",
+        "corpus-manifest",
+        "corpus-chunk"
+      ]
+    },
+    "sourceVersion": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3
+    },
+    "source": {
+      "$ref": "run-archive.json#/$defs/ref"
+    },
+    "redactions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10000,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "maxLength": 2000
+      }
+    },
+    "document": {}
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-archive-view.json"
+}

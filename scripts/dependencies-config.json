@@ -1,0 +1,58 @@
+{
+  "goos": "linux",
+  "goarch": "amd64",
+  "cgo": "1",
+  "tags": [],
+  "toolchain": "go1.26.10",
+  "compiler": "gc",
+  "GOAMD64": "v1",
+  "GOEXPERIMENT": "",
+  "scope": "go list -deps ./...; production packages, no tests; library configuration, no host final binary",
+  "roles": [
+    {
+      "dependency": "github.com/cloudwego/eino",
+      "role": "Go ADK/compose agent loop, model/tool and schema integration",
+      "source": "go/adapter/eino/phase.go"
+    },
+    {
+      "dependency": "ai",
+      "role": "Vercel AI SDK streamText and tool-loop engine",
+      "source": "packages/harness/engines/vercel/loop.ts"
+    },
+    {
+      "dependency": "@ai-sdk/anthropic",
+      "role": "Anthropic provider for the Vercel engine",
+      "source": "packages/harness/engines/vercel/loop.ts"
+    },
+    {
+      "dependency": "@ai-sdk/google",
+      "role": "Google provider for the Vercel engine",
+      "source": "packages/harness/engines/vercel/loop.ts"
+    },
+    {
+      "dependency": "@ai-sdk/openai-compatible",
+      "role": "OpenAI-compatible provider for the Vercel engine",
+      "source": "packages/harness/engines/vercel/loop.ts"
+    },
+    {
+      "dependency": "deepagents",
+      "role": "Deep Agents orchestration engine",
+      "source": "packages/harness/engines/deepagents/loop.ts"
+    },
+    {
+      "dependency": "@langchain/core",
+      "role": "Chat-model/message bridge for Deep Agents",
+      "source": "packages/harness/engines/deepagents/model.ts"
+    },
+    {
+      "dependency": "@langchain/langgraph",
+      "role": "Transitive graph orchestration framework of Deep Agents; not directly imported by the harness adapter",
+      "source": "versioned deepagents package metadata; packages/harness/engines/deepagents/loop.ts"
+    },
+    {
+      "dependency": "langchain",
+      "role": "Middleware integration for Deep Agents",
+      "source": "packages/harness/engines/deepagents/loop.ts"
+    }
+  ]
+}

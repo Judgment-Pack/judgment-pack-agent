@@ -94,17 +94,21 @@ func HostToolsOf(listed []ScenarioHostTool, ledger *HostLedger) []runcontext.Hos
 }
 
 // boundaryTools are the declarations of the context tools the boundary adds to a run: the
-// ledger's readers, and the execution's two where the run permits conversation; and request_review
+// ledger's readers, and the execution's three controls where the run permits conversation; and request_review
 // (ADR-0010), which the gate admits in the loop's phase and the boundary offers where the critic's
-// mode is auto, the table's default (runcontext.OfferedReviewTool).
+// mode is auto, the table's default (runcontext.OfferedReviewTool). This fixture uses default
+// policy; production final-offer enrollment reads the actual contextual Session instead.
 func boundaryTools(allowConversation bool) []contract.ToolOfferHostTool {
-	names := []string{"list_context", "read_context", "read_window", "search"}
-	if allowConversation {
-		names = append(names, "update_plan", "request_budget_increase")
+	ledger := runcontext.NewContextLedger(&runcontext.Defaults, nil)
+	out := []contract.ToolOfferHostTool{}
+	for _, tool := range ledger.Tools() {
+		out = append(out, tool.Declaration())
 	}
-	out := make([]contract.ToolOfferHostTool, 0, len(names)+1)
-	for _, name := range names {
-		out = append(out, contract.ToolOfferHostTool{Name: name})
+	if allowConversation {
+		controller := &runcontext.ExecutionController{}
+		for _, tool := range []runcontext.HostTool{controller.Tool(), controller.CompletionTool(), controller.BudgetTool()} {
+			out = append(out, tool.Declaration())
+		}
 	}
 	return append(out, runcontext.OfferedReviewTool(runcontext.Session{}, runcontext.Defaults)...)
 }

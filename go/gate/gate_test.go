@@ -134,9 +134,20 @@ func TestTheGatedCallHoldsThePhase(t *testing.T) {
 	})
 	offer := contract.ToolOffer{}
 	for _, name := range Ceiling {
-		offer.Tools = append(offer.Tools, contract.ToolOfferRuntimeTool{Name: name})
+		meta := contract.ToolTaxonomy{Operation: "read", Effect: "read"}
+		if name == RehearsalTool {
+			meta = contract.ToolTaxonomy{Operation: "evaluate", Effect: "pure"}
+		}
+		if name == "validate" || name == TestTool {
+			kind := "validate"
+			if name == TestTool {
+				kind = "test"
+			}
+			meta = contract.ToolTaxonomy{Operation: "check", Effect: "pure", CheckKind: &kind}
+		}
+		offer.Tools = append(offer.Tools, contract.ToolOfferRuntimeTool{Name: name, Meta: meta})
 	}
-	offer.HostTools = []contract.ToolOfferHostTool{{Name: "read_window"}, {Name: "propose_pack"}}
+	offer.HostTools = []contract.ToolOfferHostTool{{Name: "read_window", Taxonomy: contract.ToolTaxonomy{Operation: "own-state", Effect: "read"}}, {Name: "propose_pack", Taxonomy: contract.ToolTaxonomy{Operation: "propose", Effect: "propose"}}}
 	g.SetOffer(offer)
 	ctx := context.Background()
 	c := g.Calls()

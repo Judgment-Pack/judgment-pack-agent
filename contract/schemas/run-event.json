@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-event.json",
   "title": "Run event",
-  "description": "One event of a run, from the adapter to the host, in order, discriminated by type. Every kind of the Desk's AssistantEvent union (web/src/assistant/engine.ts) at the pinned commit, with its members spelled as the Desk spells them. A run ends with exactly one end and nothing follows it; a run the consumer left gets no end. Some events are the host's own, interleaved into the same stream rather than emitted by a loop: the tool gate's guardrail rewrote and refused, the shared context boundary's execution_checkpoint, budget_paused (which also replaces a loop's own budget_paused or request-limit error) and approval_requested (ADR-0008: emitted in place of an act call's tool_call where the host's approval policy answers ask), and the delegation coordinator's delegated_task. critic_decided (ADR-0010) is emitted by the adapter once per run, where the critic would start or where it is skipped. The versioned record reader refuses newer versions and unknown structural members. Historical events omit version; current writers emit version 1.",
+  "description": "One event of a run, from the adapter to the host, in order, discriminated by type. Every kind of the Desk's AssistantEvent union (web/src/assistant/engine.ts) at the pinned commit, with its members spelled as the Desk spells them. A run ends with exactly one end and nothing follows it; a run the consumer left gets no end. Some events are the host's own, interleaved into the same stream rather than emitted by a loop: the tool gate's guardrail rewrote and refused, the shared context boundary's execution_checkpoint, budget_paused (which also replaces a loop's own budget_paused or request-limit error) and approval_requested (ADR-0008: emitted in place of an act call's tool_call where the host's approval policy answers ask), and the delegation coordinator's delegated_task. critic_decided (ADR-0010) is emitted by the adapter once per run, where the critic would start or where it is skipped. The versioned record reader refuses newer versions and unknown structural members. Historical events omit version. Feature-free writers emit version 1. Writers select version 2 for repeat detection, route decisions/widening, runtime approval requests and events carrying checkpoint 3; task-aware plan lifecycle and approval events also explicitly select version 2. An explicitly selected version 2 is preserved.",
   "type": "object",
   "required": [
     "type"
@@ -47,8 +47,18 @@
         "plan_revised",
         "plan_departed",
         "plan_completion_refused",
-        "plan_drift_decided"
+        "plan_drift_decided",
+        "route_decided",
+        "route_widened",
+        "repeat_detected"
       ]
+    },
+    "version": {
+      "enum": [
+        1,
+        2
+      ],
+      "description": "Feature-free producers retain published defaults; feature-bearing usage budget records select checkpoint 3 / event 2."
     }
   },
   "oneOf": [
@@ -165,6 +175,15 @@
     },
     {
       "$ref": "#/$defs/plan_drift_decided"
+    },
+    {
+      "$ref": "#/$defs/route_decided"
+    },
+    {
+      "$ref": "#/$defs/route_widened"
+    },
+    {
+      "$ref": "#/$defs/repeat_detected"
     }
   ],
   "$defs": {
@@ -251,8 +270,11 @@
           "$ref": "checkpoint.json"
         },
         "version": {
-          "const": 1,
-          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+          "enum": [
+            1,
+            2
+          ],
+          "description": "Feature-bearing checkpoint3 selects event2; default producers remain event1."
         }
       },
       "additionalProperties": false
@@ -272,8 +294,11 @@
           "$ref": "checkpoint.json"
         },
         "version": {
-          "const": 1,
-          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+          "enum": [
+            1,
+            2
+          ],
+          "description": "Feature-bearing checkpoint3 selects event2; default producers remain event1."
         }
       },
       "additionalProperties": false
@@ -309,8 +334,11 @@
           "type": "object"
         },
         "version": {
-          "const": 1,
-          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1.",
+          "enum": [
+            1,
+            2
+          ]
         },
         "purpose": {
           "enum": [
@@ -354,6 +382,9 @@
             "departures"
           ],
           "additionalProperties": false
+        },
+        "runtime": {
+          "$ref": "checkpoint.json#/$defs/runtimeApprovalBinding"
         }
       },
       "additionalProperties": false,
@@ -1482,7 +1513,10 @@
           }
         },
         "version": {
-          "const": 1
+          "enum": [
+            1,
+            2
+          ]
         }
       },
       "required": [
@@ -1503,7 +1537,10 @@
           "const": "plan_departed"
         },
         "version": {
-          "const": 1
+          "enum": [
+            1,
+            2
+          ]
         },
         "execution": {
           "type": "string",
@@ -1547,7 +1584,10 @@
           "const": "plan_completion_refused"
         },
         "version": {
-          "const": 1
+          "enum": [
+            1,
+            2
+          ]
         },
         "execution": {
           "type": "string",
@@ -1592,7 +1632,10 @@
           "const": "plan_drift_decided"
         },
         "version": {
-          "const": 1
+          "enum": [
+            1,
+            2
+          ]
         },
         "execution": {
           "type": "string",
@@ -1629,6 +1672,90 @@
         "approved"
       ],
       "additionalProperties": false
+    },
+    "route_decided": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "route_decided"
+        },
+        "version": {
+          "const": 2
+        },
+        "route": {
+          "$ref": "turn-route.json"
+        }
+      },
+      "required": [
+        "type",
+        "route"
+      ]
+    },
+    "route_widened": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "route_widened"
+        },
+        "version": {
+          "const": 2
+        },
+        "route": {
+          "$ref": "turn-route.json"
+        }
+      },
+      "required": [
+        "type",
+        "route"
+      ]
+    },
+    "repeat_detected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "execution",
+        "dispatchId",
+        "keyDigest",
+        "count",
+        "reminder",
+        "stopped"
+      ],
+      "properties": {
+        "type": {
+          "const": "repeat_detected"
+        },
+        "version": {
+          "const": 2
+        },
+        "execution": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "dispatchId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "keyDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 399
+        },
+        "reminder": {
+          "type": "boolean"
+        },
+        "stopped": {
+          "type": "boolean"
+        }
+      }
     }
   }
 }

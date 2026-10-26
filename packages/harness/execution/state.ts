@@ -1,3 +1,7 @@
+import {validRepeatTools,validRepeatRecordCustody,type RepeatTools} from '../repeatTools'
+import {validTurnRoute,type TurnRoute} from '../turnRoute'
+import {validRuntimeBinding} from '../runtimeActions'
+import {validUsageJournal,type UsageBudgetJournal} from '../storage/usageJournal'
 import {validRecordedStep} from './planActions'
 import {planStepId,validPlanState,type PlanState} from './plan'
 import {validDurable} from '../storage/durable'
@@ -19,7 +23,7 @@ import {CHECKPOINT_SCHEMA,PROVENANCE_SCHEMA,recordDigest,validRecordHeader} from
 export const REQUEST_INCREMENT = 10
 export const MAX_REQUEST_ALLOWANCE = 100
 export const MAX_CHECKPOINT_BYTES = 4 * 1024 * 1024
-export interface TaskStep {id?:string;step:string;status:'pending'|'in_progress'|'completed'|'not-needed';detail?:string;origin?:import('./plan').PlanOrigin;evidence?:import('./plan').StepEvidence;notNeededReason?:string}
+export interface TaskStep {id?:string;step:string;status:'pending'|'in_progress'|'completed'|'not-needed';detail?:string;dependsOn?:string[];budget?:{requests:number};delegation?:import('../subagents').SubagentRecord;origin?:import('./plan').PlanOrigin;evidence?:import('./plan').StepEvidence;notNeededReason?:string}
 export interface Operation {id:string;name:string;args:unknown;status:'running'|'complete'|'failed'|'interrupted';result?:McpToolResult}
 export interface RetainedEntry {id:string;kind:'history'|'artifact'|'request'|'tool';label:string;value:unknown;valueJSON?:string;revision?:string;bytes:number;digest:string}
 /**
@@ -49,8 +53,11 @@ export const MAX_PROMPT_DIGESTS = 300
 export interface ExecutionCheckpoint {
  schema?:typeof CHECKPOINT_SCHEMA;digest?:string;retainUntil?:string;records?:import("../outputGuard").RecordMarker;
  durable?:import('../storage/writer').DurableBook;
+ usageBudget?:UsageBudgetJournal;
+ turnRoute?:TurnRoute;
+ repeatTools?:RepeatTools;
  handoff?:import('../storage/handoff').DurableHandoff;
- version:1|2;id:string;requestKey:string;phase:'plan'|'work';status:'running'|'paused'|'complete'|'stopped';
+ version:1|2|3;id:string;requestKey:string;phase:'plan'|'work';status:'running'|'paused'|'complete'|'stopped';
  unit:'model-requests'|'provider-managed';used:number;limit:number;requestCap?:number;grants:{from:number;to:number;at:string}[];
  plan:TaskStep[];planState?:PlanState;explanation:string;operations:Operation[];
  completions?:CompletionRecord[];
@@ -101,7 +108,7 @@ export function validSkillLoads(value:unknown):value is SkillLoad[]{
  * result, written and acknowledged before anything else; `answered` once the continuation request
  * carrying the result has been sent.
  */
-export interface ApprovalRecord {callId:string;name:string;tool:string;source:import('../toolSources').SourceRecord;args:Record<string,unknown>;state:'asked'|'approved'|'refused'|'executed'|'answered';decidedAt?:string;note?:string;result?:McpToolResult;marker?:string}
+export interface ApprovalRecord {runtime?:import('../runtimeActions').RuntimeApprovalBinding;callId:string;name:string;tool:string;source:import('../toolSources').SourceRecord;args:Record<string,unknown>;state:'asked'|'approved'|'refused'|'executed'|'answered';decidedAt?:string;note?:string;result?:McpToolResult;marker?:string}
 /** The person's decision on a paused act call (ADR-0008; `checkpoint.json#/$defs/approvalDecision`), handed to the run as `context.approval`. */
 export interface ApprovalDecision {callId:string;approved:boolean;note?:string}
 const APPROVAL_STATES=['asked','approved','refused','executed','answered']
@@ -112,7 +119,7 @@ function validRecord(v:unknown):boolean{
 }
 /** The checkpoint's approval, read closed (ADR-0008). */
 export function validApproval(v:unknown):v is ApprovalRecord{
- return object(v)&&exact(v,['callId','name','tool','source','args','state','decidedAt','note','result','marker'])&&text(v.callId,256)&&v.callId.length>=1&&typeof v.name==='string'&&WIRE_NAME.test(v.name)&&text(v.tool,128)&&v.tool.length>=1&&validRecord(v.source)&&object(v.args)&&APPROVAL_STATES.includes(String(v.state))&&(v.decidedAt===undefined||typeof v.decidedAt==='string'&&Number.isFinite(Date.parse(v.decidedAt)))&&(v.note===undefined||text(v.note,2000))&&(v.result===undefined||object(v.result))&&(v.marker===undefined||typeof v.marker==='string'&&/^[0-9a-f]{32}$/.test(v.marker))
+ return object(v)&&exact(v,['callId','name','tool','source','args','state','decidedAt','note','result','marker','runtime'])&&(v.runtime===undefined||validRuntimeBinding(v.runtime)&&object(v.source)&&v.source.kind==='runtime')&&text(v.callId,256)&&v.callId.length>=1&&typeof v.name==='string'&&WIRE_NAME.test(v.name)&&text(v.tool,128)&&v.tool.length>=1&&validRecord(v.source)&&object(v.args)&&APPROVAL_STATES.includes(String(v.state))&&(v.decidedAt===undefined||typeof v.decidedAt==='string'&&Number.isFinite(Date.parse(v.decidedAt)))&&(v.note===undefined||text(v.note,2000))&&(v.result===undefined||object(v.result))&&(v.marker===undefined||typeof v.marker==='string'&&/^[0-9a-f]{32}$/.test(v.marker))
 }
 /** The person's decision, read closed (ADR-0008), or undefined where it is not one. */
 export function readApprovalDecision(v:unknown):ApprovalDecision|undefined{
@@ -185,16 +192,22 @@ const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&
 const text=(v:unknown,max:number):v is string=>typeof v==='string'&&v.length<=max
 const validPolicy=(v:unknown):boolean=>object(v)&&Object.keys(v).length<=512&&Object.values(v).every(member=>object(member)&&exact(member,['value','layer','source'])&&['run','project','table'].includes(String(member.layer))&&(member.source===undefined||['layer','model-default','discovered'].includes(String(member.source)))&&(member.source!=='model-default'||!Object.hasOwn(member,'value'))&&(member.source!=='discovered'||Object.hasOwn(member,'value')))
 export function validTaskSteps(value:unknown):value is TaskStep[] {
- return Array.isArray(value)&&value.length>0&&value.length<=20&&value.every(s=>validRecordedStep(s)&&object(s)&&exact(s,['id','step','status','detail','origin','evidence','notNeededReason'])&&(s.id===undefined||planStepId(s.id))&&text(s.step,1000)&&!!s.step.trim()&&['pending','in_progress','completed','not-needed'].includes(String(s.status))&&(s.detail===undefined||text(s.detail,1500)))&&value.filter(s=>s.status==='in_progress').length<=1
+ return Array.isArray(value)&&value.length>0&&value.length<=20&&value.every(s=>validRecordedStep(s)&&object(s)&&exact(s,['id','step','status','detail','origin','evidence','notNeededReason','dependsOn','budget','delegation'])&&(s.id===undefined||planStepId(s.id))&&text(s.step,1000)&&!!s.step.trim()&&['pending','in_progress','completed','not-needed'].includes(String(s.status))&&(s.detail===undefined||text(s.detail,1500)))&&value.filter(s=>s.status==='in_progress').length<=1
 }
 export const validRequestCap=(value:unknown):value is number=>Number.isInteger(value)&&Number(value)>=1&&Number(value)<=MAX_TURNS
 export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value===undefined)return
  checkRecord('checkpoint',value)
  const fail=():never=>{throw Error('Saved execution progress is invalid. History was left untouched.')}
- if(!object(value)||utf8Bytes(JSON.stringify(value))>MAX_CHECKPOINT_BYTES||![1,2].includes(Number(value.version))||!text(value.id,100)||!value.id||!text(value.requestKey,64)||!/^[a-f0-9]{64}$/.test(value.requestKey)||!['plan','work'].includes(String(value.phase))||!['running','paused','complete','stopped'].includes(String(value.status))||!['model-requests','provider-managed'].includes(String(value.unit)))return fail()
+ if(!object(value)||utf8Bytes(JSON.stringify(value))>MAX_CHECKPOINT_BYTES||![1,2,3].includes(Number(value.version))||!text(value.id,100)||!value.id||!text(value.requestKey,64)||!/^[a-f0-9]{64}$/.test(value.requestKey)||!['plan','work'].includes(String(value.phase))||!['running','paused','complete','stopped'].includes(String(value.status))||!['model-requests','provider-managed'].includes(String(value.unit)))return fail()
  const metadata=['schema','digest','retainUntil'].some(name=>Object.hasOwn(value,name))
  if(metadata&&!validRecordHeader(value,CHECKPOINT_SCHEMA))return fail()
+ if(value.repeatTools!==undefined&&(value.version!==3||!validRepeatTools(value.repeatTools)))return fail()
+ if(!validRepeatRecordCustody(value))return fail()
+ const schedule=(value.planState as import('./plan').PlanState|undefined)?.taskSchedule
+ if(schedule&&(schedule.binding.execution!==value.id||schedule.binding.unit!==value.unit))return fail()
+ const envelope=(value.planState as import('./plan').PlanState|undefined)?.taskEnvelope
+ if(envelope&&(envelope.run!==value.id||envelope.execution!==value.id||value.unit!=='provider-managed'))return fail()
  if(!Number.isInteger(value.used)||Number(value.used)<0||!Number.isInteger(value.limit)||Number(value.limit)<1||Number(value.limit)>MAX_REQUEST_ALLOWANCE||Number(value.used)>Number(value.limit)||!Array.isArray(value.grants)||value.grants.length>8)return fail()
  const capped=Object.hasOwn(value,'requestCap')
  if(capped&&(value.unit!=='model-requests'||!validRequestCap(value.requestCap)||value.limit!==value.requestCap||value.grants.length!==0))return fail()
@@ -218,6 +231,8 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value.childUsage!==undefined&&(!Array.isArray(value.childUsage)||value.childUsage.length>256||new Set(value.childUsage.map(r=>object(r)?r.id:undefined)).size!==value.childUsage.length||value.childUsage.some(r=>!object(r)||!exact(r,['id','usage'])||!text(r.id,128)||!r.id||!validUsage(r.usage))))return fail()
  if(value.usage!==undefined&&!validUsage(value.usage))return fail()
  if(value.policy!==undefined&&!validPolicy(value.policy))return fail()
+ if(value.turnRoute!==undefined&&(value.version!==3||!validTurnRoute(value.turnRoute)))return fail()
+ if(value.usageBudget!==undefined&&(value.version!==3||!validUsageJournal(value.usageBudget)))return fail()
  if(value.durable!==undefined&&!validDurable(value.durable)||value.handoff!==undefined&&!validHandoff(value.handoff))return fail()
  if(!Array.isArray(value.operations)||value.operations.length>400||new Set(value.operations.map(o=>o.id)).size!==value.operations.length)return fail()
  for(const op of value.operations){if(!object(op)||!text(op.id,100)||!text(op.name,150)||!['running','complete','failed','interrupted'].includes(String(op.status))||op.result!==undefined&&(!object(op.result)||(op.result.content!==undefined&&(!Array.isArray(op.result.content)||op.result.content.some(p=>!object(p)||p.type!==undefined&&typeof p.type!=='string'||p.text!==undefined&&typeof p.text!=='string')))))return fail()}
@@ -236,7 +251,7 @@ export function extendExecution(checkpoint:ExecutionCheckpoint,interrupted=false
  if(saved.requestCap!==undefined||(saved.status!=='paused'&&!(interrupted&&canExtendInterruptedExecution(saved)))||saved.unit!=='model-requests'||saved.limit>=MAX_REQUEST_ALLOWANCE)throw Error('This execution cannot receive another request allowance.')
  const limit=Math.min(MAX_REQUEST_ALLOWANCE,saved.limit+REQUEST_INCREMENT)
  const extended=structuredClone(saved)
- mutateCheckpoint(extended,{version:2,limit,status:'running',reason:undefined,grants:[...saved.grants,{from:saved.limit,to:limit,at:new Date().toISOString()}]})
+ mutateCheckpoint(extended,{version:saved.version===3?3:2,limit,status:'running',reason:undefined,grants:[...saved.grants,{from:saved.limit,to:limit,at:new Date().toISOString()}]})
  if(extended.schema)mutateCheckpoint(extended,{digest:recordDigest(extended)})
  return extended
 }

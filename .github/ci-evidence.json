@@ -1,0 +1,136 @@
+{
+  "schema": 1,
+  "repository": "Judgment-Pack/judgment-pack-agent",
+  "max_age_hours": 48,
+  "inputs": [
+    "dev.json",
+    "scripts/dev/check.sh",
+    "scripts/dev/ci_evidence.py",
+    "package-lock.json",
+    "requirements-dev.txt",
+    "go/go.mod",
+    "go/go.sum",
+    "scripts/parity.sh",
+    "jpdev.json",
+    "scripts/dev/generated_docs.py",
+    "scripts/gen-dependencies.py",
+    "scripts/dependencies-config.json",
+    "scripts/dependencies-metadata.json",
+    "docs/dependencies.md",
+    "scripts/check-upgrade-guides.py",
+    "tests/test_generated_docs.py",
+    "tests/test_dependencies.py",
+    "tests/test_go_release_notes.py",
+    "tests/fixtures/gateway-receipts/source.json",
+    "scripts/gateway-receipt-check.mjs",
+    "scripts/gateway-receipt-process.mjs",
+    "tests/fixtures/gateway-receipts/producer_test.go.txt",
+    "tests/test_ci_evidence.py"
+  ],
+  "profiles": {
+    "base": {},
+    "check": {
+      "node": [
+        "node",
+        "--version"
+      ],
+      "npm": [
+        "npm",
+        "--version"
+      ],
+      "go": [
+        "go",
+        "version"
+      ],
+      "python": [
+        ".venv/bin/python3",
+        "--version"
+      ],
+      "python-packages": [
+        ".venv/bin/python3",
+        "-c",
+        "import importlib.metadata,json; print(json.dumps(sorted((d.metadata[\"Name\"],d.version) for d in importlib.metadata.distributions())))"
+      ]
+    },
+    "mutation": {
+      "node": [
+        "node",
+        "--version"
+      ],
+      "npm": [
+        "npm",
+        "--version"
+      ]
+    }
+  },
+  "workflows": {
+    "ci": {
+      "path": ".github/workflows/ci.yml",
+      "events": [
+        "push",
+        "workflow_dispatch"
+      ],
+      "jobs": {
+        "contract": {
+          "name": "contract",
+          "job_id": "contract",
+          "profile": "base",
+          "checks": [
+            "contract",
+            "local-paths",
+            "agent-docs",
+            "diff-check"
+          ]
+        },
+        "check": {
+          "name": "check",
+          "job_id": "check",
+          "profile": "check",
+          "checks": "all",
+          "setup": true,
+          "optional_skips": [
+            "dependency-audit-live"
+          ]
+        }
+      }
+    },
+    "mutation": {
+      "path": ".github/workflows/mutation.yml",
+      "events": [
+        "push",
+        "workflow_dispatch",
+        "schedule"
+      ],
+      "jobs": {
+        "rows-apply": {
+          "name": "every row applies",
+          "job_id": "rows-apply",
+          "profile": "mutation"
+        },
+        "full-1": {
+          "name": "every row (shard 1 of 4)",
+          "job_id": "full",
+          "profile": "mutation"
+        },
+        "full-2": {
+          "name": "every row (shard 2 of 4)",
+          "job_id": "full",
+          "profile": "mutation"
+        },
+        "full-3": {
+          "name": "every row (shard 3 of 4)",
+          "job_id": "full",
+          "profile": "mutation"
+        },
+        "full-4": {
+          "name": "every row (shard 4 of 4)",
+          "job_id": "full",
+          "profile": "mutation"
+        }
+      },
+      "skipped": [
+        "rows of the files this pull request changes, and a sample"
+      ]
+    }
+  }
+}

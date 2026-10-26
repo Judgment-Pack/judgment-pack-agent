@@ -180,9 +180,29 @@ func (t *turnState) runRuntime(ctx context.Context, name string, args json.RawMe
 		return bare(*refusal), nil
 	}
 	callID := t.correlation()
+	if t.r.sc.RuntimeNeedsApproval(name) && callID == "" {
+		callID = wire.RandomUUID()
+	}
+	runtime, prepareErr := t.r.sc.PrepareRuntimeCall(ctx, name, args, callID)
+	if prepareErr != nil {
+		if runcontext.IsRouteCapabilityNeeded(prepareErr) {
+			return ran{}, prepareErr
+		}
+		return bare(failed(prepareErr)), nil
+	}
+	if runtime != nil {
+		if runtime.Requested != nil {
+			t.r.deliver(*runtime.Requested)
+			return bare(textResult(runcontext.ApprovalHeld, true)), nil
+		}
+		args = runtime.Args
+	}
 	t.r.deliver(t.callEvent(callID, name, args, origin))
 	limit := time.Duration(t.r.sc.Policy.ToolCallMilliseconds) * time.Millisecond
 	answer, err := turn.WithDeadline(ctx, limit, func() error { return turn.ToolTimeout(limit) }, func(ctx context.Context) (runcontext.ToolResult, error) {
+		if runtime != nil {
+			return runtime.Execute(ctx)
+		}
 		return t.r.session.CallTool(ctx, name, args)
 	})
 	if err != nil {
@@ -277,9 +297,12 @@ func (t *turnState) hostAnswer(ctx context.Context, tool runcontext.HostTool, ar
 	case tool.Interaction == "delegation":
 		// An awaited call inside this step (agent#14): the coordinator runs the batch while the call
 		// is open, bounded by its children's limits and by the run, not by the tool-call deadline.
-		if _, err := turn.ReadDelegationRequest(args); err != nil {
-			return runcontext.ToolResult{}, err
+		if !runcontext.RegisteredTaskDelegationTool(tool) {
+			if _, err := turn.ReadDelegationRequest(args); err != nil {
+				return runcontext.ToolResult{}, err
+			}
 		}
+
 		return tool.Execute(ctx, args)
 	case tool.Interaction == "question":
 		// The question pause: a malformed question is a failed result the model corrects in this

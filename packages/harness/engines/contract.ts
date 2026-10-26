@@ -1,3 +1,4 @@
+import {inheritGatewayInvocation} from '../gatewayReceipt'
 import {parseProposalJSON,readProposalDocument,ProposalDocumentError} from '../proposalNumbers'
 export {readProposalDocument} from '../proposalNumbers'
 import {AIFailureError,authoredFailure,toolInputFailure} from '../failures'
@@ -591,6 +592,7 @@ export async function withDeadline<T>(
   const deadline = new AbortController()
   const timer = setTimeout(() => deadline.abort(), ms)
   const bounded = AbortSignal.any([signal, deadline.signal])
+  inheritGatewayInvocation(signal,bounded)
   try {
     return await withAbort(() => work(bounded), bounded)
   } catch (cause) {

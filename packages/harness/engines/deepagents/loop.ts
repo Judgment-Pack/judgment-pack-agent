@@ -1,3 +1,4 @@
+import {registeredTaskDelegationTool} from '../../storage/writer'
 /**
  * The `deepagents` engine's loop: LangChain's Deep Agents (`deepagents/browser`, `createDeepAgent`)
  * behind the wire contract (ADR-0001, step 3; ADR-0003). A run whose environment turns LangChain's
@@ -449,17 +450,20 @@ export function runDeepAgentsLoop(session: RequestAssistantSession, id: Assistan
     const runRuntime = async (name: string, input: unknown, origin?: 'harness'): Promise<Ran> => {
       // The gate is handed the call the model made, unchanged: the gate is the layer that rewrites a
       // call (the rehearsal flag) and the one that reports it.
-      const args = (input ?? {}) as Record<string, unknown>
+      let args = (input ?? {}) as Record<string, unknown>
       if (awaitingInput) throw new DOMException('Waiting for input', 'AbortError')
       executionSignal.throwIfAborted()
       const refusal = await rejectToolStep(name, args)
       if (refusal) return bare(refusal)
-      const correlation = { ...(session.interactive ? { callId: crypto.randomUUID() } : {}), ...(origin === undefined ? {} : { origin }) }
-      await deliver({ type: 'tool_call', ...correlation, name, args })
+      const correlation = { ...(session.interactive||context.runtimeNeedsApproval(name) ? { callId: crypto.randomUUID() } : {}), ...(origin === undefined ? {} : { origin }) }
+      const runtime=await context.prepareRuntimeCall(name,args,correlation.callId??crypto.randomUUID())
+      if(runtime?.requested){await deliver(runtime.requested);return bare({content:[{type:'text',text:APPROVAL_HELD}],isError:true})}
+      if(runtime)args=runtime.args
+      await deliver({ type: 'tool_call', ...correlation, name, args:runtime?.args??args })
       let answer: McpToolResult
       try {
         const limit = context.policy.toolCallMilliseconds
-        answer = await withDeadline(() => callTool(name, args), executionSignal, limit, () => toolTimeout(limit))
+        answer = await withDeadline(signal => runtime?runtime.execute(signal):callTool(name,args), executionSignal, limit, () => toolTimeout(limit))
       } catch (cause) {
         if (isCancelled(cause)) return bare({ content: [{ type: 'text', text: 'the session was stopped before this call was made; nothing was written' }], isError: true })
         const result = toolFailureResult(cause)
@@ -501,7 +505,7 @@ export function runDeepAgentsLoop(session: RequestAssistantSession, id: Assistan
         if (tool.interaction === 'delegation') {
           // An awaited call inside this step (agent#14): the coordinator runs the batch while the call is
           // open, bounded by its children's time limits and by this run's signal, not by the tool-call deadline.
-          readDelegationRequest(args)
+          if(!registeredTaskDelegationTool(tool))readDelegationRequest(args)
           answer = await withAbort(() => tool.execute(args, executionSignal), executionSignal)
         } else if (tool.interaction === 'question') {
           // The question pause (ADR-0003, decision 2): the question is read closed first, so a malformed one

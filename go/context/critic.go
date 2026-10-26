@@ -403,7 +403,7 @@ func ValidCriticRecord(record *contract.CheckpointCritic) bool {
 // checkpoint's critic), any other is refused with the guardrail review refused. authorPhase says
 // whether the run is in the author's phase when the call is made.
 func (s *CriticSwitch) ReviewHost(authorPhase func() bool) HostTool {
-	return HostTool{Name: RequestReview, Effect: "plan", Description: RequestReviewDescription, InputSchema: json.RawMessage(RequestReviewSchema),
+	return HostTool{Name: RequestReview, Taxonomy: &ToolTaxonomy{Operation: "own-state", Effect: "pure"}, Effect: "plan", Description: RequestReviewDescription, InputSchema: json.RawMessage(RequestReviewSchema),
 		Execute: func(_ context.Context, args json.RawMessage) (ToolResult, error) {
 			var asked map[string]json.RawMessage
 			if err := json.Unmarshal(nonEmptyArgs(args), &asked); err != nil {
@@ -440,5 +440,5 @@ func OfferedReviewTool(session Session, policy Policy) []contract.ToolOfferHostT
 		return nil
 	}
 	plan := "plan"
-	return []contract.ToolOfferHostTool{{Name: RequestReview, Description: RequestReviewDescription, InputSchema: json.RawMessage(RequestReviewSchema), Effect: &plan}}
+	return []contract.ToolOfferHostTool{{Name: RequestReview, Taxonomy: contract.ToolTaxonomy{Operation: "own-state", Effect: "pure"}, Description: RequestReviewDescription, InputSchema: json.RawMessage(RequestReviewSchema), Effect: &plan}}
 }

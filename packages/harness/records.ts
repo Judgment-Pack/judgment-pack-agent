@@ -9,7 +9,7 @@ export const EXPORT_SCHEMA='https://github.com/Judgment-Pack/judgment-pack-agent
 export const RECORD_SCHEMAS=[CHECKPOINT_SCHEMA,PROVENANCE_SCHEMA,CRITIQUE_SCHEMA] as const
 export type RecordSchema=typeof RECORD_SCHEMAS[number]
 export interface RecordsPolicy {retainDays:number;redactOnStore:boolean;exportFormat:'json'}
-export interface RecordMembers<S extends RecordSchema=RecordSchema> {schema:S;version:S extends typeof CHECKPOINT_SCHEMA ? 1|2 : 1;digest:string;retainUntil:string;records?:RecordMarker}
+export interface RecordMembers<S extends RecordSchema=RecordSchema> {schema:S;version:S extends typeof CHECKPOINT_SCHEMA ? 1|2|3 : 1;digest:string;retainUntil:string;records?:RecordMarker}
 export interface RecordGuard {declaredNames?:ReadonlySet<string>;value<T>(input:T,where:'message',record?:boolean,marker?:RecordMarker):T}
 export interface ExportEntry extends RecordMembers {bytes:number}
 export interface ExportManifest {
@@ -47,7 +47,7 @@ export function recordsPolicy(members:Record<string,{value?:unknown}>):RecordsPo
 
 // Only model-derived members enter the store guard. Each selected member has its own budget.
 const RECORD_TEXT_PATHS=[
- 'durable.dispatches.*.request','durable.dispatches.*.result','durable.children.*.checkpoint','handoff.continuation',
+ 'durable.dispatches.*.repeatResultJson','durable.dispatches.*.request','durable.dispatches.*.result','durable.children.*.checkpoint','handoff.continuation',
  'text','explanation','reason','plan.*.step','plan.*.detail',
  'operations.*.name','operations.*.args','approval.name','approval.tool','approval.args',
  'memories.proposed.*.text','compaction.summaries.*.summary',
@@ -77,8 +77,14 @@ function guardRecord(record:Record<string,unknown>,guard:RecordGuard,figures:Rec
  for(const path of RECORD_TEXT_PATHS)scan(record,path.split('.'))
 }
 
+/** Select the current graph for detached task candidates before their writer-owned schedule exists. */
+function taskRecordFields(value:Record<string,unknown>):boolean{
+ const configured=(step:unknown)=>!!step&&typeof step==='object'&&['dependsOn','budget','delegation'].some(key=>Object.hasOwn(step,key))
+ const plan=value.plan, state=value.planState as {taskSchedule?:unknown;taskEnvelope?:unknown;pending?:{candidate?:{plan?:unknown}};history?:{diff?:{before?:unknown;after?:unknown}[]}[]}|undefined
+ return Array.isArray(plan)&&plan.some(configured)||Array.isArray(state?.pending?.candidate?.plan)&&state.pending.candidate.plan.some(configured)||state?.taskSchedule!==undefined||state?.taskEnvelope!==undefined||state?.history?.some(row=>row.diff?.some(change=>configured(change.before)||configured(change.after)))===true
+}
 export function writeRecord<S extends RecordSchema,T extends Record<string,unknown>>(schema:S,value:T,policy:RecordsPolicy,guard?:RecordGuard,now=new Date(),keepRetainUntil?:string):T&RecordMembers<S>{
- let record={...structuredClone(value),schema,version:(schema===CHECKPOINT_SCHEMA?2:1),retainUntil:keepRetainUntil??retainUntil(policy,now)} as T&Omit<RecordMembers<S>,'digest'>
+ let record={...structuredClone(value),schema,version:(schema===CHECKPOINT_SCHEMA?(((value as {version?:number}).version===3||(value as {repeatTools?:unknown}).repeatTools!==undefined||(value as {usageBudget?:unknown;turnRoute?:unknown}).usageBudget!==undefined||(value as {turnRoute?:unknown}).turnRoute!==undefined||(value as {approval?:{runtime?:unknown}}).approval?.runtime!==undefined||taskRecordFields(value))?3:2):1),retainUntil:keepRetainUntil??retainUntil(policy,now)} as T&Omit<RecordMembers<S>,'digest'>
  const figures:RecordMarker={redactions:{}}
  if(policy.redactOnStore&&guard)guardRecord(record,guard,figures)
  Object.assign(record,{records:figures})
@@ -87,12 +93,12 @@ export function writeRecord<S extends RecordSchema,T extends Record<string,unkno
 export function validRecord(value:unknown):value is Record<string,unknown>&RecordMembers{
  if(!value||typeof value!=='object'||Array.isArray(value))return false
  const record=value as Record<string,unknown>
- return RECORD_SCHEMAS.includes(record.schema as RecordSchema)&&(record.schema===CHECKPOINT_SCHEMA?(record.version===1||record.version===2):record.version===1)&&typeof record.digest==='string'&&DIGEST.test(record.digest)&&record.digest===recordDigest(record)&&typeof record.retainUntil==='string'&&record.retainUntil.length<=40&&Number.isFinite(Date.parse(record.retainUntil))
+ return RECORD_SCHEMAS.includes(record.schema as RecordSchema)&&(record.schema===CHECKPOINT_SCHEMA?(record.version===1||record.version===2||record.version===3):record.version===1)&&typeof record.digest==='string'&&DIGEST.test(record.digest)&&record.digest===recordDigest(record)&&typeof record.retainUntil==='string'&&record.retainUntil.length<=40&&Number.isFinite(Date.parse(record.retainUntil))
 }
 export function validRecordHeader(value:unknown,schema:RecordSchema):value is Record<string,unknown>&RecordMembers{
  if(!value||typeof value!=='object'||Array.isArray(value))return false
  const record=value as Record<string,unknown>,until=record.retainUntil
- return record.schema===schema&&(schema===CHECKPOINT_SCHEMA?(record.version===1||record.version===2):record.version===1)&&typeof record.digest==='string'&&DIGEST.test(record.digest)&&typeof until==='string'&&until.length<=40&&Number.isFinite(Date.parse(until))
+ return record.schema===schema&&(schema===CHECKPOINT_SCHEMA?(record.version===1||record.version===2||record.version===3):record.version===1)&&typeof record.digest==='string'&&DIGEST.test(record.digest)&&typeof until==='string'&&until.length<=40&&Number.isFinite(Date.parse(until))
 }
 export class RecordsExpired extends Error{
  constructor(){super('records expired')}

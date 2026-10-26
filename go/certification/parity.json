@@ -337,6 +337,10 @@
   "scenarios": {
     "source": "packages/harness/certification/scenarios.test.ts",
     "checks": [
+      {"check":"24 · asking-well reads available context without asking","go":["24 asking-well","24 agent asking-well"]},
+      {"check":"24 · asking-well missing information waits for the actual reply","go":["24 asking-well","24 agent asking-well"]},
+      {"check":"24 · asking-well insertion uses actual offers and refuses unavailable selected methods","go":["24 asking-well","24 agent asking-well"]},
+      {"check":"23 · dialect authoring uses certified tools and retains only an acknowledged current review proposal","go":["23 dialect authoring","23 agent dialect authoring"]},
       {
         "check": "1 \u00b7 the offer is the two host tools beside the Runtime\u2019s six, the harness\u2019s six and request_review, and no third name",
         "go": [
@@ -1076,6 +1080,8 @@
       }
     ],
     "additionalSources": [
+      "packages/harness/certification/asking-well.test.ts",
+      "packages/harness/certification/dialects.test.ts",
       "packages/harness/certification/providers.test.ts",
       "packages/harness/certification/subagents.test.ts",
       "packages/harness/certification/memory-write.test.ts",
@@ -1186,6 +1192,10 @@
       {
         "go": "agent project",
         "acceptance": "the project\u2019s own instructions on the agent wire (ADR-0005; the v0.4.0 release review, row 4): in the invocation\u2019s instructions after the package\u2019s guidance, not its prompt, and an instruction in them to call write_file changes nothing the gate admits"
+      },
+      {
+        "go": "agent project native termination",
+        "acceptance": "opt-in actual native host rejection before the unoffered call callback, failed invocation, exact live release and preserved durable state; distinct from canonical callback refusal and clean continuation"
       }
     ]
   }

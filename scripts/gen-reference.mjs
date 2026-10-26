@@ -354,6 +354,10 @@ async function toolsPage(page) {
     seeAlso('skills.md', 'delegation.md', 'critic.md', 'budget.md', 'reasons.md')
   )
 
+  page.add('## Owner taxonomy', page.rootOf('tool-taxonomy.json','### Mandatory declaration'),
+    'Host tools carry taxonomy; Runtime publishes its operation/effect/checkKind/experimental directly in MCP _meta. Missing or contradictory metadata is refused. Legacy effect remains execution bookkeeping and effectClass is a checked projection. Review admits discover/read/check, work adds propose/act, and both retain a pure ask. Runtime act metadata is refused until canonical Runtime approval is supported; existing rehearsal rewriting never relabels owner capability. See ADR-0027.',
+    'External reads require a host verifier over immutable canonical source/descriptor identity, source tool, arguments captured before execution, result and receipt. The host verifies signatures and binding; Agent requires true before publishing success and does not infer verification from source/trust labels.')
+
   page.add('## Runtime tools', '', nodeSection('### The ceiling', ceiling, 'tool-offer.json').replace(/\nType: .*\n/, '\n'))
   page.add(
     table(['Runtime tool', 'Gate rule named in the package'], ASSISTANT_TOOLS.map((name) => [code(name), name === REHEARSAL_TOOL ? `held to the rehearsal (${code(REHEARSAL_MEMBER)} member)` : name === TEST_TOOL ? `arguments limited to ${TEST_ARGUMENTS.map((a) => code(a)).join(', ')}` : ''])),
@@ -412,15 +416,9 @@ async function toolsPage(page) {
     '',
     `Kinds a host declares: ${DECLARED_SOURCE_KINDS.map((k) => code(k)).join(', ')}; the record also carries ${code('runtime')} (the Runtime's own row) and ${code('exchange')} (a skill from a Judgment Exchange entry, see [skills.md](skills.md)). Trust classes: ${TRUST_CLASSES.map((k) => code(k)).join(', ')}. A source's id matches ${code(SOURCE_ID.source)}; a wire name is at most ${NAME_BYTES} characters.`,
     nodeSection('### The source record', sourceRecord, 'tool-offer.json'),
-    '### Gateway descriptor snapshot pins',
+    '### Taxonomy migration and descriptor snapshots',
     '',
-    `New MCP registrations supply approved raw UTF-8 descriptorSnapshot bytes (Go DescriptorSnapshot), their complete sha256 pin as toolListDigest, and required currentDescriptorSnapshot (Go CurrentDescriptorSnapshot). readDescriptorSnapshot and descriptorSnapshotDigest are public helpers. A snapshot is at most ${SNAPSHOT_BYTES} bytes and must match Gateway SPEC 1.1 canonical bytes: Unicode code-point key order, strict UTF-8, no lone surrogate, duplicate member, noninteger numeric spelling or trailing text. Agent record canonicalization is unchanged. inputSchemaText stays opaque original text in the pin.`,
-    '',
-    'Only host-declared captured tool names are admitted; an uncaptured name or wrong digest withholds that source whole. Offered descriptors derive from captured candidates; absent schema projects open while the original host schema is independently checked in the package-supported subset. The host executor retains every other validation and authorization rule. Snapshot platform/server metadata does not replace the local source id or execution identity.',
-    '',
-    'The observer reports current server descriptor content under the approved metadata before ordinary calls, approval decisions and approved continuations. Binding, endpoint, capturedAt, policy and server identity are pinned: a fresh capture timestamp requires re-approval. Agent does not independently verify the host observer. Observers may overlap and run outside observation locks; they must not recursively invoke source tools. A changed, malformed or failed observation latches refusal for the source within the run; an older overlapping observation cannot clear it.',
-    '',
-    'Absent descriptorSnapshot explicitly selects legacy list-pin behavior with toolListDigest/ToolListDigest and currentDigest/CurrentDigest. Snapshot mode cannot also supply the legacy observer; malformed supplied snapshots never fall back. Migrate through a newly person-approved snapshot declaration, and re-supply its observer on resume. Historical checkpoint and event bytes stay unchanged; this change adds no persisted record member. See ADR-0006 and contract/vectors/tool-offer/descriptor-snapshot.json.'
+    `All new source registrations require an approved taxonomy-bound toolListDigest, including gateway/custom declarations formerly admitted by version alone. The list pin binds name, description, inputSchema and taxonomy. Historical descriptor snapshots remain readable by the public descriptor helpers, bounded at ${SNAPSHOT_BYTES} bytes, but cannot be admitted because their captured descriptors omit owner taxonomy. Published Gateway v0.22.0-alpha.1 supplies producer taxonomy metadata; final Agent integrated verification and artifact pairing remain release gates. Local host strings never stand in for captured owner metadata. Historical record bytes and reader inventories remain unchanged.`
   )
 }
 
@@ -444,6 +442,9 @@ async function skillsPage(page) {
     seeAlso('tools.md', 'budget.md', 'reasons.md', 'events.md', 'checkpoint.md', 'critic.md'),
     page.rootOf('skill.json', '## A skill'),
     ...['name', 'resource', 'digest', 'bytes'].map((n) => page.nodeOf('skill.json', n)),
+    '## Derived capability profile',
+    page.nodeOf('tool-taxonomy.json','profile'),
+    'The package derives the strongest effect and ordered operation union from admitted tool references, including validated offered Runtime tools. Unknown or withdrawn tools withhold the skill; an empty skill is pure. Kind/tags and dependency taxonomies bind the approval digest. Catalogue lines show the profile, and preset filtering consumes it; author/model profiles are refused.',
     '## The offer',
     page.nodeOf('tool-offer.json', 'skillDeclaration', '### A skill as a host declares it'),
     page.nodeOf('tool-offer.json', 'skillCatalogueEntry', '### A catalogue entry'),
@@ -467,6 +468,14 @@ async function skillsPage(page) {
     'Named here, never their text. Each is a constant of `skills.ts`.',
     table(['Constant'], markers.map((m) => [code(m.name)]))
   )
+  page.add(
+    "## Asking well",
+    "When the retained tool offer includes `ask_user` as a question with taxonomy `ask` / `pure`, Agent includes the version 1 `asking-well` method. Its only dependency is `ask_user`; its profile is derived as `ask` / `pure`. `askingWellSkill()` (TypeScript) and `AskingWellSkill()` (Go) return the package bundle with the published current pin. Its existing `custom` source `agent-methods`, trust `first-party`, identifies immutable package-owned bytes. This does not introduce a source kind or confer that provenance on host declarations.",
+    "The skill tells the model to read available context and tools first, ask only necessary missing information, avoid answered questions, ask one decision at a time, explain what changes, present 2–4 mutually exclusive options with a reasoned recommendation first, and preserve free text and the person's actual choice. Loading remains the model's choice. A recommendation never supplies a user answer. Instructions do not enforce arbitrary model behavior; scripted certification checks delivered instructions and harness behavior, not general live-model quality. The live release comparison gate remains required.",
+    "The name `asking-well` is reserved for a host replacement when this question tool is actually offered. Supply exactly one normal declaration with that name, kind `method`, and exactly `tools: [\"ask_user\"]`, with the host's own provenance and approved digest. The existing digest covers instructions, kind, tools, resources, tags and dependency taxonomy. No profile or digest override is accepted. Wrong kind, dependencies or duplicate replacement declarations refuse configuration before a provider request. A stale pin withholds the replacement without falling back to the package method and refuses startup.",
+    "Host declaration order is preserved and the default is appended. Ordinary skill admission, 32-skill catalogue maximum and byte bounds still apply; no host entry is evicted. If the selected method is withheld by admission, pin, dependency, profile or catalogue capacity, a run offering the question tool refuses configuration before a provider request. Other host skills retain their ordinary admission behavior. Neither `allowConversation` nor a child or Plan phase creates a question tool; the method follows the retained actual offer. Children without `ask_user` receive no automatic method. No tool or action authority is granted by a skill."
+  )
+
 }
 
 async function delegationPage(page) {
@@ -781,6 +790,7 @@ async function checkpointPage(page) {
   page.add(
     seeAlso('events.md', 'budget.md', 'delegation.md', 'skills.md', 'reasons.md'),
     'The recorded projection APIs and omissions are described in [run-report.md](run-report.md).',
+    'Current feature state uses checkpoint 3: task schedules/envelopes, usage budgets, per-turn routing, repeated-tool observations and runtime action approval. Feature-free writers keep checkpoint 2. Retained history, archives and captures are read-only data and cannot grant native resume, dispatch or approval authority. See [task-steps.md](task-steps.md), [repeated-tools.md](repeated-tools.md), [history-archive.md](history-archive.md), [history-capture.md](history-capture.md) and [feedback.md](feedback.md).',
     'Active steps close with complete_plan_step and current planRevision, using acknowledged same-run evidence or not-needed with a reason. update_plan carries unchanged terminal rows. Accepted origin, bounded departures and purpose-specific drift decisions survive resume. The complete_plan_step tool name is reserved; hosts must rename conflicting tools.',
     'Task steps use package-issued execution-scoped ids. update_plan retains ids explicitly; an omitted id means a new step. planState.revision is the canonical ordered task-content digest, while sequence orders the newest 32 bounded history entries. Storage compare-and-set revisions remain opaque host tokens. See docs/design/task-plan.md for migration and deterministic diff ordering.',
     page.rootOf('checkpoint.json', '## The checkpoint')
@@ -792,15 +802,28 @@ async function checkpointPage(page) {
 
 async function policyPage(page) {
   page.add(seeAlso('budget.md', 'critic.md', 'events.md', 'checkpoint.md'),
+    'Current policy layers use version 2 for feature members. Published policy 1 and historical unversioned layers remain readable under their frozen member graphs; absence does not enable a feature. Repeat policy and routing narrow the existing admitted execution and do not grant authority.',
     page.rootOf('policy.json', '## The policy table'))
   for (const name of Object.keys(page.schema('policy.json').$defs).sort()) page.add(page.nodeOf('policy.json', name))
 }
 
 async function recordsPage(page) {
+  const defaults = await page.use('recordReader', 'RECORD_VERSIONS')
+  const versions = [['checkpoint', 'checkpoint.json'], ['event', 'run-event.json'], ['policy', 'policy.json']].map(([kind, file]) => {
+    const shape = page.schema(file).properties.version
+    const current = shape.const ?? Math.max(...shape.enum)
+    return [kind, code(defaults[kind]), code(current)]
+  })
   page.add(
     seeAlso('policy.md', 'checkpoint.md', 'events.md', 'reasons.md'),
     'The host owns storage and deletion. The package writes self-describing records, refuses expired checkpoints and exports only records the host supplies; it has no store.',
-    'ADR-0024: writers use checkpoint version 2 and event/policy version 1. Readers also accept checkpoint 1 and historical events/policy layers with no version. Newer versions and unknown structural members are refused by name. Historical reads and exports preserve the supplied version and lifecycle metadata; a resumed snapshot writes the current checkpoint version without extending retention.',
+    'Feature-free writer defaults remain checkpoint 2 and event/policy 1. Feature-bearing records select checkpoint 3, event 2 and policy 2. Readers retain checkpoint 1/2 and historical unversioned event/policy layers under frozen member graphs. Newer versions and unknown structural members are refused by name. Historical reads and exports preserve supplied versions and lifecycle metadata; resume selects the applicable writer version without extending retention.',
+    table(['Record', 'Feature-free writer default', 'Current schema version'], versions),
+    '## Retained reports and history',
+    'projectRunReport / ProjectRunReport preserve report 1 for terminal checkpoint 1/2 and select report 2 for checkpoint 3. projectHistoryRunReport / ProjectHistoryRunReport also select report 2 when actual stored feedback is present, preserving the source checkpointVersion. Report 2 projects only recorded usage totals, route facts and repeated-tool outcomes; checkpoint 1/2 cannot acquire checkpoint 3 task or feature facts. Report 1 remains frozen. Neither report grants execution authority.',
+    page.rootOf('run-report.json', '### Report 1'),
+    page.rootOf('run-report-v2.json', '### Report 2'),
+    'Retained history, archives, capture and feedback have separate typed contracts. The host supplies storage and immutable source material; imported or derived data does not establish original execution, provider authenticity or live capture authority. See [run-report.md](run-report.md), [history-archive.md](history-archive.md), [history-capture.md](history-capture.md) and [feedback.md](feedback.md).',
     'UnknownRecordMember keeps its member pointer and bounded message on the diagnostic error. Public refusal events use fixed input-independent detail, including startup before an output guard exists.',
     page.rootOf('export.json', '## The export manifest'),
     page.nodeOf('export.json', 'record'),
@@ -826,8 +849,8 @@ async function memoryPage(page) {
 async function corpusPage(page) {
  page.add('ADR-0022 records a run only after the output guard redacts the complete entry. Replay answers from the recording and compares decisions and outcomes, never model prose or a live provider.',page.rootOf('corpus-entry.json','## Entry manifest'),page.nodeOf('run-event.json','recorded'),page.nodeOf('run-event.json','guardrail'))
 }
-// This API narrative is maintained by hand; its schema-derived checkpoint fields live in checkpoint.md.
-const HAND_AUTHORED_PAGES = new Set(['run-report.md'])
+// These API narratives are maintained by hand; generated schema fields remain in the pages below.
+const HAND_AUTHORED_PAGES = new Set(['run-report.md', 'feedback.md', 'history-archive.md', 'history-capture.md', 'repeated-tools.md', 'task-steps.md'])
 
 const PAGES = [
  ['records.md','Records',recordsPage],

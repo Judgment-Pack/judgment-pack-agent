@@ -55,6 +55,33 @@ func With(inner adapter.Adapter, options Options) adapter.Adapter {
 			runs: agentRuns{children: map[string]int{}}, account: newAccount(), criticReserve: criticReserve(run)}
 		if run.Context != nil && run.Context.Persistence != nil {
 			run.Context.Persistence.Writer.Decorate = func(state contract.Checkpoint) (contract.Checkpoint, error) { return c.decorate(state), nil }
+			if run.Agent != nil && run.Context.TaskSteps {
+				if err := run.Context.Persistence.Writer.AttachNativeTaskEnvelope(*run.Context.Persistence, runcontext.NativeTaskEnvelopeSource{Limit: turn.MaxAgentRuns, Counts: func() map[string]int {
+					c.runsMu.Lock()
+					parent := c.runs.parent
+					c.runsMu.Unlock()
+					counts := map[string]int{run.Context.Persistence.Writer.ID: parent}
+					for _, batch := range c.batchFigures() {
+						for _, child := range batch.Children {
+							if child.AgentRuns != nil {
+								counts[child.Task] += int(*child.AgentRuns)
+							}
+						}
+					}
+					return counts
+				}, Reserve: func(scope runcontext.DurableScope) int {
+					if scope.Task != "" {
+						return 1 + c.criticReserve
+					}
+					return 0
+				}}); err != nil {
+					for _, event := range runcontext.FailedToOpen(err) {
+						run.Emit(event)
+					}
+					return nil
+				}
+			}
+
 		}
 		return c.drive(ctx)
 	})
@@ -192,11 +219,31 @@ func (a *allowance) childRequest(task *contract.DelegatedTask) error {
 // parentLink attaches the parent run's context to the response's allowance.
 type parentLink struct{ c *coordinator }
 
-func (l parentLink) Attach(context *runcontext.SessionContext) {
+func (l parentLink) Attach(sc *runcontext.SessionContext) {
 	l.c.shared.mu.Lock()
-	l.c.shared.parent = context
+	l.c.shared.parent = sc
 	l.c.shared.mu.Unlock()
-	context.Execution.ToolAllowance = func() *runcontext.ToolAllowance {
+	sc.TaskDispatchCharge = func(ctx context.Context, kind, role string) error {
+		if kind == "model" {
+			l.c.batchMu.Lock()
+			l.c.parentCount++
+			l.c.batchMu.Unlock()
+			return nil
+		}
+		if err := l.c.released(ctx); err != nil {
+			return err
+		}
+		if err := l.c.admitRun(nil); err != nil {
+			return err
+		}
+		l.c.emitMu.Lock()
+		if l.c.handoff != nil && l.c.handoff.state == "answered" {
+			l.c.handoff.state = "continued"
+		}
+		l.c.emitMu.Unlock()
+		return nil
+	}
+	sc.Execution.ToolAllowance = func() *runcontext.ToolAllowance {
 		l.c.shared.mu.Lock()
 		defer l.c.shared.mu.Unlock()
 		return &runcontext.ToolAllowance{Used: l.c.shared.toolCalls, Limit: turn.MaxTools, Scope: "response"}
@@ -241,6 +288,7 @@ type coordinator struct {
 	// childMu. taskMu guards every task record's members once runBatch has published it (children
 	// run at once and the parent's checkpoints read their figures); childMu guards the per-child maps
 	// (models, refusedBy, childStarts, childStops, handedBack).
+	taskActionMu sync.Mutex
 	taskMu       sync.Mutex
 	childMu      sync.Mutex
 	batchMu      sync.Mutex
@@ -317,7 +365,22 @@ func (c *coordinator) publish(task *contract.DelegatedTask) {
 	snapshot := *task
 	snapshot.Steps = append([]contract.DelegatedTaskStepsItem{}, task.Steps...)
 	c.taskMu.Unlock()
-	c.deliver(contract.RunEvent{DelegatedTask: &contract.RunEventDelegatedTask{Type: "delegated_task", Task: snapshot, Subagent: task.Subagent, Provider: c.taskProvider(task.Profile)}})
+	event := contract.RunEvent{DelegatedTask: &contract.RunEventDelegatedTask{Type: "delegated_task", Task: snapshot, Subagent: task.Subagent, Provider: c.taskProvider(task.Profile)}}
+	if c.run.Context != nil && c.run.Context.Persistence != nil && c.run.Context.Persistence.Writer.TaskStepsEnabled() {
+		binding := c.run.Context.Persistence
+		output, err := binding.Writer.CommitTaskResult(c.storageContext, *binding, event)
+		if err != nil {
+			c.emitMu.Lock()
+			if c.fatal == nil {
+				c.fatal = err
+			}
+			c.emitMu.Unlock()
+			return
+		}
+		c.deliver(output, true)
+	} else {
+		c.deliver(event)
+	}
 }
 
 // claimTool counts one tool call against the response and, for a child, its task.
@@ -422,6 +485,14 @@ func (c *coordinator) drive(ctx context.Context) error {
 	if offered {
 		parent.Prompt = run.Prompt + "\n\n" + turn.DelegationInstructions
 		parent.HostTools = append(append([]runcontext.HostTool{}, c.wrapHostTools(run.HostTools, nil, nil)...), c.delegateTool())
+		if run.Context != nil && run.Context.TaskSteps && run.Context.Persistence != nil {
+			tool, err := c.taskDelegationTool(false)
+			if err != nil {
+				c.failAndEnd(err)
+				return nil
+			}
+			parent.HostTools = append(parent.HostTools, tool)
+		}
 	} else {
 		parent.Prompt = run.Prompt + "\n\n" + turn.DelegationSpent
 		parent.HostTools = c.wrapHostTools(run.HostTools, nil, nil)

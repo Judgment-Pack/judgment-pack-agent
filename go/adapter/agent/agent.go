@@ -60,8 +60,9 @@ var (
 // route is one alias the invocations are offered: the tool's own name, and the host tool where it is
 // one.
 type route struct {
-	name string
-	host *runcontext.HostTool
+	runtime *runcontext.RuntimeCall
+	name    string
+	host    *runcontext.HostTool
 }
 
 // runState is one run.
@@ -90,6 +91,12 @@ type runState struct {
 
 // Run is the adapter: one run on the agent capability.
 func Run(ctx context.Context, run *adapter.Run) error {
+	if run.RequestOutputCeiling != 0 {
+		for _, event := range runcontext.FailedToOpen(failure.Authored("configuration", "The opaque native agent route cannot enforce a physical output ceiling.", "context")) {
+			run.Emit(event)
+		}
+		return nil
+	}
 	r := &runState{run: adapter.NewRequestOperations(run)}
 	if run.Agent == nil || run.Agent.Run == nil || run.Model != nil {
 		r.emitAll(runcontext.FailedToOpen(failure.Authored("configuration", "The run is not on an agent capability alone; nothing was sent.", "desk")))
@@ -116,6 +123,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 	}
 	rawReasoning := adapter.ReadAdmissionReasoning(run)
 	session := runcontext.Session{
+		Route: run.Route, RouteFacts: run.RouteFacts,
 		Prompt:            run.Prompt,
 		TestPrompt:        run.TestPrompt,
 		HostTools:         append([]runcontext.HostTool{}, run.HostTools...),
@@ -124,6 +132,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		AllowConversation: run.AllowConversation,
 		Interactive:       run.Interactive,
 		CallTool:          r.gatedCall,
+		RuntimeCalls:      run.Gate,
 		Agent:             &runcontext.AgentSession{Model: run.Agent.Model, Effort: rawReasoning.Effort},
 		Host:              run.Host,
 		Skills:            run.Skills,
@@ -138,9 +147,11 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		AdversarialReview: run.Review,
 	}
 	for _, tool := range run.Tools {
-		session.Tools = append(session.Tools, runcontext.RuntimeTool{Name: tool.Name})
+		session.Tools = append(session.Tools, runcontext.RuntimeTool{Name: tool.Name, Meta: wire.TaxonomyFromContract(tool.Meta), Offer: &tool})
 	}
-	opened, err := runcontext.ContextualSession(ctx, session)
+	opened, err := runcontext.ContextualSessionWithEnrollment(ctx, session, func(ctx context.Context, execution string, declarations []contract.ToolOfferHostTool) error {
+		return adapter.EnrollContext(ctx, run, execution, declarations)
+	})
 	if err != nil {
 		r.emitAll(runcontext.FailedToOpen(err))
 		return nil
@@ -238,6 +249,7 @@ func (r *runState) gatedCall(ctx context.Context, name string, args json.RawMess
 // (the boundary's context tools among them), in the session's order.
 func (r *runState) buildRoutes() error {
 	r.routes, r.served = map[string]route{}, map[string]bool{}
+	r.all = nil
 	add := func(kind, name, description string, schema json.RawMessage, host *runcontext.HostTool) error {
 		if r.served[name] {
 			return failure.Authored("configuration", "Assistant tool names must be unique; "+name+" is named twice. Nothing was run.", "desk")
@@ -330,6 +342,12 @@ func (r *runState) drive(ctx context.Context) error {
 		parts = append(parts, r.sc.Execution.Guidance())
 	}
 	final, err := r.invoke(execution, r.session.Prompt, instructions, "author", nil, "", strings.Join(parts, "\n\n"))
+	if runcontext.IsRouteCapabilityNeeded(err) && r.sc.RoutePending() {
+		if err = r.sc.WidenTurnRoute(execution); err != nil {
+			return err
+		}
+		final, err = r.invoke(execution, r.session.Prompt, instructions, "author", nil, "", strings.Join(parts, "\n\n"))
+	}
 	if err != nil {
 		// A proposal made through propose_pack is finished work: delivered, with a note naming the
 		// failure where the run failed after it. A person's stop still stops.

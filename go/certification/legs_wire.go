@@ -37,7 +37,7 @@ func mcp(tool contract.ToolOfferRuntimeTool) wire.McpTool {
 		description = *tool.Description
 	}
 	schema, _ := wire.Parse(tool.InputSchema)
-	return wire.McpTool{Name: tool.Name, Description: description, InputSchema: schema}
+	return wire.McpTool{Name: tool.Name, Description: description, InputSchema: schema, Meta: wire.TaxonomyFromContract(tool.Meta)}
 }
 
 func keywordsOf(raw json.RawMessage) map[string]bool {

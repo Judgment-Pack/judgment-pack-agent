@@ -117,13 +117,24 @@ func argumentsOf(text string) (*Value, string) {
 // EncodeRequest is encodeRequest: the suffix, body and protocol headers one request is sent with,
 // on the family's own wire.
 func EncodeRequest(request Request) Encoded {
+	if request.OutputTokenCeiling > 0 && request.OutputTokenCeiling < request.MaxOutputTokens {
+		request.MaxOutputTokens = request.OutputTokenCeiling
+	}
+	var encoded Encoded
 	switch request.Family {
 	case Anthropic:
-		return anthropicRequest(request)
+		encoded = anthropicRequest(request)
 	case Gemini:
-		return geminiRequest(request)
+		encoded = geminiRequest(request)
+	default:
+		encoded = openAIRequest(request)
 	}
-	return openAIRequest(request)
+	if request.OutputTokenCeiling > 0 {
+		if body, err := EnforceOutputCeiling(request.Family, encoded.Body, request.OutputTokenCeiling); err == nil {
+			encoded.Body = body
+		}
+	}
+	return encoded
 }
 
 func openAIRequest(request Request) Encoded {
@@ -298,6 +309,9 @@ func anthropicRequest(request Request) Encoded {
 	maximum := Int(request.MaxOutputTokens)
 	if held, ok := request.Tier.Get("max_tokens").Number(); ok {
 		maximum = Num(held)
+	}
+	if held, ok := maximum.Number(); ok && request.OutputTokenCeiling > 0 && held > float64(request.OutputTokenCeiling) {
+		maximum = Int(request.OutputTokenCeiling)
 	}
 	body := Obj(F("model", Str(request.Model)), F("max_tokens", maximum))
 	for _, member := range request.Tier.Members() {

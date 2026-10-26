@@ -648,7 +648,7 @@ describe('rehearsal, on two layers', () => {
     ])
     await drain(
       vercel.start(
-        session(call, {}, async (name, args) => {
+        session(call, {tools:TOOLS.map(tool=>({...tool,_meta:tool.name==='experimental_evaluate'?{operation:'evaluate',effect:'pure'}:{operation:'check',effect:'pure',checkKind:'validate'}}))}, async (name, args) => {
           asked.push({ name, ...args })
           return { content: [{ type: 'text', text: '{"status":"ok"}' }] }
         })

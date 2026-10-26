@@ -28,6 +28,10 @@
           }
         },
         "additionalProperties": false
+      },
+      "taxonomy": {
+        "operation": "discover",
+        "effect": "read"
       }
     },
     {
@@ -68,6 +72,10 @@
           "id"
         ],
         "additionalProperties": false
+      },
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read"
       }
     },
     {
@@ -108,6 +116,10 @@
           "id"
         ],
         "additionalProperties": false
+      },
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read"
       }
     },
     {
@@ -149,6 +161,10 @@
           "pattern"
         ],
         "additionalProperties": false
+      },
+      "taxonomy": {
+        "operation": "discover",
+        "effect": "read"
       }
     },
     {
@@ -163,6 +179,10 @@
             "description": "Why a review of this run’s proposal is wanted, in one sentence."
           }
         }
+      },
+      "taxonomy": {
+        "operation": "own-state",
+        "effect": "pure"
       }
     }
   ]

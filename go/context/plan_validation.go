@@ -134,8 +134,10 @@ func validPlanExtensions(plan, state *Value) bool {
 			if ids[planText(step.Get("id"))] {
 				input.Set("id", step.Get("id").Clone())
 			}
-			if step.Has("detail") {
-				input.Set("detail", step.Get("detail").Clone())
+			for _, key := range []string{"detail", "dependsOn", "budget", "delegation"} {
+				if step.Has(key) {
+					input.Set(key, step.Get(key).Clone())
+				}
 			}
 			incoming.Append(input)
 		}
@@ -231,19 +233,19 @@ func (c *ExecutionController) seedAcceptedPlan(ctx context.Context) error {
 	state.Set("driftPolicy", policy)
 	return c.MutateCheckpoint(CheckpointPatch{"Plan": plan, "PlanState": state})
 }
-func (c *ExecutionController) restorePlanDecision(saved *contract.Checkpoint, decision *contract.CheckpointApprovalDecision) (bool, error) {
+func decidePlan(saved *contract.Checkpoint, decision *contract.CheckpointApprovalDecision) (*contract.RunEvent, bool, error) {
 	raw, _ := json.Marshal(saved)
 	v, err := ParseJSON(raw)
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 	state := v.Get("planState")
 	p := state.Get("pending")
 	if p == nil {
-		return false, nil
+		return nil, false, nil
 	}
-	if saved.Approval != nil && saved.Approval.State == "asked" || decision == nil || decision.CallID != planText(p.Get("callId")) || planText(p.Get("revision")) != planText(state.Get("revision")) {
-		return false, failure.ToolInput("PlanApprovalRequired: continue with the exact pending plan decision.")
+	if saved.Status != "paused" || planText(p.Get("purpose")) != "plan-drift" || saved.Approval != nil && saved.Approval.State == "asked" || decision == nil || decision.CallID != planText(p.Get("callId")) || planText(p.Get("revision")) != planText(state.Get("revision")) {
+		return nil, false, failure.ToolInput("PlanApprovalRequired: continue with the exact pending plan decision.")
 	}
 	row := ObjectOf("callId", p.Get("callId").Clone(), "revision", p.Get("revision").Clone(), "candidateRevision", p.Get("candidate").Get("planState").Get("revision").Clone(), "approved", Bool(decision.Approved))
 	if decision.Note != nil {
@@ -267,18 +269,27 @@ func (c *ExecutionController) restorePlanDecision(saved *contract.Checkpoint, de
 	appendPlanRecord(state, "decisions", row)
 	v.Set("status", String("running"))
 	if err = json.Unmarshal(v.JSON(), saved); err != nil {
-		return false, err
+		return nil, false, err
 	}
 	event, err := planEvent("plan_drift_decided", saved.ID, row)
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
-	c.planDecisionEvent = &event
-	return true, nil
+	return &event, true, nil
+}
+func (c *ExecutionController) restorePlanDecision(saved *contract.Checkpoint, decision *contract.CheckpointApprovalDecision) (bool, error) {
+	event, handled, err := decidePlan(saved, decision)
+	if err == nil && handled {
+		c.planDecisionEvent = event
+	}
+	return handled, err
 }
 func (c *ExecutionController) PublishPlanDecision(ctx context.Context) error {
 	if c.planDecisionEvent == nil {
 		return nil
+	}
+	if c.PublishPlan == nil {
+		return &ContinuationNotRecoverable{}
 	}
 	if err := c.publishPlan(ctx, *c.planDecisionEvent); err != nil {
 		return err

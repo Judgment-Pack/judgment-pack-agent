@@ -1,0 +1,63 @@
+{
+  "profile": {
+    "effect": "pure",
+    "operations": [
+      "ask"
+    ]
+  },
+  "pin": "sha256:265985dc2ea1d8290d5663e7a3ed4d8e25af47d4ba2beb7194d8029791b41692",
+  "question": {
+    "title": "Report format",
+    "question": "Which report format should I prepare? This changes the report layout.",
+    "selection": "single",
+    "options": [
+      {
+        "id": "brief",
+        "label": "Brief",
+        "description": "Recommended: enough detail for the stated review."
+      },
+      {
+        "id": "detailed",
+        "label": "Detailed",
+        "description": "Includes supporting detail."
+      }
+    ],
+    "recommendedOptionId": "brief",
+    "recommendation": "A brief report covers the stated review need."
+  },
+  "availableAnswer": "The available policy requires a brief report.",
+  "readResult": "The policy requires a brief report.",
+  "otherSkill": {
+    "kind": "knowledge",
+    "name": "project-notes",
+    "description": "Project reference notes.",
+    "instructions": "Use the project reference notes as context.",
+    "tools": [],
+    "resources": [],
+    "id": "project-notes",
+    "source": {
+      "kind": "custom",
+      "id": "project-notes",
+      "trust": "person",
+      "version": "1"
+    },
+    "pinnedDigest": "sha256:a827be18c43f63dd9781b1feb102173626225dfea8c9da7efccc44d2965bb29e"
+  },
+  "skill": {
+    "id": "asking-well",
+    "name": "asking-well",
+    "kind": "method",
+    "description": "Ask only for missing necessary information, with clear choices and a reasoned recommendation.",
+    "source": {
+      "kind": "custom",
+      "id": "agent-methods",
+      "trust": "first-party",
+      "version": "1"
+    },
+    "instructions": "Read the available context and use available reading tools before asking the person. Ask only for necessary information that remains unavailable. Do not repeat a question already answered in this run. Ask one decision per question and state what changes depending on the answer. Offer 2 to 4 mutually exclusive options, with the recommended option first and a one-line reason grounded in the available context. Preserve free text and the person’s choice. A recommendation is never an answer: wait for the person’s actual reply. This method grants no tool or permission; existing controls still apply.",
+    "tools": [
+      "ask_user"
+    ],
+    "pinnedDigest": "sha256:265985dc2ea1d8290d5663e7a3ed4d8e25af47d4ba2beb7194d8029791b41692"
+  }
+}

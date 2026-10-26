@@ -1,0 +1,29 @@
+{
+  "kind": "handwritten-current-contract-test-declarations",
+  "scope": "Synthetic metadata for the correction scenario replay, not measured Runtime metadata. Schemas/results remain historical. Evaluation is pure only because this replay refuses every call without rehearsal:true and implements no persistence/action path.",
+  "historicalRecordingSha256": "0252946500ad73f274669f11935f71701ed12d4e1759566369f6a34c84903230",
+  "tools": {
+    "get_schema": {
+      "operation": "read",
+      "effect": "read"
+    },
+    "list_examples": {
+      "operation": "discover",
+      "effect": "read"
+    },
+    "get_example": {
+      "operation": "read",
+      "effect": "read"
+    },
+    "validate": {
+      "operation": "check",
+      "effect": "pure",
+      "checkKind": "validate"
+    },
+    "experimental_evaluate": {
+      "operation": "evaluate",
+      "effect": "pure",
+      "experimental": true
+    }
+  }
+}

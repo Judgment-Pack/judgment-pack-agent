@@ -244,6 +244,9 @@ func RefusedSchemaSentence(keyword string) string {
 // McpTool is one tool as the runtime served it, for the schema functions (McpTool in engine.ts, in
 // the members they read).
 type McpTool struct {
+	Meta        *ToolTaxonomy
+	Taxonomy    *ToolTaxonomy
+	Annotations map[string]bool
 	Name        string
 	Description string
 	// InputSchema is the schema the runtime served, or nil where it served none.

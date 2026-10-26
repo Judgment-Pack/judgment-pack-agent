@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/wire"
 	"io"
 	"net/netip"
 	"regexp"
@@ -22,21 +23,25 @@ const DescriptorSnapshotBytes = 320 << 10
 
 // DescriptorTool keeps the original schema text opaque at the snapshot boundary.
 type DescriptorTool struct {
-	Description     *string `json:"description,omitempty"`
-	InputSchemaText *string `json:"inputSchemaText,omitempty"`
+	Description       *string         `json:"description,omitempty"`
+	InputSchemaText   *string         `json:"inputSchemaText,omitempty"`
+	Taxonomy          *ToolTaxonomy   `json:"taxonomy,omitempty"`
+	ServerAnnotations map[string]bool `json:"serverAnnotations,omitempty"`
 }
 type DescriptorServer struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
 }
 type DescriptorSnapshot struct {
-	Binding    string                    `json:"binding"`
-	CapturedAt string                    `json:"capturedAt"`
-	Endpoint   *string                   `json:"endpoint,omitempty"`
-	Platform   string                    `json:"platform"`
-	Policy     int                       `json:"policy"`
-	Server     *DescriptorServer         `json:"server,omitempty"`
-	Tools      map[string]DescriptorTool `json:"tools"`
+	SnapshotVersion string                    `json:"snapshotVersion,omitempty"`
+	Operation       string                    `json:"operation,omitempty"`
+	Binding         string                    `json:"binding"`
+	CapturedAt      string                    `json:"capturedAt"`
+	Endpoint        *string                   `json:"endpoint,omitempty"`
+	Platform        string                    `json:"platform"`
+	Policy          int                       `json:"policy"`
+	Server          *DescriptorServer         `json:"server,omitempty"`
+	Tools           map[string]DescriptorTool `json:"tools"`
 }
 
 func descriptorError() error {
@@ -320,7 +325,16 @@ func ReadDescriptorSnapshot(data []byte) (DescriptorSnapshot, error) {
 		return DescriptorSnapshot{}, descriptorError()
 	}
 	object, ok := v.(map[string]any)
-	if !ok || !descriptorMembers(object, []string{"binding", "capturedAt", "platform", "policy", "tools"}, []string{"endpoint", "server"}) {
+	required, optional := []string{"binding", "capturedAt", "platform", "policy", "tools"}, []string{"endpoint", "server"}
+	_, v2 := object["snapshotVersion"]
+	if v2 {
+		if object["snapshotVersion"] != "2" || (object["operation"] != "live" && object["operation"] != "write") {
+			return DescriptorSnapshot{}, descriptorError()
+		}
+		required = append(required, "snapshotVersion", "operation", "server")
+		optional = []string{"endpoint"}
+	}
+	if !ok || !descriptorMembers(object, required, optional) {
 		return DescriptorSnapshot{}, descriptorError()
 	}
 	platform, pok := object["platform"].(string)
@@ -356,12 +370,52 @@ func ReadDescriptorSnapshot(data []byte) (DescriptorSnapshot, error) {
 	}
 	for _, raw := range tools {
 		entry, ok := raw.(map[string]any)
-		if !ok || len(entry) == 0 || !descriptorMembers(entry, nil, []string{"description", "inputSchemaText"}) {
+		required, optional := []string{}, []string{"description", "inputSchemaText"}
+		if v2 {
+			required = []string{"taxonomy"}
+			optional = append(optional, "serverAnnotations")
+		}
+		if !ok || len(entry) == 0 || !descriptorMembers(entry, required, optional) {
 			return DescriptorSnapshot{}, descriptorError()
 		}
-		for _, field := range entry {
-			if _, ok := field.(string); !ok {
+		for _, key := range []string{"description", "inputSchemaText"} {
+			if field, present := entry[key]; present {
+				if _, ok := field.(string); !ok {
+					return DescriptorSnapshot{}, descriptorError()
+				}
+			}
+		}
+		if v2 {
+			owner, ok := entry["taxonomy"].(map[string]any)
+			if !ok {
 				return DescriptorSnapshot{}, descriptorError()
+			}
+			if flag, present := owner["experimental"]; present {
+				if _, ok := flag.(bool); !ok {
+					return DescriptorSnapshot{}, descriptorError()
+				}
+			}
+			raw, _ := json.Marshal(entry["taxonomy"])
+			var t ToolTaxonomy
+			if json.Unmarshal(raw, &t) != nil || wire.TaxonomyProblem(&t, false) != "" || !taxonomyContains([]string{"read-external", "propose", "act"}, t.Effect) {
+				return DescriptorSnapshot{}, descriptorError()
+			}
+			if value, present := entry["serverAnnotations"]; present {
+				hints, ok := value.(map[string]any)
+				if !ok {
+					return DescriptorSnapshot{}, descriptorError()
+				}
+				for key, value := range hints {
+					if !taxonomyContains([]string{"readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"}, key) {
+						return DescriptorSnapshot{}, descriptorError()
+					}
+					if _, ok := value.(bool); !ok {
+						return DescriptorSnapshot{}, descriptorError()
+					}
+				}
+				if t.Effect != "act" && (hints["destructiveHint"] == true || hints["readOnlyHint"] == false) {
+					return DescriptorSnapshot{}, descriptorError()
+				}
 			}
 		}
 	}
@@ -391,4 +445,43 @@ func descriptorSchema(text string) (json.RawMessage, error) {
 		return nil, fmt.Errorf("descriptor schema: not an object")
 	}
 	return json.RawMessage(text), nil
+}
+
+// DescriptorApproval comes from trusted engine11/bindingV2 approval, not untrusted snapshot contents.
+type DescriptorApproval struct {
+	Platform       string                   `json:"platform"`
+	Binding        string                   `json:"binding"`
+	Operation      string                   `json:"operation"`
+	Endpoint       *string                  `json:"endpoint,omitempty"`
+	ToolTaxonomies map[string]*ToolTaxonomy `json:"toolTaxonomies"`
+}
+
+func DescriptorApprovalProblem(snapshot DescriptorSnapshot, approval *DescriptorApproval, tool string, owner *ToolTaxonomy) string {
+	if approval == nil || !descriptorPlatform(approval.Platform) || !descriptorBinding.MatchString(approval.Binding) || !taxonomyContains([]string{"live", "write"}, approval.Operation) || len(approval.ToolTaxonomies) == 0 {
+		return "missing independently approved V2 descriptor context"
+	}
+	if snapshot.SnapshotVersion != "2" || snapshot.Platform != approval.Platform || snapshot.Binding != approval.Binding || snapshot.Operation != approval.Operation || (snapshot.Endpoint == nil) != (approval.Endpoint == nil) || (snapshot.Endpoint != nil && *snapshot.Endpoint != *approval.Endpoint) {
+		return "descriptor operation or source differs from approval"
+	}
+	if len(snapshot.Tools) != len(approval.ToolTaxonomies) {
+		return "descriptor owner projection differs from approval"
+	}
+	for name, t := range approval.ToolTaxonomies {
+		entry, ok := snapshot.Tools[name]
+		if name == "" || !ok || wire.TaxonomyProblem(t, false) != "" || !taxonomyContains([]string{"read-external", "propose", "act"}, t.Effect) || !sameDescriptorTaxonomy(entry.Taxonomy, t) {
+			return "descriptor owner projection differs from approval"
+		}
+	}
+	if tool != "" && (owner == nil || !sameDescriptorTaxonomy(snapshot.Tools[tool].Taxonomy, owner)) {
+		return "selected tool taxonomy differs from approval"
+	}
+	return ""
+}
+func sameDescriptorTaxonomy(a, b *ToolTaxonomy) bool {
+	if a == nil || b == nil {
+		return false
+	}
+	left, _ := json.Marshal(a)
+	right, _ := json.Marshal(b)
+	return bytes.Equal(left, right)
 }

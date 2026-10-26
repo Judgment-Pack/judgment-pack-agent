@@ -77,9 +77,14 @@
         "kind": "custom",
         "id": "mine",
         "trust": "person",
-        "version": "1"
+        "version": "1",
+        "toolListDigest": "sha256:5fa2621b9c88b86aa9031173bfa5d9b3c89c2f8067e8bc1ecf7ce1a2ccffa190"
       },
-      "effectClass": "read"
+      "effectClass": "read",
+      "taxonomy": {
+        "operation": "discover",
+        "effect": "read-external"
+      }
     }
   ],
   "items": [
@@ -127,11 +132,22 @@
         "id": "mine",
         "trust": "person",
         "version": "1",
-        "tool": "search_notes"
+        "tool": "search_notes",
+        "toolListDigest": "sha256:5fa2621b9c88b86aa9031173bfa5d9b3c89c2f8067e8bc1ecf7ce1a2ccffa190"
       },
       "effectClass": "read",
       "approval": "none",
-      "effect": "read"
+      "effect": "read",
+      "taxonomy": {
+        "operation": "discover",
+        "effect": "read-external"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
     }
   ],
   "withheld": [

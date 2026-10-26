@@ -63,3 +63,12 @@ interrupted-record tests hold these claims.
 
 Stable plan IDs, revisions, final report structure, evidence completion and accepted departures
 remain separate decisions. They can now change a current wire format deliberately.
+
+The published v0.10 checkpoint2/event1/policy1 structural inventories are also frozen from
+`e00d2b11d11af4dabb0a4de6c1a5e7322bd8527e`, independently of mutable current schemas, in
+`contract/records/published-v010-shapes.json`. Its immutable SHA256 and source/version identity
+are checked by `scripts/published-record-shapes.mjs`; the existing record-shapes check compares
+both runtime mirrors. Published report1 keeps its separate complete frozen graph and digest.
+Changing current nested definitions cannot widen any of these released readers. New structural
+members require an explicitly selected next enclosing format; map-valued resolved policy entries
+do not by themselves change the policy-layer structural version.

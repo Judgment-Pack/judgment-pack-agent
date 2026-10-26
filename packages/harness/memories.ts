@@ -139,7 +139,7 @@ export function recordRecall(checkpoint: ExecutionCheckpoint, recall: Awaited<Re
   commitMemoryRecall(() => checkpoint, write, prior, nextMemoryRecall(prior, recall, []))
 }
 export function rememberTool(checkpoint: () => ExecutionCheckpoint, policy: ContextPolicy, refused: (detail: string) => Error, notify: (event: AssistantEvent) => void,write:(patch:CheckpointPatch)=>void=patch=>{mutateCheckpoint(checkpoint(),patch)}): HostTool {
-  return { name: REMEMBER, description: 'Propose a memory for the person to accept or decline. This records a proposal only; nothing is stored or accepted.', inputSchema: REMEMBER_SCHEMA, effect: 'plan',
+  return { name: REMEMBER,taxonomy:{operation:'propose',effect:'propose'}, description: 'Propose a memory for the person to accept or decline. This records a proposal only; nothing is stored or accepted.', inputSchema: REMEMBER_SCHEMA, effect: 'plan',
     async execute(args) {
       if (!exact(args,['kind','text']) || !kind(args.kind) || typeof args.text !== 'string' || args.text.length === 0 || utf8Bytes(args.text) > policy.memoryProposalBytes) throw refused('Memory proposal has an invalid kind, text or byte bound.')
       const hash = `sha256:${await contextDigest(args.text)}`

@@ -1,3 +1,4 @@
+import {nativeCaptureRequest} from '../../storage/physicalDispatch'
 import {recordSubagents} from '../../subagents'
 import {failureEvent,failureError,toolFailureResult} from '../../failures'
 import {managedContext,contextOf} from '../../context/managed'
@@ -58,6 +59,7 @@ function runCodexLoop(session: RequestAgentAssistantSession): AsyncIterable<Assi
   const inputPause = new AbortController()
   const executionSignal = AbortSignal.any([gate.signal, inputPause.signal])
   let awaitingInput = false
+  context.claimApprovalPause=()=>{if(awaitingInput)return false;awaitingInput=true;return true}
   const callTool = guardedCallTool(session, executionSignal)
   const deliver = (event: AssistantEvent) => channel.push(event)
   const drive = async () => {
@@ -114,7 +116,7 @@ function runCodexLoop(session: RequestAgentAssistantSession): AsyncIterable<Assi
       const partial = new Map<string, string>()
       let final = ''
       let messages = 0
-      await withAbort(() => session.values.agent.run({ prompt, instructions, tools: offeredHere, ...(effort === undefined ? {} : { effort }), phase: phase === 'critic' ? 'critic' : 'author', ...(model === undefined ? {} : { model }) }, {
+      await withAbort(() => session.values.agent.run(nativeCaptureRequest({ prompt, instructions, tools: offeredHere, ...(effort === undefined ? {} : { effort }), phase: phase === 'critic' ? 'critic' : 'author', ...(model === undefined ? {} : { model }) },new Map(offeredHere.map(tool=>[tool.name,routes.get(tool.name)!.name]))), {
         signal: executionSignal,
         connectionSwitched: deliver,
         event: async (event: AgentEvent) => {
@@ -157,14 +159,15 @@ function runCodexLoop(session: RequestAgentAssistantSession): AsyncIterable<Assi
           }
           // ADR-0008: an act call the host's policy asks about ends the run as a delegation handoff
           // does: its approval_requested in place of the call, the call never run, the invocation stopped.
-          const held = route.host ? await context.approval(route.name, call.arguments, call.id) : undefined
+          const runtime = route.host ? undefined : await context.prepareRuntimeCall(route.name, call.arguments, call.id)
+          const held = route.host ? await context.approval(route.name, call.arguments, call.id) : runtime?.requested
           if (held !== undefined) {
             await deliver(held)
             awaitingInput = true
             inputPause.abort()
             throw new DOMException('Waiting for the person’s decision', 'AbortError')
           }
-          if (!route.host?.interaction) await deliver({ type: 'tool_call', callId: call.id, name: route.name, args: call.arguments })
+          if (!route.host?.interaction) await deliver({ type: 'tool_call', callId: call.id, name: route.name, args: runtime?.args??call.arguments })
           let result: McpToolResult
           let runtimeAnswered = false
           /** The tool itself answered: not a failure the harness wrote, not propose_pack's acknowledgement. */
@@ -173,7 +176,7 @@ function runCodexLoop(session: RequestAgentAssistantSession): AsyncIterable<Assi
             // agent#10: the critic's allow-list, before anything of the host's runs.
             context.admit(route.name, route.host ? 'host' : 'runtime',call.arguments)
             if (route.host?.interaction === 'delegation') {
-              const request = readDelegationRequest(call.arguments)
+              const request = await (context.taskDelegationRequest(route.host,call.arguments,toolSignal)??Promise.resolve(readDelegationRequest(call.arguments)))
               recordSubagents(request,context.subagents)
               awaitingInput = true
               await deliver({type:'delegation_requested',callId:call.id,request,...(request.tasks.length===1&&request.tasks[0]?.subagent?{subagent:request.tasks[0].subagent}:{})})
@@ -197,7 +200,7 @@ function runCodexLoop(session: RequestAgentAssistantSession): AsyncIterable<Assi
             } else {
               result = route.host
                 ? await withDeadline((signal) => route.host!.execute(call.arguments, signal, call.id), toolSignal, limit, () => toolTimeout(limit))
-                : await withDeadline(() => callTool(route.name, call.arguments), toolSignal, limit, () => toolTimeout(limit))
+                : await withDeadline(signal => runtime?runtime.execute(signal):callTool(route.name,call.arguments), toolSignal, limit, () => toolTimeout(limit))
               toolAnswered = true
             }
             runtimeAnswered = !route.host
@@ -212,7 +215,7 @@ function runCodexLoop(session: RequestAgentAssistantSession): AsyncIterable<Assi
             ...(result.structuredContent === undefined ? {} : { structured: result.structuredContent }) })
           if(context.execution.state.planState?.pending){awaitingInput=true;inputPause.abort();throw new DOMException('Waiting for the person’s plan decision','AbortError')}
           // agent#10: the arguments and the structured answer, which the outcome comparison reads.
-          if (runtimeAnswered) recorder?.saw(route.name, text, call.arguments, result.structuredContent)
+          if (runtimeAnswered) recorder?.saw(route.name, text, runtime?.args??call.arguments, result.structuredContent)
           // Text-only host callback wire, including structured results in a
           // JSON envelope. The visible result keeps its existing Desk shape.
           // The agent wire carries text only: an image is shown as the host's text rendering of it (agent#5).

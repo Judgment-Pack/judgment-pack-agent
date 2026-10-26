@@ -50,8 +50,10 @@ func (o *Operation) Value() *Value {
 // (ExecutionCheckpoint in execution/state.ts). Its values are ordered JSON values, so what the
 // checkpoint weighs is what the TypeScript's weighs.
 type Execution struct {
-	Durable *Value
-	Handoff *contract.CheckpointHandoff
+	TurnRoute   *contract.TurnRoute
+	UsageBudget *contract.UsageBudget
+	Durable     *Value
+	Handoff     *contract.CheckpointHandoff
 
 	OutputGuard map[string]int64
 	Memories    *contract.ProvenanceMemories
@@ -271,6 +273,16 @@ func (e *Execution) Value() *Value {
 			out.Set(key, value)
 		}
 	}
+	if e.TurnRoute != nil {
+		data, _ := json.Marshal(e.TurnRoute)
+		value, _ := ParseJSON(data)
+		out.Set("turnRoute", value)
+	}
+	if e.UsageBudget != nil {
+		data, _ := json.Marshal(e.UsageBudget)
+		value, _ := ParseJSON(data)
+		out.Set("usageBudget", value)
+	}
 	if e.Usage != nil {
 		data, _ := json.Marshal(e.Usage)
 		value, _ := ParseJSON(data)
@@ -319,7 +331,7 @@ func executionOf(saved *contract.Checkpoint) (*Execution, error) {
 		Phase: saved.Phase, Status: saved.Status, Unit: saved.Unit, Used: int(saved.Used),
 		Limit: int(saved.Limit), Grants: saved.Grants, Plan: value.Get("plan"), PlanState: value.Get("planState"),
 		Explanation: saved.Explanation, Completions: saved.Completions, Context: saved.Context,
-		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, SourceIdentities: saved.SourceIdentities, Approval: saved.Approval, Skills: saved.Skills, Draft: saved.Draft, Memories: saved.Memories, Critic: saved.Critic, CrossProvider: saved.CrossProvider, Compaction: saved.Compaction, OutputGuard: saved.OutputGuard, Policy: saved.Policy, Steers: saved.Steers, Usage: saved.Usage, Failover: saved.Failover, ChildUsage: saved.ChildUsage}
+		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, SourceIdentities: saved.SourceIdentities, Approval: saved.Approval, Skills: saved.Skills, Draft: saved.Draft, Memories: saved.Memories, Critic: saved.Critic, CrossProvider: saved.CrossProvider, Compaction: saved.Compaction, OutputGuard: saved.OutputGuard, Policy: saved.Policy, Steers: saved.Steers, Usage: saved.Usage, UsageBudget: saved.UsageBudget, TurnRoute: saved.TurnRoute, Failover: saved.Failover, ChildUsage: saved.ChildUsage}
 	if saved.RequestCap != nil {
 		cap := int(*saved.RequestCap)
 		out.RequestCap = &cap
@@ -343,8 +355,10 @@ func executionOf(saved *contract.Checkpoint) (*Execution, error) {
 // ExecutionController is ExecutionController: one response's request allowance, journal, read
 // cache and plan tools.
 type ExecutionController struct {
+	TaskProfiles func() []*contract.SubagentRecord
 	// Progress is the repeated-work tracker.
-	Progress *ProgressTracker
+	Progress       *ProgressTracker
+	RepeatGuidance func() string
 	// State is the execution state this response carries.
 	checkpoint   checkpointMutation
 	usageMu      sync.Mutex
@@ -381,15 +395,16 @@ type ExecutionController struct {
 	// state written first; "" for none.
 	ApprovalStep string
 
-	planMu            sync.Mutex
-	PlanRefused       func()
-	PlanProof         func() (*DurableBook, DurableScope)
-	planDecisionEvent *contract.RunEvent
-	PublishPlan       func(context.Context, contract.Checkpoint, contract.RunEvent) (contract.RunEvent, error)
-	session           Session
-	ledger            *ContextLedger
-	restored          bool
-	attempt           int
+	planMu              sync.Mutex
+	PlanRefused         func()
+	TaskCompletionProof func() []TaskCompletionEvidence
+	PlanProof           func() (*DurableBook, DurableScope)
+	planDecisionEvent   *contract.RunEvent
+	PublishPlan         func(context.Context, contract.Checkpoint, contract.RunEvent) (contract.RunEvent, error)
+	session             Session
+	ledger              *ContextLedger
+	restored            bool
+	attempt             int
 	// criticMu is the switch's lock: it also guards operation writers and snapshot serialisation.
 	criticMu *sync.Mutex
 
@@ -490,21 +505,8 @@ func (c *ExecutionController) Initialize(contexts ...context.Context) error {
 		if saved.RequestKey != requestKey || saved.Phase != phase {
 			return failure.ToolInput("The request or execution phase changed. Start a new response with the current context.")
 		}
-		if saved.PlanState != nil {
-			raw, _ := json.Marshal(saved.PlanState)
-			ps, _ := ParseJSON(raw)
-			for _, ref := range ps.Get("accepted").Get("references").Items() {
-				if c.session.Context == nil || c.session.Context.PlanResolver == nil {
-					return failure.ToolInput("PlanResolverRequired: verify accepted references before work.")
-				}
-				var pin PlanReference
-				if err := json.Unmarshal(ref.JSON(), &pin); err != nil {
-					return err
-				}
-				if _, err := ResolvePlanReference(ctx, pin, *c.session.Context.PlanResolver); err != nil {
-					return err
-				}
-			}
+		if err := validateOriginalPlan(ctx, saved, c.session.Context, false); err != nil {
+			return err
 		}
 		// ADR-0008: a paused act call continues only with the person's decision for that call.
 		var decision *contract.CheckpointApprovalDecision
@@ -513,14 +515,6 @@ func (c *ExecutionController) Initialize(contexts ...context.Context) error {
 		}
 		if decision != nil && (decision.CallID == "" || U16Length(decision.CallID) > 256 || decision.Note != nil && U16Length(*decision.Note) > 2000) {
 			return failure.Authored("configuration", "The approval decision is not one this package reads: a callId, approved, and an optional note of at most 2,000 characters. Nothing was decided or run.", "context")
-		}
-		if c.session.Context != nil && c.session.Context.Plan != nil && saved.PlanState != nil {
-			raw, _ := json.Marshal(saved.PlanState)
-			state, _ := ParseJSON(raw)
-			accepted := state.Get("accepted")
-			if accepted != nil && (planText(c.session.Context.Plan.Get("id")) != planText(accepted.Get("id")) || planNumber(c.session.Context.Plan.Get("revision")) != planNumber(accepted.Get("sourceRevision")) || planText(c.session.Context.Plan.Get("acceptedAt")) != planText(accepted.Get("acceptedAt")) || !oneOf(c.session.Context.Plan.Get("status"), "accepted", "started") || !c.session.Context.Plan.Get("questions").IsArray() || c.session.Context.Plan.Get("questions").Len() != 0 || acceptedPlanDigest(c.session.Context.Plan) != planText(accepted.Get("revision"))) {
-				return failure.ToolInput("PlanAcceptanceChanged: resume with the original accepted plan.")
-			}
 		}
 		handled, err := c.restorePlanDecision(saved, decision)
 		if err != nil {
@@ -597,7 +591,11 @@ func (c *ExecutionController) Initialize(contexts ...context.Context) error {
 			_ = c.MutateCheckpoint(CheckpointPatch{"Approval": &held})
 		}
 		plan, planState := identifyPlan(c.State().Plan, c.State().PlanState)
-		return c.MutateCheckpoint(CheckpointPatch{"Version": contract.CheckpointVersion, "Plan": plan, "PlanState": planState})
+		version := contract.CheckpointVersion
+		if c.State().Version == 3 {
+			version = 3
+		}
+		return c.MutateCheckpoint(CheckpointPatch{"Version": version, "Plan": plan, "PlanState": planState})
 	}
 	var capPointer *int
 	if requestCap != 0 {
@@ -991,7 +989,13 @@ func (c *ExecutionController) RequestState() string {
 			loaded += "\n" + section
 		}
 	}
-	return c.Progress.Guidance() + "\n" + state.Text() + loaded
+	guidance := ""
+	if c.RepeatGuidance != nil {
+		guidance = c.RepeatGuidance()
+	} else {
+		guidance = c.Progress.Guidance()
+	}
+	return guidance + "\n" + state.Text() + loaded
 }
 
 // RetainProgress is retainProgress: each completed operation retained once, and the index of them
@@ -1086,7 +1090,9 @@ func (c *ExecutionController) ObserveToolResult(result contract.ToolResult) {
 	if result.CallID != nil {
 		delete(c.inFlight, *result.CallID)
 	}
-	c.Progress.Observe(operation)
+	if c.RepeatGuidance == nil {
+		c.Progress.Observe(operation)
+	}
 	c.MutateCheckpoint(CheckpointPatch{"Operations": operations})
 }
 
@@ -1283,8 +1289,9 @@ func (c *ExecutionController) WrapRead(name string, execute func(ctx context.Con
 
 // Tool is update_plan: the host tool that tracks this task's execution progress.
 func (c *ExecutionController) Tool() HostTool {
-	return HostTool{
-		Name:        "update_plan",
+	configured := c.session.Context != nil && c.session.Context.TaskSteps
+	tool := HostTool{
+		Name: "update_plan", Taxonomy: &ToolTaxonomy{Operation: "own-state", Effect: "pure"},
 		Effect:      "plan",
 		Description: "Track this task’s execution progress. Use for multi-stage work, not simple answers. This does not approve a plan, increase limits, save artifacts or prove success. Refer to current steps by their package id; omit id only for a new step. Keep completed steps and explain material changes. At most one step is in progress.",
 		InputSchema: json.RawMessage(ObjectOf("type", String("object"),
@@ -1313,7 +1320,7 @@ func (c *ExecutionController) Tool() HostTool {
 				return ToolResult{}, failure.ToolInput(planRefused)
 			}
 			explanation := args.Get("explanation")
-			if !hasOnly(args, "explanation", "plan") || !validPlanInput(args.Get("plan")) || !explanation.IsString() || U16Length(explanation.Str()) > 2000 {
+			if !hasOnly(args, "explanation", "plan") || !validPlanInput(args.Get("plan"), configured) || !explanation.IsString() || U16Length(explanation.Str()) > 2000 {
 				if c.PlanRefused != nil {
 					c.PlanRefused()
 				}
@@ -1325,7 +1332,7 @@ func (c *ExecutionController) Tool() HostTool {
 				return ToolResult{}, failure.ToolInput("PlanApprovalRequired: this run waits for its plan decision.")
 			}
 			for _, s := range args.Get("plan").Items() {
-				if !hasOnly(s, "id", "step", "status", "detail") {
+				if !validPlanInputMembers(s, configured) {
 					return ToolResult{}, planIdentityRefused()
 				}
 			}
@@ -1360,6 +1367,24 @@ func (c *ExecutionController) Tool() HostTool {
 			return Answer(out), nil
 		},
 	}
+	if configured {
+		schema := MustParseJSON(string(tool.InputSchema))
+		properties := schema.Get("properties").Get("plan").Get("items").Get("properties")
+		properties.Set("dependsOn", ObjectOf("type", String("array"), "maxItems", Number(19), "uniqueItems", Bool(true), "items", ObjectOf("type", String("string"), "pattern", String("^step-[1-9][0-9]{0,15}$"))))
+		properties.Set("budget", ObjectOf("type", String("object"), "properties", ObjectOf("requests", ObjectOf("type", String("integer"), "minimum", Number(1), "maximum", Number(100))), "required", Array(String("requests")), "additionalProperties", Bool(false)))
+		pins := Array()
+		if c.TaskProfiles != nil {
+			for _, pin := range c.TaskProfiles() {
+				raw, _ := json.Marshal(pin)
+				pins.Append(MustParseJSON(string(raw)))
+			}
+		}
+		if pins.Len() > 0 {
+			properties.Set("delegation", ObjectOf("enum", pins))
+		}
+		tool.InputSchema = schema.JSON()
+	}
+	return tool
 }
 
 const planRefused = "Provide one to twenty task steps, at most one in progress, and a short explanation."
@@ -1368,7 +1393,7 @@ const planRefused = "Provide one to twenty task steps, at most one in progress, 
 // asks the person for more compute.
 func (c *ExecutionController) BudgetTool() HostTool {
 	return HostTool{
-		Name:        "request_budget_increase",
+		Name: "request_budget_increase", Taxonomy: &ToolTaxonomy{Operation: "ask", Effect: "pure"},
 		Effect:      "plan",
 		Description: "Pause near the request limit and ask the person for more compute. Explain useful remaining work and the next concrete step. This never grants more requests or action permissions. Use ask_user for missing policy decisions instead.",
 		InputSchema: json.RawMessage(ObjectOf("type", String("object"),

@@ -48,14 +48,16 @@ import { correctArtifact } from '../execution/correctArtifact'
 import { REFUTATION_MARKER, type CriticCase } from '../refutation'
 import { REQUEST_REVIEW, REVIEW_TAKEN, reviewRefusal } from '../criticSwitch'
 import criticSwitch from './scenarios/critic-switch.json'
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, readFileSync } from 'node:fs'
+import {createHash} from 'node:crypto'
 import { type PolicyLayer } from '../policy'
 import policyAliasVector from '../../../contract/vectors/policy/alias.json'
 import reasoningTableDefaults from '../../../contract/vectors/policy/reasoning-table-defaults.json'
 import policyScenario from './scenarios/policy-table.json'
 import type { ThinkingTier } from '../host'
 import { bindModelCall, openAssistantConnection, runAssistantSession } from '../session'
-import { scriptedRuntime } from './scriptedServer'
+import { scriptedRuntime, recordedRuntime, currentContractReplayTools, RECORDED_TOOLS } from './scriptedServer'
+import currentRuntimeContract from './runtime-current-contract.json'
 import { authorText, criticTurn } from './scenarioServer'
 import scenario from './scenario.json'
 import correction from './scenarios/correction-loop.json'
@@ -93,7 +95,7 @@ import {
 } from '../testing/scenarioDriver'
 import { ofType, runtimeAnswer, scriptedEndpoint, type RuntimeCall } from '../testing/scripted'
 import { testHost } from '../testing/host'
-import type { AgentAssistantSession, AssistantEvent, AssistantSession, Engine, EngineSession, HostTool } from '../engine'
+import type { AgentAssistantSession, AssistantEvent, AssistantSession, Engine, EngineSession, HostTool, McpTool } from '../engine'
 import taskSchema from '../../../contract/schemas/delegated-task.json'
 import chatHostTools from './scenarios/chat-host-tools.json'
 import delegation from './scenarios/delegation.json'
@@ -443,6 +445,38 @@ function planModeChecks(run: () => Ran, received: () => { tool: string; argument
 // 5. The correction loop
 // ---------------------------------------------------------------------------------------------
 
+describe('current-contract correction replay declarations',()=>{
+  it('serves explicit synthetic taxonomy while preserving historical recording and default replay',async()=>{
+    const bytes=readFileSync('certification/runtime.json')
+    expect(createHash('sha256').update(bytes).digest('hex')).toBe(currentRuntimeContract.historicalRecordingSha256)
+    expect(currentRuntimeContract.kind).toBe('handwritten-current-contract-test-declarations')
+    const list=(core:ReturnType<typeof recordedRuntime>)=>(core.answer({jsonrpc:'2.0',id:1,method:'tools/list'} as never) as unknown as {result:{tools:McpTool[]}}).result.tools
+    const historical=list(recordedRuntime())
+    expect(historical).toEqual(RECORDED_TOOLS)
+    expect(historical.every(tool=>!Object.hasOwn(tool,'_meta'))).toBe(true)
+    const tools=currentContractReplayTools(),served=list(recordedRuntime(tools))
+    expect(Object.fromEntries(served.map(tool=>[tool.name,tool._meta]))).toEqual(currentRuntimeContract.tools)
+    expect(served.map(({_meta,...tool})=>tool)).toEqual(RECORDED_TOOLS)
+    const replay=await scriptedRuntime({tools}),connection=openAssistantConnection({allowed:scenario.scenarioTools,transport:replay.transport,onEvent:()=>undefined})
+    try{expect((await connection.ready).tools.map(tool=>tool.name)).toEqual(RECORDED_TOOLS.map(tool=>tool.name))}
+    finally{await connection.close();await replay.close()}
+  })
+  it('refuses non-rehearsal evaluation in the pure synthetic replay',()=>{
+    const core=recordedRuntime(currentContractReplayTools())
+    const answer=core.answer({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'experimental_evaluate',arguments:{pack:'{}',rehearsal:false}}} as never) as unknown as {error:{code:number;message:string}}
+    expect(answer.error).toEqual({code:-32602,message:'the evaluation would have been recorded'})
+    expect(core.seen).toEqual([{name:'experimental_evaluate',args:{pack:'{}',rehearsal:false},refusal:'experimental_evaluate reached the runtime without rehearsal: true'}])
+  })
+  it.each(['missing','malformed'] as const)('refuses %s test metadata through the real connection entry',async kind=>{
+    const tools=currentContractReplayTools()
+    if(kind==='missing')delete tools[0]!._meta
+    else tools[0]!._meta={operation:'read',effect:'read',undeclared:true} as never
+    const replay=await scriptedRuntime({tools}),connection=openAssistantConnection({allowed:scenario.scenarioTools,transport:replay.transport,onEvent:()=>undefined})
+    try{await expect(connection.ready).rejects.toMatchObject({failure:{code:'configuration',detail:'Runtime tool taxonomy refused. Nothing was sent.'}});expect(replay.seen).toEqual([])}
+    finally{await connection.close();await replay.close()}
+  })
+})
+
 /** What the loop left: each author run's events, the host's checks, and what the loop returned. */
 interface Corrected {
   authors: AssistantEvent[][]
@@ -466,7 +500,8 @@ const findingsOf = (check: Corrected['checks'][number]) => check.diagnostics.map
 async function correctionLoop(kind: 'model' | 'agent', engine: Engine, answerAs: AnswerAs, beforeCritic?: { call: { recorded: string } }): Promise<Corrected> {
   // The critic's script, with one call of a recorded step put first where the boundary check asks for it.
   const critics = beforeCritic === undefined ? correction.critic : [beforeCritic, ...correction.critic]
-  const runtime = await scriptedRuntime()
+  // Explicit synthetic taxonomy for this rehearsal-only replay; historical recording is unchanged.
+  const runtime = await scriptedRuntime({tools:currentContractReplayTools()})
   const connection = openAssistantConnection({ allowed: scenario.scenarioTools, transport: runtime.transport, onEvent: () => undefined })
   const authors: AssistantEvent[][] = []
   const checks: Corrected['checks'] = []

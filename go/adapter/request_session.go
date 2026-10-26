@@ -3,7 +3,9 @@ package adapter
 import (
 	"context"
 	"encoding/json"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/internal/physicaldispatch"
 	"net/http"
+	"sync"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/turn"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/wire"
@@ -80,6 +82,7 @@ func (a *RequestAgent) Admit(ctx context.Context, request AgentRequest) (AgentRe
 
 // RequestPolicyConnection is a host binding with its raw reasoning preference removed.
 type RequestPolicyConnection struct {
+	physicalModel   *physicaldispatch.Model
 	modelName, wire string
 	capabilities    *contract.CapabilityEndpointCapabilities
 	model           relay.Call
@@ -104,6 +107,7 @@ func (b RequestPolicyConnection) ResolvedCapabilities() (wire.ModelCapabilities,
 // RequestContext retains only request operations, never host configuration or bindings.
 // PreparedRequest contains operations and the admitted tool offer, never a raw Session.
 type PreparedRequest struct {
+	offered            func(string) bool
 	Prompt, TestPrompt string
 	AllowConversation  bool
 	CallTool           func(context.Context, string, json.RawMessage) (runcontext.ToolResult, error)
@@ -112,13 +116,46 @@ type PreparedRequest struct {
 }
 
 func (p *PreparedRequest) RuntimeTools() []runcontext.RuntimeTool {
-	return append([]runcontext.RuntimeTool{}, p.runtime...)
+	out := []runcontext.RuntimeTool{}
+	for _, tool := range p.runtime {
+		if p.offered == nil || p.offered(tool.Name) {
+			out = append(out, tool)
+		}
+	}
+	for i := range out {
+		out[i].Meta = wire.CloneTaxonomy(out[i].Meta)
+	}
+	return out
 }
-func (p *PreparedRequest) HostTools() []runcontext.HostTool { return copyHostTools(p.hosts) }
+func (p *PreparedRequest) HostTools() []runcontext.HostTool {
+	out := []runcontext.HostTool{}
+	for _, tool := range p.hosts {
+		if p.offered == nil || p.offered(tool.Name) {
+			out = append(out, tool)
+		}
+	}
+	return copyHostTools(out)
+}
 func copyHostTools(tools []runcontext.HostTool) []runcontext.HostTool {
 	out := append([]runcontext.HostTool{}, tools...)
 	for i := range out {
 		out[i].InputSchema = append(json.RawMessage(nil), out[i].InputSchema...)
+		if out[i].Taxonomy != nil {
+			data, _ := json.Marshal(out[i].Taxonomy)
+			var held runcontext.ToolTaxonomy
+			_ = json.Unmarshal(data, &held)
+			out[i].Taxonomy = &held
+		}
+		if out[i].TaxonomyLimit != nil {
+			held := *out[i].TaxonomyLimit
+			if held.Operations != nil {
+				held.Operations = append([]string{}, held.Operations...)
+			}
+			if held.Effects != nil {
+				held.Effects = append([]string{}, held.Effects...)
+			}
+			out[i].TaxonomyLimit = &held
+		}
 		if out[i].ContextPolicy != nil {
 			copy := *out[i].ContextPolicy
 			out[i].ContextPolicy = &copy
@@ -152,6 +189,10 @@ type RequestContext struct {
 
 // RequestSession exposes operations explicitly and keeps every resolved input private.
 type RequestSession struct {
+	offered                        func(string) bool
+	physicalModel                  *physicaldispatch.Model
+	outputCeiling                  int
+	openingProjection              *runcontext.OpeningProjection
 	connections                    map[string]RequestPolicyConnection
 	failover                       func(role, reason string) (from, to string, ok bool)
 	connection                     func(role string) string
@@ -175,6 +216,16 @@ type RequestSession struct {
 	LanguageInstructions           string
 	BeforeRuntimeCall              func(context.Context, string) error
 	Emit                           func(contract.RunEvent)
+}
+
+func (s *RequestSession) OutputCeiling() int { return s.outputCeiling }
+func (s *RequestSession) OpeningProjection() *runcontext.OpeningProjection {
+	if s.openingProjection == nil {
+		return nil
+	}
+	held := *s.openingProjection
+	held.PreviewPaths = append([]string{}, held.PreviewPaths...)
+	return &held
 }
 
 func (s *RequestSession) ModelID() string                { return s.modelName }
@@ -201,12 +252,29 @@ func (s *RequestSession) IsChild() bool                              { return s.
 func (s *RequestSession) Binding(id string) RequestPolicyConnection  { return s.connections[id] }
 func (s *RequestSession) Member(name string) runcontext.PolicyMember { return s.values.Member(name) }
 func (s *RequestSession) RuntimeTools() []contract.ToolOfferRuntimeTool {
-	raw, _ := json.Marshal(s.tools)
+	var tools []contract.ToolOfferRuntimeTool
+	if s.tools != nil {
+		tools = []contract.ToolOfferRuntimeTool{}
+	}
+	for _, tool := range s.tools {
+		if s.offered == nil || s.offered(tool.Name) {
+			tools = append(tools, tool)
+		}
+	}
+	raw, _ := json.Marshal(tools)
 	var copy []contract.ToolOfferRuntimeTool
 	_ = json.Unmarshal(raw, &copy)
 	return copy
 }
-func (s *RequestSession) OfferedHostTools() []runcontext.HostTool { return copyHostTools(s.hostTools) }
+func (s *RequestSession) OfferedHostTools() []runcontext.HostTool {
+	out := []runcontext.HostTool{}
+	for _, tool := range s.hostTools {
+		if s.offered == nil || s.offered(tool.Name) {
+			out = append(out, tool)
+		}
+	}
+	return copyHostTools(out)
+}
 func (s *RequestSession) ResolvedCapabilities() (wire.ModelCapabilities, error) {
 	return (RequestPolicyConnection{modelName: s.modelName, wire: s.wire, capabilities: s.capabilities}).ResolvedCapabilities()
 }
@@ -239,7 +307,7 @@ func NewRequestSession(run *Run, members runcontext.PolicyMembers, opened ...*ru
 		return &copy
 	}
 	for id, binding := range run.PolicyConnections {
-		connections[id] = RequestPolicyConnection{modelName: binding.ModelName, wire: binding.Wire, capabilities: copyCapabilities(binding.Capabilities), model: binding.Model, agent: requestAgent(binding.Agent)}
+		connections[id] = RequestPolicyConnection{physicalModel: binding.physicalModel, modelName: binding.ModelName, wire: binding.Wire, capabilities: copyCapabilities(binding.Capabilities), model: binding.Model, agent: requestAgent(binding.Agent)}
 	}
 	prepared := &PreparedRequest{Prompt: run.Prompt, TestPrompt: run.TestPrompt, AllowConversation: run.AllowConversation, hosts: copyHostTools(run.HostTools)}
 	if len(opened) > 0 {
@@ -255,7 +323,40 @@ func NewRequestSession(run *Run, members runcontext.PolicyMembers, opened ...*ru
 	raw, _ := json.Marshal(run.Tools)
 	var tools []contract.ToolOfferRuntimeTool
 	_ = json.Unmarshal(raw, &tools)
-	return &RequestSession{identityConnection: identityConnection, connections: connections, failover: run.Failover, connection: run.Connection, wire: run.Wire, modelName: run.ModelName, model: run.Model, agent: requestAgent(run.Agent), capabilities: copyCapabilities(run.Capabilities), tools: tools, hostTools: copyHostTools(run.HostTools), context: input, named: run.Models, child: run.ChildDefinition != nil, values: values, prepared: prepared, Gate: run.Gate, Prompt: run.Prompt, TestPrompt: run.TestPrompt, Purpose: run.Purpose, AllowConversation: run.AllowConversation, Interactive: run.Interactive, Cases: run.Cases, LanguageInstructions: run.LanguageInstructions, BeforeRuntimeCall: run.BeforeRuntimeCall, Emit: run.Emit}
+	projection := run.OpeningProjection
+	if projection != nil {
+		copy := *projection
+		copy.PreviewPaths = append([]string{}, projection.PreviewPaths...)
+		// A managed retry rechecks the same detached projection against its actual allowance;
+		// it does not ask the trusted host to read or project the opening a second time.
+		if project := copy.Project; project != nil {
+			var once sync.Once
+			var held map[string]string
+			var problem error
+			copy.Project = func(ctx context.Context, input runcontext.OpeningProjectionInput) (map[string]string, error) {
+				once.Do(func() {
+					result, err := project(ctx, input)
+					problem = err
+					held = map[string]string{}
+					for key, value := range result {
+						held[key] = value
+					}
+				})
+				result := map[string]string{}
+				for key, value := range held {
+					result[key] = value
+				}
+				return result, problem
+			}
+		}
+		projection = &copy
+	}
+	var offered func(string) bool
+	if len(opened) > 0 {
+		offered = opened[0].Context.RouteOffers
+	}
+	prepared.offered = offered
+	return &RequestSession{offered: offered, physicalModel: run.physicalModel, outputCeiling: run.RequestOutputCeiling, openingProjection: projection, identityConnection: identityConnection, connections: connections, failover: run.Failover, connection: run.Connection, wire: run.Wire, modelName: run.ModelName, model: run.Model, agent: requestAgent(run.Agent), capabilities: copyCapabilities(run.Capabilities), tools: tools, hostTools: copyHostTools(run.HostTools), context: input, named: run.Models, child: run.ChildDefinition != nil, values: values, prepared: prepared, Gate: run.Gate, Prompt: run.Prompt, TestPrompt: run.TestPrompt, Purpose: run.Purpose, AllowConversation: run.AllowConversation, Interactive: run.Interactive, Cases: run.Cases, LanguageInstructions: run.LanguageInstructions, BeforeRuntimeCall: run.BeforeRuntimeCall, Emit: run.Emit}
 }
 
 // Reasoning is an admitted role's reasoning value; empty preserves omission.
@@ -280,7 +381,7 @@ func (s *RequestSession) PolicyBinding(role string) (RequestPolicyConnection, er
 	if s.identityConnection != "" {
 		current = s.identityConnection
 	}
-	own := RequestPolicyConnection{modelName: s.modelName, wire: s.wire, model: s.model, agent: s.agent, capabilities: s.capabilities}
+	own := RequestPolicyConnection{physicalModel: s.physicalModel, modelName: s.modelName, wire: s.wire, model: s.model, agent: s.agent, capabilities: s.capabilities}
 	if id == current {
 		if model, ok := s.Member("models." + role + ".model").Value.(string); ok && (model == named.Critic || model == named.Child) {
 			own.modelName = model

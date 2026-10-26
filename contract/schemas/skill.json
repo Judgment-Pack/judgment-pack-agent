@@ -66,7 +66,7 @@
       "minLength": 1
     },
     "tools": {
-      "description": "The names of the host's declared tools the skill uses, at most 16: each must be a host tool the host declared for the run (a tool with a source by its wire name), or the skill is withheld at declaration with a guardrail naming the tool. A skill names tools; it carries none of its own and changes no tool's offer, effect class or approval.",
+      "description": "At most 16 unique references to tools admitted for this run: host tools by offered wire name, and Runtime tools only from validated offered _meta. An unknown or withdrawn reference withholds the skill; tools grant no authority and derive the profile and approval pin dependencies.",
       "type": "array",
       "maxItems": 16,
       "uniqueItems": true,
@@ -91,6 +91,24 @@
     "digest": {
       "description": "On admission: the digest of the bundle as declared ($defs/digest), which is the pinned one. The skill_loaded event and the checkpoint's loaded set carry it.",
       "$ref": "#/$defs/digest"
+    },
+    "kind": {
+      "description": "Optional author/host classification, untrusted and digest-bound. Absent is unclassified.",
+      "enum": [
+        "method",
+        "knowledge",
+        "procedure",
+        "review"
+      ]
+    },
+    "tags": {
+      "description": "Optional untrusted search tags, never authority; part of the pin.",
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "string",
+        "maxLength": 32
+      }
     }
   },
   "additionalProperties": false,
@@ -120,7 +138,7 @@
       "additionalProperties": false
     },
     "digest": {
-      "description": "The digest of a skill's bundle (ADR-0009): sha256: then the SHA-256, lower-case hex, of the UTF-8 text of the canonical JSON (tool-result.json#/$defs/readCacheKey's: members sorted by name in UTF-16 code units, no whitespace, strings and numbers as JSON.stringify writes them) of {name, description, instructions, tools, resources}, tools and resources the empty list where the skill has none and each resource {name, text} (skillDigest in skills.ts; Go runcontext.SkillDigest). The host computes it when the person approves the skill and declares it as pinnedDigest; the package computes it again at declaration.",
+      "description": "Bundle digest of canonical {name,description,instructions,tools,resources}, plus kind/tags exactly when supplied, plus dependencies for nonempty tools: ordered {name,taxonomy} for each admitted tool. Unknown dependencies cannot be pinned. Classification changes require person re-approval. Existing historical record bytes and stored digest strings are never rewritten.",
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
     },

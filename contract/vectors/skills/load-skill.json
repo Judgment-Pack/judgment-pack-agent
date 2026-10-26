@@ -26,6 +26,10 @@
         "required": [
           "name"
         ]
+      },
+      "taxonomy": {
+        "operation": "own-state",
+        "effect": "pure"
       }
     }
   ]

@@ -300,6 +300,9 @@ func (c *coordinator) runBatch(ctx context.Context, request contract.DelegatedTa
 	c.batchMu.Unlock()
 	c.deliver(contract.RunEvent{MessageProgress: &contract.RunEventMessageProgress{Type: "message_progress", Text: ""}})
 	tasks := c.recordTasks(plans)
+	if err := c.bindTaskDelegation(ctx, request, tasks); err != nil {
+		return nil, err
+	}
 	keys := make([]string, len(plans))
 	for i, p := range plans {
 		if p.request.Resume == nil && p.profile != nil {

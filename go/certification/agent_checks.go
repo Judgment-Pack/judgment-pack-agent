@@ -21,6 +21,8 @@ import (
 // AgentCheck is one group of the agent capability's checks: the names it reports by, and its run
 // against a binding, on the adapter the caller wraps in its delegation coordinator.
 type AgentCheck struct {
+	// OptIn is a separately selected claim, outside standard certification coverage.
+	OptIn bool
 	Group string
 	Names []string
 	Run   func(ctx context.Context, server *Server, host AgentHost, with func(Adapter) Adapter, inner Adapter) ([]Finding, error)
@@ -41,11 +43,13 @@ var AgentOwnNames = []string{
 	"agent handoff", "agent result once", "agent references", "agent reports", "agent siblings", "agent figures",
 	"agent counts absent", "agent exclusive", "agent ceiling", "agent admission", "agent restrictions",
 	"agent tool ceilings", "agent recursion", "agent cancellation", "agent busy", "agent persistence",
-	"agent lost acknowledgement", "agent recovery", "agent project",
+	"agent lost acknowledgement", "agent recovery", "agent project", "agent project native termination",
 }
 
 // AgentChecks are every agent check, in the order a report lists them.
 var AgentChecks = []AgentCheck{
+	{Group: "scenario 24", Names: AgentAskingWellNames, Run: agentAskingWellChecks},
+	{Group: "scenario 23", Names: AgentDialectNames, Run: agentDialectChecks},
 	{Group: "handoff", Names: []string{"agent handoff", "agent result once", "agent references", "agent reports", "agent siblings", "agent figures", "agent counts absent", "agent exclusive", "delegation serial"}, Run: handoffChecks},
 	{Group: "ceiling", Names: []string{"agent ceiling"}, Run: ceilingCheck},
 	{Group: "admission", Names: []string{"agent admission"}, Run: admissionCheck},
@@ -74,6 +78,7 @@ var AgentChecks = []AgentCheck{
 	{Group: "scenario 11", Names: AgentPolicyNames, Run: agentPolicyChecks},
 	{Group: "scenario 20", Names: AgentFailoverNames, Run: agentFailoverChecks},
 	{Group: "project", Names: []string{"agent project"}, Run: projectCheck},
+	{Group: "project native termination", Names: []string{"agent project native termination"}, OptIn: true, Run: NativeTerminationCheck},
 }
 
 // kinds are the admitted invocations' kinds, in order: parent, child or critic.
@@ -1171,6 +1176,9 @@ func CertifyAgent(ctx context.Context, out io.Writer, server *Server, host Agent
 		fmt.Fprintf(out, "agent capability: against %s\n", host.Name)
 	}
 	for _, check := range AgentChecks {
+		if check.OptIn && only != check.Group && !slices.Contains(check.Names, only) {
+			continue
+		}
 		selected := only == "" || strings.Contains("agent "+check.Group, only)
 		for _, name := range check.Names {
 			selected = selected || strings.Contains(name, only)

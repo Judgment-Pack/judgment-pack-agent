@@ -1,3 +1,4 @@
+import {taskConfigured,validateTaskPlan,readTaskEnvelopeBinding} from '../taskSteps'
 import {canonicalJSON} from '../context/chat'
 import {sha256} from '../records'
 import {toolInputFailure} from '../failures'
@@ -9,14 +10,14 @@ export interface PlanChange {id:string;kind:'added'|'removed'|'changed'|'status'
 export interface PlanRevision {sequence:number;previous:string;revision:string;explanation:string;diff:PlanChange[]}
 export type DepartureKind='added'|'removed'|'changed'|'reordered'
 export interface PlanOrigin {plan:string;revision:string;index:number}
-export interface StepEvidence {operations:string[];artifacts:{kind:'artifact'|'dialect';id:string;digest:string}[]}
+export interface StepEvidence {child?:import('../taskSteps').TaskChildResult&{task:string};operations:string[];artifacts:{kind:'artifact'|'dialect';id:string;digest:string}[]}
 export interface AcceptedPlan {id:string;revision:string;sourceRevision:number;objective:string;steps:string[];references:import('../planning/model').PlanReference[];validatedReferences:import('../planning/model').CurrentPlanReference[];acceptedAt:string}
 export interface Departure {kind:DepartureKind;step:string;index?:number}
 export type CompletionRefusal='invalid-input'|'active-step-required'|'revision-changed'|'evidence-unavailable'|'missing-evidence'|'unknown-operation'|'unsuccessful-operation'|'unobserved-revision'|'wrong-scope'
 export interface PlanRefusal {revision:string;reason:CompletionRefusal;step?:string}
 export interface PendingDeparture {purpose:'plan-drift';callId:string;revision:string;candidate:IdentifiedPlan;explanation:string;departures:Departure[]}
 export interface PlanDecision {callId:string;revision:string;candidateRevision:string;approved:boolean;note?:string}
-export interface PlanState {decisions?:PlanDecision[];decisionsDiscarded?:number;revision:string;sequence:number;nextId:number;discarded:number;history:PlanRevision[];accepted?:AcceptedPlan;driftPolicy?:DepartureKind[];departures?:{revision:string;explanation:string;changes:Departure[]}[];departuresDiscarded?:number;pending?:PendingDeparture;refusals?:PlanRefusal[];refusalsDiscarded?:number}
+export interface PlanState {taskEnvelope?:import('../taskSteps').TaskEnvelopeBinding;taskSchedule?:import('../taskSteps').TaskSchedule;decisions?:PlanDecision[];decisionsDiscarded?:number;revision:string;sequence:number;nextId:number;discarded:number;history:PlanRevision[];accepted?:AcceptedPlan;driftPolicy?:DepartureKind[];departures?:{revision:string;explanation:string;changes:Departure[]}[];departuresDiscarded?:number;pending?:PendingDeparture;refusals?:PlanRefusal[];refusalsDiscarded?:number}
 export interface IdentifiedPlan {plan:TaskStep[];planState:PlanState}
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v)
 const count=(v:unknown,min=0):v is number=>Number.isSafeInteger(v)&&Number(v)>=min
@@ -33,7 +34,7 @@ export function identifyPlan(plan:TaskStep[],saved?:PlanState):IdentifiedPlan{
 }
 /** Pure candidate construction: every check finishes before either checkpoint or history changes. */
 export function revisePlan(current:IdentifiedPlan,incoming:TaskStep[],explanation:string,closure=false):IdentifiedPlan{
- const state=structuredClone(current.planState),old=new Map(current.plan.map((s,i)=>[s.id!,{s,i}]))
+ const state=structuredClone(current.planState),hadSchedule=state.taskSchedule!==undefined,old=new Map(current.plan.map((s,i)=>[s.id!,{s,i}]))
  if(state.sequence>=Number.MAX_SAFE_INTEGER||state.nextId>Number.MAX_SAFE_INTEGER-incoming.filter(step=>step.id===undefined).length)throw refusal()
  const seen=new Set<string>(),plan=incoming.map(input=>{
   if(input.id!==undefined&&(!old.has(input.id)||seen.has(input.id)))throw refusal()
@@ -43,12 +44,15 @@ export function revisePlan(current:IdentifiedPlan,incoming:TaskStep[],explanatio
   // Existing package-owned members survive. Input is closed by the tool's reader/schema.
   const step={...(old.get(id)?.s??{}),...structuredClone(input),id};if(input.detail===undefined)delete step.detail;return step
  })
+ // Detached proposals carry no admission schedule; the original writer reconciles its held facts.
+ delete state.taskSchedule
+ if(plan.some(taskConfigured)||hadSchedule)validateTaskPlan(plan)
  const diff:PlanChange[]=[]
  for(const [id,{s,i}] of old){
   const to=plan.findIndex(step=>step.id===id)
   if(to<0){diff.push({id,kind:'removed',before:structuredClone(s),from:i});continue}
   const after=plan[to]!
-  if(s.step!==after.step||s.detail!==after.detail)diff.push({id,kind:'changed',before:structuredClone(s),after:structuredClone(after)})
+  if(s.step!==after.step||s.detail!==after.detail||canonicalJSON([s.dependsOn,s.budget,s.delegation])!==canonicalJSON([after.dependsOn,after.budget,after.delegation]))diff.push({id,kind:'changed',before:structuredClone(s),after:structuredClone(after)})
   if(s.status!==after.status)diff.push({id,kind:'status',before:structuredClone(s),after:structuredClone(after)})
   if(i!==to)diff.push({id,kind:'reordered',from:i,to})
  }
@@ -77,6 +81,8 @@ function validChange(value:unknown,nextId:number,accepted?:AcceptedPlan):boolean
 export function validPlanState(plan:TaskStep[],value:unknown):value is PlanState{
  if(value===undefined)return plan.every(step=>step.id===undefined&&step.origin===undefined&&step.evidence===undefined&&step.notNeededReason===undefined&&step.status!=='not-needed')
  if(!object(value)||!validPlanExtensions(plan,value)||!digest(value.revision)||!count(value.sequence)||!count(value.nextId,1)||!count(value.discarded)||!Array.isArray(value.history)||value.history.length>PLAN_HISTORY_LIMIT||value.discarded+value.history.length!==value.sequence||value.history.length!==Math.min(value.sequence,PLAN_HISTORY_LIMIT)||value.revision!==planDigest(plan)||new Set(plan.map(s=>s.id)).size!==plan.length||!plan.every(s=>planStepId(s.id)&&Number(s.id.slice(5))<Number(value.nextId)))return false
+ if(value.taskEnvelope){try{readTaskEnvelopeBinding(value.taskEnvelope)}catch{return false}}
+ if(plan.some(taskConfigured)||value.taskSchedule){try{validateTaskPlan(plan,value.taskSchedule as import('../taskSteps').TaskSchedule|undefined);if(value.taskSchedule&&(value.taskSchedule as import('../taskSteps').TaskSchedule).binding.planRevision!==value.revision)return false}catch{return false}}
  let previous:string|undefined
  for(const [i,row] of value.history.entries()){
   if(!object(row)||row.sequence!==value.discarded+i+1||!digest(row.previous)||!digest(row.revision)||previous!==undefined&&row.previous!==previous||typeof row.explanation!=='string'||row.explanation.length>2000||!Array.isArray(row.diff)||row.diff.length>PLAN_DIFF_LIMIT||!row.diff.every(d=>validChange(d,value.nextId as number,value.accepted as AcceptedPlan|undefined)))return false

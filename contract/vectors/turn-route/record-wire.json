@@ -1,0 +1,69 @@
+{
+  "description": "Handwritten narrow and widened route records cover serialization shape; fixture digests are labels, not execution bindings.",
+  "schema": "turn-route.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/turnRoute.ts"
+    ]
+  },
+  "items": [
+    {
+      "route": "direct",
+      "tier": "off",
+      "skills": [],
+      "tools": [],
+      "operations": [
+        "read"
+      ],
+      "planning": "withheld",
+      "version": 1,
+      "decidedBy": "host",
+      "reason": "host",
+      "bindingDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "catalogueDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "widened": false,
+      "refusals": []
+    },
+    {
+      "route": "agent",
+      "tier": "on",
+      "skills": [
+        "declared"
+      ],
+      "tools": "all",
+      "operations": "all",
+      "planning": "offered",
+      "version": 1,
+      "decidedBy": "classifier",
+      "reason": "small",
+      "bindingDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "catalogueDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "widened": true,
+      "widenedFor": "lookup",
+      "refusals": [
+        {
+          "stage": "host",
+          "reason": "selection-refused"
+        }
+      ],
+      "classifier": {
+        "binding": "connection",
+        "promptDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "status": "label",
+        "label": "small",
+        "usage": {
+          "inputTokens": 2,
+          "outputTokens": 1
+        }
+      },
+      "widenedInvocation": {
+        "dispatchId": "dispatch-one",
+        "requestDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+    }
+  ]
+}

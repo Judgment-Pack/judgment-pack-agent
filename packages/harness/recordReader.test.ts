@@ -1,6 +1,9 @@
 import {describe,it,expect} from 'vitest'
 import {createHash} from 'node:crypto'
-import {readFileSync} from 'node:fs'
+import {readFileSync,mkdirSync,mkdtempSync,writeFileSync} from 'node:fs'
+import {tmpdir} from 'node:os'
+import {join} from 'node:path'
+import {spawnSync} from 'node:child_process'
 import checkpoint from '../../contract/vectors/record-versions/checkpoint.json'
 import events from '../../contract/vectors/record-versions/events.json'
 import policy from '../../contract/vectors/record-versions/policy.json'
@@ -35,14 +38,39 @@ describe('versioned record readers',()=>{
   expect(readRunEvent({version:1,type:'message',text})).toEqual({version:1,type:'message',text})
   expect(()=>readExecution({...checkpoint.items[1],explanation:text})).toThrow()
  })
- it('keeps the historical inventory separate from current additions',()=>{
+ it('keeps every published inventory separate from current additions',()=>{
   const properties=shapes.current['checkpoint.json'].properties as Record<string,unknown>
   properties.unreleased={}
-  try{expect(()=>readExecution({...checkpoint.items[0],unreleased:true})).toThrow(UnknownRecordMember);expect(readExecution({...checkpoint.items[1],unreleased:true})).toHaveProperty('unreleased',true)}finally{delete properties.unreleased}
+  try{expect(()=>readExecution({...checkpoint.items[0],unreleased:true})).toThrow(UnknownRecordMember);expect(()=>readExecution({...checkpoint.items[1],unreleased:true})).toThrow(UnknownRecordMember)}finally{delete properties.unreleased}
+ })
+ it('keeps checkpoint1 on the historical graph when published members grow',()=>{
+  const properties=shapes.published['checkpoint.json'].properties as Record<string,unknown>
+  properties.unreleased={}
+  try{
+   expect(()=>readExecution({...checkpoint.items[0],unreleased:true})).toThrow(UnknownRecordMember)
+   expect(()=>readExecution({...checkpoint.items[1],unreleased:true})).not.toThrow()
+  }finally{delete properties.unreleased}
  })
  it('freezes the historical member inventory',()=>{
   const raw=readFileSync('../../contract/records/historical-shapes.json')
   expect(createHash('sha256').update(raw).digest('hex')).toBe('71e8ab3df9fa5daf051e3913f90ab62b577932d3a0ba5c0fa966b59a54a43925')
+ })
+ it('freezes the published checkpoint2/event1/policy1 graph',()=>{
+  const raw=readFileSync('../../contract/records/published-v010-shapes.json')
+  expect(createHash('sha256').update(raw).digest('hex')).toBe('bc2c49c0340af12c3f016b772ab90c5a0c834a2667605027d70ef7ac6c438df0')
+  for(const [kind,file,input] of [['event','run-event.json',{version:1,type:'end',unreleased:true}],['policy','policy.json',{version:1,unreleased:true}]] as const){
+   const properties=shapes.current[file].properties as Record<string,unknown>;properties.unreleased={}
+   try{expect(()=>checkRecord(kind,input)).toThrow(UnknownRecordMember)}finally{delete properties.unreleased}
+  }
+ })
+ it('refuses coordinated widening of every published graph copy',()=>{
+  const root=mkdtempSync(join(tmpdir(),'published-v010-guard-'));mkdirSync(join(root,'contract/records'),{recursive:true});mkdirSync(join(root,'scripts'),{recursive:true})
+  const frozen=JSON.parse(readFileSync('../../contract/records/published-v010-shapes.json','utf8'));frozen.graph['checkpoint.json'].properties.future={type:'string'}
+  writeFileSync(join(root,'contract/records/published-v010-shapes.json'),JSON.stringify(frozen)+'\n')
+  for(const path of ['packages/harness/contract','go/contract']){mkdirSync(join(root,path),{recursive:true});writeFileSync(join(root,path,path.startsWith('go')?'record_shapes.json':'record-shapes.json'),JSON.stringify({...shapes,published:frozen.graph})+'\n')}
+  writeFileSync(join(root,'scripts/published-record-shapes.mjs'),readFileSync('../../scripts/published-record-shapes.mjs'))
+  const result=spawnSync(process.execPath,['scripts/published-record-shapes.mjs'],{cwd:root,encoding:'utf8'})
+  expect(result.status).not.toBe(0);expect(result.stderr).toContain('Published v0.10 record graph digest differs.')
  })
  it('retains lifecycle metadata on read/export and writes the current version before digest',()=>{
   const legacy={...checkpoint.items[0],policy:{pace:{value:'steady',layer:'run'}},schema:CHECKPOINT_SCHEMA,retainUntil:'2099-01-01T00:00:00.000Z',digest:''}
