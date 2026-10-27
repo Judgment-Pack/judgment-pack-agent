@@ -46,7 +46,7 @@ func (s *preparationStore) Commit(ctx context.Context, in RunCommit) (RunReceipt
 	}
 	return r, e
 }
-func pendingPreparation(t *testing.T, refs bool) (Session, *Input, PlanDecisionExpectation, *preparationStore, *preparationChat) {
+func pendingPreparation(t *testing.T, refs bool, modes ...string) (Session, *Input, PlanDecisionExpectation, *preparationStore, *preparationChat) {
 	t.Helper()
 	ctx := context.Background()
 	session, _ := trackedSession(t)
@@ -62,14 +62,60 @@ func pendingPreparation(t *testing.T, refs bool) (Session, *Input, PlanDecisionE
 			return ResolvedPlanReference{Kind: "artifact", ID: "dependency", Digest: strings.Repeat("b", 64)}, nil
 		}}
 	}
+	mode := ""
+	if len(modes) > 0 {
+		mode = modes[0]
+		session.Context.TaskSteps = true
+	}
+	calls := 0
+	if mode == "standalone" || mode == "coordinator" {
+		session.Model = nil
+		session.Agent = &AgentSession{Model: "fixture"}
+		if mode == "standalone" {
+			session.Context.TaskStepEnvelope = &TaskStepEnvelope{ID: "original-envelope", Revision: "sha256:" + strings.Repeat("d", 64), Unit: "provider-invocations", Limit: 6}
+		}
+		if mode == "coordinator" {
+			admitted, err := PrepareDurableInput(ctx, session.Context)
+			if err != nil {
+				t.Fatal(err)
+			}
+			session.Context = admitted
+			if err = admitted.Persistence.Writer.AttachNativeTaskEnvelope(*admitted.Persistence, NativeTaskEnvelopeSource{Limit: 6, ChildReserve: 1, Counts: func() map[string]int { return map[string]int{"prepare-plan": calls} }, Reserve: func(scope DurableScope) int {
+				if scope.Task != "" {
+					return 1
+				}
+				return 0
+			}}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	run := openRun(t, session)
+	if mode != "" {
+		if err := task183Update(t, run, `[{"id":"step-1","step":"Inspect","status":"in_progress","budget":{"requests":2}},{"id":"step-2","step":"Report","status":"pending","budget":{"requests":1}}]`); err != nil {
+			t.Fatal(err)
+		}
+		var err error
+		if mode == "model" {
+			err = task183Model(run, &calls)
+		} else {
+			err = task183Native(run, &calls)
+		}
+		if err != nil || calls != 1 {
+			t.Fatalf("actual task dispatch missing: calls=%d err=%v", calls, err)
+		}
+	}
 	// Actual completed host dispatch must survive this metadata-only transition exactly.
 	_, err := InvokeDurable(ctx, run.Session.Context.Persistence, "host", "fixture", "inspect", []byte(`{}`), true, func([]byte) (ToolResult, error) { return ResultOf([]Content{TextContent("exact evidence")}, nil), nil }, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	id := run.Context.Execution.State().Plan.Items()[1].Get("id")
-	_, err = hostTool(t, run, "update_plan").Execute(ctx, ObjectOf("explanation", String("Remove accepted work"), "plan", Array(ObjectOf("id", id, "step", String("Report"), "status", String("pending")))).JSON())
+	proposal := Array(ObjectOf("id", id, "step", String("Report"), "status", String("pending")))
+	if mode != "" {
+		proposal = Array(ObjectOf("id", String("step-1"), "step", String("Inspect"), "status", String("in_progress"), "budget", ObjectOf("requests", Number(2))))
+	}
+	_, err = hostTool(t, run, "update_plan").Execute(ctx, ObjectOf("explanation", String("Remove accepted work"), "plan", proposal).JSON())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -341,5 +387,205 @@ func TestPreparePlanDecisionRetainsConcurrentOriginalWriterUpdate(t *testing.T) 
 	}
 	if !found {
 		t.Fatal("original writer update overwritten")
+	}
+}
+
+func TestPreparePlanDecisionFeatureCheckpoint3FreshWriter(t *testing.T) {
+	for _, mode := range []string{"model", "standalone", "coordinator"} {
+		for _, approved := range []bool{true, false} {
+			t.Run(mode+map[bool]string{true: "/accept", false: "/reject"}[approved], func(t *testing.T) {
+				session, input, expected, store, chat := pendingPreparation(t, false, mode)
+				head, err := store.Load(context.Background(), "prepare-plan")
+				if err != nil {
+					t.Fatal(err)
+				}
+				before := MustParseJSON(string(head.Checkpoint))
+				if before.Get("version").Num() != 3 || before.Get("planState").Get("taskSchedule").Get("rows").Items()[0].Get("claims").Len() != 1 {
+					t.Fatal("fixture lacks actual feature-bearing task claim")
+				}
+				if mode == "coordinator" && before.Get("planState").Get("taskCoordinator") == nil {
+					t.Fatal("original coordinator pin not acknowledged")
+				}
+				input.Persistence = nil
+				input.Checkpoint = nil
+				input.RunStore = &DurableRunInput{ID: "prepare-plan", Store: store, Resume: true}
+				input.Approval.Approved = approved
+				turns := chat.calls
+				prepared, events, err := PreparePlanDecision(context.Background(), input, expected)
+				if err != nil {
+					t.Fatalf("valid feature checkpoint3 decision refused: %v", err)
+				}
+				if len(events) != 1 || events[0].PlanDriftDecided == nil || events[0].PlanDriftDecided.Version == nil || *events[0].PlanDriftDecided.Version != 2 || store.decisions != 1 || chat.calls != turns {
+					t.Fatal("feature decision was not acknowledged once as event2 without a turn")
+				}
+				afterHead, _ := store.Load(context.Background(), "prepare-plan")
+				after := MustParseJSON(string(afterHead.Checkpoint))
+				if _, err = ReadExecution(after); err != nil {
+					t.Fatalf("prepared feature checkpoint invalid: %v", err)
+				}
+				var oldMembers, newMembers map[string]json.RawMessage
+				_ = json.Unmarshal(head.Checkpoint, &oldMembers)
+				_ = json.Unmarshal(afterHead.Checkpoint, &newMembers)
+				for name, raw := range oldMembers {
+					if name != "plan" && name != "planState" && name != "explanation" && name != "status" && name != "digest" && !reflect.DeepEqual(raw, newMembers[name]) {
+						t.Fatalf("decision changed retained %s", name)
+					}
+				}
+				for _, name := range []string{"taskCoordinator", "taskEnvelope"} {
+					if CanonicalJSON(before.Get("planState").Get(name)) != CanonicalJSON(after.Get("planState").Get(name)) {
+						t.Fatalf("decision replaced original %s", name)
+					}
+				}
+				beforeRow := before.Get("planState").Get("taskSchedule").Get("rows").Items()[0]
+				if after.Get("planState").Get("taskSchedule") == nil || after.Get("planState").Get("taskSchedule").Get("rows").Len() == 0 {
+					t.Fatal("decision lost required task schedule")
+				}
+				afterRow := after.Get("planState").Get("taskSchedule").Get("rows").Items()[0]
+				if CanonicalJSON(beforeRow) != CanonicalJSON(afterRow) || planText(after.Get("planState").Get("taskSchedule").Get("binding").Get("planRevision")) != planText(after.Get("planState").Get("revision")) {
+					t.Fatal("decision lost original task claims or schedule revision")
+				}
+				want := 2
+				if approved {
+					want = 1
+				}
+				if after.Get("plan").Len() != want || after.Get("planState").Get("taskSchedule").Get("rows").Len() != want {
+					t.Fatal("wrong task decision or schedule")
+				}
+				page, _ := store.ReadEvents(context.Background(), "prepare-plan", "", StoragePageLimit)
+				last := page.Items[len(page.Items)-1]
+				stored, err := ReadStoredRunEvent(last.Bytes)
+				if err != nil || !reflect.DeepEqual(stored.Event, events[0]) {
+					t.Fatal("returned event differs from valid stored event", err)
+				}
+				if _, _, err = PreparePlanDecision(context.Background(), input, expected); err == nil || store.decisions != 1 {
+					t.Fatal("fresh writer decision replayed")
+				}
+				if mode != "coordinator" {
+					session.Context = prepared
+					opened := openRun(t, session)
+					opened.Context.Close()
+					if chat.calls != turns+1 || store.decisions != 1 {
+						t.Fatal("continuation redecided or reopened preparation")
+					}
+				}
+			})
+		}
+	}
+}
+func TestPreparePlanDecisionRefusesUnsupportedVersions(t *testing.T) {
+	for _, version := range []int64{1, 4} {
+		t.Run(map[int64]string{1: "legacy", 4: "future"}[version], func(t *testing.T) {
+			_, input, expected, store, _ := pendingPreparation(t, false)
+			head, _ := store.Load(context.Background(), "prepare-plan")
+			cp := input.Execution
+			cp.Version = version
+			if version == 1 {
+				cp.Context.Entries = []contract.CheckpointRetainedEntry{}
+				cp.Durable = nil
+				cp.PlanState = nil
+				cp.Plan = cp.Plan[:0]
+			}
+			raw, _ := json.Marshal(cp)
+			v := MustParseJSON(string(raw))
+			digest := RecordDigest(v)
+			cp.Digest = &digest
+			raw, _ = json.Marshal(cp)
+			if version == 1 {
+				if _, err := ReadExecution(MustParseJSON(string(raw))); err != nil {
+					t.Fatal("valid legacy fixture refused before preparation", err)
+				}
+			}
+			if _, err := store.Commit(context.Background(), RunCommit{RunID: "prepare-plan", ExpectedRevision: head.Revision, CommitID: "unsupported-fixture", Checkpoint: raw}); err != nil {
+				t.Fatal(err)
+			}
+			input.Persistence = nil
+			input.Checkpoint = nil
+			input.RunStore = &DurableRunInput{ID: "prepare-plan", Store: store, Resume: true}
+			if _, _, err := PreparePlanDecision(context.Background(), input, expected); err == nil || store.decisions != 0 {
+				t.Fatal("unsupported checkpoint version decided")
+			}
+		})
+	}
+}
+
+func TestTaskCoordinatorSemanticBounds(t *testing.T) {
+	pin := ObjectOf("version", Number(1), "owner", String("native-delegation"), "run", String("run"), "execution", String("run"), "scopeDigest", String("sha256:"+strings.Repeat("a", 64)), "limit", Number(6), "childReserve", Number(2))
+	if _, err := readTaskCoordinatorBinding(pin); err != nil {
+		t.Fatal("valid coordinator pin refused", err)
+	}
+	for _, row := range []struct {
+		field string
+		value *Value
+	}{{"childReserve", Number(7)}, {"childReserve", Number(0)}, {"limit", Number(0)}, {"owner", String("host")}, {"extra", Bool(true)}} {
+		invalid := pin.Clone()
+		invalid.Set(row.field, row.value)
+		if _, err := readTaskCoordinatorBinding(invalid); err == nil {
+			t.Fatalf("semantic coordinator guard missing for %s", row.field)
+		}
+	}
+}
+func TestTaskCoordinatorOriginalEnrollment(t *testing.T) {
+	_, input, _, store, _ := pendingPreparation(t, false, "coordinator")
+	head, _ := store.Load(context.Background(), "prepare-plan")
+	input.Persistence = nil
+	input.Checkpoint = nil
+	input.RunStore = &DurableRunInput{ID: "prepare-plan", Store: store, Resume: true}
+	admitted, err := PrepareDurableInput(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := NativeTaskEnvelopeSource{Limit: 6, ChildReserve: 1, Counts: func() map[string]int { return map[string]int{"prepare-plan": 1} }, Reserve: func(scope DurableScope) int {
+		if scope.Task != "" {
+			return 1
+		}
+		return 0
+	}}
+	for _, field := range []string{"limit", "reserve"} {
+		changed := source
+		if field == "limit" {
+			changed.Limit = 7
+		} else {
+			changed.ChildReserve = 2
+		}
+		if err = admitted.Persistence.Writer.AttachNativeTaskEnvelope(*admitted.Persistence, changed); err == nil {
+			t.Fatalf("changed original coordinator %s admitted", field)
+		}
+	}
+	if err = admitted.Persistence.Writer.AttachNativeTaskEnvelope(*admitted.Persistence, source); err != nil {
+		t.Fatal("exact original coordinator refused", err)
+	}
+	// Remove both immutable pins so semantic pending-candidate comparison is not the refusal.
+	value := MustParseJSON(string(head.Checkpoint))
+	removePin := func(state *Value) *Value {
+		out := Object()
+		for _, name := range state.Keys() {
+			if name != "taskCoordinator" {
+				out.Set(name, state.Get(name))
+			}
+		}
+		return out
+	}
+	state := value.Get("planState")
+	candidate := state.Get("pending").Get("candidate")
+	candidate.Set("planState", removePin(candidate.Get("planState")))
+	value.Set("planState", removePin(state))
+	value.Set("digest", String(RecordDigest(value)))
+	if _, err = ReadExecution(value); err != nil {
+		t.Fatal("missing-pin fixture invalid before enrollment", err)
+	}
+	if _, err = store.Commit(context.Background(), RunCommit{RunID: "prepare-plan", ExpectedRevision: head.Revision, CommitID: "missing-coordinator-fixture", Checkpoint: value.JSON()}); err != nil {
+		t.Fatal(err)
+	}
+	var cp contract.Checkpoint
+	if err = json.Unmarshal(value.JSON(), &cp); err != nil {
+		t.Fatal(err)
+	}
+	input.Execution = &cp
+	missing, err := PrepareDurableInput(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = missing.Persistence.Writer.AttachNativeTaskEnvelope(*missing.Persistence, source); err == nil {
+		t.Fatal("missing original coordinator pin adopted on restart")
 	}
 }

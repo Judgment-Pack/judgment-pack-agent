@@ -273,6 +273,7 @@ Closed: a member the schema does not name is refused.
 | `failure` |  | `failure.json` |  |
 | `artifacts` |  | array of `$defs/artifactObservation` (max items 32) |  |
 | `repeatResultJson` |  | string (min length 1, max length 4194304) | Enabled repeat detection only: exact original acknowledged result encoding, retained by its original writer before legacy result projection. |
+| `planPause` |  | `$defs/nativePlanPause` |  |
 
 ### `checkpoint.json $defs/durableObservation`
 
@@ -350,6 +351,7 @@ Closed: a member the schema does not name is refused.
 | `decisionsDiscarded` |  | integer (min 0, max 9007199254740991) |  |
 | `taskSchedule` |  | `$defs/taskSchedule` |  |
 | `taskEnvelope` |  | `$defs/taskEnvelopeBinding` |  |
+| `taskCoordinator` |  | `$defs/taskCoordinatorBinding` |  |
 
 ### `checkpoint.json $defs/stepEvidence`
 
@@ -452,6 +454,7 @@ Closed: a member the schema does not name is refused.
 | `candidateRevision` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
 | `approved` | yes | boolean |  |
 | `note` |  | string (max length 2000) |  |
+| `nativeInvocation` |  | `$defs/nativePlanInvocation` |  |
 
 ### `checkpoint.json $defs/runtimeExecutionOwner`
 
@@ -639,3 +642,42 @@ Closed: a member the schema does not name is refused.
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
 | `executions` | yes | array of `$defs/repeatExecution` (min items 1, max items 33) |  |
+
+### `checkpoint.json $defs/taskCoordinatorBinding`
+
+Original package native-delegation ceiling and child reserve, pinned before first dispatch; separate from host taskEnvelope configuration. Retained facts permit metadata-only Plan decisions and never grant dispatch.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `version` | yes | const `1` |  |
+| `owner` | yes | const `native-delegation` |  |
+| `run` | yes | string (min length 1, max length 100) |  |
+| `execution` | yes | string (min length 1, max length 100) |  |
+| `scopeDigest` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `limit` | yes | integer (min 1, max 100) |  |
+| `childReserve` | yes | integer (min 1, max 100) |  |
+
+### `checkpoint.json $defs/nativePlanPause`
+
+Original invocation release and package-owned Plan pause retained by the original writer; unknown outcome remains unknown. Not a dispatch grant.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `callId` | yes | string (min length 1, max length 256) |  |
+| `revision` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+| `candidateRevision` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
+
+### `checkpoint.json $defs/nativePlanInvocation`
+
+Exact earlier released Plan-pause invocation selected by an acknowledged explicit decision. It grants no allowance or automatic replay.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `dispatchId` | yes | string (min length 1, max length 256) |  |
+| `requestDigest` | yes | string (pattern `^sha256:[a-f0-9]{64}$`) |  |

@@ -151,7 +151,7 @@ func WriteRecord(schema string, value *Value, policy RecordsPolicy, guard Record
 	version := 1
 	if schema == CheckpointSchema {
 		version = contract.CheckpointVersion
-		if out.Get("version") != nil && out.Get("version").Num() == 3 || out.Has("repeatTools") || out.Has("turnRoute") || out.Has("usageBudget") || out.Get("approval").Has("runtime") || taskRecordFields(out) {
+		if out.Get("version") != nil && out.Get("version").Num() == 3 || out.Has("repeatTools") || out.Has("turnRoute") || out.Has("usageBudget") || out.Get("approval").Has("runtime") || taskRecordFields(out) || nativePlanRecordFields(out) {
 			version = 3
 		}
 	}
@@ -293,4 +293,18 @@ func supportedRecordVersion(v *Value) bool {
 		return false
 	}
 	return n.Num() == 1 || v.Get("schema").Str() == CheckpointSchema && (n.Num() == 2 || n.Num() == 3)
+}
+
+func nativePlanRecordFields(value *Value) bool {
+	for _, row := range value.Get("durable").Get("dispatches").Items() {
+		if row.Has("planPause") {
+			return true
+		}
+	}
+	for _, row := range value.Get("planState").Get("decisions").Items() {
+		if row.Has("nativeInvocation") {
+			return true
+		}
+	}
+	return false
 }

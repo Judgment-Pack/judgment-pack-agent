@@ -34,6 +34,13 @@ func TestTaskSteps183HandwrittenCurrentRecords(t *testing.T) {
 			if err := contract.CheckRecord("event", row.Get("event").JSON()); err != nil {
 				t.Fatal(err)
 			}
+			if row.Get("event").Has("nativeInvocation") {
+				old := row.Get("event").Clone()
+				old.Set("version", Number(1))
+				if err := contract.CheckRecord("event", old.JSON()); err == nil {
+					t.Fatal("published event1 admitted native invocation")
+				}
+			}
 		})
 	}
 	for _, row := range v.Get("invalid").Items() {

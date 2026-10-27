@@ -1,9 +1,9 @@
 # ADR-0025: Unattended runs
 
-Status: proposed for acceptance with v0.11.0. Issue #206, including its job, goal and
-question additions. This is a design decision and implementation split; it does not
-claim these facilities exist in v0.11.0. Independent review and acceptance remain
-required. It builds on ADR-0008, ADR-0018, ADR-0019 and ADR-0024.
+Status: accepted for v0.11.0. Issue #206, including its job, goal and question
+additions. This is a design decision and implementation split; it does not claim
+these facilities exist in v0.11.0. It builds on ADR-0008, ADR-0018, ADR-0019 and
+ADR-0024.
 
 ## Boundary and compatibility
 
@@ -191,9 +191,9 @@ results; it is not proof that external effects stopped.
 ## Implementation split and acceptance
 
 The v0.11.0 deliverable is this reviewed decision and the following separately
-tracked build items. Issues #223–#230 are assigned to **v0.12.0**;
-ADR review and acceptance remain required before #206 closes. This does
-not move any existing v0.11.0 implementation issue. No implementation is claimed
+tracked build items. Issues #223–#230 are assigned to **v0.12.0**; #206 closes
+with the v0.11.0 release. This does not move any existing v0.11.0 implementation
+issue. No implementation is claimed
 from this ADR's acceptance.
 
 | Build item | Depends on | Required evidence |

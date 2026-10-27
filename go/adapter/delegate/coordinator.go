@@ -56,7 +56,7 @@ func With(inner adapter.Adapter, options Options) adapter.Adapter {
 		if run.Context != nil && run.Context.Persistence != nil {
 			run.Context.Persistence.Writer.Decorate = func(state contract.Checkpoint) (contract.Checkpoint, error) { return c.decorate(state), nil }
 			if run.Agent != nil && run.Context.TaskSteps {
-				if err := run.Context.Persistence.Writer.AttachNativeTaskEnvelope(*run.Context.Persistence, runcontext.NativeTaskEnvelopeSource{Limit: turn.MaxAgentRuns, Counts: func() map[string]int {
+				if err := run.Context.Persistence.Writer.AttachNativeTaskEnvelope(*run.Context.Persistence, runcontext.NativeTaskEnvelopeSource{Limit: turn.MaxAgentRuns, ChildReserve: 1 + c.criticReserve, Counts: func() map[string]int {
 					c.runsMu.Lock()
 					parent := c.runs.parent
 					c.runsMu.Unlock()

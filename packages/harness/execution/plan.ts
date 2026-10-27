@@ -1,3 +1,4 @@
+import {readTaskCoordinatorBinding} from '../taskSteps'
 import {taskConfigured,validateTaskPlan,readTaskEnvelopeBinding} from '../taskSteps'
 import {canonicalJSON} from '../context/chat'
 import {sha256} from '../records'
@@ -16,8 +17,10 @@ export interface Departure {kind:DepartureKind;step:string;index?:number}
 export type CompletionRefusal='invalid-input'|'active-step-required'|'revision-changed'|'evidence-unavailable'|'missing-evidence'|'unknown-operation'|'unsuccessful-operation'|'unobserved-revision'|'wrong-scope'
 export interface PlanRefusal {revision:string;reason:CompletionRefusal;step?:string}
 export interface PendingDeparture {purpose:'plan-drift';callId:string;revision:string;candidate:IdentifiedPlan;explanation:string;departures:Departure[]}
-export interface PlanDecision {callId:string;revision:string;candidateRevision:string;approved:boolean;note?:string}
-export interface PlanState {taskEnvelope?:import('../taskSteps').TaskEnvelopeBinding;taskSchedule?:import('../taskSteps').TaskSchedule;decisions?:PlanDecision[];decisionsDiscarded?:number;revision:string;sequence:number;nextId:number;discarded:number;history:PlanRevision[];accepted?:AcceptedPlan;driftPolicy?:DepartureKind[];departures?:{revision:string;explanation:string;changes:Departure[]}[];departuresDiscarded?:number;pending?:PendingDeparture;refusals?:PlanRefusal[];refusalsDiscarded?:number}
+export interface NativePlanPause {callId:string;revision:string;candidateRevision:string}
+export interface NativePlanInvocation {dispatchId:string;requestDigest:string}
+export interface PlanDecision {nativeInvocation?:NativePlanInvocation;callId:string;revision:string;candidateRevision:string;approved:boolean;note?:string}
+export interface PlanState {taskCoordinator?:import('../taskSteps').TaskCoordinatorBinding;taskEnvelope?:import('../taskSteps').TaskEnvelopeBinding;taskSchedule?:import('../taskSteps').TaskSchedule;decisions?:PlanDecision[];decisionsDiscarded?:number;revision:string;sequence:number;nextId:number;discarded:number;history:PlanRevision[];accepted?:AcceptedPlan;driftPolicy?:DepartureKind[];departures?:{revision:string;explanation:string;changes:Departure[]}[];departuresDiscarded?:number;pending?:PendingDeparture;refusals?:PlanRefusal[];refusalsDiscarded?:number}
 export interface IdentifiedPlan {plan:TaskStep[];planState:PlanState}
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v)
 const count=(v:unknown,min=0):v is number=>Number.isSafeInteger(v)&&Number(v)>=min
@@ -81,6 +84,7 @@ function validChange(value:unknown,nextId:number,accepted?:AcceptedPlan):boolean
 export function validPlanState(plan:TaskStep[],value:unknown):value is PlanState{
  if(value===undefined)return plan.every(step=>step.id===undefined&&step.origin===undefined&&step.evidence===undefined&&step.notNeededReason===undefined&&step.status!=='not-needed')
  if(!object(value)||!validPlanExtensions(plan,value)||!digest(value.revision)||!count(value.sequence)||!count(value.nextId,1)||!count(value.discarded)||!Array.isArray(value.history)||value.history.length>PLAN_HISTORY_LIMIT||value.discarded+value.history.length!==value.sequence||value.history.length!==Math.min(value.sequence,PLAN_HISTORY_LIMIT)||value.revision!==planDigest(plan)||new Set(plan.map(s=>s.id)).size!==plan.length||!plan.every(s=>planStepId(s.id)&&Number(s.id.slice(5))<Number(value.nextId)))return false
+ if(value.taskCoordinator){try{readTaskCoordinatorBinding(value.taskCoordinator)}catch{return false}}
  if(value.taskEnvelope){try{readTaskEnvelopeBinding(value.taskEnvelope)}catch{return false}}
  if(plan.some(taskConfigured)||value.taskSchedule){try{validateTaskPlan(plan,value.taskSchedule as import('../taskSteps').TaskSchedule|undefined);if(value.taskSchedule&&(value.taskSchedule as import('../taskSteps').TaskSchedule).binding.planRevision!==value.revision)return false}catch{return false}}
  let previous:string|undefined

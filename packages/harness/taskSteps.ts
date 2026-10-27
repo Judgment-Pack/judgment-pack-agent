@@ -5,6 +5,11 @@ import {validSubagentRecord,type SubagentRecord} from './subagents'
 /** Detached candidate state only. None of these functions issues a physical dispatch grant. */
 export interface TaskStepDefinition {id:string;dependsOn?:string[];budget?:{requests:number};delegation?:SubagentRecord}
 export type TaskStepStatus='pending'|'in_progress'|'completed'|'not-needed'
+export interface TaskCoordinatorBinding {version:1;owner:'native-delegation';run:string;execution:string;scopeDigest:string;limit:number;childReserve:number}
+export function readTaskCoordinatorBinding(value:unknown):TaskCoordinatorBinding {
+ if(!object(value)||!exact(value,['version','owner','run','execution','scopeDigest','limit','childReserve'])||value.version!==1||value.owner!=='native-delegation'||!id(value.run)||!id(value.execution)||!digest(value.scopeDigest)||!count(value.limit)||Number(value.limit)<1||!count(value.childReserve,Number(value.limit))||Number(value.childReserve)<1)fail('invalid-coordinator-envelope')
+ return structuredClone(value) as unknown as TaskCoordinatorBinding
+}
 export interface TaskScheduleBinding {run:string;execution:string;planRevision:string;scopeDigest:string;unit:'model-requests'|'provider-managed'}
 export interface TaskStepClaim {id:string;requestDigest:string;state:'held'|'admitted'|'unknown'}
 export interface TaskChildResult {checkpointDigest:string;resultDigest:string;eventDigest:string;commitId:string}

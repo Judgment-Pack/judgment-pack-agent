@@ -580,7 +580,7 @@ func patchRecordIntegers(data []byte, replacements map[string]string) ([]byte, e
 
 // StampEvent is the writer boundary; codecs keep historical records unchanged.
 func StampEvent(event RunEvent) RunEvent {
-	feature := event.RepeatDetected != nil || event.RouteDecided != nil || event.RouteWidened != nil || event.ApprovalRequested != nil && event.ApprovalRequested.Runtime != nil || event.ExecutionCheckpoint != nil && event.ExecutionCheckpoint.Checkpoint.Version == 3 || event.BudgetPaused != nil && event.BudgetPaused.Checkpoint.Version == 3
+	feature := event.PlanDriftDecided != nil && event.PlanDriftDecided.NativeInvocation != nil || event.RepeatDetected != nil || event.RouteDecided != nil || event.RouteWidened != nil || event.ApprovalRequested != nil && event.ApprovalRequested.Runtime != nil || event.ExecutionCheckpoint != nil && event.ExecutionCheckpoint.Checkpoint.Version == 3 || event.BudgetPaused != nil && event.BudgetPaused.Checkpoint.Version == 3
 	return stampEvent(event, feature)
 }
 

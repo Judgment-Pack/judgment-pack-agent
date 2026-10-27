@@ -166,6 +166,11 @@ func validPlanState(plan, state *Value) bool {
 	if !state.IsObject() || !validPlanExtensions(plan, state) || !isCount(state.Get("sequence"), 9007199254740991) || !isCount(state.Get("discarded"), 9007199254740991) || !isCount(state.Get("nextId"), 9007199254740991) || planNumber(state.Get("nextId")) < 1 || planText(state.Get("revision")) != planDigest(plan) {
 		return false
 	}
+	if state.Has("taskCoordinator") {
+		if _, err := readTaskCoordinatorBinding(state.Get("taskCoordinator")); err != nil {
+			return false
+		}
+	}
 	if state.Has("taskEnvelope") {
 		if _, err := readTaskEnvelopeBinding(state.Get("taskEnvelope")); err != nil {
 			return false

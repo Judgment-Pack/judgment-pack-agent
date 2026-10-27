@@ -80,11 +80,15 @@ function guardRecord(record:Record<string,unknown>,guard:RecordGuard,figures:Rec
 /** Select the current graph for detached task candidates before their writer-owned schedule exists. */
 function taskRecordFields(value:Record<string,unknown>):boolean{
  const configured=(step:unknown)=>!!step&&typeof step==='object'&&['dependsOn','budget','delegation'].some(key=>Object.hasOwn(step,key))
- const plan=value.plan, state=value.planState as {taskSchedule?:unknown;taskEnvelope?:unknown;pending?:{candidate?:{plan?:unknown}};history?:{diff?:{before?:unknown;after?:unknown}[]}[]}|undefined
- return Array.isArray(plan)&&plan.some(configured)||Array.isArray(state?.pending?.candidate?.plan)&&state.pending.candidate.plan.some(configured)||state?.taskSchedule!==undefined||state?.taskEnvelope!==undefined||state?.history?.some(row=>row.diff?.some(change=>configured(change.before)||configured(change.after)))===true
+ const plan=value.plan, state=value.planState as {taskSchedule?:unknown;taskEnvelope?:unknown;taskCoordinator?:unknown;pending?:{candidate?:{plan?:unknown}};history?:{diff?:{before?:unknown;after?:unknown}[]}[]}|undefined
+ return Array.isArray(plan)&&plan.some(configured)||Array.isArray(state?.pending?.candidate?.plan)&&state.pending.candidate.plan.some(configured)||state?.taskSchedule!==undefined||state?.taskEnvelope!==undefined||state?.taskCoordinator!==undefined||state?.history?.some(row=>row.diff?.some(change=>configured(change.before)||configured(change.after)))===true
+}
+function nativePlanRecordFields(value:Record<string,unknown>):boolean {
+ const book=value.durable as {dispatches?:{planPause?:unknown}[]}|undefined,state=value.planState as {decisions?:{nativeInvocation?:unknown}[]}|undefined
+ return book?.dispatches?.some(row=>row.planPause!==undefined)===true||state?.decisions?.some(row=>row.nativeInvocation!==undefined)===true
 }
 export function writeRecord<S extends RecordSchema,T extends Record<string,unknown>>(schema:S,value:T,policy:RecordsPolicy,guard?:RecordGuard,now=new Date(),keepRetainUntil?:string):T&RecordMembers<S>{
- let record={...structuredClone(value),schema,version:(schema===CHECKPOINT_SCHEMA?(((value as {version?:number}).version===3||(value as {repeatTools?:unknown}).repeatTools!==undefined||(value as {usageBudget?:unknown;turnRoute?:unknown}).usageBudget!==undefined||(value as {turnRoute?:unknown}).turnRoute!==undefined||(value as {approval?:{runtime?:unknown}}).approval?.runtime!==undefined||taskRecordFields(value))?3:2):1),retainUntil:keepRetainUntil??retainUntil(policy,now)} as T&Omit<RecordMembers<S>,'digest'>
+ let record={...structuredClone(value),schema,version:(schema===CHECKPOINT_SCHEMA?(((value as {version?:number}).version===3||(value as {repeatTools?:unknown}).repeatTools!==undefined||(value as {usageBudget?:unknown;turnRoute?:unknown}).usageBudget!==undefined||(value as {turnRoute?:unknown}).turnRoute!==undefined||(value as {approval?:{runtime?:unknown}}).approval?.runtime!==undefined||taskRecordFields(value)||nativePlanRecordFields(value))?3:2):1),retainUntil:keepRetainUntil??retainUntil(policy,now)} as T&Omit<RecordMembers<S>,'digest'>
  const figures:RecordMarker={redactions:{}}
  if(policy.redactOnStore&&guard)guardRecord(record,guard,figures)
  Object.assign(record,{records:figures})

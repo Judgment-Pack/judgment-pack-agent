@@ -437,6 +437,9 @@ type nativeRouteClaim struct {
 type nativeRouteDisposition struct{ id, requestDigest, route string }
 
 func (w *RunWriter) supersededNativeLocked(binding *RunBinding, row DurableDispatch) (bool, error) {
+	if superseded, err := w.supersededNativePlanLocked(binding, row); superseded || err != nil {
+		return superseded, err
+	}
 	if row.Kind != "agent" || row.Scope != binding.Scope || w.latest == nil || w.latest.TurnRoute == nil || !w.latest.TurnRoute.Widened {
 		return false, nil
 	}
@@ -467,6 +470,20 @@ func (c *SessionContext) InvokeNativeRoute(ctx context.Context, role, source, to
 			}
 		}
 		ctx = context.WithValue(ctx, nativeCaptureKey{}, &nativeCaptureSlot{writer: binding.Writer, scope: binding.Scope, bindings: aliases})
+	}
+	planContext, planRelease, finishPlan, closePlan, err := c.beginNativePlanPause(ctx, role)
+	if err != nil {
+		return err
+	}
+	ctx = planContext
+	defer closePlan()
+	provided := run
+	run = func(given context.Context, raw []byte, release *providerrelease.Capability) error {
+		problem := provided(given, raw, providerrelease.Compose(release, planRelease))
+		if releaseErr := finishPlan(); releaseErr != nil {
+			return releaseErr
+		}
+		return problem
 	}
 	invoke := func(given context.Context, execute func([]byte) error) error {
 		_, err := InvokeDurable(given, binding, "agent", source, tool, request, true, func(raw []byte) (struct{}, error) { return struct{}{}, execute(raw) }, func(struct{}) bool { return false }, nil)

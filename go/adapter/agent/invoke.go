@@ -265,8 +265,14 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 			}
 			err := recorded(runcontext.WithDurableDispatchScope(invCtx, r.sc.Persistence(role)), prepared, callbacks)
 			watched.closeAndWait()
+			paused := r.pauseError()
+			if errors.Is(paused, errWaiting) && r.sc.Execution.State().PlanState.Has("pending") {
+				if markErr := r.sc.MarkNativePlanPause(privateCtx); markErr != nil {
+					return markErr
+				}
+			}
 			if err == nil {
-				err = r.pauseError()
+				err = paused
 			}
 			return err
 		}, captureProof)
@@ -341,8 +347,9 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 	fatal, handoff, waiting := r.fatal, r.handoff, r.awaitingInput
 	r.held.Unlock()
 	var storageUnknown *runcontext.StorageOutcomeUnknown
+	var releaseUnknown *runcontext.ProviderReleaseUnknown
 	switch {
-	case errors.As(runErr, &storageUnknown):
+	case errors.As(runErr, &storageUnknown), errors.As(runErr, &releaseUnknown):
 		return "", runErr
 	case fatal != nil:
 		return "", fatal

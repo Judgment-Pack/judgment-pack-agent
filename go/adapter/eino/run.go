@@ -170,7 +170,12 @@ func execute(ctx context.Context, run *adapter.Run, observation *observationStat
 	r.sc.Execution.UseConnection(r.run.Connection("author"), "author")
 	r.emitAll(r.boundary.Open())
 
-	routeErr := r.sc.ResolveTurnRouteClassifier(ctx, r.classifyTurnRoute)
+	var routeErr error
+	if r.run.OutputCeiling() < 0 || r.run.OutputCeiling() > r.sc.Policy.OutputTokens {
+		routeErr = failure.Authored("configuration", "The physical output ceiling is outside the admitted output reserve.", "context")
+	} else {
+		routeErr = r.sc.ResolveTurnRouteClassifier(ctx, r.classifyTurnRoute)
+	}
 	tier := r.run.Reasoning("author")
 	r.slot = wire.OpenThinking(wire.ThinkingTier(tier), r.family, &capabilities.Reasoning, capabilities.Tiers, capabilities.FallbackTiers)
 	r.placement = statePlacement(r.family, wire.ThinkingTier(tier), capabilities)
@@ -178,8 +183,6 @@ func execute(ctx context.Context, run *adapter.Run, observation *observationStat
 
 	if routeErr != nil {
 		err = routeErr
-	} else if r.run.OutputCeiling() < 0 || r.run.OutputCeiling() > r.sc.Policy.OutputTokens {
-		err = failure.Authored("configuration", "The physical output ceiling is outside the admitted output reserve.", "context")
 	} else if observation != nil {
 		err = r.observeOnce(ctx, observation)
 	} else {

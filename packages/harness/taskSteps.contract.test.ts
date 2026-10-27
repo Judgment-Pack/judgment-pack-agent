@@ -1,6 +1,9 @@
 import {it,expect} from 'vitest'
 import vector from '../../contract/testdata/task-steps/records.json'
+import {readTaskCoordinatorBinding} from './taskSteps'
 import {readExecution} from './execution/state'
+import {writeRecord,CHECKPOINT_SCHEMA,RECORD_DEFAULTS} from './records'
+import {writeRunEvent} from './recordReader'
 import {checkRecord} from './recordReader'
 for(const row of vector.items)it(`#183 shared current record ${row.name}`,()=>{
  expect(readExecution(row.checkpoint)).toBeDefined()
@@ -14,4 +17,16 @@ for(const row of vector.invalid)it(`#183 shared malformed record ${row.name}`,()
  expect(()=>readExecution(state)).toThrow()
 })
 
-for(const row of vector.events)it(`#183 shared current event ${row.name}`,()=>{expect(()=>checkRecord('event',row.event)).not.toThrow()})
+for(const row of vector.events)it(`#183 shared current event ${row.name}`,()=>{expect(()=>checkRecord('event',row.event)).not.toThrow();if('nativeInvocation'in row.event)expect(()=>checkRecord('event',{...row.event,version:1})).toThrow()})
+
+it('#219 rejects semantic coordinator bounds independently of structural schema',()=>{
+ const pin={version:1,owner:'native-delegation',run:'run',execution:'run',scopeDigest:'sha256:'+'a'.repeat(64),limit:6,childReserve:2}
+ expect(readTaskCoordinatorBinding(pin)).toEqual(pin)
+ for(const changed of [{...pin,childReserve:7},{...pin,childReserve:0},{...pin,limit:0},{...pin,owner:'host'},{...pin,extra:true}])expect(()=>readTaskCoordinatorBinding(changed)).toThrow('invalid-coordinator-envelope')
+})
+
+it('#219 selects current versions for native pause and decision producers',()=>{
+ for(const row of vector.items.filter(row=>row.name==='native-released-plan-pause'||row.name==='native-decided-plan-pause'))expect(writeRecord(CHECKPOINT_SCHEMA,{...row.checkpoint,version:2},RECORD_DEFAULTS).version).toBe(3)
+ const event=vector.events.find(row=>row.name==='native-plan-decision-invocation')!.event
+ expect(writeRunEvent({...event,version:undefined} as import('./engine').AssistantEvent).version).toBe(2)
+})

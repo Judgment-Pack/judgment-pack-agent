@@ -3,6 +3,7 @@ package delegate
 import (
 	"context"
 	"encoding/json"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/internal/providerrelease"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -190,7 +191,7 @@ func (c *coordinator) tracked(run adapter.AgentRun, m *meter) adapter.AgentRun {
 			reached.Store(true)
 			return eventCallback(ctx, event)
 		}
-		callbacks.ProviderRelease = capability
+		callbacks.ProviderRelease = providerrelease.Compose(callbacks.ProviderRelease, capability)
 		var delegated atomic.Bool
 		delegates := map[string]bool{}
 		for _, tool := range request.Tools {
@@ -693,6 +694,17 @@ func (c *coordinator) parentInvocation(ctx context.Context, execution *contract.
 	c.requested, c.parentFailed = nil, false
 	c.emitMu.Unlock()
 	_ = c.inner.Run(ctx, &parent)
+	if run.Context != nil && run.Context.Persistence != nil {
+		// The invocation has closed its session; all subsequent coordinator events
+		// belong to the root already acknowledged by the original writer.
+		if err := run.Context.Persistence.Writer.UseAcknowledgedRoot(*run.Context.Persistence); err != nil {
+			c.emitMu.Lock()
+			if c.fatal == nil {
+				c.fatal = err
+			}
+			c.emitMu.Unlock()
+		}
+	}
 	c.emitMu.Lock()
 	c.parentOpen = false
 	requested, failed := c.requested, c.parentFailed

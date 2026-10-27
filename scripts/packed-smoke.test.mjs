@@ -238,3 +238,15 @@ test('body-parser path: traces the SDK-owned Express copy rather than a fixed un
  writeFileSync(join(project,'node_modules','@modelcontextprotocol','sdk','node_modules','body-parser','package.json'),'{"name":"body-parser","version":"2.4.0"}')
  requireFixedBodyParser(traceBodyParser(project,root))
 })
+
+test('keeps the native Plan-pause owner outside the published wildcard imports',t=>{
+ const manifest=JSON.parse(readFileSync(resolve('packages/harness/package.json'),'utf8'))
+ const project=fixture({'package.json':'{"private":true,"type":"module"}',
+  'node_modules/@judgment-pack/harness/package.json':JSON.stringify(manifest),
+  'node_modules/@judgment-pack/harness/dist/storage/nativePlanPause.js':'export const privateOwner=true'})
+ t.after(()=>rmSync(project,{recursive:true,force:true}))
+ const require=createRequire(join(project,'consumer.cjs'))
+ assert.throws(()=>require.resolve('@judgment-pack/harness/storage/nativePlanPause'),{code:'ERR_PACKAGE_PATH_NOT_EXPORTED'})
+ assert.throws(()=>require.resolve('@judgment-pack/harness/storage/nativePlanPause.js'))
+ assert.throws(()=>require.resolve('@judgment-pack/harness/dist/storage/nativePlanPause.js'))
+})

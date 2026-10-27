@@ -30,20 +30,21 @@ type ArtifactObservation struct {
 	Access string `json:"access,omitempty"`
 }
 type DurableDispatch struct {
-	ID               string                `json:"id"`
-	Scope            DurableScope          `json:"scope"`
-	Kind             string                `json:"kind"`
-	Source           string                `json:"source"`
-	Tool             string                `json:"tool"`
-	Fingerprint      string                `json:"fingerprint"`
-	Request          string                `json:"request"`
-	RequestDigest    string                `json:"requestDigest"`
-	State            string                `json:"state"`
-	Read             bool                  `json:"read"`
-	Result           json.RawMessage       `json:"result,omitempty"`
-	RepeatResultJson *string               `json:"repeatResultJson,omitempty"`
-	Failure          *contract.Failure     `json:"failure,omitempty"`
-	Artifacts        []ArtifactObservation `json:"artifacts,omitempty"`
+	PlanPause        *contract.CheckpointNativePlanPause `json:"planPause,omitempty"`
+	ID               string                              `json:"id"`
+	Scope            DurableScope                        `json:"scope"`
+	Kind             string                              `json:"kind"`
+	Source           string                              `json:"source"`
+	Tool             string                              `json:"tool"`
+	Fingerprint      string                              `json:"fingerprint"`
+	Request          string                              `json:"request"`
+	RequestDigest    string                              `json:"requestDigest"`
+	State            string                              `json:"state"`
+	Read             bool                                `json:"read"`
+	Result           json.RawMessage                     `json:"result,omitempty"`
+	RepeatResultJson *string                             `json:"repeatResultJson,omitempty"`
+	Failure          *contract.Failure                   `json:"failure,omitempty"`
+	Artifacts        []ArtifactObservation               `json:"artifacts,omitempty"`
 }
 type DurableObservation struct {
 	ID         string               `json:"id"`
@@ -173,9 +174,10 @@ func (e *HostOutcomeUnknown) Unwrap() error {
 // trusted acknowledged provenance. Storage receipts do not establish current action authority.
 // NativeTaskEnvelopeSource is registered by the existing package coordinator only.
 type NativeTaskEnvelopeSource struct {
-	Limit   int
-	Counts  func() map[string]int
-	Reserve func(DurableScope) int
+	Limit        int
+	ChildReserve int
+	Counts       func() map[string]int
+	Reserve      func(DurableScope) int
 }
 type taskDispatchSource struct {
 	snapshot func() (contract.Checkpoint, error)
@@ -190,6 +192,7 @@ type RunWriter struct {
 	restoredTaskHead       bool
 	configuredTaskEnvelope *TaskEnvelopeBinding
 	nativeTaskEnvelope     *NativeTaskEnvelopeSource
+	nativeTaskCoordinator  *TaskCoordinatorBinding
 	taskSteps              atomic.Bool
 	taskRoot               string
 	liveTaskPending        string
@@ -214,6 +217,7 @@ type RunWriter struct {
 	planDelivery           map[any]planDelivery
 	nativeClaims           map[*nativeRouteClaim]bool
 	nativeSuperseded       map[string]nativeRouteDisposition
+	nativePlanSuperseded   map[string]nativePlanDisposition
 	fatal                  error
 	dispatchClosed         atomic.Bool
 	stopped                bool
@@ -603,6 +607,12 @@ func (w *RunWriter) saveLocked(ctx context.Context, binding RunBinding, state *c
 		}
 		patch["UsageBudget"] = &held
 	}
+	for _, row := range w.book.Dispatches {
+		if row.PlanPause != nil {
+			patch["Version"] = int64(3)
+			break
+		}
+	}
 	root, _, err = MutateCheckpoint(root, patch)
 	if err != nil {
 		return fail(err)
@@ -624,6 +634,14 @@ func (w *RunWriter) saveLocked(ctx context.Context, binding RunBinding, state *c
 		}
 		raw, _ := json.Marshal(w.configuredTaskEnvelope)
 		value.Get("planState").Set("taskEnvelope", MustParseJSON(string(raw)))
+		value.Set("version", Number(3))
+	}
+	if w.nativeTaskCoordinator != nil {
+		if !value.Get("planState").IsObject() {
+			return fail(&ContinuationIdentityChanged{})
+		}
+		raw, _ := json.Marshal(w.nativeTaskCoordinator)
+		value.Get("planState").Set("taskCoordinator", MustParseJSON(string(raw)))
 		value.Set("version", Number(3))
 	}
 	if w.taskSchedule != nil {
@@ -975,6 +993,23 @@ func (w *RunWriter) CommitPlan(ctx context.Context, binding RunBinding, state co
 	if err != nil {
 		return contract.RunEvent{}, err
 	}
+	proof, err := w.nativePlanDecisionLocked(ctx, binding, &prepared, &event)
+	if err != nil {
+		return contract.RunEvent{}, err
+	}
+	if proof != nil && w.guard != nil && w.guard() != nil {
+		raw, e := canonicalRaw(event)
+		if e != nil {
+			return contract.RunEvent{}, e
+		}
+		guarded, e := w.guard().JSON(raw, "message", false)
+		if e != nil {
+			return contract.RunEvent{}, e
+		}
+		if !bytes.Equal(raw, guarded) {
+			return contract.RunEvent{}, &ContinuationNotRecoverable{}
+		}
+	}
 	previous := w.taskSchedule
 	if schedule != nil {
 		w.taskSchedule = schedule
@@ -984,6 +1019,9 @@ func (w *RunWriter) CommitPlan(ctx context.Context, binding RunBinding, state co
 		w.taskSchedule = previous
 	}
 	if err != nil {
+		return contract.RunEvent{}, err
+	}
+	if err = w.ackNativePlanDecisionLocked(binding, proof); err != nil {
 		return contract.RunEvent{}, err
 	}
 	if w.planDelivery == nil {
@@ -1316,7 +1354,12 @@ func InvokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 		}
 	}
 	w.book.Dispatches = append(w.book.Dispatches, claim)
-	_, err := w.saveLocked(ctx, *binding, nil, nil, nil, nil)
+	claimEvent, claimErr := nativePlanClaimEventLocked(ctx, binding, claim)
+	if claimErr != nil {
+		w.mu.Unlock()
+		return zero, claimErr
+	}
+	_, err := w.saveLocked(ctx, *binding, nil, claimEvent, nil, nil)
 	if err == nil && kind == "agent" {
 		if slot, _ := ctx.Value(nativeCaptureKey{}).(*nativeCaptureSlot); slot != nil && slot.writer == w && slot.scope == binding.Scope && slot.id == "" {
 			slot.id = claim.ID
@@ -1480,7 +1523,11 @@ func InvokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 	if repeatEvent != nil {
 		extra = append(extra, contract.StampEvent(contract.RunEvent{RepeatDetected: repeatEvent}))
 	}
-	if _, err = w.saveLocked(ctx, *binding, nil, nil, observed, observations, extra...); err != nil {
+	paused, pausedEvent, pauseErr := nativePlanOutcomeLocked(ctx, binding, claim, runErr)
+	if pauseErr != nil {
+		return zero, pauseErr
+	}
+	if _, err = w.saveLocked(ctx, *binding, paused, pausedEvent, observed, observations, extra...); err != nil {
 		w.fatal = &StorageOutcomeUnknown{cause: err}
 		return zero, w.fatal
 	}
@@ -1510,7 +1557,7 @@ func InvokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 		}
 	}
 
-	if kind == "model" && runErr != nil || failure.IsCancelled(runErr) && !(kind == "agent" && w.book.PendingHandoff != nil) {
+	if kind == "model" && runErr != nil || failure.IsCancelled(runErr) && !(kind == "agent" && (w.book.PendingHandoff != nil || nativePlanPauseAcknowledgedLocked(ctx, binding, claim))) {
 		w.dispatchClosed.Store(true)
 	}
 	return value, runErr
@@ -1678,6 +1725,9 @@ func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
 	if writer.capture != nil {
 		binding.captureRoot = &captureRootAuthority{writer: writer}
 		writer.capture.rootAuthority = binding.captureRoot
+	}
+	if err = writer.restoreNativePlanDecisions(ctx, *binding); err != nil {
+		return nil, err
 	}
 	copy.Persistence = binding
 	copy.Checkpoint = func(ctx context.Context, state contract.Checkpoint) error { return writer.Save(ctx, *binding, state) }
@@ -1952,6 +2002,33 @@ func (w *RunWriter) attachTaskScope(binding RunBinding, source taskDispatchSourc
 			return &ContinuationIdentityChanged{}
 		}
 		w.configuredTaskEnvelope = expected
+		// Seed only the original writer-owned pins before the first Plan candidate.
+		// A pending candidate must inherit these facts at creation, not be rewritten.
+		if expected != nil || w.nativeTaskCoordinator != nil {
+			state, err := source.snapshot()
+			if err != nil {
+				return err
+			}
+			value := taskCheckpointValue(state)
+			if !value.Get("planState").IsObject() {
+				return &ContinuationIdentityChanged{}
+			}
+			if expected != nil {
+				raw, _ := json.Marshal(expected)
+				value.Get("planState").Set("taskEnvelope", MustParseJSON(string(raw)))
+			}
+			if w.nativeTaskCoordinator != nil {
+				raw, _ := json.Marshal(w.nativeTaskCoordinator)
+				value.Get("planState").Set("taskCoordinator", MustParseJSON(string(raw)))
+			}
+			var pinned contract.Checkpoint
+			if err = json.Unmarshal(value.JSON(), &pinned); err != nil {
+				return err
+			}
+			if err = source.accept(pinned); err != nil {
+				return err
+			}
+		}
 		w.taskRoot = binding.Scope.Execution
 		w.taskSteps.Store(true)
 		if w.latest != nil {
@@ -2003,7 +2080,15 @@ func (w *RunWriter) taskStateLocked() (contract.Checkpoint, error) {
 	if !ok {
 		return contract.Checkpoint{}, &ContinuationIdentityChanged{}
 	}
-	state, err := source.snapshot()
+	var state contract.Checkpoint
+	var err error
+	if w.snapshot == nil && w.latest != nil {
+		// The parent has returned and released its session. Coordinator events must
+		// retain its acknowledged root until the next admitted invocation binds.
+		state = *w.latest
+	} else {
+		state, err = source.snapshot()
+	}
 	if err != nil {
 		return state, err
 	}
@@ -2015,9 +2100,24 @@ func (w *RunWriter) taskStateLocked() (contract.Checkpoint, error) {
 func (w *RunWriter) AttachNativeTaskEnvelope(binding RunBinding, source NativeTaskEnvelopeSource) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if !w.rootBinding(binding) || source.Limit < 1 || source.Limit > 100 || source.Counts == nil || source.Reserve == nil {
+	if !w.rootBinding(binding) || source.Limit < 1 || source.Limit > 100 || source.ChildReserve < 1 || source.ChildReserve > source.Limit || source.Counts == nil || source.Reserve == nil {
 		return &ContinuationIdentityChanged{}
 	}
+	scope, _ := canonicalRaw(binding.Scope)
+	expected := &TaskCoordinatorBinding{Version: 1, Owner: "native-delegation", Run: w.ID, Execution: binding.Scope.Execution, ScopeDigest: durableDigest(scope), Limit: source.Limit, ChildReserve: source.ChildReserve}
+	var retained *Value
+	if w.latest != nil {
+		retained = taskCheckpointValue(*w.latest).Get("planState").Get("taskCoordinator")
+	}
+	if retained != nil || w.restoredTaskHead {
+		if retained == nil || CanonicalJSON(retained) != usageCanonical(expected) {
+			return &ContinuationIdentityChanged{}
+		}
+	}
+	if w.nativeTaskCoordinator != nil && usageCanonical(w.nativeTaskCoordinator) != usageCanonical(expected) {
+		return &ContinuationIdentityChanged{}
+	}
+	w.nativeTaskCoordinator = expected
 	w.nativeTaskEnvelope = &source
 	return nil
 }
@@ -2053,7 +2153,7 @@ func (w *RunWriter) taskRemainingLocked(root contract.Checkpoint, scope DurableS
 			}
 		}
 		reserve := source.Reserve(scope)
-		if reserve < 0 || reserve > source.Limit {
+		if reserve < 0 || reserve > source.Limit || w.nativeTaskCoordinator == nil || scope.Task == "" && reserve != 0 || scope.Task != "" && reserve != w.nativeTaskCoordinator.ChildReserve {
 			return 0, false, &ContinuationIdentityChanged{}
 		}
 		remaining, known = source.Limit-counted-reserve, true

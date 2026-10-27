@@ -107,3 +107,45 @@ func TestTurnRouteActualEinoResolvedAndClassifier(t *testing.T) {
 		})
 	}
 }
+
+func TestTurnRouteEinoInvalidOutputCeilingNeverDispatches(t *testing.T) {
+	for _, fixture := range []struct {
+		name    string
+		ceiling int
+	}{{"negative", -1}, {"above-reserve", 1000000000}} {
+		t.Run(fixture.name, func(t *testing.T) {
+			store := runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})
+			run := routeClassifierRun(store)
+			run.Policy["budget"] = map[string]any{"outputTokens": 1024}
+			run.RequestOutputCeiling = fixture.ceiling
+			calls, ends := 0, 0
+			var failures []*contract.RunEventError
+			run.Emit = func(event contract.RunEvent) {
+				if event.Error != nil {
+					failures = append(failures, event.Error)
+				}
+				if event.End != nil {
+					ends++
+				}
+			}
+			run.Model = func(context.Context, string, relay.Request) (*http.Response, error) {
+				calls++
+				return observationReply(`{"label":"cheap"}`, nil), nil
+			}
+			if err := eino.New().Run(context.Background(), run); err != nil {
+				t.Fatal(err)
+			}
+			const detail = "The physical output ceiling is outside the admitted output reserve."
+			if len(failures) != 1 || failures[0].Failure == nil || failures[0].Failure.Code != "configuration" || failures[0].Failure.Source != "context" || failures[0].Failure.Detail == nil || *failures[0].Failure.Detail != detail || ends != 1 {
+				t.Fatalf("missing output-ceiling configuration refusal or terminal event: failures=%+v ends=%d", failures, ends)
+			}
+			if calls != 0 {
+				t.Fatalf("invalid output ceiling %d dispatched %d model requests before configuration refusal", fixture.ceiling, calls)
+			}
+			checkpoint := routeCheckpoint(t, store)
+			if checkpoint.Used != 0 || checkpoint.Durable != nil && len(checkpoint.Durable.Dispatches) != 0 {
+				t.Fatal("invalid output ceiling consumed a request or retained a physical dispatch claim")
+			}
+		})
+	}
+}

@@ -99,7 +99,7 @@ export function readRunEvent(value:unknown):AssistantEvent{checkRecord('event',v
 export function checkRecordVersion(kind:RecordKind,value:unknown):void{versionOf(kind,value)}
 export function readPolicyLayer(value:unknown):PolicyLayer{checkRecord('policy',value);return structuredClone(value) as PolicyLayer}
 /** Internal unversioned event bodies become current records at the delivery boundary. */
-export function writeRunEvent<T extends AssistantEvent>(event:T):T&{version:1|2}{return {...event,version:event.version===2||event.type==='repeat_detected'||event.type==='route_decided'||event.type==='route_widened'||event.type==='approval_requested'&&'runtime'in event&&event.runtime!==undefined||event.type==='execution_checkpoint'&&event.checkpoint.version===3||event.type==='budget_paused'&&event.checkpoint.version===3?2:1}}
+export function writeRunEvent<T extends AssistantEvent>(event:T):T&{version:1|2}{return {...event,version:event.version===2||event.type==='plan_drift_decided'&&event.nativeInvocation!==undefined||event.type==='repeat_detected'||event.type==='route_decided'||event.type==='route_widened'||event.type==='approval_requested'&&'runtime'in event&&event.runtime!==undefined||event.type==='execution_checkpoint'&&event.checkpoint.version===3||event.type==='budget_paused'&&event.checkpoint.version===3?2:1}}
 export function versionEvents(events:AsyncIterable<AssistantEvent>):AsyncIterable<AssistantEvent>{
  return {[Symbol.asyncIterator](){
   const source=events[Symbol.asyncIterator]()

@@ -18,7 +18,8 @@ import type {McpToolResult} from '../engine'
 import {MAX_TURNS} from '../engines/contract'
 import {utf8Bytes} from '../context/policy'
 import {validCriticRecord,type CriticRecord} from '../criticSwitch'
-import {CHECKPOINT_SCHEMA,PROVENANCE_SCHEMA,recordDigest,validRecordHeader} from '../records'
+import {canonicalJSON} from '../context/chat'
+import {CHECKPOINT_SCHEMA,PROVENANCE_SCHEMA,recordDigest,validRecordHeader,sha256} from '../records'
 
 export const REQUEST_INCREMENT = 10
 export const MAX_REQUEST_ALLOWANCE = 100
@@ -204,8 +205,13 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(metadata&&!validRecordHeader(value,CHECKPOINT_SCHEMA))return fail()
  if(value.repeatTools!==undefined&&(value.version!==3||!validRepeatTools(value.repeatTools)))return fail()
  if(!validRepeatRecordCustody(value))return fail()
+ const nativeBook=value.durable as import('../storage/writer').DurableBook|undefined
+ if(nativeBook?.dispatches?.some(row=>row.planPause&&(typeof row.planPause.callId!=='string'||row.planPause.callId.length<1||row.planPause.callId.length>256||!/^sha256:[a-f0-9]{64}$/.test(row.planPause.revision)||!/^sha256:[a-f0-9]{64}$/.test(row.planPause.candidateRevision)||value.version!==3||row.kind!=='agent'||row.state!=='unknown'||!row.read||row.scope.execution!==value.id||row.scope.role!=='author'||row.scope.task!==undefined)))return fail()
+ for(const decision of (value.planState as import('./plan').PlanState|undefined)?.decisions??[]){if(!decision.nativeInvocation)continue;const row=nativeBook?.dispatches?.find(row=>row.id===decision.nativeInvocation!.dispatchId);if(value.version!==3||!row?.planPause||row.requestDigest!==decision.nativeInvocation.requestDigest||row.planPause.callId!==decision.callId||row.planPause.revision!==decision.revision||row.planPause.candidateRevision!==decision.candidateRevision)return fail()}
  const schedule=(value.planState as import('./plan').PlanState|undefined)?.taskSchedule
  if(schedule&&(schedule.binding.execution!==value.id||schedule.binding.unit!==value.unit))return fail()
+ const coordinator=(value.planState as import('./plan').PlanState|undefined)?.taskCoordinator
+ if(coordinator&&(value.version!==3||coordinator.run!==value.id||coordinator.execution!==value.id||value.unit!=='provider-managed'||coordinator.scopeDigest!==`sha256:${sha256(canonicalJSON({execution:value.id,role:'author'}))}`))return fail()
  const envelope=(value.planState as import('./plan').PlanState|undefined)?.taskEnvelope
  if(envelope&&(envelope.run!==value.id||envelope.execution!==value.id||value.unit!=='provider-managed'))return fail()
  if(!Number.isInteger(value.used)||Number(value.used)<0||!Number.isInteger(value.limit)||Number(value.limit)<1||Number(value.limit)>MAX_REQUEST_ALLOWANCE||Number(value.used)>Number(value.limit)||!Array.isArray(value.grants)||value.grants.length>8)return fail()

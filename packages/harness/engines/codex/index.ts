@@ -1,3 +1,4 @@
+import {markNativePlanPause} from '../../storage/nativePlanPause'
 import {nativeCaptureRequest} from '../../storage/physicalDispatch'
 import {recordSubagents} from '../../subagents'
 import {failureEvent,failureError,toolFailureResult} from '../../failures'
@@ -213,7 +214,7 @@ function runCodexLoop(session: RequestAgentAssistantSession): AsyncIterable<Assi
           const text = textOf(result)
           await deliver({ type: 'tool_result', callId: call.id, name: route.name, isError: result.isError === true, text,
             ...(result.structuredContent === undefined ? {} : { structured: result.structuredContent }) })
-          if(context.execution.state.planState?.pending){awaitingInput=true;inputPause.abort();throw new DOMException('Waiting for the person’s plan decision','AbortError')}
+          if(context.execution.state.planState?.pending){markNativePlanPause(context);awaitingInput=true;inputPause.abort();throw new DOMException('Waiting for the person’s plan decision','AbortError')}
           // agent#10: the arguments and the structured answer, which the outcome comparison reads.
           if (runtimeAnswered) recorder?.saw(route.name, text, runtime?.args??call.arguments, result.structuredContent)
           // Text-only host callback wire, including structured results in a

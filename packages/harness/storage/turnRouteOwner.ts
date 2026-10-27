@@ -1,4 +1,4 @@
-import {providerReleaseAttempt,ProviderReleaseUnknown} from './release'
+import {providerReleaseAttempt,composeProviderRelease,ProviderReleaseUnknown} from './release'
 import {observeNativeWitness} from './physicalDispatch'
 import {canonicalJSON} from '../context/chat'
 import {withAbort} from '../engines/contract'
@@ -113,7 +113,7 @@ export class TurnRouteOwner {
    current();if(!need||Object.keys(need).some(k=>!['kind','name'].includes(k))||!['tool','skill','planning'].includes(need.kind)||typeof need.name!=='string'||need.kind==='planning'&&need.name!=='update_plan'||need.kind==='skill'&&!this.catalogue.skills.includes(need.name)||need.kind!=='skill'&&!this.catalogue.tools.some(t=>t.name===need.name))throw Error('TurnRouteCapabilityIdentityChanged')
    observeNativeWitness(witness);this.require(need.name);throw Error('TurnRouteCapabilityAlreadyOffered')
   }
-  try{await run(request,{...callbacks,providerRelease:release.capability,capabilityNeeded:needed,tool:async(call,signal)=>{current();observeNativeWitness(witness);this.require(call.name,call.arguments);return callbacks.tool(call,signal)}})}catch(error){problem=error}finally{live=false}
+  try{await run(request,{...callbacks,providerRelease:composeProviderRelease(callbacks.providerRelease,release.capability),capabilityNeeded:needed,tool:async(call,signal)=>{current();observeNativeWitness(witness);this.require(call.name,call.arguments);return callbacks.tool(call,signal)}})}catch(error){problem=error}finally{live=false}
   const acknowledged=release.finish()
   if(this.#pending){if(!acknowledged||callbacks.signal.aborted||problem!==undefined&&!isRouteCapabilityNeeded(problem)){this.#nativeReleaseBlocked=true;throw problem??new ProviderReleaseUnknown()};const binding=this.session.context?.[durableOwner];if(!binding||!claim||!route)throw new ProviderReleaseUnknown();binding.writer.acknowledgeNativeRouteRelease(binding,claim,identity,route,this.#pending);this.#nativeClaim=claim;throw new RouteCapabilityNeeded()}
   if(problem!==undefined)throw problem

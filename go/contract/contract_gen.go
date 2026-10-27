@@ -70,6 +70,9 @@ var Registry = map[string]func() any{
 	"checkpoint.json#/$defs/repeatObservation":                  func() any { return new(CheckpointRepeatObservation) },
 	"checkpoint.json#/$defs/repeatExecution":                    func() any { return new(CheckpointRepeatExecution) },
 	"checkpoint.json#/$defs/repeatTools":                        func() any { return new(CheckpointRepeatTools) },
+	"checkpoint.json#/$defs/taskCoordinatorBinding":             func() any { return new(CheckpointTaskCoordinatorBinding) },
+	"checkpoint.json#/$defs/nativePlanPause":                    func() any { return new(CheckpointNativePlanPause) },
+	"checkpoint.json#/$defs/nativePlanInvocation":               func() any { return new(CheckpointNativePlanInvocation) },
 	"corpus-candidate.json":                                     func() any { return new(CorpusCandidate) },
 	"corpus-checkpoint-view.json":                               func() any { return new(CorpusCheckpointView) },
 	"corpus-checkpoint-view.json#/$defs/v1.failure.json":        func() any { return new(CorpusCheckpointViewV1FailureJSON) },
@@ -2137,9 +2140,10 @@ type CheckpointDurableDispatch struct {
 	Failure          *Failure                        `json:"failure,omitzero"`
 	Artifacts        []CheckpointArtifactObservation `json:"artifacts,omitzero"`
 	RepeatResultJSON *string                         `json:"repeatResultJson,omitzero"`
+	PlanPause        *CheckpointNativePlanPause      `json:"planPause,omitzero"`
 }
 
-var checkpointDurableDispatchMembers = []string{"id", "scope", "kind", "source", "tool", "fingerprint", "request", "requestDigest", "state", "read", "result", "failure", "artifacts", "repeatResultJson"}
+var checkpointDurableDispatchMembers = []string{"id", "scope", "kind", "source", "tool", "fingerprint", "request", "requestDigest", "state", "read", "result", "failure", "artifacts", "repeatResultJson", "planPause"}
 
 // UnmarshalJSON decodes a CheckpointDurableDispatch object and refuses a member the closed schema does not name.
 func (v *CheckpointDurableDispatch) UnmarshalJSON(data []byte) error {
@@ -2351,6 +2355,63 @@ func (v CheckpointHandoff) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From checkpoint.json#/$defs/nativePlanInvocation. Exact earlier released Plan-pause invocation
+// selected by an acknowledged explicit decision. It grants no allowance or automatic replay.
+type CheckpointNativePlanInvocation struct {
+	DispatchID    string `json:"dispatchId"`
+	RequestDigest string `json:"requestDigest"`
+}
+
+var checkpointNativePlanInvocationMembers = []string{"dispatchId", "requestDigest"}
+
+// UnmarshalJSON decodes a CheckpointNativePlanInvocation object and refuses a member the closed schema does not name.
+func (v *CheckpointNativePlanInvocation) UnmarshalJSON(data []byte) error {
+	type plain CheckpointNativePlanInvocation
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointNativePlanInvocationMembers, true)
+	if err != nil {
+		return errorf("CheckpointNativePlanInvocation: %w", err)
+	}
+	*v = CheckpointNativePlanInvocation(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointNativePlanInvocation object.
+func (v CheckpointNativePlanInvocation) MarshalJSON() ([]byte, error) {
+	type plain CheckpointNativePlanInvocation
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/nativePlanPause. Original invocation release and package-owned Plan
+// pause retained by the original writer; unknown outcome remains unknown. Not a dispatch grant.
+type CheckpointNativePlanPause struct {
+	CallID            string `json:"callId"`
+	Revision          string `json:"revision"`
+	CandidateRevision string `json:"candidateRevision"`
+}
+
+var checkpointNativePlanPauseMembers = []string{"callId", "revision", "candidateRevision"}
+
+// UnmarshalJSON decodes a CheckpointNativePlanPause object and refuses a member the closed schema does not name.
+func (v *CheckpointNativePlanPause) UnmarshalJSON(data []byte) error {
+	type plain CheckpointNativePlanPause
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointNativePlanPauseMembers, true)
+	if err != nil {
+		return errorf("CheckpointNativePlanPause: %w", err)
+	}
+	*v = CheckpointNativePlanPause(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointNativePlanPause object.
+func (v CheckpointNativePlanPause) MarshalJSON() ([]byte, error) {
+	type plain CheckpointNativePlanPause
+	return encodeObject(plain(v), nil)
+}
+
 // From checkpoint.json#/$defs/operation. One tool call as the host journaled it from the tool_call
 // and tool_result events.
 type CheckpointOperation struct {
@@ -2473,14 +2534,15 @@ func (v CheckpointPlanChange) MarshalJSON() ([]byte, error) {
 
 // From checkpoint.json#/$defs/planDecision.
 type CheckpointPlanDecision struct {
-	CallID            string  `json:"callId"`
-	Revision          string  `json:"revision"`
-	CandidateRevision string  `json:"candidateRevision"`
-	Approved          bool    `json:"approved"`
-	Note              *string `json:"note,omitzero"`
+	CallID            string                          `json:"callId"`
+	Revision          string                          `json:"revision"`
+	CandidateRevision string                          `json:"candidateRevision"`
+	Approved          bool                            `json:"approved"`
+	Note              *string                         `json:"note,omitzero"`
+	NativeInvocation  *CheckpointNativePlanInvocation `json:"nativeInvocation,omitzero"`
 }
 
-var checkpointPlanDecisionMembers = []string{"callId", "revision", "candidateRevision", "approved", "note"}
+var checkpointPlanDecisionMembers = []string{"callId", "revision", "candidateRevision", "approved", "note", "nativeInvocation"}
 
 // UnmarshalJSON decodes a CheckpointPlanDecision object and refuses a member the closed schema does not name.
 func (v *CheckpointPlanDecision) UnmarshalJSON(data []byte) error {
@@ -2645,25 +2707,26 @@ func (v CheckpointPlanRevision) MarshalJSON() ([]byte, error) {
 
 // From checkpoint.json#/$defs/planState.
 type CheckpointPlanState struct {
-	Revision            string                          `json:"revision"`
-	Sequence            int64                           `json:"sequence"`
-	NextID              int64                           `json:"nextId"`
-	Discarded           int64                           `json:"discarded"`
-	History             []CheckpointPlanRevision        `json:"history"`
-	Accepted            *CheckpointAcceptedPlan         `json:"accepted,omitzero"`
-	DriftPolicy         []string                        `json:"driftPolicy,omitzero"`
-	Departures          []CheckpointPlanDepartureRecord `json:"departures,omitzero"`
-	DeparturesDiscarded *int64                          `json:"departuresDiscarded,omitzero"`
-	Pending             *CheckpointPendingDeparture     `json:"pending,omitzero"`
-	Refusals            []CheckpointPlanRefusal         `json:"refusals,omitzero"`
-	RefusalsDiscarded   *int64                          `json:"refusalsDiscarded,omitzero"`
-	Decisions           []CheckpointPlanDecision        `json:"decisions,omitzero"`
-	DecisionsDiscarded  *int64                          `json:"decisionsDiscarded,omitzero"`
-	TaskSchedule        *CheckpointTaskSchedule         `json:"taskSchedule,omitzero"`
-	TaskEnvelope        *CheckpointTaskEnvelopeBinding  `json:"taskEnvelope,omitzero"`
+	Revision            string                            `json:"revision"`
+	Sequence            int64                             `json:"sequence"`
+	NextID              int64                             `json:"nextId"`
+	Discarded           int64                             `json:"discarded"`
+	History             []CheckpointPlanRevision          `json:"history"`
+	Accepted            *CheckpointAcceptedPlan           `json:"accepted,omitzero"`
+	DriftPolicy         []string                          `json:"driftPolicy,omitzero"`
+	Departures          []CheckpointPlanDepartureRecord   `json:"departures,omitzero"`
+	DeparturesDiscarded *int64                            `json:"departuresDiscarded,omitzero"`
+	Pending             *CheckpointPendingDeparture       `json:"pending,omitzero"`
+	Refusals            []CheckpointPlanRefusal           `json:"refusals,omitzero"`
+	RefusalsDiscarded   *int64                            `json:"refusalsDiscarded,omitzero"`
+	Decisions           []CheckpointPlanDecision          `json:"decisions,omitzero"`
+	DecisionsDiscarded  *int64                            `json:"decisionsDiscarded,omitzero"`
+	TaskSchedule        *CheckpointTaskSchedule           `json:"taskSchedule,omitzero"`
+	TaskEnvelope        *CheckpointTaskEnvelopeBinding    `json:"taskEnvelope,omitzero"`
+	TaskCoordinator     *CheckpointTaskCoordinatorBinding `json:"taskCoordinator,omitzero"`
 }
 
-var checkpointPlanStateMembers = []string{"revision", "sequence", "nextId", "discarded", "history", "accepted", "driftPolicy", "departures", "departuresDiscarded", "pending", "refusals", "refusalsDiscarded", "decisions", "decisionsDiscarded", "taskSchedule", "taskEnvelope"}
+var checkpointPlanStateMembers = []string{"revision", "sequence", "nextId", "discarded", "history", "accepted", "driftPolicy", "departures", "departuresDiscarded", "pending", "refusals", "refusalsDiscarded", "decisions", "decisionsDiscarded", "taskSchedule", "taskEnvelope", "taskCoordinator"}
 
 // UnmarshalJSON decodes a CheckpointPlanState object and refuses a member the closed schema does not name.
 func (v *CheckpointPlanState) UnmarshalJSON(data []byte) error {
@@ -3039,6 +3102,40 @@ func (v *CheckpointTaskCompletionEvidence) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a CheckpointTaskCompletionEvidence object.
 func (v CheckpointTaskCompletionEvidence) MarshalJSON() ([]byte, error) {
 	type plain CheckpointTaskCompletionEvidence
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/taskCoordinatorBinding. Original package native-delegation ceiling
+// and child reserve, pinned before first dispatch; separate from host taskEnvelope configuration.
+// Retained facts permit metadata-only Plan decisions and never grant dispatch.
+type CheckpointTaskCoordinatorBinding struct {
+	Version      int64  `json:"version"`
+	Owner        string `json:"owner"`
+	Run          string `json:"run"`
+	Execution    string `json:"execution"`
+	ScopeDigest  string `json:"scopeDigest"`
+	Limit        int64  `json:"limit"`
+	ChildReserve int64  `json:"childReserve"`
+}
+
+var checkpointTaskCoordinatorBindingMembers = []string{"version", "owner", "run", "execution", "scopeDigest", "limit", "childReserve"}
+
+// UnmarshalJSON decodes a CheckpointTaskCoordinatorBinding object and refuses a member the closed schema does not name.
+func (v *CheckpointTaskCoordinatorBinding) UnmarshalJSON(data []byte) error {
+	type plain CheckpointTaskCoordinatorBinding
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointTaskCoordinatorBindingMembers, true)
+	if err != nil {
+		return errorf("CheckpointTaskCoordinatorBinding: %w", err)
+	}
+	*v = CheckpointTaskCoordinatorBinding(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointTaskCoordinatorBinding object.
+func (v CheckpointTaskCoordinatorBinding) MarshalJSON() ([]byte, error) {
+	type plain CheckpointTaskCoordinatorBinding
 	return encodeObject(plain(v), nil)
 }
 
@@ -18117,17 +18214,18 @@ func (v RunEventPlanDeparted) MarshalJSON() ([]byte, error) {
 
 // From run-event.json#/$defs/plan_drift_decided.
 type RunEventPlanDriftDecided struct {
-	Type              string  `json:"type"`
-	Version           *int64  `json:"version,omitzero"`
-	Execution         string  `json:"execution"`
-	CallID            string  `json:"callId"`
-	Revision          string  `json:"revision"`
-	CandidateRevision string  `json:"candidateRevision"`
-	Approved          bool    `json:"approved"`
-	Note              *string `json:"note,omitzero"`
+	Type              string                          `json:"type"`
+	Version           *int64                          `json:"version,omitzero"`
+	Execution         string                          `json:"execution"`
+	CallID            string                          `json:"callId"`
+	Revision          string                          `json:"revision"`
+	CandidateRevision string                          `json:"candidateRevision"`
+	Approved          bool                            `json:"approved"`
+	Note              *string                         `json:"note,omitzero"`
+	NativeInvocation  *CheckpointNativePlanInvocation `json:"nativeInvocation,omitzero"`
 }
 
-var runEventPlanDriftDecidedMembers = []string{"type", "version", "execution", "callId", "revision", "candidateRevision", "approved", "note"}
+var runEventPlanDriftDecidedMembers = []string{"type", "version", "execution", "callId", "revision", "candidateRevision", "approved", "note", "nativeInvocation"}
 
 // UnmarshalJSON decodes a RunEventPlanDriftDecided object and refuses a member the closed schema does not name.
 func (v *RunEventPlanDriftDecided) UnmarshalJSON(data []byte) error {

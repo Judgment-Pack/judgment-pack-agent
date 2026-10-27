@@ -554,6 +554,27 @@ func validTaskConfiguration(step *Value) bool {
 	return true
 }
 
+// TaskCoordinatorBinding pins the original package coordinator independently of host configuration.
+type TaskCoordinatorBinding struct {
+	Version      int    `json:"version"`
+	Owner        string `json:"owner"`
+	Run          string `json:"run"`
+	Execution    string `json:"execution"`
+	ScopeDigest  string `json:"scopeDigest"`
+	Limit        int    `json:"limit"`
+	ChildReserve int    `json:"childReserve"`
+}
+
+func readTaskCoordinatorBinding(value *Value) (*TaskCoordinatorBinding, error) {
+	var out TaskCoordinatorBinding
+	decoder := json.NewDecoder(bytes.NewReader(value.JSON()))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&out) != nil || out.Version != 1 || out.Owner != "native-delegation" || !taskSafeID(out.Run) || !taskSafeID(out.Execution) || !recordDigestPattern.MatchString(out.ScopeDigest) || out.Limit < 1 || out.Limit > 100 || out.ChildReserve < 1 || out.ChildReserve > out.Limit {
+		return nil, taskStepFail("invalid-coordinator-envelope")
+	}
+	return &out, nil
+}
+
 // TaskStepEnvelope is a new explicit host-configured finite invocation ceiling, not availability.
 type TaskStepEnvelope struct {
 	ID       string `json:"id"`
@@ -588,7 +609,7 @@ func taskRecordFields(value *Value) bool {
 			return true
 		}
 	}
-	if state.Has("taskSchedule") || state.Has("taskEnvelope") {
+	if state.Has("taskSchedule") || state.Has("taskEnvelope") || state.Has("taskCoordinator") {
 		return true
 	}
 	for _, step := range value.Get("plan").Items() {

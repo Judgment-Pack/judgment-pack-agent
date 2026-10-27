@@ -14,3 +14,15 @@ export function providerReleaseAttempt():{capability:ProviderRelease;finish:()=>
  const capability=Object.freeze({invocation,acknowledge(token:object){if(!live||token!==invocation||acknowledged){invalid=true;return false};acknowledged=true;return true}})
  return {capability,finish(){live=false;return acknowledged&&!invalid}}
 }
+
+/** Compose original owners while preserving each exact token and duplicate/wrong refusal. */
+export function composeProviderRelease(...given:(ProviderRelease|undefined)[]):ProviderRelease|undefined {
+ const owners=given.filter((owner):owner is ProviderRelease=>owner!==undefined)
+ if(owners.length===0)return
+ if(owners.length===1)return owners[0]
+ const invocation=Object.freeze(Object.create(null)) as object;let responded=false
+ return Object.freeze({invocation,acknowledge(token:object){
+  if(token!==invocation||responded){for(const owner of owners)owner.acknowledge(Object.freeze({}));return false}
+  responded=true;const results=owners.map(owner=>owner.acknowledge(owner.invocation));if(!results.every(Boolean)){for(const owner of owners)owner.acknowledge(Object.freeze({}));return false};return true
+ }})
+}

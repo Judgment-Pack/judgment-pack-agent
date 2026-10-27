@@ -13,6 +13,7 @@ import {subagentRecord,type SubagentDeclaration} from './subagents'
 import type {DelegatedTask,DelegationRequest} from './delegationContract'
 import {describe,it,expect,vi} from 'vitest'
 import {contextualSession} from './context/session'
+import {recordDigest} from './records'
 import {MemoryRunStore,type RunStore} from './storage/run'
 import {readExecution,ExecutionPaused} from './execution/state'
 import type {AssistantSession,AgentAssistantSession} from './engine'
@@ -363,3 +364,25 @@ for(const status of [429,503])it('#183 original physical charges retain '+status
  expect(child).toBe(status===429?2:1);expect(parent).toBe(status===429?3:2);expect(state.used).toBe(status===429?5:3);expect(row.claims).toHaveLength(status===429?2:1);expect(new Set(row.claims.map((claim:{id:string})=>claim.id)).size).toBe(row.claims.length)
  if(status===429){expect(events.some(event=>event.type==='delegated_task'&&event.task.state==='complete'&&event.task.modelRequests===2)).toBe(true);expect(row.child.result).toBeDefined()}else expect(row.child.result).toBeUndefined()
 },60_000)
+
+
+describe('#219 original native coordinator pin',()=>{
+ it('persists original enrollment before dispatch and refuses missing or changed restart registration',async()=>{
+  const store=new MemoryRunStore();let calls=0
+  const run=vi.fn<AgentRun>(async()=>{const cp=await saved(store);expect(cp.planState.taskCoordinator).toMatchObject({owner:'native-delegation',limit:6,childReserve:1});calls++})
+  const source={limit:6,childReserve:1,counts:()=>[{execution:'task-steps-183',count:calls}],reserve:(scope:{task?:string})=>scope.task?1:0}
+  const admitted=await durableSession(nativeInput(store,run)),binding=admitted.context![durableOwner]!
+  binding.writer.attachNativeTaskEnvelope(binding,source)
+  const ready=await contextualSession(admitted,'codex')
+  await update(ready,[{step:'Inspect',status:'in_progress',budget:{requests:2}}]);await nativeSend(ready);ready.context.close()
+  expect(calls).toBe(1)
+  const resumed=await durableSession(nativeInput(store,run,undefined,true)),held=resumed.context![durableOwner]!
+  for(const changed of [{...source,limit:7},{...source,childReserve:2}])expect(()=>held.writer.attachNativeTaskEnvelope(held,changed)).toThrow('ContinuationIdentityChanged')
+  expect(()=>held.writer.attachNativeTaskEnvelope(held,source)).not.toThrow()
+  const before=(await store.load('task-steps-183'))!,cp=await saved(store);delete cp.planState.taskCoordinator;cp.digest=recordDigest(cp)
+  await store.commit({runId:'task-steps-183',expectedRevision:before.revision,commitId:'missing-coordinator-fixture',checkpoint:new TextEncoder().encode(JSON.stringify(cp)),events:[]})
+  const missing=await durableSession(nativeInput(store,run,undefined,true)),lost=missing.context![durableOwner]!
+  expect(()=>lost.writer.attachNativeTaskEnvelope(lost,source)).toThrow('ContinuationIdentityChanged')
+  expect(calls).toBe(1)
+ })
+})

@@ -42,7 +42,8 @@
     "./storage/runtimeActionOwner": null,
     "./context/runtimeActions": null,
     "./history/captureCollector": null,
-    "./history/nativeBindings": null
+    "./history/nativeBindings": null,
+    "./storage/nativePlanPause": null
   },
   "files": [
     "dist",

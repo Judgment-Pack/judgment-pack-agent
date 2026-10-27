@@ -1,3 +1,4 @@
+import {validNativePlanAttempt,nativePlanReceiptMatches,verifyNativePlanEvidence,type NativePlanAttempt} from './nativePlanPause'
 import type {NativeCaptureBindings} from './physicalDispatch'
 import {WriterCapture} from './writerCapture'
 import {observeRepeat,repeatKey,canonicalRepeatArgs,validRepeatTools,RepeatedToolLimit,type RepeatTools,type RepeatExecution,type RepeatPolicy,type RepeatDetected} from '../repeatTools'
@@ -29,7 +30,7 @@ import {checkpointCallbackRunStore,type RunStore,type RunHead} from './run'
 import {StorageConflict,requireId,storageId,STORAGE_RECORD_BYTES} from './common'
 export interface DurableScope {execution:string;role:string;task?:string}
 export interface ArtifactObservation {kind:'artifact'|'dialect';id:string;digest:string;access?:'read'|'produced'}
-export interface DurableDispatch {id:string;scope:DurableScope;kind:'model'|'agent'|'host'|'runtime';source:string;tool:string;fingerprint:string;request:string;requestDigest:string;state:'claimed'|'result'|'unknown';read:boolean;result?:unknown;repeatResultJson?:string;failure?:import('../failures').AIFailure;artifacts?:ArtifactObservation[]}
+export interface DurableDispatch {planPause?:import('../execution/plan').NativePlanPause;id:string;scope:DurableScope;kind:'model'|'agent'|'host'|'runtime';source:string;tool:string;fingerprint:string;request:string;requestDigest:string;state:'claimed'|'result'|'unknown';read:boolean;result?:unknown;repeatResultJson?:string;failure?:import('../failures').AIFailure;artifacts?:ArtifactObservation[]}
 export interface DurableObservation {id:string;scope:DurableScope;kind:'operation'|'artifact-read'|'artifact-produced';source:string;dispatchId:string;commitId:string;artifact?:ArtifactObservation}
 export interface DurableBook {dispatches:DurableDispatch[];observations:DurableObservation[];children:{scope:DurableScope;checkpoint:ExecutionCheckpoint}[];pendingHandoff?:{callId:string;request:import('../delegationContract').DelegationRequest}}
 export interface DurableRunInput {store:RunStore;id:string;/** Explicit host action. load/get/reload never resume. */resume?:boolean;context?:StoredChatScope}
@@ -41,7 +42,7 @@ export class ContinuationIdentityChanged extends AIFailureError {constructor(){s
 export const durableOwner=Symbol('Agent durable writer')
 /** Trusted coordinator accounting, before the root dispatch claim is frozen. */
 export const prepareProviderDispatch=Symbol('Agent coordinator provider preparation')
-interface NativeTaskEnvelopeSource {limit:number;counts:()=>{execution:string;count:number}[];reserve:(scope:DurableScope)=>number}
+interface NativeTaskEnvelopeSource {limit:number;childReserve:number;counts:()=>{execution:string;count:number}[];reserve:(scope:DurableScope)=>number}
 export interface DurableBinding {writer:RunWriter;scope:DurableScope;root:boolean}
 // Registration is keyed by source-created tool identity. No name, symbol or wire member grants it.
 const taskDelegationTools=new WeakMap<HostTool,{binding:DurableBinding;schema:string}>()
@@ -120,6 +121,7 @@ export class RunWriter {
  private readonly restoredTaskHead:boolean
  private configuredTaskEnvelope?:TaskEnvelopeBinding
  private nativeTaskEnvelope?:NativeTaskEnvelopeSource
+ private nativeTaskCoordinator?:import('../taskSteps').TaskCoordinatorBinding
  private taskSchedule?:TaskSchedule
  private taskScopes=new Map<string,{snapshot:()=>ExecutionCheckpoint;profiles:()=>SubagentRecord[];accept:(state:ExecutionCheckpoint)=>void;charge:(kind:'model'|'agent',role:string,request:string)=>Promise<void>}>()
  private taskRoot?:string
@@ -128,6 +130,7 @@ export class RunWriter {
  private budget?:UsageJournalOwner
  private contextSource?:StoredChatScope
  private nativeClaims=new WeakMap<object,NativeRouteClaim>()
+ private nativePlanSuperseded=new Map<string,string>()
  private nativeSuperseded=new Map<string,{id:string;requestDigest:string;route:string}>()
  get hasLiveCapture(){return this.capture!==undefined}
  private captureRootBinding?:DurableBinding
@@ -200,6 +203,8 @@ export class RunWriter {
    const retained=saved??this.configuredTaskEnvelope
    if(expected&&source.snapshot().unit!=='provider-managed'||(retained!==undefined||this.restoredTaskHead)&&canonicalJSON(retained??null)!==canonicalJSON(expected??null))throw new ContinuationIdentityChanged()
    this.configuredTaskEnvelope=expected;this.taskRoot=binding.scope.execution
+   // Bind original writer-owned pins before a first pending candidate is created.
+   if(expected||this.nativeTaskCoordinator){const pinned=source.snapshot();if(!pinned.planState)throw new ContinuationIdentityChanged();mutateCheckpoint(pinned,{planState:{...pinned.planState,...(expected?{taskEnvelope:structuredClone(expected)}:{}),...(this.nativeTaskCoordinator?{taskCoordinator:structuredClone(this.nativeTaskCoordinator)}:{})}});source.accept(pinned)}
    if(this.taskSchedule){
     if(this.taskSchedule.binding.run!==this.id||this.taskSchedule.binding.execution!==this.id||this.taskSchedule.binding.scopeDigest!==digest(scopeKey(binding.scope)))throw new ContinuationIdentityChanged()
     for(const row of this.taskSchedule.rows)for(const claim of row.claims){const physical=this.book.dispatches.find(dispatch=>dispatch.id===claim.id);if(!physical||physical.requestDigest!==claim.requestDigest||physical.scope.execution!==(row.child?.execution??this.id)||physical.scope.task!==(row.child?.task)||!['model','agent'].includes(physical.kind))throw new ContinuationIdentityChanged()}
@@ -323,7 +328,12 @@ export class RunWriter {
   for(const [step,result]of verified)this.taskResults.set(step,result)
  })}
  /** @internal The existing native coordinator supplies its own policy and per-execution counters. */
- attachNativeTaskEnvelope(binding:DurableBinding,source:NativeTaskEnvelopeSource){if(!this.rootBinding(binding)||!Number.isInteger(source.limit)||source.limit<1||source.limit>100)throw new ContinuationIdentityChanged();this.nativeTaskEnvelope=source}
+ attachNativeTaskEnvelope(binding:DurableBinding,source:NativeTaskEnvelopeSource){
+  if(!this.rootBinding(binding)||!Number.isInteger(source.limit)||source.limit<1||source.limit>100||!Number.isInteger(source.childReserve)||source.childReserve<1||source.childReserve>source.limit)throw new ContinuationIdentityChanged()
+  const expected:import('../taskSteps').TaskCoordinatorBinding={version:1,owner:'native-delegation',run:this.id,execution:binding.scope.execution,scopeDigest:digest(scopeKey(binding.scope)),limit:source.limit,childReserve:source.childReserve},retained=this.latest?.planState?.taskCoordinator
+  if((retained!==undefined||this.restoredTaskHead)&&canonicalJSON(retained??null)!==canonicalJSON(expected)||this.nativeTaskCoordinator&&canonicalJSON(this.nativeTaskCoordinator)!==canonicalJSON(expected))throw new ContinuationIdentityChanged()
+  this.nativeTaskCoordinator=expected;this.nativeTaskEnvelope=source
+ }
  private taskRemaining(root:ExecutionCheckpoint,scope?:DurableScope):number|undefined{
   if(root.unit==='model-requests')return root.limit-root.used-(scope?.task?1:0)
   const physical=new Map<string,number>()
@@ -335,7 +345,7 @@ export class RunWriter {
    // Exact original scopes corroborate counters; equal grand totals alone are insufficient.
    for(const execution of new Set([...counts.keys(),...physical.keys()]))if((counts.get(execution)??0)!==(physical.get(execution)??0))throw new ContinuationIdentityChanged()
    const reserve=scope?this.nativeTaskEnvelope.reserve(scope):0
-   if(!Number.isInteger(reserve)||reserve<0||reserve>this.nativeTaskEnvelope.limit)throw new ContinuationIdentityChanged()
+   if(!Number.isInteger(reserve)||reserve<0||reserve>this.nativeTaskEnvelope.limit||!this.nativeTaskCoordinator||(!scope?.task&&reserve!==0)||(!!scope?.task&&reserve!==this.nativeTaskCoordinator.childReserve))throw new ContinuationIdentityChanged()
    remaining=this.nativeTaskEnvelope.limit-[...counts.values()].reduce((n,count)=>n+count,0)-reserve
   }
   if(this.configuredTaskEnvelope){const configured=this.configuredTaskEnvelope.configuration.limit-[...physical.values()].reduce((n,count)=>n+count,0);remaining=remaining===undefined?configured:Math.min(remaining,configured)}
@@ -478,8 +488,10 @@ export class RunWriter {
    if(retainedCheckpoint(signed,false)!==retained)throw new ContinuationNotRecoverable()
    return {...child,checkpoint:signed}
   })
+  if(this.nativeTaskCoordinator){if(!owned.planState)throw new ContinuationIdentityChanged();mutateCheckpoint(owned,{planState:{...owned.planState,taskCoordinator:structuredClone(this.nativeTaskCoordinator)},version:3})}
   if(this.configuredTaskEnvelope){if(!owned.planState)throw new ContinuationIdentityChanged();mutateCheckpoint(owned,{planState:{...owned.planState,taskEnvelope:structuredClone(this.configuredTaskEnvelope)},version:3})}
   if(this.taskSchedule){if(owned.planState?.revision!==this.taskSchedule.binding.planRevision)throw new ContinuationIdentityChanged();mutateCheckpoint(owned,{planState:{...owned.planState,taskSchedule:structuredClone(this.taskSchedule)},version:3})}
+  if(this.book.dispatches.some(row=>row.planPause))mutateCheckpoint(owned,{version:3})
   const projected=this.decorate(owned);if(this.budget)mutateCheckpoint(projected,{version:3,usageBudget:this.budget.snapshot()});if(projected.handoff)delete this.book.pendingHandoff;if(this.book.pendingHandoff&&!this.dispatchClosed&&!this.repeatTools?.executions.find(row=>row.execution===projected.id)?.stopped)mutateCheckpoint(projected,{status:'running'});mutateCheckpoint(projected,{durable:structuredClone(this.book)})
   const retained=retainedCheckpoint(projected,true,policy)
   const before=canonicalJSON(projected.durable)
@@ -511,7 +523,8 @@ export class RunWriter {
   if(!root)throw new ContinuationNotRecoverable()
   const checkpoint=this.finalize(root)
   let candidate=event
-  if(this.taskSchedule&&event&&(event.type==='plan_revised'||event.type==='plan_departed'||event.type==='plan_completion_refused'||event.type==='plan_drift_decided'||event.type==='approval_requested'))candidate={...event,version:2}
+  if(event?.type==='plan_drift_decided'&&event.nativeInvocation)candidate={...event,version:2}
+  else if(this.taskSchedule&&event&&(event.type==='plan_revised'||event.type==='plan_departed'||event.type==='plan_completion_refused'||event.type==='plan_drift_decided'||event.type==='approval_requested'))candidate={...event,version:2}
   else if((this.budget||checkpoint.turnRoute)&&event&&(event.type==='execution_checkpoint'||event.type==='budget_paused'))candidate={...event,version:2}
   let output=candidate?writeRunEvent(candidate):undefined
   if(output&&(output.type==='execution_checkpoint'||output.type==='budget_paused'))output={...output,checkpoint:binding.root?checkpoint:state??output.checkpoint,...(output.type==='execution_checkpoint'?{durable:true}:{})}
@@ -545,6 +558,8 @@ export class RunWriter {
   claim.released=true;claim.needed=needed
  }
  private supersededNative(binding:DurableBinding,row:DurableDispatch){
+  const plan=this.nativePlanSuperseded.get(row.id)
+  if(plan){if(row.kind!=='agent'||row.state!=='unknown'||!row.read||scopeKey(row.scope)!==scopeKey(binding.scope)||canonicalJSON(row)!==plan)throw new ContinuationIdentityChanged();return true}
   if(row.kind!=='agent'||scopeKey(row.scope)!==scopeKey(binding.scope)||!this.latest?.turnRoute?.widened)return false
   const marker=this.latest.turnRoute.widenedInvocation,proof=this.nativeSuperseded.get(scopeKey(binding.scope))
   if(!marker||!proof||proof.route!==canonicalJSON(this.latest.turnRoute))throw new ContinuationIdentityChanged()
@@ -608,15 +623,39 @@ export class RunWriter {
   if(proof){proof.consumed=true;this.nativeSuperseded.set(scopeKey(binding.scope),{id:proof.id,requestDigest:proof.requestDigest,route:canonicalJSON(heldState.turnRoute)})}
   this.planDelivery.set(output,{scope:scopeKey(binding.scope),bytes:canonicalJSON(output)});return output
  })}
+ async restoreNativePlanDecisions(binding:DurableBinding,signal?:AbortSignal){
+  if(!this.rootBinding(binding))throw new ContinuationIdentityChanged()
+  if(!this.latest)return
+  for(const decision of this.latest.planState?.decisions??[]){if(!decision.nativeInvocation)continue
+   const old=this.book.dispatches.find(row=>row.id===decision.nativeInvocation!.dispatchId);if(!old)throw new ContinuationIdentityChanged()
+   const head=await this.store.load(this.id,signal);if(!head||head.revision!==this.revision||!this.acknowledgedCheckpoint||!head.checkpoint||historyBytesDigest(head.checkpoint)!==historyBytesDigest(this.acknowledgedCheckpoint))throw new ContinuationIdentityChanged()
+   await verifyNativePlanEvidence(this.store,head,this.latest,old,decision,true,signal);this.nativePlanSuperseded.set(old.id,canonicalJSON(old))
+  }
+ }
+ private async stageNativePlanDecision(binding:DurableBinding,state:ExecutionCheckpoint,event:Extract<AssistantEvent,{type:'plan_drift_decided'}>,signal?:AbortSignal):Promise<DurableDispatch|undefined>{
+  if(!binding.root||binding.scope.role!=='author'||binding.scope.task!==undefined||!this.latest)return
+  const pending=this.latest.planState?.pending
+  if(!pending||pending.callId!==event.callId||pending.revision!==event.revision||pending.candidate.planState.revision!==event.candidateRevision)throw new ContinuationIdentityChanged()
+  const rows=this.book.dispatches.filter(row=>row.kind==='agent'&&(row.state==='unknown'||row.state==='claimed')&&scopeKey(row.scope)===scopeKey(binding.scope)&&!this.nativePlanSuperseded.has(row.id))
+  if(rows.length>1||rows.some(row=>row.state!=='unknown'||row.planPause?.callId!==event.callId||row.planPause.revision!==event.revision||row.planPause.candidateRevision!==event.candidateRevision))throw new HostOutcomeUnknown();const old=rows[0];if(!old)return
+  const head=await this.store.load(this.id,signal);if(!head||head.revision!==this.revision||!this.acknowledgedCheckpoint||!head.checkpoint||historyBytesDigest(head.checkpoint)!==historyBytesDigest(this.acknowledgedCheckpoint))throw new ContinuationIdentityChanged()
+  const invocation=await verifyNativePlanEvidence(this.store,head,this.latest,old,undefined,false,signal)
+  const decision=state.planState?.decisions?.at(-1)
+  if(!decision||decision.callId!==event.callId||decision.revision!==event.revision||decision.candidateRevision!==event.candidateRevision||decision.approved!==event.approved||decision.note!==event.note)throw new ContinuationIdentityChanged()
+  decision.nativeInvocation=invocation;event.nativeInvocation=structuredClone(invocation);mutateCheckpoint(state,{version:3});return old
+ }
  commitPlan(binding:DurableBinding,state:ExecutionCheckpoint,event:import('../execution/controller').PlanEvent,signal?:AbortSignal){return this.enqueue(async()=>{
   if(this.dispatchClosed)throw new DispatchCanceled(new DOMException('The operation was aborted','AbortError'))
   if((event.type==='approval_requested'?(event.purpose==='plan-drift'?event.plan.execution:undefined):event.execution)!==binding.scope.execution)throw new ContinuationIdentityChanged()
   if(this.planDelivery.size>=400)throw new ContinuationNotRecoverable()
+  const paused=event.type==='plan_drift_decided'?await this.stageNativePlanDecision(binding,state,event,signal):undefined
   const prepared=(()=>{try{return this.prepareTaskPlan(binding,state)}catch(error){throw new DispatchCanceled(error)}})()
+  if(paused&&this.guard){const guarded=this.guard()?.value(event,'message',false);if(canonicalJSON(guarded)!==canonicalJSON(event))throw new ContinuationNotRecoverable()}
   const previous=this.taskSchedule
   this.taskSchedule=prepared.planState?.taskSchedule??this.taskSchedule
   let output:AssistantEvent
-  try{output=(await this.publish(binding,prepared,event,undefined,signal))!}catch(error){this.taskSchedule=previous;throw error}
+  try{output=(await this.publish(binding,prepared,event,undefined,signal))!}catch(error){this.taskSchedule=previous;if(paused&&!(error instanceof StorageConflict))throw new StorageOutcomeUnknown(error);throw error}
+  if(paused)this.nativePlanSuperseded.set(paused.id,canonicalJSON(paused))
   this.planDelivery.set(output,{scope:scopeKey(binding.scope),bytes:canonicalJSON(output)})
   return output
  })}
@@ -679,7 +718,7 @@ export class RunWriter {
   signal.throwIfAborted()
   return response!
  }
- async invoke<T>(binding:DurableBinding,kind:DurableDispatch['kind'],source:string,tool:string,request:string,read:boolean,execute:(request:string,nativeWitness?:object,nativeClaim?:object,captureFrame?:(body:string)=>void)=>Promise<T>,successful:(value:T)=>boolean=()=>true,artifacts:(value:T)=>ArtifactObservation[]=()=>[],signal?:AbortSignal,ticket?:object,captureBindings?:NativeCaptureBindings):Promise<T>{
+ async invoke<T>(binding:DurableBinding,kind:DurableDispatch['kind'],source:string,tool:string,request:string,read:boolean,execute:(request:string,nativeWitness?:object,nativeClaim?:object,captureFrame?:(body:string)=>void)=>Promise<T>,successful:(value:T)=>boolean=()=>true,artifacts:(value:T)=>ArtifactObservation[]=()=>[],signal?:AbortSignal,ticket?:object,captureBindings?:NativeCaptureBindings,planAttempt?:NativePlanAttempt):Promise<T>{
   safeRequest(request);requireId(source);requireId(tool)
   request=this.prepared(binding,kind,source,tool,request,true)
   const scope=structuredClone(binding.scope),fingerprint=digest(canonicalJSON({kind,scope,source,tool,request:JSON.parse(request)}))
@@ -701,7 +740,8 @@ export class RunWriter {
    }
    await this.claimTaskDispatch(binding,claim)
    this.claimRepeatReminder(binding,claim)
-   this.capture?.enroll(claim,captureBindings);this.book.dispatches.push(claim);await this.publish(binding,undefined,undefined,undefined,signal)
+   this.capture?.enroll(claim,captureBindings);this.book.dispatches.push(claim)
+   if(planAttempt){if(kind!=='agent'||!validNativePlanAttempt(planAttempt,binding))throw new ContinuationIdentityChanged();const state=this.root?.()??this.latest;if(!state)throw new ContinuationIdentityChanged();mutateCheckpoint(state,{version:3});await this.publish(binding,state,{type:'execution_checkpoint',checkpoint:state,durable:true,version:2},undefined,signal);planAttempt.claim=structuredClone(claim)}else await this.publish(binding,undefined,undefined,undefined,signal)
   })
   if(reused){if(reused.state!=='result'||reused.result===undefined)throw new HostOutcomeUnknown();return structuredClone(reused.result) as T}
   signal?.throwIfAborted();if(this.fatal!==undefined)throw this.fatal;if(this.dispatchClosed)throw new DOMException('The operation was aborted','AbortError')
@@ -721,7 +761,7 @@ export class RunWriter {
   }catch(error){
    if(kind!=='model')finishRecovery()
    const admitted=kind==='agent'&&admittedNativeWitness(nativeWitness,binding,ticket)&&!signal?.aborted&&!this.dispatchClosed
-   try{await this.enqueue(async()=>{if(this.stopped)return;claim.state='unknown';if(this.budget&&(kind==='model'||kind==='agent')&&!admitted)this.budget.unknown(claim.id);claim.failure=normalizeFailure(error,kind==='host'||kind==='runtime'?'tool':'agent');if(signal?.aborted||this.dispatchClosed){this.dispatchClosed=true;return}await this.publish(binding,undefined,undefined,undefined,signal)})}catch{throw new StorageOutcomeUnknown()}
+   try{await this.enqueue(async()=>{if(this.stopped)return;claim.state='unknown';if(this.budget&&(kind==='model'||kind==='agent')&&!admitted)this.budget.unknown(claim.id);claim.failure=normalizeFailure(error,kind==='host'||kind==='runtime'?'tool':'agent');if(signal?.aborted||this.dispatchClosed){this.dispatchClosed=true;return}const state=this.root?.()??this.latest;if(state&&nativePlanReceiptMatches(planAttempt,binding,claim,state)){claim.planPause=structuredClone(planAttempt!.pause!);mutateCheckpoint(state,{version:3});await this.publish(binding,state,{type:'execution_checkpoint',checkpoint:state,durable:true,version:2},undefined,signal)}else await this.publish(binding,undefined,undefined,undefined,signal)})}catch{throw new StorageOutcomeUnknown()}
    if(this.budget&&admitted)await this.observeUsage(binding,claim.id,{providerInvocations:1},digest(canonicalJSON({id:claim.id,kind:'agent',state:'unknown',callback:true})),signal)
    if(kind==='model')this.dispatchClosed=true
    throw error
@@ -786,6 +826,7 @@ export async function durableSession<T extends EngineSession>(session:T):Promise
  if(execution?.durable?.dispatches.some(row=>row.failure?.detail?.startsWith('ProviderReleaseUnknown:')))throw new ProviderReleaseUnknown()
  if(config?.context){if(config.context.store!==store||(input?.chat!==config.context&&!(config.context.ledgerScope&&input?.chat===undefined)))throw new ContinuationIdentityChanged();if(head){const history=await config.context.store.readHistoryHead(id,session.signal);if(!history?.context||history.executionRevision!==head.revision||!config.context.matches(history.context))throw new ContinuationIdentityChanged()}if(config.context.ledgerScope&&(!execution||execution.context.scope!==config.context.ledgerScope||execution.status==='complete'||execution.status==='stopped'))throw new ContinuationIdentityChanged()}
  const writer=new RunWriter(store,id,head,execution),binding:DurableBinding={writer,scope:{execution:id,role:'author'},root:true}
+ await writer.restoreNativePlanDecisions(binding,session.signal)
  if(session.record===true&&session.corpus&&(store as Partial<HistoryRunStore>).historyVersion===1)writer.enrollCapture(binding,session.corpus.manifest,session.corpus.sink)
  if(config?.context){writer.attachContext(config.context);if(head?.checkpoint)await writer.claimContext(head.checkpoint,session.signal)}
  return {...session,context:{...input,...(config?.context?.ledgerScope?{chat:undefined}:{}),execution,[durableOwner]:binding,checkpoint:state=>writer.save(binding,state,session.signal)}}

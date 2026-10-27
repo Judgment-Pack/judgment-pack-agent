@@ -362,6 +362,13 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 		chained = to.Num()
 	}
 	plan := value.Get("plan")
+	if pin := value.Get("planState").Get("taskCoordinator"); pin != nil {
+		coordinator, e := readTaskCoordinatorBinding(pin)
+		scope, _ := canonicalRaw(DurableScope{Execution: planText(value.Get("id")), Role: "author"})
+		if e != nil || version.Num() != 3 || coordinator.Run != planText(value.Get("id")) || coordinator.Execution != planText(value.Get("id")) || coordinator.ScopeDigest != durableDigest(scope) || planText(value.Get("unit")) != "provider-managed" {
+			return nil, errSavedExecution
+		}
+	}
 	if envelope := value.Get("planState").Get("taskEnvelope"); envelope != nil && (planText(envelope.Get("run")) != planText(value.Get("id")) || planText(envelope.Get("execution")) != planText(value.Get("id")) || planText(value.Get("unit")) != "provider-managed") {
 		return nil, errSavedExecution
 	}
@@ -380,6 +387,27 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 	}
 	if figures := value.Get("delegation"); figures != nil && !ValidDelegationFigures(figures, value.Get("unit").Str()) {
 		return nil, errSavedExecution
+	}
+	for _, row := range value.Get("durable").Get("dispatches").Items() {
+		if row.Has("planPause") && (!isText(row.Get("planPause").Get("callId"), 256) || planText(row.Get("planPause").Get("callId")) == "" || !recordDigestPattern.MatchString(planText(row.Get("planPause").Get("revision"))) || !recordDigestPattern.MatchString(planText(row.Get("planPause").Get("candidateRevision"))) || version.Num() != 3 || planText(row.Get("kind")) != "agent" || !row.Get("read").Truth() || planText(row.Get("state")) != "unknown" || planText(row.Get("scope").Get("execution")) != planText(value.Get("id")) || planText(row.Get("scope").Get("role")) != "author" || row.Get("scope").Has("task")) {
+			return nil, errSavedExecution
+		}
+	}
+	for _, decision := range value.Get("planState").Get("decisions").Items() {
+		marker := decision.Get("nativeInvocation")
+		if marker == nil {
+			continue
+		}
+		matched := false
+		for _, row := range value.Get("durable").Get("dispatches").Items() {
+			pause := row.Get("planPause")
+			if planText(row.Get("id")) == planText(marker.Get("dispatchId")) && planText(row.Get("requestDigest")) == planText(marker.Get("requestDigest")) && pause != nil && planText(pause.Get("callId")) == planText(decision.Get("callId")) && planText(pause.Get("revision")) == planText(decision.Get("revision")) && planText(pause.Get("candidateRevision")) == planText(decision.Get("candidateRevision")) {
+				matched = true
+			}
+		}
+		if version.Num() != 3 || !matched {
+			return nil, errSavedExecution
+		}
 	}
 	if durable := value.Get("durable"); durable != nil && !ValidDurable(durable) {
 		return nil, failure.ToolInput("The saved execution is not valid.")

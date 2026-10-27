@@ -124,7 +124,7 @@ func PreparePlanDecision(ctx context.Context, input *Input, expected PlanDecisio
 	if err != nil {
 		return nil, nil, err
 	}
-	if saved.RetainUntil == nil || saved.Digest == nil || saved.Version != 2 {
+	if saved.RetainUntil == nil || saved.Digest == nil || (saved.Version != 2 && saved.Version != 3) {
 		return nil, nil, &ContinuationNotRecoverable{}
 	}
 	if err = RefuseExpired(*saved.RetainUntil, time.Now()); err != nil {
@@ -173,6 +173,21 @@ func PreparePlanDecision(ctx context.Context, input *Input, expected PlanDecisio
 	if !handled || event == nil {
 		return nil, nil, &ContinuationIdentityChanged{}
 	}
+	schedule, err := preparePlanTaskDecision(value, saved, *binding, decision.Approved)
+	if err != nil {
+		return nil, nil, err
+	}
+	w.mu.Lock()
+	proof, err := w.nativePlanDecisionLocked(ctx, *binding, saved, event)
+	w.mu.Unlock()
+	if err != nil {
+		return nil, nil, err
+	}
+	stamped := contract.StampEvent(*event)
+	if taskRecordFields(value) || proof != nil {
+		stamped = contract.StampFeatureEvent(stamped)
+	}
+	event = &stamped
 	eventRaw, err := canonicalRaw(*event)
 	if err != nil {
 		return nil, nil, err
@@ -258,7 +273,13 @@ func PreparePlanDecision(ctx context.Context, input *Input, expected PlanDecisio
 		}
 		return nil, nil, err
 	}
+	if err = w.ackNativePlanDecisionLocked(*binding, proof); err != nil {
+		return nil, nil, err
+	}
 	w.snapshot = nil
+	if w.taskSteps.Load() {
+		w.taskSchedule = schedule
+	}
 	result := *admitted
 	var detached contract.Checkpoint
 	if err = json.Unmarshal(updatedRaw, &detached); err != nil {
@@ -267,4 +288,99 @@ func PreparePlanDecision(ctx context.Context, input *Input, expected PlanDecisio
 	result.Execution = &detached
 	result.Approval = nil
 	return &result, []contract.RunEvent{contract.StampEvent(*event)}, nil
+}
+
+// Reconcile only acknowledged task facts. No session, policy, live balance or replacement
+// host configuration is constructed; standalone and coordinator ceilings stay distinct.
+func preparePlanTaskDecision(prior *Value, saved *contract.Checkpoint, binding RunBinding, approved bool) (*TaskSchedule, error) {
+	if !taskRecordFields(prior) {
+		return nil, nil
+	}
+	next := taskCheckpointValue(*saved)
+	scope, err := canonicalRaw(binding.Scope)
+	if err != nil {
+		return nil, err
+	}
+	scopeDigest := durableDigest(scope)
+	var current *TaskSchedule
+	if held := prior.Get("planState").Get("taskSchedule"); held != nil {
+		current = &TaskSchedule{}
+		if err = json.Unmarshal(held.JSON(), current); err != nil {
+			return nil, err
+		}
+		if current.Binding.Run != binding.Writer.ID || current.Binding.Execution != saved.ID || current.Binding.ScopeDigest != scopeDigest {
+			return nil, &ContinuationIdentityChanged{}
+		}
+	}
+	for _, name := range []string{"taskEnvelope", "taskCoordinator"} {
+		if CanonicalJSON(prior.Get("planState").Get(name)) != CanonicalJSON(next.Get("planState").Get(name)) {
+			return nil, &ContinuationIdentityChanged{}
+		}
+	}
+	if !approved {
+		return current, nil
+	}
+	oldDefinitions, oldStatuses, err := TaskDefinitions(prior.Get("plan"))
+	if err != nil {
+		return nil, err
+	}
+	definitions, statuses, err := TaskDefinitions(next.Get("plan"))
+	if err != nil {
+		return nil, err
+	}
+	available, known := int(saved.Limit-saved.Used), saved.Unit == "model-requests"
+	if saved.Unit == "provider-managed" {
+		physical := 0
+		for _, dispatch := range saved.Durable.Dispatches {
+			if dispatch.Kind == "agent" {
+				physical++
+			}
+		}
+		if held := prior.Get("planState").Get("taskCoordinator"); held != nil {
+			pin, err := readTaskCoordinatorBinding(held)
+			if err != nil {
+				return nil, err
+			}
+			if pin.Run != binding.Writer.ID || pin.Execution != saved.ID || pin.ScopeDigest != scopeDigest {
+				return nil, &ContinuationIdentityChanged{}
+			}
+			available, known = max(0, pin.Limit-physical), true
+		}
+		if held := prior.Get("planState").Get("taskEnvelope"); held != nil {
+			pin, err := readTaskEnvelopeBinding(held)
+			if err != nil {
+				return nil, err
+			}
+			if pin.Run != binding.Writer.ID || pin.Execution != saved.ID || pin.ScopeDigest != scopeDigest {
+				return nil, &ContinuationIdentityChanged{}
+			}
+			remaining := max(0, pin.Configuration.Limit-physical)
+			if !known || remaining < available {
+				available = remaining
+			}
+			known = true
+		}
+		if !known {
+			for _, definition := range definitions {
+				if definition.Budget != nil {
+					return nil, taskStepFail("native-envelope-required")
+				}
+			}
+			available = 0
+		}
+	}
+	facts := TaskScheduleBinding{Run: binding.Writer.ID, Execution: saved.ID, PlanRevision: planText(next.Get("planState").Get("revision")), ScopeDigest: scopeDigest, Unit: saved.Unit}
+	schedule, err := ReconcileTaskSchedule(current, oldDefinitions, oldStatuses, facts, definitions, statuses, available)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := json.Marshal(schedule)
+	if err != nil {
+		return nil, err
+	}
+	next.Get("planState").Set("taskSchedule", MustParseJSON(string(raw)))
+	if err = json.Unmarshal(next.JSON(), saved); err != nil {
+		return nil, err
+	}
+	return &schedule, nil
 }

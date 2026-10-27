@@ -909,6 +909,9 @@
           "minLength": 1,
           "maxLength": 4194304,
           "description": "Enabled repeat detection only: exact original acknowledged result encoding, retained by its original writer before legacy result projection."
+        },
+        "planPause": {
+          "$ref": "#/$defs/nativePlanPause"
         }
       },
       "required": [
@@ -1200,6 +1203,9 @@
         },
         "taskEnvelope": {
           "$ref": "#/$defs/taskEnvelopeBinding"
+        },
+        "taskCoordinator": {
+          "$ref": "#/$defs/taskCoordinatorBinding"
         }
       },
       "required": [
@@ -1570,6 +1576,9 @@
         "note": {
           "type": "string",
           "maxLength": 2000
+        },
+        "nativeInvocation": {
+          "$ref": "#/$defs/nativePlanInvocation"
         }
       },
       "required": [
@@ -2083,6 +2092,97 @@
           }
         }
       }
+    },
+    "taskCoordinatorBinding": {
+      "description": "Original package native-delegation ceiling and child reserve, pinned before first dispatch; separate from host taskEnvelope configuration. Retained facts permit metadata-only Plan decisions and never grant dispatch.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "owner": {
+          "const": "native-delegation"
+        },
+        "run": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "execution": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "scopeDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "childReserve": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "required": [
+        "version",
+        "owner",
+        "run",
+        "execution",
+        "scopeDigest",
+        "limit",
+        "childReserve"
+      ]
+    },
+    "nativePlanPause": {
+      "description": "Original invocation release and package-owned Plan pause retained by the original writer; unknown outcome remains unknown. Not a dispatch grant.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "callId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "candidateRevision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "callId",
+        "revision",
+        "candidateRevision"
+      ]
+    },
+    "nativePlanInvocation": {
+      "description": "Exact earlier released Plan-pause invocation selected by an acknowledged explicit decision. It grants no allowance or automatic replay.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dispatchId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "requestDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "dispatchId",
+        "requestDigest"
+      ]
     }
   }
 }

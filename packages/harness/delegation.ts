@@ -1,6 +1,6 @@
 import {registerPhysicalModel,registerPhysicalAgent,type PhysicalModelAttempt,type PhysicalAgentAttempt} from './storage/physicalDispatch'
 import {writeRunEvent} from './recordReader'
-import {providerReleaseAttempt,ProviderReleaseUnknown} from './storage/release'
+import {providerReleaseAttempt,composeProviderRelease,ProviderReleaseUnknown} from './storage/release'
 import {durableSession,durableOwner,prepareProviderDispatch,childDurability,ContinuationNotRecoverable} from './storage/writer'
 import type {DurableHandoff} from './storage/handoff'
 import {CheckpointIncrement,mutateCheckpoint} from './execution/mutation'
@@ -431,7 +431,7 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
     }
     const persistence=session.context?.[durableOwner]
     if(persistence)persistence.writer.decorate=decorate
-    if(persistence&&'agent'in session&&session.context?.taskSteps===true)persistence.writer.attachNativeTaskEnvelope(persistence,{limit:MAX_AGENT_RUNS,counts:()=>{
+    if(persistence&&'agent'in session&&session.context?.taskSteps===true)persistence.writer.attachNativeTaskEnvelope(persistence,{limit:MAX_AGENT_RUNS,childReserve:1+reserve,counts:()=>{
      const counts=new Map<string,number>([[persistence.writer.id,parentRuns]])
      for(const batch of batchFigures())for(const child of batch.children)counts.set(child.task,(counts.get(child.task)??0)+(child.agentRuns??0))
      return [...counts].map(([execution,count])=>({execution,count}))
@@ -597,12 +597,11 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
           try {
             const release=providerReleaseAttempt()
             const execute:import('./agent').AgentRun=async(given,supplied)=>{
-             const capability={...supplied,...(task&&meter?{event:async(event:Parameters<typeof supplied.event>[0])=>{mark();return supplied.event(event)},tool:async(call:Parameters<typeof supplied.tool>[0],signal:AbortSignal)=>{mark();return supplied.tool(call,signal)}}:{}),providerRelease:release.capability}
+             const capability={...supplied,...(task&&meter?{event:async(event:Parameters<typeof supplied.event>[0])=>{mark();return supplied.event(event)},tool:async(call:Parameters<typeof supplied.tool>[0],signal:AbortSignal)=>{mark();return supplied.tool(call,signal)}}:{}),providerRelease:composeProviderRelease(supplied.providerRelease,release.capability)}
              const invocation=base.agent.run(named!==undefined&&named!==base.agent.model?{...given,model:named,delegated:true}:given,capability);invocations.add(invocation)
              let problem:unknown
              try{await invocation}catch(error){problem=error}finally{invocations.delete(invocation)}
              const acknowledged=release.finish(),failed=problem===undefined?undefined:normalizeFailure(problem,'agent')
-             if(acknowledged&&supplied.providerRelease)supplied.providerRelease.acknowledge(supplied.providerRelease.invocation)
              if(base.context?.[durableOwner]&&base.context[durableOwner]!.writer.store.durability!=='single-writer-callback'&&!acknowledged&&(task!==undefined||callbacks.signal.aborted)&&failed?.outcome!=='not-started'&&failed?.outcome!=='refused'){releaseFailure??=new ProviderReleaseUnknown();throw releaseFailure}
              if(problem!==undefined)throw problem
             }

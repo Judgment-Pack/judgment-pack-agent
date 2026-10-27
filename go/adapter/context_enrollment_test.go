@@ -12,6 +12,7 @@ import (
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter"
 	native "github.com/Judgment-Pack/judgment-pack-agent/go/adapter/agent"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/delegate"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/eino"
 	runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
@@ -214,130 +215,231 @@ type preparationAdapterLink struct{ context *runcontext.SessionContext }
 func (l *preparationAdapterLink) Attach(c *runcontext.SessionContext) { l.context = c }
 func TestActualAdaptersConsumePreparedPlanBeforePhysicalBootstrap(t *testing.T) {
 	for _, engine := range []string{"eino", "native"} {
-		t.Run(engine, func(t *testing.T) {
-			ctx := context.Background()
-			store := runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})
-			chat := &preparationAdapterChat{chat: runcontext.NewChatContext("adapter-plan")}
-			link := &preparationAdapterLink{}
-			input := &runcontext.Input{RunStore: &runcontext.DurableRunInput{Store: store, ID: "adapter-plan"}, Chat: chat, Link: link, CurrentRequest: &runcontext.CurrentRequest{Message: "Work", Input: "facts"}, Plan: runcontext.MustParseJSON(`{"id":"original","revision":1,"objective":"Work","steps":["Inspect","Report"],"questions":[],"references":[],"status":"accepted","createdAt":"2026-01-01T00:00:00.000Z","acceptedAt":"2026-01-01T00:00:00.000Z"}`)}
-			g := gate.New(gate.Options{})
-			g.SetOffer(contract.ToolOffer{})
-			run := &adapter.Run{Prompt: "Work", Wire: "openai-compatible", ModelName: "fixture", Thinking: "off", Critic: "off", AllowConversation: true, Interactive: true, Gate: g.Calls(), Context: input, EnrollContext: func(_ context.Context, offer adapter.ContextOffer) error {
-				return g.EnrollContext(offer.ID, offer.HostTools)
-			}, Emit: func(contract.RunEvent) {}}
-			args := json.RawMessage(`{"explanation":"Remove accepted work","plan":[{"id":"step-2","step":"Report","status":"pending"}]}`)
-			var implementation adapter.Adapter
-			if engine == "native" {
-				implementation = native.New()
-				run.Agent = &adapter.Agent{Model: "fixture", Run: func(ctx context.Context, request adapter.AgentRequest, cb adapter.AgentCallbacks) error {
-					for _, tool := range request.Tools {
-						if strings.HasPrefix(tool.Description, "update_plan: ") {
-							_, err := cb.Tool(ctx, adapter.AgentToolCall{ID: "revise", Name: tool.Name, Arguments: args})
-							return err
+		modes := []string{"legacy", "tasks"}
+		if engine == "native" {
+			modes = []string{"legacy", "standalone", "coordinator", "standalone-single", "coordinator-single"}
+		}
+		for _, fixtureMode := range modes {
+			mode := strings.TrimSuffix(fixtureMode, "-single")
+			single := fixtureMode != mode
+			for _, approved := range []bool{true, false} {
+				t.Run(engine+"/"+fixtureMode+map[bool]string{true: "/accept", false: "/reject"}[approved], func(t *testing.T) {
+					ctx := context.Background()
+					store := runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})
+					chat := &preparationAdapterChat{chat: runcontext.NewChatContext("adapter-plan")}
+					link := &preparationAdapterLink{}
+					input := &runcontext.Input{RunStore: &runcontext.DurableRunInput{Store: store, ID: "adapter-plan"}, Chat: chat, Link: link, CurrentRequest: &runcontext.CurrentRequest{Message: "Work", Input: "facts"}, Plan: runcontext.MustParseJSON(`{"id":"original","revision":1,"objective":"Work","steps":["Inspect","Report"],"questions":[],"references":[],"status":"accepted","createdAt":"2026-01-01T00:00:00.000Z","acceptedAt":"2026-01-01T00:00:00.000Z"}`)}
+					if mode != "legacy" {
+						input.TaskSteps = true
+					}
+					if mode == "standalone" {
+						input.TaskStepEnvelope = &runcontext.TaskStepEnvelope{ID: "original-host", Revision: "sha256:" + strings.Repeat("d", 64), Unit: "provider-invocations", Limit: 6}
+					}
+					g := gate.New(gate.Options{})
+					g.SetOffer(contract.ToolOffer{})
+					run := &adapter.Run{Prompt: "Work", Wire: "openai-compatible", ModelName: "fixture", Thinking: "off", Critic: "off", AllowConversation: true, Interactive: true, Gate: g.Calls(), Context: input, EnrollContext: func(_ context.Context, offer adapter.ContextOffer) error {
+						return g.EnrollContext(offer.ID, offer.HostTools)
+					}, Emit: func(contract.RunEvent) {}}
+					args := json.RawMessage(`{"explanation":"Remove accepted work","plan":[{"id":"step-2","step":"Report","status":"pending"}]}`)
+					allocate := json.RawMessage(`{"explanation":"Allocate original work","plan":[{"id":"step-1","step":"Inspect","status":"in_progress","budget":{"requests":2}},{"id":"step-2","step":"Report","status":"pending","budget":{"requests":1}}]}`)
+					if mode != "legacy" {
+						args = json.RawMessage(`{"explanation":"Remove unstarted work","plan":[{"id":"step-1","step":"Inspect","status":"in_progress","budget":{"requests":2}}]}`)
+					}
+					if single {
+						args = json.RawMessage(`{"explanation":"Remove accepted work","plan":[{"id":"step-2","step":"Report","status":"pending","budget":{"requests":1}}]}`)
+					}
+					assertOriginalPin := func() {
+						if mode == "coordinator" {
+							head, _ := store.Load(ctx, "adapter-plan")
+							v := runcontext.MustParseJSON(string(head.Checkpoint))
+							if v.Get("planState").Get("taskCoordinator") == nil {
+								t.Fatal("original coordinator pin missing before physical provider admission")
+							}
 						}
 					}
-					t.Fatal("no Plan control")
-					return nil
-				}}
-			} else {
-				implementation = eino.New()
-				run.Model = func(context.Context, string, relay.Request) (*http.Response, error) {
-					chunk := map[string]any{"id": "fixture", "object": "chat.completion.chunk", "choices": []any{map[string]any{"index": 0, "delta": map[string]any{"tool_calls": []any{map[string]any{"index": 0, "id": "revise", "type": "function", "function": map[string]any{"name": "update_plan", "arguments": string(args)}}}}, "finish_reason": "tool_calls"}}}
-					raw, _ := json.Marshal(chunk)
-					return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader("data: " + string(raw) + "\n\ndata: [DONE]\n\n"))}, nil
-				}
+					var implementation adapter.Adapter
+					if engine == "native" {
+						implementation = native.New()
+						run.Agent = &adapter.Agent{Model: "fixture", Run: func(ctx context.Context, request adapter.AgentRequest, cb adapter.AgentCallbacks) error {
+							if cb.ProviderRelease != nil {
+								defer func() {
+									if !cb.ProviderRelease.Acknowledge(cb.ProviderRelease.Invocation) {
+										t.Fatal("exact native Plan pause release refused")
+									}
+								}()
+							}
+							assertOriginalPin()
+							for _, tool := range request.Tools {
+								if strings.HasPrefix(tool.Description, "update_plan: ") {
+									if mode != "legacy" && !single {
+										if _, err := cb.Tool(ctx, adapter.AgentToolCall{ID: "allocate", Name: tool.Name, Arguments: allocate}); err != nil {
+											return err
+										}
+									}
+									_, err := cb.Tool(ctx, adapter.AgentToolCall{ID: "revise", Name: tool.Name, Arguments: args})
+									return err
+								}
+							}
+							t.Fatal("no Plan control")
+							return nil
+						}}
+					} else {
+						implementation = eino.New()
+						run.Model = func(context.Context, string, relay.Request) (*http.Response, error) {
+							assertOriginalPin()
+							chunk := map[string]any{"id": "fixture", "object": "chat.completion.chunk", "choices": []any{map[string]any{"index": 0, "delta": map[string]any{"tool_calls": []any{map[string]any{"index": 0, "id": "revise", "type": "function", "function": map[string]any{"name": "update_plan", "arguments": string(args)}}}}, "finish_reason": "tool_calls"}}}
+							if mode != "legacy" {
+								calls := chunk["choices"].([]any)[0].(map[string]any)["delta"].(map[string]any)
+								calls["tool_calls"] = []any{map[string]any{"index": 0, "id": "allocate", "type": "function", "function": map[string]any{"name": "update_plan", "arguments": string(allocate)}}, map[string]any{"index": 1, "id": "revise", "type": "function", "function": map[string]any{"name": "update_plan", "arguments": string(args)}}}
+							}
+							raw, _ := json.Marshal(chunk)
+							return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader("data: " + string(raw) + "\n\ndata: [DONE]\n\n"))}, nil
+						}
+					}
+					if mode == "coordinator" {
+						run.Children = func(context.Context, contract.DelegatedTaskProfile, func(contract.RunEvent)) (*gate.Calls, []contract.ToolOfferRuntimeTool, error) {
+							t.Fatal("Plan decision unexpectedly delegated")
+							return nil, nil, nil
+						}
+						implementation = delegate.With(implementation, delegate.Options{})
+					}
+					if err := implementation.Run(ctx, run); err != nil {
+						t.Fatal(err)
+					}
+					if link.context == nil && mode != "coordinator" {
+						t.Fatal("actual first adapter did not initialize")
+					}
+					held := *input
+					if mode == "coordinator" {
+						head, _ := store.Load(ctx, "adapter-plan")
+						var cp contract.Checkpoint
+						if err := json.Unmarshal(head.Checkpoint, &cp); err != nil {
+							t.Fatal(err)
+						}
+						held.Execution = &cp
+					} else {
+						held.Persistence = link.context.Persistence("author")
+						held.Execution = held.Persistence.Writer.Checkpoint()
+					}
+					raw, _ := json.Marshal(held.Execution)
+					v := runcontext.MustParseJSON(string(raw))
+					p := v.Get("planState").Get("pending")
+					if p == nil {
+						t.Fatal("actual first adapter did not pause for Plan drift")
+					}
+					if mode != "legacy" && held.Execution.Version != 3 {
+						t.Fatal("actual adapter did not produce feature checkpoint3")
+					}
+					// Restart with the exact retained head; the original writer is retired before preparation.
+					head, _ := store.Load(ctx, "adapter-plan")
+					var retained contract.Checkpoint
+					if err := json.Unmarshal(head.Checkpoint, &retained); err != nil {
+						t.Fatal(err)
+					}
+					held.Execution = &retained
+					held.Persistence = nil
+					held.Checkpoint = nil
+					held.RunStore = &runcontext.DurableRunInput{Store: store, ID: "adapter-plan", Resume: true}
+					held.Approval = &contract.CheckpointApprovalDecision{CallID: p.Get("callId").Str(), Approved: approved}
+					physical := 0
+					bootstrap := func() error {
+						head, _ := store.Load(ctx, "adapter-plan")
+						var saved contract.Checkpoint
+						_ = json.Unmarshal(head.Checkpoint, &saved)
+						if saved.Status == "paused" {
+							return errors.New("physical guard closed")
+						}
+						physical++
+						return nil
+					}
+					if err := bootstrap(); err == nil || physical != 0 {
+						t.Fatal("paused state opened physical Runtime bootstrap")
+					}
+					turns := chat.turns
+					prepared, events, err := runcontext.PreparePlanDecision(ctx, &held, runcontext.PlanDecisionExpectation{Revision: p.Get("revision").Str(), CandidateRevision: p.Get("candidate").Get("planState").Get("revision").Str()})
+					if err != nil {
+						t.Fatal(err)
+					}
+					if len(events) != 1 || chat.turns != turns || prepared.Approval != nil {
+						t.Fatal("preparation opened a second context or left decision unconsumed")
+					}
+					if mode != "legacy" {
+						if events[0].PlanDriftDecided.Version == nil || *events[0].PlanDriftDecided.Version != 2 || prepared.Execution.PlanState.TaskSchedule == nil {
+							t.Fatal("feature decision lost event2 or task schedule")
+						}
+					}
+					want := 2
+					if approved {
+						want = 1
+					}
+					if len(prepared.Execution.Plan) != want {
+						t.Fatal("wrong prepared Plan decision")
+					}
+					if err = bootstrap(); err != nil || physical != 1 {
+						t.Fatal("acknowledged Plan did not open physical bootstrap")
+					}
+					g = gate.New(gate.Options{})
+					g.SetOffer(contract.ToolOffer{})
+					calls, enrolls, decisions := 0, 0, 0
+					var observed []contract.RunEvent
+					run.Context = prepared
+					run.Gate = g.Calls()
+					run.EnrollContext = func(_ context.Context, offer adapter.ContextOffer) error {
+						enrolls++
+						return g.EnrollContext(offer.ID, offer.HostTools)
+					}
+					run.Emit = func(e contract.RunEvent) {
+						observed = append(observed, e)
+						if e.PlanDriftDecided != nil {
+							decisions++
+						}
+					}
+					if engine == "native" {
+						run.Agent.Run = func(ctx context.Context, _ adapter.AgentRequest, cb adapter.AgentCallbacks) error {
+							calls++
+							return cb.Event(ctx, adapter.AgentEvent{Type: "message", Text: "Done.", Phase: "final"})
+						}
+					} else {
+						run.Model = func(context.Context, string, relay.Request) (*http.Response, error) {
+							calls++
+							return enrollmentFinal(), nil
+						}
+					}
+					if err = implementation.Run(ctx, run); err != nil {
+						t.Fatal(err)
+					}
+					wantTurns := 1
+					if mode == "coordinator" {
+						wantTurns = 0
+					}
+					if calls != 1 || enrolls != 1 || decisions != 0 || chat.turns != turns+wantTurns {
+						var failures []contract.RunEvent
+						for _, e := range observed {
+							if e.Error != nil {
+								failures = append(failures, e)
+							}
+						}
+						raw, _ := json.Marshal(failures)
+						t.Fatalf("preparation repeated: providers=%d enrollments=%d decisions=%d turns=%d events=%s", calls, enrolls, decisions, chat.turns-turns, raw)
+					}
+					page, pageErr := store.ReadEvents(ctx, "adapter-plan", "", runcontext.StoragePageLimit)
+					if pageErr != nil {
+						t.Fatal(pageErr)
+					}
+					count := 0
+					for _, record := range page.Items {
+						var envelope runcontext.StoredRunEnvelope
+						_ = json.Unmarshal(record.Bytes, &envelope)
+						if envelope.Event.PlanDriftDecided != nil {
+							count++
+						}
+					}
+					if count != 1 {
+						t.Fatalf("durable Plan decision count=%d", count)
+					}
+				})
 			}
-			if err := implementation.Run(ctx, run); err != nil {
-				t.Fatal(err)
-			}
-			if link.context == nil {
-				t.Fatal("actual first adapter did not initialize")
-			}
-			held := *input
-			held.Persistence = link.context.Persistence("author")
-			held.Execution = held.Persistence.Writer.Checkpoint()
-			raw, _ := json.Marshal(held.Execution)
-			v := runcontext.MustParseJSON(string(raw))
-			p := v.Get("planState").Get("pending")
-			if p == nil {
-				t.Fatal("actual first adapter did not pause for Plan drift")
-			}
-			held.Approval = &contract.CheckpointApprovalDecision{CallID: p.Get("callId").Str(), Approved: true}
-			physical := 0
-			bootstrap := func() error {
-				head, _ := store.Load(ctx, "adapter-plan")
-				var saved contract.Checkpoint
-				_ = json.Unmarshal(head.Checkpoint, &saved)
-				if saved.Status == "paused" {
-					return errors.New("physical guard closed")
-				}
-				physical++
-				return nil
-			}
-			if err := bootstrap(); err == nil || physical != 0 {
-				t.Fatal("paused state opened physical Runtime bootstrap")
-			}
-			turns := chat.turns
-			prepared, events, err := runcontext.PreparePlanDecision(ctx, &held, runcontext.PlanDecisionExpectation{Revision: p.Get("revision").Str(), CandidateRevision: p.Get("candidate").Get("planState").Get("revision").Str()})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(events) != 1 || chat.turns != turns || prepared.Approval != nil {
-				t.Fatal("preparation opened a second context or left decision unconsumed")
-			}
-			if err = bootstrap(); err != nil || physical != 1 {
-				t.Fatal("acknowledged Plan did not open physical bootstrap")
-			}
-			g = gate.New(gate.Options{})
-			g.SetOffer(contract.ToolOffer{})
-			calls, enrolls, decisions := 0, 0, 0
-			var observed []contract.RunEvent
-			run.Context = prepared
-			run.Gate = g.Calls()
-			run.EnrollContext = func(_ context.Context, offer adapter.ContextOffer) error {
-				enrolls++
-				return g.EnrollContext(offer.ID, offer.HostTools)
-			}
-			run.Emit = func(e contract.RunEvent) {
-				observed = append(observed, e)
-				if e.PlanDriftDecided != nil {
-					decisions++
-				}
-			}
-			if engine == "native" {
-				run.Agent.Run = func(ctx context.Context, _ adapter.AgentRequest, cb adapter.AgentCallbacks) error {
-					calls++
-					return cb.Event(ctx, adapter.AgentEvent{Type: "message", Text: "Done.", Phase: "final"})
-				}
-			} else {
-				run.Model = func(context.Context, string, relay.Request) (*http.Response, error) {
-					calls++
-					return enrollmentFinal(), nil
-				}
-			}
-			if err = implementation.Run(ctx, run); err != nil {
-				t.Fatal(err)
-			}
-			if calls != 1 || enrolls != 1 || decisions != 0 || chat.turns != turns+1 {
-				raw, _ := json.Marshal(observed)
-				t.Fatalf("preparation repeated: providers=%d enrollments=%d decisions=%d turns=%d events=%s", calls, enrolls, decisions, chat.turns-turns, raw)
-			}
-			page, pageErr := store.ReadEvents(ctx, "adapter-plan", "", runcontext.StoragePageLimit)
-			if pageErr != nil {
-				t.Fatal(pageErr)
-			}
-			count := 0
-			for _, record := range page.Items {
-				var envelope runcontext.StoredRunEnvelope
-				_ = json.Unmarshal(record.Bytes, &envelope)
-				if envelope.Event.PlanDriftDecided != nil {
-					count++
-				}
-			}
-			if count != 1 {
-				t.Fatalf("durable Plan decision count=%d", count)
-			}
-		})
+		}
 	}
 }
 
@@ -450,5 +552,196 @@ func TestActualAdaptersEnrollBeforeApprovedActionContinuation(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// Exposes only the required basic RunStore port, deliberately no history methods.
+type nativePlanBasicStore struct {
+	runcontext.RunStore
+	read   func(context.Context, string, string, int) (runcontext.RunEventPage, error)
+	commit func(context.Context, runcontext.RunCommit) (runcontext.RunReceipt, error)
+}
+
+func (s *nativePlanBasicStore) ReadEvents(ctx context.Context, id, after string, limit int) (runcontext.RunEventPage, error) {
+	if s.read != nil {
+		return s.read(ctx, id, after, limit)
+	}
+	return s.RunStore.ReadEvents(ctx, id, after, limit)
+}
+func (s *nativePlanBasicStore) Commit(ctx context.Context, input runcontext.RunCommit) (runcontext.RunReceipt, error) {
+	if s.commit != nil {
+		return s.commit(ctx, input)
+	}
+	return s.RunStore.Commit(ctx, input)
+}
+
+func nativePlanPausedFixture(t *testing.T, fault string) (*nativePlanBasicStore, *adapter.Run, *runcontext.Input, runcontext.PlanDecisionExpectation, *int) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	store := &nativePlanBasicStore{RunStore: runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})}
+	input := &runcontext.Input{TaskSteps: true, TaskStepEnvelope: &runcontext.TaskStepEnvelope{ID: "original-host", Revision: "sha256:" + strings.Repeat("d", 64), Unit: "provider-invocations", Limit: 6}, RunStore: &runcontext.DurableRunInput{Store: store, ID: "native-proof"}, CurrentRequest: &runcontext.CurrentRequest{Message: "Work", Input: "facts"}, Plan: runcontext.MustParseJSON(`{"id":"original","revision":1,"objective":"Work","steps":["Inspect","Report"],"questions":[],"references":[],"status":"accepted","createdAt":"2026-01-01T00:00:00.000Z","acceptedAt":"2026-01-01T00:00:00.000Z"}`)}
+	g := gate.New(gate.Options{})
+	g.SetOffer(contract.ToolOffer{})
+	calls := new(int)
+	run := &adapter.Run{Prompt: "Work", Wire: "openai-compatible", ModelName: "fixture", Thinking: "off", Critic: "off", AllowConversation: true, Interactive: true, Gate: g.Calls(), Context: input, EnrollContext: func(_ context.Context, offer adapter.ContextOffer) error {
+		return g.EnrollContext(offer.ID, offer.HostTools)
+	}, Emit: func(contract.RunEvent) {}}
+	var late func() bool
+	run.Agent = &adapter.Agent{Model: "fixture", Run: func(ctx context.Context, request adapter.AgentRequest, cb adapter.AgentCallbacks) error {
+		*calls++
+		if *calls > 1 {
+			return cb.Event(ctx, adapter.AgentEvent{Type: "message", Text: "Done.", Phase: "final"})
+		}
+		defer func() {
+			if cb.ProviderRelease == nil {
+				t.Fatal("configured Plan attempt has no release capability")
+			}
+			switch fault {
+			case "missing":
+			case "wrong":
+				foreign, finishForeign := adapter.ProviderReleaseAttempt()
+				defer finishForeign()
+				if cb.ProviderRelease.Acknowledge(foreign.Invocation) {
+					t.Fatal("wrong release accepted")
+				}
+			case "duplicate":
+				if !cb.ProviderRelease.Acknowledge(cb.ProviderRelease.Invocation) || cb.ProviderRelease.Acknowledge(cb.ProviderRelease.Invocation) {
+					t.Fatal("duplicate release was not invalidated")
+				}
+			case "late":
+				late = func() bool { return cb.ProviderRelease.Acknowledge(cb.ProviderRelease.Invocation) }
+			default:
+				if !cb.ProviderRelease.Acknowledge(cb.ProviderRelease.Invocation) {
+					t.Fatal("exact release refused")
+				}
+			}
+		}()
+		for _, tool := range request.Tools {
+			if strings.HasPrefix(tool.Description, "update_plan: ") {
+				_, err := cb.Tool(ctx, adapter.AgentToolCall{ID: "pause", Name: tool.Name, Arguments: json.RawMessage(`{"explanation":"Remove accepted work","plan":[{"id":"step-2","step":"Report","status":"pending","budget":{"requests":1}}]}`)})
+				if fault == "cancel" {
+					cancel()
+				}
+				return err
+			}
+		}
+		t.Fatal("missing actual Plan tool")
+		return nil
+	}}
+	_ = native.New().Run(ctx, run)
+	if late != nil && late() {
+		t.Fatal("late release accepted")
+	}
+	head, err := store.Load(context.Background(), "native-proof")
+	if err != nil || head == nil {
+		t.Fatal("missing original admitted head", err)
+	}
+	value := runcontext.MustParseJSON(string(head.Checkpoint))
+	dispatch := value.Get("durable").Get("dispatches").Items()[0]
+	if fault != "" {
+		if dispatch.Get("planPause") != nil {
+			t.Fatal("unreleased or cancelled pause gained receipt")
+		}
+	}
+	pending := value.Get("planState").Get("pending")
+	held := *input
+	held.Persistence = nil
+	held.Checkpoint = nil
+	var retained contract.Checkpoint
+	if err := json.Unmarshal(head.Checkpoint, &retained); err != nil {
+		t.Fatal(err)
+	}
+	held.Execution = &retained
+	held.RunStore = &runcontext.DurableRunInput{Store: store, ID: "native-proof", Resume: true}
+	expected := runcontext.PlanDecisionExpectation{}
+	if pending != nil {
+		held.Approval = &contract.CheckpointApprovalDecision{CallID: pending.Get("callId").Str(), Approved: true}
+		expected = runcontext.PlanDecisionExpectation{Revision: pending.Get("revision").Str(), CandidateRevision: pending.Get("candidate").Get("planState").Get("revision").Str()}
+	}
+	return store, run, &held, expected, calls
+}
+func TestNativePlanActualReleaseRefusals(t *testing.T) {
+	for _, fault := range []string{"missing", "wrong", "duplicate", "late", "cancel"} {
+		t.Run(fault, func(t *testing.T) {
+			_, _, held, expected, calls := nativePlanPausedFixture(t, fault)
+			if _, _, err := runcontext.PreparePlanDecision(context.Background(), held, expected); err == nil {
+				t.Fatal("uncertified original unknown allowed Plan decision")
+			}
+			if *calls != 1 {
+				t.Fatal("refused continuation dispatched provider")
+			}
+		})
+	}
+}
+func TestNativePlanActualBasicJournalRefusals(t *testing.T) {
+	for _, fault := range []string{"missing-claim", "wrong-request", "wrong-pending", "cross-run", "duplicate-cursor", "malformed-json", "head-race"} {
+		t.Run(fault, func(t *testing.T) {
+			store, _, held, expected, calls := nativePlanPausedFixture(t, "")
+			base := store.RunStore
+			raced := false
+			store.read = func(ctx context.Context, id, after string, limit int) (runcontext.RunEventPage, error) {
+				page, err := base.ReadEvents(ctx, id, after, limit)
+				if err != nil {
+					return page, err
+				}
+				items := []runcontext.StoredRunEvent{}
+				for _, item := range page.Items {
+					var envelope map[string]any
+					_ = json.Unmarshal(item.Bytes, &envelope)
+					event := envelope["event"].(map[string]any)
+					if event["type"] == "execution_checkpoint" {
+						checkpoint := event["checkpoint"].(map[string]any)
+						durable, _ := checkpoint["durable"].(map[string]any)
+						rows, _ := durable["dispatches"].([]any)
+						for _, raw := range rows {
+							row := raw.(map[string]any)
+							if row["kind"] != "agent" {
+								continue
+							}
+							if fault == "missing-claim" && row["state"] == "claimed" {
+								goto skip
+							}
+							if row["planPause"] != nil {
+								switch fault {
+								case "wrong-request":
+									row["requestDigest"] = "sha256:" + strings.Repeat("a", 64)
+								case "wrong-pending":
+									row["planPause"].(map[string]any)["callId"] = "different-call"
+								case "cross-run":
+									envelope["scope"].(map[string]any)["execution"] = "different-run"
+								case "malformed-json":
+									item.Bytes = []byte(`{"version":1,"version":1}`)
+								}
+							}
+						}
+					}
+					if fault != "malformed-json" {
+						item.Bytes, _ = json.Marshal(envelope)
+					}
+					items = append(items, item)
+					if fault == "duplicate-cursor" {
+						items = append(items, item)
+					}
+				skip:
+				}
+				page.Items = items
+				if fault == "head-race" && !raced {
+					raced = true
+					head, _ := base.Load(ctx, id)
+					_, err = base.Commit(ctx, runcontext.RunCommit{RunID: id, ExpectedRevision: head.Revision, CommitID: "proof-race", Checkpoint: head.Checkpoint})
+					if err != nil {
+						return page, err
+					}
+				}
+				return page, nil
+			}
+			if _, _, err := runcontext.PreparePlanDecision(context.Background(), held, expected); err == nil {
+				t.Fatal("contradictory native proof allowed decision")
+			}
+			if *calls != 1 {
+				t.Fatal("invalid retained evidence dispatched provider")
+			}
+		})
 	}
 }
