@@ -12,9 +12,9 @@ export function dialectFixture(){
   read:async()=>{state.calls.push('read');return structuredClone(state.snapshot)},
   runtime:async(name,args)=>{
    state.calls.push(name)
-   const selection=DIALECT_RETAINED_COLUMN_DRAFT,limits={documentBytes:131072,frameBytes:2097152}
-   // Fake transport with the actual private Draft report shape; real Runtime is a separate gate.
-   const common={contractVersion:'1',specification:`https://github.com/Judgment-Pack/judgment-pack-spec/blob/${selection.spec.revision}/rfcs/0029-retained-column-conversions.md`,specRevision:selection.spec.revision,diagnostics:[],...selection,role:'document-validation',maturity:'experimental-draft',limits}
+   const selection=DIALECT_RETAINED_COLUMN_DRAFT,limits={documentBytes:1048576,frameBytes:2097152}
+   // Fake transport with the published companion report shape; real Runtime is a separate gate.
+   const common={contractVersion:'1',specification:`https://github.com/Judgment-Pack/judgment-pack-spec/blob/${selection.spec.revision}/spec/retained-column.md`,specRevision:selection.spec.revision,diagnostics:[],...selection,role:'document-validation',maturity:'draft',limits}
    const mapping=JSON.parse(args.document??'{}') as {unmapped?:unknown[];unmappedEvidence?:unknown[]}
    const coverageStatus=state.mode==='incomplete'?'incomplete':(mapping.unmapped?.length||mapping.unmappedEvidence?.length)?'review-required':'complete'
    let r:Record<string,unknown>

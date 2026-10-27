@@ -46,20 +46,31 @@ class DialectAuthoringContract(unittest.TestCase):
         self.assertFalse(validator.is_valid({**vectors[0], 'check': {'results': []}}))
         self.assertFalse(validator.is_valid({**vectors[1], 'previousReceipt': None}))
 
-    def test_reviewed_draft_tuple_is_exact(self):
+    def test_published_and_historical_inspection_tuples_are_exact(self):
         schema = json.loads((ROOT / 'contract/schemas/dialect-draft.json').read_text())
         rows = json.loads((ROOT / 'contract/vectors/dialect-authoring/retention.json').read_text())['items']
         current = json.loads((ROOT / 'contract/testdata/dialect-authoring/authoring.json').read_text())['conversionContract']
         superseded = json.loads((ROOT / 'contract/testdata/dialect-authoring/superseded-prototype-identity.json').read_text())
         validator = jsonschema.Draft202012Validator(schema)
         present = [row for row in rows if row.get('candidate', {}).get('conversionContract')]
-        self.assertEqual(len(present), 8)
+        historical = json.loads((ROOT / 'contract/testdata/dialect-authoring/superseded-private-draft-identity.json').read_text())
+        self.assertEqual(len(present), 9)
+        self.assertEqual(sum(row['candidate']['conversionContract'] == historical for row in present), 8)
+        self.assertEqual(sum(row['candidate']['conversionContract'] == current for row in present), 1)
         for row in present:
-            self.assertEqual(row['candidate']['conversionContract'], current)
+            self.assertIn(row['candidate']['conversionContract'], [current, historical])
             validator.validate(row)
         for choices in itertools.product([False, True], repeat=3):
-            row = copy.deepcopy(present[0])
+            row = copy.deepcopy(present[-1])
             for stale, member in zip(choices, ['revision', 'schemaSha256', 'corpusSha256']):
                 if stale:
                     row['candidate']['conversionContract']['spec'][member] = superseded['spec'][member]
             self.assertEqual(validator.is_valid(row), not any(choices), choices)
+
+        # Historical inspection support never permits mixing identities across versions.
+        for choices in itertools.product([False, True], repeat=4):
+            row = copy.deepcopy(present[-1])
+            for stale, member in zip(choices, ['version', 'revision', 'schemaSha256', 'corpusSha256']):
+                if stale:
+                    row['candidate']['conversionContract']['spec'][member] = historical['spec'][member]
+            self.assertEqual(validator.is_valid(row), all(choices) or not any(choices), choices)

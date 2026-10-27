@@ -75,27 +75,33 @@ refusals. Planned columns with zero rows establish neither type nor readiness.
 
 The trusted host must explicitly opt into `DIALECT_RETAINED_COLUMN_DRAFT` in
 TypeScript or `DialectRetainedColumnDraft()` in Go through ports.conversionContract.
-Model arguments cannot select this contract. These centralized provisional pins select
-only private Draft RFC0029 revision ade3914b0b81ef299e5b9a8d6147f37ff3f0976c,
-schema 996cec17473987eebf1aa553536df0ce5a740971532567f411282ee70036879f and
-corpus e2ac53f56cd5ab779e032d2847b49fa04438ffb9df57d456f75f2ba058dc12d2,
-profile base. This exact reviewed development source was merged through Spec PR271
-(squash 25b7156a1a27fd46d1b2493145a6e9fb5931a2f5); the selector retains the reviewed
-head above. These pins match the experimental Runtime document role. This is Draft
-integration only, with no normative adoption or product-release claim. Stable batch,
-independent review, exact dependency and release gates remain required.
+These helper names remain for API compatibility and select the accepted companion at
+draft maturity, not general Core support. Model arguments cannot select this contract.
+The exact published Spec distribution is `0.3.0-rc.2`, signed source commit
+`bcac15b7537ce21879201b5e5dfe795496225121`, schema
+`0cb49f238c78391cb163a65474cc9af962df2bb1024a55c5310c2b784b2f0557` and corpus
+`17b16ff7a9b74fe4cc81eb6f6129a6aabdd9834621d9e756aa2d4c1a3f245863`,
+contract `retained-column/1`, profile `base`, role `document-validation`.
+The companion source is `spec/retained-column.md`; RFC0029 remains its informative
+design record. The verified Spec RC2 archives are published. This package's selected
+identity does not establish a released Runtime or Runner implementation, final Core
+conformance, preparation verification, acquisition authenticity or execution authority.
+Stable batch, independent review, exact dependency and release gates remain required.
 
 The Runtime port calls only get_dialect_contract, dialect_validate and dialect_check,
-with the explicit private draftContract and draftProfile selectors. Discovery and
+with the explicit draftContract and draftProfile selectors. These selector names remain
+for transport compatibility with the opt-in draft-maturity role. Discovery and
 both checked reports must independently match the package contract/spec identity,
-experimental-draft maturity, document-validation role, profile and limits. Discovery
+draft maturity, the exact companion source URL, document-validation role, profile and limits. Discovery
 must carry the matching conversionContracts entry and validate/check operations plus
 declared-inventory-coverage. An old published alpha, wrong/missing feature, malformed
 report, changed identity or unsupported byte ceiling refuses final success while
 preserving the editable draft. Package document/pack admission remains 1 MiB and
 honors lower discovered limits. No ordinary transport/parser bound is enlarged.
 
-Validate must return document-valid in the selected experimental document scope.
+Validate must return document-valid in the selected experimental document scope. The
+`experimental-retained-column-base-*` validationScope strings remain compatible;
+they do not override the exact published Spec identity or its draft maturity.
 Coverage must bind the same canonical document/digest and exact raw pack SHA-256;
 host inventory metadata must match its entries. Only complete or review-required
 coverage can proceed. Encoding is never validation; document/coverage success checks
@@ -117,8 +123,11 @@ have version1, a32hex random attempt ID, fingerprint, candidate/checked stage,
 content digest, nullable previous receipt, immutable initial candidate, and optional
 check evidence. New candidates additionally carry conversionContract,
 researchDeclarations and retainedRead. Their schema additions are optional for old
-version-1 checkpoint inspection; old checkpoints do not gain new contract support or
-execution authority. A newly restored factory still requires a fresh read.
+version-1 checkpoint inspection; the schema preserves the exact historical private-Draft tuple as an alternative whole
+identity for inspection. Mixed old/new identity members are refused. Existing checkpoint
+bytes, digests, reports and receipts are never rewritten or rebound. Historical inspection
+does not authorize the old tuple for a new proposal or grant execution authority. A newly
+restored factory still requires the current trusted opt-in, a fresh read and fresh checks.
 Acknowledgments echo exact fingerprint, stage, digest and prior
 receipt with `status: draft` and a bounded receipt. Checked must reference the
 acknowledged candidate receipt. A final review proposal separately carries
@@ -166,14 +175,13 @@ existing update-dialect card for candidate/checked/final lineage without duplica
 cards or marking it applied. Fixtures do not mount React, execute a browser, or
 wire that adapter; actual Desk cutover remains separately owned and unverified.
 
-Published Runtime v0.39.0-alpha.1 and published Spec artifacts do not establish
-this new private Draft capability. The factory does not implement the newer general
-quality-target conversions/reconciliation, typed results, profile/binding/preparation
-verification or arbitrary acquisition execution. Its explicit provisional document
-role is separate from published support. Normative adoption, exact immutable upstream
-selection, actual Runner preparation/offline/export evidence, independent review and
-release gates remain required. No final Spec acceptance or unconditional final-Spec-tag
-timing requirement is implied.
+Published Runtime v0.39.0-alpha.1 does not establish this selected RC2 capability.
+The factory does not implement the newer general quality-target conversions/reconciliation,
+typed results, profile/binding/preparation verification or arbitrary acquisition execution.
+Spec companion acceptance and publication are established for the selected identity;
+actual released Runtime and Runner support, producer/history admission, complete
+preparation/offline/export evidence, independent review and release gates remain separate.
+Final Core milestone 2 and adopter-feedback disposition remain open.
 
 Handwritten shared vectors cover both language factories, exact bytes, explicit
 conversions and refusals. Actual API/native adapter certification uses fixture

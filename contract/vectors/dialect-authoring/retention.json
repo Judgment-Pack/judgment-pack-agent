@@ -1115,6 +1115,86 @@
         },
         "retainedRead": null
       }
+    },
+    {
+      "version": 1,
+      "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "stage": "candidate",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "previousReceipt": null,
+      "candidate": {
+        "id": "opaque-resource",
+        "revision": "revision-one",
+        "packKey": "declared-pack",
+        "packDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dialectDigest": null,
+        "documentJson": "{\"version\":2}",
+        "packJson": "{\"id\":\"declared-pack\"}",
+        "conversions": {
+          "/active": {
+            "kind": "boolean",
+            "trueValue": "yes",
+            "falseValue": "no"
+          },
+          "/amount": {
+            "kind": "decimal"
+          },
+          "/text": {
+            "kind": "text"
+          },
+          "/number": {
+            "kind": "number"
+          },
+          "/typed": {
+            "kind": "research-value"
+          }
+        },
+        "facts": [
+          {
+            "target": "/active",
+            "column": "active",
+            "conversion": {
+              "kind": "boolean",
+              "trueValue": "yes",
+              "falseValue": "no"
+            }
+          }
+        ],
+        "evidence": [
+          {
+            "requirement": "source",
+            "column": "source"
+          }
+        ],
+        "summary": "Review exact replacement draft",
+        "columns": [
+          {
+            "name": "active",
+            "samples": [
+              {
+                "valueJson": "false",
+                "origin": "generated"
+              }
+            ],
+            "research": {
+              "revision": "original-one",
+              "fieldJson": "{\"name\":\"active\",\"type\":\"boolean\"}"
+            }
+          }
+        ],
+        "researchDeclarations": null,
+        "conversionContract": {
+          "contract": "retained-column/1",
+          "profile": "base",
+          "spec": {
+            "version": "0.3.0-rc.2",
+            "revision": "bcac15b7537ce21879201b5e5dfe795496225121",
+            "schemaSha256": "sha256:0cb49f238c78391cb163a65474cc9af962df2bb1024a55c5310c2b784b2f0557",
+            "corpusSha256": "sha256:17b16ff7a9b74fe4cc81eb6f6129a6aabdd9834621d9e756aa2d4c1a3f245863"
+          }
+        }
+      }
     }
   ],
   "schema": "dialect-draft.json",

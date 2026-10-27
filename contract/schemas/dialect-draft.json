@@ -553,28 +553,20 @@
           "const": "base"
         },
         "spec": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "version",
-            "revision",
-            "schemaSha256",
-            "corpusSha256"
-          ],
-          "properties": {
-            "version": {
-              "const": "Draft RFC0029"
+          "enum": [
+            {
+              "version": "0.3.0-rc.2",
+              "revision": "bcac15b7537ce21879201b5e5dfe795496225121",
+              "schemaSha256": "sha256:0cb49f238c78391cb163a65474cc9af962df2bb1024a55c5310c2b784b2f0557",
+              "corpusSha256": "sha256:17b16ff7a9b74fe4cc81eb6f6129a6aabdd9834621d9e756aa2d4c1a3f245863"
             },
-            "revision": {
-              "const": "ade3914b0b81ef299e5b9a8d6147f37ff3f0976c"
-            },
-            "schemaSha256": {
-              "const": "sha256:996cec17473987eebf1aa553536df0ce5a740971532567f411282ee70036879f"
-            },
-            "corpusSha256": {
-              "const": "sha256:e2ac53f56cd5ab779e032d2847b49fa04438ffb9df57d456f75f2ba058dc12d2"
+            {
+              "version": "Draft RFC0029",
+              "revision": "ade3914b0b81ef299e5b9a8d6147f37ff3f0976c",
+              "schemaSha256": "sha256:996cec17473987eebf1aa553536df0ce5a740971532567f411282ee70036879f",
+              "corpusSha256": "sha256:e2ac53f56cd5ab779e032d2847b49fa04438ffb9df57d456f75f2ba058dc12d2"
             }
-          }
+          ]
         }
       }
     },

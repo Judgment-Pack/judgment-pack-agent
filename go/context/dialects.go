@@ -38,7 +38,7 @@ const (
 	DialectMilliseconds     = 10000
 )
 
-// Provisional private Draft document role; refresh these pins together after Spec adoption.
+// Published Spec RC2 companion at draft maturity; this tuple does not select general Core support.
 type DialectConversionSpec struct {
 	Version      string `json:"version"`
 	Revision     string `json:"revision"`
@@ -51,8 +51,9 @@ type DialectConversionContract struct {
 	Spec     DialectConversionSpec `json:"spec"`
 }
 
+// DialectRetainedColumnDraft retains its compatibility name for the accepted draft-maturity companion.
 func DialectRetainedColumnDraft() DialectConversionContract {
-	return DialectConversionContract{"retained-column/1", "base", DialectConversionSpec{"Draft RFC0029", "ade3914b0b81ef299e5b9a8d6147f37ff3f0976c", "sha256:996cec17473987eebf1aa553536df0ce5a740971532567f411282ee70036879f", "sha256:e2ac53f56cd5ab779e032d2847b49fa04438ffb9df57d456f75f2ba058dc12d2"}}
+	return DialectConversionContract{"retained-column/1", "base", DialectConversionSpec{"0.3.0-rc.2", "bcac15b7537ce21879201b5e5dfe795496225121", "sha256:0cb49f238c78391cb163a65474cc9af962df2bb1024a55c5310c2b784b2f0557", "sha256:17b16ff7a9b74fe4cc81eb6f6129a6aabdd9834621d9e756aa2d4c1a3f245863"}}
 }
 
 type DialectRetainedOccurrence struct {
@@ -216,7 +217,7 @@ type DialectRetention struct {
 
 // DialectAuthoringPorts has no save, publish, acquire, approve or execute capability.
 type DialectAuthoringPorts struct {
-	// Explicit trusted opt-in to the exact package-supported Draft, never a model argument.
+	// Explicit trusted opt-in to the exact package-supported companion, never a model argument.
 	ConversionContract *DialectConversionContract
 	Read               func(context.Context, DialectReadRequest) (DialectSnapshot, error)
 	// Runtime is the actual installed Runtime transport; only discovery, validate and check are used.
@@ -459,7 +460,7 @@ func dialectJSONEqual(a, b any) bool {
 	return e == nil && left == right
 }
 func dialectContractIdentity(r map[string]any, selection DialectConversionContract) bool {
-	return r["contract"] == selection.Contract && r["profile"] == selection.Profile && r["role"] == "document-validation" && r["maturity"] == "experimental-draft" && r["specRevision"] == selection.Spec.Revision && r["specification"] == "https://github.com/Judgment-Pack/judgment-pack-spec/blob/"+selection.Spec.Revision+"/rfcs/0029-retained-column-conversions.md" && dialectJSONEqual(r["spec"], selection.Spec)
+	return r["contract"] == selection.Contract && r["profile"] == selection.Profile && r["role"] == "document-validation" && r["maturity"] == "draft" && r["specRevision"] == selection.Spec.Revision && r["specification"] == "https://github.com/Judgment-Pack/judgment-pack-spec/blob/"+selection.Spec.Revision+"/spec/retained-column.md" && dialectJSONEqual(r["spec"], selection.Spec)
 }
 func dialectDecode(raw []byte, out any) error {
 	if !dialectStrictJSON(raw) {
@@ -996,7 +997,7 @@ func (g *dialectToolsState) proposeTool(ctx context.Context, raw json.RawMessage
 	}
 	validation, coverage, err := func() (map[string]any, map[string]any, error) {
 		if g.ports.ConversionContract == nil || *g.ports.ConversionContract != selection {
-			return nil, nil, dialectFail("the exact package-supported experimental Draft opt-in is required.")
+			return nil, nil, dialectFail("the exact package-supported retained-column opt-in is required.")
 		}
 		var discovery ToolResult
 		err := dialectBounded(ctx, func(b context.Context) error {
@@ -1019,7 +1020,7 @@ func (g *dialectToolsState) proposeTool(ctx context.Context, raw json.RawMessage
 		contracts, contractsOK := capabilities["conversionContracts"].([]any)
 		expectedCapability := map[string]any{"contract": selection.Contract, "spec": selection.Spec, "profile": selection.Profile, "role": "document-validation", "limits": limits}
 		if contractReport["status"] != "available" || !dialectContractIdentity(contractReport, selection) || !contractsOK || len(contracts) != 1 || !dialectJSONEqual(contracts[0], expectedCapability) || capabilities["packCheckScope"] != "declared-inventory-coverage" {
-			return nil, nil, dialectFail("Runtime does not support the exact experimental conversion document contract.")
+			return nil, nil, dialectFail("Runtime does not support the exact selected conversion document contract.")
 		}
 		documentLimit, documentOK := limits["documentBytes"].(json.Number)
 		frameLimit, frameOK := limits["frameBytes"].(json.Number)

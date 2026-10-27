@@ -8,10 +8,10 @@ import {toolTimeout, withDeadline} from './engines/contract'
 
 /** Package-owned draft/review tools. Ports cannot save a recipe, publish or execute it. */
 export const DIALECT_AUTHORING_LIMITS = Object.freeze({documentBytes:1048576, packBytes:1048576, snapshotBytes:4194304, resultBytes:2097152, runtimeBytes:4194304, candidateBytes:4194304, draftBytes:8388608, runtimeResults:2, columns:1000, bindings:1000, samples:3, sampleBytes:16384, shownSampleBytes:160, rememberedReads:32, milliseconds:10000})
-/** Private experimental Draft document role at one reviewed development identity; no normative adoption. */
+/** Published Spec RC2 companion at draft maturity; the compatibility helper name does not select Core. */
 export const DIALECT_RETAINED_COLUMN_DRAFT = Object.freeze({
  contract:'retained-column/1', profile:'base',
- spec:Object.freeze({version:'Draft RFC0029',revision:'ade3914b0b81ef299e5b9a8d6147f37ff3f0976c',schemaSha256:'sha256:996cec17473987eebf1aa553536df0ce5a740971532567f411282ee70036879f',corpusSha256:'sha256:e2ac53f56cd5ab779e032d2847b49fa04438ffb9df57d456f75f2ba058dc12d2'})
+ spec:Object.freeze({version:'0.3.0-rc.2',revision:'bcac15b7537ce21879201b5e5dfe795496225121',schemaSha256:'sha256:0cb49f238c78391cb163a65474cc9af962df2bb1024a55c5310c2b784b2f0557',corpusSha256:'sha256:17b16ff7a9b74fe4cc81eb6f6129a6aabdd9834621d9e756aa2d4c1a3f245863'})
 })
 export interface DialectConversionContract {contract:string; profile:string; spec:{version:string; revision:string; schemaSha256:string; corpusSha256:string}}
 export interface DialectRetainedRead {documentJson:string; occurrence:{kind:'case'}|{kind:'source';name:string}; framePointer:string}
@@ -70,7 +70,7 @@ export interface DialectReviewProposal extends DialectCandidate {
 }
 export interface DialectRetention {fingerprint:string; receipt:string; status:'review-required'; draft:DialectDraftLineage}
 export interface DialectAuthoringPorts {
- /** Trusted host opt-in to the package's exact private Draft; never a model argument. */
+ /** Trusted host opt-in to the package's exact published companion; never a model argument. */
  conversionContract?:DialectConversionContract
  read:(request:Readonly<DialectReadRequest>,signal:AbortSignal)=>Promise<DialectSnapshot>
  /** Actual installed Runtime transport. The package calls only discovery, validate and check. */
@@ -143,11 +143,11 @@ function retainedRead(value:unknown):value is DialectRetainedRead|undefined {
  return occurrence.kind==='source'&&keys(occurrence,['kind','name'])&&text(occurrence.name,1024)
 }
 function selectedContract(value:unknown):DialectConversionContract {
- if(!object(value)||canonicalJSON(value)!==canonicalJSON(DIALECT_RETAINED_COLUMN_DRAFT))fail('the exact package-supported experimental Draft opt-in is required.')
+ if(!object(value)||canonicalJSON(value)!==canonicalJSON(DIALECT_RETAINED_COLUMN_DRAFT))fail('the exact package-supported retained-column opt-in is required.')
  return copy(value as unknown as DialectConversionContract)
 }
 function contractIdentity(report:Record<string,unknown>,selection:DialectConversionContract):boolean {
- return report.contract===selection.contract&&report.profile===selection.profile&&report.role==='document-validation'&&report.maturity==='experimental-draft'&&report.specRevision===selection.spec.revision&&report.specification===`https://github.com/Judgment-Pack/judgment-pack-spec/blob/${selection.spec.revision}/rfcs/0029-retained-column-conversions.md`&&object(report.spec)&&canonicalJSON(report.spec)===canonicalJSON(selection.spec)
+ return report.contract===selection.contract&&report.profile===selection.profile&&report.role==='document-validation'&&report.maturity==='draft'&&report.specRevision===selection.spec.revision&&report.specification===`https://github.com/Judgment-Pack/judgment-pack-spec/blob/${selection.spec.revision}/spec/retained-column.md`&&object(report.spec)&&canonicalJSON(report.spec)===canonicalJSON(selection.spec)
 }
 async function bounded<T>(signal:AbortSignal,run:(signal:AbortSignal)=>Promise<T>):Promise<T>{
  signal.throwIfAborted()
@@ -318,7 +318,7 @@ export function dialectTools(ports:DialectAuthoringPorts):HostTool[]{
    try{contract=report(discovery)}catch(error){returned=true;unavailable=true;throw error}
    returned=true
    const c=contract.capabilities,limits=contract.limits
-   if(contract.status!=='available'||!contractIdentity(contract,selection)||!object(c)||!Array.isArray(c.conversionContracts)||c.conversionContracts.length!==1||!object(c.conversionContracts[0])||canonicalJSON(c.conversionContracts[0])!==canonicalJSON({contract:selection.contract,spec:selection.spec,profile:selection.profile,role:'document-validation',limits})||c.packCheckScope!=='declared-inventory-coverage')fail('Runtime does not support the exact experimental conversion document contract.')
+   if(contract.status!=='available'||!contractIdentity(contract,selection)||!object(c)||!Array.isArray(c.conversionContracts)||c.conversionContracts.length!==1||!object(c.conversionContracts[0])||canonicalJSON(c.conversionContracts[0])!==canonicalJSON({contract:selection.contract,spec:selection.spec,profile:selection.profile,role:'document-validation',limits})||c.packCheckScope!=='declared-inventory-coverage')fail('Runtime does not support the exact selected conversion document contract.')
    if(!Array.isArray(c.operations)||!c.operations.includes('validate')||!c.operations.includes('check')||!object(limits)||!keys(limits,['documentBytes','frameBytes'])||!Number.isSafeInteger(limits.documentBytes)||Number(limits.documentBytes)<1||!Number.isSafeInteger(limits.frameBytes)||Number(limits.frameBytes)<1||!Number.isSafeInteger(c.maxPackBytes)||Number(c.maxPackBytes)<1)fail('Runtime omitted its supported operations or byte ceilings.')
    if(utf8Bytes(input)>Math.min(L.documentBytes,Number(limits.documentBytes))||utf8Bytes(s.packJson)>Math.min(L.packBytes,Number(c.maxPackBytes)))fail('the supplied document or pack exceeds the discovered Runtime byte ceiling.')
    const checked=async(name:'dialect_validate'|'dialect_check',args:Record<string,string>)=>{
