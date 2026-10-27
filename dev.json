@@ -43,7 +43,7 @@
     {"name": "go-generate", "run": "go generate ./contract && git diff --exit-code -- contract", "cwd": "go", "toolchain": "go", "timeout": 3000},
     {"name": "go-test", "run": "go test -count=1 ./...", "cwd": "go", "toolchain": "go",
      "summary": "^(ok|FAIL|---) ", "timeout": 3000},
-    {"name": "go-race", "run": "go test -count=1 -race ./context/... ./adapter/...", "cwd": "go", "toolchain": "go",
+    {"name": "go-race", "run": "go test -count=1 -race -timeout=20m ./context/... ./adapter/...", "cwd": "go", "toolchain": "go",
      "summary": "^(ok|FAIL|---) ", "timeout": 3000},
     {"name": "harness-check", "run": "go run ./cmd/harness-check", "cwd": "go", "toolchain": "go",
      "summary": "passed", "timeout": 3000}

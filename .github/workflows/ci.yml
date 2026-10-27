@@ -22,6 +22,13 @@ jobs:
     name: contract
     runs-on: ubuntu-latest
     steps:
+      - name: Initialize job scratch
+        run: |
+          set -eu
+          scratch="$(mktemp -d "${RUNNER_TEMP}/jpdev-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}-XXXXXX")"
+          mkdir "${scratch}/tmp"
+          echo "JPDEV_SCRATCH=${scratch}" >> "$GITHUB_ENV"
+          echo "TMPDIR=${scratch}/tmp" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -52,6 +59,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
+      - name: Initialize job scratch
+        run: |
+          set -eu
+          scratch="$(mktemp -d "${RUNNER_TEMP}/jpdev-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}-XXXXXX")"
+          mkdir "${scratch}/tmp"
+          echo "JPDEV_SCRATCH=${scratch}" >> "$GITHUB_ENV"
+          echo "TMPDIR=${scratch}/tmp" >> "$GITHUB_ENV"
       # The whole history, so that --changed finds the merge base with the base branch.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

@@ -422,6 +422,41 @@ class SmallBoundaries(unittest.TestCase):
         self.assertEqual(self.outcome(lambda:e.required_checks(cfg,job)), 'check-config')
 
 
+class CIWorkflowScratch(unittest.TestCase):
+    def test_each_job_exports_unique_contained_scratch_before_checks(self):
+        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
+        jobs = workflow.split('\n  contract:\n', 1)[1]
+        contract, check = jobs.split('\n  check:\n', 1)
+        for job, body in [('contract', contract), ('check', check)]:
+            with self.subTest(job=job), tempfile.TemporaryDirectory(prefix='ci scratch ') as directory:
+                before, script = body.split('      - name: Initialize job scratch\n        run: |\n', 1)
+                self.assertNotIn('scripts/dev/check.sh', before)
+                script = script.split('      - ', 1)[0]
+                script = '\n'.join(line[10:] for line in script.splitlines() if line.startswith('          '))
+                base = Path(directory).resolve()
+                exports = base / 'github-env'
+                env = dict(os.environ, RUNNER_TEMP=str(base), GITHUB_ENV=str(exports),
+                           GITHUB_RUN_ID='123', GITHUB_RUN_ATTEMPT='2', GITHUB_JOB=job)
+                roots = []
+                for _ in range(2):
+                    exports.write_text('')
+                    subprocess.run(['bash', '-eu', '-c', script], env=env, check=True)
+                    values = dict(line.split('=', 1) for line in exports.read_text().splitlines())
+                    for key in ['JPDEV_SCRATCH', 'TMPDIR']:
+                        self.assertIn(key, values, f'{job} must export {key}')
+                    scratch, tmp = (Path(values[key]).resolve() for key in ['JPDEV_SCRATCH', 'TMPDIR'])
+                    self.assertEqual(scratch.parent, base)
+                    self.assertEqual(tmp.parent, scratch)
+                    self.assertTrue(tmp.is_dir())
+                    child = subprocess.run([sys.executable, '-c',
+                                            'import tempfile; print(tempfile.gettempdir())'],
+                                           env=dict(env, **values), check=True, text=True,
+                                           stdout=subprocess.PIPE)
+                    self.assertEqual(Path(child.stdout.strip()).resolve(), tmp)
+                    roots.append(scratch)
+                self.assertNotEqual(*roots)
+
+
 class GatewayReceiptCoverage(unittest.TestCase):
     """The actual producer proof remains mandatory in the existing CI evidence gate."""
     def setUp(self):
