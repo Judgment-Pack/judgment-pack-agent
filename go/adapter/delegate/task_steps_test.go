@@ -93,11 +93,19 @@ func TestTaskSteps183ActualModelCoordinatorConcurrencyAndCompletion(t *testing.T
 	if err = json.Unmarshal(raw, &definition); err != nil {
 		t.Fatal(err)
 	}
+	// This tests overlap and acknowledged completion, not the shared declaration's
+	// 30-second latency bound. The child clock also covers serialized durable
+	// admission and result commits, which race instrumentation makes expensive.
+	definition.Bounds.Milliseconds = 120000
+	definition.PinnedDigest = runcontext.SubagentDigest(definition)
 	run.Subagents = []runcontext.Subagent{definition}
 	pin := &contract.SubagentRecord{ID: run.Subagents[0].ID, Digest: run.Subagents[0].PinnedDigest, Source: contract.SubagentRecordSource(run.Subagents[0].Source)}
 	var mu sync.Mutex
 	parentCalls, childCalls, active, peak := 0, 0, 0, 0
 	together := make(chan struct{})
+	var releaseChildren sync.Once
+	rendezvousExpired := false
+	started := time.Now()
 	run.Emit = func(event contract.RunEvent) {
 		if event.ToolResult != nil && event.ToolResult.IsError {
 			t.Logf("tool refusal %s", task183JSON(event))
@@ -120,18 +128,29 @@ func TestTaskSteps183ActualModelCoordinatorConcurrencyAndCompletion(t *testing.T
 		} else {
 			childCalls++
 			if childCalls == 2 {
-				close(together)
+				releaseChildren.Do(func() { close(together) })
 			}
 		}
 		mu.Unlock()
 		defer func() { mu.Lock(); active--; mu.Unlock() }()
+		deadline, _ := ctx.Deadline()
+		t.Logf("fixture provider parent=%t stage=%d elapsed=%s deadlineRemaining=%s", parent, stage, time.Since(started), time.Until(deadline))
 		if !parent {
+			timer := time.NewTimer(lifecycleBarrierTimeout)
+			defer timer.Stop()
 			select {
 			case <-together:
 			case <-ctx.Done():
 				return nil, ctx.Err()
-			case <-time.After(4 * time.Second):
-				return nil, fmt.Errorf("second ready child not scheduled under concurrency two")
+			case <-timer.C:
+				mu.Lock()
+				select {
+				case <-together:
+				default:
+					rendezvousExpired = true
+					releaseChildren.Do(func() { close(together) })
+				}
+				mu.Unlock()
 			}
 			return task183ModelReply("", nil), nil
 		}
@@ -153,6 +172,9 @@ func TestTaskSteps183ActualModelCoordinatorConcurrencyAndCompletion(t *testing.T
 	}
 	if err := delegate.With(eino.New(), delegate.Options{}).Run(context.Background(), run); err != nil {
 		t.Fatal(err)
+	}
+	if rendezvousExpired {
+		t.Fatalf("independent child provider calls did not overlap: parent=%d child=%d peak=%d", parentCalls, childCalls, peak)
 	}
 	if parentCalls != 5 || childCalls != 2 || peak != 2 {
 		t.Fatalf("parent=%d child=%d peak=%d", parentCalls, childCalls, peak)
