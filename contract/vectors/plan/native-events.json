@@ -1,0 +1,20 @@
+{
+  "schema": "run-event.json",
+  "source": "Handwritten shared native Plan fixtures (#219/#237).",
+  "description": "Static handwritten inputs from contract/testdata/task-steps/records.json, included in the canonical corpus for schema omission proofs; never generated from implementation output.",
+  "items": [
+    {
+      "type": "plan_drift_decided",
+      "version": 2,
+      "execution": "extended-plan",
+      "callId": "plan-decision-1",
+      "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+      "candidateRevision": "sha256:a8641e88a3e5c770fe8450659f105ef82b68c4fbffec3b939d8639503d31cac1",
+      "approved": false,
+      "nativeInvocation": {
+        "dispatchId": "original-native-invocation",
+        "requestDigest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+      }
+    }
+  ]
+}

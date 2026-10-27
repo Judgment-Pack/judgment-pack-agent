@@ -640,9 +640,9 @@ export class RunWriter {
   if(rows.length>1||rows.some(row=>row.state!=='unknown'||row.planPause?.callId!==event.callId||row.planPause.revision!==event.revision||row.planPause.candidateRevision!==event.candidateRevision))throw new HostOutcomeUnknown();const old=rows[0];if(!old)return
   const head=await this.store.load(this.id,signal);if(!head||head.revision!==this.revision||!this.acknowledgedCheckpoint||!head.checkpoint||historyBytesDigest(head.checkpoint)!==historyBytesDigest(this.acknowledgedCheckpoint))throw new ContinuationIdentityChanged()
   const invocation=await verifyNativePlanEvidence(this.store,head,this.latest,old,undefined,false,signal)
-  const decision=state.planState?.decisions?.at(-1)
+  const planState=structuredClone(state.planState),decision=planState?.decisions?.at(-1)
   if(!decision||decision.callId!==event.callId||decision.revision!==event.revision||decision.candidateRevision!==event.candidateRevision||decision.approved!==event.approved||decision.note!==event.note)throw new ContinuationIdentityChanged()
-  decision.nativeInvocation=invocation;event.nativeInvocation=structuredClone(invocation);mutateCheckpoint(state,{version:3});return old
+  decision.nativeInvocation=structuredClone(invocation);event.nativeInvocation=structuredClone(invocation);mutateCheckpoint(state,{planState,version:3});return old
  }
  commitPlan(binding:DurableBinding,state:ExecutionCheckpoint,event:import('../execution/controller').PlanEvent,signal?:AbortSignal){return this.enqueue(async()=>{
   if(this.dispatchClosed)throw new DispatchCanceled(new DOMException('The operation was aborted','AbortError'))

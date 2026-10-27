@@ -74,3 +74,37 @@ func TestTaskSteps183HandwrittenCurrentRecords(t *testing.T) {
 		})
 	}
 }
+
+func TestCanonicalNativePlanReceiptVectors(t *testing.T) {
+	for _, fixture := range []struct{ file, kind string }{{"native-checkpoints.json", "checkpoint"}, {"native-events.json", "event"}} {
+		t.Run(fixture.file, func(t *testing.T) {
+			raw, err := os.ReadFile("../../contract/vectors/plan/" + fixture.file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, row := range MustParseJSON(string(raw)).Get("items").Items() {
+				if err := contract.CheckRecord(fixture.kind, row.JSON()); err != nil {
+					t.Fatal(err)
+				}
+				var decoded any
+				if fixture.kind == "checkpoint" {
+					decoded, err = ReadExecution(row)
+				} else {
+					var event contract.RunEvent
+					err = json.Unmarshal(row.JSON(), &event)
+					decoded = event
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				encoded, err := json.Marshal(decoded)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if CanonicalJSON(MustParseJSON(string(encoded))) != CanonicalJSON(row) {
+					t.Fatal("canonical native Plan receipt vector changed")
+				}
+			}
+		})
+	}
+}

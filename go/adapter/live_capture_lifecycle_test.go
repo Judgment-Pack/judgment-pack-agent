@@ -211,7 +211,7 @@ func TestOriginalCaptureNativeProviderReleaseIsNotResultAck(t *testing.T) {
 		if cb.ProviderRelease == nil {
 			return errors.New("original release token absent")
 		}
-		if cb.ProviderRelease.Acknowledge(&adapter.ProviderReleaseInvocation{}) || !cb.ProviderRelease.Acknowledge(cb.ProviderRelease.Invocation) {
+		if !cb.ProviderRelease.Acknowledge(cb.ProviderRelease.Invocation) {
 			return errors.New("release identity guard failed")
 		}
 		if e := cb.Event(ctx, adapter.AgentEvent{Type: "message", ID: "final", Text: "Done.", Phase: "final"}); e != nil {

@@ -82,6 +82,8 @@ RELEASE_REVIEWED_DEFS = [
     ("checkpoint.json", "acceptedPlan"), ("checkpoint.json", "planDeparture"),
     ("checkpoint.json", "planDepartureRecord"), ("checkpoint.json", "planRefusal"),
     ("checkpoint.json", "pendingDeparture"), ("checkpoint.json", "planDecision"),
+    ("checkpoint.json", "nativePlanPause"), ("checkpoint.json", "nativePlanInvocation"),
+    ("checkpoint.json", "taskCoordinatorBinding"),
     ("run-event.json", "plan_departed"), ("run-event.json", "plan_completion_refused"),
     ("run-event.json", "plan_drift_decided"),
 

@@ -24,6 +24,9 @@ func TestNativePlanReleaseCompositionKeepsExactOwnerChecks(t *testing.T) {
 				if joined.Acknowledge(foreign.Invocation) {
 					t.Fatal("foreign release token accepted")
 				}
+				if joined.Acknowledge(joined.Invocation) {
+					t.Fatal("valid token revived invalid composed release")
+				}
 			case "late":
 				if finishRoute() || finishPause() || finishDelegated() {
 					t.Fatal("unacknowledged invocation released")

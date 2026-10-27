@@ -5832,7 +5832,7 @@
   {
    "name": "record versions stamp every final event",
    "file": "recordReader.ts",
-   "find": "return {...event,version:event.version===2||event.type==='repeat_detected'||event.type==='route_decided'||event.type==='route_widened'||event.type==='approval_requested'&&'runtime'in event&&event.runtime!==undefined||event.type==='execution_checkpoint'&&event.checkpoint.version===3||event.type==='budget_paused'&&event.checkpoint.version===3?2:1}",
+   "find": "return {...event,version:event.version===2||event.type==='plan_drift_decided'&&event.nativeInvocation!==undefined||event.type==='repeat_detected'||event.type==='route_decided'||event.type==='route_widened'||event.type==='approval_requested'&&'runtime'in event&&event.runtime!==undefined||event.type==='execution_checkpoint'&&event.checkpoint.version===3||event.type==='budget_paused'&&event.checkpoint.version===3?2:1}",
    "replace": "return {...event} as T&{version:1|2}",
    "tests": [
     "recordReader.test.ts",
@@ -5855,7 +5855,7 @@
   {
    "name": "record versions stamp checkpoints before their digest",
    "file": "records.ts",
-   "find": "version:(schema===CHECKPOINT_SCHEMA?(((value as {version?:number}).version===3||(value as {repeatTools?:unknown}).repeatTools!==undefined||(value as {usageBudget?:unknown;turnRoute?:unknown}).usageBudget!==undefined||(value as {turnRoute?:unknown}).turnRoute!==undefined||(value as {approval?:{runtime?:unknown}}).approval?.runtime!==undefined||taskRecordFields(value))?3:2):1)",
+   "find": "version:(schema===CHECKPOINT_SCHEMA?(((value as {version?:number}).version===3||(value as {repeatTools?:unknown}).repeatTools!==undefined||(value as {usageBudget?:unknown;turnRoute?:unknown}).usageBudget!==undefined||(value as {turnRoute?:unknown}).turnRoute!==undefined||(value as {approval?:{runtime?:unknown}}).approval?.runtime!==undefined||taskRecordFields(value)||nativePlanRecordFields(value))?3:2):1)",
    "replace": "version:1",
    "tests": [
     "recordReader.test.ts",

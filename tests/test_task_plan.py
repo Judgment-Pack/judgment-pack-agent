@@ -15,7 +15,7 @@ class TaskPlanContractTests(unittest.TestCase):
 
     def test_every_new_member_and_enum_is_carried(self):
         targets={
-            'checkpoint.json':['taskStep','planChange','planRevision','planState','stepEvidence','planOrigin','acceptedPlan','planDeparture','planDepartureRecord','planRefusal','pendingDeparture','planDecision'],
+            'checkpoint.json':['taskStep','planChange','planRevision','planState','stepEvidence','planOrigin','acceptedPlan','planDeparture','planDepartureRecord','planRefusal','pendingDeparture','planDecision','nativePlanPause','nativePlanInvocation','taskCoordinatorBinding'],
             'run-event.json':['plan_revised','plan_departed','plan_completion_refused','plan_drift_decided'],
         }
         def paths(node,path):
@@ -33,6 +33,7 @@ class TaskPlanContractTests(unittest.TestCase):
         for name,defs in targets.items():
             for definition in defs:checks.extend((name,p,e) for p,e in paths(self.documents[name]['$defs'][definition],['$defs',definition]))
         checks += [('checkpoint.json',['properties','planState'],None),('tool-offer.json',['$defs','reservedName'],'complete_plan_step')]
+        checks += [('checkpoint.json',['$defs','durableDispatch','properties','planPause'],None)]
         checks += [('run-event.json',['$defs','approval_requested','properties',key],None) for key in ('purpose','plan')]
         checks += [('run-event.json',['$defs','approval_requested','properties','purpose'],value) for value in ('tool-call','plan-drift')]
         for name,path,enum in checks:
