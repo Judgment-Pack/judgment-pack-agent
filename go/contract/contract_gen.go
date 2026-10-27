@@ -12509,31 +12509,107 @@ func (v DialectDraftConversionContract) MarshalJSON() ([]byte, error) {
 }
 
 // From dialect-draft.json#/$defs/conversionContract/properties/spec.
+//
+// A union: exactly one member is set. An object is decoded by its "version" member.
 type DialectDraftConversionContractSpec struct {
+	// Option1 is set where version is "0.3.0-rc.2".
+	Option1 *DialectDraftConversionContractSpecOption1
+	// Option2 is set where version is "Draft RFC0029".
+	Option2 *DialectDraftConversionContractSpecOption2
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *DialectDraftConversionContractSpec) UnmarshalJSON(data []byte) error {
+	*v = DialectDraftConversionContractSpec{}
+	kind := jsonKind(data)
+	if kind == "object" {
+		tag, err := memberString(data, "version")
+		if err != nil {
+			return errorf("DialectDraftConversionContractSpec: %w", err)
+		}
+		switch tag {
+		case "0.3.0-rc.2":
+			v.Option1 = new(DialectDraftConversionContractSpecOption1)
+			return json.Unmarshal(data, v.Option1)
+		case "Draft RFC0029":
+			v.Option2 = new(DialectDraftConversionContractSpecOption2)
+			return json.Unmarshal(data, v.Option2)
+		}
+		return errorf("DialectDraftConversionContractSpec: no member has version %q", tag)
+	}
+	return errorf("DialectDraftConversionContractSpec: the value is none of the union's members")
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v DialectDraftConversionContractSpec) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.Option1 != nil {
+		set = append(set, v.Option1)
+	}
+	if v.Option2 != nil {
+		set = append(set, v.Option2)
+	}
+	if len(set) != 1 {
+		return nil, errorf("DialectDraftConversionContractSpec: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From dialect-draft.json#/$defs/conversionContract/properties/spec/oneOf/0.
+type DialectDraftConversionContractSpecOption1 struct {
 	Version      string `json:"version"`
 	Revision     string `json:"revision"`
 	SchemaSha256 string `json:"schemaSha256"`
 	CorpusSha256 string `json:"corpusSha256"`
 }
 
-var dialectDraftConversionContractSpecMembers = []string{"version", "revision", "schemaSha256", "corpusSha256"}
+var dialectDraftConversionContractSpecOption1Members = []string{"version", "revision", "schemaSha256", "corpusSha256"}
 
-// UnmarshalJSON decodes a DialectDraftConversionContractSpec object and refuses a member the closed schema does not name.
-func (v *DialectDraftConversionContractSpec) UnmarshalJSON(data []byte) error {
-	type plain DialectDraftConversionContractSpec
+// UnmarshalJSON decodes a DialectDraftConversionContractSpecOption1 object and refuses a member the closed schema does not name.
+func (v *DialectDraftConversionContractSpecOption1) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftConversionContractSpecOption1
 	var p plain
-	extra, err := decodeObject(data, &p, dialectDraftConversionContractSpecMembers, true)
+	extra, err := decodeObject(data, &p, dialectDraftConversionContractSpecOption1Members, true)
 	if err != nil {
-		return errorf("DialectDraftConversionContractSpec: %w", err)
+		return errorf("DialectDraftConversionContractSpecOption1: %w", err)
 	}
-	*v = DialectDraftConversionContractSpec(p)
+	*v = DialectDraftConversionContractSpecOption1(p)
 	_ = extra
 	return nil
 }
 
-// MarshalJSON encodes a DialectDraftConversionContractSpec object.
-func (v DialectDraftConversionContractSpec) MarshalJSON() ([]byte, error) {
-	type plain DialectDraftConversionContractSpec
+// MarshalJSON encodes a DialectDraftConversionContractSpecOption1 object.
+func (v DialectDraftConversionContractSpecOption1) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftConversionContractSpecOption1
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json#/$defs/conversionContract/properties/spec/oneOf/1.
+type DialectDraftConversionContractSpecOption2 struct {
+	Version      string `json:"version"`
+	Revision     string `json:"revision"`
+	SchemaSha256 string `json:"schemaSha256"`
+	CorpusSha256 string `json:"corpusSha256"`
+}
+
+var dialectDraftConversionContractSpecOption2Members = []string{"version", "revision", "schemaSha256", "corpusSha256"}
+
+// UnmarshalJSON decodes a DialectDraftConversionContractSpecOption2 object and refuses a member the closed schema does not name.
+func (v *DialectDraftConversionContractSpecOption2) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftConversionContractSpecOption2
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftConversionContractSpecOption2Members, true)
+	if err != nil {
+		return errorf("DialectDraftConversionContractSpecOption2: %w", err)
+	}
+	*v = DialectDraftConversionContractSpecOption2(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftConversionContractSpecOption2 object.
+func (v DialectDraftConversionContractSpecOption2) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftConversionContractSpecOption2
 	return encodeObject(plain(v), nil)
 }
 
