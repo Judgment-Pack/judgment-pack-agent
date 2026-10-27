@@ -1,4 +1,6 @@
 import {describe,it,expect,vi} from 'vitest'
+import type {Transport} from '@modelcontextprotocol/sdk/shared/transport.js'
+import {allowedTools,gateTransport,GateViolation} from '../toolGate'
 import {contextualSession} from '../context/session'
 import {normalize} from '../thinking'
 import type {AssistantSession} from '../engine'
@@ -59,12 +61,30 @@ describe('shared execution continuity',()=>{
   expect(input.model.call).not.toHaveBeenCalled()
  })
  it('caches unchanged session contracts but never workflow operations or failed reads',async()=>{
-  const input=base();input.tools=[{name:'get_schema'}]
-  input.callTool=vi.fn(async(name)=>({content:[{type:'text',text:name}]}))
+  const input=base();input.tools=[{name:'get_schema',_meta:{operation:'read',effect:'read'}}]
+  // An internal in-memory workflow remains uncached; it is not a Runtime tool.
+  const execute=vi.fn(async()=>({content:[{type:'text' as const,text:'saved'}]}))
+  input.hostTools=[{name:'save_pack',taxonomy:{operation:'own-state',effect:'pure'},effect:'workflow',description:'Save synthetic test state.',inputSchema:{type:'object',properties:{id:{type:'string'}}},execute}]
+  // Runtime admission belongs to the transport gate, not the session's read cache.
+  const send=vi.fn(async()=>{}),onGuardrail=vi.fn()
+  const transport:Transport={start:async()=>{},close:async()=>{},send}
+  gateTransport(transport,{allowed:allowedTools(input.tools.map(tool=>tool.name)),onGuardrail})
+  input.callTool=vi.fn(async(name,args)=>{
+   await transport.send({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})
+   return {content:[{type:'text',text:name}]}
+  })
   const {session}=await contextualSession(input)
   await session.callTool('get_schema',{});await session.callTool('get_schema',{})
-  await session.callTool('save_pack',{id:'one'});await session.callTool('save_pack',{id:'one'})
-  expect(input.callTool).toHaveBeenCalledTimes(3)
+  const workflow=session.values.hostTools.find(tool=>tool.name==='save_pack')!
+  await workflow.execute({id:'one'},input.signal);await workflow.execute({id:'one'},input.signal)
+  expect(execute).toHaveBeenCalledTimes(2)
+  expect(input.callTool).toHaveBeenCalledTimes(1)
+  expect(send).toHaveBeenCalledTimes(1)
+  await expect(session.callTool('save_pack',{id:'one'})).rejects.toBeInstanceOf(GateViolation)
+  expect(input.callTool).toHaveBeenCalledTimes(2)
+  expect(send).toHaveBeenCalledTimes(1)
+  expect(onGuardrail).toHaveBeenCalledWith(expect.objectContaining({action:'refused',tool:'save_pack'}))
+  expect(execute).toHaveBeenCalledTimes(2)
  })
  it('does not let progress updates grant work permissions or extra requests',async()=>{
   const input=base();input.context={...input.context,phase:'plan'}

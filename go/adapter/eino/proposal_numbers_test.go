@@ -69,7 +69,7 @@ func numericRunReplies(t *testing.T, family, args string, answer func(int) strin
 	}
 	emit := func(event contract.RunEvent) { events = append(events, event) }
 	g := gate.New(gate.Options{Runtime: runtime, Granted: gate.Ceiling, Emit: emit})
-	tool := runcontext.HostTool{Name: "propose_pack", Description: "Propose.", Effect: "proposal", InputSchema: turn.ProposePackSchema, Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
+	tool := runcontext.HostTool{Name: "propose_pack", Taxonomy: &runcontext.ToolTaxonomy{Operation: "propose", Effect: "propose"}, Description: "Propose.", Effect: "proposal", InputSchema: turn.ProposePackSchema, Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
 		t.Error("host execute reached")
 		return runcontext.Answer(runcontext.Object()), nil
 	}}

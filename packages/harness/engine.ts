@@ -215,6 +215,9 @@ export type ModelCall = (suffix: string, request: ModelRequest) => Promise<Respo
 
 declare const requestSessionBoundary: unique symbol
 
+/** Host-owned recording output, separate from raw model-policy declarations. */
+export interface CorpusOutput {manifest:import('./corpus').CorpusManifest;guard:import('./corpus').CorpusRedactor;sink:import('./corpus').CorpusSink}
+
 export interface AssistantSession {
   /** A resolved RequestSession carries the incompatible side of this private brand. */
   readonly [requestSessionBoundary]?:never
@@ -223,7 +226,7 @@ export interface AssistantSession {
   /** ADR-0022: opt this run into a redacted evaluation-corpus recording. */
   record?: true
   /** Host-owned destination and the opened output guard for an opted-in recording. */
-  corpus?: {manifest:import('./corpus').CorpusManifest;guard:import('./corpus').CorpusRedactor;sink:import('./corpus').CorpusSink}
+  corpus?: CorpusOutput
   /** Host-only route preference; policy must explicitly enable routing. */
   route?:import('./turnRoute').RouteSelection
   routeFacts?:Pick<import('./turnRoute').RouteFacts,'mode'|'attachments'|'artifact'>

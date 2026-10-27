@@ -2,8 +2,10 @@ package eino_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -37,9 +39,11 @@ func TestAnEinoActCallsDecisionIsItsOwnOnARunWithoutIDs(t *testing.T) {
 		return json.RawMessage(`{"jsonrpc":"2.0","id":` + string(request.ID) + `,"result":{}}`), nil
 	}
 	allowed, failNext, ran := 0, false, 0
-	tool := runcontext.HostTool{Name: "update_work_item", Description: "Update a work item.",
-		InputSchema: json.RawMessage(`{"type":"object"}`),
-		Source:      &runcontext.ToolSource{Kind: "gateway", ID: "ado", Trust: "connected", Version: "2026-10"},
+	// Pin the handwritten declaration independently of the production fingerprint.
+	digest := fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(`[{"description":"Update a work item.","inputSchema":{"type":"object"},"name":"update_work_item","taxonomy":{"effect":"act","operation":"act"}}]`)))
+	tool := runcontext.HostTool{Name: "update_work_item", Taxonomy: &runcontext.ToolTaxonomy{Operation: "act", Effect: "act"}, Description: "Update a work item.",
+		InputSchema: json.RawMessage(`{"type":"object"}`), EffectClass: "act", Approval: "required",
+		Source: &runcontext.ToolSource{Kind: "gateway", ID: "ado", Trust: "connected", Version: "2026-10", ToolListDigest: digest, CurrentDigest: func(context.Context) (string, error) { return digest, nil }},
 		Approve: func(runcontext.ApprovalRequest) string {
 			if allowed > 0 {
 				return "refuse"

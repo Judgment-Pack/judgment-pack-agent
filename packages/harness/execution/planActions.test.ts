@@ -139,9 +139,9 @@ describe('active completion and accepted-plan drift',()=>{
   expect(resumed.context.execution.state.planState!.accepted).toEqual(original);expect(resumed.context.execution.state.planState!.accepted!.validatedReferences).toEqual([{kind:'artifact',id:'dependency',digest:'b'.repeat(64)}]);resumed.context.close()
  })
  it('waits for the atomic plan checkpoint/event acknowledgement before returning',async()=>{
-  const store=new MemoryRunStore(),commit=store.commit.bind(store);let release!:()=>void,entered!:()=>void
+  const store=new MemoryRunStore(),commit=store.commitHistory.bind(store);let release!:()=>void,entered!:()=>void
   const blocked=new Promise<void>(resolve=>{release=resolve}),seen=new Promise<void>(resolve=>{entered=resolve})
-  store.commit=async transaction=>{if(transaction.events.some(bytes=>JSON.parse(new TextDecoder().decode(bytes)).event.type==='plan_revised')){entered();await blocked}return commit(transaction)}
+  store.commitHistory=async(transaction,signal)=>{if(transaction.run.events.some(bytes=>JSON.parse(new TextDecoder().decode(bytes)).event.type==='plan_revised')){entered();await blocked}return commit(transaction,signal)}
   const ready=await contextualSession(input(store)),prior=await store.load('extended-plan');let returned=false
   const completion=ready.context.execution.tool().execute({explanation:'Track',plan:[{step:'Inspect',status:'pending'}]},ready.session.signal).then(()=>{returned=true})
   await seen;expect(returned).toBe(false);expect((await store.load('extended-plan'))?.revision).toBe(prior?.revision);release();await completion

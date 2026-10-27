@@ -156,7 +156,7 @@ func TestRetainedRunReportByteParsing(t *testing.T) {
 			t.Fatalf("rounded %s: %v", spelling, err)
 		}
 	}
-	for _, raw := range []string{"", "{", "null", "[]", good + "garbage", strings.Replace(good, `"version":1`, `"__proto__":{},"version":1`, 1), strings.Replace(good, `"version":1`, `"version":1,"version":1`, 1), strings.Replace(good, `"inputTokens":9007199254740991`, `"inputTokens":1,"inputTokens":2`, 1), strings.Replace(good, "Καλημέρα", `\ud800`, 1), strings.Replace(good, "Καλημέρα", `\udc00`, 1), "\ufeff" + good, string([]byte{255}), string([]byte{0xed, 0xa0, 0x80})} {
+	for _, raw := range []string{"", "{", "null", "[]", "{}", `{"version":null}`, `{"version":"1"}`, `{"version":true}`, "true", "1", `"report"`, good + "garbage", strings.Replace(good, `"version":1`, `"__proto__":{},"version":1`, 1), strings.Replace(good, `"version":1`, `"version":1,"version":1`, 1), strings.Replace(good, `"inputTokens":9007199254740991`, `"inputTokens":1,"inputTokens":2`, 1), strings.Replace(good, "Καλημέρα", `\ud800`, 1), strings.Replace(good, "Καλημέρα", `\udc00`, 1), "\ufeff" + good, string([]byte{255}), string([]byte{0xed, 0xa0, 0x80})} {
 		_, err := rc.ParseRunReport([]byte(raw))
 		if !errors.As(err, &invalid) {
 			t.Fatalf("malformed bytes accepted: %v", err)
@@ -219,5 +219,30 @@ func TestRetainedRunReportBounds(t *testing.T) {
 	}
 	if _, err := rc.ReadRunReport(large); err != nil {
 		t.Fatal("valid report with >200000 nodes refused", err)
+	}
+}
+
+func TestRunReportMalformedRootsRefuseWithoutPanic(t *testing.T) {
+	for _, raw := range []string{"null", "[]", "{}", `{"version":null}`, `{"version":"1"}`, `{"version":true}`, "true", "1", `"report"`} {
+		for _, entry := range []string{"bytes", "value"} {
+			t.Run(entry+"/"+raw, func(t *testing.T) {
+				defer func() {
+					if recovered := recover(); recovered != nil {
+						t.Fatalf("malformed report root panicked instead of refusing: %v", recovered)
+					}
+				}()
+				var value *rc.Value
+				var err error
+				if entry == "bytes" {
+					value, err = rc.ParseRunReport([]byte(raw))
+				} else {
+					value, err = rc.ReadRunReport(rc.MustParseJSON(raw))
+				}
+				var invalid *rc.RunReportInvalid
+				if value != nil || !errors.As(err, &invalid) {
+					t.Fatalf("malformed report root returned a value or wrong refusal: %v", err)
+				}
+			})
+		}
 	}
 }

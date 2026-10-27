@@ -1,0 +1,51 @@
+{
+  "description": "Handwritten host declaration with an explicit operation and effect ceiling. The read taxonomy lies inside both host limits; limits grant no authority.",
+  "schema": "tool-offer.json#/$defs/hostTool",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/toolTaxonomy.ts",
+      "packages/harness/toolSources.ts"
+    ]
+  },
+  "items": [
+    {
+      "name": "read_record",
+      "description": "Read one record.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read"
+      },
+      "taxonomyLimit": {
+        "operations": [
+          "discover",
+          "read",
+          "answer",
+          "check",
+          "transform",
+          "evaluate",
+          "propose",
+          "act",
+          "run",
+          "own-state",
+          "ask"
+        ],
+        "effects": [
+          "pure",
+          "read",
+          "read-external",
+          "propose",
+          "act"
+        ]
+      }
+    }
+  ]
+}

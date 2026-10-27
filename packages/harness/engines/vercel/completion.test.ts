@@ -4,6 +4,7 @@ import {vercel} from './index'
 import {normalize} from '../../thinking'
 import {readExecution,extendExecution} from '../../execution/state'
 import type {AssistantEvent,AssistantSession} from '../../engine'
+import {currentContractReplayTools} from '../../certification/scriptedServer'
 
 type Family='gemini'|'anthropic'|'openai-compatible'
 const families:Family[]=['gemini','anthropic','openai-compatible']
@@ -19,7 +20,8 @@ function wire(family:Family,step:Step):Response {
 }
 function fixture(family:Family,steps:Step[]){
  const bodies:Record<string,any>[]=[],execute=vi.fn(async(_args?:unknown)=>({content:[{type:'text' as const,text:'VERIFIED CURRENT RESULT: zero=0, flag=false; action completed once.'}]}))
- const session:AssistantSession={prompt:'Apply the requested change and explain the result.',context:{currentRequest:{message:'Apply the requested change',input:'Current workspace object'}},testPrompt:'',tools:[],hostTools:[{name:'perform_task',effect:'workflow',description:'Perform the authorized task',inputSchema:{type:'object',properties:{revision:{type:'integer'}}},execute}],callTool:async()=>({}),model:{family,model:'fixture',call:async(_path,request)=>{bodies.push(JSON.parse(request.body));return wire(family,steps[bodies.length-1]??{transportError:true})}},thinking:normalize('off',family),signal:new AbortController().signal,allowConversation:true,interactive:true,critic: 'off'}
+ // This synthetic workflow only calls an in-memory spy; no external task is executed.
+ const session:AssistantSession={prompt:'Apply the requested change and explain the result.',context:{currentRequest:{message:'Apply the requested change',input:'Current workspace object'}},testPrompt:'',tools:[],hostTools:[{name:'perform_task',taxonomy:{operation:'own-state',effect:'pure'},effect:'workflow',description:'Perform the authorized task',inputSchema:{type:'object',properties:{revision:{type:'integer'}}},execute}],callTool:async()=>({}),model:{family,model:'fixture',call:async(_path,request)=>{bodies.push(JSON.parse(request.body));return wire(family,steps[bodies.length-1]??{transportError:true})}},thinking:normalize('off',family),signal:new AbortController().signal,allowConversation:true,interactive:true,critic: 'off'}
  return {session,bodies,execute}
 }
 async function drain(session:AssistantSession){const events:AssistantEvent[]=[];for await(const event of vercel.start(session))events.push(event);return events}
@@ -175,8 +177,8 @@ it('never extends the allowance automatically to recover repeated work',async()=
  expect(snapshot(events).checkpoint).toMatchObject({used:20,limit:20,grants:[],status:'stopped'})
 })
 it('applies the same recovery boundary to runtime tools',async()=>{
- const {session,execute}=fixture('gemini',Array.from({length:8},()=>({tool:'read_decision'})))
- session.tools=[{name:'read_decision',description:'Read current decision',inputSchema:{type:'object',properties:{}}}]
+ const {session,execute}=fixture('gemini',Array.from({length:8},()=>({tool:'get_example'})))
+ session.tools=[{name:'get_example',_meta:currentContractReplayTools().find(tool=>tool.name==='get_example')!._meta,description:'Read current decision',inputSchema:{type:'object',properties:{}}}]
  session.callTool=vi.fn(async()=>({structuredContent:{revision:1,document:{value:false}}}))
  const events=await drain(session)
  expect(execute).not.toHaveBeenCalled();expect(session.callTool).toHaveBeenCalledTimes(4)

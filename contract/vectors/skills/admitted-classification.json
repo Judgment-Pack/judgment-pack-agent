@@ -1,4 +1,13 @@
 {
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/skills.ts (declareSkills)"
+    ]
+  },
   "schema": "admitted-skill-v1.json",
   "description": "Handwritten current admitted review bundle with untrusted classification and tags. Its pin is independently calculated from the documented canonical bundle; profile is the empty dependency union.",
   "items": [

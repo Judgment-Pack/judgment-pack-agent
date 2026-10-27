@@ -256,7 +256,7 @@ func TestTheCompactionKeepsExactTypedDataAndDropsSignatures(t *testing.T) {
 
 func TestTheCompactionKeepsAFlatIndexAcrossRepeatedCompactions(t *testing.T) {
 	session := smallWindowSession()
-	session.HostTools = []HostTool{{Name: "future_reference_tool", Taxonomy:&ToolTaxonomy{Operation:"read",Effect:"read"}, Effect: "read",
+	session.HostTools = []HostTool{{Name: "future_reference_tool", Taxonomy: &ToolTaxonomy{Operation: "read", Effect: "read"}, Effect: "read",
 		ContextPolicy: &ToolContextPolicy{Reference: true}, Description: "Reference",
 		InputSchema: json.RawMessage(`{}`),
 		Execute: func(ctx context.Context, args json.RawMessage) (ToolResult, error) {
@@ -362,7 +362,7 @@ func TestSummaryCompactionRefusesMalformedAnswersAndUsesTheIndex(t *testing.T) {
 
 func TestAnIsolatedPhaseStartsWithNoAuthorMaterial(t *testing.T) {
 	session := smallWindowSession()
-	session.HostTools = []HostTool{{Name: "future_reference", Taxonomy:&ToolTaxonomy{Operation:"read",Effect:"read"}, Effect: "read",
+	session.HostTools = []HostTool{{Name: "future_reference", Taxonomy: &ToolTaxonomy{Operation: "read", Effect: "read"}, Effect: "read",
 		ContextPolicy: &ToolContextPolicy{Reference: true}, Description: "Read task reference",
 		InputSchema: json.RawMessage(`{}`),
 		Execute: func(ctx context.Context, args json.RawMessage) (ToolResult, error) {
@@ -431,15 +431,16 @@ func TestAnIsolatedPhaseStartsWithNoAuthorMaterial(t *testing.T) {
 func TestTheContextToolNamesAreReserved(t *testing.T) {
 	for _, name := range reservedNames {
 		session := modelSession()
-		session.HostTools = []HostTool{{Name: name, Description: "bad override", InputSchema: json.RawMessage(`{}`),
+		session.HostTools = []HostTool{{Name: name, Taxonomy: &ToolTaxonomy{Operation: "own-state", Effect: "pure"}, Description: "bad override", InputSchema: json.RawMessage(`{}`),
 			Execute: func(ctx context.Context, args json.RawMessage) (ToolResult, error) { return ResultOf(nil, nil), nil }}}
 		_, err := ContextualSession(context.Background(), session)
 		refused(t, err, "reserved")
 	}
 	session := modelSession()
-	session.Tools = []RuntimeTool{{Name: ReadTool}}
+	// A reserved host name cannot enter through the closed Runtime ceiling either.
+	session.Tools = []RuntimeTool{{Name: ReadTool, Meta: &ToolTaxonomy{Operation: "read", Effect: "read"}}}
 	_, err := ContextualSession(context.Background(), session)
-	refused(t, err, "reserved")
+	refused(t, err, "Runtime tool taxonomy refused")
 }
 
 func TestNoReserveIsTakenForTheBriefOrTheMemory(t *testing.T) {

@@ -1,4 +1,13 @@
 {
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/skills.ts (historical admission shape)"
+    ]
+  },
   "schema": "skill.json",
   "description": "Handwritten unchanged historical issue-style admitted result: its published closed shape has no computed profile or version member and remains valid under skill.json.",
   "items": [

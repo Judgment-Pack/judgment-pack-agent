@@ -13,7 +13,7 @@ export const MAX_RUN_REPORT_EVENTS=400
 /** Each intended source is copied whole, in recorded array order. */
 export const RUN_REPORT_SOURCES=['id','phase','status','unit','used','limit','requestCap','grants','reason','explanation','prompts','sources','sourceIdentities','skills','critic','delegation','usage','childUsage','failover','completions','plan','planState'] as const
 /** Internal state is deliberately outside this presentation contract. */
-export const RUN_REPORT_EXCLUDED=['schema','digest','retainUntil','records','requestKey','operations','context','testCalls','durable','handoff','approval','outputGuard','memories','draft','policy','crossProvider','compaction','steers','usageBudget','turnRoute'] as const
+export const RUN_REPORT_EXCLUDED=['schema','digest','retainUntil','records','requestKey','operations','context','testCalls','durable','handoff','approval','outputGuard','memories','draft','policy','crossProvider','compaction','steers','usageBudget','turnRoute','repeatTools'] as const
 export type RunReportFacts=Pick<ExecutionCheckpoint,typeof RUN_REPORT_SOURCES[number]>
 export type RunReport={version:1;checkpointVersion:1|2}&RunReportFacts
 export type RunReportV2={version:2;checkpointVersion:1|2|3;feedback?:import('./history/report').HistoryFeedbackView[];usageTotals?:UsageTotals;route?:ExecutionCheckpoint['turnRoute'];repeatTools?:RepeatToolsReport}&RunReportFacts

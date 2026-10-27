@@ -73,7 +73,7 @@ func outputBoundaryFindings(ctx context.Context, inner Adapter, agent bool) ([]F
 			}
 			result := any(map[string]any{})
 			if request.Method == "tools/list" {
-				result = map[string]any{"tools": []any{map[string]any{"name": "validate", "description": "Validate the document.", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{"content": map[string]any{"type": "string"}}, "required": []string{"content"}}}}}
+				result = map[string]any{"tools": []any{map[string]any{"name": "validate", "_meta": map[string]string{"operation": "check", "effect": "pure", "checkKind": "validate"}, "description": "Validate the document.", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{"content": map[string]any{"type": "string"}}, "required": []string{"content"}}}}}
 			}
 			if request.Method == "tools/call" {
 				var text string

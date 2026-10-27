@@ -81,7 +81,7 @@ func proposalEditFindings(ctx context.Context, inner Adapter, agent bool) ([]Fin
 			}
 			result := any(map[string]any{})
 			if request.Method == "tools/list" {
-				result = map[string]any{"tools": []any{map[string]any{"name": "validate", "description": "Validate the document.", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{"content": map[string]any{"type": "string"}}, "required": []string{"content"}}}}}
+				result = map[string]any{"tools": []any{map[string]any{"name": "validate", "_meta": map[string]string{"operation": "check", "effect": "pure", "checkKind": "validate"}, "description": "Validate the document.", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{"content": map[string]any{"type": "string"}}, "required": []string{"content"}}}}}
 			}
 			if request.Method == "tools/call" {
 				var text string
@@ -104,7 +104,7 @@ func proposalEditFindings(ctx context.Context, inner Adapter, agent bool) ([]Fin
 		if err != nil {
 			return memoryRun{}, err
 		}
-		run := Run{ModelName: "fixture", Wire: "openai-compatible", Thinking: "off", Prompt: "Revise the draft.", TestPrompt: "Review the entire proposal.", AllowConversation: true, Interactive: true, Critic: "off", Gate: g.Calls(), Tools: offer.Tools, HostTools: []runcontext.HostTool{propose, {Name: "ask_user", Description: "Ask the person.", Interaction: "question", InputSchema: json.RawMessage(`{"type":"object"}`)}}, Context: input, Emit: emit}
+		run := Run{ModelName: "fixture", Wire: "openai-compatible", Thinking: "off", Prompt: "Revise the draft.", TestPrompt: "Review the entire proposal.", AllowConversation: true, Interactive: true, Critic: "off", Gate: g.Calls(), Tools: offer.Tools, HostTools: []runcontext.HostTool{propose, {Name: "ask_user", Taxonomy: &runcontext.ToolTaxonomy{Operation: "ask", Effect: "pure"}, Description: "Ask the person.", Interaction: "question", InputSchema: json.RawMessage(`{"type":"object"}`)}}, Context: input, Emit: emit}
 
 		if critic {
 			run.Critic = "on"

@@ -1044,6 +1044,8 @@ const RUNTIME_VOCABULARY: string[] = (() => {
  */
 const VOCABULARY: McpTool = {
   name: RECORDED_TOOLS[0]!.name,
+  // Explicit synthetic current-contract metadata; the schema vocabulary remains historical.
+  _meta: currentContractReplayTools().find(tool => tool.name === RECORDED_TOOLS[0]!.name)!._meta,
   description: 'the recorded runtime’s own schema vocabulary',
   inputSchema: {
     $schema: 'https://json-schema.org/draft/2020-12/schema',

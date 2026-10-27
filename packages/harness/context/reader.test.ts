@@ -180,8 +180,8 @@ describe('the ledger’s reader, read_window', () => {
 
   it('is declared to the model exactly as the contract’s host-tool vector states it', () => {
     const context = new SessionContext(session())
-    const { name, effect, contextPolicy, description, inputSchema } = tool(context)
-    expect({ name, effect, contextPolicy, description, inputSchema }).toEqual(
+    const { name, effect, contextPolicy, description, inputSchema, taxonomy } = tool(context)
+    expect({ name, effect, contextPolicy, description, inputSchema, taxonomy }).toEqual(
       hostToolsVector.items.find((item) => item.name === READ_TOOL)
     )
   })

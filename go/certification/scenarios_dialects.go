@@ -72,7 +72,7 @@ func dialectAuthoringFindings(ctx context.Context, server *Server, inner Adapter
 			Runtime: func(_ context.Context, name string, args map[string]string) (runcontext.ToolResult, error) {
 				semanticCalls++
 				limits := map[string]any{"documentBytes": 131072, "frameBytes": 2097152}
-				r := map[string]any{"contractVersion": "1", "specification": "https://github.com/Judgment-Pack/judgment-pack-spec/blob/" + selection.Spec.Revision + "/rfcs/0029-retained-column-conversions.md", "specRevision": selection.Spec.Revision, "diagnostics": []any{}, "contract": selection.Contract, "profile": selection.Profile, "spec": selection.Spec, "role": "document-validation", "maturity": "experimental-draft", "limits": limits}
+				r := map[string]any{"contractVersion": "1", "specification": "https://github.com/Judgment-Pack/judgment-pack-spec/blob/" + selection.Spec.Revision + "/spec/retained-column.md", "specRevision": selection.Spec.Revision, "diagnostics": []any{}, "contract": selection.Contract, "profile": selection.Profile, "spec": selection.Spec, "role": "document-validation", "maturity": "draft", "limits": limits}
 				if name == "get_dialect_contract" {
 					r["status"] = "available"
 					r["capabilities"] = map[string]any{"conversionContracts": []any{map[string]any{"contract": selection.Contract, "spec": selection.Spec, "profile": selection.Profile, "role": "document-validation", "limits": limits}}, "packCheckScope": "declared-inventory-coverage", "operations": []string{"validate", "check"}, "maxPackBytes": 10485760}

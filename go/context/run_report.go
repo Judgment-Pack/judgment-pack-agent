@@ -11,7 +11,7 @@ const MaxRunReportEvents = 400
 
 // Each intended source is copied whole, in recorded array order.
 var runReportSources = []string{"id", "phase", "status", "unit", "used", "limit", "requestCap", "grants", "reason", "explanation", "prompts", "sources", "sourceIdentities", "skills", "critic", "delegation", "usage", "childUsage", "failover", "completions", "plan", "planState"}
-var runReportExcluded = []string{"schema", "digest", "retainUntil", "records", "requestKey", "operations", "context", "testCalls", "durable", "handoff", "approval", "outputGuard", "memories", "draft", "policy", "crossProvider", "compaction", "steers", "usageBudget", "turnRoute"}
+var runReportExcluded = []string{"schema", "digest", "retainUntil", "records", "requestKey", "operations", "context", "testCalls", "durable", "handoff", "approval", "outputGuard", "memories", "draft", "policy", "crossProvider", "compaction", "steers", "usageBudget", "turnRoute", "repeatTools"}
 
 type RunReportInputInvalid struct{}
 

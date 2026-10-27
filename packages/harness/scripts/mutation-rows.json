@@ -3464,7 +3464,7 @@
   {
    "name": "an act call on a run whose events carry no call ids gets no id: its decision taken by name, another call's",
    "file": "engines/vercel/loop.ts",
-   "find": "      const correlation = session.interactive || context.sources?.needsApproval(tool.name) ? { callId: crypto.randomUUID() } : {}",
+   "find": "      const correlation = session.interactive || context.capturesToolFrames || context.sources?.needsApproval(tool.name) ? { callId: crypto.randomUUID() } : {}",
    "replace": "      const correlation = session.interactive ? { callId: crypto.randomUUID() } : {}",
    "tests": [
     "toolSources.test.ts",

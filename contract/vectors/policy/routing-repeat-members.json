@@ -1,4 +1,15 @@
 {
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/policy.ts",
+      "packages/harness/turnRoute.ts",
+      "packages/harness/repeatTools.ts"
+    ]
+  },
   "schema": "policy.json",
   "description": "Handwritten current policy members: fixed routing conditions, a bounded classifier and repeat detection settings. Conditions are host metadata and these records grant no tool authority.",
   "items": [

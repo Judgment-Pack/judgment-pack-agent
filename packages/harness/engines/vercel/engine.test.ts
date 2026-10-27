@@ -695,13 +695,33 @@ describe('the tools this engine offers, and the schemas it writes', () => {
     // know — so the session ends instead, naming the tool.
     const { call, seen } = scriptedCall([turn({ text: PROPOSAL_TEXT })])
     const events = await drain(
-      vercel.start(session(call, { tools: [{ name: 'a_new_tool', description: 'd' }] }))
+      vercel.start(session(call, { tools: [{ name: 'validate', _meta: {operation:'check',effect:'pure',checkKind:'validate'}, description: 'd' }] }))
     )
     expect(events.map((event) => event.type)).toEqual(['error', 'end'])
-    expect((events[0] as { message: string }).message).toContain('a_new_tool')
+    expect((events[0] as { message: string }).message).toContain('validate')
     expect((events[0] as { message: string }).message).toContain('without an input schema')
     // And nothing was asked of the model at all: the refusal is before the loop.
     expect(seen).toHaveLength(0)
+  })
+
+  it('refuses an unknown Runtime name even with a schema and owner taxonomy before provider work', async () => {
+    const {call,seen}=scriptedCall([turn({text:PROPOSAL_TEXT})])
+    const events=await drain(vercel.start(session(call,{tools:[{name:'a_new_tool',description:'Outside the Runtime ceiling',_meta:{operation:'read',effect:'read'},inputSchema:{type:'object'}}]})))
+    expect(events.map(event=>event.type)).toEqual(['error','end'])
+    expect(events[0]).toMatchObject({failure:{code:'configuration',source:'context'}})
+    expect(seen).toEqual([])
+  })
+
+  it('derives conservative hints for every generated host offer from its taxonomy', async () => {
+    const {contextualSession}=await import('../../context/session')
+    const {taxonomyAnnotations}=await import('../../toolTaxonomy')
+    const {call}=scriptedCall([turn({text:PROPOSAL_TEXT})])
+    const ready=await contextualSession(session(call,{allowConversation:true}))
+    try {
+      const tools=ready.session.values.hostTools
+      expect(tools.map(tool=>tool.name)).toEqual(expect.arrayContaining(['request_review','read_window','search','update_plan']))
+      for(const tool of tools)expect(tool.annotations,tool.name).toEqual(taxonomyAnnotations(tool.taxonomy!.effect))
+    } finally {ready.context.close()}
   })
 
   it('names one tool in its whole source: the one the ADR names', () => {
@@ -1015,6 +1035,24 @@ describe('a consumer that stops in the middle of a run', () => {
     expect((await events.next()).value).toMatchObject({ type: 'tool_call', name: 'validate' })
     await events.return!(undefined)
     expect(closed).toEqual([{ value: undefined, done: true }])
+  })
+
+  it('returns promptly when an underlying source next ignores cancellation', async () => {
+    const call=vi.fn(scriptedCall([turn({text:PROPOSAL_TEXT})]).call)
+    let entered!:()=>void,signal!:AbortSignal
+    const arrived=new Promise<void>(resolve=>{entered=resolve})
+    const events=managedContext(session(call),held=>{
+      signal=held.signal
+      return {[Symbol.asyncIterator]:()=>({next:()=>{entered();return new Promise<IteratorResult<AssistantEvent>>(()=>{})},return:async()=>({value:undefined,done:true as const})})}
+    })[Symbol.asyncIterator]()
+    expect((await events.next()).value).toMatchObject({type:'policy_resolved'})
+    const pending=events.next();await arrived
+    const closing=events.return!(undefined)
+    expect(await within(2000,pending)).toBe('settled')
+    expect(await within(2000,closing)).toBe('settled')
+    expect(await pending).toEqual({value:undefined,done:true})
+    expect(await closing).toEqual({value:undefined,done:true})
+    expect(signal.aborted).toBe(true);expect(call).not.toHaveBeenCalled()
   })
 
   it('does not dispatch the call of a tool it never offered once the consumer has stopped (agent#37)', async () => {

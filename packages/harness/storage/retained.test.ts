@@ -9,7 +9,7 @@ import {checkRecord,UnknownRecordMember} from '../recordReader'
 import {recordsPolicy,writeRecord,recordDigest,validRecord,CHECKPOINT_SCHEMA} from '../records'
 import type {AssistantSession} from '../engine'
 import {MemoryRunStore} from './run'
-import {RunWriter,ContinuationNotRecoverable} from './writer'
+import {RunWriter,ContinuationNotRecoverable,StorageOutcomeUnknown} from './writer'
 const fixture=()=>structuredClone(vectors.items[0]) as ExecutionCheckpoint
 const original=()=>{const cp=fixture(),entry=cp.context.entries[0]!;entry.value=JSON.parse(entry.valueJSON!);delete entry.valueJSON;return cp}
 const ledger=()=>new ContextLedger({...CONTEXT_DEFAULTS})
@@ -110,8 +110,39 @@ for(const mode of ['digest','unsupported-version','missing-header','scope'])it(`
  const child=original();child.id='child-one'
  const record=writeRecord(CHECKPOINT_SCHEMA,{...child},recordsPolicy({}),undefined,new Date('2026-10-24T00:00:00Z'),'2030-01-01T00:00:00.000Z') as ExecutionCheckpoint
  if(mode==='digest')record.digest='sha256:'+'0'.repeat(64)
- if(mode==='unsupported-version'){(record as {version:number}).version=3;record.digest=recordDigest(record)}
+ if(mode==='unsupported-version'){(record as {version:number}).version=4;record.digest=recordDigest(record)}
  if(mode==='missing-header'){delete record.digest;delete record.schema;delete record.retainUntil}
  const store=new MemoryRunStore(),commit=vi.spyOn(store,'commit'),writer=new RunWriter(store,root.id);writer.bind(()=>root,recordsPolicy({}),()=>undefined)
  await expect(writer.save({writer,scope:{execution:mode==='scope'?'different-child':record.id,role:'author',task:'task-one'},root:false},record)).rejects.toBeInstanceOf(ContinuationNotRecoverable);expect(commit).not.toHaveBeenCalled()
+})
+
+for(const lostAck of [false,true])it(`signs a stopped retained child before parent validation, lost acknowledgement: ${lostAck}`,async()=>{
+ const store=new MemoryRunStore(),root=original();root.id='root-repeat-child';root.status='running';delete root.reason;root.context.entries=[]
+ const writer=new RunWriter(store,root.id),binding={writer,scope:{execution:'child-one',role:'author',task:'child-one'},root:false}
+ writer.bind(()=>root,recordsPolicy({}),()=>undefined)
+ writer.attachRepeatScope(binding,{remindAt:1,stopAt:1},{accept:()=>{},event:()=>{}})
+ const child=original();child.id='child-one';child.status='running';delete child.reason
+ const record=writeRecord(CHECKPOINT_SCHEMA,{...child},recordsPolicy({}),undefined,new Date('2026-10-24T00:00:00Z'),'2030-01-01T00:00:00.000Z')
+ await writer.save(binding,record)
+ const execute=vi.fn(async()=>({value:'same'})),invoke=()=>writer.invoke(binding,'host','source','lookup','{}',true,execute)
+ await invoke()
+ const commit=store.commitHistory.bind(store)
+ if(lostAck)store.commitHistory=async(transaction,signal)=>{const receipt=await commit(transaction,signal),cp=JSON.parse(new TextDecoder().decode(transaction.run.checkpoint!));if(cp.repeatTools?.executions[0].stopped)throw Error('fixture lost child stop acknowledgement');return receipt}
+ if(lostAck)await expect(invoke()).rejects.toBeInstanceOf(StorageOutcomeUnknown);else await invoke()
+ const head=(await store.load(root.id))!,saved=readExecution(JSON.parse(new TextDecoder().decode(head.checkpoint!)))!,stopped=saved.durable!.children[0]!.checkpoint
+ expect(stopped).toMatchObject({status:'stopped',reason:'RepeatedToolLimit',retainUntil:record.retainUntil})
+ expect(validRecord(saved)).toBe(true);expect(validRecord(stopped)).toBe(true)
+ expect(stopped.context.entries[0]).toMatchObject({digest:record.context.entries[0]!.digest,bytes:record.context.entries[0]!.bytes,valueJSON:fixture().context.entries[0]!.valueJSON})
+ await ledger().restore(stopped.context);expect(record.status).toBe('running');expect(execute).toHaveBeenCalledTimes(2)
+ store.commitHistory=commit
+ const resumed=new RunWriter(store,root.id,head);resumed.bind(()=>saved,recordsPolicy({}),()=>undefined)
+ const next={...binding,writer:resumed};resumed.attachRepeatScope(next,{remindAt:1,stopAt:1},{accept:()=>{},event:()=>{}})
+ await expect(resumed.invoke(next,'host','source','lookup','{}',true,execute)).rejects.toThrow('RepeatedToolLimit')
+ expect(execute).toHaveBeenCalledTimes(2);expect(resumed.repeatState(next)).toMatchObject({count:1,stopped:true})
+ if(!lostAck){
+  const forged=structuredClone(record);forged.digest='sha256:'+'0'.repeat(64)
+  const publication=vi.spyOn(store,'commitHistory')
+  await expect(writer.save(binding,forged)).rejects.toBeInstanceOf(ContinuationNotRecoverable)
+  expect(publication).not.toHaveBeenCalled();expect((await store.load(root.id))!.revision).toBe(head.revision)
+ }
 })

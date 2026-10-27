@@ -32,7 +32,7 @@ func TestRetainedRepresentationActualEinoRequestBytesAfterResume(t *testing.T) {
 						var bodies [][]byte
 						effect := "read"
 						g := gate.New(gate.Options{})
-						g.SetOffer(contract.ToolOffer{Tools: []contract.ToolOfferRuntimeTool{}, HostTools: []contract.ToolOfferHostTool{{Name: "read_fixture", Description: "Read retained source", InputSchema: json.RawMessage(`{"type":"object","properties":{}}`), Effect: &effect}}})
+						g.SetOffer(contract.ToolOffer{Tools: []contract.ToolOfferRuntimeTool{}, HostTools: []contract.ToolOfferHostTool{{Name: "read_fixture", Taxonomy: contract.ToolTaxonomy{Operation: "read", Effect: "read"}, Description: "Read retained source", InputSchema: json.RawMessage(`{"type":"object","properties":{}}`), Effect: &effect}}})
 						checkpoint := func(_ context.Context, cp contract.Checkpoint) error {
 							raw, e := json.Marshal(cp)
 							if e != nil {

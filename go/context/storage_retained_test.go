@@ -290,7 +290,7 @@ func TestRetainedRepresentationInvalidChildCannotBeResigned(t *testing.T) {
 				bad := "sha256:" + strings.Repeat("0", 64)
 				child.Digest = &bad
 			case "unsupported-version":
-				child.Version = 3
+				child.Version = 4
 				raw, err := json.Marshal(child)
 				if err != nil {
 					t.Fatal(err)

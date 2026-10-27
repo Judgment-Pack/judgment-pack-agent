@@ -49,7 +49,7 @@
           "name": "list_examples",
           "_meta": {
             "operation": "discover",
-            "effect": "pure"
+            "effect": "read"
           }
         },
         {

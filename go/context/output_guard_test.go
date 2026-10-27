@@ -82,7 +82,7 @@ func TestOutputValidationRefusals(t *testing.T) {
 	for _, response := range []*Value{nil, Object(), ObjectOf("status", String("")), ObjectOf("status", String(strings.Repeat("x", 10000)))} {
 		s := modelSession()
 		s.Context = &Input{AcceptedDocuments: []AcceptedDocument{{ID: "pack", Document: json.RawMessage(`{"title":"Before"}`)}}}
-		s.Tools = []RuntimeTool{{Name: "validate"}}
+		s.Tools = []RuntimeTool{{Name: "validate", Meta: &ToolTaxonomy{Operation: "check", Effect: "pure", CheckKind: "validate"}}}
 		calls := 0
 		s.CallTool = func(_ context.Context, _ string, args json.RawMessage) (ToolResult, error) {
 			calls++
@@ -198,7 +198,7 @@ func TestOutputDraftScalars(t *testing.T) {
 					s.Policy = PolicyLayer{"outputGuard": mode, "outputPatterns": []OutputPattern{{Name: "host-scalar", Pattern: scalar.pattern}}}
 					prior := `{"value":` + scalar.before + `,"untouched":7}`
 					s.Context = &Input{AcceptedDocuments: []AcceptedDocument{{ID: "pack", Document: json.RawMessage(prior)}}}
-					s.Tools = []RuntimeTool{{Name: "validate"}}
+					s.Tools = []RuntimeTool{{Name: "validate", Meta: &ToolTaxonomy{Operation: "check", Effect: "pure", CheckKind: "validate"}}}
 					calls := 0
 					s.CallTool = func(_ context.Context, _ string, args json.RawMessage) (ToolResult, error) {
 						calls++

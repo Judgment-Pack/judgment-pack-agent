@@ -12,9 +12,49 @@ import (
 	"testing"
 )
 
+func publicationCaptureFixture(t *testing.T) (capturePort, map[string][]byte, *Value) {
+	t.Helper()
+	raw, e := os.ReadFile("../../contract/fixtures/history/capture-native-bindings.json")
+	if e != nil {
+		t.Fatal(e)
+	}
+	v, e := ParseJSON(raw)
+	if e != nil {
+		t.Fatal(e)
+	}
+	source := v.Get("source")
+	var head RunHistoryHead
+	var commits []RunHistoryEntry
+	var metadata []HistoryMetadataEntry
+	if e = json.Unmarshal(source.Get("head").JSON(), &head); e != nil {
+		t.Fatal(e)
+	}
+	if e = json.Unmarshal(source.Get("commits").JSON(), &commits); e != nil {
+		t.Fatal(e)
+	}
+	if e = json.Unmarshal(source.Get("metadata").JSON(), &metadata); e != nil {
+		t.Fatal(e)
+	}
+	objects := map[string][]byte{}
+	for _, member := range source.Get("objects").o {
+		raw, e := base64.StdEncoding.DecodeString(member.val.Str())
+		if e != nil {
+			t.Fatal(e)
+		}
+		objects[member.key] = raw
+	}
+	return capturePort{head, commits, metadata, func(ref HistoryObjectRef, _ ...string) ([]byte, error) {
+		raw, ok := objects[ref.Digest]
+		if !ok {
+			return nil, &ReplayUnavailable{}
+		}
+		return append([]byte(nil), raw...), nil
+	}}, objects, v
+}
+
 func publicationFixture(t *testing.T) *MemoryRunStore {
 	t.Helper()
-	port, objects, _ := captureFixture(t)
+	port, objects, _ := publicationCaptureFixture(t)
 	store := NewMemoryRunStore(MemoryRunStoreOptions{})
 	batch := []HistoryObject{}
 	for digest, raw := range objects {
@@ -45,7 +85,7 @@ func publicationFixture(t *testing.T) *MemoryRunStore {
 }
 func publicationOptions(t *testing.T) CapturePublicationOptions {
 	t.Helper()
-	port, _, _ := captureFixture(t)
+	port, _, _ := publicationCaptureFixture(t)
 	entry, e := ReadCapturedCorpus(port)
 	if e != nil {
 		t.Fatal(e)
@@ -54,7 +94,7 @@ func publicationOptions(t *testing.T) CapturePublicationOptions {
 }
 func publicationSeal(t *testing.T, store HistoryRunStore, change func([]capture.Admission, []json.RawMessage), bind bool) *capture.Seal {
 	t.Helper()
-	_, _, v := captureFixture(t)
+	_, _, v := publicationCaptureFixture(t)
 	var rows []capture.Admission
 	var frames []json.RawMessage
 	json.Unmarshal(v.Get("admissions").JSON(), &rows)

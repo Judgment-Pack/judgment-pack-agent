@@ -92,7 +92,7 @@ function rawReasoningReads(harness:string,files:string[],snapshot:Snapshot):stri
   }
   const rawOperational=(base:ts.Expression,name:string):boolean=>{
    const operational:Record<string,string[]>={
-    AssistantSession:['input','record','corpus','prompt','testPrompt','purpose','replyLanguage','allowConversation','interactive','callTool','signal','context'],
+    AssistantSession:['input','record','corpus','tools','childDefinition','route','routeFacts','prompt','testPrompt','purpose','replyLanguage','allowConversation','interactive','callTool','signal','context'],
     ContextInput:['currentRequest','currentState','phase','objective','artifactProposals','authorize','checkpoint','execution','approval','chat','runtime','memory','documents','acceptedDocuments','plan','link','delegationReuse']
    }
    const type=checker.getTypeAtLocation(base),symbol=type&&checker.getPropertyOfType(type,name)
@@ -189,6 +189,28 @@ export function probe(raw:AgentAssistantSession,assistant:AssistantSession,key:'
     'probe.ts:5:effort','probe.ts:6:effort','probe.ts:7:thinking',
     'probe.ts:8:criticReasoning','probe.ts:8:effort','probe.ts:9:effort','probe.ts:10:thinking','probe.ts:17:effort'
    ].sort())
+  }finally{snapshot.dispose();api.close();rmSync(directory,{recursive:true,force:true})}
+ })
+ it('allows declared operational inputs without admitting adjacent raw reasoning or model fields',()=>{
+  const harness=resolve(process.cwd()),directory=mkdtempSync(join(tmpdir(),'request-operational-')),path=join(directory,'probe.ts')
+  writeFileSync(path,`import type {AgentAssistantSession} from ${JSON.stringify(join(harness,'engine'))}
+export function operational(raw:AgentAssistantSession) {
+ void raw.tools
+ void raw.childDefinition
+ void raw.route
+ void raw.routeFacts
+ void raw.corpus?.manifest
+ void raw.corpus?.sink
+ void raw.effort
+ void raw.agent.model
+}`)
+  writeFileSync(join(directory,'tsconfig.json'),JSON.stringify({compilerOptions:{strict:true,skipLibCheck:true,target:'ES2022',module:'ESNext',moduleResolution:'bundler'},files:['probe.ts']}))
+  const api=new API({cwd:directory}),snapshot=api.updateSnapshot({openProjects:[join(directory,'tsconfig.json')]})
+  try{
+   const project=snapshot.getProjects()[0]!
+   expect(project.program.getSyntacticDiagnostics(path)).toEqual([])
+   expect(project.program.getSemanticDiagnostics(path)).toEqual([])
+   expect(rawReasoningReads(directory,[path],snapshot).sort()).toEqual(['probe.ts:9:effort','probe.ts:10:agent','probe.ts:10:model'].sort())
   }finally{snapshot.dispose();api.close();rmSync(directory,{recursive:true,force:true})}
  })
  it('binds conversion exemptions to canonical declarations',()=>{

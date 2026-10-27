@@ -189,6 +189,55 @@ func TestTheGatedCallHoldsThePhase(t *testing.T) {
 	}
 }
 
+// fixtureRuntimeTool uses the authored scenario declaration, or the explicit test-tool
+// declaration where a test adds it. Unknown names must never acquire inferred taxonomy.
+func fixtureRuntimeTool(t *testing.T, name string) contract.ToolOfferRuntimeTool {
+	t.Helper()
+	// Replay metadata is separately authored synthetic evidence. In particular,
+	// its evaluate is pure only because the replay refuses non-rehearsal calls.
+	raw, err := os.ReadFile("../../packages/harness/certification/runtime-current-contract.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var declared struct {
+		Tools map[string]contract.ToolTaxonomy
+	}
+	if err := json.Unmarshal(raw, &declared); err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range scenarioOffer(t).Tools {
+		if tool.Name == name {
+			meta, ok := declared.Tools[name]
+			if !ok {
+				t.Fatalf("no synthetic Runtime declaration for %s", name)
+			}
+			tool.Meta = meta
+			return tool
+		}
+	}
+	if name == TestTool {
+		kind := "test"
+		return contract.ToolOfferRuntimeTool{Name: name, Meta: contract.ToolTaxonomy{Operation: "check", Effect: "pure", CheckKind: &kind}}
+	}
+	t.Fatalf("no authored Runtime declaration for %s", name)
+	return contract.ToolOfferRuntimeTool{}
+}
+
+// fixtureHostTool preserves the authored host declaration used by the replay.
+func fixtureHostTool(t *testing.T, name string) contract.ToolOfferHostTool {
+	t.Helper()
+	for _, tool := range scenarioOffer(t).HostTools {
+		if tool.Name == name {
+			return tool
+		}
+	}
+	if name == "read_page" {
+		return contract.ToolOfferHostTool{Name: name, Taxonomy: contract.ToolTaxonomy{Operation: "read", Effect: "read"}}
+	}
+	t.Fatalf("no authored host declaration for %s", name)
+	return contract.ToolOfferHostTool{}
+}
+
 // A session whose runtime serves the scenario's five, counting what reaches it.
 func fiveServed(t *testing.T, granted []string, bounds Bounds) (*Gate, *[]string, *[]contract.RunEvent) {
 	t.Helper()
@@ -211,7 +260,11 @@ func fiveServed(t *testing.T, granted []string, bounds Bounds) (*Gate, *[]string
 		case "notifications/initialized":
 			return nil, nil
 		case "tools/list":
-			return json.RawMessage(`{"jsonrpc":"2.0","id":` + string(request.ID) + `,"result":{"tools":[{"name":"get_schema"},{"name":"list_examples"},{"name":"get_example"},{"name":"validate"},{"name":"experimental_evaluate"}]}}`), nil
+			tools := []contract.ToolOfferRuntimeTool{}
+			for _, name := range []string{"get_schema", "list_examples", "get_example", "validate", "experimental_evaluate"} {
+				tools = append(tools, fixtureRuntimeTool(t, name))
+			}
+			return json.Marshal(map[string]any{"jsonrpc": "2.0", "id": request.ID, "result": map[string]any{"tools": tools}})
 		}
 		calls = append(calls, request.Params.Name)
 		return json.RawMessage(`{"jsonrpc":"2.0","id":` + string(request.ID) + `,"result":{"content":[{"type":"text","text":"ok"}]}}`), nil
@@ -270,7 +323,7 @@ func TestTheAdapterHandleCountsTestCalls(t *testing.T) {
 	})
 	offer := contract.ToolOffer{}
 	for _, name := range Ceiling {
-		offer.Tools = append(offer.Tools, contract.ToolOfferRuntimeTool{Name: name})
+		offer.Tools = append(offer.Tools, fixtureRuntimeTool(t, name))
 	}
 	g.SetOffer(offer)
 	c := g.Calls()
@@ -370,7 +423,7 @@ func TestAChildsTestCallsAreChargedToItsParentsTurn(t *testing.T) {
 	}
 	offer := contract.ToolOffer{}
 	for _, name := range Ceiling {
-		offer.Tools = append(offer.Tools, contract.ToolOfferRuntimeTool{Name: name})
+		offer.Tools = append(offer.Tools, fixtureRuntimeTool(t, name))
 	}
 	parent := New(Options{Runtime: runtime, Granted: Ceiling})
 	parent.SetOffer(offer)
@@ -418,7 +471,7 @@ func TestARuntimeResultsImageIsNamedNotDropped(t *testing.T) {
 	})
 	offer := contract.ToolOffer{}
 	for _, name := range Ceiling {
-		offer.Tools = append(offer.Tools, contract.ToolOfferRuntimeTool{Name: name})
+		offer.Tools = append(offer.Tools, fixtureRuntimeTool(t, name))
 	}
 	g.SetOffer(offer)
 	result, err := g.Calls().CallTool(context.Background(), "get_schema", json.RawMessage(`{}`))
@@ -445,7 +498,7 @@ func TestReview122GateOffer(t *testing.T) {
 		if g.AdmitHost(name) == nil {
 			t.Fatalf("empty offer admitted %s", name)
 		}
-		g.SetOffer(contract.ToolOffer{HostTools: []contract.ToolOfferHostTool{{Name: name}}})
+		g.SetOffer(contract.ToolOffer{HostTools: []contract.ToolOfferHostTool{{Name: name, Taxonomy: contract.ToolTaxonomy{Operation: "propose", Effect: "propose"}}}})
 		if got := g.AdmitHost(name); got != nil {
 			t.Fatalf("offered %s refused: %+v", name, got)
 		}

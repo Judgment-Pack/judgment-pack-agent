@@ -8,6 +8,7 @@ import hashlib
 import json
 import re
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from jsonschema import Draft202012Validator, FormatChecker
@@ -242,7 +243,73 @@ def problems(check, items):
     return found
 
 
+def any_vector_problems(documents, vector_rows):
+    """Probe one immutable mutation graph, preserving vector order and full errors.
+
+    The graph is fully patched before this call and never changes during it.
+    Registry and validators live only for this probe; a later mutation with the
+    same references gets its own resources and cannot reuse an earlier result.
+    """
+    held_registry = registry(documents)
+    checks = {}
+
+    def check_for(reference):
+        if reference not in checks:
+            checks[reference] = Draft202012Validator({"$ref": BASE + reference}, registry=held_registry)
+        return checks[reference]
+
+    return any(problems(check_for(vector["schema"]), vector["items"]) for vector in vector_rows)
+
+
 class SchemaTests(unittest.TestCase):
+    def test_member_probe_cache_is_scoped_to_each_mutated_graph(self):
+        documents = {
+            "cache-a.json": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": BASE + "cache-a.json",
+                "type": "object", "properties": {"value": {"enum": ["one", "two"]}},
+                "required": ["value"], "additionalProperties": False,
+            },
+            "cache-b.json": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": BASE + "cache-b.json",
+                "$defs": {"entry": {"$ref": "cache-a.json"}},
+            },
+        }
+        rows = [
+            {"schema": "cache-a.json", "items": [{"value": "one"}]},
+            {"schema": "cache-b.json#/$defs/entry", "items": [{"value": "two"}]},
+            {"schema": "cache-a.json", "items": [{"value": "one"}, {"value": "two"}]},
+        ]
+        original_problems = problems
+
+        def observe(run):
+            visited = []
+
+            def tracked(check, items):
+                found = original_problems(check, items)
+                visited.append((check.schema["$ref"], copy.deepcopy(items), found))
+                return found
+
+            with patch(__name__ + ".problems", side_effect=tracked):
+                result = run()
+            return result, visited
+
+        # Identical URIs across independent graphs must never share cached
+        # validators. The final valid graph also catches stale negative results.
+        for mutation in (None, "remove-one", "remove-two", "member-false", None):
+            changed = copy.deepcopy(documents)
+            member = changed["cache-a.json"]["properties"]
+            if mutation == "member-false":
+                member["value"] = False
+            elif mutation is not None:
+                member["value"]["enum"].remove("one" if mutation == "remove-one" else "two")
+            before = copy.deepcopy(changed)
+            expected = observe(lambda: any(problems(validator(changed, row["schema"]), row["items"]) for row in rows))
+            with patch(__name__ + ".registry", wraps=registry) as resources:
+                actual = observe(lambda: any_vector_problems(changed, rows))
+            self.assertEqual(actual, expected, mutation)
+            self.assertEqual(resources.call_count, 1, mutation)
+            self.assertEqual(changed, before, "validation changed its supposedly immutable graph")
+
     def test_the_thirteen_schemas_are_there_and_nothing_else(self):
         self.assertEqual(set(schemas()), EXPECTED_SCHEMAS)
 
@@ -893,7 +960,7 @@ class VectorTests(unittest.TestCase):
             for step in path[:-1]:
                 node = node[step]
             node[path[-1]] = False
-            return any(problems(validator(changed, vector["schema"]), vector["items"]) for vector in vectors_.values())
+            return any_vector_problems(changed, vectors_.values())
 
         targets = []
         for name, definition in RELEASE_REVIEWED_DEFS:
@@ -937,7 +1004,7 @@ class VectorTests(unittest.TestCase):
                 for step in path:
                     held = held[step]
                 held["enum"] = [other for other in held["enum"] if other != value]
-                if not any(problems(validator(changed, vector["schema"]), vector["items"]) for vector in vectors_.values()):
+                if not any_vector_problems(changed, vectors_.values()):
                     unused.append(f"{name} {'/'.join(path)} {value}")
         self.assertEqual(unused, [], "enum values no vector carries")
 
@@ -954,7 +1021,7 @@ class VectorTests(unittest.TestCase):
                 for step in path:
                     held = held[step]
                 held["enum"] = [other for other in held["enum"] if other != value]
-                self.assertTrue(any(problems(validator(changed, vector["schema"]), vector["items"]) for vector in vectors_.values()), f"{name} {'/'.join(path)} {value} no vector carries")
+                self.assertTrue(any_vector_problems(changed, vectors_.values()), f"{name} {'/'.join(path)} {value} no vector carries")
 
         # ADR-0010: every value of the switch's enums is carried by a vector: the modes, the tiers of both
         # capabilities, the thirteen reasons, the three triggers wherever they are stated, the reserved
@@ -1020,12 +1087,12 @@ class VectorTests(unittest.TestCase):
                 for step in path:
                     held = held[step]
                 held["enum"] = [other for other in held["enum"] if other != value]
-                if not any(problems(validator(changed, vector["schema"]), vector["items"]) for vector in vectors_.values()):
+                if not any_vector_problems(changed, vectors_.values()):
                     unused.append(f"{name} {'/'.join(path)} {value}")
         changed = copy.deepcopy(schemas_)
         changed["tool-offer.json"]["$defs"]["reservedName"]["enum"].remove("request_review")
         changed["tool-offer.json"]["$defs"]["requestReview"]["allOf"][1]["properties"]["name"] = {"$ref": "#/$defs/reservedName"}
-        if not any(problems(validator(changed, vector["schema"]), vector["items"]) for vector in vectors_.values()):
+        if not any_vector_problems(changed, vectors_.values()):
             unused.append("tool-offer.json $defs/reservedName request_review")
         self.assertEqual(unused, [], "enum values no vector carries")
 
@@ -1037,7 +1104,7 @@ class VectorTests(unittest.TestCase):
                 for step in path:
                     held = held[step]
                 held["enum"] = [other for other in held["enum"] if other != "exchange"]
-                self.assertTrue(any(problems(validator(changed, vector["schema"]), vector["items"]) for vector in vectors_.values()), f"{name} exchange")
+                self.assertTrue(any_vector_problems(changed, vectors_.values()), f"{name} exchange")
 
     def test_every_wire_name_follows_the_rule(self):
         # ADR-0006: tool-offer.json#/$defs/wireName, computed here from its words.

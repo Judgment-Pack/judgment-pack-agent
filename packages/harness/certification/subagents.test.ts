@@ -13,7 +13,7 @@ const report='Child evidence.\n```report\n'+JSON.stringify({summary:'Evidence ch
 async function play(engine:Engine,restored?:import('../execution/state').ExecutionCheckpoint,changed=false,mode?:string){
  const agent=engine.id==='codex'
  const skill:SkillDeclaration={id:'evidence',name:'evidence',description:'Check evidence.',instructions:'SKILL EVIDENCE RULE: cite supplied sources.',source:{kind:'custom',id:'project',version:'1',trust:'person'},tools:['lookup'],pinnedDigest:''}
- skill.pinnedDigest=await skillDigest(skill)
+ skill.pinnedDigest=await skillDigest(skill,new Map([['lookup',{operation:'read',effect:'read'} as const]]))
  const definition={...structuredClone(definitionVector.items[0]),model:'fixture',reasoning:'low',skills:['evidence'],bounds:{...definitionVector.items[0]!.bounds,modelRequests:5,bytes:24000}} as SubagentDeclaration
  definition.pinnedDigest=await subagentDigest(definition)
  if(mode){

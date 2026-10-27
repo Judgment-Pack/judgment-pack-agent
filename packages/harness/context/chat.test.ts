@@ -579,7 +579,7 @@ describe('the critic, a failed start and a resume, with a chat', () => {
     const failed = await vercelTurn({
       answer: () => streamed(sseTurn({ text: 'unused' })),
       // A host tool that takes a name the boundary reserves: the run fails after it has retained its documents.
-      hostTools: [...hostTools, { name: 'search', description: 'A reserved name.', inputSchema: { type: 'object' }, execute: async () => ({}) }],
+      hostTools: [...hostTools, { name: 'search', taxonomy: { operation: 'discover', effect: 'read' }, description: 'A reserved name.', inputSchema: { type: 'object' }, execute: async () => ({}) }],
       session: { context: { currentRequest: { message: 'Write it.', input: 'Write it.' }, chat, documents: [{ id: 'conversation', kind: 'history', label: 'The conversation', value: 'Earlier turns. '.repeat(50) }] } }
     })
     expect(failed.requests).toHaveLength(0)

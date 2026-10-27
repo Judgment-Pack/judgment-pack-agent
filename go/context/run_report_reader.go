@@ -693,6 +693,9 @@ func validReportSemantics(v *Value) bool {
 	return true
 }
 func validateRunReport(v *Value) (*Value, error) {
+	if !v.IsObject() || v.Get("version") == nil || v.Get("version").Kind() != KindNumber {
+		return nil, &RunReportInvalid{}
+	}
 	graph := runReportV1
 	if v.Get("version").Num() == 2 {
 		graph = runReportV2

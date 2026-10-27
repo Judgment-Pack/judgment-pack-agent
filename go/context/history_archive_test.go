@@ -479,3 +479,38 @@ func TestHistoryArchiveActualTypedRolePayloadRedaction(t *testing.T) {
 		}
 	}
 }
+
+func TestHistoryArchiveSharedExactNativeBindings(t *testing.T) {
+	port, objects, _ := publicationCaptureFixture(t)
+	corpus, e := ReadCapturedCorpus(port)
+	if e != nil {
+		t.Fatal("exact native-binding corpus unavailable", e)
+	}
+	requests, e := ParseJSON(corpus.Requests)
+	if e != nil || len(requests.Items()) != 2 {
+		t.Fatal("missing exact requests", e)
+	}
+	native := requests.Items()[1]
+	if native.Get("response").Get("headers").Get("x-jp-native-tool-bindings").Str() != "{}" || !native.Get("request").Get("tools").IsArray() || len(native.Get("request").Get("tools").Items()) != 0 {
+		t.Fatal("native empty tool allocation changed")
+	}
+	found := false
+	for _, commit := range port.commits {
+		for _, ref := range commit.Observations {
+			observation, e := ParseJSON(objects[ref.Digest])
+			if e != nil {
+				t.Fatal(e)
+			}
+			if observation.Get("kind").Str() == "capture-request" && observation.Get("captureKind").Str() == "agent" {
+				bindings := archiveRef(observation.Get("nativeBindings"))
+				if bindings.Bytes != 2 || string(objects[bindings.Digest]) != "{}" {
+					t.Fatal("original binding evidence absent")
+				}
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatal("native observation absent")
+	}
+}

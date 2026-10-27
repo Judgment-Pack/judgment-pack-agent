@@ -1,4 +1,14 @@
 {
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/descriptorSnapshot.ts",
+      "packages/harness/toolSources.ts"
+    ]
+  },
   "schema": "tool-offer.json#/$defs/toolListDigest",
   "gatewayCommit": "17168fc11cac3a9f4947564dfb65b2f239827681",
   "invalid": [

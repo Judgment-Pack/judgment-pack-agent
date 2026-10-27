@@ -66,7 +66,8 @@ it('refuses conflicting source-to-derived mappings even with a recomputed manife
 })
 
 import typedRoles from '../../../contract/fixtures/history/typed-role.json'
-import {readArchiveCapturedCorpus,ReplayUnavailable} from './capture'
+import {readCapturedCorpus,readArchiveCapturedCorpus,ReplayUnavailable,type CaptureReadView} from './capture'
+import nativeBindingsCapture from '../../../contract/fixtures/history/capture-native-bindings.json'
 for(const row of typedRoles.cases)it(`checks handwritten typed roles ${row.name}`,()=>{
  const bytes=historyJSONBytes(row.archive)
  if(!row.valid){expect(()=>readRunArchive(bytes,row.expectedDigest)).toThrow(HistoryInputInvalid);return}
@@ -81,4 +82,16 @@ it('exports real Memory store payloads sharing typed roles with whole JSON redac
  const commit=async(prepared:Awaited<ReturnType<typeof prepareHistoryOriginal>>,id:string)=>{await stageHistoryObservation(store,'r',prepared);const head=(await store.load('r'))!;await store.commitHistory({run:{runId:'r',expectedRevision:head.revision,commitId:id,checkpoint:head.checkpoint,events:[]},observations:[prepared.ref]})}
  await commit(original,'role-original');const request=await prepareHistoryRequest(scope,'dispatch','model','model',text,[],[original.ref]);await commit(request,'role-request')
  const result=await exportRunArchive(store,'r',{members}),view=readRunArchive(result.bytes);for(const blob of JSON.parse(new TextDecoder().decode(result.bytes)).objects)expect(Buffer.from(blob.bytes,'base64').toString('utf8')).not.toContain('SECRET-123');expect(new TextDecoder().decode(result.bytes)).not.toContain('SECRET-123');expect(Array.from(view.canonicalBytes())).toEqual(Array.from(result.bytes));const shared=historyBytesDigest(new TextEncoder().encode(text)),aliases=view.manifest.mappings.filter(m=>m.source.digest===shared&&(m.kind==='source-chunk'||m.kind==='request-chunk'));expect(aliases).toHaveLength(2);expect(aliases[0]!.source).toEqual(aliases[1]!.source);expect(()=>view.readDisplay(aliases[0]!.source)).toThrow(HistoryInputInvalid);for(const row of aliases)expect(view.readDisplay(row.source,row.kind).document).toContain('[redacted: account-code]')
+})
+
+it('reads the shared exact native-binding fixture without granting execution or store authority',()=>{
+ const source=structuredClone(nativeBindingsCapture.source),objects=new Map(Object.entries(source.objects).map(([digest,text])=>[digest,Uint8Array.from(Buffer.from(text,'base64'))]))
+ const view={head:source.head,commits:source.commits,metadata:source.metadata,readObject:(ref:{digest:string})=>objects.get(ref.digest)!} as CaptureReadView
+ const corpus=readCapturedCorpus(view)
+ expect(corpus.requests).toHaveLength(2)
+ expect(corpus.requests[1]!.response.headers['x-jp-native-tool-bindings']).toBe('{}')
+ expect(corpus.requests[1]!.request).toMatchObject({tools:[]})
+ const native=source.commits.flatMap(commit=>commit.observations).map(ref=>JSON.parse(new TextDecoder().decode(objects.get(ref.digest)!))).find(row=>row.kind==='capture-request'&&row.captureKind==='agent')
+ expect(JSON.parse(new TextDecoder().decode(objects.get(native.nativeBindings.digest)!))).toEqual({})
+ expect('commit'in corpus).toBe(false);expect('resume'in corpus).toBe(false)
 })

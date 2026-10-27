@@ -46,11 +46,15 @@ function takeNotices(context:SessionContext):AssistantEvent[]{
 }
 async function* persistedExecute<T extends EngineSession>(session:T,run:(session:RequestSessionFor<T>)=>AsyncIterable<AssistantEvent>,engine?:import('../host').AssistantEngine):AsyncGenerator<AssistantEvent>{
  let events:AsyncGenerator<AssistantEvent>|undefined
+ let pendingNext=false
  try{
   session=await withAbort(()=>durableSession(session),session.signal)
   events=execute(session,run,engine)
   for(;;){
-   const step=await withAbort(()=>events!.next(),session.signal)
+   const step=await withAbort(()=>{
+    pendingNext=true
+    return events!.next().then(step=>{pendingNext=false;return step},error=>{pendingNext=false;throw error})
+   },session.signal)
    if(step.done)return
    const event=step.value,binding=session.context?.[durableOwner]
    const output=binding&&!binding.writer.failed?await withAbort(()=>binding.writer.event(binding,event,session.signal),session.signal):writeRunEvent(event)
@@ -58,7 +62,12 @@ async function* persistedExecute<T extends EngineSession>(session:T,run:(session
    yield output
   }
  }catch(error){if(!session.signal.aborted){if(error instanceof UnsupportedRecordVersion||error instanceof UnknownRecordMember||error instanceof RecordsExpired)yield writeRunEvent(error.event());yield writeRunEvent(failureEvent(error,'storage'));yield writeRunEvent({type:'end'})}}
- finally{void events?.return(undefined).catch(()=>undefined)}
+ finally{
+  const closing=events?.return(undefined).catch(()=>undefined)
+  // A yielded source closes before return acknowledges it. An outstanding next
+  // may ignore cancellation; initiating its queued return must not hang Stop.
+  if(!pendingNext)await closing
+ }
 }
 /** A withheld call never executes: close the previous physical loop, acknowledge the one
  * catalogue widening, then build the next request against the same admitted context. */

@@ -73,7 +73,11 @@ func naive(inner adapter.Adapter) adapter.Adapter {
 func TestTheFakeAccountCatchesANaiveSynchronousWrapper(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	findings, err := certification.AgentChecks[0].Run(ctx, server, certification.StandIn(), naive, agent.New())
+	at := slices.IndexFunc(certification.AgentChecks, func(check certification.AgentCheck) bool { return check.Group == "handoff" })
+	if at < 0 {
+		t.Fatal("the handoff certification check is missing")
+	}
+	findings, err := certification.AgentChecks[at].Run(ctx, server, certification.StandIn(), naive, agent.New())
 	if err != nil {
 		t.Fatal(err)
 	}

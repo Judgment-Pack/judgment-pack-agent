@@ -280,3 +280,59 @@ func TestTaxonomyRuntimeSkillReferences(t *testing.T) {
 		t.Fatal("withdrawn runtime tool did not withhold skill")
 	}
 }
+
+// The actual shared host vector is held at the exported declaration boundary.
+// Removing either permitted dimension withholds the tool without granting dispatch.
+func TestTaxonomyLimitSharedHostAdmission(t *testing.T) {
+	raw, err := os.ReadFile("../../contract/vectors/tool-offer/taxonomy-limits.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var file struct{ Items []HostTool }
+	if err := json.Unmarshal(raw, &file); err != nil || len(file.Items) != 1 {
+		t.Fatal("invalid shared taxonomy ceiling vector", err)
+	}
+	tool := file.Items[0]
+	if tool.Taxonomy == nil || tool.TaxonomyLimit == nil || tool.Taxonomy.Operation != "read" || tool.Taxonomy.Effect != "read" {
+		t.Fatal("shared host vector lost explicit read taxonomy or ceilings")
+	}
+	admitted, err := DeclareSources([]HostTool{tool}, nil)
+	if err != nil || len(admitted.HostTools) != 1 || len(admitted.Withheld) != 0 || admitted.HostTools[0].Name != tool.Name || !reflect.DeepEqual(admitted.HostTools[0].TaxonomyLimit, tool.TaxonomyLimit) {
+		t.Fatal("shared host ceiling refused or lost a permitted read", err)
+	}
+	withoutRead := func(values []string) []string {
+		out := []string{}
+		for _, value := range values {
+			if value != "read" {
+				out = append(out, value)
+			}
+		}
+		if len(out) != len(values)-1 {
+			t.Fatal("shared ceiling lacks exactly one read member")
+		}
+		return out
+	}
+	for _, dimension := range []string{"operation", "effect"} {
+		t.Run(dimension, func(t *testing.T) {
+			limited := tool
+			limit := *tool.TaxonomyLimit
+			limited.TaxonomyLimit = &limit
+			if dimension == "operation" {
+				limit.Operations = withoutRead(limit.Operations)
+			} else {
+				limit.Effects = withoutRead(limit.Effects)
+			}
+			declared, err := DeclareSources([]HostTool{limited}, nil)
+			if err != nil {
+				t.Fatal("valid narrower host ceiling failed before withholding", err)
+			}
+			if len(declared.HostTools) != 0 || len(declared.Withheld) != 1 || declared.Withheld[0].Tool != "taxonomy" || declared.Withheld[0].Detail != "The host taxonomy limit withholds this tool." {
+				t.Fatalf("%s ceiling failed to withhold the shared host tool: %+v", dimension, declared)
+			}
+		})
+	}
+	admitted, err = DeclareSources([]HostTool{tool}, nil)
+	if err != nil || len(admitted.HostTools) != 1 || len(admitted.Withheld) != 0 {
+		t.Fatal("narrowed copy changed original host ceiling", err)
+	}
+}

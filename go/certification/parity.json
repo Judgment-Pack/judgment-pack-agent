@@ -337,6 +337,9 @@
   "scenarios": {
     "source": "packages/harness/certification/scenarios.test.ts",
     "checks": [
+      {"check": "serves explicit synthetic taxonomy while preserving the explicitly selected historical recording", "reason": "Go TestCurrentReplayDeclarationsPreserveHistoricalRecording checks the original byte pin, the actual shared HTTP replay declarations and its gate.Open offer."},
+      {"check": "refuses non-rehearsal evaluation in the pure synthetic replay", "reason": "Go TestCurrentReplayRefusesNonRehearsalEvaluation drives the actual shared HTTP replay and checks its exact refusal and observation."},
+      {"check": "refuses %s test metadata through the real connection entry", "reason": "Go TestCurrentReplayMetadataRefusedThroughConnection corrupts only tools/list metadata after the actual HTTP replay response and checks gate.Open refuses before dispatch."},
       {"check":"24 · asking-well reads available context without asking","go":["24 asking-well","24 agent asking-well"]},
       {"check":"24 · asking-well missing information waits for the actual reply","go":["24 asking-well","24 agent asking-well"]},
       {"check":"24 · asking-well insertion uses actual offers and refuses unavailable selected methods","go":["24 asking-well","24 agent asking-well"]},

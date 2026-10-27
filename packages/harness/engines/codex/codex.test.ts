@@ -464,7 +464,7 @@ it('retains full tool results for the UI, sends bounded references to Codex, and
   await callbacks.event({type:'message',id:'answer-'+passes,phase:'final',text:passes===1?proposal({id:'p'}):'No change recommended.'})
  }
  const events:AssistantEvent[]=[]
- for await(const e of codex.start(session(run,{critic: 'on' as const,hostTools:[{name:'read_records',description:'Read records',inputSchema:{type:'object'},execute:async()=>({structuredContent:value})}]})))events.push(e)
+ for await(const e of codex.start(session(run,{critic: 'on' as const,hostTools:[{name:'read_records',taxonomy:{operation:'read',effect:'read'},description:'Read records',inputSchema:{type:'object'},execute:async()=>({structuredContent:value})}]})))events.push(e)
  expect(events.filter(e=>e.type==='error')).toEqual([])
  expect(passes).toBe(2)
  expect(events.find(e=>e.type==='tool_result'&&e.name==='read_records')).toMatchObject({structured:value})
@@ -538,7 +538,7 @@ describe('nothing finished is lost, on the agent wire (agent#6)', () => {
       answered = (await callbacks.tool({ id: 'c1', name: tool.name, arguments: { documentJson: '{"id":"p"}', unknowns: ['u'] } }, callbacks.signal)).text
       await callbacks.event({ type: 'message', id: 'm', text: 'Proposed.', phase: 'final' })
     }
-    const events = await collect(session(run, { hostTools: [{ name: PROPOSE_PACK_TOOL, effect: 'proposal', description: 'Propose', inputSchema: PROPOSE_PACK_SCHEMA, execute }] }))
+    const events = await collect(session(run, { hostTools: [{ name: PROPOSE_PACK_TOOL, taxonomy: { operation: 'propose', effect: 'propose' }, effect: 'proposal', description: 'Propose', inputSchema: PROPOSE_PACK_SCHEMA, execute }] }))
     expect(execute).not.toHaveBeenCalled()
     expect(answered).toBe(PROPOSAL_RECEIVED)
     expect(instructions).toContain(`calling ${PROPOSE_PACK_TOOL}`)
@@ -546,7 +546,7 @@ describe('nothing finished is lost, on the agent wire (agent#6)', () => {
     expect(events.filter(event => event.type === 'error')).toEqual([])
   })
 
-  const proposeTool = { name: PROPOSE_PACK_TOOL, effect: 'proposal' as const, description: 'Propose', inputSchema: PROPOSE_PACK_SCHEMA, execute: async () => ({ content: [] }) }
+  const proposeTool = { name: PROPOSE_PACK_TOOL, taxonomy: { operation: 'propose', effect: 'propose' } as const, effect: 'proposal' as const, description: 'Propose', inputSchema: PROPOSE_PACK_SCHEMA, execute: async () => ({ content: [] }) }
   const callPropose = async (request: Parameters<AgentRun>[0], callbacks: Parameters<AgentRun>[1]) => {
     const tool = request.tools.find(offered => offered.description.startsWith(`${PROPOSE_PACK_TOOL}:`))!
     await callbacks.tool({ id: 'c1', name: tool.name, arguments: { documentJson: '{"id":"tool"}', unknowns: ['u'] } }, callbacks.signal)
