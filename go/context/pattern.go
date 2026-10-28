@@ -999,7 +999,9 @@ func FirstMatch(pattern *CompiledPattern, line string, budget *PatternBudget) (i
 func MatchRanges(pattern *CompiledPattern, text string, budget *PatternBudget) ([][2]int, bool) {
 	units := u16(text)
 	ranges := [][2]int{}
-	current := map[int]int{}
+	current, next := map[int]int{}, map[int]int{}
+	pcs := make([]int, 0, len(pattern.ops))
+	stack := make([]int, 0, len(pattern.ops))
 	holds := func(kind string, pos int) bool {
 		if kind == "bol" {
 			return pos == 0
@@ -1012,7 +1014,7 @@ func MatchRanges(pattern *CompiledPattern, text string, budget *PatternBudget) (
 		return (before != after) == (kind == "word")
 	}
 	add := func(set map[int]int, pc, start, pos int) {
-		stack := []int{pc}
+		stack = append(stack[:0], pc)
 		for len(stack) > 0 {
 			at := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
@@ -1043,9 +1045,9 @@ func MatchRanges(pattern *CompiledPattern, text string, budget *PatternBudget) (
 		if pos < len(units) {
 			code, width = codePointAt(units, pos)
 		}
-		next := map[int]int{}
+		clear(next)
 		// Instruction order makes work accounting byte-identical to TypeScript.
-		pcs := make([]int, 0, len(current))
+		pcs = pcs[:0]
 		for pc := range current {
 			pcs = append(pcs, pc)
 		}
@@ -1072,7 +1074,7 @@ func MatchRanges(pattern *CompiledPattern, text string, budget *PatternBudget) (
 		if pos == len(units) {
 			return ranges, true
 		}
-		current = next
+		current, next = next, current
 		pos += width
 	}
 }

@@ -245,13 +245,31 @@ def problems(check, items):
     return found
 
 
-def any_vector_problems(documents, vector_rows):
-    """Probe one immutable mutation graph, preserving vector order and full errors.
+def any_vector_problems(documents, vector_rows, witness=None):
+    """Probe one immutable mutation graph, with full errors and optional witness hints.
 
     The graph is fully patched before this call and never changes during it.
     Registry and validators live only for this probe; a later mutation with the
     same references gets its own resources and cannot reuse an earlier result.
     """
+    # Hints reorder witnesses; they never remove a vector. Full negative probes
+    # still visit the complete corpus, with fresh resources for each mutation.
+    if witness is not None:
+        schema, path = witness
+        member = next((path[at + 1] for at in range(len(path) - 1, -1, -1)
+                       if path[at] == "properties" and at + 1 < len(path)), None)
+
+        def carries(node):
+            if isinstance(node, dict):
+                return member in node or any(carries(value) for value in node.values())
+            if isinstance(node, list):
+                return any(carries(value) for value in node)
+            return False
+
+        vector_rows = sorted(vector_rows, key=lambda row: (
+            row["schema"].split("#", 1)[0] != schema,
+            member is not None and not carries(row["items"]),
+        ))
     held_registry = registry(documents)
     checks = {}
 
@@ -311,6 +329,47 @@ class SchemaTests(unittest.TestCase):
             self.assertEqual(actual, expected, mutation)
             self.assertEqual(resources.call_count, 1, mutation)
             self.assertEqual(changed, before, "validation changed its supposedly immutable graph")
+
+    def test_member_probe_priority_preserves_results_and_full_negative_coverage(self):
+        documents = {name: {
+            "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": BASE + name,
+            "type": "object", "properties": {"value": {"enum": ["one", "two"]}},
+            "required": ["value"], "additionalProperties": False,
+        } for name in ("probe-a.json", "probe-b.json")}
+        rows = [{"schema": name, "items": [{"value": value}]} for name, value in (
+            ("probe-a.json", "one"), ("probe-b.json", "two"), ("probe-a.json", "two"))]
+        original = problems
+        for mutation in (None, "one", "two", None):
+            changed = copy.deepcopy(documents)
+            if mutation:
+                changed["probe-a.json"]["properties"]["value"]["enum"].remove(mutation)
+            before = copy.deepcopy(changed)
+            expected = any_vector_problems(changed, rows)
+            visited = []
+
+            def observed(check, items):
+                visited.append((check.schema["$ref"], copy.deepcopy(items)))
+                return original(check, items)
+
+            with patch(__name__ + ".problems", side_effect=observed), patch(__name__ + ".registry", wraps=registry) as resources:
+                actual = any_vector_problems(changed, iter(rows), witness=("probe-b.json", ["properties", "value"]))
+            self.assertEqual(actual, expected, mutation)
+            self.assertEqual(resources.call_count, 1)
+            self.assertEqual(visited[0][0], BASE + "probe-b.json", "witness priority was lost")
+            if not expected:
+                self.assertEqual(len(visited), len(rows), "negative probe omitted a vector")
+                self.assertCountEqual(visited, [(BASE + row["schema"], row["items"]) for row in rows])
+            self.assertEqual(changed, before)
+
+    def test_omission_probes_reject_an_unrelated_invalid_baseline(self):
+        case = VectorTests("test_every_member_the_release_review_named_is_carried_by_a_vector")
+        case.schemas = schemas()
+        case.vectors = {"unrelated": {"schema": "run-event.json", "items": [{"type": "not-an-event"}]}}
+        self.assertTrue(any_vector_problems(case.schemas, case.vectors.values()))
+        with patch(__name__ + ".any_vector_problems", return_value=True) as probe:
+            with self.assertRaisesRegex(AssertionError, "baseline vector is invalid before omission probes"):
+                case.test_every_member_the_release_review_named_is_carried_by_a_vector()
+        self.assertEqual(probe.call_count, 1, "an invalid baseline reached member omission probes")
 
     def test_the_thirteen_schemas_are_there_and_nothing_else(self):
         self.assertEqual(set(schemas()), EXPECTED_SCHEMAS)
@@ -942,6 +1001,7 @@ class VectorTests(unittest.TestCase):
         # carries leaves them all valid. Conditions (if, then, else, not) are not members.
         schemas_ = self.schemas
         vectors_ = self.vectors
+        self.assertFalse(any_vector_problems(schemas_, vectors_.values()), "baseline vector is invalid before omission probes")
 
         def members(node, path):
             if isinstance(node, dict):
@@ -962,7 +1022,7 @@ class VectorTests(unittest.TestCase):
             for step in path[:-1]:
                 node = node[step]
             node[path[-1]] = False
-            return any_vector_problems(changed, vectors_.values())
+            return any_vector_problems(changed, vectors_.values(), witness=(name, path))
 
         targets = []
         for name, definition in RELEASE_REVIEWED_DEFS:
@@ -1006,7 +1066,7 @@ class VectorTests(unittest.TestCase):
                 for step in path:
                     held = held[step]
                 held["enum"] = [other for other in held["enum"] if other != value]
-                if not any_vector_problems(changed, vectors_.values()):
+                if not any_vector_problems(changed, vectors_.values(), witness=(name, path)):
                     unused.append(f"{name} {'/'.join(path)} {value}")
         self.assertEqual(unused, [], "enum values no vector carries")
 
@@ -1023,7 +1083,7 @@ class VectorTests(unittest.TestCase):
                 for step in path:
                     held = held[step]
                 held["enum"] = [other for other in held["enum"] if other != value]
-                self.assertTrue(any_vector_problems(changed, vectors_.values()), f"{name} {'/'.join(path)} {value} no vector carries")
+                self.assertTrue(any_vector_problems(changed, vectors_.values(), witness=(name, path)), f"{name} {'/'.join(path)} {value} no vector carries")
 
         # ADR-0010: every value of the switch's enums is carried by a vector: the modes, the tiers of both
         # capabilities, the thirteen reasons, the three triggers wherever they are stated, the reserved
@@ -1089,12 +1149,12 @@ class VectorTests(unittest.TestCase):
                 for step in path:
                     held = held[step]
                 held["enum"] = [other for other in held["enum"] if other != value]
-                if not any_vector_problems(changed, vectors_.values()):
+                if not any_vector_problems(changed, vectors_.values(), witness=(name, path)):
                     unused.append(f"{name} {'/'.join(path)} {value}")
         changed = copy.deepcopy(schemas_)
         changed["tool-offer.json"]["$defs"]["reservedName"]["enum"].remove("request_review")
         changed["tool-offer.json"]["$defs"]["requestReview"]["allOf"][1]["properties"]["name"] = {"$ref": "#/$defs/reservedName"}
-        if not any_vector_problems(changed, vectors_.values()):
+        if not any_vector_problems(changed, vectors_.values(), witness=("tool-offer.json", ["$defs", "reservedName"])):
             unused.append("tool-offer.json $defs/reservedName request_review")
         self.assertEqual(unused, [], "enum values no vector carries")
 
@@ -1106,7 +1166,7 @@ class VectorTests(unittest.TestCase):
                 for step in path:
                     held = held[step]
                 held["enum"] = [other for other in held["enum"] if other != "exchange"]
-                self.assertTrue(any_vector_problems(changed, vectors_.values()), f"{name} exchange")
+                self.assertTrue(any_vector_problems(changed, vectors_.values(), witness=(name, path)), f"{name} exchange")
 
     def test_every_wire_name_follows_the_rule(self):
         # ADR-0006: tool-offer.json#/$defs/wireName, computed here from its words.

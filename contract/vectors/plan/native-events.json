@@ -1,6 +1,14 @@
 {
   "schema": "run-event.json",
-  "source": "Handwritten shared native Plan fixtures (#219/#237).",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/storage/nativePlanPause.ts"
+    ]
+  },
   "description": "Static handwritten inputs from contract/testdata/task-steps/records.json, included in the canonical corpus for schema omission proofs; never generated from implementation output.",
   "items": [
     {

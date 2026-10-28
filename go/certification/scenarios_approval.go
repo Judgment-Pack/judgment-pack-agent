@@ -884,6 +884,43 @@ func openingOf(request EndpointRequest) []string {
 // invocations (the TypeScript suite's agent engine makes the same ones).
 var AgentApprovalNames = []string{"8 agent pause", "8 agent pending", "8 agent wrong", "8 agent refused", "8 agent approved", "8 agent restart", "8 agent continuation", "8 agent figures"}
 
+// parallelApprovalFixture holds the original approval claim at its unlocked list
+// observer until the sibling callback publishes its refusal. Either call can own
+// the claim; the fixture needs both callbacks admitted before the owner pauses.
+func parallelApprovalFixture(ctx context.Context, tools []runcontext.HostTool, asked string, emit func(contract.RunEvent)) ([]runcontext.HostTool, func(contract.RunEvent)) {
+	pending := make(chan struct{})
+	var observed sync.Once
+	tools = append([]runcontext.HostTool(nil), tools...)
+	for i := range tools {
+		if tools[i].Name != asked || tools[i].Source == nil || tools[i].Source.CurrentDigest == nil {
+			continue
+		}
+		source := *tools[i].Source
+		check := source.CurrentDigest
+		source.CurrentDigest = func(given context.Context) (string, error) {
+			digest, err := check(given)
+			if err != nil {
+				return digest, err
+			}
+			select {
+			case <-pending:
+				return digest, nil
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-given.Done():
+				return "", given.Err()
+			}
+		}
+		tools[i].Source = &source
+	}
+	return tools, func(event contract.RunEvent) {
+		emit(event)
+		if result := event.ToolResult; result != nil && result.Name == "tracker__"+asked && result.IsError {
+			observed.Do(func() { close(pending) })
+		}
+	}
+}
+
 // agentApprovalChecks is scenario 8 on the agent capability, through the coordinator the caller
 // binds (with), each run's invocations played by the binding's provider-run function. The pausing
 // invocation makes its two calls at once.
@@ -909,9 +946,13 @@ func agentApprovalChecks(ctx context.Context, server *Server, host AgentHost, wi
 	children := scenarioChildren(scenario)
 	play := func(ctx context.Context, turns []sourcesTurn, tools []runcontext.HostTool, input *runcontext.Input, stop func()) (*pauseRun, error) {
 		steps := sourcesSteps(turns)
+		emit := scenario.emit
+		if input.Execution == nil {
+			tools, emit = parallelApprovalFixture(ctx, tools, file.Asked.Tool, emit)
+		}
 		watch := &monitor{}
 		run := &Run{ModelName: parentModel, Gate: scenario.gate.Calls(), Tools: scenario.offer.Tools, Prompt: file.Request, AllowConversation: true, Interactive: true,
-			HostTools: tools, Context: input, Emit: pauseEmitter(scenario.emit, stop), Children: children,
+			HostTools: tools, Context: input, Emit: pauseEmitter(emit, stop), Children: children,
 			Agent: &adapter.Agent{Model: parentModel, Run: watch.wrap(host.Bind(func(adapter.AgentRequest, int) AgentPlay { return AgentPlay{Steps: steps} }))}}
 		seal := sealNetwork()
 		_ = runner.Run(ctx, run)

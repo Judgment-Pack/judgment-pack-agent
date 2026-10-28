@@ -1,7 +1,10 @@
 package certification
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
 	"testing"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
@@ -42,5 +45,45 @@ func TestRecordFixtureReadsOnlyTheVersionRegistry(t *testing.T) {
 		if err != nil || got != want {
 			t.Fatalf("%s version registry: got %d, error %v; want %d", file, got, err, want)
 		}
+	}
+}
+
+func TestParallelApprovalFixtureHonorsCancellationAndLeavesDeclarationsDetached(t *testing.T) {
+	for _, cancelObserver := range []bool{false, true} {
+		parent, stopParent := context.WithCancel(context.Background())
+		defer stopParent()
+		observer, stopObserver := context.WithCancel(context.Background())
+		defer stopObserver()
+		if cancelObserver {
+			stopObserver()
+		} else {
+			stopParent()
+		}
+		original := []runcontext.HostTool{{Name: "create_issue", Source: &runcontext.ToolSource{CurrentDigest: func(context.Context) (string, error) { return "original", nil }}}}
+		tools, _ := parallelApprovalFixture(parent, original, "create_issue", func(contract.RunEvent) {})
+		if _, err := tools[0].Source.CurrentDigest(observer); !errors.Is(err, context.Canceled) {
+			t.Fatal("cancelled coordination waited for a missing sibling")
+		}
+		if value, err := original[0].Source.CurrentDigest(context.Background()); err != nil || value != "original" {
+			t.Fatal("fixture changed the original declaration")
+		}
+	}
+}
+func TestParallelApprovalFixtureWaitsForTheNamedRefusedResult(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	entered := make(chan struct{})
+	release := make(chan error, 1)
+	tools, emit := parallelApprovalFixture(ctx, []runcontext.HostTool{{Name: "create_issue", Source: &runcontext.ToolSource{CurrentDigest: func(context.Context) (string, error) { close(entered); return "original", nil }}}}, "create_issue", func(contract.RunEvent) {})
+	go func() { _, err := tools[0].Source.CurrentDigest(ctx); release <- err }()
+	<-entered
+	select {
+	case <-release:
+		t.Fatal("approval observer released before the sibling result")
+	default:
+	}
+	emit(contract.RunEvent{ToolResult: &contract.ToolResult{Type: "tool_result", Name: "tracker__create_issue", IsError: true}})
+	if err := <-release; err != nil {
+		t.Fatal(err)
 	}
 }
